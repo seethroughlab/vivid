@@ -24,7 +24,7 @@ void ModalDialog::hide() {
     }
 }
 
-void ModalDialog::render(OverlayCanvas& canvas, const FrameInput& input,
+void ModalDialog::render(OverlayCanvas& canvas, const gui::InputState& input,
                           float screenWidth, float screenHeight,
                           const UIStyle& style) {
     if (!m_visible) return;

@@ -12,8 +12,8 @@ namespace vivid {
 // -------------------------------------------------------------------------
 
 void NodeGraph::beginEditor(OverlayCanvas& canvas, float width, float height,
-                            const FrameInput& input, bool inputEnabled) {
-    // Convert FrameInput to internal NodeGraphInput
+                            const gui::InputState& input, bool inputEnabled) {
+    // Convert InputState to internal NodeGraphInput
     NodeGraphInput graphInput;
     graphInput.mousePos = input.mousePos;
     graphInput.mouseDelta = input.mouseDelta;
@@ -27,15 +27,15 @@ void NodeGraph::beginEditor(OverlayCanvas& canvas, float width, float height,
     graphInput.keyShift = input.keyShift;
     graphInput.keyAlt = input.keyAlt;
     graphInput.time = input.time;
-    graphInput.keyF = input.isKeyPressed(Key::F);
-    graphInput.key1 = input.isKeyPressed(Key::Num1);
-    graphInput.keyUp = input.isKeyPressed(Key::Up);
-    graphInput.keyDown = input.isKeyPressed(Key::Down);
-    graphInput.keyLeft = input.isKeyPressed(Key::Left);
-    graphInput.keyRight = input.isKeyPressed(Key::Right);
-    graphInput.keyEnter = input.isKeyPressed(Key::Enter);
-    graphInput.keyB = input.isKeyPressed(Key::B);
-    graphInput.keyEscape = input.isKeyPressed(Key::Escape);
+    graphInput.keyF = input.isKeyPressed(gui::Key::F);
+    graphInput.key1 = input.isKeyPressed(gui::Key::Num1);
+    graphInput.keyUp = input.isKeyPressed(gui::Key::Up);
+    graphInput.keyDown = input.isKeyPressed(gui::Key::Down);
+    graphInput.keyLeft = input.isKeyPressed(gui::Key::Left);
+    graphInput.keyRight = input.isKeyPressed(gui::Key::Right);
+    graphInput.keyEnter = input.isKeyPressed(gui::Key::Enter);
+    graphInput.keyB = input.isKeyPressed(gui::Key::B);
+    graphInput.keyEscape = input.isKeyPressed(gui::Key::Escape);
     graphInput.inputBlocked = !inputEnabled;
 
     // Call the legacy implementation

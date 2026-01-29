@@ -234,7 +234,7 @@ void ConsolePanel::update() {
 }
 
 void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                           const FrameInput& input, const UIStyle& style) {
+                           const gui::InputState& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) {
         m_inputRouting.consumedInput = false;
         m_focus.hovered = false;
@@ -431,7 +431,7 @@ void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     m_focus.hovered = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
 }
 
-bool ConsolePanel::handleInput(const FrameInput& input) {
+bool ConsolePanel::handleInput(const gui::InputState& input) {
     if (!m_focus.focused || !m_impl) return false;
 
     // Handle scroll

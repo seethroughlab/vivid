@@ -19,7 +19,7 @@
 
 #include <vivid/gui/ui_style.h>  // For UILayer constants
 #include <vivid/gui/font_provider.h>
-#include <vivid/frame_input.h>
+#include <vivid/gui/input_state.h>
 #include <webgpu/webgpu.h>
 #include <glm/glm.hpp>
 #include <string>
@@ -98,7 +98,7 @@ public:
 
     /**
      * @brief Begin a new frame with HiDPI support (preferred)
-     * @param input Frame input containing dimensions and content scale
+     * @param input Input state containing dimensions and content scale
      *
      * Extracts physical dimensions from input.width/height and computes
      * logical dimensions using input.contentScale. This is the recommended
@@ -106,7 +106,7 @@ public:
      *
      * Clears batched geometry from previous frame.
      */
-    void begin(const FrameInput& input);
+    void begin(const gui::InputState& input);
 
     /**
      * @brief Begin a new frame (assumes scale=1, for legacy use)
@@ -125,7 +125,7 @@ public:
      * @param physicalHeight Framebuffer height in physical pixels (for scissor)
      *
      * Use this overload on HiDPI displays where logical != physical.
-     * Prefer begin(const FrameInput&) for simpler API.
+     * Prefer begin(const gui::InputState&) for simpler API.
      */
     void begin(int logicalWidth, int logicalHeight, int physicalWidth, int physicalHeight);
 
@@ -526,7 +526,7 @@ public:
      * @param scale Display content scale factor (e.g., 2.0 on Retina)
      *
      * This is used internally for HiDPI text mode calculations.
-     * Prefer using begin(const FrameInput&) which sets this automatically.
+     * Prefer using begin(const gui::InputState&) which sets this automatically.
      */
     void setContentScale(float scale) { m_contentScale = scale; }
 

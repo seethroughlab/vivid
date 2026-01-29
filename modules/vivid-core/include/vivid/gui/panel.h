@@ -9,7 +9,8 @@
  */
 
 #include <vivid/gui/overlay_canvas.h>
-#include <vivid/frame_input.h>
+#include <vivid/gui/dock_zone.h>
+#include <vivid/gui/input_state.h>
 #include <glm/glm.hpp>
 #include <string>
 #include <functional>
@@ -28,6 +29,18 @@ enum class DockSide {
     Top,        ///< Docked to top edge
     Bottom,     ///< Docked to bottom edge
     Fill        ///< Fills available space (like NodeGraph)
+};
+
+/**
+ * @brief Panel visibility/location state
+ *
+ * Consolidates panel state into a single authoritative location.
+ * This is the source of truth for whether a panel is visible and how.
+ */
+enum class PanelLocation {
+    Hidden,     ///< Not visible (position may be saved for restoration)
+    Docked,     ///< Visible in layout tree (PanelGroup or as child of split)
+    Floating    ///< Visible as independent floating window
 };
 
 /**
@@ -100,14 +113,14 @@ public:
      * @brief Render the panel
      * @param canvas OverlayCanvas for drawing
      * @param bounds Panel bounds in logical pixels (x, y, w, h)
-     * @param input Frame input state
+     * @param input Input state
      * @param style UI style for colors and layout
      *
      * All coordinates are in logical pixels. The canvas handles scaling
      * to physical pixels internally based on contentScale.
      */
     virtual void render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                       const FrameInput& input, const UIStyle& style) = 0;
+                       const gui::InputState& input, const UIStyle& style) = 0;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -116,10 +129,10 @@ public:
 
     /**
      * @brief Handle input events
-     * @param input Frame input state
+     * @param input Input state
      * @return true if input was consumed
      */
-    virtual bool handleInput(const FrameInput& input) { return false; }
+    virtual bool handleInput(const gui::InputState& input) { return false; }
 
     /**
      * @brief Handle character input (for text entry)
@@ -236,6 +249,47 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Location State (consolidated state management)
+    /// @{
+
+    /**
+     * @brief Get the current panel location
+     */
+    PanelLocation location() const { return m_location; }
+
+    /**
+     * @brief Set the panel location
+     *
+     * Updates visibility automatically based on location:
+     * - Hidden: visible = false
+     * - Docked/Floating: visible = true
+     */
+    void setLocation(PanelLocation loc) {
+        m_location = loc;
+        m_config.visible = (loc != PanelLocation::Hidden);
+    }
+
+    /**
+     * @brief Get saved tree slot for restoration
+     *
+     * When a panel is hidden from a docked position, its tree slot
+     * is saved so it can be restored to the same location later.
+     */
+    const TreeSlot& savedTreeSlot() const { return m_savedTreeSlot; }
+    TreeSlot& savedTreeSlot() { return m_savedTreeSlot; }
+    void setSavedTreeSlot(const TreeSlot& slot) { m_savedTreeSlot = slot; }
+
+    /**
+     * @brief Get saved floating bounds for restoration
+     *
+     * When a panel is hidden from a floating position, its bounds
+     * are saved so it can be restored to the same location later.
+     */
+    const glm::vec4& savedFloatBounds() const { return m_savedFloatBounds; }
+    void setSavedFloatBounds(const glm::vec4& bounds) { m_savedFloatBounds = bounds; }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Drag and Resize
     /// @{
 
@@ -245,13 +299,13 @@ public:
      * Call this from render() to enable drag (from title bar) and resize (from edges).
      * Updates m_config.bounds, m_dragging, m_resizing, m_hovered states.
      *
-     * @param input Frame input state (logical coordinates)
+     * @param input Input state (logical coordinates)
      * @param screenW Screen width in logical pixels
      * @param screenH Screen height in logical pixels
      * @param titleBarHeight Height of title bar (drag zone) in logical pixels
      * @param allowNewInteraction If false, won't start new drags/resizes (but continues existing ones)
      */
-    void handleDragAndResize(const FrameInput& input, float screenW, float screenH,
+    void handleDragAndResize(const gui::InputState& input, float screenW, float screenH,
                              float titleBarHeight = 28.0f, bool allowNewInteraction = true);
 
     /// @}
@@ -316,6 +370,13 @@ protected:
     /// Mouse tracking for click detection
     bool m_lastMouseDown = false;
 
+    /// Location state (consolidated source of truth)
+    PanelLocation m_location = PanelLocation::Docked;
+
+    /// Saved state for restoration
+    TreeSlot m_savedTreeSlot;              ///< Where to restore when showing (if hidden from docked)
+    glm::vec4 m_savedFloatBounds = {0, 0, 0, 0};  ///< Bounds when last floating
+
     /**
      * @brief Resolve render bounds for floating vs docked panels
      *
@@ -323,11 +384,11 @@ protected:
      * For floating panels (m_showTitleBar = true): handles drag/resize and returns m_config.bounds
      * For docked panels: returns passed bounds and sets m_hovered state
      *
-     * @param input Frame input state
+     * @param input Input state
      * @param bounds Bounds passed from parent (used when docked)
      * @return The bounds to use for rendering
      */
-    glm::vec4 beginRender(const FrameInput& input, const glm::vec4& bounds);
+    glm::vec4 beginRender(const gui::InputState& input, const glm::vec4& bounds);
 
     /**
      * @brief Render common panel chrome (background, border, title bar)
@@ -339,13 +400,13 @@ protected:
      * @param h Panel height in logical pixels
      * @param style UI style for colors
      * @param showTitleBar Whether to render title bar
-     * @param input Frame input for close button click detection (optional)
+     * @param input Input state for close button click detection (optional)
      *
      * All coordinates are in logical pixels. The canvas handles scaling internally.
      */
     void renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
                       const UIStyle& style, bool showTitleBar = true,
-                      const FrameInput* input = nullptr);
+                      const gui::InputState* input = nullptr);
 };
 
 } // namespace vivid

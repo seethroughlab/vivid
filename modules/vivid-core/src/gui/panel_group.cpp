@@ -6,7 +6,13 @@
 
 namespace vivid {
 
-PanelGroup::PanelGroup() = default;
+// Static counter for generating unique group IDs
+static int s_nextGroupId = 1;
+
+PanelGroup::PanelGroup() {
+    // Auto-generate a unique ID for tree slot restoration
+    m_id = "group_" + std::to_string(s_nextGroupId++);
+}
 PanelGroup::~PanelGroup() = default;
 
 void PanelGroup::updateLayout() {
@@ -23,7 +29,7 @@ void PanelGroup::updateLayout() {
     }
 }
 
-void PanelGroup::render(OverlayCanvas& canvas, const FrameInput& input, const UIStyle& style) {
+void PanelGroup::render(OverlayCanvas& canvas, const gui::InputState& input, const UIStyle& style) {
     if (m_panels.empty()) return;
 
     // All dimensions in logical pixels - canvas handles scaling
@@ -131,7 +137,7 @@ void PanelGroup::renderTabBar(OverlayCanvas& canvas) {
     }
 }
 
-bool PanelGroup::handleInput(const FrameInput& input) {
+bool PanelGroup::handleInput(const gui::InputState& input) {
     if (m_panels.empty()) return false;
 
     // Update tab bar state based on panel count
@@ -167,8 +173,11 @@ bool PanelGroup::handleInput(const FrameInput& input) {
     }
 
     // Handle title bar click for single-panel groups (allows dragging to undock)
+    // Only enable if the panel is marked as draggable
     const float titleBarHeight = 28.0f;  // Panel title bar height
-    bool inTitleBar = !showTabBar && m_panels.size() == 1 &&
+    Panel* singlePanel = m_panels.size() == 1 ? m_panels[0] : nullptr;
+    bool panelIsDraggable = singlePanel && singlePanel->config().draggable;
+    bool inTitleBar = !showTabBar && singlePanel && panelIsDraggable &&
                       mousePos.x >= m_bounds.x && mousePos.x <= m_bounds.x + m_bounds.z &&
                       mousePos.y >= m_bounds.y && mousePos.y <= m_bounds.y + titleBarHeight;
 

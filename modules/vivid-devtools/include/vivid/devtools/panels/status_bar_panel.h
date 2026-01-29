@@ -35,8 +35,10 @@ public:
     bool init(Context& ctx, WGPUTextureFormat surfaceFormat) override;
     void shutdown() override;
     void render(OverlayCanvas& canvas, const glm::vec4& bounds,
-               const FrameInput& input, const UIStyle& style) override;
-    bool handleInput(const FrameInput& input) override;
+               const gui::InputState& input, const UIStyle& style) override;
+    bool handleInput(const gui::InputState& input) override;
+    void onChar(uint32_t codepoint) override;
+    void onKeyDown(int key, int mods) override;
 
     // Status bar specific
     void setPendingChangeCount(size_t count);
@@ -58,6 +60,8 @@ public:
     using PanelToggleCallback = std::function<void(const std::string& panelId)>;
     using PanelDragCallback = std::function<void(const std::string& panelId, const glm::vec2& pos)>;
     using PanelDockCallback = std::function<void(const std::string& panelId, DockPosition position)>;
+    using LayoutPresetCallback = std::function<void(const std::string& presetName)>;
+    using LayoutSaveCallback = std::function<void(const std::string& presetName)>;
 
     void onSnapshot(SnapshotCallback callback);
     void onRecord(RecordCallback callback);
@@ -65,6 +69,15 @@ public:
     void onPanelToggle(PanelToggleCallback callback);
     void onPanelDrag(PanelDragCallback callback);      // Drag from button to create floating
     void onPanelDock(PanelDockCallback callback);      // Context menu dock action
+
+    // Layout preset callbacks
+    void onPresetSelect(LayoutPresetCallback callback);
+    void onPresetSave(LayoutSaveCallback callback);
+    void onPresetDelete(LayoutPresetCallback callback);
+
+    // Layout preset state (synced from DevTools)
+    void setLayoutPresets(const std::vector<std::string>& presets);
+    void setActivePreset(const std::string& name);
 
 private:
     struct Impl;

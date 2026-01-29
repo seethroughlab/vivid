@@ -15,14 +15,14 @@ void PanelLeaf::updateLayout() {
     }
 }
 
-void PanelLeaf::render(OverlayCanvas& canvas, const FrameInput& input, const UIStyle& style) {
+void PanelLeaf::render(OverlayCanvas& canvas, const gui::InputState& input, const UIStyle& style) {
     if (!m_panel) return;
 
     // Pass logical pixel bounds directly - canvas handles scaling
     m_panel->render(canvas, m_bounds, input, style);
 }
 
-bool PanelLeaf::handleInput(const FrameInput& input) {
+bool PanelLeaf::handleInput(const gui::InputState& input) {
     if (!m_panel) return false;
     return m_panel->handleInput(input);
 }

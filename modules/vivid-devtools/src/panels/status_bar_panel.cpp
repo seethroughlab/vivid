@@ -88,6 +88,9 @@ struct StatusBarPanel::Impl {
     PanelToggleCallback panelToggleCallback;
     PanelDragCallback panelDragCallback;
     PanelDockCallback panelDockCallback;
+    LayoutPresetCallback presetSelectCallback;
+    LayoutSaveCallback presetSaveCallback;
+    LayoutPresetCallback presetDeleteCallback;
 
     // State
     size_t pendingChangeCount = 0;
@@ -100,6 +103,25 @@ struct StatusBarPanel::Impl {
     ButtonRect recordButton;
     ButtonRect stopButton;
     ButtonRect snapshotButton;
+
+    // Layout presets
+    std::vector<std::string> layoutPresets = {"Default"};
+    std::string activePreset = "Default";
+    bool presetDropdownOpen = false;
+    ButtonRect presetButton;
+    ButtonRect presetMenuRect;
+    std::vector<ButtonRect> presetMenuItems;
+    ButtonRect saveCurrentItem;
+    ButtonRect saveAsNewItem;
+    ButtonRect deletePresetItem;
+    ButtonRect resetToDefaultItem;
+
+    // "Save as new" text input state
+    bool showingSaveAsInput = false;
+    std::string saveAsInputText;
+    ButtonRect saveAsInputRect;
+    ButtonRect saveAsConfirmBtn;
+    ButtonRect saveAsCancelBtn;
 
     // Panel toggle buttons (left side of status bar)
     struct PanelToggle {
@@ -154,7 +176,7 @@ struct StatusBarPanel::Impl {
             {"terminal",    "T", "Terminal (\u23181)", DockMode::Hidden, {}},
             {"console",     "C", "Console (\u23182)", DockMode::Hidden, {}},
             {"editor",      "E", "Editor (\u23183)", DockMode::Hidden, {}},
-            {"nodegraph",   "N", "Visualizer (\u23184)", DockMode::Hidden, {}},
+            {"nodegraph",   "N", "Node Graph (\u23184)", DockMode::Hidden, {}},
             {"filebrowser", "F", "Files (\u23185)", DockMode::Hidden, {}},
             {"performance", "P", "Performance (\u23186)", DockMode::Hidden, {}},
             {"library",     "L", "Library (\u23187)", DockMode::Hidden, {}}
@@ -187,7 +209,7 @@ void StatusBarPanel::shutdown() {
 }
 
 void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                            const FrameInput& input, const UIStyle& style) {
+                            const gui::InputState& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) return;
     // Style parameter is available for use throughout this function
 
@@ -205,8 +227,9 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     const float padding = 6.0f;
     // Use bounds height if provided, otherwise calculate from font
     const float barHeight = (bounds.w > 0) ? bounds.w : (lineH + padding * 2);
-    float x = padding;
-    float y = padding + ascent;
+    // Offset all positions by bounds origin for correct positioning in layout
+    float x = bounds.x + padding;
+    float y = bounds.y + padding + ascent;
 
     // Update smoothed FPS (exponential moving average)
     const float smoothing = 0.05f;
@@ -228,7 +251,8 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     glm::vec4 redColor = style.error;
 
     char buf[64];
-    const float sepInset = padding;
+    const float sepInset = bounds.y + padding;
+    const float sepHeight = barHeight - padding * 2;  // Height for separator lines
 
     // Panel toggle buttons (left side)
     glm::vec2 mousePos = input.mousePos;
@@ -236,7 +260,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     const float btnW = 24.0f;
     const float btnH = lineH + 4.0f;
-    const float btnY = (barHeight - btnH) * 0.5f;
+    const float btnY = bounds.y + (barHeight - btnH) * 0.5f;
     const float btnGap = 4.0f;
 
     for (size_t i = 0; i < m_impl->panelToggles.size(); i++) {
@@ -271,17 +295,15 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 break;
             case DockMode::Hidden:
             default:
-                bgColor = isHovered ? style.buttonHover : glm::vec4(0, 0, 0, 0);
+                // Draw a subtle background for hidden buttons so they're more visible
+                bgColor = isHovered ? style.buttonHover : glm::vec4(0.2f, 0.2f, 0.22f, 0.6f);
                 labelColor = dimColor;
                 drawBorder = true;
                 break;
         }
 
-        // Draw button background
-        bool hasBackground = toggle.dockMode != DockMode::Hidden || isHovered;
-        if (hasBackground) {
-            canvas.fillRoundedRect(x, btnY, btnW, btnH, style.buttonCornerRadius(), bgColor);
-        }
+        // Always draw background now (hidden buttons have subtle background)
+        canvas.fillRoundedRect(x, btnY, btnW, btnH, style.buttonCornerRadius(), bgColor);
 
         // Draw border for floating/hidden states
         if (drawBorder) {
@@ -305,7 +327,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         float tooltipW = canvas.measureText(toggle.tooltip, monoFont) + padding * 2;
         float tooltipH = lineH + padding;
         float tooltipX = toggle.hitRect.x;
-        float tooltipY = barHeight + 4;
+        float tooltipY = bounds.y + barHeight + 4;
 
         // Ensure tooltip doesn't go off screen
         if (tooltipX + tooltipW > screenWidth - padding) {
@@ -321,7 +343,39 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 
     // Separator after panel toggles
-    canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    canvas.fillRect(x, sepInset, 1, sepHeight, dimColor);
+    x += padding * 2;
+
+    // Layout preset dropdown
+    {
+        // Local button style constants
+        const float btnPadX = 8.0f;
+        const float btnPadY = 4.0f;
+        glm::vec4 btnBg = style.buttonBg;
+        glm::vec4 btnHover = style.buttonHover;
+        glm::vec4 btnBorder = style.buttonBorder;
+
+        // Button showing current preset name with dropdown arrow
+        std::string presetLabel = m_impl->activePreset + " \u25BE";  // ▾
+        float labelW = canvas.measureText(presetLabel, monoFont);
+        float btnW = labelW + btnPadX * 2;
+        float btnH = lineH + btnPadY * 2;
+        float btnY = bounds.y + (barHeight - btnH) * 0.5f;
+
+        bool isHovered = (mousePos.x >= x && mousePos.x < x + btnW &&
+                          mousePos.y >= btnY && mousePos.y < btnY + btnH);
+
+        glm::vec4 presetBtnBg = m_impl->presetDropdownOpen ? btnHover : (isHovered ? btnHover : btnBg);
+        canvas.fillRoundedRect(x, btnY, btnW, btnH, style.buttonCornerRadius(), presetBtnBg);
+        canvas.strokeRoundedRect(x, btnY, btnW, btnH, style.buttonCornerRadius(), 1, btnBorder);
+        canvas.text(presetLabel, x + btnPadX, btnY + btnPadY + ascent, textColor, monoFont);
+
+        m_impl->presetButton = {x, btnY, btnW, btnH, true};
+        x += btnW + padding;
+    }
+
+    // Separator after preset dropdown
+    canvas.fillRect(x, sepInset, 1, sepHeight, dimColor);
     x += padding * 2;
 
     // Grid opacity slider
@@ -333,8 +387,8 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
         // Slider dimensions
         const float sliderW = 60.0f;
-        const float sliderH = btnH - 4.0f;
-        const float sliderY = (barHeight - sliderH) * 0.5f;
+        const float sliderH = lineH;  // Use line height for slider height
+        const float sliderY = bounds.y + (barHeight - sliderH) * 0.5f;
         const float sliderRadius = style.sliderCornerRadius();
 
         // Slider track background
@@ -369,7 +423,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 
     // Separator after grid slider
-    canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    canvas.fillRect(x, sepInset, 1, sepHeight, dimColor);
     x += padding * 2;
 
     // FPS
@@ -378,7 +432,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     x += canvas.measureText(buf, monoFont) + padding * 2;
 
     // Separator
-    canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    canvas.fillRect(x, sepInset, 1, sepHeight, dimColor);
     x += padding * 2;
 
     // Frame time
@@ -387,7 +441,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     x += canvas.measureText(buf, monoFont) + padding * 2;
 
     // Separator
-    canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    canvas.fillRect(x, sepInset, 1, sepHeight, dimColor);
     x += padding * 2;
 
     // Resolution
@@ -396,7 +450,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     x += canvas.measureText(buf, monoFont) + padding * 2;
 
     // Separator
-    canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    canvas.fillRect(x, sepInset, 1, sepHeight, dimColor);
     x += padding * 2;
 
     // Operator count
@@ -408,7 +462,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 
     // Separator
-    canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    canvas.fillRect(x, sepInset, 1, sepHeight, dimColor);
     x += padding * 2;
 
     // Memory usage
@@ -429,7 +483,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // Pending changes indicator
     if (m_impl->pendingChangeCount > 0) {
-        canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+        canvas.fillRect(x, sepInset, 1, sepHeight, dimColor);
         x += padding * 2;
 
         snprintf(buf, sizeof(buf), "Pending: %zu", m_impl->pendingChangeCount);
@@ -439,7 +493,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // MCP warning
     if (!m_impl->mcpWarning.empty()) {
-        canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+        canvas.fillRect(x, sepInset, 1, sepHeight, dimColor);
         x += padding * 2;
 
         canvas.text(m_impl->mcpWarning, x, y, redColor, monoFont);
@@ -450,7 +504,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     if (m_impl->ctx && m_impl->ctx->hasChain()) {
         AudioGraph* audioGraph = m_impl->ctx->chain().audioGraph();
         if (audioGraph && !audioGraph->empty()) {
-            canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+            canvas.fillRect(x, sepInset, 1, sepHeight, dimColor);
             x += padding * 2;
 
             float dspLoad = audioGraph->dspLoad();
@@ -500,7 +554,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         float stopBtnW = stopTextWidth + buttonPadX * 2;
         float stopBtnH = lineH + buttonPadY * 2;
         float stopBtnX = screenWidth - stopBtnW - padding;
-        float stopBtnY = (barHeight - stopBtnH) * 0.5f;
+        float stopBtnY = bounds.y + (barHeight - stopBtnH) * 0.5f;
 
         m_impl->stopButton = {stopBtnX, stopBtnY, stopBtnW, stopBtnH, true};
         canvas.fillRoundedRect(stopBtnX, stopBtnY, stopBtnW, stopBtnH, style.buttonCornerRadius(), buttonBg);
@@ -508,7 +562,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         canvas.text(stopText, stopBtnX + buttonPadX, stopBtnY + buttonPadY + ascent, redColor, monoFont);
 
         float recX = stopBtnX - recTextWidth - 24 - buttonSpacing;
-        canvas.fillCircle(recX + 6, barHeight * 0.5f, 4, redColor);
+        canvas.fillCircle(recX + 6, bounds.y + barHeight * 0.5f, 4, redColor);
         canvas.text(buf, recX + 16, y, redColor, monoFont);
     } else {
         // Not recording
@@ -520,7 +574,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         float snapBtnW = snapTextWidth + buttonPadX * 2;
         float snapBtnH = lineH + buttonPadY * 2;
         float snapBtnX = rightX - snapBtnW;
-        float snapBtnY = (barHeight - snapBtnH) * 0.5f;
+        float snapBtnY = bounds.y + (barHeight - snapBtnH) * 0.5f;
 
         m_impl->snapshotButton = {snapBtnX, snapBtnY, snapBtnW, snapBtnH, true};
         canvas.fillRoundedRect(snapBtnX, snapBtnY, snapBtnW, snapBtnH, style.buttonCornerRadius(), buttonBg);
@@ -533,13 +587,13 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         float recBtnW = recTextWidth + buttonPadX * 2 + 12;
         float recBtnH = lineH + buttonPadY * 2;
         float recBtnX = snapBtnX - recBtnW - buttonSpacing;
-        float recBtnY = (barHeight - recBtnH) * 0.5f;
+        float recBtnY = bounds.y + (barHeight - recBtnH) * 0.5f;
 
         m_impl->recordButton = {recBtnX, recBtnY, recBtnW, recBtnH, true};
         glm::vec4 recBtnBg = m_impl->codecDropdownOpen ? buttonHover : buttonBg;
         canvas.fillRoundedRect(recBtnX, recBtnY, recBtnW, recBtnH, style.buttonCornerRadius(), recBtnBg);
         canvas.strokeRoundedRect(recBtnX, recBtnY, recBtnW, recBtnH, style.buttonCornerRadius(), 1, redColor);
-        canvas.fillCircle(recBtnX + buttonPadX + 4, barHeight * 0.5f, 3, redColor);
+        canvas.fillCircle(recBtnX + buttonPadX + 4, bounds.y + barHeight * 0.5f, 3, redColor);
         canvas.text(recText, recBtnX + buttonPadX + 12, recBtnY + buttonPadY + ascent, textColor, monoFont);
 
         // Codec dropdown
@@ -558,7 +612,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
             menuWidth += buttonPadX * 2;
 
             float menuX = recBtnX;
-            float menuY = barHeight + 2;
+            float menuY = bounds.y + barHeight + 2;
             float itemH = lineH + buttonPadY * 2;
             float menuH = itemH * 3;
 
@@ -580,6 +634,179 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
             m_impl->codecProRes = {menuX, itemY, menuWidth, itemH, true};
             canvas.text(items[2], menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
         }
+    }
+
+    // Layout preset dropdown menu
+    m_impl->presetMenuItems.clear();
+    m_impl->saveCurrentItem.valid = false;
+    m_impl->saveAsNewItem.valid = false;
+    m_impl->deletePresetItem.valid = false;
+    m_impl->resetToDefaultItem.valid = false;
+
+    if (m_impl->presetDropdownOpen && !m_impl->showingSaveAsInput) {
+        canvas.setLayer(UILayer::Menus);
+
+        const float itemH = lineH + buttonPadY * 2;
+
+        // Calculate menu width
+        float menuWidth = 0;
+        for (const auto& preset : m_impl->layoutPresets) {
+            menuWidth = std::max(menuWidth, canvas.measureText(preset, monoFont));
+        }
+        menuWidth = std::max(menuWidth, canvas.measureText("Save Current Layout", monoFont));
+        menuWidth = std::max(menuWidth, canvas.measureText("Save As New Preset...", monoFont));
+        menuWidth = std::max(menuWidth, canvas.measureText("Delete Preset...", monoFont));
+        menuWidth = std::max(menuWidth, canvas.measureText("Reset to Default", monoFont));
+        menuWidth += buttonPadX * 2 + 20;  // Extra space for checkmark
+
+        // Calculate menu height (presets + separator + 4 actions)
+        int numPresets = static_cast<int>(m_impl->layoutPresets.size());
+        float menuH = itemH * (numPresets + 4) + 2;  // +2 for separator
+
+        float menuX = m_impl->presetButton.x;
+        float menuY = bounds.y + barHeight + 2;
+
+        // Ensure menu doesn't go off screen
+        if (menuX + menuWidth > screenWidth - padding) {
+            menuX = screenWidth - menuWidth - padding;
+        }
+
+        glm::vec4 menuBg = style.panelBg;
+        menuBg.a = 0.98f;
+
+        m_impl->presetMenuRect = {menuX, menuY, menuWidth, menuH, true};
+        canvas.fillRoundedRect(menuX, menuY, menuWidth, menuH, style.panelCornerRadius(), menuBg);
+        canvas.strokeRoundedRect(menuX, menuY, menuWidth, menuH, style.panelCornerRadius(), 1, buttonBorder);
+
+        float itemY = menuY;
+
+        // Draw preset list
+        m_impl->presetMenuItems.resize(numPresets);
+        for (int i = 0; i < numPresets; i++) {
+            m_impl->presetMenuItems[i] = {menuX, itemY, menuWidth, itemH, true};
+
+            bool itemHovered = m_impl->isMouseInRect(m_impl->presetMenuItems[i], mousePos);
+            if (itemHovered) {
+                canvas.fillRoundedRect(menuX + 2, itemY + 1, menuWidth - 4, itemH - 2,
+                                       style.buttonCornerRadius(), style.buttonHover);
+            }
+
+            // Show checkmark for active preset
+            float textX = menuX + buttonPadX;
+            if (m_impl->layoutPresets[i] == m_impl->activePreset) {
+                canvas.text("\u2713", textX, itemY + buttonPadY + ascent, style.accent, monoFont);  // ✓
+            }
+            textX += 16;
+
+            canvas.text(m_impl->layoutPresets[i], textX, itemY + buttonPadY + ascent, textColor, monoFont);
+            itemY += itemH;
+        }
+
+        // Separator
+        canvas.fillRect(menuX + 4, itemY, menuWidth - 8, 1, dimColor);
+        itemY += 2;
+
+        // Save Current Layout
+        m_impl->saveCurrentItem = {menuX, itemY, menuWidth, itemH, true};
+        bool saveCurrentHovered = m_impl->isMouseInRect(m_impl->saveCurrentItem, mousePos);
+        if (saveCurrentHovered) {
+            canvas.fillRoundedRect(menuX + 2, itemY + 1, menuWidth - 4, itemH - 2,
+                                   style.buttonCornerRadius(), style.buttonHover);
+        }
+        canvas.text("Save Current Layout", menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
+        itemY += itemH;
+
+        // Save As New Preset...
+        m_impl->saveAsNewItem = {menuX, itemY, menuWidth, itemH, true};
+        bool saveAsHovered = m_impl->isMouseInRect(m_impl->saveAsNewItem, mousePos);
+        if (saveAsHovered) {
+            canvas.fillRoundedRect(menuX + 2, itemY + 1, menuWidth - 4, itemH - 2,
+                                   style.buttonCornerRadius(), style.buttonHover);
+        }
+        canvas.text("Save As New Preset...", menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
+        itemY += itemH;
+
+        // Delete Preset... (only for non-Default presets)
+        m_impl->deletePresetItem = {menuX, itemY, menuWidth, itemH, true};
+        bool canDelete = m_impl->activePreset != "Default";
+        bool deleteHovered = canDelete && m_impl->isMouseInRect(m_impl->deletePresetItem, mousePos);
+        if (deleteHovered) {
+            canvas.fillRoundedRect(menuX + 2, itemY + 1, menuWidth - 4, itemH - 2,
+                                   style.buttonCornerRadius(), style.buttonHover);
+        }
+        glm::vec4 deleteColor = canDelete ? textColor : dimColor;
+        canvas.text("Delete Preset...", menuX + buttonPadX, itemY + buttonPadY + ascent, deleteColor, monoFont);
+        itemY += itemH;
+
+        // Reset to Default
+        m_impl->resetToDefaultItem = {menuX, itemY, menuWidth, itemH, true};
+        bool resetHovered = m_impl->isMouseInRect(m_impl->resetToDefaultItem, mousePos);
+        if (resetHovered) {
+            canvas.fillRoundedRect(menuX + 2, itemY + 1, menuWidth - 4, itemH - 2,
+                                   style.buttonCornerRadius(), style.buttonHover);
+        }
+        canvas.text("Reset to Default", menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
+
+        canvas.setLayer(UILayer::Panels);
+    }
+
+    // "Save As New Preset" input dialog
+    if (m_impl->showingSaveAsInput) {
+        canvas.setLayer(UILayer::Menus + 5);
+
+        const float dialogW = 250;
+        const float dialogH = lineH * 3 + padding * 4;
+        float dialogX = m_impl->presetButton.x;
+        float dialogY = bounds.y + barHeight + 2;
+
+        if (dialogX + dialogW > screenWidth - padding) {
+            dialogX = screenWidth - dialogW - padding;
+        }
+
+        glm::vec4 dialogBg = style.panelBg;
+        dialogBg.a = 0.98f;
+
+        canvas.fillRoundedRect(dialogX, dialogY, dialogW, dialogH, style.panelCornerRadius(), dialogBg);
+        canvas.strokeRoundedRect(dialogX, dialogY, dialogW, dialogH, style.panelCornerRadius(), 1, buttonBorder);
+
+        // Label
+        canvas.text("Preset name:", dialogX + padding, dialogY + padding + ascent, textColor, monoFont);
+
+        // Text input area
+        float inputY = dialogY + lineH + padding * 1.5f;
+        float inputW = dialogW - padding * 2;
+        float inputH = lineH + 4;
+        m_impl->saveAsInputRect = {dialogX + padding, inputY, inputW, inputH, true};
+
+        canvas.fillRoundedRect(dialogX + padding, inputY, inputW, inputH, 3, style.sliderBg);
+        canvas.strokeRoundedRect(dialogX + padding, inputY, inputW, inputH, 3, 1, style.accent);
+
+        // Input text (with cursor)
+        std::string displayText = m_impl->saveAsInputText + "_";
+        canvas.text(displayText, dialogX + padding + 4, inputY + ascent + 2, textColor, monoFont);
+
+        // Buttons
+        float btnY = inputY + inputH + padding;
+        float btnW = 60;
+        float btnH = lineH + 4;
+
+        // Cancel button
+        m_impl->saveAsCancelBtn = {dialogX + padding, btnY, btnW, btnH, true};
+        bool cancelHovered = m_impl->isMouseInRect(m_impl->saveAsCancelBtn, mousePos);
+        canvas.fillRoundedRect(dialogX + padding, btnY, btnW, btnH, style.buttonCornerRadius(),
+                              cancelHovered ? style.buttonHover : style.buttonBg);
+        canvas.strokeRoundedRect(dialogX + padding, btnY, btnW, btnH, style.buttonCornerRadius(), 1, buttonBorder);
+        canvas.text("Cancel", dialogX + padding + 8, btnY + ascent + 2, textColor, monoFont);
+
+        // Save button
+        float saveBtnX = dialogX + dialogW - padding - btnW;
+        m_impl->saveAsConfirmBtn = {saveBtnX, btnY, btnW, btnH, true};
+        bool saveHovered = m_impl->isMouseInRect(m_impl->saveAsConfirmBtn, mousePos);
+        canvas.fillRoundedRect(saveBtnX, btnY, btnW, btnH, style.buttonCornerRadius(),
+                              saveHovered ? style.accentActive : style.accent);
+        canvas.text("Save", saveBtnX + 12, btnY + ascent + 2, glm::vec4(1, 1, 1, 1), monoFont);
+
+        canvas.setLayer(UILayer::Panels);
     }
 
     // Panel toggle context menu (right-click)
@@ -605,7 +832,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         menuWidth += buttonPadX * 2;
 
         float menuX = toggle.hitRect.x;
-        float menuY = barHeight + 2;
+        float menuY = bounds.y + barHeight + 2;
         float itemH = lineH + buttonPadY * 2;
         float menuH = itemH * numItems;
 
@@ -646,7 +873,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 }
 
-bool StatusBarPanel::handleInput(const FrameInput& input) {
+bool StatusBarPanel::handleInput(const gui::InputState& input) {
     if (!m_impl) return false;
 
     glm::vec2 mousePos = input.mousePos;
@@ -797,7 +1024,75 @@ bool StatusBarPanel::handleInput(const FrameInput& input) {
         }
     }
 
-    // Use FrameInput's pre-computed mouseClicked for other interactions
+    // Handle "Save As New Preset" input dialog
+    if (m_impl->showingSaveAsInput && input.mouseClicked[0]) {
+        if (m_impl->isMouseInRect(m_impl->saveAsConfirmBtn, mousePos)) {
+            // Save the preset with the entered name
+            if (!m_impl->saveAsInputText.empty() && m_impl->presetSaveCallback) {
+                m_impl->presetSaveCallback(m_impl->saveAsInputText);
+            }
+            m_impl->showingSaveAsInput = false;
+            m_impl->saveAsInputText.clear();
+            m_impl->presetDropdownOpen = false;
+            return true;
+        } else if (m_impl->isMouseInRect(m_impl->saveAsCancelBtn, mousePos)) {
+            m_impl->showingSaveAsInput = false;
+            m_impl->saveAsInputText.clear();
+            return true;
+        }
+        // Clicking outside the input rect but inside dialog is ok
+        return true;
+    }
+
+    // Handle preset dropdown menu clicks
+    if (m_impl->presetDropdownOpen && !m_impl->showingSaveAsInput && input.mouseClicked[0]) {
+        // Check preset items
+        for (size_t i = 0; i < m_impl->presetMenuItems.size(); i++) {
+            if (m_impl->isMouseInRect(m_impl->presetMenuItems[i], mousePos)) {
+                if (m_impl->presetSelectCallback && i < m_impl->layoutPresets.size()) {
+                    m_impl->presetSelectCallback(m_impl->layoutPresets[i]);
+                }
+                m_impl->presetDropdownOpen = false;
+                return true;
+            }
+        }
+
+        // Check action items
+        if (m_impl->isMouseInRect(m_impl->saveCurrentItem, mousePos)) {
+            // Save current layout to active preset
+            if (m_impl->presetSaveCallback) {
+                m_impl->presetSaveCallback(m_impl->activePreset);
+            }
+            m_impl->presetDropdownOpen = false;
+            return true;
+        } else if (m_impl->isMouseInRect(m_impl->saveAsNewItem, mousePos)) {
+            // Show text input dialog
+            m_impl->showingSaveAsInput = true;
+            m_impl->saveAsInputText = "";
+            return true;
+        } else if (m_impl->isMouseInRect(m_impl->deletePresetItem, mousePos)) {
+            // Delete the active preset (if not Default)
+            if (m_impl->activePreset != "Default" && m_impl->presetDeleteCallback) {
+                m_impl->presetDeleteCallback(m_impl->activePreset);
+            }
+            m_impl->presetDropdownOpen = false;
+            return true;
+        } else if (m_impl->isMouseInRect(m_impl->resetToDefaultItem, mousePos)) {
+            // Switch to Default preset
+            if (m_impl->presetSelectCallback) {
+                m_impl->presetSelectCallback("Default");
+            }
+            m_impl->presetDropdownOpen = false;
+            return true;
+        } else if (!m_impl->isMouseInRect(m_impl->presetMenuRect, mousePos) &&
+                   !m_impl->isMouseInRect(m_impl->presetButton, mousePos)) {
+            // Click outside menu closes it
+            m_impl->presetDropdownOpen = false;
+            return true;
+        }
+    }
+
+    // Use InputState's pre-computed mouseClicked for other interactions
     if (!input.mouseClicked[0]) return false;
 
     // Panel toggle button clicks - start potential drag
@@ -817,8 +1112,15 @@ bool StatusBarPanel::handleInput(const FrameInput& input) {
     }
 
     // Button clicks
-    if (m_impl->isMouseInRect(m_impl->recordButton, mousePos)) {
+    if (m_impl->isMouseInRect(m_impl->presetButton, mousePos)) {
+        m_impl->presetDropdownOpen = !m_impl->presetDropdownOpen;
+        m_impl->codecDropdownOpen = false;
+        m_impl->contextMenuOpen = false;
+        m_impl->showingSaveAsInput = false;
+        return true;
+    } else if (m_impl->isMouseInRect(m_impl->recordButton, mousePos)) {
         m_impl->codecDropdownOpen = true;
+        m_impl->presetDropdownOpen = false;
         return true;
     } else if (m_impl->isMouseInRect(m_impl->stopButton, mousePos)) {
         if (m_impl->recordCallback) m_impl->recordCallback(false);
@@ -829,6 +1131,43 @@ bool StatusBarPanel::handleInput(const FrameInput& input) {
     }
 
     return false;
+}
+
+void StatusBarPanel::onChar(uint32_t codepoint) {
+    if (!m_impl || !m_impl->showingSaveAsInput) return;
+
+    // Add character to input text
+    if (codepoint >= 32 && codepoint < 127) {
+        m_impl->saveAsInputText += static_cast<char>(codepoint);
+    }
+}
+
+void StatusBarPanel::onKeyDown(int key, int mods) {
+    if (!m_impl || !m_impl->showingSaveAsInput) return;
+
+    // Backspace - delete last character
+    if (key == 259 && !m_impl->saveAsInputText.empty()) {  // GLFW_KEY_BACKSPACE
+        m_impl->saveAsInputText.pop_back();
+        return;
+    }
+
+    // Enter - confirm
+    if (key == 257) {  // GLFW_KEY_ENTER
+        if (!m_impl->saveAsInputText.empty() && m_impl->presetSaveCallback) {
+            m_impl->presetSaveCallback(m_impl->saveAsInputText);
+        }
+        m_impl->showingSaveAsInput = false;
+        m_impl->saveAsInputText.clear();
+        m_impl->presetDropdownOpen = false;
+        return;
+    }
+
+    // Escape - cancel
+    if (key == 256) {  // GLFW_KEY_ESCAPE
+        m_impl->showingSaveAsInput = false;
+        m_impl->saveAsInputText.clear();
+        return;
+    }
 }
 
 void StatusBarPanel::setPendingChangeCount(size_t count) {
@@ -900,6 +1239,26 @@ void StatusBarPanel::onPanelDrag(PanelDragCallback callback) {
 
 void StatusBarPanel::onPanelDock(PanelDockCallback callback) {
     if (m_impl) m_impl->panelDockCallback = std::move(callback);
+}
+
+void StatusBarPanel::onPresetSelect(LayoutPresetCallback callback) {
+    if (m_impl) m_impl->presetSelectCallback = std::move(callback);
+}
+
+void StatusBarPanel::onPresetSave(LayoutSaveCallback callback) {
+    if (m_impl) m_impl->presetSaveCallback = std::move(callback);
+}
+
+void StatusBarPanel::onPresetDelete(LayoutPresetCallback callback) {
+    if (m_impl) m_impl->presetDeleteCallback = std::move(callback);
+}
+
+void StatusBarPanel::setLayoutPresets(const std::vector<std::string>& presets) {
+    if (m_impl) m_impl->layoutPresets = presets;
+}
+
+void StatusBarPanel::setActivePreset(const std::string& name) {
+    if (m_impl) m_impl->activePreset = name;
 }
 
 } // namespace vivid

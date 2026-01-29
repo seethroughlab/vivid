@@ -130,7 +130,7 @@ void OperatorLibraryPanel::update() {
 }
 
 void OperatorLibraryPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                                   const FrameInput& input, const UIStyle& style) {
+                                   const gui::InputState& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) return;
 
     glm::vec4 renderBounds = beginRender(input, bounds);
@@ -410,7 +410,7 @@ void OperatorLibraryPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds
     canvas.endClipRect();
 }
 
-bool OperatorLibraryPanel::handleInput(const FrameInput& input) {
+bool OperatorLibraryPanel::handleInput(const gui::InputState& input) {
     if (!m_config.visible || !m_impl) return false;
 
     float x = m_config.bounds.x;

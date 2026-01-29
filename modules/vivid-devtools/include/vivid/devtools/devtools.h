@@ -462,6 +462,7 @@ private:
     // Helper methods
     void registerDefaultShortcuts();
     void renderBackgroundGrid(OverlayCanvas& canvas, float screenWidth, float screenHeight);
+    void syncStatusBarPresets();
 
     // State
     bool m_initialized = false;

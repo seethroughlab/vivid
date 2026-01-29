@@ -20,7 +20,7 @@
 
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/gui/ui_style.h>
-#include <vivid/frame_input.h>
+#include <vivid/gui/input_state.h>
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
@@ -83,19 +83,19 @@ public:
     /**
      * @brief Render this node and its children
      * @param canvas Canvas for drawing
-     * @param input Frame input
+     * @param input Input state
      * @param style UI style for colors and layout
      *
      * All coordinates are in logical pixels. The canvas handles scaling internally.
      */
-    virtual void render(OverlayCanvas& canvas, const FrameInput& input, const UIStyle& style) = 0;
+    virtual void render(OverlayCanvas& canvas, const gui::InputState& input, const UIStyle& style) = 0;
 
     /**
      * @brief Handle input for this node
-     * @param input Frame input
+     * @param input Input state
      * @return true if input was consumed
      */
-    virtual bool handleInput(const FrameInput& input) = 0;
+    virtual bool handleInput(const gui::InputState& input) = 0;
 
     /**
      * @brief Get all panels contained in this node (recursively)

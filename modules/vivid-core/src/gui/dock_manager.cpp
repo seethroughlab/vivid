@@ -8,6 +8,7 @@
 #include <vivid/gui/panel_leaf.h>
 #include <vivid/gui/panel.h>
 #include <vivid/gui/ui_style.h>
+#include <vivid/gui/gui_debug.h>
 #include <algorithm>
 #include <functional>
 #include <iostream>
@@ -28,13 +29,15 @@ DockManager::~DockManager() = default;
 void DockManager::beginTabDrag(Panel* panel, PanelGroup* sourceGroup, const glm::vec2& mousePos) {
     if (!panel || !sourceGroup || !m_panelManager) return;
 
+    gui::logTransition("DockManager", "idle", "tab-drag", panel->config().id.c_str());
+
     // Auto-enable layout mode if not already enabled
     if (!m_panelManager->isLayoutMode()) {
         if (!m_panelManager->layoutRoot()) {
             m_panelManager->buildDefaultLayout();
         }
         m_panelManager->setLayoutMode(true);
-        std::cerr << "[DockManager] Auto-enabled layout mode for tab drag\n";
+        gui::logDebug("DockManager", "Auto-enabled layout mode for tab drag");
     }
 
     m_dragState.reset();
@@ -52,6 +55,7 @@ void DockManager::beginTabDrag(Panel* panel, PanelGroup* sourceGroup, const glm:
 
     // Remove panel from source group
     sourceGroup->removePanel(panel);
+    gui::logDebug("DockManager", "Removed panel from source group", panel->config().id);
 
     // Compute drop zones
     computeDropZones();
@@ -84,6 +88,8 @@ void DockManager::beginLeafDrag(Panel* panel, PanelLeaf* sourceLeaf, const glm::
 void DockManager::beginFloatingPanelDrag(Panel* panel, const glm::vec2& mousePos) {
     if (!panel) return;
 
+    gui::logTransition("DockManager", "idle", "floating-drag", panel->config().id.c_str());
+
     m_dragState.reset();
     m_dragState.type = DragState::Type::FloatingPanel;
     m_dragState.panel = panel;
@@ -106,12 +112,14 @@ void DockManager::cancelDrag() {
     if (!m_dragState.isActive()) return;
 
     Panel* panel = m_dragState.panel;
-    std::cerr << "[DockManager] Cancel drag: " << (panel ? panel->config().id : "null") << "\n";
+    gui::logTransition("DockManager", "dragging", "cancelled",
+                      panel ? panel->config().id.c_str() : "null");
 
     // Restore panel to original location based on drag type
     if (m_dragState.type == DragState::Type::Tab && m_dragState.sourceGroup) {
         // Re-add to source group
         m_dragState.sourceGroup->addPanel(panel);
+        gui::logDebug("DockManager", "Restored panel to source group", panel->config().id);
     } else if (m_dragState.type == DragState::Type::PanelHeader) {
         // Panel is still in its leaf, just restore bounds
         panel->setBounds(m_dragState.originalBounds);
@@ -129,10 +137,12 @@ void DockManager::endDrag() {
     if (!m_dragState.isActive()) return;
 
     Panel* panel = m_dragState.panel;
-    std::cerr << "[DockManager] End drag: " << (panel ? panel->config().id : "null") << "\n";
+    const DockZone* zone = activeZone();
+    const char* result = zone && zone->position != DockPosition::None ? "dock" : "float";
+    gui::logTransition("DockManager", "dragging", result,
+                      panel ? panel->config().id.c_str() : "null");
 
     // Check if we have an active zone
-    const DockZone* zone = activeZone();
     if (zone && zone->position != DockPosition::None) {
         executeDock(*zone);
     } else {
@@ -149,7 +159,7 @@ void DockManager::endDrag() {
 // Frame Update
 // -----------------------------------------------------------------------------
 
-void DockManager::update(const FrameInput& input) {
+void DockManager::update(const gui::InputState& input) {
     // Store screen size for zone calculations (use logical pixels to match mousePos)
     m_screenWidth = static_cast<float>(input.logicalWidth());
     m_screenHeight = static_cast<float>(input.logicalHeight());
@@ -468,6 +478,11 @@ void DockManager::executeDock(const DockZone& zone) {
     // Clean up empty nodes
     cleanupEmptyNodes();
 
+    // Increment layout version since tree structure changed
+    if (m_panelManager) {
+        m_panelManager->incrementLayoutVersion();
+    }
+
     // Notify callback
     if (m_onPanelDocked) {
         m_onPanelDocked(panel);
@@ -476,6 +491,7 @@ void DockManager::executeDock(const DockZone& zone) {
 
 std::unique_ptr<PanelGroup> DockManager::createDockedGroup(Panel* panel) {
     auto group = std::make_unique<PanelGroup>();
+    group->setShowCloseButtons(true);  // Enable close buttons on tab bar
     group->addPanel(panel);
 
     // Wire up tab drag callback so panels can be re-dragged
@@ -555,6 +571,8 @@ void DockManager::executeDockEdge(const DockZone& zone) {
     auto split = std::make_unique<SplitContainer>(dir);
     split->setSplitRatio(panelFirst ? 0.25f : 0.75f);
 
+    std::cerr << "[DockManager] Created split with ratio=" << split->splitRatio() << "\n";
+
     // Create a PanelGroup for the dragged panel (so it can be re-dragged via tab)
     auto newGroup = createDockedGroup(panel);
 
@@ -565,16 +583,30 @@ void DockManager::executeDockEdge(const DockZone& zone) {
     std::cerr << "[DockManager] root=" << root
               << " type=" << (root ? static_cast<int>(root->type()) : -1) << "\n";
 
-    // Check if root is a status bar split (non-resizable vertical split)
+    // Check if root is a status bar split (non-resizable vertical split with small ratio)
+    // We check both !isResizable() and a small ratio to handle older saved layouts
     if (root && root->type() == LayoutNodeType::SplitContainer) {
         auto* rootSplit = static_cast<SplitContainer*>(root);
         std::cerr << "[DockManager] rootSplit dir=" << static_cast<int>(rootSplit->direction())
-                  << " resizable=" << rootSplit->isResizable() << "\n";
+                  << " resizable=" << rootSplit->isResizable()
+                  << " ratio=" << rootSplit->splitRatio() << "\n";
 
-        if (rootSplit->direction() == SplitDirection::Vertical && !rootSplit->isResizable()) {
+        // Detect status bar split: vertical split that either:
+        // 1. Is marked non-resizable (new layouts), OR
+        // 2. Has a very small ratio (<0.1) indicating a status bar (older layouts)
+        bool isStatusBarSplit = rootSplit->direction() == SplitDirection::Vertical &&
+                                (!rootSplit->isResizable() || rootSplit->splitRatio() < 0.1f);
+
+        if (isStatusBarSplit) {
             // Status bar split found - dock into the content area (second child)
             auto contentArea = rootSplit->releaseSecond();
             std::cerr << "[DockManager] Released contentArea=" << contentArea.get() << "\n";
+
+            // If contentArea is null, create an empty group as placeholder
+            if (!contentArea) {
+                std::cerr << "[DockManager] WARNING: contentArea was null, creating empty group\n";
+                contentArea = std::make_unique<PanelGroup>();
+            }
 
             if (panelFirst) {
                 split->setFirst(std::move(newGroup));
@@ -584,7 +616,22 @@ void DockManager::executeDockEdge(const DockZone& zone) {
                 split->setSecond(std::move(newGroup));
             }
 
+            SplitContainer* newSplit = split.get();  // Keep pointer before move
             rootSplit->setSecond(std::move(split));
+
+            // Force the root split to update layout now that we've modified it
+            if (m_screenWidth > 0 && m_screenHeight > 0) {
+                rootSplit->setBounds({0, 0, m_screenWidth, m_screenHeight});
+                rootSplit->updateLayout();
+                if (newSplit->first() && newSplit->second()) {
+                    std::cerr << "[DockManager] Updated layout, new split bounds: first=("
+                              << newSplit->first()->bounds().x << "," << newSplit->first()->bounds().y << ","
+                              << newSplit->first()->bounds().z << "," << newSplit->first()->bounds().w << ") second=("
+                              << newSplit->second()->bounds().x << "," << newSplit->second()->bounds().y << ","
+                              << newSplit->second()->bounds().z << "," << newSplit->second()->bounds().w << ")\n";
+                }
+            }
+
             std::cerr << "[DockManager] Docked into content area below status bar\n";
             return;
         }
@@ -683,6 +730,7 @@ void DockManager::cleanupEmptyNodes() {
     // We'll do multiple passes until no changes
     bool changed = true;
     int maxIterations = 10;
+    int totalRemoved = 0;
 
     while (changed && maxIterations-- > 0) {
         changed = false;
@@ -712,6 +760,7 @@ void DockManager::cleanupEmptyNodes() {
                 auto otherChild = isFirst ? parent->releaseSecond() : parent->releaseFirst();
                 replaceInParent(parent, std::move(otherChild));
                 changed = true;
+                ++totalRemoved;
             }
         }
 
@@ -738,7 +787,17 @@ void DockManager::cleanupEmptyNodes() {
                 auto otherChild = isFirst ? parent->releaseSecond() : parent->releaseFirst();
                 replaceInParent(parent, std::move(otherChild));
                 changed = true;
+                ++totalRemoved;
             }
+        }
+    }
+
+    if (totalRemoved > 0) {
+        gui::logDebug("DockManager", "cleaned up empty nodes",
+                     std::to_string(totalRemoved) + " removed");
+        // Increment layout version since tree structure changed
+        if (m_panelManager) {
+            m_panelManager->incrementLayoutVersion();
         }
     }
 }
@@ -788,31 +847,68 @@ TreeSlot DockManager::captureTreeSlot(Panel* panel) {
         }
     });
 
+    if (slot.isValid()) {
+        // Capture layout version for later validation
+        slot.captureVersion = m_panelManager->layoutVersion();
+        gui::logDebug("TreeSlot", "captured slot",
+                     panel->config().id + " type=" +
+                     (slot.type == TreeSlot::Type::Group ? "Group" : "Leaf") +
+                     " version=" + std::to_string(slot.captureVersion));
+    } else {
+        gui::logDebug("TreeSlot", "no slot found for", panel->config().id);
+    }
+
     return slot;
 }
 
 bool DockManager::restoreFromTreeSlot(Panel* panel, const TreeSlot& slot) {
     if (!panel || !slot.isValid() || !m_panelManager) return false;
 
+    gui::logDebug("TreeSlot", "attempting restore",
+                 panel->config().id + " to " + slot.groupId);
+
+    // Check if layout version has changed since slot was captured
+    int currentVersion = m_panelManager->layoutVersion();
+    if (slot.captureVersion != currentVersion) {
+        gui::logTransition("TreeSlot", "restore", "version-mismatch",
+                          (panel->config().id + " captured=" + std::to_string(slot.captureVersion) +
+                           " current=" + std::to_string(currentVersion)).c_str());
+        // Version mismatch - the layout may have changed, try restoration anyway but log warning
+        // The group validation below will catch if the target no longer exists
+    }
+
     if (slot.type == TreeSlot::Type::Group) {
         // Find group by ID and insert panel at original tab index
         PanelGroup* group = findGroupById(slot.groupId);
-        if (group) {
-            group->addPanel(panel);
-            // Try to restore tab position
-            // (Note: addPanel adds to end, we'd need insertPanel at index for exact restoration)
-            return true;
+        if (!group) {
+            gui::logTransition("TreeSlot", "restore", "group-not-found", slot.groupId.c_str());
+            return false;  // Caller floats panel as fallback
         }
+
+        if (group->isEmpty()) {
+            gui::logDebug("TreeSlot", "group is empty, skipping restore", slot.groupId);
+            return false;  // Don't restore to empty groups
+        }
+
+        // Only restore to groups that have other panels (active tab groups)
+        // Don't restore to empty groups that were preserved structurally -
+        // those panels should float instead so they have title bars and can be dragged
+        group->addPanel(panel);
+        gui::logTransition("TreeSlot", "hidden", "restored", panel->config().id.c_str());
+        // Try to restore tab position
+        // (Note: addPanel adds to end, we'd need insertPanel at index for exact restoration)
+        return true;
     } else if (slot.type == TreeSlot::Type::Leaf) {
         // Find sibling and recreate split
         Panel* siblingPanel = m_panelManager->getPanel(slot.splitInfo.siblingId);
         if (siblingPanel) {
             // Find sibling in tree and create split next to it
             // For now, just add as floating - full restoration would be complex
-            std::cerr << "[DockManager] TreeSlot restoration for Leaf type not fully implemented\n";
+            gui::logDebug("TreeSlot", "Leaf restoration not fully implemented", panel->config().id);
         }
     }
 
+    gui::logTransition("TreeSlot", "restore", "failed", panel->config().id.c_str());
     return false;
 }
 

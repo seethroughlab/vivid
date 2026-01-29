@@ -69,7 +69,7 @@ void SplitContainer::calculateChildBounds() {
     }
 }
 
-void SplitContainer::render(OverlayCanvas& canvas, const FrameInput& input, const UIStyle& style) {
+void SplitContainer::render(OverlayCanvas& canvas, const gui::InputState& input, const UIStyle& style) {
     // Render children
     if (m_first) {
         m_first->render(canvas, input, style);
@@ -113,7 +113,7 @@ void SplitContainer::render(OverlayCanvas& canvas, const FrameInput& input, cons
     }
 }
 
-bool SplitContainer::handleInput(const FrameInput& input) {
+bool SplitContainer::handleInput(const gui::InputState& input) {
     // Skip divider interaction if not resizable - just forward to children
     if (!m_resizable) {
         bool consumed = false;

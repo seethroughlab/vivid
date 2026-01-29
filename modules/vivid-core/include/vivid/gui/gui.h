@@ -27,6 +27,7 @@
 
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/gui/ring_buffer.h>
+#include <vivid/gui/input_state.h>
 #include <vivid/frame_input.h>
 #include <glm/glm.hpp>
 #include <string>
@@ -106,7 +107,7 @@ struct GuiStyle {
  * @brief Immediate-mode GUI context
  *
  * Create one per frame, call widget methods to render and interact.
- * Widgets are rendered to an OverlayCanvas and respond to FrameInput.
+ * Widgets are rendered to an OverlayCanvas and respond to user input.
  */
 class Gui {
 public:
@@ -116,6 +117,13 @@ public:
      * @param input Frame input for interaction
      */
     Gui(OverlayCanvas& canvas, const FrameInput& input);
+
+    /**
+     * @brief Construct GUI context (for use within GUI module)
+     * @param canvas OverlayCanvas for rendering
+     * @param input GUI input state for interaction
+     */
+    Gui(OverlayCanvas& canvas, const gui::InputState& input);
 
     // -------------------------------------------------------------------------
     /// @name Panels
@@ -605,7 +613,7 @@ public:
 
 private:
     OverlayCanvas& m_canvas;
-    const FrameInput& m_input;
+    gui::InputState m_input;  // Stored by value; constructed from FrameInput or gui::InputState
     GuiStyle m_style;
 
     // Panel layout state

@@ -16,7 +16,7 @@
 #include <vivid/gui/dock_zone.h>
 #include <vivid/gui/layout_node.h>
 #include <vivid/gui/overlay_canvas.h>
-#include <vivid/frame_input.h>
+#include <vivid/gui/input_state.h>
 #include <memory>
 #include <vector>
 #include <functional>
@@ -146,9 +146,9 @@ public:
      *
      * Updates drag position, computes drop zones, hit tests zones.
      *
-     * @param input Frame input state
+     * @param input Input state
      */
-    void update(const FrameInput& input);
+    void update(const gui::InputState& input);
 
     /// @}
     // -------------------------------------------------------------------------

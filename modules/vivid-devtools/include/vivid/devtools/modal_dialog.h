@@ -10,7 +10,7 @@
 
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/gui/ui_style.h>
-#include <vivid/frame_input.h>
+#include <vivid/gui/input_state.h>
 #include <glm/glm.hpp>
 #include <string>
 #include <functional>
@@ -94,7 +94,7 @@ public:
      *
      * All coordinates are in logical pixels. The canvas handles scaling internally.
      */
-    void render(OverlayCanvas& canvas, const FrameInput& input,
+    void render(OverlayCanvas& canvas, const gui::InputState& input,
                 float screenWidth, float screenHeight,
                 const UIStyle& style);
 
@@ -166,7 +166,7 @@ protected:
      * @param style UI style
      */
     virtual void renderContent(OverlayCanvas& canvas, const glm::vec4& contentBounds,
-                               const FrameInput& input, const UIStyle& style) = 0;
+                               const gui::InputState& input, const UIStyle& style) = 0;
 
     /**
      * @brief Handle content-specific input (override in subclasses)
@@ -174,7 +174,7 @@ protected:
      * @param contentBounds Content area bounds
      * @return true if input was consumed
      */
-    virtual bool handleContentInput(const FrameInput& input, const glm::vec4& contentBounds) {
+    virtual bool handleContentInput(const gui::InputState& input, const glm::vec4& contentBounds) {
         return false;
     }
 

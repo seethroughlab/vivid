@@ -10,7 +10,7 @@
 #include <vivid/audio_operator.h>
 #include <vivid/audio_graph.h>
 #include <vivid/asset_loader.h>
-#include <vivid/frame_input.h>
+#include <vivid/gui/input_state.h>
 #include <vivid/effects/texture_operator.h>
 #include <vivid/gui/ui_style.h>
 #include <vivid/gui/gui.h>
@@ -382,7 +382,7 @@ void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfa
     std::cerr << "[ChainVisualizer] NodeGraph initialized\n";
 }
 
-void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInput& input, vivid::Context& ctx) {
+void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const gui::InputState& input, vivid::Context& ctx) {
     if (!m_nodeGraphInitialized) {
         initNodeGraph(ctx, input.surfaceFormat);
         if (!m_nodeGraphInitialized) return;
@@ -416,15 +416,15 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     graphInput.keyCtrl = input.keyCtrl;
     graphInput.keyShift = input.keyShift;
     graphInput.keyAlt = input.keyAlt;
-    graphInput.keyF = input.isKeyPressed(vivid::Key::F);
-    graphInput.key1 = input.isKeyPressed(vivid::Key::Num1);
-    graphInput.keyUp = input.isKeyPressed(vivid::Key::Up);
-    graphInput.keyDown = input.isKeyPressed(vivid::Key::Down);
-    graphInput.keyLeft = input.isKeyPressed(vivid::Key::Left);
-    graphInput.keyRight = input.isKeyPressed(vivid::Key::Right);
-    graphInput.keyEnter = input.isKeyPressed(vivid::Key::Enter);
-    graphInput.keyB = input.isKeyPressed(vivid::Key::B);
-    graphInput.keyEscape = input.isKeyPressed(vivid::Key::Escape);
+    graphInput.keyF = input.isKeyPressed(gui::Key::F);
+    graphInput.key1 = input.isKeyPressed(gui::Key::Num1);
+    graphInput.keyUp = input.isKeyPressed(gui::Key::Up);
+    graphInput.keyDown = input.isKeyPressed(gui::Key::Down);
+    graphInput.keyLeft = input.isKeyPressed(gui::Key::Left);
+    graphInput.keyRight = input.isKeyPressed(gui::Key::Right);
+    graphInput.keyEnter = input.isKeyPressed(gui::Key::Enter);
+    graphInput.keyB = input.isKeyPressed(gui::Key::B);
+    graphInput.keyEscape = input.isKeyPressed(gui::Key::Escape);
     graphInput.time = input.time;
 
     // Begin overlay rendering with logical coordinates for drawing, physical for GPU
@@ -926,12 +926,12 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     }
 
     // Escape key - exit solo mode
-    if (input.isKeyPressed(Key::Escape) && m_inSoloMode) {
+    if (input.isKeyPressed(gui::Key::Escape) && m_inSoloMode) {
         exitSoloMode();
     }
 
     // B key - toggle bypass on selected node
-    if (input.isKeyPressed(Key::B)) {
+    if (input.isKeyPressed(gui::Key::B)) {
         int selectedNodeId = m_nodeGraph.getSelectedNode();
         if (selectedNodeId >= 0 && selectedNodeId != SCREEN_NODE_ID && selectedNodeId != SPEAKERS_NODE_ID) {
             if (static_cast<size_t>(selectedNodeId) < operators.size()) {
@@ -959,7 +959,7 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     m_overlay.render(pass);
 }
 
-void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& ctx) {
+void ChainVisualizer::renderStatusBar(const gui::InputState& input, vivid::Context& ctx) {
     // Draw status bar on its own layer (below Panels content to avoid clipping)
     m_overlay.setLayer(UILayer::Panels - 2);
 
@@ -1260,7 +1260,7 @@ void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& c
     }
 }
 
-void ChainVisualizer::renderOutputPinTooltip(const FrameInput& input, const vivid::OperatorInfo& info) {
+void ChainVisualizer::renderOutputPinTooltip(const gui::InputState& input, const vivid::OperatorInfo& info) {
     if (!info.op) return;
 
     // Use font 0 (Inter Regular) metrics for tooltip
@@ -1342,7 +1342,7 @@ void ChainVisualizer::renderOutputPinTooltip(const FrameInput& input, const vivi
     m_overlay.text(tooltipText, tooltipX + padding, tooltipY + padding + ascent, textColor);
 }
 
-void ChainVisualizer::renderSoloIndicator(const FrameInput& input) {
+void ChainVisualizer::renderSoloIndicator(const gui::InputState& input) {
     if (!m_inSoloMode || !m_soloOperator) return;
 
     m_overlay.setLayer(UILayer::Tooltips);
@@ -1400,7 +1400,7 @@ void ChainVisualizer::renderSoloIndicator(const FrameInput& input) {
     m_overlay.line(xCenterX + xSize, xCenterY - xSize, xCenterX - xSize, xCenterY + xSize, 2.0f, xColor);
 }
 
-void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Context& ctx) {
+void ChainVisualizer::renderInspectorPanel(const gui::InputState& input, vivid::Context& ctx) {
     if (!m_inspectorVisible) {
         m_inspectorBounds.valid = false;
         return;
@@ -1435,7 +1435,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     renderOperatorInspector(input, op, title);
 }
 
-void ChainVisualizer::renderOperatorInspector(const FrameInput& input, vivid::Operator* op, const std::string& title) {
+void ChainVisualizer::renderOperatorInspector(const gui::InputState& input, vivid::Operator* op, const std::string& title) {
     // Get parameters
     auto params = op->params();
     if (params.empty()) {
@@ -2063,7 +2063,7 @@ void ChainVisualizer::renderOperatorInspector(const FrameInput& input, vivid::Op
     // It will be automatically cleared in begin() at the start of the next frame.
 }
 
-void ChainVisualizer::renderScreenInspector(const FrameInput& input, vivid::Context& ctx) {
+void ChainVisualizer::renderScreenInspector(const gui::InputState& input, vivid::Context& ctx) {
     // Inspector panel renders on Panels layer (above nodes/thumbnails)
     m_overlay.setLayer(UILayer::Panels);
 
@@ -2156,7 +2156,7 @@ void ChainVisualizer::renderScreenInspector(const FrameInput& input, vivid::Cont
     gui.endArea();
 }
 
-void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Context& ctx) {
+void ChainVisualizer::renderDebugPanelOverlay(const gui::InputState& input, vivid::Context& ctx) {
     const auto& debugValues = ctx.debugValues();
     if (debugValues.empty()) return;
 

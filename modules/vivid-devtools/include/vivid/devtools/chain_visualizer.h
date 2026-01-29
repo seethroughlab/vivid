@@ -6,7 +6,7 @@
 // Module-agnostic: operators provide their own visualization via drawVisualization().
 // No direct dependencies on render3d, audio, ImGui, or other modules.
 
-#include <vivid/frame_input.h>
+#include <vivid/gui/input_state.h>
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/video_exporter.h>
@@ -137,7 +137,7 @@ public:
     // NodeGraph system (OverlayCanvas-based)
     // -------------------------------------------------------------------------
     void initNodeGraph(Context& ctx, WGPUTextureFormat surfaceFormat);
-    void renderNodeGraph(WGPURenderPassEncoder pass, const FrameInput& input, Context& ctx);
+    void renderNodeGraph(WGPURenderPassEncoder pass, const gui::InputState& input, Context& ctx);
 
     // Check if visualizer consumed mouse input (for blocking input to user code)
     bool consumedInput() const { return m_nodeGraphInitialized && m_nodeGraph.consumedInput(); }
@@ -148,13 +148,13 @@ public:
 
 private:
     // Status bar, tooltip, debug panel, and inspector rendering (uses OverlayCanvas)
-    void renderStatusBar(const FrameInput& input, Context& ctx);
-    void renderOutputPinTooltip(const FrameInput& input, const OperatorInfo& info);
-    void renderSoloIndicator(const FrameInput& input);
-    void renderDebugPanelOverlay(const FrameInput& input, Context& ctx);
-    void renderInspectorPanel(const FrameInput& input, Context& ctx);
-    void renderOperatorInspector(const FrameInput& input, Operator* op, const std::string& title);
-    void renderScreenInspector(const FrameInput& input, Context& ctx);
+    void renderStatusBar(const gui::InputState& input, Context& ctx);
+    void renderOutputPinTooltip(const gui::InputState& input, const OperatorInfo& info);
+    void renderSoloIndicator(const gui::InputState& input);
+    void renderDebugPanelOverlay(const gui::InputState& input, Context& ctx);
+    void renderInspectorPanel(const gui::InputState& input, Context& ctx);
+    void renderOperatorInspector(const gui::InputState& input, Operator* op, const std::string& title);
+    void renderScreenInspector(const gui::InputState& input, Context& ctx);
 
     // Node graph system
     OverlayCanvas m_overlay;

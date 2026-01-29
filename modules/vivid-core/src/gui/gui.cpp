@@ -63,7 +63,41 @@ static thread_local bool s_lastMouseDown = false;
 // Construction
 // -------------------------------------------------------------------------
 
+// Helper to convert FrameInput to gui::InputState
+static gui::InputState toInputState(const FrameInput& input) {
+    gui::InputState state;
+    state.width = input.width;
+    state.height = input.height;
+    state.contentScale = input.contentScale;
+    state.dt = input.dt;
+    state.time = input.time;
+    state.mousePos = input.mousePos;
+    state.mouseDelta = input.mouseDelta;
+    state.scroll = input.scroll;
+    std::memcpy(state.mouseDown, input.mouseDown, sizeof(state.mouseDown));
+    std::memcpy(state.mouseClicked, input.mouseClicked, sizeof(state.mouseClicked));
+    std::memcpy(state.mouseReleased, input.mouseReleased, sizeof(state.mouseReleased));
+    state.keyCtrl = input.keyCtrl;
+    state.keyShift = input.keyShift;
+    state.keyAlt = input.keyAlt;
+    state.keySuper = input.keySuper;
+    std::memcpy(state.keyPressed, input.keyPressed, sizeof(state.keyPressed));
+    std::memcpy(state.keyDown, input.keyDown, sizeof(state.keyDown));
+    return state;
+}
+
 Gui::Gui(OverlayCanvas& canvas, const FrameInput& input)
+    : m_canvas(canvas)
+    , m_input(toInputState(input))
+{
+    // Track mouse state for click detection
+    m_mouseClicked = input.mouseDown[0] && !s_lastMouseDown;
+    m_mouseReleased = !input.mouseDown[0] && s_lastMouseDown;
+    s_lastMouseDown = input.mouseDown[0];
+    m_mousePos = input.mousePos;
+}
+
+Gui::Gui(OverlayCanvas& canvas, const gui::InputState& input)
     : m_canvas(canvas)
     , m_input(input)
 {

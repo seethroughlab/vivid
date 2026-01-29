@@ -205,7 +205,7 @@ void TerminalPanel::update() {
 }
 
 void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                            const FrameInput& input, const UIStyle& style) {
+                            const gui::InputState& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl || !m_impl->vt || !m_impl->screen) {
         m_inputRouting.consumedInput = false;
         m_focus.hovered = false;
@@ -390,7 +390,7 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     canvas.endClipRect();
 }
 
-bool TerminalPanel::handleInput(const FrameInput& input) {
+bool TerminalPanel::handleInput(const gui::InputState& input) {
     if (!m_focus.focused) return false;
 
     // Handle scroll

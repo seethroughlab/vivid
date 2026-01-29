@@ -139,6 +139,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/gui/panel_group.cpp
     src/gui/panel_leaf.cpp
     src/gui/split_container.cpp
+    src/gui/gui_debug.cpp
     src/viz_helpers.cpp
 )
 

@@ -29,8 +29,8 @@ public:
     bool init(Context& ctx, WGPUTextureFormat surfaceFormat) override;
     void shutdown() override;
     void render(OverlayCanvas& canvas, const glm::vec4& bounds,
-               const FrameInput& input, const UIStyle& style) override;
-    bool handleInput(const FrameInput& input) override;
+               const gui::InputState& input, const UIStyle& style) override;
+    bool handleInput(const gui::InputState& input) override;
 
     // Inspector specific
     void setSelectedOperator(Operator* op, const std::string& name);

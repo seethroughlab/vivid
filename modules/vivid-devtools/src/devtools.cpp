@@ -13,6 +13,7 @@
 #include <vivid/devtools/preferences.h>
 #include <vivid/gui/dock_zone.h>
 #include <vivid/gui/dock_manager.h>
+#include <vivid/gui/input_state.h>
 #include <vivid/devtools/panels/terminal_panel.h>
 #include <vivid/devtools/panels/editor_panel.h>
 #include <vivid/devtools/panels/node_graph_panel.h>
@@ -27,9 +28,36 @@
 #include "effects/font_atlas.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 
 namespace vivid {
+
+// Helper to convert FrameInput to gui::InputState
+// This allows DevTools to accept FrameInput (for backward compatibility)
+// while using the decoupled gui::InputState internally.
+static gui::InputState toInputState(const FrameInput& input) {
+    gui::InputState state;
+    state.width = input.width;
+    state.height = input.height;
+    state.contentScale = input.contentScale;
+    state.dt = input.dt;
+    state.time = input.time;
+    state.mousePos = input.mousePos;
+    state.mouseDelta = input.mouseDelta;
+    state.scroll = input.scroll;
+    std::memcpy(state.mouseDown, input.mouseDown, sizeof(state.mouseDown));
+    std::memcpy(state.mouseClicked, input.mouseClicked, sizeof(state.mouseClicked));
+    std::memcpy(state.mouseReleased, input.mouseReleased, sizeof(state.mouseReleased));
+    state.keyCtrl = input.keyCtrl;
+    state.keyShift = input.keyShift;
+    state.keyAlt = input.keyAlt;
+    state.keySuper = input.keySuper;
+    std::memcpy(state.keyPressed, input.keyPressed, sizeof(state.keyPressed));
+    std::memcpy(state.keyDown, input.keyDown, sizeof(state.keyDown));
+    state.surfaceFormat = input.surfaceFormat;
+    return state;
+}
 
 DevTools& DevTools::instance() {
     static DevTools s_instance;
@@ -178,6 +206,37 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
                       << " not fully implemented - showing panel instead\n";
         }
     });
+    statusBar->onPresetSelect([this](const std::string& name) {
+        // Save current layout to active preset before switching
+        auto currentJson = m_panelManager->saveLayoutToString();
+        if (!currentJson.empty()) {
+            Preferences::instance().setLayoutPreset(
+                Preferences::instance().activePreset(), currentJson);
+        }
+
+        // Load new preset
+        auto newJson = Preferences::instance().getLayoutPreset(name);
+        if (!newJson.empty()) {
+            m_panelManager->loadLayoutFromString(newJson);
+        }
+        Preferences::instance().setActivePreset(name);
+
+        // Sync status bar
+        syncStatusBarPresets();
+    });
+    statusBar->onPresetSave([this](const std::string& name) {
+        // Save current layout to the specified preset
+        auto json = m_panelManager->saveLayoutToString();
+        if (!json.empty()) {
+            Preferences::instance().setLayoutPreset(name, json);
+            Preferences::instance().setActivePreset(name);
+            syncStatusBarPresets();
+        }
+    });
+    statusBar->onPresetDelete([this](const std::string& name) {
+        Preferences::instance().deleteLayoutPreset(name);
+        syncStatusBarPresets();
+    });
     m_panelManager->addPanel(std::move(statusBar));
 
     // NodeGraph (fill) - background for visualizer
@@ -261,9 +320,20 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
         return false;
     }
 
-    // Enable layout mode by default for docking support
-    m_panelManager->buildDefaultLayout();
-    m_panelManager->setLayoutMode(true);
+    // Try to restore last-used layout preset, or build default
+    {
+        std::string lastPreset = Preferences::instance().lastUsedPreset();
+        std::string layoutJson = Preferences::instance().getLayoutPreset(lastPreset);
+
+        if (!layoutJson.empty() && m_panelManager->loadLayoutFromString(layoutJson)) {
+            std::cerr << "[vivid-devtools] Restored layout preset: " << lastPreset << "\n";
+        } else {
+            // Build default layout
+            m_panelManager->buildDefaultLayout();
+            std::cerr << "[vivid-devtools] Using default layout\n";
+        }
+        m_panelManager->setLayoutMode(true);
+    }
 
     // Set up clipboard callbacks for editor if window is set
     if (m_window) {
@@ -312,6 +382,9 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
         fb->setExpandedFolders(Preferences::instance().expandedFolders());
     }
 
+    // Sync status bar with layout presets
+    syncStatusBarPresets();
+
     m_initialized = true;
     std::cerr << "[vivid-devtools] Initialized with " << m_panelManager->panelCount() << " panels\n";
     return true;
@@ -345,13 +418,13 @@ void DevTools::registerDefaultShortcuts() {
         [this]() { togglePanel("editor"); }
     });
 
-    // Cmd/Ctrl+4: Toggle Chain Visualizer (nodegraph + inspector + statusbar)
+    // Cmd/Ctrl+4: Toggle Node Graph panel
     m_shortcuts.registerShortcut({
         GLFW_KEY_4,
         ShortcutManager::MOD_CMD_OR_CTRL,
-        "toggle_visualizer",
-        "Toggle Chain Visualizer",
-        [this]() { toggleVisualizer(); }
+        "toggle_nodegraph",
+        "Toggle Node Graph",
+        [this]() { togglePanel("nodegraph"); }
     });
 
     // Cmd/Ctrl+5: Toggle File Browser
@@ -452,6 +525,15 @@ void DevTools::registerDefaultShortcuts() {
 void DevTools::shutdown() {
     if (!m_initialized) return;
 
+    // Save current layout to active preset before shutdown
+    if (m_panelManager) {
+        auto json = m_panelManager->saveLayoutToString();
+        if (!json.empty()) {
+            Preferences::instance().setLayoutPreset(
+                Preferences::instance().activePreset(), json);
+        }
+    }
+
     // Save editor session before shutdown
     if (auto* ed = m_panelManager->getPanelAs<EditorPanel>("editor")) {
         Preferences::instance().setOpenFiles(ed->openFiles());
@@ -530,8 +612,11 @@ void DevTools::update() {
 void DevTools::render(WGPURenderPassEncoder pass, const FrameInput& input, Context& ctx) {
     if (!m_initialized) return;
 
+    // Convert FrameInput to gui::InputState for GUI module
+    gui::InputState guiInput = toInputState(input);
+
     // Begin canvas - handles HiDPI scaling internally
-    m_canvas->begin(input);
+    m_canvas->begin(guiInput);
 
     // Compute logical dimensions for panel layout
     float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
@@ -546,11 +631,11 @@ void DevTools::render(WGPURenderPassEncoder pass, const FrameInput& input, Conte
         renderBackgroundGrid(*m_canvas, screenWidth, screenHeight);
     }
 
-    m_panelManager->render(*m_canvas, input, screenWidth, screenHeight, m_style);
+    m_panelManager->render(*m_canvas, guiInput, screenWidth, screenHeight, m_style);
 
     // Render preferences dialog (on top of everything)
     if (m_preferencesPanel && m_preferencesPanel->isVisible()) {
-        m_preferencesPanel->render(*m_canvas, input, screenWidth, screenHeight, m_style);
+        m_preferencesPanel->render(*m_canvas, guiInput, screenWidth, screenHeight, m_style);
     }
 
     // Render canvas
@@ -828,27 +913,12 @@ void DevTools::setIdeBounds(const glm::vec4& bounds) {
 // -------------------------------------------------------------------------
 
 void DevTools::toggleVisualizer() {
-    // Toggle nodegraph + inspector + console panels
-    // Status bar is auto-managed based on whether any content panels are visible
-    bool currentlyVisible = isVisualizerVisible();
-    if (currentlyVisible) {
-        hidePanel("nodegraph");
-        hidePanel("inspector");
-        hidePanel("console");
-    } else {
-        showPanel("nodegraph");
-        showPanel("inspector");
-        // Show console only if it has errors
-        if (auto* console = m_panelManager->getPanelAs<ConsolePanel>("console")) {
-            if (console->hasErrors()) {
-                showPanel("console");
-            }
-        }
-    }
+    // Simplified: just toggle nodegraph
+    togglePanel("nodegraph");
 }
 
 bool DevTools::isVisualizerVisible() const {
-    return isPanelVisible("nodegraph") || isPanelVisible("inspector");
+    return isPanelVisible("nodegraph");
 }
 
 void DevTools::enterSoloMode(Operator* op, const std::string& name) {
@@ -981,6 +1051,13 @@ void DevTools::toggleBackgroundGrid() {
 
     // Save to preferences
     Preferences::instance().setGridOpacity(m_gridOpacity);
+}
+
+void DevTools::syncStatusBarPresets() {
+    if (auto* statusBar = m_panelManager->getPanelAs<StatusBarPanel>("statusbar")) {
+        statusBar->setLayoutPresets(Preferences::instance().getLayoutPresetNames());
+        statusBar->setActivePreset(Preferences::instance().activePreset());
+    }
 }
 
 void DevTools::setGridOpacity(float opacity) {

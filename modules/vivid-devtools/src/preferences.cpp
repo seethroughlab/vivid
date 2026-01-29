@@ -132,6 +132,24 @@ bool Preferences::load() {
             }
         }
 
+        // Layout presets
+        if (j.contains("layouts")) {
+            auto& layouts = j["layouts"];
+            if (layouts.contains("presets") && layouts["presets"].is_object()) {
+                m_layoutPresets.clear();
+                for (auto& [name, json] : layouts["presets"].items()) {
+                    // Store as string (dump back to JSON string)
+                    m_layoutPresets[name] = json.dump();
+                }
+            }
+            if (layouts.contains("activePreset")) {
+                m_activePreset = layouts["activePreset"].get<std::string>();
+            }
+            if (layouts.contains("lastUsedPreset")) {
+                m_lastUsedPreset = layouts["lastUsedPreset"].get<std::string>();
+            }
+        }
+
         std::cerr << "[Preferences] Loaded from " << path << std::endl;
         return true;
 
@@ -186,6 +204,22 @@ bool Preferences::save() {
         }
         j["fileBrowser"] = {
             {"expandedFolders", expandedArray}
+        };
+
+        // Layout presets
+        nlohmann::json layoutPresets = nlohmann::json::object();
+        for (const auto& [name, jsonStr] : m_layoutPresets) {
+            // Parse JSON string back to object for proper formatting
+            try {
+                layoutPresets[name] = nlohmann::json::parse(jsonStr);
+            } catch (...) {
+                // Skip invalid entries
+            }
+        }
+        j["layouts"] = {
+            {"presets", layoutPresets},
+            {"activePreset", m_activePreset},
+            {"lastUsedPreset", m_lastUsedPreset}
         };
 
         std::ofstream file(path);
@@ -287,6 +321,61 @@ void Preferences::setActiveFile(const std::string& path) {
 
 void Preferences::setExpandedFolders(const std::set<std::string>& folders) {
     m_expandedFolders = folders;
+    save();
+}
+
+// -------------------------------------------------------------------------
+// Layout Presets
+// -------------------------------------------------------------------------
+
+std::string Preferences::getLayoutPreset(const std::string& name) const {
+    auto it = m_layoutPresets.find(name);
+    return it != m_layoutPresets.end() ? it->second : "";
+}
+
+void Preferences::setLayoutPreset(const std::string& name, const std::string& layoutJson) {
+    m_layoutPresets[name] = layoutJson;
+    save();
+}
+
+void Preferences::deleteLayoutPreset(const std::string& name) {
+    // Don't allow deleting the Default preset
+    if (name == "Default") return;
+
+    m_layoutPresets.erase(name);
+
+    // If we deleted the active preset, switch to Default
+    if (m_activePreset == name) {
+        m_activePreset = "Default";
+    }
+    if (m_lastUsedPreset == name) {
+        m_lastUsedPreset = "Default";
+    }
+
+    save();
+}
+
+std::vector<std::string> Preferences::getLayoutPresetNames() const {
+    std::vector<std::string> names;
+    // Always include Default first
+    names.push_back("Default");
+
+    for (const auto& [name, _] : m_layoutPresets) {
+        if (name != "Default") {
+            names.push_back(name);
+        }
+    }
+    return names;
+}
+
+void Preferences::setActivePreset(const std::string& name) {
+    m_activePreset = name;
+    m_lastUsedPreset = name;  // Also update last used
+    save();
+}
+
+void Preferences::setLastUsedPreset(const std::string& name) {
+    m_lastUsedPreset = name;
     save();
 }
 

@@ -328,8 +328,8 @@ FontProvider* OverlayCanvas::getFont(int index) const {
     return m_fonts[index];
 }
 
-void OverlayCanvas::begin(const FrameInput& input) {
-    // FrameInput.width/height are physical pixels
+void OverlayCanvas::begin(const gui::InputState& input) {
+    // InputState.width/height are physical pixels
     // Compute logical dimensions from content scale
     float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
     m_contentScale = scale;  // Store for HiDPI text rendering

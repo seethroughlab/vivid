@@ -151,7 +151,7 @@ void PerformancePanel::update() {
 }
 
 void PerformancePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                               const FrameInput& input, const UIStyle& style) {
+                               const gui::InputState& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) return;
 
     glm::vec4 renderBounds = beginRender(input, bounds);
@@ -330,7 +330,7 @@ void PerformancePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     canvas.endClipRect();
 }
 
-bool PerformancePanel::handleInput(const FrameInput& input) {
+bool PerformancePanel::handleInput(const gui::InputState& input) {
     if (!m_config.visible || !m_impl) return false;
 
     // Basic hover detection for the panel

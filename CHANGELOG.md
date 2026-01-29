@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **GUI debug infrastructure** - New logging and validation utilities for panel system debugging:
+  - `gui_debug.h` with `setDebugEnabled()`, `logTransition()`, `logDebug()`, `dumpPanelStates()`, `validateState()`
+  - Logging added to `PanelManager` (show/hide/float/focus) and `DockManager` (drag/tree modifications)
+  - Enable via `VIVID_GUI_DEBUG` compile flag or `gui::setDebugEnabled(true)` at runtime
+
+- **TreeSlot version tracking** - Robust panel restoration with stale slot detection:
+  - `TreeSlot::captureVersion` tracks layout version when slot was captured
+  - `PanelManager::layoutVersion()` increments on tree structure changes
+  - `DockManager::restoreFromTreeSlot()` validates version before restoration
+  - Prevents crashes when restoring panels after layout restructuring
+
+- **Panel location state** - Explicit tracking of panel visibility state:
+  - `PanelLocation` enum: `Hidden`, `Docked`, `Floating`
+  - `Panel::location()`, `Panel::setLocation()` accessors
+  - `Panel::savedTreeSlot()`, `Panel::savedFloatBounds()` for restoration state
+
 - **Panel docking system** - Visual Studio-like drag-to-dock panel management:
   - Drag tabs out of panel groups to create floating panels
   - Drag floating panels to dock guides to dock into layout
@@ -64,6 +80,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All PBR shaders refactored to use includes (pbr.wgsl, pbr_simple.wgsl, pbr_textured.wgsl, etc.)
 
 ### Changed
+
+- **GUI module decoupled from vivid-core** - Internal GUI components now use `gui::InputState` instead of `FrameInput`:
+  - New `gui/input_state.h` with `gui::Key` enum and `gui::InputState` struct
+  - All panel system headers/implementations updated to use `gui::InputState`
+  - `Gui` class accepts both `FrameInput` (user API) and `gui::InputState` (internal)
+  - Conversion happens at application boundary in `devtools.cpp` and `app.cpp`
+  - Enables potential future extraction of GUI module as standalone library
 
 - **External shader extraction** - Embedded shaders moved to external `.wgsl` files for easier editing and hot-reload:
   - vivid-core: 30+ shaders extracted (particles, fluid sim, canvas, overlay, plexus, etc.)

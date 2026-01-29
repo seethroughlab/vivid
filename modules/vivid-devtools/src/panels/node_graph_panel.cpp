@@ -64,12 +64,12 @@ NodeGraphPanel::NodeGraphPanel()
     : m_impl(std::make_unique<Impl>())
 {
     m_config.id = "nodegraph";
-    m_config.title = "";  // No title bar for fill panel
-    m_config.bounds = {0, 0, 800, 600};
-    m_config.dockSide = DockSide::Fill;
-    m_config.visible = false;
-    m_config.resizable = false;
-    m_config.draggable = false;
+    m_config.title = "Node Graph";
+    m_config.bounds = {20, 60, 800, 600};
+    m_config.dockSide = DockSide::Fill;  // Default center content, but still dockable
+    m_config.visible = true;
+    m_config.resizable = true;
+    m_config.draggable = true;
     m_config.minWidth = 200.0f;
     m_config.minHeight = 200.0f;
 }
@@ -103,7 +103,7 @@ void NodeGraphPanel::shutdown() {
 }
 
 void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                            const FrameInput& input, const UIStyle& style) {
+                            const gui::InputState& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl || !m_impl->ctx) return;
     // Style parameter is available for use throughout this function
 
@@ -113,7 +113,7 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // Create a local copy of input with mouse position relative to panel bounds
     // (NodeGraph renders at 0,0 within the panel area)
-    FrameInput localInput = input;
+    gui::InputState localInput = input;
     localInput.mousePos = input.mousePos - glm::vec2(bounds.x, bounds.y);
 
     // Begin node graph editor (uses new simplified API)
@@ -479,7 +479,7 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 }
 
-bool NodeGraphPanel::handleInput(const FrameInput& input) {
+bool NodeGraphPanel::handleInput(const gui::InputState& input) {
     if (!m_impl) return false;
     return m_impl->nodeGraph.consumedInput();
 }

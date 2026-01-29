@@ -44,8 +44,8 @@ public:
     // LayoutNode interface
     LayoutNodeType type() const override { return LayoutNodeType::SplitContainer; }
     void updateLayout() override;
-    void render(OverlayCanvas& canvas, const FrameInput& input, const UIStyle& style) override;
-    bool handleInput(const FrameInput& input) override;
+    void render(OverlayCanvas& canvas, const gui::InputState& input, const UIStyle& style) override;
+    bool handleInput(const gui::InputState& input) override;
     void collectPanels(std::vector<Panel*>& outPanels) override;
     Panel* findPanel(const std::string& id) override;
     bool containsPanel(Panel* panel) const override;

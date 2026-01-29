@@ -14,6 +14,7 @@
 #include <vivid/devtools/chain_visualizer.h>
 #include <vivid/display.h>
 #include <vivid/frame_input.h>
+#include <vivid/gui/input_state.h>
 #include <vivid/render_lock.h>
 
 #include <string>
@@ -41,6 +42,28 @@ static thread_local std::string s_lastError;
 
 static void setError(const char* msg) {
     s_lastError = msg ? msg : "";
+}
+
+static vivid::gui::InputState toInputState(const vivid::FrameInput& input) {
+    vivid::gui::InputState state;
+    state.width = input.width;
+    state.height = input.height;
+    state.contentScale = input.contentScale;
+    state.dt = input.dt;
+    state.time = input.time;
+    state.mousePos = input.mousePos;
+    state.mouseDelta = input.mouseDelta;
+    state.scroll = input.scroll;
+    std::memcpy(state.mouseDown, input.mouseDown, sizeof(state.mouseDown));
+    std::memcpy(state.mouseClicked, input.mouseClicked, sizeof(state.mouseClicked));
+    std::memcpy(state.mouseReleased, input.mouseReleased, sizeof(state.mouseReleased));
+    state.keyCtrl = input.keyCtrl;
+    state.keyShift = input.keyShift;
+    state.keyAlt = input.keyAlt;
+    state.keySuper = input.keySuper;
+    std::memcpy(state.keyPressed, input.keyPressed, sizeof(state.keyPressed));
+    std::memcpy(state.keyDown, input.keyDown, sizeof(state.keyDown));
+    return state;
 }
 
 static void setError(const std::string& msg) {
@@ -630,7 +653,7 @@ VIVID_C_API VividResult vivid_context_render_frame(VividContext* ctx) {
 
         // Render visualizer if visible
         if (internal->visualizerVisible && internal->visualizer) {
-            internal->visualizer->renderNodeGraph(pass, frameInput, *internal->context);
+            internal->visualizer->renderNodeGraph(pass, toInputState(frameInput), *internal->context);
         }
 
         wgpuRenderPassEncoderEnd(pass);

@@ -89,24 +89,24 @@ public:
 
 protected:
     void renderContent(OverlayCanvas& canvas, const glm::vec4& contentBounds,
-                       const FrameInput& input, const UIStyle& style) override;
+                       const gui::InputState& input, const UIStyle& style) override;
 
-    bool handleContentInput(const FrameInput& input, const glm::vec4& contentBounds) override;
+    bool handleContentInput(const gui::InputState& input, const glm::vec4& contentBounds) override;
 
 private:
     void renderTabs(OverlayCanvas& canvas, float x, float y, float w,
                     const UIStyle& style);
     void renderAppearanceTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                              const FrameInput& input, const UIStyle& style);
+                              const gui::InputState& input, const UIStyle& style);
     void renderShortcutsTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                             const FrameInput& input, const UIStyle& style);
+                             const gui::InputState& input, const UIStyle& style);
     void renderLayoutTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                          const FrameInput& input, const UIStyle& style);
+                          const gui::InputState& input, const UIStyle& style);
 
     // Helper to render a button
     bool renderButton(OverlayCanvas& canvas, const std::string& label,
                       float x, float y, float w, float h,
-                      const UIStyle& style, const FrameInput& input, bool selected = false);
+                      const UIStyle& style, const gui::InputState& input, bool selected = false);
 
     // Helper to render a color swatch
     void renderColorSwatch(OverlayCanvas& canvas, const glm::vec4& color,
@@ -115,7 +115,7 @@ private:
     // Helper to render a slider, returns true if value changed
     bool renderSlider(OverlayCanvas& canvas, const std::string& label,
                       float x, float y, float w, float h,
-                      const UIStyle& style, const FrameInput& input,
+                      const UIStyle& style, const gui::InputState& input,
                       float* value, float minVal, float maxVal);
 
     PreferenceTab m_activeTab = PreferenceTab::Appearance;

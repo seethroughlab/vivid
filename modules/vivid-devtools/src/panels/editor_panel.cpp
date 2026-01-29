@@ -116,7 +116,7 @@ void EditorPanel::shutdown() {
 }
 
 void EditorPanel::renderTabBar(OverlayCanvas& canvas, float x, float y, float w,
-                                const FrameInput& input, const UIStyle& style) {
+                                const gui::InputState& input, const UIStyle& style) {
     if (!m_impl || m_impl->buffers.empty()) return;
 
     const float tabHeight = 28.0f;
@@ -188,7 +188,7 @@ void EditorPanel::renderTabBar(OverlayCanvas& canvas, float x, float y, float w,
     canvas.fillRect(x, y + tabHeight - 1, w, 1, style.panelBorder);
 }
 
-bool EditorPanel::handleTabBarInput(const FrameInput& input, float x, float y, float w, float tabHeight) {
+bool EditorPanel::handleTabBarInput(const gui::InputState& input, float x, float y, float w, float tabHeight) {
     if (!m_impl) return false;
 
     m_impl->hoveredTab = -1;
@@ -251,7 +251,7 @@ bool EditorPanel::handleTabBarInput(const FrameInput& input, float x, float y, f
 }
 
 void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                         const FrameInput& input, const UIStyle& style) {
+                         const gui::InputState& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) {
         m_inputRouting.consumedInput = false;
         m_focus.hovered = false;
@@ -505,7 +505,7 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 }
 
-bool EditorPanel::handleInput(const FrameInput& input) {
+bool EditorPanel::handleInput(const gui::InputState& input) {
     if (!m_focus.focused || !m_impl) return false;
 
     FileBuffer* buf = m_impl->active();

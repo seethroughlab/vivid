@@ -6,6 +6,7 @@
 #include <vivid/gui/split_container.h>
 #include <vivid/gui/panel_leaf.h>
 #include <vivid/gui/dock_manager.h>
+#include <vivid/gui/gui_debug.h>
 #include <vivid/context.h>
 #include <algorithm>
 #include <fstream>
@@ -78,7 +79,7 @@ void PanelManager::update() {
     }
 }
 
-void PanelManager::render(OverlayCanvas& canvas, const FrameInput& input,
+void PanelManager::render(OverlayCanvas& canvas, const gui::InputState& input,
                            float screenWidth, float screenHeight, const UIStyle& style) {
     m_screenWidth = screenWidth;
     m_screenHeight = screenHeight;
@@ -108,7 +109,7 @@ void PanelManager::render(OverlayCanvas& canvas, const FrameInput& input,
 
     // If a panel was clicked and it's not the focused one, change focus
     // Check panels in z-order (front to back) to only process the topmost one
-    // Use mouseClicked from FrameInput (computed once per frame in app.cpp)
+    // Use mouseClicked from InputState (computed once per frame in app.cpp)
     if (input.mouseClicked[0]) {
         // Find which panel to focus (don't modify z-order while searching)
         std::string panelToFocus;
@@ -145,9 +146,16 @@ void PanelManager::render(OverlayCanvas& canvas, const FrameInput& input,
             setFocus(panelToFocus);
         }
     }
+
+#ifndef NDEBUG
+    // Validate state consistency in debug builds
+    if (gui::isDebugEnabled()) {
+        gui::validateState(*this);
+    }
+#endif
 }
 
-std::string PanelManager::determineInputTarget(const FrameInput& input) {
+std::string PanelManager::determineInputTarget(const gui::InputState& input) {
     // 1. Panel currently being dragged/resized owns input
     for (auto& panel : m_panels) {
         if (panel->isInteracting()) {
@@ -187,7 +195,7 @@ std::string PanelManager::determineInputTarget(const FrameInput& input) {
     return "";  // No panel at mouse position
 }
 
-void PanelManager::renderFlatMode(OverlayCanvas& canvas, const FrameInput& input, float scale, const UIStyle& style) {
+void PanelManager::renderFlatMode(OverlayCanvas& canvas, const gui::InputState& input, float scale, const UIStyle& style) {
     // Calculate layout for docked panels
     calculateLayout(m_screenWidth, m_screenHeight);
 
@@ -272,7 +280,7 @@ void PanelManager::renderFlatMode(OverlayCanvas& canvas, const FrameInput& input
     canvas.setLayer(0);
 }
 
-void PanelManager::renderLayoutMode(OverlayCanvas& canvas, const FrameInput& input, float scale, const UIStyle& style) {
+void PanelManager::renderLayoutMode(OverlayCanvas& canvas, const gui::InputState& input, float scale, const UIStyle& style) {
     // Set content scale on canvas for HiDPI support
     canvas.setContentScale(scale);
 
@@ -422,12 +430,14 @@ const Panel* PanelManager::getPanel(const std::string& id) const {
 
 void PanelManager::showPanel(const std::string& id) {
     if (Panel* p = getPanel(id)) {
+        gui::logTransition("PanelManager", "hidden", "visible", id.c_str());
         showPanelFromSlot(id);
     }
 }
 
 void PanelManager::hidePanel(const std::string& id) {
     if (Panel* p = getPanel(id)) {
+        gui::logTransition("PanelManager", "visible", "hidden", id.c_str());
         hidePanelWithSlot(id, true);
     }
 }
@@ -457,6 +467,13 @@ void PanelManager::setFocus(const std::string& id) {
         if (Panel* prev = getPanel(m_focusedPanelId)) {
             prev->setFocused(false);
         }
+    }
+
+    // Log focus change
+    if (id != m_focusedPanelId) {
+        gui::logTransition("PanelManager", "focus",
+                          id.empty() ? "none" : id.c_str(),
+                          m_focusedPanelId.empty() ? "none" : m_focusedPanelId.c_str());
     }
 
     // Set focus to new panel
@@ -587,26 +604,35 @@ void PanelManager::buildDefaultLayout() {
     std::vector<Panel*> floatingPanels;
 
     for (auto& panel : m_panels) {
+        // Only add visible panels to the layout tree
+        // Hidden panels will be added when shown via showPanelFromSlot()
+        bool initiallyVisible = panel->isVisible();
+
         switch (panel->config().dockSide) {
             case DockSide::Fill:
+                // Fill panels (like NodeGraph) should always be shown as they're the main content
                 fillPanels.push_back(panel.get());
-                panel->setVisible(true);  // Panels in layout tree should be visible
-                break;
-            case DockSide::Left:
-                leftPanels.push_back(panel.get());
-                panel->setVisible(true);
-                break;
-            case DockSide::Right:
-                rightPanels.push_back(panel.get());
                 panel->setVisible(true);
                 break;
             case DockSide::Top:
+                // Top panels (like StatusBar) should always be shown
                 topPanels.push_back(panel.get());
                 panel->setVisible(true);
                 break;
+            case DockSide::Left:
+                if (initiallyVisible) {
+                    leftPanels.push_back(panel.get());
+                }
+                break;
+            case DockSide::Right:
+                if (initiallyVisible) {
+                    rightPanels.push_back(panel.get());
+                }
+                break;
             case DockSide::Bottom:
-                bottomPanels.push_back(panel.get());
-                panel->setVisible(true);
+                if (initiallyVisible) {
+                    bottomPanels.push_back(panel.get());
+                }
                 break;
             default:
                 floatingPanels.push_back(panel.get());
@@ -614,13 +640,12 @@ void PanelManager::buildDefaultLayout() {
         }
     }
 
-    // Helper to create a group or leaf from a panel list
+    // Helper to create a group from a panel list
+    // Always use PanelGroup (even for single panels) so there's a tab bar with close buttons
     auto makeGroup = [this](const std::vector<Panel*>& panels) -> std::unique_ptr<LayoutNode> {
         if (panels.empty()) return nullptr;
-        if (panels.size() == 1) {
-            return std::make_unique<PanelLeaf>(panels[0]);
-        }
         auto group = std::make_unique<PanelGroup>();
+        group->setShowCloseButtons(true);  // Enable close buttons on tab bar
         for (Panel* p : panels) {
             group->addPanel(p);
         }
@@ -779,6 +804,214 @@ bool PanelManager::saveLayout(const std::string& path) const {
     }
 }
 
+std::string PanelManager::saveLayoutToString() const {
+    if (!m_layoutRoot) return "";
+
+    // Recursive function to serialize a layout node
+    std::function<nlohmann::json(const LayoutNode*)> serialize;
+    serialize = [&serialize, this](const LayoutNode* node) -> nlohmann::json {
+        nlohmann::json j;
+
+        switch (node->type()) {
+            case LayoutNodeType::PanelLeaf: {
+                auto* leaf = static_cast<const PanelLeaf*>(node);
+                j["type"] = "leaf";
+                if (leaf->panel()) {
+                    j["panelId"] = leaf->panel()->config().id;
+                }
+                break;
+            }
+            case LayoutNodeType::PanelGroup: {
+                auto* group = static_cast<const PanelGroup*>(node);
+                j["type"] = "group";
+                j["id"] = group->id();
+                j["activeTab"] = group->activeTabIndex();
+                nlohmann::json panels = nlohmann::json::array();
+                for (size_t i = 0; i < group->panelCount(); i++) {
+                    if (Panel* p = group->panelAt(i)) {
+                        panels.push_back(p->config().id);
+                    }
+                }
+                j["panels"] = panels;
+                break;
+            }
+            case LayoutNodeType::SplitContainer: {
+                auto* split = static_cast<const SplitContainer*>(node);
+                j["type"] = "split";
+                j["id"] = split->id();
+                j["direction"] = split->direction() == SplitDirection::Horizontal ? "horizontal" : "vertical";
+                j["ratio"] = split->splitRatio();
+                j["resizable"] = split->isResizable();
+                if (split->first()) {
+                    j["first"] = serialize(split->first());
+                }
+                if (split->second()) {
+                    j["second"] = serialize(split->second());
+                }
+                break;
+            }
+        }
+
+        return j;
+    };
+
+    nlohmann::json root;
+    root["version"] = 2;
+    root["layout"] = serialize(m_layoutRoot.get());
+
+    // Serialize saved TreeSlots for hidden panels
+    if (!m_savedTreeSlots.empty()) {
+        nlohmann::json slots = nlohmann::json::object();
+        for (const auto& [panelId, slot] : m_savedTreeSlots) {
+            nlohmann::json slotJson;
+            slotJson["type"] = static_cast<int>(slot.type);
+            slotJson["groupId"] = slot.groupId;
+            slotJson["tabIndex"] = slot.tabIndex;
+            slotJson["splitDirection"] = slot.splitInfo.direction;
+            slotJson["splitRatio"] = slot.splitInfo.ratio;
+            slotJson["splitWasFirst"] = slot.splitInfo.wasFirst;
+            slotJson["splitSiblingId"] = slot.splitInfo.siblingId;
+            slots[panelId] = slotJson;
+        }
+        root["savedTreeSlots"] = slots;
+    }
+
+    // Serialize saved floating bounds for hidden panels
+    if (!m_savedFloatBounds.empty()) {
+        nlohmann::json bounds = nlohmann::json::object();
+        for (const auto& [panelId, b] : m_savedFloatBounds) {
+            bounds[panelId] = {b.x, b.y, b.z, b.w};
+        }
+        root["savedFloatBounds"] = bounds;
+    }
+
+    // Serialize floating panel z-order
+    if (!m_floatingZOrder.empty()) {
+        root["floatingZOrder"] = m_floatingZOrder;
+    }
+
+    return root.dump();
+}
+
+bool PanelManager::loadLayoutFromString(const std::string& json) {
+    if (json.empty()) return false;
+
+    try {
+        nlohmann::json root = nlohmann::json::parse(json);
+        if (!root.contains("layout")) return false;
+
+        // Recursive function to deserialize a layout node
+        std::function<std::unique_ptr<LayoutNode>(const nlohmann::json&)> deserialize;
+        deserialize = [&deserialize, this](const nlohmann::json& j) -> std::unique_ptr<LayoutNode> {
+            std::string type = j.value("type", "");
+
+            if (type == "leaf") {
+                std::string panelId = j.value("panelId", "");
+                Panel* panel = getPanel(panelId);
+                auto group = std::make_unique<PanelGroup>();
+                group->setShowCloseButtons(true);
+                if (panel) {
+                    group->addPanel(panel);
+                    panel->setVisible(true);
+                }
+                wireGroupDockCallbacks(group.get());
+                return group;
+            }
+            else if (type == "group") {
+                auto group = std::make_unique<PanelGroup>();
+                group->setShowCloseButtons(true);
+                group->setId(j.value("id", ""));
+
+                if (j.contains("panels") && j["panels"].is_array()) {
+                    for (const auto& pid : j["panels"]) {
+                        if (pid.is_string()) {
+                            Panel* panel = getPanel(pid.get<std::string>());
+                            if (panel) {
+                                group->addPanel(panel);
+                                panel->setVisible(true);
+                            }
+                        }
+                    }
+                }
+
+                int activeTab = j.value("activeTab", 0);
+                group->setActiveTab(activeTab);
+                wireGroupDockCallbacks(group.get());
+                return group;
+            }
+            else if (type == "split") {
+                std::string dir = j.value("direction", "horizontal");
+                SplitDirection direction = (dir == "vertical")
+                    ? SplitDirection::Vertical
+                    : SplitDirection::Horizontal;
+
+                auto split = std::make_unique<SplitContainer>(direction);
+                split->setId(j.value("id", ""));
+                split->setSplitRatio(j.value("ratio", 0.5f));
+                split->setResizable(j.value("resizable", true));
+
+                if (j.contains("first")) {
+                    split->setFirst(deserialize(j["first"]));
+                }
+                if (j.contains("second")) {
+                    split->setSecond(deserialize(j["second"]));
+                }
+                return split;
+            }
+
+            return nullptr;
+        };
+
+        m_layoutRoot = deserialize(root["layout"]);
+        m_layoutMode = (m_layoutRoot != nullptr);
+
+        // Restore saved TreeSlots for hidden panels
+        if (root.contains("savedTreeSlots") && root["savedTreeSlots"].is_object()) {
+            m_savedTreeSlots.clear();
+            for (auto& [panelId, slotJson] : root["savedTreeSlots"].items()) {
+                TreeSlot slot;
+                slot.type = static_cast<TreeSlot::Type>(slotJson.value("type", 0));
+                slot.groupId = slotJson.value("groupId", "");
+                slot.tabIndex = slotJson.value("tabIndex", -1);
+                slot.splitInfo.direction = slotJson.value("splitDirection", 0);
+                slot.splitInfo.ratio = slotJson.value("splitRatio", 0.5f);
+                slot.splitInfo.wasFirst = slotJson.value("splitWasFirst", true);
+                slot.splitInfo.siblingId = slotJson.value("splitSiblingId", "");
+                m_savedTreeSlots[panelId] = slot;
+            }
+        }
+
+        // Restore saved floating bounds for hidden panels
+        if (root.contains("savedFloatBounds") && root["savedFloatBounds"].is_object()) {
+            m_savedFloatBounds.clear();
+            for (auto& [panelId, boundsJson] : root["savedFloatBounds"].items()) {
+                if (boundsJson.is_array() && boundsJson.size() == 4) {
+                    m_savedFloatBounds[panelId] = {
+                        boundsJson[0].get<float>(),
+                        boundsJson[1].get<float>(),
+                        boundsJson[2].get<float>(),
+                        boundsJson[3].get<float>()
+                    };
+                }
+            }
+        }
+
+        // Restore floating panel z-order
+        if (root.contains("floatingZOrder") && root["floatingZOrder"].is_array()) {
+            m_floatingZOrder.clear();
+            for (const auto& id : root["floatingZOrder"]) {
+                if (id.is_string()) {
+                    m_floatingZOrder.push_back(id.get<std::string>());
+                }
+            }
+        }
+
+        return m_layoutMode;
+    } catch (...) {
+        return false;
+    }
+}
+
 bool PanelManager::loadLayout(const std::string& path) {
     try {
         std::ifstream file(path);
@@ -795,12 +1028,20 @@ bool PanelManager::loadLayout(const std::string& path) {
             std::string type = j.value("type", "");
 
             if (type == "leaf") {
+                // Convert legacy leaf nodes to groups for consistent tab bar with close buttons
                 std::string panelId = j.value("panelId", "");
                 Panel* panel = getPanel(panelId);
-                return std::make_unique<PanelLeaf>(panel);
+                auto group = std::make_unique<PanelGroup>();
+                group->setShowCloseButtons(true);  // Enable close buttons
+                if (panel) {
+                    group->addPanel(panel);
+                }
+                wireGroupDockCallbacks(group.get());
+                return group;
             }
             else if (type == "group") {
                 auto group = std::make_unique<PanelGroup>();
+                group->setShowCloseButtons(true);  // Enable close buttons
                 group->setId(j.value("id", ""));
 
                 if (j.contains("panels") && j["panels"].is_array()) {
@@ -894,6 +1135,8 @@ void PanelManager::floatPanel(Panel* panel, const glm::vec2& pos) {
 
     const std::string& id = panel->config().id;
 
+    gui::logTransition("PanelManager", "docked", "floating", id.c_str());
+
     // Set panel bounds at position
     glm::vec4 bounds = panel->bounds();
     bounds.x = pos.x;
@@ -928,15 +1171,19 @@ void PanelManager::hidePanelWithSlot(const std::string& id, bool saveSlot) {
     if (!panel) return;
 
     if (saveSlot && m_dockManager && m_layoutMode) {
-        // Save tree slot for restoration
+        // Save tree slot for restoration (stored in Panel's own state)
         TreeSlot slot = m_dockManager->captureTreeSlot(panel);
         if (slot.isValid()) {
+            panel->setSavedTreeSlot(slot);
+            // Also maintain backwards-compatible map for serialization
             m_savedTreeSlots[id] = slot;
         }
 
-        // Save floating bounds if panel is floating
+        // Save floating bounds if panel is floating (stored in Panel's own state)
         auto floatIt = std::find(m_floatingZOrder.begin(), m_floatingZOrder.end(), id);
         if (floatIt != m_floatingZOrder.end()) {
+            panel->setSavedFloatBounds(panel->bounds());
+            // Also maintain backwards-compatible map for serialization
             m_savedFloatBounds[id] = panel->bounds();
         }
 
@@ -948,8 +1195,9 @@ void PanelManager::hidePanelWithSlot(const std::string& id, bool saveSlot) {
     // Remove from floating order
     removeFromFloatingOrder(id);
 
-    // Hide the panel
+    // Hide the panel and update location
     panel->setVisible(false);
+    panel->setLocation(PanelLocation::Hidden);
 
     std::cerr << "[PanelManager] Hidden panel with slot: " << id << "\n";
 }
@@ -958,43 +1206,73 @@ void PanelManager::showPanelFromSlot(const std::string& id) {
     Panel* panel = getPanel(id);
     if (!panel) return;
 
+    std::cerr << "[PanelManager] showPanelFromSlot: " << id << "\n";
+
     // Make visible first
     panel->setVisible(true);
 
     // If the panel is already in the layout tree, just make it visible there
     // (don't add to floating order which would cause double-rendering)
     if (m_layoutRoot && m_layoutRoot->findPanel(id)) {
+        std::cerr << "[PanelManager] Panel already in layout tree: " << id << "\n";
+        panel->setLocation(PanelLocation::Docked);
         setFocus(id);
         return;
     }
 
-    // Try to restore from tree slot
+    // Try to restore from Panel's own saved tree slot first
+    const TreeSlot& panelSlot = panel->savedTreeSlot();
+    if (panelSlot.isValid() && m_dockManager) {
+        std::cerr << "[PanelManager] Trying to restore from panel's tree slot, type="
+                  << (panelSlot.type == TreeSlot::Type::Group ? "Group" : "Leaf") << "\n";
+        if (m_dockManager->restoreFromTreeSlot(panel, panelSlot)) {
+            panel->setSavedTreeSlot(TreeSlot{}); // Clear saved slot
+            m_savedTreeSlots.erase(id); // Keep map in sync
+            panel->setLocation(PanelLocation::Docked);
+            std::cerr << "[PanelManager] Restored panel from tree slot: " << id << "\n";
+            setFocus(id);
+            return;
+        }
+        std::cerr << "[PanelManager] Tree slot restore failed, falling back to float\n";
+    }
+
+    // Fall back: try legacy map for backwards compatibility with saved layouts
     auto slotIt = m_savedTreeSlots.find(id);
     if (slotIt != m_savedTreeSlots.end() && m_dockManager) {
         TreeSlot& slot = slotIt->second;
         if (m_dockManager->restoreFromTreeSlot(panel, slot)) {
             m_savedTreeSlots.erase(slotIt);
-            std::cerr << "[PanelManager] Restored panel from tree slot: " << id << "\n";
+            panel->setLocation(PanelLocation::Docked);
             setFocus(id);
             return;
         }
     }
 
     // Fall back to floating at saved position or default
-    auto boundsIt = m_savedFloatBounds.find(id);
-    if (boundsIt != m_savedFloatBounds.end()) {
-        panel->setBounds(boundsIt->second);
-        m_savedFloatBounds.erase(boundsIt);
+    // First check Panel's own saved bounds
+    const glm::vec4& panelBounds = panel->savedFloatBounds();
+    if (panelBounds.z > 0 && panelBounds.w > 0) {
+        panel->setBounds(panelBounds);
+        panel->setSavedFloatBounds(glm::vec4(0, 0, 0, 0)); // Clear saved bounds
+        m_savedFloatBounds.erase(id); // Keep map in sync
     } else {
-        // Default floating position
-        glm::vec4 bounds = panel->bounds();
-        bounds.x = 100;
-        bounds.y = 100;
-        bounds.z = std::max(bounds.z, 300.0f);
-        bounds.w = std::max(bounds.w, 200.0f);
-        panel->setBounds(bounds);
+        // Fall back: try legacy map
+        auto boundsIt = m_savedFloatBounds.find(id);
+        if (boundsIt != m_savedFloatBounds.end()) {
+            panel->setBounds(boundsIt->second);
+            m_savedFloatBounds.erase(boundsIt);
+        } else {
+            // Default floating position
+            glm::vec4 bounds = panel->bounds();
+            bounds.x = 100;
+            bounds.y = 100;
+            bounds.z = std::max(bounds.z, 300.0f);
+            bounds.w = std::max(bounds.w, 200.0f);
+            panel->setBounds(bounds);
+        }
     }
 
+    panel->setLocation(PanelLocation::Floating);
     addToFloatingOrder(id);
     setFocus(id);
 

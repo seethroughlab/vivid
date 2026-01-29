@@ -22,7 +22,7 @@ Panel::Panel() {
 
 Panel::~Panel() = default;
 
-void Panel::handleDragAndResize(const FrameInput& input, float screenW, float screenH,
+void Panel::handleDragAndResize(const gui::InputState& input, float screenW, float screenH,
                                  float titleBarHeight, bool /*allowNewInteraction*/) {
     if (!m_config.visible) {
         m_focus.hovered = false;
@@ -132,7 +132,7 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
     m_inputRouting.consumedInput = m_focus.hovered || m_dragResize.isActive();
 }
 
-glm::vec4 Panel::beginRender(const FrameInput& input, const glm::vec4& bounds) {
+glm::vec4 Panel::beginRender(const gui::InputState& input, const glm::vec4& bounds) {
     if (m_display.showTitleBar) {
         // Floating panel - handle drag/resize and use own bounds (logical coordinates)
         float screenW = static_cast<float>(input.logicalWidth());
@@ -150,7 +150,7 @@ glm::vec4 Panel::beginRender(const FrameInput& input, const glm::vec4& bounds) {
 
 void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
                           const UIStyle& style, bool showTitleBar,
-                          const FrameInput* input) {
+                          const gui::InputState* input) {
     // Reset close button state
     m_closeButton.clicked = false;
 

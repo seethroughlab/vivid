@@ -1571,15 +1571,6 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
     // Render NodeGraph overlay (uses OverlayCanvas, no ImGui dependency)
     if (mlc.visualizerVisible && mlc.visualizerAvailable) {
-        static bool firstRender = true;
-        if (firstRender) {
-            std::cout << "[DEBUG] Rendering NodeGraph for first time" << std::endl;
-            // Show the visualizer panels (nodegraph + inspector) when --show-ui is passed
-            if (mlc.showUI && devtools_dynamic::toggleVisualizer) {
-                devtools_dynamic::toggleVisualizer();
-            }
-            firstRender = false;
-        }
         // Update pending change count for status bar display
         if (mlc.editorBridge) {
             devtools_dynamic::trySetPendingCount(mlc.editorBridge->pendingChangeCount());

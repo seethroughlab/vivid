@@ -19,7 +19,7 @@
 #include <vivid/gui/layout_node.h>
 #include <vivid/gui/dock_zone.h>
 #include <vivid/gui/overlay_canvas.h>
-#include <vivid/frame_input.h>
+#include <vivid/gui/input_state.h>
 #include <memory>
 #include <vector>
 #include <string>
@@ -91,12 +91,12 @@ public:
     /**
      * @brief Render all visible panels
      * @param canvas OverlayCanvas for drawing
-     * @param input Frame input state
+     * @param input Input state
      * @param screenWidth Screen width in logical pixels
      * @param screenHeight Screen height in logical pixels
      * @param style UI style for colors and layout
      */
-    void render(OverlayCanvas& canvas, const FrameInput& input,
+    void render(OverlayCanvas& canvas, const gui::InputState& input,
                 float screenWidth, float screenHeight, const UIStyle& style);
 
     /// @}
@@ -291,6 +291,19 @@ public:
      */
     bool loadLayout(const std::string& path);
 
+    /**
+     * @brief Save layout to JSON string
+     * @return JSON string representing the layout
+     */
+    std::string saveLayoutToString() const;
+
+    /**
+     * @brief Load layout from JSON string
+     * @param json JSON string to load
+     * @return true on success
+     */
+    bool loadLayoutFromString(const std::string& json);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Docking System
@@ -334,18 +347,33 @@ public:
      */
     void showPanelFromSlot(const std::string& id);
 
+    /**
+     * @brief Get the current layout version
+     *
+     * Used by TreeSlot to detect when the layout has changed since capture.
+     */
+    int layoutVersion() const { return m_layoutVersion; }
+
+    /**
+     * @brief Increment the layout version
+     *
+     * Call this when the layout tree structure changes (panels added/removed,
+     * splits created/removed, etc.) to invalidate saved TreeSlots.
+     */
+    void incrementLayoutVersion() { ++m_layoutVersion; }
+
     /// @}
 
 private:
-    void renderFlatMode(OverlayCanvas& canvas, const FrameInput& input, float scale, const UIStyle& style);
-    void renderLayoutMode(OverlayCanvas& canvas, const FrameInput& input, float scale, const UIStyle& style);
+    void renderFlatMode(OverlayCanvas& canvas, const gui::InputState& input, float scale, const UIStyle& style);
+    void renderLayoutMode(OverlayCanvas& canvas, const gui::InputState& input, float scale, const UIStyle& style);
 
     /**
      * @brief Determine which panel owns input this frame
-     * @param input Frame input state
+     * @param input Input state
      * @return Panel ID that should receive input, or empty string if none
      */
-    std::string determineInputTarget(const FrameInput& input);
+    std::string determineInputTarget(const gui::InputState& input);
 
     std::vector<std::unique_ptr<Panel>> m_panels;
     std::unordered_map<std::string, Panel*> m_panelMap;
@@ -373,6 +401,10 @@ private:
 
     // Docking system
     std::unique_ptr<DockManager> m_dockManager;
+
+    // Layout version for TreeSlot validation
+    // Incremented when the layout tree structure changes
+    int m_layoutVersion = 0;
 
     // Tree slot storage for hidden panels (panel ID -> tree slot)
     std::unordered_map<std::string, TreeSlot> m_savedTreeSlots;

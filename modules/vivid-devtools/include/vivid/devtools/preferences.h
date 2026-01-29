@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <map>
 #include <functional>
 
 namespace vivid {
@@ -194,6 +195,57 @@ public:
     void setFileBrowserVisible(bool v) { m_fileBrowserVisible = v; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Layout Presets
+    /// @{
+
+    /**
+     * @brief Get a layout preset by name
+     * @param name Preset name
+     * @return Layout JSON string, or empty string if not found
+     */
+    std::string getLayoutPreset(const std::string& name) const;
+
+    /**
+     * @brief Set a layout preset
+     * @param name Preset name
+     * @param layoutJson Layout JSON string
+     */
+    void setLayoutPreset(const std::string& name, const std::string& layoutJson);
+
+    /**
+     * @brief Delete a layout preset
+     * @param name Preset name
+     */
+    void deleteLayoutPreset(const std::string& name);
+
+    /**
+     * @brief Get all layout preset names
+     * @return Vector of preset names
+     */
+    std::vector<std::string> getLayoutPresetNames() const;
+
+    /**
+     * @brief Get the active preset name
+     */
+    const std::string& activePreset() const { return m_activePreset; }
+
+    /**
+     * @brief Set the active preset name
+     */
+    void setActivePreset(const std::string& name);
+
+    /**
+     * @brief Get the last used preset name (for startup restoration)
+     */
+    const std::string& lastUsedPreset() const { return m_lastUsedPreset; }
+
+    /**
+     * @brief Set the last used preset name
+     */
+    void setLastUsedPreset(const std::string& name);
+
+    /// @}
 
 private:
     Preferences() = default;
@@ -226,6 +278,11 @@ private:
     // File browser session
     std::set<std::string> m_expandedFolders;
     bool m_fileBrowserVisible = false;
+
+    // Layout presets (name -> JSON string)
+    std::map<std::string, std::string> m_layoutPresets;
+    std::string m_activePreset = "Default";
+    std::string m_lastUsedPreset = "Default";
 
     // Callbacks
     StyleChangeCallback m_styleChangeCallback;

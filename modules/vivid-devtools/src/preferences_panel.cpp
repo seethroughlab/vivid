@@ -18,7 +18,7 @@ void PreferencesPanel::onChar(uint32_t codepoint) {
 }
 
 void PreferencesPanel::renderContent(OverlayCanvas& canvas, const glm::vec4& contentBounds,
-                                      const FrameInput& input, const UIStyle& style) {
+                                      const gui::InputState& input, const UIStyle& style) {
     // All dimensions in logical pixels - canvas handles scaling
     float x = contentBounds.x;
     float y = contentBounds.y;
@@ -46,7 +46,7 @@ void PreferencesPanel::renderContent(OverlayCanvas& canvas, const glm::vec4& con
     }
 }
 
-bool PreferencesPanel::handleContentInput(const FrameInput& input, const glm::vec4& contentBounds) {
+bool PreferencesPanel::handleContentInput(const gui::InputState& input, const glm::vec4& contentBounds) {
     glm::vec2 mousePos = input.mousePos;
     bool leftMouseDown = input.mouseDown[0];
     bool leftMouseClicked = leftMouseDown && !m_lastMouseDown;
@@ -125,7 +125,7 @@ void PreferencesPanel::renderTabs(OverlayCanvas& canvas, float x, float y, float
 }
 
 void PreferencesPanel::renderAppearanceTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                                            const FrameInput& input, const UIStyle& style) {
+                                            const gui::InputState& input, const UIStyle& style) {
     float x = bounds.x;
     float y = bounds.y;
     float w = bounds.z;
@@ -248,7 +248,7 @@ void PreferencesPanel::renderAppearanceTab(OverlayCanvas& canvas, const glm::vec
 }
 
 void PreferencesPanel::renderShortcutsTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                                           const FrameInput& input, const UIStyle& style) {
+                                           const gui::InputState& input, const UIStyle& style) {
     float x = bounds.x;
     float y = bounds.y;
     float w = bounds.z;
@@ -310,7 +310,7 @@ void PreferencesPanel::renderShortcutsTab(OverlayCanvas& canvas, const glm::vec4
 }
 
 void PreferencesPanel::renderLayoutTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                                        const FrameInput& input, const UIStyle& style) {
+                                        const gui::InputState& input, const UIStyle& style) {
     float x = bounds.x;
     float y = bounds.y;
     float w = bounds.z;
@@ -375,7 +375,7 @@ void PreferencesPanel::renderLayoutTab(OverlayCanvas& canvas, const glm::vec4& b
 
 bool PreferencesPanel::renderButton(OverlayCanvas& canvas, const std::string& label,
                                      float x, float y, float w, float h,
-                                     const UIStyle& style, const FrameInput& input,
+                                     const UIStyle& style, const gui::InputState& input,
                                      bool selected) {
     // Input is in logical pixels
     glm::vec2 mousePos = input.mousePos;
@@ -414,7 +414,7 @@ bool PreferencesPanel::renderButton(OverlayCanvas& canvas, const std::string& la
 
 bool PreferencesPanel::renderSlider(OverlayCanvas& canvas, const std::string& label,
                                      float x, float y, float w, float h,
-                                     const UIStyle& style, const FrameInput& input,
+                                     const UIStyle& style, const gui::InputState& input,
                                      float* value, float minVal, float maxVal) {
     bool changed = false;
     glm::vec2 mousePos = input.mousePos;

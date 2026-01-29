@@ -34,8 +34,8 @@ public:
     bool init(Context& ctx, WGPUTextureFormat surfaceFormat) override;
     void shutdown() override;
     void render(OverlayCanvas& canvas, const glm::vec4& bounds,
-               const FrameInput& input, const UIStyle& style) override;
-    bool handleInput(const FrameInput& input) override;
+               const gui::InputState& input, const UIStyle& style) override;
+    bool handleInput(const gui::InputState& input) override;
     void onChar(uint32_t codepoint) override;
     void onKeyDown(int key, int mods) override;
 
@@ -185,8 +185,8 @@ private:
 
     // Tab bar rendering helpers
     void renderTabBar(OverlayCanvas& canvas, float x, float y, float w,
-                      const FrameInput& input, const UIStyle& style);
-    bool handleTabBarInput(const FrameInput& input, float x, float y, float w, float tabHeight);
+                      const gui::InputState& input, const UIStyle& style);
+    bool handleTabBarInput(const gui::InputState& input, float x, float y, float w, float tabHeight);
 };
 
 } // namespace vivid

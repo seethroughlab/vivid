@@ -52,8 +52,8 @@ public:
     void shutdown() override;
     void update() override;
     void render(OverlayCanvas& canvas, const glm::vec4& bounds,
-               const FrameInput& input, const UIStyle& style) override;
-    bool handleInput(const FrameInput& input) override;
+               const gui::InputState& input, const UIStyle& style) override;
+    bool handleInput(const gui::InputState& input) override;
     void onChar(uint32_t codepoint) override;
     void onKeyDown(int key, int mods) override;
 

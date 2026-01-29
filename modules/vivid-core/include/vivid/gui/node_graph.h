@@ -13,7 +13,7 @@
  * Renders using OverlayCanvas for direct screen drawing.
  */
 
-#include <vivid/frame_input.h>
+#include <vivid/gui/input_state.h>
 #include <glm/glm.hpp>
 #include <string>
 #include <vector>
@@ -200,15 +200,15 @@ public:
      * @param canvas OverlayCanvas to draw to
      * @param width Editor width in logical pixels
      * @param height Editor height in logical pixels
-     * @param input Frame input state
+     * @param input Input state
      * @param inputEnabled Whether this panel owns input (false blocks all interaction)
      */
     void beginEditor(OverlayCanvas& canvas, float width, float height,
-                     const FrameInput& input, bool inputEnabled);
+                     const gui::InputState& input, bool inputEnabled);
 
     /**
      * @brief Begin a new editor frame (legacy API)
-     * @deprecated Use the FrameInput version instead
+     * @deprecated Use the InputState version instead
      */
     void beginEditor(OverlayCanvas& canvas, float width, float height, const NodeGraphInput& input);
 

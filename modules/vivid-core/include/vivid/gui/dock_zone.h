@@ -104,6 +104,9 @@ struct DragState {
  *
  * Used to restore a panel to its previous position after hiding/showing.
  * Captures enough information to reconstruct the panel's location.
+ *
+ * Includes version tracking to detect when the layout has changed since
+ * the slot was captured (making restoration unreliable).
  */
 struct TreeSlot {
     enum class Type {
@@ -116,6 +119,7 @@ struct TreeSlot {
     Type type = Type::None;
     std::string groupId;          ///< ID of containing PanelGroup (for Group type)
     int tabIndex = -1;            ///< Tab position in group
+    int captureVersion = 0;       ///< Layout version when captured (for validation)
 
     // For Leaf type: info to recreate split
     struct SplitInfo {
@@ -138,6 +142,7 @@ struct TreeSlot {
         type = Type::None;
         groupId.clear();
         tabIndex = -1;
+        captureVersion = 0;
         splitInfo = SplitInfo{};
     }
 };

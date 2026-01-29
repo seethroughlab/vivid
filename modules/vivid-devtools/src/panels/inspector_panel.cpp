@@ -83,7 +83,7 @@ void InspectorPanel::shutdown() {
 }
 
 void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                             const FrameInput& input, const UIStyle& style) {
+                             const gui::InputState& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) return;
 
     glm::vec4 renderBounds = beginRender(input, bounds);
@@ -644,7 +644,7 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     gui.endArea();
 }
 
-bool InspectorPanel::handleInput(const FrameInput& input) {
+bool InspectorPanel::handleInput(const gui::InputState& input) {
     // Input is handled through the Gui widgets in render()
     return false;
 }
