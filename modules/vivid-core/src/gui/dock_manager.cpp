@@ -728,6 +728,8 @@ bool DockManager::removePanelFromLayout(Panel* panel) {
 void DockManager::cleanupEmptyNodes() {
     if (!m_panelManager || !m_panelManager->layoutRoot()) return;
 
+    std::cerr << "[DockManager] cleanupEmptyNodes called\n";
+
     // This is tricky because we can't modify the tree while traversing
     // We'll do multiple passes until no changes
     bool changed = true;
@@ -748,17 +750,23 @@ void DockManager::cleanupEmptyNodes() {
             }
         });
 
+        std::cerr << "[DockManager] Found " << emptyGroups.size() << " empty groups\n";
+
         // Remove empty groups
         for (auto* group : emptyGroups) {
             bool isFirst;
             SplitContainer* parent = findParent(group, isFirst);
+            std::cerr << "[DockManager] Empty group parent=" << parent
+                      << " isFirst=" << isFirst << "\n";
             if (parent) {
                 // Don't collapse non-resizable splits (e.g., status bar split)
                 // These are structural and should remain even when one side is empty
                 if (!parent->isResizable()) {
+                    std::cerr << "[DockManager] Skipping - parent not resizable\n";
                     continue;
                 }
 
+                std::cerr << "[DockManager] Collapsing split\n";
                 // Replace parent with the other child
                 auto otherChild = isFirst ? parent->releaseSecond() : parent->releaseFirst();
                 replaceInParent(parent, std::move(otherChild));

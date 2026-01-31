@@ -1170,6 +1170,11 @@ void PanelManager::hidePanelWithSlot(const std::string& id, bool saveSlot) {
     Panel* panel = getPanel(id);
     if (!panel) return;
 
+    std::cerr << "[PanelManager] hidePanelWithSlot: " << id
+              << " saveSlot=" << saveSlot
+              << " m_dockManager=" << (m_dockManager ? "yes" : "no")
+              << " m_layoutMode=" << m_layoutMode << "\n";
+
     if (saveSlot && m_dockManager && m_layoutMode) {
         // Save tree slot for restoration (stored in Panel's own state)
         TreeSlot slot = m_dockManager->captureTreeSlot(panel);
