@@ -5,6 +5,7 @@
 #include <vivid/gui/panel_manager.h>
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <cstring>
 
 namespace vivid {
 
