@@ -4,53 +4,36 @@
  * @file panel.h
  * @brief Abstract Panel base class for devtools panels
  *
- * All devtools panels (Terminal, Editor, NodeGraph, Inspector) inherit from this base.
+ * All devtools panels (NodeGraph, Inspector, Performance, StatusBar) inherit from this base.
  * Provides common functionality: drag/resize, focus management, visibility control.
  */
 
 #include <vivid/gui/overlay_canvas.h>
-#include <vivid/gui/dock_zone.h>
 #include <vivid/gui/input_state.h>
 #include <glm/glm.hpp>
 #include <string>
-#include <functional>
 
 namespace vivid {
 
 class Context;  // Forward declaration
 
 /**
- * @brief Dock position for panels
+ * @brief Layout role for panels
  */
-enum class DockSide {
-    None,       ///< Floating panel (can be anywhere)
-    Left,       ///< Docked to left edge
-    Right,      ///< Docked to right edge
-    Top,        ///< Docked to top edge
-    Bottom,     ///< Docked to bottom edge
-    Fill        ///< Fills available space (like NodeGraph)
-};
-
-/**
- * @brief Panel visibility/location state
- *
- * Consolidates panel state into a single authoritative location.
- * This is the source of truth for whether a panel is visible and how.
- */
-enum class PanelLocation {
-    Hidden,     ///< Not visible (position may be saved for restoration)
-    Docked,     ///< Visible in layout tree (PanelGroup or as child of split)
-    Floating    ///< Visible as independent floating window
+enum class PanelRole {
+    Floating,      ///< Free-floating panel with title bar, drag/resize, z-ordering
+    StatusBar,     ///< Fixed to top edge, full width, no title bar
+    Background     ///< Fills remaining space behind everything, no title bar
 };
 
 /**
  * @brief Panel configuration
  */
 struct PanelConfig {
-    std::string id;           ///< Unique identifier (e.g., "terminal", "inspector")
-    std::string title;        ///< Display title (e.g., "Terminal", "Inspector")
+    std::string id;           ///< Unique identifier (e.g., "nodegraph", "inspector")
+    std::string title;        ///< Display title (e.g., "NodeGraph", "Inspector")
     glm::vec4 bounds;         ///< Position and size (x, y, w, h) in logical pixels
-    DockSide dockSide;        ///< Dock position
+    PanelRole role;           ///< Layout role
     bool visible;             ///< Whether panel is visible
     bool resizable;           ///< Whether panel can be resized
     bool draggable;           ///< Whether panel can be dragged
@@ -183,7 +166,7 @@ public:
     /**
      * @brief Reset interaction state (dragging/resizing)
      *
-     * Call this when a panel is docked to clear stale drag state.
+     * Call this when a panel's layout changes to clear stale drag state.
      */
     void resetInteractionState() { m_dragResize.reset(); }
 
@@ -210,32 +193,11 @@ public:
     /**
      * @brief Control title bar visibility
      *
-     * Set to false when panel is in a tabbed group (tab bar shows title).
+     * Set to false for layout-managed panels (no title bar needed).
      * Set to true for floating panels.
      */
     void setShowTitleBar(bool show) { m_display.showTitleBar = show; }
     bool showTitleBar() const { return m_display.showTitleBar; }
-
-    /**
-     * @brief Control rounded corners at the top
-     *
-     * Set to true when panel is docked at an edge (no rounded corners at top).
-     * Set to false for floating panels (rounded corners on all sides).
-     */
-    void setSquareTopCorners(bool square) { m_display.squareTopCorners = square; }
-    bool squareTopCorners() const { return m_display.squareTopCorners; }
-
-    /**
-     * @brief Set callback for when close button is clicked
-     */
-    using CloseCallback = std::function<void(Panel*)>;
-    void setOnClose(CloseCallback callback) { m_onClose = std::move(callback); }
-
-    /**
-     * @brief Check if close button was clicked this frame
-     * Call from render() after renderChrome() to check if panel should close
-     */
-    bool closeButtonClicked() const { return m_closeButton.clicked; }
 
     /**
      * @brief Input ownership model
@@ -246,47 +208,6 @@ public:
      */
     void setInputOwnership(bool owns) { m_inputRouting.ownsInput = owns; }
     bool ownsInput() const { return m_inputRouting.ownsInput; }
-
-    /// @}
-    // -------------------------------------------------------------------------
-    /// @name Location State (consolidated state management)
-    /// @{
-
-    /**
-     * @brief Get the current panel location
-     */
-    PanelLocation location() const { return m_location; }
-
-    /**
-     * @brief Set the panel location
-     *
-     * Updates visibility automatically based on location:
-     * - Hidden: visible = false
-     * - Docked/Floating: visible = true
-     */
-    void setLocation(PanelLocation loc) {
-        m_location = loc;
-        m_config.visible = (loc != PanelLocation::Hidden);
-    }
-
-    /**
-     * @brief Get saved tree slot for restoration
-     *
-     * When a panel is hidden from a docked position, its tree slot
-     * is saved so it can be restored to the same location later.
-     */
-    const TreeSlot& savedTreeSlot() const { return m_savedTreeSlot; }
-    TreeSlot& savedTreeSlot() { return m_savedTreeSlot; }
-    void setSavedTreeSlot(const TreeSlot& slot) { m_savedTreeSlot = slot; }
-
-    /**
-     * @brief Get saved floating bounds for restoration
-     *
-     * When a panel is hidden from a floating position, its bounds
-     * are saved so it can be restored to the same location later.
-     */
-    const glm::vec4& savedFloatBounds() const { return m_savedFloatBounds; }
-    void setSavedFloatBounds(const glm::vec4& bounds) { m_savedFloatBounds = bounds; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -354,38 +275,22 @@ protected:
 
     /// Display options (affect rendering)
     struct DisplayOptions {
-        bool showTitleBar = true;       ///< False when in tabbed group
-        bool squareTopCorners = false;  ///< True when docked
+        bool showTitleBar = true;       ///< False for layout-managed panels
     };
     DisplayOptions m_display;
-
-    /// Close button state
-    struct CloseButtonState {
-        bool clicked = false;   ///< Clicked this frame
-        bool hovered = false;   ///< Mouse is over button
-    };
-    CloseButtonState m_closeButton;
-    CloseCallback m_onClose;
 
     /// Mouse tracking for click detection
     bool m_lastMouseDown = false;
 
-    /// Location state (consolidated source of truth)
-    PanelLocation m_location = PanelLocation::Docked;
-
-    /// Saved state for restoration
-    TreeSlot m_savedTreeSlot;              ///< Where to restore when showing (if hidden from docked)
-    glm::vec4 m_savedFloatBounds = {0, 0, 0, 0};  ///< Bounds when last floating
-
     /**
-     * @brief Resolve render bounds for floating vs docked panels
+     * @brief Resolve render bounds for floating vs layout-managed panels
      *
      * Call this at the start of render() to get the correct bounds to use.
      * For floating panels (m_showTitleBar = true): handles drag/resize and returns m_config.bounds
-     * For docked panels: returns passed bounds and sets m_hovered state
+     * For layout-managed panels: returns passed bounds and sets m_hovered state
      *
      * @param input Input state
-     * @param bounds Bounds passed from parent (used when docked)
+     * @param bounds Bounds passed from parent (used for layout-managed panels)
      * @return The bounds to use for rendering
      */
     glm::vec4 beginRender(const gui::InputState& input, const glm::vec4& bounds);
@@ -400,13 +305,11 @@ protected:
      * @param h Panel height in logical pixels
      * @param style UI style for colors
      * @param showTitleBar Whether to render title bar
-     * @param input Input state for close button click detection (optional)
      *
      * All coordinates are in logical pixels. The canvas handles scaling internally.
      */
     void renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
-                      const UIStyle& style, bool showTitleBar = true,
-                      const gui::InputState* input = nullptr);
+                      const UIStyle& style, bool showTitleBar = true);
 };
 
 } // namespace vivid

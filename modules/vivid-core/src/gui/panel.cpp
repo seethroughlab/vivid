@@ -12,7 +12,7 @@ Panel::Panel() {
     m_config.id = "";
     m_config.title = "";
     m_config.bounds = {20, 60, 400, 300};
-    m_config.dockSide = DockSide::None;
+    m_config.role = PanelRole::Floating;
     m_config.visible = false;
     m_config.resizable = true;
     m_config.draggable = true;
@@ -140,7 +140,7 @@ glm::vec4 Panel::beginRender(const gui::InputState& input, const glm::vec4& boun
         handleDragAndResize(input, screenW, screenH);
         return m_config.bounds;
     } else {
-        // Docked panel - use bounds from parent container
+        // Layout-managed panel - use bounds from parent container
         // Set hover state (normally done in handleDragAndResize)
         m_focus.hovered = input.mousePos.x >= bounds.x && input.mousePos.x <= bounds.x + bounds.z &&
                           input.mousePos.y >= bounds.y && input.mousePos.y <= bounds.y + bounds.w;
@@ -149,25 +149,17 @@ glm::vec4 Panel::beginRender(const gui::InputState& input, const glm::vec4& boun
 }
 
 void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
-                          const UIStyle& style, bool showTitleBar,
-                          const gui::InputState* input) {
-    // Reset close button state
-    m_closeButton.clicked = false;
-
+                          const UIStyle& style, bool showTitleBar) {
     // All dimensions in logical pixels - canvas handles scaling
     float cornerRadius = style.panelCornerRadius();
-    float titleBarHeight = style.titleBarHeight();
-
-    // Use square corners when docked to edge (no rounded corners at top)
-    float effectiveRadius = m_display.squareTopCorners ? 0.0f : cornerRadius;
 
     // Background - use fully opaque to prevent bleed-through
     glm::vec4 bgColor = style.panelBg;
     bgColor.a = 1.0f;  // Force opaque
 
-    if (effectiveRadius > 0.0f) {
-        canvas.fillRoundedRect(x, y, w, h, effectiveRadius, bgColor);
-        canvas.strokeRoundedRect(x, y, w, h, effectiveRadius, 1.0f, style.panelBorder);
+    if (cornerRadius > 0.0f) {
+        canvas.fillRoundedRect(x, y, w, h, cornerRadius, bgColor);
+        canvas.strokeRoundedRect(x, y, w, h, cornerRadius, 1.0f, style.panelBorder);
     } else {
         canvas.fillRect(x, y, w, h, bgColor);
         canvas.strokeRect(x, y, w, h, 1.0f, style.panelBorder);
@@ -177,53 +169,11 @@ void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float
     if (showTitleBar) {
         glm::vec4 headerColor = style.headerBg;
         headerColor.a = 1.0f;  // Force opaque
-        if (m_display.squareTopCorners) {
-            // Square corners at top
-            canvas.fillRect(x, y, w, titleBarHeight, headerColor);
-        } else {
-            canvas.fillRoundedRectTop(x, y, w, titleBarHeight, cornerRadius, headerColor);
-        }
+        canvas.fillRoundedRectTop(x, y, w, style.titleBarHeight(), cornerRadius, headerColor);
 
         // Title text
         canvas.text(m_config.title, x + 10, y + 18,
                     style.textPrimary, 0);
-
-        // Close button (X) on right side
-        float closeSize = 8.0f;
-        float closePadding = 12.0f;
-        float closeX = x + w - closePadding - closeSize;
-        float closeY = y + titleBarHeight / 2;
-
-        // Check hover and click
-        m_closeButton.hovered = false;
-        if (input) {
-            float hitPadding = 4.0f;
-            bool overClose = input->mousePos.x >= closeX - closeSize - hitPadding &&
-                             input->mousePos.x <= closeX + closeSize + hitPadding &&
-                             input->mousePos.y >= closeY - closeSize - hitPadding &&
-                             input->mousePos.y <= closeY + closeSize + hitPadding;
-
-            if (overClose) {
-                m_closeButton.hovered = true;
-                if (input->mouseClicked[0]) {
-                    m_closeButton.clicked = true;
-                    if (m_onClose) {
-                        m_onClose(this);
-                    }
-                }
-            }
-        }
-
-        // Draw X with hover effect
-        glm::vec4 closeColor = m_closeButton.hovered
-            ? glm::vec4(1.0f, 0.4f, 0.4f, 1.0f)  // Red on hover
-            : style.textDim;
-        float lineWidth = m_closeButton.hovered ? 2.0f : 1.5f;
-
-        canvas.line(closeX - closeSize, closeY - closeSize,
-                    closeX + closeSize, closeY + closeSize, lineWidth, closeColor);
-        canvas.line(closeX + closeSize, closeY - closeSize,
-                    closeX - closeSize, closeY + closeSize, lineWidth, closeColor);
     }
 }
 

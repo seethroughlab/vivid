@@ -57,9 +57,6 @@ namespace vivid {
 // Thread-local interaction state (persists across frames, thread-safe)
 thread_local Gui::InteractionState Gui::s_state;
 
-// Thread-local mouse state tracking for click detection
-static thread_local bool s_lastMouseDown = false;
-
 // -------------------------------------------------------------------------
 // Construction
 // -------------------------------------------------------------------------
@@ -91,10 +88,9 @@ Gui::Gui(OverlayCanvas& canvas, const FrameInput& input)
     : m_canvas(canvas)
     , m_input(toInputState(input))
 {
-    // Track mouse state for click detection
-    m_mouseClicked = input.mouseDown[0] && !s_lastMouseDown;
-    m_mouseReleased = !input.mouseDown[0] && s_lastMouseDown;
-    s_lastMouseDown = input.mouseDown[0];
+    // Use input system's per-frame click/release detection
+    m_mouseClicked = input.mouseClicked[0];
+    m_mouseReleased = input.mouseReleased[0];
     m_mousePos = input.mousePos;
 }
 
@@ -102,10 +98,9 @@ Gui::Gui(OverlayCanvas& canvas, const gui::InputState& input)
     : m_canvas(canvas)
     , m_input(input)
 {
-    // Track mouse state for click detection
-    m_mouseClicked = input.mouseDown[0] && !s_lastMouseDown;
-    m_mouseReleased = !input.mouseDown[0] && s_lastMouseDown;
-    s_lastMouseDown = input.mouseDown[0];
+    // Use input system's per-frame click/release detection
+    m_mouseClicked = input.mouseClicked[0];
+    m_mouseReleased = input.mouseReleased[0];
     m_mousePos = input.mousePos;
 }
 

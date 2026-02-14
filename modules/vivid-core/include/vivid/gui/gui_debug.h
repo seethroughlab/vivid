@@ -16,7 +16,6 @@ namespace vivid {
 
 // Forward declarations
 class PanelManager;
-class DockManager;
 class Panel;
 
 namespace gui {
@@ -36,7 +35,7 @@ bool isDebugEnabled();
 
 /**
  * @brief Log a state transition
- * @param component Component name (e.g., "PanelManager", "DockManager", "TreeSlot")
+ * @param component Component name (e.g., "PanelManager")
  * @param from Previous state description
  * @param to New state description
  * @param reason Reason for transition (panel ID, etc.)
@@ -63,12 +62,6 @@ void logDebug(const char* component, const char* message, const std::string& val
 /**
  * @brief Dump current panel states to stderr
  * @param pm PanelManager to dump
- *
- * Shows for each panel:
- * - ID, visibility, focus state
- * - Location (docked/floating/hidden)
- * - Saved tree slot info (if hidden)
- * - Position in floating z-order (if floating)
  */
 void dumpPanelStates(const PanelManager& pm);
 
@@ -76,27 +69,8 @@ void dumpPanelStates(const PanelManager& pm);
  * @brief Validate state consistency
  * @param pm PanelManager to validate
  * @return Number of issues found (0 = consistent)
- *
- * Checks:
- * - Panel.visible matches presence in layout tree or floating list
- * - No panel appears in both layout tree and floating list
- * - Floating z-order contains only valid panel IDs
- * - Saved tree slots reference valid groups
- * - No duplicate panel IDs
  */
 int validateState(const PanelManager& pm);
-
-/**
- * @brief Validate dock manager state
- * @param dm DockManager to validate
- * @return Number of issues found (0 = consistent)
- *
- * Checks:
- * - Drag state consistency
- * - Drop zones validity
- * - Layout tree integrity
- */
-int validateDockState(const DockManager& dm);
 
 } // namespace gui
 } // namespace vivid
