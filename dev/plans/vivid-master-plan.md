@@ -165,26 +165,32 @@ Two audiences share the same underlying architecture:
 
 ### 3.2 Event Injection & Scripted Playback
 
-- [ ] **EventInjector class** — Read timeline scripts, feed synthetic events into Context
-  - Support: param_set, key_press, trigger (start here)
-  - Later: param_ramp, midi_note, midi_cc, mouse_move
-- [ ] **Playback script format** (YAML) — Duration, resolution, FPS, timed events
-- [ ] **YAML parser** for playback scripts
-- [ ] **Script validation** — Warn on events targeting nonexistent operators/params
+- [x] **EventInjector class** — `src/cli/event_injector.cpp`
+  - Supports: param_set, param_ramp, key_press, key_release, trigger, midi_note, midi_note_off, mouse_move
+  - JSON playback script format with duration, fps, resolution, codec, audio settings
+  - Events sorted by frame for efficient processing; ramps interpolated per-frame
+  - Key name → GLFW keycode mapping (letters, numbers, arrows, modifiers, F-keys)
+- [x] **Playback script format** (JSON) — Duration, resolution, FPS, codec, audio, timed events
+- [x] **Script validation** — Warns on events targeting nonexistent operators/params
 
 ### 3.3 `vivid export` CLI Command
 
-- [ ] **CLI subcommand** for headless A/V export
-  - `vivid export path/to/project --script script.yaml --duration 30 --resolution 1920x1080 --fps 60 --output preview.mp4`
-  - Quick preview mode (lower res, shorter)
-  - Audio-only export option
+- [x] **CLI subcommand** for headless A/V export — `src/cli/cli.cpp`
+  - `vivid export path/to/project -o out.mp4 --duration 10`
+  - `vivid export path/to/project -o out.mp4 --script events.json`
+  - Options: --duration, --fps, --resolution WxH, --codec, --audio, --quiet
+  - Deterministic timing via `ctx.setRecordingMode(true, fps)`
+  - Reuses existing VideoExporter + audio recording tap infrastructure
+  - Progress output with percentage (every 60 frames)
 
 ### 3.4 Project Manifest
 
-- [ ] **vivid-project.json** — Machine-readable project description
-  - Chain file path, preview settings
+- [x] **vivid-project.json** — `src/cli/project_manifest.cpp`
+  - Machine-readable project description (name, chain, preview settings)
+  - Preview defaults (duration, fps, resolution, default script)
   - Exposed parameters with ranges and descriptions
   - Assertion file reference
+  - Used by `vivid export` for default settings when no CLI flags provided
 
 ---
 
@@ -209,9 +215,9 @@ INNER LOOP (Part 2) — seconds, no human needed
   ← back to edit       move to outer loop
 
 OUTER LOOP (Part 3) — minutes, human reviews
-  LLM generates playback script                     ← NOT YET
+  LLM generates playback script (JSON)               ← IMPLEMENTED
        ↓
-  vivid export → video/audio file                   ← NOT YET
+  vivid export → video/audio file                    ← IMPLEMENTED
        ↓
   Agent sends to human
        ↓
@@ -238,7 +244,7 @@ OUTER LOOP (Part 3) — minutes, human reviews
 2. ~~Assertion system (vivid-assertions.json + vivid check)~~ ← DONE
 3. MIDI parameter mapping
 4. Preset/snapshot save/recall system
-5. EventInjector + playback scripts
-6. `vivid export` CLI command
+5. ~~EventInjector + playback scripts~~ ← DONE
+6. ~~`vivid export` CLI command~~ ← DONE
 7. ~~`vivid inspect` standalone CLI~~ ← DONE
-8. Project manifest (vivid-project.json)
+8. ~~Project manifest (vivid-project.json)~~ ← DONE

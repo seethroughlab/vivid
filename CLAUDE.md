@@ -18,8 +18,17 @@ doxygen Doxyfile                          # Generate API docs
 ./build/bin/vivid <project-path> --snapshot output.png        # Capture single frame
 ./build/bin/vivid <project-path> --snapshot out.png --snapshot-frame 0-11  # Capture 12 frames for GIF
 ./build/bin/vivid <project-path> --snapshot out.png --snapshot-frame 0-30:5  # Every 5th frame
+./build/bin/vivid build <project-path>                         # Compile chain, report structured JSON errors
 ./build/bin/vivid check <project-path>                         # Run assertions, exit 0 (pass) or 1 (fail)
 ./build/bin/vivid inspect <project-path>                       # Dump inspection JSON to stdout
+./build/bin/vivid params <project-path>                        # List all tweakable parameters as JSON
+./build/bin/vivid graph <project-path>                         # Dump chain topology (operators, connections) as JSON
+./build/bin/vivid export <project-path> -o out.mp4 --duration 10  # Export video (headless)
+./build/bin/vivid export <project-path> -o out.mp4 --script events.json  # Export with scripted events
+./build/bin/vivid docs search "bloom"                          # Search documentation
+./build/bin/vivid docs recipe                                  # List all recipes
+./build/bin/vivid docs recipe feedback-loop                    # Show a specific recipe
+./build/bin/vivid docs example Noise                           # Code examples for an operator
 ./build/bin/vivid mcp                                         # Run MCP server for Claude Code
 ```
 
