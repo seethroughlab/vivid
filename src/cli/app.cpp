@@ -184,18 +184,8 @@ using ShowPanelFn = void(*)(const char* panelId);
 using HidePanelFn = void(*)(const char* panelId);
 using TogglePanelFn = void(*)(const char* panelId);
 using IsPanelVisibleFn = bool(*)(const char* panelId);
-using DockPanelFn = bool(*)(const char* panelId, const char* position);
-
-// IDE features
-using ToggleIdeFn = void(*)();
-using IsIdeVisibleFn = bool(*)();
-using SetIdeVisibleFn = void(*)(bool visible);
-using SetWorkingDirFn = void(*)(const char* path);
-using OpenFileFn = bool(*)(const char* path);
-using SetCompileStatusFn = void(*)(bool success, const char* message);
+// Window
 using SetWindowFn = void(*)(GLFWwindow* window);
-using GetIdeBoundsFn = void(*)(float* x, float* y, float* w, float* h);
-using SetIdeBoundsFn = void(*)(float x, float y, float w, float h);
 
 // Visualizer features
 using ToggleVisualizerFn = void(*)();
@@ -219,11 +209,6 @@ using SaveSnapshotFn = void(*)(void* ctx);
 using SnapshotRequestedFn = bool(*)();
 using GetExporterFn = void*(*)();
 
-// Console
-using SetCompileErrorsFn = void(*)(const void* errors, size_t count);
-using ClearCompileErrorsFn = void(*)();
-using ConsoleHasErrorsFn = bool(*)();
-
 // Shortcuts
 using SetFullscreenCallbackFn = void(*)(void (*)());
 using SetHelpCallbackFn = void(*)(void (*)());
@@ -242,16 +227,7 @@ static ShowPanelFn showPanel = nullptr;
 static HidePanelFn hidePanel = nullptr;
 static TogglePanelFn togglePanel = nullptr;
 static IsPanelVisibleFn isPanelVisible = nullptr;
-static DockPanelFn dockPanel = nullptr;
-static ToggleIdeFn toggleIde = nullptr;
-static IsIdeVisibleFn isIdeVisible = nullptr;
-static SetIdeVisibleFn setIdeVisible = nullptr;
-static SetWorkingDirFn setWorkingDir = nullptr;
-static OpenFileFn openFile = nullptr;
-static SetCompileStatusFn setCompileStatus = nullptr;
 static SetWindowFn setWindow = nullptr;
-static GetIdeBoundsFn getIdeBounds = nullptr;
-static SetIdeBoundsFn setIdeBounds = nullptr;
 static ToggleVisualizerFn toggleVisualizer = nullptr;
 static IsVisualizerVisibleFn isVisualizerVisible = nullptr;
 static EnterSoloFn enterSolo = nullptr;
@@ -268,9 +244,6 @@ static SetParamCallbackFn setParamCallback = nullptr;
 static SaveSnapshotFn saveSnapshot = nullptr;
 static SnapshotRequestedFn snapshotRequested = nullptr;
 static GetExporterFn getExporter = nullptr;
-static SetCompileErrorsFn setCompileErrors = nullptr;
-static ClearCompileErrorsFn clearCompileErrors = nullptr;
-static ConsoleHasErrorsFn consoleHasErrors = nullptr;
 static SetFullscreenCallbackFn setFullscreenCallback = nullptr;
 static SetHelpCallbackFn setHelpCallback = nullptr;
 
@@ -299,16 +272,7 @@ static void lookupFunctions() {
     hidePanel = (HidePanelFn)dlsym(RTLD_DEFAULT, "vivid_devtools_hide_panel");
     togglePanel = (TogglePanelFn)dlsym(RTLD_DEFAULT, "vivid_devtools_toggle_panel");
     isPanelVisible = (IsPanelVisibleFn)dlsym(RTLD_DEFAULT, "vivid_devtools_is_panel_visible");
-    dockPanel = (DockPanelFn)dlsym(RTLD_DEFAULT, "vivid_devtools_dock_panel");
-    toggleIde = (ToggleIdeFn)dlsym(RTLD_DEFAULT, "vivid_devtools_toggle_ide");
-    isIdeVisible = (IsIdeVisibleFn)dlsym(RTLD_DEFAULT, "vivid_devtools_is_ide_visible");
-    setIdeVisible = (SetIdeVisibleFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_ide_visible");
-    setWorkingDir = (SetWorkingDirFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_working_dir");
-    openFile = (OpenFileFn)dlsym(RTLD_DEFAULT, "vivid_devtools_open_file");
-    setCompileStatus = (SetCompileStatusFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_compile_status");
     setWindow = (SetWindowFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_window");
-    getIdeBounds = (GetIdeBoundsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_get_ide_bounds");
-    setIdeBounds = (SetIdeBoundsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_ide_bounds");
     toggleVisualizer = (ToggleVisualizerFn)dlsym(RTLD_DEFAULT, "vivid_devtools_toggle_visualizer");
     isVisualizerVisible = (IsVisualizerVisibleFn)dlsym(RTLD_DEFAULT, "vivid_devtools_is_visualizer_visible");
     enterSolo = (EnterSoloFn)dlsym(RTLD_DEFAULT, "vivid_devtools_enter_solo");
@@ -325,9 +289,6 @@ static void lookupFunctions() {
     saveSnapshot = (SaveSnapshotFn)dlsym(RTLD_DEFAULT, "vivid_devtools_save_snapshot");
     snapshotRequested = (SnapshotRequestedFn)dlsym(RTLD_DEFAULT, "vivid_devtools_snapshot_requested");
     getExporter = (GetExporterFn)dlsym(RTLD_DEFAULT, "vivid_devtools_get_exporter");
-    setCompileErrors = (SetCompileErrorsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_compile_errors");
-    clearCompileErrors = (ClearCompileErrorsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_clear_compile_errors");
-    consoleHasErrors = (ConsoleHasErrorsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_console_has_errors");
     setFullscreenCallback = (SetFullscreenCallbackFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_fullscreen_callback");
     setHelpCallback = (SetHelpCallbackFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_help_callback");
 #elif defined(_WIN32)
@@ -350,16 +311,7 @@ static void lookupFunctions() {
         hidePanel = (HidePanelFn)GetProcAddress(devtoolsModule, "vivid_devtools_hide_panel");
         togglePanel = (TogglePanelFn)GetProcAddress(devtoolsModule, "vivid_devtools_toggle_panel");
         isPanelVisible = (IsPanelVisibleFn)GetProcAddress(devtoolsModule, "vivid_devtools_is_panel_visible");
-        dockPanel = (DockPanelFn)GetProcAddress(devtoolsModule, "vivid_devtools_dock_panel");
-        toggleIde = (ToggleIdeFn)GetProcAddress(devtoolsModule, "vivid_devtools_toggle_ide");
-        isIdeVisible = (IsIdeVisibleFn)GetProcAddress(devtoolsModule, "vivid_devtools_is_ide_visible");
-        setIdeVisible = (SetIdeVisibleFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_ide_visible");
-        setWorkingDir = (SetWorkingDirFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_working_dir");
-        openFile = (OpenFileFn)GetProcAddress(devtoolsModule, "vivid_devtools_open_file");
-        setCompileStatus = (SetCompileStatusFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_compile_status");
         setWindow = (SetWindowFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_window");
-        getIdeBounds = (GetIdeBoundsFn)GetProcAddress(devtoolsModule, "vivid_devtools_get_ide_bounds");
-        setIdeBounds = (SetIdeBoundsFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_ide_bounds");
         toggleVisualizer = (ToggleVisualizerFn)GetProcAddress(devtoolsModule, "vivid_devtools_toggle_visualizer");
         isVisualizerVisible = (IsVisualizerVisibleFn)GetProcAddress(devtoolsModule, "vivid_devtools_is_visualizer_visible");
         enterSolo = (EnterSoloFn)GetProcAddress(devtoolsModule, "vivid_devtools_enter_solo");
@@ -376,9 +328,6 @@ static void lookupFunctions() {
         saveSnapshot = (SaveSnapshotFn)GetProcAddress(devtoolsModule, "vivid_devtools_save_snapshot");
         snapshotRequested = (SnapshotRequestedFn)GetProcAddress(devtoolsModule, "vivid_devtools_snapshot_requested");
         getExporter = (GetExporterFn)GetProcAddress(devtoolsModule, "vivid_devtools_get_exporter");
-        setCompileErrors = (SetCompileErrorsFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_compile_errors");
-        clearCompileErrors = (ClearCompileErrorsFn)GetProcAddress(devtoolsModule, "vivid_devtools_clear_compile_errors");
-        consoleHasErrors = (ConsoleHasErrorsFn)GetProcAddress(devtoolsModule, "vivid_devtools_console_has_errors");
         setFullscreenCallback = (SetFullscreenCallbackFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_fullscreen_callback");
         setHelpCallback = (SetHelpCallbackFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_help_callback");
     }
@@ -456,32 +405,6 @@ static void setupShortcutCallbacks(vivid::Context* ctx) {
     // Help callback can be set up later when we have a help panel
 }
 
-// IDE helpers
-static bool tryIsIdeVisible() {
-    if (!available() || !g_initialized || !isIdeVisible) return false;
-    return isIdeVisible();
-}
-
-static void trySetIdeVisible(bool visible) {
-    if (!available() || !g_initialized || !setIdeVisible) return;
-    setIdeVisible(visible);
-}
-
-static void trySetWorkingDir(const char* path) {
-    if (!available() || !g_initialized || !setWorkingDir) return;
-    setWorkingDir(path);
-}
-
-static bool tryOpenFile(const char* path) {
-    if (!available() || !g_initialized || !openFile) return false;
-    return openFile(path);
-}
-
-static void trySetCompileStatus(bool success, const char* message) {
-    if (!available() || !g_initialized || !setCompileStatus) return;
-    setCompileStatus(success, message);
-}
-
 static void trySetWindow(GLFWwindow* window) {
     if (!available() || !g_initialized || !setWindow) return;
     setWindow(window);
@@ -548,29 +471,9 @@ static void trySetParamCallback(void (*callback)(const char*, const char*, const
     setParamCallback(callback);
 }
 
-static void trySetCompileErrors(const void* errors, size_t count) {
-    if (!available() || !g_initialized || !setCompileErrors) return;
-    setCompileErrors(errors, count);
-}
-
-static void tryClearCompileErrors() {
-    if (!available() || !g_initialized || !clearCompileErrors) return;
-    clearCompileErrors();
-}
-
-static bool tryConsoleHasErrors() {
-    if (!available() || !g_initialized || !consoleHasErrors) return false;
-    return consoleHasErrors();
-}
-
 static bool tryIsPanelVisible(const char* panelId) {
     if (!available() || !g_initialized || !isPanelVisible) return false;
     return isPanelVisible(panelId);
-}
-
-static bool tryDockPanel(const char* panelId, const char* position) {
-    if (!available() || !g_initialized || !dockPanel) return false;
-    return dockPanel(panelId, position);
 }
 
 } // namespace vivid::devtools_dynamic
@@ -1157,12 +1060,6 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     if (mlc.hotReload->hasError()) {
         mlc.ctx->setError(mlc.hotReload->getError());
 
-        // Send structured errors to console panel (if devtools available)
-        if (devtools_dynamic::available()) {
-            const auto& errors = mlc.hotReload->getCompileErrors();
-            devtools_dynamic::trySetCompileErrors(errors.data(), errors.size());
-        }
-
         // Show prominent status banner on initial load failure
         if (!mlc.initialStatusShown) {
             std::cerr << "\n══════════════════════════════════════\n"
@@ -1179,11 +1076,6 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
     } else if (mlc.hotReload->isLoaded()) {
         mlc.ctx->clearError();
-
-        // Clear compile errors from console panel (if devtools available)
-        if (devtools_dynamic::available()) {
-            devtools_dynamic::tryClearCompileErrors();
-        }
 
         // Show prominent status banner on initial load success
         if (!mlc.initialStatusShown) {
@@ -1785,115 +1677,94 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     }
 #endif
 
-    // Handle IDE panel input and updates (if devtools module is loaded)
-    static bool nativeIdeInitialized = false;
+    // Handle devtools updates (if module is loaded)
     if (devtools_dynamic::available()) {
-        // Initialize IDE on first show (spawn terminal, open chain.cpp)
-        if (!nativeIdeInitialized && devtools_dynamic::tryIsIdeVisible()) {
-            fs::path chainPath = mlc.ctx->chainPath();
-            if (!chainPath.empty()) {
-                std::string projectDir = chainPath.parent_path().string();
-                devtools_dynamic::trySetWorkingDir(projectDir.c_str());
-                devtools_dynamic::tryOpenFile(chainPath.string().c_str());
-                std::cerr << "[vivid-devtools] Opened: " << chainPath << std::endl;
-            }
-            nativeIdeInitialized = true;
-        }
-
         devtools_dynamic::tryUpdate();
 
-        // Forward input to devtools (it handles focus internally)
-        for (uint32_t codepoint : mlc.ctx->characterInput()) {
-            devtools_dynamic::tryOnChar(codepoint);
-        }
-
-        // Forward key press events (for special keys: Enter, Backspace, arrows, etc.)
-        int mods = 0;
-        if (frameInput.keyCtrl) mods |= 0x2;
-        if (frameInput.keyShift) mods |= 0x1;
-        if (frameInput.keyAlt) mods |= 0x4;
-        if (frameInput.keySuper) mods |= 0x8;
-
-        // Forward special keys that were pressed this frame
-        static const int specialKeys[] = {
-            257,  // Enter
-            259,  // Backspace
-            258,  // Tab
-            256,  // Escape
-            265, 264, 263, 262,  // Arrow keys
-            268, 269,  // Home, End
-            266, 267,  // Page Up, Page Down
-            261,  // Delete
-            260,  // Insert
-            290,  // F1 (help shortcut)
-        };
-        for (int key : specialKeys) {
-            if (frameInput.keyPressed[key]) {
-                devtools_dynamic::tryOnKey(key, mods);
-            }
-        }
-
-        // Forward Cmd/Ctrl+letter combinations (for Ctrl+C, Ctrl+D, etc.)
-        // On macOS, use Super (Cmd); on Windows/Linux, use Ctrl
+        // Tilde/Backtick: Toggle devtools visibility (always active)
 #ifdef __APPLE__
         bool hasCmdOrCtrl = frameInput.keySuper;
 #else
         bool hasCmdOrCtrl = frameInput.keyCtrl;
 #endif
+        if (frameInput.keyPressed[GLFW_KEY_GRAVE_ACCENT] && !hasCmdOrCtrl) {
+            mlc.visualizerVisible = !mlc.visualizerVisible;
+        }
 
-        // Built-in shortcuts (always available, even without devtools)
+        // Built-in shortcuts (always available, even without devtools visible)
         if (hasCmdOrCtrl && frameInput.keyPressed[GLFW_KEY_F]) {
             // Cmd/Ctrl+F: Toggle fullscreen
             mlc.ctx->fullscreen(!mlc.ctx->fullscreen());
         }
 
-        if (hasCmdOrCtrl) {
-            // Forward A-Z keys to devtools (skip F since it's handled above)
-            for (int key = 65; key <= 90; key++) {  // A-Z (GLFW key codes)
-                if (key == GLFW_KEY_F) continue;  // Handled as built-in shortcut
-                if (frameInput.keyPressed[key]) {
-                    devtools_dynamic::tryOnKey(key, mods);
-                }
+        // Forward input to devtools only when visible
+        if (mlc.visualizerVisible) {
+            // Forward character input
+            for (uint32_t codepoint : mlc.ctx->characterInput()) {
+                devtools_dynamic::tryOnChar(codepoint);
             }
-            // Forward 0-9 keys (for Cmd+1..4 panel shortcuts)
-            for (int key = 48; key <= 57; key++) {  // 0-9 (GLFW key codes)
-                if (frameInput.keyPressed[key]) {
-                    devtools_dynamic::tryOnKey(key, mods);
-                }
-            }
-            // Forward comma key (for Cmd+, preferences shortcut)
-            if (frameInput.keyPressed[GLFW_KEY_COMMA]) {
-                devtools_dynamic::tryOnKey(GLFW_KEY_COMMA, mods);
-            }
-        }
 
-        // Also forward plain Ctrl+letter for terminal (Ctrl+C, Ctrl+D, etc.)
-        if (frameInput.keyCtrl && !frameInput.keySuper) {
-            for (int key = 65; key <= 90; key++) {  // A-Z
+            // Forward key press events (for special keys: Enter, Backspace, arrows, etc.)
+            int mods = 0;
+            if (frameInput.keyCtrl) mods |= 0x2;
+            if (frameInput.keyShift) mods |= 0x1;
+            if (frameInput.keyAlt) mods |= 0x4;
+            if (frameInput.keySuper) mods |= 0x8;
+
+            // Forward special keys that were pressed this frame
+            static const int specialKeys[] = {
+                257,  // Enter
+                259,  // Backspace
+                258,  // Tab
+                256,  // Escape
+                265, 264, 263, 262,  // Arrow keys
+                268, 269,  // Home, End
+                266, 267,  // Page Up, Page Down
+                261,  // Delete
+                260,  // Insert
+                290,  // F1 (help shortcut)
+            };
+            for (int key : specialKeys) {
                 if (frameInput.keyPressed[key]) {
                     devtools_dynamic::tryOnKey(key, mods);
                 }
             }
-        }
 
-        // Render devtools if we didn't already render in the visualizer block
-        if (!mlc.visualizerVisible) {
-            devtools_dynamic::tryRender(pass, &frameInput, mlc.ctx);
+            // Forward Cmd/Ctrl+letter combinations
+            if (hasCmdOrCtrl) {
+                // Forward A-Z keys to devtools (skip F since it's handled above)
+                for (int key = 65; key <= 90; key++) {  // A-Z (GLFW key codes)
+                    if (key == GLFW_KEY_F) continue;  // Handled as built-in shortcut
+                    if (frameInput.keyPressed[key]) {
+                        devtools_dynamic::tryOnKey(key, mods);
+                    }
+                }
+                // Forward 0-9 keys (for Cmd+1..4 panel shortcuts)
+                for (int key = 48; key <= 57; key++) {  // 0-9 (GLFW key codes)
+                    if (frameInput.keyPressed[key]) {
+                        devtools_dynamic::tryOnKey(key, mods);
+                    }
+                }
+                // Forward comma key (for Cmd+, preferences shortcut)
+                if (frameInput.keyPressed[GLFW_KEY_COMMA]) {
+                    devtools_dynamic::tryOnKey(GLFW_KEY_COMMA, mods);
+                }
+            }
+
+            // Also forward plain Ctrl+letter for terminal (Ctrl+C, Ctrl+D, etc.)
+            if (frameInput.keyCtrl && !frameInput.keySuper) {
+                for (int key = 65; key <= 90; key++) {  // A-Z
+                    if (frameInput.keyPressed[key]) {
+                        devtools_dynamic::tryOnKey(key, mods);
+                    }
+                }
+            }
         }
     }
 
-    // Render error message if present (fallback when console panel isn't showing errors)
+    // Render error message if present (bitmap font fallback)
     if (mlc.ctx->hasError() && mlc.display->isValid()) {
-        // Only show bitmap font if devtools console isn't handling the errors
-        bool consoleShowingErrors = false;
-        if (devtools_dynamic::available()) {
-            consoleShowingErrors = devtools_dynamic::tryConsoleHasErrors() &&
-                                   devtools_dynamic::tryIsPanelVisible("console");
-        }
-
-        if (!consoleShowingErrors) {
-            mlc.display->renderText(pass, mlc.ctx->errorMessage(), 20.0f, 20.0f, 2.0f);
-        }
+        mlc.display->renderText(pass, mlc.ctx->errorMessage(), 20.0f, 20.0f, 2.0f);
     }
 
     wgpuRenderPassEncoderEnd(pass);
@@ -2500,6 +2371,13 @@ int Application::init(const AppConfig& config) {
         return result;
     });
 
+    // MCP inspect_chain tool: return full introspection data from all operators
+    m_impl->editorBridge->onInspectChain([this]() -> std::string {
+        if (!m_impl->ctx || !m_impl->ctx->hasChain()) return "{}";
+        auto inspection = m_impl->ctx->chain().inspectAll(*m_impl->ctx);
+        return inspection.toJSON();
+    });
+
     // MCP get_frame_info tool: return current frame/time/fps
     m_impl->editorBridge->onRequestFrameInfo([this]() -> RuntimeAPI::FrameInfo {
         RuntimeAPI::FrameInfo info;
@@ -2835,11 +2713,6 @@ int Application::init(const AppConfig& config) {
     m_impl->editorBridge->onCaptureFrame([this](const std::string& outputPath) {
         std::lock_guard<std::mutex> lock(m_impl->mlc.mcpCaptureMutex);
         m_impl->mlc.mcpCaptureRequestPath = outputPath;
-    });
-
-    // MCP dock_panel callback - programmatically dock panels for UI testing
-    m_impl->editorBridge->onDockPanel([](const std::string& panelId, const std::string& position) {
-        return devtools_dynamic::tryDockPanel(panelId.c_str(), position.c_str());
     });
 
     // Extract project name and set up chain path

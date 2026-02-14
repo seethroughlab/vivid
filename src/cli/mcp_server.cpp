@@ -285,12 +285,6 @@ public:
         m_captureResultReceived = false;
     }
 
-    void clearDockPanelResult() {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_dockPanelResult = json::object();
-        m_dockPanelResultReceived = false;
-    }
-
     // Wait for compile status after connecting
     json waitForCompileStatus(int timeoutMs = 10000) {
         // Mark that we're waiting for compile status
@@ -349,39 +343,6 @@ public:
         result["success"] = false;
         result["error"] = "Timeout waiting for capture result";
         result["outputPath"] = outputPath;
-        return result;
-    }
-
-    // Send dock_panel command and wait for result
-    json dockPanel(const std::string& panelId, const std::string& position, int timeoutMs = 2000) {
-        // Clear any previous result
-        clearDockPanelResult();
-
-        // Send command
-        json cmd;
-        cmd["type"] = "dock_panel";
-        cmd["panel"] = panelId;
-        cmd["position"] = position;
-        m_ws.send(cmd.dump());
-
-        // Wait for dock_panel_result response (up to timeout)
-        auto start = std::chrono::steady_clock::now();
-        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
-            {
-                std::lock_guard<std::mutex> lock(m_mutex);
-                if (m_dockPanelResultReceived) {
-                    return m_dockPanelResult;
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-
-        // Timeout
-        json result;
-        result["success"] = false;
-        result["error"] = "Timeout waiting for dock_panel result";
-        result["panel"] = panelId;
-        result["position"] = position;
         return result;
     }
 
@@ -506,6 +467,36 @@ public:
         return result;
     }
 
+    // Request chain inspection and wait for response
+    json requestInspectChain(int timeoutMs = 10000) {
+        // Clear any previous result
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_inspectChainResult = json::object();
+            m_inspectChainResultReceived = false;
+        }
+
+        // Send request
+        sendCommand("inspect_chain");
+
+        // Wait for response
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_inspectChainResultReceived) {
+                    return m_inspectChainResult;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        // Timeout
+        json result;
+        result["error"] = "Timeout waiting for chain inspection";
+        return result;
+    }
+
     // Request frame info and wait for response
     json requestFrameInfo(int timeoutMs = 2000) {
         // Clear any previous result
@@ -604,15 +595,15 @@ private:
             } else if (type == "chain_structure") {
                 m_chainStructure = msg;
                 m_chainStructureReceived = true;
+            } else if (type == "inspect_chain") {
+                m_inspectChainResult = msg;
+                m_inspectChainResultReceived = true;
             } else if (type == "frame_info") {
                 m_frameInfo = msg;
                 m_frameInfoReceived = true;
             } else if (type == "reset_time_complete") {
                 m_resetTimeResult = msg;
                 m_resetTimeReceived = true;
-            } else if (type == "dock_panel_result") {
-                m_dockPanelResult = msg;
-                m_dockPanelResultReceived = true;
             }
         } catch (const json::exception& e) {
             std::cerr << "[MCP] JSON parse error: " << e.what() << "\n";
@@ -650,8 +641,8 @@ private:
     bool m_frameInfoReceived{false};
     json m_resetTimeResult = json::object();
     bool m_resetTimeReceived{false};
-    json m_dockPanelResult = json::object();
-    bool m_dockPanelResultReceived{false};
+    json m_inspectChainResult = json::object();
+    bool m_inspectChainResultReceived{false};
 
     // Connection state tracking
     std::string m_lastError;
@@ -1146,20 +1137,6 @@ private:
             }}
         });
 
-        // dock_panel - Programmatically dock a panel (for UI testing)
-        tools.push_back({
-            {"name", "dock_panel"},
-            {"description", "Dock a devtools panel to a specific position. Use this to programmatically control the UI layout for automated testing. Available panels: terminal, console, editor, nodegraph, inspector, filebrowser."},
-            {"inputSchema", {
-                {"type", "object"},
-                {"properties", {
-                    {"panel", {{"type", "string"}, {"description", "Panel ID: terminal, console, editor, nodegraph, inspector, filebrowser"}}},
-                    {"position", {{"type", "string"}, {"description", "Dock position: left, right, top, bottom, center, float"}}}
-                }},
-                {"required", json::array({"panel", "position"})}
-            }}
-        });
-
         // set_param - Set parameter on running operator immediately
         tools.push_back({
             {"name", "set_param"},
@@ -1236,6 +1213,16 @@ private:
         tools.push_back({
             {"name", "get_chain_structure"},
             {"description", "Get the structure of the running chain: operators, their types, input connections, and output types. Use this to understand what a project does without parsing code."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
+        // inspect_chain - Full introspection of running chain
+        tools.push_back({
+            {"name", "inspect_chain"},
+            {"description", "Get full introspection data from the running chain: per-operator metrics (params, computed values like rms/peak/energy), plus statistical analysis of the output texture (brightness, contrast, dominant color, histogram, spatial distribution). Use this to evaluate visual output and understand chain state for autonomous iteration."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", json::object()}
@@ -2459,43 +2446,6 @@ private:
             }
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
-        else if (name == "dock_panel") {
-            std::string panelId = args.value("panel", "");
-            std::string position = args.value("position", "");
-
-            if (panelId.empty() || position.empty()) {
-                result["isError"] = true;
-                result["content"] = {{{"type", "text"}, {"text", "Both 'panel' and 'position' are required"}}};
-                return result;
-            }
-
-            auto connState = m_vivid.getConnectionState();
-            if (!connState.connected) {
-                json response;
-                response["success"] = false;
-                response["connected"] = false;
-                response["error"] = "Cannot dock panel: Vivid not running";
-                response["suggestion"] = "Run: ./build/bin/vivid <project> --show-ui";
-                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
-                return result;
-            }
-
-            // Send dock_panel command and wait for result
-            json dockResult = m_vivid.dockPanel(panelId, position);
-
-            json response;
-            response["connected"] = true;
-            response["success"] = dockResult.value("success", false);
-            response["panel"] = dockResult.value("panel", panelId);
-            response["position"] = dockResult.value("position", position);
-            if (dockResult.contains("error")) {
-                response["error"] = dockResult["error"];
-            }
-            if (response["success"].get<bool>()) {
-                response["message"] = "Panel '" + panelId + "' docked to " + position;
-            }
-            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
-        }
         else if (name == "set_param") {
             std::string opName = args.value("operator", "");
             std::string paramName = args.value("param", "");
@@ -2770,6 +2720,35 @@ private:
             }
             if (structure.contains("error")) {
                 response["error"] = structure["error"];
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "inspect_chain") {
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot inspect chain: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Request chain inspection and wait for response (longer timeout for GPU readback)
+            json inspection = m_vivid.requestInspectChain();
+
+            json response;
+            response["connected"] = true;
+            if (inspection.contains("error")) {
+                response["success"] = false;
+                response["error"] = inspection["error"];
+            } else if (inspection.contains("data")) {
+                response["success"] = true;
+                response["inspection"] = inspection["data"];
+            } else {
+                response["success"] = true;
+                response["inspection"] = inspection;
             }
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
