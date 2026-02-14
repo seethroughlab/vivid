@@ -207,6 +207,9 @@ using SetPendingCountFn = void(*)(size_t count);
 using SetMcpWarningFn = void(*)(const char* warning);
 using SetParamCallbackFn = void(*)(void (*callback)(const char*, const char*, const float*, const float*, int));
 
+// Chain / Presets
+using SetChainFn = void(*)(void* chain, const char* projectDir);
+
 // Video/snapshot
 using SaveSnapshotFn = void(*)(void* ctx);
 using SnapshotRequestedFn = bool(*)();
@@ -244,6 +247,7 @@ static ClearFocusedNodeFn clearFocusedNode = nullptr;
 static SetPendingCountFn setPendingCount = nullptr;
 static SetMcpWarningFn setMcpWarning = nullptr;
 static SetParamCallbackFn setParamCallback = nullptr;
+static SetChainFn setChainFn = nullptr;
 static SaveSnapshotFn saveSnapshot = nullptr;
 static SnapshotRequestedFn snapshotRequested = nullptr;
 static GetExporterFn getExporter = nullptr;
@@ -289,6 +293,7 @@ static void lookupFunctions() {
     setPendingCount = (SetPendingCountFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_pending_count");
     setMcpWarning = (SetMcpWarningFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_mcp_warning");
     setParamCallback = (SetParamCallbackFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_param_callback");
+    setChainFn = (SetChainFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_chain");
     saveSnapshot = (SaveSnapshotFn)dlsym(RTLD_DEFAULT, "vivid_devtools_save_snapshot");
     snapshotRequested = (SnapshotRequestedFn)dlsym(RTLD_DEFAULT, "vivid_devtools_snapshot_requested");
     getExporter = (GetExporterFn)dlsym(RTLD_DEFAULT, "vivid_devtools_get_exporter");
@@ -328,6 +333,7 @@ static void lookupFunctions() {
         setPendingCount = (SetPendingCountFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_pending_count");
         setMcpWarning = (SetMcpWarningFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_mcp_warning");
         setParamCallback = (SetParamCallbackFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_param_callback");
+        setChainFn = (SetChainFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_chain");
         saveSnapshot = (SaveSnapshotFn)GetProcAddress(devtoolsModule, "vivid_devtools_save_snapshot");
         snapshotRequested = (SnapshotRequestedFn)GetProcAddress(devtoolsModule, "vivid_devtools_snapshot_requested");
         getExporter = (GetExporterFn)GetProcAddress(devtoolsModule, "vivid_devtools_get_exporter");
@@ -1208,6 +1214,13 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             // Restore preserved states across hot-reloads
             if (mlc.ctx->hasPreservedStates()) {
                 mlc.ctx->restoreStates(mlc.ctx->chain());
+            }
+
+            // Connect chain to PresetPanel (for snapshot save/recall)
+            if (devtools_dynamic::setChainFn) {
+                std::filesystem::path chainFile(mlc.ctx->chainPath());
+                std::string projectDir = chainFile.parent_path().string();
+                devtools_dynamic::setChainFn(&mlc.ctx->chain(), projectDir.c_str());
             }
 
             mlc.chainNeedsSetup = false;

@@ -14,13 +14,18 @@
 #include <vivid/devtools/panels/status_bar_panel.h>
 #include <vivid/devtools/panels/performance_panel.h>
 #include <vivid/devtools/panels/console_panel.h>
+#include <vivid/devtools/panels/preset_panel.h>
 #include <vivid/context.h>
+#include <vivid/chain.h>
+#include <vivid/snapshot.h>
 #include <vivid/log.h>
 #include <vivid/asset_loader.h>
 #include "effects/font_atlas.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <filesystem>
 #include <cstring>
+#include <cstdio>
 #include <iostream>
 
 namespace vivid {
@@ -196,6 +201,10 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     auto* consolePtr = console.get();
     m_panelManager->addPanel(std::move(console));
 
+    // Presets (floating - snapshot management)
+    auto presets = std::make_unique<PresetPanel>();
+    m_panelManager->addPanel(std::move(presets));
+
     // Set Log callback to feed messages into the console panel
     Log::setCallback([consolePtr](LogLevel level, const char* file, int line, const std::string& message) {
         consolePtr->pushMessage(level, file, line, message);
@@ -229,6 +238,7 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     hidePanel("inspector");
     hidePanel("performance");
     hidePanel("console");
+    hidePanel("presets");
 
     m_initialized = true;
     std::cerr << "[vivid-devtools] Initialized with " << m_panelManager->panelCount() << " panels\n";
@@ -289,6 +299,15 @@ void DevTools::registerDefaultShortcuts() {
         }
     });
 
+    // Cmd/Ctrl+3: Toggle Presets Panel
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_3,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "toggle_presets",
+        "Toggle Presets",
+        [this]() { togglePanel("presets"); }
+    });
+
     // Cmd/Ctrl+G: Toggle Background Grid
     m_shortcuts.registerShortcut({
         GLFW_KEY_G,
@@ -297,6 +316,65 @@ void DevTools::registerDefaultShortcuts() {
         "Toggle Background Grid",
         [this]() { toggleBackgroundGrid(); }
     });
+
+    // Number keys 1-9 (no modifier): recall snapshot by position
+    for (int i = 0; i < 9; i++) {
+        int key = GLFW_KEY_1 + i;
+        int idx = i;
+        std::string id = "recall_snapshot_" + std::to_string(i + 1);
+        std::string label = "Recall Snapshot " + std::to_string(i + 1);
+        m_shortcuts.registerShortcut({
+            key,
+            0,  // no modifier
+            id,
+            label,
+            [this, idx]() {
+                auto* panel = m_panelManager->getPanelAs<PresetPanel>("presets");
+                if (!panel || !m_ctx) return;
+                Chain& chain = m_ctx->chain();
+                auto& store = chain.snapshots();
+                if (idx < store.size()) {
+                    store.recall(idx, chain, panel->crossfadeDuration());
+                }
+            }
+        });
+    }
+
+    // Shift+1-9: save/overwrite snapshot at position
+    for (int i = 0; i < 9; i++) {
+        int key = GLFW_KEY_1 + i;
+        int idx = i;
+        std::string id = "save_snapshot_" + std::to_string(i + 1);
+        std::string label = "Save Snapshot " + std::to_string(i + 1);
+        m_shortcuts.registerShortcut({
+            key,
+            ShortcutManager::MOD_SHIFT,
+            id,
+            label,
+            [this, idx]() {
+                if (!m_ctx) return;
+                Chain& chain = m_ctx->chain();
+                auto& store = chain.snapshots();
+                char nameBuf[32];
+                snprintf(nameBuf, sizeof(nameBuf), "Snapshot %d", idx + 1);
+                if (idx < store.size()) {
+                    // Overwrite existing
+                    store.remove(idx);
+                }
+                // Insert at position (capture appends, then move)
+                int newIdx = store.capture(nameBuf, chain);
+                if (newIdx != idx && idx < store.size()) {
+                    store.move(newIdx, idx);
+                }
+                // Auto-save
+                if (!m_ctx->chainPath().empty()) {
+                    std::filesystem::path chainFile(m_ctx->chainPath());
+                    std::string savePath = (chainFile.parent_path() / "vivid-snapshots.json").string();
+                    store.save(savePath);
+                }
+            }
+        });
+    }
 }
 
 void DevTools::shutdown() {
@@ -353,7 +431,7 @@ void DevTools::render(WGPURenderPassEncoder pass, const FrameInput& input, Conte
     // This prevents the gray background from showing when all panels are hidden
     if (m_gridOpacity > 0.0f) {
         // Check if any content panel is visible (excludes status bar)
-        const char* contentPanelIds[] = {"nodegraph", "performance", "inspector", "console"};
+        const char* contentPanelIds[] = {"nodegraph", "performance", "inspector", "console", "presets"};
         bool hasVisiblePanels = false;
         for (const char* id : contentPanelIds) {
             if (m_panelManager->isPanelVisible(id)) {
@@ -538,6 +616,12 @@ void DevTools::setMcpWarning(const std::string& warning) {
 void DevTools::onParamChange(ParamChangeCallback callback) {
     m_paramChangeCallback = std::move(callback);
     // Inspector callback is set in init()
+}
+
+void DevTools::setChain(Chain* chain, const std::string& projectDir) {
+    if (auto* panel = m_panelManager->getPanelAs<PresetPanel>("presets")) {
+        panel->setChain(chain, projectDir);
+    }
 }
 
 // -------------------------------------------------------------------------

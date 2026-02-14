@@ -31,8 +31,10 @@ struct GLFWwindow;
 namespace vivid {
 
 class Context;
+class Chain;
 class Operator;
 class FontAtlas;
+class PresetPanel;
 
 /**
  * @brief Main DevTools orchestrator
@@ -268,6 +270,13 @@ public:
     using ParamChangeCallback = std::function<void(const std::string&, const std::string&,
                                                     const float[4], const float[4], int)>;
     void onParamChange(ParamChangeCallback callback);
+
+    /**
+     * @brief Connect a chain to the preset panel
+     *
+     * Call after chain init so the Presets panel can capture/recall snapshots.
+     */
+    void setChain(Chain* chain, const std::string& projectDir);
 
     /// @}
     // -------------------------------------------------------------------------

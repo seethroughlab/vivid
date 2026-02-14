@@ -3,6 +3,7 @@
 #include <vivid/devtools/devtools.h>
 #include <vivid/context.h>
 #include <vivid/operator.h>
+#include <vivid/chain.h>
 #include <GLFW/glfw3.h>
 
 extern "C" {
@@ -191,6 +192,14 @@ void vivid_devtools_set_param_callback(void (*callback)(const char* opName, cons
             callback(opName.c_str(), paramName.c_str(), oldVal, newVal, line);
         }
     );
+}
+
+// =============================================================================
+// Chain / Presets
+// =============================================================================
+
+void vivid_devtools_set_chain(vivid::Chain* chain, const char* projectDir) {
+    vivid::DevTools::instance().setChain(chain, projectDir ? projectDir : "");
 }
 
 // =============================================================================

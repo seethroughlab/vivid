@@ -33,6 +33,7 @@ set(DEVTOOLS_SOURCES
     src/panels/status_bar_panel.cpp
     src/panels/performance_panel.cpp
     src/panels/console_panel.cpp
+    src/panels/preset_panel.cpp
 
     # ChainVisualizer (moved from vivid-core)
     src/chain_visualizer.cpp
