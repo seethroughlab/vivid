@@ -77,6 +77,15 @@ public:
     void cleanup() override;
     std::string name() const override { return "FrameCache"; }
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("current_index", static_cast<float>(currentIndex()));
+        data.set("allocated_frames", static_cast<float>(allocatedFrames()));
+        data.set("frames_written", static_cast<float>(m_framesWritten));
+        data.set("warmed_up", (m_framesWritten >= m_allocatedFrames) ? 1.0f : 0.0f);
+        return data;
+    }
+
     /// @}
 
 private:

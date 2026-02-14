@@ -111,6 +111,16 @@ public:
 
     std::string name() const override { return "BeatDetect"; }
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("beat", m_beat ? 1.0f : 0.0f);
+        data.set("energy", m_energy);
+        data.set("raw_energy", m_rawEnergy);
+        data.set("intensity", m_intensity);
+        data.set("time_since_beat", m_timeSinceBeat);
+        return data;
+    }
+
     // Custom visualization
     bool drawVisualization(VizDrawList* drawList, float minX, float minY,
                            float maxX, float maxY) override;

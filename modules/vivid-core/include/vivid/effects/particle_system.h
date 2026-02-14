@@ -396,6 +396,13 @@ public:
     void cleanup() override;
     std::string name() const override { return "ParticleSystem"; }
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("particle_count", static_cast<float>(particleCount()));
+        data.set("force_count", static_cast<float>(forceCount()));
+        return data;
+    }
+
     std::vector<ParamDecl> params() override;
     bool getParam(const std::string& name, float out[4]) override;
     bool setParam(const std::string& name, const float value[4]) override;

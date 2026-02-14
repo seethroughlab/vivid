@@ -187,6 +187,19 @@ public:
     void cleanup() override;
     std::string name() const override { return "VideoPlayer"; }
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("playing", isPlaying() ? 1.0f : 0.0f);
+        data.set("open", isOpen() ? 1.0f : 0.0f);
+        data.set("current_time", currentTime());
+        data.set("duration", duration());
+        data.set("frame_rate", frameRate());
+        data.set("width", static_cast<float>(videoWidth()));
+        data.set("height", static_cast<float>(videoHeight()));
+        data.set("has_audio", hasAudio() ? 1.0f : 0.0f);
+        return data;
+    }
+
     // Override to return borrowed texture from active decoder
     WGPUTextureView outputView() const override { return m_activeView; }
     WGPUTexture outputTexture() const override { return m_activeTexture; }

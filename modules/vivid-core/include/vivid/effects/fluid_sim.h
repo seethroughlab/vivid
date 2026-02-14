@@ -145,6 +145,14 @@ public:
     void cleanup() override;
     std::string name() const override { return "FluidSim"; }
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("sim_width", static_cast<float>(m_simWidth));
+        data.set("sim_height", static_cast<float>(m_simHeight));
+        data.set("pending_impulses", static_cast<float>(m_pendingImpulses.size()));
+        return data;
+    }
+
     // State preservation for hot-reload
     std::unique_ptr<OperatorState> saveState() override;
     void loadState(std::unique_ptr<OperatorState> state) override;

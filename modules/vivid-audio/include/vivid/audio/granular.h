@@ -166,6 +166,19 @@ public:
 
     void generateBlock(uint32_t frameCount) override;
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        int active = 0;
+        for (const auto& g : m_grains) {
+            if (g.active) active++;
+        }
+        data.set("active_grains", static_cast<float>(active));
+        data.set("loaded", isLoaded() ? 1.0f : 0.0f);
+        data.set("frozen", isFrozen() ? 1.0f : 0.0f);
+        data.set("sample_duration", sampleDuration());
+        return data;
+    }
+
     /// @}
 
 private:

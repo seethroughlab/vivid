@@ -143,6 +143,15 @@ public:
     void cleanup() override;
     bool drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) override;
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("listening", isListening() ? 1.0f : 0.0f);
+        data.set("port", static_cast<float>(getPort()));
+        data.set("message_count", static_cast<float>(m_readMessages.size()));
+        data.set("address_count", static_cast<float>(m_latestByAddress.size()));
+        return data;
+    }
+
     /// @}
 
 private:

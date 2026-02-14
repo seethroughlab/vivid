@@ -95,6 +95,15 @@ public:
     void cleanup() override;
     void generateBlock(uint32_t frameCount) override;
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("playing", isPlaying() ? 1.0f : 0.0f);
+        data.set("looping", isLooping() ? 1.0f : 0.0f);
+        data.set("current_time", currentTime());
+        data.set("duration", duration());
+        return data;
+    }
+
     /// @}
 
 private:

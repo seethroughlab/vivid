@@ -124,6 +124,31 @@ public:
 
     std::string name() const override { return "FFT"; }
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("fft_size", static_cast<float>(m_fftSize));
+        data.set("bin_count", static_cast<float>(binCount()));
+        // Find peak bin
+        int peakBin = 0;
+        float peakMag = 0.0f;
+        int count = binCount();
+        for (int i = 1; i < count; i++) {  // Skip DC bin
+            float mag = (i < static_cast<int>(m_smoothedSpectrum.size()))
+                ? m_smoothedSpectrum[i] : 0.0f;
+            if (mag > peakMag) {
+                peakMag = mag;
+                peakBin = i;
+            }
+        }
+        data.set("peak_magnitude", peakMag);
+        data.set("peak_frequency", binFrequency(peakBin));
+        // Report standard bands
+        data.set("bass", band(20, 250));
+        data.set("mid", band(250, 4000));
+        data.set("high", band(4000, 20000));
+        return data;
+    }
+
     // Custom visualization
     bool drawVisualization(VizDrawList* drawList, float minX, float minY,
                            float maxX, float maxY) override;

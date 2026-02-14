@@ -51,6 +51,17 @@ public:
     std::string name() const override { return "SerialIn"; }
     bool drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) override;
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("connected", isConnected() ? 1.0f : 0.0f);
+        data.set("has_data", hasData() ? 1.0f : 0.0f);
+        data.set("value_count", static_cast<float>(m_values.size()));
+        if (!m_portName.empty()) {
+            data.set("port", m_portName);
+        }
+        return data;
+    }
+
     // Parameter interface
     std::vector<ParamDecl> params() override;
     bool getParam(const std::string& name, float out[4]) override;

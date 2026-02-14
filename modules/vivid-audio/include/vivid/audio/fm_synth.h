@@ -243,6 +243,15 @@ public:
     void cleanup() override;
     std::string name() const override { return "FMSynth"; }
 
+    InspectData inspect() const override {
+        auto data = vivid::Operator::inspect();
+        data.set("active_voices", static_cast<float>(activeVoiceCount()));
+        for (int i = 0; i < NUM_OPS; i++) {
+            data.set("op" + std::to_string(i + 1) + "_envelope", operatorEnvelope(i));
+        }
+        return data;
+    }
+
     void generateBlock(uint32_t frameCount) override;
 
     // Custom visualization
