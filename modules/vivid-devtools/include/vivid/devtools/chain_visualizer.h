@@ -225,9 +225,22 @@ private:
     ScratchTexture m_cpuPixelScratch;
 
     // Health indicator tracking (per-node activity detection)
-    std::unordered_map<int, float> m_lastRms;        // nodeId -> last known RMS for audio ops
-    std::unordered_map<int, float> m_activityTimer;   // nodeId -> seconds since last change
-    std::unordered_map<int, WGPUTexture> m_lastTexture; // nodeId -> last known output texture ptr
+    std::unordered_map<int, float> m_lastRms;           // nodeId -> last known RMS for audio ops
+    std::unordered_map<int, float> m_activityTimer;      // nodeId -> seconds since last change
+    std::unordered_map<int, uint64_t> m_lastGeneration;  // nodeId -> last known operator generation
+    float m_lastTime = 0.0f;                             // previous frame time (for dt computation)
+
+    // Per-node activity history for sparkline rendering
+    template<typename T, size_t N>
+    struct RingBuffer {
+        std::array<T, N> data{};
+        size_t head = 0;    // next write position
+        size_t count = 0;   // number of valid entries
+        void push(T v) { data[head] = v; head = (head + 1) % N; if (count < N) ++count; }
+        T operator[](size_t i) const { return data[(head + N - count + i) % N]; }  // oldest-first
+        size_t size() const { return count; }
+    };
+    std::unordered_map<int, RingBuffer<float, 60>> m_activityHistory;  // nodeId -> ~1s of samples
 };
 
 } // namespace vivid

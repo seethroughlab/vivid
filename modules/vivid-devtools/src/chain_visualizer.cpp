@@ -576,7 +576,14 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const gui::Inp
                     healthColor = {0.3f, 0.8f, 0.3f, 0.9f};   // Green
                 }
             } else {
-                healthColor = {0.3f, 0.8f, 0.3f, 0.9f};   // Green (assume active)
+                // Geometry, Value, Camera, etc. — use activity timer from previous frame
+                auto prevTimerIt = m_activityTimer.find(overlayNodeId);
+                float prevTimer = (prevTimerIt != m_activityTimer.end()) ? prevTimerIt->second : 0.0f;
+                if (prevTimer > 3.0f) {
+                    healthColor = {0.9f, 0.3f, 0.3f, 0.9f};   // Red (stale)
+                } else {
+                    healthColor = {0.3f, 0.8f, 0.3f, 0.9f};   // Green
+                }
             }
 
             // Audio level data (for VU meter)
@@ -590,8 +597,9 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const gui::Inp
                 if (peakIt != inspectData.metrics.end()) audioPeak = peakIt->second;
             }
 
-            // Activity tracking: detect changes between frames
-            float dt = 1.0f / 60.0f;  // Approximate frame time
+            // Activity tracking: detect changes between frames using generation counter
+            float dt = (m_lastTime > 0.0f) ? (currentTime - m_lastTime) : (1.0f / 60.0f);
+            dt = std::clamp(dt, 0.0001f, 0.5f);  // Guard against spikes
             bool isActive = false;
             if (isAudio) {
                 float lastRms = 0.0f;
@@ -599,14 +607,21 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const gui::Inp
                 if (it != m_lastRms.end()) lastRms = it->second;
                 isActive = (audioRms > 0.005f) || (std::abs(audioRms - lastRms) > 0.001f);
                 m_lastRms[overlayNodeId] = audioRms;
-            } else if (kind == vivid::OutputKind::Texture) {
-                WGPUTexture tex = overlayOp->outputTexture();
-                auto it = m_lastTexture.find(overlayNodeId);
-                WGPUTexture lastTex = (it != m_lastTexture.end()) ? it->second : nullptr;
-                isActive = (tex != nullptr) && (tex != lastTex || lastTex == nullptr);
-                m_lastTexture[overlayNodeId] = tex;
             } else {
-                isActive = !bypassed;
+                // Use generation counter for all non-audio operators (texture, geometry, value, etc.)
+                uint64_t gen = overlayOp->generation();
+                auto it = m_lastGeneration.find(overlayNodeId);
+                uint64_t lastGen = (it != m_lastGeneration.end()) ? it->second : 0;
+                isActive = (gen != lastGen);
+                m_lastGeneration[overlayNodeId] = gen;
+            }
+
+            // Record sparkline sample
+            auto& history = m_activityHistory[overlayNodeId];
+            if (isAudio) {
+                history.push(audioRms);
+            } else {
+                history.push(isActive ? 1.0f : 0.0f);
             }
 
             // Update activity timer
@@ -619,29 +634,20 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const gui::Inp
             }
             m_activityTimer[overlayNodeId] = timer;
 
-            // Compute activity dot alpha and color
-            float dotAlpha;
-            bool dotStale = timer > 1.0f;
-            if (dotStale) {
-                dotAlpha = 0.2f;
-            } else {
-                dotAlpha = 0.5f + 0.5f * std::sin(currentTime * 4.0f);
-            }
-            glm::vec4 dotColor;
-            if (bypassed) {
-                dotColor = {0.4f, 0.4f, 0.4f, 0.3f};              // Gray
-            } else if (timer > 3.0f) {
-                dotColor = {0.9f, 0.3f, 0.3f, dotAlpha};           // Red (stale)
-            } else if (!isActive && timer > 1.0f) {
-                dotColor = {0.5f, 0.5f, 0.3f, dotAlpha};           // Amber (slowing)
-            } else {
-                dotColor = {0.3f, 0.8f, 0.3f, dotAlpha};           // Green
-            }
-
             // Set health-colored node border
             m_nodeGraph.setNodeHealthColor(healthColor);
 
-            m_nodeGraph.setNodeOverlay([healthColor, isAudio, audioRms, audioPeak, dotColor, bypassed](
+            // Snapshot sparkline data for lambda capture
+            std::vector<float> sparkData;
+            {
+                auto& hist = m_activityHistory[overlayNodeId];
+                sparkData.reserve(hist.size());
+                for (size_t si = 0; si < hist.size(); ++si)
+                    sparkData.push_back(hist[si]);
+            }
+
+            m_nodeGraph.setNodeOverlay([healthColor, isAudio, audioRms, audioPeak, bypassed,
+                                        sparkData = std::move(sparkData)](
                     OverlayCanvas& canvas, float x, float y, float w, float h) {
 
                 // 1. Health status strip — thin bar at bottom edge
@@ -682,11 +688,37 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const gui::Inp
                     }
                 }
 
-                // 3. Activity dot — small circle in top-right corner
-                float dotR = 4.0f;
-                float dotX = x + w - dotR - 6.0f;
-                float dotY = y + dotR + 6.0f;
-                canvas.fillCircle(dotX, dotY, dotR, dotColor);
+                // 3. Sparkline — compact activity graph in top-right corner
+                if (!bypassed && sparkData.size() >= 2) {
+                    float sparkW = w * 0.4f;
+                    float sparkH = 12.0f;
+                    float sparkX = x + w - sparkW - 4.0f;
+                    float sparkY2 = y + 4.0f;
+
+                    // Background
+                    canvas.fillRoundedRect(sparkX, sparkY2, sparkW, sparkH, 2.0f, {0.0f, 0.0f, 0.0f, 0.4f});
+
+                    // Find max value for scaling
+                    float maxVal = 0.0f;
+                    for (float v : sparkData) maxVal = std::max(maxVal, v);
+                    if (maxVal < 0.001f) maxVal = 1.0f;  // Avoid division by zero; flat-at-zero baseline
+
+                    // Build polyline points
+                    float inset = 2.0f;
+                    float drawW = sparkW - inset * 2;
+                    float drawH = sparkH - inset * 2;
+                    float baseY = sparkY2 + sparkH - inset;
+                    std::vector<glm::vec2> pts;
+                    pts.reserve(sparkData.size());
+                    for (size_t i = 0; i < sparkData.size(); ++i) {
+                        float px = sparkX + inset + (static_cast<float>(i) / static_cast<float>(sparkData.size() - 1)) * drawW;
+                        float py = baseY - (sparkData[i] / maxVal) * drawH;
+                        pts.push_back({px, py});
+                    }
+
+                    glm::vec4 lineColor = {healthColor.r, healthColor.g, healthColor.b, 0.8f};
+                    canvas.polyline(pts, 1.0f, lineColor);
+                }
             });
         }
 
@@ -905,11 +937,28 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const gui::Inp
         }
     }
 
+    // Update frame time tracking for dt computation
+    m_lastTime = graphInput.time;
+
     // Do hierarchical layout using Sugiyama algorithm (with crossing reduction)
     // Reset layout if operator count changes (chain was hot-reloaded)
     if (operators.size() != m_lastOperatorCount) {
         m_autoLayoutDone = false;
         m_lastOperatorCount = operators.size();
+        // Prune stale tracking entries for removed nodes
+        size_t opCount = operators.size();
+        auto pruneMap = [opCount](auto& map) {
+            for (auto it = map.begin(); it != map.end(); ) {
+                if (static_cast<size_t>(it->first) >= opCount)
+                    it = map.erase(it);
+                else
+                    ++it;
+            }
+        };
+        pruneMap(m_lastRms);
+        pruneMap(m_activityTimer);
+        pruneMap(m_lastGeneration);
+        pruneMap(m_activityHistory);
     }
     if (!m_autoLayoutDone && !operators.empty()) {
         m_nodeGraph.autoLayout();
