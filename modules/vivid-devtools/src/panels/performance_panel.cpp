@@ -8,54 +8,12 @@
 #include <vivid/gui/gui.h>
 #include <vivid/gui/ring_buffer.h>
 #include <vivid/gui/ui_style.h>
+#include <vivid/devtools/system_info.h>
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
 
-// Platform-specific memory monitoring
-#if defined(__APPLE__)
-#include <mach/mach.h>
-#include <mach/task.h>
-#elif defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <psapi.h>
-#elif defined(__linux__)
-#include <fstream>
-#include <unistd.h>
-#endif
-
 namespace vivid {
-
-// Get process memory usage in bytes
-static size_t getProcessMemoryUsage() {
-#if defined(__APPLE__)
-    task_vm_info_data_t vmInfo;
-    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
-    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vmInfo, &count) == KERN_SUCCESS) {
-        return vmInfo.phys_footprint;
-    }
-    return 0;
-#elif defined(_WIN32)
-    PROCESS_MEMORY_COUNTERS_EX pmc;
-    if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc))) {
-        return pmc.WorkingSetSize;
-    }
-    return 0;
-#elif defined(__linux__)
-    std::ifstream statm("/proc/self/statm");
-    if (statm.is_open()) {
-        size_t size, resident;
-        statm >> size >> resident;
-        return resident * sysconf(_SC_PAGESIZE);
-    }
-    return 0;
-#else
-    return 0;
-#endif
-}
 
 struct PerformancePanel::Impl {
     Context* ctx = nullptr;
@@ -92,7 +50,7 @@ PerformancePanel::PerformancePanel()
     m_config.id = "performance";
     m_config.title = "Performance";
     m_config.bounds = {0, 0, 280, 400};
-    m_config.dockSide = DockSide::Right;
+    m_config.role = PanelRole::Floating;
     m_config.visible = false;
     m_config.resizable = true;
     m_config.draggable = true;
@@ -162,12 +120,36 @@ void PerformancePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // Render panel chrome (background, title bar)
     bool showTitle = m_display.showTitleBar;
-    renderChrome(canvas, x, y, w, h, style, showTitle, &input);
+    renderChrome(canvas, x, y, w, h, style, showTitle);
 
-    // Handle close button
-    if (closeButtonClicked()) {
-        m_config.visible = false;
-        return;
+    // Close button (X) on title bar — only this panel needs one
+    if (showTitle) {
+        float titleBarHeight = style.titleBarHeight();
+        float closeSize = 8.0f;
+        float closePadding = 12.0f;
+        float closeX = x + w - closePadding - closeSize;
+        float closeY = y + titleBarHeight / 2;
+
+        float hitPadding = 4.0f;
+        bool overClose = input.mousePos.x >= closeX - closeSize - hitPadding &&
+                         input.mousePos.x <= closeX + closeSize + hitPadding &&
+                         input.mousePos.y >= closeY - closeSize - hitPadding &&
+                         input.mousePos.y <= closeY + closeSize + hitPadding;
+
+        if (overClose && input.mouseClicked[0]) {
+            m_config.visible = false;
+            return;
+        }
+
+        glm::vec4 closeColor = overClose
+            ? glm::vec4(1.0f, 0.4f, 0.4f, 1.0f)  // Red on hover
+            : style.textDim;
+        float lineWidth = overClose ? 2.0f : 1.5f;
+
+        canvas.line(closeX - closeSize, closeY - closeSize,
+                    closeX + closeSize, closeY + closeSize, lineWidth, closeColor);
+        canvas.line(closeX + closeSize, closeY - closeSize,
+                    closeX - closeSize, closeY + closeSize, lineWidth, closeColor);
     }
 
     // Content area (below title bar)
@@ -333,16 +315,8 @@ void PerformancePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 bool PerformancePanel::handleInput(const gui::InputState& input) {
     if (!m_config.visible || !m_impl) return false;
 
-    // Basic hover detection for the panel
-    float x = m_config.bounds.x;
-    float y = m_config.bounds.y;
-    float w = m_config.bounds.z;
-    float h = m_config.bounds.w;
-
-    bool hovered = input.mousePos.x >= x && input.mousePos.x < x + w &&
-                   input.mousePos.y >= y && input.mousePos.y < y + h;
-
-    return hovered;
+    // Display-only panel — don't consume input so panels behind can respond
+    return false;
 }
 
 } // namespace vivid

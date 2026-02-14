@@ -1,29 +1,21 @@
 // DevTools main orchestrator implementation
 //
 // This is the unified entry point for all devtools functionality:
-// - Terminal panel for shell access
-// - Editor panel for chain.cpp editing
 // - NodeGraph panel for operator visualization
 // - Inspector panel for parameter editing
+// - Performance panel for real-time metrics
 // - StatusBar panel for record/snapshot controls
-//
-// Provides backward-compatible APIs for vivid_ide_* and vivid_visualizer_* functions.
 
 #include <vivid/devtools/devtools.h>
 #include <vivid/devtools/preferences.h>
-#include <vivid/gui/dock_zone.h>
-#include <vivid/gui/dock_manager.h>
 #include <vivid/gui/input_state.h>
-#include <vivid/devtools/panels/terminal_panel.h>
-#include <vivid/devtools/panels/editor_panel.h>
 #include <vivid/devtools/panels/node_graph_panel.h>
 #include <vivid/devtools/panels/inspector_panel.h>
 #include <vivid/devtools/panels/status_bar_panel.h>
-#include <vivid/devtools/panels/console_panel.h>
-#include <vivid/devtools/panels/file_browser_panel.h>
 #include <vivid/devtools/panels/performance_panel.h>
-#include <vivid/devtools/panels/operator_library_panel.h>
+#include <vivid/devtools/panels/console_panel.h>
 #include <vivid/context.h>
+#include <vivid/log.h>
 #include <vivid/asset_loader.h>
 #include "effects/font_atlas.h"
 #include <GLFW/glfw3.h>
@@ -117,10 +109,6 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
         std::cerr << "[vivid-devtools] Loaded JetBrains Mono " << (16.0f * scale) << "px\n";
     }
 
-    // Index 2: Terminal/editor - reuse font 0 (same size, same font)
-    // This avoids loading a duplicate font atlas
-    m_canvas->setFont(2, m_fonts[0].get());
-
     // Enable HiDPI text mode since fonts are loaded at physical pixel size
     // This makes text(), measureText(), etc. automatically compensate for contentScale
     m_canvas->setHiDPITextMode(true);
@@ -131,7 +119,7 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     // Create and add panels
     // Order matters: panels are rendered back-to-front
 
-    // StatusBar (docked at top) - render first (background)
+    // StatusBar (top edge) - render first (background)
     auto statusBar = std::make_unique<StatusBarPanel>();
     statusBar->setVideoExporter(&m_exporter);
     statusBar->onSnapshot([this]() {
@@ -146,102 +134,19 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
         }
     });
     statusBar->onGridOpacityChange([this](float opacity) {
-        // Sync with DevTools background grid
         m_gridOpacity = opacity;
-        // Save to preferences
         Preferences::instance().setGridOpacity(opacity);
-    });
-    statusBar->onPanelToggle([this](const std::string& panelId) {
-        // Toggle the requested panel
-        togglePanel(panelId);
-    });
-    statusBar->onPanelDrag([this](const std::string& panelId, const glm::vec2& pos) {
-        // Drag from status bar button creates floating panel
-        if (auto* panel = m_panelManager->getPanel(panelId)) {
-            // Show the panel as floating at the drag position
-            if (!panel->isVisible()) {
-                panel->setVisible(true);
-            }
-            // Position the panel at the drag location
-            glm::vec4 bounds = panel->bounds();
-            bounds.x = pos.x - 50;  // Center-ish on cursor
-            bounds.y = pos.y;
-            bounds.z = std::max(bounds.z, 300.0f);
-            bounds.w = std::max(bounds.w, 200.0f);
-            panel->setBounds(bounds);
-
-            // Add to floating order and remove from layout
-            if (m_panelManager->isLayoutMode() && m_panelManager->dockManager()) {
-                m_panelManager->dockManager()->removePanelFromLayout(panel);
-                m_panelManager->dockManager()->cleanupEmptyNodes();
-            }
-            m_panelManager->addToFloatingOrder(panelId);
-        }
-    });
-    statusBar->onPanelDock([this](const std::string& panelId, DockPosition position) {
-        // Context menu dock action
-        auto* panel = m_panelManager->getPanel(panelId);
-        if (!panel) return;
-
-        if (position == DockPosition::None) {
-            // Hide the panel
-            hidePanel(panelId);
-        } else if (position == DockPosition::Float) {
-            // Float the panel
-            if (!panel->isVisible()) {
-                panel->setVisible(true);
-            }
-            // Remove from layout if present
-            if (m_panelManager->isLayoutMode() && m_panelManager->dockManager()) {
-                m_panelManager->dockManager()->removePanelFromLayout(panel);
-                m_panelManager->dockManager()->cleanupEmptyNodes();
-            }
-            m_panelManager->addToFloatingOrder(panelId);
-        } else {
-            // Dock the panel at the specified position
-            // This would require more complex logic to insert at a specific position
-            // For now, just show the panel and let the user drag it
-            showPanel(panelId);
-            std::cerr << "[DevTools] Dock to position " << static_cast<int>(position)
-                      << " not fully implemented - showing panel instead\n";
-        }
-    });
-    statusBar->onPresetSelect([this](const std::string& name) {
-        // Save current layout to active preset before switching
-        auto currentJson = m_panelManager->saveLayoutToString();
-        if (!currentJson.empty()) {
-            Preferences::instance().setLayoutPreset(
-                Preferences::instance().activePreset(), currentJson);
-        }
-
-        // Load new preset
-        auto newJson = Preferences::instance().getLayoutPreset(name);
-        if (!newJson.empty()) {
-            m_panelManager->loadLayoutFromString(newJson);
-        }
-        Preferences::instance().setActivePreset(name);
-
-        // Sync status bar
-        syncStatusBarPresets();
-    });
-    statusBar->onPresetSave([this](const std::string& name) {
-        // Save current layout to the specified preset
-        auto json = m_panelManager->saveLayoutToString();
-        if (!json.empty()) {
-            Preferences::instance().setLayoutPreset(name, json);
-            Preferences::instance().setActivePreset(name);
-            syncStatusBarPresets();
-        }
-    });
-    statusBar->onPresetDelete([this](const std::string& name) {
-        Preferences::instance().deleteLayoutPreset(name);
-        syncStatusBarPresets();
     });
     m_panelManager->addPanel(std::move(statusBar));
 
     // NodeGraph (fill) - background for visualizer
     auto nodeGraph = std::make_unique<NodeGraphPanel>();
     nodeGraph->onNodeSelect([this](const std::string& name) {
+        if (name.empty()) {
+            // Node deselected — auto-hide inspector
+            hidePanel("inspector");
+            return;
+        }
         // When a node is selected, update the inspector and show it
         if (m_ctx) {
             const auto& operators = m_ctx->registeredOperators();
@@ -250,7 +155,6 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
                     auto* inspector = m_panelManager->getPanelAs<InspectorPanel>("inspector");
                     if (inspector) {
                         inspector->setSelectedOperator(info.op, name);
-                        // Auto-show inspector when a node is selected
                         showPanel("inspector");
                     }
                     break;
@@ -272,7 +176,7 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     });
     m_panelManager->addPanel(std::move(nodeGraph));
 
-    // Inspector (docked right)
+    // Inspector (floating)
     auto inspector = std::make_unique<InspectorPanel>();
     inspector->onParamChange([this](const std::string& opName, const std::string& paramName,
                                      const float oldVal[4], const float newVal[4], int sourceLine) {
@@ -283,61 +187,24 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     });
     m_panelManager->addPanel(std::move(inspector));
 
-    // Terminal (floating)
-    auto terminal = std::make_unique<TerminalPanel>();
-    m_panelManager->addPanel(std::move(terminal));
-
-    // Editor (floating)
-    auto editor = std::make_unique<EditorPanel>();
-    m_panelManager->addPanel(std::move(editor));
-
-    // File browser (floating)
-    auto fileBrowser = std::make_unique<FileBrowserPanel>();
-    fileBrowser->onFileSelected([this](const std::string& path) {
-        // Open selected file in editor
-        if (auto* ed = m_panelManager->getPanelAs<EditorPanel>("editor")) {
-            ed->openFile(path);
-            showPanel("editor");
-        }
-    });
-    m_panelManager->addPanel(std::move(fileBrowser));
-
-    // Console (floating - for compile errors)
-    auto console = std::make_unique<ConsolePanel>();
-    m_panelManager->addPanel(std::move(console));
-
     // Performance (floating - for real-time metrics)
     auto performance = std::make_unique<PerformancePanel>();
     m_panelManager->addPanel(std::move(performance));
 
-    // Operator Library (floating - browse all operators from all modules)
-    auto library = std::make_unique<OperatorLibraryPanel>();
-    m_panelManager->addPanel(std::move(library));
+    // Console (floating - read-only log overlay)
+    auto console = std::make_unique<ConsolePanel>();
+    auto* consolePtr = console.get();
+    m_panelManager->addPanel(std::move(console));
+
+    // Set Log callback to feed messages into the console panel
+    Log::setCallback([consolePtr](LogLevel level, const char* file, int line, const std::string& message) {
+        consolePtr->pushMessage(level, file, line, message);
+    });
 
     // Initialize panel manager (initializes all panels)
     if (!m_panelManager->init(ctx, surfaceFormat)) {
         std::cerr << "[vivid-devtools] Failed to initialize panel manager\n";
         return false;
-    }
-
-    // Try to restore last-used layout preset, or build default
-    {
-        std::string lastPreset = Preferences::instance().lastUsedPreset();
-        std::string layoutJson = Preferences::instance().getLayoutPreset(lastPreset);
-
-        if (!layoutJson.empty() && m_panelManager->loadLayoutFromString(layoutJson)) {
-            std::cerr << "[vivid-devtools] Restored layout preset: " << lastPreset << "\n";
-        } else {
-            // Build default layout
-            m_panelManager->buildDefaultLayout();
-            std::cerr << "[vivid-devtools] Using default layout\n";
-        }
-        m_panelManager->setLayoutMode(true);
-    }
-
-    // Set up clipboard callbacks for editor if window is set
-    if (m_window) {
-        setWindow(m_window);
     }
 
     // Register default keyboard shortcuts
@@ -347,43 +214,21 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     m_preferencesPanel = std::make_unique<PreferencesPanel>();
     m_preferencesPanel->setStyle(&m_style);
     m_preferencesPanel->setShortcuts(&m_shortcuts);
-    m_preferencesPanel->setPanelManager(m_panelManager.get());
 
     // Load grid opacity from preferences
     m_gridOpacity = Preferences::instance().gridOpacity();
 
-    // Restore editor session (open files)
-    if (auto* ed = m_panelManager->getPanelAs<EditorPanel>("editor")) {
-        const auto& openFiles = Preferences::instance().openFiles();
-        for (const auto& path : openFiles) {
-            ed->openFile(path);
-        }
-        // Set active file
-        const auto& activeFile = Preferences::instance().activeFile();
-        if (!activeFile.empty()) {
-            for (int i = 0; i < ed->tabCount(); i++) {
-                if (ed->tabPath(i) == activeFile) {
-                    ed->setActiveTab(i);
-                    break;
-                }
-            }
-        }
-        // Set callback to save session when tabs change
-        ed->onTabChange([](const std::string&) {
-            // Session saving is done on shutdown
-        });
-        ed->onFileSave([](const std::string&) {
-            // Could save session here too
-        });
-    }
-
-    // Restore file browser session (expanded folders)
-    if (auto* fb = m_panelManager->getPanelAs<FileBrowserPanel>("filebrowser")) {
-        fb->setExpandedFolders(Preferences::instance().expandedFolders());
-    }
-
-    // Sync status bar with layout presets
-    syncStatusBarPresets();
+    // Set initial panel visibility:
+    // NodeGraph — always visible (background)
+    // StatusBar — always visible
+    // Inspector — hidden (auto-shows on node selection)
+    // Performance — hidden (toggle with Cmd+1)
+    // Console — hidden (toggle with Cmd+2)
+    showPanel("nodegraph");
+    showPanel("statusbar");
+    hidePanel("inspector");
+    hidePanel("performance");
+    hidePanel("console");
 
     m_initialized = true;
     std::cerr << "[vivid-devtools] Initialized with " << m_panelManager->panelCount() << " panels\n";
@@ -391,16 +236,16 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
 }
 
 void DevTools::registerDefaultShortcuts() {
-    // Cmd/Ctrl+1: Toggle Terminal
+    // Cmd/Ctrl+1: Toggle Performance Panel
     m_shortcuts.registerShortcut({
         GLFW_KEY_1,
         ShortcutManager::MOD_CMD_OR_CTRL,
-        "toggle_terminal",
-        "Toggle Terminal",
-        [this]() { togglePanel("terminal"); }
+        "toggle_performance",
+        "Toggle Performance",
+        [this]() { togglePanel("performance"); }
     });
 
-    // Cmd/Ctrl+2: Toggle Console
+    // Cmd/Ctrl+2: Toggle Console Panel
     m_shortcuts.registerShortcut({
         GLFW_KEY_2,
         ShortcutManager::MOD_CMD_OR_CTRL,
@@ -409,83 +254,15 @@ void DevTools::registerDefaultShortcuts() {
         [this]() { togglePanel("console"); }
     });
 
-    // Cmd/Ctrl+3: Toggle Editor
-    m_shortcuts.registerShortcut({
-        GLFW_KEY_3,
-        ShortcutManager::MOD_CMD_OR_CTRL,
-        "toggle_editor",
-        "Toggle Editor",
-        [this]() { togglePanel("editor"); }
-    });
-
-    // Cmd/Ctrl+4: Toggle Node Graph panel
-    m_shortcuts.registerShortcut({
-        GLFW_KEY_4,
-        ShortcutManager::MOD_CMD_OR_CTRL,
-        "toggle_nodegraph",
-        "Toggle Node Graph",
-        [this]() { togglePanel("nodegraph"); }
-    });
-
-    // Cmd/Ctrl+5: Toggle File Browser
-    m_shortcuts.registerShortcut({
-        GLFW_KEY_5,
-        ShortcutManager::MOD_CMD_OR_CTRL,
-        "toggle_filebrowser",
-        "Toggle File Browser",
-        [this]() { toggleFileBrowser(); }
-    });
-
-    // Cmd/Ctrl+6: Toggle Performance Panel
-    m_shortcuts.registerShortcut({
-        GLFW_KEY_6,
-        ShortcutManager::MOD_CMD_OR_CTRL,
-        "toggle_performance",
-        "Toggle Performance",
-        [this]() { togglePanel("performance"); }
-    });
-
-    // Cmd/Ctrl+7: Toggle Operator Library
-    m_shortcuts.registerShortcut({
-        GLFW_KEY_7,
-        ShortcutManager::MOD_CMD_OR_CTRL,
-        "toggle_library",
-        "Toggle Operator Library",
-        [this]() { togglePanel("library"); }
-    });
-
-    // Note: Cmd/Ctrl+F (fullscreen) is now a built-in shortcut in vivid-core,
-    // so it works even without devtools loaded.
-
-    // F1 or Cmd/Ctrl+?: Show Help
+    // F1: Show Help
     m_shortcuts.registerShortcut({
         GLFW_KEY_F1,
-        0,  // No modifiers
+        0,
         "show_help",
         "Show Shortcuts",
         [this]() {
             if (m_helpCallback) {
                 m_helpCallback();
-            }
-        }
-    });
-
-    // Cmd/Ctrl+L: Toggle Layout Mode (experimental docking)
-    m_shortcuts.registerShortcut({
-        GLFW_KEY_L,
-        ShortcutManager::MOD_CMD_OR_CTRL,
-        "toggle_layout_mode",
-        "Toggle Layout Mode",
-        [this]() {
-            if (m_panelManager) {
-                bool newMode = !m_panelManager->isLayoutMode();
-                if (newMode && !m_panelManager->layoutRoot()) {
-                    // Build default layout if not yet created
-                    m_panelManager->buildDefaultLayout();
-                    std::cerr << "[vivid-devtools] Built default layout\n";
-                }
-                m_panelManager->setLayoutMode(newMode);
-                std::cerr << "[vivid-devtools] Layout mode: " << (newMode ? "ON" : "OFF") << "\n";
             }
         }
     });
@@ -525,27 +302,8 @@ void DevTools::registerDefaultShortcuts() {
 void DevTools::shutdown() {
     if (!m_initialized) return;
 
-    // Save current layout to active preset before shutdown
-    if (m_panelManager) {
-        auto json = m_panelManager->saveLayoutToString();
-        if (!json.empty()) {
-            Preferences::instance().setLayoutPreset(
-                Preferences::instance().activePreset(), json);
-        }
-    }
-
-    // Save editor session before shutdown
-    if (auto* ed = m_panelManager->getPanelAs<EditorPanel>("editor")) {
-        Preferences::instance().setOpenFiles(ed->openFiles());
-        if (ed->activeTab() >= 0) {
-            Preferences::instance().setActiveFile(ed->tabPath(ed->activeTab()));
-        }
-    }
-
-    // Save file browser session
-    if (auto* fb = m_panelManager->getPanelAs<FileBrowserPanel>("filebrowser")) {
-        Preferences::instance().setExpandedFolders(fb->expandedFolders());
-    }
+    // Clear Log callback before destroying panels (ConsolePanel may be the target)
+    Log::clearCallback();
 
     if (m_panelManager) {
         m_panelManager->shutdown();
@@ -563,46 +321,11 @@ void DevTools::update() {
     if (!m_initialized) return;
     m_panelManager->update();
 
-    // Auto-hide status bar when no content panels are visible
-    bool hasVisibleContent = isPanelVisible("terminal") ||
-                             isPanelVisible("editor") ||
-                             isPanelVisible("console") ||
-                             isPanelVisible("nodegraph") ||
-                             isPanelVisible("inspector") ||
-                             isPanelVisible("filebrowser") ||
-                             isPanelVisible("library");
-
     if (auto* statusBar = m_panelManager->getPanelAs<StatusBarPanel>("statusbar")) {
-        // Only show status bar if there's visible content OR background grid is shown
-        statusBar->setVisible(hasVisibleContent || m_gridOpacity > 0.0f);
 
         // Sync pending change count
         statusBar->setPendingChangeCount(m_pendingChangeCount);
         statusBar->setMcpWarning(m_mcpWarning);
-
-        // Sync panel dock mode to toggle buttons
-        auto getDockMode = [this](const std::string& id) -> DockMode {
-            auto* panel = m_panelManager->getPanel(id);
-            if (!panel || !panel->isVisible()) {
-                return DockMode::Hidden;
-            }
-            // Check if panel is in floating order
-            // If in layout tree, it's docked; otherwise floating
-            if (m_panelManager->isLayoutMode() && m_panelManager->layoutRoot()) {
-                if (m_panelManager->layoutRoot()->containsPanel(panel)) {
-                    return DockMode::Docked;
-                }
-            }
-            return DockMode::Floating;
-        };
-
-        statusBar->setPanelDockMode("terminal", getDockMode("terminal"));
-        statusBar->setPanelDockMode("console", getDockMode("console"));
-        statusBar->setPanelDockMode("editor", getDockMode("editor"));
-        statusBar->setPanelDockMode("nodegraph", getDockMode("nodegraph"));
-        statusBar->setPanelDockMode("filebrowser", getDockMode("filebrowser"));
-        statusBar->setPanelDockMode("performance", getDockMode("performance"));
-        statusBar->setPanelDockMode("library", getDockMode("library"));
 
         // Sync grid opacity slider
         statusBar->setGridOpacity(m_gridOpacity);
@@ -630,8 +353,7 @@ void DevTools::render(WGPURenderPassEncoder pass, const FrameInput& input, Conte
     // This prevents the gray background from showing when all panels are hidden
     if (m_gridOpacity > 0.0f) {
         // Check if any content panel is visible (excludes status bar)
-        const char* contentPanelIds[] = {"terminal", "console", "editor", "nodegraph",
-                                          "filebrowser", "performance", "library", "inspector"};
+        const char* contentPanelIds[] = {"nodegraph", "performance", "inspector", "console"};
         bool hasVisiblePanels = false;
         for (const char* id : contentPanelIds) {
             if (m_panelManager->isPanelVisible(id)) {
@@ -742,193 +464,17 @@ bool DevTools::isPanelVisible(const std::string& panelId) const {
     return m_panelManager && m_panelManager->isPanelVisible(panelId);
 }
 
-bool DevTools::dockPanel(const std::string& panelId, const std::string& position) {
-    if (!m_panelManager) return false;
-
-    Panel* panel = m_panelManager->getPanel(panelId);
-    if (!panel) {
-        std::cerr << "[DevTools] dockPanel: panel not found: " << panelId << std::endl;
-        return false;
-    }
-
-    // Parse position string to DockPosition enum
-    DockPosition dockPos = DockPosition::None;
-    if (position == "left") {
-        dockPos = DockPosition::Left;
-    } else if (position == "right") {
-        dockPos = DockPosition::Right;
-    } else if (position == "top") {
-        dockPos = DockPosition::Top;
-    } else if (position == "bottom") {
-        dockPos = DockPosition::Bottom;
-    } else if (position == "center") {
-        dockPos = DockPosition::Center;
-    } else if (position == "float") {
-        dockPos = DockPosition::Float;
-    } else {
-        std::cerr << "[DevTools] dockPanel: invalid position: " << position << std::endl;
-        return false;
-    }
-
-    // Ensure layout mode is enabled
-    if (!m_panelManager->isLayoutMode()) {
-        m_panelManager->buildDefaultLayout();
-        m_panelManager->setLayoutMode(true);
-    }
-
-    // Make the panel visible if it's hidden
-    if (!panel->isVisible()) {
-        panel->setVisible(true);
-    }
-
-    // Use DockManager to dock the panel programmatically
-    auto* dm = m_panelManager->dockManager();
-    if (!dm) {
-        std::cerr << "[DevTools] dockPanel: DockManager not available" << std::endl;
-        return false;
-    }
-
-    dm->dockPanelProgrammatically(panel, dockPos);
-    return true;
-}
-
-// -------------------------------------------------------------------------
-// IDE Backward Compatibility
-// -------------------------------------------------------------------------
-
-void DevTools::toggleIde() {
-    // Toggle both terminal and editor panels
-    bool currentlyVisible = isIdeVisible();
-    if (currentlyVisible) {
-        hidePanel("terminal");
-        hidePanel("editor");
-    } else {
-        showPanel("terminal");
-        showPanel("editor");
-    }
-}
-
-bool DevTools::isIdeVisible() const {
-    return isPanelVisible("terminal") || isPanelVisible("editor");
-}
-
-void DevTools::setIdeVisible(bool visible) {
-    if (visible) {
-        showPanel("terminal");
-        showPanel("editor");
-    } else {
-        hidePanel("terminal");
-        hidePanel("editor");
-    }
-}
-
-void DevTools::setWorkingDirectory(const std::string& path) {
-    if (auto* terminal = m_panelManager->getPanelAs<TerminalPanel>("terminal")) {
-        // Spawn shell in the working directory
-        terminal->spawn("", path);
-    }
-
-    // Also set file browser root directory
-    if (auto* fileBrowser = m_panelManager->getPanelAs<FileBrowserPanel>("filebrowser")) {
-        fileBrowser->setRootDirectory(path);
-    }
-}
-
-// -------------------------------------------------------------------------
-// File Browser
-// -------------------------------------------------------------------------
-
-void DevTools::showFileBrowser() {
-    showPanel("filebrowser");
-}
-
-void DevTools::hideFileBrowser() {
-    hidePanel("filebrowser");
-}
-
-void DevTools::toggleFileBrowser() {
-    togglePanel("filebrowser");
-}
-
-bool DevTools::isFileBrowserVisible() const {
-    return isPanelVisible("filebrowser");
-}
-
-bool DevTools::openFile(const std::string& path) {
-    if (auto* editor = m_panelManager->getPanelAs<EditorPanel>("editor")) {
-        return editor->openFile(path);
-    }
-    return false;
-}
-
-void DevTools::setCompileStatus(bool success, const std::string& message) {
-    if (auto* editor = m_panelManager->getPanelAs<EditorPanel>("editor")) {
-        if (success) {
-            editor->clearError();
-        } else {
-            // Parse line number from error message if possible
-            // Format: "filename:line:col: error: message"
-            int line = 1;
-            size_t colonPos = message.find(':');
-            if (colonPos != std::string::npos) {
-                size_t secondColon = message.find(':', colonPos + 1);
-                if (secondColon != std::string::npos) {
-                    std::string lineStr = message.substr(colonPos + 1, secondColon - colonPos - 1);
-                    try {
-                        line = std::stoi(lineStr);
-                    } catch (...) {}
-                }
-            }
-            editor->setError(line, message);
-        }
-    }
-}
-
 void DevTools::setWindow(GLFWwindow* window) {
     m_window = window;
-
-    // Set up clipboard callbacks for editor and console
-    if (m_panelManager && window) {
-        auto getClipboard = [window]() -> std::string {
-            const char* text = glfwGetClipboardString(window);
-            return text ? text : "";
-        };
-        auto setClipboard = [window](const std::string& text) {
-            glfwSetClipboardString(window, text.c_str());
-        };
-
-        if (auto* editor = m_panelManager->getPanelAs<EditorPanel>("editor")) {
-            editor->setClipboardCallbacks(getClipboard, setClipboard);
-        }
-
-        if (auto* console = m_panelManager->getPanelAs<ConsolePanel>("console")) {
-            console->setClipboardCallbacks(getClipboard, setClipboard);
-        }
-    }
-}
-
-glm::vec4 DevTools::getIdeBounds() const {
-    // Return combined bounds of terminal/editor panels
-    if (auto* terminal = m_panelManager->getPanelAs<TerminalPanel>("terminal")) {
-        return terminal->bounds();
-    }
-    return {20, 60, 900, 600};
-}
-
-void DevTools::setIdeBounds(const glm::vec4& bounds) {
-    // Only set terminal bounds - editor is now a separate panel
-    if (auto* terminal = m_panelManager->getPanelAs<TerminalPanel>("terminal")) {
-        terminal->setBounds(bounds);
-    }
 }
 
 // -------------------------------------------------------------------------
-// Visualizer Backward Compatibility
+// Visualizer
 // -------------------------------------------------------------------------
 
 void DevTools::toggleVisualizer() {
-    // Simplified: just toggle nodegraph
-    togglePanel("nodegraph");
+    // NodeGraph is always visible; toggle inspector instead
+    togglePanel("inspector");
 }
 
 bool DevTools::isVisualizerVisible() const {
@@ -995,49 +541,6 @@ void DevTools::onParamChange(ParamChangeCallback callback) {
 }
 
 // -------------------------------------------------------------------------
-// Console
-// -------------------------------------------------------------------------
-
-void DevTools::setCompileErrors(const std::vector<CompileError>& errors) {
-    if (auto* console = m_panelManager->getPanelAs<ConsolePanel>("console")) {
-        console->setCompileErrors(errors);
-    }
-}
-
-void DevTools::clearCompileErrors() {
-    if (auto* console = m_panelManager->getPanelAs<ConsolePanel>("console")) {
-        console->clearCompileErrors();
-    }
-}
-
-void DevTools::addConsoleMessage(int type, const std::string& message) {
-    if (auto* console = m_panelManager->getPanelAs<ConsolePanel>("console")) {
-        ConsoleMessageType msgType;
-        switch (type) {
-            case 0: msgType = ConsoleMessageType::Info; break;
-            case 1: msgType = ConsoleMessageType::Warning; break;
-            case 2: msgType = ConsoleMessageType::Error; break;
-            case 3: msgType = ConsoleMessageType::Debug; break;
-            default: msgType = ConsoleMessageType::Info; break;
-        }
-        console->addMessage(msgType, message);
-    }
-}
-
-void DevTools::clearConsole() {
-    if (auto* console = m_panelManager->getPanelAs<ConsolePanel>("console")) {
-        console->clear();
-    }
-}
-
-bool DevTools::consoleHasErrors() const {
-    if (auto* console = m_panelManager->getPanelAs<ConsolePanel>("console")) {
-        return console->hasErrors();
-    }
-    return false;
-}
-
-// -------------------------------------------------------------------------
 // Video/Snapshot Export
 // -------------------------------------------------------------------------
 
@@ -1065,13 +568,6 @@ void DevTools::toggleBackgroundGrid() {
 
     // Save to preferences
     Preferences::instance().setGridOpacity(m_gridOpacity);
-}
-
-void DevTools::syncStatusBarPresets() {
-    if (auto* statusBar = m_panelManager->getPanelAs<StatusBarPanel>("statusbar")) {
-        statusBar->setLayoutPresets(Preferences::instance().getLayoutPresetNames());
-        statusBar->setActivePreset(Preferences::instance().activePreset());
-    }
 }
 
 void DevTools::setGridOpacity(float opacity) {

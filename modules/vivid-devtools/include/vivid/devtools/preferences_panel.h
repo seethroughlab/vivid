@@ -7,7 +7,6 @@
  * Provides tabs for:
  * - Appearance: Theme selection, color customization
  * - Shortcuts: View and rebind keyboard shortcuts
- * - Layout: Layout presets and reset options
  */
 
 #include <vivid/devtools/modal_dialog.h>
@@ -18,15 +17,12 @@
 
 namespace vivid {
 
-class PanelManager;
-
 /**
  * @brief Preference tabs
  */
 enum class PreferenceTab {
     Appearance,
-    Shortcuts,
-    Layout
+    Shortcuts
 };
 
 // ThemePreset is defined in preferences.h
@@ -38,7 +34,6 @@ enum class PreferenceTab {
  * - Theme selection (Dark, Light, High Contrast)
  * - Live preview of color changes
  * - Keyboard shortcut viewer
- * - Layout preset selection
  *
  * Usage:
  * @code
@@ -64,22 +59,10 @@ public:
     void setShortcuts(ShortcutManager* shortcuts) { m_shortcuts = shortcuts; }
 
     /**
-     * @brief Set the panel manager (for layout presets)
-     */
-    void setPanelManager(PanelManager* manager) { m_panelManager = manager; }
-
-    /**
      * @brief Set callback for when theme changes
      */
     void onThemeChange(std::function<void(ThemePreset)> callback) {
         m_onThemeChange = std::move(callback);
-    }
-
-    /**
-     * @brief Set callback for when layout preset is selected
-     */
-    void onLayoutPreset(std::function<void(const std::string&)> callback) {
-        m_onLayoutPreset = std::move(callback);
     }
 
     /**
@@ -100,8 +83,6 @@ private:
                               const gui::InputState& input, const UIStyle& style);
     void renderShortcutsTab(OverlayCanvas& canvas, const glm::vec4& bounds,
                              const gui::InputState& input, const UIStyle& style);
-    void renderLayoutTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                          const gui::InputState& input, const UIStyle& style);
 
     // Helper to render a button
     bool renderButton(OverlayCanvas& canvas, const std::string& label,
@@ -124,11 +105,9 @@ private:
     // External references (not owned)
     UIStyle* m_style = nullptr;
     ShortcutManager* m_shortcuts = nullptr;
-    PanelManager* m_panelManager = nullptr;
 
     // Callbacks
     std::function<void(ThemePreset)> m_onThemeChange;
-    std::function<void(const std::string&)> m_onLayoutPreset;
 
     // Tab geometry
     std::vector<glm::vec4> m_tabRects;

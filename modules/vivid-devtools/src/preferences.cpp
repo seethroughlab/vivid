@@ -102,55 +102,8 @@ bool Preferences::load() {
         // Panel visibility
         if (j.contains("panels")) {
             auto& panels = j["panels"];
-            if (panels.contains("terminal")) m_terminalVisible = panels["terminal"].get<bool>();
-            if (panels.contains("editor")) m_editorVisible = panels["editor"].get<bool>();
-            if (panels.contains("console")) m_consoleVisible = panels["console"].get<bool>();
             if (panels.contains("visualizer")) m_visualizerVisible = panels["visualizer"].get<bool>();
             if (panels.contains("gridOpacity")) m_gridOpacity = panels["gridOpacity"].get<float>();
-            if (panels.contains("fileBrowser")) m_fileBrowserVisible = panels["fileBrowser"].get<bool>();
-        }
-
-        // Editor session
-        if (j.contains("editor")) {
-            auto& editor = j["editor"];
-            if (editor.contains("openFiles")) {
-                m_openFiles.clear();
-                for (const auto& f : editor["openFiles"]) {
-                    m_openFiles.push_back(f.get<std::string>());
-                }
-            }
-            if (editor.contains("activeFile")) {
-                m_activeFile = editor["activeFile"].get<std::string>();
-            }
-        }
-
-        // File browser session
-        if (j.contains("fileBrowser")) {
-            auto& fb = j["fileBrowser"];
-            if (fb.contains("expandedFolders")) {
-                m_expandedFolders.clear();
-                for (const auto& f : fb["expandedFolders"]) {
-                    m_expandedFolders.insert(f.get<std::string>());
-                }
-            }
-        }
-
-        // Layout presets
-        if (j.contains("layouts")) {
-            auto& layouts = j["layouts"];
-            if (layouts.contains("presets") && layouts["presets"].is_object()) {
-                m_layoutPresets.clear();
-                for (auto& [name, json] : layouts["presets"].items()) {
-                    // Store as string (dump back to JSON string)
-                    m_layoutPresets[name] = json.dump();
-                }
-            }
-            if (layouts.contains("activePreset")) {
-                m_activePreset = layouts["activePreset"].get<std::string>();
-            }
-            if (layouts.contains("lastUsedPreset")) {
-                m_lastUsedPreset = layouts["lastUsedPreset"].get<std::string>();
-            }
         }
 
         std::cerr << "[Preferences] Loaded from " << path << std::endl;
@@ -179,12 +132,8 @@ bool Preferences::save() {
 
         // Panel visibility
         j["panels"] = {
-            {"terminal", m_terminalVisible},
-            {"editor", m_editorVisible},
-            {"console", m_consoleVisible},
             {"visualizer", m_visualizerVisible},
-            {"gridOpacity", m_gridOpacity},
-            {"fileBrowser", m_fileBrowserVisible}
+            {"gridOpacity", m_gridOpacity}
         };
 
         // Corner radii
@@ -192,37 +141,6 @@ bool Preferences::save() {
             {"panel", m_panelCornerRadius},
             {"button", m_buttonCornerRadius},
             {"slider", m_sliderCornerRadius}
-        };
-
-        // Editor session
-        j["editor"] = {
-            {"openFiles", m_openFiles},
-            {"activeFile", m_activeFile}
-        };
-
-        // File browser session
-        nlohmann::json expandedArray = nlohmann::json::array();
-        for (const auto& folder : m_expandedFolders) {
-            expandedArray.push_back(folder);
-        }
-        j["fileBrowser"] = {
-            {"expandedFolders", expandedArray}
-        };
-
-        // Layout presets
-        nlohmann::json layoutPresets = nlohmann::json::object();
-        for (const auto& [name, jsonStr] : m_layoutPresets) {
-            // Parse JSON string back to object for proper formatting
-            try {
-                layoutPresets[name] = nlohmann::json::parse(jsonStr);
-            } catch (...) {
-                // Skip invalid entries
-            }
-        }
-        j["layouts"] = {
-            {"presets", layoutPresets},
-            {"activePreset", m_activePreset},
-            {"lastUsedPreset", m_lastUsedPreset}
         };
 
         std::ofstream file(path);
@@ -309,76 +227,6 @@ void Preferences::setSliderCornerRadius(float radius) {
 
 void Preferences::setGridOpacity(float opacity) {
     m_gridOpacity = std::max(0.0f, std::min(1.0f, opacity));
-    save();
-}
-
-void Preferences::setOpenFiles(const std::vector<std::string>& files) {
-    m_openFiles = files;
-    save();
-}
-
-void Preferences::setActiveFile(const std::string& path) {
-    m_activeFile = path;
-    save();
-}
-
-void Preferences::setExpandedFolders(const std::set<std::string>& folders) {
-    m_expandedFolders = folders;
-    save();
-}
-
-// -------------------------------------------------------------------------
-// Layout Presets
-// -------------------------------------------------------------------------
-
-std::string Preferences::getLayoutPreset(const std::string& name) const {
-    auto it = m_layoutPresets.find(name);
-    return it != m_layoutPresets.end() ? it->second : "";
-}
-
-void Preferences::setLayoutPreset(const std::string& name, const std::string& layoutJson) {
-    m_layoutPresets[name] = layoutJson;
-    save();
-}
-
-void Preferences::deleteLayoutPreset(const std::string& name) {
-    // Don't allow deleting the Default preset
-    if (name == "Default") return;
-
-    m_layoutPresets.erase(name);
-
-    // If we deleted the active preset, switch to Default
-    if (m_activePreset == name) {
-        m_activePreset = "Default";
-    }
-    if (m_lastUsedPreset == name) {
-        m_lastUsedPreset = "Default";
-    }
-
-    save();
-}
-
-std::vector<std::string> Preferences::getLayoutPresetNames() const {
-    std::vector<std::string> names;
-    // Always include Default first
-    names.push_back("Default");
-
-    for (const auto& [name, _] : m_layoutPresets) {
-        if (name != "Default") {
-            names.push_back(name);
-        }
-    }
-    return names;
-}
-
-void Preferences::setActivePreset(const std::string& name) {
-    m_activePreset = name;
-    m_lastUsedPreset = name;  // Also update last used
-    save();
-}
-
-void Preferences::setLastUsedPreset(const std::string& name) {
-    m_lastUsedPreset = name;
     save();
 }
 

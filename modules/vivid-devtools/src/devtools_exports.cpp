@@ -114,55 +114,8 @@ bool vivid_devtools_is_panel_visible(const char* panelId) {
     return vivid::DevTools::instance().isPanelVisible(panelId);
 }
 
-bool vivid_devtools_dock_panel(const char* panelId, const char* position) {
-    if (!panelId || !position) return false;
-    return vivid::DevTools::instance().dockPanel(panelId, position);
-}
-
-// =============================================================================
-// IDE Features (Terminal + Editor)
-// =============================================================================
-
-void vivid_devtools_toggle_ide() {
-    vivid::DevTools::instance().toggleIde();
-}
-
-bool vivid_devtools_is_ide_visible() {
-    return vivid::DevTools::instance().isIdeVisible();
-}
-
-void vivid_devtools_set_ide_visible(bool visible) {
-    vivid::DevTools::instance().setIdeVisible(visible);
-}
-
-void vivid_devtools_set_working_dir(const char* path) {
-    if (!path) return;
-    vivid::DevTools::instance().setWorkingDirectory(path);
-}
-
-bool vivid_devtools_open_file(const char* path) {
-    if (!path) return false;
-    return vivid::DevTools::instance().openFile(path);
-}
-
-void vivid_devtools_set_compile_status(bool success, const char* message) {
-    vivid::DevTools::instance().setCompileStatus(success, message ? message : "");
-}
-
 void vivid_devtools_set_window(GLFWwindow* window) {
     vivid::DevTools::instance().setWindow(window);
-}
-
-void vivid_devtools_get_ide_bounds(float* x, float* y, float* w, float* h) {
-    glm::vec4 bounds = vivid::DevTools::instance().getIdeBounds();
-    if (x) *x = bounds.x;
-    if (y) *y = bounds.y;
-    if (w) *w = bounds.z;
-    if (h) *h = bounds.w;
-}
-
-void vivid_devtools_set_ide_bounds(float x, float y, float w, float h) {
-    vivid::DevTools::instance().setIdeBounds({x, y, w, h});
 }
 
 // =============================================================================
@@ -238,33 +191,6 @@ void vivid_devtools_set_param_callback(void (*callback)(const char* opName, cons
             callback(opName.c_str(), paramName.c_str(), oldVal, newVal, line);
         }
     );
-}
-
-// =============================================================================
-// Console
-// =============================================================================
-
-void vivid_devtools_set_compile_errors(const vivid::CompileError* errors, size_t count) {
-    if (!errors && count > 0) return;
-    std::vector<vivid::CompileError> errVec(errors, errors + count);
-    vivid::DevTools::instance().setCompileErrors(errVec);
-}
-
-void vivid_devtools_clear_compile_errors() {
-    vivid::DevTools::instance().clearCompileErrors();
-}
-
-void vivid_devtools_add_console_message(int type, const char* message) {
-    if (!message) return;
-    vivid::DevTools::instance().addConsoleMessage(type, message);
-}
-
-void vivid_devtools_clear_console() {
-    vivid::DevTools::instance().clearConsole();
-}
-
-bool vivid_devtools_console_has_errors() {
-    return vivid::DevTools::instance().consoleHasErrors();
 }
 
 // =============================================================================

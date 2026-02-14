@@ -2,7 +2,6 @@
 
 #include <vivid/devtools/preferences_panel.h>
 #include <vivid/devtools/preferences.h>
-#include <vivid/gui/panel_manager.h>
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cstring>
@@ -40,9 +39,6 @@ void PreferencesPanel::renderContent(OverlayCanvas& canvas, const glm::vec4& con
             break;
         case PreferenceTab::Shortcuts:
             renderShortcutsTab(canvas, tabContent, input, style);
-            break;
-        case PreferenceTab::Layout:
-            renderLayoutTab(canvas, tabContent, input, style);
             break;
     }
 }
@@ -83,11 +79,11 @@ void PreferencesPanel::renderTabs(OverlayCanvas& canvas, float x, float y, float
                                    const UIStyle& style) {
     m_tabRects.clear();
 
-    const char* tabNames[] = {"Appearance", "Shortcuts", "Layout"};
-    float tabW = w / 3.0f;
+    const char* tabNames[] = {"Appearance", "Shortcuts"};
+    float tabW = w / 2.0f;
     float tabH = kTabHeight;
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 2; i++) {
         float tabX = x + i * tabW;
         bool isActive = (static_cast<int>(m_activeTab) == i);
         bool isHovered = (m_hoveredTab == i);
@@ -307,70 +303,6 @@ void PreferencesPanel::renderShortcutsTab(OverlayCanvas& canvas, const glm::vec4
         canvas.text(shortcutStr, x + labelColW, y + rowH - 6, style.accent, 0);
 
         y += rowH;
-    }
-}
-
-void PreferencesPanel::renderLayoutTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                                        const gui::InputState& input, const UIStyle& style) {
-    float x = bounds.x;
-    float y = bounds.y;
-    float w = bounds.z;
-
-    // Layout presets section
-    canvas.text("Layout Presets", x, y + 16, style.textTitle, 0);
-    y += 28;
-
-    float buttonW = (w - 8) / 2.0f;
-    float buttonH = kButtonHeight;
-
-    if (renderButton(canvas, "Default", x, y, buttonW, buttonH, style, input, false)) {
-        if (m_onLayoutPreset) m_onLayoutPreset("default");
-    }
-
-    if (renderButton(canvas, "IDE Focus", x + buttonW + 8, y, buttonW, buttonH,
-                     style, input, false)) {
-        if (m_onLayoutPreset) m_onLayoutPreset("ide");
-    }
-
-    y += buttonH + 8;
-
-    if (renderButton(canvas, "Visualizer Focus", x, y, buttonW, buttonH, style, input, false)) {
-        if (m_onLayoutPreset) m_onLayoutPreset("visualizer");
-    }
-
-    if (renderButton(canvas, "Minimal", x + buttonW + 8, y, buttonW, buttonH,
-                     style, input, false)) {
-        if (m_onLayoutPreset) m_onLayoutPreset("minimal");
-    }
-
-    y += buttonH + 24;
-
-    // Layout mode section
-    canvas.text("Layout Mode", x, y + 16, style.textTitle, 0);
-    y += 28;
-
-    bool layoutMode = m_panelManager && m_panelManager->isLayoutMode();
-    std::string modeLabel = layoutMode ? "Docking Mode" : "Classic Mode";
-    canvas.text(modeLabel, x, y + 14, style.textPrimary, 0);
-    y += 24;
-
-    canvas.text("Press Cmd/Ctrl+L to toggle layout mode", x, y + 14, style.textDim, 0);
-    y += 32;
-
-    // Reset section
-    canvas.text("Reset", x, y + 16, style.textTitle, 0);
-    y += 28;
-
-    if (renderButton(canvas, "Reset to Defaults", x, y, w, buttonH, style, input, false)) {
-        // Reset theme via Preferences (will save automatically)
-        Preferences::instance().setThemePreset(ThemePreset::Dark);
-        if (m_onThemeChange) m_onThemeChange(ThemePreset::Dark);
-
-        // Reset to docking layout mode (the default)
-        if (m_panelManager) {
-            m_panelManager->buildDefaultLayout();
-            m_panelManager->setLayoutMode(true);
-        }
     }
 }
 

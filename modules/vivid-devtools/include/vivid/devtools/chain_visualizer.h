@@ -223,6 +223,11 @@ private:
 
     // Scratch texture for rendering CpuPixels operators
     ScratchTexture m_cpuPixelScratch;
+
+    // Health indicator tracking (per-node activity detection)
+    std::unordered_map<int, float> m_lastRms;        // nodeId -> last known RMS for audio ops
+    std::unordered_map<int, float> m_activityTimer;   // nodeId -> seconds since last change
+    std::unordered_map<int, WGPUTexture> m_lastTexture; // nodeId -> last known output texture ptr
 };
 
 } // namespace vivid

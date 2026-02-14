@@ -20,7 +20,6 @@
 #include <vivid/gui/ui_style.h>
 #include <vivid/video_exporter.h>
 #include <vivid/frame_input.h>
-#include <vivid/hot_reload.h>
 #include <webgpu/webgpu.h>
 #include <memory>
 #include <string>
@@ -39,16 +38,14 @@ class FontAtlas;
  * @brief Main DevTools orchestrator
  *
  * Singleton that manages all devtools functionality:
- * - Terminal panel for shell access
- * - Editor panel for chain.cpp editing
  * - NodeGraph panel for operator visualization
  * - Inspector panel for parameter editing
+ * - Performance panel for real-time metrics
  * - StatusBar panel for record/snapshot controls
  *
  * Usage (via exports):
  * @code
  * vivid_devtools_init(&ctx, surfaceFormat);
- * vivid_devtools_set_working_dir("/path/to/project");
  *
  * // Each frame:
  * vivid_devtools_update();
@@ -174,7 +171,7 @@ public:
 
     /**
      * @brief Show a panel
-     * @param panelId Panel ID (e.g., "terminal", "editor", "nodegraph", "inspector")
+     * @param panelId Panel ID (e.g., "nodegraph", "inspector", "performance", "statusbar")
      */
     void showPanel(const std::string& panelId);
 
@@ -194,93 +191,13 @@ public:
     bool isPanelVisible(const std::string& panelId) const;
 
     /**
-     * @brief Dock a panel to a specific position programmatically
-     * @param panelId Panel ID (e.g., "terminal", "editor", "nodegraph", "inspector")
-     * @param position Dock position: "left", "right", "top", "bottom", "center", "float"
-     * @return true if docking succeeded
-     */
-    bool dockPanel(const std::string& panelId, const std::string& position);
-
-    /// @}
-    // -------------------------------------------------------------------------
-    /// @name File Browser
-    /// @{
-
-    /**
-     * @brief Show the file browser panel
-     */
-    void showFileBrowser();
-
-    /**
-     * @brief Hide the file browser panel
-     */
-    void hideFileBrowser();
-
-    /**
-     * @brief Toggle file browser visibility
-     */
-    void toggleFileBrowser();
-
-    /**
-     * @brief Check if file browser is visible
-     */
-    bool isFileBrowserVisible() const;
-
-    /// @}
-    // -------------------------------------------------------------------------
-    /// @name Backward Compatibility (IDE)
-    /// @{
-
-    /**
-     * @brief Toggle IDE panels (terminal + editor)
-     *
-     * Backward-compatible with vivid_ide_toggle_visible()
-     */
-    void toggleIde();
-
-    /**
-     * @brief Check if IDE panels are visible
-     */
-    bool isIdeVisible() const;
-
-    /**
-     * @brief Set IDE visibility
-     */
-    void setIdeVisible(bool visible);
-
-    /**
-     * @brief Set working directory for terminal
-     */
-    void setWorkingDirectory(const std::string& path);
-
-    /**
-     * @brief Open a file in the editor
-     */
-    bool openFile(const std::string& path);
-
-    /**
-     * @brief Set compile status
-     */
-    void setCompileStatus(bool success, const std::string& message);
-
-    /**
      * @brief Set GLFW window for clipboard
      */
     void setWindow(GLFWwindow* window);
 
-    /**
-     * @brief Get IDE bounds
-     */
-    glm::vec4 getIdeBounds() const;
-
-    /**
-     * @brief Set IDE bounds
-     */
-    void setIdeBounds(const glm::vec4& bounds);
-
     /// @}
     // -------------------------------------------------------------------------
-    /// @name Backward Compatibility (Visualizer)
+    /// @name Visualizer
     /// @{
 
     /**
@@ -351,39 +268,6 @@ public:
     using ParamChangeCallback = std::function<void(const std::string&, const std::string&,
                                                     const float[4], const float[4], int)>;
     void onParamChange(ParamChangeCallback callback);
-
-    /// @}
-    // -------------------------------------------------------------------------
-    /// @name Console
-    /// @{
-
-    /**
-     * @brief Set compile errors in the console panel
-     * @param errors Structured compile errors from HotReload
-     */
-    void setCompileErrors(const std::vector<CompileError>& errors);
-
-    /**
-     * @brief Clear compile errors from the console panel
-     */
-    void clearCompileErrors();
-
-    /**
-     * @brief Add a message to the console panel
-     * @param type Message type (0=Info, 1=Warning, 2=Error, 3=Debug)
-     * @param message Message text
-     */
-    void addConsoleMessage(int type, const std::string& message);
-
-    /**
-     * @brief Clear all console messages
-     */
-    void clearConsole();
-
-    /**
-     * @brief Check if console panel is showing errors
-     */
-    bool consoleHasErrors() const;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -462,7 +346,6 @@ private:
     // Helper methods
     void registerDefaultShortcuts();
     void renderBackgroundGrid(OverlayCanvas& canvas, float screenWidth, float screenHeight);
-    void syncStatusBarPresets();
 
     // State
     bool m_initialized = false;
@@ -479,7 +362,7 @@ private:
     std::unique_ptr<PreferencesPanel> m_preferencesPanel;
 
     // Fonts (shared across all panels)
-    std::unique_ptr<FontAtlas> m_fonts[3];
+    std::unique_ptr<FontAtlas> m_fonts[2];
 
     // Style
     UIStyle m_style;

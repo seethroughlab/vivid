@@ -2,19 +2,16 @@
 
 /**
  * @file status_bar_panel.h
- * @brief Status bar panel (docked at top)
+ * @brief Status bar panel (top edge)
  *
  * Shows:
- * - Panel toggle buttons with three-state rendering (docked/floating/hidden)
- * - Record button
- * - Snapshot button
+ * - Grid opacity slider
+ * - FPS, frame time, resolution, memory
  * - Pending changes indicator
- * - Memory usage
- * - FPS
+ * - Record/Snapshot buttons
  */
 
 #include <vivid/gui/panel.h>
-#include <vivid/gui/dock_zone.h>
 #include <memory>
 #include <string>
 #include <functional>
@@ -24,7 +21,7 @@ namespace vivid {
 class VideoExporter;
 
 /**
- * @brief Status bar panel docked at top of screen
+ * @brief Status bar panel fixed to top of screen
  */
 class StatusBarPanel : public Panel {
 public:
@@ -37,8 +34,6 @@ public:
     void render(OverlayCanvas& canvas, const glm::vec4& bounds,
                const gui::InputState& input, const UIStyle& style) override;
     bool handleInput(const gui::InputState& input) override;
-    void onChar(uint32_t codepoint) override;
-    void onKeyDown(int key, int mods) override;
 
     // Status bar specific
     void setPendingChangeCount(size_t count);
@@ -49,35 +44,14 @@ public:
     void setGridOpacity(float opacity);
     float gridOpacity() const;
 
-    // Panel visibility and dock mode (synced with DevTools)
-    void setPanelVisibility(const std::string& panelId, bool visible);
-    void setPanelDockMode(const std::string& panelId, DockMode mode);
-
     // Callbacks
     using SnapshotCallback = std::function<void()>;
     using RecordCallback = std::function<void(bool start)>;
     using GridOpacityCallback = std::function<void(float opacity)>;
-    using PanelToggleCallback = std::function<void(const std::string& panelId)>;
-    using PanelDragCallback = std::function<void(const std::string& panelId, const glm::vec2& pos)>;
-    using PanelDockCallback = std::function<void(const std::string& panelId, DockPosition position)>;
-    using LayoutPresetCallback = std::function<void(const std::string& presetName)>;
-    using LayoutSaveCallback = std::function<void(const std::string& presetName)>;
 
     void onSnapshot(SnapshotCallback callback);
     void onRecord(RecordCallback callback);
     void onGridOpacityChange(GridOpacityCallback callback);
-    void onPanelToggle(PanelToggleCallback callback);
-    void onPanelDrag(PanelDragCallback callback);      // Drag from button to create floating
-    void onPanelDock(PanelDockCallback callback);      // Context menu dock action
-
-    // Layout preset callbacks
-    void onPresetSelect(LayoutPresetCallback callback);
-    void onPresetSave(LayoutSaveCallback callback);
-    void onPresetDelete(LayoutPresetCallback callback);
-
-    // Layout preset state (synced from DevTools)
-    void setLayoutPresets(const std::vector<std::string>& presets);
-    void setActivePreset(const std::string& name);
 
 private:
     struct Impl;

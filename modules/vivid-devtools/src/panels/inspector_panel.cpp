@@ -62,7 +62,7 @@ InspectorPanel::InspectorPanel() {
     m_config.id = "inspector";
     m_config.title = "Inspector";
     m_config.bounds = {20, 60, 280, 400};   // Floating, positioned on left side (away from minimap)
-    m_config.dockSide = DockSide::None;     // Floating panel
+    m_config.role = PanelRole::Floating;
     m_config.visible = false;
     m_config.resizable = true;
     m_config.draggable = true;              // Allow dragging
@@ -93,7 +93,7 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float h = renderBounds.w;
 
     // Render standard panel chrome (title bar controlled by m_display.showTitleBar)
-    renderChrome(canvas, x, y, w, h, style, m_display.showTitleBar, &input);
+    renderChrome(canvas, x, y, w, h, style, m_display.showTitleBar);
 
     // If no operator selected, just show empty panel
     if (!m_impl->selectedOp) {

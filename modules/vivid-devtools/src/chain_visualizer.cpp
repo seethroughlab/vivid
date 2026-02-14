@@ -20,23 +20,9 @@
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <vivid/devtools/system_info.h>
 #include <climits>
 #include <filesystem>
-
-// Platform-specific memory monitoring
-#if defined(__APPLE__)
-#include <mach/mach.h>
-#include <mach/task.h>
-#elif defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <psapi.h>
-#elif defined(__linux__)
-#include <fstream>
-#include <unistd.h>
-#endif
 
 namespace fs = std::filesystem;
 
@@ -58,45 +44,6 @@ static constexpr int SPEAKERS_NODE_ID = 9998;
 static constexpr float THUMB_WIDTH = 100.0f;
 static constexpr float THUMB_HEIGHT = 56.0f;
 static constexpr float FOCUSED_SCALE = 3.0f;  // 3x larger when focused
-
-// Get process memory usage in bytes
-static size_t getProcessMemoryUsage() {
-#if defined(__APPLE__)
-    task_vm_info_data_t vmInfo;
-    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
-    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vmInfo, &count) == KERN_SUCCESS) {
-        return vmInfo.phys_footprint;  // Actual physical memory used
-    }
-    return 0;
-#elif defined(_WIN32)
-    PROCESS_MEMORY_COUNTERS_EX pmc;
-    if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc))) {
-        return pmc.WorkingSetSize;
-    }
-    return 0;
-#elif defined(__linux__)
-    std::ifstream statm("/proc/self/statm");
-    if (statm.is_open()) {
-        size_t size, resident;
-        statm >> size >> resident;
-        return resident * sysconf(_SC_PAGESIZE);
-    }
-    return 0;
-#else
-    return 0;
-#endif
-}
-
-// Format bytes as human-readable string (MB or GB)
-static std::string formatMemory(size_t bytes) {
-    char buf[32];
-    if (bytes >= 1024 * 1024 * 1024) {
-        snprintf(buf, sizeof(buf), "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
-    } else {
-        snprintf(buf, sizeof(buf), "%.1f MB", bytes / (1024.0 * 1024.0));
-    }
-    return buf;
-}
 
 // -------------------------------------------------------------------------
 // Color conversion helpers for color picker
@@ -585,6 +532,163 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const gui::Inp
                 canvas.fillRect(x, y, w, h, {0.15f, 0.15f, 0.18f, 1.0f});
             }
         });
+
+        // Set overlay callback for health indicators (strip, VU meter, activity dot)
+        {
+            vivid::Operator* overlayOp = info.op;
+            int overlayNodeId = nodeId;
+            float currentTime = graphInput.time;
+
+            // Gather health state from inspect() data
+            vivid::InspectData inspectData = overlayOp->inspect();
+            vivid::OutputKind kind = overlayOp->outputKind();
+            bool bypassed = overlayOp->isBypassed();
+
+            // Determine health color
+            // Gray = bypassed, Amber = active but empty output, Green = active and producing
+            // Red = error (clipping audio, stale texture >3s)
+            glm::vec4 healthColor;
+            if (bypassed) {
+                healthColor = {0.4f, 0.4f, 0.4f, 0.6f};  // Gray
+            } else if (kind == vivid::OutputKind::Audio) {
+                auto rmsIt = inspectData.metrics.find("rms");
+                auto peakIt = inspectData.metrics.find("peak");
+                float rms = (rmsIt != inspectData.metrics.end()) ? rmsIt->second : 0.0f;
+                float peak = (peakIt != inspectData.metrics.end()) ? peakIt->second : 0.0f;
+                if (peak >= 1.0f) {
+                    healthColor = {0.9f, 0.3f, 0.3f, 0.9f};   // Red (clipping)
+                } else if (rms < 0.01f) {
+                    healthColor = {0.9f, 0.7f, 0.2f, 0.9f};   // Amber (silent)
+                } else {
+                    healthColor = {0.3f, 0.8f, 0.3f, 0.9f};   // Green
+                }
+            } else if (kind == vivid::OutputKind::Texture) {
+                WGPUTexture tex = overlayOp->outputTexture();
+                // Check stale timer (will be computed below, read previous frame's value)
+                auto prevTimerIt = m_activityTimer.find(overlayNodeId);
+                float prevTimer = (prevTimerIt != m_activityTimer.end()) ? prevTimerIt->second : 0.0f;
+                bool staleTexture = (prevTimer > 3.0f);
+                if (tex == nullptr) {
+                    healthColor = {0.9f, 0.7f, 0.2f, 0.9f};   // Amber (no output)
+                } else if (staleTexture) {
+                    healthColor = {0.9f, 0.3f, 0.3f, 0.9f};   // Red (stale)
+                } else {
+                    healthColor = {0.3f, 0.8f, 0.3f, 0.9f};   // Green
+                }
+            } else {
+                healthColor = {0.3f, 0.8f, 0.3f, 0.9f};   // Green (assume active)
+            }
+
+            // Audio level data (for VU meter)
+            float audioRms = 0.0f;
+            float audioPeak = 0.0f;
+            bool isAudio = (kind == vivid::OutputKind::Audio);
+            if (isAudio) {
+                auto rmsIt = inspectData.metrics.find("rms");
+                auto peakIt = inspectData.metrics.find("peak");
+                if (rmsIt != inspectData.metrics.end()) audioRms = rmsIt->second;
+                if (peakIt != inspectData.metrics.end()) audioPeak = peakIt->second;
+            }
+
+            // Activity tracking: detect changes between frames
+            float dt = 1.0f / 60.0f;  // Approximate frame time
+            bool isActive = false;
+            if (isAudio) {
+                float lastRms = 0.0f;
+                auto it = m_lastRms.find(overlayNodeId);
+                if (it != m_lastRms.end()) lastRms = it->second;
+                isActive = (audioRms > 0.005f) || (std::abs(audioRms - lastRms) > 0.001f);
+                m_lastRms[overlayNodeId] = audioRms;
+            } else if (kind == vivid::OutputKind::Texture) {
+                WGPUTexture tex = overlayOp->outputTexture();
+                auto it = m_lastTexture.find(overlayNodeId);
+                WGPUTexture lastTex = (it != m_lastTexture.end()) ? it->second : nullptr;
+                isActive = (tex != nullptr) && (tex != lastTex || lastTex == nullptr);
+                m_lastTexture[overlayNodeId] = tex;
+            } else {
+                isActive = !bypassed;
+            }
+
+            // Update activity timer
+            auto timerIt = m_activityTimer.find(overlayNodeId);
+            float timer = (timerIt != m_activityTimer.end()) ? timerIt->second : 0.0f;
+            if (isActive) {
+                timer = 0.0f;  // Reset on activity
+            } else {
+                timer += dt;
+            }
+            m_activityTimer[overlayNodeId] = timer;
+
+            // Compute activity dot alpha and color
+            float dotAlpha;
+            bool dotStale = timer > 1.0f;
+            if (dotStale) {
+                dotAlpha = 0.2f;
+            } else {
+                dotAlpha = 0.5f + 0.5f * std::sin(currentTime * 4.0f);
+            }
+            glm::vec4 dotColor;
+            if (bypassed) {
+                dotColor = {0.4f, 0.4f, 0.4f, 0.3f};              // Gray
+            } else if (timer > 3.0f) {
+                dotColor = {0.9f, 0.3f, 0.3f, dotAlpha};           // Red (stale)
+            } else if (!isActive && timer > 1.0f) {
+                dotColor = {0.5f, 0.5f, 0.3f, dotAlpha};           // Amber (slowing)
+            } else {
+                dotColor = {0.3f, 0.8f, 0.3f, dotAlpha};           // Green
+            }
+
+            // Set health-colored node border
+            m_nodeGraph.setNodeHealthColor(healthColor);
+
+            m_nodeGraph.setNodeOverlay([healthColor, isAudio, audioRms, audioPeak, dotColor, bypassed](
+                    OverlayCanvas& canvas, float x, float y, float w, float h) {
+
+                // 1. Health status strip — thin bar at bottom edge
+                float stripH = 3.0f;
+                float stripInset = 4.0f;
+                float stripY = y + h - stripH - 2.0f;
+                canvas.fillRoundedRect(x + stripInset, stripY, w - stripInset * 2, stripH, 1.5f, healthColor);
+
+                // 2. Audio VU meter — for audio operators, above health strip
+                if (isAudio && !bypassed) {
+                    float meterH = 4.0f;
+                    float meterInset = w * 0.1f;
+                    float meterW = w - meterInset * 2;
+                    float meterY = stripY - meterH - 3.0f;
+                    float meterX = x + meterInset;
+
+                    // Background track
+                    canvas.fillRoundedRect(meterX, meterY, meterW, meterH, 2.0f, {0.1f, 0.1f, 0.1f, 0.7f});
+
+                    // RMS fill with color gradient
+                    float fillW = std::min(audioRms, 1.0f) * meterW;
+                    if (fillW > 0.5f) {
+                        glm::vec4 fillColor;
+                        if (audioRms < 0.7f) {
+                            fillColor = {0.3f, 0.8f, 0.3f, 0.9f};  // Green
+                        } else if (audioRms < 0.9f) {
+                            fillColor = {0.9f, 0.8f, 0.2f, 0.9f};  // Yellow
+                        } else {
+                            fillColor = {0.9f, 0.3f, 0.3f, 0.9f};  // Red
+                        }
+                        canvas.fillRoundedRect(meterX, meterY, fillW, meterH, 2.0f, fillColor);
+                    }
+
+                    // Peak marker — thin vertical line
+                    float peakX = meterX + std::min(audioPeak, 1.0f) * meterW;
+                    if (audioPeak > 0.01f) {
+                        canvas.line(peakX, meterY, peakX, meterY + meterH, 1.0f, {1.0f, 1.0f, 1.0f, 0.7f});
+                    }
+                }
+
+                // 3. Activity dot — small circle in top-right corner
+                float dotR = 4.0f;
+                float dotX = x + w - dotR - 6.0f;
+                float dotY = y + dotR + 6.0f;
+                canvas.fillCircle(dotX, dotY, dotR, dotColor);
+            });
+        }
 
         // Add input pins for each connected input
         size_t numInputs = info.op->inputCount();

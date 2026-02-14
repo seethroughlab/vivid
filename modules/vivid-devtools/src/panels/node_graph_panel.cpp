@@ -66,7 +66,7 @@ NodeGraphPanel::NodeGraphPanel()
     m_config.id = "nodegraph";
     m_config.title = "Node Graph";
     m_config.bounds = {20, 60, 800, 600};
-    m_config.dockSide = DockSide::Fill;  // Default center content, but still dockable
+    m_config.role = PanelRole::Background;  // Fills remaining space behind everything
     m_config.visible = true;
     m_config.resizable = true;
     m_config.draggable = true;
@@ -458,9 +458,13 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 m_impl->selectCallback(m_impl->selectedOpName);
             }
         }
-    } else if (selectedNodeId < 0) {
+    } else if (selectedNodeId < 0 && m_impl->selectedNodeId >= 0) {
+        // Node was deselected — notify callback with empty string
         m_impl->selectedOpName.clear();
         m_impl->selectedNodeId = -1;
+        if (m_impl->selectCallback) {
+            m_impl->selectCallback("");
+        }
     }
 
     // Handle double-click
