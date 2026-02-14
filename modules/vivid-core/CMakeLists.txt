@@ -64,6 +64,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/runtime.cpp  # Production runtime (no dev tools)
     # Hot-reload is added conditionally below
     src/log.cpp
+    src/snapshot.cpp
     src/module_registry.cpp
     src/module_manager.cpp
     # Note: chain_visualizer.cpp is compiled by vivid-devtools module
@@ -138,6 +139,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/gui/panel_manager.cpp
     src/gui/gui_debug.cpp
     src/viz_helpers.cpp
+    src/snapshot.cpp
 )
 
 # Hot-reload is always included in vivid-core (used by dev build)

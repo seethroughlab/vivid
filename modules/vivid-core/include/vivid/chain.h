@@ -12,6 +12,7 @@
 #include <vivid/inspect_data.h>
 #include <vivid/frame_analysis.h>
 #include <vivid/audio_graph.h>
+#include <vivid/snapshot.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -380,6 +381,13 @@ public:
      */
     [[nodiscard]] AudioGraph* audioGraph() { return &m_audioGraph; }
 
+    /**
+     * @brief Get the snapshot store for parameter presets
+     * @return Reference to SnapshotStore
+     */
+    [[nodiscard]] SnapshotStore& snapshots() { return m_snapshots; }
+    [[nodiscard]] const SnapshotStore& snapshots() const { return m_snapshots; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Resolution Configuration
@@ -535,6 +543,9 @@ private:
     // Legacy audio timing (for recording mode)
     double m_lastAudioTime = 0.0;
     double m_audioSamplesOwed = 0.0;
+
+    // Snapshots
+    SnapshotStore m_snapshots;
 
     // Debug mode
     bool m_debug = false;

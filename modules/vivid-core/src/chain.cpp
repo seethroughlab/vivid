@@ -3,6 +3,7 @@
 #include <vivid/chain.h>
 #include <vivid/context.h>
 #include <vivid/operator.h>
+#include <vivid/snapshot.h>
 #include <vivid/effects/texture_operator.h>
 #include <vivid/audio_operator.h>
 #include <vivid/audio_output.h>
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <iostream>
 #include <functional>
+#include <filesystem>
 #include <cstring>
 #include <cstdlib>
 
@@ -435,6 +437,19 @@ void Chain::init(Context& ctx) {
     m_lastAudioTime = 0.0;
     m_audioSamplesOwed = 0.0;
 
+    // Auto-load snapshots from project directory
+    if (!ctx.chainPath().empty()) {
+        namespace fs = std::filesystem;
+        fs::path chainFile(ctx.chainPath());
+        fs::path snapshotPath = chainFile.parent_path() / "vivid-snapshots.json";
+        if (fs::exists(snapshotPath)) {
+            if (m_snapshots.load(snapshotPath.string())) {
+                std::cout << "[Chain] Loaded " << m_snapshots.size() << " snapshots from "
+                          << snapshotPath.filename().string() << std::endl;
+            }
+        }
+    }
+
     std::cout << "[Chain] Initialized: " << m_visualExecutionOrder.size() << " visual operators, "
               << m_audioGraph.operatorCount() << " audio operators (pull-based)" << std::endl;
 }
@@ -501,6 +516,11 @@ void Chain::process(Context& ctx) {
     // It no longer generates audio - that happens in the miniaudio callback
     if (m_audioOutput) {
         m_audioOutput->process(ctx);
+    }
+
+    // Tick snapshot crossfade interpolation
+    if (m_snapshots.isCrossfading()) {
+        m_snapshots.update(static_cast<float>(ctx.dt()), *this);
     }
 
     // Set output texture if specified via chain.output()
