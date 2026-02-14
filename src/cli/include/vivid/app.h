@@ -35,6 +35,18 @@ struct AppConfig {
 
     // Start with UI visible (includes chain visualizer and IDE panel)
     bool showUI = false;
+
+    // Check mode (vivid check): run assertions and exit
+    bool checkMode = false;
+    std::string assertionPath;   // path to vivid-assertions.json
+    bool verboseCheck = false;   // print each assertion line
+
+    // Inspect mode (vivid inspect): dump inspection JSON and exit
+    bool inspectMode = false;
+    std::string inspectOutDir;   // optional output directory for inspect
+
+    // Shared by check/inspect: which frame to evaluate at
+    int checkFrame = -1;         // -1 = use assertion file's value or default 10
 };
 
 // Main application class

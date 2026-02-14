@@ -8,6 +8,7 @@ set(VIVID_CLI_SOURCES
     main.cpp
     app.cpp
     cli.cpp
+    assertion.cpp
     module_loader.cpp
     runtime_api.cpp
     mcp_server.cpp
@@ -16,6 +17,7 @@ set(VIVID_CLI_SOURCES
 
 set(VIVID_CLI_HEADERS
     include/vivid/cli.h
+    include/vivid/assertion.h
     include/vivid/runtime_api.h
     include/vivid/mcp_server.h
     include/vivid/module_loader.h

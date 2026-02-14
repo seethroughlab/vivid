@@ -9,6 +9,7 @@
 #endif
 
 #include <vivid/app.h>
+#include <vivid/assertion.h>
 
 #include <vivid/vivid.h>
 #include <vivid/effects/texture_operator.h>
@@ -755,6 +756,16 @@ struct MainLoopContext {
     int windowHeight = 720;
     bool showUI = false;
 
+    // Check/inspect mode
+    bool checkMode = false;
+    bool inspectMode = false;
+    int checkFrame = 10;         // Frame to evaluate at
+    std::string assertionPath;
+    std::string inspectOutDir;
+    bool verboseCheck = false;
+    std::vector<vivid::Assertion> assertions;  // Loaded assertions (check mode)
+    int exitCode = 0;            // Exit code for check mode
+
     // Project info
     std::string projectName;
 
@@ -1074,6 +1085,16 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                       << mlc.hotReload->getError() << std::endl;
             glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
         }
+
+        // In check/inspect mode, exit immediately on compile error
+        if (mlc.checkMode || mlc.inspectMode) {
+            nlohmann::json errReport;
+            errReport["error"] = "compile_failed";
+            errReport["message"] = mlc.hotReload->getError();
+            std::cout << errReport.dump(2) << std::endl;
+            mlc.exitCode = 1;
+            glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+        }
     } else if (mlc.hotReload->isLoaded()) {
         mlc.ctx->clearError();
 
@@ -1089,6 +1110,16 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     // In snapshot mode, also exit immediately if there's a context-level error (e.g., file not found)
     if (!mlc.snapshotPath.empty() && !mlc.snapshotFramesPending.empty() && mlc.ctx->hasError()) {
         std::cerr << "Snapshot aborted: " << mlc.ctx->errorMessage() << std::endl;
+        glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+    }
+
+    // In check/inspect mode, also exit on context-level error
+    if ((mlc.checkMode || mlc.inspectMode) && mlc.ctx->hasError()) {
+        nlohmann::json errReport;
+        errReport["error"] = "runtime_error";
+        errReport["message"] = mlc.ctx->errorMessage();
+        std::cout << errReport.dump(2) << std::endl;
+        mlc.exitCode = 1;
         glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
     }
 
@@ -1291,6 +1322,41 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         // Track total frames for --snapshot and --frames options
         int currentFrame = mlc.snapshotFrameCounter;
         mlc.snapshotFrameCounter++;
+
+        // Check/inspect mode: run inspection at target frame and exit
+        if ((mlc.checkMode || mlc.inspectMode) && currentFrame == mlc.checkFrame) {
+            auto inspection = mlc.ctx->chain().inspectAll(*mlc.ctx);
+
+            if (mlc.inspectMode) {
+                std::cout << inspection.toJSON() << std::endl;
+
+                // Optionally save JSON + snapshot to output dir
+                if (!mlc.inspectOutDir.empty()) {
+                    fs::create_directories(mlc.inspectOutDir);
+
+                    // Save JSON
+                    std::ofstream jsonFile(fs::path(mlc.inspectOutDir) / "inspection.json");
+                    if (jsonFile) {
+                        jsonFile << inspection.toJSON();
+                    }
+
+                    // Save snapshot PNG
+                    std::string pngPath = (fs::path(mlc.inspectOutDir) / "snapshot.png").string();
+                    mlc.ctx->snapshot(pngPath);
+                }
+            }
+
+            if (mlc.checkMode) {
+                auto report = evaluateAssertions(mlc.assertions, inspection, mlc.checkFrame);
+                if (mlc.verboseCheck) {
+                    std::cerr << report.toVerbose();
+                }
+                std::cout << report.toJSON() << std::endl;
+                mlc.exitCode = report.allPassed ? 0 : 1;
+            }
+
+            glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+        }
 
         // Automated snapshot mode (CLI --snapshot flag)
         // Captures multiple frames if specified
@@ -2829,6 +2895,34 @@ int Application::init(const AppConfig& config) {
     mlc.windowWidth = m_impl->width;   // Use actual window size (may differ from CLI if chain config used)
     mlc.windowHeight = m_impl->height;
     mlc.showUI = config.showUI;
+
+    // Check/inspect mode
+    mlc.checkMode = config.checkMode;
+    mlc.inspectMode = config.inspectMode;
+    mlc.inspectOutDir = config.inspectOutDir;
+    mlc.verboseCheck = config.verboseCheck;
+
+    if (mlc.checkMode || mlc.inspectMode) {
+        // Determine frame to evaluate at
+        int fileFrame = -1;
+        if (mlc.checkMode && !config.assertionPath.empty()) {
+            mlc.assertions = loadAssertions(config.assertionPath, fileFrame);
+            if (mlc.assertions.empty()) {
+                std::cerr << "Error: No valid assertions loaded" << std::endl;
+                return 1;
+            }
+        }
+
+        // Priority: CLI --frame > assertion file frame > default 10
+        if (config.checkFrame >= 0) {
+            mlc.checkFrame = config.checkFrame;
+        } else if (fileFrame >= 0) {
+            mlc.checkFrame = fileFrame;
+        } else {
+            mlc.checkFrame = 10;
+        }
+    }
+
 // IDE panel using CEF Browser
 #ifdef VIVID_HAS_CEF
     // IDE panel visibility follows visualizer visibility
@@ -3002,7 +3096,7 @@ int Application::run() {
         if (!shouldContinue) break;
     }
 
-    return 0;
+    return mlc.exitCode;
 }
 
 void Application::shutdown() {

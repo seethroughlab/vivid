@@ -170,6 +170,8 @@ void printUsage() {
     std::cout << "  vivid <project-path>              Run a project\n";
     std::cout << "  vivid new <name> [options]        Create a new project\n";
     std::cout << "  vivid bundle <project> [options]  Bundle project as standalone app\n";
+    std::cout << "  vivid check <project> [options]   Run assertions against a project\n";
+    std::cout << "  vivid inspect <project> [options]  Dump inspection data as JSON\n";
     std::cout << "  vivid --help                      Show this help\n";
     std::cout << "  vivid --version                   Show version\n";
 }
@@ -1621,6 +1623,28 @@ ParseResult parseArgs(int argc, char** argv) {
     auto* modulesUnlinkCmd = modulesCmd->add_subcommand("unlink", "Unlink a development module");
     modulesUnlinkCmd->add_option("name", modulesUnlinkName, "Module name")->required();
 
+    // 'check' subcommand — run assertions against a project
+    std::string checkProjectPath;
+    std::string checkAssertionPath;
+    int checkFrame = -1;
+    bool checkVerbose = false;
+
+    auto* checkCmd = app.add_subcommand("check", "Run assertions against a project");
+    checkCmd->add_option("project", checkProjectPath, "Project path")->required();
+    checkCmd->add_option("--assertions", checkAssertionPath, "Assertion file (default: vivid-assertions.json in project)");
+    checkCmd->add_option("--frame", checkFrame, "Frame to evaluate at (overrides assertion file)");
+    checkCmd->add_flag("--verbose", checkVerbose, "Print each assertion result");
+
+    // 'inspect' subcommand — dump inspection data as JSON
+    std::string inspectProjectPath;
+    int inspectFrame = -1;
+    std::string inspectOutDir;
+
+    auto* inspectCmd = app.add_subcommand("inspect", "Dump inspection data as JSON");
+    inspectCmd->add_option("project", inspectProjectPath, "Project path")->required();
+    inspectCmd->add_option("--frame", inspectFrame, "Frame to inspect (default: 10)");
+    inspectCmd->add_option("--out", inspectOutDir, "Output directory for JSON + snapshot");
+
     // 'mcp' subcommand - MCP server for Claude Code integration
 #ifdef VIVID_ENABLE_MCP
     auto* mcpCmd = app.add_subcommand("mcp", "Run MCP server for Claude Code integration");
@@ -1673,6 +1697,43 @@ ParseResult parseArgs(int argc, char** argv) {
                                                modulesInstallUrl, modulesInstallRef, modulesRemoveName,
                                                modulesUpdateName, modulesLinkPath, modulesUnlinkName,
                                                modulesJson);
+        return result;
+    }
+
+    // check/inspect subcommands — need full app lifecycle, so return AppConfig
+    if (checkCmd->parsed()) {
+        AppConfig config;
+        config.projectPath = checkProjectPath;
+        config.checkMode = true;
+        config.checkFrame = checkFrame;
+        config.verboseCheck = checkVerbose;
+
+        // Resolve assertion file path
+        if (!checkAssertionPath.empty()) {
+            config.assertionPath = checkAssertionPath;
+        } else {
+            fs::path defaultPath = fs::path(checkProjectPath) / "vivid-assertions.json";
+            if (fs::exists(defaultPath)) {
+                config.assertionPath = defaultPath.string();
+            } else {
+                std::cerr << "Error: No assertion file found. Provide --assertions or create vivid-assertions.json in project.\n";
+                result.handled = true;
+                result.exitCode = 1;
+                return result;
+            }
+        }
+
+        result.config = config;
+        return result;
+    }
+
+    if (inspectCmd->parsed()) {
+        AppConfig config;
+        config.projectPath = inspectProjectPath;
+        config.inspectMode = true;
+        config.checkFrame = inspectFrame;
+        config.inspectOutDir = inspectOutDir;
+        result.config = config;
         return result;
     }
 
