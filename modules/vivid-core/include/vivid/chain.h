@@ -9,6 +9,8 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/inspect_data.h>
+#include <vivid/frame_analysis.h>
 #include <vivid/audio_graph.h>
 #include <memory>
 #include <string>
@@ -37,6 +39,40 @@ struct ResourceStats {
 
     /// Format as human-readable string
     std::string toString() const;
+};
+
+/**
+ * @brief Full introspection snapshot of a running chain
+ *
+ * Contains inspect() data from every operator plus frame analysis
+ * of the output texture. Used by MCP inspect_chain tool for
+ * LLM-driven autonomous iteration.
+ */
+struct ChainInspection {
+    int frame = 0;                ///< Current frame number
+    float time = 0.0f;           ///< Current time in seconds
+    std::vector<std::pair<std::string, InspectData>> operators;  ///< Per-operator data
+    FrameAnalysis outputAnalysis; ///< Statistical analysis of output texture
+
+    std::string toJSON() const {
+        std::ostringstream ss;
+        ss << "{";
+        ss << "\"frame\":" << frame;
+        ss << ",\"time\":" << time;
+
+        ss << ",\"operators\":{";
+        bool first = true;
+        for (const auto& [name, data] : operators) {
+            if (!first) ss << ",";
+            ss << "\"" << name << "\":" << data.toJSON();
+            first = false;
+        }
+        ss << "}";
+
+        ss << ",\"outputAnalysis\":" << outputAnalysis.toJSON();
+        ss << "}";
+        return ss.str();
+    }
 };
 
 /**
@@ -461,6 +497,16 @@ public:
      * @endcode
      */
     ResourceStats getResourceStats() const;
+
+    /**
+     * @brief Get full introspection data from all operators
+     * @param ctx Context for GPU readback (needed for output texture analysis)
+     * @return ChainInspection with per-operator metrics and output analysis
+     *
+     * Iterates all operators, calls inspect() on each, and analyzes the
+     * output texture. Used by MCP inspect_chain tool.
+     */
+    ChainInspection inspectAll(Context& ctx) const;
 
     /// @}
 

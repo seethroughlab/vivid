@@ -119,6 +119,17 @@ public:
 
     std::string name() const override { return "BandSplit"; }
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("sub_bass", m_subBass);
+        data.set("bass", m_bass);
+        data.set("low_mid", m_lowMid);
+        data.set("mid", m_mid);
+        data.set("high_mid", m_highMid);
+        data.set("high", m_high);
+        return data;
+    }
+
     // Custom visualization
     bool drawVisualization(VizDrawList* drawList, float minX, float minY,
                            float maxX, float maxY) override;

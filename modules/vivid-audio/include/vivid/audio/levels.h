@@ -97,6 +97,15 @@ public:
 
     std::string name() const override { return "Levels"; }
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("rms", m_rms);
+        data.set("peak", m_peak);
+        data.set("rms_left", m_rmsLeft);
+        data.set("rms_right", m_rmsRight);
+        return data;
+    }
+
     // Custom visualization
     bool drawVisualization(VizDrawList* drawList, float minX, float minY,
                            float maxX, float maxY) override;

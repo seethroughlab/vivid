@@ -9,6 +9,7 @@
  */
 
 #include <vivid/operator_viz.h>
+#include <vivid/inspect_data.h>
 #include <vivid/io/image_loader.h>
 #include <webgpu/webgpu.h>
 #include <string>
@@ -264,6 +265,27 @@ public:
      * Override to allow setting parameter values.
      */
     virtual bool setParam(const std::string& name, const float value[4]) { return false; }
+
+    /**
+     * @brief Get introspection data for this operator
+     * @return InspectData with metrics and metadata
+     *
+     * Default implementation reports enabled state and all params.
+     * Override to add domain-specific computed metrics (energy, rms, etc.).
+     */
+    virtual InspectData inspect() const {
+        InspectData data;
+        data.set("enabled", m_bypassed ? 0.0f : 1.0f);
+        // Auto-populate from params()
+        auto paramDecls = const_cast<Operator*>(this)->params();
+        for (const auto& p : paramDecls) {
+            float val[4] = {0};
+            if (const_cast<Operator*>(this)->getParam(p.name, val)) {
+                data.set(p.name, val[0]);
+            }
+        }
+        return data;
+    }
 
     /// @}
     // -------------------------------------------------------------------------

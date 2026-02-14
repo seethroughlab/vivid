@@ -573,6 +573,32 @@ ResourceStats Chain::getResourceStats() const {
     return stats;
 }
 
+ChainInspection Chain::inspectAll(Context& ctx) const {
+    ChainInspection result;
+    result.frame = static_cast<int>(ctx.frame());
+    result.time = static_cast<float>(ctx.time());
+
+    // Collect inspect() data from each operator in add order
+    for (const auto& name : m_orderedNames) {
+        auto it = m_operators.find(name);
+        if (it != m_operators.end() && it->second) {
+            InspectData data = it->second->inspect();
+            data.set("type", it->second->name());
+            data.set("output_kind", outputKindName(it->second->outputKind()));
+            result.operators.emplace_back(name, std::move(data));
+        }
+    }
+
+    // Analyze output texture if available
+    Operator* output = getOutput();
+    WGPUTexture outTex = output ? output->outputTexture() : nullptr;
+    if (outTex) {
+        result.outputAnalysis = analyzeTexture(ctx.device(), ctx.queue(), outTex);
+    }
+
+    return result;
+}
+
 std::string ResourceStats::toString() const {
     std::string result;
 

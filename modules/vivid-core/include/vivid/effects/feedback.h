@@ -76,6 +76,13 @@ public:
     void cleanup() override;
     std::string name() const override { return "Feedback"; }
 
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        data.set("has_buffer", m_buffer ? 1.0f : 0.0f);
+        data.set("first_frame", m_firstFrame ? 1.0f : 0.0f);
+        return data;
+    }
+
     /// @}
 
     // State preservation for hot-reload

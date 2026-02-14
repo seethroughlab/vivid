@@ -50,6 +50,7 @@ message(STATUS "[vivid-core] Earcut source: ${earcut_SOURCE_DIR}")
 set(VIVID_CORE_LIB_SOURCES
     src/context.cpp
     src/chain.cpp
+    src/frame_analysis.cpp
     src/asset_loader.cpp
     src/shader_preprocessor.cpp
     src/window_manager.cpp
@@ -135,10 +136,6 @@ set(VIVID_CORE_LIB_SOURCES
     src/gui/scratch_texture.cpp
     src/gui/panel.cpp
     src/gui/panel_manager.cpp
-    src/gui/dock_manager.cpp
-    src/gui/panel_group.cpp
-    src/gui/panel_leaf.cpp
-    src/gui/split_container.cpp
     src/gui/gui_debug.cpp
     src/viz_helpers.cpp
 )
@@ -164,8 +161,9 @@ set(VIVID_CORE_HEADERS
     include/vivid/hot_reload.h
     include/vivid/operator.h
     include/vivid/chain.h
+    include/vivid/inspect_data.h
+    include/vivid/frame_analysis.h
     include/vivid/shader_preprocessor.h
-    include/vivid/library_registry.h
     include/vivid/video_exporter.h
     include/vivid/audio_buffer.h
     include/vivid/audio_operator.h
