@@ -244,7 +244,7 @@ public:
     std::string name() const override { return "FMSynth"; }
 
     InspectData inspect() const override {
-        auto data = vivid::Operator::inspect();
+        auto data = AudioOperator::inspect();
         data.set("active_voices", static_cast<float>(activeVoiceCount()));
         for (int i = 0; i < NUM_OPS; i++) {
             data.set("op" + std::to_string(i + 1) + "_envelope", operatorEnvelope(i));

@@ -160,7 +160,7 @@ public:
     bool setParam(const std::string& pname, const float value[4]) override;
 
     InspectData inspect() const override {
-        auto data = Operator::inspect();
+        auto data = AudioOperator::inspect();
         data.set("volume", m_volume);
         data.set("playing", isPlaying() ? 1.0f : 0.0f);
         data.set("device_index", static_cast<float>(m_currentDeviceIndex));

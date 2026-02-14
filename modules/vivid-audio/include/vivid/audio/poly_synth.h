@@ -196,7 +196,7 @@ public:
     std::string name() const override { return "PolySynth"; }
 
     InspectData inspect() const override {
-        auto data = Operator::inspect();
+        auto data = AudioOperator::inspect();
         data.set("active_voices", static_cast<float>(activeVoiceCount()));
         data.set("playing", isPlaying() ? 1.0f : 0.0f);
         data.set("max_envelope", maxEnvelopeValue());

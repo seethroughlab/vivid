@@ -202,7 +202,7 @@ public:
     void generateBlock(uint32_t frameCount) override;
 
     InspectData inspect() const override {
-        auto data = Operator::inspect();
+        auto data = AudioOperator::inspect();
         data.set("active_voices", static_cast<float>(activeVoiceCount()));
         data.set("playing", isPlaying() ? 1.0f : 0.0f);
         data.set("has_sample", hasSample() ? 1.0f : 0.0f);

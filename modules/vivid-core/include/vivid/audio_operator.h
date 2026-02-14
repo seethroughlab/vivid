@@ -13,6 +13,7 @@
 #include <vivid/param_registry.h>
 #include <vivid/audio_buffer.h>
 #include <vivid/audio_event.h>
+#include <cmath>
 
 namespace vivid {
 
@@ -95,6 +96,29 @@ public:
             return true;
         }
         return false;
+    }
+
+    /// @brief Inspect with RMS/peak computed from output buffer
+    InspectData inspect() const override {
+        auto data = Operator::inspect();
+        const AudioBuffer* buf = outputBuffer();
+        if (buf && buf->isValid()) {
+            float sumSq = 0.0f;
+            float peak = 0.0f;
+            uint32_t count = buf->sampleCount();
+            for (uint32_t i = 0; i < count; ++i) {
+                float s = buf->samples[i];
+                sumSq += s * s;
+                float absS = std::abs(s);
+                if (absS > peak) peak = absS;
+            }
+            data.set("rms", std::sqrt(sumSq / static_cast<float>(count)));
+            data.set("peak", peak);
+        } else {
+            data.set("rms", 0.0f);
+            data.set("peak", 0.0f);
+        }
+        return data;
     }
 
     /// @}

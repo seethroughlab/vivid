@@ -167,7 +167,7 @@ public:
     void generateBlock(uint32_t frameCount) override;
 
     InspectData inspect() const override {
-        auto data = Operator::inspect();
+        auto data = AudioOperator::inspect();
         int active = 0;
         for (const auto& g : m_grains) {
             if (g.active) active++;

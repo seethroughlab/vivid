@@ -87,7 +87,7 @@ public:
     std::string name() const override { return "AudioIn"; }
 
     InspectData inspect() const override {
-        auto data = Operator::inspect();
+        auto data = AudioOperator::inspect();
         data.set("capturing", isCapturing() ? 1.0f : 0.0f);
         data.set("muted", isMuted() ? 1.0f : 0.0f);
         return data;
