@@ -1,5 +1,7 @@
 # Vivid: Agent-Ready Architecture Plan
 
+> **Status (February 2026):** This plan is **largely implemented**. Phases 1–3 are complete or nearly complete. The CLI tools (`build`, `inspect`, `check`, `export`, `params`, `graph`, `docs`), the MCP server, the introspection system, event injection, A/V export, and the performer UI are all shipping. Phase 4 (live streaming) remains deferred. See the [Implementation Roadmap](#part-6-implementation-roadmap) for per-item status, [Deviations](#deviations-from-original-plan) for where implementation diverged from the plan, and [Additional Items Built](#additional-items-built-not-in-original-plan) for work that went beyond the plan's scope.
+
 ## Vision
 
 A developer messages their agent from their phone: "Add a bloom pass after the feedback loop, keep it subtle." The agent edits `chain.cpp`, rebuilds, runs the chain headless for a few seconds, reads structured introspection data to verify the bloom isn't blowing out the contrast, checks that all visual assertions still pass, iterates twice to dial in the intensity, renders a 10-second demo video with audio, and sends it to the developer on Telegram. The developer watches it over coffee, replies "perfect, now make the kick hit harder," and the cycle continues.
@@ -836,21 +838,21 @@ Building for one audience directly builds for the other. There is no wasted work
 
 This phase enables the inner loop — the LLM can build, inspect, and validate autonomously.
 
-| Step | Work | Depends On |
-|------|------|------------|
-| 1.1 | `InspectData` struct and base `inspect()` on Operator | Nothing |
-| 1.2 | Override `inspect()` on core operators (Noise, Feedback, HSV, Bloom, Composite) | 1.1 |
-| 1.3 | Override `inspect()` on audio operators (Kick, Snare, BandSplit, Levels, Clock, Sequencer) | 1.1 |
-| 1.4 | `FrameAnalysis` — GPU readback + CPU histogram/brightness/spatial analysis | Headless rendering |
-| 1.5 | `Chain::inspectAll()` aggregation | 1.2, 1.3, 1.4 |
-| 1.6 | `vivid build` CLI with structured JSON error output | Nothing |
-| 1.7 | `vivid inspect` CLI command | 1.5, headless rendering |
-| 1.8 | `vivid params` CLI command | Nothing |
-| 1.9 | `vivid graph` CLI command | Nothing |
-| 1.10 | Assertion YAML parser | Nothing |
-| 1.11 | `vivid check` CLI command | 1.5, 1.10 |
-| 1.12 | Audio waveform overview image generation for inspect reports | Audio pipeline |
-| 1.13 | `vivid-project.json` manifest schema and loader | Nothing |
+| Step | Work | Status | Notes |
+|------|------|--------|-------|
+| 1.1 | `InspectData` struct and base `inspect()` on Operator | **DONE** | `inspect_data.h`; base auto-populates from `params()` |
+| 1.2 | Override `inspect()` on core operators (Noise, Feedback, HSV, Bloom, Composite) | **DONE** | Feedback has custom override; others use base auto-param population which is sufficient (no meaningful computed runtime metrics beyond params) |
+| 1.3 | Override `inspect()` on audio operators (Kick, Snare, BandSplit, Levels, Clock, Sequencer) | **DONE** | All audio operators have custom inspect() — Kick/Snare expose envelope + velocity state, Clock exposes beat/bar/running, Sequencer exposes step/velocity/active_steps |
+| 1.4 | `FrameAnalysis` — GPU readback + CPU histogram/brightness/spatial analysis | **DONE** | `frame_analysis.h/.cpp` — multi-format support, histogram, spatial grid, HSV analysis |
+| 1.5 | `Chain::inspectAll()` aggregation | **DONE** | Aggregates all operators + output analysis |
+| 1.6 | `vivid build` CLI with structured JSON error output | **DONE** | Structured JSON with file/line/column/severity |
+| 1.7 | `vivid inspect` CLI command | **DONE** | JSON to stdout + optional `--out` directory with snapshot PNG |
+| 1.8 | `vivid params` CLI command | **DONE** | Full param enumeration with type/range/default |
+| 1.9 | `vivid graph` CLI command | **DONE** | Chain topology as JSON DAG |
+| 1.10 | Assertion YAML parser | **DONE** | Implemented as JSON (not YAML) — `vivid-assertions.json` |
+| 1.11 | `vivid check` CLI command | **DONE** | Dot-path resolution, numeric + string comparisons, exit 0/1 |
+| 1.12 | Audio waveform overview image generation for inspect reports | **NOT DONE** | Not yet implemented |
+| 1.13 | `vivid-project.json` manifest schema and loader | **DONE** | `project_manifest.h/.cpp` — name, chain, preview defaults, params, assertions |
 
 **After Phase 1:** An agent can edit code, build, understand the chain, inspect output, and validate assertions — the complete inner loop. No video export yet; the LLM works entirely from structured data.
 
@@ -858,21 +860,21 @@ This phase enables the inner loop — the LLM can build, inspect, and validate a
 
 This phase enables the outer loop — the LLM produces media the human can review.
 
-| Step | Work | Depends On |
-|------|------|------------|
-| 2.1 | `EventInjector` class — `param_set`, `key_press`, `trigger` events | Nothing |
-| 2.2 | YAML playback script parser | 2.1 |
-| 2.3 | Headless render loop with per-frame pixel capture | Headless rendering, 2.1 |
-| 2.4 | Video encoding via ffmpeg pipe | 2.3 |
-| 2.5 | Audio buffer capture per frame | Audio pipeline |
-| 2.6 | Audio encoding (WAV) | 2.5 |
-| 2.7 | Audio/video muxing (ffmpeg) | 2.4, 2.6 |
-| 2.8 | `vivid export` CLI command | 2.2, 2.7 |
-| 2.9 | Add `param_ramp` event type (requires per-frame interpolation state) | 2.1 |
-| 2.10 | Add `midi_note`, `midi_cc` event types | 2.1 |
-| 2.11 | Add `mouse_move`, `mouse_click` event types | 2.1 |
-| 2.12 | Add `snapshot_recall` event type | 2.1, snapshot system |
-| 2.13 | Script validation — warn on events targeting nonexistent operators/params | 2.2, 1.8 |
+| Step | Work | Status | Notes |
+|------|------|--------|-------|
+| 2.1 | `EventInjector` class — `param_set`, `key_press`, `trigger` events | **DONE** | `event_injector.cpp` — frame-based event processing |
+| 2.2 | Script parser | **DONE** | JSON format (not YAML as originally planned) |
+| 2.3 | Headless render loop with per-frame pixel capture | **DONE** | Deterministic timing via recording mode |
+| 2.4 | Video encoding | **DONE** | Platform-native encoders (AVAssetWriter on macOS) — not ffmpeg pipe |
+| 2.5 | Audio buffer capture per frame | **DONE** | Audio tap during recording |
+| 2.6 | Audio encoding | **DONE** | Integrated with platform encoder |
+| 2.7 | Audio/video muxing | **DONE** | Platform-native (no separate ffmpeg mux step needed) |
+| 2.8 | `vivid export` CLI command | **DONE** | Full A/V export with script injection, codec selection, resolution/fps config |
+| 2.9 | Add `param_ramp` event type (requires per-frame interpolation state) | **DONE** | Linear interpolation between frames |
+| 2.10 | Add `midi_note`, `midi_cc` event types | **DONE** | Supported in EventInjector |
+| 2.11 | Add `mouse_move`, `mouse_click` event types | **DONE** | Supported in EventInjector |
+| 2.12 | Add `snapshot_recall` event type | **DONE** | Handler + validation in EventInjector; SnapshotStore::update() called each frame in main loop for crossfade |
+| 2.13 | Script validation — warn on events targeting nonexistent operators/params | **DONE** | Pre-flight warns on missing operators/params |
 
 **After Phase 2:** An agent can produce video/audio demos and send them to the user. The complete agent workflow is functional.
 
@@ -880,23 +882,62 @@ This phase enables the outer loop — the LLM produces media the human can revie
 
 This phase improves the live performance experience. It's independent of Phases 1-2 but shares infrastructure.
 
-| Step | Work | Depends On |
-|------|------|------------|
-| 3.1 | Interactive parameter control surface (ImGui panel with sliders) | Parameter system |
-| 3.2 | MIDI mapping for parameters | 3.1, MidiIn operator |
-| 3.3 | Chain health indicators on visualizer nodes | 1.1, 1.4 (inspect data) |
-| 3.4 | Inline VU meters on audio nodes | 1.3 (audio inspect) |
-| 3.5 | Preset/snapshot save and recall | Parameter system |
-| 3.6 | Snapshot keyboard/MIDI triggering | 3.5, 3.2 |
-| 3.7 | Live output recording (background ffmpeg pipe) | 2.4 (encoding infra) |
-| 3.8 | Console/log overlay (read-only HUD) | Nothing |
-| 3.9 | Remove code editor, terminal, file management UI | Nothing |
+| Step | Work | Status | Notes |
+|------|------|--------|-------|
+| 3.1 | Interactive parameter control surface (ImGui panel with sliders) | **DONE** | InspectorPanel with sliders, auto-show/hide on node select |
+| 3.2 | MIDI mapping for parameters | **DONE** | `MidiIn::mapCC()` with min/max scaling |
+| 3.3 | Chain health indicators on visualizer nodes | **DONE** | Green/yellow/red node borders in chain visualizer |
+| 3.4 | Inline VU meters on audio nodes | **DONE** | Node overlay callback in `chain_visualizer.cpp` |
+| 3.5 | Preset/snapshot save and recall | **DONE** | SnapshotStore with JSON persistence |
+| 3.6 | Snapshot keyboard/MIDI triggering | **DONE** | Number keys 1–9 for recall via ShortcutManager |
+| 3.7 | Live output recording | **DONE** | Background recording with record button in status bar |
+| 3.8 | Console/log overlay (read-only HUD) | **DONE** | ConsolePanel — color-coded, 256-msg ring buffer |
+| 3.9 | Remove code editor, terminal, file management UI | **N/A** | Never built — external editor workflow from the start |
 
 ### Phase 4 (Future): Live Streaming & Real-Time Collaboration
+
+**Status: NOT STARTED** — deferred as planned.
 
 Stream the headless output via WebRTC or RTMP so the human can watch in real-time and provide feedback during rendering rather than waiting for an exported file. This enables a tighter outer loop where the agent adjusts parameters live based on voice/text input.
 
 Not a priority until Phases 1-3 are complete and battle-tested.
+
+---
+
+## Deviations from Original Plan
+
+Several implementation decisions diverged from the plan:
+
+- **JSON instead of YAML**: Both assertions (`vivid-assertions.json`) and event scripts use JSON, not YAML. This simplifies parsing (nlohmann::json already in the project) at a small readability cost.
+- **Platform-native encoding instead of ffmpeg pipe**: Video export uses AVAssetWriter (macOS) and platform APIs instead of piping to ffmpeg. Removes the external dependency entirely.
+- **Base `inspect()` auto-populates from `params()`**: Rather than requiring every operator to override `inspect()`, the base class automatically exposes all declared `Param<T>` values. Custom overrides are only needed for computed/derived metrics (e.g., Feedback's `energy` and `pixel_change_pct`).
+
+---
+
+## Additional Items Built (Not in Original Plan)
+
+The following were implemented beyond the scope of this plan:
+
+| Feature | Description |
+|---------|-------------|
+| **MCP Server** (`vivid mcp`) | Full bidirectional integration with Claude Code — real-time param control, frame capture, hot-reload monitoring, slider sync |
+| **`vivid docs` CLI** | Search docs, list/show recipes, find code examples — all JSON output |
+| **DevTools Framework** | PanelManager, ShortcutManager, OverlayCanvas — extensible panel system with keyboard toggles |
+| **Status Bar Panel** | FPS, frame time, resolution, memory, record/snapshot buttons |
+| **Performance Panel** | Real-time performance graphs (Cmd+1 toggle) |
+| **GUI Widget Library** | Immediate-mode widgets: sliders, XY pads, ADSR envelopes, graphs, etc. |
+| **CLI snapshot mode** | `--snapshot` flag with multi-frame capture for CI/testing and GIF creation |
+| **`vivid-cef` module** | Chromium Embedded Framework integration (in progress) |
+
+---
+
+## Remaining Work
+
+| Item | Description |
+|------|-------------|
+| **1.12** | Audio waveform overview image for inspect reports |
+| **Phase 4** | Live streaming (future) |
+| **Performer control surface** | The plan described large, high-contrast, purpose-grouped parameter controls for dark rooms. Current InspectorPanel is functional but not performance-optimized for stage use |
 
 ---
 

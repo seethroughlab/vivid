@@ -229,4 +229,13 @@ bool Clock::drawVisualization(VizDrawList* dl, float minX, float minY, float max
     return true;
 }
 
+InspectData Clock::inspect() const {
+    auto data = Operator::inspect();
+    data.set("is_running", isRunning() ? 1.0f : 0.0f);
+    data.set("trigger_count", static_cast<float>(triggerCount()));
+    data.set("beat", static_cast<float>(beat()));
+    data.set("bar", static_cast<float>(bar()));
+    return data;
+}
+
 } // namespace vivid::audio

@@ -155,4 +155,13 @@ bool Snare::drawVisualization(VizDrawList* dl, float minX, float minY, float max
     return true;
 }
 
+InspectData Snare::inspect() const {
+    auto data = Operator::inspect();
+    data.set("is_active", isActive() ? 1.0f : 0.0f);
+    data.set("tone_env", m_toneEnv);
+    data.set("noise_env", m_noiseEnv);
+    data.set("velocity", m_velocity);
+    return data;
+}
+
 } // namespace vivid::audio

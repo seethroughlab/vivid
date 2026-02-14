@@ -1331,6 +1331,9 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             mlc.eventInjector.processFrame(mlc.snapshotFrameCounter, *mlc.ctx, mlc.ctx->chain());
         }
 
+        // Tick snapshot crossfade interpolation (before process so param changes apply this frame)
+        mlc.ctx->chain().snapshots().update(static_cast<float>(mlc.ctx->dt()), mlc.ctx->chain());
+
         // Call user's update function
         mlc.hotReload->getUpdateFn()(*mlc.ctx);
 

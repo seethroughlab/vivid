@@ -255,6 +255,7 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Clock"; }
+    InspectData inspect() const override;
     OutputKind outputKind() const override { return OutputKind::Audio; }
 
     /// @brief Generate audio block with sample-accurate triggers (audio thread)

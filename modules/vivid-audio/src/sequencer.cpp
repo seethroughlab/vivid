@@ -380,4 +380,17 @@ void Sequencer::sendNoteOff(uint8_t note) {
     }
 }
 
+InspectData Sequencer::inspect() const {
+    auto data = Operator::inspect();
+    data.set("current_step", static_cast<float>(currentStep()));
+    data.set("current_velocity", currentVelocity());
+    data.set("current_note", static_cast<float>(currentNote()));
+    int activeSteps = 0;
+    for (int i = 0; i < static_cast<int>(steps); ++i) {
+        if (m_pattern[i]) activeSteps++;
+    }
+    data.set("active_steps", static_cast<float>(activeSteps));
+    return data;
+}
+
 } // namespace vivid::audio

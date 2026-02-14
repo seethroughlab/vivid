@@ -184,4 +184,13 @@ bool Kick::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX
     return true;
 }
 
+InspectData Kick::inspect() const {
+    auto data = Operator::inspect();
+    data.set("is_active", isActive() ? 1.0f : 0.0f);
+    data.set("amp_env", m_ampEnv);
+    data.set("pitch_env", m_pitchEnvValue);
+    data.set("velocity", m_velocity);
+    return data;
+}
+
 } // namespace vivid::audio

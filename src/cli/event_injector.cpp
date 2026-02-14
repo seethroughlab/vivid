@@ -207,6 +207,10 @@ void EventInjector::processFrame(int frame, Context& ctx, Chain& chain) {
             float px = ev.x * static_cast<float>(ctx.width());
             float py = ev.y * static_cast<float>(ctx.height());
             ctx.injectMousePosition(px, py);
+        } else if (ev.type == "snapshot_recall") {
+            int idx = static_cast<int>(ev.value);
+            float duration = ev.valueTo;
+            chain.snapshots().recall(idx, chain, duration);
         }
     }
 
@@ -245,6 +249,16 @@ std::vector<std::string> EventInjector::validate(const Chain& chain) const {
     auto& mutableChain = const_cast<Chain&>(chain);
 
     for (const auto& ev : m_script.events) {
+        // Check snapshot_recall index is valid (no operator needed)
+        if (ev.type == "snapshot_recall") {
+            int idx = static_cast<int>(ev.value);
+            if (idx < 0 || idx >= mutableChain.snapshots().size()) {
+                warnings.push_back("Event at frame " + std::to_string(ev.frame) +
+                                   ": snapshot index " + std::to_string(idx) + " out of range");
+            }
+            continue;
+        }
+
         if (ev.op.empty()) continue;
 
         // Check if operator exists

@@ -265,6 +265,7 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Sequencer"; }
+    InspectData inspect() const override;
 
     // Audio thread interface
     void generateBlock(uint32_t frameCount) override;
