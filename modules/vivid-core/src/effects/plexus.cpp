@@ -2,6 +2,7 @@
 // GPU-based particle network with proximity connections (2D/3D)
 
 #include <vivid/effects/plexus.h>
+#include <vivid/effects/gpu_common.h>
 #include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <cmath>
@@ -352,13 +353,7 @@ void Plexus::createPipelines(WGPUDevice device) {
     WGPUPipelineLayout linePipelineLayout = wgpuDeviceCreatePipelineLayout(device, &linePlLayoutDesc);
 
     // Line blend state (additive)
-    WGPUBlendState lineBlend = {};
-    lineBlend.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-    lineBlend.color.dstFactor = WGPUBlendFactor_One;
-    lineBlend.color.operation = WGPUBlendOperation_Add;
-    lineBlend.alpha.srcFactor = WGPUBlendFactor_One;
-    lineBlend.alpha.dstFactor = WGPUBlendFactor_One;
-    lineBlend.alpha.operation = WGPUBlendOperation_Add;
+    WGPUBlendState lineBlend = gpu::createAdditiveBlendState();
 
     WGPUColorTargetState lineColorTarget = {};
     lineColorTarget.format = EFFECTS_FORMAT;
@@ -429,12 +424,10 @@ void Plexus::createPipelines(WGPUDevice device) {
     WGPUShaderModule nodeShader = wgpuDeviceCreateShaderModule(device, &nodeShaderDesc);
 
     // Node vertex buffer (circle with 32 segments)
-    const int segments = 32;
-    std::vector<NodeVertex> nodeVerts;
-    nodeVerts.push_back({0.0f, 0.0f});  // Center
-    for (int i = 0; i <= segments; i++) {
-        float angle = (float)i / segments * 2.0f * 3.14159f;
-        nodeVerts.push_back({std::cos(angle), std::sin(angle)});
+    auto circleMesh = gpu::generateCircleMesh();
+    std::vector<NodeVertex> nodeVerts(circleMesh.vertices.size() / 2);
+    for (size_t i = 0; i < nodeVerts.size(); i++) {
+        nodeVerts[i] = {circleMesh.vertices[i * 2], circleMesh.vertices[i * 2 + 1]};
     }
 
     WGPUBufferDescriptor nodeVertDesc = {};
@@ -445,12 +438,7 @@ void Plexus::createPipelines(WGPUDevice device) {
                          nodeVerts.data(), nodeVerts.size() * sizeof(NodeVertex));
 
     // Node index buffer (triangle fan)
-    std::vector<uint16_t> nodeIndices;
-    for (int i = 0; i < segments; i++) {
-        nodeIndices.push_back(0);
-        nodeIndices.push_back(i + 1);
-        nodeIndices.push_back(i + 2);
-    }
+    const auto& nodeIndices = circleMesh.indices;
     m_nodeIndexCount = static_cast<uint32_t>(nodeIndices.size());
 
     WGPUBufferDescriptor nodeIdxDesc = {};
@@ -496,13 +484,7 @@ void Plexus::createPipelines(WGPUDevice device) {
     WGPUPipelineLayout nodePipelineLayout = wgpuDeviceCreatePipelineLayout(device, &nodePlLayoutDesc);
 
     // Node blend state (additive)
-    WGPUBlendState nodeBlend = {};
-    nodeBlend.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-    nodeBlend.color.dstFactor = WGPUBlendFactor_One;
-    nodeBlend.color.operation = WGPUBlendOperation_Add;
-    nodeBlend.alpha.srcFactor = WGPUBlendFactor_One;
-    nodeBlend.alpha.dstFactor = WGPUBlendFactor_One;
-    nodeBlend.alpha.operation = WGPUBlendOperation_Add;
+    WGPUBlendState nodeBlend = gpu::createAdditiveBlendState();
 
     WGPUColorTargetState nodeColorTarget = {};
     nodeColorTarget.format = EFFECTS_FORMAT;

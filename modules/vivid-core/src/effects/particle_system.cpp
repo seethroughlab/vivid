@@ -1482,46 +1482,24 @@ void ParticleSystem::syncGPUToCPU(WGPUDevice device, WGPUQueue queue) {
 }
 
 void ParticleSystem::createGPUCircleMesh(WGPUDevice device) {
-    // Generate circle with 32 segments (triangle fan)
-    const int segments = 32;
-    std::vector<float> vertices;
-    std::vector<uint16_t> indices;
-
-    // Center vertex
-    vertices.push_back(0.0f);
-    vertices.push_back(0.0f);
-
-    // Edge vertices
-    for (int i = 0; i <= segments; i++) {
-        float angle = (float)i / segments * 2.0f * static_cast<float>(M_PI);
-        vertices.push_back(std::cos(angle));
-        vertices.push_back(std::sin(angle));
-    }
-
-    // Triangle fan indices
-    for (int i = 0; i < segments; i++) {
-        indices.push_back(0);
-        indices.push_back(i + 1);
-        indices.push_back(i + 2);
-    }
-
-    m_gpuCircleIndexCount = static_cast<uint32_t>(indices.size());
+    auto mesh = gpu::generateCircleMesh();
+    m_gpuCircleIndexCount = static_cast<uint32_t>(mesh.indices.size());
 
     // Create vertex buffer
     WGPUBufferDescriptor bufferDesc = {};
-    bufferDesc.size = vertices.size() * sizeof(float);
+    bufferDesc.size = mesh.vertices.size() * sizeof(float);
     bufferDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
     m_gpuCircleVertexBuffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
     WGPUQueue queue = wgpuDeviceGetQueue(device);
     wgpuQueueWriteBuffer(queue, m_gpuCircleVertexBuffer, 0,
-                         vertices.data(), vertices.size() * sizeof(float));
+                         mesh.vertices.data(), mesh.vertices.size() * sizeof(float));
 
     // Create index buffer
-    bufferDesc.size = indices.size() * sizeof(uint16_t);
+    bufferDesc.size = mesh.indices.size() * sizeof(uint16_t);
     bufferDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
     m_gpuCircleIndexBuffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
     wgpuQueueWriteBuffer(queue, m_gpuCircleIndexBuffer, 0,
-                         indices.data(), indices.size() * sizeof(uint16_t));
+                         mesh.indices.data(), mesh.indices.size() * sizeof(uint16_t));
 }
 
 void ParticleSystem::createGPUCirclePipeline(WGPUDevice device) {
@@ -1573,19 +1551,10 @@ void ParticleSystem::createGPUCirclePipeline(WGPUDevice device) {
     vertexLayout.attributes = &vertexAttrib;
 
     // Blend state
-    WGPUBlendState blendState = {};
+    WGPUBlendState blendState = gpu::createAlphaBlendState();
     if (m_additiveBlend) {
-        blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
         blendState.color.dstFactor = WGPUBlendFactor_One;
-        blendState.color.operation = WGPUBlendOperation_Add;
-    } else {
-        blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-        blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-        blendState.color.operation = WGPUBlendOperation_Add;
     }
-    blendState.alpha.srcFactor = WGPUBlendFactor_One;
-    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.alpha.operation = WGPUBlendOperation_Add;
 
     WGPUColorTargetState colorTarget = {};
     colorTarget.format = EFFECTS_FORMAT;
@@ -1750,19 +1719,10 @@ void ParticleSystem::createGPUBillboardPipeline(WGPUDevice device) {
     WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
 
     // Blend state
-    WGPUBlendState blendState = {};
+    WGPUBlendState blendState = gpu::createAlphaBlendState();
     if (m_additiveBlend) {
-        blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
         blendState.color.dstFactor = WGPUBlendFactor_One;
-        blendState.color.operation = WGPUBlendOperation_Add;
-    } else {
-        blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-        blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-        blendState.color.operation = WGPUBlendOperation_Add;
     }
-    blendState.alpha.srcFactor = WGPUBlendFactor_One;
-    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.alpha.operation = WGPUBlendOperation_Add;
 
     WGPUColorTargetState colorTarget = {};
     colorTarget.format = EFFECTS_FORMAT;
@@ -1946,19 +1906,10 @@ void ParticleSystem::createGPUMeshPipeline(WGPUDevice device) {
     vertexLayout.attributes = &vertexAttrib;
 
     // Blend state
-    WGPUBlendState blendState = {};
+    WGPUBlendState blendState = gpu::createAlphaBlendState();
     if (m_additiveBlend) {
-        blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
         blendState.color.dstFactor = WGPUBlendFactor_One;
-        blendState.color.operation = WGPUBlendOperation_Add;
-    } else {
-        blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-        blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-        blendState.color.operation = WGPUBlendOperation_Add;
     }
-    blendState.alpha.srcFactor = WGPUBlendFactor_One;
-    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.alpha.operation = WGPUBlendOperation_Add;
 
     WGPUColorTargetState colorTarget = {};
     colorTarget.format = EFFECTS_FORMAT;
@@ -2185,19 +2136,10 @@ void ParticleSystem::createBillboardPipeline(WGPUDevice device) {
     instanceLayout.attributes = instanceAttrs;
 
     // Color target with blending
-    WGPUBlendState blendState = {};
+    WGPUBlendState blendState = gpu::createAlphaBlendState();
     if (m_additiveBlend) {
-        blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
         blendState.color.dstFactor = WGPUBlendFactor_One;
-        blendState.color.operation = WGPUBlendOperation_Add;
-    } else {
-        blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-        blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-        blendState.color.operation = WGPUBlendOperation_Add;
     }
-    blendState.alpha.srcFactor = WGPUBlendFactor_One;
-    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.alpha.operation = WGPUBlendOperation_Add;
 
     WGPUColorTargetState colorTarget = {};
     colorTarget.format = EFFECTS_FORMAT;
@@ -2244,24 +2186,9 @@ void ParticleSystem::createBillboardPipeline(WGPUDevice device) {
     m_sampler = wgpuDeviceCreateSampler(device, &samplerDesc);
 
     // Create 1x1 white texture as default
-    WGPUTextureDescriptor texDesc = {};
-    texDesc.size = {1, 1, 1};
-    texDesc.format = WGPUTextureFormat_RGBA8Unorm;
-    texDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-    texDesc.mipLevelCount = 1;
-    texDesc.sampleCount = 1;
-    texDesc.dimension = WGPUTextureDimension_2D;
-    m_spriteTexture = wgpuDeviceCreateTexture(device, &texDesc);
-
-    uint8_t whitePixel[4] = {255, 255, 255, 255};
-    WGPUTexelCopyTextureInfo dest = {};
-    dest.texture = m_spriteTexture;
-    WGPUTexelCopyBufferLayout layout = {};
-    layout.bytesPerRow = 4;
-    layout.rowsPerImage = 1;
-    WGPUExtent3D size = {1, 1, 1};
-    // Note: Need queue to write texture, will do in renderBillboards
-    m_spriteTextureView = wgpuTextureCreateView(m_spriteTexture, nullptr);
+    auto whiteTex = gpu::createWhiteTexture(device, wgpuDeviceGetQueue(device));
+    m_spriteTexture = whiteTex.texture;
+    m_spriteTextureView = whiteTex.view;
 }
 
 void ParticleSystem::createBuiltinCubeMesh(WGPUDevice device) {
@@ -2409,19 +2336,10 @@ void ParticleSystem::createMeshPipeline(WGPUDevice device) {
     WGPUVertexBufferLayout bufferLayouts[2] = {meshLayout, instanceLayout};
 
     // Color target with blending
-    WGPUBlendState blendState = {};
+    WGPUBlendState blendState = gpu::createAlphaBlendState();
     if (m_additiveBlend) {
-        blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
         blendState.color.dstFactor = WGPUBlendFactor_One;
-        blendState.color.operation = WGPUBlendOperation_Add;
-    } else {
-        blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-        blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-        blendState.color.operation = WGPUBlendOperation_Add;
     }
-    blendState.alpha.srcFactor = WGPUBlendFactor_One;
-    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.alpha.operation = WGPUBlendOperation_Add;
 
     WGPUColorTargetState colorTarget = {};
     colorTarget.format = EFFECTS_FORMAT;

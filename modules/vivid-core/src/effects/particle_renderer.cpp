@@ -3,6 +3,7 @@
 
 #include <vivid/effects/particle_renderer.h>
 #include <vivid/effects/texture_operator.h>
+#include <vivid/effects/gpu_common.h>
 #include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <cmath>
@@ -87,33 +88,14 @@ void ParticleRenderer::init(WGPUDevice device, WGPUQueue queue) {
 }
 
 void ParticleRenderer::createCircleMesh() {
-    // Create a circle using triangle fan: center + 32 perimeter vertices
-    const int segments = 32;
-    const int vertexCount = segments + 1;  // Center + perimeter
-    const int triangleCount = segments;
-    const int indexCount = triangleCount * 3;
+    auto mesh = gpu::generateCircleMesh();
+    m_circleIndexCount = static_cast<int>(mesh.indices.size());
 
-    std::vector<CircleVertex> vertices(vertexCount);
-    std::vector<uint16_t> indices(indexCount);
-
-    // Center vertex at origin
-    vertices[0] = {0.0f, 0.0f};
-
-    // Perimeter vertices at unit radius
-    for (int i = 0; i < segments; i++) {
-        float angle = (float)i / segments * 2.0f * 3.14159265f;
-        vertices[i + 1] = {std::cos(angle), std::sin(angle)};
+    // Convert flat float pairs to CircleVertex structs
+    std::vector<CircleVertex> vertices(mesh.vertices.size() / 2);
+    for (size_t i = 0; i < vertices.size(); i++) {
+        vertices[i] = {mesh.vertices[i * 2], mesh.vertices[i * 2 + 1]};
     }
-
-    // Triangle fan indices
-    for (int i = 0; i < segments; i++) {
-        int base = i * 3;
-        indices[base + 0] = 0;                              // Center
-        indices[base + 1] = i + 1;                          // Current perimeter
-        indices[base + 2] = (i + 1) % segments + 1;         // Next perimeter (wrap)
-    }
-
-    m_circleIndexCount = indexCount;
 
     // Create vertex buffer
     WGPUBufferDescriptor vertexDesc = {};
@@ -124,10 +106,10 @@ void ParticleRenderer::createCircleMesh() {
 
     // Create index buffer
     WGPUBufferDescriptor indexDesc = {};
-    indexDesc.size = indices.size() * sizeof(uint16_t);
+    indexDesc.size = mesh.indices.size() * sizeof(uint16_t);
     indexDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
     m_circleIndexBuffer = wgpuDeviceCreateBuffer(m_device, &indexDesc);
-    wgpuQueueWriteBuffer(m_queue, m_circleIndexBuffer, 0, indices.data(), indexDesc.size);
+    wgpuQueueWriteBuffer(m_queue, m_circleIndexBuffer, 0, mesh.indices.data(), indexDesc.size);
 
     // Create uniform buffer
     WGPUBufferDescriptor uniformDesc = {};
@@ -214,13 +196,7 @@ void ParticleRenderer::createCirclePipeline() {
     WGPUVertexBufferLayout bufferLayouts[2] = {vertexLayout, instanceLayout};
 
     // Alpha blending
-    WGPUBlendState blendState = {};
-    blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-    blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.color.operation = WGPUBlendOperation_Add;
-    blendState.alpha.srcFactor = WGPUBlendFactor_One;
-    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.alpha.operation = WGPUBlendOperation_Add;
+    WGPUBlendState blendState = gpu::createAlphaBlendState();
 
     WGPUColorTargetState colorTarget = {};
     colorTarget.format = EFFECTS_FORMAT;
@@ -366,13 +342,7 @@ void ParticleRenderer::createSpritePipeline() {
     WGPUVertexBufferLayout bufferLayouts[2] = {vertexLayout, instanceLayout};
 
     // Alpha blending
-    WGPUBlendState blendState = {};
-    blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-    blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.color.operation = WGPUBlendOperation_Add;
-    blendState.alpha.srcFactor = WGPUBlendFactor_One;
-    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.alpha.operation = WGPUBlendOperation_Add;
+    WGPUBlendState blendState = gpu::createAlphaBlendState();
 
     WGPUColorTargetState colorTarget = {};
     colorTarget.format = EFFECTS_FORMAT;
