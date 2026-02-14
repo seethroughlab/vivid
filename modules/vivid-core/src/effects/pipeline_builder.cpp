@@ -151,13 +151,7 @@ WGPURenderPipeline PipelineBuilder::build() {
     createBindGroupLayout();
     createPipelineLayout();
 
-    WGPUBlendState blendState = {};
-    blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-    blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.color.operation = WGPUBlendOperation_Add;
-    blendState.alpha.srcFactor = WGPUBlendFactor_One;
-    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.alpha.operation = WGPUBlendOperation_Add;
+    WGPUBlendState blendState = createAlphaBlendState();
 
     WGPUColorTargetState colorTarget = {};
     colorTarget.format = m_colorFormat;
