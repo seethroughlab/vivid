@@ -12,6 +12,7 @@
 #include <vivid/cli.h>
 #include <vivid/operator_registry.h>
 #include <vivid/module_loader.h>
+#include <vivid/docs_search.h>
 #include <nlohmann/json.hpp>
 #include <ixwebsocket/IXWebSocket.h>
 #include <iostream>
@@ -41,6 +42,7 @@
 #ifndef _WIN32
 #include <unistd.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 #else
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -1289,6 +1291,51 @@ private:
             }}
         });
 
+        // export_video - Export video from a project
+        tools.push_back({
+            {"name", "export_video"},
+            {"description", "Export a Vivid project to video. Runs headless rendering with optional playback script for scripted parameter changes and events. Returns structured JSON with output path, file size, and any warnings. Use --script with a vivid-project.json events file to automate parameter changes during export."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}},
+                    {"output", {{"type", "string"}, {"description", "Output video file path (e.g., output.mp4)"}}},
+                    {"duration", {{"type", "number"}, {"description", "Duration in seconds"}}},
+                    {"script", {{"type", "string"}, {"description", "Path to playback script JSON file (vivid-project.json with events)"}}},
+                    {"fps", {{"type", "number"}, {"description", "Frame rate (default: 60)"}}},
+                    {"codec", {{"type", "string"}, {"description", "Video codec: h264, h265, prores (default: h264)"}}},
+                    {"audio", {{"type", "boolean"}, {"description", "Include audio track (default: false)"}}},
+                    {"resolution", {{"type", "string"}, {"description", "Render resolution (e.g., 1920x1080)"}}}
+                }},
+                {"required", json::array({"path", "output", "duration"})}
+            }}
+        });
+
+        // run_project - Launch Vivid in the background
+        tools.push_back({
+            {"name", "run_project"},
+            {"description", "Launch a Vivid project in a background window and connect via WebSocket. Only one instance can run at a time. After launching, all live MCP tools (get_live_params, set_param, capture_frame, etc.) become available. Returns connected:true when WebSocket is ready."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}},
+                    {"show_ui", {{"type", "boolean"}, {"description", "Show devtools UI (default: true)"}}},
+                    {"resolution", {{"type", "string"}, {"description", "Window resolution (e.g., 1280x720)"}}}
+                }},
+                {"required", json::array({"path"})}
+            }}
+        });
+
+        // stop_project - Stop a running Vivid instance
+        tools.push_back({
+            {"name", "stop_project"},
+            {"description", "Stop a Vivid instance that was launched by run_project. Sends graceful shutdown signal, then force-kills if needed. Disconnects WebSocket."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
         return {{"tools", tools}};
     }
 
@@ -1585,322 +1632,30 @@ private:
         }
         else if (name == "get_example") {
             std::string opName = args.value("operator", "");
-            bool snippetOnly = args.value("snippet_only", false);
             if (opName.empty()) {
                 result["isError"] = true;
                 result["content"] = {{{"type", "text"}, {"text", "Operator name is required"}}};
                 return result;
             }
 
-            json examples = json::array();
-
-            // Search RECIPES.md for code blocks containing the operator
-            std::string recipes = loadDocsFile("RECIPES.md");
-            if (!recipes.empty()) {
-                // Find code blocks that contain the operator name
-                size_t pos = 0;
-                while ((pos = recipes.find("```cpp", pos)) != std::string::npos) {
-                    size_t codeStart = pos + 6;  // After ```cpp
-                    size_t codeEnd = recipes.find("```", codeStart);
-                    if (codeEnd == std::string::npos) break;
-
-                    std::string codeBlock = recipes.substr(codeStart, codeEnd - codeStart);
-
-                    // Check if this code block uses the operator
-                    // Look for patterns like: add<Operator>, chain.add<Operator>, Operator(
-                    std::string pattern1 = "add<" + opName + ">";
-                    std::string pattern2 = opName + "(";
-                    if (codeBlock.find(pattern1) != std::string::npos ||
-                        codeBlock.find(pattern2) != std::string::npos) {
-
-                        std::string outputCode;
-
-                        if (snippetOnly) {
-                            // Extract just the relevant lines (operator + next few lines)
-                            std::istringstream stream(codeBlock);
-                            std::string line;
-                            std::string snippet;
-                            bool capturing = false;
-                            int captureLines = 0;
-
-                            while (std::getline(stream, line)) {
-                                if (!capturing) {
-                                    if (line.find(pattern1) != std::string::npos ||
-                                        line.find(pattern2) != std::string::npos) {
-                                        capturing = true;
-                                    }
-                                }
-                                if (capturing) {
-                                    snippet += line + "\n";
-                                    captureLines++;
-                                    // Capture up to 10 lines or until we hit a blank line after first few
-                                    if (captureLines > 10 || (captureLines > 3 && line.empty())) {
-                                        break;
-                                    }
-                                }
-                            }
-                            outputCode = snippet;
-                        } else {
-                            // Return the FULL code block for complete context
-                            outputCode = codeBlock;
-                        }
-
-                        if (!outputCode.empty()) {
-                            // Trim leading/trailing whitespace
-                            while (!outputCode.empty() && (outputCode.front() == '\n' || outputCode.front() == ' ')) {
-                                outputCode.erase(0, 1);
-                            }
-                            while (!outputCode.empty() && (outputCode.back() == '\n' || outputCode.back() == ' ')) {
-                                outputCode.pop_back();
-                            }
-
-                            // Try to find the recipe title (look for ## heading before this code block)
-                            std::string recipeTitle;
-                            size_t searchStart = (pos > 500) ? pos - 500 : 0;
-                            std::string beforeCode = recipes.substr(searchStart, pos - searchStart);
-                            size_t headingPos = beforeCode.rfind("\n## ");
-                            if (headingPos != std::string::npos) {
-                                size_t titleStart = headingPos + 4;
-                                size_t titleEnd = beforeCode.find('\n', titleStart);
-                                if (titleEnd != std::string::npos) {
-                                    recipeTitle = beforeCode.substr(titleStart, titleEnd - titleStart);
-                                }
-                            }
-
-                            json example = {
-                                {"source", "docs/RECIPES.md"},
-                                {"code", outputCode}
-                            };
-                            if (!recipeTitle.empty()) {
-                                example["recipe"] = recipeTitle;
-                            }
-                            examples.push_back(example);
-                        }
-                    }
-                    pos = codeEnd + 3;
-                }
-            }
-
-            // Search example chain.cpp files - try multiple locations
-            std::vector<fs::path> moduleSearchPaths;
-            moduleSearchPaths.push_back(fs::current_path() / "modules");
-
-            fs::path exeDir = fs::path(getVividExecutable()).parent_path();
-            if (!exeDir.empty()) {
-                // build/bin/vivid -> modules (go up 2 levels)
-                moduleSearchPaths.push_back(exeDir.parent_path().parent_path() / "modules");
-            }
-
-            for (const auto& modulesPath : moduleSearchPaths) {
-                if (!fs::exists(modulesPath)) continue;
-
-                for (const auto& moduleDir : fs::directory_iterator(modulesPath)) {
-                    if (!fs::is_directory(moduleDir)) continue;
-                    fs::path examplesPath = moduleDir.path() / "examples";
-                    if (!fs::exists(examplesPath)) continue;
-
-                    for (const auto& exampleDir : fs::directory_iterator(examplesPath)) {
-                        if (!fs::is_directory(exampleDir)) continue;
-                        fs::path chainFile = exampleDir.path() / "chain.cpp";
-                        if (!fs::exists(chainFile)) continue;
-
-                        std::ifstream file(chainFile);
-                        if (!file.is_open()) continue;
-
-                        std::string content((std::istreambuf_iterator<char>(file)),
-                                           std::istreambuf_iterator<char>());
-
-                        // Check if this file uses the operator
-                        std::string pattern1 = "add<" + opName + ">";
-                        if (content.find(pattern1) == std::string::npos) continue;
-
-                        std::string outputCode;
-
-                        if (snippetOnly) {
-                            // Extract relevant lines
-                            std::istringstream stream(content);
-                            std::string line;
-                            std::string snippet;
-                            bool capturing = false;
-                            int captureLines = 0;
-
-                            while (std::getline(stream, line)) {
-                                if (!capturing) {
-                                    if (line.find(pattern1) != std::string::npos) {
-                                        capturing = true;
-                                    }
-                                }
-                                if (capturing) {
-                                    snippet += line + "\n";
-                                    captureLines++;
-                                    // Capture up to 12 lines or until we hit a function/block end
-                                    if (captureLines > 12 ||
-                                        (captureLines > 3 && (line.find("}") == 0 || line.empty()))) {
-                                        break;
-                                    }
-                                }
-                            }
-                            outputCode = snippet;
-                        } else {
-                            // Return the FULL chain.cpp file for complete context
-                            outputCode = content;
-                        }
-
-                        if (!outputCode.empty()) {
-                            while (!outputCode.empty() && (outputCode.back() == '\n' || outputCode.back() == ' ')) {
-                                outputCode.pop_back();
-                            }
-                            // Get relative path for cleaner output
-                            std::string relPath = fs::relative(chainFile, modulesPath.parent_path()).string();
-                            examples.push_back({
-                                {"source", relPath},
-                                {"code", outputCode}
-                            });
-                        }
-
-                        // Limit examples per operator
-                        if (examples.size() >= 3) break;
-                    }
-                    if (examples.size() >= 3) break;
-                }
-                if (examples.size() >= 3) break;
-            }
-
-            if (examples.empty()) {
-                json response;
-                response["operator"] = opName;
-                response["examples"] = json::array();
-                response["message"] = "No examples found for '" + opName + "'. Try list_operators to verify the name.";
-                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
-            } else {
-                json response;
-                response["operator"] = opName;
-                response["examples"] = examples;
-                response["count"] = examples.size();
-                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
-            }
+            auto response = vivid::docs::findExamples(opName);
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else if (name == "get_recipe") {
             std::string recipeName = args.value("name", "");
-            std::string recipes = loadDocsFile("RECIPES.md");
+            auto response = vivid::docs::getRecipes(recipeName);
 
-            if (recipes.empty()) {
+            if (response.contains("error")) {
                 result["isError"] = true;
-                result["content"] = {{{"type", "text"}, {"text", "Could not load RECIPES.md"}}};
-                return result;
-            }
-
-            // Parse all recipes: find ## headings and their code blocks
-            struct Recipe {
-                std::string name;
-                std::string code;
-                std::string description;
-            };
-            std::vector<Recipe> allRecipes;
-
-            size_t pos = 0;
-            while ((pos = recipes.find("\n## ", pos)) != std::string::npos) {
-                // Extract recipe name
-                size_t titleStart = pos + 4;
-                size_t titleEnd = recipes.find('\n', titleStart);
-                if (titleEnd == std::string::npos) break;
-
-                std::string title = recipes.substr(titleStart, titleEnd - titleStart);
-
-                // Find the next ## or end of file to get recipe section
-                size_t nextSection = recipes.find("\n## ", titleEnd);
-                if (nextSection == std::string::npos) nextSection = recipes.length();
-
-                std::string section = recipes.substr(titleEnd, nextSection - titleEnd);
-
-                // Find code block in this section
-                size_t codeStart = section.find("```cpp");
-                if (codeStart != std::string::npos) {
-                    codeStart += 6;  // After ```cpp
-                    size_t codeEnd = section.find("```", codeStart);
-                    if (codeEnd != std::string::npos) {
-                        std::string code = section.substr(codeStart, codeEnd - codeStart);
-                        // Trim leading/trailing whitespace
-                        while (!code.empty() && (code.front() == '\n' || code.front() == ' ')) {
-                            code.erase(0, 1);
-                        }
-                        while (!code.empty() && (code.back() == '\n' || code.back() == ' ')) {
-                            code.pop_back();
-                        }
-
-                        // Extract description (text between title and code block)
-                        std::string desc;
-                        size_t descEnd = section.find("```cpp");
-                        if (descEnd != std::string::npos && descEnd > 0) {
-                            desc = section.substr(0, descEnd);
-                            // Trim and clean up
-                            while (!desc.empty() && (desc.front() == '\n' || desc.front() == ' ')) {
-                                desc.erase(0, 1);
-                            }
-                            while (!desc.empty() && (desc.back() == '\n' || desc.back() == ' ')) {
-                                desc.pop_back();
-                            }
-                            // Limit description length
-                            if (desc.length() > 200) {
-                                desc = desc.substr(0, 197) + "...";
-                            }
-                        }
-
-                        allRecipes.push_back({title, code, desc});
-                    }
-                }
-                pos = titleEnd;
-            }
-
-            if (recipeName.empty()) {
-                // List all recipes
-                json response;
-                response["count"] = allRecipes.size();
-                response["recipes"] = json::array();
-                response["hint"] = "Use get_recipe with a name to get the full code. Start with a simple recipe and modify incrementally!";
-                for (const auto& r : allRecipes) {
-                    json recipe;
-                    recipe["name"] = r.name;
-                    if (!r.description.empty()) {
-                        recipe["description"] = r.description;
-                    }
-                    response["recipes"].push_back(recipe);
+                result["content"] = {{{"type", "text"}, {"text", response["error"].get<std::string>()}}};
+            } else {
+                // Add MCP-specific hints
+                if (recipeName.empty()) {
+                    response["hint"] = "Use get_recipe with a name to get the full code. Start with a simple recipe and modify incrementally!";
+                } else {
+                    response["hint"] = "This is a complete, working example. After modifying, use validate_chain to check for errors!";
                 }
                 result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
-            } else {
-                // Find recipe by name (case-insensitive partial match)
-                std::string searchLower = recipeName;
-                std::transform(searchLower.begin(), searchLower.end(), searchLower.begin(), ::tolower);
-
-                const Recipe* match = nullptr;
-                for (const auto& r : allRecipes) {
-                    std::string nameLower = r.name;
-                    std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
-                    if (nameLower.find(searchLower) != std::string::npos) {
-                        match = &r;
-                        break;
-                    }
-                }
-
-                if (match) {
-                    json response;
-                    response["name"] = match->name;
-                    response["code"] = match->code;
-                    if (!match->description.empty()) {
-                        response["description"] = match->description;
-                    }
-                    response["hint"] = "This is a complete, working example. After modifying, use validate_chain to check for errors!";
-                    result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
-                } else {
-                    // No match - suggest similar names
-                    json response;
-                    response["error"] = "Recipe '" + recipeName + "' not found";
-                    response["available"] = json::array();
-                    for (const auto& r : allRecipes) {
-                        response["available"].push_back(r.name);
-                    }
-                    result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
-                }
             }
         }
         else if (name == "create_project") {
@@ -2198,123 +1953,10 @@ private:
                 return result;
             }
 
-            // Split query into words (lowercase, strip punctuation)
-            std::vector<std::string> queryWords;
-            {
-                std::string queryLower = query;
-                std::transform(queryLower.begin(), queryLower.end(), queryLower.begin(), ::tolower);
-                std::istringstream iss(queryLower);
-                std::string word;
-                while (iss >> word) {
-                    // Strip punctuation from word
-                    word.erase(std::remove_if(word.begin(), word.end(),
-                        [](char c) { return !std::isalnum(static_cast<unsigned char>(c)); }), word.end());
-                    if (!word.empty()) {
-                        queryWords.push_back(word);
-                    }
-                }
-            }
-
-            if (queryWords.empty()) {
-                result["content"] = {{{"type", "text"}, {"text", "No valid search terms in query"}}};
-                return result;
-            }
-
-            // Dynamically discover all doc files
-            auto docs = getDocFiles();
-            json matches = json::array();
-
-            for (const auto& [filename, title] : docs) {
-                std::string content = loadDocsFile(filename);
-                if (content.empty()) continue;
-
-                // Convert content to lowercase for searching
-                std::string contentLower = content;
-                std::transform(contentLower.begin(), contentLower.end(), contentLower.begin(), ::tolower);
-
-                // Split into sections by markdown headers
-                std::vector<std::tuple<std::string, size_t, size_t>> sections;  // header, start, end
-                size_t pos = 0;
-                std::string currentHeader = title;
-                size_t currentStart = 0;
-
-                while ((pos = content.find("\n#", pos)) != std::string::npos) {
-                    // Save previous section
-                    if (pos > currentStart) {
-                        sections.emplace_back(currentHeader, currentStart, pos);
-                    }
-                    // Extract new header
-                    size_t headerEnd = content.find('\n', pos + 1);
-                    if (headerEnd != std::string::npos) {
-                        std::string header = content.substr(pos + 1, headerEnd - pos - 1);
-                        // Clean up # characters
-                        size_t hashEnd = header.find_first_not_of("# ");
-                        if (hashEnd != std::string::npos) {
-                            currentHeader = title + " > " + header.substr(hashEnd);
-                        } else {
-                            currentHeader = title + " > " + header;
-                        }
-                    }
-                    currentStart = pos + 1;
-                    pos++;
-                }
-                // Add final section
-                sections.emplace_back(currentHeader, currentStart, content.length());
-
-                // Search each section - use OR logic with relevance scoring
-                for (const auto& [section, sectionStart, sectionEnd] : sections) {
-                    std::string sectionContent = contentLower.substr(sectionStart, sectionEnd - sectionStart);
-
-                    // Count how many query words appear in this section (OR logic)
-                    int matchScore = 0;
-                    size_t firstWordPos = std::string::npos;
-                    for (const auto& word : queryWords) {
-                        size_t wordPos = sectionContent.find(word);
-                        if (wordPos != std::string::npos) {
-                            matchScore++;
-                            if (firstWordPos == std::string::npos || wordPos < firstWordPos) {
-                                firstWordPos = wordPos;
-                            }
-                        }
-                    }
-
-                    // Include if ANY word matches (OR logic)
-                    if (matchScore > 0 && firstWordPos != std::string::npos) {
-                        // Extract context around first word (in original case)
-                        size_t contextStart = (firstWordPos > 150) ? firstWordPos - 150 : 0;
-                        size_t contextLen = std::min(size_t(400), sectionEnd - sectionStart - contextStart);
-
-                        std::string context = content.substr(sectionStart + contextStart, contextLen);
-                        // Trim to word boundaries
-                        if (contextStart > 0) {
-                            size_t firstSpace = context.find(' ');
-                            if (firstSpace != std::string::npos) context = "..." + context.substr(firstSpace);
-                        }
-                        if (contextStart + contextLen < sectionEnd - sectionStart) {
-                            size_t lastSpace = context.rfind(' ');
-                            if (lastSpace != std::string::npos) context = context.substr(0, lastSpace) + "...";
-                        }
-
-                        matches.push_back({
-                            {"file", filename},
-                            {"section", section},
-                            {"context", context},
-                            {"score", matchScore}
-                        });
-                    }
-                }
-            }
-
+            auto matches = vivid::docs::searchDocs(query);
             if (matches.empty()) {
                 result["content"] = {{{"type", "text"}, {"text", "No matches found for '" + query + "'"}}};
             } else {
-                // Sort by score (highest first), then limit to 10
-                std::sort(matches.begin(), matches.end(), [](const json& a, const json& b) {
-                    return a["score"].get<int>() > b["score"].get<int>();
-                });
-                if (matches.size() > 10) {
-                    matches = json::array_t(matches.begin(), matches.begin() + 10);
-                }
                 result["content"] = {{{"type", "text"}, {"text", matches.dump(2)}}};
             }
         }
@@ -2956,6 +2598,392 @@ private:
             response["paramsFailed"] = failCount;
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
+        else if (name == "export_video") {
+            std::string projectPath = args.value("path", "");
+            std::string outputPath = args.value("output", "");
+            float duration = args.value("duration", 0.0f);
+            std::string script = args.value("script", "");
+            float fps = args.value("fps", 0.0f);
+            std::string codec = args.value("codec", "");
+            bool audio = args.value("audio", false);
+            std::string resolution = args.value("resolution", "");
+
+            if (projectPath.empty() || outputPath.empty() || duration <= 0.0f) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "path, output, and duration (> 0) are required"}}};
+                return result;
+            }
+
+            std::vector<std::string> cmdArgs = {
+                getVividExecutable(), "export", projectPath,
+                "-o", outputPath,
+                "--duration", std::to_string(duration),
+                "--quiet"
+            };
+
+            if (!script.empty()) {
+                cmdArgs.push_back("--script");
+                cmdArgs.push_back(script);
+            }
+            if (fps > 0.0f) {
+                cmdArgs.push_back("--fps");
+                cmdArgs.push_back(std::to_string(fps));
+            }
+            if (!codec.empty()) {
+                cmdArgs.push_back("--codec");
+                cmdArgs.push_back(codec);
+            }
+            if (audio) {
+                cmdArgs.push_back("--audio");
+            }
+            if (!resolution.empty()) {
+                cmdArgs.push_back("--resolution");
+                cmdArgs.push_back(resolution);
+            }
+
+            auto cmdResult = runCommand(cmdArgs, 600000);  // 10 minute timeout
+
+            if (cmdResult.exitCode == 0) {
+                json response;
+                response["success"] = true;
+                response["output"] = outputPath;
+
+                // Report file size
+                try {
+                    if (fs::exists(outputPath)) {
+                        auto fileSize = fs::file_size(outputPath);
+                        response["fileSizeBytes"] = fileSize;
+                        // Human-readable size
+                        if (fileSize >= 1024 * 1024) {
+                            response["fileSize"] = std::to_string(fileSize / (1024 * 1024)) + " MB";
+                        } else if (fileSize >= 1024) {
+                            response["fileSize"] = std::to_string(fileSize / 1024) + " KB";
+                        } else {
+                            response["fileSize"] = std::to_string(fileSize) + " bytes";
+                        }
+                    }
+                } catch (...) {}
+
+                // Parse warnings from output
+                json warnings = json::array();
+                std::istringstream stream(cmdResult.output);
+                std::string line;
+                while (std::getline(stream, line)) {
+                    if (line.find("warning") != std::string::npos ||
+                        line.find("Warning") != std::string::npos) {
+                        warnings.push_back(line);
+                    }
+                }
+                if (!warnings.empty()) {
+                    response["warnings"] = warnings;
+                }
+
+                if (!cmdResult.output.empty()) {
+                    response["log"] = cmdResult.output;
+                }
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            } else {
+                // Try to parse structured compile errors
+                json errors = parseCompileErrors(cmdResult.output);
+                json response;
+                response["success"] = false;
+                if (!errors.empty()) {
+                    response["compileErrors"] = errors;
+                    response["errorCount"] = errors.size();
+                }
+                response["raw"] = cmdResult.output;
+                response["exitCode"] = cmdResult.exitCode;
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            }
+        }
+        else if (name == "run_project") {
+            std::string projectPath = args.value("path", "");
+            bool showUI = args.value("show_ui", true);
+            std::string resolution = args.value("resolution", "");
+
+            if (projectPath.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "path is required"}}};
+                return result;
+            }
+
+            // Check if already connected or a child is already running
+            if (m_vivid.isConnected()) {
+                json response;
+                response["success"] = false;
+                response["error"] = "A Vivid instance is already connected on port 9876";
+                response["suggestion"] = "Use stop_project first, or use the existing connection";
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+#ifndef _WIN32
+            if (m_childPid > 0) {
+                // Check if the child is still alive
+                int status;
+                pid_t ret = waitpid(m_childPid, &status, WNOHANG);
+                if (ret == 0) {
+                    // Still running
+                    json response;
+                    response["success"] = false;
+                    response["error"] = "A Vivid instance is already running (PID " + std::to_string(m_childPid) + ")";
+                    response["suggestion"] = "Use stop_project first";
+                    result["isError"] = true;
+                    result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                    return result;
+                }
+                // Child exited, clean up
+                m_childPid = 0;
+                m_childProjectPath.clear();
+            }
+#else
+            if (m_childProcess != NULL) {
+                DWORD exitCode;
+                if (GetExitCodeProcess(m_childProcess, &exitCode) && exitCode == STILL_ACTIVE) {
+                    json response;
+                    response["success"] = false;
+                    response["error"] = "A Vivid instance is already running (PID " + std::to_string(m_childPid) + ")";
+                    response["suggestion"] = "Use stop_project first";
+                    result["isError"] = true;
+                    result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                    return result;
+                }
+                CloseHandle(m_childProcess);
+                m_childProcess = NULL;
+                m_childPid = 0;
+                m_childProjectPath.clear();
+            }
+#endif
+
+            std::string executable = getVividExecutable();
+
+#ifndef _WIN32
+            // Build argv for execv
+            std::vector<std::string> argStrings;
+            argStrings.push_back(executable);
+            argStrings.push_back(projectPath);
+            if (showUI) {
+                argStrings.push_back("--show-ui");
+            }
+            if (!resolution.empty()) {
+                // Parse resolution into --width and --height if needed
+                // For now pass as-is; the CLI might accept --resolution
+            }
+
+            pid_t pid = fork();
+            if (pid < 0) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Failed to fork process"}}};
+                return result;
+            }
+
+            if (pid == 0) {
+                // Child process — redirect stdout/stderr to /dev/null
+                // to prevent corrupting MCP stdio
+                int devNull = open("/dev/null", O_WRONLY);
+                if (devNull >= 0) {
+                    dup2(devNull, STDOUT_FILENO);
+                    dup2(devNull, STDERR_FILENO);
+                    close(devNull);
+                }
+
+                // Build C-style argv
+                std::vector<char*> argv;
+                for (auto& s : argStrings) {
+                    argv.push_back(const_cast<char*>(s.c_str()));
+                }
+                argv.push_back(nullptr);
+
+                execv(executable.c_str(), argv.data());
+                // If execv returns, it failed
+                _exit(127);
+            }
+
+            // Parent process
+            m_childPid = pid;
+            m_childProjectPath = projectPath;
+            std::cerr << "[MCP] Spawned Vivid child process PID " << pid << "\n";
+#else
+            // Windows: CreateProcess
+            std::string cmdLine = "\"" + executable + "\" \"" + projectPath + "\"";
+            if (showUI) {
+                cmdLine += " --show-ui";
+            }
+
+            STARTUPINFOA si = {};
+            si.cb = sizeof(si);
+            si.dwFlags = STARTF_USESTDHANDLES;
+            // Redirect child stdout/stderr to NUL
+            HANDLE hNull = CreateFileA("NUL", GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+            si.hStdOutput = hNull;
+            si.hStdError = hNull;
+            si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+            PROCESS_INFORMATION pi = {};
+            BOOL created = CreateProcessA(NULL, const_cast<char*>(cmdLine.c_str()),
+                NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+
+            if (hNull != INVALID_HANDLE_VALUE) CloseHandle(hNull);
+
+            if (!created) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Failed to create process"}}};
+                return result;
+            }
+
+            CloseHandle(pi.hThread);
+            m_childProcess = pi.hProcess;
+            m_childPid = pi.dwProcessId;
+            m_childProjectPath = projectPath;
+            std::cerr << "[MCP] Spawned Vivid child process PID " << m_childPid << "\n";
+#endif
+
+            // Wait for the process to start up and WebSocket to become available
+            // Check periodically for early crash
+            std::cerr << "[MCP] Waiting for Vivid to start...\n";
+            for (int i = 0; i < 30; ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+#ifndef _WIN32
+                int status;
+                pid_t ret = waitpid(m_childPid, &status, WNOHANG);
+                if (ret > 0) {
+                    // Child exited early — crashed or failed
+                    m_childPid = 0;
+                    m_childProjectPath.clear();
+                    json response;
+                    response["success"] = false;
+                    response["error"] = "Vivid process exited immediately (status " + std::to_string(WEXITSTATUS(status)) + ")";
+                    response["suggestion"] = "Check project path and chain.cpp for errors. Use validate_chain to debug.";
+                    result["isError"] = true;
+                    result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                    return result;
+                }
+#else
+                DWORD exitCode;
+                if (GetExitCodeProcess(m_childProcess, &exitCode) && exitCode != STILL_ACTIVE) {
+                    CloseHandle(m_childProcess);
+                    m_childProcess = NULL;
+                    m_childPid = 0;
+                    m_childProjectPath.clear();
+                    json response;
+                    response["success"] = false;
+                    response["error"] = "Vivid process exited immediately (code " + std::to_string(exitCode) + ")";
+                    response["suggestion"] = "Check project path and chain.cpp for errors. Use validate_chain to debug.";
+                    result["isError"] = true;
+                    result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                    return result;
+                }
+#endif
+            }
+
+            // Now try to connect via WebSocket
+            std::cerr << "[MCP] Attempting WebSocket connection...\n";
+            bool connected = m_vivid.connect();
+
+            json response;
+            response["success"] = true;
+            response["connected"] = connected;
+            response["pid"] = static_cast<int>(m_childPid);
+            response["project"] = projectPath;
+            if (!connected) {
+                response["warning"] = "Process started but WebSocket not yet ready. Live tools may not work immediately — try get_runtime_status in a few seconds.";
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "stop_project") {
+#ifndef _WIN32
+            if (m_childPid <= 0) {
+#else
+            if (m_childProcess == NULL) {
+#endif
+                // No child process — but maybe we should disconnect anyway
+                if (m_vivid.isConnected()) {
+                    m_vivid.disconnect();
+                    json response;
+                    response["success"] = true;
+                    response["message"] = "Disconnected from Vivid (no child process to stop — was it started externally?)";
+                    result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                } else {
+                    json response;
+                    response["success"] = false;
+                    response["error"] = "No Vivid instance is running";
+                    result["isError"] = true;
+                    result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                }
+                return result;
+            }
+
+            // Disconnect WebSocket first to prevent error callbacks
+            m_vivid.disconnect();
+
+            bool graceful = false;
+
+#ifndef _WIN32
+            // Send SIGTERM for graceful shutdown
+            std::cerr << "[MCP] Sending SIGTERM to PID " << m_childPid << "\n";
+            kill(m_childPid, SIGTERM);
+
+            // Wait up to 3 seconds for graceful exit
+            for (int i = 0; i < 30; ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                int status;
+                pid_t ret = waitpid(m_childPid, &status, WNOHANG);
+                if (ret > 0) {
+                    graceful = true;
+                    break;
+                }
+            }
+
+            if (!graceful) {
+                // Force kill
+                std::cerr << "[MCP] SIGTERM timeout, sending SIGKILL to PID " << m_childPid << "\n";
+                kill(m_childPid, SIGKILL);
+                int status;
+                waitpid(m_childPid, &status, 0);  // Reap
+            }
+
+            m_childPid = 0;
+#else
+            // Windows: try graceful termination, then force
+            std::cerr << "[MCP] Terminating PID " << m_childPid << "\n";
+
+            // Try WM_CLOSE first
+            // (TerminateProcess is the fallback)
+            DWORD waitResult = WaitForSingleObject(m_childProcess, 0);
+            if (waitResult != WAIT_OBJECT_0) {
+                // Still running — try gentle termination
+                TerminateProcess(m_childProcess, 0);
+                waitResult = WaitForSingleObject(m_childProcess, 3000);
+                graceful = (waitResult == WAIT_OBJECT_0);
+                if (!graceful) {
+                    TerminateProcess(m_childProcess, 1);
+                    WaitForSingleObject(m_childProcess, 1000);
+                }
+            } else {
+                graceful = true;
+            }
+
+            CloseHandle(m_childProcess);
+            m_childProcess = NULL;
+            m_childPid = 0;
+#endif
+            std::string projectPath = m_childProjectPath;
+            m_childProjectPath.clear();
+
+            json response;
+            response["success"] = true;
+            response["graceful"] = graceful;
+            response["project"] = projectPath;
+            if (graceful) {
+                response["message"] = "Vivid stopped gracefully";
+            } else {
+                response["message"] = "Vivid was force-killed after timeout";
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
         else {
             result["isError"] = true;
             result["content"] = {{
@@ -2967,182 +2995,11 @@ private:
         return result;
     }
 
-    // Find the docs directory
-    fs::path findDocsDir() {
-        std::vector<fs::path> searchPaths;
-
-        // 1. Current working directory
-        searchPaths.push_back(fs::current_path() / "docs");
-
-        // 2. Relative to executable
-        fs::path exeDir = fs::path(getVividExecutable()).parent_path();
-        searchPaths.push_back(exeDir.parent_path().parent_path() / "docs");
-        searchPaths.push_back(exeDir.parent_path() / "docs");
-
-        // 3. User's .vivid directory
-        const char* home = getenv("HOME");
-#ifdef _WIN32
-        if (!home) home = getenv("USERPROFILE");
-#endif
-        if (home) {
-            searchPaths.push_back(fs::path(home) / ".vivid" / "docs");
-        }
-
-        for (const auto& path : searchPaths) {
-            if (fs::exists(path) && fs::is_directory(path)) {
-                return path;
-            }
-        }
-        return {};
-    }
-
-    // Find the modules directory (built-in modules)
-    fs::path findModulesDir() {
-        std::vector<fs::path> searchPaths;
-
-        // 1. Current working directory (dev: running from repo root)
-        searchPaths.push_back(fs::current_path() / "modules");
-
-        // 2. Relative to executable
-        fs::path exeDir = fs::path(getVividExecutable()).parent_path();
-        // Release: exe in bin/, modules at ../modules/
-        searchPaths.push_back(exeDir.parent_path() / "modules");
-        // Dev: exe in build/bin/, modules at ../../modules/
-        searchPaths.push_back(exeDir.parent_path().parent_path() / "modules");
-
-        for (const auto& path : searchPaths) {
-            if (fs::exists(path) && fs::is_directory(path)) {
-                return path;
-            }
-        }
-        return {};
-    }
-
-    // Get user's home directory
-    std::string getHomeDir() {
-        const char* home = getenv("HOME");
-#ifdef _WIN32
-        if (!home) home = getenv("USERPROFILE");
-#endif
-        return home ? home : "";
-    }
-
-    // Format module name: "vivid-audio" -> "Audio"
-    std::string formatModuleName(const std::string& dirName) {
-        std::string name = dirName;
-        // Remove "vivid-" prefix
-        if (name.rfind("vivid-", 0) == 0) {
-            name = name.substr(6);
-        }
-        // Capitalize first letter
-        if (!name.empty()) {
-            name[0] = std::toupper(static_cast<unsigned char>(name[0]));
-        }
-        return name;
-    }
-
-    // Format example name: "drum-machine" -> "Drum Machine"
-    std::string formatExampleName(const std::string& dirName) {
-        std::string name = dirName;
-        std::replace(name.begin(), name.end(), '-', ' ');
-        std::replace(name.begin(), name.end(), '_', ' ');
-        // Capitalize first letter of each word
-        bool capitalizeNext = true;
-        for (char& c : name) {
-            if (c == ' ') {
-                capitalizeNext = true;
-            } else if (capitalizeNext) {
-                c = std::toupper(static_cast<unsigned char>(c));
-                capitalizeNext = false;
-            }
-        }
-        return name;
-    }
-
-    // Scan a modules directory for READMEs and example CLAUDE.md files
-    void scanModulesDir(const fs::path& modulesDir, std::vector<std::pair<std::string, std::string>>& docs, bool isUserModules = false) {
-        if (!fs::exists(modulesDir) || !fs::is_directory(modulesDir)) return;
-
-        try {
-            for (const auto& moduleEntry : fs::directory_iterator(modulesDir)) {
-                if (!moduleEntry.is_directory()) continue;
-
-                std::string moduleDirName = moduleEntry.path().filename().string();
-                std::string moduleName = formatModuleName(moduleDirName);
-                std::string prefix = isUserModules ? "[User] " : "";
-
-                // Check for module README.md
-                fs::path readme = moduleEntry.path() / "README.md";
-                if (fs::exists(readme)) {
-                    docs.push_back({readme.string(), prefix + moduleName + " Module"});
-                }
-
-                // Scan examples for AGENTS.md files (or legacy CLAUDE.md)
-                fs::path examplesDir = moduleEntry.path() / "examples";
-                if (fs::exists(examplesDir) && fs::is_directory(examplesDir)) {
-                    for (const auto& exampleEntry : fs::directory_iterator(examplesDir)) {
-                        if (!exampleEntry.is_directory()) continue;
-
-                        // Prefer AGENTS.md (new standard), fall back to CLAUDE.md
-                        fs::path agentsMd = exampleEntry.path() / "AGENTS.md";
-                        fs::path claudeMd = exampleEntry.path() / "CLAUDE.md";
-                        fs::path docFile = fs::exists(agentsMd) ? agentsMd : claudeMd;
-                        if (fs::exists(docFile)) {
-                            std::string exampleName = formatExampleName(exampleEntry.path().filename().string());
-                            docs.push_back({docFile.string(), prefix + moduleName + ": " + exampleName});
-                        }
-                    }
-                }
-            }
-        } catch (const std::exception& e) {
-            // Ignore errors (permission issues, etc.)
-        }
-    }
-
-    // Get all markdown files in docs directory and modules
-    std::vector<std::pair<std::string, std::string>> getDocFiles() {
-        std::vector<std::pair<std::string, std::string>> docs;
-
-        // 1. Scan docs/ directory
-        fs::path docsDir = findDocsDir();
-        if (!docsDir.empty()) {
-            for (const auto& entry : fs::directory_iterator(docsDir)) {
-                if (entry.is_regular_file() && entry.path().extension() == ".md") {
-                    std::string filename = entry.path().filename().string();
-                    // Skip README.md (usually just an index)
-                    if (filename == "README.md") continue;
-
-                    // Create human-readable name from filename
-                    std::string name = filename.substr(0, filename.length() - 3);  // Remove .md
-                    // Replace - and _ with spaces, capitalize words
-                    std::replace(name.begin(), name.end(), '-', ' ');
-                    std::replace(name.begin(), name.end(), '_', ' ');
-
-                    docs.push_back({entry.path().string(), name});
-                }
-            }
-        }
-
-        // 2. Scan built-in modules (modules/vivid-*/README.md and examples/*/AGENTS.md)
-        fs::path modulesDir = findModulesDir();
-        scanModulesDir(modulesDir, docs, false);
-
-        // 3. Scan user-installed modules (~/.vivid/modules/*)
-        std::string homeDir = getHomeDir();
-        if (!homeDir.empty()) {
-            fs::path userModulesDir = fs::path(homeDir) / ".vivid" / "modules";
-            scanModulesDir(userModulesDir, docs, true);
-        }
-
-        return docs;
-    }
-
+    // Delegate to shared docs utility
     json handleResourcesList() {
         json resources = json::array();
 
-        // Dynamically discover all .md files in docs/
-        for (const auto& [filename, name] : getDocFiles()) {
-            // Create URI from filename (lowercase, no extension)
+        for (const auto& [filename, name] : vivid::docs::getDocFiles()) {
             std::string uriPath = filename.substr(0, filename.length() - 3);
             std::transform(uriPath.begin(), uriPath.end(), uriPath.begin(), ::tolower);
 
@@ -3161,15 +3018,13 @@ private:
         std::string uri = params.value("uri", "");
         json result;
 
-        // Extract filename from URI (vivid://docs/chain-api -> CHAIN-API.md)
         const std::string prefix = "vivid://docs/";
         if (uri.find(prefix) == 0) {
             std::string uriPath = uri.substr(prefix.length());
-            // Convert to uppercase and add .md
             std::transform(uriPath.begin(), uriPath.end(), uriPath.begin(), ::toupper);
             std::string filename = uriPath + ".md";
 
-            std::string content = loadDocsFile(filename);
+            std::string content = vivid::docs::loadDocFile(filename);
             if (!content.empty()) {
                 result["contents"] = {{
                     {"uri", uri},
@@ -3184,83 +3039,16 @@ private:
         return result;
     }
 
-    std::string loadDocsFile(const std::string& filename) {
-        // First, check if filename is already a full/absolute path that exists
-        // (used for module docs which are returned with full paths)
-        fs::path directPath(filename);
-        if (fs::exists(directPath)) {
-            std::ifstream file(directPath);
-            if (file) {
-                std::stringstream buffer;
-                buffer << file.rdbuf();
-                return buffer.str();
-            }
-        }
-
-        // Search multiple locations for documentation files (for docs/ files)
-        std::vector<fs::path> searchPaths;
-
-        // 1. Current working directory (common for dev builds)
-        searchPaths.push_back(fs::current_path() / "docs" / filename);
-
-        // 2. User home directory cache
-        const char* home = getenv("HOME");
-#ifdef _WIN32
-        if (!home) home = getenv("USERPROFILE");
-#endif
-        if (home) {
-            searchPaths.push_back(fs::path(home) / ".vivid" / "docs" / filename);
-        }
-
-        // 3. Paths relative to executable
-        fs::path exeDir;
-#ifdef __APPLE__
-        char pathBuf[4096];
-        uint32_t size = sizeof(pathBuf);
-        if (_NSGetExecutablePath(pathBuf, &size) == 0) {
-            exeDir = fs::path(pathBuf).parent_path();
-        }
-#elif defined(_WIN32)
-        char pathBuf[MAX_PATH];
-        if (GetModuleFileNameA(NULL, pathBuf, MAX_PATH) > 0) {
-            exeDir = fs::path(pathBuf).parent_path();
-        }
-#else
-        // Linux: read /proc/self/exe
-        char pathBuf[4096];
-        ssize_t len = readlink("/proc/self/exe", pathBuf, sizeof(pathBuf) - 1);
-        if (len != -1) {
-            pathBuf[len] = '\0';
-            exeDir = fs::path(pathBuf).parent_path();
-        }
-#endif
-
-        if (!exeDir.empty()) {
-            // build/bin/vivid -> docs (go up 2 levels)
-            searchPaths.push_back(exeDir.parent_path().parent_path() / "docs" / filename);
-            // build/bin/vivid -> project root/docs (go up 3 levels for some layouts)
-            searchPaths.push_back(exeDir.parent_path().parent_path().parent_path() / "docs" / filename);
-            // Installed location: bin/../share/vivid/docs
-            searchPaths.push_back(exeDir.parent_path() / "share" / "vivid" / "docs" / filename);
-            // macOS app bundle: .app/Contents/MacOS/vivid -> .app/Contents/Resources/docs
-            searchPaths.push_back(exeDir.parent_path() / "Resources" / "docs" / filename);
-        }
-
-        for (const auto& path : searchPaths) {
-            if (fs::exists(path)) {
-                std::ifstream file(path);
-                if (file) {
-                    std::stringstream buffer;
-                    buffer << file.rdbuf();
-                    return buffer.str();
-                }
-            }
-        }
-
-        return "Documentation file not found: " + filename;
-    }
-
     VividConnection m_vivid;
+
+    // Child process tracking for run_project/stop_project
+#ifndef _WIN32
+    pid_t m_childPid = 0;
+#else
+    HANDLE m_childProcess = NULL;
+    DWORD m_childPid = 0;
+#endif
+    std::string m_childProjectPath;
 };
 
 int runServer() {
