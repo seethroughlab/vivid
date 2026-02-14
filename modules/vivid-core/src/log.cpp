@@ -84,10 +84,9 @@ const char* Log::levelToString(LogLevel level) {
 }
 
 void Log::write(LogLevel level, const char* file, int line, const std::string& message) {
-    // Use custom callback if set
+    // Call custom callback if set (additive — still continues to default output)
     if (s_callback) {
         s_callback(level, file, line, message);
-        return;
     }
 
     // Default output to stderr with timestamp and level

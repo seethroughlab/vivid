@@ -67,12 +67,12 @@ The MCP server queries and controls a running Vivid instance. **Start Vivid befo
 ```
 
 The `--show-ui` flag enables built-in devtools with:
-- **Terminal** (`Cmd+1`) — Run Claude Code or other commands
-- **Console** (`Cmd+2`) — View compile errors and logs
-- **Editor** (`Cmd+3`) — Edit chain.cpp with syntax highlighting
-- **Node Graph** (`Cmd+4`) — Visual chain with live thumbnails
-- **Inspector** — Parameter sliders (select a node first)
-- **Status Bar** — Panel toggles, stats, snapshot/record
+- **Node Graph** — Always visible; visual chain with live thumbnails
+- **Inspector** — Auto-shows when a node is selected, auto-hides on deselection
+- **Performance** (`Cmd+1`) — Real-time performance metrics (toggle)
+- **Status Bar** — FPS, frame time, resolution, memory, record/snapshot
+
+Press the backtick/tilde key (`` ` ``) to toggle devtools on/off at runtime. Works with or without `--show-ui`.
 
 If Vivid isn't running, MCP tools return `{"connected": false}` with a helpful suggestion.
 
