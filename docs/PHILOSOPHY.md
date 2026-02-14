@@ -69,9 +69,9 @@ Your project is C++ files, shader files, and a simple YAML config. No binary for
 
 ### See Every Step
 
-When you define an operator chain, each step shows its output. Textures render as thumbnails. Numeric values display inline. You never have to guess what's happening inside the pipeline.
+When you define an operator chain, each step shows its output. Textures render as thumbnails with health-colored borders — green for active signal, yellow for near-silent, red for errors. Audio operators show inline level meters. Sparklines on each node pulse when the output is changing and flatline when it stalls.
 
-The built-in devtools show live thumbnails for each operator in the node graph. Select any node to see its parameters in the Inspector panel.
+This visibility serves two audiences: the performer sees chain health at a glance during a show, and the developer (or LLM agent) gets the same data via MCP inspection as structured JSON.
 
 ### Hot Reload Everything
 
@@ -90,6 +90,56 @@ Because everything is plain text with clear structure, language models can:
 
 The framework is designed so that an LLM can be a genuine collaborator, not just a code snippet generator.
 
+## Built-in Tools: For Performance, Not Development
+
+Vivid's built-in tools serve the performer and the live debugger, not the developer. External tools — Claude Code, Cursor, VS Code, terminal editors — handle code editing, file management, and version control. Vivid handles what those tools cannot: real-time visual and audio feedback during a live session.
+
+### Two Audiences, Two Interfaces
+
+**The Performer** uses Vivid's built-in UI during a show or creative session:
+
+- **Node Graph** — Visual chain with live thumbnails and health indicators
+- **Inspector** — Parameter sliders for the selected node (auto-shows on selection)
+- **Status Bar** — FPS, frame time, resolution, memory, record/snapshot controls
+- **Performance Panel** (`Cmd+1`) — Detailed real-time metrics
+- **Console** — Read-only log overlay for compile status and runtime warnings
+
+**The Developer** (human or LLM agent) uses external tools:
+
+- **External editors** — VS Code, Cursor, Neovim, or any text editor
+- **MCP server** — Claude Code connects to the running Vivid instance for parameter queries, frame capture, and inspection
+- **CLI commands** — `vivid check`, `vivid inspect`, `--snapshot` for CI and validation
+- **Hot-reload** — Edit any `.cpp` or `.wgsl` file and see changes immediately, regardless of which tool made the edit
+
+### What Was Removed
+
+Vivid originally included a code editor, integrated terminal, and file browser — a self-contained IDE. These were removed because:
+
+- **External tools do it better.** Competing with VS Code and terminal emulators on editing and file management is a losing proposition.
+- **LLM workflows don't need them.** In an agent-driven workflow, nobody is hand-editing code inside Vivid. The agent writes to disk, hot-reload picks it up.
+- **Hot-reload is tool-agnostic.** The file watcher doesn't care what wrote the file. This decoupling means any external tool works without integration effort.
+
+### Shared Architecture
+
+The same underlying systems serve both audiences through different interfaces:
+
+| System | Performer (Built-in UI) | Developer (External Tools) |
+|--------|------------------------|---------------------------|
+| Parameters | Inspector sliders | MCP `set_param` / `get_live_params` |
+| Inspection | Health-colored borders, sparklines | MCP `get_runtime_status` / `vivid inspect` |
+| Recording | Status bar record button | `--snapshot` flag / MCP `capture_frame` |
+| Chain state | Node graph with live thumbnails | MCP `get_runtime_status` / `vivid inspect` |
+
+Building for one audience directly benefits the other.
+
+### Decision Framework
+
+When considering whether a new feature belongs inside Vivid's UI or outside it, ask:
+
+1. **Does it require real-time GPU/audio output?** If yes, it belongs inside Vivid. External tools can't render live thumbnails or play audio from the chain.
+2. **Does it duplicate what external tools already do well?** If yes, keep it outside. Editors, terminals, file browsers, and version control are solved problems.
+3. **Would a performer use it on stage?** If yes, it belongs inside Vivid with large, high-contrast UI elements designed for dark rooms.
+
 ## Benefits
 
 ### For Creative Coders
@@ -105,6 +155,13 @@ The framework is designed so that an LLM can be a genuine collaborator, not just
 - **No license servers** — Open source, run it anywhere
 - **Onboarding is reading** — New team members can understand projects by reading them
 
+### For Live Performance
+
+- **Real-time visual feedback** — Node graph with live thumbnails and health indicators shows chain state at a glance
+- **Performance monitoring** — FPS, frame time, and memory usage always visible; detailed metrics one keypress away
+- **Parameter control** — Inspector sliders for immediate tweaking, with MIDI mapping for physical controllers
+- **Recording and snapshots** — Capture output to PNG or video without interrupting the session
+
 ### For LLM-Assisted Development
 
 - **Full project context** — Models can read your entire pipeline
@@ -116,29 +173,29 @@ The framework is designed so that an LLM can be a genuine collaborator, not just
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Vivid Runtime + Built-in Devtools                       │
-│  - File watcher (source + shaders)                       │
-│  - Incremental C++ compilation                           │
-│  - Shared library hot-reload                             │
-│  - Operator graph execution                              │
-│  - Output window rendering                               │
-│                                                          │
-│  Devtools Panels (--show-ui):                            │
-│  - Terminal: interactive shell, Claude Code              │
-│  - Editor: code editing with syntax highlighting         │
-│  - Node Graph: visual chain with live thumbnails         │
-│  - Inspector: parameter sliders for selected node        │
-│  - Console: compile errors and runtime logs              │
-└────────────────────────┬─────────────────────────────────┘
-                         │ WebSocket (port 9876)
-                         ▼
-┌──────────────────────────────────────────────────────────┐
-│  MCP Server (vivid mcp)                                  │
-│  - Claude Code integration                               │
-│  - Parameter queries and updates                         │
-│  - Frame capture and inspection                          │
-│  - Documentation search                                  │
+│  Vivid Runtime                                           │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  Core: file watcher, compilation, hot-reload,      │  │
+│  │  operator graph execution, output rendering        │  │
+│  └──────────────┬──────────────────────┬──────────────┘  │
+│                 │                      │                  │
+│  ┌──────────────▼───────────┐  ┌──────▼───────────────┐  │
+│  │  Built-in Devtools       │  │  MCP Server           │  │
+│  │  (--show-ui / ` toggle)  │  │  (WebSocket :9876)    │  │
+│  │                          │  │                       │  │
+│  │  - Node Graph            │  │  - Parameter queries  │  │
+│  │  - Inspector             │  │  - Frame capture      │  │
+│  │  - Status Bar            │  │  - Chain inspection   │  │
+│  │  - Performance (Cmd+1)   │  │  - Documentation      │  │
+│  │  - Console               │  │                       │  │
+│  └──────────────────────────┘  └───────────┬───────────┘  │
 └──────────────────────────────────────────────────────────┘
+                                             │
+                          ┌──────────────────▼──────────────┐
+                          │  External Tools                  │
+                          │  Claude Code, Cursor, VS Code,   │
+                          │  CLI (vivid check / inspect)     │
+                          └─────────────────────────────────┘
 ```
 
 ## Operator Types
@@ -185,3 +242,11 @@ The ability to edit code and see changes instantly is what makes creative coding
 A language model reasoning about a 10,000-line runtime will miss things. A model reasoning about a 600-line core can understand every interaction.
 
 **The solution:** Keep the core tiny. Push complexity to addons that can be understood in isolation.
+
+### Development Tools vs Performance Tools
+
+Vivid originally included a built-in code editor, integrated terminal, and file browser — a self-contained IDE inside the application. The assumption was that the developer would work *inside* Vivid.
+
+That assumption broke when LLM-assisted coding became the primary development workflow. Claude Code, Cursor, and similar tools already have world-class editors, terminals, and file management. Building a second, worse version of all that inside Vivid meant competing with teams of hundreds on a problem that was already solved and getting better fast.
+
+**The solution:** Split tooling by audience. The performer gets real-time UI that external tools can't replicate — node graph with live thumbnails, parameter sliders, health indicators, recording controls. The developer gets external tools for editing plus an MCP server that bridges those tools to the running Vivid instance. The same underlying systems (parameters, inspection, chain state) serve both audiences through different interfaces.

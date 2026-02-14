@@ -43,11 +43,11 @@ Two audiences share the same underlying architecture:
   - [ ] Group by purpose (Color, Motion, Audio) not by operator
   - [ ] MIDI mapping — physical controllers bind to on-screen parameters
   - [ ] Large, high-contrast UI for dark rooms / distance viewing
-- [ ] **Chain Health Monitoring** — Visual indicators on nodes:
+- [x] **Chain Health Monitoring** — Visual indicators on nodes:
   - [x] Infrastructure: `NodeState::healthBorderColor`, `overlayCallback`, per-node RMS/activity tracking
-  - [ ] Thumbnail border colors (green=signal, yellow=dark/silent, red=NaN/static)
-  - [ ] Inline VU meters on audio nodes
-  - [ ] Frame delta sparklines (activity indicator)
+  - [x] Thumbnail border colors (green=signal, yellow=dark/silent, red=NaN/static)
+  - [x] Inline VU meters on audio nodes
+  - [x] Frame delta sparklines (activity indicator)
 - [ ] **Preset / Snapshot System** — Live performance cue management:
   - [ ] Save/recall named parameter snapshots
   - [ ] Hard cut or crossfade interpolation between snapshots
@@ -75,7 +75,20 @@ Two audiences share the same underlying architecture:
 - [x] **Levels** — reports `rms`, `peak`, `rms_left`, `rms_right`
 - [x] **BandSplit** — reports `sub_bass`, `bass`, `low_mid`, `mid`, `high_mid`, `high`
 - [x] **AudioOutput** — custom inspect override
-- [ ] Remaining operators — incremental, add as needed
+- [x] **BeatDetect** — reports `beat`, `energy`, `raw_energy`, `intensity`, `time_since_beat`
+- [x] **FFT** — reports `peak_magnitude`, `peak_frequency`, `bass`, `mid`, `high`, `fft_size`, `bin_count`
+- [x] **PolySynth** — reports `active_voices`, `playing`, `max_envelope`
+- [x] **FMSynth** — reports `active_voices`, `op1-4_envelope`
+- [x] **Sampler** — reports `active_voices`, `playing`, `has_sample`, `sample_duration`, `looping`
+- [x] **AudioFile** — reports `playing`, `looping`, `current_time`, `duration`
+- [x] **AudioIn** — reports `capturing`, `muted`
+- [x] **Granular** — reports `active_grains`, `loaded`, `frozen`, `sample_duration`
+- [x] **VideoPlayer** — reports `playing`, `open`, `current_time`, `duration`, `frame_rate`, `width`, `height`, `has_audio`
+- [x] **OscIn** — reports `listening`, `port`, `message_count`, `address_count`
+- [x] **SerialIn** — reports `connected`, `has_data`, `value_count`, `port`
+- [x] **ParticleSystem** — reports `particle_count`, `force_count`
+- [x] **FrameCache** — reports `current_index`, `allocated_frames`, `frames_written`, `warmed_up`
+- [x] **FluidSim** — reports `sim_width`, `sim_height`, `pending_impulses`
 
 ### 2.3 Output Texture Analysis
 
@@ -114,18 +127,20 @@ Two audiences share the same underlying architecture:
 
 ### 2.7 Assertion System
 
-- [ ] **vivid-assertions.yaml format** — Declarative pass/fail conditions
+- [x] **vivid-assertions.json format** — Declarative pass/fail conditions
   - Operator metric checks (e.g., feedback energy > 0.3)
   - Output analysis checks (e.g., contrast > 0.15)
-  - Conditional checks (after_frame, range checks)
-- [ ] **vivid check CLI command** — Run assertions, exit code 0/1, JSON report
-- [ ] **YAML parser** for assertion definitions
+  - Path syntax: `output.<field>`, `operators.<name>.metrics.<key>`, `operators.<name>.metadata.<key>`
+  - Comparison operators: `>`, `>=`, `<`, `<=`, `==`, `!=`
+- [x] **vivid check CLI command** — Run assertions, exit code 0/1, JSON report
+  - `vivid check path/to/project [--assertions file.json] [--frame N] [--verbose]`
+- [x] **JSON parser** for assertion definitions (`src/cli/assertion.cpp`)
 
 ### 2.8 CLI `vivid inspect` Command
 
-- [ ] **Standalone CLI command** — Multi-frame sampling with structured output
-  - `vivid inspect path/to/project --duration 2.0 --samples 5 --out report/`
-  - Produces inspection.json + frame thumbnails + optional waveform
+- [x] **Standalone CLI command** — Single-frame inspection with structured output
+  - `vivid inspect path/to/project [--frame N] [--out report/]`
+  - Produces inspection JSON to stdout, optionally saves JSON + snapshot PNG to output dir
   - *Note: MCP `inspect_chain` provides this interactively; CLI version is for CI/headless*
 
 ---
@@ -187,9 +202,9 @@ INNER LOOP (Part 2) — seconds, no human needed
   LLM edits chain.cpp
        ↓
   MCP inspect_chain → structured JSON + thumbnails  ← IMPLEMENTED
-  (or: vivid inspect → JSON report)                 ← NOT YET
+  (or: vivid inspect → JSON report)                 ← IMPLEMENTED
        ↓
-  vivid check → assertions pass?                    ← NOT YET
+  vivid check → assertions pass?                    ← IMPLEMENTED
        ↓ no: iterate        ↓ yes: proceed
   ← back to edit       move to outer loop
 
@@ -220,10 +235,10 @@ OUTER LOOP (Part 3) — minutes, human reviews
 
 **Next up:**
 1. Chain health monitoring (wire up existing infrastructure to render visual indicators)
-2. Assertion system (vivid-assertions.yaml + vivid check)
+2. ~~Assertion system (vivid-assertions.json + vivid check)~~ ← DONE
 3. MIDI parameter mapping
 4. Preset/snapshot save/recall system
 5. EventInjector + playback scripts
 6. `vivid export` CLI command
-7. `vivid inspect` standalone CLI (if needed beyond MCP)
+7. ~~`vivid inspect` standalone CLI~~ ← DONE
 8. Project manifest (vivid-project.json)

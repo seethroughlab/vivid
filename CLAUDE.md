@@ -18,6 +18,8 @@ doxygen Doxyfile                          # Generate API docs
 ./build/bin/vivid <project-path> --snapshot output.png        # Capture single frame
 ./build/bin/vivid <project-path> --snapshot out.png --snapshot-frame 0-11  # Capture 12 frames for GIF
 ./build/bin/vivid <project-path> --snapshot out.png --snapshot-frame 0-30:5  # Every 5th frame
+./build/bin/vivid check <project-path>                         # Run assertions, exit 0 (pass) or 1 (fail)
+./build/bin/vivid inspect <project-path>                       # Dump inspection JSON to stdout
 ./build/bin/vivid mcp                                         # Run MCP server for Claude Code
 ```
 

@@ -12,35 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Operator introspection system** - Runtime inspection of operator state for debugging and visualization:
+  - `InspectData` and `FrameAnalysis` structs for structured diagnostic output
+  - `Operator::inspect()` virtual method for per-operator diagnostics
+  - `Chain::inspectAll()` collects inspection data from all operators in the chain
+
+- **Node graph health borders and overlay callbacks** - Visual feedback for operator status:
+  - Health-colored borders on node graph nodes (green/yellow/red)
+  - Overlay callback system for custom per-node visualizations
+
+- **GPU utility functions** - Shared GPU boilerplate extracted to `gpu_common`:
+  - Common blend states (alpha, additive, premultiplied)
+  - White texture creation utility
+  - Circle mesh generation helper
+
+- **system_info.h** - Cross-platform memory monitoring utilities
+
 - **GUI debug infrastructure** - New logging and validation utilities for panel system debugging:
   - `gui_debug.h` with `setDebugEnabled()`, `logTransition()`, `logDebug()`, `dumpPanelStates()`, `validateState()`
-  - Logging added to `PanelManager` (show/hide/float/focus) and `DockManager` (drag/tree modifications)
+  - Logging added to `PanelManager` (show/hide/float/focus)
   - Enable via `VIVID_GUI_DEBUG` compile flag or `gui::setDebugEnabled(true)` at runtime
-
-- **TreeSlot version tracking** - Robust panel restoration with stale slot detection:
-  - `TreeSlot::captureVersion` tracks layout version when slot was captured
-  - `PanelManager::layoutVersion()` increments on tree structure changes
-  - `DockManager::restoreFromTreeSlot()` validates version before restoration
-  - Prevents crashes when restoring panels after layout restructuring
-
-- **Panel location state** - Explicit tracking of panel visibility state:
-  - `PanelLocation` enum: `Hidden`, `Docked`, `Floating`
-  - `Panel::location()`, `Panel::setLocation()` accessors
-  - `Panel::savedTreeSlot()`, `Panel::savedFloatBounds()` for restoration state
-
-- **Panel docking system** - Visual Studio-like drag-to-dock panel management:
-  - Drag tabs out of panel groups to create floating panels
-  - Drag floating panels to dock guides to dock into layout
-  - Visual dock guides with directional arrows (left/right/top/bottom/center)
-  - Preview highlight shows where panel will dock
-  - Status bar buttons show three states: docked (accent), floating (dim), hidden (hollow)
-  - Right-click status bar buttons for dock position context menu
-  - Drag from status bar buttons to create floating panels
-  - Non-resizable splits for status bar (fixed height, no divider)
-  - TreeSlot system remembers panel positions for restoration
-  - Layout serialization includes TreeSlot and floating bounds
-  - Dock guide colors added to UIStyle for theme support
-  - Layout mode is now the default (no longer experimental)
 
 - **Grid opacity slider** - Background grid visibility now controlled by slider:
   - Replaced grid toggle button ("G") with opacity slider in status bar
@@ -81,6 +72,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Devtools streamlined** - Simplified to performance-focused tools (NodeGraph, Inspector, Performance, StatusBar, Console), removing IDE panels in favor of Claude-first MCP workflow
+
+- **Panel system simplified** - `PanelRole` replaces `DockSide`/`PanelLocation` for simpler panel identity and positioning
+
+- **Log callback now additive** - Custom log callbacks no longer short-circuit default output; both custom callback and default logging run
+
+- **GPU boilerplate extracted** - Common blend states and utilities moved to shared `gpu_common` module, used by particle and plexus effects
+
 - **GUI module decoupled from vivid-core** - Internal GUI components now use `gui::InputState` instead of `FrameInput`:
   - New `gui/input_state.h` with `gui::Key` enum and `gui::InputState` struct
   - All panel system headers/implementations updated to use `gui::InputState`
@@ -93,6 +92,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - vivid-render3d: particles3d, shadow_depth, shadow_point shaders extracted
   - Original embedded shaders kept as `*_FALLBACK` for reliability
   - Shaders loaded via `AssetLoader::loadShader()` with fallback pattern
+
+### Removed
+
+- **Panel docking system** - Removed DockManager, DockZone, LayoutNode, PanelGroup, PanelLeaf, and SplitContainer
+
+- **IDE panels** - Removed Editor, Terminal, FileBrowser, OperatorLibrary, and FileBuffer panels; removed libvterm dependency
+
+- **UIStyle cleanup** - Removed syntax highlighting, terminal, editor, and dock guide colors from UIStyle
+
+- **Old dev plans** - Removed legacy planning documents (replaced by vivid-master-plan.md)
 
 ### Fixed
 
@@ -107,26 +116,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Inspector panel value labels** - Fixed missing slider value text on light themes:
   - Added `gui.style().text = style.textPrimary` for proper text color
   - Removed redundant double clipping that caused display issues
-
-- **Editor text selection** - Fixed inability to select text with mouse in editor panel:
-  - Added mouse click/drag/release handling in `handleInput()`
-  - Selection methods were defined but never called
-
-- **Panel double-rendering on Retina** - Fixed NodeGraph panning moving 2x distance on HiDPI displays:
-  - Panel was being rendered twice: once from layout tree, once from floating order
-  - `showPanelFromSlot()` now checks if panel is already in layout tree before adding to floating order
-
-- **Docked panel content visibility** - Fixed panels not rendering until manually activated:
-  - `buildDefaultLayout()` now sets `setVisible(true)` on panels added to the layout tree
-  - Previously panels with non-None dockSide defaulted to visible=false
-
-- **Status bar expansion** - Fixed status bar taking over entire window when all panels closed:
-  - `cleanupEmptyNodes()` now skips non-resizable splits (structural layout elements)
-  - Status bar split remains at fixed height even when content area is empty
-
-- **Fullscreen input handling** - Fixed all panels becoming unclickable after entering fullscreen:
-  - DockManager was using physical pixels for screen dimensions but logical pixels for mouse position
-  - Now consistently uses `input.logicalWidth()`/`logicalHeight()` throughout GUI system
 
 ## [0.1.0-alpha.10] - 2026-01-22
 
