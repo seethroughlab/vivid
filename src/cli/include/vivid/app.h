@@ -45,8 +45,27 @@ struct AppConfig {
     bool inspectMode = false;
     std::string inspectOutDir;   // optional output directory for inspect
 
+    // Build mode (vivid build): compile chain and report structured errors
+    bool buildMode = false;
+
+    // Params mode (vivid params): list all tweakable parameters as JSON
+    bool paramsMode = false;
+
+    // Graph mode (vivid graph): dump chain topology as JSON
+    bool graphMode = false;
+
     // Shared by check/inspect: which frame to evaluate at
     int checkFrame = -1;         // -1 = use assertion file's value or default 10
+
+    // Export mode (vivid export): headless A/V export with optional script
+    bool exportMode = false;
+    std::string exportOutput;        // output video file path
+    std::string exportScript;        // playback script JSON (optional)
+    float exportDuration = 0.0f;     // duration in seconds (overrides script)
+    float exportFps = 60.0f;         // frame rate (overrides script)
+    bool exportAudio = false;        // include audio track
+    ExportCodec exportCodec = ExportCodec::H264;
+    bool exportQuiet = false;        // suppress progress output
 };
 
 // Main application class

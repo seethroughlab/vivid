@@ -9,6 +9,9 @@ set(VIVID_CLI_SOURCES
     app.cpp
     cli.cpp
     assertion.cpp
+    event_injector.cpp
+    project_manifest.cpp
+    docs_search.cpp
     module_loader.cpp
     runtime_api.cpp
     mcp_server.cpp
@@ -18,6 +21,9 @@ set(VIVID_CLI_SOURCES
 set(VIVID_CLI_HEADERS
     include/vivid/cli.h
     include/vivid/assertion.h
+    include/vivid/event_injector.h
+    include/vivid/project_manifest.h
+    include/vivid/docs_search.h
     include/vivid/runtime_api.h
     include/vivid/mcp_server.h
     include/vivid/module_loader.h

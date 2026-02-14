@@ -10,6 +10,7 @@
 #include <vivid/module_loader.h>
 #include <vivid/module_manager.h>
 #include <vivid/module_registry.h>
+#include <vivid/docs_search.h>
 #include <CLI/CLI.hpp>
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -172,6 +173,13 @@ void printUsage() {
     std::cout << "  vivid bundle <project> [options]  Bundle project as standalone app\n";
     std::cout << "  vivid check <project> [options]   Run assertions against a project\n";
     std::cout << "  vivid inspect <project> [options]  Dump inspection data as JSON\n";
+    std::cout << "  vivid export <project> [options]  Export video with playback script\n";
+    std::cout << "  vivid build <project>             Compile and report structured errors\n";
+    std::cout << "  vivid params <project>            List all tweakable parameters as JSON\n";
+    std::cout << "  vivid graph <project>             Dump chain topology as JSON\n";
+    std::cout << "  vivid docs search <query>         Search documentation\n";
+    std::cout << "  vivid docs recipe [name]          List or show recipes\n";
+    std::cout << "  vivid docs example <operator>     Show code examples for an operator\n";
     std::cout << "  vivid --help                      Show this help\n";
     std::cout << "  vivid --version                   Show version\n";
 }
@@ -1645,6 +1653,63 @@ ParseResult parseArgs(int argc, char** argv) {
     inspectCmd->add_option("--frame", inspectFrame, "Frame to inspect (default: 10)");
     inspectCmd->add_option("--out", inspectOutDir, "Output directory for JSON + snapshot");
 
+    // 'export' subcommand — headless A/V export with optional playback script
+    std::string exportProjectPath;
+    std::string exportOutput;
+    std::string exportScript;
+    float exportDuration = 0.0f;
+    float exportFps = 60.0f;
+    bool exportAudio = false;
+    std::string exportCodec = "h264";
+    std::string exportResolution;
+    bool exportQuiet = false;
+
+    auto* exportCmd = app.add_subcommand("export", "Export video with optional playback script");
+    exportCmd->add_option("project", exportProjectPath, "Project path")->required();
+    exportCmd->add_option("-o,--output", exportOutput, "Output video file path")->required();
+    exportCmd->add_option("--script", exportScript, "Playback script JSON file");
+    exportCmd->add_option("--duration", exportDuration, "Duration in seconds")
+             ->check(CLI::Range(0.01f, 86400.0f));
+    exportCmd->add_option("--fps", exportFps, "Frame rate (default: 60)")
+             ->check(CLI::Range(0.1f, 240.0f));
+    exportCmd->add_flag("--audio", exportAudio, "Include audio track");
+    exportCmd->add_option("--codec", exportCodec, "Video codec: h264, h265, prores")
+             ->type_name("CODEC");
+    exportCmd->add_option("--resolution", exportResolution, "Render resolution (e.g., 1920x1080)")
+             ->type_name("WxH");
+    exportCmd->add_flag("--quiet", exportQuiet, "Suppress progress output");
+
+    // 'build' subcommand — compile chain and report structured errors
+    std::string buildProjectPath;
+    auto* buildCmd = app.add_subcommand("build", "Compile a chain and report structured errors as JSON");
+    buildCmd->add_option("project", buildProjectPath, "Project path")->required();
+
+    // 'params' subcommand — list all tweakable parameters
+    std::string paramsProjectPath;
+    auto* paramsCmd = app.add_subcommand("params", "List all tweakable parameters as JSON");
+    paramsCmd->add_option("project", paramsProjectPath, "Project path")->required();
+
+    // 'graph' subcommand — dump chain topology
+    std::string graphProjectPath;
+    auto* graphCmd = app.add_subcommand("graph", "Dump chain topology as JSON");
+    graphCmd->add_option("project", graphProjectPath, "Project path")->required();
+
+    // 'docs' subcommand group — search documentation and recipes
+    auto* docsCmd = app.add_subcommand("docs", "Search documentation, recipes, and examples");
+    docsCmd->require_subcommand(1);
+
+    std::string docsSearchQuery;
+    auto* docsSearchCmd = docsCmd->add_subcommand("search", "Search documentation");
+    docsSearchCmd->add_option("query", docsSearchQuery, "Search query")->required();
+
+    std::string docsRecipeName;
+    auto* docsRecipeCmd = docsCmd->add_subcommand("recipe", "List or show recipes");
+    docsRecipeCmd->add_option("name", docsRecipeName, "Recipe name (omit to list all)");
+
+    std::string docsExampleOp;
+    auto* docsExampleCmd = docsCmd->add_subcommand("example", "Show code examples for an operator");
+    docsExampleCmd->add_option("operator", docsExampleOp, "Operator name")->required();
+
     // 'mcp' subcommand - MCP server for Claude Code integration
 #ifdef VIVID_ENABLE_MCP
     auto* mcpCmd = app.add_subcommand("mcp", "Run MCP server for Claude Code integration");
@@ -1700,6 +1765,36 @@ ParseResult parseArgs(int argc, char** argv) {
         return result;
     }
 
+    if (docsCmd->parsed()) {
+        result.handled = true;
+
+        if (docsSearchCmd->parsed()) {
+            auto matches = docs::searchDocs(docsSearchQuery);
+            if (matches.empty()) {
+                std::cout << "No matches found for '" << docsSearchQuery << "'" << std::endl;
+                result.exitCode = 1;
+            } else {
+                std::cout << matches.dump(2) << std::endl;
+            }
+        } else if (docsRecipeCmd->parsed()) {
+            auto recipes = docs::getRecipes(docsRecipeName);
+            if (recipes.contains("error")) {
+                std::cerr << recipes["error"].get<std::string>() << std::endl;
+                result.exitCode = 1;
+            } else {
+                std::cout << recipes.dump(2) << std::endl;
+            }
+        } else if (docsExampleCmd->parsed()) {
+            auto examples = docs::findExamples(docsExampleOp);
+            std::cout << examples.dump(2) << std::endl;
+            if (examples["count"].get<int>() == 0) {
+                result.exitCode = 1;
+            }
+        }
+
+        return result;
+    }
+
     // check/inspect subcommands — need full app lifecycle, so return AppConfig
     if (checkCmd->parsed()) {
         AppConfig config;
@@ -1733,6 +1828,71 @@ ParseResult parseArgs(int argc, char** argv) {
         config.inspectMode = true;
         config.checkFrame = inspectFrame;
         config.inspectOutDir = inspectOutDir;
+        result.config = config;
+        return result;
+    }
+
+    if (exportCmd->parsed()) {
+        AppConfig config;
+        config.projectPath = exportProjectPath;
+        config.exportMode = true;
+        config.exportOutput = exportOutput;
+        config.exportScript = exportScript;
+        config.exportDuration = exportDuration;
+        config.exportFps = exportFps;
+        config.exportAudio = exportAudio;
+        config.exportQuiet = exportQuiet;
+
+        // Parse export resolution
+        if (!exportResolution.empty()) {
+            size_t x = exportResolution.find('x');
+            if (x == std::string::npos) x = exportResolution.find('X');
+            if (x != std::string::npos) {
+                try {
+                    config.renderWidth = std::stoi(exportResolution.substr(0, x));
+                    config.renderHeight = std::stoi(exportResolution.substr(x + 1));
+                } catch (...) {
+                    std::cerr << "Error: Invalid --resolution format. Use WxH (e.g., 1920x1080)\n";
+                    result.handled = true;
+                    result.exitCode = 1;
+                    return result;
+                }
+            }
+        }
+
+        // Parse export codec
+        if (exportCodec == "h265" || exportCodec == "hevc") {
+            config.exportCodec = ExportCodec::H265;
+        } else if (exportCodec == "prores" || exportCodec == "animation") {
+            config.exportCodec = ExportCodec::Animation;
+        } else {
+            config.exportCodec = ExportCodec::H264;
+        }
+
+        result.config = config;
+        return result;
+    }
+
+    if (buildCmd->parsed()) {
+        AppConfig config;
+        config.projectPath = buildProjectPath;
+        config.buildMode = true;
+        result.config = config;
+        return result;
+    }
+
+    if (paramsCmd->parsed()) {
+        AppConfig config;
+        config.projectPath = paramsProjectPath;
+        config.paramsMode = true;
+        result.config = config;
+        return result;
+    }
+
+    if (graphCmd->parsed()) {
+        AppConfig config;
+        config.projectPath = graphProjectPath;
+        config.graphMode = true;
         result.config = config;
         return result;
     }

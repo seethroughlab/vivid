@@ -10,6 +10,8 @@
 
 #include <vivid/app.h>
 #include <vivid/assertion.h>
+#include <vivid/event_injector.h>
+#include <vivid/project_manifest.h>
 
 #include <vivid/vivid.h>
 #include <vivid/effects/texture_operator.h>
@@ -759,12 +761,27 @@ struct MainLoopContext {
     // Check/inspect mode
     bool checkMode = false;
     bool inspectMode = false;
+    bool buildMode = false;
+    bool paramsMode = false;
+    bool graphMode = false;
     int checkFrame = 10;         // Frame to evaluate at
     std::string assertionPath;
     std::string inspectOutDir;
     bool verboseCheck = false;
     std::vector<vivid::Assertion> assertions;  // Loaded assertions (check mode)
     int exitCode = 0;            // Exit code for check mode
+
+    // Export mode (vivid export)
+    bool exportMode = false;
+    std::string exportOutput;
+    float exportDuration = 0.0f;
+    float exportFps = 60.0f;
+    bool exportAudio = false;
+    ExportCodec exportCodec = ExportCodec::H264;
+    bool exportQuiet = false;
+    EventInjector eventInjector;
+    bool hasEventScript = false;
+    int exportTotalFrames = 0;   // Total frames to export (duration * fps)
 
     // Project info
     std::string projectName;
@@ -1086,14 +1103,41 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
         }
 
-        // In check/inspect mode, exit immediately on compile error
-        if (mlc.checkMode || mlc.inspectMode) {
+        // In check/inspect/build/params/graph mode, exit immediately on compile error
+        if (mlc.checkMode || mlc.inspectMode || mlc.paramsMode || mlc.graphMode) {
             nlohmann::json errReport;
             errReport["error"] = "compile_failed";
             errReport["message"] = mlc.hotReload->getError();
             std::cout << errReport.dump(2) << std::endl;
             mlc.exitCode = 1;
             glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+            return false;
+        }
+        if (mlc.buildMode) {
+            nlohmann::json errReport;
+            errReport["success"] = false;
+            // Include structured errors if available
+            const auto& compileErrors = mlc.hotReload->getCompileErrors();
+            if (!compileErrors.empty()) {
+                errReport["errors"] = nlohmann::json::array();
+                for (const auto& ce : compileErrors) {
+                    nlohmann::json e;
+                    e["file"] = ce.file;
+                    e["line"] = ce.line;
+                    e["column"] = ce.column;
+                    e["severity"] = ce.severity;
+                    e["message"] = ce.message;
+                    errReport["errors"].push_back(e);
+                }
+            } else {
+                // Fallback to raw error string
+                errReport["error"] = "compile_failed";
+                errReport["message"] = mlc.hotReload->getError();
+            }
+            std::cout << errReport.dump(2) << std::endl;
+            mlc.exitCode = 1;
+            glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+            return false;
         }
     } else if (mlc.hotReload->isLoaded()) {
         mlc.ctx->clearError();
@@ -1113,11 +1157,17 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
     }
 
-    // In check/inspect mode, also exit on context-level error
-    if ((mlc.checkMode || mlc.inspectMode) && mlc.ctx->hasError()) {
+    // In check/inspect/build/params/graph mode, also exit on context-level error
+    if ((mlc.checkMode || mlc.inspectMode || mlc.buildMode || mlc.paramsMode || mlc.graphMode) && mlc.ctx->hasError()) {
         nlohmann::json errReport;
-        errReport["error"] = "runtime_error";
-        errReport["message"] = mlc.ctx->errorMessage();
+        if (mlc.buildMode) {
+            errReport["success"] = false;
+            errReport["error"] = "runtime_error";
+            errReport["message"] = mlc.ctx->errorMessage();
+        } else {
+            errReport["error"] = "runtime_error";
+            errReport["message"] = mlc.ctx->errorMessage();
+        }
         std::cout << errReport.dump(2) << std::endl;
         mlc.exitCode = 1;
         glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
@@ -1204,6 +1254,25 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                     std::cerr << "Failed to start recording: " << mlc.cliRecorder.error() << std::endl;
                 }
                 mlc.cliRecordingStarted = true;
+
+                // Export mode: enable deterministic timing and validate script
+                if (mlc.exportMode) {
+                    mlc.ctx->setRecordingMode(true, mlc.exportFps);
+
+                    if (mlc.hasEventScript) {
+                        auto warnings = mlc.eventInjector.validate(mlc.ctx->chain());
+                        for (const auto& w : warnings) {
+                            std::cerr << "Warning: " << w << std::endl;
+                        }
+                    }
+
+                    if (!mlc.exportQuiet) {
+                        std::cout << "Exporting: " << mlc.exportOutput
+                                  << " (" << mlc.exportTotalFrames << " frames, "
+                                  << mlc.exportDuration << "s @ " << mlc.exportFps << "fps)"
+                                  << std::endl;
+                    }
+                }
             }
         }
 
@@ -1242,6 +1311,11 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         g_savedScrollForVisualizer = mlc.ctx->scroll();
         if (mlc.visualizerVisible) {
             mlc.ctx->blockMouseInput();
+        }
+
+        // Inject scripted events (export mode with playback script)
+        if (mlc.exportMode && mlc.hasEventScript && !mlc.chainNeedsSetup) {
+            mlc.eventInjector.processFrame(mlc.snapshotFrameCounter, *mlc.ctx, mlc.ctx->chain());
         }
 
         // Call user's update function
@@ -1302,11 +1376,24 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
                 // Check duration limit
                 if (mlc.recordDuration > 0 && mlc.cliRecorder.duration() >= mlc.recordDuration) {
-                    std::cout << "Recording complete: " << mlc.cliRecorder.frameCount() << " frames, "
-                              << mlc.cliRecorder.duration() << "s" << std::endl;
+                    if (mlc.exportMode && !mlc.exportQuiet) {
+                        std::cout << "\rExport complete: " << mlc.cliRecorder.frameCount() << " frames, "
+                                  << mlc.cliRecorder.duration() << "s -> " << mlc.exportOutput << std::endl;
+                    } else {
+                        std::cout << "Recording complete: " << mlc.cliRecorder.frameCount() << " frames, "
+                                  << mlc.cliRecorder.duration() << "s" << std::endl;
+                    }
+                    if (mlc.exportMode) mlc.ctx->setRecordingMode(false);
                     mlc.ctx->chain().stopAudioRecordingTap();  // Stop tap before stopping recorder
                     mlc.cliRecorder.stop();
                     glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+                }
+                // Export progress (every 60 frames)
+                else if (mlc.exportMode && !mlc.exportQuiet && mlc.exportTotalFrames > 0 &&
+                         mlc.cliRecorder.frameCount() % 60 == 0) {
+                    int pct = (mlc.cliRecorder.frameCount() * 100) / mlc.exportTotalFrames;
+                    std::cout << "\rExporting... " << pct << "% (" << mlc.cliRecorder.frameCount()
+                              << "/" << mlc.exportTotalFrames << " frames)" << std::flush;
                 }
             }
         }
@@ -1355,6 +1442,104 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                 mlc.exitCode = report.allPassed ? 0 : 1;
             }
 
+            glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+        }
+
+        // Build mode: just confirm compilation succeeded
+        if (mlc.buildMode && currentFrame == mlc.checkFrame) {
+            nlohmann::json report;
+            report["success"] = true;
+            std::cout << report.dump(2) << std::endl;
+            glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+        }
+
+        // Params mode: list all tweakable parameters
+        if (mlc.paramsMode && currentFrame == mlc.checkFrame) {
+            nlohmann::json report;
+            report["parameters"] = nlohmann::json::array();
+
+            Chain& chain = mlc.ctx->chain();
+            for (const auto& opName : chain.operatorNames()) {
+                Operator* op = chain.getByName(opName);
+                if (!op) continue;
+
+                for (const auto& decl : op->params()) {
+                    nlohmann::json p;
+                    p["operator"] = opName;
+                    p["param"] = decl.name;
+
+                    switch (decl.type) {
+                        case ParamType::Float:  p["type"] = "float"; break;
+                        case ParamType::Int:    p["type"] = "int"; break;
+                        case ParamType::Bool:   p["type"] = "bool"; break;
+                        case ParamType::Vec2:   p["type"] = "vec2"; break;
+                        case ParamType::Vec3:   p["type"] = "vec3"; break;
+                        case ParamType::Vec4:   p["type"] = "vec4"; break;
+                        case ParamType::Color:  p["type"] = "color"; break;
+                        case ParamType::String: p["type"] = "string"; break;
+                        default:                p["type"] = "unknown"; break;
+                    }
+
+                    float val[4] = {0};
+                    op->getParam(decl.name, val);
+                    p["value"] = val[0];
+                    p["min"] = decl.minVal;
+                    p["max"] = decl.maxVal;
+                    p["default"] = decl.defaultVal[0];
+
+                    report["parameters"].push_back(p);
+                }
+            }
+
+            std::cout << report.dump(2) << std::endl;
+            glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+        }
+
+        // Graph mode: dump chain topology
+        if (mlc.graphMode && currentFrame == mlc.checkFrame) {
+            nlohmann::json report;
+            report["operators"] = nlohmann::json::array();
+
+            if (mlc.ctx->hasChain()) {
+                Chain& chain = mlc.ctx->chain();
+                for (const auto& opName : chain.operatorNames()) {
+                    Operator* op = chain.getByName(opName);
+                    if (!op) continue;
+
+                    nlohmann::json node;
+                    node["name"] = opName;
+                    node["type"] = op->name();
+                    node["outputType"] = outputKindName(op->outputKind());
+                    node["inputs"] = nlohmann::json::array();
+
+                    for (size_t i = 0; i < op->inputCount(); ++i) {
+                        Operator* input = op->getInput(static_cast<int>(i));
+                        if (input) {
+                            node["inputs"].push_back(chain.getName(input));
+                        }
+                    }
+
+                    report["operators"].push_back(node);
+                }
+
+                // Visual output
+                Operator* visualOut = chain.getOutput();
+                if (visualOut) {
+                    report["visualOutput"] = chain.getName(visualOut);
+                } else {
+                    report["visualOutput"] = nullptr;
+                }
+
+                // Audio output
+                Operator* audioOut = chain.getAudioOutput();
+                if (audioOut) {
+                    report["audioOutput"] = chain.getName(audioOut);
+                } else {
+                    report["audioOutput"] = nullptr;
+                }
+            }
+
+            std::cout << report.dump(2) << std::endl;
             glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
         }
 
@@ -2901,6 +3086,13 @@ int Application::init(const AppConfig& config) {
     mlc.inspectMode = config.inspectMode;
     mlc.inspectOutDir = config.inspectOutDir;
     mlc.verboseCheck = config.verboseCheck;
+    mlc.buildMode = config.buildMode;
+    mlc.paramsMode = config.paramsMode;
+    mlc.graphMode = config.graphMode;
+
+    if (mlc.buildMode || mlc.paramsMode || mlc.graphMode) {
+        mlc.checkFrame = 1;  // Just verify it compiles and runs one frame
+    }
 
     if (mlc.checkMode || mlc.inspectMode) {
         // Determine frame to evaluate at
@@ -2921,6 +3113,83 @@ int Application::init(const AppConfig& config) {
         } else {
             mlc.checkFrame = 10;
         }
+    }
+
+    // Export mode (vivid export)
+    mlc.exportMode = config.exportMode;
+    if (mlc.exportMode) {
+        mlc.exportOutput = config.exportOutput;
+        mlc.exportFps = config.exportFps;
+        mlc.exportAudio = config.exportAudio;
+        mlc.exportCodec = config.exportCodec;
+        mlc.exportQuiet = config.exportQuiet;
+        mlc.exportDuration = config.exportDuration;
+
+        // Load playback script if provided
+        if (!config.exportScript.empty()) {
+            if (!mlc.eventInjector.load(config.exportScript)) {
+                std::cerr << "Error: " << mlc.eventInjector.error() << std::endl;
+                return 1;
+            }
+            mlc.hasEventScript = true;
+
+            // Use script settings as defaults (CLI flags override)
+            const auto& script = mlc.eventInjector.script();
+            if (mlc.exportDuration <= 0 && script.duration > 0)
+                mlc.exportDuration = script.duration;
+            if (config.exportFps == 60.0f && script.fps != 60.0f)
+                mlc.exportFps = script.fps;
+            if (mlc.renderWidth == 0 && script.width > 0) {
+                mlc.renderWidth = script.width;
+                mlc.renderHeight = script.height;
+            }
+            if (!script.codec.empty() && config.exportCodec == ExportCodec::H264) {
+                if (script.codec == "h265" || script.codec == "hevc")
+                    mlc.exportCodec = ExportCodec::H265;
+                else if (script.codec == "prores" || script.codec == "animation")
+                    mlc.exportCodec = ExportCodec::Animation;
+            }
+            if (script.audio && !config.exportAudio)
+                mlc.exportAudio = script.audio;
+        }
+
+        // Try loading project manifest for additional defaults
+        if (mlc.exportDuration <= 0 || (!mlc.hasEventScript && mlc.renderWidth == 0)) {
+            auto manifest = loadProjectManifest(config.projectPath);
+            if (manifest.loaded) {
+                if (mlc.exportDuration <= 0 && manifest.preview.duration > 0)
+                    mlc.exportDuration = manifest.preview.duration;
+                if (mlc.renderWidth == 0 && manifest.preview.width > 0) {
+                    mlc.renderWidth = manifest.preview.width;
+                    mlc.renderHeight = manifest.preview.height;
+                }
+                // Load default script from manifest if none provided
+                if (!mlc.hasEventScript && !manifest.preview.script.empty()) {
+                    fs::path scriptPath = config.projectPath / manifest.preview.script;
+                    if (fs::exists(scriptPath)) {
+                        if (mlc.eventInjector.load(scriptPath.string())) {
+                            mlc.hasEventScript = true;
+                            if (mlc.exportDuration <= 0 && mlc.eventInjector.script().duration > 0)
+                                mlc.exportDuration = mlc.eventInjector.script().duration;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (mlc.exportDuration <= 0) {
+            std::cerr << "Error: Export requires a duration. Use --duration, script duration, or vivid-project.json preview.duration.\n";
+            return 1;
+        }
+
+        mlc.exportTotalFrames = static_cast<int>(mlc.exportDuration * mlc.exportFps);
+
+        // Set up recording path and mode — reuse the existing record infrastructure
+        mlc.recordPath = mlc.exportOutput;
+        mlc.recordFps = mlc.exportFps;
+        mlc.recordDuration = mlc.exportDuration;
+        mlc.recordAudio = mlc.exportAudio;
+        mlc.recordCodec = mlc.exportCodec;
     }
 
 // IDE panel using CEF Browser
