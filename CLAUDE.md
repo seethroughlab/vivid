@@ -62,6 +62,8 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 | `advance_frames` | Advance simulation by N frames |
 | `orbit_camera` | Position camera around a target point |
 | `capture_at_frame` | Advance to frame N and capture snapshot |
+| `sweep_param` | Sweep a parameter across values, capturing frames at each step |
+| `compare_frames` | Compare two PNG images (RMSE, per-channel diff, changed pixels) |
 | `list_operators` | List all available operators (from registry) |
 | `get_operator` | Get details for a specific operator |
 | `search_docs` | Search Vivid documentation |
