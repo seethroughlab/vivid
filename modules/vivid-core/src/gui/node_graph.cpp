@@ -128,6 +128,18 @@ void NodeGraph::setNodeContent(std::function<void(OverlayCanvas&, float, float, 
     }
 }
 
+void NodeGraph::setNodeOverlay(std::function<void(OverlayCanvas&, float, float, float, float)> callback) {
+    if (m_currentNodeId >= 0 && m_nodes.count(m_currentNodeId)) {
+        m_nodes[m_currentNodeId].overlayCallback = callback;
+    }
+}
+
+void NodeGraph::setNodeHealthColor(glm::vec4 color) {
+    if (m_currentNodeId >= 0 && m_nodes.count(m_currentNodeId)) {
+        m_nodes[m_currentNodeId].healthBorderColor = color;
+    }
+}
+
 void NodeGraph::endNode() {
     if (m_currentNodeId >= 0 && m_nodes.count(m_currentNodeId)) {
         auto& node = m_nodes[m_currentNodeId];
@@ -782,9 +794,13 @@ void NodeGraph::renderNode(NodeState& node) {
     // Title bar
     m_canvas->fillRoundedRect(pos.x, pos.y, w, titleH, cornerR, m_style.nodeTitleBar);
 
-    // Border
+    // Border — health color as default, overridden by selected/hovered
     glm::vec4 borderColor = m_style.nodeBorder;
     float borderWidth = m_style.nodeBorderWidth;
+    if (node.healthBorderColor.a > 0) {
+        borderColor = node.healthBorderColor;
+        borderWidth = 1.5f;
+    }
     if (node.selected) {
         borderColor = m_style.nodeSelectedBorder;
         borderWidth = m_style.selectionBorderWidth;
@@ -792,6 +808,13 @@ void NodeGraph::renderNode(NodeState& node) {
         borderColor = m_style.nodeHoveredBorder;
     }
     m_canvas->strokeRoundedRect(pos.x, pos.y, w, h, cornerR, borderWidth, borderColor);
+
+    // Overlay callback (health indicators, rendered above content but below panels)
+    if (node.overlayCallback) {
+        m_canvas->setLayer(UILayer::NodeContent + 50);
+        node.overlayCallback(*m_canvas, pos.x, pos.y, w, h);
+        m_canvas->setLayer(UILayer::Nodes);
+    }
 
     // Title text (baseline positioned to vertically center in title bar)
     // Use font index 1 (Medium weight) for titles
@@ -1095,9 +1118,8 @@ void NodeGraph::handleNodeDrag() {
         m_lastClickPos = m_input.mousePos;
 
         m_isDraggingNode = true;
-        m_selectedNodeId = m_hoveredNodeId;
+        selectNode(m_hoveredNodeId);
         if (m_nodes.count(m_hoveredNodeId)) {
-            m_nodes[m_hoveredNodeId].selected = true;
             m_nodes[m_hoveredNodeId].dragging = true;
             m_dragNodeStartGridPos = m_nodes[m_hoveredNodeId].gridPos;
             m_dragStartPos = m_input.mousePos;

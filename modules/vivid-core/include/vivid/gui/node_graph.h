@@ -112,8 +112,14 @@ struct NodeState {
     bool hovered = false;
     bool dragging = false;
 
+    // Health border color (alpha > 0 means use this instead of default border)
+    glm::vec4 healthBorderColor = {0, 0, 0, 0};
+
     // Content callback (called during render to draw custom content)
     std::function<void(OverlayCanvas&, float x, float y, float w, float h)> contentCallback;
+
+    // Overlay callback (called after border, renders health indicators on top of content)
+    std::function<void(OverlayCanvas&, float x, float y, float w, float h)> overlayCallback;
 };
 
 /**
@@ -237,6 +243,18 @@ public:
      * @brief Set custom content callback
      */
     void setNodeContent(std::function<void(OverlayCanvas&, float x, float y, float w, float h)> callback);
+
+    /**
+     * @brief Set overlay callback (rendered after border, above content)
+     */
+    void setNodeOverlay(std::function<void(OverlayCanvas&, float x, float y, float w, float h)> callback);
+
+    /**
+     * @brief Set health border color for the current node
+     * When alpha > 0, this color replaces the default border color.
+     * Selected/hovered borders still take priority.
+     */
+    void setNodeHealthColor(glm::vec4 color);
 
     /**
      * @brief End node definition
