@@ -2,6 +2,8 @@
 // Supports multiple display scaling modes for aspect ratio handling
 // Shows checkerboard pattern for transparent areas (like Photoshop)
 
+// @include "lib/fullscreen.wgsl"
+
 // Display mode uniforms
 struct BlitUniforms {
     screenSize: vec2f,
@@ -22,18 +24,10 @@ struct VertexOutput {
 // Uses vertex ID to generate positions (no vertex buffer needed)
 @vertex
 fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    let fs = fullscreenTriangleBit(vertexIndex, true);
     var output: VertexOutput;
-
-    // Generate a full-screen triangle
-    // Vertex 0: (-1, -1) -> UV (0, 1)
-    // Vertex 1: ( 3, -1) -> UV (2, 1)
-    // Vertex 2: (-1,  3) -> UV (0, -1)
-    let x = f32(i32(vertexIndex & 1u) * 4 - 1);
-    let y = f32(i32(vertexIndex >> 1u) * 4 - 1);
-
-    output.position = vec4f(x, y, 0.0, 1.0);
-    output.uv = vec2f((x + 1.0) * 0.5, (1.0 - y) * 0.5);
-
+    output.position = fs.position;
+    output.uv = fs.uv;
     return output;
 }
 

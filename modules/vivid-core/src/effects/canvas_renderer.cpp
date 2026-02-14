@@ -3,6 +3,7 @@
 #include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <vivid/effects/texture_operator.h>
+#include <vivid/effects/gpu_common.h>
 #include <cmath>
 #include <iostream>
 
@@ -165,13 +166,7 @@ void CanvasRenderer::createPipeline(Context& ctx) {
     vertexLayout.attributes = attrs;
 
     // Color target with alpha blending
-    WGPUBlendState blendState = {};
-    blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-    blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.color.operation = WGPUBlendOperation_Add;
-    blendState.alpha.srcFactor = WGPUBlendFactor_One;
-    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.alpha.operation = WGPUBlendOperation_Add;
+    WGPUBlendState blendState = effects::gpu::createAlphaBlendState();
 
     WGPUColorTargetState colorTarget = {};
     colorTarget.format = effects::EFFECTS_FORMAT;
@@ -270,33 +265,9 @@ void CanvasRenderer::createWhiteTexture(Context& ctx) {
     WGPUDevice device = ctx.device();
     WGPUQueue queue = ctx.queue();
 
-    // Create 1x1 white texture
-    WGPUTextureDescriptor texDesc = {};
-    texDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-    texDesc.dimension = WGPUTextureDimension_2D;
-    texDesc.size = {1, 1, 1};
-    texDesc.format = WGPUTextureFormat_RGBA8Unorm;
-    texDesc.mipLevelCount = 1;
-    texDesc.sampleCount = 1;
-
-    m_whiteTexture = wgpuDeviceCreateTexture(device, &texDesc);
-
-    uint8_t white[4] = {255, 255, 255, 255};
-    WGPUTexelCopyTextureInfo dest = {};
-    dest.texture = m_whiteTexture;
-    dest.aspect = WGPUTextureAspect_All;
-    WGPUTexelCopyBufferLayout layout = {};
-    layout.bytesPerRow = 4;
-    layout.rowsPerImage = 1;
-    WGPUExtent3D size = {1, 1, 1};
-    wgpuQueueWriteTexture(queue, &dest, white, 4, &layout, &size);
-
-    WGPUTextureViewDescriptor viewDesc = {};
-    viewDesc.format = WGPUTextureFormat_RGBA8Unorm;
-    viewDesc.dimension = WGPUTextureViewDimension_2D;
-    viewDesc.mipLevelCount = 1;
-    viewDesc.arrayLayerCount = 1;
-    m_whiteTextureView = wgpuTextureCreateView(m_whiteTexture, &viewDesc);
+    auto whiteTex = effects::gpu::createWhiteTexture(device, queue);
+    m_whiteTexture = whiteTex.texture;
+    m_whiteTextureView = whiteTex.view;
 
     // Create bind group for white texture
     WGPUBindGroupEntry bgEntries[3] = {};

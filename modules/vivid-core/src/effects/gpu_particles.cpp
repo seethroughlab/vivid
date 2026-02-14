@@ -241,14 +241,8 @@ void GPUParticles::createRenderPipeline(WGPUDevice device) {
     vertexLayout.attributeCount = 1;
     vertexLayout.attributes = &vertexAttrib;
 
-    // Blend state for additive-like particles
-    WGPUBlendState blendState = {};
-    blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-    blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.color.operation = WGPUBlendOperation_Add;
-    blendState.alpha.srcFactor = WGPUBlendFactor_One;
-    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.alpha.operation = WGPUBlendOperation_Add;
+    // Blend state for particles
+    WGPUBlendState blendState = gpu::createAlphaBlendState();
 
     WGPUColorTargetState colorTarget = {};
     colorTarget.format = EFFECTS_FORMAT;
@@ -280,45 +274,23 @@ void GPUParticles::createRenderPipeline(WGPUDevice device) {
 }
 
 void GPUParticles::createCircleMesh(WGPUDevice device) {
-    // Generate circle with 32 segments (triangle fan)
-    const int segments = 32;
-    std::vector<float> vertices;
-    std::vector<uint16_t> indices;
-
-    // Center vertex
-    vertices.push_back(0.0f);
-    vertices.push_back(0.0f);
-
-    // Edge vertices
-    for (int i = 0; i <= segments; i++) {
-        float angle = (float)i / segments * 2.0f * 3.14159265f;
-        vertices.push_back(std::cos(angle));
-        vertices.push_back(std::sin(angle));
-    }
-
-    // Triangle fan indices
-    for (int i = 0; i < segments; i++) {
-        indices.push_back(0);
-        indices.push_back(i + 1);
-        indices.push_back(i + 2);
-    }
-
-    m_circleIndexCount = static_cast<uint32_t>(indices.size());
+    auto mesh = gpu::generateCircleMesh();
+    m_circleIndexCount = static_cast<uint32_t>(mesh.indices.size());
 
     // Create vertex buffer
     WGPUBufferDescriptor bufferDesc = {};
-    bufferDesc.size = vertices.size() * sizeof(float);
+    bufferDesc.size = mesh.vertices.size() * sizeof(float);
     bufferDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
     m_circleVertexBuffer.reset(wgpuDeviceCreateBuffer(device, &bufferDesc));
     wgpuQueueWriteBuffer(wgpuDeviceGetQueue(device), m_circleVertexBuffer, 0,
-                         vertices.data(), vertices.size() * sizeof(float));
+                         mesh.vertices.data(), mesh.vertices.size() * sizeof(float));
 
     // Create index buffer
-    bufferDesc.size = indices.size() * sizeof(uint16_t);
+    bufferDesc.size = mesh.indices.size() * sizeof(uint16_t);
     bufferDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
     m_circleIndexBuffer.reset(wgpuDeviceCreateBuffer(device, &bufferDesc));
     wgpuQueueWriteBuffer(wgpuDeviceGetQueue(device), m_circleIndexBuffer, 0,
-                         indices.data(), indices.size() * sizeof(uint16_t));
+                         mesh.indices.data(), mesh.indices.size() * sizeof(uint16_t));
 }
 
 void GPUParticles::process(Context& ctx) {

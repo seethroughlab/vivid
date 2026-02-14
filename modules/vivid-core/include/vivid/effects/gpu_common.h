@@ -12,6 +12,8 @@
 
 #include <webgpu/webgpu.h>
 #include <cstring>
+#include <vector>
+#include <cstdint>
 
 namespace vivid::effects::gpu {
 
@@ -105,6 +107,74 @@ WGPUSampler getNearestClampSampler(WGPUDevice device);
  * @return Cached sampler (do NOT release - managed internally)
  */
 WGPUSampler getLinearRepeatSampler(WGPUDevice device);
+
+// =============================================================================
+// Blend State Factories
+// =============================================================================
+
+/**
+ * @brief Standard alpha blend state (SrcAlpha / OneMinusSrcAlpha)
+ *
+ * Most common blend state for transparent rendering.
+ * Color: SrcAlpha / OneMinusSrcAlpha / Add
+ * Alpha: One / OneMinusSrcAlpha / Add
+ */
+WGPUBlendState createAlphaBlendState();
+
+/**
+ * @brief Additive blend state (SrcAlpha / One)
+ *
+ * For glow effects, particles, and additive compositing.
+ * Color: SrcAlpha / One / Add
+ * Alpha: One / One / Add
+ */
+WGPUBlendState createAdditiveBlendState();
+
+// =============================================================================
+// White Texture Factory
+// =============================================================================
+
+/**
+ * @brief A 1x1 white RGBA8 texture and its view
+ *
+ * Caller is responsible for releasing both texture and view.
+ */
+struct WhiteTexture {
+    WGPUTexture texture;
+    WGPUTextureView view;
+};
+
+/**
+ * @brief Create a 1x1 white texture (useful as default/fallback)
+ *
+ * @param device The WebGPU device
+ * @param queue The WebGPU queue (for uploading pixel data)
+ * @return WhiteTexture with texture and view (caller must release both)
+ */
+WhiteTexture createWhiteTexture(WGPUDevice device, WGPUQueue queue);
+
+// =============================================================================
+// Circle Mesh Generator
+// =============================================================================
+
+/**
+ * @brief CPU-side circle mesh data (triangle fan)
+ */
+struct CircleMesh {
+    std::vector<float> vertices;      ///< x,y pairs (center + perimeter)
+    std::vector<uint16_t> indices;    ///< Triangle fan indices
+};
+
+/**
+ * @brief Generate a unit circle mesh as a triangle fan
+ *
+ * Center vertex at origin, perimeter vertices at unit radius.
+ * Suitable for instanced particle rendering.
+ *
+ * @param segments Number of segments (default 32)
+ * @return CircleMesh with vertices and indices
+ */
+CircleMesh generateCircleMesh(int segments = 32);
 
 // =============================================================================
 // Resource Cleanup Helpers
