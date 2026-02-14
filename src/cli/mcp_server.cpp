@@ -29,6 +29,8 @@
 #include <array>
 #include <csignal>
 #include <regex>
+#include <cmath>
+#include <vivid/io/image_loader.h>
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
@@ -1198,6 +1200,42 @@ private:
             }}
         });
 
+        // sweep_param - Sweep a parameter across a range of values
+        tools.push_back({
+            {"name", "sweep_param"},
+            {"description", "Sweep a parameter across a range of values, capturing a frame at each step. "
+                            "Returns paths to all captured images. Restores the original value when done."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"operator", {{"type", "string"}, {"description", "Operator name (e.g., 'noise')"}}},
+                    {"param", {{"type", "string"}, {"description", "Parameter name (e.g., 'scale')"}}},
+                    {"from", {{"type", "number"}, {"description", "Starting value"}}},
+                    {"to", {{"type", "number"}, {"description", "Ending value"}}},
+                    {"steps", {{"type", "integer"}, {"description", "Number of steps (2-20, default: 5)"}}},
+                    {"settle_frames", {{"type", "integer"}, {"description", "Frames to advance between captures for effects to settle (default: 3)"}}},
+                    {"output_dir", {{"type", "string"}, {"description", "Directory for output PNGs (default: /tmp/vivid_sweep)"}}}
+                }},
+                {"required", json::array({"operator", "param", "from", "to"})}
+            }}
+        });
+
+        // compare_frames - Compare two PNG images
+        tools.push_back({
+            {"name", "compare_frames"},
+            {"description", "Compare two PNG images and return similarity metrics (RMSE, per-channel diff, "
+                            "changed pixel percentage). Works with any PNG files — no running Vivid needed."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"image_a", {{"type", "string"}, {"description", "Path to first PNG image"}}},
+                    {"image_b", {{"type", "string"}, {"description", "Path to second PNG image"}}},
+                    {"threshold", {{"type", "integer"}, {"description", "Per-channel diff threshold for pixel counting (0-255, default: 5)"}}}
+                }},
+                {"required", json::array({"image_a", "image_b"})}
+            }}
+        });
+
         // list_project_assets - List assets in project folder
         tools.push_back({
             {"name", "list_project_assets"},
@@ -1286,6 +1324,62 @@ private:
                 {"properties", {
                     {"path", {{"type", "string"}, {"description", "Path to project directory"}}},
                     {"name", {{"type", "string"}, {"description", "Preset name (without extension)"}}}
+                }},
+                {"required", json::array({"path", "name"})}
+            }}
+        });
+
+        // list_snapshots - List saved snapshots
+        tools.push_back({
+            {"name", "list_snapshots"},
+            {"description", "List all saved snapshots for a project. Snapshots capture all parameter values across the entire chain for instant recall."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}}
+                }},
+                {"required", json::array({"path"})}
+            }}
+        });
+
+        // save_snapshot - Capture current params as snapshot
+        tools.push_back({
+            {"name", "save_snapshot"},
+            {"description", "Capture current parameter values from the running Vivid instance as a named snapshot. Snapshots are saved to vivid-snapshots.json in the project directory."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}},
+                    {"name", {{"type", "string"}, {"description", "Snapshot name"}}}
+                }},
+                {"required", json::array({"path", "name"})}
+            }}
+        });
+
+        // recall_snapshot - Apply a snapshot
+        tools.push_back({
+            {"name", "recall_snapshot"},
+            {"description", "Apply a saved snapshot to the running Vivid instance. Sets all parameter values from the snapshot. Optional crossfade duration for smooth transitions."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}},
+                    {"name", {{"type", "string"}, {"description", "Snapshot name (or index as string)"}}},
+                    {"crossfade", {{"type", "number"}, {"description", "Crossfade duration in seconds (default: 0 = hard cut)"}}}
+                }},
+                {"required", json::array({"path", "name"})}
+            }}
+        });
+
+        // delete_snapshot - Remove a snapshot
+        tools.push_back({
+            {"name", "delete_snapshot"},
+            {"description", "Delete a snapshot from the project's vivid-snapshots.json file."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}},
+                    {"name", {{"type", "string"}, {"description", "Snapshot name (or index as string)"}}}
                 }},
                 {"required", json::array({"path", "name"})}
             }}
@@ -2269,6 +2363,225 @@ private:
             }
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
+        else if (name == "sweep_param") {
+            std::string op = args.value("operator", "");
+            std::string param = args.value("param", "");
+
+            if (op.empty() || param.empty() || !args.contains("from") || !args.contains("to")) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Required: operator, param, from, to"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot sweep parameter: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            double from = args["from"].get<double>();
+            double to = args["to"].get<double>();
+            int steps = std::clamp(args.value("steps", 5), 2, 20);
+            int settleFrames = std::max(0, args.value("settle_frames", 3));
+            std::string outputDir = args.value("output_dir", "/tmp/vivid_sweep");
+
+            // Create output directory
+            try {
+                fs::create_directories(outputDir);
+            } catch (const std::exception& e) {
+                json response;
+                response["connected"] = true;
+                response["success"] = false;
+                response["error"] = std::string("Failed to create output directory: ") + e.what();
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Read current param value so we can restore it
+            json originalValue;
+            bool foundOriginal = false;
+            {
+                json params = m_vivid.getParams();
+                for (const auto& p : params) {
+                    if (p.value("operator", "") == op && p.value("name", "") == param) {
+                        originalValue = p["value"];
+                        foundOriginal = true;
+                        break;
+                    }
+                }
+            }
+
+            // Sweep loop
+            json captures = json::array();
+            for (int i = 0; i < steps; ++i) {
+                double value = (steps == 1) ? from : from + (to - from) * i / (steps - 1);
+
+                // Set parameter
+                json setResult = m_vivid.setParamImmediate(op, param, value);
+                if (!setResult.value("success", false)) {
+                    captures.push_back({
+                        {"step", i},
+                        {"value", value},
+                        {"error", setResult.value("error", "Failed to set parameter")}
+                    });
+                    continue;
+                }
+
+                // Let effects settle
+                if (settleFrames > 0) {
+                    m_vivid.advanceFrames(settleFrames);
+                }
+
+                // Build filename
+                char buf[256];
+                snprintf(buf, sizeof(buf), "sweep_%s_%s_%04d.png", op.c_str(), param.c_str(), i);
+                fs::path filePath = fs::path(outputDir) / buf;
+
+                // Capture frame
+                json captureResult = m_vivid.captureFrame(filePath.string());
+                if (captureResult.value("success", false)) {
+                    captures.push_back({
+                        {"step", i},
+                        {"value", value},
+                        {"path", filePath.string()}
+                    });
+                } else {
+                    captures.push_back({
+                        {"step", i},
+                        {"value", value},
+                        {"error", captureResult.value("error", "Capture failed")}
+                    });
+                }
+            }
+
+            // Restore original value
+            bool restored = false;
+            if (foundOriginal) {
+                json restoreResult = m_vivid.setParamImmediate(op, param, originalValue);
+                restored = restoreResult.value("success", false);
+                if (restored && settleFrames > 0) {
+                    m_vivid.advanceFrames(settleFrames);
+                }
+            }
+
+            json response;
+            response["connected"] = true;
+            response["success"] = true;
+            response["operator"] = op;
+            response["param"] = param;
+            response["from"] = from;
+            response["to"] = to;
+            response["steps"] = steps;
+            response["settle_frames"] = settleFrames;
+            response["captures"] = captures;
+            if (foundOriginal) {
+                response["original_value"] = originalValue;
+            }
+            response["restored"] = restored;
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "compare_frames") {
+            std::string imageA = args.value("image_a", "");
+            std::string imageB = args.value("image_b", "");
+
+            if (imageA.empty() || imageB.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Required: image_a, image_b"}}};
+                return result;
+            }
+
+            int threshold = std::clamp(args.value("threshold", 5), 0, 255);
+
+            // Load both images
+            auto imgA = vivid::io::loadImage(imageA);
+            if (!imgA.valid()) {
+                json response;
+                response["success"] = false;
+                response["error"] = "Failed to load image_a: " + imageA;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            auto imgB = vivid::io::loadImage(imageB);
+            if (!imgB.valid()) {
+                json response;
+                response["success"] = false;
+                response["error"] = "Failed to load image_b: " + imageB;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Check dimensions match
+            if (imgA.width != imgB.width || imgA.height != imgB.height) {
+                json response;
+                response["success"] = false;
+                response["error"] = "Image dimensions don't match";
+                response["image_a"] = {{"width", imgA.width}, {"height", imgA.height}};
+                response["image_b"] = {{"width", imgB.width}, {"height", imgB.height}};
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            int totalPixels = imgA.width * imgA.height;
+            double sumSqR = 0, sumSqG = 0, sumSqB = 0;
+            double sumAbsR = 0, sumAbsG = 0, sumAbsB = 0;
+            int changedCount = 0;
+            bool identical = true;
+
+            for (int i = 0; i < totalPixels; ++i) {
+                int idx = i * 4; // RGBA
+                int dR = static_cast<int>(imgA.pixels[idx])     - static_cast<int>(imgB.pixels[idx]);
+                int dG = static_cast<int>(imgA.pixels[idx + 1]) - static_cast<int>(imgB.pixels[idx + 1]);
+                int dB = static_cast<int>(imgA.pixels[idx + 2]) - static_cast<int>(imgB.pixels[idx + 2]);
+
+                if (dR != 0 || dG != 0 || dB != 0) {
+                    identical = false;
+                }
+
+                // Normalized to 0-1
+                double nR = dR / 255.0, nG = dG / 255.0, nB = dB / 255.0;
+
+                sumSqR += nR * nR;
+                sumSqG += nG * nG;
+                sumSqB += nB * nB;
+
+                sumAbsR += std::abs(nR);
+                sumAbsG += std::abs(nG);
+                sumAbsB += std::abs(nB);
+
+                if (std::abs(dR) > threshold || std::abs(dG) > threshold || std::abs(dB) > threshold) {
+                    ++changedCount;
+                }
+            }
+
+            double rmse = std::sqrt((sumSqR + sumSqG + sumSqB) / (3.0 * totalPixels));
+            double percentage = (totalPixels > 0) ? (100.0 * changedCount / totalPixels) : 0.0;
+
+            json response;
+            response["success"] = true;
+            response["image_a"] = imageA;
+            response["image_b"] = imageB;
+            response["resolution"] = {{"width", imgA.width}, {"height", imgA.height}};
+            response["rmse"] = std::round(rmse * 10000.0) / 10000.0; // 4 decimal places
+            response["mean_diff"] = {
+                {"r", std::round(sumAbsR / totalPixels * 10000.0) / 10000.0},
+                {"g", std::round(sumAbsG / totalPixels * 10000.0) / 10000.0},
+                {"b", std::round(sumAbsB / totalPixels * 10000.0) / 10000.0}
+            };
+            response["changed_pixels"] = {
+                {"count", changedCount},
+                {"total", totalPixels},
+                {"percentage", std::round(percentage * 100.0) / 100.0}, // 2 decimal places
+                {"threshold", threshold}
+            };
+            response["identical"] = identical;
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
         else if (name == "list_project_assets") {
             std::string projectPath = args.value("path", "");
 
@@ -2596,6 +2909,330 @@ private:
             response["path"] = presetPath.string();
             response["paramsApplied"] = successCount;
             response["paramsFailed"] = failCount;
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "list_snapshots") {
+            std::string projectPath = args.value("path", "");
+            if (projectPath.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "'path' is required"}}};
+                return result;
+            }
+
+            fs::path snapshotPath = fs::path(projectPath) / "vivid-snapshots.json";
+            json response;
+            response["path"] = snapshotPath.string();
+
+            if (!fs::exists(snapshotPath)) {
+                response["snapshots"] = json::array();
+                response["count"] = 0;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            try {
+                std::ifstream file(snapshotPath);
+                json data = json::parse(file);
+                json snapList = json::array();
+                if (data.contains("snapshots") && data["snapshots"].is_array()) {
+                    int idx = 0;
+                    for (const auto& snap : data["snapshots"]) {
+                        json entry;
+                        entry["index"] = idx;
+                        entry["name"] = snap.value("name", "Untitled");
+                        // Count params
+                        int paramCount = 0;
+                        if (snap.contains("values") && snap["values"].is_object()) {
+                            for (auto& [opName, opParams] : snap["values"].items()) {
+                                if (opParams.is_object()) {
+                                    paramCount += static_cast<int>(opParams.size());
+                                }
+                            }
+                        }
+                        entry["paramCount"] = paramCount;
+                        snapList.push_back(entry);
+                        idx++;
+                    }
+                }
+                response["snapshots"] = snapList;
+                response["count"] = snapList.size();
+            } catch (const std::exception& e) {
+                response["error"] = std::string("Failed to read snapshots: ") + e.what();
+                response["snapshots"] = json::array();
+                response["count"] = 0;
+            }
+
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "save_snapshot") {
+            std::string projectPath = args.value("path", "");
+            std::string snapName = args.value("name", "");
+
+            if (projectPath.empty() || snapName.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Both 'path' and 'name' are required"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot save snapshot: Vivid not running (need live params)";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Get current params from running instance
+            json params = m_vivid.getParams();
+
+            // Convert flat param list to snapshot format: {opName: {paramName: [v0,v1,v2,v3]}}
+            json snapValues = json::object();
+            for (const auto& param : params) {
+                std::string opName = param.value("operator", "");
+                std::string paramName = param.value("name", "");
+                if (opName.empty() || paramName.empty()) continue;
+                if (!param.contains("value")) continue;
+
+                // Normalize value to float[4]
+                json val = param["value"];
+                json arr = json::array();
+                if (val.is_array()) {
+                    for (size_t i = 0; i < 4; i++) {
+                        arr.push_back(i < val.size() ? val[i].get<float>() : 0.0f);
+                    }
+                } else if (val.is_number()) {
+                    arr = {val.get<float>(), 0.0f, 0.0f, 0.0f};
+                } else {
+                    arr = {0.0f, 0.0f, 0.0f, 0.0f};
+                }
+
+                if (!snapValues.contains(opName)) {
+                    snapValues[opName] = json::object();
+                }
+                snapValues[opName][paramName] = arr;
+            }
+
+            // Load existing file or create new
+            fs::path snapshotPath = fs::path(projectPath) / "vivid-snapshots.json";
+            json data;
+            if (fs::exists(snapshotPath)) {
+                try {
+                    std::ifstream file(snapshotPath);
+                    data = json::parse(file);
+                } catch (...) {
+                    data = json::object();
+                }
+            }
+            if (!data.contains("snapshots") || !data["snapshots"].is_array()) {
+                data["snapshots"] = json::array();
+            }
+
+            // Add new snapshot
+            json newSnap;
+            newSnap["name"] = snapName;
+            newSnap["values"] = snapValues;
+            data["snapshots"].push_back(newSnap);
+
+            // Save
+            try {
+                std::ofstream file(snapshotPath);
+                file << data.dump(2);
+            } catch (const std::exception& e) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", std::string("Failed to save: ") + e.what()}}};
+                return result;
+            }
+
+            json response;
+            response["success"] = true;
+            response["connected"] = true;
+            response["name"] = snapName;
+            response["index"] = static_cast<int>(data["snapshots"].size()) - 1;
+            response["path"] = snapshotPath.string();
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "recall_snapshot") {
+            std::string projectPath = args.value("path", "");
+            std::string snapName = args.value("name", "");
+            float crossfade = args.value("crossfade", 0.0f);
+
+            if (projectPath.empty() || snapName.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Both 'path' and 'name' are required"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot recall snapshot: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Load snapshots file
+            fs::path snapshotPath = fs::path(projectPath) / "vivid-snapshots.json";
+            if (!fs::exists(snapshotPath)) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "No snapshots file found: " + snapshotPath.string()}}};
+                return result;
+            }
+
+            json data;
+            try {
+                std::ifstream file(snapshotPath);
+                data = json::parse(file);
+            } catch (const std::exception& e) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", std::string("Failed to parse: ") + e.what()}}};
+                return result;
+            }
+
+            if (!data.contains("snapshots") || !data["snapshots"].is_array()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Invalid snapshots file"}}};
+                return result;
+            }
+
+            // Find snapshot by name or index
+            int snapIdx = -1;
+            // Try as index first
+            try {
+                int asInt = std::stoi(snapName);
+                if (asInt >= 0 && asInt < static_cast<int>(data["snapshots"].size())) {
+                    snapIdx = asInt;
+                }
+            } catch (...) {}
+
+            // Try by name
+            if (snapIdx < 0) {
+                for (size_t i = 0; i < data["snapshots"].size(); i++) {
+                    if (data["snapshots"][i].value("name", "") == snapName) {
+                        snapIdx = static_cast<int>(i);
+                        break;
+                    }
+                }
+            }
+
+            if (snapIdx < 0) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Snapshot not found: " + snapName}}};
+                return result;
+            }
+
+            const auto& snap = data["snapshots"][snapIdx];
+
+            // Apply params (crossfade is not supported via MCP — always hard cut)
+            // Crossfade requires the in-process SnapshotStore ticking each frame
+            int successCount = 0;
+            int failCount = 0;
+
+            if (snap.contains("values") && snap["values"].is_object()) {
+                for (auto& [opName, opParams] : snap["values"].items()) {
+                    if (!opParams.is_object()) continue;
+                    for (auto& [paramName, val] : opParams.items()) {
+                        json setResult = m_vivid.setParamImmediate(opName, paramName, val);
+                        if (setResult.value("success", false)) {
+                            successCount++;
+                        } else {
+                            failCount++;
+                        }
+                    }
+                }
+            }
+
+            json response;
+            response["success"] = true;
+            response["connected"] = true;
+            response["name"] = snap.value("name", "");
+            response["index"] = snapIdx;
+            response["paramsApplied"] = successCount;
+            response["paramsFailed"] = failCount;
+            if (crossfade > 0.0f) {
+                response["note"] = "Crossfade is only available in-app (via PresetPanel). MCP applies hard cut.";
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "delete_snapshot") {
+            std::string projectPath = args.value("path", "");
+            std::string snapName = args.value("name", "");
+
+            if (projectPath.empty() || snapName.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Both 'path' and 'name' are required"}}};
+                return result;
+            }
+
+            fs::path snapshotPath = fs::path(projectPath) / "vivid-snapshots.json";
+            if (!fs::exists(snapshotPath)) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "No snapshots file found"}}};
+                return result;
+            }
+
+            json data;
+            try {
+                std::ifstream file(snapshotPath);
+                data = json::parse(file);
+            } catch (const std::exception& e) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", std::string("Failed to parse: ") + e.what()}}};
+                return result;
+            }
+
+            if (!data.contains("snapshots") || !data["snapshots"].is_array()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Invalid snapshots file"}}};
+                return result;
+            }
+
+            // Find snapshot by name or index
+            int snapIdx = -1;
+            try {
+                int asInt = std::stoi(snapName);
+                if (asInt >= 0 && asInt < static_cast<int>(data["snapshots"].size())) {
+                    snapIdx = asInt;
+                }
+            } catch (...) {}
+
+            if (snapIdx < 0) {
+                for (size_t i = 0; i < data["snapshots"].size(); i++) {
+                    if (data["snapshots"][i].value("name", "") == snapName) {
+                        snapIdx = static_cast<int>(i);
+                        break;
+                    }
+                }
+            }
+
+            if (snapIdx < 0) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Snapshot not found: " + snapName}}};
+                return result;
+            }
+
+            std::string deletedName = data["snapshots"][snapIdx].value("name", "");
+            data["snapshots"].erase(data["snapshots"].begin() + snapIdx);
+
+            // Save updated file
+            try {
+                std::ofstream file(snapshotPath);
+                file << data.dump(2);
+            } catch (const std::exception& e) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", std::string("Failed to save: ") + e.what()}}};
+                return result;
+            }
+
+            json response;
+            response["success"] = true;
+            response["deleted"] = deletedName;
+            response["remaining"] = data["snapshots"].size();
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else if (name == "export_video") {
