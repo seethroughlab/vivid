@@ -23,7 +23,11 @@ doxygen Doxyfile                          # Generate API docs
 ./build/bin/vivid <project-path> --audio-snapshot out.wav --audio-snapshot-duration 5  # 5s audio
 ./build/bin/vivid build <project-path>                         # Compile chain, report structured JSON errors
 ./build/bin/vivid check <project-path>                         # Run assertions, exit 0 (pass) or 1 (fail)
+./build/bin/vivid check <project-path> --duration 2            # Run for 2s before evaluating assertions
 ./build/bin/vivid inspect <project-path>                       # Dump inspection JSON to stdout
+./build/bin/vivid inspect <project-path> --per-operator        # Include per-operator texture analysis
+./build/bin/vivid inspect <project-path> --duration 2 --samples 5  # Multi-sample: 5 snapshots over 2s
+./build/bin/vivid inspect <project-path> --resolution 960x540  # Inspect at custom resolution
 ./build/bin/vivid params <project-path>                        # List all tweakable parameters as JSON
 ./build/bin/vivid graph <project-path>                         # Dump chain topology (operators, connections) as JSON
 ./build/bin/vivid export <project-path> -o out.mp4 --duration 10  # Export video (headless)
@@ -68,12 +72,25 @@ Edit chain.cpp
 - **`sweep_param_audio`**: Sweep a parameter across values, capturing audio at each step. Returns per-step RMS, spectrum, WAV files.
 - **Export sidecar**: `vivid export --audio` produces `<output>.audio-analysis.json` with summary + per-second time-series.
 
-Example audio assertions (`vivid-assertions.json`):
+Example assertions (`vivid-assertions.json`):
 ```json
 {"path": "audio.rmsLevel", "op": ">", "value": 0.01, "message": "Audio not silent"}
 {"path": "audio.spectrum.bass", "op": ">", "value": 0.05, "message": "Should have bass"}
 {"path": "audio.peakLevel", "op": "<", "value": 0.95, "message": "No clipping"}
+{"name": "brightness-ok", "path": "output.meanBrightness", "op": "between", "value": [0.2, 0.8]}
+{"path": "operators.bloom.textureAnalysis.meanBrightness", "op": ">", "value": 0.1}
+{"path": "operators.bloom.textureAnalysis.meanBrightness", "op": "exists", "message": "Bloom produces output"}
+{"path": "output.contrast", "op": ">", "value": 0.15, "after_frame": 30, "message": "Contrast stabilizes after warmup"}
+{"path": "audio.spectrum.bass", "op": ">", "value": 0.4, "when_path": "operators.kick.metrics.is_playing", "when_check": "==", "when_value": 1.0}
 ```
+
+**Assertion features:**
+- **`name`** (optional): Human-readable label shown in verbose output and JSON (e.g. `"name": "feedback-alive"`)
+- **`between` operator**: Range check with array value `[low, high]`, inclusive on both ends
+- **`exists` / `not_exists` operators**: Check path presence without comparing values (no `value` field needed)
+- **`operators.<name>.textureAnalysis.<field>`**: Assert on per-operator texture analysis (auto-enables GPU readback). Supports all FrameAnalysis fields: `meanBrightness`, `contrast`, `dominantHue`, `saturationAvg`, `dominantColor.N`, `regionBrightness.N`, `histogram.N`
+- **`after_frame`** (optional): Skip assertion if current frame < value. Useful for warmup periods (e.g. feedback loops).
+- **`when_path` / `when_check` / `when_value`** (optional): Conditional guard — assertion is only evaluated when the guard condition is met. Uses same dot-path format and operators. Skipped assertions show as `SKIP` and don't affect pass/fail.
 
 ### Outer Loop (minutes, human review)
 
@@ -131,7 +148,7 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 #### Introspection
 | Tool | Description |
 |------|-------------|
-| `inspect_chain` | Per-operator metrics + output analysis (brightness, contrast, histogram, spatial, audio) |
+| `inspect_chain` | Per-operator metrics + output analysis (brightness, contrast, histogram, spatial, audio). Pass `per_operator_analysis: true` for per-node texture analysis. |
 | `get_chain_structure` | Chain topology: operators, types, connections |
 | `get_live_params` | Real-time parameter values (optionally filtered by operator) |
 | `get_frame_info` | Current frame number, elapsed time, FPS |
@@ -291,13 +308,32 @@ The inner loop relies on structured data from `inspect_chain` (MCP) or `vivid in
 }
 ```
 
+**With `per_operator_analysis: true`** — each texture operator includes `textureAnalysis`:
+```json
+{
+  "operators": {
+    "noise": {
+      "metrics": {"scale": 4.0, "speed": 0.5},
+      "metadata": {"type": "Noise", "output_kind": "Texture"},
+      "textureAnalysis": {"meanBrightness": 0.51, "contrast": 0.29, "...": "..."}
+    },
+    "bloom": {
+      "metrics": {"threshold": 0.6},
+      "metadata": {"type": "Bloom", "output_kind": "Texture"},
+      "textureAnalysis": {"meanBrightness": 0.05, "contrast": 0.03, "...": "..."}
+    }
+  }
+}
+```
+Useful for diagnosing where brightness/contrast drops occur in the chain.
+
 **Comparison tools** (no running instance needed):
 - `compare_frames`: RMSE, per-channel diff, changed pixel percentage. Verify visual changes had the intended effect.
 - `compare_audio`: RMS diff, spectral diff, correlation. Verify audio changes.
 - `sweep_param`: Capture frames across a parameter range. Find optimal values or verify smooth transitions.
 - `sweep_param_audio`: Capture audio across a parameter range. Evaluate how audio changes with parameters.
 
-**Assertions** (`vivid check`): Runs the chain and evaluates built-in assertions. Exit code 0 = all pass, 1 = failure. Use in the inner loop to verify invariants (e.g., "output is not black", "audio RMS > 0.05"). Supports `output.*` paths for visual properties, `audio.*` paths for audio properties, and `operators.<name>.metrics.<key>` for per-operator metrics.
+**Assertions** (`vivid check`): Runs the chain and evaluates assertions from `vivid-assertions.json`. Exit code 0 = all pass, 1 = failure. Use in the inner loop to verify invariants. Supported paths: `output.*` (visual), `audio.*` (audio), `operators.<name>.metrics.<key>` (per-operator metrics), `operators.<name>.textureAnalysis.<field>` (per-operator texture analysis). Operators: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between` (range), `exists`, `not_exists`. Assertions can have an optional `name` field for readable output. Conditional guards: `after_frame` (skip before frame N), `when_path`/`when_check`/`when_value` (skip unless guard condition met). Skipped assertions report as `SKIP` and don't affect pass/fail.
 
 ### Snapshot & Audio Capture Mode (for CI/Testing)
 
@@ -325,6 +361,39 @@ Frame specification formats:
 - `0-20:2` - Range with step (frames 0, 2, 4, ..., 20)
 
 When capturing multiple frames, filenames include frame numbers: `output.png` becomes `output_0000.png`, `output_0001.png`, etc.
+
+### Multi-Sample Inspect
+
+`vivid inspect` supports capturing multiple inspection snapshots over time:
+
+```bash
+vivid inspect path/to/project --duration 2 --samples 5
+```
+
+- `--duration N` sets the capture window to N seconds (assumes 60fps)
+- `--samples K` distributes K evenly-spaced inspections across the duration
+- `--resolution WxH` overrides render resolution (e.g., `960x540`)
+- Output: wrapped envelope `{"project": "name", "duration": N, "sampleCount": K, "samples": [...]}` when using `--duration`; single JSON object without `--duration` (backward compatible)
+- Without `--duration`, behaves as single-frame inspect (at `--frame` or default frame 10)
+- With `--out <dir>`, saves `inspection.json`, `snapshot_NNNN.png` per sample, and `waveform.png` (if audio chain)
+
+### Playback Script Event Types
+
+Export scripts (`--script events.json`) support these event types:
+
+| Type | Fields | Description |
+|------|--------|-------------|
+| `param_set` | `operator`, `param`, `value` | Set parameter instantly |
+| `param_ramp` | `operator`, `param`, `from`, `to`, `end_frame` | Linear ramp over frames |
+| `key_press` | `key` | Inject key press (e.g. "space", "a") |
+| `key_release` | `key` | Inject key release |
+| `trigger` | `operator` | Fire a generic trigger |
+| `midi_note` | `operator`, `note`, `velocity` | MIDI note on |
+| `midi_note_off` | `operator`, `note` | MIDI note off |
+| `midi_cc` | `operator`, `cc`, `value`, `channel` | MIDI CC message |
+| `mouse_move` | `x`, `y` | Move mouse (normalized 0-1) |
+| `mouse_click` | `x`, `y`, `button` | Click mouse (auto-releases next frame) |
+| `snapshot_recall` | `value` (index), `valueTo` (duration) | Recall a saved snapshot |
 
 ### Validation Workflow
 
