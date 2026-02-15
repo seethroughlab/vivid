@@ -11,8 +11,10 @@
 #include <vivid/operator.h>
 #include <vivid/inspect_data.h>
 #include <vivid/frame_analysis.h>
+#include <vivid/audio_analysis.h>
 #include <vivid/audio_graph.h>
 #include <vivid/snapshot.h>
+#include <vivid/midi_map.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -54,6 +56,7 @@ struct ChainInspection {
     float time = 0.0f;           ///< Current time in seconds
     std::vector<std::pair<std::string, InspectData>> operators;  ///< Per-operator data
     FrameAnalysis outputAnalysis; ///< Statistical analysis of output texture
+    AudioAnalysis audioAnalysis;  ///< Statistical analysis of audio output
 
     std::string toJSON() const {
         std::ostringstream ss;
@@ -71,6 +74,7 @@ struct ChainInspection {
         ss << "}";
 
         ss << ",\"outputAnalysis\":" << outputAnalysis.toJSON();
+        ss << ",\"audioAnalysis\":" << audioAnalysis.toJSON();
         ss << "}";
         return ss.str();
     }
@@ -388,6 +392,13 @@ public:
     [[nodiscard]] SnapshotStore& snapshots() { return m_snapshots; }
     [[nodiscard]] const SnapshotStore& snapshots() const { return m_snapshots; }
 
+    /**
+     * @brief Get the MIDI mapping store
+     * @return Reference to MidiMapStore
+     */
+    [[nodiscard]] MidiMapStore& midiMappings() { return m_midiMappings; }
+    [[nodiscard]] const MidiMapStore& midiMappings() const { return m_midiMappings; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Resolution Configuration
@@ -546,6 +557,9 @@ private:
 
     // Snapshots
     SnapshotStore m_snapshots;
+
+    // MIDI mappings
+    MidiMapStore m_midiMappings;
 
     // Debug mode
     bool m_debug = false;

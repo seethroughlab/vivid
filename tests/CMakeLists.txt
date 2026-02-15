@@ -73,6 +73,27 @@ catch_discover_tests(test_module_registry
 )
 
 # -----------------------------------------------------------------------------
+# Unit Tests (audio analysis)
+# -----------------------------------------------------------------------------
+
+add_executable(test_audio_analysis
+    unit/test_audio_analysis.cpp
+)
+
+target_link_libraries(test_audio_analysis PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_audio_analysis PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+)
+
+catch_discover_tests(test_audio_analysis
+    PROPERTIES LABELS "unit"
+)
+
+# -----------------------------------------------------------------------------
 # Unit Tests (particle forces)
 # -----------------------------------------------------------------------------
 

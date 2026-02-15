@@ -8,6 +8,7 @@
 #include <vivid/audio_operator.h>
 #include <vivid/audio_output.h>
 #include <vivid/audio_buffer.h>
+#include <vivid/audio_analysis.h>
 #include <queue>
 #include <unordered_set>
 #include <algorithm>
@@ -614,6 +615,14 @@ ChainInspection Chain::inspectAll(Context& ctx) const {
     WGPUTexture outTex = output ? output->outputTexture() : nullptr;
     if (outTex) {
         result.outputAnalysis = analyzeTexture(ctx.device(), ctx.queue(), outTex);
+    }
+
+    // Analyze audio output if available
+    const AudioBuffer* audioBuf = audioOutputBuffer();
+    if (audioBuf && audioBuf->isValid()) {
+        result.audioAnalysis = analyzeAudioBuffer(
+            audioBuf->samples, audioBuf->frameCount,
+            audioBuf->channels, audioBuf->sampleRate);
     }
 
     return result;

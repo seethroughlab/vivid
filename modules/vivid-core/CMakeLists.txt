@@ -51,6 +51,8 @@ set(VIVID_CORE_LIB_SOURCES
     src/context.cpp
     src/chain.cpp
     src/frame_analysis.cpp
+    src/audio_analysis.cpp
+    src/wav_writer.cpp
     src/asset_loader.cpp
     src/shader_preprocessor.cpp
     src/window_manager.cpp
@@ -65,6 +67,7 @@ set(VIVID_CORE_LIB_SOURCES
     # Hot-reload is added conditionally below
     src/log.cpp
     src/snapshot.cpp
+    src/midi_map.cpp
     src/module_registry.cpp
     src/module_manager.cpp
     # Note: chain_visualizer.cpp is compiled by vivid-devtools module
