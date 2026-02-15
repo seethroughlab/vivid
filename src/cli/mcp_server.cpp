@@ -511,7 +511,7 @@ public:
     }
 
     // Request chain inspection and wait for response
-    json requestInspectChain(int timeoutMs = 10000) {
+    json requestInspectChain(bool perOperatorAnalysis = false, int timeoutMs = 10000) {
         // Clear any previous result
         {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -520,7 +520,12 @@ public:
         }
 
         // Send request
-        sendCommand("inspect_chain");
+        json cmd;
+        cmd["type"] = "inspect_chain";
+        if (perOperatorAnalysis) {
+            cmd["per_operator_analysis"] = true;
+        }
+        m_ws.send(cmd.dump());
 
         // Wait for response
         auto start = std::chrono::steady_clock::now();
@@ -1356,10 +1361,15 @@ private:
         // inspect_chain - Full introspection of running chain
         tools.push_back({
             {"name", "inspect_chain"},
-            {"description", "Get full introspection data from the running chain: per-operator metrics (params, computed values like rms/peak/energy), plus statistical analysis of the output texture (brightness, contrast, dominant color, histogram, spatial distribution). Use this to evaluate visual output and understand chain state for autonomous iteration."},
+            {"description", "Get full introspection data from the running chain: per-operator metrics (params, computed values like rms/peak/energy), plus statistical analysis of the output texture (brightness, contrast, dominant color, histogram, spatial distribution). Use this to evaluate visual output and understand chain state for autonomous iteration. Pass per_operator_analysis=true to include texture analysis at every node (helps diagnose where brightness/contrast issues originate)."},
             {"inputSchema", {
                 {"type", "object"},
-                {"properties", json::object()}
+                {"properties", {
+                    {"per_operator_analysis", {
+                        {"type", "boolean"},
+                        {"description", "Include texture analysis (brightness, contrast, histogram) for each operator's output. Helps diagnose where in the chain visual issues originate. Default: false."}
+                    }}
+                }}
             }}
         });
 
@@ -3028,7 +3038,8 @@ private:
             }
 
             // Request chain inspection and wait for response (longer timeout for GPU readback)
-            json inspection = m_vivid.requestInspectChain();
+            bool perOp = args.value("per_operator_analysis", false);
+            json inspection = m_vivid.requestInspectChain(perOp);
 
             json response;
             response["connected"] = true;

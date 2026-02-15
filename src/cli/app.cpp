@@ -21,6 +21,8 @@
 #include <vivid/runtime_api.h>
 #include <vivid/audio_buffer.h>
 #include <vivid/audio_analysis.h>
+#include <vivid/waveform_image.h>
+#include <vivid/audio_buffer.h>
 #include <vivid/wav_writer.h>
 #include <vivid/video_exporter.h>
 #include <vivid/cli.h>
@@ -41,6 +43,7 @@
 #include <iomanip>
 #include <string>
 #include <cstring>
+#include <cstdio>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -793,8 +796,16 @@ struct MainLoopContext {
     std::string assertionPath;
     std::string inspectOutDir;
     bool verboseCheck = false;
+    bool inspectPerOperator = false;
     std::vector<vivid::Assertion> assertions;  // Loaded assertions (check mode)
     int exitCode = 0;            // Exit code for check mode
+
+    // Multi-sample inspect
+    float inspectDuration = 0.0f;          // Duration in seconds (0 = single-shot)
+    int inspectSamples = 1;                // Number of samples to collect
+    std::vector<int> inspectSampleFrames;  // Target frames for each sample
+    int inspectSamplesCollected = 0;       // How many samples collected so far
+    std::vector<std::string> inspectResults; // Collected JSON strings
 
     // Exit on any compile error (agent/CI mode)
     bool exitOnError = false;
@@ -1246,8 +1257,8 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                 }
             }
 
-            // Update render resolution from chain if set
-            if (mlc.ctx->chain().hasResolution()) {
+            // Update render resolution from chain if set — but CLI --resolution takes precedence
+            if (mlc.ctx->chain().hasResolution() && mlc.renderWidth == 0) {
                 mlc.ctx->setRenderResolution(mlc.ctx->chain().defaultWidth(), mlc.ctx->chain().defaultHeight());
             }
 
@@ -1554,9 +1565,74 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         int currentFrame = mlc.snapshotFrameCounter;
         mlc.snapshotFrameCounter++;
 
-        // Check/inspect mode: run inspection at target frame and exit
-        if ((mlc.checkMode || mlc.inspectMode) && currentFrame == mlc.checkFrame) {
-            auto inspection = mlc.ctx->chain().inspectAll(*mlc.ctx);
+        // Multi-sample inspect: collect sample at target frames
+        if (mlc.inspectMode && !mlc.inspectSampleFrames.empty()) {
+            // Check if current frame is one of the target sample frames
+            for (size_t i = 0; i < mlc.inspectSampleFrames.size(); i++) {
+                if (currentFrame == mlc.inspectSampleFrames[i] &&
+                    mlc.inspectSamplesCollected == static_cast<int>(i)) {
+                    auto inspection = mlc.ctx->chain().inspectAll(*mlc.ctx, mlc.inspectPerOperator);
+                    mlc.inspectResults.push_back(inspection.toJSON());
+
+                    // Save per-sample snapshot if output dir specified
+                    if (!mlc.inspectOutDir.empty()) {
+                        fs::create_directories(mlc.inspectOutDir);
+                        char frameBuf[32];
+                        std::snprintf(frameBuf, sizeof(frameBuf), "%04d", currentFrame);
+                        std::string pngPath = (fs::path(mlc.inspectOutDir) / ("snapshot_" + std::string(frameBuf) + ".png")).string();
+                        mlc.ctx->snapshot(pngPath);
+                    }
+
+                    mlc.inspectSamplesCollected++;
+                    break;
+                }
+            }
+
+            // All samples collected → output and exit
+            if (mlc.inspectSamplesCollected >= static_cast<int>(mlc.inspectSampleFrames.size())) {
+                // Build output JSON string
+                std::string outputJson;
+                if (mlc.inspectResults.size() == 1 && mlc.inspectDuration <= 0.0f) {
+                    // Single sample without --duration: bare JSON object (backward compat)
+                    outputJson = mlc.inspectResults[0];
+                } else {
+                    // Wrap in metadata envelope
+                    nlohmann::json envelope;
+                    envelope["project"] = mlc.projectName;
+                    envelope["duration"] = mlc.inspectDuration;
+                    envelope["sampleCount"] = mlc.inspectResults.size();
+                    envelope["samples"] = nlohmann::json::array();
+                    for (const auto& sample : mlc.inspectResults) {
+                        envelope["samples"].push_back(nlohmann::json::parse(sample));
+                    }
+                    outputJson = envelope.dump();
+                }
+
+                std::cout << outputJson << std::endl;
+
+                // Save combined JSON + waveform to output dir
+                if (!mlc.inspectOutDir.empty()) {
+                    std::ofstream jsonFile(fs::path(mlc.inspectOutDir) / "inspection.json");
+                    if (jsonFile) {
+                        jsonFile << outputJson << "\n";
+                    }
+
+                    // Save waveform PNG if audio is active
+                    const auto* audioBuf = mlc.ctx->chain().audioOutputBuffer();
+                    if (audioBuf && audioBuf->isValid()) {
+                        std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
+                        renderWaveformPNG(waveformPath, audioBuf->samples,
+                                          audioBuf->frameCount, audioBuf->channels);
+                    }
+                }
+
+                glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+            }
+        }
+
+        // Check/inspect mode (single-shot): run inspection at target frame and exit
+        if ((mlc.checkMode || (mlc.inspectMode && mlc.inspectSampleFrames.empty())) && currentFrame == mlc.checkFrame) {
+            auto inspection = mlc.ctx->chain().inspectAll(*mlc.ctx, mlc.inspectPerOperator);
 
             if (mlc.inspectMode) {
                 std::cout << inspection.toJSON() << std::endl;
@@ -1574,6 +1650,14 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                     // Save snapshot PNG
                     std::string pngPath = (fs::path(mlc.inspectOutDir) / "snapshot.png").string();
                     mlc.ctx->snapshot(pngPath);
+
+                    // Save waveform PNG if audio is active
+                    const auto* audioBuf = mlc.ctx->chain().audioOutputBuffer();
+                    if (audioBuf && audioBuf->isValid()) {
+                        std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
+                        renderWaveformPNG(waveformPath, audioBuf->samples,
+                                          audioBuf->frameCount, audioBuf->channels);
+                    }
                 }
             }
 
@@ -2555,6 +2639,14 @@ int Application::init(const AppConfig& config) {
         }
     }
 
+    // When a specific render resolution is requested, use it as the window size.
+    // The framebuffer may still differ due to Retina/DPI scaling — that's handled
+    // after window creation by overriding the surface configuration size.
+    if (config.renderWidth > 0 && config.renderHeight > 0) {
+        windowWidth = config.renderWidth;
+        windowHeight = config.renderHeight;
+    }
+
     // Set resizable hint
     glfwWindowHint(GLFW_RESIZABLE, windowResizable ? GLFW_TRUE : GLFW_FALSE);
 
@@ -2683,6 +2775,15 @@ int Application::init(const AppConfig& config) {
 
     // Configure surface
     glfwGetFramebufferSize(m_impl->window, &m_impl->width, &m_impl->height);
+
+    // Override surface size with render resolution if specified.
+    // On Retina/HiDPI displays, the framebuffer is larger than the logical window.
+    // For export, we need the surface (and thus operator textures) to match the
+    // exact render resolution so the video encoder gets correctly sized frames.
+    if (config.renderWidth > 0 && config.renderHeight > 0) {
+        m_impl->width = config.renderWidth;
+        m_impl->height = config.renderHeight;
+    }
 
     // Query surface capabilities to get preferred format
     WGPUSurfaceCapabilities capabilities = {};
@@ -2902,9 +3003,9 @@ int Application::init(const AppConfig& config) {
     });
 
     // MCP inspect_chain tool: return full introspection data from all operators
-    m_impl->editorBridge->onInspectChain([this]() -> std::string {
+    m_impl->editorBridge->onInspectChain([this](bool perOperatorAnalysis) -> std::string {
         if (!m_impl->ctx || !m_impl->ctx->hasChain()) return "{}";
-        auto inspection = m_impl->ctx->chain().inspectAll(*m_impl->ctx);
+        auto inspection = m_impl->ctx->chain().inspectAll(*m_impl->ctx, perOperatorAnalysis);
         return inspection.toJSON();
     });
 
@@ -3376,6 +3477,7 @@ int Application::init(const AppConfig& config) {
     mlc.checkMode = config.checkMode;
     mlc.inspectMode = config.inspectMode;
     mlc.inspectOutDir = config.inspectOutDir;
+    mlc.inspectPerOperator = config.inspectPerOperator;
     mlc.verboseCheck = config.verboseCheck;
     mlc.buildMode = config.buildMode;
     mlc.paramsMode = config.paramsMode;
@@ -3394,15 +3496,45 @@ int Application::init(const AppConfig& config) {
                 std::cerr << "Error: No valid assertions loaded" << std::endl;
                 return 1;
             }
+
+            // Auto-enable per-operator texture analysis when assertions reference it
+            for (const auto& a : mlc.assertions) {
+                if (a.path.find(".textureAnalysis.") != std::string::npos) {
+                    mlc.inspectPerOperator = true;
+                    break;
+                }
+            }
         }
 
-        // Priority: CLI --frame > assertion file frame > default 10
-        if (config.checkFrame >= 0) {
+        // Priority: CLI --duration > CLI --frame > assertion file frame > default 10
+        if (mlc.checkMode && config.checkDuration > 0.0f) {
+            // --duration overrides --frame: evaluate at the end of the duration
+            mlc.checkFrame = static_cast<int>(config.checkDuration * 60.0f);
+        } else if (config.checkFrame >= 0) {
             mlc.checkFrame = config.checkFrame;
         } else if (fileFrame >= 0) {
             mlc.checkFrame = fileFrame;
         } else {
             mlc.checkFrame = 10;
+        }
+
+        // Multi-sample inspect: compute target frames from --duration and --samples
+        mlc.inspectDuration = config.inspectDuration;
+        mlc.inspectSamples = config.inspectSamples;
+        if (mlc.inspectMode && mlc.inspectDuration > 0.0f && mlc.inspectSamples >= 1) {
+            int endFrame = static_cast<int>(mlc.inspectDuration * 60.0f);
+            mlc.inspectSampleFrames.clear();
+            if (mlc.inspectSamples == 1) {
+                mlc.inspectSampleFrames.push_back(endFrame);
+            } else {
+                for (int i = 0; i < mlc.inspectSamples; i++) {
+                    int f = static_cast<int>(
+                        static_cast<float>(i) / static_cast<float>(mlc.inspectSamples - 1) * static_cast<float>(endFrame));
+                    mlc.inspectSampleFrames.push_back(f);
+                }
+            }
+            // Override checkFrame to the last sample frame so the loop runs long enough
+            mlc.checkFrame = endFrame;
         }
     }
 

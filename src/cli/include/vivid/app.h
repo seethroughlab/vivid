@@ -44,10 +44,14 @@ struct AppConfig {
     bool checkMode = false;
     std::string assertionPath;   // path to vivid-assertions.json
     bool verboseCheck = false;   // print each assertion line
+    float checkDuration = 0.0f;  // run chain for N seconds before evaluating (0 = use checkFrame)
 
     // Inspect mode (vivid inspect): dump inspection JSON and exit
     bool inspectMode = false;
     std::string inspectOutDir;   // optional output directory for inspect
+    bool inspectPerOperator = false;  // include per-operator texture analysis
+    float inspectDuration = 0.0f;    // multi-sample: duration in seconds (0 = single-shot)
+    int inspectSamples = 1;          // multi-sample: number of samples to collect
 
     // Build mode (vivid build): compile chain and report structured errors
     bool buildMode = false;

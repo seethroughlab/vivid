@@ -231,9 +231,11 @@ void RuntimeAPI::start(int port) {
                         }
                     }
                     else if (type == "inspect_chain") {
-                        std::cout << "[RuntimeAPI] Chain inspection requested\n";
+                        bool perOp = j.value("per_operator_analysis", false);
+                        std::cout << "[RuntimeAPI] Chain inspection requested"
+                                  << (perOp ? " (per-operator analysis)" : "") << "\n";
                         if (m_inspectChainCallback) {
-                            std::string jsonResult = m_inspectChainCallback();
+                            std::string jsonResult = m_inspectChainCallback(perOp);
                             sendInspectChain(jsonResult);
                         }
                     }

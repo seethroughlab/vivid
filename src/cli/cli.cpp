@@ -1645,22 +1645,37 @@ ParseResult parseArgs(int argc, char** argv) {
     std::string checkAssertionPath;
     int checkFrame = -1;
     bool checkVerbose = false;
+    float checkDuration = 0.0f;
 
     auto* checkCmd = app.add_subcommand("check", "Run assertions against a project");
     checkCmd->add_option("project", checkProjectPath, "Project path")->required();
     checkCmd->add_option("--assertions", checkAssertionPath, "Assertion file (default: vivid-assertions.json in project)");
     checkCmd->add_option("--frame", checkFrame, "Frame to evaluate at (overrides assertion file)");
     checkCmd->add_flag("--verbose", checkVerbose, "Print each assertion result");
+    checkCmd->add_option("--duration", checkDuration, "Run chain for N seconds before evaluating assertions")
+           ->check(CLI::Range(0.01f, 300.0f));
 
     // 'inspect' subcommand — dump inspection data as JSON
     std::string inspectProjectPath;
     int inspectFrame = -1;
     std::string inspectOutDir;
+    bool inspectPerOperator = false;
+    float inspectDuration = 0.0f;
+    int inspectSamples = 1;
+
+    std::string inspectResolution;
 
     auto* inspectCmd = app.add_subcommand("inspect", "Dump inspection data as JSON");
     inspectCmd->add_option("project", inspectProjectPath, "Project path")->required();
     inspectCmd->add_option("--frame", inspectFrame, "Frame to inspect (default: 10)");
     inspectCmd->add_option("--out", inspectOutDir, "Output directory for JSON + snapshot");
+    inspectCmd->add_flag("--per-operator", inspectPerOperator, "Include texture analysis for each operator");
+    inspectCmd->add_option("--duration", inspectDuration, "Capture duration in seconds for multi-sample inspect")
+             ->check(CLI::Range(0.01f, 300.0f));
+    inspectCmd->add_option("--samples", inspectSamples, "Number of inspection samples (requires --duration)")
+             ->check(CLI::Range(1, 1000));
+    inspectCmd->add_option("--resolution", inspectResolution, "Render resolution (e.g., 960x540)")
+             ->type_name("WxH");
 
     // 'export' subcommand — headless A/V export with optional playback script
     std::string exportProjectPath;
@@ -1810,6 +1825,7 @@ ParseResult parseArgs(int argc, char** argv) {
         config.projectPath = checkProjectPath;
         config.checkMode = true;
         config.checkFrame = checkFrame;
+        config.checkDuration = checkDuration;
         config.verboseCheck = checkVerbose;
 
         // Resolve assertion file path
@@ -1837,6 +1853,27 @@ ParseResult parseArgs(int argc, char** argv) {
         config.inspectMode = true;
         config.checkFrame = inspectFrame;
         config.inspectOutDir = inspectOutDir;
+        config.inspectPerOperator = inspectPerOperator;
+        config.inspectDuration = inspectDuration;
+        config.inspectSamples = inspectSamples;
+
+        // Parse inspect resolution
+        if (!inspectResolution.empty()) {
+            size_t x = inspectResolution.find('x');
+            if (x == std::string::npos) x = inspectResolution.find('X');
+            if (x != std::string::npos) {
+                try {
+                    config.renderWidth = std::stoi(inspectResolution.substr(0, x));
+                    config.renderHeight = std::stoi(inspectResolution.substr(x + 1));
+                } catch (...) {
+                    std::cerr << "Error: Invalid --resolution format. Use WxH (e.g., 960x540)\n";
+                    result.handled = true;
+                    result.exitCode = 1;
+                    return result;
+                }
+            }
+        }
+
         result.config = config;
         return result;
     }

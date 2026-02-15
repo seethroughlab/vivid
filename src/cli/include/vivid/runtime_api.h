@@ -282,7 +282,8 @@ public:
 
     /// Callback type for inspect_chain command
     /// Should return the full chain inspection JSON string
-    using InspectChainCallback = std::function<std::string()>;
+    /// @param perOperatorAnalysis If true, include texture analysis for each operator
+    using InspectChainCallback = std::function<std::string(bool perOperatorAnalysis)>;
 
     /// Set callback for inspect_chain command
     void onInspectChain(InspectChainCallback callback) { m_inspectChainCallback = callback; }
