@@ -24,6 +24,9 @@ struct ScriptEvent {
     float velocity = 1.0f;   // MIDI velocity
     float x = 0.0f, y = 0.0f;  // Mouse position (normalized 0-1)
     std::string key;         // Key name for key_press/key_release
+    int button = 0;          // Mouse button index (0=left, 1=right, 2=middle)
+    int cc = 0;              // MIDI CC number
+    int channel = 0;         // MIDI channel
 };
 
 /// Top-level settings from a playback script JSON
@@ -70,6 +73,9 @@ private:
         float to;
     };
     std::vector<ActiveRamp> m_activeRamps;
+
+    // Mouse buttons pending release (auto-release on next frame after mouse_click)
+    std::vector<int> m_pendingMouseRelease;
 
     /// Convert a key name string (e.g. "space", "a") to GLFW keycode.
     static int keyNameToGLFW(const std::string& name);

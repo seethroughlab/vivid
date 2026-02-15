@@ -76,6 +76,7 @@ int EventInjector::keyNameToGLFW(const std::string& name) {
 bool EventInjector::load(const std::string& path) {
     m_script = PlaybackScript{};
     m_activeRamps.clear();
+    m_pendingMouseRelease.clear();
     m_error.clear();
 
     std::ifstream file(path);
@@ -133,6 +134,9 @@ bool EventInjector::load(const std::string& path) {
             if (ev.contains("x")) event.x = ev["x"].get<float>();
             if (ev.contains("y")) event.y = ev["y"].get<float>();
             if (ev.contains("key")) event.key = ev["key"].get<std::string>();
+            if (ev.contains("button")) event.button = ev["button"].get<int>();
+            if (ev.contains("cc")) event.cc = ev["cc"].get<int>();
+            if (ev.contains("channel")) event.channel = ev["channel"].get<int>();
 
             m_script.events.push_back(event);
         }
@@ -148,6 +152,12 @@ bool EventInjector::load(const std::string& path) {
 }
 
 void EventInjector::processFrame(int frame, Context& ctx, Chain& chain) {
+    // Auto-release mouse buttons from previous frame's mouse_click events
+    for (int btn : m_pendingMouseRelease) {
+        ctx.injectMouseButton(btn, false);
+    }
+    m_pendingMouseRelease.clear();
+
     // Process instant events that fire on this frame
     for (const auto& ev : m_script.events) {
         if (ev.frame > frame) break;  // Events are sorted, no more for this frame
@@ -211,6 +221,20 @@ void EventInjector::processFrame(int frame, Context& ctx, Chain& chain) {
             int idx = static_cast<int>(ev.value);
             float duration = ev.valueTo;
             chain.snapshots().recall(idx, chain, duration);
+        } else if (ev.type == "mouse_click") {
+            // Inject mouse position + button press; auto-releases next frame
+            float px = ev.x * static_cast<float>(ctx.width());
+            float py = ev.y * static_cast<float>(ctx.height());
+            ctx.injectMousePosition(px, py);
+            ctx.injectMouseButton(ev.button, true);
+            m_pendingMouseRelease.push_back(ev.button);
+        } else if (ev.type == "midi_cc") {
+            // MIDI CC — send via setParam("midi_cc", [cc, value, channel, 0])
+            Operator* op = chain.getByName(ev.op);
+            if (op) {
+                float val[4] = {static_cast<float>(ev.cc), ev.value, static_cast<float>(ev.channel), 0};
+                op->setParam("midi_cc", val);
+            }
         }
     }
 
