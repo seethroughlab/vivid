@@ -227,6 +227,11 @@ public:
     float currentVelocity() const { return m_currentVelocity.load(std::memory_order_relaxed); }
 
     /**
+     * @brief Get trigger velocity for downstream operators
+     */
+    float triggerVelocity() const override { return currentVelocity(); }
+
+    /**
      * @brief Get current step index
      */
     int currentStep() const { return m_currentStep.load(std::memory_order_relaxed); }

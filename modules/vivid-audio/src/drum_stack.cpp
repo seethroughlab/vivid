@@ -82,14 +82,10 @@ void DrumStack::generateBlock(uint32_t frameCount) {
 }
 
 void DrumStack::handleEvent(const AudioEvent& event) {
-    // Forward triggers to all layers
     if (event.type == AudioEventType::Trigger) {
-        if (m_layer1) m_layer1->trigger();
-        if (m_layer2) m_layer2->trigger();
-        if (m_layer3) m_layer3->trigger();
-    }
-
-    if (event.type == AudioEventType::Reset) {
+        float velocity = (event.value1 > 0.0f) ? event.value1 : 1.0f;
+        midiNoteOn(0, velocity, 0);
+    } else if (event.type == AudioEventType::Reset) {
         reset();
     }
 }

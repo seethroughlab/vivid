@@ -78,9 +78,10 @@ void AudioGraph::processBlock(float* output, uint32_t frameCount) {
         // The source was processed earlier in this loop (dependency order)
         if (Operator* src = op->triggerSource()) {
             if (src->triggered()) {
-                // Send trigger event (goes through handleEvent -> onTrigger)
+                // Send trigger event with velocity from source
                 AudioEvent triggerEvent;
                 triggerEvent.type = AudioEventType::Trigger;
+                triggerEvent.value1 = src->triggerVelocity();
                 op->handleEvent(triggerEvent);
             }
         }

@@ -565,6 +565,14 @@ public:
      */
     virtual bool triggered() const { return false; }
 
+    /**
+     * @brief Get the velocity of the current trigger
+     * @return Velocity value (0-1), defaults to 1.0
+     *
+     * Override in operators that produce velocity-sensitive triggers (e.g., Sequencer).
+     */
+    virtual float triggerVelocity() const { return 1.0f; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Cooking / Dependency System

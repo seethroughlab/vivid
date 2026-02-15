@@ -91,9 +91,10 @@ void Clang::generateBlock(uint32_t frameCount) {
 }
 
 void Clang::handleEvent(const AudioEvent& event) {
-    AudioOperator::handleEvent(event);
-
-    if (event.type == AudioEventType::Reset) {
+    if (event.type == AudioEventType::Trigger) {
+        float velocity = (event.value1 > 0.0f) ? event.value1 : 1.0f;
+        midiNoteOn(0, velocity, 0);
+    } else if (event.type == AudioEventType::Reset) {
         reset();
     }
 }
