@@ -1527,6 +1527,8 @@ ParseResult parseArgs(int argc, char** argv) {
     std::string recordCodec = "h264";
     int maxFrames = 0;
     bool showUI = false;
+    std::string audioSnapshotPath;
+    float audioSnapshotDuration = 1.0f;
 
     app.add_option("project", projectPath, "Project directory to run")
        ->type_name("PATH");
@@ -1535,6 +1537,11 @@ ParseResult parseArgs(int argc, char** argv) {
     app.add_option("--snapshot-frame", snapshotFrameSpec,
                    "Frame(s) to capture: 5 | 0,5,10 | 0-11 | 0-20:2")
        ->type_name("SPEC");
+    app.add_option("--audio-snapshot", audioSnapshotPath, "Capture audio to WAV file and exit")
+       ->type_name("FILE");
+    app.add_option("--audio-snapshot-duration", audioSnapshotDuration,
+                   "Audio capture duration in seconds (default: 1.0)")
+       ->check(CLI::Range(0.01f, 300.0f));
     app.add_flag("--headless", headless, "Run without window (requires --snapshot or --record)");
     app.add_option("--render", renderSize, "Render resolution (e.g., 1920x1080)")
        ->type_name("WxH");
@@ -1909,6 +1916,8 @@ ParseResult parseArgs(int argc, char** argv) {
     AppConfig config;
     config.projectPath = projectPath;
     config.snapshotPath = snapshotPath;
+    config.audioSnapshotPath = audioSnapshotPath;
+    config.audioSnapshotDuration = audioSnapshotDuration;
     config.headless = headless;
     config.startFullscreen = fullscreen;
     config.showUI = showUI;

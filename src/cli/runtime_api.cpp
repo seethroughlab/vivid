@@ -179,6 +179,15 @@ void RuntimeAPI::start(int port) {
                             m_captureFrameCallback(outputPath);
                         }
                     }
+                    else if (type == "capture_audio") {
+                        std::string outputPath = j.value("outputPath", "/tmp/vivid_capture.wav");
+                        float duration = j.value("duration", 1.0f);
+                        std::cout << "[RuntimeAPI] Capture audio requested: " << outputPath
+                                  << " (" << duration << "s)\n";
+                        if (m_captureAudioCallback) {
+                            m_captureAudioCallback(outputPath, duration);
+                        }
+                    }
                     else if (type == "set_param_immediate") {
                         // Direct parameter set (MCP debugging) - apply immediately, no pending queue
                         std::string opName = j.value("operator", "");
@@ -630,6 +639,29 @@ void RuntimeAPI::sendCaptureResult(bool success, const std::string& outputPath, 
     std::string msg = j.dump();
 
     // Broadcast to all clients
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+void RuntimeAPI::sendCaptureAudioResult(bool success, const std::string& outputPath,
+                                         const std::string& analysisJson, const std::string& error) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "capture_audio_result";
+    j["success"] = success;
+    j["outputPath"] = outputPath;
+    if (!analysisJson.empty()) {
+        j["analysis"] = json::parse(analysisJson, nullptr, false);
+    }
+    if (!error.empty()) {
+        j["error"] = error;
+    }
+
+    std::string msg = j.dump();
+
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     for (auto& client : m_impl->server.getClients()) {
         client->send(msg);

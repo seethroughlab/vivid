@@ -378,6 +378,22 @@ public:
     /// @param error Error message if failed
     void sendCaptureResult(bool success, const std::string& outputPath, const std::string& error = "");
 
+    /// Callback type for capture audio command (MCP audio recording)
+    /// @param outputPath Path to save the WAV file
+    /// @param duration Duration in seconds to capture
+    using CaptureAudioCallback = std::function<void(const std::string& outputPath, float duration)>;
+
+    /// Set callback for capture audio command
+    void onCaptureAudio(CaptureAudioCallback callback) { m_captureAudioCallback = callback; }
+
+    /// Send audio capture result back to clients
+    /// @param success True if capture succeeded
+    /// @param outputPath Path where the file was saved
+    /// @param analysisJson JSON string with AudioAnalysis data
+    /// @param error Error message if failed
+    void sendCaptureAudioResult(bool success, const std::string& outputPath,
+                                 const std::string& analysisJson = "", const std::string& error = "");
+
     // -------------------------------------------------------------------------
     // Direct parameter control (MCP debugging tools)
     // -------------------------------------------------------------------------
@@ -432,6 +448,7 @@ private:
     WindowControlCallback m_windowControlCallback;
     DiscardChangesCallback m_discardChangesCallback;
     CaptureFrameCallback m_captureFrameCallback;
+    CaptureAudioCallback m_captureAudioCallback;
     SetParamImmediateCallback m_setParamImmediateCallback;
     RequestChainStructureCallback m_requestChainStructureCallback;
     InspectChainCallback m_inspectChainCallback;

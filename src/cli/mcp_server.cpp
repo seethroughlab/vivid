@@ -13,6 +13,8 @@
 #include <vivid/operator_registry.h>
 #include <vivid/module_loader.h>
 #include <vivid/docs_search.h>
+#include <vivid/audio_analysis.h>
+#include <vivid/wav_writer.h>
 #include <nlohmann/json.hpp>
 #include <ixwebsocket/IXWebSocket.h>
 #include <iostream>
@@ -350,6 +352,43 @@ public:
         return result;
     }
 
+    json captureAudio(const std::string& outputPath, float duration, int timeoutMs = 0) {
+        // Clear any previous result
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_captureAudioResult = json::object();
+            m_captureAudioResultReceived = false;
+        }
+
+        // Auto-compute timeout from duration + buffer
+        if (timeoutMs <= 0) {
+            timeoutMs = static_cast<int>((duration + 5.0f) * 1000);
+        }
+
+        json cmd;
+        cmd["type"] = "capture_audio";
+        cmd["outputPath"] = outputPath;
+        cmd["duration"] = duration;
+        m_ws.send(cmd.dump());
+
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_captureAudioResultReceived) {
+                    return m_captureAudioResult;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        json result;
+        result["success"] = false;
+        result["error"] = "Timeout waiting for audio capture result";
+        result["outputPath"] = outputPath;
+        return result;
+    }
+
     // Send commands to Vivid
     void soloOperator(const std::string& opName) {
         json cmd;
@@ -608,6 +647,9 @@ private:
             } else if (type == "reset_time_complete") {
                 m_resetTimeResult = msg;
                 m_resetTimeReceived = true;
+            } else if (type == "capture_audio_result") {
+                m_captureAudioResult = msg;
+                m_captureAudioResultReceived = true;
             }
         } catch (const json::exception& e) {
             std::cerr << "[MCP] JSON parse error: " << e.what() << "\n";
@@ -647,6 +689,8 @@ private:
     bool m_resetTimeReceived{false};
     json m_inspectChainResult = json::object();
     bool m_inspectChainResultReceived{false};
+    json m_captureAudioResult = json::object();
+    bool m_captureAudioResultReceived{false};
 
     // Connection state tracking
     std::string m_lastError;
@@ -1233,6 +1277,34 @@ private:
                     {"threshold", {{"type", "integer"}, {"description", "Per-channel diff threshold for pixel counting (0-255, default: 5)"}}}
                 }},
                 {"required", json::array({"image_a", "image_b"})}
+            }}
+        });
+
+        // capture_audio - Capture audio from running Vivid
+        tools.push_back({
+            {"name", "capture_audio"},
+            {"description", "Capture audio from a running Vivid instance to a WAV file. Records from the chain's audio output for the specified duration. Returns analysis metrics (RMS, peak, spectrum). Requires a running Vivid instance with an audio output."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"outputPath", {{"type", "string"}, {"description", "Path to save the WAV file (default: /tmp/vivid_capture.wav)"}}},
+                    {"duration", {{"type", "number"}, {"description", "Duration in seconds to capture (default: 1.0, max: 30.0)"}}}
+                }}
+            }}
+        });
+
+        // compare_audio - Compare two WAV files
+        tools.push_back({
+            {"name", "compare_audio"},
+            {"description", "Compare two WAV audio files and return similarity metrics (RMS diff, peak diff, "
+                            "per-band spectral diff, correlation). Works with any WAV files — no running Vivid needed."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"audio_a", {{"type", "string"}, {"description", "Path to first WAV file"}}},
+                    {"audio_b", {{"type", "string"}, {"description", "Path to second WAV file"}}}
+                }},
+                {"required", json::array({"audio_a", "audio_b"})}
             }}
         });
 
@@ -2485,6 +2557,37 @@ private:
             response["restored"] = restored;
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
+        else if (name == "capture_audio") {
+            std::string outputPath = args.value("outputPath", "/tmp/vivid_capture.wav");
+            float duration = args.value("duration", 1.0f);
+            duration = std::max(0.01f, std::min(30.0f, duration));
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot capture audio: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            json captureResult = m_vivid.captureAudio(outputPath, duration);
+
+            json response;
+            response["connected"] = true;
+            response["success"] = captureResult.value("success", false);
+            response["outputPath"] = captureResult.value("outputPath", outputPath);
+            response["duration"] = duration;
+            if (captureResult.contains("analysis")) {
+                response["analysis"] = captureResult["analysis"];
+            }
+            if (captureResult.contains("error")) {
+                response["error"] = captureResult["error"];
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
         else if (name == "compare_frames") {
             std::string imageA = args.value("image_a", "");
             std::string imageB = args.value("image_b", "");
@@ -2580,6 +2683,94 @@ private:
                 {"threshold", threshold}
             };
             response["identical"] = identical;
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "compare_audio") {
+            std::string audioA = args.value("audio_a", "");
+            std::string audioB = args.value("audio_b", "");
+
+            if (audioA.empty() || audioB.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Both 'audio_a' and 'audio_b' paths are required"}}};
+                return result;
+            }
+
+            // Read both WAV files
+            std::vector<float> samplesA, samplesB;
+            uint32_t framesA, framesB, chA, chB, srA, srB;
+
+            if (!vivid::readWAV(audioA, samplesA, framesA, chA, srA)) {
+                json response;
+                response["success"] = false;
+                response["error"] = "Failed to read audio file: " + audioA;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            if (!vivid::readWAV(audioB, samplesB, framesB, chB, srB)) {
+                json response;
+                response["success"] = false;
+                response["error"] = "Failed to read audio file: " + audioB;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Analyze each
+            auto analysisA = vivid::analyzeAudioBuffer(samplesA.data(), framesA, chA, srA);
+            auto analysisB = vivid::analyzeAudioBuffer(samplesB.data(), framesB, chB, srB);
+
+            // Compute diff metrics
+            float rmsDiff = std::abs(analysisA.rmsLevel - analysisB.rmsLevel);
+            float peakDiff = std::abs(analysisA.peakLevel - analysisB.peakLevel);
+
+            // Per-band spectral diff
+            json spectrumDiff = json::object();
+            const char* bandNames[] = {"subBass", "bass", "lowMid", "mid", "highMid", "high"};
+            for (int i = 0; i < 6; i++) {
+                spectrumDiff[bandNames[i]] = std::round(
+                    std::abs(analysisA.spectrum[i] - analysisB.spectrum[i]) * 10000.0f) / 10000.0f;
+            }
+
+            // Correlation coefficient (on overlapping frames)
+            uint32_t minFrames = std::min(framesA, framesB);
+            uint32_t minCh = std::min(chA, chB);
+            uint32_t overlapSamples = minFrames * minCh;
+            double correlation = 0.0;
+
+            if (overlapSamples > 0) {
+                double meanA = 0, meanB = 0;
+                for (uint32_t i = 0; i < overlapSamples; i++) {
+                    meanA += samplesA[i];
+                    meanB += samplesB[i];
+                }
+                meanA /= overlapSamples;
+                meanB /= overlapSamples;
+
+                double sumAB = 0, sumAA = 0, sumBB = 0;
+                for (uint32_t i = 0; i < overlapSamples; i++) {
+                    double a = samplesA[i] - meanA;
+                    double b = samplesB[i] - meanB;
+                    sumAB += a * b;
+                    sumAA += a * a;
+                    sumBB += b * b;
+                }
+
+                double denom = std::sqrt(sumAA * sumBB);
+                correlation = denom > 0 ? sumAB / denom : 0.0;
+            }
+
+            json response;
+            response["success"] = true;
+            response["audio_a"] = audioA;
+            response["audio_b"] = audioB;
+            response["analysis_a"] = json::parse(analysisA.toJSON());
+            response["analysis_b"] = json::parse(analysisB.toJSON());
+            response["diff"] = {
+                {"rmsDiff", std::round(rmsDiff * 10000.0f) / 10000.0f},
+                {"peakDiff", std::round(peakDiff * 10000.0f) / 10000.0f},
+                {"spectrumDiff", spectrumDiff},
+                {"correlation", std::round(correlation * 10000.0) / 10000.0}
+            };
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else if (name == "list_project_assets") {

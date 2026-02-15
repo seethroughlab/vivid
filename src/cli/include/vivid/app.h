@@ -30,6 +30,10 @@ struct AppConfig {
     bool recordAudio = false;
     ExportCodec recordCodec = ExportCodec::H264;
 
+    // Audio snapshot
+    std::string audioSnapshotPath;
+    float audioSnapshotDuration = 1.0f;  // seconds
+
     // Frame limit
     int maxFrames = 0;  // 0 = unlimited
 

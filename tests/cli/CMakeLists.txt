@@ -24,3 +24,26 @@ catch_discover_tests(test_cli_commands
         LABELS "cli"
         TIMEOUT 60
 )
+
+# Export Tests (slower — renders frames and probes output with ffprobe)
+add_executable(test_export
+    test_export.cpp
+)
+
+target_link_libraries(test_export PRIVATE
+    Catch2::Catch2WithMain
+    nlohmann_json::nlohmann_json
+)
+
+target_compile_definitions(test_export PRIVATE
+    VIVID_BINARY_PATH="$<TARGET_FILE:vivid>"
+    VIVID_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+add_dependencies(test_export vivid)
+
+catch_discover_tests(test_export
+    PROPERTIES
+        LABELS "cli"
+        TIMEOUT 120
+)

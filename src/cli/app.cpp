@@ -20,6 +20,8 @@
 #include <vivid/hot_reload.h>
 #include <vivid/runtime_api.h>
 #include <vivid/audio_buffer.h>
+#include <vivid/audio_analysis.h>
+#include <vivid/wav_writer.h>
 #include <vivid/video_exporter.h>
 #include <vivid/cli.h>
 #include <vivid/module_manager.h>
@@ -717,6 +719,14 @@ struct MainLoopContext {
     std::string mcpCaptureRequestPath;  // Non-empty = capture requested
     std::mutex mcpCaptureMutex;
 
+    // MCP audio capture request
+    std::string mcpAudioCaptureRequestPath;
+    float mcpAudioCaptureDuration = 1.0f;
+    bool mcpAudioCaptureActive = false;
+    std::vector<float> mcpAudioCaptureBuffer;
+    uint32_t mcpAudioCaptureFramesNeeded = 0;
+    uint32_t mcpAudioCaptureFramesCaptured = 0;
+
     // Core runtime objects (non-owning pointers)
     Context* ctx = nullptr;
     Display* display = nullptr;
@@ -747,6 +757,15 @@ struct MainLoopContext {
     std::unique_ptr<vivid::PTY> idePty;
     bool idePtyStarted = false;
 #endif
+
+    // Audio snapshot
+    std::string audioSnapshotPath;
+    float audioSnapshotDuration = 1.0f;
+    bool audioSnapshotStarted = false;
+    bool audioSnapshotDone = false;
+    std::vector<float> audioSnapshotBuffer;
+    uint32_t audioSnapshotFramesNeeded = 0;
+    uint32_t audioSnapshotFramesCaptured = 0;
 
     // CLI args needed in loop
     std::string snapshotPath;
@@ -1602,6 +1621,64 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             }
         }
 
+        // Audio snapshot mode (CLI --audio-snapshot flag)
+        if (!mlc.audioSnapshotPath.empty() && !mlc.audioSnapshotDone) {
+            // Start recording tap on first frame after chain init
+            if (!mlc.audioSnapshotStarted && mlc.ctx && !mlc.ctx->hasError()) {
+                mlc.audioSnapshotFramesNeeded = static_cast<uint32_t>(
+                    mlc.audioSnapshotDuration * AUDIO_SAMPLE_RATE);
+                mlc.audioSnapshotBuffer.reserve(mlc.audioSnapshotFramesNeeded * AUDIO_CHANNELS);
+                mlc.ctx->chain().startAudioRecordingTap();
+                mlc.audioSnapshotStarted = true;
+            }
+
+            // Pop available audio samples
+            if (mlc.audioSnapshotStarted) {
+                constexpr uint32_t CHUNK = 4096;
+                std::vector<float> chunk(CHUNK * AUDIO_CHANNELS);
+                uint32_t framesRead = mlc.ctx->chain().popAudioRecordedSamples(
+                    chunk.data(), CHUNK);
+                if (framesRead > 0) {
+                    uint32_t framesToKeep = std::min(framesRead,
+                        mlc.audioSnapshotFramesNeeded - mlc.audioSnapshotFramesCaptured);
+                    mlc.audioSnapshotBuffer.insert(mlc.audioSnapshotBuffer.end(),
+                        chunk.begin(), chunk.begin() + framesToKeep * AUDIO_CHANNELS);
+                    mlc.audioSnapshotFramesCaptured += framesToKeep;
+                }
+
+                // Done capturing
+                if (mlc.audioSnapshotFramesCaptured >= mlc.audioSnapshotFramesNeeded) {
+                    mlc.ctx->chain().stopAudioRecordingTap();
+
+                    bool ok = writeWAV(mlc.audioSnapshotPath,
+                                       mlc.audioSnapshotBuffer.data(),
+                                       mlc.audioSnapshotFramesCaptured,
+                                       AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+                    if (ok) {
+                        auto analysis = analyzeAudioBuffer(
+                            mlc.audioSnapshotBuffer.data(),
+                            mlc.audioSnapshotFramesCaptured,
+                            AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+                        std::cout << "Audio snapshot saved: " << mlc.audioSnapshotPath
+                                  << " (" << mlc.audioSnapshotDuration << "s, "
+                                  << "rms=" << analysis.rmsLevel
+                                  << ", peak=" << analysis.peakLevel
+                                  << ", silent=" << (analysis.isSilent ? "true" : "false")
+                                  << ")" << std::endl;
+                    } else {
+                        std::cerr << "Failed to write audio snapshot: " << mlc.audioSnapshotPath << std::endl;
+                    }
+
+                    mlc.audioSnapshotDone = true;
+
+                    // Exit if no visual snapshot pending
+                    if (mlc.snapshotPath.empty() && mlc.maxFrames == 0) {
+                        glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+                    }
+                }
+            }
+        }
+
         // Frame limit mode (CLI --frames flag)
         if (mlc.maxFrames > 0 && mlc.snapshotFrameCounter >= mlc.maxFrames) {
             std::cout << "Rendered " << mlc.maxFrames << " frames, exiting." << std::endl;
@@ -2084,6 +2161,83 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                 if (mlc.editorBridge) {
                     mlc.editorBridge->sendCaptureResult(false, requestedPath, "Failed to save snapshot");
                 }
+            }
+        }
+    }
+
+    // MCP audio capture request
+    {
+        std::lock_guard<std::mutex> lock(mlc.mcpCaptureMutex);
+
+        // Start a new capture if requested
+        if (!mlc.mcpAudioCaptureRequestPath.empty() && !mlc.mcpAudioCaptureActive) {
+            mlc.mcpAudioCaptureActive = true;
+            mlc.mcpAudioCaptureFramesNeeded = static_cast<uint32_t>(
+                mlc.mcpAudioCaptureDuration * AUDIO_SAMPLE_RATE);
+            mlc.mcpAudioCaptureFramesCaptured = 0;
+            mlc.mcpAudioCaptureBuffer.clear();
+            mlc.mcpAudioCaptureBuffer.reserve(mlc.mcpAudioCaptureFramesNeeded * AUDIO_CHANNELS);
+
+            if (mlc.ctx && mlc.ctx->hasChain()) {
+                mlc.ctx->chain().startAudioRecordingTap();
+                printf("[MCP Audio] Started capture: %s (%.1fs)\n",
+                       mlc.mcpAudioCaptureRequestPath.c_str(), mlc.mcpAudioCaptureDuration);
+            } else {
+                // No chain - fail immediately
+                if (mlc.editorBridge) {
+                    mlc.editorBridge->sendCaptureAudioResult(
+                        false, mlc.mcpAudioCaptureRequestPath, "",
+                        "No chain running - cannot capture audio");
+                }
+                mlc.mcpAudioCaptureRequestPath.clear();
+                mlc.mcpAudioCaptureActive = false;
+            }
+        }
+
+        // Pop audio during active capture
+        if (mlc.mcpAudioCaptureActive && mlc.ctx && mlc.ctx->hasChain()) {
+            constexpr uint32_t CHUNK = 4096;
+            std::vector<float> chunk(CHUNK * AUDIO_CHANNELS);
+            uint32_t framesRead = mlc.ctx->chain().popAudioRecordedSamples(
+                chunk.data(), CHUNK);
+            if (framesRead > 0) {
+                uint32_t framesToKeep = std::min(framesRead,
+                    mlc.mcpAudioCaptureFramesNeeded - mlc.mcpAudioCaptureFramesCaptured);
+                mlc.mcpAudioCaptureBuffer.insert(mlc.mcpAudioCaptureBuffer.end(),
+                    chunk.begin(), chunk.begin() + framesToKeep * AUDIO_CHANNELS);
+                mlc.mcpAudioCaptureFramesCaptured += framesToKeep;
+            }
+
+            // Done capturing
+            if (mlc.mcpAudioCaptureFramesCaptured >= mlc.mcpAudioCaptureFramesNeeded) {
+                mlc.ctx->chain().stopAudioRecordingTap();
+
+                bool ok = writeWAV(mlc.mcpAudioCaptureRequestPath,
+                                   mlc.mcpAudioCaptureBuffer.data(),
+                                   mlc.mcpAudioCaptureFramesCaptured,
+                                   AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+
+                std::string analysisJson;
+                if (ok) {
+                    auto analysis = analyzeAudioBuffer(
+                        mlc.mcpAudioCaptureBuffer.data(),
+                        mlc.mcpAudioCaptureFramesCaptured,
+                        AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+                    analysisJson = analysis.toJSON();
+                    printf("[MCP Audio] Saved: %s (rms=%.4f, peak=%.4f)\n",
+                           mlc.mcpAudioCaptureRequestPath.c_str(),
+                           analysis.rmsLevel, analysis.peakLevel);
+                }
+
+                if (mlc.editorBridge) {
+                    mlc.editorBridge->sendCaptureAudioResult(
+                        ok, mlc.mcpAudioCaptureRequestPath, analysisJson,
+                        ok ? "" : "Failed to write WAV file");
+                }
+
+                mlc.mcpAudioCaptureRequestPath.clear();
+                mlc.mcpAudioCaptureActive = false;
+                mlc.mcpAudioCaptureBuffer.clear();
             }
         }
     }
@@ -2982,6 +3136,13 @@ int Application::init(const AppConfig& config) {
         m_impl->mlc.mcpCaptureRequestPath = outputPath;
     });
 
+    // MCP capture audio callback - sets request, main loop handles recording
+    m_impl->editorBridge->onCaptureAudio([this](const std::string& outputPath, float duration) {
+        std::lock_guard<std::mutex> lock(m_impl->mlc.mcpCaptureMutex);
+        m_impl->mlc.mcpAudioCaptureRequestPath = outputPath;
+        m_impl->mlc.mcpAudioCaptureDuration = duration;
+    });
+
     // Extract project name and set up chain path
     std::string projectName;
     fs::path projectDir;
@@ -3073,6 +3234,9 @@ int Application::init(const AppConfig& config) {
     mlc.visualizerVisible = mlc.visualizerAvailable && config.showUI;
 
     // CLI args
+    mlc.audioSnapshotPath = config.audioSnapshotPath;
+    mlc.audioSnapshotDuration = config.audioSnapshotDuration;
+
     mlc.snapshotPath = config.snapshotPath;
     // Set up snapshot frames (default to frame 5 for backwards compatibility)
     if (!config.snapshotPath.empty()) {
