@@ -7,6 +7,8 @@
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
+#include <vivid/frame_input.h>
 
 using namespace vivid;
 using namespace vivid::effects;
@@ -67,17 +69,19 @@ void setup(Context& ctx) {
 
     // ----- AUDIO OUTPUT -----
     auto& out = chain.add<AudioOutput>("out");
-    out.input("reverb");
+    out.setInput("reverb");
     chain.audioOutput("out");
 
     // ----- VISUALS -----
     auto& bg = chain.add<SolidColor>("bg");
     bg.color.set(0.1f, 0.08f, 0.12f, 1.0f);
 
-    auto& waveform = chain.add<Waveform>("waveform");
-    waveform.input("drums");
-    waveform.scale = 1.0f;
+    auto& waveform = chain.add<Shape>("waveform");
+    waveform.type = ShapeType::Ellipse;
+    waveform.position.set(0.5f, 0.5f);
+    waveform.size.set(0.4f, 0.4f);
     waveform.color.set(1.0f, 0.5f, 0.3f, 0.9f);
+    waveform.softness = 0.5f;
 
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("bg");
@@ -100,15 +104,15 @@ void update(Context& ctx) {
 
     // ----- KEYBOARD CONTROLS -----
     // Tempo control
-    if (ctx.keyPressed(Key::Up)) clock.bpm = std::min(200.0f, static_cast<float>(clock.bpm) + 5.0f);
-    if (ctx.keyPressed(Key::Down)) clock.bpm = std::max(60.0f, static_cast<float>(clock.bpm) - 5.0f);
+    if (ctx.key(static_cast<int>(Key::Up)).pressed) clock.bpm = std::min(200.0f, static_cast<float>(clock.bpm) + 5.0f);
+    if (ctx.key(static_cast<int>(Key::Down)).pressed) clock.bpm = std::max(60.0f, static_cast<float>(clock.bpm) - 5.0f);
 
     // Manual drum triggers (for testing)
-    if (ctx.keyPressed('K')) kit.triggerDrum(DrumType::Kick, 1.0f);
-    if (ctx.keyPressed('S')) kit.triggerDrum(DrumType::Snare, 1.0f);
-    if (ctx.keyPressed('H')) kit.triggerDrum(DrumType::ClosedHiHat, 0.8f);
-    if (ctx.keyPressed('O')) kit.triggerDrum(DrumType::OpenHiHat, 0.8f);
-    if (ctx.keyPressed('C')) kit.triggerDrum(DrumType::Clap, 0.9f);
+    if (ctx.key('K').pressed) kit.triggerDrum(DrumType::Kick, 1.0f);
+    if (ctx.key('S').pressed) kit.triggerDrum(DrumType::Snare, 1.0f);
+    if (ctx.key('H').pressed) kit.triggerDrum(DrumType::ClosedHiHat, 0.8f);
+    if (ctx.key('O').pressed) kit.triggerDrum(DrumType::OpenHiHat, 0.8f);
+    if (ctx.key('C').pressed) kit.triggerDrum(DrumType::Clap, 0.9f);
 
     // ----- STATUS DISPLAY -----
     auto& canvas = chain.get<Canvas>("canvas");

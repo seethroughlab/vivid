@@ -8,6 +8,8 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
 
 using namespace vivid;
 using namespace vivid::audio;
@@ -43,14 +45,14 @@ void setup(Context& ctx) {
 
     // Delay effect on hi-hat
     auto& delay = chain.add<Delay>("delay");
-    delay.setInput(&hat);
+    delay.input("hat");
     delay.delayTime = 375.0f;   // Dotted eighth at 110 BPM
     delay.feedback = 0.4f;      // Moderate feedback
     delay.mix = 0.3f;
 
     // Echo effect (multi-tap delay)
     auto& echo = chain.add<Echo>("echo");
-    echo.setInput(&kick);
+    echo.input("kick");
     echo.delayTime = 273.0f;    // Eighth note at 110 BPM
     echo.decay = 0.5f;          // Each tap at 50% of previous
     echo.taps = 3;              // 3 echoes
@@ -58,7 +60,7 @@ void setup(Context& ctx) {
 
     // Reverb for space
     auto& reverb = chain.add<Reverb>("reverb");
-    reverb.setInput(&delay);
+    reverb.input("delay");
     reverb.roomSize = 0.6f;     // Medium room
     reverb.damping = 0.4f;      // Some high-freq absorption
     reverb.width = 1.0f;        // Full stereo
@@ -66,7 +68,7 @@ void setup(Context& ctx) {
 
     // Chorus for thickness
     auto& chorus = chain.add<Chorus>("chorus");
-    chorus.setInput(&reverb);
+    chorus.input("reverb");
     chorus.rate = 0.4f;         // Slow LFO
     chorus.depth = 4.0f;        // 4ms modulation depth
     chorus.voices = 2;          // 2 chorus voices
@@ -74,7 +76,7 @@ void setup(Context& ctx) {
 
     // Phaser for movement
     auto& phaser = chain.add<Phaser>("phaser");
-    phaser.setInput(&echo);
+    phaser.input("echo");
     phaser.rate = 0.2f;         // Slow sweep
     phaser.depth = 0.7f;        // Deep modulation
     phaser.stages = 6;          // 6-stage phaser
@@ -83,7 +85,7 @@ void setup(Context& ctx) {
 
     // Flanger for jet effect (applied to final mix)
     auto& flanger = chain.add<Flanger>("flanger");
-    flanger.setInput(&phaser);
+    flanger.input("phaser");
     flanger.rate = 0.15f;       // Very slow sweep
     flanger.depth = 0.5f;
     flanger.feedback = 0.3f;
@@ -105,10 +107,10 @@ void update(Context& ctx) {
     if (kickSeq.triggered()) {
         visual.scale = 2.0f;
     } else {
-        visual.scale += (4.0f - visual.scale) * 0.05f;
+        visual.scale = static_cast<float>(visual.scale) + (4.0f - static_cast<float>(visual.scale)) * 0.05f;
     }
 
-    chain.process();
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

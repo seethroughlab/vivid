@@ -10,6 +10,8 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
 
 using namespace vivid;
 using namespace vivid::audio;
@@ -68,7 +70,7 @@ void update(Context& ctx) {
         visual.scale = 4.0f + std::sin(ctx.time()) * 0.5f;
     }
 
-    chain.process();
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

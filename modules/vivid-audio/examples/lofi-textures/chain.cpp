@@ -8,6 +8,8 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
 
 using namespace vivid;
 using namespace vivid::audio;
@@ -30,20 +32,18 @@ void setup(Context& ctx) {
     // Tape saturation and wow/flutter
     chain.add<TapeEffect>("tape");
     auto& tape = chain.get<TapeEffect>("tape");
-    tape.setInput(&pad);
+    tape.input("pad");
     tape.saturation = 0.4f;      // Gentle saturation
-    tape.wowDepth = 0.002f;      // Subtle pitch wobble
-    tape.wowRate = 0.5f;
-    tape.flutterDepth = 0.001f;  // Fast micro-variations
-    tape.flutterRate = 6.0f;
-    tape.hissLevel = 0.05f;      // Background hiss
+    tape.wow = 0.3f;             // Subtle pitch wobble
+    tape.flutter = 0.15f;        // Fast micro-variations
+    tape.hiss = 0.05f;           // Background hiss
 
     // Bit crusher for digital lo-fi
     chain.add<Bitcrush>("crush");
     auto& crush = chain.get<Bitcrush>("crush");
-    crush.setInput(&tape);
+    crush.input("tape");
     crush.bits = 12;             // Reduce bit depth (16 → 12)
-    crush.downsample = 2;        // Reduce sample rate
+    crush.targetSampleRate = 24000.0f;  // Reduced sample rate
     crush.mix = 0.3f;            // Blend with clean
 
     // Vinyl crackle layer
@@ -55,8 +55,10 @@ void setup(Context& ctx) {
     // Mix crackle with processed audio
     chain.add<AudioMixer>("mix");
     auto& mixer = chain.get<AudioMixer>("mix");
-    mixer.addInput(&crush, 1.0f);
-    mixer.addInput(&crackle, 1.0f);
+    mixer.setInput(0, "crush");
+    mixer.setGain(0, 1.0f);
+    mixer.setInput(1, "crackle");
+    mixer.setGain(1, 1.0f);
 
     // Visual - grainy noise texture
     chain.add<Noise>("visual");
@@ -67,7 +69,7 @@ void setup(Context& ctx) {
     // Add film grain overlay
     chain.add<FilmGrain>("grain");
     auto& grain = chain.get<FilmGrain>("grain");
-    grain.setInput("visual");
+    grain.input("visual");
     grain.intensity = 0.15f;
     grain.size = 1.5f;
 
@@ -108,15 +110,15 @@ void update(Context& ctx) {
     }
 
     // Modulate tape wobble with time
-    tape.wowDepth = 0.002f + 0.001f * std::sin(t * 0.1f);
+    tape.wow = 0.3f + 0.1f * std::sin(t * 0.1f);
 
     // Vary bit reduction
     crush.bits = 10 + static_cast<int>(2.0f * std::sin(t * 0.3f));
 
     // Animate visual grain
-    noise.offset.set(t * 10.0f, t * 10.0f);
+    noise.offset.set(t * 10.0f, t * 10.0f, 0.0f);
 
-    chain.process();
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

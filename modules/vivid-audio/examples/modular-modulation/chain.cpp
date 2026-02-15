@@ -17,6 +17,8 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
 #include <vivid/audio/modulators/lfo.h>
 #include <vivid/audio/modulators/adsr.h>
 
@@ -70,9 +72,9 @@ void setup(Context& ctx) {
     // Per-Voice LFO for Wavetable Position
     // Creates evolving timbre that's unique per voice
     // ==========================================================================
-    auto& posLfo = synth.addModulator<LFO>("positionLfo");
+    auto& posLfo = synth.addModulator<vivid::audio::LFO>("positionLfo");
     posLfo.rate = 0.3f;              // Slow drift
-    posLfo.waveform = LFOWaveform::Triangle;
+    posLfo.waveform = vivid::audio::LFOWaveform::Triangle;
     posLfo.perVoice = true;          // Each voice has independent phase
     posLfo.retrigger = true;         // Reset phase on new note
 
@@ -83,9 +85,9 @@ void setup(Context& ctx) {
     // Global LFO for Subtle Filter Movement
     // All voices share the same LFO phase - creates unified "breathing"
     // ==========================================================================
-    auto& filterLfo = synth.addModulator<LFO>("filterLfo");
+    auto& filterLfo = synth.addModulator<vivid::audio::LFO>("filterLfo");
     filterLfo.rate = 0.15f;          // Very slow
-    filterLfo.waveform = LFOWaveform::Sine;
+    filterLfo.waveform = vivid::audio::LFOWaveform::Sine;
     filterLfo.perVoice = false;      // Global - all voices share this
 
     // Also targets filterCutoff - sums with the envelope modulation
@@ -95,9 +97,9 @@ void setup(Context& ctx) {
     // Per-Voice Tremolo LFO
     // Creates rhythmic volume modulation per voice
     // ==========================================================================
-    auto& tremolo = synth.addModulator<LFO>("tremolo");
+    auto& tremolo = synth.addModulator<vivid::audio::LFO>("tremolo");
     tremolo.rate = 4.0f;             // Faster for tremolo effect
-    tremolo.waveform = LFOWaveform::Sine;
+    tremolo.waveform = vivid::audio::LFOWaveform::Sine;
     tremolo.perVoice = true;
     tremolo.retrigger = false;       // Don't reset - creates phase variety
 
@@ -108,15 +110,15 @@ void setup(Context& ctx) {
     // Effects chain
     // ==========================================================================
     auto& delay = chain.add<Delay>("delay");
-    delay.setInput(&synth);
-    delay.time = 0.375f;             // Dotted eighth feel
+    delay.input("synth");
+    delay.delayTime = 375.0f;        // Dotted eighth feel (in ms)
     delay.feedback = 0.4f;
     delay.mix = 0.25f;
 
     auto& reverb = chain.add<Reverb>("reverb");
-    reverb.setInput(&delay);
+    reverb.input("delay");
     reverb.roomSize = 0.7f;
-    reverb.wet = 0.3f;
+    reverb.mix = 0.3f;
 
     // ==========================================================================
     // Visual feedback
@@ -183,7 +185,7 @@ void update(Context& ctx) {
     float chordPhase = (t - lastChordTime) / chordDuration;
     noise.speed = 0.2f + (1.0f - chordPhase) * 0.4f;  // Faster at chord start
 
-    chain.process();
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

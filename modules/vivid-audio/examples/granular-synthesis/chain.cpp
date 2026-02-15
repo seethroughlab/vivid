@@ -8,6 +8,7 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/audio/audio.h>
 
 using namespace vivid;
 using namespace vivid::audio;
@@ -18,7 +19,7 @@ void setup(Context& ctx) {
     // Load an audio file for granular processing
     chain.add<AudioFile>("source");
     auto& source = chain.get<AudioFile>("source");
-    source.load("assets/audio/texture.wav");  // Any audio file
+    source.setFile("assets/audio/texture.wav");  // Any audio file
 
     // Granular synthesizer
     chain.add<Granular>("clouds");
@@ -36,10 +37,10 @@ void setup(Context& ctx) {
     // Add reverb for atmosphere
     chain.add<Reverb>("verb");
     auto& verb = chain.get<Reverb>("verb");
-    verb.setInput(&grain);
+    verb.input("clouds");
     verb.roomSize = 0.8f;
     verb.damping = 0.3f;
-    verb.wet = 0.4f;
+    verb.mix = 0.4f;
 
     chain.output("verb");
 }
@@ -59,7 +60,7 @@ void update(Context& ctx) {
     // Subtle pitch drift
     grain.pitch = 1.0f + 0.1f * std::sin(t * 0.2f);
 
-    chain.process();
+    chain.process(ctx);
 }
 
 // Widescreen for waveform visualization

@@ -10,6 +10,8 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
 
 using namespace vivid;
 using namespace vivid::audio;
@@ -31,21 +33,21 @@ void setup(Context& ctx) {
 
     // Standard biquad filter - multiple modes available
     auto& biquad = chain.add<AudioFilter>("biquad");
-    biquad.setInput(&noise);
+    biquad.setInputByName(0, "noise");
     biquad.setType(FilterType::Lowpass);  // LP, HP, BP, Notch, Shelf, Peak
     biquad.cutoff = 800.0f;
     biquad.resonance = 3.0f;  // Q factor
 
     // Moog-style ladder filter (24dB/oct)
     auto& ladder = chain.add<LadderFilter>("ladder");
-    ladder.setInput(&osc);
+    ladder.input("osc");
     ladder.cutoff = 1200.0f;
     ladder.resonance = 0.7f;  // Self-oscillates at 1.0
     ladder.drive = 1.5f;      // Analog saturation
 
     // Comb filter for metallic/resonant textures
     auto& comb = chain.add<CombFilter>("comb");
-    comb.setInput(&noise);
+    comb.input("noise");
     comb.setType(CombType::FeedBack);  // FeedForward, FeedBack, AllPass
     comb.frequency = 200.0f;   // Creates pitched resonance
     comb.feedback = 0.9f;      // Higher = longer decay
@@ -53,9 +55,12 @@ void setup(Context& ctx) {
 
     // Mix filters together
     auto& mix = chain.add<AudioMixer>("mix");
-    mix.addInput(&biquad, 0.3f);
-    mix.addInput(&ladder, 0.4f);
-    mix.addInput(&comb, 0.3f);
+    mix.setInput(0, "biquad");
+    mix.setGain(0, 0.3f);
+    mix.setInput(1, "ladder");
+    mix.setGain(1, 0.4f);
+    mix.setInput(2, "comb");
+    mix.setGain(2, 0.3f);
 
     // Visual output
     auto& visual = chain.add<Noise>("visual");
@@ -83,7 +88,7 @@ void update(Context& ctx) {
     auto& visual = chain.get<Noise>("visual");
     visual.scale = 3.0f + std::sin(t) * 1.0f;
 
-    chain.process();
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

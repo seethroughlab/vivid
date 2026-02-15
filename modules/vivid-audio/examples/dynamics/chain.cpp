@@ -10,6 +10,8 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
 
 using namespace vivid;
 using namespace vivid::audio;
@@ -56,13 +58,16 @@ void setup(Context& ctx) {
 
     // Mix drums together
     auto& drumMix = chain.add<AudioMixer>("drumMix");
-    drumMix.addInput(&kick, 1.0f);
-    drumMix.addInput(&snare, 1.0f);
-    drumMix.addInput(&hat, 1.0f);
+    drumMix.setInput(0, "kick");
+    drumMix.setGain(0, 1.0f);
+    drumMix.setInput(1, "snare");
+    drumMix.setGain(1, 1.0f);
+    drumMix.setInput(2, "hat");
+    drumMix.setGain(2, 1.0f);
 
     // Gate - removes silence/noise between hits
     auto& gate = chain.add<Gate>("gate");
-    gate.setInput(&drumMix);
+    gate.input("drumMix");
     gate.threshold = -40.0f;  // Gate below -40dB
     gate.attack = 0.5f;       // Fast open
     gate.hold = 20.0f;        // Hold open briefly
@@ -72,7 +77,7 @@ void setup(Context& ctx) {
 
     // Compressor - evens out dynamics
     auto& comp = chain.add<Compressor>("comp");
-    comp.setInput(&gate);
+    comp.input("gate");
     comp.threshold = -18.0f;  // Compress above -18dB
     comp.ratio = 4.0f;        // 4:1 compression
     comp.attack = 5.0f;       // Fast attack (catch transients)
@@ -83,7 +88,7 @@ void setup(Context& ctx) {
 
     // Limiter - prevents clipping
     auto& limiter = chain.add<Limiter>("limiter");
-    limiter.setInput(&comp);
+    limiter.input("comp");
     limiter.ceiling = -0.5f;  // Limit to -0.5dB (prevent clipping)
     limiter.release = 50.0f;  // Fast release
     limiter.mix = 1.0f;
@@ -106,7 +111,7 @@ void update(Context& ctx) {
     float gr = comp.getGainReduction();  // Returns 0 to -20dB typically
     visual.scale = 4.0f + gr * 0.2f;     // Scale shrinks with compression
 
-    chain.process();
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

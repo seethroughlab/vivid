@@ -9,6 +9,8 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
 
 using namespace vivid;
 using namespace vivid::audio;
@@ -87,10 +89,10 @@ void update(Context& ctx) {
 
         visual.scale = 2.0f;
     } else {
-        visual.scale += (4.0f - visual.scale) * 0.05f;
+        visual.scale = static_cast<float>(visual.scale) + (4.0f - static_cast<float>(visual.scale)) * 0.05f;
     }
 
-    chain.process();
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

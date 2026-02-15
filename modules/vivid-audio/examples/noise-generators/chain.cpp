@@ -6,6 +6,7 @@
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
 #include <cmath>
 
 using namespace vivid;
@@ -38,12 +39,12 @@ void setup(Context& ctx) {
     hihat_noise.volume = 1.0f;
 
     auto& hihat_filter = chain.add<AudioFilter>("hihat_filter");
-    hihat_filter.setInput(&hihat_noise);
+    hihat_filter.setInputByName(0, "hihat_noise");
     hihat_filter.setHighpass(8000.0f);
     hihat_filter.resonance = 1.5f;
 
     auto& hihat_env = chain.add<Decay>("hihat_env");
-    hihat_env.setInput(&hihat_filter);
+    hihat_env.setInputByName(0, "hihat_filter");
     hihat_env.time = 0.05f;
     hihat_env.setCurve(DecayCurve::Exponential);
 
@@ -62,15 +63,20 @@ void setup(Context& ctx) {
 
     // ----- AUDIO MIXER -----
     auto& mixer = chain.add<AudioMixer>("mixer");
-    mixer.addInput(&white, 1.0f);
-    mixer.addInput(&pink, 1.0f);
-    mixer.addInput(&brown, 1.0f);
-    mixer.addInput(&hihat_env, 0.4f);
-    mixer.addInput(&crackle, 1.0f);
+    mixer.setInput(0, "white");
+    mixer.setGain(0, 1.0f);
+    mixer.setInput(1, "pink");
+    mixer.setGain(1, 1.0f);
+    mixer.setInput(2, "brown");
+    mixer.setGain(2, 1.0f);
+    mixer.setInput(3, "hihat_env");
+    mixer.setGain(3, 0.4f);
+    mixer.setInput(4, "crackle");
+    mixer.setGain(4, 1.0f);
 
     // ----- AUDIO OUTPUT -----
     auto& output = chain.add<AudioOutput>("audio_out");
-    output.input("mixer");
+    output.setInput("mixer");
 
     // ----- VISUALS -----
     // Background

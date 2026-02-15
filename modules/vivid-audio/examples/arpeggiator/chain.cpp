@@ -9,6 +9,8 @@
 #include <vivid/effects/effects.h>
 #include <vivid/midi/midi.h>
 #include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
+#include <vivid/frame_input.h>
 
 using namespace vivid;
 using namespace vivid::effects;
@@ -51,7 +53,7 @@ void setup(Context& ctx) {
     // ----- EFFECTS -----
     auto& delay = chain.add<Delay>("delay");
     delay.input("synth");
-    delay.time = 0.375f;  // Dotted 8th at 120 BPM
+    delay.delayTime = 375.0f;  // Dotted 8th at 120 BPM (in ms)
     delay.feedback = 0.4f;
     delay.mix = 0.25f;
 
@@ -63,7 +65,7 @@ void setup(Context& ctx) {
 
     // ----- AUDIO OUTPUT -----
     auto& out = chain.add<AudioOutput>("out");
-    out.input("reverb");
+    out.setInput("reverb");
     chain.audioOutput("out");
 
     // =========================================================
@@ -81,11 +83,13 @@ void setup(Context& ctx) {
     auto& bg = chain.add<SolidColor>("bg");
     bg.color.set(0.08f, 0.05f, 0.12f, 1.0f);
 
-    // Waveform display
-    auto& waveform = chain.add<Waveform>("waveform");
-    waveform.input("synth");
-    waveform.scale = 0.8f;
+    // Visual shape
+    auto& waveform = chain.add<Shape>("waveform");
+    waveform.type = ShapeType::Ellipse;
+    waveform.position.set(0.5f, 0.5f);
+    waveform.size.set(0.4f, 0.4f);
     waveform.color.set(0.8f, 0.4f, 1.0f, 0.8f);
+    waveform.softness = 0.5f;
 
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("bg");
@@ -110,19 +114,19 @@ void update(Context& ctx) {
     auto& clock = chain.get<Clock>("clock");
 
     // Change arp mode with number keys
-    if (ctx.keyPressed('1')) arp.mode(ArpMode::Up);
-    if (ctx.keyPressed('2')) arp.mode(ArpMode::Down);
-    if (ctx.keyPressed('3')) arp.mode(ArpMode::UpDown);
-    if (ctx.keyPressed('4')) arp.mode(ArpMode::Random);
-    if (ctx.keyPressed('5')) arp.mode(ArpMode::Order);
+    if (ctx.key('1').pressed) arp.mode(ArpMode::Up);
+    if (ctx.key('2').pressed) arp.mode(ArpMode::Down);
+    if (ctx.key('3').pressed) arp.mode(ArpMode::UpDown);
+    if (ctx.key('4').pressed) arp.mode(ArpMode::Random);
+    if (ctx.key('5').pressed) arp.mode(ArpMode::Order);
 
     // Tempo control with up/down arrows
-    if (ctx.keyPressed(Key::Up)) clock.bpm = std::min(200.0f, static_cast<float>(clock.bpm) + 10.0f);
-    if (ctx.keyPressed(Key::Down)) clock.bpm = std::max(60.0f, static_cast<float>(clock.bpm) - 10.0f);
+    if (ctx.key(static_cast<int>(Key::Up)).pressed) clock.bpm = std::min(200.0f, static_cast<float>(clock.bpm) + 10.0f);
+    if (ctx.key(static_cast<int>(Key::Down)).pressed) clock.bpm = std::max(60.0f, static_cast<float>(clock.bpm) - 10.0f);
 
     // Octave control with left/right arrows
-    if (ctx.keyPressed(Key::Left)) arp.octaves = std::max(1, static_cast<int>(arp.octaves) - 1);
-    if (ctx.keyPressed(Key::Right)) arp.octaves = std::min(4, static_cast<int>(arp.octaves) + 1);
+    if (ctx.key(static_cast<int>(Key::Left)).pressed) arp.octaves = std::max(1, static_cast<int>(arp.octaves) - 1);
+    if (ctx.key(static_cast<int>(Key::Right)).pressed) arp.octaves = std::min(4, static_cast<int>(arp.octaves) + 1);
 
     // ----- STATUS DISPLAY -----
     auto& canvas = chain.get<Canvas>("canvas");

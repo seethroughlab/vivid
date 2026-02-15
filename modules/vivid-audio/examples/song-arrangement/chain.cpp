@@ -8,6 +8,8 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
 
 using namespace vivid;
 using namespace vivid::audio;
@@ -20,7 +22,6 @@ void setup(Context& ctx) {
     chain.add<Clock>("clock");
     auto& clock = chain.get<Clock>("clock");
     clock.bpm = 120.0f;
-    clock.beatsPerBar = 4;
 
     // Song structure
     chain.add<Song>("song");
@@ -38,14 +39,14 @@ void setup(Context& ctx) {
     // Simple drum sequencer
     chain.add<Sequencer>("drums");
     auto& seq = chain.get<Sequencer>("drums");
-    seq.syncTo("clock");
-    seq.setSteps(16);  // 16-step pattern
+    seq.setTriggerSource("clock");
+    seq.steps = 16;  // 16-step pattern
 
     // Basic kick pattern: 1---1---1---1---
-    seq.setStep(0, 0, 1.0f);   // Beat 1
-    seq.setStep(0, 4, 1.0f);   // Beat 2
-    seq.setStep(0, 8, 1.0f);   // Beat 3
-    seq.setStep(0, 12, 1.0f);  // Beat 4
+    seq.setStep(0, true, 1.0f);   // Beat 1
+    seq.setStep(4, true, 1.0f);   // Beat 2
+    seq.setStep(8, true, 1.0f);   // Beat 3
+    seq.setStep(12, true, 1.0f);  // Beat 4
 
     // Kick drum
     chain.add<Kick>("kick");
@@ -72,7 +73,7 @@ void update(Context& ctx) {
     auto& noise = chain.get<Noise>("visual");
 
     // Trigger kick from sequencer
-    if (seq.triggered(0)) {
+    if (seq.triggered()) {
         kick.midiNoteOn(60, 1.0f, 0);
     }
 
@@ -98,10 +99,10 @@ void update(Context& ctx) {
 
     // Flash on new bar
     if (song.barJustStarted()) {
-        noise.offset.set(t, t);
+        noise.offset.set(t, t, 0.0f);
     }
 
-    chain.process();
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

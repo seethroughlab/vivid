@@ -8,6 +8,8 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
 
 using namespace vivid;
 using namespace vivid::audio;
@@ -55,7 +57,7 @@ void setup(Context& ctx) {
     // Add subtle chorus
     chain.add<Chorus>("chorus");
     auto& chorus = chain.get<Chorus>("chorus");
-    chorus.setInput(&wt);
+    chorus.input("wt");
     chorus.rate = 0.5f;
     chorus.depth = 0.3f;
     chorus.mix = 0.3f;
@@ -63,9 +65,9 @@ void setup(Context& ctx) {
     // Reverb for space
     chain.add<Reverb>("verb");
     auto& verb = chain.get<Reverb>("verb");
-    verb.setInput(&chorus);
+    verb.input("chorus");
     verb.roomSize = 0.6f;
-    verb.wet = 0.25f;
+    verb.mix = 0.25f;
 
     // Visual feedback
     chain.add<Noise>("visual");
@@ -111,7 +113,7 @@ void update(Context& ctx) {
     noise.scale = 2.0f + wt.position * 6.0f;
     noise.speed = 0.3f + wt.position * 0.5f;
 
-    chain.process();
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)
