@@ -311,7 +311,7 @@ json searchDocs(const std::string& query, int maxResults) {
 
             if (matchScore > 0 && firstWordPos != std::string::npos) {
                 size_t contextStart = (firstWordPos > 150) ? firstWordPos - 150 : 0;
-                size_t contextLen = std::min(size_t(400), sectionEnd - sectionStart - contextStart);
+                size_t contextLen = (std::min)(size_t(400), sectionEnd - sectionStart - contextStart);
 
                 std::string context = content.substr(sectionStart + contextStart, contextLen);
                 if (contextStart > 0) {

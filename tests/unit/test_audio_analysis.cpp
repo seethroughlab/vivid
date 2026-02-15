@@ -6,6 +6,7 @@
  * and crest factor computation.
  */
 
+#define _USE_MATH_DEFINES
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
