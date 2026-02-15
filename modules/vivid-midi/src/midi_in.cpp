@@ -150,12 +150,25 @@ void MidiIn::onCC(std::function<void(uint8_t, float, uint8_t)> cb) {
 void MidiIn::init(Context& ctx) {
     // Cache chain pointer for resolving targets
     m_chain = &ctx.chain();
+
+    // Cache our own operator name for MidiMapStore
+    m_operatorName = m_chain->getName(this);
+
+    // Sync CC mappings from store (loads persisted mappings)
+    syncMappingsFromStore();
 }
 
 void MidiIn::process(Context& /*ctx*/) {
     clearFrameState();
 
     if (!m_impl->m_midiIn || !m_impl->m_midiIn->isPortOpen()) {
+        // Still check for store version changes even when port is closed
+        if (m_chain) {
+            auto& store = m_chain->midiMappings();
+            if (store.version() != m_lastMapStoreVersion) {
+                syncMappingsFromStore();
+            }
+        }
         return;
     }
 
@@ -165,6 +178,26 @@ void MidiIn::process(Context& /*ctx*/) {
         m_impl->m_midiIn->getMessage(&message);
         if (message.empty()) break;
         processMessage(message);
+    }
+
+    // MIDI learn: if store is learning and we received a CC this frame, complete it
+    if (m_chain) {
+        auto& store = m_chain->midiMappings();
+        if (store.isLearning()) {
+            for (uint8_t cc = 0; cc < 128; ++cc) {
+                if (m_ccReceivedThisFrame[cc]) {
+                    if (store.completeLearn(cc, m_operatorName)) {
+                        syncMappingsFromStore();
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Sync if store version changed (external add/remove)
+        if (store.version() != m_lastMapStoreVersion) {
+            syncMappingsFromStore();
+        }
     }
 }
 
@@ -286,6 +319,19 @@ void MidiIn::applyCCMapping(uint8_t cc, float value) {
             }
         }
     }
+}
+
+void MidiIn::syncMappingsFromStore() {
+    if (!m_chain) return;
+    auto& store = m_chain->midiMappings();
+
+    clearCCMappings();
+    for (const auto& m : store.list()) {
+        if (m.midiInOp.empty() || m.midiInOp == m_operatorName) {
+            mapCC(m.cc, m.targetOp, m.paramName, m.minVal, m.maxVal);
+        }
+    }
+    m_lastMapStoreVersion = store.version();
 }
 
 void MidiIn::clearFrameState() {

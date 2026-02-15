@@ -16,6 +16,7 @@
 namespace vivid {
 
 class Operator;
+class Chain;
 
 /**
  * @brief Inspector panel for editing operator parameters
@@ -35,6 +36,13 @@ public:
     // Inspector specific
     void setSelectedOperator(Operator* op, const std::string& name);
     void clearSelection();
+
+    /**
+     * @brief Connect chain for MIDI learn UI
+     * @param chain Chain pointer (for midiMappings())
+     * @param projectDir Project directory (for saving vivid-midi-map.json)
+     */
+    void setChain(Chain* chain, const std::string& projectDir);
 
     // Parameter change callback
     using ParamChangeCallback = std::function<void(const std::string& opName,

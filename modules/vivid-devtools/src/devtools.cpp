@@ -18,6 +18,7 @@
 #include <vivid/context.h>
 #include <vivid/chain.h>
 #include <vivid/snapshot.h>
+#include <vivid/midi_map.h>
 #include <vivid/log.h>
 #include <vivid/asset_loader.h>
 #include "effects/font_atlas.h"
@@ -621,6 +622,13 @@ void DevTools::onParamChange(ParamChangeCallback callback) {
 void DevTools::setChain(Chain* chain, const std::string& projectDir) {
     if (auto* panel = m_panelManager->getPanelAs<PresetPanel>("presets")) {
         panel->setChain(chain, projectDir);
+    }
+    if (auto* inspector = m_panelManager->getPanelAs<InspectorPanel>("inspector")) {
+        inspector->setChain(chain, projectDir);
+    }
+    // Load persisted MIDI mappings
+    if (chain && !projectDir.empty()) {
+        chain->midiMappings().load(projectDir + "/vivid-midi-map.json");
     }
 }
 

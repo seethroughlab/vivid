@@ -300,6 +300,13 @@ private:
     // Cached chain pointer for resolving targets
     Chain* m_chain = nullptr;
 
+    // Operator name (cached from chain for MidiMapStore)
+    std::string m_operatorName;
+
+    // MidiMapStore sync
+    uint32_t m_lastMapStoreVersion = 0;
+    void syncMappingsFromStore();
+
     void clearFrameState();
     void processMessage(const std::vector<unsigned char>& message);
     void routeToTarget(const MidiEvent& event);

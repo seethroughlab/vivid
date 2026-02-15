@@ -14,6 +14,8 @@
 #include <vivid/devtools/panels/inspector_panel.h>
 #include <vivid/context.h>
 #include <vivid/operator.h>
+#include <vivid/chain.h>
+#include <vivid/midi_map.h>
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/gui/gui.h>
 #include <vivid/gui/ui_style.h>
@@ -56,6 +58,11 @@ struct InspectorPanel::Impl {
 
     // Context pointer
     Context* ctx = nullptr;
+
+    // MIDI learn
+    Chain* chain = nullptr;
+    std::string projectDir;
+    bool wasLearning = false;  // Track learn completion for auto-save
 };
 
 InspectorPanel::InspectorPanel() {
@@ -202,6 +209,119 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // Note: gui.beginArea() already sets up clipping internally
     gui.beginArea(contentAreaX, visibleTop, contentAreaW, visibleBottom - visibleTop);
+
+    // MIDI learn: check if chain has any MidiIn operators
+    bool hasMidiIn = false;
+    if (m_impl->chain) {
+        for (const auto& opName : m_impl->chain->operatorNames()) {
+            Operator* chainOp = m_impl->chain->getByName(opName);
+            if (chainOp && chainOp->name() == "MidiIn") {
+                hasMidiIn = true;
+                break;
+            }
+        }
+    }
+
+    // MIDI learn: detect when learn just completed (for auto-save)
+    if (m_impl->chain) {
+        bool learning = m_impl->chain->midiMappings().isLearning();
+        if (m_impl->wasLearning && !learning) {
+            // Learn just completed — auto-save
+            if (!m_impl->projectDir.empty()) {
+                m_impl->chain->midiMappings().save(
+                    m_impl->projectDir + "/vivid-midi-map.json");
+            }
+        }
+        m_impl->wasLearning = learning;
+    }
+
+    // Helper: render MIDI learn button or CC badge for a parameter
+    // Returns the width consumed so the slider area can be narrowed
+    const float badgeW = 30.0f;
+    const float badgeH = 16.0f;
+    auto renderMidiBadge = [&](const std::string& opName, const std::string& paramName,
+                                float paramMin, float paramMax,
+                                float itemY, float itemRight) {
+        if (!hasMidiIn || !m_impl->chain) return;
+
+        auto& store = m_impl->chain->midiMappings();
+        const MidiMapping* mapping = store.find(opName, paramName);
+
+        float bx = itemRight - badgeW - 2.0f;
+        float by = itemY + 2.0f;
+
+        if (mapping) {
+            // Show "CC N" badge (teal) — click to unmap
+            char ccLabel[8];
+            snprintf(ccLabel, sizeof(ccLabel), "CC%d", mapping->cc);
+            glm::vec4 badgeColor = {0.0f, 0.6f, 0.6f, 0.85f};
+            glm::vec4 textColor = {1.0f, 1.0f, 1.0f, 1.0f};
+
+            canvas.fillRect(bx, by, badgeW, badgeH, badgeColor);
+            float tw = canvas.measureTextHiDPI(ccLabel, 0);
+            canvas.textHiDPI(ccLabel, bx + (badgeW - tw) * 0.5f,
+                             by + badgeH * 0.5f + ascent * 0.35f, textColor, 0);
+
+            // Click to unmap
+            if (input.mouseClicked[0] &&
+                mousePos.x >= bx && mousePos.x <= bx + badgeW &&
+                mousePos.y >= by && mousePos.y <= by + badgeH) {
+                store.remove(opName, paramName);
+                if (!m_impl->projectDir.empty()) {
+                    store.save(m_impl->projectDir + "/vivid-midi-map.json");
+                }
+            }
+        } else {
+            // Check if currently learning this param
+            bool learningThis = store.isLearning() &&
+                                store.learnTargetOp() == opName &&
+                                store.learnParamName() == paramName;
+
+            if (learningThis) {
+                // Pulsing "..." indicator
+                float pulse = 0.5f + 0.5f * std::sin(input.time * 6.0f);
+                glm::vec4 learnColor = {0.8f, 0.5f, 0.1f, 0.4f + 0.5f * pulse};
+                glm::vec4 textColor = {1.0f, 1.0f, 1.0f, 1.0f};
+
+                canvas.fillRect(bx, by, badgeW, badgeH, learnColor);
+                const char* dots = "...";
+                float tw = canvas.measureTextHiDPI(dots, 0);
+                canvas.textHiDPI(dots, bx + (badgeW - tw) * 0.5f,
+                                 by + badgeH * 0.5f + ascent * 0.35f, textColor, 0);
+
+                // Click to cancel
+                if (input.mouseClicked[0] &&
+                    mousePos.x >= bx && mousePos.x <= bx + badgeW &&
+                    mousePos.y >= by && mousePos.y <= by + badgeH) {
+                    store.cancelLearn();
+                }
+            } else {
+                // Show dim "M" button — click to start learn
+                glm::vec4 btnColor = {0.4f, 0.4f, 0.4f, 0.3f};
+                glm::vec4 textColor = {0.7f, 0.7f, 0.7f, 0.6f};
+
+                // Hover highlight
+                if (mousePos.x >= bx && mousePos.x <= bx + badgeW &&
+                    mousePos.y >= by && mousePos.y <= by + badgeH) {
+                    btnColor = {0.5f, 0.5f, 0.5f, 0.5f};
+                    textColor = {0.9f, 0.9f, 0.9f, 0.9f};
+                }
+
+                canvas.fillRect(bx, by, badgeW, badgeH, btnColor);
+                const char* label = "M";
+                float tw = canvas.measureTextHiDPI(label, 0);
+                canvas.textHiDPI(label, bx + (badgeW - tw) * 0.5f,
+                                 by + badgeH * 0.5f + ascent * 0.35f, textColor, 0);
+
+                // Click to start learn
+                if (input.mouseClicked[0] &&
+                    mousePos.x >= bx && mousePos.x <= bx + badgeW &&
+                    mousePos.y >= by && mousePos.y <= by + badgeH) {
+                    store.startLearn(opName, paramName, paramMin, paramMax);
+                }
+            }
+        }
+    };
 
     for (const auto& p : params) {
         float value[4] = {0};
@@ -473,6 +593,10 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                     m_impl->activeDrag.active = false;
                 }
 
+                // MIDI learn badge
+                renderMidiBadge(title, p.name, p.minVal, p.maxVal,
+                                itemY + lineH, contentAreaX + contentAreaW);
+
                 gui.popId();
                 gui.popId();
             }
@@ -662,6 +786,13 @@ void InspectorPanel::clearSelection() {
         m_impl->selectedOp = nullptr;
         m_impl->selectedName.clear();
         m_impl->scrollOffset = 0.0f;
+    }
+}
+
+void InspectorPanel::setChain(Chain* chain, const std::string& projectDir) {
+    if (m_impl) {
+        m_impl->chain = chain;
+        m_impl->projectDir = projectDir;
     }
 }
 
