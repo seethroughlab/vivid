@@ -378,3 +378,668 @@ TEST_CASE("evaluateAssertions: silent audio scenario", "[assertions][audio]") {
     CHECK(report.results[1].passed);   // isSilent == 1.0 passes
     CHECK(!report.allPassed);          // Overall fails because first assertion failed
 }
+
+// =============================================================================
+// Named assertions
+// =============================================================================
+
+TEST_CASE("Named assertion: name propagates to result", "[assertions][named]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.name = "feedback-alive";
+    a.path = "output.meanBrightness";
+    a.op = ">";
+    a.value = 0.05;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].passed);
+    CHECK(report.results[0].name == "feedback-alive");
+}
+
+TEST_CASE("Named assertion: name appears in verbose output", "[assertions][named]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.name = "not-black";
+    a.path = "output.meanBrightness";
+    a.op = ">";
+    a.value = 0.05;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    std::string verbose = report.toVerbose();
+    CHECK(verbose.find("not-black") != std::string::npos);
+}
+
+TEST_CASE("Named assertion: name appears in JSON output", "[assertions][named]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.name = "has-audio";
+    a.path = "audio.rmsLevel";
+    a.op = ">";
+    a.value = 0.01;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    std::string jsonStr = report.toJSON();
+    CHECK(jsonStr.find("has-audio") != std::string::npos);
+}
+
+TEST_CASE("Unnamed assertion: no name in result", "[assertions][named]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.contrast";
+    a.op = ">";
+    a.value = 0.0;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].name.empty());
+}
+
+// =============================================================================
+// "between" operator
+// =============================================================================
+
+TEST_CASE("between: value in range passes", "[assertions][between]") {
+    auto insp = makeTestInspection();
+    // meanBrightness = 0.5
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "between";
+    a.value = 0.2;
+    a.valueHigh = 0.8;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].passed);
+    CHECK_THAT(report.results[0].actual, WithinAbs(0.5, 0.001));
+}
+
+TEST_CASE("between: value below range fails", "[assertions][between]") {
+    auto insp = makeTestInspection();
+    // meanBrightness = 0.5
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "between";
+    a.value = 0.6;
+    a.valueHigh = 0.9;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].passed);
+}
+
+TEST_CASE("between: value above range fails", "[assertions][between]") {
+    auto insp = makeTestInspection();
+    // meanBrightness = 0.5
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "between";
+    a.value = 0.1;
+    a.valueHigh = 0.4;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].passed);
+}
+
+TEST_CASE("between: inclusive on low boundary", "[assertions][between]") {
+    auto insp = makeTestInspection();
+    // meanBrightness = 0.5
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "between";
+    a.value = 0.5;     // exactly at low bound
+    a.valueHigh = 0.8;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].passed);
+}
+
+TEST_CASE("between: inclusive on high boundary", "[assertions][between]") {
+    auto insp = makeTestInspection();
+    // meanBrightness = 0.5
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "between";
+    a.value = 0.2;
+    a.valueHigh = 0.5;  // exactly at high bound
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].passed);
+}
+
+TEST_CASE("between: expectedHigh in JSON output", "[assertions][between]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "between";
+    a.value = 0.2;
+    a.valueHigh = 0.8;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    std::string jsonStr = report.toJSON();
+    CHECK(jsonStr.find("expectedHigh") != std::string::npos);
+}
+
+TEST_CASE("between: verbose output shows range", "[assertions][between]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "between";
+    a.value = 0.2;
+    a.valueHigh = 0.8;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    std::string verbose = report.toVerbose();
+    CHECK(verbose.find("between") != std::string::npos);
+    CHECK(verbose.find("0.2") != std::string::npos);
+    CHECK(verbose.find("0.8") != std::string::npos);
+}
+
+TEST_CASE("between: failure message shows range", "[assertions][between]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "between";
+    a.value = 0.6;
+    a.valueHigh = 0.9;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].passed);
+    CHECK(report.results[0].message.find("between") != std::string::npos);
+}
+
+// =============================================================================
+// Per-operator textureAnalysis paths
+// =============================================================================
+
+static vivid::ChainInspection makeInspectionWithTextureAnalysis() {
+    auto insp = makeTestInspection();
+
+    // Add an operator "bloom" with textureAnalysis
+    vivid::InspectData bloomData;
+    bloomData.set("threshold", 0.6f);
+    vivid::FrameAnalysis bloomTex;
+    bloomTex.meanBrightness = 0.15f;
+    bloomTex.contrast = 0.08f;
+    bloomTex.dominantHue = 120.0f;
+    bloomTex.saturationAvg = 0.3f;
+    bloomTex.dominantColor[0] = 0.1f;
+    bloomTex.dominantColor[1] = 0.8f;
+    bloomTex.dominantColor[2] = 0.2f;
+    bloomTex.regionBrightness = {0.1f, 0.2f, 0.1f, 0.15f, 0.3f, 0.15f, 0.1f, 0.2f, 0.1f};
+    bloomTex.histogram = {10, 30, 50, 40, 20, 5, 2, 1};
+    bloomData.textureAnalysis = bloomTex;
+    insp.operators.push_back({"bloom", bloomData});
+
+    // Add an operator "noise" without textureAnalysis
+    vivid::InspectData noiseData;
+    noiseData.set("scale", 4.0f);
+    insp.operators.push_back({"noise", noiseData});
+
+    return insp;
+}
+
+TEST_CASE("resolvePath: operators.bloom.textureAnalysis.meanBrightness", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+    auto [found, val] = vivid::resolvePath("operators.bloom.textureAnalysis.meanBrightness", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.15, 0.001));
+}
+
+TEST_CASE("resolvePath: operators.bloom.textureAnalysis.contrast", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+    auto [found, val] = vivid::resolvePath("operators.bloom.textureAnalysis.contrast", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.08, 0.001));
+}
+
+TEST_CASE("resolvePath: operators.bloom.textureAnalysis.dominantHue", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+    auto [found, val] = vivid::resolvePath("operators.bloom.textureAnalysis.dominantHue", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(120.0, 0.001));
+}
+
+TEST_CASE("resolvePath: operators.bloom.textureAnalysis.saturationAvg", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+    auto [found, val] = vivid::resolvePath("operators.bloom.textureAnalysis.saturationAvg", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.3, 0.001));
+}
+
+TEST_CASE("resolvePath: operators.bloom.textureAnalysis.dominantColor.1", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+    auto [found, val] = vivid::resolvePath("operators.bloom.textureAnalysis.dominantColor.1", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.8, 0.001));
+}
+
+TEST_CASE("resolvePath: operators.bloom.textureAnalysis.regionBrightness.4", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+    auto [found, val] = vivid::resolvePath("operators.bloom.textureAnalysis.regionBrightness.4", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.3, 0.001));
+}
+
+TEST_CASE("resolvePath: operators.bloom.textureAnalysis.histogram.2", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+    auto [found, val] = vivid::resolvePath("operators.bloom.textureAnalysis.histogram.2", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(50.0, 0.001));
+}
+
+TEST_CASE("resolvePath: operators.noise.textureAnalysis returns false (no analysis)", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+    auto [found, val] = vivid::resolvePath("operators.noise.textureAnalysis.meanBrightness", insp);
+    CHECK(!found);
+}
+
+TEST_CASE("resolvePath: operators.missing.textureAnalysis returns false", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+    auto [found, val] = vivid::resolvePath("operators.missing.textureAnalysis.meanBrightness", insp);
+    CHECK(!found);
+}
+
+TEST_CASE("evaluateAssertions: textureAnalysis assertion passes", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+
+    vivid::Assertion a;
+    a.name = "bloom-not-dark";
+    a.path = "operators.bloom.textureAnalysis.meanBrightness";
+    a.op = ">";
+    a.value = 0.1;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].passed);
+    CHECK(report.results[0].name == "bloom-not-dark");
+}
+
+TEST_CASE("evaluateAssertions: textureAnalysis assertion fails", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+
+    vivid::Assertion a;
+    a.path = "operators.bloom.textureAnalysis.meanBrightness";
+    a.op = ">";
+    a.value = 0.5;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].passed);
+}
+
+// Verify metrics path still works alongside textureAnalysis
+TEST_CASE("resolvePath: operators.bloom.metrics still works", "[assertions][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+    auto [found, val] = vivid::resolvePath("operators.bloom.metrics.threshold", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.6, 0.001));
+}
+
+// =============================================================================
+// exists / not_exists operators
+// =============================================================================
+
+TEST_CASE("exists: present path passes", "[assertions][exists]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "exists";
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].passed);
+}
+
+TEST_CASE("exists: absent path fails", "[assertions][exists]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.nonexistent";
+    a.op = "exists";
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].passed);
+}
+
+TEST_CASE("not_exists: absent path passes", "[assertions][exists]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.nonexistent";
+    a.op = "not_exists";
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].passed);
+}
+
+TEST_CASE("not_exists: present path fails", "[assertions][exists]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "not_exists";
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].passed);
+}
+
+TEST_CASE("exists: textureAnalysis path", "[assertions][exists][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+
+    vivid::Assertion a;
+    a.path = "operators.bloom.textureAnalysis.meanBrightness";
+    a.op = "exists";
+    a.message = "Bloom produces output";
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].passed);
+}
+
+TEST_CASE("exists: missing operator textureAnalysis fails", "[assertions][exists][textureAnalysis]") {
+    auto insp = makeInspectionWithTextureAnalysis();
+
+    vivid::Assertion a;
+    a.path = "operators.noise.textureAnalysis.meanBrightness";
+    a.op = "exists";
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].passed);
+}
+
+TEST_CASE("exists: verbose output omits expected value", "[assertions][exists]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "exists";
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    std::string verbose = report.toVerbose();
+    CHECK(verbose.find("PASS") != std::string::npos);
+    CHECK(verbose.find("exists") != std::string::npos);
+}
+
+TEST_CASE("exists: failure message is descriptive", "[assertions][exists]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.nonexistent";
+    a.op = "exists";
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].passed);
+    CHECK(report.results[0].message.find("Path not found") != std::string::npos);
+}
+
+TEST_CASE("not_exists: failure message is descriptive", "[assertions][exists]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = "not_exists";
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].passed);
+    CHECK(report.results[0].message.find("Path exists") != std::string::npos);
+}
+
+// =============================================================================
+// Conditional assertions: after_frame
+// =============================================================================
+
+TEST_CASE("after_frame: skipped when frame < threshold", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = ">";
+    a.value = 0.1;
+    a.afterFrame = 30;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].skipped);
+    CHECK(!report.results[0].skipReason.empty());
+    CHECK(report.allPassed);  // Skipped assertions don't affect allPassed
+}
+
+TEST_CASE("after_frame: evaluated when frame >= threshold", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = ">";
+    a.value = 0.1;
+    a.afterFrame = 10;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].skipped);
+    CHECK(report.results[0].passed);
+}
+
+TEST_CASE("after_frame: evaluated when frame > threshold", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = ">";
+    a.value = 0.1;
+    a.afterFrame = 5;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].skipped);
+    CHECK(report.results[0].passed);
+}
+
+TEST_CASE("after_frame: -1 means no guard (default)", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = ">";
+    a.value = 0.1;
+    // afterFrame defaults to -1
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].skipped);
+    CHECK(report.results[0].passed);
+}
+
+// =============================================================================
+// Conditional assertions: when_path / when_check / when_value
+// =============================================================================
+
+TEST_CASE("when_*: evaluated when guard condition met", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+    // meanBrightness = 0.5
+
+    vivid::Assertion a;
+    a.path = "audio.rmsLevel";
+    a.op = ">";
+    a.value = 0.01;
+    a.whenPath = "output.meanBrightness";
+    a.whenCheck = ">";
+    a.whenValue = 0.1;  // 0.5 > 0.1 is true, so guard passes
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].skipped);
+    CHECK(report.results[0].passed);
+}
+
+TEST_CASE("when_*: skipped when guard condition not met", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+    // meanBrightness = 0.5
+
+    vivid::Assertion a;
+    a.path = "audio.rmsLevel";
+    a.op = ">";
+    a.value = 0.01;
+    a.whenPath = "output.meanBrightness";
+    a.whenCheck = ">";
+    a.whenValue = 0.9;  // 0.5 > 0.9 is false, so guard fails
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].skipped);
+    CHECK(report.allPassed);  // Skipped doesn't affect allPassed
+}
+
+TEST_CASE("when_*: skipped when guard path not found", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "audio.rmsLevel";
+    a.op = ">";
+    a.value = 0.01;
+    a.whenPath = "operators.nonexistent.metrics.foo";
+    a.whenCheck = "==";
+    a.whenValue = 1.0;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].skipped);
+    CHECK(report.results[0].skipReason.find("not found") != std::string::npos);
+}
+
+TEST_CASE("when_*: uses == operator correctly", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+    // rmsLevel = 0.35
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = ">";
+    a.value = 0.1;
+    a.whenPath = "audio.isSilent";
+    a.whenCheck = "==";
+    a.whenValue = 0.0;  // isSilent is false (0.0), so guard passes
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(!report.results[0].skipped);
+    CHECK(report.results[0].passed);
+}
+
+// =============================================================================
+// Combined: after_frame + when_*
+// =============================================================================
+
+TEST_CASE("Combined guards: after_frame checked first", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.meanBrightness";
+    a.op = ">";
+    a.value = 0.1;
+    a.afterFrame = 30;  // frame 10 < 30 → skip
+    a.whenPath = "output.meanBrightness";
+    a.whenCheck = ">";
+    a.whenValue = 0.1;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    REQUIRE(report.results.size() == 1);
+    CHECK(report.results[0].skipped);
+    CHECK(report.results[0].skipReason.find("after_frame") != std::string::npos);
+}
+
+// =============================================================================
+// Verbose / JSON output for skipped assertions
+// =============================================================================
+
+TEST_CASE("Skipped assertion: SKIP in verbose output", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.name = "warmup-check";
+    a.path = "output.contrast";
+    a.op = ">";
+    a.value = 0.15;
+    a.afterFrame = 30;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    std::string verbose = report.toVerbose();
+    CHECK(verbose.find("SKIP") != std::string::npos);
+    CHECK(verbose.find("warmup-check") != std::string::npos);
+    CHECK(verbose.find("0 failed") != std::string::npos);
+    CHECK(verbose.find("1 skipped") != std::string::npos);
+}
+
+TEST_CASE("Skipped assertion: JSON output has skipped field", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+
+    vivid::Assertion a;
+    a.path = "output.contrast";
+    a.op = ">";
+    a.value = 0.15;
+    a.afterFrame = 30;
+
+    auto report = vivid::evaluateAssertions({a}, insp, 10);
+    std::string jsonStr = report.toJSON();
+    CHECK(jsonStr.find("\"skipped\"") != std::string::npos);
+    CHECK(jsonStr.find("skipReason") != std::string::npos);
+}
+
+TEST_CASE("Mixed skipped and evaluated assertions", "[assertions][conditional]") {
+    auto insp = makeTestInspection();
+
+    std::vector<vivid::Assertion> assertions;
+
+    // Should be evaluated (passes)
+    vivid::Assertion a1;
+    a1.path = "output.meanBrightness";
+    a1.op = ">";
+    a1.value = 0.1;
+    assertions.push_back(a1);
+
+    // Should be skipped (after_frame)
+    vivid::Assertion a2;
+    a2.path = "output.contrast";
+    a2.op = ">";
+    a2.value = 0.15;
+    a2.afterFrame = 30;
+    assertions.push_back(a2);
+
+    // Should be evaluated (fails)
+    vivid::Assertion a3;
+    a3.path = "output.meanBrightness";
+    a3.op = ">";
+    a3.value = 0.99;
+    assertions.push_back(a3);
+
+    auto report = vivid::evaluateAssertions(assertions, insp, 10);
+    REQUIRE(report.results.size() == 3);
+    CHECK(report.results[0].passed);
+    CHECK(!report.results[0].skipped);
+    CHECK(report.results[1].skipped);
+    CHECK(!report.results[2].passed);
+    CHECK(!report.results[2].skipped);
+    CHECK(!report.allPassed);  // a3 failed
+}

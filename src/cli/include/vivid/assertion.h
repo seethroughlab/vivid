@@ -12,20 +12,32 @@
 namespace vivid {
 
 struct Assertion {
+    std::string name;      // optional human-readable name (e.g. "feedback-alive")
     std::string path;      // e.g. "output.meanBrightness"
-    std::string op;        // ">", ">=", "<", "<=", "==", "!="
+    std::string op;        // ">", ">=", "<", "<=", "==", "!=", "between", "exists", "not_exists"
     double value = 0.0;    // comparison target (for numeric)
+    double valueHigh = 0.0; // upper bound for "between" operator
     std::string strValue;  // comparison target (for string == / !=)
     std::string message;   // optional failure description
+
+    // Conditional guards
+    int afterFrame = -1;       // Skip if current frame < afterFrame
+    std::string whenPath;      // Guard condition: dot-path to check
+    std::string whenCheck;     // Guard condition: comparison operator
+    double whenValue = 0.0;    // Guard condition: expected value
 };
 
 struct AssertionResult {
     bool passed = false;
+    bool skipped = false;
+    std::string name;
     std::string path;
     std::string op;
     double expected = 0.0;
+    double expectedHigh = 0.0; // upper bound for "between" operator
     double actual = 0.0;
     std::string message;
+    std::string skipReason;
 };
 
 struct CheckReport {
