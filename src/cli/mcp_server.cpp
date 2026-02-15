@@ -1293,6 +1293,28 @@ private:
             }}
         });
 
+        // sweep_param_audio - Sweep a parameter capturing audio at each step
+        tools.push_back({
+            {"name", "sweep_param_audio"},
+            {"description", "Sweep a parameter across values, capturing audio at each step. "
+                            "Returns WAV paths and audio analysis (RMS, spectrum) per step. "
+                            "Restores the original value when done. Requires a running Vivid instance with audio output."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"operator", {{"type", "string"}, {"description", "Operator name (e.g., 'osc')"}}},
+                    {"param", {{"type", "string"}, {"description", "Parameter name (e.g., 'frequency')"}}},
+                    {"from", {{"type", "number"}, {"description", "Starting value"}}},
+                    {"to", {{"type", "number"}, {"description", "Ending value"}}},
+                    {"steps", {{"type", "integer"}, {"description", "Number of steps (2-10, default: 5)"}}},
+                    {"audio_duration", {{"type", "number"}, {"description", "Seconds of audio to capture per step (default: 0.5, max: 5.0)"}}},
+                    {"settle_frames", {{"type", "integer"}, {"description", "Frames to advance before capturing for audio to settle (default: 3)"}}},
+                    {"output_dir", {{"type", "string"}, {"description", "Directory for output WAV files (default: /tmp/vivid_sweep_audio)"}}}
+                }},
+                {"required", json::array({"operator", "param", "from", "to"})}
+            }}
+        });
+
         // compare_audio - Compare two WAV files
         tools.push_back({
             {"name", "compare_audio"},
@@ -2586,6 +2608,130 @@ private:
             if (captureResult.contains("error")) {
                 response["error"] = captureResult["error"];
             }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "sweep_param_audio") {
+            std::string op = args.value("operator", "");
+            std::string param = args.value("param", "");
+
+            if (op.empty() || param.empty() || !args.contains("from") || !args.contains("to")) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Required: operator, param, from, to"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot sweep parameter audio: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            double from = args["from"].get<double>();
+            double to = args["to"].get<double>();
+            int steps = std::clamp(args.value("steps", 5), 2, 10);
+            float audioDuration = std::clamp(args.value("audio_duration", 0.5f), 0.1f, 5.0f);
+            int settleFrames = std::max(0, args.value("settle_frames", 3));
+            std::string outputDir = args.value("output_dir", "/tmp/vivid_sweep_audio");
+
+            // Create output directory
+            try {
+                fs::create_directories(outputDir);
+            } catch (const std::exception& e) {
+                json response;
+                response["connected"] = true;
+                response["success"] = false;
+                response["error"] = std::string("Failed to create output directory: ") + e.what();
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Read current param value so we can restore it
+            json originalValue;
+            bool foundOriginal = false;
+            {
+                json params = m_vivid.getParams();
+                for (const auto& p : params) {
+                    if (p.value("operator", "") == op && p.value("name", "") == param) {
+                        originalValue = p["value"];
+                        foundOriginal = true;
+                        break;
+                    }
+                }
+            }
+
+            // Sweep loop
+            json captures = json::array();
+            for (int i = 0; i < steps; ++i) {
+                double value = (steps == 1) ? from : from + (to - from) * i / (steps - 1);
+
+                // Set parameter
+                json setResult = m_vivid.setParamImmediate(op, param, value);
+                if (!setResult.value("success", false)) {
+                    captures.push_back({
+                        {"step", i},
+                        {"value", value},
+                        {"error", setResult.value("error", "Failed to set parameter")}
+                    });
+                    continue;
+                }
+
+                // Let audio settle
+                if (settleFrames > 0) {
+                    m_vivid.advanceFrames(settleFrames);
+                }
+
+                // Build filename
+                char buf[256];
+                snprintf(buf, sizeof(buf), "sweep_%s_%s_%04d.wav", op.c_str(), param.c_str(), i);
+                fs::path filePath = fs::path(outputDir) / buf;
+
+                // Capture audio using existing captureAudio (blocks until complete)
+                json captureResult = m_vivid.captureAudio(filePath.string(), audioDuration);
+
+                json entry;
+                entry["step"] = i;
+                entry["value"] = value;
+                if (captureResult.value("success", false)) {
+                    entry["wav_path"] = filePath.string();
+                    if (captureResult.contains("analysis")) {
+                        entry["analysis"] = captureResult["analysis"];
+                    }
+                } else {
+                    entry["error"] = captureResult.value("error", "Audio capture failed");
+                }
+                captures.push_back(entry);
+            }
+
+            // Restore original value
+            bool restored = false;
+            if (foundOriginal) {
+                json restoreResult = m_vivid.setParamImmediate(op, param, originalValue);
+                restored = restoreResult.value("success", false);
+                if (restored && settleFrames > 0) {
+                    m_vivid.advanceFrames(settleFrames);
+                }
+            }
+
+            json response;
+            response["connected"] = true;
+            response["success"] = true;
+            response["operator"] = op;
+            response["param"] = param;
+            response["from"] = from;
+            response["to"] = to;
+            response["steps"] = steps;
+            response["audio_duration"] = audioDuration;
+            response["settle_frames"] = settleFrames;
+            response["captures"] = captures;
+            if (foundOriginal) {
+                response["original_value"] = originalValue;
+            }
+            response["restored"] = restored;
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else if (name == "compare_frames") {

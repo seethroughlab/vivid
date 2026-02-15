@@ -811,6 +811,9 @@ struct MainLoopContext {
     bool hasEventScript = false;
     int exportTotalFrames = 0;   // Total frames to export (duration * fps)
 
+    // Audio sidecar accumulation (export mode with audio)
+    std::vector<float> exportAudioSidecarBuffer;
+
     // Project info
     std::string projectName;
 
@@ -1424,6 +1427,15 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                         cliAudioBuffer.data(), MAX_FRAMES_PER_CALL);
                     if (framesRead > 0) {
                         mlc.cliRecorder.pushAudioSamples(cliAudioBuffer.data(), framesRead);
+
+                        // Accumulate for audio analysis sidecar (export mode only)
+                        if (mlc.exportMode) {
+                            size_t sampleCount = framesRead * AUDIO_CHANNELS;
+                            mlc.exportAudioSidecarBuffer.insert(
+                                mlc.exportAudioSidecarBuffer.end(),
+                                cliAudioBuffer.data(),
+                                cliAudioBuffer.data() + sampleCount);
+                        }
                     }
                 }
 
@@ -1439,6 +1451,85 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                     if (mlc.exportMode) mlc.ctx->setRecordingMode(false);
                     mlc.ctx->chain().stopAudioRecordingTap();  // Stop tap before stopping recorder
                     mlc.cliRecorder.stop();
+
+                    // Write audio analysis sidecar JSON (export mode with audio)
+                    if (mlc.exportMode && mlc.recordAudio && !mlc.exportAudioSidecarBuffer.empty()) {
+                        uint32_t totalFrames = static_cast<uint32_t>(mlc.exportAudioSidecarBuffer.size() / AUDIO_CHANNELS);
+
+                        // Summary analysis of full buffer
+                        auto summary = analyzeAudioBuffer(
+                            mlc.exportAudioSidecarBuffer.data(), totalFrames,
+                            AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+
+                        // Time-series: chunk into 1-second windows
+                        uint32_t framesPerSecond = AUDIO_SAMPLE_RATE;
+                        nlohmann::json timeSeries = nlohmann::json::array();
+                        uint32_t offset = 0;
+                        float timeOffset = 0.0f;
+                        while (offset < totalFrames) {
+                            uint32_t chunkFrames = std::min(framesPerSecond, totalFrames - offset);
+                            auto chunkAnalysis = analyzeAudioBuffer(
+                                mlc.exportAudioSidecarBuffer.data() + (offset * AUDIO_CHANNELS),
+                                chunkFrames, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+
+                            nlohmann::json entry;
+                            entry["time"] = timeOffset;
+                            entry["rmsLevel"] = chunkAnalysis.rmsLevel;
+                            entry["peakLevel"] = chunkAnalysis.peakLevel;
+                            entry["crestFactor"] = chunkAnalysis.crestFactor;
+                            entry["isSilent"] = chunkAnalysis.isSilent;
+                            entry["spectrum"] = {
+                                {"subBass", chunkAnalysis.spectrum[0]},
+                                {"bass", chunkAnalysis.spectrum[1]},
+                                {"lowMid", chunkAnalysis.spectrum[2]},
+                                {"mid", chunkAnalysis.spectrum[3]},
+                                {"highMid", chunkAnalysis.spectrum[4]},
+                                {"high", chunkAnalysis.spectrum[5]}
+                            };
+                            timeSeries.push_back(entry);
+
+                            offset += chunkFrames;
+                            timeOffset += static_cast<float>(chunkFrames) / AUDIO_SAMPLE_RATE;
+                        }
+
+                        // Build sidecar JSON
+                        nlohmann::json sidecar;
+                        sidecar["duration"] = summary.duration;
+                        sidecar["summary"] = {
+                            {"rmsLevel", summary.rmsLevel},
+                            {"peakLevel", summary.peakLevel},
+                            {"rmsLeft", summary.rmsLeft},
+                            {"rmsRight", summary.rmsRight},
+                            {"crestFactor", summary.crestFactor},
+                            {"isSilent", summary.isSilent},
+                            {"spectrum", {
+                                {"subBass", summary.spectrum[0]},
+                                {"bass", summary.spectrum[1]},
+                                {"lowMid", summary.spectrum[2]},
+                                {"mid", summary.spectrum[3]},
+                                {"highMid", summary.spectrum[4]},
+                                {"high", summary.spectrum[5]}
+                            }}
+                        };
+                        sidecar["timeSeries"] = timeSeries;
+
+                        // Write to <output>.audio-analysis.json
+                        fs::path exportPath(mlc.exportOutput);
+                        fs::path sidecarPath = exportPath.parent_path() /
+                            (exportPath.stem().string() + ".audio-analysis.json");
+                        std::ofstream sidecarFile(sidecarPath);
+                        if (sidecarFile.is_open()) {
+                            sidecarFile << sidecar.dump(2) << std::endl;
+                            if (!mlc.exportQuiet) {
+                                std::cout << "Audio analysis: " << sidecarPath.string() << std::endl;
+                            }
+                        }
+
+                        // Free memory
+                        mlc.exportAudioSidecarBuffer.clear();
+                        mlc.exportAudioSidecarBuffer.shrink_to_fit();
+                    }
+
                     glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
                 }
                 // Export progress (every 60 frames)

@@ -110,6 +110,31 @@ std::pair<bool, double> resolvePath(const std::string& path,
         return {false, 0.0};
     }
 
+    // audio.<field> -> AudioAnalysis
+    if (parts[0] == "audio" && parts.size() >= 2) {
+        const auto& aa = inspection.audioAnalysis;
+
+        if (parts[1] == "rmsLevel") return {true, aa.rmsLevel};
+        if (parts[1] == "peakLevel") return {true, aa.peakLevel};
+        if (parts[1] == "rmsLeft") return {true, aa.rmsLeft};
+        if (parts[1] == "rmsRight") return {true, aa.rmsRight};
+        if (parts[1] == "crestFactor") return {true, aa.crestFactor};
+        if (parts[1] == "duration") return {true, aa.duration};
+        if (parts[1] == "isSilent") return {true, aa.isSilent ? 1.0 : 0.0};
+
+        // audio.spectrum.<band> -> spectrum array
+        if (parts[1] == "spectrum" && parts.size() >= 3) {
+            if (parts[2] == "subBass")  return {true, aa.spectrum[0]};
+            if (parts[2] == "bass")     return {true, aa.spectrum[1]};
+            if (parts[2] == "lowMid")   return {true, aa.spectrum[2]};
+            if (parts[2] == "mid")      return {true, aa.spectrum[3]};
+            if (parts[2] == "highMid")  return {true, aa.spectrum[4]};
+            if (parts[2] == "high")     return {true, aa.spectrum[5]};
+        }
+
+        return {false, 0.0};
+    }
+
     // operators.<name>.metrics.<key> -> InspectData float metric
     // operators.<name>.metadata.<key> -> handled separately (string)
     if (parts[0] == "operators" && parts.size() >= 4) {
