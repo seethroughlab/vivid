@@ -594,7 +594,7 @@ ResourceStats Chain::getResourceStats() const {
     return stats;
 }
 
-ChainInspection Chain::inspectAll(Context& ctx) const {
+ChainInspection Chain::inspectAll(Context& ctx, bool perOperatorAnalysis) const {
     ChainInspection result;
     result.frame = static_cast<int>(ctx.frame());
     result.time = static_cast<float>(ctx.time());
@@ -606,6 +606,14 @@ ChainInspection Chain::inspectAll(Context& ctx) const {
             InspectData data = it->second->inspect();
             data.set("type", it->second->name());
             data.set("output_kind", outputKindName(it->second->outputKind()));
+
+            if (perOperatorAnalysis && it->second->outputKind() == OutputKind::Texture) {
+                WGPUTexture tex = it->second->outputTexture();
+                if (tex) {
+                    data.textureAnalysis = analyzeTexture(ctx.device(), ctx.queue(), tex);
+                }
+            }
+
             result.operators.emplace_back(name, std::move(data));
         }
     }

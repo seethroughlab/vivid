@@ -11,7 +11,9 @@
 
 #include <string>
 #include <unordered_map>
+#include <optional>
 #include <sstream>
+#include <vivid/frame_analysis.h>
 
 namespace vivid {
 
@@ -25,6 +27,7 @@ namespace vivid {
 struct InspectData {
     std::unordered_map<std::string, float> metrics;
     std::unordered_map<std::string, std::string> metadata;
+    std::optional<FrameAnalysis> textureAnalysis;
 
     void set(const std::string& key, float value) {
         metrics[key] = value;
@@ -66,6 +69,11 @@ struct InspectData {
                 first = false;
             }
             ss << "}";
+        }
+
+        if (textureAnalysis.has_value()) {
+            if (!metrics.empty() || !metadata.empty()) ss << ",";
+            ss << "\"textureAnalysis\":" << textureAnalysis->toJSON();
         }
 
         ss << "}";

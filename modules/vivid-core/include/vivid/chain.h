@@ -525,7 +525,7 @@ public:
      * Iterates all operators, calls inspect() on each, and analyzes the
      * output texture. Used by MCP inspect_chain tool.
      */
-    ChainInspection inspectAll(Context& ctx) const;
+    ChainInspection inspectAll(Context& ctx, bool perOperatorAnalysis = false) const;
 
     /// @}
 

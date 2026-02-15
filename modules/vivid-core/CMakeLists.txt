@@ -53,6 +53,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/frame_analysis.cpp
     src/audio_analysis.cpp
     src/wav_writer.cpp
+    src/waveform_image.cpp
     src/asset_loader.cpp
     src/shader_preprocessor.cpp
     src/window_manager.cpp
@@ -251,8 +252,8 @@ if(WIN32)
 endif()
 
 # Copy shaders to build root (matches release structure)
-file(GLOB CORE_SHADERS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.wgsl)
-file(GLOB CORE_SHADER_LIBS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lib/*.wgsl)
+file(GLOB CORE_SHADERS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.wgsl)
+file(GLOB CORE_SHADER_LIBS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lib/*.wgsl)
 if(CORE_SHADERS)
     add_custom_command(TARGET vivid-core POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders

@@ -80,8 +80,8 @@ endif()
 # Executable finds it via RPATH
 
 # Copy shaders to build root (matches release structure)
-file(GLOB RENDER3D_SHADERS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.wgsl)
-file(GLOB RENDER3D_SHADER_LIBS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lib/*.wgsl)
+file(GLOB RENDER3D_SHADERS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.wgsl)
+file(GLOB RENDER3D_SHADER_LIBS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lib/*.wgsl)
 if(RENDER3D_SHADERS)
     add_custom_command(TARGET vivid-render3d POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders

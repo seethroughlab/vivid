@@ -78,7 +78,15 @@ void Context::beginFrame() {
         // Update window size and detect resizes
         int prevWidth = m_width;
         int prevHeight = m_height;
-        glfwGetFramebufferSize(m_window, &m_width, &m_height);
+        if (m_renderResolutionSet) {
+            // When an explicit render resolution is set (e.g. --resolution flag),
+            // use it instead of the framebuffer size so operators allocate textures
+            // at the requested resolution rather than the window/DPI-scaled size.
+            m_width = m_renderWidth;
+            m_height = m_renderHeight;
+        } else {
+            glfwGetFramebufferSize(m_window, &m_width, &m_height);
+        }
         m_wasResized = (m_width != prevWidth || m_height != prevHeight);
 
         // Update window position
