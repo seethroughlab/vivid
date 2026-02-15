@@ -18,6 +18,8 @@ doxygen Doxyfile                          # Generate API docs
 ./build/bin/vivid <project-path> --snapshot output.png        # Capture single frame
 ./build/bin/vivid <project-path> --snapshot out.png --snapshot-frame 0-11  # Capture 12 frames for GIF
 ./build/bin/vivid <project-path> --snapshot out.png --snapshot-frame 0-30:5  # Every 5th frame
+./build/bin/vivid <project-path> --audio-snapshot out.wav                   # Capture 1s audio
+./build/bin/vivid <project-path> --audio-snapshot out.wav --audio-snapshot-duration 5  # 5s audio
 ./build/bin/vivid build <project-path>                         # Compile chain, report structured JSON errors
 ./build/bin/vivid check <project-path>                         # Run assertions, exit 0 (pass) or 1 (fail)
 ./build/bin/vivid inspect <project-path>                       # Dump inspection JSON to stdout
@@ -31,6 +33,44 @@ doxygen Doxyfile                          # Generate API docs
 ./build/bin/vivid docs example Noise                           # Code examples for an operator
 ./build/bin/vivid mcp                                         # Run MCP server for Claude Code
 ```
+
+## Agent Workflow
+
+Vivid is designed for autonomous LLM iteration using two nested loops.
+
+### Inner Loop (seconds, no human needed)
+
+The fast, autonomous cycle. Edit code, build, inspect structured data, validate assertions, repeat. The LLM reasons about JSON metrics — not pixels.
+
+```
+Edit chain.cpp
+    → vivid build (or validate_chain MCP)   — compile check
+    → inspect_chain (MCP) or vivid inspect  — read metrics JSON
+    → vivid check                           — run assertions (exit 0 = pass)
+    → iterate or done
+```
+
+**What to look for in inspection data:**
+- **Brightness** (`meanBrightness`): 0.0 = black, 1.0 = white. Most visuals should be 0.2–0.8.
+- **Contrast** (`contrast`): Std dev of luminance. Near 0 = flat/washed out. 0.15–0.35 typical.
+- **Spatial distribution** (`regionBrightness`): 3×3 grid. Detect if content is centered, one-sided, or uniform.
+- **Histogram**: 8-bucket luminance distribution. Spikes at extremes = clipping. Even spread = good dynamic range.
+- **Audio RMS** (`rmsLevel`): 0.0 = silence, >0.9 = clipping. Music/drones: 0.1–0.5. Percussive: peaks to 0.7.
+- **Spectrum bands** (6 bands: subBass, bass, lowMid, mid, highMid, high): Verify frequency content matches intent.
+- **Crest factor** (`crestFactor`): Peak/RMS ratio. High = percussive/dynamic. Low = compressed/steady.
+
+### Outer Loop (minutes, human review)
+
+When the inner loop is satisfied, export media for subjective human review:
+
+```
+vivid export path/to/project -o /tmp/preview.mp4 --duration 15
+    → send video to user
+    → user provides subjective feedback
+    → back to inner loop
+```
+
+The outer loop runs infrequently — once for every 5–20 inner loop iterations.
 
 ## MCP Server (Claude Code Integration)
 
@@ -50,23 +90,89 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 ```
 
 ### Available MCP Tools
+
+#### Project Lifecycle
 | Tool | Description |
 |------|-------------|
-| `get_runtime_status` | Get compile errors, runtime status, and operator list |
-| `get_live_params` | Get real-time parameter values from running Vivid |
+| `run_project` | Launch project in background window, connect via WebSocket |
+| `stop_project` | Stop running Vivid instance |
+| `create_project` | Create new project from template |
+| `bundle_project` | Bundle project as standalone application |
+| `list_templates` | List available project templates |
+| `list_project_assets` | List assets in project's assets/ folder |
+
+#### Build & Reload
+| Tool | Description |
+|------|-------------|
+| `validate_chain` | Compile-check chain.cpp without running |
+| `get_runtime_status` | Get connection state, compile errors, runtime errors |
+| `get_compile_errors` | Get structured compile errors (file, line, severity, message) |
+| `wait_for_reload` | Block until hot-reload completes after editing chain.cpp |
+
+#### Introspection
+| Tool | Description |
+|------|-------------|
+| `inspect_chain` | Per-operator metrics + output analysis (brightness, contrast, histogram, spatial, audio) |
+| `get_chain_structure` | Chain topology: operators, types, connections |
+| `get_live_params` | Real-time parameter values (optionally filtered by operator) |
+| `get_frame_info` | Current frame number, elapsed time, FPS |
+| `get_performance_stats` | FPS, frame time, per-operator timing, texture memory |
+
+#### Parameter Control
+| Tool | Description |
+|------|-------------|
+| `set_param` | Set parameter on running operator immediately |
 | `get_pending_changes` | Get slider changes waiting to be applied to chain.cpp |
 | `clear_pending_changes` | Confirm changes were applied (call after editing code) |
 | `discard_pending_changes` | Revert parameters to original values |
+
+#### Capture & Compare
+| Tool | Description |
+|------|-------------|
 | `capture_frame` | Capture current frame to PNG from running instance |
-| `set_param` | Set parameter on running operator immediately |
-| `advance_frames` | Advance simulation by N frames |
-| `orbit_camera` | Position camera around a target point |
 | `capture_at_frame` | Advance to frame N and capture snapshot |
-| `sweep_param` | Sweep a parameter across values, capturing frames at each step |
-| `compare_frames` | Compare two PNG images (RMSE, per-channel diff, changed pixels) |
-| `list_operators` | List all available operators (from registry) |
-| `get_operator` | Get details for a specific operator |
+| `capture_snapshot` | Render project to PNG (spawns new process, no running instance needed) |
+| `capture_audio` | Capture audio to WAV with analysis (RMS, peak, spectrum) |
+| `sweep_param` | Sweep parameter across values, capturing frames at each step |
+| `compare_frames` | Compare two PNGs (RMSE, per-channel diff, changed pixels) |
+| `compare_audio` | Compare two WAVs (RMS diff, spectral diff, correlation) |
+| `export_video` | Export project to video (headless, with optional playback script) |
+
+#### Animation & Timing
+| Tool | Description |
+|------|-------------|
+| `advance_frames` | Advance simulation by N frames |
+| `reset_time` | Reset animation to frame 0 / time 0 |
+| `orbit_camera` | Position camera around a target point |
+
+#### Snapshots & Presets
+| Tool | Description |
+|------|-------------|
+| `save_snapshot` | Save current parameters to named snapshot |
+| `recall_snapshot` | Apply saved snapshot (optional crossfade) |
+| `list_snapshots` | List all saved snapshots for a project |
+| `delete_snapshot` | Delete a snapshot |
+| `save_preset` | Save parameters to preset file |
+| `load_preset` | Load parameters from preset file |
+
+#### Solo & Window
+| Tool | Description |
+|------|-------------|
+| `solo_operator` | Solo an operator to see only its output |
+| `exit_solo` | Exit solo mode, return to full chain |
+| `get_solo_state` | Check if solo mode is active |
+| `get_window_state` | Get window configuration (fullscreen, borderless, etc.) |
+| `set_window_mode` | Set fullscreen, borderless, always-on-top, cursor visibility |
+
+#### Documentation
+| Tool | Description |
+|------|-------------|
+| `list_operators` | List all operators grouped by category |
+| `get_operator` | Get operator details: parameters, types, ranges, usage example |
+| `get_example` | Get complete working code examples for an operator |
+| `get_recipe` | Get or list complete chain.cpp recipe examples |
 | `search_docs` | Search Vivid documentation |
+| `list_modules` | List installed Vivid modules |
 
 ### Starting Vivid
 The MCP server queries and controls a running Vivid instance. **Start Vivid before using MCP tools:**
@@ -114,16 +220,74 @@ get_runtime_status → check compileStatus.success
 
 If `compileStatus.success` is `false`, read the error message and fix the code before proceeding.
 
-### Snapshot Mode (for CI/Testing)
-The `--snapshot` flag runs the chain for a few frames, saves a PNG, and exits. Useful for:
-- **Automated testing**: Verify visual output hasn't regressed
+### Introspection & Validation
+
+The inner loop relies on structured data from `inspect_chain` (MCP) or `vivid inspect` (CLI).
+
+**FrameAnalysis** (output texture analysis):
+| Field | Type | Description |
+|-------|------|-------------|
+| `meanBrightness` | float | Average luminance (0–1) |
+| `contrast` | float | Std dev of luminance |
+| `dominantColor` | [r,g,b] | Most prominent color |
+| `dominantHue` | float | Hue (0–1) |
+| `saturationAvg` | float | Average saturation |
+| `histogram` | int[8] | 8-bucket luminance histogram |
+| `regionBrightness` | float[9] | 3×3 spatial brightness grid (top-left → bottom-right) |
+
+**AudioAnalysis** (per audio operator):
+| Field | Type | Description |
+|-------|------|-------------|
+| `rmsLevel` | float | Overall RMS level (0–1) |
+| `peakLevel` | float | Overall peak amplitude (0–1) |
+| `rmsLeft` / `rmsRight` | float | Per-channel RMS |
+| `isSilent` | bool | True if RMS < 0.001 |
+| `crestFactor` | float | Peak/RMS ratio (dynamics indicator) |
+| `spectrum` | float[6] | 6-band energy: subBass (<60Hz), bass (60–250), lowMid (250–500), mid (500–2k), highMid (2k–4k), high (4k+) |
+| `duration` | float | Buffer duration in seconds |
+
+**Sample inspection JSON** (abbreviated):
+```json
+{
+  "frame": 0, "time": 0.0,
+  "operators": {
+    "noise": { "scale": 4.0, "speed": 0.5 },
+    "feedback": { "decay": 0.95, "energy": 0.72, "pixel_change_pct": 18.3 },
+    "bloom": { "threshold": 0.6, "bright_pixel_pct": 12.1 }
+  },
+  "output": {
+    "meanBrightness": 0.48, "contrast": 0.22,
+    "histogram": [12, 45, 89, 120, 95, 40, 8, 3],
+    "regionBrightness": [0.3, 0.4, 0.3, 0.5, 0.7, 0.5, 0.3, 0.4, 0.3]
+  }
+}
+```
+
+**Comparison tools** (no running instance needed):
+- `compare_frames`: RMSE, per-channel diff, changed pixel percentage. Verify visual changes had the intended effect.
+- `compare_audio`: RMS diff, spectral diff, correlation. Verify audio changes.
+- `sweep_param`: Capture frames across a parameter range. Find optimal values or verify smooth transitions.
+
+**Assertions** (`vivid check`): Runs the chain and evaluates built-in assertions. Exit code 0 = all pass, 1 = failure. Use in the inner loop to verify invariants (e.g., "output is not black", "audio RMS > 0.05").
+
+### Snapshot & Audio Capture Mode (for CI/Testing)
+
+**Visual snapshots**: The `--snapshot` flag runs the chain, saves PNG(s), and exits.
+**Audio capture**: The `--audio-snapshot` flag captures audio output to a WAV file.
+
+Useful for:
+- **Automated testing**: Verify visual/audio output hasn't regressed
 - **AI evaluation**: Claude can run chains and inspect the output
 - **CI pipelines**: Generate thumbnails or verify examples compile and run
 - **GIF creation**: Capture multiple frames for animation
 
-Options:
+Visual options:
 - `--snapshot <path.png>` - Output path for the snapshot
 - `--snapshot-frame <spec>` - Frame(s) to capture (default: 5)
+
+Audio options:
+- `--audio-snapshot <path.wav>` - Output path for audio capture
+- `--audio-snapshot-duration <seconds>` - Duration to capture (default: 1)
 
 Frame specification formats:
 - `5` - Single frame (backwards compatible)
@@ -133,25 +297,30 @@ Frame specification formats:
 
 When capturing multiple frames, filenames include frame numbers: `output.png` becomes `output_0000.png`, `output_0001.png`, etc.
 
-### Visual Validation Workflow
+### Validation Workflow
 
-When working on a Vivid project, Claude should run the project and use MCP tools for visual feedback:
+Use the inner loop for autonomous iteration on visual and audio output:
 
-1. **Start the project**: When the user wants to see their work, ask "Would you like me to run your project?" then use `run_project`
-2. **Keep it running**: The visualizer stays open so you can capture frames and the user can adjust sliders
-3. **Validate changes**: After code edits, use `capture_frame` to verify the visual output
-4. **Explore the scene**: Use `orbit_camera` and `set_param` to view from different angles or test parameter values
-5. **Monitor for user adjustments**: Periodically check `get_pending_changes` - if the user adjusted sliders in the visualizer, ask "I see you changed X to Y. Would you like me to update chain.cpp with these values?"
-6. **Stop when done**: Use `stop_project` or let the user close the window
+1. **Start the project**: Use `run_project` to launch Vivid with MCP connection
+2. **Edit chain.cpp**: Make code changes
+3. **Verify compilation**: Call `get_runtime_status` or `wait_for_reload` — fix errors before proceeding
+4. **Inspect output**: Call `inspect_chain` to get structured metrics (brightness, contrast, histogram, audio levels)
+5. **Validate visually**: Call `capture_frame` and review the image
+6. **Validate audio**: Call `capture_audio` to capture and analyze audio output
+7. **Compare**: Use `compare_frames` or `compare_audio` to measure the effect of changes
+8. **Iterate**: If metrics are off or assertions fail, go back to step 2
 
-**Key MCP tools for visual work:**
-- `capture_frame` - Capture current frame to PNG
-- `capture_at_frame` - Advance to frame N and capture (for animations)
-- `set_param` - Adjust parameters in real-time
-- `orbit_camera` - Reposition camera view
-- `advance_frames` - Progress animation forward
+**Key MCP tools for validation:**
+- `inspect_chain` - Structured metrics for autonomous reasoning (no pixels needed)
+- `capture_frame` / `capture_audio` - Capture current output
+- `compare_frames` / `compare_audio` - Measure change between before/after
+- `sweep_param` - Explore parameter space with frame captures
+- `solo_operator` - Isolate a single operator's output for debugging
+- `set_param` - Test parameter values in real-time before committing to code
 
-**Note:** CLI snapshot mode (`--snapshot` flag) is for CI pipelines and automated testing only - not part of the normal Claude workflow.
+**Monitor for user adjustments**: Periodically check `get_pending_changes` — if the user adjusted sliders in the visualizer, ask "I see you changed X to Y. Would you like me to update chain.cpp with these values?"
+
+**Export for human review** (outer loop): When satisfied with metrics, use `export_video` to produce a video for the user to review subjectively.
 
 ## User Modules
 
