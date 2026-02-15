@@ -14,7 +14,8 @@ doxygen Doxyfile                          # Generate API docs
 ## CLI Options
 
 ```bash
-./build/bin/vivid <project-path>                              # Run normally
+./build/bin/vivid <project-path>                              # Run normally (stays open for hot-reload)
+./build/bin/vivid <project-path> --exit-on-error              # Exit on compile error (agent/CI)
 ./build/bin/vivid <project-path> --snapshot output.png        # Capture single frame
 ./build/bin/vivid <project-path> --snapshot out.png --snapshot-frame 0-11  # Capture 12 frames for GIF
 ./build/bin/vivid <project-path> --snapshot out.png --snapshot-frame 0-30:5  # Every 5th frame
@@ -44,11 +45,13 @@ The fast, autonomous cycle. Edit code, build, inspect structured data, validate 
 
 ```
 Edit chain.cpp
-    → vivid build (or validate_chain MCP)   — compile check
+    → vivid build (or validate_chain MCP)   — MUST pass (exit 0) before continuing
     → inspect_chain (MCP) or vivid inspect  — read metrics JSON
     → vivid check                           — run assertions (exit 0 = pass)
     → iterate or done
 ```
+
+**Important:** `vivid build` is the only CLI command that exits with a non-zero code on compile failure. Other commands (`vivid inspect`, `vivid check`, `vivid export`) hang indefinitely on errors. Always use `vivid build` as a gate before running them.
 
 **What to look for in inspection data:**
 - **Brightness** (`meanBrightness`): 0.0 = black, 1.0 = white. Most visuals should be 0.2–0.8.
@@ -64,6 +67,7 @@ Edit chain.cpp
 When the inner loop is satisfied, export media for subjective human review:
 
 ```
+vivid build path/to/project               — gate check (must pass before export)
 vivid export path/to/project -o /tmp/preview.mp4 --duration 15
     → send video to user
     → user provides subjective feedback
@@ -206,9 +210,17 @@ If Vivid isn't running, MCP tools return `{"connected": false}` with a helpful s
 8. **IMPORTANT**: Claude calls `get_runtime_status` to verify compilation succeeded
 
 ### Checking Compile Status (Critical!)
-After editing `chain.cpp`, Vivid hot-reloads automatically. **You MUST check if compilation succeeded:**
+After editing `chain.cpp`, **you MUST check if compilation succeeded** before running any other command.
+
+**CLI Compile Check (agent/CI workflows):**
+```bash
+vivid build path/to/project
+# Exit 0 = success, non-zero = failure with error details
+# MUST pass before running vivid inspect, vivid check, or vivid export
 ```
-# Use MCP tool:
+
+**MCP Compile Check (live instance):**
+```
 get_runtime_status → check compileStatus.success
 
 # Response when successful:
@@ -218,7 +230,7 @@ get_runtime_status → check compileStatus.success
 {"connected": true, "compileStatus": {"success": false, "message": "chain.cpp:42:10: error: ..."}}
 ```
 
-If `compileStatus.success` is `false`, read the error message and fix the code before proceeding.
+If compilation failed, read the error message and fix the code before proceeding.
 
 ### Introspection & Validation
 
@@ -303,7 +315,7 @@ Use the inner loop for autonomous iteration on visual and audio output:
 
 1. **Start the project**: Use `run_project` to launch Vivid with MCP connection
 2. **Edit chain.cpp**: Make code changes
-3. **Verify compilation**: Call `get_runtime_status` or `wait_for_reload` — fix errors before proceeding
+3. **Verify compilation**: Use `vivid build` (CLI) or `get_runtime_status` / `wait_for_reload` (MCP) — fix errors before proceeding
 4. **Inspect output**: Call `inspect_chain` to get structured metrics (brightness, contrast, histogram, audio levels)
 5. **Validate visually**: Call `capture_frame` and review the image
 6. **Validate audio**: Call `capture_audio` to capture and analyze audio output

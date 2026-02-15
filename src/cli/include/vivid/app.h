@@ -70,6 +70,9 @@ struct AppConfig {
     bool exportAudio = false;        // include audio track
     ExportCodec exportCodec = ExportCodec::H264;
     bool exportQuiet = false;        // suppress progress output
+
+    // Exit on any compile error (for agent/CI workflows)
+    bool exitOnError = false;
 };
 
 // Main application class

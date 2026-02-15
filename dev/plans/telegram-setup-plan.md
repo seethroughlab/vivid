@@ -140,13 +140,13 @@ vivid params .
 vivid build .
 
 # 3. Can it inspect and check?
-vivid inspect . --duration 2 --samples 3 --out /tmp/vivid-report
+vivid inspect . --frame 10 --out /tmp/vivid-report
 cat /tmp/vivid-report/inspection.json
 ls /tmp/vivid-report/frame_*.png
-vivid check . --duration 2
+vivid check . --frame 10
 
 # 4. Can it export a video?
-vivid export . --duration 5 --resolution 960x540 --fps 30 --output /tmp/vivid-preview.mp4
+vivid export . --duration 5 --fps 30 --audio -o /tmp/vivid-preview.mp4
 ls -la /tmp/vivid-preview.mp4
 ```
 
@@ -163,16 +163,17 @@ When receiving requests via Telegram, follow this iteration pattern:
 
 ### Inner Loop (do silently, don't report every step)
 1. Edit chain.cpp as needed
-2. Run `vivid build .` — if it fails, fix and retry
-3. Run `vivid inspect . --duration 2 --samples 5 --out /tmp/vivid-report`
+2. Run `vivid build .` — **check exit code, MUST be 0 before continuing.** If non-zero, read the error, fix chain.cpp, and rebuild. Never proceed with a failing build.
+3. Run `vivid inspect . --frame 10 --out /tmp/vivid-report`
 4. Read /tmp/vivid-report/inspection.json to verify the change looks correct
-5. Run `vivid check . --duration 2` — if assertions fail, fix and retry
+5. Run `vivid check . --frame 10` — if assertions fail, fix and retry
 6. Repeat until satisfied
 
 ### Outer Loop (send results to user)
-7. Run `vivid export . --duration 10 --resolution 960x540 --fps 30 --output /tmp/vivid-preview.mp4`
-8. Send the video file: respond with the file path so the bot can deliver it
-9. Summarize what changed and what the inspection data showed
+7. Run `vivid build .` — gate check (must pass before export)
+8. Run `vivid export . --duration 10 --fps 30 --audio -o /tmp/vivid-preview.mp4`
+9. Send the video file: respond with the file path so the bot can deliver it
+10. Summarize what changed and what the inspection data showed
 
 ### Guidelines
 - For parameter tweaks, go straight to inspect/check — no need for a full export every time
@@ -183,11 +184,18 @@ When receiving requests via Telegram, follow this iteration pattern:
 - Always mention which parameters you changed and by how much
 ```
 
-### 2.3 Ensure File Sending Works
+### 2.3 Ensure File Sending Works ✅
 
-The linuz90 bot supports sending files back through Telegram. Claude Code needs to know it can reference file paths in its responses and the bot will send them. Test this by asking the bot: "create a text file at /tmp/test.txt with 'hello' in it, then send me the file."
+**Done.** We added a `send_file` MCP tool to the bot ([PR #2](https://github.com/linuz90/claude-telegram-bot/pull/2)). Claude calls `send_file(file_path, caption?)` and the file is delivered via Telegram automatically — images as photos, videos as playable video, audio as audio, everything else as a document.
 
-If the bot doesn't natively send files from paths (some versions may not), this is the main thing you'd need to patch. The Telegram Bot API's `sendVideo` and `sendDocument` methods accept local file paths. The patch would be small — watch for this during testing.
+The implementation lives in:
+- `send_file_mcp/server.ts` — MCP server (validates file, writes request JSON to `/tmp`)
+- `src/handlers/streaming.ts` — `checkPendingSendFileRequests()` picks up requests, sends via Telegram API
+- `src/session.ts` — detects `mcp__send-file` tool calls, triggers pickup (fire-and-forget, Claude continues)
+
+To enable: add `send-file` to your `mcp-config.ts` (see `mcp-config.example.ts`).
+
+**Tested end-to-end:** generated a test video with ffmpeg and sent it via the bot — arrived as a playable video in Telegram.
 
 ### 2.4 Video File Size Limits
 
@@ -195,9 +203,11 @@ Telegram has a 50MB file size limit for bots sending files. For a 10-second 960x
 
 ```markdown
 ### Export Settings for Telegram
-- Quick preview: --duration 5 --resolution 960x540 --fps 30 (small file, fast)
-- Standard preview: --duration 15 --resolution 1280x720 --fps 30 (good quality, still under 50MB)
-- Never export at full 1920x1080 60fps for Telegram — files will be too large
+- Quick preview: --duration 5 --fps 30 --audio (small file, fast)
+- Standard preview: --duration 15 --fps 30 --audio (good quality, still under 50MB)
+- Note: --resolution flag currently crashes on export — omit it for now
+- Keep exports short to stay under Telegram's 50MB bot file limit
+- For agent workflows: use `--exit-on-error` flag when running vivid interactively to exit immediately on compile errors instead of hanging
 ```
 
 ### 2.5 Add a `vivid preview` Convenience Command (Optional)
@@ -235,11 +245,12 @@ Then in CLAUDE.md: "Use `vivid-preview` for quick Telegram exports. Usage: `vivi
 **Bot (Claude Code, silently):**
 1. Reads chain.cpp, sees the current chain: noise → feedback → bloom → hsv → composite
 2. Edits chain.cpp to insert ChromaticAberration between bloom and hsv
-3. Runs `vivid build .` — success
+3. Runs `vivid build .` — checks exit code is 0 (success). If non-zero, reads error and fixes before continuing.
 4. Runs `vivid inspect . --duration 2 --samples 3 --out /tmp/vivid-report`
 5. Reads inspection.json — chromatic aberration operator is active, output contrast still good
 6. Runs `vivid check . --duration 2` — all assertions pass
-7. Runs `vivid export . --duration 8 --resolution 960x540 --fps 30 --output /tmp/preview.mp4`
+7. Runs `vivid build .` — gate check before export (exit 0)
+8. Runs `vivid export . --duration 8 --fps 30 --audio -o /tmp/preview.mp4`
 
 **Bot (responds on Telegram):**
 > Added ChromaticAberration between bloom and hsv with offset 0.003 (subtle). Assertions all pass, contrast held steady at 0.21. Here's the preview:
@@ -274,11 +285,10 @@ Claude Code can `cd` between projects, read their respective CLAUDE.md files and
 
 ### If the Bot Can't Send Video Files
 
-The linuz90 bot may not automatically send files referenced in Claude's response. If this happens, you have two options:
-
-**Option A:** Ask Claude to base64-encode a frame thumbnail and include it inline (works for images, not video).
-
-**Option B:** Patch the bot to handle file paths. The Telegram Bot API supports `sendVideo` with a local file path. You'd add a small handler that detects when Claude's response references an exported file and sends it via the Telegram API. This is a ~20 line change in the bot's response handler.
+**Resolved.** The `send_file` MCP tool handles this. If it's not working, check:
+- `send-file` is listed in your `mcp-config.ts`
+- Bot logs show "Loaded N MCP servers from mcp-config.ts" on startup
+- `TELEGRAM_CHAT_ID` is being set (the bot does this automatically)
 
 ### If Sessions Get Confused
 
@@ -341,29 +351,29 @@ Same CLAUDE.md workflow applies — the bot is just the transport layer. The ite
 ## Part 6: Checklist
 
 ### One-Time Setup
-- [ ] Install Bun (`curl -fsSL https://bun.sh/install | bash`)
-- [ ] Create Telegram bot via @BotFather, save token
-- [ ] Get your Telegram user ID via @userinfobot
-- [ ] Clone linuz90/claude-telegram-bot, run `bun install`
-- [ ] Configure `.env` with token, user ID, and Vivid working directory
-- [ ] Verify Claude Code is authenticated (`claude` in terminal)
+- [x] Install Bun (`curl -fsSL https://bun.sh/install | bash`)
+- [x] Create Telegram bot via @BotFather, save token — **@Charles555Bot**
+- [x] Get your Telegram user ID via @userinfobot
+- [x] Clone linuz90/claude-telegram-bot, run `bun install` — cloned to `/Users/jeff/Developer/claude-telegram-bot`
+- [x] Configure `.env` with token, user ID, and Vivid working directory
+- [x] Verify Claude Code is authenticated (`claude` in terminal)
 
 ### Vivid Preparation
-- [ ] Verify `vivid build .` works from your project directory
-- [ ] Verify `vivid inspect . --duration 2 --samples 3 --out /tmp/test-report` produces JSON + PNGs
-- [ ] Verify `vivid check . --duration 2` runs assertions
-- [ ] Verify `vivid export . --duration 5 --output /tmp/test.mp4` produces a playable video
-- [ ] Update CLAUDE.md with remote workflow instructions
-- [ ] Confirm vivid-project.json has parameter descriptions and ranges
-- [ ] Confirm vivid-assertions.yaml covers the key creative constraints
+- [x] Verify `vivid build .` works from your project directory
+- [x] Verify `vivid inspect . --frame 10 --out /tmp/test-report` produces JSON + PNGs
+- [x] Verify `vivid check . --frame 10` runs assertions
+- [x] Verify `vivid export . --duration 5 --audio -o /tmp/test.mp4` produces a playable video (note: `--resolution` flag crashes, omit it)
+- [x] Update CLAUDE.md with remote workflow instructions (in AGENTS.md per project convention)
+- [x] Confirm vivid params outputs parameter descriptions and ranges
+- [x] Confirm vivid-assertions.json covers the key creative constraints
 
 ### First Test
-- [ ] Start the bot: `bun run src/index.ts`
-- [ ] Send "hello" on Telegram — confirm response
+- [x] Start the bot: `bun run src/index.ts`
+- [x] Send "hello" on Telegram — confirm response
+- [x] Verify video file arrives on Telegram (tested with ffmpeg-generated test video via `send_file` MCP)
 - [ ] Send "run vivid params ." — confirm it reads your project
-- [ ] Send "run vivid inspect . --duration 2 --samples 3 --out /tmp/test" — confirm JSON output
+- [ ] Send "run vivid inspect . --frame 10 --out /tmp/test" — confirm JSON output
 - [ ] Send "change noise.scale to 8.0, rebuild, and export a 5 second preview" — confirm full loop
-- [ ] Verify video file arrives on Telegram
 
 ### Running Persistently
 - [ ] Set up screen/tmux/LaunchAgent so the bot survives terminal close

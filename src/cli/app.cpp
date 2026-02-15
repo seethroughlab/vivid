@@ -796,6 +796,9 @@ struct MainLoopContext {
     std::vector<vivid::Assertion> assertions;  // Loaded assertions (check mode)
     int exitCode = 0;            // Exit code for check mode
 
+    // Exit on any compile error (agent/CI mode)
+    bool exitOnError = false;
+
     // Export mode (vivid export)
     bool exportMode = false;
     std::string exportOutput;
@@ -1164,6 +1167,14 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
             return false;
         }
+        // In --exit-on-error mode, exit on any compile error instead of waiting for hot-reload
+        if (mlc.exitOnError) {
+            std::cerr << "Compile error (--exit-on-error): exiting\n"
+                      << mlc.hotReload->getError() << std::endl;
+            mlc.exitCode = 1;
+            glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+            return false;
+        }
     } else if (mlc.hotReload->isLoaded()) {
         mlc.ctx->clearError();
 
@@ -1194,6 +1205,13 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             errReport["message"] = mlc.ctx->errorMessage();
         }
         std::cout << errReport.dump(2) << std::endl;
+        mlc.exitCode = 1;
+        glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+    }
+
+    // In --exit-on-error mode, also exit on context-level errors
+    if (mlc.exitOnError && mlc.ctx->hasError()) {
+        std::cerr << "Error (--exit-on-error): " << mlc.ctx->errorMessage() << std::endl;
         mlc.exitCode = 1;
         glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
     }
@@ -3176,20 +3194,22 @@ int Application::init(const AppConfig& config) {
         } else {
             std::string errorMsg = "Chain file not found: " + chainPath.string();
             std::cerr << "\n*** ERROR: " << errorMsg << " ***\n" << std::endl;
-            m_impl->ctx->setError(errorMsg);
             // Notify MCP clients of the failure
             if (m_impl->editorBridge) {
                 m_impl->editorBridge->sendCompileStatus(false, errorMsg);
             }
+            // Missing chain file is unrecoverable (nothing to hot-reload), exit immediately
+            return 1;
         }
     } else {
         std::string errorMsg = "No chain specified. Usage: vivid <path/to/chain.cpp>";
         std::cerr << "\n*** ERROR: " << errorMsg << " ***\n" << std::endl;
-        m_impl->ctx->setError(errorMsg);
         // Notify MCP clients of the failure
         if (m_impl->editorBridge) {
             m_impl->editorBridge->sendCompileStatus(false, errorMsg);
         }
+        // No chain specified is unrecoverable, exit immediately
+        return 1;
     }
 
     // Initialize MainLoopContext
@@ -3294,6 +3314,9 @@ int Application::init(const AppConfig& config) {
             mlc.checkFrame = 10;
         }
     }
+
+    // Exit on error (agent/CI mode)
+    mlc.exitOnError = config.exitOnError;
 
     // Export mode (vivid export)
     mlc.exportMode = config.exportMode;
