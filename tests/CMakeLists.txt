@@ -94,6 +94,29 @@ catch_discover_tests(test_audio_analysis
 )
 
 # -----------------------------------------------------------------------------
+# Unit Tests (audio assertions — audio.* path resolution)
+# -----------------------------------------------------------------------------
+
+add_executable(test_audio_assertions
+    unit/test_audio_assertions.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/assertion.cpp
+)
+
+target_link_libraries(test_audio_assertions PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_audio_assertions PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+    ${CMAKE_SOURCE_DIR}/src/cli/include
+)
+
+catch_discover_tests(test_audio_assertions
+    PROPERTIES LABELS "unit"
+)
+
+# -----------------------------------------------------------------------------
 # Unit Tests (particle forces)
 # -----------------------------------------------------------------------------
 

@@ -47,3 +47,26 @@ catch_discover_tests(test_export
         LABELS "cli"
         TIMEOUT 120
 )
+
+# Audio Evaluation Tests (check with audio assertions, export sidecar)
+add_executable(test_audio_evaluation
+    test_audio_evaluation.cpp
+)
+
+target_link_libraries(test_audio_evaluation PRIVATE
+    Catch2::Catch2WithMain
+    nlohmann_json::nlohmann_json
+)
+
+target_compile_definitions(test_audio_evaluation PRIVATE
+    VIVID_BINARY_PATH="$<TARGET_FILE:vivid>"
+    VIVID_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+add_dependencies(test_audio_evaluation vivid)
+
+catch_discover_tests(test_audio_evaluation
+    PROPERTIES
+        LABELS "cli"
+        TIMEOUT 120
+)
