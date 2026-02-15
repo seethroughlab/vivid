@@ -1,5 +1,6 @@
 // Vivid - Audio Analysis Implementation
 
+#define _USE_MATH_DEFINES
 #include <vivid/audio_analysis.h>
 #include <cmath>
 #include <algorithm>
