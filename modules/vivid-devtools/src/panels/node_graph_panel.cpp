@@ -116,6 +116,10 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     gui::InputState localInput = input;
     localInput.mousePos = input.mousePos - glm::vec2(bounds.x, bounds.y);
 
+    // Translate canvas to panel origin so drawing matches panel-relative coordinates
+    canvas.save();
+    canvas.translate(bounds.x, bounds.y);
+
     // Begin node graph editor (uses new simplified API)
     m_impl->nodeGraph.beginEditor(canvas, bounds.z, bounds.w, localInput, m_inputRouting.ownsInput);
 
@@ -446,6 +450,8 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // End node graph editor
     m_impl->nodeGraph.endEditor();
+
+    canvas.restore();
 
     // Sync selection state
     int selectedNodeId = m_impl->nodeGraph.getSelectedNode();
