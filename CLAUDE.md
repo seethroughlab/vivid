@@ -62,6 +62,19 @@ Edit chain.cpp
 - **Spectrum bands** (6 bands: subBass, bass, lowMid, mid, highMid, high): Verify frequency content matches intent.
 - **Crest factor** (`crestFactor`): Peak/RMS ratio. High = percussive/dynamic. Low = compressed/steady.
 
+**Audio evaluation tools:**
+- **Assertions** (`audio.*` paths): Validate audio properties in `vivid check`. Example paths: `audio.rmsLevel`, `audio.peakLevel`, `audio.spectrum.bass`, `audio.isSilent`, `audio.crestFactor`.
+- **`capture_audio` / `compare_audio`**: Capture WAV + analysis, then compare before/after to measure changes.
+- **`sweep_param_audio`**: Sweep a parameter across values, capturing audio at each step. Returns per-step RMS, spectrum, WAV files.
+- **Export sidecar**: `vivid export --audio` produces `<output>.audio-analysis.json` with summary + per-second time-series.
+
+Example audio assertions (`vivid-assertions.json`):
+```json
+{"path": "audio.rmsLevel", "op": ">", "value": 0.01, "message": "Audio not silent"}
+{"path": "audio.spectrum.bass", "op": ">", "value": 0.05, "message": "Should have bass"}
+{"path": "audio.peakLevel", "op": "<", "value": 0.95, "message": "No clipping"}
+```
+
 ### Outer Loop (minutes, human review)
 
 When the inner loop is satisfied, export media for subjective human review:
@@ -75,6 +88,8 @@ vivid export path/to/project -o /tmp/preview.mp4 --duration 15
 ```
 
 The outer loop runs infrequently — once for every 5–20 inner loop iterations.
+
+**Do NOT export video after every change.** The inner loop (build → inspect → check) gives you enough structured data to evaluate changes autonomously. Only export when you've iterated to a point worth showing the user. Exporting is slow — unnecessary exports waste time.
 
 ## MCP Server (Claude Code Integration)
 
@@ -138,6 +153,7 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 | `capture_snapshot` | Render project to PNG (spawns new process, no running instance needed) |
 | `capture_audio` | Capture audio to WAV with analysis (RMS, peak, spectrum) |
 | `sweep_param` | Sweep parameter across values, capturing frames at each step |
+| `sweep_param_audio` | Sweep parameter across values, capturing audio at each step |
 | `compare_frames` | Compare two PNGs (RMSE, per-channel diff, changed pixels) |
 | `compare_audio` | Compare two WAVs (RMS diff, spectral diff, correlation) |
 | `export_video` | Export project to video (headless, with optional playback script) |
@@ -279,8 +295,9 @@ The inner loop relies on structured data from `inspect_chain` (MCP) or `vivid in
 - `compare_frames`: RMSE, per-channel diff, changed pixel percentage. Verify visual changes had the intended effect.
 - `compare_audio`: RMS diff, spectral diff, correlation. Verify audio changes.
 - `sweep_param`: Capture frames across a parameter range. Find optimal values or verify smooth transitions.
+- `sweep_param_audio`: Capture audio across a parameter range. Evaluate how audio changes with parameters.
 
-**Assertions** (`vivid check`): Runs the chain and evaluates built-in assertions. Exit code 0 = all pass, 1 = failure. Use in the inner loop to verify invariants (e.g., "output is not black", "audio RMS > 0.05").
+**Assertions** (`vivid check`): Runs the chain and evaluates built-in assertions. Exit code 0 = all pass, 1 = failure. Use in the inner loop to verify invariants (e.g., "output is not black", "audio RMS > 0.05"). Supports `output.*` paths for visual properties, `audio.*` paths for audio properties, and `operators.<name>.metrics.<key>` for per-operator metrics.
 
 ### Snapshot & Audio Capture Mode (for CI/Testing)
 
@@ -326,7 +343,8 @@ Use the inner loop for autonomous iteration on visual and audio output:
 - `inspect_chain` - Structured metrics for autonomous reasoning (no pixels needed)
 - `capture_frame` / `capture_audio` - Capture current output
 - `compare_frames` / `compare_audio` - Measure change between before/after
-- `sweep_param` - Explore parameter space with frame captures
+- `sweep_param` - Explore visual parameter space with frame captures
+- `sweep_param_audio` - Explore audio parameter space with audio captures
 - `solo_operator` - Isolate a single operator's output for debugging
 - `set_param` - Test parameter values in real-time before committing to code
 

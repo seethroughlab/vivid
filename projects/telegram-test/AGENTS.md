@@ -58,8 +58,8 @@ Reactivity mappings (in `update()`):
 ### Inner Loop (autonomous, no export)
 1. Edit chain.cpp
 2. `vivid build .` — **MUST pass (exit 0) before continuing.** If non-zero, read the error, fix chain.cpp, and rebuild. Never proceed with a failing build.
-3. `vivid inspect . --frame 10` — check metrics (brightness, contrast, audio RMS)
-4. `vivid check .` — run assertions (exit 0 = pass)
+3. `vivid inspect . --frame 10` — check metrics (brightness, contrast, audio RMS, spectrum)
+4. `vivid check .` — run assertions including `audio.*` paths (exit 0 = pass)
 5. Repeat until satisfied
 
 ### Outer Loop (send preview to user)
@@ -78,6 +78,20 @@ Reactivity mappings (in `update()`):
 - Standard preview: `--duration 15 --fps 30`
 - Note: `--resolution` flag may crash — omit it and use native resolution
 - Keep under 50MB (Telegram bot limit)
+
+## Audio Assertions
+
+Use `audio.*` paths in `vivid-assertions.json` to validate audio properties:
+
+```json
+{"path": "audio.rmsLevel", "op": ">", "value": 0.01, "message": "Audio not silent"}
+{"path": "audio.spectrum.bass", "op": ">", "value": 0.02, "message": "Has bass content"}
+{"path": "audio.peakLevel", "op": "<", "value": 0.95, "message": "No clipping"}
+{"path": "audio.spectrum.subBass", "op": ">", "value": 0.0, "message": "Sub-bass present"}
+{"path": "audio.crestFactor", "op": ">", "value": 1.0, "message": "Has dynamics"}
+```
+
+Available `audio.*` paths: `rmsLevel`, `peakLevel`, `rmsLeft`, `rmsRight`, `crestFactor`, `duration`, `isSilent`, `spectrum.subBass`, `spectrum.bass`, `spectrum.lowMid`, `spectrum.mid`, `spectrum.highMid`, `spectrum.high`.
 
 ## Suggested Modifications
 1. Change oscillator waveform (Sine, Triangle, Square, Saw, Pulse)
