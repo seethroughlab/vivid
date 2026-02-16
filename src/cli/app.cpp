@@ -2843,6 +2843,7 @@ int Application::init(const AppConfig& config) {
     // Set render resolution from command-line (or default to window size)
     if (config.renderWidth > 0 && config.renderHeight > 0) {
         m_impl->ctx->setRenderResolution(config.renderWidth, config.renderHeight);
+        m_impl->ctx->setOverrideFramebufferSize(true);
     } else {
         m_impl->ctx->setRenderResolution(windowWidth, windowHeight);
     }

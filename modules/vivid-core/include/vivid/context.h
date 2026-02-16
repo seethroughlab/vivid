@@ -950,6 +950,15 @@ public:
      */
     bool hasRenderResolution() const { return m_renderResolutionSet; }
 
+    /**
+     * @brief Override framebuffer size tracking in beginFrame()
+     * @param override When true, beginFrame() uses render resolution instead of glfwGetFramebufferSize()
+     *
+     * Set this only when the CLI explicitly requests a resolution (e.g. --resolution flag).
+     * Without this, interactive window resizes update ctx.width()/ctx.height() normally.
+     */
+    void setOverrideFramebufferSize(bool override) { m_overrideFramebufferSize = override; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Audio Timing
@@ -1176,6 +1185,7 @@ private:
     int m_renderWidth = 1280;
     int m_renderHeight = 720;
     bool m_renderResolutionSet = false;
+    bool m_overrideFramebufferSize = false;
 
     // Mouse
     glm::vec2 m_mousePos = {0, 0};

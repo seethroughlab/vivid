@@ -78,8 +78,8 @@ void Context::beginFrame() {
         // Update window size and detect resizes
         int prevWidth = m_width;
         int prevHeight = m_height;
-        if (m_renderResolutionSet) {
-            // When an explicit render resolution is set (e.g. --resolution flag),
+        if (m_overrideFramebufferSize) {
+            // When the CLI explicitly requested a resolution (e.g. --resolution flag),
             // use it instead of the framebuffer size so operators allocate textures
             // at the requested resolution rather than the window/DPI-scaled size.
             m_width = m_renderWidth;
