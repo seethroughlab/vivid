@@ -810,8 +810,9 @@ void VideoExporter::encodeFrame(uint32_t width, uint32_t height, uint32_t bytesP
     // - Without audio: use wall-clock time (compatible with deltaTime animation)
     CMTime presentationTime;
     if (m_audioEnabled) {
-        // Audio is master clock - video syncs to audio time
-        presentationTime = m_impl->audioTime;
+        // Use frame count for monotonically increasing timestamps,
+        // independent of async audio write timing
+        presentationTime = CMTimeMake(m_frameCount, static_cast<int32_t>(m_fps));
     } else {
         // No audio - use wall-clock time for deltaTime compatibility
         auto now = std::chrono::steady_clock::now();
