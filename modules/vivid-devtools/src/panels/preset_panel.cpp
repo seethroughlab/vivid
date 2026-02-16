@@ -254,10 +254,10 @@ void PresetPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     } else {
         snprintf(durationLabel, sizeof(durationLabel), "Fade: %.1fs", m_crossfadeDuration);
     }
-    canvas.text(durationLabel, sliderX, btnY - 1, style.textDim, fontIdx);
+    canvas.text(durationLabel, sliderX, btnY + ascent + 4, style.textDim, fontIdx);
 
-    // Slider track
-    float trackY = btnY + 16.0f;
+    // Slider track (below the label)
+    float trackY = btnY + ascent + 4 + lineH * 0.4f;
     float trackH = 6.0f;
     canvas.fillRoundedRect(sliderX, trackY, sliderW, trackH, 3.0f, style.sliderBg);
 

@@ -292,23 +292,23 @@ void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfa
     float scale = ctx.contentScale();
     if (scale < 1.0f) scale = 1.0f;
 
-    // Load font at 14px for labels (index 0)
+    // Load font at 28px for labels (index 0)
     m_fonts[0] = std::make_unique<FontAtlas>();
-    if (m_fonts[0]->load(ctx, fontPath, 14.0f * scale)) {
+    if (m_fonts[0]->load(ctx, fontPath, 28.0f * scale)) {
         m_overlay.setFont(0, m_fonts[0].get());
     } else {
         std::cerr << "[ChainVisualizer] Warning: Could not load JetBrains Mono font\n";
     }
 
-    // Load font at 16px for titles (index 1)
+    // Load font at 32px for titles (index 1)
     m_fonts[1] = std::make_unique<FontAtlas>();
-    if (m_fonts[1]->load(ctx, fontPath, 16.0f * scale)) {
+    if (m_fonts[1]->load(ctx, fontPath, 32.0f * scale)) {
         m_overlay.setFont(1, m_fonts[1].get());
     }
 
-    // Load font at 14px for metrics (index 2)
+    // Load font at 28px for metrics (index 2)
     m_fonts[2] = std::make_unique<FontAtlas>();
-    if (m_fonts[2]->load(ctx, fontPath, 14.0f * scale)) {
+    if (m_fonts[2]->load(ctx, fontPath, 28.0f * scale)) {
         m_overlay.setFont(2, m_fonts[2].get());
     }
 
@@ -1537,10 +1537,9 @@ void ChainVisualizer::renderSoloIndicator(const gui::InputState& input) {
     m_soloCloseButton = {closeX, closeY, closeButtonSize, closeButtonSize, true};
 
     // Check if mouse is hovering the close button
-    float mouseX = input.mousePos.x * (input.contentScale > 0 ? input.contentScale : 1.0f);
-    float mouseY = input.mousePos.y * (input.contentScale > 0 ? input.contentScale : 1.0f);
-    bool hovering = mouseX >= closeX && mouseX <= closeX + closeButtonSize &&
-                    mouseY >= closeY && mouseY <= closeY + closeButtonSize;
+    // mousePos is already in logical pixels — no scaling needed
+    bool hovering = input.mousePos.x >= closeX && input.mousePos.x <= closeX + closeButtonSize &&
+                    input.mousePos.y >= closeY && input.mousePos.y <= closeY + closeButtonSize;
 
     glm::vec4 xColor = hovering ? closeHoverColor : closeColor;
 

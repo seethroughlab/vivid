@@ -106,6 +106,18 @@ bool Preferences::load() {
             if (panels.contains("gridOpacity")) m_gridOpacity = panels["gridOpacity"].get<float>();
         }
 
+        // Panel bounds
+        if (j.contains("panelBounds")) {
+            for (auto& [key, val] : j["panelBounds"].items()) {
+                if (val.is_array() && val.size() == 4) {
+                    m_panelBounds[key] = glm::vec4(
+                        val[0].get<float>(), val[1].get<float>(),
+                        val[2].get<float>(), val[3].get<float>()
+                    );
+                }
+            }
+        }
+
         std::cerr << "[Preferences] Loaded from " << path << std::endl;
         return true;
 
@@ -142,6 +154,15 @@ bool Preferences::save() {
             {"button", m_buttonCornerRadius},
             {"slider", m_sliderCornerRadius}
         };
+
+        // Panel bounds
+        if (!m_panelBounds.empty()) {
+            nlohmann::json boundsObj;
+            for (const auto& [id, b] : m_panelBounds) {
+                boundsObj[id] = {b.x, b.y, b.z, b.w};
+            }
+            j["panelBounds"] = boundsObj;
+        }
 
         std::ofstream file(path);
         if (!file.is_open()) {
@@ -228,6 +249,19 @@ void Preferences::setSliderCornerRadius(float radius) {
 void Preferences::setGridOpacity(float opacity) {
     m_gridOpacity = std::max(0.0f, std::min(1.0f, opacity));
     save();
+}
+
+bool Preferences::getPanelBounds(const std::string& id, glm::vec4& out) const {
+    auto it = m_panelBounds.find(id);
+    if (it != m_panelBounds.end()) {
+        out = it->second;
+        return true;
+    }
+    return false;
+}
+
+void Preferences::setPanelBounds(const std::string& id, const glm::vec4& bounds) {
+    m_panelBounds[id] = bounds;
 }
 
 } // namespace vivid

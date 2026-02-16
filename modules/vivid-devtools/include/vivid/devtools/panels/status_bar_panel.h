@@ -19,6 +19,7 @@
 namespace vivid {
 
 class VideoExporter;
+enum class ExportCodec;
 
 /**
  * @brief Status bar panel fixed to top of screen
@@ -46,7 +47,7 @@ public:
 
     // Callbacks
     using SnapshotCallback = std::function<void()>;
-    using RecordCallback = std::function<void(bool start)>;
+    using RecordCallback = std::function<void(bool start, ExportCodec codec)>;
     using GridOpacityCallback = std::function<void(float opacity)>;
 
     void onSnapshot(SnapshotCallback callback);

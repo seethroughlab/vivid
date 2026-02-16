@@ -9,8 +9,10 @@
  */
 
 #include <vivid/gui/ui_style.h>
+#include <glm/glm.hpp>
 #include <string>
 #include <functional>
+#include <unordered_map>
 
 namespace vivid {
 
@@ -133,6 +135,22 @@ public:
     void setSliderCornerRadius(float radius);
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Panel Bounds (remembered across sessions)
+    /// @{
+
+    /**
+     * @brief Get saved panel bounds
+     * @return true if bounds were found for this panel
+     */
+    bool getPanelBounds(const std::string& id, glm::vec4& out) const;
+
+    /**
+     * @brief Save panel bounds
+     */
+    void setPanelBounds(const std::string& id, const glm::vec4& bounds);
+
+    /// @}
 
 private:
     Preferences() = default;
@@ -149,6 +167,9 @@ private:
     // Panel visibility
     bool m_visualizerVisible = true;
     float m_gridOpacity = 0.0f;
+
+    // Panel bounds (position/size persistence)
+    std::unordered_map<std::string, glm::vec4> m_panelBounds;
 
     // Corner radii (default to UIStyle defaults)
     float m_panelCornerRadius = 6.0f;

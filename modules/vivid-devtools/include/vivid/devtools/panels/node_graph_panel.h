@@ -30,6 +30,7 @@ public:
     void render(OverlayCanvas& canvas, const glm::vec4& bounds,
                const gui::InputState& input, const UIStyle& style) override;
     bool handleInput(const gui::InputState& input) override;
+    bool isContentInteracting() const override;
 
     // Node graph specific
     void selectNode(const std::string& name);

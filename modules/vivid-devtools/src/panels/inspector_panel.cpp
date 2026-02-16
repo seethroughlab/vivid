@@ -129,19 +129,14 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     const float rowHeight = lineH + sliderHeight + 4.0f;
     const float titleBarHeight = m_display.showTitleBar ? style.titleBarHeight() : 0.0f;
 
-    // Create Gui instance
+    // Create Gui instance with style from UIStyle
     Gui gui(canvas, input);
+    gui.style() = GuiStyle::fromUIStyle(style);
     gui.style().labelPosition = LabelPosition::Above;
     gui.style().valuePosition = ValuePosition::Right;
     gui.style().padding = padding;
     gui.style().widgetHeight = sliderHeight;
     gui.style().valueWidth = 60.0f;
-    gui.style().cornerRadius = style.sliderCornerRadius();
-    gui.style().widgetBackground = style.sliderBg;
-    gui.style().sliderFill = style.sliderFill;
-    gui.style().sliderFillActive = style.sliderActive;
-    gui.style().text = style.textPrimary;
-    gui.style().textDim = style.textDim;
 
     // Calculate total content height
     float totalRowsHeight = 0;
@@ -564,33 +559,46 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
-                auto result = gui.sliderEx(p.name.c_str(), &value[0], p.minVal, p.maxVal);
-
-                if (result.dragStarted) {
-                    m_impl->activeDrag.operatorName = title;
-                    m_impl->activeDrag.paramName = p.name;
-                    m_impl->activeDrag.sourceLine = op->sourceLine;
-                    for (int i = 0; i < 4; ++i) {
-                        m_impl->activeDrag.originalValue[i] = value[i];
+                if (p.type == ParamType::Bool) {
+                    bool boolVal = (value[0] != 0.0f);
+                    bool prevVal = boolVal;
+                    if (gui.checkbox(p.name.c_str(), &boolVal)) {
+                        float newValues[4] = {boolVal ? 1.0f : 0.0f, 0, 0, 0};
+                        op->setParam(p.name, newValues);
+                        if (m_impl->paramCallback) {
+                            float oldValues[4] = {prevVal ? 1.0f : 0.0f, 0, 0, 0};
+                            m_impl->paramCallback(title, p.name, oldValues, newValues, op->sourceLine);
+                        }
                     }
-                    m_impl->activeDrag.active = true;
-                }
+                } else {
+                    auto result = gui.sliderEx(p.name.c_str(), &value[0], p.minVal, p.maxVal);
 
-                if (result.changed) {
-                    float newValues[4] = {value[0], 0, 0, 0};
-                    op->setParam(p.name, newValues);
-                }
-
-                if (result.dragEnded && m_impl->activeDrag.active &&
-                    m_impl->activeDrag.operatorName == title &&
-                    m_impl->activeDrag.paramName == p.name) {
-                    float newValues[4] = {value[0], 0, 0, 0};
-                    if (m_impl->paramCallback) {
-                        m_impl->paramCallback(m_impl->activeDrag.operatorName, m_impl->activeDrag.paramName,
-                                              m_impl->activeDrag.originalValue, newValues,
-                                              m_impl->activeDrag.sourceLine);
+                    if (result.dragStarted) {
+                        m_impl->activeDrag.operatorName = title;
+                        m_impl->activeDrag.paramName = p.name;
+                        m_impl->activeDrag.sourceLine = op->sourceLine;
+                        for (int i = 0; i < 4; ++i) {
+                            m_impl->activeDrag.originalValue[i] = value[i];
+                        }
+                        m_impl->activeDrag.active = true;
                     }
-                    m_impl->activeDrag.active = false;
+
+                    if (result.changed) {
+                        float newValues[4] = {value[0], 0, 0, 0};
+                        op->setParam(p.name, newValues);
+                    }
+
+                    if (result.dragEnded && m_impl->activeDrag.active &&
+                        m_impl->activeDrag.operatorName == title &&
+                        m_impl->activeDrag.paramName == p.name) {
+                        float newValues[4] = {value[0], 0, 0, 0};
+                        if (m_impl->paramCallback) {
+                            m_impl->paramCallback(m_impl->activeDrag.operatorName, m_impl->activeDrag.paramName,
+                                                  m_impl->activeDrag.originalValue, newValues,
+                                                  m_impl->activeDrag.sourceLine);
+                        }
+                        m_impl->activeDrag.active = false;
+                    }
                 }
 
                 // MIDI learn badge
@@ -766,6 +774,27 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 
     gui.endArea();
+
+    // Draw scrollbar if content overflows
+    if (m_impl->contentHeight > contentAreaHeight) {
+        float scrollbarW = 4.0f;
+        float scrollbarX = x + w - scrollbarW - 2.0f;
+        float maxScroll = m_impl->contentHeight - contentAreaHeight;
+        float thumbRatio = contentAreaHeight / m_impl->contentHeight;
+        float thumbH = std::max(20.0f, contentAreaHeight * thumbRatio);
+        float scrollRatio = maxScroll > 0.0f ? m_impl->scrollOffset / maxScroll : 0.0f;
+        float thumbY = contentY + scrollRatio * (contentAreaHeight - thumbH);
+
+        // Track
+        glm::vec4 trackColor = style.sliderBg;
+        trackColor.a = 0.3f;
+        canvas.fillRoundedRect(scrollbarX, contentY, scrollbarW, contentAreaHeight, 2.0f, trackColor);
+
+        // Thumb
+        glm::vec4 thumbColor = style.textDim;
+        thumbColor.a = 0.5f;
+        canvas.fillRoundedRect(scrollbarX, thumbY, scrollbarW, thumbH, 2.0f, thumbColor);
+    }
 }
 
 bool InspectorPanel::handleInput(const gui::InputState& input) {

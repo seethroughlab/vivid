@@ -41,6 +41,7 @@ struct NodeGraphPanel::Impl {
 
     // Selection state
     int selectedNodeId = -1;
+    int previousSelectedNodeId = -1;  // For change detection (avoid firing callback every frame)
     std::string selectedOpName;
 
     // Focused node (3x preview)
@@ -453,23 +454,27 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     canvas.restore();
 
-    // Sync selection state
+    // Sync selection state — only fire callback when selection actually changes
     int selectedNodeId = m_impl->nodeGraph.getSelectedNode();
-    if (selectedNodeId >= 0 && selectedNodeId != SCREEN_NODE_ID && selectedNodeId != SPEAKERS_NODE_ID) {
-        if (static_cast<size_t>(selectedNodeId) < operators.size()) {
-            m_impl->selectedOpName = operators[selectedNodeId].name;
-            m_impl->selectedNodeId = selectedNodeId;
+    if (selectedNodeId != m_impl->previousSelectedNodeId) {
+        m_impl->previousSelectedNodeId = selectedNodeId;
 
-            if (m_impl->selectCallback) {
-                m_impl->selectCallback(m_impl->selectedOpName);
+        if (selectedNodeId >= 0 && selectedNodeId != SCREEN_NODE_ID && selectedNodeId != SPEAKERS_NODE_ID) {
+            if (static_cast<size_t>(selectedNodeId) < operators.size()) {
+                m_impl->selectedOpName = operators[selectedNodeId].name;
+                m_impl->selectedNodeId = selectedNodeId;
+
+                if (m_impl->selectCallback) {
+                    m_impl->selectCallback(m_impl->selectedOpName);
+                }
             }
-        }
-    } else if (selectedNodeId < 0 && m_impl->selectedNodeId >= 0) {
-        // Node was deselected — notify callback with empty string
-        m_impl->selectedOpName.clear();
-        m_impl->selectedNodeId = -1;
-        if (m_impl->selectCallback) {
-            m_impl->selectCallback("");
+        } else if (selectedNodeId < 0) {
+            // Node was deselected — notify callback with empty string
+            m_impl->selectedOpName.clear();
+            m_impl->selectedNodeId = -1;
+            if (m_impl->selectCallback) {
+                m_impl->selectCallback("");
+            }
         }
     }
 
@@ -492,6 +497,10 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 bool NodeGraphPanel::handleInput(const gui::InputState& input) {
     if (!m_impl) return false;
     return m_impl->nodeGraph.consumedInput();
+}
+
+bool NodeGraphPanel::isContentInteracting() const {
+    return m_impl && m_impl->nodeGraph.isInteracting();
 }
 
 void NodeGraphPanel::selectNode(const std::string& name) {

@@ -49,7 +49,7 @@ PerformancePanel::PerformancePanel()
 {
     m_config.id = "performance";
     m_config.title = "Performance";
-    m_config.bounds = {0, 0, 280, 400};
+    m_config.bounds = {20, 60, 280, 400};
     m_config.role = PanelRole::Floating;
     m_config.visible = false;
     m_config.resizable = true;

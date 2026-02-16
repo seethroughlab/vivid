@@ -101,18 +101,18 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     // Load JetBrains Mono at different sizes for UI hierarchy
     // Fonts are loaded at PHYSICAL pixel size for crisp HiDPI rendering
     // Use textHiDPI() methods which compensate for content scale
-    // Index 0: Labels (14px logical = 28px physical on 2x display)
+    // Index 0: Labels (28px logical = 56px physical on 2x display)
     m_fonts[0] = std::make_unique<FontAtlas>();
-    if (m_fonts[0]->load(ctx, fontPath, 14.0f * scale)) {
+    if (m_fonts[0]->load(ctx, fontPath, 28.0f * scale)) {
         m_canvas->setFont(0, m_fonts[0].get());
-        std::cerr << "[vivid-devtools] Loaded JetBrains Mono " << (14.0f * scale) << "px\n";
+        std::cerr << "[vivid-devtools] Loaded JetBrains Mono " << (28.0f * scale) << "px\n";
     }
 
-    // Index 1: Titles (16px logical = 32px physical on 2x display)
+    // Index 1: Titles (32px logical = 64px physical on 2x display)
     m_fonts[1] = std::make_unique<FontAtlas>();
-    if (m_fonts[1]->load(ctx, fontPath, 16.0f * scale)) {
+    if (m_fonts[1]->load(ctx, fontPath, 32.0f * scale)) {
         m_canvas->setFont(1, m_fonts[1].get());
-        std::cerr << "[vivid-devtools] Loaded JetBrains Mono " << (16.0f * scale) << "px\n";
+        std::cerr << "[vivid-devtools] Loaded JetBrains Mono " << (32.0f * scale) << "px\n";
     }
 
     // Enable HiDPI text mode since fonts are loaded at physical pixel size
@@ -131,12 +131,49 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     statusBar->onSnapshot([this]() {
         m_snapshotRequested = true;
     });
-    statusBar->onRecord([this](bool start) {
-        // TODO: Implement recording toggle
-        if (start) {
-            std::cerr << "[vivid-devtools] Recording started\n";
-        } else {
-            std::cerr << "[vivid-devtools] Recording stopped\n";
+    statusBar->onRecord([this](bool start, ExportCodec codec) {
+        if (start && m_ctx) {
+            // Generate output path in the project directory
+            std::string projectDir = ".";
+            const std::string& chainPath = m_ctx->chainPath();
+            if (!chainPath.empty()) {
+                size_t lastSlash = chainPath.find_last_of("/\\");
+                if (lastSlash != std::string::npos)
+                    projectDir = chainPath.substr(0, lastSlash);
+            }
+            std::string outputPath = VideoExporter::generateOutputPath(projectDir, codec);
+
+            int width = m_ctx->width();
+            int height = m_ctx->height();
+            WGPUTexture outputTex = m_ctx->chain().outputTexture();
+            if (outputTex) {
+                width = static_cast<int>(wgpuTextureGetWidth(outputTex));
+                height = static_cast<int>(wgpuTextureGetHeight(outputTex));
+            }
+
+            float fps = 60.0f;
+            bool hasAudio = m_ctx->chain().getAudioOutput() != nullptr;
+            bool started = false;
+            if (hasAudio) {
+                started = m_exporter.startWithAudio(outputPath, width, height, fps, codec, 48000, 2);
+                if (started) {
+                    m_ctx->chain().startAudioRecordingTap();
+                    m_ctx->setRecordingMode(true, fps);
+                }
+            } else {
+                started = m_exporter.start(outputPath, width, height, fps, codec);
+                if (started) {
+                    m_ctx->setRecordingMode(true, fps);
+                }
+            }
+
+            if (!started) {
+                std::cerr << "[vivid-devtools] Failed to start recording: " << m_exporter.error() << "\n";
+            }
+        } else if (!start && m_ctx) {
+            m_ctx->chain().stopAudioRecordingTap();
+            m_exporter.stop();
+            m_ctx->setRecordingMode(false);
         }
     });
     statusBar->onGridOpacityChange([this](float opacity) {
@@ -227,6 +264,17 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
 
     // Load grid opacity from preferences
     m_gridOpacity = Preferences::instance().gridOpacity();
+
+    // Restore saved panel bounds for floating panels
+    const char* floatingPanelIds[] = {"inspector", "performance", "console", "presets"};
+    for (const char* id : floatingPanelIds) {
+        glm::vec4 savedBounds;
+        if (Preferences::instance().getPanelBounds(id, savedBounds)) {
+            if (Panel* p = m_panelManager->getPanel(id)) {
+                p->setBounds(savedBounds);
+            }
+        }
+    }
 
     // Set initial panel visibility:
     // NodeGraph — always visible (background)
@@ -380,6 +428,17 @@ void DevTools::registerDefaultShortcuts() {
 
 void DevTools::shutdown() {
     if (!m_initialized) return;
+
+    // Save floating panel bounds before shutdown
+    if (m_panelManager) {
+        const char* floatingPanelIds[] = {"inspector", "performance", "console", "presets"};
+        for (const char* id : floatingPanelIds) {
+            if (Panel* p = m_panelManager->getPanel(id)) {
+                Preferences::instance().setPanelBounds(id, p->bounds());
+            }
+        }
+        Preferences::instance().save();
+    }
 
     // Clear Log callback before destroying panels (ConsolePanel may be the target)
     Log::clearCallback();

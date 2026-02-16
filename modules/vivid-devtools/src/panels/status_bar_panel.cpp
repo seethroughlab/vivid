@@ -354,6 +354,24 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
             itemY += itemH;
             m_impl->codecProRes = {menuX, itemY, menuWidth, itemH, true};
             canvas.text(items[2], menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
+
+            // Handle dropdown clicks here (in render) since the dropdown extends
+            // outside panel bounds and handleInput() may not be called
+            if (input.mouseClicked[0]) {
+                glm::vec2 mousePos = input.mousePos;
+                if (m_impl->isMouseInRect(m_impl->codecH264, mousePos)) {
+                    if (m_impl->recordCallback) m_impl->recordCallback(true, ExportCodec::H264);
+                    m_impl->codecDropdownOpen = false;
+                } else if (m_impl->isMouseInRect(m_impl->codecH265, mousePos)) {
+                    if (m_impl->recordCallback) m_impl->recordCallback(true, ExportCodec::H265);
+                    m_impl->codecDropdownOpen = false;
+                } else if (m_impl->isMouseInRect(m_impl->codecProRes, mousePos)) {
+                    if (m_impl->recordCallback) m_impl->recordCallback(true, ExportCodec::Animation);
+                    m_impl->codecDropdownOpen = false;
+                } else if (!m_impl->isMouseInRect(m_impl->recordButton, mousePos)) {
+                    m_impl->codecDropdownOpen = false;
+                }
+            }
         }
     }
 }
@@ -397,25 +415,8 @@ bool StatusBarPanel::handleInput(const gui::InputState& input) {
         return true;
     }
 
-    // Check codec dropdown
-    if (m_impl->codecDropdownOpen && input.mouseClicked[0]) {
-        if (m_impl->isMouseInRect(m_impl->codecH264, mousePos)) {
-            if (m_impl->recordCallback) m_impl->recordCallback(true);
-            m_impl->codecDropdownOpen = false;
-            return true;
-        } else if (m_impl->isMouseInRect(m_impl->codecH265, mousePos)) {
-            if (m_impl->recordCallback) m_impl->recordCallback(true);
-            m_impl->codecDropdownOpen = false;
-            return true;
-        } else if (m_impl->isMouseInRect(m_impl->codecProRes, mousePos)) {
-            if (m_impl->recordCallback) m_impl->recordCallback(true);
-            m_impl->codecDropdownOpen = false;
-            return true;
-        } else if (!m_impl->isMouseInRect(m_impl->recordButton, mousePos)) {
-            m_impl->codecDropdownOpen = false;
-            return true;
-        }
-    }
+    // Codec dropdown clicks are handled in render() since the dropdown
+    // extends outside panel bounds (handleInput may not be called for those clicks)
 
     if (!input.mouseClicked[0]) return false;
 
@@ -424,7 +425,7 @@ bool StatusBarPanel::handleInput(const gui::InputState& input) {
         m_impl->codecDropdownOpen = true;
         return true;
     } else if (m_impl->isMouseInRect(m_impl->stopButton, mousePos)) {
-        if (m_impl->recordCallback) m_impl->recordCallback(false);
+        if (m_impl->recordCallback) m_impl->recordCallback(false, ExportCodec::H264);
         return true;
     } else if (m_impl->isMouseInRect(m_impl->snapshotButton, mousePos)) {
         if (m_impl->snapshotCallback) m_impl->snapshotCallback();
