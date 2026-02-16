@@ -785,6 +785,7 @@ struct MainLoopContext {
     int windowWidth = 1280;
     int windowHeight = 720;
     bool showUI = false;
+    bool snapshotUI = false;  // Capture composite (with devtools UI) instead of chain output
 
     // Check/inspect mode
     bool checkMode = false;
@@ -985,6 +986,8 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     if (mlc.ctx->width() != mlc.width || mlc.ctx->height() != mlc.height) {
         mlc.width = mlc.ctx->width();
         mlc.height = mlc.ctx->height();
+        mlc.windowWidth = mlc.width;
+        mlc.windowHeight = mlc.height;
         if (mlc.width > 0 && mlc.height > 0) {
             mlc.config.width = static_cast<uint32_t>(mlc.width);
             mlc.config.height = static_cast<uint32_t>(mlc.height);
@@ -1386,9 +1389,11 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             mlc.ctx->blockMouseInput();
         }
 
-        // Inject scripted events (export mode with playback script)
-        if (mlc.exportMode && mlc.hasEventScript && !mlc.chainNeedsSetup) {
+        // Inject scripted events (export mode, snapshot mode, or interactive with --script)
+        if (mlc.hasEventScript && !mlc.chainNeedsSetup) {
             mlc.eventInjector.processFrame(mlc.snapshotFrameCounter, *mlc.ctx, mlc.ctx->chain());
+            // Re-capture scroll after injection so devtools sees injected scroll events
+            g_savedScrollForVisualizer = mlc.ctx->scroll();
         }
 
         // Tick snapshot crossfade interpolation (before process so param changes apply this frame)
@@ -1834,7 +1839,16 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                     outputPath = (dir / (stem + buf + ext)).string();
                 }
 
-                std::string savedPath = mlc.ctx->snapshot(outputPath);
+                std::string savedPath;
+                if (mlc.snapshotUI && mlc.compositeTexture) {
+                    // Capture composite texture (includes devtools UI overlay)
+                    if (VideoExporter::saveSnapshot(mlc.device, mlc.queue,
+                                                     mlc.compositeTexture, outputPath)) {
+                        savedPath = outputPath;
+                    }
+                } else {
+                    savedPath = mlc.ctx->snapshot(outputPath);
+                }
                 if (!savedPath.empty()) {
                     mlc.snapshotFramesCaptured++;
                     mlc.snapshotFramesPending.erase(currentFrame);
@@ -2007,6 +2021,35 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     // Copy one-shot key states
     std::memcpy(frameInput.keyPressed, g_keyPressed, sizeof(g_keyPressed));
     frameInput.surfaceFormat = mlc.surfaceFormat;
+
+    // When an event script is active, override frameInput with injected mouse state
+    // so devtools panels (node graph, inspector) respond to puppeteered input.
+    //
+    // We use EventInjector's lastInjectedMousePos() which persists across frames,
+    // because beginFrame() overwrites ctx mouse state from GLFW every frame.
+    // Without this, on auto-release frames the mouse would jump to the real
+    // cursor position (off-screen), causing handleSelection() to immediately
+    // deselect the node we just clicked.
+    if (mlc.hasEventScript) {
+        static glm::vec2 scriptedMousePos = {0, 0};
+
+        if (mlc.eventInjector.mouseWasInjected()) {
+            // Convert from framebuffer coords to logical/screen coords
+            scriptedMousePos = mlc.eventInjector.lastInjectedMousePos() / xscale;
+        }
+
+        frameInput.mousePos = scriptedMousePos;
+        frameInput.mouseDelta = scriptedMousePos - lastMousePos;
+        // Read button state from Context's injected state
+        for (int i = 0; i < 3; i++) {
+            bool down = mlc.ctx->mouseButton(i).held;
+            frameInput.mouseDown[i] = down;
+            frameInput.mouseClicked[i] = down && !lastMouseDown[i];
+            frameInput.mouseReleased[i] = !down && lastMouseDown[i];
+            currentMouseDown[i] = down;
+        }
+        currentMousePos = scriptedMousePos;
+    }
 
     // Update previous mouse state for next frame
     lastMousePos = currentMousePos;
@@ -3519,6 +3562,7 @@ int Application::init(const AppConfig& config) {
     mlc.windowWidth = m_impl->width;   // Use actual window size (may differ from CLI if chain config used)
     mlc.windowHeight = m_impl->height;
     mlc.showUI = config.showUI;
+    mlc.snapshotUI = config.snapshotUI;
 
     // Check/inspect mode
     mlc.checkMode = config.checkMode;
@@ -3663,6 +3707,15 @@ int Application::init(const AppConfig& config) {
         mlc.recordDuration = mlc.exportDuration;
         mlc.recordAudio = mlc.exportAudio;
         mlc.recordCodec = mlc.exportCodec;
+    }
+
+    // Load playback script for non-export modes (snapshot, interactive)
+    if (!config.exportScript.empty() && !mlc.exportMode) {
+        if (!mlc.eventInjector.load(config.exportScript)) {
+            std::cerr << "Error: " << mlc.eventInjector.error() << std::endl;
+            return 1;
+        }
+        mlc.hasEventScript = true;
     }
 
 // IDE panel using CEF Browser

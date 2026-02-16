@@ -1617,8 +1617,13 @@ ParseResult parseArgs(int argc, char** argv) {
     app.add_option("--frames", maxFrames, "Exit after N frames")
        ->check(CLI::Range(1, 10000000));
     app.add_flag("--show-ui", showUI, "Show chain visualizer and IDE panel");
+    bool snapshotUI = false;
+    app.add_flag("--snapshot-ui", snapshotUI, "Include devtools UI in snapshot (implies --show-ui)");
     bool exitOnError = false;
     app.add_flag("--exit-on-error", exitOnError, "Exit immediately on compile error (for agent/CI workflows)");
+    std::string scriptPath;
+    app.add_option("--script", scriptPath, "Playback script JSON file (event injection)")
+       ->type_name("FILE");
 
     // === Subcommands ===
 
@@ -2019,7 +2024,10 @@ ParseResult parseArgs(int argc, char** argv) {
     config.headless = headless;
     config.startFullscreen = fullscreen;
     config.showUI = showUI;
+    config.snapshotUI = snapshotUI;
+    if (snapshotUI) config.showUI = true;  // --snapshot-ui implies --show-ui
     config.exitOnError = exitOnError;
+    if (!scriptPath.empty()) config.exportScript = scriptPath;  // reuse exportScript field for event injection
     config.maxFrames = maxFrames;
     config.recordPath = recordPath;
     config.recordFps = recordFps;

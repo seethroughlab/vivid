@@ -75,6 +75,9 @@ struct AppConfig {
     ExportCodec exportCodec = ExportCodec::H264;
     bool exportQuiet = false;        // suppress progress output
 
+    // Capture composite texture (with devtools UI) instead of chain output
+    bool snapshotUI = false;
+
     // Exit on any compile error (for agent/CI workflows)
     bool exitOnError = false;
 };

@@ -152,6 +152,8 @@ bool EventInjector::load(const std::string& path) {
 }
 
 void EventInjector::processFrame(int frame, Context& ctx, Chain& chain) {
+    m_mouseInjectedThisFrame = false;
+
     // Auto-release mouse buttons from previous frame's mouse_click events
     for (int btn : m_pendingMouseRelease) {
         ctx.injectMouseButton(btn, false);
@@ -217,6 +219,8 @@ void EventInjector::processFrame(int frame, Context& ctx, Chain& chain) {
             float px = ev.x * static_cast<float>(ctx.width());
             float py = ev.y * static_cast<float>(ctx.height());
             ctx.injectMousePosition(px, py);
+            m_mouseInjectedThisFrame = true;
+            m_lastInjectedMousePos = {px, py};
         } else if (ev.type == "snapshot_recall") {
             int idx = static_cast<int>(ev.value);
             float duration = ev.valueTo;
@@ -228,6 +232,11 @@ void EventInjector::processFrame(int frame, Context& ctx, Chain& chain) {
             ctx.injectMousePosition(px, py);
             ctx.injectMouseButton(ev.button, true);
             m_pendingMouseRelease.push_back(ev.button);
+            m_mouseInjectedThisFrame = true;
+            m_lastInjectedMousePos = {px, py};
+        } else if (ev.type == "scroll") {
+            // Inject scroll event (x = horizontal delta, y = vertical delta)
+            ctx.injectScroll(ev.x, ev.y);
         } else if (ev.type == "midi_cc") {
             // MIDI CC — send via setParam("midi_cc", [cc, value, channel, 0])
             Operator* op = chain.getByName(ev.op);

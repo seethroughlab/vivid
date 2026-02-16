@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include <glm/glm.hpp>
 
 namespace vivid {
 
@@ -59,6 +60,12 @@ public:
     /// Error string from last failed load().
     const std::string& error() const { return m_error; }
 
+    /// Returns true if processFrame() injected a mouse position this frame.
+    bool mouseWasInjected() const { return m_mouseInjectedThisFrame; }
+
+    /// Returns the last injected mouse position (in framebuffer/pixel coords).
+    glm::vec2 lastInjectedMousePos() const { return m_lastInjectedMousePos; }
+
 private:
     PlaybackScript m_script;
     std::string m_error;
@@ -76,6 +83,10 @@ private:
 
     // Mouse buttons pending release (auto-release on next frame after mouse_click)
     std::vector<int> m_pendingMouseRelease;
+
+    // Track whether mouse position was injected this frame
+    bool m_mouseInjectedThisFrame = false;
+    glm::vec2 m_lastInjectedMousePos = {0, 0};
 
     /// Convert a key name string (e.g. "space", "a") to GLFW keycode.
     static int keyNameToGLFW(const std::string& name);
