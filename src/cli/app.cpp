@@ -807,6 +807,11 @@ struct MainLoopContext {
     int inspectSamplesCollected = 0;       // How many samples collected so far
     std::vector<std::string> inspectResults; // Collected JSON strings
 
+    // Inspect audio accumulation (for waveform.png)
+    bool inspectAudioStarted = false;
+    std::vector<float> inspectAudioBuffer;
+    uint32_t inspectAudioFramesCaptured = 0;
+
     // Exit on any compile error (agent/CI mode)
     bool exitOnError = false;
 
@@ -1220,6 +1225,10 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
         std::cout << errReport.dump(2) << std::endl;
         mlc.exitCode = 1;
+        if (mlc.inspectAudioStarted) {
+            mlc.ctx->chain().stopAudioRecordingTap();
+            mlc.inspectAudioStarted = false;
+        }
         glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
     }
 
@@ -1565,6 +1574,27 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         int currentFrame = mlc.snapshotFrameCounter;
         mlc.snapshotFrameCounter++;
 
+        // Inspect audio accumulation: start recording tap once audio is available
+        if (mlc.inspectMode && !mlc.inspectOutDir.empty() && !mlc.inspectAudioStarted
+            && mlc.ctx && !mlc.ctx->hasError()) {
+            if (mlc.ctx->chain().audioOutputBuffer()) {
+                mlc.ctx->chain().startAudioRecordingTap();
+                mlc.inspectAudioStarted = true;
+            }
+        }
+
+        // Inspect audio accumulation: pop samples each frame
+        if (mlc.inspectMode && mlc.inspectAudioStarted) {
+            constexpr uint32_t CHUNK = 4096;
+            std::vector<float> chunk(CHUNK * AUDIO_CHANNELS);
+            uint32_t framesRead = mlc.ctx->chain().popAudioRecordedSamples(chunk.data(), CHUNK);
+            if (framesRead > 0) {
+                mlc.inspectAudioBuffer.insert(mlc.inspectAudioBuffer.end(),
+                    chunk.begin(), chunk.begin() + framesRead * AUDIO_CHANNELS);
+                mlc.inspectAudioFramesCaptured += framesRead;
+            }
+        }
+
         // Multi-sample inspect: collect sample at target frames
         if (mlc.inspectMode && !mlc.inspectSampleFrames.empty()) {
             // Check if current frame is one of the target sample frames
@@ -1617,12 +1647,20 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                         jsonFile << outputJson << "\n";
                     }
 
-                    // Save waveform PNG if audio is active
-                    const auto* audioBuf = mlc.ctx->chain().audioOutputBuffer();
-                    if (audioBuf && audioBuf->isValid()) {
+                    // Save waveform PNG from accumulated audio
+                    if (mlc.inspectAudioStarted && mlc.inspectAudioFramesCaptured > 0) {
+                        mlc.ctx->chain().stopAudioRecordingTap();
+                        mlc.inspectAudioStarted = false;
                         std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
-                        renderWaveformPNG(waveformPath, audioBuf->samples,
-                                          audioBuf->frameCount, audioBuf->channels);
+                        renderWaveformPNG(waveformPath, mlc.inspectAudioBuffer.data(),
+                                          mlc.inspectAudioFramesCaptured, AUDIO_CHANNELS);
+                    } else {
+                        const auto* audioBuf = mlc.ctx->chain().audioOutputBuffer();
+                        if (audioBuf && audioBuf->isValid()) {
+                            std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
+                            renderWaveformPNG(waveformPath, audioBuf->samples,
+                                              audioBuf->frameCount, audioBuf->channels);
+                        }
                     }
                 }
 
@@ -1651,12 +1689,20 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                     std::string pngPath = (fs::path(mlc.inspectOutDir) / "snapshot.png").string();
                     mlc.ctx->snapshot(pngPath);
 
-                    // Save waveform PNG if audio is active
-                    const auto* audioBuf = mlc.ctx->chain().audioOutputBuffer();
-                    if (audioBuf && audioBuf->isValid()) {
+                    // Save waveform PNG from accumulated audio
+                    if (mlc.inspectAudioStarted && mlc.inspectAudioFramesCaptured > 0) {
+                        mlc.ctx->chain().stopAudioRecordingTap();
+                        mlc.inspectAudioStarted = false;
                         std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
-                        renderWaveformPNG(waveformPath, audioBuf->samples,
-                                          audioBuf->frameCount, audioBuf->channels);
+                        renderWaveformPNG(waveformPath, mlc.inspectAudioBuffer.data(),
+                                          mlc.inspectAudioFramesCaptured, AUDIO_CHANNELS);
+                    } else {
+                        const auto* audioBuf = mlc.ctx->chain().audioOutputBuffer();
+                        if (audioBuf && audioBuf->isValid()) {
+                            std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
+                            renderWaveformPNG(waveformPath, audioBuf->samples,
+                                              audioBuf->frameCount, audioBuf->channels);
+                        }
                     }
                 }
             }

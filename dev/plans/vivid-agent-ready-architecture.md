@@ -851,7 +851,7 @@ This phase enables the inner loop — the LLM can build, inspect, and validate a
 | 1.9 | `vivid graph` CLI command | **DONE** | Chain topology as JSON DAG |
 | 1.10 | Assertion YAML parser | **DONE** | Implemented as JSON (not YAML) — `vivid-assertions.json` |
 | 1.11 | `vivid check` CLI command | **DONE** | Dot-path resolution, numeric + string comparisons, exit 0/1 |
-| 1.12 | Audio waveform overview image generation for inspect reports | **NOT DONE** | Not yet implemented |
+| 1.12 | Audio waveform overview image generation for inspect reports | **DONE** | Full-duration accumulation via recording tap; falls back to last block if tap unavailable |
 | 1.13 | `vivid-project.json` manifest schema and loader | **DONE** | `project_manifest.h/.cpp` — name, chain, preview defaults, params, assertions |
 
 **After Phase 1:** An agent can edit code, build, understand the chain, inspect output, and validate assertions — the complete inner loop. No video export yet; the LLM works entirely from structured data.
