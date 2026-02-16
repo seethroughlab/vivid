@@ -123,9 +123,66 @@ static const char* AGENTS_MD_TEMPLATE = R"(# %PROJECT_NAME%
 ## Commands
 - **VS Code**: `Vivid: Run Project` (Cmd/Ctrl+Shift+P) - recommended
 - **Terminal**: `vivid .` or `vivid . --show-ui`
+- **CI/Agent**: `vivid . --exit-on-error` (exits on compile error instead of waiting)
 
 ## Modules
 %MODULES_LIST%
+
+## Agent Workflow
+
+Use two nested loops: a fast **inner loop** for autonomous iteration, and an **outer loop** for human review.
+
+### Inner Loop (autonomous)
+
+```
+Edit chain.cpp
+  -> vivid build .          # MUST pass (exit 0) before anything else
+  -> vivid inspect .        # Read structured metrics JSON
+  -> vivid check .          # Run assertions (exit 0 = all pass)
+  -> iterate or done
+```
+
+**Critical:** `vivid build` is the only command that exits non-zero on compile failure. All other commands (`vivid inspect`, `vivid check`, `vivid export`) hang indefinitely on errors. Always use `vivid build` as a gate.
+
+### Outer Loop (human review)
+
+When inner loop metrics are satisfied, export for subjective review:
+
+```
+vivid export . -o /tmp/preview.mp4 --duration 15
+```
+
+Only export when you've iterated to a point worth showing. Exporting is slow.
+
+## Key CLI Commands
+
+```bash
+vivid build .                              # Compile gate (must pass first)
+vivid inspect .                            # Single-frame inspection JSON
+vivid inspect . --per-operator             # Per-operator texture analysis
+vivid inspect . --duration 2 --samples 5   # Multi-sample over 2s
+vivid check .                              # Run assertions from vivid-assertions.json
+vivid check . --duration 2                 # Allow warmup before checking
+vivid export . -o out.mp4 --duration 10    # Export video
+vivid params .                             # List tweakable parameters as JSON
+```
+
+## Assertions
+
+Create `vivid-assertions.json` to define health checks. Run with `vivid check .`
+
+```json
+{
+  "assertions": [
+    {"name": "brightness-ok", "path": "output.meanBrightness", "op": "between", "value": [0.1, 0.9]},
+    {"name": "has-contrast", "path": "output.contrast", "op": ">", "value": 0.1, "after_frame": 30}
+  ]
+}
+```
+
+Supported paths: `output.*` (visual), `audio.*` (audio), `operators.<name>.metrics.*`, `operators.<name>.textureAnalysis.*`.
+Operators: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between`, `exists`, `not_exists`.
+Guards: `after_frame` (skip before frame N), `when_path`/`when_check`/`when_value` (conditional).
 
 ## MCP Workflow
 After editing chain.cpp, Vivid hot-reloads automatically. Always verify:
@@ -133,6 +190,8 @@ After editing chain.cpp, Vivid hot-reloads automatically. Always verify:
 2. Edit chain.cpp with new values
 3. `clear_pending_changes` - Confirm edit applied
 4. `get_runtime_status` - **Critical**: Verify compilation succeeded
+
+Key MCP tools: `inspect_chain` (with `per_operator_analysis: true`), `capture_frame`, `capture_audio`, `compare_frames`, `set_param`, `solo_operator`, `sweep_param`.
 
 ## Conventions
 - Use setter pattern: `noise.scale = 4.0f;`
