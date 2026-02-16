@@ -1,6 +1,6 @@
 // Trigger Callback Test
 //
-// Demonstrates using onTrigger() callbacks to sync audio and visuals
+// Demonstrates using onStep() callbacks to sync audio and visuals
 // without manual polling in update()
 
 #include <vivid/vivid.h>
@@ -124,25 +124,25 @@ void setup(Context& ctx) {
     // Callbacks are used for visual effects only (they fire on audio thread)
 
     // Kick triggers: visual flash + particle burst
-    kickSeq.onTrigger([chainPtr](float velocity) {
+    kickSeq.onStep([chainPtr](float velocity) {
         chainPtr->get<Flash>("kickFlash").trigger(velocity);
         chainPtr->get<Particles>("particles").burst(static_cast<int>(30 * velocity));
     });
 
     // Snare triggers: visual flash
-    snareSeq.onTrigger([chainPtr](float velocity) {
+    snareSeq.onStep([chainPtr](float velocity) {
         chainPtr->get<Flash>("snareFlash").trigger(velocity);
     });
 
     // Hat triggers (Euclidean - no velocity): visual flash
-    hatSeq.onTrigger([chainPtr]() {
+    hatSeq.onStep([chainPtr]() {
         chainPtr->get<Flash>("hatFlash").trigger(0.4f);
     });
 
     std::cout << "\n";
     std::cout << "Trigger Callback Test\n";
     std::cout << "=====================\n";
-    std::cout << "Audio and visuals are synced via onTrigger() callbacks\n";
+    std::cout << "Audio and visuals are synced via onStep() callbacks\n";
     std::cout << "No manual polling needed in update()!\n";
     std::cout << "\n";
 }

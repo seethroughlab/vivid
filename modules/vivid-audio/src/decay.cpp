@@ -54,9 +54,22 @@ void Decay::cleanup() {
     m_initialized = false;
 }
 
-void Decay::trigger() {
+void Decay::handleEvent(const AudioEvent& event) {
+    if (event.type == AudioEventType::Trigger) {
+        float velocity = (event.value1 > 0.0f) ? event.value1 : 1.0f;
+        midiNoteOn(0, velocity, 0);
+    } else if (event.type == AudioEventType::Reset) {
+        reset();
+    }
+}
+
+void Decay::midiNoteOn(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
     m_progress = 0.0f;
     m_value = 1.0f;
+}
+
+void Decay::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // One-shot envelope — no-op on note off
 }
 
 void Decay::reset() {

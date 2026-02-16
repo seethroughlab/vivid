@@ -57,7 +57,8 @@ namespace vivid::audio {
  * block.noise = 0.2f;
  * block.decay = 0.08f;
  *
- * chain.get<Clang>("cowbell")->trigger();
+ * // Trigger via setTriggerSource (audio-thread, sample-accurate):
+ * chain.get<Clang>("cowbell")->setTriggerSource("seq");
  * @endcode
  *
  * @see FMDrum, Tom, HiHat, DrumStack

@@ -251,10 +251,10 @@ public:
     /// @{
 
     /**
-     * @brief Set callback for triggers (called on audio thread)
+     * @brief Set callback for clock steps (called on audio thread)
      * @param cb Callback function
      */
-    void onTrigger(std::function<void()> cb) { m_callback = cb; }
+    void onStep(std::function<void()> cb) { m_callback = cb; }
 
     /// @}
     // -------------------------------------------------------------------------

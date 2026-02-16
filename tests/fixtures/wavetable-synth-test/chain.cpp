@@ -119,7 +119,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto* chainPtr = &chain;
-    seq.onTrigger([chainPtr](float vel) {
+    seq.onStep([chainPtr](float vel) {
         auto& wt = chainPtr->get<WavetableSynth>("wt");
         auto& flash = chainPtr->get<Flash>("flash");
 
@@ -137,7 +137,7 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
 
     // NOTE: Sequencer advances automatically via setTriggerSource("clock")
-    // The onTrigger() callback fires on the audio thread when steps trigger.
+    // The onStep() callback fires on the audio thread when steps trigger.
     // No manual advance() needed!
 
     // Modulate wavetable position with LFO

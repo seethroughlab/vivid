@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
@@ -44,13 +45,16 @@ enum class DecayCurve {
  *     .time(0.05f)
  *     .curve(DecayCurve::Exponential);
  *
- * // Trigger on beat
- * chain.get<Decay>("env")->trigger();
+ * // Trigger via setTriggerSource (audio-thread, sample-accurate):
+ * chain.get<Decay>("env")->setTriggerSource("seq");
+ *
+ * // Or trigger via MIDI:
+ * chain.get<Decay>("env")->midiNoteOn(0, 1.0f, 0);
  * @endcode
  
  * @see Envelope, AR, PitchEnv, Kick, Snare
  */
-class Decay : public AudioOperator {
+class Decay : public AudioOperator, public MidiReceiver {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -73,10 +77,18 @@ public:
     /// @name Playback Control
     /// @{
 
-    void trigger();
+    // trigger() inherited from AudioOperator - queues to audio thread
     void reset();
     bool isActive() const { return m_value > 0.0001f; }
     float currentValue() const { return m_value; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -85,6 +97,7 @@ public:
 
     void init(Context& ctx) override;
     void process(Context& ctx) override;
+    void handleEvent(const AudioEvent& event) override;
     void cleanup() override;
     std::string name() const override { return "Decay"; }
 

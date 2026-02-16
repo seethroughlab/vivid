@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
@@ -45,12 +46,16 @@ enum class ARStage {
  *     .attack(0.005f)
  *     .release(0.5f);
  *
- * chain.get<AR>("env")->trigger();
+ * // Trigger via setTriggerSource (audio-thread, sample-accurate):
+ * chain.get<AR>("env")->setTriggerSource("seq");
+ *
+ * // Or trigger via MIDI:
+ * chain.get<AR>("env")->midiNoteOn(0, 1.0f, 0);
  * @endcode
  
  * @see Envelope, Decay, Kick, Snare
  */
-class AR : public AudioOperator {
+class AR : public AudioOperator, public MidiReceiver {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -72,11 +77,19 @@ public:
     /// @name Playback Control
     /// @{
 
-    void trigger();
+    // trigger() inherited from AudioOperator - queues to audio thread
     void reset();
     bool isActive() const { return m_stage != ARStage::Idle; }
     ARStage stage() const { return m_stage; }
     float currentValue() const { return m_value; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -85,6 +98,7 @@ public:
 
     void init(Context& ctx) override;
     void process(Context& ctx) override;
+    void handleEvent(const AudioEvent& event) override;
     void cleanup() override;
     std::string name() const override { return "AR"; }
 

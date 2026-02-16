@@ -92,7 +92,7 @@ void Sequencer::generateBlock(uint32_t frameCount) {
         }
     }
 
-    // If we have a pending trigger (from onTrigger or external trigger() call), advance the step
+    // If we have a pending trigger (from midiNoteOn or external trigger() call), advance the step
     if (m_pendingTrigger) {
         m_pendingTrigger = false;
         advanceInternalNoFlag();
@@ -120,6 +120,14 @@ void Sequencer::generateBlock(uint32_t frameCount) {
             sendNoteOn(note, velocity);
             m_lastPlayedNote = note;
             m_noteIsPlaying = true;
+        }
+
+        // Invoke step callbacks
+        if (m_onStepVel) {
+            m_onStepVel(velocity);
+        }
+        if (m_onStepSimple) {
+            m_onStepSimple();
         }
     }
 

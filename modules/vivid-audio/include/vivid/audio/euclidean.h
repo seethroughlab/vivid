@@ -142,19 +142,18 @@ public:
     /// @{
 
     /**
-     * @brief Set callback for trigger events
+     * @brief Set callback for step events (called on audio thread)
      * @param callback Function called on each hit
      *
      * Example:
      * @code
-     * eucl.onTrigger([&]() {
-     *     hihat.trigger();
+     * eucl.onStep([&]() {
      *     flash.trigger(0.5f);
      * });
      * @endcode
      */
-    void onTrigger(std::function<void()> callback) {
-        m_onTrigger = std::move(callback);
+    void onStep(std::function<void()> callback) {
+        m_onStep = std::move(callback);
     }
 
     /// @}
@@ -207,7 +206,7 @@ private:
     uint64_t m_lastTriggerCount = 0;  // For tracking Clock's trigger count
 
     // Callback
-    std::function<void()> m_onTrigger;
+    std::function<void()> m_onStep;
 };
 
 } // namespace vivid::audio

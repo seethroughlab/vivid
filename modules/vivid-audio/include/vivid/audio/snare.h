@@ -53,7 +53,8 @@ enum class SnareFilterType {
  *     .pitch(180.0f)
  *     .snappy(0.6f);
  *
- * chain.get<Snare>("snare")->trigger();
+ * // Trigger via setTriggerSource (audio-thread, sample-accurate):
+ * chain.get<Snare>("snare")->setTriggerSource("seq");
  * @endcode
  
  * @see Kick, HiHat, Clap, Sequencer, Clock, NoiseGen

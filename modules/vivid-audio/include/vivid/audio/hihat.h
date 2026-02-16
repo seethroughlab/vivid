@@ -59,7 +59,8 @@ enum class FilterSlope {
  * // Open hi-hat
  * chain.add<HiHat>("hihatO").decay(0.5f).tone(0.6f).ring(0.4f);
  *
- * chain.get<HiHat>("hihatC")->trigger();
+ * // Trigger via setTriggerSource (audio-thread, sample-accurate):
+ * chain.get<HiHat>("hihatC")->setTriggerSource("seq");
  * @endcode
  
  * @see Kick, Snare, Clap, Sequencer, Clock, NoiseGen

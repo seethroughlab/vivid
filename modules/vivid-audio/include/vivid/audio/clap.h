@@ -41,7 +41,8 @@ namespace vivid::audio {
  *     .tone(0.6f)
  *     .spread(0.5f);
  *
- * chain.get<Clap>("clap")->trigger();
+ * // Trigger via setTriggerSource (audio-thread, sample-accurate):
+ * chain.get<Clap>("clap")->setTriggerSource("seq");
  * @endcode
  
  * @see Kick, Snare, HiHat, Sequencer, Clock, NoiseGen

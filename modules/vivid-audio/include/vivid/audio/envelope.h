@@ -53,7 +53,10 @@ enum class EnvelopeStage {
  * env->sustain = 0.5f;
  * env->release = 0.5f;
  *
- * // Trigger the envelope
+ * // Trigger via setTriggerSource (audio-thread, sample-accurate):
+ * env->setTriggerSource("seq");
+ *
+ * // Or trigger from main thread (queued to audio thread):
  * env->trigger();
  * @endcode
  

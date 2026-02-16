@@ -497,9 +497,9 @@ VIVID_CHAIN(setup, update)
 
 ---
 
-## Trigger Callbacks (Audio-Visual Sync)
+## Step Callbacks (Audio-Visual Sync)
 
-Use `onTrigger()` callbacks to automatically sync audio and visual events. No manual polling in update() needed.
+Use `onStep()` callbacks to automatically sync audio and visual events. No manual polling in update() needed.
 
 ```cpp
 #include <vivid/vivid.h>
@@ -518,9 +518,11 @@ void setup(Context& ctx) {
     clock.bpm = 120.0f;
 
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
+    kickSeq.setTriggerSource("clock");
     kickSeq.setPattern(0b0001000100010001);  // Kick on 1,5,9,13
 
     auto& kick = chain.add<Kick>("kick");
+    kick.setTriggerSource("kickSeq");  // Audio-thread triggering
 
     // Visual
     auto& noise = chain.add<Noise>("noise");
@@ -530,9 +532,8 @@ void setup(Context& ctx) {
     auto& particles = chain.add<Particles>("particles");
     particles.emitRate = 0.0f;  // Only burst on trigger
 
-    // === The key: onTrigger callback ===
-    kickSeq.onTrigger([&](float velocity) {
-        kick.trigger();                  // Audio
+    // === The key: onStep callback ===
+    kickSeq.onStep([&](float velocity) {
         flash.trigger(velocity);         // Visual flash
         particles.burst(30);             // Visual particles
     });
@@ -541,23 +542,19 @@ void setup(Context& ctx) {
 }
 
 void update(Context& ctx) {
-    auto& chain = ctx.chain();
-
-    // Just advance clock - callbacks handle the rest!
-    if (chain.get<Clock>("clock").triggered()) {
-        chain.get<Sequencer>("kickSeq").advance();
-    }
-
-    chain.process(ctx);
+    // Sequencer advances automatically via setTriggerSource("clock")
+    // Drum triggers automatically via setTriggerSource("kickSeq")
+    // Callbacks handle visual sync!
+    ctx.chain().process(ctx);
 }
 
 VIVID_CHAIN(setup, update)
 ```
 
 **Callback signatures:**
-- `Sequencer::onTrigger(std::function<void(float velocity)>)` - with velocity
-- `Sequencer::onTrigger(std::function<void()>)` - simple, no velocity
-- `Euclidean::onTrigger(std::function<void()>)` - no velocity
+- `Sequencer::onStep(std::function<void(float velocity)>)` - with velocity
+- `Sequencer::onStep(std::function<void()>)` - simple, no velocity
+- `Euclidean::onStep(std::function<void()>)` - no velocity
 
 ---
 
@@ -1411,7 +1408,7 @@ VIVID_CHAIN(setup, update)
 
 ### Key Patterns
 
-1. **Trigger callbacks** - `seq.onTrigger([&]() { ... })` fires audio + visual events simultaneously
+1. **Step callbacks** - `seq.onStep([&]() { ... })` fires audio + visual events simultaneously
 2. **Audio analysis** - `BandSplit` gives bass/mid/high; `Levels` gives RMS/peak
 3. **Parameter binding** - Same value drives both domains (mouse → pitch + scale)
 4. **Capture chain pointer** - Use `auto* chainPtr = &chain` in callbacks to avoid dangling references

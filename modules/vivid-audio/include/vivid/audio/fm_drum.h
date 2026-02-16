@@ -52,7 +52,8 @@ namespace vivid::audio {
  * metal.feedback = 0.5f;
  * metal.decay = 0.2f;
  *
- * chain.get<FMDrum>("bell")->trigger();
+ * // Trigger via setTriggerSource (audio-thread, sample-accurate):
+ * chain.get<FMDrum>("bell")->setTriggerSource("seq");
  * @endcode
  *
  * @see Kick, Snare, Tom, Clang, DrumStack

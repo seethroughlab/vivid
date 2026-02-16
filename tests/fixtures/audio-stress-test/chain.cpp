@@ -184,20 +184,20 @@ void setup(Context& ctx) {
 
     // NOTE: Drums trigger automatically via setTriggerSource()
     // Callbacks handle visual effects and counting
-    kickSeq.onTrigger([chainPtr](float vel) {
+    kickSeq.onStep([chainPtr](float vel) {
         chainPtr->get<Flash>("flash").trigger(vel);
         triggerCount++;
     });
 
-    snareSeq.onTrigger([chainPtr](float) {
+    snareSeq.onStep([chainPtr](float) {
         triggerCount++;
     });
 
-    hatSeq.onTrigger([chainPtr]() {
+    hatSeq.onStep([chainPtr]() {
         triggerCount++;
     });
 
-    clapSeq.onTrigger([chainPtr](float) {
+    clapSeq.onStep([chainPtr](float) {
         triggerCount++;
     });
 
@@ -209,7 +209,7 @@ void setup(Context& ctx) {
     static int arpIndex = 0;
 
     // Synth arp triggers via callback on audio thread
-    arpSeq.onTrigger([chainPtr]() {
+    arpSeq.onStep([chainPtr]() {
         auto& synth = chainPtr->get<PolySynth>("synth");
         synth.allNotesOff();
         synth.noteOn(arpNotes[arpIndex % 8]);

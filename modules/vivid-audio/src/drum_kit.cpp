@@ -229,7 +229,9 @@ void DrumKit::triggerDrum(DrumType drum, float velocity) {
     // Store velocity for visualization
     m_lastVelocity[static_cast<size_t>(drum)] = velocity;
 
-    // Get the drum and trigger it
+    // Get the drum and trigger it via midiNoteOn
+    // Child drums aren't in the AudioGraph, so trigger() would fall through
+    // to the empty onTrigger(). Call midiNoteOn() directly instead.
     AudioOperator* drumOp = getDrumForType(drum);
     if (drumOp) {
         // For closed hi-hat, choke open hi-hat first
@@ -237,7 +239,9 @@ void DrumKit::triggerDrum(DrumType drum, float velocity) {
             m_openHiHat->choke();
         }
 
-        drumOp->trigger();
+        if (auto* receiver = dynamic_cast<MidiReceiver*>(drumOp)) {
+            receiver->midiNoteOn(0, velocity, 0);
+        }
     }
 }
 

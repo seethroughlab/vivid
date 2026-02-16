@@ -77,9 +77,22 @@ void AR::cleanup() {
     m_initialized = false;
 }
 
-void AR::trigger() {
+void AR::handleEvent(const AudioEvent& event) {
+    if (event.type == AudioEventType::Trigger) {
+        float velocity = (event.value1 > 0.0f) ? event.value1 : 1.0f;
+        midiNoteOn(0, velocity, 0);
+    } else if (event.type == AudioEventType::Reset) {
+        reset();
+    }
+}
+
+void AR::midiNoteOn(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
     m_stage = ARStage::Attack;
     m_progress = 0.0f;
+}
+
+void AR::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // One-shot envelope — no-op on note off
 }
 
 void AR::reset() {

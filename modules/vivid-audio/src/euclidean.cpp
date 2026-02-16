@@ -97,7 +97,7 @@ void Euclidean::generateBlock(uint32_t frameCount) {
         }
     }
 
-    // If we have a pending trigger (from onTrigger or external trigger() call), advance
+    // If we have a pending trigger (from midiNoteOn or external trigger() call), advance
     if (m_pendingTrigger) {
         m_pendingTrigger = false;
         advanceInternalNoFlag();
@@ -114,8 +114,8 @@ void Euclidean::generateBlock(uint32_t frameCount) {
     if (anyStepActive) {
         m_triggeredFlag.store(true, std::memory_order_release);       // For audio thread
         m_visualTriggeredFlag.store(true, std::memory_order_release); // For main thread
-        if (m_onTrigger) {
-            m_onTrigger();
+        if (m_onStep) {
+            m_onStep();
         }
     }
 
@@ -185,8 +185,8 @@ void Euclidean::advanceInternal() {
     m_triggeredFlag.store(stepActive, std::memory_order_release);
     m_visualTriggeredFlag.store(stepActive, std::memory_order_release);
 
-    if (stepActive && m_onTrigger) {
-        m_onTrigger();
+    if (stepActive && m_onStep) {
+        m_onStep();
     }
 }
 

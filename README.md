@@ -347,7 +347,7 @@ void setup(Context& ctx) {
 
     // Connect audio triggers to visuals
     auto* chainPtr = &chain;
-    kickSeq.onTrigger([chainPtr](float velocity) {
+    kickSeq.onStep([chainPtr](float velocity) {
         chainPtr->get<Kick>("kick").trigger();
         chainPtr->get<Flash>("flash").trigger(velocity);
     });

@@ -43,7 +43,8 @@ namespace vivid::audio {
  *     .decay(0.5f)
  *     .click(0.3f);
  *
- * chain.get<Kick>("kick")->trigger();
+ * // Trigger via setTriggerSource (audio-thread, sample-accurate):
+ * chain.get<Kick>("kick")->setTriggerSource("seq");
  * @endcode
  
  * @see Snare, HiHat, Clap, Sequencer, Clock, PitchEnv, Decay

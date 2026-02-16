@@ -49,7 +49,8 @@ namespace vivid::audio {
  * rackTom.bend = 0.4f;
  * rackTom.decay = 0.3f;
  *
- * chain.get<Tom>("floor")->trigger();
+ * // Trigger via setTriggerSource (audio-thread, sample-accurate):
+ * chain.get<Tom>("floor")->setTriggerSource("seq");
  * @endcode
  *
  * @see Kick, Snare, Cymbal, DrumStack

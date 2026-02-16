@@ -255,6 +255,35 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Callbacks
+    /// @{
+
+    /**
+     * @brief Set callback for step triggers (called on audio thread)
+     * @param callback Function called with velocity on each active step
+     *
+     * Example:
+     * @code
+     * seq.onStep([&](float velocity) {
+     *     flash.trigger(velocity);
+     *     particles.burst(30);
+     * });
+     * @endcode
+     */
+    void onStep(std::function<void(float velocity)> callback) {
+        m_onStepVel = std::move(callback);
+    }
+
+    /**
+     * @brief Set callback for step triggers (no velocity, called on audio thread)
+     * @param callback Function called on each active step
+     */
+    void onStep(std::function<void()> callback) {
+        m_onStepSimple = std::move(callback);
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name MidiReceiver Interface
     /// @{
 
@@ -308,6 +337,10 @@ private:
     // Note tracking for proper note-off
     uint8_t m_lastPlayedNote = 0;                   // Last note sent (for note-off)
     bool m_noteIsPlaying = false;                   // Whether we have an active note
+
+    // Callbacks
+    std::function<void(float)> m_onStepVel;
+    std::function<void()> m_onStepSimple;
 
     // Internal helpers
     void sendNoteOn(uint8_t note, float velocity);

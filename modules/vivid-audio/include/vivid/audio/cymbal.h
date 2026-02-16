@@ -47,7 +47,8 @@ namespace vivid::audio {
  * ride.shimmer = 0.2f;
  * ride.sizzle = 0.5f;
  *
- * chain.get<Cymbal>("crash")->trigger();
+ * // Trigger via setTriggerSource (audio-thread, sample-accurate):
+ * chain.get<Cymbal>("crash")->setTriggerSource("seq");
  * @endcode
  *
  * @see HiHat, Kick, Snare, DrumStack
