@@ -229,16 +229,27 @@ public:
     void calculateLayout(float screenWidth, float screenHeight);
 
     /// @}
-
-private:
-    void renderFlatMode(OverlayCanvas& canvas, const gui::InputState& input, float scale, const UIStyle& style);
+    // -------------------------------------------------------------------------
+    /// @name Input Routing
+    /// @{
 
     /**
      * @brief Determine which panel owns input this frame
+     *
+     * Read-only, side-effect-free query. Priority order:
+     * 1. Panel currently interacting or content-interacting
+     * 2. Floating panels (front-to-back z-order, with 8px hit padding)
+     * 3. Layout-managed panels (exact bounds)
+     *
      * @param input Input state
      * @return Panel ID that should receive input, or empty string if none
      */
     std::string determineInputTarget(const gui::InputState& input);
+
+    /// @}
+
+private:
+    void renderPanels(OverlayCanvas& canvas, const gui::InputState& input, float scale, const UIStyle& style);
 
     std::vector<std::unique_ptr<Panel>> m_panels;
     std::unordered_map<std::string, Panel*> m_panelMap;

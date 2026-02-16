@@ -117,14 +117,16 @@ bool OverlayCanvas::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat s
     m_queue = queue;
     m_surfaceFormat = surfaceFormat;
 
-    createPipeline();
+    if (!createPipeline()) {
+        return false;
+    }
     createWhiteTexture();
 
     m_initialized = true;
     return true;
 }
 
-void OverlayCanvas::createPipeline() {
+bool OverlayCanvas::createPipeline() {
     WGPUDevice device = m_device;
 
     ensureOverlayShaderLoaded();
@@ -138,6 +140,10 @@ void OverlayCanvas::createPipeline() {
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = &wgslDesc.chain;
     WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(device, &shaderDesc);
+    if (!shaderModule) {
+        std::cerr << "[OverlayCanvas] Failed to create shader module\n";
+        return false;
+    }
 
     // Bind group layout
     WGPUBindGroupLayoutEntry entries[3] = {};
@@ -226,6 +232,13 @@ void OverlayCanvas::createPipeline() {
     m_pipeline = wgpuDeviceCreateRenderPipeline(device, &pipelineDesc);
 
     wgpuPipelineLayoutRelease(pipelineLayout);
+
+    if (!m_pipeline) {
+        std::cerr << "[OverlayCanvas] Failed to create render pipeline\n";
+        wgpuShaderModuleRelease(shaderModule);
+        return false;
+    }
+
     wgpuShaderModuleRelease(shaderModule);
 
     // Create uniform buffer
@@ -242,6 +255,8 @@ void OverlayCanvas::createPipeline() {
     samplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
     samplerDesc.maxAnisotropy = 1;
     m_sampler = wgpuDeviceCreateSampler(device, &samplerDesc);
+
+    return true;
 }
 
 void OverlayCanvas::createWhiteTexture() {
@@ -356,10 +371,8 @@ void OverlayCanvas::begin(int logicalWidth, int logicalHeight, int physicalWidth
     // Reset to default layer
     m_currentLayer = 0;
 
-    // Clear clip stack and reset tracking state
+    // Clear clip stack
     m_clipStack.clear();
-    m_lastHasClip = false;
-    m_lastClipRect = {0, 0, 0, 0};
 
 
     // Reset transform
@@ -802,12 +815,17 @@ void OverlayCanvas::addQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 
     ClipRect currentClip = hasClip ? m_clipStack.back() : ClipRect{0, 0, 0, 0};
 
     // Check if we need to start a new segment (clip state changed)
-    bool needNewSegment = batch.solidSegments.empty() ||
-                          hasClip != m_lastHasClip ||
-                          (hasClip && (currentClip.x != m_lastClipRect.x ||
-                                       currentClip.y != m_lastClipRect.y ||
-                                       currentClip.w != m_lastClipRect.w ||
-                                       currentClip.h != m_lastClipRect.h));
+    bool needNewSegment;
+    if (batch.solidSegments.empty()) {
+        needNewSegment = true;
+    } else {
+        const auto& last = batch.solidSegments.back();
+        needNewSegment = hasClip != last.hasClip ||
+                         (hasClip && (currentClip.x != last.clipRect.x ||
+                                      currentClip.y != last.clipRect.y ||
+                                      currentClip.w != last.clipRect.w ||
+                                      currentClip.h != last.clipRect.h));
+    }
 
     if (needNewSegment) {
         // Start new segment
@@ -817,8 +835,6 @@ void OverlayCanvas::addQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 
         seg.hasClip = hasClip;
         seg.clipRect = currentClip;
         batch.solidSegments.push_back(seg);
-        m_lastHasClip = hasClip;
-        m_lastClipRect = currentClip;
     }
 
     uint32_t baseIndex = static_cast<uint32_t>(batch.solidVertices.size());
@@ -851,12 +867,17 @@ void OverlayCanvas::addTextQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::v
     ClipRect currentClip = hasClip ? m_clipStack.back() : ClipRect{0, 0, 0, 0};
 
     // Check if we need to start a new segment (clip state changed)
-    bool needNewSegment = batch.textSegments[fontIndex].empty() ||
-                          hasClip != m_lastHasClip ||
-                          (hasClip && (currentClip.x != m_lastClipRect.x ||
-                                       currentClip.y != m_lastClipRect.y ||
-                                       currentClip.w != m_lastClipRect.w ||
-                                       currentClip.h != m_lastClipRect.h));
+    bool needNewSegment;
+    if (batch.textSegments[fontIndex].empty()) {
+        needNewSegment = true;
+    } else {
+        const auto& last = batch.textSegments[fontIndex].back();
+        needNewSegment = hasClip != last.hasClip ||
+                         (hasClip && (currentClip.x != last.clipRect.x ||
+                                      currentClip.y != last.clipRect.y ||
+                                      currentClip.w != last.clipRect.w ||
+                                      currentClip.h != last.clipRect.h));
+    }
 
     if (needNewSegment) {
         // Start new segment
@@ -866,8 +887,6 @@ void OverlayCanvas::addTextQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::v
         seg.hasClip = hasClip;
         seg.clipRect = currentClip;
         batch.textSegments[fontIndex].push_back(seg);
-        m_lastHasClip = hasClip;
-        m_lastClipRect = currentClip;
     }
 
     uint32_t baseIndex = static_cast<uint32_t>(batch.textVertices[fontIndex].size());
@@ -959,12 +978,17 @@ void OverlayCanvas::fillCircle(float cx, float cy, float radius, const glm::vec4
     bool hasClip = !m_clipStack.empty();
     ClipRect currentClip = hasClip ? m_clipStack.back() : ClipRect{0, 0, 0, 0};
 
-    bool needNewSegment = batch.solidSegments.empty() ||
-                          hasClip != m_lastHasClip ||
-                          (hasClip && (currentClip.x != m_lastClipRect.x ||
-                                       currentClip.y != m_lastClipRect.y ||
-                                       currentClip.w != m_lastClipRect.w ||
-                                       currentClip.h != m_lastClipRect.h));
+    bool needNewSegment;
+    if (batch.solidSegments.empty()) {
+        needNewSegment = true;
+    } else {
+        const auto& last = batch.solidSegments.back();
+        needNewSegment = hasClip != last.hasClip ||
+                         (hasClip && (currentClip.x != last.clipRect.x ||
+                                      currentClip.y != last.clipRect.y ||
+                                      currentClip.w != last.clipRect.w ||
+                                      currentClip.h != last.clipRect.h));
+    }
 
     if (needNewSegment) {
         DrawSegment seg;
@@ -973,8 +997,6 @@ void OverlayCanvas::fillCircle(float cx, float cy, float radius, const glm::vec4
         seg.hasClip = hasClip;
         seg.clipRect = currentClip;
         batch.solidSegments.push_back(seg);
-        m_lastHasClip = hasClip;
-        m_lastClipRect = currentClip;
     }
 
     glm::vec2 center = transformPoint({cx, cy});
@@ -1091,12 +1113,17 @@ void OverlayCanvas::fillRoundedRect(float x, float y, float w, float h, float ra
         bool hasClip = !m_clipStack.empty();
         ClipRect currentClip = hasClip ? m_clipStack.back() : ClipRect{0, 0, 0, 0};
 
-        bool needNewSegment = batch.solidSegments.empty() ||
-                              hasClip != m_lastHasClip ||
-                              (hasClip && (currentClip.x != m_lastClipRect.x ||
-                                           currentClip.y != m_lastClipRect.y ||
-                                           currentClip.w != m_lastClipRect.w ||
-                                           currentClip.h != m_lastClipRect.h));
+        bool needNewSegment;
+        if (batch.solidSegments.empty()) {
+            needNewSegment = true;
+        } else {
+            const auto& last = batch.solidSegments.back();
+            needNewSegment = hasClip != last.hasClip ||
+                             (hasClip && (currentClip.x != last.clipRect.x ||
+                                          currentClip.y != last.clipRect.y ||
+                                          currentClip.w != last.clipRect.w ||
+                                          currentClip.h != last.clipRect.h));
+        }
 
         if (needNewSegment) {
             DrawSegment seg;
@@ -1105,8 +1132,6 @@ void OverlayCanvas::fillRoundedRect(float x, float y, float w, float h, float ra
             seg.hasClip = hasClip;
             seg.clipRect = currentClip;
             batch.solidSegments.push_back(seg);
-            m_lastHasClip = hasClip;
-            m_lastClipRect = currentClip;
         }
 
         glm::vec2 center = transformPoint({cx, cy});
@@ -1183,12 +1208,17 @@ void OverlayCanvas::fillRoundedRectTop(float x, float y, float w, float h, float
         bool hasClip = !m_clipStack.empty();
         ClipRect currentClip = hasClip ? m_clipStack.back() : ClipRect{0, 0, 0, 0};
 
-        bool needNewSegment = batch.solidSegments.empty() ||
-                              hasClip != m_lastHasClip ||
-                              (hasClip && (currentClip.x != m_lastClipRect.x ||
-                                           currentClip.y != m_lastClipRect.y ||
-                                           currentClip.w != m_lastClipRect.w ||
-                                           currentClip.h != m_lastClipRect.h));
+        bool needNewSegment;
+        if (batch.solidSegments.empty()) {
+            needNewSegment = true;
+        } else {
+            const auto& last = batch.solidSegments.back();
+            needNewSegment = hasClip != last.hasClip ||
+                             (hasClip && (currentClip.x != last.clipRect.x ||
+                                          currentClip.y != last.clipRect.y ||
+                                          currentClip.w != last.clipRect.w ||
+                                          currentClip.h != last.clipRect.h));
+        }
 
         if (needNewSegment) {
             DrawSegment seg;
@@ -1197,8 +1227,6 @@ void OverlayCanvas::fillRoundedRectTop(float x, float y, float w, float h, float
             seg.hasClip = hasClip;
             seg.clipRect = currentClip;
             batch.solidSegments.push_back(seg);
-            m_lastHasClip = hasClip;
-            m_lastClipRect = currentClip;
         }
 
         glm::vec2 center = transformPoint({cx, cy});

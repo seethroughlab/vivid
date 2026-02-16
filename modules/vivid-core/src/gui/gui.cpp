@@ -54,6 +54,23 @@ void hsvToRgb(float h, float s, float v, float& r, float& g, float& b) {
 
 namespace vivid {
 
+namespace {
+    // ADSR widget constants
+    constexpr int kADSRMiniSliderOffset = 10;
+    constexpr float kADSRGraphHeight = 60.0f;
+    constexpr float kADSRGraphPadding = 4.0f;
+    constexpr float kADSRPointRadius = 5.0f;
+    constexpr float kADSRHitRadiusSq = 100.0f;  // 10px radius squared
+    constexpr float kADSRSustainFraction = 0.1f;
+    constexpr float kADSRTimeFactor = 3.0f;
+
+    // Color picker
+    constexpr float kCheckerSize = 6.0f;
+
+    // Slider layout
+    constexpr float kSliderVerticalInset = 2.0f;
+} // anonymous namespace
+
 // Thread-local interaction state (persists across frames, thread-safe)
 thread_local Gui::InteractionState Gui::s_state;
 
@@ -326,118 +343,7 @@ bool Gui::checkbox(const char* label, bool* value) {
 }
 
 bool Gui::slider(const char* label, float* value, float min, float max) {
-    if (!m_inPanel || !value) return false;
-
-    uint32_t id = hashId(label);
-    float x = m_panel.x + m_style.padding;
-    float y = m_panel.cursorY;
-    float w = contentWidth();
-    float h = m_style.widgetHeight;
-
-    // Calculate layout based on style options
-    float sliderX, sliderY, sliderW, sliderH;
-    float totalHeight = h;
-
-    if (m_style.labelPosition == LabelPosition::Above) {
-        // Label on its own row, slider below
-        float labelH = m_canvas.fontLineHeight(0);
-        if (labelH <= 0) labelH = 16.0f;
-
-        sliderX = x;
-        sliderY = y + labelH + 2;
-        sliderW = w;
-        sliderH = h - 4;
-        totalHeight = labelH + 2 + h;
-
-        // Adjust for value display on right
-        if (m_style.valuePosition == ValuePosition::Right) {
-            sliderW = w - m_style.valueWidth - m_style.padding;
-        }
-    } else {
-        // Label to the left
-        sliderX = x + m_style.labelWidth;
-        sliderY = y + 2;
-        sliderW = w - m_style.labelWidth;
-        sliderH = h - 4;
-
-        if (m_style.valuePosition == ValuePosition::Right) {
-            sliderW -= m_style.valueWidth + m_style.padding;
-        }
-    }
-
-    bool hovered = isMouseInRect(sliderX, sliderY, sliderW, sliderH);
-    bool active = (s_state.activeSlider == id);
-
-    // Start drag
-    if (hovered && m_mouseClicked) {
-        s_state.activeSlider = id;
-        s_state.sliderStartValue = *value;
-        s_state.sliderStartMouseX = m_mousePos.x;
-        active = true;
-    }
-
-    // Continue drag
-    bool changed = false;
-    if (active) {
-        if (m_input.mouseDown[0]) {
-            // Calculate new value from mouse position
-            float t = std::clamp((m_mousePos.x - sliderX) / sliderW, 0.0f, 1.0f);
-            float newValue = min + t * (max - min);
-            if (newValue != *value) {
-                *value = newValue;
-                changed = true;
-            }
-        } else {
-            // End drag - track that this slider's drag ended
-            s_state.activeSlider = 0;
-            m_sliderDragEnded = true;
-            m_lastSliderDragId = id;
-        }
-    }
-
-    // Draw label
-    if (m_style.labelPosition == LabelPosition::Above) {
-        float baseline = y + m_canvas.fontAscent(0);
-        m_canvas.text(label, x, baseline, m_style.textDim, 0);
-    } else {
-        drawLabel(x, y, label);
-    }
-
-    // Draw slider background
-    m_canvas.fillRoundedRect(sliderX, sliderY, sliderW, sliderH, m_style.cornerRadius, m_style.widgetBackground);
-
-    // Draw fill
-    float range = max - min;
-    float norm = range > 0 ? std::clamp((*value - min) / range, 0.0f, 1.0f) : 0.0f;
-    float fillW = norm * sliderW;
-    if (fillW > 0) {
-        glm::vec4 fillColor = active ? m_style.sliderFillActive : m_style.sliderFill;
-        m_canvas.fillRoundedRect(sliderX, sliderY, fillW, sliderH, m_style.cornerRadius, fillColor);
-    }
-
-    // Draw border
-    m_canvas.strokeRoundedRect(sliderX, sliderY, sliderW, sliderH, m_style.cornerRadius, m_style.borderWidth, m_style.widgetBorder);
-
-    // Draw value text based on valuePosition
-    char valueBuf[32];
-    snprintf(valueBuf, sizeof(valueBuf), "%.2f", *value);
-
-    float sliderAscent = m_canvas.fontAscent(0);
-    float sliderDescent = std::abs(m_canvas.fontDescent(0));
-    if (m_style.valuePosition == ValuePosition::Center) {
-        float textW = m_canvas.measureText(valueBuf, 0);
-        float textX = sliderX + (sliderW - textW) * 0.5f;
-        float textY = sliderY + sliderH * 0.5f + (sliderAscent - sliderDescent) * 0.5f;
-        m_canvas.text(valueBuf, textX, textY, m_style.text, 0);
-    } else if (m_style.valuePosition == ValuePosition::Right) {
-        float textX = sliderX + sliderW + m_style.padding;
-        float textY = sliderY + sliderH * 0.5f + (sliderAscent - sliderDescent) * 0.5f;
-        m_canvas.text(valueBuf, textX, textY, m_style.text, 0);
-    }
-    // ValuePosition::None - don't draw value
-
-    advanceCursor(totalHeight);
-    return changed;
+    return sliderImpl(label, value, min, max).changed;
 }
 
 bool Gui::slider(const char* label, int* value, int min, int max) {
@@ -451,6 +357,10 @@ bool Gui::slider(const char* label, int* value, int min, int max) {
 }
 
 Gui::SliderResult Gui::sliderEx(const char* label, float* value, float min, float max) {
+    return sliderImpl(label, value, min, max);
+}
+
+Gui::SliderResult Gui::sliderImpl(const char* label, float* value, float min, float max) {
     SliderResult result;
     if (!m_inPanel || !value) return result;
 
@@ -470,10 +380,10 @@ Gui::SliderResult Gui::sliderEx(const char* label, float* value, float min, floa
         if (labelH <= 0) labelH = 16.0f;
 
         sliderX = x;
-        sliderY = y + labelH + 2;
+        sliderY = y + labelH + kSliderVerticalInset;
         sliderW = w;
-        sliderH = h - 4;
-        totalHeight = labelH + 2 + h;
+        sliderH = h - kSliderVerticalInset * 2;
+        totalHeight = labelH + kSliderVerticalInset + h;
 
         // Adjust for value display on right
         if (m_style.valuePosition == ValuePosition::Right) {
@@ -482,9 +392,9 @@ Gui::SliderResult Gui::sliderEx(const char* label, float* value, float min, floa
     } else {
         // Label to the left
         sliderX = x + m_style.labelWidth;
-        sliderY = y + 2;
+        sliderY = y + kSliderVerticalInset;
         sliderW = w - m_style.labelWidth;
-        sliderH = h - 4;
+        sliderH = h - kSliderVerticalInset * 2;
 
         if (m_style.valuePosition == ValuePosition::Right) {
             sliderW -= m_style.valueWidth + m_style.padding;
@@ -498,7 +408,6 @@ Gui::SliderResult Gui::sliderEx(const char* label, float* value, float min, floa
     if (hovered && m_mouseClicked) {
         s_state.activeSlider = id;
         s_state.sliderStartValue = *value;
-        s_state.sliderStartMouseX = m_mousePos.x;
         active = true;
         result.dragStarted = true;
         result.startValue = *value;
@@ -552,16 +461,16 @@ Gui::SliderResult Gui::sliderEx(const char* label, float* value, float min, floa
     char valueBuf[32];
     snprintf(valueBuf, sizeof(valueBuf), "%.2f", *value);
 
-    float sliderExAscent = m_canvas.fontAscent(0);
-    float sliderExDescent = std::abs(m_canvas.fontDescent(0));
+    float fontAsc = m_canvas.fontAscent(0);
+    float fontDesc = std::abs(m_canvas.fontDescent(0));
     if (m_style.valuePosition == ValuePosition::Center) {
         float textW = m_canvas.measureText(valueBuf, 0);
         float textX = sliderX + (sliderW - textW) * 0.5f;
-        float textY = sliderY + sliderH * 0.5f + (sliderExAscent - sliderExDescent) * 0.5f;
+        float textY = sliderY + sliderH * 0.5f + (fontAsc - fontDesc) * 0.5f;
         m_canvas.text(valueBuf, textX, textY, m_style.text, 0);
     } else if (m_style.valuePosition == ValuePosition::Right) {
         float textX = sliderX + sliderW + m_style.padding;
-        float textY = sliderY + sliderH * 0.5f + (sliderExAscent - sliderExDescent) * 0.5f;
+        float textY = sliderY + sliderH * 0.5f + (fontAsc - fontDesc) * 0.5f;
         m_canvas.text(valueBuf, textX, textY, m_style.text, 0);
     }
     // ValuePosition::None - don't draw value
@@ -639,6 +548,9 @@ bool Gui::dropdown(const char* label, int* index, const std::vector<std::string>
 
     // Draw menu if open
     if (isOpen) {
+        glm::vec4 savedClip = m_canvas.currentClipRect();
+        int savedLayer = m_canvas.layer();
+        m_canvas.endClipRect();            // let menu overflow panel
         m_canvas.setLayer(UILayer::Menus);
 
         float menuY = buttonY + h;
@@ -681,86 +593,13 @@ bool Gui::dropdown(const char* label, int* index, const std::vector<std::string>
             s_state.openDropdown = 0;
         }
 
-        m_canvas.setLayer(UILayer::Panels);
+        m_canvas.setLayer(savedLayer);
+        if (savedClip.z > 0 && savedClip.w > 0) {
+            m_canvas.beginClipRect(savedClip.x, savedClip.y, savedClip.z, savedClip.w);
+        }
     }
 
     advanceCursor(totalHeight);
-    return changed;
-}
-
-bool Gui::colorPicker(const char* label, glm::vec4* color) {
-    if (!m_inPanel || !color) return false;
-
-    // For now, just show a color swatch - full HSV picker can be added later
-    uint32_t id = hashId(label);
-    float x = m_panel.x + m_style.padding;
-    float y = m_panel.cursorY;
-    float w = contentWidth();
-    float h = m_style.widgetHeight;
-
-    float labelW = m_style.labelWidth;
-    float swatchX = x + labelW;
-    float swatchW = h;  // Square swatch
-
-    bool hovered = isMouseInRect(swatchX, y, swatchW, h);
-    bool isExpanded = (s_state.expandedColorPicker == id);
-
-    // Draw label
-    drawLabel(x, y, label);
-
-    // Draw color swatch
-    m_canvas.fillRoundedRect(swatchX, y + 2, swatchW - 4, h - 4, m_style.cornerRadius, *color);
-    m_canvas.strokeRoundedRect(swatchX, y + 2, swatchW - 4, h - 4, m_style.cornerRadius, m_style.borderWidth, m_style.widgetBorder);
-
-    // Draw hex value
-    char hexBuf[16];
-    int r = static_cast<int>(std::clamp(color->r, 0.0f, 1.0f) * 255);
-    int g = static_cast<int>(std::clamp(color->g, 0.0f, 1.0f) * 255);
-    int b = static_cast<int>(std::clamp(color->b, 0.0f, 1.0f) * 255);
-    snprintf(hexBuf, sizeof(hexBuf), "#%02X%02X%02X", r, g, b);
-    float cpAscent = m_canvas.fontAscent(0);
-    float cpDescent = std::abs(m_canvas.fontDescent(0));
-    float textY = y + h * 0.5f + (cpAscent - cpDescent) * 0.5f;
-    m_canvas.text(hexBuf, swatchX + swatchW + m_style.padding, textY, m_style.textDim, 0);
-
-    // TODO: Expand/collapse for full HSV picker
-    // For now, clicking cycles through some preset colors
-    bool changed = false;
-    if (hovered && m_mouseClicked) {
-        // Simple: cycle hue
-        // Convert to HSV, rotate hue, convert back
-        float maxC = std::max({color->r, color->g, color->b});
-        float minC = std::min({color->r, color->g, color->b});
-        float h_ = 0, s_ = 0, v_ = maxC;
-        float delta = maxC - minC;
-        if (delta > 0.001f) {
-            s_ = delta / maxC;
-            if (color->r >= maxC) h_ = (color->g - color->b) / delta;
-            else if (color->g >= maxC) h_ = 2.0f + (color->b - color->r) / delta;
-            else h_ = 4.0f + (color->r - color->g) / delta;
-            h_ *= 60.0f;
-            if (h_ < 0) h_ += 360.0f;
-        }
-        // Rotate hue by 30 degrees
-        h_ = std::fmod(h_ + 30.0f, 360.0f);
-        // Convert back to RGB
-        float c = v_ * s_;
-        float x_ = c * (1.0f - std::abs(std::fmod(h_ / 60.0f, 2.0f) - 1.0f));
-        float m = v_ - c;
-        float r_, g_, b_;
-        if (h_ < 60) { r_ = c; g_ = x_; b_ = 0; }
-        else if (h_ < 120) { r_ = x_; g_ = c; b_ = 0; }
-        else if (h_ < 180) { r_ = 0; g_ = c; b_ = x_; }
-        else if (h_ < 240) { r_ = 0; g_ = x_; b_ = c; }
-        else if (h_ < 300) { r_ = x_; g_ = 0; b_ = c; }
-        else { r_ = c; g_ = 0; b_ = x_; }
-        color->r = r_ + m;
-        color->g = g_ + m;
-        color->b = b_ + m;
-        changed = true;
-    }
-
-    advanceCursor(h);
     return changed;
 }
 
@@ -862,7 +701,7 @@ Gui::ColorPickerResult Gui::colorPickerHSV(const char* label, glm::vec4* color, 
     float swatchY = y;
 
     // Draw checkerboard pattern for alpha visualization
-    float checkSize = 6.0f;
+    float checkSize = kCheckerSize;
     glm::vec4 checkLight = {0.7f, 0.7f, 0.7f, 1.0f};
     glm::vec4 checkDark = {0.4f, 0.4f, 0.4f, 1.0f};
     for (float cx = swatchX; cx < swatchX + swatchWidth; cx += checkSize) {
@@ -1310,8 +1149,8 @@ Gui::ADSRResult Gui::adsrEnvelope(const char* label,
     if (labelH <= 0) labelH = 16.0f;
 
     // Graph dimensions
-    float graphH = 60.0f;
-    float graphY = y + labelH + 4.0f;
+    float graphH = kADSRGraphHeight;
+    float graphY = y + labelH + kADSRGraphPadding;
 
     // Mini-sliders below graph
     float slidersY = graphY + graphH + 6.0f;
@@ -1320,7 +1159,7 @@ Gui::ADSRResult Gui::adsrEnvelope(const char* label,
     float sliderW = (w - 3 * sliderSpacing) / 4.0f;
 
     // Total height
-    float totalHeight = labelH + 4.0f + graphH + 6.0f + sliderH + 4.0f;
+    float totalHeight = labelH + kADSRGraphPadding + graphH + 6.0f + sliderH + kADSRGraphPadding;
 
     // Track widget bounds
     m_lastWidgetTop = y;
@@ -1335,8 +1174,8 @@ Gui::ADSRResult Gui::adsrEnvelope(const char* label,
 
     // Calculate envelope curve points using FIXED scale
     // This prevents the graph from rescaling during drag, making interaction intuitive
-    float sustainDisplayTime = maxTime * 0.1f;  // Fixed sustain display width
-    float fixedTotalTime = maxTime * 3.0f + sustainDisplayTime;  // A + D + S + R at max
+    float sustainDisplayTime = maxTime * kADSRSustainFraction;  // Fixed sustain display width
+    float fixedTotalTime = maxTime * kADSRTimeFactor + sustainDisplayTime;  // A + D + S + R at max
     float timeScale = w / fixedTotalTime;
 
     // X positions for envelope points
@@ -1353,8 +1192,8 @@ Gui::ADSRResult Gui::adsrEnvelope(const char* label,
     x4 = std::min(x4, x + w);
 
     // Y positions (inverted: top = 1, bottom = 0)
-    float graphBottom = graphY + graphH - 4.0f;
-    float graphTop = graphY + 4.0f;
+    float graphBottom = graphY + graphH - kADSRGraphPadding;
+    float graphTop = graphY + kADSRGraphPadding;
     float graphRange = graphBottom - graphTop;
 
     float y0 = graphBottom;                                 // Start at 0
@@ -1382,7 +1221,7 @@ Gui::ADSRResult Gui::adsrEnvelope(const char* label,
     m_canvas.line(x3, y3, x4, y4, lineWidth, curveColor);  // Release
 
     // Draw control points
-    float pointRadius = 5.0f;
+    float pointRadius = kADSRPointRadius;
     glm::vec4 pointColor = {0.9f, 0.9f, 0.9f, 1.0f};
     glm::vec4 pointColorActive = {1.0f, 0.8f, 0.3f, 1.0f};
 
@@ -1406,7 +1245,7 @@ Gui::ADSRResult Gui::adsrEnvelope(const char* label,
     for (int i = 0; i < 4; ++i) {
         float dx = m_mousePos.x - points[i].cx;
         float dy = m_mousePos.y - points[i].cy;
-        if (dx * dx + dy * dy < 100.0f) {  // 10px radius
+        if (dx * dx + dy * dy < kADSRHitRadiusSq) {
             hoveredPoint = i;
             break;
         }
@@ -1549,7 +1388,7 @@ Gui::ADSRResult Gui::adsrEnvelope(const char* label,
             if (m_mouseClicked) {
                 // Start drag on mini-slider
                 s_state.activeADSR = id;
-                s_state.adsrActiveComponent = i + 10;  // Offset to distinguish from graph points
+                s_state.adsrActiveComponent = i + kADSRMiniSliderOffset;  // Offset to distinguish from graph points
                 s_state.adsrStartA = *attack;
                 s_state.adsrStartD = *decay;
                 s_state.adsrStartS = *sustain;
@@ -1563,7 +1402,7 @@ Gui::ADSRResult Gui::adsrEnvelope(const char* label,
         }
 
         // Handle mini-slider drag
-        if (s_state.activeADSR == id && s_state.adsrActiveComponent == i + 10) {
+        if (s_state.activeADSR == id && s_state.adsrActiveComponent == i + kADSRMiniSliderOffset) {
             if (m_input.mouseDown[0]) {
                 float t = std::clamp((m_mousePos.x - sliderX) / sliderW, 0.0f, 1.0f);
                 float newVal = sliderMins[i] + t * range;
@@ -1772,6 +1611,7 @@ Gui::GraphResult Gui::graph(const char* label, const GraphSeries* series, size_t
             result.hoveredValue = val;
 
             // Draw tooltip
+            int savedLayer = m_canvas.layer();
             m_canvas.setLayer(UILayer::Tooltips);
 
             char tooltipBuf[32];
@@ -1801,7 +1641,7 @@ Gui::GraphResult Gui::graph(const char* label, const GraphSeries* series, size_t
             float indicatorY = graphY + graphH - ((val - yMin) / yRange) * graphH;
             indicatorY = std::clamp(indicatorY, graphY, graphY + graphH);
 
-            m_canvas.setLayer(UILayer::Panels);
+            m_canvas.setLayer(savedLayer);
             m_canvas.line(indicatorX, graphY, indicatorX, graphY + graphH, 1.0f,
                           glm::vec4(1.0f, 1.0f, 1.0f, 0.3f));
             m_canvas.fillCircle(indicatorX, indicatorY, 3.0f, ser.color, 8);
@@ -1814,6 +1654,31 @@ Gui::GraphResult Gui::graph(const char* label, const GraphSeries* series, size_t
 
     advanceCursor(totalHeight);
     return result;
+}
+
+// -------------------------------------------------------------------------
+// GuiStyle factory
+// -------------------------------------------------------------------------
+
+GuiStyle GuiStyle::fromUIStyle(const UIStyle& style) {
+    GuiStyle gs;
+    // Colors
+    gs.panelBackground = style.panelBg;
+    gs.panelBorder = style.panelBorder;
+    gs.panelHeader = style.headerBg;
+    gs.widgetBackground = style.sliderBg;
+    gs.widgetHover = style.buttonHover;
+    gs.widgetBorder = style.buttonBorder;
+    gs.sliderFill = style.sliderFill;
+    gs.sliderFillActive = style.sliderActive;
+    gs.text = style.textPrimary;
+    gs.textDim = style.textDim;
+    // Layout
+    gs.cornerRadius = style.sliderCornerRadius();
+    gs.borderWidth = style.strokeWidth();
+    gs.titleHeight = style.titleBarHeight();
+    gs.padding = style.padding();
+    return gs;
 }
 
 } // namespace vivid

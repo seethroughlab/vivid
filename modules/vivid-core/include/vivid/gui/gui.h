@@ -96,11 +96,18 @@ struct GuiStyle {
     float valueWidth = 60.0f;       ///< Width reserved for value display (when valuePosition=Right)
 
     // Panel title
-    float titleHeight = 28.0f;      ///< Height of panel title bar
+    float titleHeight = 48.0f;      ///< Height of panel title bar
 
     // Slider layout options
     LabelPosition labelPosition = LabelPosition::Left;   ///< Where to place labels
     ValuePosition valuePosition = ValuePosition::Center; ///< Where to display values
+
+    /**
+     * @brief Create a GuiStyle from a UIStyle, mapping overlapping fields
+     * @param style Source UIStyle
+     * @return GuiStyle with colors and layout from UIStyle
+     */
+    static GuiStyle fromUIStyle(const struct UIStyle& style);
 };
 
 /**
@@ -228,14 +235,6 @@ public:
      * @return true if selection changed this frame
      */
     bool dropdown(const char* label, int* index, const std::vector<std::string>& options);
-
-    /**
-     * @brief Display a color picker
-     * @param label Color picker label
-     * @param color Pointer to color (RGBA)
-     * @return true if color changed this frame
-     */
-    bool colorPicker(const char* label, glm::vec4* color);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -635,9 +634,7 @@ private:
     struct InteractionState {
         uint32_t activeSlider = 0;          // ID of slider being dragged
         uint32_t openDropdown = 0;          // ID of open dropdown
-        uint32_t expandedColorPicker = 0;   // ID of expanded color picker
         float sliderStartValue = 0;         // Value when drag started
-        float sliderStartMouseX = 0;        // Mouse X when drag started
         float panelScrollTarget = 0;        // Panel scroll offset
         uint32_t scrollingPanel = 0;        // ID of panel being scrolled
         // Color picker drag tracking
@@ -701,6 +698,9 @@ private:
     float contentWidth() const;
     void advanceCursor(float height);
     bool isMouseInRect(float x, float y, float w, float h) const;
+
+    // Shared slider implementation (returns full SliderResult)
+    SliderResult sliderImpl(const char* label, float* value, float min, float max);
 
     // Widget rendering helpers
     void drawWidgetBackground(float x, float y, float w, float h, bool hovered, bool active);

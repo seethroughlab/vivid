@@ -4,6 +4,7 @@
 #include <vivid/gui/panel.h>
 #include <vivid/gui/ui_style.h>
 #include <algorithm>
+#include <cmath>
 
 namespace vivid {
 
@@ -23,7 +24,7 @@ Panel::Panel() {
 Panel::~Panel() = default;
 
 void Panel::handleDragAndResize(const gui::InputState& input, float screenW, float screenH,
-                                 float titleBarHeight, bool /*allowNewInteraction*/) {
+                                 float titleBarHeight) {
     if (!m_config.visible) {
         m_focus.hovered = false;
         m_inputRouting.consumedInput = false;
@@ -171,8 +172,11 @@ void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float
         headerColor.a = 1.0f;  // Force opaque
         canvas.fillRoundedRectTop(x, y, w, style.titleBarHeight(), cornerRadius, headerColor);
 
-        // Title text
-        canvas.text(m_config.title, x + 10, y + 18,
+        // Title text - vertically centered using font metrics
+        float ascent = canvas.fontAscent(0);
+        float descent = std::abs(canvas.fontDescent(0));
+        float titleBaseline = y + style.titleBarHeight() * 0.5f + (ascent - descent) * 0.5f;
+        canvas.text(m_config.title, x + 10, titleBaseline,
                     style.textPrimary, 0);
     }
 }

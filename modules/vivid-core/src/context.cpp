@@ -461,6 +461,11 @@ void Context::injectMousePosition(float x, float y) {
 void Context::injectMouseButton(int button, bool pressed) {
     if (button >= 0 && button < 3) {
         m_mouseButtonPrev[button] = pressed;
+        // Also update the live button state so it's visible immediately this frame
+        // (beginFrame() already ran, so m_mouseButtons won't be recomputed until next frame)
+        m_mouseButtons[button].pressed = pressed && !m_mouseButtons[button].held;
+        m_mouseButtons[button].released = !pressed && m_mouseButtons[button].held;
+        m_mouseButtons[button].held = pressed;
     }
 }
 

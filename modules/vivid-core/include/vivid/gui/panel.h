@@ -164,6 +164,14 @@ public:
     bool isInteracting() const { return m_dragResize.isActive(); }
 
     /**
+     * @brief Check if panel content is in an active interaction (e.g., node drag)
+     *
+     * Override in subclasses that have internal drag operations that should
+     * prevent other panels from stealing input when the cursor crosses them.
+     */
+    virtual bool isContentInteracting() const { return false; }
+
+    /**
      * @brief Reset interaction state (dragging/resizing)
      *
      * Call this when a panel's layout changes to clear stale drag state.
@@ -224,10 +232,9 @@ public:
      * @param screenW Screen width in logical pixels
      * @param screenH Screen height in logical pixels
      * @param titleBarHeight Height of title bar (drag zone) in logical pixels
-     * @param allowNewInteraction If false, won't start new drags/resizes (but continues existing ones)
      */
     void handleDragAndResize(const gui::InputState& input, float screenW, float screenH,
-                             float titleBarHeight = 28.0f, bool allowNewInteraction = true);
+                             float titleBarHeight = 48.0f);
 
     /// @}
 

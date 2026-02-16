@@ -66,7 +66,7 @@ void PanelManager::render(OverlayCanvas& canvas, const gui::InputState& input,
     // Track if any panel consumed input
     m_consumedInput = false;
 
-    renderFlatMode(canvas, input, scale, style);
+    renderPanels(canvas, input, scale, style);
 
     // Update focus based on interactions
     // If a panel is being interacted with (dragging/resizing), focus it and bring to front
@@ -123,9 +123,9 @@ void PanelManager::render(OverlayCanvas& canvas, const gui::InputState& input,
 }
 
 std::string PanelManager::determineInputTarget(const gui::InputState& input) {
-    // 1. Panel currently being dragged/resized owns input
+    // 1. Panel currently being dragged/resized, or with active content interaction, owns input
     for (auto& panel : m_panels) {
-        if (panel->isInteracting()) {
+        if (panel->isInteracting() || panel->isContentInteracting()) {
             return panel->config().id;
         }
     }
@@ -162,7 +162,7 @@ std::string PanelManager::determineInputTarget(const gui::InputState& input) {
     return "";
 }
 
-void PanelManager::renderFlatMode(OverlayCanvas& canvas, const gui::InputState& input, float scale, const UIStyle& style) {
+void PanelManager::renderPanels(OverlayCanvas& canvas, const gui::InputState& input, float scale, const UIStyle& style) {
     // Calculate layout for layout-managed panels
     calculateLayout(m_screenWidth, m_screenHeight);
 
@@ -269,12 +269,16 @@ const Panel* PanelManager::getPanel(const std::string& id) const {
 
 void PanelManager::showPanel(const std::string& id) {
     if (Panel* p = getPanel(id)) {
+        bool wasHidden = !p->isVisible();
         gui::logTransition("PanelManager", "hidden", "visible", id.c_str());
         p->setVisible(true);
         if (p->config().role == PanelRole::Floating) {
             addToFloatingOrder(id);  // Re-add if removed by hidePanel
         }
-        setFocus(id);
+        // Only steal focus when transitioning from hidden to visible
+        if (wasHidden) {
+            setFocus(id);
+        }
     }
 }
 
@@ -311,9 +315,10 @@ void PanelManager::setFocus(const std::string& id) {
     }
 
     if (id != m_focusedPanelId) {
-        gui::logTransition("PanelManager", "focus",
+        gui::logTransition("PanelManager",
+                          m_focusedPanelId.empty() ? "none" : m_focusedPanelId.c_str(),
                           id.empty() ? "none" : id.c_str(),
-                          m_focusedPanelId.empty() ? "none" : m_focusedPanelId.c_str());
+                          "focus");
     }
 
     m_focusedPanelId = id;

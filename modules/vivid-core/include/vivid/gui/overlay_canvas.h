@@ -556,7 +556,7 @@ public:
     /// @}
 
 private:
-    void createPipeline();
+    bool createPipeline();
     void createWhiteTexture();
 
     // Add a solid-colored quad (positions already in screen space)
@@ -595,10 +595,6 @@ private:
         std::vector<DrawSegment> textSegments[3];  // Segments with clip info per font
     };
     std::map<int, LayerBatch> m_layers;
-
-    // Last clip state for segment tracking
-    bool m_lastHasClip = false;
-    ClipRect m_lastClipRect = {0, 0, 0, 0};
 
     // Textured rects per layer (for operator previews - drawn individually per layer)
     struct TexturedRect {

@@ -137,7 +137,7 @@ struct UIStyle {
     // DevTools-specific layout helpers (logical pixels)
     // -------------------------------------------------------------------------
 
-    float titleBarHeight() const { return 28.0f; }
+    float titleBarHeight() const { return 48.0f; }
     float statusBarHeight() const { return 40.0f; }
     float inspectorWidth() const { return 280.0f; }
     float nodeWidth() const { return 180.0f; }

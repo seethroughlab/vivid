@@ -53,12 +53,12 @@ struct NodeGraphStyle {
     glm::vec4 textDimColor = {0.6f, 0.6f, 0.6f, 1.0f};
 
     // Sizes (in grid units, scale with zoom)
-    float nodeWidth = 200.0f;
-    float nodeTitleHeight = 28.0f;  // For 18px title font
+    float nodeWidth = 240.0f;
+    float nodeTitleHeight = 48.0f;  // For 28px title font
     float nodeContentPadding = 6.0f;
     float nodeCornerRadius = 6.0f;
     float pinRadius = 6.0f;
-    float pinSpacing = 24.0f;  // For 16px label font
+    float pinSpacing = 40.0f;  // For 28px label font
 
     // Sizes (in screen pixels, don't scale with zoom)
     float nodeBorderWidth = 1.0f;
@@ -120,6 +120,9 @@ struct NodeState {
 
     // Overlay callback (called after border, renders health indicators on top of content)
     std::function<void(OverlayCanvas&, float x, float y, float w, float h)> overlayCallback;
+
+    // Mark-and-sweep: set false in beginEditor, true in beginNode, erased in endEditor
+    bool seenThisFrame = false;
 };
 
 /**

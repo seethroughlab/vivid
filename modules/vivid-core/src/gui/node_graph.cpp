@@ -59,14 +59,25 @@ void NodeGraph::beginEditor(OverlayCanvas& canvas, float width, float height, co
     m_links.clear();
     m_pinToNode.clear();
 
-    // Reset node hover/dragging state (but keep node positions)
+    // Reset node hover/dragging state and mark-and-sweep flag
     for (auto& [id, node] : m_nodes) {
         node.hovered = false;
+        node.seenThisFrame = false;
     }
 }
 
 void NodeGraph::endEditor() {
     if (!m_inEditor || !m_canvas) return;
+
+    // Sweep: remove nodes not seen this frame (stale after hot-reload)
+    for (auto it = m_nodes.begin(); it != m_nodes.end(); ) {
+        if (!it->second.seenThisFrame) {
+            if (it->first == m_selectedNodeId) m_selectedNodeId = -1;
+            it = m_nodes.erase(it);
+        } else {
+            ++it;
+        }
+    }
 
     // Compute pin screen positions before hover detection
     computePinPositions();
@@ -111,7 +122,8 @@ void NodeGraph::beginNode(int id) {
         m_nodes[id] = node;
     }
 
-    // Clear pins for rebuild
+    // Mark as seen this frame and clear pins for rebuild
+    m_nodes[id].seenThisFrame = true;
     m_nodes[id].inputs.clear();
     m_nodes[id].outputs.clear();
 }
@@ -858,12 +870,16 @@ void NodeGraph::renderNode(NodeState& node) {
                               ? m_style.pinHovered : m_style.pinInput;
         m_canvas->fillCircle(pinX, pinY, pinR, pinColor);
 
-        // Pin label (vertically centered with pin)
+        // Pin label (vertically centered with pin) — skip if it overflows node bounds
         if (!pin.label.empty()) {
-            float pinAscent = m_canvas->fontAscent(0) * textScale;
-            float pinDescent = std::abs(m_canvas->fontDescent(0)) * textScale;
-            float labelY = pinY + (pinAscent - pinDescent) * 0.5f;
-            m_canvas->textScaled(pin.label, pinX + pinR + 6 * m_zoom, labelY, m_style.textDimColor, textScale);
+            float labelX = pinX + pinR + 6 * m_zoom;
+            float textW = m_canvas->measureTextScaled(pin.label, textScale);
+            if (labelX + textW <= pos.x + w) {
+                float pinAscent = m_canvas->fontAscent(0) * textScale;
+                float pinDescent = std::abs(m_canvas->fontDescent(0)) * textScale;
+                float labelY = pinY + (pinAscent - pinDescent) * 0.5f;
+                m_canvas->textScaled(pin.label, labelX, labelY, m_style.textDimColor, textScale);
+            }
         }
     }
 
@@ -879,13 +895,16 @@ void NodeGraph::renderNode(NodeState& node) {
                               ? m_style.pinHovered : m_style.pinOutput;
         m_canvas->fillCircle(pinX, pinY, pinR, pinColor);
 
-        // Pin label (right-aligned, vertically centered with pin)
+        // Pin label (right-aligned, vertically centered with pin) — skip if it overflows node bounds
         if (!pin.label.empty()) {
             float textW = m_canvas->measureTextScaled(pin.label, textScale);
-            float outAscent = m_canvas->fontAscent(0) * textScale;
-            float outDescent = std::abs(m_canvas->fontDescent(0)) * textScale;
-            float labelY = pinY + (outAscent - outDescent) * 0.5f;
-            m_canvas->textScaled(pin.label, pinX - pinR - textW - 6 * m_zoom, labelY, m_style.textDimColor, textScale);
+            float labelX = pinX - pinR - textW - 6 * m_zoom;
+            if (labelX >= pos.x) {
+                float outAscent = m_canvas->fontAscent(0) * textScale;
+                float outDescent = std::abs(m_canvas->fontDescent(0)) * textScale;
+                float labelY = pinY + (outAscent - outDescent) * 0.5f;
+                m_canvas->textScaled(pin.label, labelX, labelY, m_style.textDimColor, textScale);
+            }
         }
     }
 }
