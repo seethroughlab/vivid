@@ -145,7 +145,7 @@ void AudioIn::init(Context& ctx) {
     config.sampleRate = AUDIO_SAMPLE_RATE;
     config.dataCallback = &Impl::dataCallback;
     config.pUserData = m_impl.get();
-    config.periodSizeInFrames = AUDIO_BLOCK_SIZE;
+    config.periodSizeInFrames = AUDIO_DEFAULT_PERIOD_FRAMES;
 
     if (ma_device_init(nullptr, &config, &m_impl->device) != MA_SUCCESS) {
         std::cerr << "[AudioIn] Failed to initialize capture device\n";

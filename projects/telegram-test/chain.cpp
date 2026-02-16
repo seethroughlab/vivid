@@ -34,7 +34,7 @@ void setup(Context& ctx) {
     delay.mix = 0.4f;
 
     auto& out = chain.add<AudioOutput>("out");
-    out.setInput("delay");
+    out.input("delay");
     chain.audioOutput("out");
 
     // =========================================

@@ -97,13 +97,13 @@ void setup(Context& ctx) {
 
     // === MIXER (combine synths) ===
     auto& mixer = ctx.chain().add<AudioMixer>("mixer");
-    mixer.setInput(0, "pad");
-    mixer.setInput(1, "bass");
+    mixer.input(0, "pad");
+    mixer.input(1, "bass");
     mixer.setGain(0, 1.0f);
     mixer.setGain(1, 1.0f);
 
     auto& out = ctx.chain().add<AudioOutput>("out");
-    out.setInput("mixer");
+    out.input("mixer");
     ctx.chain().audioOutput("out");
 
     // === VISUALS (subtle reactive gradient) ===

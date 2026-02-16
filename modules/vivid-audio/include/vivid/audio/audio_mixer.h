@@ -57,9 +57,17 @@ public:
     /// @{
 
     /**
+     * @brief Connect audio source by index and name
+     * @param index Input slot (0-7)
+     * @param name Operator name
+     */
+    void input(int index, const std::string& name) { setInput(index, name); }
+
+    /**
      * @brief Set input by index and name
      * @param index Input slot (0-7)
      * @param name Operator name
+     * @deprecated Use input(index, name) for consistent API with AudioEffect
      */
     void setInput(int index, const std::string& name);
 
@@ -69,6 +77,13 @@ public:
      * @param g Gain (0-2, default 1.0)
      */
     void setGain(int index, float g);
+
+    /**
+     * @brief Alias for setGain
+     * @param index Input slot (0-7)
+     * @param g Gain (0-2, default 1.0)
+     */
+    void gain(int index, float g) { setGain(index, g); }
 
 
     /// @}

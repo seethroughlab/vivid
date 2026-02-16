@@ -11,6 +11,7 @@
 
 #include <vivid/operator.h>
 #include <vivid/param_registry.h>
+#include <vivid/audio_param.h>
 #include <vivid/audio_buffer.h>
 #include <vivid/audio_event.h>
 #include <cmath>
@@ -72,6 +73,48 @@ public:
     void registerParam(T& param) {
         ParamRegistry::registerParam(param);
         param.setOwner(static_cast<Operator*>(this));
+    }
+
+    /**
+     * @brief Register an AudioParam for introspection and dirty tracking
+     * @param param Reference to the AudioParam member
+     *
+     * AudioParam uses atomic operations for thread-safe main-thread writes
+     * and provides smoothed reads on the audio thread.
+     */
+    void registerAudioParam(AudioParam& param) {
+        ParamRegistry::registerParam(param);
+        param.setOwner(static_cast<Operator*>(this));
+        m_audioParams.push_back(&param);
+    }
+
+    /**
+     * @brief Advance all registered AudioParams by N samples (audio thread)
+     *
+     * Call at the top of generateBlock() for block-rate smoothing of all params:
+     * @code
+     * void generateBlock(uint32_t frameCount) override {
+     *     advanceParams(frameCount);
+     *     float vol = m_volume;  // Read smoothed value
+     *     // ...
+     * }
+     * @endcode
+     */
+    void advanceParams(uint32_t samples) {
+        for (AudioParam* p : m_audioParams) {
+            p->advance(samples);
+        }
+    }
+
+    /**
+     * @brief Snap all AudioParams to their targets instantly
+     *
+     * Call during init or reset to avoid initial ramp-up.
+     */
+    void snapParams() {
+        for (AudioParam* p : m_audioParams) {
+            p->snap();
+        }
     }
 
     /// @}
@@ -270,7 +313,7 @@ protected:
 
     /**
      * @brief Allocate output buffer with standard format
-     * @param frames Frame count (default: AUDIO_BLOCK_SIZE = 512)
+     * @param frames Frame count (default: AUDIO_BLOCK_SIZE = 1024)
      * @param channels Channel count (default: AUDIO_CHANNELS = 2)
      * @param sampleRate Sample rate (default: AUDIO_SAMPLE_RATE = 48000)
      */
@@ -300,6 +343,7 @@ protected:
     OwnedAudioBuffer m_output;  ///< Output audio buffer
     AudioGraph* m_audioGraph = nullptr;  ///< Parent audio graph (for event queuing)
     uint32_t m_operatorId = UINT32_MAX;  ///< ID in the audio graph
+    std::vector<AudioParam*> m_audioParams;  ///< Registered AudioParams for bulk advance/snap
 };
 
 } // namespace vivid

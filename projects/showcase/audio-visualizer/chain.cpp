@@ -83,11 +83,11 @@ void setup(Context& ctx) {
     hihat.setTriggerSource("hihatSeq");
 
     auto& mixer = chain.add<AudioMixer>("mixer");
-    mixer.setInput(0, "kick");
+    mixer.input(0, "kick");
     mixer.setGain(0, 1.0f);
-    mixer.setInput(1, "snare");
+    mixer.input(1, "snare");
     mixer.setGain(1, 0.7f);
-    mixer.setInput(2, "hihat");
+    mixer.input(2, "hihat");
     mixer.setGain(2, 0.4f);
     mixer.volume = 0.8f;
 
@@ -98,7 +98,7 @@ void setup(Context& ctx) {
 
     // Audio output
     auto& audioOut = chain.add<AudioOutput>("audioOut");
-    audioOut.setInput("mixer");
+    audioOut.input("mixer");
     audioOut.setVolume(0.7f);
     chain.audioOutput("audioOut");
 
@@ -292,7 +292,7 @@ void update(Context& ctx) {
             chain.get<BandSplit>("bands").input("mic");
             chain.get<BeatDetect>("beat").input("mic");
             chain.get<Levels>("levels").input("mic");
-            chain.get<AudioOutput>("audioOut").setInput("mic");
+            chain.get<AudioOutput>("audioOut").input("mic");
         } else {
             mic.setMute(true);
             clock.start();
@@ -300,7 +300,7 @@ void update(Context& ctx) {
             chain.get<BandSplit>("bands").input("mixer");
             chain.get<BeatDetect>("beat").input("mixer");
             chain.get<Levels>("levels").input("mixer");
-            chain.get<AudioOutput>("audioOut").setInput("mixer");
+            chain.get<AudioOutput>("audioOut").input("mixer");
         }
         printStatus();
     }

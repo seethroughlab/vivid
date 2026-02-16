@@ -264,6 +264,7 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "DrumKit"; }
+    InspectData inspect() const override;
 
     void generateBlock(uint32_t frameCount) override;
 

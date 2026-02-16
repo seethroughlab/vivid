@@ -8,6 +8,8 @@
 #include <cstring>
 #include <algorithm>
 #include <chrono>
+#include <queue>
+#include <unordered_set>
 
 namespace vivid {
 
@@ -44,12 +46,80 @@ void AudioGraph::setOutput(AudioOperator* op) {
 
 void AudioGraph::buildExecutionOrder() {
     m_executionOrder.clear();
+    m_hasCycles = false;
+    m_cycleWarning.clear();
 
-    // Simple dependency resolution: just add all operators in order for now
-    // TODO: Proper topological sort based on operator inputs
+    // Build a set of operators in this graph for quick lookup
+    std::unordered_set<Operator*> graphOps;
     for (auto& entry : m_operators) {
         if (entry.op) {
-            m_executionOrder.push_back(entry.op);
+            graphOps.insert(entry.op);
+        }
+    }
+
+    // Build adjacency: for each operator, collect edges from audio inputs
+    // and trigger sources. Edge: dependency -> dependent (source -> consumer).
+    std::unordered_map<Operator*, std::vector<Operator*>> dependents;
+    std::unordered_map<Operator*, int> inDegree;
+
+    for (auto& entry : m_operators) {
+        if (!entry.op) continue;
+        inDegree[entry.op] = 0;
+    }
+
+    for (auto& entry : m_operators) {
+        if (!entry.op) continue;
+        Operator* op = entry.op;
+
+        // Audio input edges
+        for (size_t i = 0; i < op->inputCount(); ++i) {
+            Operator* input = op->getInput(i);
+            if (input && graphOps.count(input)) {
+                inDegree[op]++;
+                dependents[input].push_back(op);
+            }
+        }
+
+        // Trigger source edge
+        Operator* trigSrc = op->triggerSource();
+        if (trigSrc && graphOps.count(trigSrc)) {
+            inDegree[op]++;
+            dependents[trigSrc].push_back(op);
+        }
+    }
+
+    // Kahn's algorithm
+    std::queue<Operator*> ready;
+    for (auto& entry : m_operators) {
+        if (entry.op && inDegree[entry.op] == 0) {
+            ready.push(entry.op);
+        }
+    }
+
+    std::unordered_set<Operator*> sorted;
+    while (!ready.empty()) {
+        Operator* current = ready.front();
+        ready.pop();
+        m_executionOrder.push_back(static_cast<AudioOperator*>(current));
+        sorted.insert(current);
+
+        for (Operator* dep : dependents[current]) {
+            inDegree[dep]--;
+            if (inDegree[dep] == 0) {
+                ready.push(dep);
+            }
+        }
+    }
+
+    // Handle cycles: append any remaining operators in insertion order
+    // Audio feedback loops are valid, so we don't error — just warn
+    if (sorted.size() < graphOps.size()) {
+        m_hasCycles = true;
+        m_cycleWarning = "Audio graph contains cycles; cyclic operators use insertion order";
+        for (auto& entry : m_operators) {
+            if (entry.op && sorted.find(entry.op) == sorted.end()) {
+                m_executionOrder.push_back(entry.op);
+            }
         }
     }
 }
@@ -59,6 +129,8 @@ void AudioGraph::clear() {
     m_executionOrder.clear();
     m_nameToId.clear();
     m_output = nullptr;
+    m_hasCycles = false;
+    m_cycleWarning.clear();
 }
 
 void AudioGraph::processBlock(float* output, uint32_t frameCount) {

@@ -37,7 +37,7 @@ void setup(Context& ctx) {
     click.waveform(Waveform::Sine);
 
     auto& out = chain.add<AudioOutput>("out");
-    out.setInput("click");
+    out.input("click");
     chain.audioOutput("out");
 
     // =========================================

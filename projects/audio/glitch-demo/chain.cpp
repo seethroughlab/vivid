@@ -85,7 +85,7 @@ void setup(Context& ctx) {
 
     // === OUTPUT ===
     auto& out = ctx.chain().add<AudioOutput>("out");
-    out.setInput("stretch");
+    out.input("stretch");
     ctx.chain().audioOutput("out");
 
     // === VISUALS ===

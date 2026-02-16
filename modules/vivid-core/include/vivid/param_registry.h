@@ -27,6 +27,7 @@
  */
 
 #include <vivid/param.h>
+#include <vivid/audio_param.h>
 #include <vector>
 #include <string>
 
@@ -67,8 +68,12 @@ public:
     /// @brief Construct from ADSRParam
     ParamRef(ADSRParam* p) : m_ptr(p), m_type(ParamType::ADSR) {}
 
+    /// @brief Construct from AudioParam (thread-safe float for audio operators)
+    ParamRef(AudioParam* p) : m_ptr(p), m_type(ParamType::Float), m_isAudioParam(true) {}
+
     /// @brief Get parameter name
     const char* name() const {
+        if (m_isAudioParam) return static_cast<AudioParam*>(m_ptr)->name();
         switch (m_type) {
             case ParamType::Float:    return static_cast<Param<float>*>(m_ptr)->name();
             case ParamType::Int:      return static_cast<Param<int>*>(m_ptr)->name();
@@ -88,6 +93,7 @@ public:
 
     /// @brief Generate ParamDecl for introspection
     ParamDecl decl() const {
+        if (m_isAudioParam) return static_cast<AudioParam*>(m_ptr)->decl();
         switch (m_type) {
             case ParamType::Float:    return static_cast<Param<float>*>(m_ptr)->decl();
             case ParamType::Int:      return static_cast<Param<int>*>(m_ptr)->decl();
@@ -104,6 +110,10 @@ public:
 
     /// @brief Get parameter value into float array
     bool get(float out[4]) const {
+        if (m_isAudioParam) {
+            out[0] = static_cast<AudioParam*>(m_ptr)->target();
+            return true;
+        }
         switch (m_type) {
             case ParamType::Float: {
                 auto* p = static_cast<Param<float>*>(m_ptr);
@@ -165,6 +175,14 @@ public:
     /// @brief Set parameter value from float array
     /// @return True if value was set (and changed)
     bool set(const float value[4]) {
+        if (m_isAudioParam) {
+            auto* p = static_cast<AudioParam*>(m_ptr);
+            if (p->target() != value[0]) {
+                *p = value[0];
+                return true;
+            }
+            return false;
+        }
         switch (m_type) {
             case ParamType::Float: {
                 auto* p = static_cast<Param<float>*>(m_ptr);
@@ -245,6 +263,7 @@ public:
 private:
     void* m_ptr;
     ParamType m_type;
+    bool m_isAudioParam = false;  ///< True when wrapping AudioParam (vs Param<float>)
 };
 
 /**

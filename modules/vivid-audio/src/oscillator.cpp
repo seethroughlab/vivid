@@ -12,6 +12,7 @@ void Oscillator::init(Context& ctx) {
     allocateOutput();
     m_phaseL = 0.0f;
     m_phaseR = 0.0f;
+    snapParams();  // Jump to initial values without ramp
     m_initialized = true;
 }
 
@@ -29,26 +30,36 @@ void Oscillator::generateBlock(uint32_t frameCount) {
         m_output.resize(frameCount);
     }
 
-    // Calculate effective frequency with detune
-    float baseFreq = static_cast<float>(frequency);
-    float detuneRatio = centsToRatio(static_cast<float>(detune));
-    float freqL = baseFreq * detuneRatio;
-    float freqR = baseFreq * detuneRatio;
+    // Block-rate smoothing for volume, detune, pulseWidth, stereoDetune
+    volume.advance(frameCount);
+    detune.advance(frameCount);
+    pulseWidth.advance(frameCount);
+    stereoDetune.advance(frameCount);
 
-    // Apply stereo detune (left goes down, right goes up)
-    if (stereoDetune > 0.0f) {
-        float stereoRatio = centsToRatio(static_cast<float>(stereoDetune));
-        freqL /= stereoRatio;
-        freqR *= stereoRatio;
+    float vol = volume;
+    float detuneVal = detune;
+    float stereoDetuneVal = stereoDetune;
+    float detuneRatio = centsToRatio(detuneVal);
+
+    // Stereo detune ratio (block-rate is fine for stereo spread)
+    float stereoRatioL = 1.0f;
+    float stereoRatioR = 1.0f;
+    if (stereoDetuneVal > 0.0f) {
+        float r = centsToRatio(stereoDetuneVal);
+        stereoRatioL = 1.0f / r;
+        stereoRatioR = r;
     }
 
-    // Phase increment per sample
-    float phaseIncL = freqL / static_cast<float>(m_sampleRate);
-    float phaseIncR = freqR / static_cast<float>(m_sampleRate);
-
-    float vol = static_cast<float>(volume);
-
     for (uint32_t i = 0; i < frameCount; ++i) {
+        // Per-sample smoothing for frequency (prevents clicks on pitch changes)
+        float baseFreq = frequency.tick();
+
+        float freqL = baseFreq * detuneRatio * stereoRatioL;
+        float freqR = baseFreq * detuneRatio * stereoRatioR;
+
+        float phaseIncL = freqL / static_cast<float>(m_sampleRate);
+        float phaseIncR = freqR / static_cast<float>(m_sampleRate);
+
         // Generate samples
         float sampleL = generateSample(m_phaseL) * vol;
         float sampleR = generateSample(m_phaseR) * vol;
@@ -92,8 +103,8 @@ float Oscillator::generateSample(float phase) const {
             return 2.0f * phase - 1.0f;
 
         case Waveform::Pulse:
-            // Variable pulse width
-            return (phase < static_cast<float>(pulseWidth)) ? 1.0f : -1.0f;
+            // Variable pulse width (reads current smoothed value)
+            return (phase < pulseWidth.get()) ? 1.0f : -1.0f;
 
         default:
             return 0.0f;

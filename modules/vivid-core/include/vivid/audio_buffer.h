@@ -19,9 +19,17 @@ constexpr uint32_t AUDIO_SAMPLE_RATE = 48000;
 /// Standard audio channel count (stereo)
 constexpr uint32_t AUDIO_CHANNELS = 2;
 
-/// Standard audio block size (~21.3ms at 48kHz, enough for 60fps with headroom)
-/// At 60fps: need 48000/60 = 800 samples/frame, 1024 gives buffer headroom
-constexpr uint32_t AUDIO_BLOCK_SIZE = 1024;
+/// Maximum audio block size for pre-allocation (~21.3ms at 48kHz)
+/// Operators should allocate buffers with this capacity for headroom.
+constexpr uint32_t AUDIO_MAX_BLOCK_FRAMES = 1024;
+
+/// Default audio callback period size (miniaudio callback granularity)
+/// This matches AudioOutput's default buffer size of 256 frames (~5.3ms).
+constexpr uint32_t AUDIO_DEFAULT_PERIOD_FRAMES = 256;
+
+/// @deprecated Use AUDIO_MAX_BLOCK_FRAMES for pre-allocation capacity
+///             or AUDIO_DEFAULT_PERIOD_FRAMES for callback period size.
+constexpr uint32_t AUDIO_BLOCK_SIZE = AUDIO_MAX_BLOCK_FRAMES;
 
 /**
  * @brief Non-owning view of audio sample data

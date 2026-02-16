@@ -101,6 +101,14 @@ public:
     bool triggered() const override { return m_triggeredFlag.load(std::memory_order_acquire); }
 
     /**
+     * @brief Get trigger velocity for downstream operators
+     * @return Velocity forwarded from upstream trigger source
+     */
+    float triggerVelocity() const override {
+        return m_lastVelocity.load(std::memory_order_relaxed);
+    }
+
+    /**
      * @brief Get current step index
      * @note Thread-safe, can be called from main thread for visualization
      */
@@ -192,6 +200,7 @@ private:
     std::atomic<int> m_currentStep{-1};
     std::atomic<bool> m_triggeredFlag{false};      // For audio thread (cleared each block)
     std::atomic<bool> m_visualTriggeredFlag{false}; // For main thread (cleared on read)
+    std::atomic<float> m_lastVelocity{1.0f};       // Velocity forwarded from upstream source
 
     // Audio thread internal state
     bool m_pendingTrigger = false;

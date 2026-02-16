@@ -241,6 +241,26 @@ public:
     }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Diagnostics
+    /// @{
+
+    /**
+     * @brief Check if the audio graph contains cycles
+     * @return True if cycles were detected during buildExecutionOrder()
+     *
+     * Audio feedback loops are valid (e.g., delay feedback), so cycles
+     * don't prevent execution — cyclic nodes are appended in insertion order.
+     */
+    bool hasCycles() const { return m_hasCycles; }
+
+    /**
+     * @brief Get a human-readable warning about detected cycles
+     * @return Warning string, or empty if no cycles
+     */
+    const std::string& cycleWarning() const { return m_cycleWarning; }
+
+    /// @}
 
 private:
     struct OperatorEntry {
@@ -252,6 +272,10 @@ private:
     std::vector<AudioOperator*> m_executionOrder;
     std::unordered_map<std::string, uint32_t> m_nameToId;
     AudioOperator* m_output = nullptr;
+
+    // Cycle detection
+    bool m_hasCycles = false;
+    std::string m_cycleWarning;
 
     SPSCQueue<AudioEvent, 1024> m_eventQueue;
 

@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/audio_param.h>
 #include <vivid/param.h>
 #include <vivid/operator_registry.h>
 #include <string>
@@ -61,21 +62,21 @@ public:
     /// @name Parameters (public for direct access)
     /// @{
 
-    Param<float> frequency{"frequency", 440.0f, 20.0f, 20000.0f};     ///< Frequency in Hz
-    Param<float> volume{"volume", 0.5f, 0.0f, 1.0f};                  ///< Output volume
-    Param<float> detune{"detune", 0.0f, -100.0f, 100.0f};             ///< Detune in cents
-    Param<float> pulseWidth{"pulseWidth", 0.5f, 0.01f, 0.99f};        ///< Pulse width (Pulse waveform only)
-    Param<float> stereoDetune{"stereoDetune", 0.0f, 0.0f, 50.0f};     ///< Stereo detune in cents
+    AudioParam frequency{"frequency", 440.0f, 20.0f, 20000.0f, 5.0f};  ///< Frequency in Hz (per-sample smoothed)
+    AudioParam volume{"volume", 0.5f, 0.0f, 1.0f, 5.0f};               ///< Output volume (block-rate smoothed)
+    AudioParam detune{"detune", 0.0f, -100.0f, 100.0f, 5.0f};          ///< Detune in cents
+    AudioParam pulseWidth{"pulseWidth", 0.5f, 0.01f, 0.99f, 5.0f};     ///< Pulse width (Pulse waveform only)
+    AudioParam stereoDetune{"stereoDetune", 0.0f, 0.0f, 50.0f, 5.0f};  ///< Stereo detune in cents
 
     /// @}
     // -------------------------------------------------------------------------
 
     Oscillator() {
-        registerParam(frequency);
-        registerParam(volume);
-        registerParam(detune);
-        registerParam(pulseWidth);
-        registerParam(stereoDetune);
+        registerAudioParam(frequency);
+        registerAudioParam(volume);
+        registerAudioParam(detune);
+        registerAudioParam(pulseWidth);
+        registerAudioParam(stereoDetune);
     }
     ~Oscillator() override = default;
 

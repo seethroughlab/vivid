@@ -71,8 +71,9 @@ public:
     /// @name Parameters (public for direct access)
     /// @{
 
-    Param<float> bpm{"bpm", 120.0f, 20.0f, 300.0f};   ///< Tempo in beats per minute
-    Param<float> swing{"swing", 0.0f, 0.0f, 1.0f};    ///< Swing amount (delays even beats)
+    Param<float> bpm{"bpm", 120.0f, 20.0f, 300.0f};           ///< Tempo in beats per minute
+    Param<float> swing{"swing", 0.0f, 0.0f, 1.0f};          ///< Swing amount (delays even beats)
+    Param<float> velocity{"velocity", 1.0f, 0.0f, 1.0f};    ///< Trigger velocity (propagated downstream)
 
     /// @}
     // -------------------------------------------------------------------------
@@ -80,6 +81,7 @@ public:
     Clock() {
         registerParam(bpm);
         registerParam(swing);
+        registerParam(velocity);
     }
     ~Clock() override = default;
 
@@ -193,6 +195,14 @@ public:
      */
     bool triggeredPeek() const {
         return m_triggeredFlag.load(std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Get trigger velocity for downstream operators
+     * @return Current velocity parameter value
+     */
+    float triggerVelocity() const override {
+        return static_cast<float>(velocity);
     }
 
     /**

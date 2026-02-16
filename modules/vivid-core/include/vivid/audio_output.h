@@ -140,8 +140,15 @@ public:
     /// @{
 
     /**
+     * @brief Connect to audio source by name
+     * @param name Name of audio operator to connect
+     */
+    void input(const std::string& name) { setInput(name); }
+
+    /**
      * @brief Set input by operator name
      * @param name Name of audio operator to connect
+     * @deprecated Use input(name) for consistent API with AudioEffect
      */
     void setInput(const std::string& name);
 

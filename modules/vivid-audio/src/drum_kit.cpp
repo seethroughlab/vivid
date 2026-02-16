@@ -3,6 +3,7 @@
 #include <vivid/audio_graph.h>
 #include <vivid/context.h>
 #include <cstring>
+#include <cmath>
 #include <algorithm>
 
 namespace vivid::audio {
@@ -283,6 +284,57 @@ bool DrumKit::isActive() const {
            m_highTom->isActive() ||
            m_crash->isActive() ||
            m_ride->isActive();
+}
+
+// -----------------------------------------------------------------------------
+// Inspection
+// -----------------------------------------------------------------------------
+
+InspectData DrumKit::inspect() const {
+    auto data = AudioOperator::inspect();
+
+    // Helper to compute RMS and peak from a drum's output buffer
+    auto drumMetrics = [](const AudioOperator* drum, const char* prefix, InspectData& out) {
+        if (!drum) return;
+        const AudioBuffer* buf = drum->outputBuffer();
+        if (!buf || !buf->isValid()) {
+            out.set(std::string(prefix) + "_rms", 0.0f);
+            out.set(std::string(prefix) + "_peak", 0.0f);
+            return;
+        }
+        float sumSq = 0.0f;
+        float peak = 0.0f;
+        uint32_t count = buf->sampleCount();
+        for (uint32_t i = 0; i < count; ++i) {
+            float s = buf->samples[i];
+            sumSq += s * s;
+            float absS = std::abs(s);
+            if (absS > peak) peak = absS;
+        }
+        out.set(std::string(prefix) + "_rms", std::sqrt(sumSq / static_cast<float>(count)));
+        out.set(std::string(prefix) + "_peak", peak);
+    };
+
+    drumMetrics(m_kick.get(), "kick", data);
+    drumMetrics(m_snare.get(), "snare", data);
+    drumMetrics(m_closedHiHat.get(), "closed_hihat", data);
+    drumMetrics(m_openHiHat.get(), "open_hihat", data);
+    drumMetrics(m_clap.get(), "clap", data);
+    drumMetrics(m_lowTom.get(), "low_tom", data);
+    drumMetrics(m_midTom.get(), "mid_tom", data);
+    drumMetrics(m_highTom.get(), "high_tom", data);
+    drumMetrics(m_crash.get(), "crash", data);
+    drumMetrics(m_ride.get(), "ride", data);
+
+    // Per-drum volume settings
+    data.set("kick_vol", static_cast<float>(kickVol));
+    data.set("snare_vol", static_cast<float>(snareVol));
+    data.set("hihat_vol", static_cast<float>(hihatVol));
+    data.set("clap_vol", static_cast<float>(clapVol));
+    data.set("tom_vol", static_cast<float>(tomVol));
+    data.set("cymbal_vol", static_cast<float>(cymbalVol));
+
+    return data;
 }
 
 // -----------------------------------------------------------------------------

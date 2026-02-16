@@ -60,6 +60,9 @@ void Euclidean::generateBlock(uint32_t frameCount) {
         if (auto* clock = dynamic_cast<Clock*>(trigSource)) {
             uint64_t currentCount = clock->triggerCount();
             if (currentCount > m_lastTriggerCount) {
+                // Capture upstream velocity for forwarding to downstream operators
+                m_lastVelocity.store(trigSource->triggerVelocity(), std::memory_order_relaxed);
+
                 // Clock has triggered - advance for each trigger we missed
                 // Important: accumulate triggers so we don't lose active steps during catchup
                 uint64_t triggers = currentCount - m_lastTriggerCount;
@@ -79,6 +82,9 @@ void Euclidean::generateBlock(uint32_t frameCount) {
         // Try Sequencer
         else if (auto* seq = dynamic_cast<Sequencer*>(trigSource)) {
             if (seq->triggered()) {
+                // Capture upstream velocity for forwarding
+                m_lastVelocity.store(trigSource->triggerVelocity(), std::memory_order_relaxed);
+
                 advanceInternalNoFlag();
                 int current = m_currentStep.load(std::memory_order_relaxed);
                 int rot = static_cast<int>(rotation);

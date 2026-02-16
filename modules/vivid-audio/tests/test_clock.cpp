@@ -122,7 +122,7 @@ TEST_CASE("Clock operator params() declaration", "[audio][clock]") {
     auto params = clock.params();
 
     SECTION("has expected number of params") {
-        REQUIRE(params.size() == 2);  // bpm, swing
+        REQUIRE(params.size() == 3);  // bpm, swing, velocity
     }
 
     SECTION("param names are correct") {
@@ -132,6 +132,7 @@ TEST_CASE("Clock operator params() declaration", "[audio][clock]") {
         }
         REQUIRE(std::find(names.begin(), names.end(), "bpm") != names.end());
         REQUIRE(std::find(names.begin(), names.end(), "swing") != names.end());
+        REQUIRE(std::find(names.begin(), names.end(), "velocity") != names.end());
     }
 }
 
