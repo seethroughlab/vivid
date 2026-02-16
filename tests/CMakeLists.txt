@@ -138,6 +138,32 @@ catch_discover_tests(test_particle_forces
 )
 
 # -----------------------------------------------------------------------------
+# Unit Tests (GUI panels, layout, preferences)
+# -----------------------------------------------------------------------------
+
+add_executable(test_gui
+    unit/test_gui_panels.cpp
+    unit/test_gui_layout.cpp
+    unit/test_gui_status_bar.cpp
+    unit/test_gui_preferences.cpp
+)
+
+target_link_libraries(test_gui PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+    vivid-devtools
+)
+
+target_include_directories(test_gui PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+    ${CMAKE_SOURCE_DIR}/modules/vivid-devtools/include
+)
+
+catch_discover_tests(test_gui
+    PROPERTIES LABELS "unit;gui"
+)
+
+# -----------------------------------------------------------------------------
 # Integration Tests (core)
 # -----------------------------------------------------------------------------
 

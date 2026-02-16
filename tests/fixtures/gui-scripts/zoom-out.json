@@ -1,0 +1,8 @@
+{
+  "events": [
+    {"frame": 10, "type": "mouse_move", "x": 0.4, "y": 0.5},
+    {"frame": 11, "type": "scroll", "x": 0.0, "y": -5.0},
+    {"frame": 15, "type": "scroll", "x": 0.0, "y": -5.0},
+    {"frame": 19, "type": "scroll", "x": 0.0, "y": -5.0}
+  ]
+}
