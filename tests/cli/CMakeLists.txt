@@ -70,3 +70,26 @@ catch_discover_tests(test_audio_evaluation
         LABELS "cli"
         TIMEOUT 120
 )
+
+# Inspect Tests (JSON structure validation for vivid inspect)
+add_executable(test_inspect
+    test_inspect.cpp
+)
+
+target_link_libraries(test_inspect PRIVATE
+    Catch2::Catch2WithMain
+    nlohmann_json::nlohmann_json
+)
+
+target_compile_definitions(test_inspect PRIVATE
+    VIVID_BINARY_PATH="$<TARGET_FILE:vivid>"
+    VIVID_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+add_dependencies(test_inspect vivid)
+
+catch_discover_tests(test_inspect
+    PROPERTIES
+        LABELS "cli"
+        TIMEOUT 120
+)
