@@ -10,6 +10,8 @@
  * Storage format: `<project-dir>/vivid-snapshots.json`
  */
 
+#include "easing.h"
+
 #include <string>
 #include <vector>
 #include <map>
@@ -64,8 +66,10 @@ public:
      * @param index Snapshot index
      * @param chain Chain to apply params to
      * @param duration Crossfade duration in seconds (0 = hard cut)
+     * @param easing Easing curve for crossfade (default: linear)
      */
-    void recall(int index, Chain& chain, float duration = 0.0f);
+    void recall(int index, Chain& chain, float duration = 0.0f,
+                EasingCurve easing = EasingCurve::linear());
 
     /**
      * @brief Tick crossfade interpolation (call each frame)
@@ -143,6 +147,9 @@ private:
 
     // Snapshot of params at crossfade start (for interpolating from current state)
     Snapshot m_startSnapshot;
+
+    // Easing curve for current crossfade
+    EasingCurve m_easingCurve;
 };
 
 } // namespace vivid

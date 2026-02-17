@@ -83,7 +83,7 @@ int SnapshotStore::capture(const std::string& name, Chain& chain) {
     return static_cast<int>(m_snapshots.size()) - 1;
 }
 
-void SnapshotStore::recall(int index, Chain& chain, float duration) {
+void SnapshotStore::recall(int index, Chain& chain, float duration, EasingCurve easing) {
     if (index < 0 || index >= static_cast<int>(m_snapshots.size())) return;
 
     if (duration <= 0.0f) {
@@ -100,6 +100,7 @@ void SnapshotStore::recall(int index, Chain& chain, float duration) {
     m_crossfadeTo = index;
     m_crossfadeT = 0.0f;
     m_crossfadeDuration = duration;
+    m_easingCurve = easing;
     m_crossfading = true;
 }
 
@@ -117,8 +118,9 @@ void SnapshotStore::update(float dt, Chain& chain) {
         return;
     }
 
-    // Interpolate between start snapshot and target
-    applyInterpolated(m_startSnapshot, m_snapshots[m_crossfadeTo], m_crossfadeT, chain);
+    // Interpolate between start snapshot and target (apply easing to linear t)
+    float easedT = m_easingCurve.apply(m_crossfadeT);
+    applyInterpolated(m_startSnapshot, m_snapshots[m_crossfadeTo], easedT, chain);
 }
 
 float SnapshotStore::crossfadeProgress() const {
