@@ -11,6 +11,81 @@ cmake --build build                       # Incremental build
 doxygen Doxyfile                          # Generate API docs
 ```
 
+## Framework Development
+
+When working on Vivid's own C++ codebase (not user chain.cpp projects), use this workflow.
+
+### Test Commands
+
+```bash
+ctest --test-dir build -L "unit|integration" --output-on-failure   # Fast feedback (~7s)
+ctest --test-dir build -L "unit|integration|build|mcp|cli" --output-on-failure  # Full non-GPU suite
+ctest --test-dir build --output-on-failure                          # Everything including GPU tests
+ctest --test-dir build -R "Noise" --output-on-failure               # Single test by name
+```
+
+### Test Labels
+
+| Label | What it covers | Speed |
+|-------|---------------|-------|
+| `unit` | Operator params, effects, audio analysis, particles, GUI layout, synth/network/serial modules | ~5s |
+| `integration` | Chain assembly | ~2s |
+| `build` | Version check, library existence | <1s |
+| `mcp` | MCP JSON-RPC protocol, operator metadata | ~20s |
+| `cli` | `vivid build/params/graph/docs/inspect/export/check` | ~60s |
+| `smoke` | Example projects run without crashing (requires GPU) | ~30s |
+| `visual` | Pixel comparison against reference images (requires GPU) | ~60s |
+| `gui` | GUI visual regression with scripted interactions (requires GPU) | ~30s |
+| `build-all` | Batch compile all projects + generate operator coverage index | ~4min |
+| `qualitative` | Assert visual/audio output correctness via `vivid check` (requires GPU) | ~3min |
+
+### Inner Loop (Framework)
+
+```
+Edit C++ source
+    → cmake --build build              — incremental build (~5-15s)
+    → ctest -L "unit|integration"      — fast tests (~7s)
+    → iterate or commit
+```
+
+### Before Pushing
+
+Run the full non-GPU suite — this is what CI runs on all platforms:
+
+```bash
+ctest --test-dir build -L "unit|integration|build|mcp|cli" --output-on-failure
+```
+
+GPU-dependent tests (`smoke`, `visual`, `gui`) run in CI on Linux with xvfb but are `continue-on-error`. Run locally on macOS if changing rendering code.
+
+### Batch Build Verification
+
+Verify all example projects and test fixtures still compile:
+
+```bash
+ctest --test-dir build -L build-all --output-on-failure
+```
+
+### Operator Coverage
+
+After running batch build, check which projects use a specific operator:
+
+```bash
+cat build/operator-coverage.json | python3 -c "import sys,json; d=json.load(sys.stdin); print('\n'.join(d.get(sys.argv[1],[])))" Bloom
+```
+
+Use this when modifying an operator to find projects to test against.
+
+### Qualitative Output Tests
+
+Verify visual and audio output correctness across projects with `vivid-assertions.json`:
+
+```bash
+ctest --test-dir build -L qualitative --output-on-failure -j1
+```
+
+Projects with `vivid-assertions.json` are automatically discovered and tested. To add assertions to a new project, create a `vivid-assertions.json` file in the project directory (see `projects/telegram-test/vivid-assertions.json` for an example).
+
 ## CLI Options
 
 ```bash

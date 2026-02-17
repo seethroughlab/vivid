@@ -164,6 +164,28 @@ catch_discover_tests(test_gui
 )
 
 # -----------------------------------------------------------------------------
+# Unit Tests (snapshot store + easing)
+# -----------------------------------------------------------------------------
+
+add_executable(test_snapshot
+    unit/test_snapshot.cpp
+    unit/test_easing.cpp
+)
+
+target_link_libraries(test_snapshot PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_snapshot PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+)
+
+catch_discover_tests(test_snapshot
+    PROPERTIES LABELS "unit"
+)
+
+# -----------------------------------------------------------------------------
 # Integration Tests (core)
 # -----------------------------------------------------------------------------
 
@@ -224,6 +246,18 @@ set_tests_properties(test_version_check PROPERTIES
 # Core library existence check
 # Note: On multi-config generators (MSVC), libs are in lib/<CONFIG>/
 # We skip the file check since successful build already verifies this
+
+# -----------------------------------------------------------------------------
+# Batch Build Verification (all projects compile)
+# -----------------------------------------------------------------------------
+
+add_subdirectory(batch)
+
+# -----------------------------------------------------------------------------
+# Qualitative Output Tests (assertion verification)
+# -----------------------------------------------------------------------------
+
+add_subdirectory(qualitative)
 
 # -----------------------------------------------------------------------------
 # Smoke Tests (snapshot mode verification)
