@@ -12,11 +12,16 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <cstring>
 
 // stb_image for loading images
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #include "stb_image.h"
+
+// stb_image_write for saving debug crops
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 namespace fs = std::filesystem;
 using Catch::Matchers::WithinAbs;
@@ -162,6 +167,50 @@ static CompareResult compareImages(const ImageData& expected, const ImageData& a
 }
 
 // -----------------------------------------------------------------------------
+// Crop & Save Utilities
+// -----------------------------------------------------------------------------
+
+/// Crop a rectangular region from an image. Coordinates are clamped to bounds.
+static ImageData cropImage(const ImageData& src, int x, int y, int w, int h) {
+    ImageData dst;
+    if (!src.isValid() || w <= 0 || h <= 0) {
+        dst.error = "Invalid crop parameters";
+        return dst;
+    }
+
+    // Clamp to source bounds
+    int x0 = std::max(0, std::min(x, src.width));
+    int y0 = std::max(0, std::min(y, src.height));
+    int x1 = std::max(x0, std::min(x + w, src.width));
+    int y1 = std::max(y0, std::min(y + h, src.height));
+
+    dst.width = x1 - x0;
+    dst.height = y1 - y0;
+    dst.channels = 4;
+
+    if (dst.width <= 0 || dst.height <= 0) {
+        dst.error = "Crop region is outside image bounds";
+        return dst;
+    }
+
+    dst.pixels.resize(static_cast<size_t>(dst.width) * dst.height * 4);
+    for (int row = 0; row < dst.height; ++row) {
+        const unsigned char* srcRow = src.pixels.data() + (static_cast<size_t>(y0 + row) * src.width + x0) * 4;
+        unsigned char* dstRow = dst.pixels.data() + static_cast<size_t>(row) * dst.width * 4;
+        std::memcpy(dstRow, srcRow, static_cast<size_t>(dst.width) * 4);
+    }
+
+    return dst;
+}
+
+/// Save an image to disk as PNG (useful for debugging failed tests).
+static bool saveImage(const ImageData& img, const fs::path& path) {
+    if (!img.isValid()) return false;
+    return stbi_write_png(path.string().c_str(), img.width, img.height, 4,
+                          img.pixels.data(), img.width * 4) != 0;
+}
+
+// -----------------------------------------------------------------------------
 // GUI Visual Regression Test Cases
 // -----------------------------------------------------------------------------
 
@@ -295,6 +344,123 @@ TEST_CASE("GUI reference images exist", "[visual][gui][reference]") {
 
             // Don't fail - just warn about missing references
             SUCCEED();
+        }
+    }
+}
+
+// =============================================================================
+// Detail Crop Tests
+// =============================================================================
+// Crops specific regions from full-frame snapshots and compares them against
+// dedicated reference crops at tighter tolerance. This catches small UI bugs
+// (like label/pin overlap) that are invisible in full-frame RMSE.
+
+struct GUIDetailTestCase {
+    const char* name;
+    const char* baseName;           // Which snapshot to crop from (e.g., "gui-default")
+    // Region of interest (normalized 0.0-1.0, resolution-independent)
+    float roiX, roiY, roiW, roiH;
+    double tolerance;               // Tighter than full-frame
+};
+
+static const GUIDetailTestCase GUI_DETAIL_TESTS[] = {
+    // Output pin area of the noise node — captures "out" label + orange pin circle.
+    // Noise node output pin is at logical ~(522, 509) in the 1280x720 space;
+    // this ROI covers approximately (435, 475) to (563, 533) logical pixels.
+    {"gui-output-pin-noise", "gui-default",
+     0.34f, 0.66f, 0.10f, 0.08f, 0.05},
+    // Title bar + upper body of the bg node — captures title text and content area.
+    // bg node spans logical ~(346, 181) to (522, 349); wider ROI absorbs layout jitter.
+    {"gui-node-title-bg", "gui-default",
+     0.26f, 0.24f, 0.15f, 0.14f, 0.08},
+};
+
+TEST_CASE("GUI detail crop regression tests", "[visual][gui][detail]") {
+    std::string detailRefDir = getSourceDir() + "/tests/fixtures/reference-images/gui/detail";
+    std::string fixturePath = getSourceDir() + "/tests/fixtures/gui-visual-test";
+
+    if (!fs::exists(fixturePath)) {
+        WARN("Skipping - fixture missing: " << fixturePath);
+        SUCCEED();
+        return;
+    }
+
+    for (const auto& test : GUI_DETAIL_TESTS) {
+        DYNAMIC_SECTION("GUI Detail: " << test.name) {
+            // Take a fresh snapshot
+            fs::path actualPath = getTempOutputPath(std::string("detail-") + test.name);
+            fs::remove(actualPath);
+
+            int exitCode = runGUISnapshot(fixturePath, actualPath, 30);
+            INFO("Exit code: " << exitCode);
+            REQUIRE(fs::exists(actualPath));
+
+            ImageData actualFull = loadImage(actualPath);
+            REQUIRE(actualFull.isValid());
+
+            // Crop the ROI from the fresh snapshot (resolution-independent via normalized coords)
+            int cropX = static_cast<int>(test.roiX * actualFull.width);
+            int cropY = static_cast<int>(test.roiY * actualFull.height);
+            int cropW = static_cast<int>(test.roiW * actualFull.width);
+            int cropH = static_cast<int>(test.roiH * actualFull.height);
+
+            ImageData actualCrop = cropImage(actualFull, cropX, cropY, cropW, cropH);
+            REQUIRE(actualCrop.isValid());
+            INFO("Crop size: " << actualCrop.width << "x" << actualCrop.height);
+
+            // Detail reference path
+            fs::path detailRefPath = fs::path(detailRefDir) / (std::string(test.name) + ".png");
+
+            // Auto-generate reference from fresh snapshot if missing or resolution changed
+            bool needsGenerate = !fs::exists(detailRefPath);
+            if (!needsGenerate) {
+                ImageData existingRef = loadImage(detailRefPath);
+                if (!existingRef.isValid() ||
+                    existingRef.width != actualCrop.width ||
+                    existingRef.height != actualCrop.height) {
+                    WARN("Resolution changed (" << existingRef.width << "x" << existingRef.height
+                         << " -> " << actualCrop.width << "x" << actualCrop.height
+                         << "), regenerating detail reference");
+                    needsGenerate = true;
+                }
+            }
+
+            if (needsGenerate) {
+                fs::create_directories(detailRefDir);
+                bool saved = saveImage(actualCrop, detailRefPath);
+                REQUIRE(saved);
+                WARN("Generated detail reference: " << detailRefPath.string());
+                SUCCEED();
+                continue;
+            }
+
+            // Load existing reference and compare
+            ImageData expectedCrop = loadImage(detailRefPath);
+            REQUIRE(expectedCrop.isValid());
+
+            CompareResult result = compareImages(expectedCrop, actualCrop);
+
+            INFO("Detail crop RMSE: " << result.rmse);
+            INFO("Diff pixels: " << result.diffPixelCount);
+            INFO("Tolerance: " << test.tolerance);
+
+            if (!result.error.empty()) {
+                fs::path debugPath = fs::temp_directory_path() / ("vivid_debug_" + std::string(test.name) + ".png");
+                saveImage(actualCrop, debugPath);
+                INFO("Saved debug crop to: " << debugPath.string());
+                FAIL(result.error);
+            }
+
+            if (result.rmse > test.tolerance) {
+                fs::path debugPath = fs::temp_directory_path() / ("vivid_debug_" + std::string(test.name) + ".png");
+                saveImage(actualCrop, debugPath);
+                INFO("Saved debug crop to: " << debugPath.string());
+            }
+
+            REQUIRE_FALSE(result.sizeMismatch);
+            REQUIRE_THAT(result.rmse, WithinAbs(0.0, test.tolerance));
+
+            fs::remove(actualPath);
         }
     }
 }

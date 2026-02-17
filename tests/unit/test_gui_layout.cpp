@@ -105,12 +105,24 @@ TEST_CASE("Scroll offset clamping", "[gui][layout][bug4]") {
 namespace {
 
 /// Computes the X position of an output pin label
-/// Formula: labelX = pinX - pinR - textW - 6*zoom
+/// Formula: labelX = pinX - pinR - textW - pinGap, where pinGap = pinR + 2*zoom
 /// where pinX = nodeX + nodeW (output pins are at right edge)
 float computeOutputPinLabelX(float nodeX, float nodeW, float pinR,
                               float textW, float zoom) {
     float pinX = nodeX + nodeW;
-    return pinX - pinR - textW - 6.0f * zoom;
+    float pinGap = pinR + 2.0f * zoom;
+    return pinX - pinR - textW - pinGap;
+}
+
+/// Returns the right edge of an output pin label
+float computeOutputPinLabelRightEdge(float nodeX, float nodeW, float pinR,
+                                      float textW, float zoom) {
+    return computeOutputPinLabelX(nodeX, nodeW, pinR, textW, zoom) + textW;
+}
+
+/// Returns the left edge of the pin circle (pinX - pinR)
+float computeOutputPinCircleLeftEdge(float nodeX, float nodeW, float pinR) {
+    return nodeX + nodeW - pinR;
 }
 
 } // anonymous namespace
@@ -126,7 +138,7 @@ TEST_CASE("Output pin label fits within node", "[gui][layout][bug5]") {
         float zoom = 1.0f;
 
         float labelX = computeOutputPinLabelX(nodeX, nodeW, pinR, textW, zoom);
-        // labelX = 100 + 180 - 6 - 20 - 6 = 248, nodeX = 100 → fits
+        // labelX = 100 + 180 - 6 - 20 - 8 = 246, nodeX = 100 → fits
         REQUIRE(labelX >= nodeX);
     }
 
@@ -145,7 +157,7 @@ TEST_CASE("Output pin label fits within node", "[gui][layout][bug5]") {
         float zoom = 1.0f;
 
         float labelX = computeOutputPinLabelX(nodeX, nodeW, pinR, textW, zoom);
-        // labelX = 100 + 180 - 6 - 80 - 6 = 188, nodeX = 100 → still fits at 1x
+        // labelX = 100 + 180 - 6 - 80 - 8 = 186, nodeX = 100 → still fits at 1x
         REQUIRE(labelX >= nodeX);
     }
 
@@ -158,9 +170,9 @@ TEST_CASE("Output pin label fits within node", "[gui][layout][bug5]") {
         float textW = 50.0f;  // A long label at small scale
 
         float labelX = computeOutputPinLabelX(nodeX * zoom, nodeWScaled, pinRScaled, textW, zoom);
-        // If this fails, it confirms the label overflows the node at low zoom
-        // labelX = 30 + 54 - 1.8 - 50 - 1.8 = 30.4 >= 30 — barely fits
-        // But with even longer labels or smaller zoom, it would overflow
+        // With proportional gap (pinR + 2*zoom = 1.8 + 0.6 = 2.4), label overflows:
+        // labelX = 30 + 54 - 1.8 - 50 - 2.4 = 29.8 < 30 — doesn't fit
+        // This documents that very long labels at low zoom are hidden (correct behavior)
         CHECK(labelX >= nodeX * zoom);
     }
 
@@ -175,6 +187,78 @@ TEST_CASE("Output pin label fits within node", "[gui][layout][bug5]") {
         // labelX < nodeX*zoom means the label would overflow — should be hidden
         bool shouldRender = (labelX >= nodeX * zoom);
         REQUIRE_FALSE(shouldRender);
+    }
+}
+
+// =============================================================================
+// Bug 5b: Output pin label right edge clears pin circle
+// The old 6*zoom gap was insufficient — at pinR=6, zoom=1 the label's right
+// edge was flush with the pin circle. The new formula uses pinR + 2*zoom gap.
+// =============================================================================
+
+TEST_CASE("Output pin label clears pin circle", "[gui][layout][bug5]") {
+    float nodeW = 180.0f;
+    float pinR = 6.0f;
+
+    SECTION("at zoom=1.0, 'out' label right edge clears pin circle") {
+        float nodeX = 100.0f;
+        float textW = 20.0f;
+        float zoom = 1.0f;
+
+        float rightEdge = computeOutputPinLabelRightEdge(nodeX, nodeW, pinR, textW, zoom);
+        float circleLeft = computeOutputPinCircleLeftEdge(nodeX, nodeW, pinR);
+
+        // Right edge of label must be left of the pin circle's left edge
+        REQUIRE(rightEdge < circleLeft);
+        // Gap should be at least pinR (proportional clearance)
+        float gap = circleLeft - rightEdge;
+        REQUIRE(gap >= pinR);
+    }
+
+    SECTION("at zoom=0.5, clearance is proportionally maintained") {
+        float nodeX = 100.0f;
+        float textW = 10.0f;
+        float zoom = 0.5f;
+        float scaledPinR = pinR * zoom;
+
+        float rightEdge = computeOutputPinLabelRightEdge(nodeX, nodeW * zoom, scaledPinR, textW, zoom);
+        float circleLeft = computeOutputPinCircleLeftEdge(nodeX, nodeW * zoom, scaledPinR);
+
+        REQUIRE(rightEdge < circleLeft);
+        float gap = circleLeft - rightEdge;
+        REQUIRE(gap >= scaledPinR);
+    }
+
+    SECTION("at zoom=0.3, clearance still holds for short labels") {
+        float nodeX = 30.0f;  // Scaled position
+        float textW = 8.0f;
+        float zoom = 0.3f;
+        float scaledPinR = pinR * zoom;
+
+        float rightEdge = computeOutputPinLabelRightEdge(nodeX, nodeW * zoom, scaledPinR, textW, zoom);
+        float circleLeft = computeOutputPinCircleLeftEdge(nodeX, nodeW * zoom, scaledPinR);
+
+        float labelX = computeOutputPinLabelX(nodeX, nodeW * zoom, scaledPinR, textW, zoom);
+        if (labelX >= nodeX) {
+            // If the label is rendered, it must clear the pin
+            REQUIRE(rightEdge < circleLeft);
+        }
+    }
+
+    SECTION("parameterized across typical label widths") {
+        float nodeX = 100.0f;
+        float zoom = 1.0f;
+
+        // Typical label widths: "out" ~20px, "audio" ~35px, "display" ~45px
+        for (float textW : {20.0f, 35.0f, 45.0f}) {
+            float rightEdge = computeOutputPinLabelRightEdge(nodeX, nodeW, pinR, textW, zoom);
+            float circleLeft = computeOutputPinCircleLeftEdge(nodeX, nodeW, pinR);
+
+            float labelX = computeOutputPinLabelX(nodeX, nodeW, pinR, textW, zoom);
+            if (labelX >= nodeX) {
+                REQUIRE(rightEdge < circleLeft);
+            }
+        }
     }
 }
 
