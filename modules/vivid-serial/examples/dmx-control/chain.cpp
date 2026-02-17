@@ -4,9 +4,11 @@
 // The fixture's RGB values are controlled by an LFO.
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
 #include <vivid/serial/dmx_out.h>
 
 using namespace vivid;
+using namespace vivid::effects;
 using namespace vivid::serial;
 
 void setup(Context& ctx) {
@@ -33,7 +35,7 @@ void setup(Context& ctx) {
 }
 
 void update(Context& ctx) {
-    ctx.chain().process();
+    ctx.chain().process(ctx);
 
     // Get LFO values
     float r = ctx.chain().get<LFO>("lfo_red").value();

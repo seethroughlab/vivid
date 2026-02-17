@@ -13,7 +13,6 @@ using namespace vivid::effects;
 using namespace vivid::render3d;
 
 // Persistent state across hot-reloads
-static Camera3D camera;
 static int currentMode = 0;
 
 // Shading mode names for display
@@ -74,24 +73,31 @@ void setup(Context& ctx) {
         glm::vec4(0.9f, 0.9f, 0.9f, 1.0f));
 
     // Set up camera
-    camera.lookAt(glm::vec3(6, 4, 6), glm::vec3(0, 0, 0))
-          .fov(45.0f)
-          .nearPlane(0.1f)
-          .farPlane(100.0f);
+    auto& camera = chain.add<CameraOperator>("camera");
+    camera.position(6.0f, 4.0f, 6.0f);
+    camera.target(0.0f, 0.0f, 0.0f);
+    camera.fov(45.0f);
+    camera.nearPlane(0.1f);
+    camera.farPlane(100.0f);
+
+    // Directional light
+    auto& sun = chain.add<DirectionalLight>("sun");
+    sun.direction(1.0f, 2.0f, 1.0f);
+    sun.color(1.0f, 1.0f, 1.0f);
+    sun.intensity = 1.0f;
 
     // Create Render3D with initial shading mode
     auto& renderer = chain.add<Render3D>("render3d");
-    renderer.input("scene")
-            .camera(camera)
-            .shadingMode(ShadingMode::Flat)
-            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
-            .lightColor(glm::vec3(1, 1, 1))
-            .ambient(0.15f)
-            .toonLevels(4)
-            .metallic(0.0f)
-            .roughness(0.5f)
-            .clearColor(0.08f, 0.08f, 0.12f)
-            .resolution(1280, 720);
+    renderer.input("scene");
+    renderer.setCameraInput(&camera);
+    renderer.setLightInput(&sun);
+    renderer.setShadingMode(ShadingMode::Flat);
+    renderer.setAmbient(0.15f);
+    renderer.setToonLevels(4);
+    renderer.setMetallic(0.0f);
+    renderer.setRoughness(0.5f);
+    renderer.setClearColor(0.08f, 0.08f, 0.12f);
+    renderer.setResolution(1280, 720);
 
     chain.output("render3d");
 
@@ -111,23 +117,23 @@ void update(Context& ctx) {
     }
 
     // Orbit camera around the scene
-    float distance = 8.0f;
-    float azimuth = time * 0.2f;
-    float elevation = 0.4f + 0.1f * std::sin(time * 0.3f);
-    camera.orbit(distance, azimuth, elevation);
+    auto& camera = chain.get<CameraOperator>("camera");
+    camera.orbitCenter(0.0f, 0.0f, 0.0f);
+    camera.distance(8.0f);
+    camera.azimuth(time * 0.2f);
+    camera.elevation(0.4f + 0.1f * std::sin(time * 0.3f));
 
     // Update renderer with current shading mode
     auto& renderer = chain.get<Render3D>("render3d");
-    renderer.camera(camera);
 
     // Apply the current shading mode
     switch (currentMode) {
-        case 0: renderer.shadingMode(ShadingMode::Unlit); break;
-        case 1: renderer.shadingMode(ShadingMode::Flat); break;
-        case 2: renderer.shadingMode(ShadingMode::Gouraud); break;
-        case 3: renderer.shadingMode(ShadingMode::VertexLit); break;
-        case 4: renderer.shadingMode(ShadingMode::Toon); break;
-        case 5: renderer.shadingMode(ShadingMode::PBR); break;
+        case 0: renderer.setShadingMode(ShadingMode::Unlit); break;
+        case 1: renderer.setShadingMode(ShadingMode::Flat); break;
+        case 2: renderer.setShadingMode(ShadingMode::Gouraud); break;
+        case 3: renderer.setShadingMode(ShadingMode::VertexLit); break;
+        case 4: renderer.setShadingMode(ShadingMode::Toon); break;
+        case 5: renderer.setShadingMode(ShadingMode::PBR); break;
     }
 
     // Animate objects

@@ -21,7 +21,7 @@ void setup(Context& ctx) {
     // DMX Output - configure for your USB-DMX adapter
     auto& dmx = chain.add<DMXOut>("dmx");
     // dmx.port("/dev/tty.usbserial-EN193448");  // Uncomment and adjust for your device
-    dmx.universe(1);
+    dmx.universe = 1;
 
     // Visual feedback - solid color matching DMX output
     auto& color = chain.add<SolidColor>("color");
@@ -55,9 +55,9 @@ void update(Context& ctx) {
 
     // Send to DMX (channels 1-3 for RGB fixture)
     auto& dmx = chain.get<DMXOut>("dmx");
-    dmx.setChannel(1, static_cast<uint8_t>(r * 255));
-    dmx.setChannel(2, static_cast<uint8_t>(g * 255));
-    dmx.setChannel(3, static_cast<uint8_t>(b * 255));
+    dmx.channel(1, static_cast<uint8_t>(r * 255));
+    dmx.channel(2, static_cast<uint8_t>(g * 255));
+    dmx.channel(3, static_cast<uint8_t>(b * 255));
 }
 
 VIVID_CHAIN(setup, update)

@@ -8,6 +8,7 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
 
 using namespace vivid;
 using namespace vivid::effects;
@@ -16,17 +17,17 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Create three different visual options
-    chain.add<Noise>("option_a")
-        .scale(4.0f)
-        .speed(0.5f);
+    auto& optionA = chain.add<Noise>("option_a");
+    optionA.scale = 4.0f;
+    optionA.speed = 0.5f;
 
-    chain.add<Gradient>("option_b")
-        .direction(GradientDirection::Radial);
+    auto& optionB = chain.add<Gradient>("option_b");
+    optionB.mode = GradientMode::Radial;
 
-    chain.add<Shape>("option_c")
-        .type = ShapeType::Ellipse
-        .radius(0.3f)
-        .feather(0.1f);
+    auto& optionC = chain.add<Shape>("option_c");
+    optionC.type = ShapeType::Ellipse;
+    optionC.size.set(0.3f, 0.3f);
+    optionC.softness = 0.1f;
 
     // Math: Remap time to sawtooth wave (0-1 over 3 seconds)
     chain.add<Math>("time_remap")
@@ -83,13 +84,13 @@ void update(Context& ctx) {
     sw.index = static_cast<int>(indexCalc.value());
 
     // Animate individual options
-    chain.get<Noise>("option_a").offset.set(t * 0.1f, 0.0f);
+    chain.get<Noise>("option_a").offset.set(t * 0.1f, 0.0f, 0.0f);
     chain.get<Shape>("option_c").position.set(
         0.5f + 0.2f * std::sin(t * 2.0f),
         0.5f + 0.2f * std::cos(t * 2.0f)
     );
 
-    chain.process();
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

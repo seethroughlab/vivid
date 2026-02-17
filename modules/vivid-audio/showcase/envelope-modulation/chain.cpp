@@ -6,6 +6,7 @@
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
 #include <cmath>
 
 using namespace vivid;
@@ -26,31 +27,30 @@ void setup(Context& ctx) {
     // ----- DEMO 1: ADSR ENVELOPE -----
     // Full Attack-Decay-Sustain-Release envelope for sustained sounds
     auto& osc1 = chain.add<Oscillator>("osc1");
-    osc1.frequency(220.0f);
-    osc1.waveform(Waveform::Sawtooth);
+    osc1.frequency = 220.0f;
+    osc1.waveform(Waveform::Saw);
 
     auto& env1 = chain.add<Envelope>("env1");
-    env1.input("osc1");
     env1.attack = 0.1f;    // 100ms attack
     env1.decay = 0.2f;     // 200ms decay
     env1.sustain = 0.6f;   // 60% sustain level
     env1.release = 0.5f;   // 500ms release
 
     // Filter modulated by envelope
-    auto& filter1 = chain.add<Filter>("filter1");
-    filter1.input("env1");
-    filter1.type(FilterType::LowPass);
+    auto& filter1 = chain.add<AudioFilter>("filter1");
+    filter1.setInputByName(0, "osc1");
+    filter1.setType(FilterType::Lowpass);
     filter1.cutoff = 800.0f;
     filter1.resonance = 0.5f;
 
     // ----- DEMO 2: AR ENVELOPE -----
     // Simple Attack-Release for plucks and percussion
     auto& osc2 = chain.add<Oscillator>("osc2");
-    osc2.frequency(440.0f);
+    osc2.frequency = 440.0f;
     osc2.waveform(Waveform::Triangle);
 
     auto& ar = chain.add<AR>("ar");
-    ar.input("osc2");
+    ar.setInputByName(0, "osc2");
     ar.attack = 0.005f;    // 5ms attack (instant)
     ar.release = 0.3f;     // 300ms release
 
@@ -66,15 +66,18 @@ void setup(Context& ctx) {
 
     // AR envelope for amplitude
     auto& kickEnv = chain.add<AR>("kickEnv");
-    kickEnv.input("osc3");
+    kickEnv.setInputByName(0, "osc3");
     kickEnv.attack = 0.001f;
     kickEnv.release = 0.4f;
 
     // ----- MIXER -----
     auto& mixer = chain.add<AudioMixer>("mixer");
-    mixer.addInput(&filter1, 0.0f);
-    mixer.addInput(&ar, 0.0f);
-    mixer.addInput(&kickEnv, 0.0f);
+    mixer.input(0, "filter1");
+    mixer.setGain(0, 0.0f);
+    mixer.input(1, "ar");
+    mixer.setGain(1, 0.0f);
+    mixer.input(2, "kickEnv");
+    mixer.setGain(2, 0.0f);
 
     // ----- OUTPUT -----
     auto& output = chain.add<AudioOutput>("audio_out");
@@ -126,22 +129,22 @@ void update(Context& ctx) {
     auto& kickEnv = chain.get<AR>("kickEnv");
     auto& osc3 = chain.get<Oscillator>("osc3");
     auto& mixer = chain.get<AudioMixer>("mixer");
-    auto& filter1 = chain.get<Filter>("filter1");
+    auto& filter1 = chain.get<AudioFilter>("filter1");
 
     // ----- SELECT DEMO WITH KEYS -----
     // Keys 1, 2, 3 select demo
-    if (ctx.keyPressed(Key::Key1)) g_demo = EnvDemo::ADSR;
-    if (ctx.keyPressed(Key::Key2)) g_demo = EnvDemo::AR;
-    if (ctx.keyPressed(Key::Key3)) g_demo = EnvDemo::PitchSweep;
+    if (ctx.key(GLFW_KEY_1).pressed) g_demo = EnvDemo::ADSR;
+    if (ctx.key(GLFW_KEY_2).pressed) g_demo = EnvDemo::AR;
+    if (ctx.key(GLFW_KEY_3).pressed) g_demo = EnvDemo::PitchSweep;
 
     // Set mixer levels based on active demo
-    mixer.setLevel(0, g_demo == EnvDemo::ADSR ? 0.7f : 0.0f);
-    mixer.setLevel(1, g_demo == EnvDemo::AR ? 0.7f : 0.0f);
-    mixer.setLevel(2, g_demo == EnvDemo::PitchSweep ? 0.7f : 0.0f);
+    mixer.setGain(0, g_demo == EnvDemo::ADSR ? 0.7f : 0.0f);
+    mixer.setGain(1, g_demo == EnvDemo::AR ? 0.7f : 0.0f);
+    mixer.setGain(2, g_demo == EnvDemo::PitchSweep ? 0.7f : 0.0f);
 
     // ----- TRIGGER ON SPACE / MOUSE -----
-    bool shouldTrigger = ctx.keyPressed(Key::Space) || ctx.mousePressed(0);
-    bool shouldRelease = ctx.keyReleased(Key::Space) || ctx.mouseReleased(0);
+    bool shouldTrigger = ctx.key(GLFW_KEY_SPACE).pressed || ctx.mouseButton(0).pressed;
+    bool shouldRelease = ctx.key(GLFW_KEY_SPACE).released || ctx.mouseButton(0).released;
 
     // ----- MOUSE Y: ENVELOPE PARAMS -----
     float mouseY = ctx.mouseNorm().y;  // 0-1
@@ -183,7 +186,7 @@ void update(Context& ctx) {
             pitchEnv.startFreq = 100.0f + mouseY * 300.0f;
 
             // Apply pitch to oscillator
-            osc3.frequency(pitchEnv.currentFreq());
+            osc3.frequency = pitchEnv.currentFreq();
 
             if (shouldTrigger) {
                 pitchEnv.trigger();

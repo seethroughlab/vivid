@@ -20,7 +20,8 @@ void setup(Context& ctx) {
 
     // Webcam input
     auto& webcam = chain.add<Webcam>("webcam");
-    webcam.resolution(1280, 720).frameRate(30);
+    webcam.setResolution(1280, 720);
+    webcam.setFrameRate(30.0f);
 
     // Downsample for that chunky pixel look
     auto& downsample = chain.add<Downsample>("downsample");
@@ -111,33 +112,24 @@ void update(Context& ctx) {
     dither.levels = levels;
 
     // Rebuild chain based on enabled effects
-    TextureOperator* lastOp = &downsample;
+    std::string lastOutput = "downsample";
 
     if (ditherEnabled) {
-        dither.input(lastOp);
-        lastOp = &dither;
+        dither.input(lastOutput);
+        lastOutput = "dither";
     }
 
     if (scanlinesEnabled) {
-        scanlines.input(lastOp);
-        lastOp = &scanlines;
+        scanlines.input(lastOutput);
+        lastOutput = "scanlines";
     }
 
     if (crtEnabled) {
-        crt.input(lastOp);
-        lastOp = &crt;
+        crt.input(lastOutput);
+        lastOutput = "crt";
     }
 
-    // Update output based on what's enabled
-    if (crtEnabled) {
-        chain.output("crt");
-    } else if (scanlinesEnabled) {
-        chain.output("scanlines");
-    } else if (ditherEnabled) {
-        chain.output("dither");
-    } else {
-        chain.output("downsample");
-    }
+    chain.output(lastOutput);
 }
 
 VIVID_CHAIN(setup, update)

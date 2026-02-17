@@ -41,16 +41,19 @@ void setup(Context& ctx) {
     auto& scene = SceneComposer::create(chain, "scene");
 
     // Main cube - will scale with bass
-    scene.add<Box>("cube",
+    auto& cube = scene.add<Box>("cube",
         glm::mat4(1.0f),
         glm::vec4(0.8f, 0.3f, 0.2f, 1.0f)
-    ).size(1.0f, 1.0f, 1.0f).flatShading(true);
+    );
+    cube.size(1.0f, 1.0f, 1.0f);
 
     // Orbiting sphere - color will change
-    scene.add<Sphere>("sphere",
+    auto& sphere = scene.add<Sphere>("sphere",
         glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0, 0)),
         glm::vec4(0.2f, 0.6f, 0.9f, 1.0f)
-    ).radius(0.3f).segments(16);
+    );
+    sphere.radius(0.3f);
+    sphere.segments(16);
 
     // =========================================
     // CAMERA & LIGHTING

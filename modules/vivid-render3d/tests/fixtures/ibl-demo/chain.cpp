@@ -27,8 +27,8 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // IBL environment (now a proper chain operator)
-    auto& ibl = chain.add<IBLEnvironment>("ibl")
-        .hdrFile("tests/assets/hdris/bryanston_park_sunrise_4k.hdr");
+    auto& ibl = chain.add<IBLEnvironment>("ibl");
+    ibl.setHdrFile("tests/assets/hdris/bryanston_park_sunrise_4k.hdr");
 
     // Create scene composer
     auto& scene = SceneComposer::create(chain, "scene");
@@ -36,41 +36,41 @@ void setup(Context& ctx) {
     // =========================================================================
     // Row 0: Worn Shiny Metal (textured PBR)
     // =========================================================================
-    auto& wornMetal = chain.add<TexturedMaterial>("worn_metal")
-        .baseColor("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-albedo.png")
-        .normal("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Normal-ogl.png")
-        .metallic("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Metallic.png")
-        .roughness("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Roughness.png")
-        .ao("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-ao.png");
+    auto& wornMetal = chain.add<TexturedMaterial>("worn_metal");
+    wornMetal.baseColor("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-albedo.png");
+    wornMetal.normal("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Normal-ogl.png");
+    wornMetal.metallic("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Metallic.png");
+    wornMetal.roughness("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Roughness.png");
+    wornMetal.ao("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-ao.png");
 
     // =========================================================================
     // Row 1: Bronze (textured PBR)
     // =========================================================================
-    auto& bronze = chain.add<TexturedMaterial>("bronze")
-        .baseColor("tests/assets/materials/bronze-bl/bronze_albedo.png")
-        .normal("tests/assets/materials/bronze-bl/bronze_normal-ogl.png")
-        .metallic("tests/assets/materials/bronze-bl/bronze_metallic.png")
-        .roughness("tests/assets/materials/bronze-bl/bronze_roughness.png")
-        .ao("tests/assets/materials/bronze-bl/bronze_ao.png");
+    auto& bronze = chain.add<TexturedMaterial>("bronze");
+    bronze.baseColor("tests/assets/materials/bronze-bl/bronze_albedo.png");
+    bronze.normal("tests/assets/materials/bronze-bl/bronze_normal-ogl.png");
+    bronze.metallic("tests/assets/materials/bronze-bl/bronze_metallic.png");
+    bronze.roughness("tests/assets/materials/bronze-bl/bronze_roughness.png");
+    bronze.ao("tests/assets/materials/bronze-bl/bronze_ao.png");
 
     // =========================================================================
     // Row 2: Titanium Scuffed (textured PBR)
     // =========================================================================
-    auto& titanium = chain.add<TexturedMaterial>("titanium")
-        .baseColor("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_basecolor.png")
-        .normal("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_normal.png")
-        .metallic("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_metallic.png")
-        .roughness("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_roughness.png");
+    auto& titanium = chain.add<TexturedMaterial>("titanium");
+    titanium.baseColor("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_basecolor.png");
+    titanium.normal("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_normal.png");
+    titanium.metallic("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_metallic.png");
+    titanium.roughness("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_roughness.png");
 
     // =========================================================================
     // Row 3: Rock (textured PBR - dielectric)
     // =========================================================================
-    auto& rock = chain.add<TexturedMaterial>("rock")
-        .baseColor("tests/assets/materials/roughrockface2-bl/roughrockface2_Base_Color.png")
-        .normal("tests/assets/materials/roughrockface2-bl/roughrockface2_Normal.png")
-        .metallic("tests/assets/materials/roughrockface2-bl/roughrockface2_Metallic.png")
-        .roughness("tests/assets/materials/roughrockface2-bl/roughrockface2_Roughness.png")
-        .ao("tests/assets/materials/roughrockface2-bl/roughrockface2_Ambient_Occlusion.png");
+    auto& rock = chain.add<TexturedMaterial>("rock");
+    rock.baseColor("tests/assets/materials/roughrockface2-bl/roughrockface2_Base_Color.png");
+    rock.normal("tests/assets/materials/roughrockface2-bl/roughrockface2_Normal.png");
+    rock.metallic("tests/assets/materials/roughrockface2-bl/roughrockface2_Metallic.png");
+    rock.roughness("tests/assets/materials/roughrockface2-bl/roughrockface2_Roughness.png");
+    rock.ao("tests/assets/materials/roughrockface2-bl/roughrockface2_Ambient_Occlusion.png");
 
     // Array of materials for easy iteration
     TexturedMaterial* materials[] = { &wornMetal, &bronze, &titanium, &rock };
@@ -89,11 +89,11 @@ void setup(Context& ctx) {
             glm::vec3 pos(startX + col * spacing, 0.0f, startZ + row * spacing);
 
             // Add sphere with high segment count for smooth reflections
-            scene.add<Sphere>(name,
-                glm::translate(glm::mat4(1.0f), pos))
-                .radius(1.4f)
-                .segments(64)
-                .computeTangents();
+            auto& s = scene.add<Sphere>(name,
+                glm::translate(glm::mat4(1.0f), pos));
+            s.radius(1.4f);
+            s.segments(64);
+            s.computeTangents();
 
             // Assign textured material
             scene.entries().back().material = materials[row];
@@ -101,29 +101,29 @@ void setup(Context& ctx) {
     }
 
     // Camera - orbit view with mouse control
-    auto& camera = chain.add<CameraOperator>("camera")
-        .distance(cameraDistance)
-        .elevation(cameraElevation)
-        .azimuth(cameraAzimuth)
-        .target(0.0f, 0.0f, 0.0f)
-        .fov(50.0f);
+    auto& camera = chain.add<CameraOperator>("camera");
+    camera.distance(cameraDistance);
+    camera.elevation(cameraElevation);
+    camera.azimuth(cameraAzimuth);
+    camera.target(0.0f, 0.0f, 0.0f);
+    camera.fov(50.0f);
 
     // Directional light (still used for direct lighting)
-    auto& light = chain.add<DirectionalLight>("sun")
-        .direction(1.0f, 2.0f, 1.0f)
-        .color(1.0f, 1.0f, 1.0f)
-        .intensity(1.5f);
+    auto& light = chain.add<DirectionalLight>("sun");
+    light.direction(1.0f, 2.0f, 1.0f);
+    light.color(1.0f, 1.0f, 1.0f);
+    light.intensity = 1.5f;
 
     // Render with PBR + IBL
-    auto& render = chain.add<Render3D>("render")
-        .input("scene")
-        .cameraInput(&camera)
-        .lightInput(&light)
-        .shadingMode(ShadingMode::PBR)
-        .environmentInput(&ibl)
-        .ibl(true)
-        .ambient(1.0f)  // IBL provides ambient, set to 1.0 for full effect
-        .clearColor(0.1f, 0.1f, 0.12f);
+    auto& render = chain.add<Render3D>("render");
+    render.input("scene");
+    render.setCameraInput(&camera);
+    render.setLightInput(&light);
+    render.setShadingMode(ShadingMode::PBR);
+    render.setEnvironmentInput(&ibl);
+    render.setIbl(true);
+    render.setAmbient(1.0f);  // IBL provides ambient, set to 1.0 for full effect
+    render.setClearColor(0.1f, 0.1f, 0.12f);
 
     chain.output("render");
 }

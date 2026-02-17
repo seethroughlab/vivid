@@ -44,11 +44,14 @@ void setup(Context& ctx) {
     noise.speed = 0.5f;
     noise.octaves = 4;
 
-    // Color the noise
-    auto& colorize = chain.add<Colorize>("colorize");
+    // Color the noise via gradient lookup
+    auto& gradient = chain.add<Gradient>("gradient");
+    gradient.colorA.set(0.1f, 0.1f, 0.3f, 1.0f);  // Dark blue
+    gradient.colorB.set(1.0f, 0.4f, 0.1f, 1.0f);  // Orange
+
+    auto& colorize = chain.add<Lookup>("colorize");
     colorize.input("noise");
-    colorize.colorA.set(0.1f, 0.1f, 0.3f, 1.0f);  // Dark blue
-    colorize.colorB.set(1.0f, 0.4f, 0.1f, 1.0f);  // Orange
+    colorize.lut("gradient");
 
     // Add glow - intensity reacts to highs
     auto& bloom = chain.add<Bloom>("bloom");
@@ -77,7 +80,7 @@ void update(Context& ctx) {
     // =========================================
 
     auto& noise = chain.get<Noise>("noise");
-    auto& colorize = chain.get<Colorize>("colorize");
+    auto& gradient = chain.get<Gradient>("gradient");
     auto& bloom = chain.get<Bloom>("bloom");
 
     // Bass controls noise scale (bigger = more zoomed in)
@@ -87,7 +90,7 @@ void update(Context& ctx) {
     noise.speed = 0.3f + mid * 2.0f;
 
     // Volume controls color intensity
-    colorize.colorB.set(
+    gradient.colorB.set(
         0.8f + volume * 0.2f,   // Red increases with volume
         0.3f + bass * 0.3f,    // Green increases with bass
         0.1f + high * 0.4f,    // Blue increases with highs

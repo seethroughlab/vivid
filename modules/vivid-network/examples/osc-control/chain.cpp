@@ -64,7 +64,7 @@ void setup(Context& ctx) {
     // Flash effect (triggered by OSC)
     auto& flash = chain.add<Flash>("flash");
     flash.input("comp");
-    flash.duration = 0.1f;
+    flash.decay = 0.1f;
 
     // Bloom
     auto& bloom = chain.add<Bloom>("bloom");

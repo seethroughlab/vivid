@@ -37,11 +37,11 @@ void setup(Context& ctx) {
     // ----- AUDIO INPUT (for reactive lighting) -----
     // Use FFT for frequency analysis
     auto& audio = chain.add<AudioIn>("audio");
-    audio.gain = 1.5f;
+    audio.volume = 1.5f;
 
     auto& fft = chain.add<FFT>("fft");
     fft.input("audio");
-    fft.size(FFTSize::FFT_512);
+    fft.setSize(512);
 
     // ----- CLOCK (for chase patterns) -----
     auto& clock = chain.add<Clock>("clock");
@@ -109,9 +109,9 @@ void update(Context& ctx) {
 
     // ----- AUDIO-REACTIVE COLORS -----
     // Get frequency bands
-    float bass = fft.band(0);      // Low frequencies
-    float mid = fft.band(2);       // Mid frequencies
-    float high = fft.band(5);      // High frequencies
+    float bass = fft.band(20.0f, 250.0f);      // Low frequencies
+    float mid = fft.band(250.0f, 4000.0f);     // Mid frequencies
+    float high = fft.band(4000.0f, 20000.0f);  // High frequencies
 
     // Scale for visibility
     bass = std::min(1.0f, bass * 3.0f);

@@ -38,9 +38,9 @@ namespace notes {
 // Song Structure
 // =============================================================================
 
-enum class Section { Intro, Verse1, Chorus1, Verse2, Bridge, Chorus2, Outro, End };
+enum class SongSection { Intro, Verse1, Chorus1, Verse2, Bridge, Chorus2, Outro, End };
 
-static Section currentSection = Section::Intro;
+static SongSection currentSection = SongSection::Intro;
 static int sectionBar = 0;
 static int totalBars = 0;
 static int stepInBar = 0;
@@ -93,16 +93,16 @@ static float leadVisual = 0.0f;
 static float padVisual = 0.0f;
 static float lastPadRoot = 0.0f;
 
-const char* getSectionName(Section s) {
+const char* getSectionName(SongSection s) {
     switch (s) {
-        case Section::Intro: return "Intro";
-        case Section::Verse1: return "Verse 1";
-        case Section::Chorus1: return "Chorus";
-        case Section::Verse2: return "Verse 2";
-        case Section::Bridge: return "Bridge";
-        case Section::Chorus2: return "Chorus";
-        case Section::Outro: return "Outro";
-        case Section::End: return "End";
+        case SongSection::Intro: return "Intro";
+        case SongSection::Verse1: return "Verse 1";
+        case SongSection::Chorus1: return "Chorus";
+        case SongSection::Verse2: return "Verse 2";
+        case SongSection::Bridge: return "Bridge";
+        case SongSection::Chorus2: return "Chorus";
+        case SongSection::Outro: return "Outro";
+        case SongSection::End: return "End";
         default: return "?";
     }
 }
@@ -117,7 +117,9 @@ void setup(Context& ctx) {
 
     // Clock - 80 BPM, 8th notes for lead melody
     auto& clock = chain.add<Clock>("clock");
-    clock.bpm(80.0f).division(ClockDiv::Eighth).swing(0.05f);
+    clock.bpm = 80.0f;
+    clock.division(ClockDiv::Eighth);
+    clock.swing = 0.05f;
 
     // Drum sequencers - advance from clock on audio thread
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
@@ -130,11 +132,19 @@ void setup(Context& ctx) {
 
     // Drums - trigger from sequencers on audio thread
     auto& kick = chain.add<Kick>("kick");
-    kick.pitch(42.0f).pitchEnv(50.0f).pitchDecay(0.12f)
-        .decay(0.5f).click(0.1f).drive(0.0f).volume(0.35f);
+    kick.pitch = 42.0f;
+    kick.pitchEnv = 50.0f;
+    kick.pitchDecay = 0.12f;
+    kick.decay = 0.5f;
+    kick.click = 0.1f;
+    kick.drive = 0.0f;
+    kick.volume = 0.35f;
 
     auto& hihat = chain.add<HiHat>("hihat");
-    hihat.decay(0.025f).tone(0.9f).ring(0.15f).volume(0.12f);
+    hihat.decay = 0.025f;
+    hihat.tone = 0.9f;
+    hihat.ring = 0.15f;
+    hihat.volume = 0.12f;
 
     // Drums trigger automatically from sequencers
     kick.setTriggerSource("kickSeq");
@@ -142,44 +152,63 @@ void setup(Context& ctx) {
 
     // Lead synth - saw wave with envelope
     auto& lead = chain.add<Synth>("lead");
-    lead.waveform(Waveform::Saw)
-        .attack(0.03f).decay(0.2f).sustain(0.4f).release(0.25f)
-        .volume(0.25f);
+    lead.setWaveform(Waveform::Saw);
+    lead.attack = 0.03f;
+    lead.decay = 0.2f;
+    lead.sustain = 0.4f;
+    lead.release = 0.25f;
+    lead.volume = 0.25f;
 
     // Pad synths - long envelopes for smooth chords
     auto& pad1 = chain.add<Synth>("pad1");
-    pad1.waveform(Waveform::Sine)
-        .attack(0.8f).decay(0.5f).sustain(0.6f).release(1.0f)
-        .volume(0.15f);
+    pad1.setWaveform(Waveform::Sine);
+    pad1.attack = 0.8f;
+    pad1.decay = 0.5f;
+    pad1.sustain = 0.6f;
+    pad1.release = 1.0f;
+    pad1.volume = 0.15f;
 
     auto& pad2 = chain.add<Synth>("pad2");
-    pad2.waveform(Waveform::Sine)
-        .attack(0.9f).decay(0.5f).sustain(0.5f).release(1.2f)
-        .detune(3.0f)  // Slight detune for shimmer
-        .volume(0.12f);
+    pad2.setWaveform(Waveform::Sine);
+    pad2.attack = 0.9f;
+    pad2.decay = 0.5f;
+    pad2.sustain = 0.5f;
+    pad2.release = 1.2f;
+    pad2.detune = 3.0f;  // Slight detune for shimmer
+    pad2.volume = 0.12f;
 
     auto& pad3 = chain.add<Synth>("pad3");
-    pad3.waveform(Waveform::Triangle)
-        .attack(1.0f).decay(0.5f).sustain(0.4f).release(1.5f)
-        .volume(0.08f);
+    pad3.setWaveform(Waveform::Triangle);
+    pad3.attack = 1.0f;
+    pad3.decay = 0.5f;
+    pad3.sustain = 0.4f;
+    pad3.release = 1.5f;
+    pad3.volume = 0.08f;
 
     // Mixer
     auto& mixer = chain.add<AudioMixer>("mixer");
-    mixer.input(0, "kick").gain(0, 1.0f)
-         .input(1, "hihat").gain(1, 1.0f)
-         .input(2, "lead").gain(2, 1.0f)
-         .input(3, "pad1").gain(3, 1.0f)
-         .input(4, "pad2").gain(4, 1.0f)
-         .input(5, "pad3").gain(5, 1.0f)
-         .volume(0.85f);
+    mixer.input(0, "kick");
+    mixer.gain(0, 1.0f);
+    mixer.input(1, "hihat");
+    mixer.gain(1, 1.0f);
+    mixer.input(2, "lead");
+    mixer.gain(2, 1.0f);
+    mixer.input(3, "pad1");
+    mixer.gain(3, 1.0f);
+    mixer.input(4, "pad2");
+    mixer.gain(4, 1.0f);
+    mixer.input(5, "pad3");
+    mixer.gain(5, 1.0f);
+    mixer.volume = 0.85f;
 
     auto& audioOut = chain.add<AudioOutput>("audioOut");
-    audioOut.input("mixer").volume(1.0f);
+    audioOut.input("mixer");
+    audioOut.setVolume(1.0f);
     chain.audioOutput("audioOut");
 
     // Visuals (position 0-1, with 0.5,0.5 = center)
     auto& bg = chain.add<SolidColor>("bg");
-    bg.color(0.02f, 0.02f, 0.04f);
+    bg.color.set(0.02f, 0.02f, 0.04f, 1.0f);
 
     auto& padVis = chain.add<Shape>("padVis");
     padVis.type = ShapeType::Ellipse;
@@ -210,12 +239,12 @@ void setup(Context& ctx) {
     hihatVis.softness = 0.4f;
 
     auto& comp = chain.add<Composite>("comp");
-    comp.input(0, &bg)
-        .input(1, &padVis)
-        .input(2, &leadVis)
-        .input(3, &kickVis)
-        .input(4, &hihatVis)
-        .mode = BlendMode::Add;
+    comp.input(0, "bg");
+    comp.input(1, "padVis");
+    comp.input(2, "leadVis");
+    comp.input(3, "kickVis");
+    comp.input(4, "hihatVis");
+    comp.mode = BlendMode::Add;
 
     chain.output("comp");
 
@@ -233,26 +262,26 @@ void advanceSection() {
 
     int sectionLength = 0;
     switch (currentSection) {
-        case Section::Intro: sectionLength = INTRO_BARS; break;
-        case Section::Verse1: sectionLength = VERSE_BARS; break;
-        case Section::Chorus1: sectionLength = CHORUS_BARS; break;
-        case Section::Verse2: sectionLength = VERSE_BARS; break;
-        case Section::Bridge: sectionLength = BRIDGE_BARS; break;
-        case Section::Chorus2: sectionLength = CHORUS_BARS; break;
-        case Section::Outro: sectionLength = OUTRO_BARS; break;
+        case SongSection::Intro: sectionLength = INTRO_BARS; break;
+        case SongSection::Verse1: sectionLength = VERSE_BARS; break;
+        case SongSection::Chorus1: sectionLength = CHORUS_BARS; break;
+        case SongSection::Verse2: sectionLength = VERSE_BARS; break;
+        case SongSection::Bridge: sectionLength = BRIDGE_BARS; break;
+        case SongSection::Chorus2: sectionLength = CHORUS_BARS; break;
+        case SongSection::Outro: sectionLength = OUTRO_BARS; break;
         default: break;
     }
 
     if (sectionBar >= sectionLength) {
         sectionBar = 0;
         switch (currentSection) {
-            case Section::Intro: currentSection = Section::Verse1; break;
-            case Section::Verse1: currentSection = Section::Chorus1; break;
-            case Section::Chorus1: currentSection = Section::Verse2; break;
-            case Section::Verse2: currentSection = Section::Bridge; break;
-            case Section::Bridge: currentSection = Section::Chorus2; break;
-            case Section::Chorus2: currentSection = Section::Outro; break;
-            case Section::Outro: currentSection = Section::End; break;
+            case SongSection::Intro: currentSection = SongSection::Verse1; break;
+            case SongSection::Verse1: currentSection = SongSection::Chorus1; break;
+            case SongSection::Chorus1: currentSection = SongSection::Verse2; break;
+            case SongSection::Verse2: currentSection = SongSection::Bridge; break;
+            case SongSection::Bridge: currentSection = SongSection::Chorus2; break;
+            case SongSection::Chorus2: currentSection = SongSection::Outro; break;
+            case SongSection::Outro: currentSection = SongSection::End; break;
             default: break;
         }
         std::cout << std::endl;
@@ -262,17 +291,17 @@ void advanceSection() {
 
 float getMelodyNote(int step) {
     switch (currentSection) {
-        case Section::Intro:
+        case SongSection::Intro:
             return notes::REST;
-        case Section::Verse1:
-        case Section::Verse2:
+        case SongSection::Verse1:
+        case SongSection::Verse2:
             return verseMelody[step % verseMelody.size()];
-        case Section::Chorus1:
-        case Section::Chorus2:
+        case SongSection::Chorus1:
+        case SongSection::Chorus2:
             return chorusMelody[step % chorusMelody.size()];
-        case Section::Bridge:
+        case SongSection::Bridge:
             return bridgeMelody[step % bridgeMelody.size()];
-        case Section::Outro:
+        case SongSection::Outro:
             return (sectionBar < 2) ? verseMelody[step % verseMelody.size()] : notes::REST;
         default:
             return notes::REST;
@@ -282,15 +311,15 @@ float getMelodyNote(int step) {
 float getPadRoot() {
     int idx = sectionBar % 4;
     switch (currentSection) {
-        case Section::Intro:
-        case Section::Verse1:
-        case Section::Verse2:
-        case Section::Outro:
+        case SongSection::Intro:
+        case SongSection::Verse1:
+        case SongSection::Verse2:
+        case SongSection::Outro:
             return verseChords[idx];
-        case Section::Chorus1:
-        case Section::Chorus2:
+        case SongSection::Chorus1:
+        case SongSection::Chorus2:
             return chorusChords[idx];
-        case Section::Bridge:
+        case SongSection::Bridge:
             return bridgeChords[idx];
         default:
             return notes::A3;
@@ -298,15 +327,15 @@ float getPadRoot() {
 }
 
 bool shouldPlayDrums() {
-    if (currentSection == Section::Intro) return sectionBar >= 2;
-    if (currentSection == Section::Outro) return sectionBar < 2;
-    if (currentSection == Section::End) return false;
+    if (currentSection == SongSection::Intro) return sectionBar >= 2;
+    if (currentSection == SongSection::Outro) return sectionBar < 2;
+    if (currentSection == SongSection::End) return false;
     return true;
 }
 
 void update(Context& ctx) {
     auto& chain = ctx.chain();
-    if (currentSection == Section::End) return;
+    if (currentSection == SongSection::End) return;
 
     auto& clock = chain.get<Clock>("clock");
     auto& kickSeq = chain.get<Sequencer>("kickSeq");
@@ -333,7 +362,7 @@ void update(Context& ctx) {
         }
     }
     if (ctx.key(GLFW_KEY_R).pressed) {
-        currentSection = Section::Intro;
+        currentSection = SongSection::Intro;
         sectionBar = 0; totalBars = 0; stepInBar = 0; stepInPhrase = 0;
         lastLeadNote = 0.0f; lastPadRoot = 0.0f;
         clock.reset(); clock.start();
@@ -344,13 +373,13 @@ void update(Context& ctx) {
         printStatus();
     }
     if (ctx.key(GLFW_KEY_UP).pressed) {
-        clock.bpm(std::min(clock.getBpm() + 5.0f, 120.0f));
-        std::cout << "\n[BPM: " << clock.getBpm() << "]" << std::endl;
+        clock.bpm = std::min(static_cast<float>(clock.bpm) + 5.0f, 120.0f);
+        std::cout << "\n[BPM: " << static_cast<float>(clock.bpm) << "]" << std::endl;
         printStatus();
     }
     if (ctx.key(GLFW_KEY_DOWN).pressed) {
-        clock.bpm(std::max(clock.getBpm() - 5.0f, 50.0f));
-        std::cout << "\n[BPM: " << clock.getBpm() << "]" << std::endl;
+        clock.bpm = std::max(static_cast<float>(clock.bpm) - 5.0f, 50.0f);
+        std::cout << "\n[BPM: " << static_cast<float>(clock.bpm) << "]" << std::endl;
         printStatus();
     }
 
@@ -365,7 +394,7 @@ void update(Context& ctx) {
                 if (lastLeadNote > 0.0f) {
                     lead.noteOff();
                 }
-                lead.frequency(noteFreq);
+                lead.frequency = noteFreq;
                 lead.noteOn();
                 lastLeadNote = noteFreq;
                 leadVisual = 1.0f;
@@ -392,9 +421,9 @@ void update(Context& ctx) {
                     pad1.noteOff(); pad2.noteOff(); pad3.noteOff();
                 }
 
-                pad1.frequency(root);
-                pad2.frequency(root * 1.003f);  // Slight detune
-                pad3.frequency(root * 1.5f);    // Fifth
+                pad1.frequency = root;
+                pad2.frequency = root * 1.003f;  // Slight detune
+                pad3.frequency = root * 1.5f;    // Fifth
 
                 pad1.noteOn();
                 pad2.noteOn();
@@ -419,19 +448,23 @@ void update(Context& ctx) {
     leadVisual *= (1.0f - dt * 5.0f);
     padVisual *= (1.0f - dt * 1.5f);
 
-    padVis.size(0.3f + padVisual * 0.1f);
-    padVis.color(0.15f + padVisual * 0.1f, 0.25f + padVisual * 0.15f,
-                 0.45f + padVisual * 0.2f, 0.2f + padVisual * 0.2f);
+    float padSize = 0.3f + padVisual * 0.1f;
+    padVis.size.set(padSize, padSize);
+    padVis.color.set(0.15f + padVisual * 0.1f, 0.25f + padVisual * 0.15f,
+                     0.45f + padVisual * 0.2f, 0.2f + padVisual * 0.2f);
 
-    leadVis.size(0.04f + leadVisual * 0.06f);
-    leadVis.color(1.0f, 0.8f + leadVisual * 0.1f, 0.4f + leadVisual * 0.3f,
-                  0.3f + leadVisual * 0.6f);
+    float leadSize = 0.04f + leadVisual * 0.06f;
+    leadVis.size.set(leadSize, leadSize);
+    leadVis.color.set(1.0f, 0.8f + leadVisual * 0.1f, 0.4f + leadVisual * 0.3f,
+                      0.3f + leadVisual * 0.6f);
 
-    kickVis.size(0.04f + kickVisual * 0.06f);
-    kickVis.color(0.9f, 0.3f + kickVisual * 0.3f, 0.35f, 0.2f + kickVisual * 0.5f);
+    float kickSize = 0.04f + kickVisual * 0.06f;
+    kickVis.size.set(kickSize, kickSize);
+    kickVis.color.set(0.9f, 0.3f + kickVisual * 0.3f, 0.35f, 0.2f + kickVisual * 0.5f);
 
-    hihatVis.size(0.02f + hihatVisual * 0.03f);
-    hihatVis.color(0.7f, 0.9f, 1.0f, 0.15f + hihatVisual * 0.4f);
+    float hihatSize = 0.02f + hihatVisual * 0.03f;
+    hihatVis.size.set(hihatSize, hihatSize);
+    hihatVis.color.set(0.7f, 0.9f, 1.0f, 0.15f + hihatVisual * 0.4f);
 }
 
 VIVID_CHAIN(setup, update)

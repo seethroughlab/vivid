@@ -16,7 +16,7 @@ void setup(Context& ctx) {
 
     // Load an image from the assets folder
     auto& img = chain.add<Image>("img");
-    img.path = "assets/sample.jpg";
+    img.file = "assets/sample.jpg";
 
     // Apply color adjustments
     auto& hsv = chain.add<HSV>("hsv");
@@ -35,7 +35,7 @@ void setup(Context& ctx) {
     // Add vignette (dark corners)
     auto& vignette = chain.add<Vignette>("vignette");
     vignette.input("bloom");
-    vignette.radius = 0.75f;  // Size of the clear area
+    vignette.intensity = 0.75f;  // Size of the clear area
     vignette.softness = 0.5f; // Fade smoothness
 
     // EXPERIMENT: Try adding more effects

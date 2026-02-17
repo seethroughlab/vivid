@@ -261,10 +261,10 @@ void update(Context& ctx) {
     if (ctx.key(GLFW_KEY_4).pressed) { g_layerEnabled[3] = !g_layerEnabled[3]; printStatus(); }
 
     // Blend modes (Q/W/E/R)
-    if (ctx.key(GLFW_KEY_Q).pressed) { g_blendMode = BlendMode::Add; mix12.mode(g_blendMode); printStatus(); }
-    if (ctx.key(GLFW_KEY_W).pressed) { g_blendMode = BlendMode::Screen; mix12.mode(g_blendMode); printStatus(); }
-    if (ctx.key(GLFW_KEY_E).pressed) { g_blendMode = BlendMode::Multiply; mix12.mode(g_blendMode); printStatus(); }
-    if (ctx.key(GLFW_KEY_R).pressed) { g_blendMode = BlendMode::Difference; mix12.mode(g_blendMode); printStatus(); }
+    if (ctx.key(GLFW_KEY_Q).pressed) { g_blendMode = BlendMode::Add; mix12.mode = g_blendMode; printStatus(); }
+    if (ctx.key(GLFW_KEY_W).pressed) { g_blendMode = BlendMode::Screen; mix12.mode = g_blendMode; printStatus(); }
+    if (ctx.key(GLFW_KEY_E).pressed) { g_blendMode = BlendMode::Multiply; mix12.mode = g_blendMode; printStatus(); }
+    if (ctx.key(GLFW_KEY_R).pressed) { g_blendMode = BlendMode::Difference; mix12.mode = g_blendMode; printStatus(); }
 
     // Crossfade (UP/DOWN)
     if (ctx.key(GLFW_KEY_UP).held) {

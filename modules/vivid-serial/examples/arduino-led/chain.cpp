@@ -12,9 +12,11 @@
 //   }
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
 #include <vivid/serial/serial_out.h>
 
 using namespace vivid;
+using namespace vivid::effects;
 using namespace vivid::serial;
 
 void setup(Context& ctx) {
@@ -34,7 +36,7 @@ void setup(Context& ctx) {
 }
 
 void update(Context& ctx) {
-    ctx.chain().process();
+    ctx.chain().process(ctx);
 
     // Get LFO value and send to Arduino as 0-255
     auto& serial = ctx.chain().get<SerialOut>("arduino");

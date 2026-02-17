@@ -27,7 +27,7 @@ void setup(Context& ctx) {
 
     // Noise generator driven by audio
     auto& noise = chain.add<Noise>("noise");
-    noise.type = NoiseType::Simplex;
+    noise.type = effects::NoiseType::Simplex;
     noise.scale = 4.0f;
     noise.octaves = 3;
 
@@ -59,11 +59,11 @@ void update(Context& ctx) {
     auto& beat = chain.get<BeatDetect>("beat");
 
     // Get bass energy (low frequencies)
-    float bass = fft.band(0) + fft.band(1);
+    float bass = fft.band(20.0f, 250.0f);
 
     // Get mid/high energy
-    float mids = fft.band(2) + fft.band(3);
-    float highs = fft.band(4) + fft.band(5);
+    float mids = fft.band(250.0f, 4000.0f);
+    float highs = fft.band(4000.0f, 20000.0f);
 
     // Noise reacts to bass
     auto& noise = chain.get<Noise>("noise");
@@ -73,7 +73,7 @@ void update(Context& ctx) {
 
     // Feedback zoom on beat
     auto& feedback = chain.get<Feedback>("feedback");
-    if (beat.detected()) {
+    if (beat.beat()) {
         feedback.zoom = 1.02f;
     } else {
         feedback.zoom = 1.0f + bass * 0.01f;

@@ -8,10 +8,10 @@
  */
 
 #include <vivid/vivid.h>
+#include <vivid/render3d/render3d.h>
 
 using namespace vivid;
 using namespace vivid::render3d;
-using namespace vivid::effects;
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
@@ -20,22 +20,28 @@ void setup(Context& ctx) {
     auto& scene = SceneComposer::create(chain, "scene");
 
     // Add ground plane
-    scene.add<Plane>("ground",
+    auto& ground = scene.add<Plane>("ground",
         glm::scale(glm::mat4(1.0f), glm::vec3(10.0f)),  // Large scale
         glm::vec4(0.3f, 0.3f, 0.35f, 1.0f)              // Dark gray
-    ).segments(1);
+    );
+    ground.subdivisions(1, 1);
 
     // Add central pillar
-    scene.add<Cylinder>("pillar",
+    auto& pillar = scene.add<Cylinder>("pillar",
         glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
         glm::vec4(0.8f, 0.6f, 0.4f, 1.0f)  // Warm brown
-    ).radius(0.3f).height(2.0f).segments(16);
+    );
+    pillar.radius(0.3f);
+    pillar.height(2.0f);
+    pillar.segments(16);
 
     // Add sphere on top of pillar
-    scene.add<Sphere>("orb",
+    auto& orb = scene.add<Sphere>("orb",
         glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.5f, 0.0f)),
         glm::vec4(1.0f, 0.8f, 0.2f, 1.0f)  // Golden
-    ).radius(0.5f).segments(24);
+    );
+    orb.radius(0.5f);
+    orb.segments(24);
 
     // Add surrounding boxes
     for (int i = 0; i < 6; i++) {
@@ -51,27 +57,24 @@ void setup(Context& ctx) {
             1.0f
         );
 
-        scene.add<Box>("box" + std::to_string(i), transform, color)
-            .size(0.8f);
+        auto& box = scene.add<Box>("box" + std::to_string(i), transform, color);
+        box.size(0.8f);
     }
 
     // Camera
-    chain.add<CameraOperator>("camera");
-    auto& camera = chain.get<CameraOperator>("camera");
-    camera.setPosition(5.0f, 4.0f, 5.0f);
-    camera.setTarget(0.0f, 1.0f, 0.0f);
-    camera.setFOV(45.0f);
+    auto& camera = chain.add<CameraOperator>("camera");
+    camera.position(5.0f, 4.0f, 5.0f);
+    camera.target(0.0f, 1.0f, 0.0f);
+    camera.fov(45.0f);
 
     // Directional light (sun)
-    chain.add<DirectionalLight>("sun");
-    auto& sun = chain.get<DirectionalLight>("sun");
-    sun.setDirection(-0.5f, -1.0f, -0.3f);
-    sun.setColor(1.0f, 0.95f, 0.9f);
-    sun.setIntensity(1.2f);
+    auto& sun = chain.add<DirectionalLight>("sun");
+    sun.direction(-0.5f, -1.0f, -0.3f);
+    sun.color(1.0f, 0.95f, 0.9f);
+    sun.intensity = 1.2f;
 
     // Renderer
-    chain.add<Render3D>("render");
-    auto& render = chain.get<Render3D>("render");
+    auto& render = chain.add<Render3D>("render");
     render.setInput(&scene);
     render.setCameraInput(&camera);
     render.setLightInput(&sun);
@@ -93,7 +96,7 @@ void update(Context& ctx) {
     float camHeight = 4.0f + std::sin(t * 0.3f);
     float camAngle = t * 0.2f;
 
-    camera.setPosition(
+    camera.position(
         std::cos(camAngle) * camDist,
         camHeight,
         std::sin(camAngle) * camDist
@@ -118,7 +121,7 @@ void update(Context& ctx) {
         scene.setEntryTransform(3 + i, transform);  // Boxes start at index 3
     }
 
-    chain.process();
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

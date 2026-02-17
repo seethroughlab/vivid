@@ -44,10 +44,13 @@ void setupVisuals(Chain& chain) {
     noise.octaves = 4;
 
     // Color layer: gradient that shifts with time
-    auto& colorize = chain.add<Colorize>("colorize");
+    auto& colorGrad = chain.add<Gradient>("colorGrad");
+    colorGrad.colorA.set(0.1f, 0.1f, 0.3f, 1.0f);
+    colorGrad.colorB.set(0.9f, 0.4f, 0.2f, 1.0f);
+
+    auto& colorize = chain.add<Lookup>("colorize");
     colorize.input("noise");
-    colorize.colorA.set(0.1f, 0.1f, 0.3f, 1.0f);
-    colorize.colorB.set(0.9f, 0.4f, 0.2f, 1.0f);
+    colorize.lut("colorGrad");
 
     // Shape layer: pulsing circle
     auto& shape = chain.add<Shape>("shape");
@@ -126,14 +129,14 @@ void update(Context& ctx) {
     // ========================================
     // Audio-reactive color
     // ========================================
-    auto& colorize = chain.get<Colorize>("colorize");
+    auto& colorGrad = chain.get<Gradient>("colorGrad");
 
     // Shift hue over time
     float hueShift = fmod(time * 0.1f, 1.0f);
     float r = 0.5f + 0.5f * sin(hueShift * 6.28f);
     float g = 0.5f + 0.5f * sin((hueShift + 0.33f) * 6.28f);
     float b = 0.5f + 0.5f * sin((hueShift + 0.66f) * 6.28f);
-    colorize.colorB.set(r, g, b, 1.0f);
+    colorGrad.colorB.set(r, g, b, 1.0f);
 
     // ========================================
     // Audio-reactive post-processing

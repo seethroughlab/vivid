@@ -92,22 +92,23 @@ void setup(Context& ctx) {
 
     // Particles burst on chord changes
     auto& particles = chain.add<Particles>("particles");
-    particles.emitter(EmitterShape::Disc);
-    particles.position(0.5f, 0.5f);
-    particles.emitterSize(0.15f);
-    particles.emitRate(20.0f);
-    particles.maxParticles(500);
-    particles.radialVelocity(0.3f);
-    particles.spread(360.0f);
-    particles.velocityVariation(0.5f);
-    particles.life(1.5f);
-    particles.lifeVariation(0.3f);
-    particles.size(0.015f, 0.005f);
-    particles.gravity(0.0f);
-    particles.drag(0.5f);
-    particles.color(1.0f, 0.8f, 0.4f, 1.0f);
-    particles.colorEnd(1.0f, 0.3f, 0.1f, 0.0f);
-    particles.clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    particles.emitterShape = EmitterShape::Disc;
+    particles.position.set(0.5f, 0.5f);
+    particles.emitterSize = 0.15f;
+    particles.emitRate = 20.0f;
+    particles.maxParticles = 500;
+    particles.radialVelocity = 0.3f;
+    particles.spread = 360.0f;
+    particles.velocityVariation = 0.5f;
+    particles.life = 1.5f;
+    particles.lifeVariation = 0.3f;
+    particles.size = 0.015f;
+    particles.sizeEnd = 0.005f;
+    particles.gravity = 0.0f;
+    particles.drag = 0.5f;
+    particles.color.set(1.0f, 0.8f, 0.4f, 1.0f);
+    particles.colorEnd.set(1.0f, 0.3f, 0.1f, 0.0f);
+    particles.clearColor.set(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Composite layers: bg + shapes + particles
     auto& comp1 = chain.add<Composite>("comp1");
@@ -236,8 +237,8 @@ void update(Context& ctx) {
     if (chordChanged) {
         particles.burst(80);
     }
-    particles.emitRate(15.0f + chordEnvelope * 40.0f);
-    particles.color(r * 0.8f + 0.2f, g * 0.8f + 0.2f, b * 0.8f + 0.2f, 1.0f);
+    particles.emitRate = 15.0f + chordEnvelope * 40.0f;
+    particles.color.set(r * 0.8f + 0.2f, g * 0.8f + 0.2f, b * 0.8f + 0.2f, 1.0f);
 
     // Mirror rotation follows chord progression
     auto& mirror = chain.get<Mirror>("mirror");

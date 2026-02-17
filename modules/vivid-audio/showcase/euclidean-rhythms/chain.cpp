@@ -6,6 +6,7 @@
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
 #include <cmath>
 
 using namespace vivid;
@@ -66,7 +67,7 @@ void setup(Context& ctx) {
     auto& snare = chain.add<Snare>("snare");
     snare.setTriggerSource("snare_eucl");
     snare.tone = 200.0f;
-    snare.decay = 0.15f;
+    snare.toneDecay = 0.15f;
     snare.snappy = 0.6f;
     snare.volume = 0.7f;
 
@@ -84,10 +85,10 @@ void setup(Context& ctx) {
 
     // ----- MIXER -----
     auto& mixer = chain.add<AudioMixer>("mixer");
-    mixer.addInput(&kick);
-    mixer.addInput(&snare);
-    mixer.addInput(&hihat);
-    mixer.addInput(&clap);
+    mixer.input(0, "kick");
+    mixer.input(1, "snare");
+    mixer.input(2, "hihat");
+    mixer.input(3, "clap");
 
     // ----- AUDIO OUTPUT -----
     auto& output = chain.add<AudioOutput>("audio_out");
@@ -196,9 +197,9 @@ void update(Context& ctx) {
 
     // Visual feedback - rings pulse with envelopes
     float kickEnv = kick.ampEnvelope();
-    float snareEnv = snare.ampEnvelope();
-    float hatEnv = hihat.ampEnvelope();
-    float clapEnv = clap.ampEnvelope();
+    float snareEnv = snare.toneEnvelope();
+    float hatEnv = hihat.envelope();
+    float clapEnv = clap.envelope();
 
     auto& kick_ring = chain.get<Shape>("kick_ring");
     kick_ring.size.set(0.3f + kickEnv * 0.15f, 0.3f + kickEnv * 0.15f);

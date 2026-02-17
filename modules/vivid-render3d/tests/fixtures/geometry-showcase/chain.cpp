@@ -66,47 +66,47 @@ void setup(Context& ctx) {
 
     boxPtr = &scene.add<Box>("box",
         glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 2.5f, topRowY, 0.0f)),
-        glm::vec4(0.9f, 0.3f, 0.3f, 1.0f))  // Red
-        .size(1.0f)
-        .flatShading(useFlatShading);
+        glm::vec4(0.9f, 0.3f, 0.3f, 1.0f));  // Red
+    boxPtr->size(1.0f);
+    boxPtr->flatShading(useFlatShading);
 
-    scene.add<Sphere>("sphere",
+    auto& sphere = scene.add<Sphere>("sphere",
         glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 1.5f, topRowY, 0.0f)),
-        glm::vec4(0.3f, 0.9f, 0.4f, 1.0f))  // Green
-        .radius(0.6f)
-        .segments(32);
+        glm::vec4(0.3f, 0.9f, 0.4f, 1.0f));  // Green
+    sphere.radius(0.6f);
+    sphere.segments(32);
 
     cylinderPtr = &scene.add<Cylinder>("cylinder",
         glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 0.5f, topRowY, 0.0f)),
-        glm::vec4(0.3f, 0.5f, 0.9f, 1.0f))  // Blue
-        .radius(0.5f)
-        .height(1.2f)
-        .segments(24)
-        .flatShading(useFlatShading);
+        glm::vec4(0.3f, 0.5f, 0.9f, 1.0f));  // Blue
+    cylinderPtr->radius(0.5f);
+    cylinderPtr->height(1.2f);
+    cylinderPtr->segments(24);
+    cylinderPtr->flatShading(useFlatShading);
 
     conePtr = &scene.add<Cone>("cone",
         glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 0.5f, topRowY, 0.0f)),
-        glm::vec4(0.9f, 0.7f, 0.2f, 1.0f))  // Orange
-        .radius(0.6f)
-        .height(1.2f)
-        .segments(24)
-        .flatShading(useFlatShading);
+        glm::vec4(0.9f, 0.7f, 0.2f, 1.0f));  // Orange
+    conePtr->radius(0.6f);
+    conePtr->height(1.2f);
+    conePtr->segments(24);
+    conePtr->flatShading(useFlatShading);
 
-    scene.add<Torus>("torus",
+    auto& torus = scene.add<Torus>("torus",
         glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 1.5f, topRowY, 0.0f)),
-        glm::vec4(0.8f, 0.3f, 0.8f, 1.0f))  // Purple
-        .outerRadius(0.5f)
-        .innerRadius(0.2f)
-        .segments(32)
-        .rings(16);
+        glm::vec4(0.8f, 0.3f, 0.8f, 1.0f));  // Purple
+    torus.outerRadius(0.5f);
+    torus.innerRadius(0.2f);
+    torus.segments(32);
+    torus.rings(16);
 
     planePtr = &scene.add<Plane>("plane",
         glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 2.5f, topRowY, 0.0f)) *
         glm::rotate(glm::mat4(1.0f), glm::radians(-30.0f), glm::vec3(1, 0, 0)),
-        glm::vec4(0.2f, 0.8f, 0.8f, 1.0f))  // Cyan
-        .size(1.5f, 1.5f)
-        .subdivisions(4, 4)
-        .flatShading(useFlatShading);
+        glm::vec4(0.2f, 0.8f, 0.8f, 1.0f));  // Cyan
+    planePtr->size(1.5f, 1.5f);
+    planePtr->subdivisions(4, 4);
+    planePtr->flatShading(useFlatShading);
 
     // -------------------------------------------------------------------------
     // Bottom row: CSG operations
@@ -115,26 +115,36 @@ void setup(Context& ctx) {
     // -------------------------------------------------------------------------
 
     // CSG Subtract: Hollow cube
-    hollowBoxPtr = &chain.add<Box>("hollowBox").size(1.2f).flatShading(useFlatShading);
-    auto& hollowSphere = chain.add<Sphere>("hollowSphere").radius(0.8f).segments(24);
-    csgSubtractPtr = &chain.add<Boolean>("csgSubtract")
-        .inputA(hollowBoxPtr)
-        .inputB("hollowSphere")
-        .operation(BooleanOp::Subtract)
-        .flatShading(useFlatShading);
+    hollowBoxPtr = &chain.add<Box>("hollowBox");
+    hollowBoxPtr->size(1.2f);
+    hollowBoxPtr->flatShading(useFlatShading);
+    auto& hollowSphere = chain.add<Sphere>("hollowSphere");
+    hollowSphere.radius(0.8f);
+    hollowSphere.segments(24);
+    csgSubtractPtr = &chain.add<Boolean>("csgSubtract");
+    csgSubtractPtr->setInputA(hollowBoxPtr);
+    csgSubtractPtr->setInputB(&hollowSphere);
+    csgSubtractPtr->setOperation(BooleanOp::Subtract);
+    csgSubtractPtr->flatShading = useFlatShading;
 
     scene.add(csgSubtractPtr,
         glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 0.5f, bottomRowY, 0.0f)),
         glm::vec4(0.4f, 0.8f, 1.0f, 1.0f));  // Light blue
 
     // CSG Pipe: Cylinder with hole
-    auto& outerCyl = chain.add<Cylinder>("outerCyl").radius(0.5f).height(1.5f).segments(32);
-    auto& innerCyl = chain.add<Cylinder>("innerCyl").radius(0.3f).height(1.8f).segments(32);
-    pipePtr = &chain.add<Boolean>("pipe")
-        .inputA("outerCyl")
-        .inputB("innerCyl")
-        .operation(BooleanOp::Subtract)
-        .flatShading(useFlatShading);
+    auto& outerCyl = chain.add<Cylinder>("outerCyl");
+    outerCyl.radius(0.5f);
+    outerCyl.height(1.5f);
+    outerCyl.segments(32);
+    auto& innerCyl = chain.add<Cylinder>("innerCyl");
+    innerCyl.radius(0.3f);
+    innerCyl.height(1.8f);
+    innerCyl.segments(32);
+    pipePtr = &chain.add<Boolean>("pipe");
+    pipePtr->setInputA(&outerCyl);
+    pipePtr->setInputB(&innerCyl);
+    pipePtr->setOperation(BooleanOp::Subtract);
+    pipePtr->flatShading = useFlatShading;
 
     scene.add(pipePtr,
         glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 0.5f, bottomRowY, 0.0f)),
@@ -144,36 +154,36 @@ void setup(Context& ctx) {
     // CAMERA - Orbit camera as a node
     // =========================================================================
 
-    auto& camera = chain.add<CameraOperator>("camera")
-        .orbitCenter(0, 0, 0)
-        .distance(14.0f)
-        .azimuth(0.0f)
-        .elevation(0.25f)
-        .fov(50.0f)
-        .nearPlane(0.1f)
-        .farPlane(100.0f);
+    auto& camera = chain.add<CameraOperator>("camera");
+    camera.orbitCenter(0, 0, 0);
+    camera.distance(14.0f);
+    camera.azimuth(0.0f);
+    camera.elevation(0.25f);
+    camera.fov(50.0f);
+    camera.nearPlane(0.1f);
+    camera.farPlane(100.0f);
 
     // =========================================================================
     // LIGHT - Directional light as a node
     // =========================================================================
 
-    auto& sun = chain.add<DirectionalLight>("sun")
-        .direction(1, 2, 1)
-        .color(1.0f, 1.0f, 1.0f)
-        .intensity(1.0f);
+    auto& sun = chain.add<DirectionalLight>("sun");
+    sun.direction(1, 2, 1);
+    sun.color(1.0f, 1.0f, 1.0f);
+    sun.intensity = 1.0f;
 
     // =========================================================================
     // RENDER3D - Render scene to texture
     // =========================================================================
 
-    auto& render = chain.add<Render3D>("render3d")
-        .input("scene")
-        .cameraInput(&camera)
-        .lightInput(&sun)
-        .shadingMode(ShadingMode::Flat)
-        .ambient(0.2f)
-        .clearColor(0.08f, 0.08f, 0.12f)
-        .resolution(1280, 720);
+    auto& render = chain.add<Render3D>("render3d");
+    render.input("scene");
+    render.setCameraInput(&camera);
+    render.setLightInput(&sun);
+    render.setShadingMode(ShadingMode::Flat);
+    render.setAmbient(0.2f);
+    render.setClearColor(0.08f, 0.08f, 0.12f);
+    render.setResolution(1280, 720);
 
     chain.output("render3d");
 

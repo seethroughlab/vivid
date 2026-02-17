@@ -77,10 +77,10 @@ void setup(Context& ctx) {
     flow1.lifeVariation = 0.5f;
     flow1.size = 0.002f;
     flow1.sizeEnd = 0.0005f;
-    flow1.color = presets[0].color1;
-    flow1.colorEnd = presets[0].color1.withAlpha(0.0f);
+    flow1.color.set(presets[0].color1);
+    flow1.colorEnd.set(presets[0].color1.withAlpha(0.0f));
     flow1.fadeOut = true;
-    flow1.clearColor = Color::Black;
+    flow1.clearColor.set(Color::Black);
 
     // Layer 2: Swirling particles around attractors
     auto& flow2 = chain.add<Particles>("flow2");
@@ -98,10 +98,10 @@ void setup(Context& ctx) {
     flow2.lifeVariation = 0.4f;
     flow2.size = 0.0015f;
     flow2.sizeEnd = 0.0003f;
-    flow2.color = presets[0].color2;
-    flow2.colorEnd = presets[0].color2.withAlpha(0.0f);
+    flow2.color.set(presets[0].color2);
+    flow2.colorEnd.set(presets[0].color2.withAlpha(0.0f));
     flow2.fadeOut = true;
-    flow2.clearColor = Color::Transparent;
+    flow2.clearColor.set(Color::Transparent);
 
     // Layer 3: Fast accent particles
     auto& flow3 = chain.add<Particles>("flow3");
@@ -117,37 +117,37 @@ void setup(Context& ctx) {
     flow3.lifeVariation = 0.5f;
     flow3.size = 0.001f;
     flow3.sizeEnd = 0.0002f;
-    flow3.color = presets[0].color3;
-    flow3.colorEnd = presets[0].color3.withAlpha(0.0f);
+    flow3.color.set(presets[0].color3);
+    flow3.colorEnd.set(presets[0].color3.withAlpha(0.0f));
     flow3.fadeOut = true;
-    flow3.clearColor = Color::Transparent;
+    flow3.clearColor.set(Color::Transparent);
 
     // =========================================================================
     // GPU Plexus Network - Nodes connected by proximity lines
     // =========================================================================
 
     auto& plexus = chain.add<Plexus>("plexus");
-    plexus.nodeCount = 350;
-    plexus.nodeSize = 0.003f;
-    plexus.nodeColor = presets[0].plexusNode;
-    plexus.connectionDistance = 0.09f;
-    plexus.lineWidth = 1.0f;
-    plexus.lineColor = presets[0].plexusLine;
-    plexus.turbulence = 0.06f;
-    plexus.drag = 0.6f;
-    plexus.centerAttraction = 0.08f;
-    plexus.spread = 0.65f;
-    plexus.clearColor = Color::Transparent;
+    plexus.setNodeCount(350);
+    plexus.setNodeSize(0.003f);
+    plexus.setNodeColor(presets[0].plexusNode);
+    plexus.setConnectionDistance(0.09f);
+    plexus.setLineWidth(1.0f);
+    plexus.setLineColor(presets[0].plexusLine);
+    plexus.setTurbulence(0.06f);
+    plexus.setDrag(0.6f);
+    plexus.setCenterAttraction(0.08f);
+    plexus.setSpread(0.65f);
+    plexus.setClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
     // =========================================================================
     // Compositing - Layer everything together
     // =========================================================================
 
     auto& particleComp = chain.add<Composite>("particleComp");
-    particleComp.setInput(0, "flow1");
-    particleComp.setInput(1, "flow2");
-    particleComp.setInput(2, "flow3");
-    particleComp.setInput(3, "plexus");
+    particleComp.input(0, "flow1");
+    particleComp.input(1, "flow2");
+    particleComp.input(2, "flow3");
+    particleComp.input(3, "plexus");
     particleComp.mode = BlendMode::Add;
 
     // =========================================================================
@@ -199,14 +199,14 @@ void update(Context& ctx) {
             std::cout << "\r[Preset: " << presets[colorPreset].name << "]          " << std::flush;
 
             const auto& p = presets[colorPreset];
-            flow1.color = p.color1;
-            flow1.colorEnd = p.color1.withAlpha(0.0f);
-            flow2.color = p.color2;
-            flow2.colorEnd = p.color2.withAlpha(0.0f);
-            flow3.color = p.color3;
-            flow3.colorEnd = p.color3.withAlpha(0.0f);
-            plexus.nodeColor = p.plexusNode;
-            plexus.lineColor = p.plexusLine;
+            flow1.color.set(p.color1);
+            flow1.colorEnd.set(p.color1.withAlpha(0.0f));
+            flow2.color.set(p.color2);
+            flow2.colorEnd.set(p.color2.withAlpha(0.0f));
+            flow3.color.set(p.color3);
+            flow3.colorEnd.set(p.color3.withAlpha(0.0f));
+            plexus.setNodeColor(p.plexusNode);
+            plexus.setLineColor(p.plexusLine);
         }
     }
 
@@ -233,7 +233,7 @@ void update(Context& ctx) {
     flow1.turbulence = turb;
     flow2.turbulence = turb * 1.2f;
     flow3.turbulence = turb * 1.5f;
-    plexus.turbulence = turb * 0.3f;
+    plexus.setTurbulence(turb * 0.3f);
 
     float decay = 0.9f + mouse.y * 0.09f;
     feedback.decay = decay;

@@ -11,22 +11,22 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Create geometry - a floor plane and some objects
-    auto& floor = chain.add<Plane>("floor")
-        .size(10.0f, 10.0f)
-        .subdivisions(1, 1);
+    auto& floor = chain.add<Plane>("floor");
+    floor.size(10.0f, 10.0f);
+    floor.subdivisions(1, 1);
 
-    auto& sphere = chain.add<Sphere>("sphere")
-        .radius(0.8f)
-        .segments(32);
+    auto& sphere = chain.add<Sphere>("sphere");
+    sphere.radius(0.8f);
+    sphere.segments(32);
 
-    auto& box = chain.add<Box>("box")
-        .size(1.2f, 1.2f, 1.2f);
+    auto& box = chain.add<Box>("box");
+    box.size(1.2f, 1.2f, 1.2f);
 
-    auto& torus = chain.add<Torus>("torus")
-        .outerRadius(0.6f)
-        .innerRadius(0.2f)
-        .segments(32)
-        .rings(16);
+    auto& torus = chain.add<Torus>("torus");
+    torus.outerRadius(0.6f);
+    torus.innerRadius(0.2f);
+    torus.segments(32);
+    torus.rings(16);
 
     // Scene composition with multiple objects
     auto& scene = SceneComposer::create(chain, "scene");
@@ -49,58 +49,58 @@ void setup(Context& ctx) {
     scene.add(&torus, torusTransform, glm::vec4(0.2f, 0.2f, 0.8f, 1.0f));
 
     // Camera
-    auto& camera = chain.add<CameraOperator>("camera")
-        .orbitCenter(0, 0, 0)
-        .distance(8.0f)
-        .azimuth(0.3f)
-        .elevation(0.4f)
-        .fov(50.0f);
+    auto& camera = chain.add<CameraOperator>("camera");
+    camera.orbitCenter(0, 0, 0);
+    camera.distance(8.0f);
+    camera.azimuth(0.3f);
+    camera.elevation(0.4f);
+    camera.fov(50.0f);
 
     // === Multiple Lights ===
 
     // 1. Directional light (like the sun) - warm color from above-right
-    auto& sun = chain.add<DirectionalLight>("sun")
-        .direction(1.0f, 1.5f, 0.5f)
-        .color(1.0f, 0.95f, 0.9f)
-        .intensity(0.5f);
+    auto& sun = chain.add<DirectionalLight>("sun");
+    sun.direction(1.0f, 1.5f, 0.5f);
+    sun.color(1.0f, 0.95f, 0.9f);
+    sun.intensity = 0.5f;
 
     // 2. Red point light - orbits around the scene
-    auto& redLight = chain.add<PointLight>("redLight")
-        .position(3.0f, 1.0f, 0.0f)
-        .color(1.0f, 0.2f, 0.1f)
-        .intensity(3.0f)
-        .range(10.0f);
+    auto& redLight = chain.add<PointLight>("redLight");
+    redLight.position(3.0f, 1.0f, 0.0f);
+    redLight.color(1.0f, 0.2f, 0.1f);
+    redLight.intensity = 3.0f;
+    redLight.range = 10.0f;
 
     // 3. Blue point light - opposite side
-    auto& blueLight = chain.add<PointLight>("blueLight")
-        .position(-3.0f, 1.0f, 0.0f)
-        .color(0.1f, 0.3f, 1.0f)
-        .intensity(3.0f)
-        .range(10.0f);
+    auto& blueLight = chain.add<PointLight>("blueLight");
+    blueLight.position(-3.0f, 1.0f, 0.0f);
+    blueLight.color(0.1f, 0.3f, 1.0f);
+    blueLight.intensity = 3.0f;
+    blueLight.range = 10.0f;
 
     // 4. White spot light - shining down from above
-    auto& spotlight = chain.add<SpotLight>("spotlight")
-        .position(0.0f, 4.0f, 2.0f)
-        .direction(0.0f, -1.0f, -0.3f)
-        .color(1.0f, 1.0f, 1.0f)
-        .intensity(5.0f)
-        .range(12.0f)
-        .spotAngle(25.0f)
-        .spotBlend(0.3f);
+    auto& spotlight = chain.add<SpotLight>("spotlight");
+    spotlight.position(0.0f, 4.0f, 2.0f);
+    spotlight.direction(0.0f, -1.0f, -0.3f);
+    spotlight.color(1.0f, 1.0f, 1.0f);
+    spotlight.intensity = 5.0f;
+    spotlight.range = 12.0f;
+    spotlight.spotAngle = 25.0f;
+    spotlight.spotBlend = 0.3f;
 
     // Render with PBR shading and multiple lights
-    auto& render = chain.add<Render3D>("render")
-        .input("scene")
-        .cameraInput(&camera)
-        .lightInput(&sun)       // Primary light
-        .addLight(&redLight)    // Additional lights
-        .addLight(&blueLight)
-        .addLight(&spotlight)
-        .shadingMode(ShadingMode::PBR)
-        .metallic(0.0f)
-        .roughness(0.4f)
-        .ambient(0.1f)
-        .clearColor(0.05f, 0.05f, 0.08f, 1.0f);
+    auto& render = chain.add<Render3D>("render");
+    render.input("scene");
+    render.setCameraInput(&camera);
+    render.setLightInput(&sun);       // Primary light
+    render.addLight(&redLight);       // Additional lights
+    render.addLight(&blueLight);
+    render.addLight(&spotlight);
+    render.setShadingMode(ShadingMode::PBR);
+    render.setMetallic(0.0f);
+    render.setRoughness(0.4f);
+    render.setAmbient(0.1f);
+    render.setClearColor(0.05f, 0.05f, 0.08f, 1.0f);
 
     chain.output("render");
 }

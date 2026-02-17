@@ -12,10 +12,12 @@
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
+#include <vivid/network/network.h>
 #include <cmath>
 
 using namespace vivid;
 using namespace vivid::effects;
+using namespace vivid::network;
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
@@ -68,17 +70,17 @@ void update(Context& ctx) {
     float defaultY = 0.5f + std::cos(t * 0.7f) * 0.3f;
 
     // Check for OSC messages
-    float x = osc.get("/vivid/x", defaultX);
-    float y = osc.get("/vivid/y", defaultY);
-    float size = osc.get("/vivid/size", 0.2f);
+    float x = osc.getFloat("/vivid/x", defaultX);
+    float y = osc.getFloat("/vivid/y", defaultY);
+    float size = osc.getFloat("/vivid/size", 0.2f);
 
     shape.position.set(x, y);
     shape.size.set(size, size);
 
     // Color from OSC (with default)
-    float r = osc.get("/vivid/color/r", 1.0f);
-    float g = osc.get("/vivid/color/g", 0.5f);
-    float b = osc.get("/vivid/color/b", 0.2f);
+    float r = osc.getFloat("/vivid/color/r", 1.0f);
+    float g = osc.getFloat("/vivid/color/g", 0.5f);
+    float b = osc.getFloat("/vivid/color/b", 0.2f);
     shape.color.set(r, g, b, 1.0f);
 }
 

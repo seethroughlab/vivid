@@ -7,6 +7,7 @@
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
 #include <cmath>
 
 using namespace vivid;
@@ -39,7 +40,7 @@ void setup(Context& ctx) {
     // ----- DEMO 2: SAMPLE PLAYER -----
     // Trigger samples from a bank (for drums, sound effects)
     auto& bank = chain.add<SampleBank>("bank");
-    bank.folder("assets/audio/drums");  // Folder with WAV files
+    bank.setFolder("assets/audio/drums");  // Folder with WAV files
 
     auto& player = chain.add<SamplePlayer>("player");
     player.setBank("bank");
@@ -57,9 +58,12 @@ void setup(Context& ctx) {
 
     // ----- MIXER -----
     auto& mixer = chain.add<AudioMixer>("mixer");
-    mixer.addInput(&sampler, 0.0f);
-    mixer.addInput(&player, 0.0f);
-    mixer.addInput(&multi, 0.0f);
+    mixer.input(0, "sampler");
+    mixer.setGain(0, 0.0f);
+    mixer.input(1, "player");
+    mixer.setGain(1, 0.0f);
+    mixer.input(2, "multi");
+    mixer.setGain(2, 0.0f);
 
     // ----- OUTPUT -----
     auto& output = chain.add<AudioOutput>("audio_out");
@@ -95,14 +99,14 @@ void update(Context& ctx) {
     auto& canvas = chain.get<Canvas>("canvas");
 
     // ----- SELECT DEMO WITH KEYS -----
-    if (ctx.keyPressed(Key::Key1)) g_demo = SamplerDemo::Sampler;
-    if (ctx.keyPressed(Key::Key2)) g_demo = SamplerDemo::SamplePlayer;
-    if (ctx.keyPressed(Key::Key3)) g_demo = SamplerDemo::MultiSampler;
+    if (ctx.key(GLFW_KEY_1).pressed) g_demo = SamplerDemo::Sampler;
+    if (ctx.key(GLFW_KEY_2).pressed) g_demo = SamplerDemo::SamplePlayer;
+    if (ctx.key(GLFW_KEY_3).pressed) g_demo = SamplerDemo::MultiSampler;
 
     // Set mixer levels
-    mixer.setLevel(0, g_demo == SamplerDemo::Sampler ? 0.8f : 0.0f);
-    mixer.setLevel(1, g_demo == SamplerDemo::SamplePlayer ? 0.8f : 0.0f);
-    mixer.setLevel(2, g_demo == SamplerDemo::MultiSampler ? 0.8f : 0.0f);
+    mixer.setGain(0, g_demo == SamplerDemo::Sampler ? 0.8f : 0.0f);
+    mixer.setGain(1, g_demo == SamplerDemo::SamplePlayer ? 0.8f : 0.0f);
+    mixer.setGain(2, g_demo == SamplerDemo::MultiSampler ? 0.8f : 0.0f);
 
     // ----- KEYBOARD INPUT -----
     // Map computer keyboard to MIDI notes
@@ -111,20 +115,20 @@ void update(Context& ctx) {
     // Top row: Q-P = C5-B5
 
     static const struct {
-        Key key;
+        int key;
         int note;
     } keyMap[] = {
         // Lower octave (C3)
-        {Key::Z, 48}, {Key::S, 49}, {Key::X, 50}, {Key::D, 51},
-        {Key::C, 52}, {Key::V, 53}, {Key::G, 54}, {Key::B, 55},
-        {Key::H, 56}, {Key::N, 57}, {Key::J, 58}, {Key::M, 59},
+        {GLFW_KEY_Z, 48}, {GLFW_KEY_S, 49}, {GLFW_KEY_X, 50}, {GLFW_KEY_D, 51},
+        {GLFW_KEY_C, 52}, {GLFW_KEY_V, 53}, {GLFW_KEY_G, 54}, {GLFW_KEY_B, 55},
+        {GLFW_KEY_H, 56}, {GLFW_KEY_N, 57}, {GLFW_KEY_J, 58}, {GLFW_KEY_M, 59},
         // Middle octave (C4)
-        {Key::Q, 60}, {Key::Key2, 61}, {Key::W, 62}, {Key::Key3, 63},
-        {Key::E, 64}, {Key::R, 65}, {Key::Key5, 66}, {Key::T, 67},
-        {Key::Key6, 68}, {Key::Y, 69}, {Key::Key7, 70}, {Key::U, 71},
+        {GLFW_KEY_Q, 60}, {GLFW_KEY_2, 61}, {GLFW_KEY_W, 62}, {GLFW_KEY_3, 63},
+        {GLFW_KEY_E, 64}, {GLFW_KEY_R, 65}, {GLFW_KEY_5, 66}, {GLFW_KEY_T, 67},
+        {GLFW_KEY_6, 68}, {GLFW_KEY_Y, 69}, {GLFW_KEY_7, 70}, {GLFW_KEY_U, 71},
         // Upper notes
-        {Key::I, 72}, {Key::Key9, 73}, {Key::O, 74}, {Key::Key0, 75},
-        {Key::P, 76}
+        {GLFW_KEY_I, 72}, {GLFW_KEY_9, 73}, {GLFW_KEY_O, 74}, {GLFW_KEY_0, 75},
+        {GLFW_KEY_P, 76}
     };
 
     // Velocity from mouse Y
@@ -132,7 +136,7 @@ void update(Context& ctx) {
 
     // Process key events
     for (const auto& km : keyMap) {
-        if (ctx.keyPressed(km.key)) {
+        if (ctx.key(km.key).pressed) {
             switch (g_demo) {
                 case SamplerDemo::Sampler:
                     sampler.noteOn(km.note, velocity);
@@ -146,7 +150,7 @@ void update(Context& ctx) {
                     break;
             }
         }
-        if (ctx.keyReleased(km.key)) {
+        if (ctx.key(km.key).released) {
             switch (g_demo) {
                 case SamplerDemo::Sampler:
                     sampler.noteOff(km.note);

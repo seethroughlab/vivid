@@ -11,9 +11,6 @@ using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
 
-// Persistent camera state across hot-reloads
-static Camera3D camera;
-
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
@@ -44,27 +41,34 @@ void setup(Context& ctx) {
         glm::vec4(0.4f, 1.0f, 0.5f, 1.0f));
 
     // Set up camera
-    camera.lookAt(glm::vec3(5, 3, 5), glm::vec3(0, 0, 0))
-          .fov(45.0f)
-          .nearPlane(0.1f)
-          .farPlane(100.0f);
+    auto& camera = chain.add<CameraOperator>("camera");
+    camera.position(5.0f, 3.0f, 5.0f);
+    camera.target(0.0f, 0.0f, 0.0f);
+    camera.fov(45.0f);
+    camera.nearPlane(0.1f);
+    camera.farPlane(100.0f);
+
+    // Directional light
+    auto& sun = chain.add<DirectionalLight>("sun");
+    sun.direction(1.0f, 2.0f, 1.0f);
+    sun.color(1.0f, 1.0f, 1.0f);
+    sun.intensity = 1.0f;
 
     // Create chain: SceneComposer -> Render3D -> ChromaticAberration -> output
     auto& renderer = chain.add<Render3D>("render3d");
-    renderer.input("scene")
-            .camera(camera)
-            .shadingMode(ShadingMode::Flat)
-            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
-            .lightColor(glm::vec3(1, 1, 1))
-            .ambient(0.15f)
-            .clearColor(0.05f, 0.05f, 0.1f)
-            .resolution(1280, 720);
+    renderer.input("scene");
+    renderer.setCameraInput(&camera);
+    renderer.setLightInput(&sun);
+    renderer.setShadingMode(ShadingMode::Flat);
+    renderer.setAmbient(0.15f);
+    renderer.setClearColor(0.05f, 0.05f, 0.1f);
+    renderer.setResolution(1280, 720);
 
     // Add chromatic aberration effect
     auto& chromatic = chain.add<ChromaticAberration>("chromatic");
-    chromatic.input("renderer")
-             .amount(0.008f)
-             .radial(true);
+    chromatic.input("render3d");
+    chromatic.amount = 0.008f;
+    chromatic.radial = true;
 
     chain.output("chromatic");
 
@@ -78,12 +82,11 @@ void update(Context& ctx) {
     float time = static_cast<float>(ctx.time());
 
     // Orbit camera around the scene
-    float distance = 7.0f;
-    float azimuth = time * 0.3f;
-    float elevation = 0.4f + 0.1f * std::sin(time * 0.5f);
-    camera.orbit(distance, azimuth, elevation);
-
-    chain.get<Render3D>("render3d").camera(camera);
+    auto& camera = chain.get<CameraOperator>("camera");
+    camera.orbitCenter(0.0f, 0.0f, 0.0f);
+    camera.distance(7.0f);
+    camera.azimuth(time * 0.3f);
+    camera.elevation(0.4f + 0.1f * std::sin(time * 0.5f));
 
     // Animate objects via SceneComposer entries
     auto& scene = chain.get<SceneComposer>("scene");

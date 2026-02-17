@@ -49,7 +49,7 @@ void setup(Context& ctx) {
     // Add a vignette for polish
     auto& vignette = chain.add<Vignette>("vignette");
     vignette.input("displace");
-    vignette.radius = 0.7f;
+    vignette.intensity = 0.7f;
     vignette.softness = 0.6f;
 
     // EXPERIMENT: Try adding more effects

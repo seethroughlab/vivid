@@ -56,40 +56,63 @@ void setup(Context& ctx) {
 
     // Audio sources - file and microphone
     auto& audioFile = chain.add<AudioFile>("audioFile");
-    audioFile.file(audioFiles[currentFileIndex]).loop(true).volume(0.8f);
+    audioFile.setFile(audioFiles[currentFileIndex]);
+    audioFile.loop(true);
+    audioFile.volume = 0.8f;
 
     auto& mic = chain.add<AudioIn>("mic");
-    mic.volume(1.0f).mute(true);  // Start muted
+    mic.volume = 1.0f;
+    mic.setMute(true);  // Start muted
 
     // Effects chain - delay takes input from file by default
     auto& delay = chain.add<Delay>("delay");
-    delay.input("audioFile").delayTime(300).feedback(0.4f).mix(0.5f);
+    delay.input("audioFile");
+    delay.delayTime = 300;
+    delay.feedback = 0.4f;
+    delay.mix = 0.5f;
 
     auto& reverb = chain.add<Reverb>("reverb");
-    reverb.input("delay").roomSize(0.7f).damping(0.3f).mix(0.4f);
+    reverb.input("delay");
+    reverb.roomSize = 0.7f;
+    reverb.damping = 0.3f;
+    reverb.mix = 0.4f;
 
     auto& comp = chain.add<Compressor>("comp");
-    comp.input("reverb").threshold(-18).ratio(4).attack(10).release(100);
+    comp.input("reverb");
+    comp.threshold = -18;
+    comp.ratio = 4;
+    comp.attack = 10;
+    comp.release = 100;
 
     auto& overdrive = chain.add<Overdrive>("overdrive");
-    overdrive.input("comp").drive(2.0f).tone(0.5f).level(0.7f);
+    overdrive.input("comp");
+    overdrive.drive = 2.0f;
+    overdrive.tone = 0.5f;
+    overdrive.level = 0.7f;
 
     auto& bitcrush = chain.add<Bitcrush>("bitcrush");
-    bitcrush.input("overdrive").bits(12).sampleRate(22050);
+    bitcrush.input("overdrive");
+    bitcrush.bits = 12;
+    bitcrush.targetSampleRate = 22050;
 
     // Audio output
     auto& out = chain.add<AudioOutput>("out");
-    out.input("bitcrush").volume(0.8f);
+    out.input("bitcrush");
+    out.setVolume(0.8f);
 
     // Visual feedback - simple waveform-inspired display
     auto& gradient = chain.add<Gradient>("bg");
-    gradient.colorA(0.1f, 0.1f, 0.2f).colorB(0.05f, 0.1f, 0.15f);
+    gradient.colorA.set(0.1f, 0.1f, 0.2f, 1.0f);
+    gradient.colorB.set(0.05f, 0.1f, 0.15f, 1.0f);
 
     auto& noise = chain.add<Noise>("noise");
-    noise.set("scale", 50.0f).set("speed", 0.5f);
+    noise.set("scale", 50.0f);
+    noise.set("speed", 0.5f);
 
     auto& composite = chain.add<Composite>("vis");
-    composite.inputA("gradient").inputB("noise").mode = BlendMode::Add.opacity(0.3f);
+    composite.inputA("bg");
+    composite.inputB("noise");
+    composite.mode = BlendMode::Add;
 
     // Set outputs
     chain.output("vis");
@@ -137,12 +160,12 @@ void update(Context& ctx) {
         if (useMic) {
             // Switch to mic: mute file, unmute mic, reconnect delay to mic
             audioFile.pause();
-            mic.mute(false);
+            mic.setMute(false);
             delay.input("mic");
             std::cout << "[Audio] Switched to MICROPHONE" << std::endl;
         } else {
             // Switch to file: mute mic, unmute file, reconnect delay to file
-            mic.mute(true);
+            mic.setMute(true);
             delay.input("audioFile");
             audioFile.play();
             std::cout << "[Audio] Switched to FILE" << std::endl;
@@ -155,7 +178,7 @@ void update(Context& ctx) {
         for (int i = 0; i < std::min((int)audioFiles.size(), 4); i++) {
             if (ctx.key(GLFW_KEY_1 + i).pressed && i != currentFileIndex) {
                 currentFileIndex = i;
-                audioFile.file(audioFiles[currentFileIndex]);
+                audioFile.setFile(audioFiles[currentFileIndex]);
                 printStatus(chain);
             }
         }

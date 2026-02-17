@@ -93,18 +93,18 @@ void setup(Context& ctx) {
 
     // Particles for kick
     auto& particles = chain.add<Particles>("particles");
-    particles.emitter(EmitterShape::Disc);
-    particles.position(0.5f, 0.5f);
-    particles.emitterSize(0.1f);
-    particles.emitRate(0.0f);  // Only emit on trigger
-    particles.maxParticles(200);
-    particles.radialVelocity(0.5f);
-    particles.spread(360.0f);
-    particles.life(1.0f);
-    particles.size(0.02f, 0.005f);
-    particles.color(1.0f, 0.9f, 0.7f, 1.0f);
-    particles.colorEnd(1.0f, 0.3f, 0.0f, 0.0f);
-    particles.clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    particles.emitterShape = EmitterShape::Disc;
+    particles.position.set(0.5f, 0.5f);
+    particles.emitterSize = 0.1f;
+    particles.emitRate = 0.0f;  // Only emit on trigger
+    particles.maxParticles = 200;
+    particles.radialVelocity = 0.5f;
+    particles.spread = 360.0f;
+    particles.life = 1.0f;
+    particles.size = 0.02f; particles.sizeEnd = 0.005f;
+    particles.color.set(1.0f, 0.9f, 0.7f, 1.0f);
+    particles.colorEnd.set(1.0f, 0.3f, 0.0f, 0.0f);
+    particles.clearColor.set(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Composite particles over flashes
     auto& comp = chain.add<Composite>("comp");

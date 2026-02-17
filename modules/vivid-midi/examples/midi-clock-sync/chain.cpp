@@ -9,6 +9,7 @@
 #include <vivid/effects/effects.h>
 #include <vivid/midi/midi.h>
 #include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
 
 using namespace vivid;
 using namespace vivid::effects;
@@ -76,8 +77,8 @@ void setup(Context& ctx) {
     kick.pitch = 55.0f;
     kick.decay = 0.3f;
 
-    auto& mixer = chain.add<Mixer>("mixer");
-    mixer.addInput("kick", 0.8f);
+    auto& mixer = chain.add<AudioMixer>("mixer");
+    mixer.input(0, "kick");
 
     auto& out = chain.add<AudioOutput>("out");
     out.input("mixer");
@@ -118,7 +119,7 @@ void update(Context& ctx) {
     auto& beatDot = chain.get<Shape>("beatDot");
 
     // Toggle mode with spacebar
-    if (ctx.keyPressed(' ')) {
+    if (ctx.key(GLFW_KEY_SPACE).pressed) {
         g_receiveMode = !g_receiveMode;
 
         if (g_receiveMode) {

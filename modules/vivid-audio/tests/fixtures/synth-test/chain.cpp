@@ -7,7 +7,7 @@
 #include <vivid/audio/audio_filter.h>
 #include <vivid/audio/audio_gain.h>
 #include <vivid/audio/audio_mixer.h>
-#include <vivid/audio/audio_output.h>
+#include <vivid/audio_output.h>
 #include <vivid/audio/levels.h>
 #include <vivid/effects/noise.h>
 #include <vivid/effects/hsv.h>
@@ -30,81 +30,83 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Oscillator 1: Saw wave for rich harmonics
-    chain.add<Oscillator>("osc1")
-        .frequency(261.63f)  // C4
-        .waveform(Oscillator::Waveform::Sawtooth)
-        .amplitude(0.3f);
+    auto& osc1 = chain.add<Oscillator>("osc1");
+    osc1.frequency = 261.63f;  // C4
+    osc1.waveform(Waveform::Saw);
+    osc1.volume = 0.3f;
 
     // Oscillator 2: Square wave slightly detuned
-    chain.add<Oscillator>("osc2")
-        .frequency(262.5f)   // Slightly detuned
-        .waveform(Oscillator::Waveform::Square)
-        .amplitude(0.2f);
+    auto& osc2 = chain.add<Oscillator>("osc2");
+    osc2.frequency = 262.5f;   // Slightly detuned
+    osc2.waveform(Waveform::Square);
+    osc2.volume = 0.2f;
 
     // Oscillator 3: Sub bass (sine one octave down)
-    chain.add<Oscillator>("sub")
-        .frequency(130.81f)  // C3
-        .waveform(Oscillator::Waveform::Sine)
-        .amplitude(0.25f);
+    auto& sub = chain.add<Oscillator>("sub");
+    sub.frequency = 130.81f;  // C3
+    sub.waveform(Waveform::Sine);
+    sub.volume = 0.25f;
 
     // ADSR envelope for amplitude
-    chain.add<Envelope>("env")
-        .attack(0.01f)
-        .decay(0.1f)
-        .sustain(0.5f)
-        .release(0.3f);
+    auto& env = chain.add<Envelope>("env");
+    env.attack = 0.01f;
+    env.decay = 0.1f;
+    env.sustain = 0.5f;
+    env.release = 0.3f;
 
     // Mix oscillators
-    chain.add<AudioMixer>("osc_mix")
-        .input(0, "osc1")
-        .input(1, "osc2")
-        .input(2, "sub");
+    auto& osc_mix = chain.add<AudioMixer>("osc_mix");
+    osc_mix.input(0, "osc1");
+    osc_mix.input(1, "osc2");
+    osc_mix.input(2, "sub");
 
     // Apply envelope to mixed signal
-    chain.add<AudioGain>("enveloped")
-        .input("osc_mix")
-        .gainInput("env");
+    auto& enveloped = chain.add<AudioGain>("enveloped");
+    enveloped.input("osc_mix");
+    enveloped.setGainInput("env");
 
     // Low-pass filter for warmth
-    chain.add<AudioFilter>("filter")
-        .input("enveloped")
-        .type(AudioFilter::Type::LowPass)
-        .cutoff(2000.0f)
-        .resonance(0.3f);
+    auto& filter = chain.add<AudioFilter>("filter");
+    filter.setInputByName(0, "enveloped");
+    filter.setType(FilterType::Lowpass);
+    filter.cutoff = 2000.0f;
+    filter.resonance = 0.3f;
 
     // Final gain
-    chain.add<AudioGain>("master")
-        .input("filter")
-        .gain(0.5f);
+    auto& master = chain.add<AudioGain>("master");
+    master.input("filter");
+    master.gain = 0.5f;
 
     // Audio output
-    chain.add<AudioOutput>("audioOut")
-        .input("master")
-        .volume(0.8f);
+    auto& audioOut = chain.add<AudioOutput>("audioOut");
+    audioOut.input("master");
+    audioOut.setVolume(0.8f);
 
     // Audio analysis for visualization
-    chain.add<Levels>("levels")
-        .input("master");
+    auto& levels = chain.add<Levels>("levels");
+    levels.input("master");
 
     // Visual representation
     auto& bg_noise = chain.add<Noise>("bg_noise");
-    bg_noise.set("scale", 4.0f).set("speed", 0.1f);
+    bg_noise.set("scale", 4.0f);
+    bg_noise.set("speed", 0.1f);
 
     auto& bg_color = chain.add<HSV>("bg_color");
     bg_color.input("bg_noise");
-    bg_color.hue(0.6f).saturation(0.3f).value(0.2f);
+    bg_color.hueShift = 0.6f;
+    bg_color.saturation = 0.3f;
+    bg_color.value = 0.2f;
 
     // Pulsing circle based on audio levels
-    chain.add<Shape>("pulse")
-        .type(Shape::Type::Circle)
-        .sizeInput("levels")
-        .sizeScale(0.4f)
-        .color(0.3f, 0.8f, 1.0f, 0.8f);
+    auto& pulse = chain.add<Shape>("pulse");
+    pulse.type = ShapeType::Ellipse;
+    pulse.size.set(0.4f, 0.4f);
+    pulse.color.set(0.3f, 0.8f, 1.0f, 0.8f);
 
-    chain.add<Composite>("visual")
-        .input(0, "bg_color")
-        .input(1, "pulse")
-        .mode(Composite::Mode::Add);
+    auto& visual = chain.add<Composite>("visual");
+    visual.input(0, "bg_color");
+    visual.input(1, "pulse");
+    visual.mode = BlendMode::Add;
 
     chain.output("visual");
     chain.audioOutput("audioOut");
@@ -122,20 +124,18 @@ void update(Context& ctx) {
         float freq = melody[noteIndex];
 
         // Update oscillator frequencies
-        if (auto* osc1 = chain.get<Oscillator>("osc1")) {
-            osc1->frequency(freq);
-        }
-        if (auto* osc2 = chain.get<Oscillator>("osc2")) {
-            osc2->frequency(freq * 1.003f);  // Slight detune
-        }
-        if (auto* sub = chain.get<Oscillator>("sub")) {
-            sub->frequency(freq * 0.5f);  // One octave down
-        }
+        auto& osc1 = chain.get<Oscillator>("osc1");
+        osc1.frequency = freq;
+
+        auto& osc2 = chain.get<Oscillator>("osc2");
+        osc2.frequency = freq * 1.003f;  // Slight detune
+
+        auto& sub = chain.get<Oscillator>("sub");
+        sub.frequency = freq * 0.5f;  // One octave down
 
         // Trigger envelope
-        if (auto* env = chain.get<Envelope>("env")) {
-            env->trigger();
-        }
+        auto& env = chain.get<Envelope>("env");
+        env.trigger();
     }
 }
 

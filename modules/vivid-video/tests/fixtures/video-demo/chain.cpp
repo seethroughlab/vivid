@@ -60,13 +60,14 @@ void setup(Context& ctx) {
     video.setLoop(true);
 
     // Subtle color adjustment
-    hsv.input("video")
-       .saturation(1.1f)
-       .value(1.0f);
+    hsv.input("video");
+    hsv.saturation = 1.1f;
+    hsv.value = 1.0f;
 
     // Audio: extract from video and route to output
-    videoAudio.source("video");
-    audioOut.input("videoAudio").volume(1.0f);
+    videoAudio.setSource("video");
+    audioOut.input("videoAudio");
+    audioOut.setVolume(1.0f);
 
     // Set outputs (video and audio)
     chain.output("hsv");
@@ -141,7 +142,7 @@ void update(Context& ctx) {
     // Mouse X controls hue shift when HSV is enabled
     if (hsvEnabled) {
         float hue = (ctx.mouseNorm().x - 0.5f) * 0.4f;  // Map [0,1] to [-0.2,0.2]
-        hsv.hueShift(hue);
+        hsv.hueShift = hue;
     }
 }
 

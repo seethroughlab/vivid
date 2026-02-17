@@ -101,7 +101,7 @@ void setup(Context& ctx) {
 
     // Noise layer
     auto& noise = chain.add<Noise>("noise");
-    noise.type = NoiseType::Simplex;
+    noise.type = effects::NoiseType::Simplex;
     noise.scale = 4.0f;
     noise.octaves = 3;
     noise.speed = 0.2f;

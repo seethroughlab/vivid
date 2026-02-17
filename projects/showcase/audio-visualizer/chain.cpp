@@ -42,7 +42,7 @@ void setup(Context& ctx) {
     // Internal synth - generates beats for visualization
     auto& clock = chain.add<Clock>("clock");
     clock.bpm = 128.0f;
-    clock.division = ClockDiv::Sixteenth;
+    clock.division(ClockDiv::Sixteenth);
 
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setPattern(0x1111);  // Four on floor
@@ -146,8 +146,8 @@ void setup(Context& ctx) {
     bassParticles.life = 3.0f;
     bassParticles.size = 0.025f;
     bassParticles.sizeEnd = 0.005f;
-    bassParticles.color = Color::fromHex("#CC3366");
-    bassParticles.colorEnd = Color::fromHex("#661A99").withAlpha(0.0f);
+    bassParticles.color.set(Color::fromHex("#CC3366"));
+    bassParticles.colorEnd.set(Color::fromHex("#661A99").withAlpha(0.0f));
     bassParticles.fadeOut = true;
     bassParticles.clearColor.set(0.0f, 0.0f, 0.0f, 0.0f);
 
@@ -165,8 +165,8 @@ void setup(Context& ctx) {
     midParticles.life = 2.5f;
     midParticles.size = 0.012f;
     midParticles.sizeEnd = 0.003f;
-    midParticles.color = Color::DodgerBlue;
-    midParticles.colorEnd = Color::MediumBlue.withAlpha(0.0f);
+    midParticles.color.set(Color::DodgerBlue);
+    midParticles.colorEnd.set(Color::MediumBlue.withAlpha(0.0f));
     midParticles.fadeOut = true;
     midParticles.clearColor.set(0.0f, 0.0f, 0.0f, 0.0f);
 
@@ -190,10 +190,10 @@ void setup(Context& ctx) {
 
     // Composite particles
     auto& particleComp = chain.add<Composite>("particleComp");
-    particleComp.setInput(0, "bg");
-    particleComp.setInput(1, "bassParticles");
-    particleComp.setInput(2, "midParticles");
-    particleComp.setInput(3, "highParticles");
+    particleComp.input(0, "bg");
+    particleComp.input(1, "bassParticles");
+    particleComp.input(2, "midParticles");
+    particleComp.input(3, "highParticles");
     particleComp.mode = BlendMode::Add;
 
     // Central shape - pulses with beat

@@ -38,9 +38,9 @@ void setup(Context& ctx) {
     // Color Grading
     // =========================================================================
 
-    auto& hueShift = chain.add<HueShift>("hue");
-    hueShift.input("noise");
-    hueShift.amount = 0.5f;
+    auto& hue = chain.add<HSV>("hue");
+    hue.input("noise");
+    hue.hueShift = 0.5f;
 
     // =========================================================================
     // Texture Sharing Output
@@ -105,8 +105,8 @@ void update(Context& ctx) {
     // Animated Parameters
     // =========================================================================
 
-    auto& hue = chain.get<HueShift>("hue");
-    hue.amount = static_cast<float>(std::fmod(ctx.time() * 0.1, 1.0));
+    auto& hue = chain.get<HSV>("hue");
+    hue.hueShift = static_cast<float>(std::fmod(ctx.time() * 0.1, 1.0));
 }
 
 VIVID_CHAIN(setup, update)

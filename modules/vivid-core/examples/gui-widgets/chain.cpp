@@ -7,8 +7,10 @@
 // User-facing GUI support is planned for a future release.
 
 #include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
 
 using namespace vivid;
+using namespace vivid::effects;
 
 // This example demonstrates a noise effect that would be
 // controllable via GUI widgets in the future.
@@ -24,7 +26,7 @@ void setup(Context& ctx) {
     noise.speed = speed;
     noise.octaves = 4;
 
-    chain.setOutput(noise);
+    chain.output("noise");
 }
 
 void update(Context& ctx) {
@@ -38,12 +40,11 @@ void update(Context& ctx) {
     // gui.endPanel();
 
     // Update noise parameters (currently from code)
-    if (auto* noise = chain.get<Noise>("noise")) {
-        noise->scale = scale;
-        noise->speed = speed;
-    }
+    auto& noise = chain.get<Noise>("noise");
+    noise.scale = scale;
+    noise.speed = speed;
 
-    chain.process();
+    chain.process(ctx);
 }
 
 // Good size for UI demonstrations
