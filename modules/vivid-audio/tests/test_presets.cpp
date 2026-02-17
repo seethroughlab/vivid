@@ -29,7 +29,7 @@ static void removeFile(const std::string& path) {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("FMSynth preset save", "[unit][preset]") {
-    const std::string path = "/tmp/vivid_test_preset.json";
+    const std::string path = (fs::temp_directory_path() / "vivid_test_preset.json").string();
 
     SECTION("savePreset returns true and creates file") {
         FMSynth synth;
@@ -87,7 +87,12 @@ TEST_CASE("FMSynth preset save", "[unit][preset]") {
 
     SECTION("returns false for invalid path") {
         FMSynth synth;
-        REQUIRE_FALSE(synth.savePreset("/nonexistent/deeply/nested/preset.json"));
+        // Use a file as a directory component — guaranteed to fail on all platforms
+        auto blocker = fs::temp_directory_path() / "vivid_test_blocker";
+        { std::ofstream f(blocker); f << "x"; }
+        auto badPath = blocker / "sub" / "preset.json";
+        REQUIRE_FALSE(synth.savePreset(badPath.string()));
+        fs::remove(blocker);
     }
 }
 
@@ -96,7 +101,7 @@ TEST_CASE("FMSynth preset save", "[unit][preset]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("FMSynth preset load", "[unit][preset]") {
-    const std::string path = "/tmp/vivid_test_preset_load.json";
+    const std::string path = (fs::temp_directory_path() / "vivid_test_preset_load.json").string();
 
     SECTION("save + load round-trip preserves all params and algorithm") {
         FMSynth original;
@@ -124,7 +129,7 @@ TEST_CASE("FMSynth preset load", "[unit][preset]") {
 
     SECTION("returns false for nonexistent file") {
         FMSynth synth;
-        REQUIRE_FALSE(synth.loadPresetFile("/tmp/vivid_nonexistent_preset.json"));
+        REQUIRE_FALSE(synth.loadPresetFile((fs::temp_directory_path() / "vivid_nonexistent_preset.json").string()));
     }
 
     SECTION("handles partial params gracefully") {
