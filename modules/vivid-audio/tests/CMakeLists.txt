@@ -42,3 +42,23 @@ target_compile_definitions(test_audio_examples PRIVATE
 catch_discover_tests(test_audio_examples
     PROPERTIES LABELS "smoke;examples;audio"
 )
+
+# Preset tests
+add_executable(test_audio_presets
+    ${CMAKE_CURRENT_LIST_DIR}/test_presets.cpp
+)
+
+target_link_libraries(test_audio_presets PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+    vivid-audio
+)
+
+target_include_directories(test_audio_presets PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+    ${CMAKE_SOURCE_DIR}/modules/vivid-audio/include
+)
+
+catch_discover_tests(test_audio_presets
+    PROPERTIES LABELS "unit"
+)
