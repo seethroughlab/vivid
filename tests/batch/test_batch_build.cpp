@@ -10,6 +10,11 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+#endif
 #include <regex>
 #include <set>
 #include <sstream>
@@ -200,7 +205,7 @@ static void writeCoverageIndex(const std::map<std::string, std::vector<std::stri
 // Tests
 // ---------------------------------------------------------------------------
 
-TEST_CASE("All projects compile", "[build-all]") {
+TEST_CASE("All projects compile", "[batch]") {
     auto allProjects = discoverAllProjects();
     REQUIRE_FALSE(allProjects.empty());
     INFO("Found " << allProjects.size() << " projects with chain.cpp");
@@ -218,7 +223,7 @@ TEST_CASE("All projects compile", "[build-all]") {
     }
 }
 
-TEST_CASE("Operator coverage index", "[build-all]") {
+TEST_CASE("Operator coverage index", "[batch]") {
     auto allProjects = discoverAllProjects();
     REQUIRE_FALSE(allProjects.empty());
 

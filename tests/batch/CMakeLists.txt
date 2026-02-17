@@ -21,6 +21,6 @@ add_dependencies(test_batch_build vivid)
 
 catch_discover_tests(test_batch_build
     PROPERTIES
-        LABELS "build-all"
+        LABELS "batch"
         TIMEOUT 300
 )

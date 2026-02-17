@@ -36,7 +36,7 @@ ctest --test-dir build -R "Noise" --output-on-failure               # Single tes
 | `smoke` | Example projects run without crashing (requires GPU) | ~30s |
 | `visual` | Pixel comparison against reference images (requires GPU) | ~60s |
 | `gui` | GUI visual regression with scripted interactions (requires GPU) | ~30s |
-| `build-all` | Batch compile all projects + generate operator coverage index | ~4min |
+| `batch` | Batch compile all projects + generate operator coverage index | ~4min |
 | `qualitative` | Assert visual/audio output correctness via `vivid check` (requires GPU) | ~3min |
 
 ### Inner Loop (Framework)
@@ -63,7 +63,7 @@ GPU-dependent tests (`smoke`, `visual`, `gui`) run in CI on Linux with xvfb but 
 Verify all example projects and test fixtures still compile:
 
 ```bash
-ctest --test-dir build -L build-all --output-on-failure
+ctest --test-dir build -L batch --output-on-failure
 ```
 
 ### Operator Coverage

@@ -12,6 +12,11 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+#endif
+
 namespace fs = std::filesystem;
 
 struct ProjectInfo {

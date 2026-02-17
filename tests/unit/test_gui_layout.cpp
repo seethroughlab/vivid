@@ -172,8 +172,8 @@ TEST_CASE("Output pin label fits within node", "[gui][layout][bug5]") {
         float labelX = computeOutputPinLabelX(nodeX * zoom, nodeWScaled, pinRScaled, textW, zoom);
         // With proportional gap (pinR + 2*zoom = 1.8 + 0.6 = 2.4), label overflows:
         // labelX = 30 + 54 - 1.8 - 50 - 2.4 = 29.8 < 30 — doesn't fit
-        // This documents that very long labels at low zoom are hidden (correct behavior)
-        CHECK(labelX >= nodeX * zoom);
+        // Very long labels at low zoom are hidden (correct behavior)
+        CHECK(labelX < nodeX * zoom);
     }
 
     SECTION("label is hidden when it would overflow node left edge") {
