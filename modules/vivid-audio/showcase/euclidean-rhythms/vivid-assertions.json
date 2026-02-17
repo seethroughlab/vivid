@@ -1,0 +1,7 @@
+{
+  "frame": 60,
+  "assertions": [
+    {"path": "output.meanBrightness", "op": "between", "value": [0.05, 0.95], "message": "Not black or white"},
+    {"path": "output.contrast", "op": ">", "value": 0.02, "message": "Has some contrast"}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "frame": 60,
+  "assertions": [
+    {"path": "output.meanBrightness", "op": "between", "value": [0.05, 0.95], "message": "Not black or white"},
+    {"path": "operators.levels.metrics.rms", "op": ">", "value": 0.01, "message": "Audio levels are not silent"}
+  ]
+}
