@@ -8,6 +8,7 @@
  * operators are present in the chain.
  */
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
