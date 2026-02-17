@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <vivid/easing.h>
 #include <string>
 #include <vector>
 #include <glm/glm.hpp>
@@ -28,6 +29,7 @@ struct ScriptEvent {
     int button = 0;          // Mouse button index (0=left, 1=right, 2=middle)
     int cc = 0;              // MIDI CC number
     int channel = 0;         // MIDI channel
+    std::string easing;      // Easing curve name (for param_ramp and snapshot_recall)
 };
 
 /// Top-level settings from a playback script JSON
@@ -78,6 +80,7 @@ private:
         int endFrame;
         float from;
         float to;
+        EasingCurve easingCurve;
     };
     std::vector<ActiveRamp> m_activeRamps;
 

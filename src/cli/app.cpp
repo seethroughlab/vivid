@@ -10,7 +10,9 @@
 
 #include <vivid/app.h>
 #include <vivid/assertion.h>
+#include <vivid/easing.h>
 #include <vivid/event_injector.h>
+#include <vivid/param_animator.h>
 #include <vivid/project_manifest.h>
 
 #include <vivid/vivid.h>
@@ -735,6 +737,7 @@ struct MainLoopContext {
     Display* display = nullptr;
     HotReload* hotReload = nullptr;
     RuntimeAPI* editorBridge = nullptr;
+    ParamAnimator* paramAnimator = nullptr;
 
     // Visualizer state (dynamically loaded module)
     bool visualizerAvailable = false;
@@ -1398,6 +1401,9 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
         // Tick snapshot crossfade interpolation (before process so param changes apply this frame)
         mlc.ctx->chain().snapshots().update(static_cast<float>(mlc.ctx->dt()), mlc.ctx->chain());
+
+        // Tick parameter ramp animations (MCP param_ramp support)
+        mlc.paramAnimator->update(static_cast<float>(mlc.ctx->dt()), mlc.ctx->chain());
 
         // Call user's update function
         mlc.hotReload->getUpdateFn()(*mlc.ctx);
@@ -2628,6 +2634,7 @@ struct Application::Impl {
     std::unique_ptr<HotReload> hotReload;
     // Note: ChainVisualizer is now loaded dynamically from vivid-devtools module
     std::unique_ptr<RuntimeAPI> editorBridge;
+    ParamAnimator paramAnimator;
 
     // WebGPU objects
     WGPUInstance instance = nullptr;
@@ -2967,6 +2974,11 @@ int Application::init(const AppConfig& config) {
     }
     m_impl->display->setDisplayMode(displayMode);
 
+    // Set content scale before devtools init (fonts need correct DPI for sizing)
+    float xscale, yscale;
+    glfwGetWindowContentScale(m_impl->window, &xscale, &yscale);
+    m_impl->ctx->setContentScale(xscale);
+
     // Initialize devtools (dynamically loaded from vivid-devtools module)
     // If the module is not present (e.g., production bundles), this is a no-op
     devtools_dynamic::tryInit(m_impl->ctx.get(), m_impl->surfaceFormat);
@@ -3066,6 +3078,27 @@ int Application::init(const AppConfig& config) {
             return success;
         }
         return false;
+    });
+
+    // MCP recall_snapshot tool: recall snapshot with crossfade and easing
+    m_impl->editorBridge->onRecallSnapshot([this](int index, float duration, const std::string& easing) -> bool {
+        if (!m_impl->ctx->hasChain()) return false;
+        auto& store = m_impl->ctx->chain().snapshots();
+        if (index < 0 || index >= store.size()) return false;
+        store.recall(index, m_impl->ctx->chain(), duration, EasingCurve::fromString(easing));
+        return true;
+    });
+
+    // MCP param_ramp tool: animate parameter from→to over duration with easing
+    m_impl->editorBridge->onParamRamp([this](const std::string& opName, const std::string& paramName,
+                                              float from, float to, float duration,
+                                              const std::string& easing) -> bool {
+        if (!m_impl->ctx->hasChain()) return false;
+        Operator* op = m_impl->ctx->chain().getByName(opName);
+        if (!op) return false;
+        m_impl->paramAnimator.startRamp(opName, paramName, from, to, duration,
+                                         EasingCurve::fromString(easing));
+        return true;
     });
 
     // MCP get_chain_structure tool: return chain operators and connections
@@ -3527,6 +3560,7 @@ int Application::init(const AppConfig& config) {
     mlc.display = m_impl->display.get();
     mlc.hotReload = m_impl->hotReload.get();
     mlc.editorBridge = m_impl->editorBridge.get();
+    mlc.paramAnimator = &m_impl->paramAnimator;
 
     // Check if visualizer module is available (dynamically loaded)
     // In production bundles without vivid-devtools.dylib, this will be false

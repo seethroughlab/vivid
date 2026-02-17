@@ -415,6 +415,45 @@ public:
     void sendSetParamResult(const std::string& opName, const std::string& paramName, bool success);
 
     // -------------------------------------------------------------------------
+    // Snapshot recall (MCP crossfade support)
+    // -------------------------------------------------------------------------
+
+    /// Callback type for recall_snapshot command (apply snapshot with optional crossfade)
+    /// @param index Snapshot index
+    /// @param duration Crossfade duration in seconds (0 = hard cut)
+    /// @param easing Easing curve name ("linear", "ease-in", "ease-out", "ease-in-out")
+    /// @return true if snapshot was successfully recalled
+    using RecallSnapshotCallback = std::function<bool(int index, float duration, const std::string& easing)>;
+
+    /// Set callback for recall_snapshot command
+    void onRecallSnapshot(RecallSnapshotCallback callback) { m_recallSnapshotCallback = callback; }
+
+    /// Send recall_snapshot result back to clients
+    void sendRecallSnapshotResult(bool success, const std::string& message = "");
+
+    // -------------------------------------------------------------------------
+    // Parameter ramp (MCP animated parameter control)
+    // -------------------------------------------------------------------------
+
+    /// Callback type for param_ramp command (animate parameter from→to over duration)
+    /// @param opName Operator name
+    /// @param paramName Parameter name
+    /// @param from Start value
+    /// @param to End value
+    /// @param duration Duration in seconds
+    /// @param easing Easing curve name
+    /// @return true if ramp was started
+    using ParamRampCallback = std::function<bool(const std::string& opName, const std::string& paramName,
+                                                   float from, float to, float duration,
+                                                   const std::string& easing)>;
+
+    /// Set callback for param_ramp command
+    void onParamRamp(ParamRampCallback callback) { m_paramRampCallback = callback; }
+
+    /// Send param_ramp result back to clients
+    void sendParamRampResult(bool success, const std::string& message = "");
+
+    // -------------------------------------------------------------------------
     // Frame advance control (MCP debugging tools)
     // -------------------------------------------------------------------------
 
@@ -451,6 +490,8 @@ private:
     CaptureFrameCallback m_captureFrameCallback;
     CaptureAudioCallback m_captureAudioCallback;
     SetParamImmediateCallback m_setParamImmediateCallback;
+    RecallSnapshotCallback m_recallSnapshotCallback;
+    ParamRampCallback m_paramRampCallback;
     RequestChainStructureCallback m_requestChainStructureCallback;
     InspectChainCallback m_inspectChainCallback;
     RequestFrameInfoCallback m_requestFrameInfoCallback;

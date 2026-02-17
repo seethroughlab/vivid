@@ -446,6 +446,76 @@ public:
         return result;
     }
 
+    // Send recall_snapshot command and wait for result
+    json recallSnapshot(int index, float duration = 0.0f, const std::string& easing = "linear",
+                         int timeoutMs = 5000) {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_recallSnapshotResult = json::object();
+            m_recallSnapshotResultReceived = false;
+        }
+
+        json cmd;
+        cmd["type"] = "recall_snapshot";
+        cmd["index"] = index;
+        cmd["duration"] = duration;
+        cmd["easing"] = easing;
+        m_ws.send(cmd.dump());
+
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_recallSnapshotResultReceived) {
+                    return m_recallSnapshotResult;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        json result;
+        result["success"] = false;
+        result["error"] = "Timeout waiting for recall_snapshot result";
+        return result;
+    }
+
+    // Send param_ramp command and wait for result
+    json paramRamp(const std::string& opName, const std::string& paramName,
+                    float from, float to, float duration,
+                    const std::string& easing = "linear", int timeoutMs = 2000) {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_paramRampResult = json::object();
+            m_paramRampResultReceived = false;
+        }
+
+        json cmd;
+        cmd["type"] = "param_ramp";
+        cmd["operator"] = opName;
+        cmd["param"] = paramName;
+        cmd["from"] = from;
+        cmd["to"] = to;
+        cmd["duration"] = duration;
+        cmd["easing"] = easing;
+        m_ws.send(cmd.dump());
+
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_paramRampResultReceived) {
+                    return m_paramRampResult;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        json result;
+        result["success"] = false;
+        result["error"] = "Timeout waiting for param_ramp result";
+        return result;
+    }
+
     // Send advance_frames command and wait for completion
     json advanceFrames(int count, int timeoutMs = 30000) {
         // Clear any previous result
@@ -655,6 +725,12 @@ private:
             } else if (type == "capture_audio_result") {
                 m_captureAudioResult = msg;
                 m_captureAudioResultReceived = true;
+            } else if (type == "recall_snapshot_result") {
+                m_recallSnapshotResult = msg;
+                m_recallSnapshotResultReceived = true;
+            } else if (type == "param_ramp_result") {
+                m_paramRampResult = msg;
+                m_paramRampResultReceived = true;
             }
         } catch (const json::exception& e) {
             std::cerr << "[MCP] JSON parse error: " << e.what() << "\n";
@@ -696,6 +772,10 @@ private:
     bool m_inspectChainResultReceived{false};
     json m_captureAudioResult = json::object();
     bool m_captureAudioResultReceived{false};
+    json m_recallSnapshotResult = json::object();
+    bool m_recallSnapshotResultReceived{false};
+    json m_paramRampResult = json::object();
+    bool m_paramRampResultReceived{false};
 
     // Connection state tracking
     std::string m_lastError;
@@ -1205,6 +1285,23 @@ private:
             }}
         });
 
+        // param_ramp - Animate a parameter from current value to target over time
+        tools.push_back({
+            {"name", "param_ramp"},
+            {"description", "Animate a parameter smoothly from its current value to a target value over a duration. Supports easing curves for non-linear transitions. The ramp runs in-process and is ticked each frame."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"operator", {{"type", "string"}, {"description", "Operator name (e.g., 'noise', 'bloom')"}}},
+                    {"param", {{"type", "string"}, {"description", "Parameter name (e.g., 'scale', 'threshold')"}}},
+                    {"value", {{"type", "number"}, {"description", "Target value"}}},
+                    {"duration", {{"type", "number"}, {"description", "Duration in seconds"}}},
+                    {"easing", {{"type", "string"}, {"description", "Easing curve: \"linear\", \"ease-in\", \"ease-out\", \"ease-in-out\" (default: \"linear\")"}}}
+                }},
+                {"required", json::array({"operator", "param", "value", "duration"})}
+            }}
+        });
+
         // advance_frames - Advance simulation by N frames
         tools.push_back({
             {"name", "advance_frames"},
@@ -1463,13 +1560,14 @@ private:
         // recall_snapshot - Apply a snapshot
         tools.push_back({
             {"name", "recall_snapshot"},
-            {"description", "Apply a saved snapshot to the running Vivid instance. Sets all parameter values from the snapshot. Optional crossfade duration for smooth transitions."},
+            {"description", "Apply a saved snapshot to the running Vivid instance. Sets all parameter values from the snapshot. Optional crossfade duration for smooth transitions with easing."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
                     {"path", {{"type", "string"}, {"description", "Path to project directory"}}},
                     {"name", {{"type", "string"}, {"description", "Snapshot name (or index as string)"}}},
-                    {"crossfade", {{"type", "number"}, {"description", "Crossfade duration in seconds (default: 0 = hard cut)"}}}
+                    {"crossfade", {{"type", "number"}, {"description", "Crossfade duration in seconds (default: 0 = hard cut)"}}},
+                    {"easing", {{"type", "string"}, {"description", "Easing curve: \"linear\", \"ease-in\", \"ease-out\", \"ease-in-out\" (default: \"linear\")"}}}
                 }},
                 {"required", json::array({"path", "name"})}
             }}
@@ -2323,6 +2421,64 @@ private:
             response["param"] = paramName;
             if (setResult.contains("error")) {
                 response["error"] = setResult["error"];
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "param_ramp") {
+            std::string opName = args.value("operator", "");
+            std::string paramName = args.value("param", "");
+            float targetValue = args.value("value", 0.0f);
+            float duration = args.value("duration", 1.0f);
+            std::string easing = args.value("easing", "linear");
+
+            if (opName.empty() || paramName.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Both 'operator' and 'param' are required"}}};
+                return result;
+            }
+
+            if (duration <= 0.0f) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "'duration' must be positive"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot ramp param: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Read current value to use as ramp start
+            float fromValue = 0.0f;
+            auto params = m_vivid.getParams();
+            for (const auto& p : params) {
+                if (p.value("operator", "") == opName && p.value("name", "") == paramName) {
+                    if (p.contains("value") && p["value"].is_array() && !p["value"].empty()) {
+                        fromValue = p["value"][0].get<float>();
+                    }
+                    break;
+                }
+            }
+
+            json rampResult = m_vivid.paramRamp(opName, paramName, fromValue, targetValue, duration, easing);
+
+            json response;
+            response["connected"] = true;
+            response["success"] = rampResult.value("success", false);
+            response["operator"] = opName;
+            response["param"] = paramName;
+            response["from"] = fromValue;
+            response["to"] = targetValue;
+            response["duration"] = duration;
+            response["easing"] = easing;
+            if (!rampResult.value("success", false) && rampResult.contains("message")) {
+                response["error"] = rampResult["message"];
             }
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
@@ -3475,35 +3631,22 @@ private:
             }
 
             const auto& snap = data["snapshots"][snapIdx];
+            std::string easing = args.value("easing", "linear");
 
-            // Apply params (crossfade is not supported via MCP — always hard cut)
-            // Crossfade requires the in-process SnapshotStore ticking each frame
-            int successCount = 0;
-            int failCount = 0;
-
-            if (snap.contains("values") && snap["values"].is_object()) {
-                for (auto& [opName, opParams] : snap["values"].items()) {
-                    if (!opParams.is_object()) continue;
-                    for (auto& [paramName, val] : opParams.items()) {
-                        json setResult = m_vivid.setParamImmediate(opName, paramName, val);
-                        if (setResult.value("success", false)) {
-                            successCount++;
-                        } else {
-                            failCount++;
-                        }
-                    }
-                }
-            }
+            // Use WebSocket recall_snapshot message — supports crossfade with easing
+            json wsResult = m_vivid.recallSnapshot(snapIdx, crossfade, easing);
 
             json response;
-            response["success"] = true;
+            response["success"] = wsResult.value("success", false);
             response["connected"] = true;
             response["name"] = snap.value("name", "");
             response["index"] = snapIdx;
-            response["paramsApplied"] = successCount;
-            response["paramsFailed"] = failCount;
             if (crossfade > 0.0f) {
-                response["note"] = "Crossfade is only available in-app (via PresetPanel). MCP applies hard cut.";
+                response["crossfade"] = crossfade;
+                response["easing"] = easing;
+            }
+            if (!wsResult.value("success", false)) {
+                response["error"] = wsResult.value("message", "Failed to recall snapshot");
             }
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }

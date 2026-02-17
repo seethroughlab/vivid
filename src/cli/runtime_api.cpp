@@ -217,6 +217,34 @@ void RuntimeAPI::start(int port) {
                         }
                         sendSetParamResult(opName, paramName, success);
                     }
+                    else if (type == "recall_snapshot") {
+                        int index = j.value("index", -1);
+                        float duration = j.value("duration", 0.0f);
+                        std::string easing = j.value("easing", "linear");
+                        std::cout << "[RuntimeAPI] Recall snapshot: index=" << index
+                                  << " duration=" << duration << " easing=" << easing << "\n";
+                        bool success = false;
+                        if (m_recallSnapshotCallback) {
+                            success = m_recallSnapshotCallback(index, duration, easing);
+                        }
+                        sendRecallSnapshotResult(success, success ? "" : "Failed to recall snapshot");
+                    }
+                    else if (type == "param_ramp") {
+                        std::string opName = j.value("operator", "");
+                        std::string paramName = j.value("param", "");
+                        float from = j.value("from", 0.0f);
+                        float to = j.value("to", 0.0f);
+                        float duration = j.value("duration", 1.0f);
+                        std::string easing = j.value("easing", "linear");
+                        std::cout << "[RuntimeAPI] Param ramp: " << opName << "." << paramName
+                                  << " " << from << " -> " << to << " over " << duration << "s"
+                                  << " easing=" << easing << "\n";
+                        bool success = false;
+                        if (m_paramRampCallback) {
+                            success = m_paramRampCallback(opName, paramName, from, to, duration, easing);
+                        }
+                        sendParamRampResult(success, success ? "" : "Failed to start param ramp");
+                    }
                     else if (type == "advance_frames") {
                         int count = j.value("count", 1);
                         std::cout << "[RuntimeAPI] Advance frames requested: " << count << "\n";
@@ -682,6 +710,50 @@ void RuntimeAPI::sendSetParamResult(const std::string& opName, const std::string
     j["operator"] = opName;
     j["param"] = paramName;
     j["success"] = success;
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// Snapshot recall (MCP crossfade support)
+// -------------------------------------------------------------------------
+
+void RuntimeAPI::sendRecallSnapshotResult(bool success, const std::string& message) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "recall_snapshot_result";
+    j["success"] = success;
+    if (!message.empty()) {
+        j["message"] = message;
+    }
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// Parameter ramp (MCP animated parameter control)
+// -------------------------------------------------------------------------
+
+void RuntimeAPI::sendParamRampResult(bool success, const std::string& message) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "param_ramp_result";
+    j["success"] = success;
+    if (!message.empty()) {
+        j["message"] = message;
+    }
 
     std::string msg = j.dump();
 

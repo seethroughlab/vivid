@@ -137,6 +137,7 @@ bool EventInjector::load(const std::string& path) {
             if (ev.contains("button")) event.button = ev["button"].get<int>();
             if (ev.contains("cc")) event.cc = ev["cc"].get<int>();
             if (ev.contains("channel")) event.channel = ev["channel"].get<int>();
+            if (ev.contains("easing")) event.easing = ev["easing"].get<std::string>();
 
             m_script.events.push_back(event);
         }
@@ -180,7 +181,8 @@ void EventInjector::processFrame(int frame, Context& ctx, Chain& chain) {
                 op->setParam(ev.param, val);
                 op->markDirty();
             }
-            m_activeRamps.push_back({ev.op, ev.param, ev.frame, ev.endFrame, ev.value, ev.valueTo});
+            m_activeRamps.push_back({ev.op, ev.param, ev.frame, ev.endFrame, ev.value, ev.valueTo,
+                                     EasingCurve::fromString(ev.easing)});
         } else if (ev.type == "key_press") {
             int keycode = keyNameToGLFW(ev.key);
             if (keycode != GLFW_KEY_UNKNOWN) {
@@ -224,7 +226,7 @@ void EventInjector::processFrame(int frame, Context& ctx, Chain& chain) {
         } else if (ev.type == "snapshot_recall") {
             int idx = static_cast<int>(ev.value);
             float duration = ev.valueTo;
-            chain.snapshots().recall(idx, chain, duration);
+            chain.snapshots().recall(idx, chain, duration, EasingCurve::fromString(ev.easing));
         } else if (ev.type == "mouse_click") {
             // Inject mouse position + button press; auto-releases next frame
             float px = ev.x * static_cast<float>(ctx.width());
@@ -259,9 +261,10 @@ void EventInjector::processFrame(int frame, Context& ctx, Chain& chain) {
             }
             it = m_activeRamps.erase(it);
         } else if (frame > it->startFrame) {
-            // Interpolate
+            // Interpolate with easing
             float t = static_cast<float>(frame - it->startFrame) /
                       static_cast<float>(it->endFrame - it->startFrame);
+            t = it->easingCurve.apply(t);
             float v = it->from + t * (it->to - it->from);
             Operator* op = chain.getByName(it->op);
             if (op) {
