@@ -468,6 +468,18 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                     m_impl->selectCallback(m_impl->selectedOpName);
                 }
             }
+        } else if (selectedNodeId == SCREEN_NODE_ID) {
+            m_impl->selectedOpName = "__screen__";
+            m_impl->selectedNodeId = selectedNodeId;
+            if (m_impl->selectCallback) {
+                m_impl->selectCallback("__screen__");
+            }
+        } else if (selectedNodeId == SPEAKERS_NODE_ID) {
+            m_impl->selectedOpName = "__speakers__";
+            m_impl->selectedNodeId = selectedNodeId;
+            if (m_impl->selectCallback) {
+                m_impl->selectCallback("__speakers__");
+            }
         } else if (selectedNodeId < 0) {
             // Node was deselected — notify callback with empty string
             m_impl->selectedOpName.clear();

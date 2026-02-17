@@ -101,18 +101,18 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     // Load JetBrains Mono at different sizes for UI hierarchy
     // Fonts are loaded at PHYSICAL pixel size for crisp HiDPI rendering
     // Use textHiDPI() methods which compensate for content scale
-    // Index 0: Labels (28px logical = 56px physical on 2x display)
+    // Index 0: Labels (14px logical = 28px physical on 2x display)
     m_fonts[0] = std::make_unique<FontAtlas>();
-    if (m_fonts[0]->load(ctx, fontPath, 28.0f * scale)) {
+    if (m_fonts[0]->load(ctx, fontPath, 14.0f * scale)) {
         m_canvas->setFont(0, m_fonts[0].get());
-        std::cerr << "[vivid-devtools] Loaded JetBrains Mono " << (28.0f * scale) << "px\n";
+        std::cerr << "[vivid-devtools] Loaded JetBrains Mono " << (14.0f * scale) << "px\n";
     }
 
-    // Index 1: Titles (32px logical = 64px physical on 2x display)
+    // Index 1: Titles (16px logical = 32px physical on 2x display)
     m_fonts[1] = std::make_unique<FontAtlas>();
-    if (m_fonts[1]->load(ctx, fontPath, 32.0f * scale)) {
+    if (m_fonts[1]->load(ctx, fontPath, 16.0f * scale)) {
         m_canvas->setFont(1, m_fonts[1].get());
-        std::cerr << "[vivid-devtools] Loaded JetBrains Mono " << (32.0f * scale) << "px\n";
+        std::cerr << "[vivid-devtools] Loaded JetBrains Mono " << (16.0f * scale) << "px\n";
     }
 
     // Enable HiDPI text mode since fonts are loaded at physical pixel size
@@ -188,6 +188,28 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
         if (name.empty()) {
             // Node deselected — auto-hide inspector
             hidePanel("inspector");
+            return;
+        }
+        // Handle virtual nodes (Screen, Speakers)
+        if (name == "__screen__") {
+            auto* inspector = m_panelManager->getPanelAs<InspectorPanel>("inspector");
+            if (inspector && m_ctx) {
+                inspector->setScreenMode(m_ctx);
+                showPanel("inspector");
+            }
+            return;
+        }
+        if (name == "__speakers__") {
+            if (m_ctx && m_ctx->hasChain()) {
+                Operator* audioOut = m_ctx->chain().getAudioOutput();
+                if (audioOut) {
+                    auto* inspector = m_panelManager->getPanelAs<InspectorPanel>("inspector");
+                    if (inspector) {
+                        inspector->setSelectedOperator(audioOut, "Speakers");
+                        showPanel("inspector");
+                    }
+                }
+            }
             return;
         }
         // When a node is selected, update the inspector and show it

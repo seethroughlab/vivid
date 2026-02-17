@@ -872,7 +872,8 @@ void NodeGraph::renderNode(NodeState& node) {
 
         // Pin label (vertically centered with pin) — skip if it overflows node bounds
         if (!pin.label.empty()) {
-            float labelX = pinX + pinR + 6 * m_zoom;
+            float pinGap = pinR + 2.0f * m_zoom;
+            float labelX = pinX + pinR + pinGap;
             float textW = m_canvas->measureTextScaled(pin.label, textScale);
             if (labelX + textW <= pos.x + w) {
                 float pinAscent = m_canvas->fontAscent(0) * textScale;
@@ -898,7 +899,8 @@ void NodeGraph::renderNode(NodeState& node) {
         // Pin label (right-aligned, vertically centered with pin) — skip if it overflows node bounds
         if (!pin.label.empty()) {
             float textW = m_canvas->measureTextScaled(pin.label, textScale);
-            float labelX = pinX - pinR - textW - 6 * m_zoom;
+            float pinGap = pinR + 2.0f * m_zoom;
+            float labelX = pinX - pinR - textW - pinGap;
             if (labelX >= pos.x) {
                 float outAscent = m_canvas->fontAscent(0) * textScale;
                 float outDescent = std::abs(m_canvas->fontDescent(0)) * textScale;

@@ -17,6 +17,7 @@ namespace vivid {
 
 class Operator;
 class Chain;
+class Context;
 
 /**
  * @brief Inspector panel for editing operator parameters
@@ -35,6 +36,7 @@ public:
 
     // Inspector specific
     void setSelectedOperator(Operator* op, const std::string& name);
+    void setScreenMode(Context* ctx);
     void clearSelection();
 
     /**

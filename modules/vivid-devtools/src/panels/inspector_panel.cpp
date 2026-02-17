@@ -15,6 +15,7 @@
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/chain.h>
+#include <vivid/display.h>
 #include <vivid/midi_map.h>
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/gui/gui.h>
@@ -59,6 +60,10 @@ struct InspectorPanel::Impl {
     // Context pointer
     Context* ctx = nullptr;
 
+    // Screen mode (virtual node, not a real operator)
+    bool screenMode = false;
+    Context* screenCtx = nullptr;
+
     // MIDI learn
     Chain* chain = nullptr;
     std::string projectDir;
@@ -101,6 +106,52 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // Render standard panel chrome (title bar controlled by m_display.showTitleBar)
     renderChrome(canvas, x, y, w, h, style, m_display.showTitleBar);
+
+    // Screen mode: render display mode dropdown instead of operator params
+    if (m_impl->screenMode && m_impl->screenCtx) {
+        // Font metrics
+        const int labelFont = 0;
+        float lineH = canvas.fontLineHeight(labelFont);
+        float ascent = canvas.fontAscent(labelFont);
+        if (lineH <= 0) lineH = 20.0f;
+        if (ascent <= 0) ascent = 14.0f;
+
+        const float padding = 12.0f;
+        const float sliderHeight = 20.0f;
+        const float titleBarHeight = m_display.showTitleBar ? style.titleBarHeight() : 0.0f;
+        float contentY = y + titleBarHeight;
+
+        // Header
+        canvas.text("Screen", x + padding, contentY + padding + ascent, style.textTitle, labelFont);
+        contentY += lineH + padding;
+
+        // Display Mode dropdown
+        Gui gui(canvas, input);
+        gui.style() = GuiStyle::fromUIStyle(style);
+        gui.style().labelPosition = LabelPosition::Above;
+        gui.style().valuePosition = ValuePosition::Right;
+        gui.style().padding = padding;
+        gui.style().widgetHeight = sliderHeight;
+        gui.style().valueWidth = 60.0f;
+
+        float contentAreaX = x + padding;
+        float contentAreaW = w - padding * 2;
+        float rowHeight = lineH + sliderHeight + 4.0f;
+
+        gui.beginArea(contentAreaX, contentY, contentAreaW, h - titleBarHeight - lineH - padding);
+        gui.setCursorY(contentY);
+
+        static const std::vector<std::string> displayModes = {
+            "Stretch", "Fit", "Fill", "Fill Horizontal", "Fill Vertical"
+        };
+        int modeIdx = static_cast<int>(m_impl->screenCtx->displayMode());
+        if (gui.dropdown("Display Mode", &modeIdx, displayModes)) {
+            m_impl->screenCtx->displayMode(static_cast<DisplayMode>(modeIdx));
+        }
+
+        gui.endArea();
+        return;
+    }
 
     // If no operator selected, just show empty panel
     if (!m_impl->selectedOp) {
@@ -168,6 +219,7 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     // Content area starts below the title bar
     float contentY = y + titleBarHeight;
     float contentAreaHeight = h - titleBarHeight;
+    float scrollTrackTop = contentY;  // save before contentY is mutated
     m_impl->contentHeight = totalRowsHeight + padding * 2;
 
     // Handle scroll
@@ -783,12 +835,12 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         float thumbRatio = contentAreaHeight / m_impl->contentHeight;
         float thumbH = std::max(20.0f, contentAreaHeight * thumbRatio);
         float scrollRatio = maxScroll > 0.0f ? m_impl->scrollOffset / maxScroll : 0.0f;
-        float thumbY = contentY + scrollRatio * (contentAreaHeight - thumbH);
+        float thumbY = scrollTrackTop + scrollRatio * (contentAreaHeight - thumbH);
 
         // Track
         glm::vec4 trackColor = style.sliderBg;
         trackColor.a = 0.3f;
-        canvas.fillRoundedRect(scrollbarX, contentY, scrollbarW, contentAreaHeight, 2.0f, trackColor);
+        canvas.fillRoundedRect(scrollbarX, scrollTrackTop, scrollbarW, contentAreaHeight, 2.0f, trackColor);
 
         // Thumb
         glm::vec4 thumbColor = style.textDim;
@@ -807,6 +859,18 @@ void InspectorPanel::setSelectedOperator(Operator* op, const std::string& name) 
         m_impl->selectedOp = op;
         m_impl->selectedName = name;
         m_impl->scrollOffset = 0.0f;  // Reset scroll on selection change
+        m_impl->screenMode = false;
+        m_impl->screenCtx = nullptr;
+    }
+}
+
+void InspectorPanel::setScreenMode(Context* ctx) {
+    if (m_impl) {
+        m_impl->screenMode = true;
+        m_impl->screenCtx = ctx;
+        m_impl->selectedOp = nullptr;
+        m_impl->selectedName.clear();
+        m_impl->scrollOffset = 0.0f;
     }
 }
 
@@ -815,6 +879,8 @@ void InspectorPanel::clearSelection() {
         m_impl->selectedOp = nullptr;
         m_impl->selectedName.clear();
         m_impl->scrollOffset = 0.0f;
+        m_impl->screenMode = false;
+        m_impl->screenCtx = nullptr;
     }
 }
 
