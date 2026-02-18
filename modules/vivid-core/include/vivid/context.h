@@ -1199,6 +1199,7 @@ private:
     static constexpr int MAX_KEYS = GLFW_KEY_LAST + 1;
     KeyState m_keys[MAX_KEYS];
     bool m_keyPrev[MAX_KEYS] = {};
+    bool m_keyInjected[MAX_KEYS] = {};   // Injected key state (merged with GLFW in windowed mode)
     bool m_keyPrevFrame[MAX_KEYS] = {};  // For headless mode edge detection
 
     // Character input (for text editors, terminals)

@@ -186,6 +186,31 @@ catch_discover_tests(test_snapshot
 )
 
 # -----------------------------------------------------------------------------
+# Unit Tests (hot reload)
+# -----------------------------------------------------------------------------
+
+add_executable(test_hot_reload
+    unit/test_hot_reload.cpp
+)
+
+target_link_libraries(test_hot_reload PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_hot_reload PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+)
+
+target_compile_definitions(test_hot_reload PRIVATE
+    VIVID_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+catch_discover_tests(test_hot_reload
+    PROPERTIES LABELS "unit"
+)
+
+# -----------------------------------------------------------------------------
 # Integration Tests (core)
 # -----------------------------------------------------------------------------
 

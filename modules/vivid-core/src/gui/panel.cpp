@@ -154,9 +154,8 @@ void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float
     // All dimensions in logical pixels - canvas handles scaling
     float cornerRadius = style.panelCornerRadius();
 
-    // Background - use fully opaque to prevent bleed-through
+    // Background - use style alpha (default 0.95 from UIStyle)
     glm::vec4 bgColor = style.panelBg;
-    bgColor.a = 1.0f;  // Force opaque
 
     if (cornerRadius > 0.0f) {
         canvas.fillRoundedRect(x, y, w, h, cornerRadius, bgColor);
@@ -166,10 +165,9 @@ void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float
         canvas.strokeRect(x, y, w, h, 1.0f, style.panelBorder);
     }
 
-    // Title bar - use fully opaque
+    // Title bar
     if (showTitleBar) {
         glm::vec4 headerColor = style.headerBg;
-        headerColor.a = 1.0f;  // Force opaque
         canvas.fillRoundedRectTop(x, y, w, style.titleBarHeight(), cornerRadius, headerColor);
 
         // Title text - vertically centered using font metrics

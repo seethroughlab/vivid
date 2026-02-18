@@ -100,34 +100,16 @@ void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float w = renderBounds.z;
     float h = renderBounds.w;
 
-    canvas.setLayer(UILayer::FloatingPanels);
-
-    // Semi-transparent background (doesn't fully obscure output)
-    float cornerRadius = style.panelCornerRadius();
-    glm::vec4 bgColor = style.panelBg;
-    bgColor.a = 0.85f;
-
-    if (cornerRadius > 0.0f) {
-        canvas.fillRoundedRect(x, y, w, h, cornerRadius, bgColor);
-        canvas.strokeRoundedRect(x, y, w, h, cornerRadius, 1.0f, style.panelBorder);
-    } else {
-        canvas.fillRect(x, y, w, h, bgColor);
-        canvas.strokeRect(x, y, w, h, 1.0f, style.panelBorder);
-    }
-
-    // Title bar
-    float titleH = style.titleBarHeight();
-    glm::vec4 headerColor = style.headerBg;
-    headerColor.a = 0.9f;
-    canvas.fillRoundedRectTop(x, y, w, titleH, cornerRadius, headerColor);
-    canvas.text(m_config.title, x + 10, y + 18, style.textPrimary, 0);
+    // Render standard panel chrome (background, title bar)
+    renderChrome(canvas, x, y, w, h, style, m_display.showTitleBar);
 
     // Close button (X) on title bar
-    {
+    if (m_display.showTitleBar) {
+        float titleBarHeight = style.titleBarHeight();
         float closeSize = 8.0f;
         float closePadding = 12.0f;
         float closeX = x + w - closePadding - closeSize;
-        float closeY = y + titleH / 2;
+        float closeY = y + titleBarHeight / 2;
 
         float hitPadding = 4.0f;
         bool overClose = input.mousePos.x >= closeX - closeSize - hitPadding &&
@@ -150,6 +132,8 @@ void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         canvas.line(closeX + closeSize, closeY - closeSize,
                     closeX - closeSize, closeY + closeSize, lineWidth, closeColor);
     }
+
+    float titleH = style.titleBarHeight();
 
     // Rebuild snapshot from ring buffer if dirty
     {

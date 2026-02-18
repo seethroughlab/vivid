@@ -77,7 +77,7 @@ struct ChainConfig {
     extern "C" { \
         VIVID_EXPORT void vivid_setup(vivid::Context& ctx) { setup_fn(ctx); } \
         VIVID_EXPORT void vivid_update(vivid::Context& ctx) { update_fn(ctx); } \
-    } \
-    VIVID_EXPORT vivid::ChainConfig vivid_config() { return config; }
+        VIVID_EXPORT vivid::ChainConfig vivid_config() { return config; } \
+    }
 
 } // namespace vivid

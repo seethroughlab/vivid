@@ -1707,6 +1707,7 @@ ParseResult parseArgs(int argc, char** argv) {
     // 'check' subcommand — run assertions against a project
     std::string checkProjectPath;
     std::string checkAssertionPath;
+    std::string checkScript;
     int checkFrame = -1;
     bool checkVerbose = false;
     float checkDuration = 0.0f;
@@ -1714,6 +1715,7 @@ ParseResult parseArgs(int argc, char** argv) {
     auto* checkCmd = app.add_subcommand("check", "Run assertions against a project");
     checkCmd->add_option("project", checkProjectPath, "Project path")->required();
     checkCmd->add_option("--assertions", checkAssertionPath, "Assertion file (default: vivid-assertions.json in project)");
+    checkCmd->add_option("--script", checkScript, "Playback script JSON file for event injection");
     checkCmd->add_option("--frame", checkFrame, "Frame to evaluate at (overrides assertion file)");
     checkCmd->add_flag("--verbose", checkVerbose, "Print each assertion result");
     checkCmd->add_option("--duration", checkDuration, "Run chain for N seconds before evaluating assertions")
@@ -1721,6 +1723,7 @@ ParseResult parseArgs(int argc, char** argv) {
 
     // 'inspect' subcommand — dump inspection data as JSON
     std::string inspectProjectPath;
+    std::string inspectScript;
     int inspectFrame = -1;
     std::string inspectOutDir;
     bool inspectPerOperator = false;
@@ -1731,6 +1734,7 @@ ParseResult parseArgs(int argc, char** argv) {
 
     auto* inspectCmd = app.add_subcommand("inspect", "Dump inspection data as JSON");
     inspectCmd->add_option("project", inspectProjectPath, "Project path")->required();
+    inspectCmd->add_option("--script", inspectScript, "Playback script JSON file for event injection");
     inspectCmd->add_option("--frame", inspectFrame, "Frame to inspect (default: 10)");
     inspectCmd->add_option("--out", inspectOutDir, "Output directory for JSON + snapshot");
     inspectCmd->add_flag("--per-operator", inspectPerOperator, "Include texture analysis for each operator");
@@ -1888,9 +1892,11 @@ ParseResult parseArgs(int argc, char** argv) {
         AppConfig config;
         config.projectPath = checkProjectPath;
         config.checkMode = true;
+        config.headless = true;
         config.checkFrame = checkFrame;
         config.checkDuration = checkDuration;
         config.verboseCheck = checkVerbose;
+        if (!checkScript.empty()) config.exportScript = checkScript;
 
         // Resolve assertion file path
         if (!checkAssertionPath.empty()) {
@@ -1915,11 +1921,13 @@ ParseResult parseArgs(int argc, char** argv) {
         AppConfig config;
         config.projectPath = inspectProjectPath;
         config.inspectMode = true;
+        config.headless = true;
         config.checkFrame = inspectFrame;
         config.inspectOutDir = inspectOutDir;
         config.inspectPerOperator = inspectPerOperator;
         config.inspectDuration = inspectDuration;
         config.inspectSamples = inspectSamples;
+        if (!inspectScript.empty()) config.exportScript = inspectScript;
 
         // Parse inspect resolution
         if (!inspectResolution.empty()) {

@@ -35,6 +35,7 @@ Context::Context(GLFWwindow* window, WGPUDevice device, WGPUQueue queue)
 
     // Initialize key states
     std::memset(m_keyPrev, 0, sizeof(m_keyPrev));
+    std::memset(m_keyInjected, 0, sizeof(m_keyInjected));
 }
 
 Context::Context(WGPUDevice device, WGPUQueue queue, int width, int height)
@@ -60,6 +61,7 @@ Context::Context(WGPUDevice device, WGPUQueue queue, int width, int height)
 
     // Initialize key states
     std::memset(m_keyPrev, 0, sizeof(m_keyPrev));
+    std::memset(m_keyInjected, 0, sizeof(m_keyInjected));
 }
 
 Context::~Context() {
@@ -107,13 +109,14 @@ void Context::beginFrame() {
             m_mouseButtonPrev[i] = current;
         }
 
-        // Update keyboard
+        // Update keyboard (merge GLFW state with injected key state from scripts)
         for (int i = 0; i < MAX_KEYS; ++i) {
-            bool current = glfwGetKey(m_window, i) == GLFW_PRESS;
+            bool current = glfwGetKey(m_window, i) == GLFW_PRESS || m_keyInjected[i];
             m_keys[i].pressed = current && !m_keyPrev[i];
             m_keys[i].released = !current && m_keyPrev[i];
             m_keys[i].held = current;
             m_keyPrev[i] = current;
+            m_keyInjected[i] = false;  // Clear after reading
         }
     } else {
         // Headless mode: time and input are injected externally
@@ -130,7 +133,7 @@ void Context::beginFrame() {
         }
 
         for (int i = 0; i < MAX_KEYS; ++i) {
-            bool current = m_keyPrev[i];  // Current state from injection
+            bool current = m_keyInjected[i];  // Current state from injection
             m_keys[i].pressed = current && !m_keyPrevFrame[i];
             m_keys[i].released = !current && m_keyPrevFrame[i];
             m_keys[i].held = current;
@@ -471,7 +474,7 @@ void Context::injectMouseButton(int button, bool pressed) {
 
 void Context::injectKeyState(int keycode, bool pressed) {
     if (keycode >= 0 && keycode < MAX_KEYS) {
-        m_keyPrev[keycode] = pressed;
+        m_keyInjected[keycode] = pressed;
     }
 }
 
