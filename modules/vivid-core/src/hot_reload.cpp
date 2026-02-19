@@ -479,6 +479,14 @@ bool HotReload::compile() {
         }
     }
 
+    // Link against wgpu_native.lib (required for GPU handle symbols like wgpuTextureRelease)
+    if (isDevelopmentMode) {
+        fs::path wgpuLib = rootDir / "build" / "_deps" / "wgpu" / "lib" / "wgpu_native.lib";
+        if (fs::exists(wgpuLib)) {
+            clCmd << "\"" << wgpuLib.string() << "\" ";
+        }
+    }
+
     // Link user libraries from ~/.vivid/libs/
     for (const auto& libDir : userLibPaths) {
         clCmd << "/LIBPATH:\"" << libDir.string() << "\" ";
