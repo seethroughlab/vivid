@@ -1315,10 +1315,12 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                     started = mlc.cliRecorder.startWithAudio(mlc.recordPath, recW, recH,
                                                          mlc.recordFps, mlc.recordCodec,
                                                          AUDIO_SAMPLE_RATE, AUDIO_CHANNELS);
-                    if (started) {
-                        // Start audio recording tap (captures audio during playback)
+                    if (started && !mlc.exportMode) {
+                        // Live recording: use tap to capture audio from hardware callback
                         mlc.ctx->chain().startAudioRecordingTap();
                     }
+                    // Export mode: audio is generated synchronously per frame via
+                    // generateAudioForExport(), so no tap is needed.
                 } else {
                     started = mlc.cliRecorder.start(mlc.recordPath, recW, recH, mlc.recordFps, mlc.recordCodec);
                 }
@@ -1445,27 +1447,38 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             if (outputTex) {
                 mlc.cliRecorder.captureFrame(mlc.device, mlc.queue, outputTex);
 
-                // Capture audio if enabled (using non-blocking tap)
+                // Capture audio if enabled
                 if (mlc.cliRecorder.hasAudio()) {
                     static std::vector<float> cliAudioBuffer;
-                    constexpr uint32_t MAX_FRAMES_PER_CALL = 4096;
-                    if (cliAudioBuffer.size() < MAX_FRAMES_PER_CALL * AUDIO_CHANNELS) {
-                        cliAudioBuffer.resize(MAX_FRAMES_PER_CALL * AUDIO_CHANNELS);
-                    }
 
-                    // Pop whatever audio is available (non-blocking)
-                    uint32_t framesRead = mlc.ctx->chain().popAudioRecordedSamples(
-                        cliAudioBuffer.data(), MAX_FRAMES_PER_CALL);
-                    if (framesRead > 0) {
-                        mlc.cliRecorder.pushAudioSamples(cliAudioBuffer.data(), framesRead);
+                    if (mlc.exportMode) {
+                        // Export mode: generate audio synchronously, frame-locked to video.
+                        // This ensures audio duration exactly matches video duration.
+                        uint32_t audioFramesPerVideoFrame = AUDIO_SAMPLE_RATE / mlc.exportFps;
+                        if (cliAudioBuffer.size() < audioFramesPerVideoFrame * AUDIO_CHANNELS) {
+                            cliAudioBuffer.resize(audioFramesPerVideoFrame * AUDIO_CHANNELS);
+                        }
+                        mlc.ctx->chain().generateAudioForExport(
+                            cliAudioBuffer.data(), audioFramesPerVideoFrame);
+                        mlc.cliRecorder.pushAudioSamples(
+                            cliAudioBuffer.data(), audioFramesPerVideoFrame);
 
-                        // Accumulate for audio analysis sidecar (export mode only)
-                        if (mlc.exportMode) {
-                            size_t sampleCount = framesRead * AUDIO_CHANNELS;
-                            mlc.exportAudioSidecarBuffer.insert(
-                                mlc.exportAudioSidecarBuffer.end(),
-                                cliAudioBuffer.data(),
-                                cliAudioBuffer.data() + sampleCount);
+                        // Accumulate for audio analysis sidecar
+                        size_t sampleCount = audioFramesPerVideoFrame * AUDIO_CHANNELS;
+                        mlc.exportAudioSidecarBuffer.insert(
+                            mlc.exportAudioSidecarBuffer.end(),
+                            cliAudioBuffer.data(),
+                            cliAudioBuffer.data() + sampleCount);
+                    } else {
+                        // Live recording: pop from real-time tap (non-blocking)
+                        constexpr uint32_t MAX_FRAMES_PER_CALL = 4096;
+                        if (cliAudioBuffer.size() < MAX_FRAMES_PER_CALL * AUDIO_CHANNELS) {
+                            cliAudioBuffer.resize(MAX_FRAMES_PER_CALL * AUDIO_CHANNELS);
+                        }
+                        uint32_t framesRead = mlc.ctx->chain().popAudioRecordedSamples(
+                            cliAudioBuffer.data(), MAX_FRAMES_PER_CALL);
+                        if (framesRead > 0) {
+                            mlc.cliRecorder.pushAudioSamples(cliAudioBuffer.data(), framesRead);
                         }
                     }
                 }
@@ -1480,7 +1493,9 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                                   << mlc.cliRecorder.duration() << "s" << std::endl;
                     }
                     if (mlc.exportMode) mlc.ctx->setRecordingMode(false);
-                    mlc.ctx->chain().stopAudioRecordingTap();  // Stop tap before stopping recorder
+                    if (!mlc.exportMode) {
+                        mlc.ctx->chain().stopAudioRecordingTap();  // Stop tap (live recording only)
+                    }
                     mlc.cliRecorder.stop();
 
                     // Write audio analysis sidecar JSON (export mode with audio)
