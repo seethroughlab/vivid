@@ -148,7 +148,7 @@ set(VIVID_CORE_LIB_SOURCES
 
 # Hot-reload is always included in vivid-core (used by dev build)
 # Production bundles use vivid-production which doesn't call HotReload
-list(APPEND VIVID_CORE_LIB_SOURCES src/hot_reload.cpp)
+list(APPEND VIVID_CORE_LIB_SOURCES src/hot_reload.cpp src/gpu_handle.cpp)
 
 # Platform-specific library sources
 if(APPLE)

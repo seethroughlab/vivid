@@ -42,60 +42,21 @@ namespace vivid {
 template<typename T>
 struct WGPUReleaseTrait;
 
-template<>
-struct WGPUReleaseTrait<WGPUTexture> {
-    static void release(WGPUTexture h) { if (h) wgpuTextureRelease(h); }
-};
+// Declarations only — implementations in gpu_handle.cpp (vivid-core).
+// This ensures wgpu release symbols are resolved from vivid-core.dll on Windows,
+// rather than requiring chain DLLs to link wgpu_native directly.
 
-template<>
-struct WGPUReleaseTrait<WGPUTextureView> {
-    static void release(WGPUTextureView h) { if (h) wgpuTextureViewRelease(h); }
-};
-
-template<>
-struct WGPUReleaseTrait<WGPUBuffer> {
-    static void release(WGPUBuffer h) { if (h) wgpuBufferRelease(h); }
-};
-
-template<>
-struct WGPUReleaseTrait<WGPURenderPipeline> {
-    static void release(WGPURenderPipeline h) { if (h) wgpuRenderPipelineRelease(h); }
-};
-
-template<>
-struct WGPUReleaseTrait<WGPUComputePipeline> {
-    static void release(WGPUComputePipeline h) { if (h) wgpuComputePipelineRelease(h); }
-};
-
-template<>
-struct WGPUReleaseTrait<WGPUBindGroup> {
-    static void release(WGPUBindGroup h) { if (h) wgpuBindGroupRelease(h); }
-};
-
-template<>
-struct WGPUReleaseTrait<WGPUBindGroupLayout> {
-    static void release(WGPUBindGroupLayout h) { if (h) wgpuBindGroupLayoutRelease(h); }
-};
-
-template<>
-struct WGPUReleaseTrait<WGPUSampler> {
-    static void release(WGPUSampler h) { if (h) wgpuSamplerRelease(h); }
-};
-
-template<>
-struct WGPUReleaseTrait<WGPUShaderModule> {
-    static void release(WGPUShaderModule h) { if (h) wgpuShaderModuleRelease(h); }
-};
-
-template<>
-struct WGPUReleaseTrait<WGPUPipelineLayout> {
-    static void release(WGPUPipelineLayout h) { if (h) wgpuPipelineLayoutRelease(h); }
-};
-
-template<>
-struct WGPUReleaseTrait<WGPUQuerySet> {
-    static void release(WGPUQuerySet h) { if (h) wgpuQuerySetRelease(h); }
-};
+template<> struct WGPUReleaseTrait<WGPUTexture>         { static void release(WGPUTexture h); };
+template<> struct WGPUReleaseTrait<WGPUTextureView>     { static void release(WGPUTextureView h); };
+template<> struct WGPUReleaseTrait<WGPUBuffer>          { static void release(WGPUBuffer h); };
+template<> struct WGPUReleaseTrait<WGPURenderPipeline>  { static void release(WGPURenderPipeline h); };
+template<> struct WGPUReleaseTrait<WGPUComputePipeline> { static void release(WGPUComputePipeline h); };
+template<> struct WGPUReleaseTrait<WGPUBindGroup>       { static void release(WGPUBindGroup h); };
+template<> struct WGPUReleaseTrait<WGPUBindGroupLayout> { static void release(WGPUBindGroupLayout h); };
+template<> struct WGPUReleaseTrait<WGPUSampler>         { static void release(WGPUSampler h); };
+template<> struct WGPUReleaseTrait<WGPUShaderModule>    { static void release(WGPUShaderModule h); };
+template<> struct WGPUReleaseTrait<WGPUPipelineLayout>  { static void release(WGPUPipelineLayout h); };
+template<> struct WGPUReleaseTrait<WGPUQuerySet>        { static void release(WGPUQuerySet h); };
 
 // =============================================================================
 // RAII Handle Wrapper
