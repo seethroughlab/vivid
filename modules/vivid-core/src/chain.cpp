@@ -169,6 +169,13 @@ uint32_t Chain::popAudioRecordedSamples(float* output, uint32_t maxFrames) {
     return m_audioOutput->popRecordedSamples(output, maxFrames);
 }
 
+void Chain::pauseAudioPlayback() {
+    if (m_audioOutput) {
+        m_audioOutput->setAutoPlay(false);
+        m_audioOutput->pause();
+    }
+}
+
 void Chain::buildDependencyGraph() {
     // For each operator, find which other operators it depends on
     // by looking at its inputs

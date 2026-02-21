@@ -186,6 +186,10 @@ public:
     /// @brief Pause audio playback
     void pause();
 
+    /// @brief Enable/disable auto-play on first audio
+    /// Set to false before pausing to prevent process() from restarting the device.
+    void setAutoPlay(bool autoPlay) { m_autoPlay = autoPlay; }
+
     /// @brief Check if currently playing
     bool isPlaying() const;
 

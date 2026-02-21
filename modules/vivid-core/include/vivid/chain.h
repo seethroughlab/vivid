@@ -307,6 +307,15 @@ public:
     void stopAudioRecordingTap();
 
     /**
+     * @brief Pause audio hardware playback for export mode
+     *
+     * Disables auto-play and pauses the miniaudio device so that
+     * generateAudioForExport() is the sole caller of processBlock(),
+     * preventing data races with the audio callback thread.
+     */
+    void pauseAudioPlayback();
+
+    /**
      * @brief Pop recorded audio samples from the tap
      * @param output Buffer to fill
      * @param maxFrames Maximum frames to read

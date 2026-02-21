@@ -50,6 +50,11 @@ struct VideoExporter::Impl {
     std::queue<AudioQueueEntry> audioEntries;
     std::mutex audioMutex;
     std::atomic<bool> audioWriterRunning{false};
+
+    // Audio write tracking (reset each export session)
+    int audioSuccessCount = 0;
+    int audioFailCount = 0;
+    float audioLastWrittenTime = 0;
 };
 
 VideoExporter::VideoExporter() {
@@ -214,6 +219,9 @@ bool VideoExporter::startWithAudio(const std::string& path, int width, int heigh
     m_impl->finalized = false;
     m_audioSampleRate = audioSampleRate;
     m_audioChannels = audioChannels;
+    m_impl->audioSuccessCount = 0;
+    m_impl->audioFailCount = 0;
+    m_impl->audioLastWrittenTime = 0;
 
     // Create asset writer
     NSURL* outputURL = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path.c_str()]];
@@ -335,7 +343,8 @@ bool VideoExporter::startWithAudio(const std::string& path, int width, int heigh
 // Note: Uses AVAssetWriterInput* directly to avoid referencing private Impl type
 static void writeAudioEntryImpl(AVAssetWriterInput* audioInput, AVAssetWriter* assetWriter,
                                 const AudioQueueEntry& entry,
-                                uint32_t audioChannels, uint32_t audioSampleRate) {
+                                uint32_t audioChannels, uint32_t audioSampleRate,
+                                int& successCount, int& failCount, float& lastWrittenTime) {
     @autoreleasepool {
         // Create audio format description
         AudioStreamBasicDescription asbd = {};
@@ -396,11 +405,6 @@ static void writeAudioEntryImpl(AVAssetWriterInput* audioInput, AVAssetWriter* a
         // Append to audio track
         BOOL success = [audioInput appendSampleBuffer:sampleBuffer];
         CFRelease(sampleBuffer);
-
-        // Track success/failure counts
-        static int successCount = 0;
-        static int failCount = 0;
-        static float lastWrittenTime = 0;
 
         if (success) {
             successCount++;
@@ -486,7 +490,8 @@ void VideoExporter::pushAudioSamples(const float* samples, uint32_t frameCount) 
                     impl->audioEntries.pop();
                 }
 
-                writeAudioEntryImpl(strongInput, strongWriter, entry, channels, sampleRate);
+                writeAudioEntryImpl(strongInput, strongWriter, entry, channels, sampleRate,
+                                    impl->audioSuccessCount, impl->audioFailCount, impl->audioLastWrittenTime);
             }
         });
     }
@@ -942,7 +947,8 @@ void VideoExporter::stop() {
                 m_impl->audioEntries.pop();
             }
 
-            writeAudioEntryImpl(m_impl->audioInput, m_impl->assetWriter, entry, m_audioChannels, m_audioSampleRate);
+            writeAudioEntryImpl(m_impl->audioInput, m_impl->assetWriter, entry, m_audioChannels, m_audioSampleRate,
+                                m_impl->audioSuccessCount, m_impl->audioFailCount, m_impl->audioLastWrittenTime);
             drainedCount++;
         }
 
