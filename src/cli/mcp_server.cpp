@@ -1160,7 +1160,7 @@ private:
         // capture_snapshot - Render to PNG
         tools.push_back({
             {"name", "capture_snapshot"},
-            {"description", "Render a project to PNG image(s). Useful for testing and verification."},
+            {"description", "Render a project to PNG image(s). Useful for testing and verification. Note: Claude Code users can use `vivid <path> --snapshot <file>` via Bash for faster results."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
@@ -1175,7 +1175,7 @@ private:
         // validate_chain - Check if chain compiles
         tools.push_back({
             {"name", "validate_chain"},
-            {"description", "Check if a project's chain.cpp compiles without running it. Returns compilation errors if any. IMPORTANT: Use this frequently during development! Validate after every 30-50 lines of new code, or after adding each new operator. Catching errors early is much easier than debugging 700 lines at once."},
+            {"description", "Check if a project's chain.cpp compiles without running it. Returns compilation errors if any. IMPORTANT: Use this frequently during development! Validate after every 30-50 lines of new code, or after adding each new operator. Catching errors early is much easier than debugging 700 lines at once. Note: Claude Code users can use `vivid build <path>` via Bash for faster results."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
@@ -1188,7 +1188,7 @@ private:
         // bundle_project - Package as standalone app
         tools.push_back({
             {"name", "bundle_project"},
-            {"description", "Bundle a Vivid project as a standalone application."},
+            {"description", "Bundle a Vivid project as a standalone application. Note: Claude Code users can use `vivid bundle <path>` via Bash for faster results."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
@@ -1433,7 +1433,8 @@ private:
                 {"type", "object"},
                 {"properties", {
                     {"outputPath", {{"type", "string"}, {"description", "Path to save the WAV file (default: /tmp/vivid_capture.wav)"}}},
-                    {"duration", {{"type", "number"}, {"description", "Duration in seconds to capture (default: 1.0, max: 30.0)"}}}
+                    {"duration", {{"type", "number"}, {"description", "Duration in seconds to capture (default: 1.0, max: 300.0). For long renders, prefer export --audio-only for deterministic results."}}}
+
                 }}
             }}
         });
@@ -1633,7 +1634,7 @@ private:
         // export_video - Export video from a project
         tools.push_back({
             {"name", "export_video"},
-            {"description", "Export a Vivid project to video. Runs headless rendering with optional playback script for scripted parameter changes and events. Returns structured JSON with output path, file size, and any warnings. Use --script with a vivid-project.json events file to automate parameter changes during export."},
+            {"description", "Export a Vivid project to video. Runs headless rendering with optional playback script for scripted parameter changes and events. Returns structured JSON with output path, file size, and any warnings. Use --script with a vivid-project.json events file to automate parameter changes during export. Note: Claude Code users can use `vivid export <path> -o <file> --duration <s>` via Bash for faster results."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
@@ -1644,7 +1645,9 @@ private:
                     {"fps", {{"type", "number"}, {"description", "Frame rate (default: 60)"}}},
                     {"codec", {{"type", "string"}, {"description", "Video codec: h264, h265, prores (default: h264)"}}},
                     {"audio", {{"type", "boolean"}, {"description", "Include audio track (default: false)"}}},
-                    {"resolution", {{"type", "string"}, {"description", "Render resolution (e.g., 1920x1080)"}}}
+                    {"resolution", {{"type", "string"}, {"description", "Render resolution (e.g., 1920x1080)"}}},
+                    {"start", {{"type", "number"}, {"description", "Start time in seconds (skips ahead before recording)"}}},
+                    {"section", {{"type", "string"}, {"description", "Export a specific section by name (requires Song operator, overrides start/duration)"}}}
                 }},
                 {"required", json::array({"path", "output", "duration"})}
             }}
@@ -1656,7 +1659,8 @@ private:
             {"description", "Export a Vivid project's audio to a WAV file. "
                             "Runs headless deterministic rendering (faster than real-time). "
                             "Returns file path, file size, and audio analysis metrics. "
-                            "No running Vivid instance needed."},
+                            "No running Vivid instance needed. "
+                            "Note: Claude Code users can use `vivid export <path> -o <file> --audio-only --duration <s>` via Bash for faster results."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
@@ -1670,7 +1674,13 @@ private:
                         {"description", "Simulation frame rate (default: 60)"}}},
                     {"script", {{"type", "string"},
                         {"description",
-                            "Path to playback script JSON (optional)"}}}
+                            "Path to playback script JSON (optional)"}}},
+                    {"start", {{"type", "number"},
+                        {"description",
+                            "Start time in seconds (skips ahead before recording)"}}},
+                    {"section", {{"type", "string"},
+                        {"description",
+                            "Export a specific section by name (requires Song operator, overrides start/duration)"}}}
                 }},
                 {"required", json::array({"path", "output", "duration"})}
             }}
@@ -2838,7 +2848,7 @@ private:
         else if (name == "capture_audio") {
             std::string outputPath = args.value("outputPath", "/tmp/vivid_capture.wav");
             float duration = args.value("duration", 1.0f);
-            duration = std::max(0.01f, std::min(30.0f, duration));
+            duration = std::max(0.01f, std::min(300.0f, duration));
 
             auto connState = m_vivid.getConnectionState();
             if (!connState.connected) {
@@ -3825,8 +3835,10 @@ private:
             std::string codec = args.value("codec", "");
             bool audio = args.value("audio", false);
             std::string resolution = args.value("resolution", "");
+            float start = args.value("start", 0.0f);
+            std::string section = args.value("section", "");
 
-            if (projectPath.empty() || outputPath.empty() || duration <= 0.0f) {
+            if (projectPath.empty() || outputPath.empty() || (duration <= 0.0f && section.empty())) {
                 result["isError"] = true;
                 result["content"] = {{{"type", "text"}, {"text", "path, output, and duration (> 0) are required"}}};
                 return result;
@@ -3857,6 +3869,14 @@ private:
             if (!resolution.empty()) {
                 cmdArgs.push_back("--resolution");
                 cmdArgs.push_back(resolution);
+            }
+            if (start > 0.0f) {
+                cmdArgs.push_back("--start");
+                cmdArgs.push_back(std::to_string(start));
+            }
+            if (!section.empty()) {
+                cmdArgs.push_back("--section");
+                cmdArgs.push_back(section);
             }
 
             auto cmdResult = runCommand(cmdArgs, 600000);  // 10 minute timeout
@@ -3921,8 +3941,10 @@ private:
             float duration = args.value("duration", 0.0f);
             std::string script = args.value("script", "");
             float fps = args.value("fps", 0.0f);
+            float start = args.value("start", 0.0f);
+            std::string section = args.value("section", "");
 
-            if (projectPath.empty() || outputPath.empty() || duration <= 0.0f) {
+            if (projectPath.empty() || outputPath.empty() || (duration <= 0.0f && section.empty())) {
                 result["isError"] = true;
                 result["content"] = {{{"type", "text"},
                     {"text", "path, output, and duration (> 0) are required"}}};
@@ -3943,6 +3965,14 @@ private:
             if (fps > 0.0f) {
                 cmdArgs.push_back("--fps");
                 cmdArgs.push_back(std::to_string(fps));
+            }
+            if (start > 0.0f) {
+                cmdArgs.push_back("--start");
+                cmdArgs.push_back(std::to_string(start));
+            }
+            if (!section.empty()) {
+                cmdArgs.push_back("--section");
+                cmdArgs.push_back(section);
             }
 
             auto cmdResult = runCommand(cmdArgs, 600000);  // 10 min timeout

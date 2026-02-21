@@ -154,7 +154,9 @@ vivid export . -o /tmp/preview.mp4 --duration 15
 
 Only export when you've iterated to a point worth showing. Exporting is slow.
 
-## Key CLI Commands
+## CLI vs MCP Tools
+
+Use **CLI via Bash** for spawn-and-exit tasks (faster, no indirection):
 
 ```bash
 vivid build .                              # Compile gate (must pass first)
@@ -164,8 +166,16 @@ vivid inspect . --duration 2 --samples 5   # Multi-sample over 2s
 vivid check .                              # Run assertions from vivid-assertions.json
 vivid check . --duration 2                 # Allow warmup before checking
 vivid export . -o out.mp4 --duration 10    # Export video
+vivid export . -o out.wav --audio-only --duration 10  # Export audio only
 vivid params .                             # List tweakable parameters as JSON
 ```
+
+Use **MCP tools** for:
+- **Live instance** (requires `run_project`): `set_param`, `capture_frame`, `capture_audio`, `sweep_param`, `solo_operator`, `inspect_chain`, `get_performance_stats`, etc.
+- **Slider workflow**: `get_pending_changes` / `clear_pending_changes` / `get_runtime_status`
+- **Reference**: `get_operator`, `get_example`, `get_recipe`, `search_docs`
+
+Some MCP tools (`validate_chain`, `export_video`, `export_audio`, `capture_snapshot`) just shell out to CLI commands — prefer Bash directly for efficiency.
 
 ## Assertions
 
@@ -1749,6 +1759,8 @@ ParseResult parseArgs(int argc, char** argv) {
     std::string exportScript;
     float exportDuration = 0.0f;
     float exportFps = 60.0f;
+    float exportStart = 0.0f;
+    float exportEnd = 0.0f;
     bool exportAudio = false;
     bool exportAudioOnly = false;
     std::string exportCodec = "h264";
@@ -1761,6 +1773,10 @@ ParseResult parseArgs(int argc, char** argv) {
     exportCmd->add_option("--script", exportScript, "Playback script JSON file");
     exportCmd->add_option("--duration", exportDuration, "Duration in seconds")
              ->check(CLI::Range(0.01f, 86400.0f));
+    exportCmd->add_option("--start", exportStart, "Start time in seconds (skips ahead before recording)")
+             ->check(CLI::Range(0.0f, 86400.0f));
+    exportCmd->add_option("--end", exportEnd, "End time in seconds (alternative to --duration when used with --start)")
+             ->check(CLI::Range(0.01f, 86400.0f));
     exportCmd->add_option("--fps", exportFps, "Frame rate (default: 60)")
              ->check(CLI::Range(0.1f, 240.0f));
     exportCmd->add_flag("--audio", exportAudio, "Include audio track");
@@ -1769,6 +1785,8 @@ ParseResult parseArgs(int argc, char** argv) {
              ->type_name("CODEC");
     exportCmd->add_option("--resolution", exportResolution, "Render resolution (e.g., 1920x1080)")
              ->type_name("WxH");
+    std::string exportSection;
+    exportCmd->add_option("--section", exportSection, "Export a specific section by name (requires Song operator)");
     exportCmd->add_flag("--quiet", exportQuiet, "Suppress progress output");
 
     // 'build' subcommand — compile chain and report structured errors
@@ -1956,10 +1974,22 @@ ParseResult parseArgs(int argc, char** argv) {
         config.exportMode = true;
         config.exportOutput = exportOutput;
         config.exportScript = exportScript;
+        config.exportStart = exportStart;
+        // --end computes duration relative to start
+        if (exportEnd > 0.0f && exportDuration <= 0.0f) {
+            if (exportEnd <= exportStart) {
+                std::cerr << "Error: --end (" << exportEnd << ") must be greater than --start (" << exportStart << ")\n";
+                result.handled = true;
+                result.exitCode = 1;
+                return result;
+            }
+            exportDuration = exportEnd - exportStart;
+        }
         config.exportDuration = exportDuration;
         config.exportFps = exportFps;
         config.exportAudio = exportAudio;
         config.exportAudioOnly = exportAudioOnly;
+        config.exportSection = exportSection;
         config.exportQuiet = exportQuiet;
 
         // Parse export resolution

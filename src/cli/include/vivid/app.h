@@ -75,6 +75,8 @@ struct AppConfig {
     bool exportAudioOnly = false;    // audio-only export (WAV, no video)
     ExportCodec exportCodec = ExportCodec::H264;
     bool exportQuiet = false;        // suppress progress output
+    float exportStart = 0.0f;        // start time in seconds (warmup, then record)
+    std::string exportSection;       // section name (resolved to start/duration after chain loads)
 
     // Capture composite texture (with devtools UI) instead of chain output
     bool snapshotUI = false;

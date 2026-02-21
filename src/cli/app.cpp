@@ -831,6 +831,15 @@ struct MainLoopContext {
     bool hasEventScript = false;
     int exportTotalFrames = 0;   // Total frames to export (duration * fps)
 
+    // Export section (--section flag: resolved to start/duration after chain loads)
+    std::string exportSection;
+
+    // Export warmup (--start flag: process frames without recording)
+    float exportStart = 0.0f;
+    int exportWarmupFrames = 0;    // frames to process silently before recording
+    int exportWarmupCount = 0;     // current warmup frame
+    bool exportWarmupDone = false;
+
     // Audio-only export (WAV, no video)
     bool exportAudioOnly = false;
     bool audioOnlyStarted = false;
@@ -1312,8 +1321,113 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                 mlc.editorBridge->sendOperatorList(mlc.gatherOperatorInfo());
             }
 
+            // Export --section: resolve section name to start/duration using Song + Clock inspect data
+            if (mlc.exportMode && !mlc.exportSection.empty()) {
+                // Find Song and Clock operators by checking their type name
+                Operator* songOp = nullptr;
+                Operator* clockOp = nullptr;
+                for (const auto& opName : mlc.ctx->chain().operatorNames()) {
+                    auto* op = mlc.ctx->chain().getByName(opName);
+                    if (op) {
+                        if (op->name() == "Song" && !songOp) songOp = op;
+                        if (op->name() == "Clock" && !clockOp) clockOp = op;
+                    }
+                }
+
+                bool sectionResolved = false;
+                if (!songOp) {
+                    std::cerr << "Error: --section requires a Song operator in the chain\n";
+                } else if (!clockOp) {
+                    std::cerr << "Error: --section requires a Clock operator in the chain\n";
+                } else {
+                    // Use inspect data to find sections and timing
+                    auto songData = songOp->inspect();
+                    auto clockData = clockOp->inspect();
+
+                    float secPerBar = 0.0f;
+                    auto spbIt = clockData.metrics.find("seconds_per_bar");
+                    if (spbIt != clockData.metrics.end()) {
+                        secPerBar = spbIt->second;
+                    }
+                    if (secPerBar <= 0.0f) {
+                        std::cerr << "Error: Could not determine timing from Clock operator\n";
+                    } else {
+                        // Find section by scanning section_N metadata entries
+                        int sectionCount = static_cast<int>(songData.metrics.count("section_count") ?
+                            songData.metrics.at("section_count") : 0);
+                        uint32_t startBar = 0, endBar = 0;
+                        bool found = false;
+                        std::vector<std::string> sectionNames;
+
+                        for (int i = 0; i < sectionCount; i++) {
+                            std::string key = "section_" + std::to_string(i);
+                            auto it = songData.metadata.find(key);
+                            if (it != songData.metadata.end()) {
+                                // Parse "name [startBar-endBar]"
+                                const std::string& val = it->second;
+                                auto bracketPos = val.find(" [");
+                                if (bracketPos != std::string::npos) {
+                                    std::string sName = val.substr(0, bracketPos);
+                                    sectionNames.push_back(sName);
+                                    if (sName == mlc.exportSection) {
+                                        auto dashPos = val.find('-', bracketPos);
+                                        auto endPos = val.find(']', bracketPos);
+                                        if (dashPos != std::string::npos && endPos != std::string::npos) {
+                                            startBar = static_cast<uint32_t>(std::stoul(val.substr(bracketPos + 2, dashPos - bracketPos - 2)));
+                                            endBar = static_cast<uint32_t>(std::stoul(val.substr(dashPos + 1, endPos - dashPos - 1)));
+                                            found = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!found) {
+                            std::cerr << "Error: Section '" << mlc.exportSection << "' not found. Available sections:\n";
+                            for (const auto& sn : sectionNames) {
+                                std::cerr << "  " << sn << "\n";
+                            }
+                        } else {
+                            float startSec = static_cast<float>(startBar) * secPerBar;
+                            float endSec = static_cast<float>(endBar) * secPerBar;
+                            mlc.exportStart = startSec;
+                            mlc.exportDuration = endSec - startSec;
+                            mlc.exportWarmupFrames = static_cast<int>(mlc.exportStart * mlc.exportFps);
+                            mlc.exportTotalFrames = static_cast<int>(mlc.exportDuration * mlc.exportFps);
+                            mlc.recordDuration = mlc.exportDuration;
+                            sectionResolved = true;
+                            if (!mlc.exportQuiet) {
+                                std::cerr << "Section '" << mlc.exportSection << "': bars "
+                                          << startBar << "-" << endBar
+                                          << " (" << startSec << "s - " << endSec
+                                          << "s, " << mlc.exportDuration << "s)" << std::endl;
+                            }
+                        }
+                    }
+                }
+
+                if (!sectionResolved) {
+                    glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+                    mlc.exitCode = 1;
+                }
+                mlc.exportSection.clear();  // Resolve only once
+            }
+
+            // Export warmup: enter recording mode immediately for deterministic timing
+            // but don't start recording yet — process frames silently until warmup is done
+            if (mlc.exportMode && mlc.exportWarmupFrames > 0 && !mlc.exportWarmupDone
+                && mlc.exportWarmupCount == 0) {
+                mlc.ctx->setRecordingMode(true, mlc.exportFps);
+                mlc.ctx->chain().pauseAudioPlayback();
+                if (!mlc.exportQuiet) {
+                    std::cout << "Warming up: " << mlc.exportStart << "s ("
+                              << mlc.exportWarmupFrames << " frames)..." << std::flush;
+                }
+            }
+
             // Start CLI recording (once, after first chain load)
-            if (!mlc.recordPath.empty() && !mlc.cliRecordingStarted) {
+            if (!mlc.recordPath.empty() && !mlc.cliRecordingStarted
+                && mlc.exportWarmupFrames == 0) {
                 int recW = mlc.renderWidth > 0 ? mlc.renderWidth : mlc.windowWidth;
                 int recH = mlc.renderHeight > 0 ? mlc.renderHeight : mlc.windowHeight;
                 bool started = false;
@@ -1367,6 +1481,32 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                     }
                 }
             }
+        }
+
+        // Deferred CLI recording start after export warmup completes (--start flag)
+        if (!mlc.recordPath.empty() && !mlc.cliRecordingStarted
+            && mlc.exportWarmupFrames > 0 && mlc.exportWarmupDone) {
+            int recW = mlc.renderWidth > 0 ? mlc.renderWidth : mlc.windowWidth;
+            int recH = mlc.renderHeight > 0 ? mlc.renderHeight : mlc.windowHeight;
+            bool started = false;
+            if (mlc.recordAudio) {
+                started = mlc.cliRecorder.startWithAudio(mlc.recordPath, recW, recH,
+                                                     mlc.recordFps, mlc.recordCodec,
+                                                     AUDIO_SAMPLE_RATE, AUDIO_CHANNELS);
+            } else {
+                started = mlc.cliRecorder.start(mlc.recordPath, recW, recH, mlc.recordFps, mlc.recordCodec);
+            }
+            if (started) {
+                if (!mlc.exportQuiet) {
+                    std::cout << "Exporting: " << mlc.exportOutput
+                              << " (" << mlc.exportTotalFrames << " frames, "
+                              << mlc.exportDuration << "s @ " << mlc.exportFps << "fps)"
+                              << std::endl;
+                }
+            } else {
+                std::cerr << "Failed to start recording: " << mlc.cliRecorder.error() << std::endl;
+            }
+            mlc.cliRecordingStarted = true;
         }
 
         // Begin ImGui frame if vivid-gui is loaded (before user update)
@@ -1425,8 +1565,36 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         // Auto-process the chain
         mlc.ctx->chain().process(*mlc.ctx);
 
+        // Export warmup: process frames without recording to reach --start time
+        if (mlc.exportMode && mlc.exportWarmupFrames > 0 && !mlc.exportWarmupDone) {
+            // Generate audio to advance the clock (but discard it)
+            uint32_t audioFramesPerVideoFrame = AUDIO_SAMPLE_RATE /
+                static_cast<uint32_t>(mlc.exportFps);
+            static std::vector<float> warmupBuffer;
+            if (warmupBuffer.size() < audioFramesPerVideoFrame * AUDIO_CHANNELS) {
+                warmupBuffer.resize(audioFramesPerVideoFrame * AUDIO_CHANNELS);
+            }
+            mlc.ctx->chain().generateAudioForExport(
+                warmupBuffer.data(), audioFramesPerVideoFrame);
+
+            mlc.exportWarmupCount++;
+            if (!mlc.exportQuiet && mlc.exportWarmupCount % 60 == 0) {
+                int pct = (mlc.exportWarmupCount * 100) / mlc.exportWarmupFrames;
+                std::cout << "\rWarming up... " << pct << "%" << std::flush;
+            }
+            if (mlc.exportWarmupCount >= mlc.exportWarmupFrames) {
+                mlc.exportWarmupDone = true;
+                if (!mlc.exportQuiet) {
+                    std::cout << "\rWarmup complete, recording..." << std::endl;
+                }
+                // Recording mode and paused audio stay active —
+                // the audio-only/video blocks will use them as-is
+            }
+        }
+
         // Audio-only export: deterministic audio generation, no video encoder
-        if (mlc.exportMode && mlc.exportAudioOnly && !mlc.audioOnlyDone) {
+        if (mlc.exportMode && mlc.exportAudioOnly && !mlc.audioOnlyDone
+            && (mlc.exportWarmupFrames == 0 || mlc.exportWarmupDone)) {
             if (!mlc.audioOnlyStarted) {
                 mlc.ctx->setRecordingMode(true, mlc.exportFps);
                 mlc.ctx->chain().pauseAudioPlayback();
@@ -1672,25 +1840,26 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         int currentFrame = mlc.snapshotFrameCounter;
         mlc.snapshotFrameCounter++;
 
-        // Inspect audio accumulation: start recording tap once audio is available
-        if (mlc.inspectMode && !mlc.inspectOutDir.empty() && !mlc.inspectAudioStarted
+        // Inspect audio accumulation: deterministic generation each frame
+        // Always active when inspect mode has audio output (not gated on --out)
+        if (mlc.inspectMode && !mlc.inspectAudioStarted
             && mlc.ctx && !mlc.ctx->hasError()) {
             if (mlc.ctx->chain().audioOutputBuffer()) {
-                mlc.ctx->chain().startAudioRecordingTap();
+                mlc.ctx->setRecordingMode(true, 60.0f);
+                mlc.ctx->chain().pauseAudioPlayback();
                 mlc.inspectAudioStarted = true;
             }
         }
 
-        // Inspect audio accumulation: pop samples each frame
+        // Inspect audio accumulation: generate audio deterministically each frame
         if (mlc.inspectMode && mlc.inspectAudioStarted) {
-            constexpr uint32_t CHUNK = 4096;
-            std::vector<float> chunk(CHUNK * AUDIO_CHANNELS);
-            uint32_t framesRead = mlc.ctx->chain().popAudioRecordedSamples(chunk.data(), CHUNK);
-            if (framesRead > 0) {
-                mlc.inspectAudioBuffer.insert(mlc.inspectAudioBuffer.end(),
-                    chunk.begin(), chunk.begin() + framesRead * AUDIO_CHANNELS);
-                mlc.inspectAudioFramesCaptured += framesRead;
-            }
+            constexpr uint32_t INSPECT_FPS = 60;
+            uint32_t audioFramesPerVideoFrame = AUDIO_SAMPLE_RATE / INSPECT_FPS;
+            std::vector<float> chunk(audioFramesPerVideoFrame * AUDIO_CHANNELS);
+            mlc.ctx->chain().generateAudioForExport(chunk.data(), audioFramesPerVideoFrame);
+            mlc.inspectAudioBuffer.insert(mlc.inspectAudioBuffer.end(),
+                chunk.begin(), chunk.end());
+            mlc.inspectAudioFramesCaptured += audioFramesPerVideoFrame;
         }
 
         // Multi-sample inspect: collect sample at target frames
@@ -1700,6 +1869,12 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                 if (currentFrame == mlc.inspectSampleFrames[i] &&
                     mlc.inspectSamplesCollected == static_cast<int>(i)) {
                     auto inspection = mlc.ctx->chain().inspectAll(*mlc.ctx, mlc.inspectPerOperator);
+                    // Override audio analysis with deterministic data from accumulated buffer
+                    if (mlc.inspectAudioStarted && mlc.inspectAudioFramesCaptured > 0) {
+                        inspection.audioAnalysis = analyzeAudioBuffer(
+                            mlc.inspectAudioBuffer.data(),
+                            mlc.inspectAudioFramesCaptured, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+                    }
                     mlc.inspectResults.push_back(inspection.toJSON());
 
                     // Save per-sample snapshot if output dir specified
@@ -1747,7 +1922,6 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
                     // Save waveform PNG from accumulated audio
                     if (mlc.inspectAudioStarted && mlc.inspectAudioFramesCaptured > 0) {
-                        mlc.ctx->chain().stopAudioRecordingTap();
                         mlc.inspectAudioStarted = false;
                         std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
                         renderWaveformPNG(waveformPath, mlc.inspectAudioBuffer.data(),
@@ -1769,6 +1943,12 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         // Check/inspect mode (single-shot): run inspection at target frame and exit
         if ((mlc.checkMode || (mlc.inspectMode && mlc.inspectSampleFrames.empty())) && currentFrame == mlc.checkFrame) {
             auto inspection = mlc.ctx->chain().inspectAll(*mlc.ctx, mlc.inspectPerOperator);
+            // Override audio analysis with deterministic data from accumulated buffer
+            if (mlc.inspectAudioStarted && mlc.inspectAudioFramesCaptured > 0) {
+                inspection.audioAnalysis = analyzeAudioBuffer(
+                    mlc.inspectAudioBuffer.data(),
+                    mlc.inspectAudioFramesCaptured, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+            }
 
             if (mlc.inspectMode) {
                 std::cout << inspection.toJSON() << std::endl;
@@ -1789,7 +1969,6 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
                     // Save waveform PNG from accumulated audio
                     if (mlc.inspectAudioStarted && mlc.inspectAudioFramesCaptured > 0) {
-                        mlc.ctx->chain().stopAudioRecordingTap();
                         mlc.inspectAudioStarted = false;
                         std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
                         renderWaveformPNG(waveformPath, mlc.inspectAudioBuffer.data(),
@@ -3762,6 +3941,11 @@ int Application::init(const AppConfig& config) {
         mlc.exportCodec = config.exportCodec;
         mlc.exportQuiet = config.exportQuiet;
         mlc.exportDuration = config.exportDuration;
+        mlc.exportSection = config.exportSection;
+        mlc.exportStart = config.exportStart;
+        if (mlc.exportStart > 0.0f) {
+            mlc.exportWarmupFrames = static_cast<int>(mlc.exportStart * mlc.exportFps);
+        }
 
         // Load playback script if provided
         if (!config.exportScript.empty()) {
@@ -3815,8 +3999,8 @@ int Application::init(const AppConfig& config) {
             }
         }
 
-        if (mlc.exportDuration <= 0) {
-            std::cerr << "Error: Export requires a duration. Use --duration, script duration, or vivid-project.json preview.duration.\n";
+        if (mlc.exportDuration <= 0 && mlc.exportSection.empty()) {
+            std::cerr << "Error: Export requires a duration. Use --duration, --section, script duration, or vivid-project.json preview.duration.\n";
             return 1;
         }
 
