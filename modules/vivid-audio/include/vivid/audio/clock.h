@@ -226,6 +226,16 @@ public:
     bool isDownbeat() const { return triggeredPeek() && beat() == 0; }
 
     /**
+     * @brief Convert bar number to wall-clock seconds
+     * @param bar Bar number (0-indexed, as returned by bar())
+     * @return Estimated time in seconds (based on current BPM and division)
+     *
+     * Note: This assumes constant BPM. If BPM changes during playback,
+     * the result is approximate.
+     */
+    double barToSeconds(uint32_t bar) const;
+
+    /**
      * @brief Reset clock to start
      */
     void reset();

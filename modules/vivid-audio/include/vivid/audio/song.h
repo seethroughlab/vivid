@@ -213,6 +213,7 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Song"; }
+    InspectData inspect() const override;
 
     /// @}
 

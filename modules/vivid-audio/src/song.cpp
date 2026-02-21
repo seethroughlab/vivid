@@ -188,4 +188,25 @@ int Song::findSectionAtBar(uint32_t bar) const {
     return -1;
 }
 
+InspectData Song::inspect() const {
+    auto data = Operator::inspect();
+    if (!m_currentSection.empty()) {
+        data.set("current_section", m_currentSection);
+    }
+    data.set("section_progress", m_sectionProgress);
+    data.set("song_progress", m_songProgress);
+    data.set("current_bar", static_cast<float>(m_currentBar));
+    data.set("total_bars", static_cast<float>(totalBars()));
+    data.set("section_count", static_cast<float>(m_sections.size()));
+
+    // Include section names with bar ranges in metadata
+    for (size_t i = 0; i < m_sections.size(); i++) {
+        const auto& s = m_sections[i];
+        data.set("section_" + std::to_string(i),
+                 s.name + " [" + std::to_string(s.startBar) + "-" + std::to_string(s.endBar) + "]");
+    }
+
+    return data;
+}
+
 } // namespace vivid::audio

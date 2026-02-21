@@ -235,7 +235,22 @@ InspectData Clock::inspect() const {
     data.set("trigger_count", static_cast<float>(triggerCount()));
     data.set("beat", static_cast<float>(beat()));
     data.set("bar", static_cast<float>(bar()));
+    float currentBpm = static_cast<float>(bpm);
+    if (currentBpm > 0.0f) {
+        float divMul = getDivisionMultiplier();
+        float triggersPerSec = (currentBpm / 60.0f) * divMul;
+        data.set("seconds_per_bar", 4.0f / triggersPerSec);
+    }
     return data;
+}
+
+double Clock::barToSeconds(uint32_t bar) const {
+    float currentBpm = static_cast<float>(bpm);
+    if (currentBpm <= 0.0f) return 0.0;
+    float divMultiplier = getDivisionMultiplier();
+    float triggersPerSecond = (currentBpm / 60.0f) * divMultiplier;
+    // Each "bar" = 4 triggers (see bar() = triggerCount / 4)
+    return static_cast<double>(bar) * 4.0 / static_cast<double>(triggersPerSecond);
 }
 
 } // namespace vivid::audio
