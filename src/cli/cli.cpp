@@ -509,16 +509,14 @@ int createProject(const std::string& name, const std::string& templateName,
         gitignore << "imgui.ini\n";
         gitignore.close();
 
-        // Create .claude/settings.local.json to pre-allow Vivid MCP tools
+        // Create .claude/settings.json to pre-allow Vivid MCP tools
+        // Uses settings.json (not settings.local.json) so it won't be overwritten
+        // when Claude Code adds per-tool permissions to settings.local.json
         fs::create_directories(projectPath / ".claude");
-        std::ofstream claudeSettings(projectPath / ".claude" / "settings.local.json");
-        claudeSettings << "{\n";
-        claudeSettings << "  \"permissions\": {\n";
-        claudeSettings << "    \"allow\": [\n";
-        claudeSettings << "      \"mcp__vivid__*\"\n";
-        claudeSettings << "    ]\n";
-        claudeSettings << "  }\n";
-        claudeSettings << "}\n";
+        json claudeSettingsJson;
+        claudeSettingsJson["permissions"]["allow"] = {"mcp__vivid"};
+        std::ofstream claudeSettings(projectPath / ".claude" / "settings.json");
+        claudeSettings << claudeSettingsJson.dump(2) << "\n";
         claudeSettings.close();
 
         // Build modules list for AGENTS.md
@@ -570,7 +568,7 @@ int createProject(const std::string& name, const std::string& templateName,
         std::cout << prefix << "assets/\n";
         std::cout << prefix << "shaders/\n";
         std::cout << prefix << ".gitignore\n";
-        std::cout << prefix << ".claude/settings.local.json\n";
+        std::cout << prefix << ".claude/settings.json\n";
         std::cout << "\n";
         std::cout << "Project created successfully!\n\n";
         std::cout << "Next steps:\n";
