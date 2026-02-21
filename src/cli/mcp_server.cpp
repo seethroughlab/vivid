@@ -1523,7 +1523,9 @@ private:
         tools.push_back({
             {"name", "compare_frames"},
             {"description", "Compare two PNG images and return similarity metrics (RMSE, per-channel diff, "
-                            "changed pixel percentage). Works with any PNG files — no running Vivid needed."},
+                            "changed pixel percentage) plus FrameAnalysis diffs (brightness, contrast, entropy, "
+                            "sharpness, noise, temperature, edge density, clipping, hue diversity, center displacement). "
+                            "Works with any PNG files — no running Vivid needed."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
@@ -3251,6 +3253,31 @@ private:
                 {"threshold", threshold}
             };
             response["identical"] = identical;
+
+            // FrameAnalysis-level diffs (Step 11 from VISUAL-EVALUATION-TOOLS.md)
+            auto faA = vivid::analyzePixels(imgA.pixels.data(), imgA.width, imgA.height);
+            auto faB = vivid::analyzePixels(imgB.pixels.data(), imgB.width, imgB.height);
+
+            auto r4 = [](float v) { return std::round(v * 10000.0f) / 10000.0f; };
+
+            float centerDx = faA.visualCenterX - faB.visualCenterX;
+            float centerDy = faA.visualCenterY - faB.visualCenterY;
+
+            json analysisDiff;
+            analysisDiff["brightness_diff"] = r4(faA.meanBrightness - faB.meanBrightness);
+            analysisDiff["contrast_diff"] = r4(faA.contrast - faB.contrast);
+            analysisDiff["entropy_diff"] = r4(faA.textureEntropy - faB.textureEntropy);
+            analysisDiff["sharpness_diff"] = r4(faA.sharpness - faB.sharpness);
+            analysisDiff["noise_diff"] = r4(faA.noiseLevel - faB.noiseLevel);
+            analysisDiff["temperature_diff"] = r4(faA.colorTemperature - faB.colorTemperature);
+            analysisDiff["edge_density_diff"] = r4(faA.edgeDensity - faB.edgeDensity);
+            analysisDiff["clip_black_diff"] = r4(faA.clipBlackPct - faB.clipBlackPct);
+            analysisDiff["clip_white_diff"] = r4(faA.clipWhitePct - faB.clipWhitePct);
+            analysisDiff["hue_count_diff"] = faA.uniqueHueCount - faB.uniqueHueCount;
+            analysisDiff["center_displacement"] = r4(std::sqrt(centerDx * centerDx + centerDy * centerDy));
+
+            response["analysis_diff"] = analysisDiff;
+
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else if (name == "compare_audio") {
