@@ -363,6 +363,39 @@ TEST_CASE("MCP tools/list returns tools", "[mcp]") {
     REQUIRE(hasSearchDocs);
 }
 
+TEST_CASE("MCP tools/list includes visual analysis tools", "[mcp]") {
+    McpClient client;
+
+    // Initialize
+    json initParams;
+    initParams["protocolVersion"] = "2024-11-05";
+    initParams["capabilities"] = json::object();
+    initParams["clientInfo"] = {{"name", "test-client"}, {"version", "1.0.0"}};
+    client.sendRequest("initialize", initParams);
+    client.sendNotification("notifications/initialized", {});
+
+    // Request tools list
+    json response = client.sendRequest("tools/list", {});
+
+    REQUIRE(response.contains("result"));
+    REQUIRE(response["result"].contains("tools"));
+
+    bool hasColorHarmony = false;
+    bool hasSymmetry = false;
+    bool hasSpatialBalance = false;
+
+    for (const auto& tool : response["result"]["tools"]) {
+        std::string name = tool["name"];
+        if (name == "analyze_color_harmony") hasColorHarmony = true;
+        if (name == "analyze_symmetry") hasSymmetry = true;
+        if (name == "analyze_spatial_balance") hasSpatialBalance = true;
+    }
+
+    REQUIRE(hasColorHarmony);
+    REQUIRE(hasSymmetry);
+    REQUIRE(hasSpatialBalance);
+}
+
 TEST_CASE("MCP list_operators tool returns operators", "[mcp]") {
     McpClient client;
 

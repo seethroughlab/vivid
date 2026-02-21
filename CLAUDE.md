@@ -137,9 +137,27 @@ Edit chain.cpp
 - **Contrast** (`contrast`): Std dev of luminance. Near 0 = flat/washed out. 0.15–0.35 typical.
 - **Spatial distribution** (`regionBrightness`): 3×3 grid. Detect if content is centered, one-sided, or uniform.
 - **Histogram**: 8-bucket luminance distribution. Spikes at extremes = clipping. Even spread = good dynamic range.
+- **Texture complexity** (`textureEntropy`): 0 = uniform, 1 = maximal variety. Noise/detail: >0.5. Flat fills: <0.2.
+- **Edge density** (`edgeDensity`): Fraction of edge pixels. High-detail scenes: 0.1–0.3. Soft/blurred: <0.05.
+- **Sharpness** (`sharpness`): Laplacian variance. Higher = sharper edges. Blurred: <0.01. Crisp: >0.05.
+- **Noise level** (`noiseLevel`): Mean absolute Laplacian. High-frequency noise: >0.1. Clean: <0.02.
+- **Clipping** (`clipBlackPct`, `clipWhitePct`): Fraction of pixels at pure black/white. Should be <0.05 unless intentional.
+- **Dynamic range** (`headroom`, `rangeSpan`): `headroom` = room before white clip. `rangeSpan` = max−min luminance. Low rangeSpan = flat image.
+- **Visual center** (`visualCenterX`, `visualCenterY`): Brightness-weighted centroid (0–1). 0.5,0.5 = centered. Detect off-center compositions.
+- **Color temperature** (`colorTemperature`): 0 = cool/blue, 0.5 = neutral, 1 = warm/red.
+- **Hue diversity** (`uniqueHueCount`, `hueEntropy`): `uniqueHueCount` = hue bins >5% (0–12). `hueEntropy` = 0 (monochrome) to 1 (all hues equal). `hueHistogram.N` (N=0–11) = 12-bin hue distribution in 30° steps.
+- **Alpha** (`alphaOpaquePct`, `alphaTransparentPct`, `alphaPartialPct`, `alphaMean`): Detect transparency issues. Fully opaque content: `alphaOpaquePct ≈ 1.0`.
 - **Audio RMS** (`rmsLevel`): 0.0 = silence, >0.9 = clipping. Music/drones: 0.1–0.5. Percussive: peaks to 0.7.
 - **Spectrum bands** (6 bands: subBass, bass, lowMid, mid, highMid, high): Verify frequency content matches intent.
 - **Crest factor** (`crestFactor`): Peak/RMS ratio. High = percussive/dynamic. Low = compressed/steady.
+
+**Temporal metrics** (multi-sample inspect with `--duration`):
+- **Flicker** (`temporal.flickerScore`): 0 = stable, 1 = rapid oscillation. Alternating frames: >0.8. Smooth animation: <0.2.
+- **Convergence** (`temporal.isConverged`, `temporal.convergenceScore`): Detects when output has stabilized. Feedback loops should converge; `isConverged = true` after output stops changing.
+- **Motion** (`temporal.motionMagnitude`): Average per-pixel change. 0 = static. Animated content: 0.01–0.2. `temporal.regionMotion.N` (N=0–8) = per-region motion (3×3 grid).
+- **Frozen** (`temporal.isFrozen`): True when all recent frames are identical. Should be false for animated content.
+- **Loop detection** (`temporal.isLooping`, `temporal.loopPeriodFrames`, `temporal.loopConfidence`): Detects repeating brightness patterns via autocorrelation. Useful for verifying cyclic animations.
+- **Novelty** (`temporal.noveltyScore`, `temporal.noveltyTrend`): Distance from current frame to stored keyframes. 0 = repetitive, higher = exploring new visuals. `noveltyTrend` > 0.5 = increasingly novel, < 0.5 = collapsing toward repetition.
 
 **Audio evaluation tools:**
 - **Assertions** (`audio.*` paths): Validate audio properties in `vivid check`. Example paths: `audio.rmsLevel`, `audio.peakLevel`, `audio.spectrum.bass`, `audio.isSilent`, `audio.crestFactor`.
@@ -149,21 +167,38 @@ Edit chain.cpp
 
 Example assertions (`vivid-assertions.json`):
 ```json
+{"name": "brightness-ok", "path": "output.meanBrightness", "op": "between", "value": [0.2, 0.8]}
+{"path": "output.contrast", "op": ">", "value": 0.15, "after_frame": 30, "message": "Contrast stabilizes after warmup"}
+{"path": "output.textureEntropy", "op": ">", "value": 0.3, "message": "Not a flat fill"}
+{"path": "output.clipBlackPct", "op": "<", "value": 0.5, "message": "Not mostly black"}
+{"path": "output.sharpness", "op": ">", "value": 0.01, "message": "Has visible edges"}
+{"path": "output.colorTemperature", "op": "between", "value": [0.3, 0.7], "message": "Neutral tones"}
+{"path": "output.hueHistogram.0", "op": ">", "value": 0.1, "message": "Has red hues"}
+{"path": "output.alphaOpaquePct", "op": "==", "value": 1.0, "message": "Fully opaque output"}
+{"path": "operators.bloom.textureAnalysis.meanBrightness", "op": ">", "value": 0.1}
+{"path": "operators.bloom.textureAnalysis.edgeDensity", "op": ">", "value": 0.01, "message": "Bloom has detail"}
 {"path": "audio.rmsLevel", "op": ">", "value": 0.01, "message": "Audio not silent"}
 {"path": "audio.spectrum.bass", "op": ">", "value": 0.05, "message": "Should have bass"}
 {"path": "audio.peakLevel", "op": "<", "value": 0.95, "message": "No clipping"}
-{"name": "brightness-ok", "path": "output.meanBrightness", "op": "between", "value": [0.2, 0.8]}
-{"path": "operators.bloom.textureAnalysis.meanBrightness", "op": ">", "value": 0.1}
-{"path": "operators.bloom.textureAnalysis.meanBrightness", "op": "exists", "message": "Bloom produces output"}
-{"path": "output.contrast", "op": ">", "value": 0.15, "after_frame": 30, "message": "Contrast stabilizes after warmup"}
 {"path": "audio.spectrum.bass", "op": ">", "value": 0.4, "when_path": "operators.kick.metrics.is_playing", "when_check": "==", "when_value": 1.0}
+```
+
+Temporal assertions (require `--duration` for multi-sample inspect):
+```json
+{"path": "temporal.isFrozen", "op": "==", "value": 0, "message": "Animation is running"}
+{"path": "temporal.flickerScore", "op": "<", "value": 0.3, "message": "No unwanted flicker"}
+{"path": "temporal.isConverged", "op": "==", "value": 1, "message": "Feedback loop stabilized"}
+{"path": "temporal.motionMagnitude", "op": ">", "value": 0.01, "message": "Has visible motion"}
+{"path": "temporal.isLooping", "op": "==", "value": 1, "message": "Animation loops correctly"}
+{"path": "temporal.noveltyScore", "op": ">", "value": 0.02, "message": "Visuals are evolving"}
 ```
 
 **Assertion features:**
 - **`name`** (optional): Human-readable label shown in verbose output and JSON (e.g. `"name": "feedback-alive"`)
 - **`between` operator**: Range check with array value `[low, high]`, inclusive on both ends
 - **`exists` / `not_exists` operators**: Check path presence without comparing values (no `value` field needed)
-- **`operators.<name>.textureAnalysis.<field>`**: Assert on per-operator texture analysis (auto-enables GPU readback). Supports all FrameAnalysis fields: `meanBrightness`, `contrast`, `dominantHue`, `saturationAvg`, `dominantColor.N`, `regionBrightness.N`, `histogram.N`
+- **`operators.<name>.textureAnalysis.<field>`**: Assert on per-operator texture analysis (auto-enables GPU readback). Supports all FrameAnalysis fields: `meanBrightness`, `contrast`, `dominantHue`, `saturationAvg`, `dominantColor.N`, `regionBrightness.N`, `histogram.N`, `textureEntropy`, `edgeDensity`, `avgGradientMag`, `clipBlackPct`, `clipWhitePct`, `headroom`, `rangeSpan`, `sharpness`, `noiseLevel`, `visualCenterX`, `visualCenterY`, `colorTemperature`, `hueHistogram.N` (0–11), `uniqueHueCount`, `hueEntropy`, `alphaOpaquePct`, `alphaTransparentPct`, `alphaPartialPct`, `alphaMean`
+- **`temporal.*`**: Assert on temporal metrics (requires `--duration` for multi-sample capture). Fields: `flickerScore`, `flickerFrequency`, `frameDelta`, `convergenceScore`, `isConverged`, `motionMagnitude`, `regionMotion.N` (0–8), `frameDiversity`, `isFrozen`, `isLooping`, `loopPeriodSeconds`, `loopPeriodFrames`, `loopConfidence`, `noveltyScore`, `noveltyTrend`, `keyframeCount`. Bool fields (`isConverged`, `isFrozen`, `isLooping`) resolve to 0.0/1.0.
 - **`after_frame`** (optional): Skip assertion if current frame < value. Useful for warmup periods (e.g. feedback loops).
 - **`when_path` / `when_check` / `when_value`** (optional): Conditional guard — assertion is only evaluated when the guard condition is met. Uses same dot-path format and operators. Skipped assertions show as `SKIP` and don't affect pass/fail.
 
@@ -286,6 +321,13 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 | `search_docs` | Search Vivid documentation |
 | `list_modules` | List installed Vivid modules |
 
+#### Visual Analysis
+| Tool | Description |
+|------|-------------|
+| `analyze_color_harmony` | Extract 5-color palette and score harmony (complementary, analogous, triadic) |
+| `analyze_symmetry` | Measure horizontal, vertical, and radial symmetry (0-1 scores) |
+| `analyze_spatial_balance` | Rule-of-thirds, edge bias, and quadrant balance scoring |
+
 ### Starting Vivid
 The MCP server queries and controls a running Vivid instance. **Start Vivid before using MCP tools:**
 
@@ -354,6 +396,45 @@ The inner loop relies on structured data from `inspect_chain` (MCP) or `vivid in
 | `saturationAvg` | float | Average saturation |
 | `histogram` | int[8] | 8-bucket luminance histogram |
 | `regionBrightness` | float[9] | 3×3 spatial brightness grid (top-left → bottom-right) |
+| `textureEntropy` | float | Normalized Shannon entropy of 64-bin histogram (0=uniform, 1=max variety) |
+| `edgeDensity` | float | Fraction of edge pixels (0–1) |
+| `avgGradientMag` | float | Mean gradient magnitude |
+| `clipBlackPct` | float | Fraction of pixels near pure black (lum < 0.005) |
+| `clipWhitePct` | float | Fraction of pixels near pure white (lum > 0.995) |
+| `headroom` | float | 1.0 − maxLuminance (room before white clip) |
+| `rangeSpan` | float | maxLuminance − minLuminance (dynamic range) |
+| `sharpness` | float | Laplacian variance (higher = sharper) |
+| `noiseLevel` | float | Mean absolute Laplacian (high-frequency content) |
+| `visualCenterX` | float | Brightness-weighted centroid X (0–1, 0.5=centered) |
+| `visualCenterY` | float | Brightness-weighted centroid Y (0–1, 0.5=centered) |
+| `colorTemperature` | float | 0=cool/blue, 0.5=neutral, 1=warm/red |
+| `hueHistogram` | float[12] | 12-bin hue distribution (30° bins, indexed 0–11) |
+| `uniqueHueCount` | int | Hue bins above 5% threshold (0–12) |
+| `hueEntropy` | float | Normalized hue entropy (0=monochrome, 1=all hues equal) |
+| `alphaOpaquePct` | float | Fraction fully opaque pixels |
+| `alphaTransparentPct` | float | Fraction fully transparent pixels |
+| `alphaPartialPct` | float | Fraction partially transparent pixels |
+| `alphaMean` | float | Mean alpha value (0–1) |
+
+**TemporalAnalysis** (multi-frame metrics, requires `--duration`):
+| Field | Type | Description |
+|-------|------|-------------|
+| `flickerScore` | float | High-frequency brightness oscillation (0=stable, 1=rapid flicker) |
+| `flickerFrequency` | float | Dominant flicker frequency in Hz |
+| `frameDelta` | float | Most recent per-pixel change between frames |
+| `convergenceScore` | float | 0=diverging, 0.5=stable, 1=fully converged |
+| `isConverged` | bool | True when output has stabilized (delta < threshold for 8+ frames) |
+| `motionMagnitude` | float | Average pixel displacement (0=still) |
+| `regionMotion` | float[9] | 3×3 regional motion grid (indexed 0–8) |
+| `frameDiversity` | float | Variance of frame deltas (0=frozen or steady) |
+| `isFrozen` | bool | True when all recent frames are identical |
+| `isLooping` | bool | True when repeating brightness pattern detected |
+| `loopPeriodFrames` | int | Detected loop period in frames |
+| `loopPeriodSeconds` | float | Detected loop period in seconds |
+| `loopConfidence` | float | Autocorrelation confidence (>0.7 = reliable) |
+| `noveltyScore` | float | Distance from current frame to keyframes (0=repetitive) |
+| `noveltyTrend` | float | 0–1; >0.5=increasingly novel, <0.5=collapsing |
+| `keyframeCount` | int | Number of stored keyframes |
 
 **AudioAnalysis** (per audio operator):
 | Field | Type | Description |
@@ -377,8 +458,24 @@ The inner loop relies on structured data from `inspect_chain` (MCP) or `vivid in
   },
   "output": {
     "meanBrightness": 0.48, "contrast": 0.22,
+    "textureEntropy": 0.61, "edgeDensity": 0.14, "sharpness": 0.032,
+    "clipBlackPct": 0.02, "clipWhitePct": 0.0, "rangeSpan": 0.91,
+    "visualCenterX": 0.52, "visualCenterY": 0.48,
+    "colorTemperature": 0.55, "uniqueHueCount": 4, "hueEntropy": 0.42,
     "histogram": [12, 45, 89, 120, 95, 40, 8, 3],
     "regionBrightness": [0.3, 0.4, 0.3, 0.5, 0.7, 0.5, 0.3, 0.4, 0.3]
+  }
+}
+```
+
+**Multi-sample envelope** (`--duration 2 --samples 5`):
+```json
+{
+  "project": "my-project", "duration": 2, "sampleCount": 5,
+  "samples": [ {"frame": 0, "time": 0.0, "output": {"...": "..."}} ],
+  "temporal": {
+    "flickerScore": 0.05, "isConverged": true, "motionMagnitude": 0.03,
+    "isFrozen": false, "noveltyScore": 0.12, "isLooping": false
   }
 }
 ```
@@ -408,7 +505,7 @@ Useful for diagnosing where brightness/contrast drops occur in the chain.
 - `sweep_param`: Capture frames across a parameter range. Find optimal values or verify smooth transitions.
 - `sweep_param_audio`: Capture audio across a parameter range. Evaluate how audio changes with parameters.
 
-**Assertions** (`vivid check`): Runs the chain and evaluates assertions from `vivid-assertions.json`. Exit code 0 = all pass, 1 = failure. Use in the inner loop to verify invariants. Supported paths: `output.*` (visual), `audio.*` (audio), `operators.<name>.metrics.<key>` (per-operator metrics), `operators.<name>.textureAnalysis.<field>` (per-operator texture analysis). Operators: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between` (range), `exists`, `not_exists`. Assertions can have an optional `name` field for readable output. Conditional guards: `after_frame` (skip before frame N), `when_path`/`when_check`/`when_value` (skip unless guard condition met). Skipped assertions report as `SKIP` and don't affect pass/fail.
+**Assertions** (`vivid check`): Runs the chain and evaluates assertions from `vivid-assertions.json`. Exit code 0 = all pass, 1 = failure. Use in the inner loop to verify invariants. Supported paths: `output.*` (visual), `audio.*` (audio), `temporal.*` (multi-frame, requires `--duration`), `operators.<name>.metrics.<key>` (per-operator metrics), `operators.<name>.textureAnalysis.<field>` (per-operator texture analysis). Operators: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between` (range), `exists`, `not_exists`. Assertions can have an optional `name` field for readable output. Conditional guards: `after_frame` (skip before frame N), `when_path`/`when_check`/`when_value` (skip unless guard condition met). Skipped assertions report as `SKIP` and don't affect pass/fail.
 
 ### Snapshot & Audio Capture Mode (for CI/Testing)
 
