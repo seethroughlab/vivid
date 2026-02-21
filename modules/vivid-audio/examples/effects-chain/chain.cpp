@@ -34,11 +34,20 @@ void setup(Context& ctx) {
 
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setTriggerSource("clock");
-    kickSeq.setPattern(0x1001);  // Kick on 1 and 9
+    kickSeq.setStep(0,  {.velocity = 1.0f});
+    kickSeq.setStep(12, {.velocity = 0.85f});
 
+    // 8th note hihats with velocity and micro-timing for swing
     auto& hatSeq = chain.add<Sequencer>("hatSeq");
     hatSeq.setTriggerSource("clock");
-    hatSeq.setPattern(0xAAAA);  // 8th notes
+    hatSeq.setStep(1,  {.velocity = 0.7f});
+    hatSeq.setStep(3,  {.velocity = 0.5f, .microTiming = 0.06f});    // Swung
+    hatSeq.setStep(5,  {.velocity = 0.7f});
+    hatSeq.setStep(7,  {.velocity = 0.5f, .microTiming = 0.06f});
+    hatSeq.setStep(9,  {.velocity = 0.8f});                          // Accent
+    hatSeq.setStep(11, {.velocity = 0.5f, .microTiming = 0.06f});
+    hatSeq.setStep(13, {.velocity = 0.7f});
+    hatSeq.setStep(15, {.velocity = 0.5f, .microTiming = 0.06f});
 
     kick.setTriggerSource("kickSeq");
     hat.setTriggerSource("hatSeq");

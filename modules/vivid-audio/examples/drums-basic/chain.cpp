@@ -53,22 +53,38 @@ void setup(Context& ctx) {
     clap.sloppy = 0.4f;         // Timing spread
     clap.tail = 0.3f;           // Reverb-like tail
 
-    // Basic 4-on-floor pattern
+    // 4-on-floor pattern with velocity accents and ghost notes
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setTriggerSource("clock");
-    kickSeq.setPattern(0x1111);  // Every 4 steps
+    kickSeq.setStep(0,  {.velocity = 1.0f});                          // Downbeat accent
+    kickSeq.setStep(4,  {.velocity = 0.85f});
+    kickSeq.setStep(8,  {.velocity = 0.9f});
+    kickSeq.setStep(12, {.velocity = 0.8f});
+    kickSeq.setStep(14, {.velocity = 0.35f, .probability = 0.5f});    // Ghost fill
 
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
     snareSeq.setTriggerSource("clock");
-    snareSeq.setPattern(0x0808);  // Beats 2 and 4
+    snareSeq.setStep(3,  {.velocity = 1.0f});                         // Backbeat
+    snareSeq.setStep(11, {.velocity = 0.95f});
+    snareSeq.setStep(7,  {.velocity = 0.3f, .probability = 0.4f,      // Ghost note
+                          .microTiming = -0.1f});                      // Slight drag
 
     auto& hatSeq = chain.add<Sequencer>("hatSeq");
     hatSeq.setTriggerSource("clock");
-    hatSeq.setPattern(0xAAAA);  // Every 2 steps (8ths)
+    hatSeq.setStep(0,  {.velocity = 0.8f});                           // 8th note pattern
+    hatSeq.setStep(2,  {.velocity = 0.5f, .microTiming = 0.05f});     // with swing feel
+    hatSeq.setStep(4,  {.velocity = 0.9f});                           // Accent
+    hatSeq.setStep(6,  {.velocity = 0.5f, .microTiming = 0.05f});
+    hatSeq.setStep(8,  {.velocity = 0.8f});
+    hatSeq.setStep(10, {.velocity = 0.5f, .microTiming = 0.05f});
+    hatSeq.setStep(12, {.velocity = 0.9f});                           // Accent
+    hatSeq.setStep(14, {.velocity = 0.5f, .microTiming = 0.05f});
 
     auto& clapSeq = chain.add<Sequencer>("clapSeq");
     clapSeq.setTriggerSource("clock");
-    clapSeq.setPattern(0x0808);  // With snare
+    clapSeq.setStep(3,  {.velocity = 0.9f});
+    clapSeq.setStep(11, {.velocity = 0.85f,
+                         .condition = StepCondition::TwoInThree});     // Drops out sometimes
 
     // Connect drums to sequencers
     kick.setTriggerSource("kickSeq");

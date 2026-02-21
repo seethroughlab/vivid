@@ -48,11 +48,18 @@ void setup(Context& ctx) {
     clock.bpm = 120.0f;
     clock.division(ClockDiv::Sixteenth);
 
-    // Sequencer for arpeggios - advances from clock on audio thread
+    // Sequencer for arpeggios with velocity accents - advances from clock on audio thread
     auto& seq = chain.add<Sequencer>("seq");
     seq.setTriggerSource("clock");
     seq.steps = 16;
-    seq.setPattern(0b1010101010101010);  // Every other step
+    seq.setStep(1,  {.velocity = 0.9f});
+    seq.setStep(3,  {.velocity = 0.6f});
+    seq.setStep(5,  {.velocity = 0.8f});
+    seq.setStep(7,  {.velocity = 0.5f});
+    seq.setStep(9,  {.velocity = 0.85f});
+    seq.setStep(11, {.velocity = 0.55f});
+    seq.setStep(13, {.velocity = 0.9f});
+    seq.setStep(15, {.velocity = 0.5f, .probability = 0.7f});  // Sometimes drops out
 
     // WavetableSynth - main sound source
     auto& wt = chain.add<WavetableSynth>("wt");

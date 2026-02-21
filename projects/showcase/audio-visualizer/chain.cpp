@@ -45,13 +45,25 @@ void setup(Context& ctx) {
     clock.division(ClockDiv::Sixteenth);
 
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
-    kickSeq.setPattern(0x1111);  // Four on floor
+    kickSeq.setStep(0,  {.velocity = 1.0f});
+    kickSeq.setStep(4,  {.velocity = 0.85f});
+    kickSeq.setStep(8,  {.velocity = 0.9f});
+    kickSeq.setStep(12, {.velocity = 0.8f});
 
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
-    snareSeq.setPattern(0x0404);  // Backbeat
+    snareSeq.setStep(2,  {.velocity = 1.0f});
+    snareSeq.setStep(10, {.velocity = 0.9f});
 
+    // 8th note hihats with velocity accents for varied visualizer response
     auto& hihatSeq = chain.add<Sequencer>("hihatSeq");
-    hihatSeq.setPattern(0x5555);  // 8th notes
+    hihatSeq.setStep(0,  {.velocity = 0.8f});
+    hihatSeq.setStep(2,  {.velocity = 0.5f});
+    hihatSeq.setStep(4,  {.velocity = 0.9f});   // Accent
+    hihatSeq.setStep(6,  {.velocity = 0.5f});
+    hihatSeq.setStep(8,  {.velocity = 0.8f});
+    hihatSeq.setStep(10, {.velocity = 0.5f});
+    hihatSeq.setStep(12, {.velocity = 0.9f});   // Accent
+    hihatSeq.setStep(14, {.velocity = 0.5f});
 
     // Sequencers advance from clock on audio thread
     kickSeq.setTriggerSource("clock");

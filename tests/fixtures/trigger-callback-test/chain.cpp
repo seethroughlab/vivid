@@ -24,20 +24,25 @@ void setup(Context& ctx) {
     clock.bpm = 120.0f;
     clock.division(ClockDiv::Sixteenth);
 
-    // Kick on 1, 5, 9, 13
+    // Kick on 1, 5, 9, 13 with velocity accents
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setTriggerSource("clock");  // Advances on audio thread
     kickSeq.steps = 16;
-    kickSeq.setPattern(0b0001000100010001);
+    kickSeq.setStep(0,  {.velocity = 1.0f});
+    kickSeq.setStep(4,  {.velocity = 0.8f});
+    kickSeq.setStep(8,  {.velocity = 0.9f});
+    kickSeq.setStep(12, {.velocity = 0.75f});
 
     auto& kick = chain.add<Kick>("kick");
     kick.setTriggerSource("kickSeq");  // Triggers on audio thread
 
-    // Snare on 5, 13
+    // Snare on 5, 13 with a probabilistic ghost note
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
     snareSeq.setTriggerSource("clock");
     snareSeq.steps = 16;
-    snareSeq.setPattern(0b0001000000010000);
+    snareSeq.setStep(4,  {.velocity = 1.0f});
+    snareSeq.setStep(12, {.velocity = 0.9f});
+    snareSeq.setStep(7,  {.velocity = 0.3f, .probability = 0.4f});
 
     auto& snare = chain.add<Snare>("snare");
     snare.setTriggerSource("snareSeq");

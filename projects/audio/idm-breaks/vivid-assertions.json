@@ -1,0 +1,9 @@
+{
+  "frame": 60,
+  "assertions": [
+    {"name": "audio-present", "path": "audio.rmsLevel", "op": ">", "value": 0.01, "message": "Audio is not silent"},
+    {"name": "has-bass", "path": "audio.spectrum.bass", "op": ">", "value": 0.02, "message": "Should have bass content from kick"},
+    {"name": "no-clipping", "path": "audio.peakLevel", "op": "<", "value": 0.95, "message": "Audio should not clip"},
+    {"name": "visual-ok", "path": "output.meanBrightness", "op": "between", "value": [0.01, 0.95], "message": "Visual output present"}
+  ]
+}

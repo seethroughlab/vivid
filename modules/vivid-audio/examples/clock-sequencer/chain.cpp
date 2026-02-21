@@ -25,10 +25,14 @@ void setup(Context& ctx) {
     clock.bpm = 120.0f;
     clock.division(ClockDiv::Sixteenth);
 
-    // Step sequencer for kick pattern
+    // Step sequencer for kick pattern with velocity accents
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setTriggerSource("clock");
-    kickSeq.setPattern(0x1111);  // Hits on 1, 5, 9, 13
+    kickSeq.setStep(0,  {.velocity = 1.0f});    // Strong downbeat
+    kickSeq.setStep(4,  {.velocity = 0.8f});
+    kickSeq.setStep(8,  {.velocity = 0.9f});
+    kickSeq.setStep(12, {.velocity = 0.75f,
+                         .condition = StepCondition::TwoInThree});  // Drops out every 3rd cycle
 
     // Euclidean rhythm for hi-hat (5 hits over 16 steps)
     auto& hatEucl = chain.add<Euclidean>("hatEucl");

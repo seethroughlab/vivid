@@ -12,6 +12,45 @@ namespace vivid::audio {
 
 REGISTER_OPERATOR(Sequencer, "Audio Sequencing", "Step sequencer for triggering events", false);
 
+const Step Sequencer::s_defaultStep = {};
+
+// -----------------------------------------------------------------------------
+// PRNG (xorshift32, audio-thread-safe)
+// -----------------------------------------------------------------------------
+
+float Sequencer::randomFloat() {
+    m_rngState ^= m_rngState << 13;
+    m_rngState ^= m_rngState >> 17;
+    m_rngState ^= m_rngState << 5;
+    return static_cast<float>(m_rngState) / static_cast<float>(UINT32_MAX);
+}
+
+// -----------------------------------------------------------------------------
+// Condition evaluation
+// -----------------------------------------------------------------------------
+
+bool Sequencer::evaluateCondition(StepCondition cond, uint16_t cycle) const {
+    switch (cond) {
+        case StepCondition::Always:      return true;
+        case StepCondition::OneInTwo:    return (cycle % 2) == 0;
+        case StepCondition::TwoInThree:  return (cycle % 3) != 2;
+        case StepCondition::OneInThree:  return (cycle % 3) == 0;
+        case StepCondition::ThreeInFour: return (cycle % 4) != 3;
+        case StepCondition::OneInFour:   return (cycle % 4) == 0;
+        case StepCondition::OneInFive:   return (cycle % 5) == 0;
+        case StepCondition::OneInSix:    return (cycle % 6) == 0;
+        case StepCondition::OneInSeven:  return (cycle % 7) == 0;
+        case StepCondition::OneInEight:  return (cycle % 8) == 0;
+        case StepCondition::FirstOnly:   return cycle == 0;
+        case StepCondition::NotFirst:    return cycle > 0;
+    }
+    return true;
+}
+
+// -----------------------------------------------------------------------------
+// Init / Process / Cleanup
+// -----------------------------------------------------------------------------
+
 void Sequencer::init(Context& ctx) {
     if (!beginInit()) return;
 
@@ -30,6 +69,15 @@ void Sequencer::init(Context& ctx) {
     m_currentNote.store(60, std::memory_order_relaxed);
     m_pendingTrigger = false;
     m_noteIsPlaying = false;
+    m_slideActive = false;
+    m_previousStep = -1;
+    m_retrigRemaining = 0;
+    m_noteOffCountdown = -1;
+    m_microTimingDelaySamples = 0;
+    m_microTimingPending = false;
+
+    // Clear condition cycles
+    m_conditionCycle.fill(0);
 
     // Sync with trigger source's current count to avoid triggering all past beats
     Operator* trigSource = triggerSource();
@@ -54,80 +102,137 @@ void Sequencer::generateBlock(uint32_t frameCount) {
     // Called on audio thread each block
 
     // Clear audio-thread trigger flag at start of block
-    // This ensures downstream audio operators only see the trigger for one block
     m_triggeredFlag.store(false, std::memory_order_release);
+
+    // Estimate step duration in samples for gate/retrig calculations
+    // Use Clock trigger rate if available, otherwise assume 120 BPM / 16th notes
+    int stepDurationSamples = AUDIO_SAMPLE_RATE / 8;  // Default: 120 BPM 16ths
+    Operator* trigSource = triggerSource();
+    if (trigSource) {
+        if (auto* clock = dynamic_cast<Clock*>(trigSource)) {
+            float bpm = static_cast<float>(clock->bpm);
+            if (bpm > 0.0f) {
+                // Clock trigger interval depends on division, but we can estimate
+                // from trigger count rate. For now use the clock's period.
+                float beatsPerSec = bpm / 60.0f;
+                // Assume each trigger = one step
+                stepDurationSamples = static_cast<int>(AUDIO_SAMPLE_RATE / beatsPerSec / 4.0f);
+                if (stepDurationSamples < 1) stepDurationSamples = 1;
+            }
+        }
+    }
+
+    // --- Process pending note-off (gate timing) ---
+    if (m_noteOffCountdown >= 0) {
+        m_noteOffCountdown -= static_cast<int>(frameCount);
+        if (m_noteOffCountdown <= 0) {
+            m_noteOffCountdown = -1;
+            if (m_noteIsPlaying && !m_slideActive && (m_cachedTarget || m_cachedMidiOut)) {
+                sendNoteOff(m_lastPlayedNote);
+                m_noteIsPlaying = false;
+            }
+        }
+    }
+
+    // --- Process retrigs ---
+    if (m_retrigRemaining > 0) {
+        m_retrigCountdown -= static_cast<int>(frameCount);
+        if (m_retrigCountdown <= 0) {
+            // Fire retrig
+            if (m_cachedTarget || m_cachedMidiOut) {
+                sendNoteOn(m_retrigNote, m_retrigVelocity);
+                m_lastPlayedNote = m_retrigNote;
+                m_noteIsPlaying = true;
+            }
+            m_triggeredFlag.store(true, std::memory_order_release);
+            m_visualTriggeredFlag.store(true, std::memory_order_release);
+            if (m_onStepVel) m_onStepVel(m_retrigVelocity);
+            if (m_onStepSimple) m_onStepSimple();
+
+            m_retrigRemaining--;
+            if (m_retrigRemaining > 0) {
+                m_retrigCountdown += m_retrigIntervalSamples;
+            }
+        }
+    }
+
+    // --- Process micro-timing delayed trigger ---
+    if (m_microTimingPending) {
+        m_microTimingDelaySamples -= static_cast<int>(frameCount);
+        if (m_microTimingDelaySamples <= 0) {
+            m_microTimingPending = false;
+            fireStep(m_pendingMicroStep, stepDurationSamples);
+        }
+    }
 
     // Track if a trigger happens this block
     bool triggeredThisBlock = false;
 
     // Check if our trigger source (e.g., Clock) has triggered
-    // This allows Sequencer to advance automatically on the audio thread
-    Operator* trigSource = triggerSource();
     if (trigSource) {
-        // Try Clock first (most common trigger source)
         if (auto* clock = dynamic_cast<Clock*>(trigSource)) {
             uint64_t currentCount = clock->triggerCount();
             if (currentCount > m_lastTriggerCount) {
-                // Clock has triggered - advance for each trigger we missed
-                // Important: accumulate triggers so we don't lose active steps during catchup
                 uint64_t triggers = currentCount - m_lastTriggerCount;
                 for (uint64_t i = 0; i < triggers; ++i) {
-                    advanceInternalNoFlag();  // Advance without setting flag
-                    if (m_pattern[m_currentStep.load(std::memory_order_relaxed)]) {
+                    advanceInternalNoFlag();
+                    int current = m_currentStep.load(std::memory_order_relaxed);
+                    const Step& s = m_steps[current];
+                    if (s.active) {
                         triggeredThisBlock = true;
                     }
                 }
                 m_lastTriggerCount = currentCount;
             }
         }
-        // Try another Sequencer
         else if (auto* seq = dynamic_cast<Sequencer*>(trigSource)) {
-            // Check if the source sequencer triggered
             if (seq->triggered()) {
                 advanceInternalNoFlag();
-                if (m_pattern[m_currentStep.load(std::memory_order_relaxed)]) {
+                int current = m_currentStep.load(std::memory_order_relaxed);
+                if (m_steps[current].active) {
                     triggeredThisBlock = true;
                 }
             }
         }
     }
 
-    // If we have a pending trigger (from midiNoteOn or external trigger() call), advance the step
+    // If we have a pending trigger (from midiNoteOn or external trigger() call)
     if (m_pendingTrigger) {
         m_pendingTrigger = false;
         advanceInternalNoFlag();
-        if (m_pattern[m_currentStep.load(std::memory_order_relaxed)]) {
+        int current = m_currentStep.load(std::memory_order_relaxed);
+        if (m_steps[current].active) {
             triggeredThisBlock = true;
         }
     }
 
-    // Set triggered flags if ANY step was active during this block
+    // Process the active step
     if (triggeredThisBlock) {
         int current = m_currentStep.load(std::memory_order_relaxed);
-        float velocity = m_velocities[current];
-        uint8_t note = m_notes[current];
+        const Step& s = m_steps[current];
 
-        m_currentVelocity.store(velocity, std::memory_order_relaxed);
-        m_currentNote.store(note, std::memory_order_relaxed);
-        m_triggeredFlag.store(true, std::memory_order_release);       // For audio thread
-        m_visualTriggeredFlag.store(true, std::memory_order_release); // For main thread
+        // Increment condition cycle for this step
+        uint16_t cycle = m_conditionCycle[current];
+        m_conditionCycle[current]++;
 
-        // Send MIDI note-off for previous note (if any) then note-on for new note
-        if (m_cachedTarget || m_cachedMidiOut) {
-            if (m_noteIsPlaying) {
-                sendNoteOff(m_lastPlayedNote);
+        // Evaluate probability
+        bool probPass = (s.probability >= 1.0f) || (randomFloat() < s.probability);
+
+        // Evaluate condition
+        bool condPass = evaluateCondition(s.condition, cycle);
+
+        if (probPass && condPass) {
+            // Check for micro-timing offset
+            if (s.microTiming > 0.01f) {
+                // Positive = late, delay the trigger
+                m_microTimingDelaySamples = static_cast<int>(s.microTiming * stepDurationSamples);
+                m_microTimingPending = true;
+                m_pendingMicroStep = s;
+            } else {
+                // Negative micro-timing or zero: fire immediately
+                // (negative = early, but we fire at block boundary which is close enough)
+                fireStep(s, stepDurationSamples);
             }
-            sendNoteOn(note, velocity);
-            m_lastPlayedNote = note;
-            m_noteIsPlaying = true;
-        }
-
-        // Invoke step callbacks
-        if (m_onStepVel) {
-            m_onStepVel(velocity);
-        }
-        if (m_onStepSimple) {
-            m_onStepSimple();
         }
     }
 
@@ -137,18 +242,67 @@ void Sequencer::generateBlock(uint32_t frameCount) {
     }
 }
 
+void Sequencer::fireStep(const Step& s, int stepDurationSamples) {
+    m_currentVelocity.store(s.velocity, std::memory_order_relaxed);
+    m_currentNote.store(s.note, std::memory_order_relaxed);
+    m_triggeredFlag.store(true, std::memory_order_release);
+    m_visualTriggeredFlag.store(true, std::memory_order_release);
+
+    // Handle slide: check if previous step had slide=true
+    bool prevSlide = false;
+    if (m_previousStep >= 0 && m_previousStep < MAX_STEPS) {
+        prevSlide = m_steps[m_previousStep].slide;
+    }
+
+    // Send MIDI
+    if (m_cachedTarget || m_cachedMidiOut) {
+        if (m_noteIsPlaying && !prevSlide) {
+            sendNoteOff(m_lastPlayedNote);
+        }
+        sendNoteOn(s.note, s.velocity);
+        m_lastPlayedNote = s.note;
+        m_noteIsPlaying = true;
+        m_slideActive = s.slide;
+
+        // Per-step gate: schedule note-off
+        float gateValue = (s.gate >= 0.0f) ? s.gate : static_cast<float>(gate);
+        m_noteOffCountdown = static_cast<int>(gateValue * stepDurationSamples);
+
+        // Per-step CC
+        for (const auto& ccEntry : s.cc) {
+            if (ccEntry.value >= 0.0f) {
+                sendCC(ccEntry.cc, ccEntry.value);
+            }
+        }
+    }
+
+    // Schedule retrigs
+    if (s.retrigCount > 0) {
+        m_retrigRemaining = s.retrigCount;
+        m_retrigIntervalSamples = static_cast<int>(s.retrigRate * stepDurationSamples);
+        if (m_retrigIntervalSamples < 1) m_retrigIntervalSamples = 1;
+        m_retrigCountdown = m_retrigIntervalSamples;
+        m_retrigVelocity = s.velocity;
+        m_retrigNote = s.note;
+    }
+
+    m_previousStep = m_currentStep.load(std::memory_order_relaxed);
+
+    // Invoke step callbacks
+    if (m_onStepVel) {
+        m_onStepVel(s.velocity);
+    }
+    if (m_onStepSimple) {
+        m_onStepSimple();
+    }
+}
+
 void Sequencer::midiNoteOn(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
     // MIDI note-on advances the step (same as trigger)
-    // If our trigger source is a Clock, we poll triggerCount internally
-    // in generateBlock(), so ignore external trigger events to avoid double-advancing
     Operator* src = triggerSource();
     if (src && dynamic_cast<Clock*>(src)) {
         return;  // Clock timing handled internally via triggerCount polling
     }
-
-    // For non-Clock trigger sources, set pending flag
-    // We'll advance in generateBlock() to ensure the triggered flag
-    // is set at a consistent point in the block
     m_pendingTrigger = true;
 }
 
@@ -157,28 +311,24 @@ void Sequencer::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*chan
 }
 
 void Sequencer::advanceInternalNoFlag() {
-    // Called on audio thread - advances to next step WITHOUT setting triggered flag
-    // Used during catchup to avoid overwriting flag for intermediate steps
     int numSteps = static_cast<int>(steps);
     if (numSteps < 1) numSteps = 1;
     if (numSteps > MAX_STEPS) numSteps = MAX_STEPS;
 
-    // Move to next step
     int current = m_currentStep.load(std::memory_order_relaxed);
     current = (current + 1) % numSteps;
     m_currentStep.store(current, std::memory_order_relaxed);
 }
 
 void Sequencer::advanceInternal() {
-    // Called on audio thread - advances to next step and sets flag
     advanceInternalNoFlag();
 
     int current = m_currentStep.load(std::memory_order_relaxed);
-    bool stepActive = m_pattern[current];
-    float velocity = stepActive ? m_velocities[current] : 0.0f;
+    const Step& s = m_steps[current];
+    float velocity = s.active ? s.velocity : 0.0f;
 
     m_currentVelocity.store(velocity, std::memory_order_relaxed);
-    m_triggeredFlag.store(stepActive, std::memory_order_release);
+    m_triggeredFlag.store(s.active, std::memory_order_release);
 }
 
 void Sequencer::cleanup() {
@@ -195,25 +345,74 @@ void Sequencer::cleanup() {
     releaseOutput();
 }
 
+// -----------------------------------------------------------------------------
+// Pattern Editing
+// -----------------------------------------------------------------------------
+
+void Sequencer::setStep(int index, const Step& s) {
+    if (index >= 0 && index < MAX_STEPS) {
+        m_steps[index] = s;
+        m_steps[index].active = true;  // Always activate when using Step overload
+    }
+}
+
 void Sequencer::setStep(int step, bool on, float velocity) {
     if (step >= 0 && step < MAX_STEPS) {
-        m_pattern[step] = on;
-        m_velocities[step] = velocity;
+        m_steps[step].active = on;
+        m_steps[step].velocity = velocity;
     }
+}
+
+void Sequencer::setStep(int step, uint8_t note, float velocity) {
+    if (step >= 0 && step < MAX_STEPS) {
+        m_steps[step].active = true;
+        m_steps[step].note = note;
+        m_steps[step].velocity = velocity;
+    }
+}
+
+void Sequencer::setSteps(std::initializer_list<int> activeSteps) {
+    clearPattern();
+    for (int idx : activeSteps) {
+        if (idx >= 0 && idx < MAX_STEPS) {
+            m_steps[idx].active = true;
+        }
+    }
+}
+
+const Step& Sequencer::step(int index) const {
+    if (index >= 0 && index < MAX_STEPS) {
+        return m_steps[index];
+    }
+    return s_defaultStep;
+}
+
+bool Sequencer::isActive(int index) const {
+    if (index >= 0 && index < MAX_STEPS) {
+        return m_steps[index].active;
+    }
+    return false;
 }
 
 bool Sequencer::getStep(int step) const {
     if (step >= 0 && step < MAX_STEPS) {
-        return m_pattern[step];
+        return m_steps[step].active;
     }
     return false;
 }
 
 float Sequencer::getVelocity(int step) const {
     if (step >= 0 && step < MAX_STEPS) {
-        return m_velocities[step];
+        return m_steps[step].velocity;
     }
     return 0.0f;
+}
+
+uint8_t Sequencer::getNote(int step) const {
+    if (step >= 0 && step < MAX_STEPS) {
+        return m_steps[step].note;
+    }
+    return 60;
 }
 
 void Sequencer::clearPattern() {
@@ -224,37 +423,25 @@ void Sequencer::clearPattern() {
     }
 
     for (int i = 0; i < MAX_STEPS; ++i) {
-        m_pattern[i] = false;
-        m_velocities[i] = 1.0f;
-        m_notes[i] = 60;  // Reset to middle C
-    }
-}
-
-void Sequencer::setPattern(uint16_t pattern) {
-    for (int i = 0; i < MAX_STEPS; ++i) {
-        m_pattern[i] = (pattern & (1 << i)) != 0;
+        m_steps[i] = Step{};  // Reset to defaults
     }
 }
 
 void Sequencer::advance() {
-    // Backward-compatible advance: directly advance and set flag
-    // This matches the original synchronous behavior for main-thread callers
     int numSteps = static_cast<int>(steps);
     if (numSteps < 1) numSteps = 1;
     if (numSteps > MAX_STEPS) numSteps = MAX_STEPS;
 
-    // Move to next step
     int current = m_currentStep.load(std::memory_order_relaxed);
     current = (current + 1) % numSteps;
     m_currentStep.store(current, std::memory_order_relaxed);
 
-    // Check if current step is active and set triggered flags
-    bool stepActive = m_pattern[current];
-    float velocity = stepActive ? m_velocities[current] : 0.0f;
+    const Step& s = m_steps[current];
+    float velocity = s.active ? s.velocity : 0.0f;
 
     m_currentVelocity.store(velocity, std::memory_order_relaxed);
-    m_triggeredFlag.store(stepActive, std::memory_order_release);
-    m_visualTriggeredFlag.store(stepActive, std::memory_order_release);
+    m_triggeredFlag.store(s.active, std::memory_order_release);
+    m_visualTriggeredFlag.store(s.active, std::memory_order_release);
 }
 
 void Sequencer::reset() {
@@ -271,25 +458,13 @@ void Sequencer::reset() {
     m_currentNote.store(60, std::memory_order_relaxed);
     m_pendingTrigger = false;
     m_lastTriggerCount = 0;
-}
-
-// -----------------------------------------------------------------------------
-// Note data
-// -----------------------------------------------------------------------------
-
-void Sequencer::setStep(int step, uint8_t note, float velocity) {
-    if (step >= 0 && step < MAX_STEPS) {
-        m_pattern[step] = true;  // Automatically enable step
-        m_notes[step] = note;
-        m_velocities[step] = velocity;
-    }
-}
-
-uint8_t Sequencer::getNote(int step) const {
-    if (step >= 0 && step < MAX_STEPS) {
-        return m_notes[step];
-    }
-    return 60;  // Default middle C
+    m_slideActive = false;
+    m_previousStep = -1;
+    m_retrigRemaining = 0;
+    m_noteOffCountdown = -1;
+    m_microTimingDelaySamples = 0;
+    m_microTimingPending = false;
+    m_conditionCycle.fill(0);
 }
 
 // -----------------------------------------------------------------------------
@@ -298,12 +473,11 @@ uint8_t Sequencer::getNote(int step) const {
 
 void Sequencer::setTarget(const std::string& targetName) {
     m_targetName = targetName;
-    m_cachedTarget = nullptr;  // Will be resolved on next use
+    m_cachedTarget = nullptr;
     resolveTargets();
 }
 
 void Sequencer::clearTarget() {
-    // Send note-off if there's a playing note
     if (m_noteIsPlaying && m_cachedTarget) {
         m_cachedTarget->midiNoteOff(m_lastPlayedNote, 0.0f, static_cast<uint8_t>(static_cast<int>(midiChannel)));
     }
@@ -313,12 +487,11 @@ void Sequencer::clearTarget() {
 
 void Sequencer::setMidiOutput(const std::string& midiOutName) {
     m_midiOutName = midiOutName;
-    m_cachedMidiOut = nullptr;  // Will be resolved on next use
+    m_cachedMidiOut = nullptr;
     resolveTargets();
 }
 
 void Sequencer::clearMidiOutput() {
-    // Send note-off if there's a playing note
     if (m_noteIsPlaying && m_cachedMidiOut) {
         m_cachedMidiOut->sendNoteOff(static_cast<uint8_t>(static_cast<int>(midiChannel)), m_lastPlayedNote);
     }
@@ -329,7 +502,6 @@ void Sequencer::clearMidiOutput() {
 void Sequencer::resolveTargets() {
     if (!m_chain) return;
 
-    // Resolve MidiReceiver target
     if (!m_targetName.empty() && !m_cachedTarget) {
         Operator* op = m_chain->getByName(m_targetName);
         if (op) {
@@ -341,7 +513,6 @@ void Sequencer::resolveTargets() {
         }
     }
 
-    // Resolve MidiSender target (e.g., MidiOut)
     if (!m_midiOutName.empty() && !m_cachedMidiOut) {
         Operator* op = m_chain->getByName(m_midiOutName);
         if (op) {
@@ -357,18 +528,15 @@ void Sequencer::resolveTargets() {
 void Sequencer::sendNoteOn(uint8_t note, float velocity) {
     uint8_t channel = static_cast<uint8_t>(static_cast<int>(midiChannel));
 
-    // Try to resolve targets if not yet resolved
     if ((!m_cachedTarget && !m_targetName.empty()) ||
         (!m_cachedMidiOut && !m_midiOutName.empty())) {
         resolveTargets();
     }
 
-    // Send to internal MidiReceiver target
     if (m_cachedTarget) {
         m_cachedTarget->midiNoteOn(note, velocity, channel);
     }
 
-    // Send to external MidiSender (e.g., MidiOut)
     if (m_cachedMidiOut) {
         m_cachedMidiOut->sendNoteOn(channel, note, velocity);
     }
@@ -377,14 +545,29 @@ void Sequencer::sendNoteOn(uint8_t note, float velocity) {
 void Sequencer::sendNoteOff(uint8_t note) {
     uint8_t channel = static_cast<uint8_t>(static_cast<int>(midiChannel));
 
-    // Send to internal MidiReceiver target
     if (m_cachedTarget) {
         m_cachedTarget->midiNoteOff(note, 0.0f, channel);
     }
 
-    // Send to external MidiSender (e.g., MidiOut)
     if (m_cachedMidiOut) {
         m_cachedMidiOut->sendNoteOff(channel, note);
+    }
+}
+
+void Sequencer::sendCC(uint8_t cc, float value) {
+    uint8_t channel = static_cast<uint8_t>(static_cast<int>(midiChannel));
+
+    if ((!m_cachedTarget && !m_targetName.empty()) ||
+        (!m_cachedMidiOut && !m_midiOutName.empty())) {
+        resolveTargets();
+    }
+
+    if (m_cachedTarget) {
+        m_cachedTarget->midiCC(cc, value, channel);
+    }
+
+    if (m_cachedMidiOut) {
+        m_cachedMidiOut->sendCC(channel, cc, value);
     }
 }
 
@@ -395,7 +578,7 @@ InspectData Sequencer::inspect() const {
     data.set("current_note", static_cast<float>(currentNote()));
     int activeSteps = 0;
     for (int i = 0; i < static_cast<int>(steps); ++i) {
-        if (m_pattern[i]) activeSteps++;
+        if (m_steps[i].active) activeSteps++;
     }
     data.set("active_steps", static_cast<float>(activeSteps));
     return data;

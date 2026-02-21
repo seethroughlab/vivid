@@ -324,7 +324,7 @@ void setup(Context& ctx) {
 
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.steps = 16;
-    kickSeq.setPattern(0b0001000100010001);
+    kickSeq.setSteps({0, 4, 8, 12});
 
     auto& kick = chain.add<Kick>("kick");
     auto& bands = chain.add<BandSplit>("bands");

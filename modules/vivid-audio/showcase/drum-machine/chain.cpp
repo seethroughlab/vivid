@@ -15,39 +15,46 @@
 #include <vivid/gui/imgui.h>
 #include <iostream>
 #include <cmath>
+#include <vector>
 
 using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::audio;
 
-// Pattern presets
-static const uint16_t kickPatterns[] = {
-    0x1111,  // Four on the floor: X...X...X...X...
-    0x0101,  // Half time: X.......X.......
-    0x1151,  // Syncopated: X...X.X.X...X...
-    0x1199,  // Breakbeat: X...X..XX...X..X
+// Pattern presets (step indices)
+static const std::vector<int> kickPatterns[] = {
+    {0, 4, 8, 12},          // Four on the floor: X...X...X...X...
+    {0, 8},                  // Half time: X.......X.......
+    {0, 4, 6, 8, 12},       // Syncopated: X...X.X.X...X...
+    {0, 3, 4, 7, 8, 12},    // Breakbeat: X...X..XX...X..X
 };
 
-static const uint16_t snarePatterns[] = {
-    0x0404,  // Backbeat: ....X.......X...
-    0x0808,  // Offbeat: ........X.......
-    0x0C0C,  // Double: ....XX......XX..
-    0x2424,  // Syncopated: ..X...X...X...X.
+static const std::vector<int> snarePatterns[] = {
+    {2, 10},                 // Backbeat: ....X.......X...
+    {3, 11},                 // Offbeat: ........X.......
+    {2, 3, 10, 11},          // Double: ....XX......XX..
+    {2, 5, 10, 13},          // Syncopated: ..X...X...X...X.
 };
 
-static const uint16_t hihatPatterns[] = {
-    0xFFFF,  // Every 16th: XXXXXXXXXXXXXXXX
-    0x5555,  // Every 8th: X.X.X.X.X.X.X.X.
-    0xAAAA,  // Offbeat 8th: .X.X.X.X.X.X.X.X
-    0xF5F5,  // Variation: XXXX.X.XXXXX.X.X
+static const std::vector<int> hihatPatterns[] = {
+    {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15},  // Every 16th
+    {0, 2, 4, 6, 8, 10, 12, 14},               // Every 8th
+    {1, 3, 5, 7, 9, 11, 13, 15},               // Offbeat 8th
+    {0, 2, 4, 5, 6, 7, 8, 10, 12, 13, 14, 15}, // Variation
 };
 
-static const uint16_t clapPatterns[] = {
-    0x0404,  // With snare: ....X.......X...
-    0x0000,  // None
-    0x4040,  // Offbeat: .X...........X..
-    0x0808,  // Sparse: ........X.......
+static const std::vector<int> clapPatterns[] = {
+    {2, 10},                 // With snare
+    {},                      // None
+    {6, 14},                 // Offbeat
+    {3, 11},                 // Sparse
 };
+
+// Helper to apply a pattern from vector
+static void applyPattern(Sequencer& seq, const std::vector<int>& steps) {
+    seq.clearPattern();
+    for (int s : steps) seq.setStep(s, true);
+}
 
 static int currentPattern = 0;
 static const int numPatterns = 4;
@@ -82,10 +89,31 @@ void setup(Context& ctx) {
     auto& clapSeq = chain.add<Sequencer>("clapSeq");
 
     // Load default patterns
-    kickSeq.setPattern(kickPatterns[0]);
-    snareSeq.setPattern(snarePatterns[0]);
-    hihatSeq.setPattern(hihatPatterns[0]);
-    clapSeq.setPattern(clapPatterns[0]);
+    applyPattern(kickSeq, kickPatterns[0]);
+    applyPattern(snareSeq, snarePatterns[0]);
+    applyPattern(hihatSeq, hihatPatterns[0]);
+    applyPattern(clapSeq, clapPatterns[0]);
+
+    // Add per-step velocity accents and micro-timing to default patterns
+    // (pattern switching via applyPattern resets to uniform velocity,
+    //  but the default "four on floor" benefits from dynamics)
+    kickSeq.setStep(0,  {.velocity = 1.0f});
+    kickSeq.setStep(4,  {.velocity = 0.85f});
+    kickSeq.setStep(8,  {.velocity = 0.9f});
+    kickSeq.setStep(12, {.velocity = 0.8f});
+
+    snareSeq.setStep(2,  {.velocity = 1.0f});
+    snareSeq.setStep(10, {.velocity = 0.9f});
+
+    // Hihat velocity accents and micro-timing for swing
+    for (int i = 0; i < 16; i++) {
+        if (hihatSeq.isActive(i)) {
+            bool accent = (i % 4 == 0);
+            float vel = accent ? 0.9f : 0.5f;
+            float mt = (i % 2 == 1) ? 0.05f : 0.0f;  // Swing on offbeats
+            hihatSeq.setStep(i, {.velocity = vel, .microTiming = mt});
+        }
+    }
 
     // =========================================================================
     // Euclidean Sequencers - Algorithmic alternative
@@ -387,10 +415,10 @@ void update(Context& ctx) {
         if (!useEuclidean) {
             const char* patterns[] = {"Four on Floor", "Half Time", "Syncopated", "Breakbeat"};
             if (ImGui::Combo("Pattern", &currentPattern, patterns, 4)) {
-                kickSeq.setPattern(kickPatterns[currentPattern]);
-                snareSeq.setPattern(snarePatterns[currentPattern]);
-                hihatSeq.setPattern(hihatPatterns[currentPattern]);
-                clapSeq.setPattern(clapPatterns[currentPattern]);
+                applyPattern(kickSeq, kickPatterns[currentPattern]);
+                applyPattern(snareSeq, snarePatterns[currentPattern]);
+                applyPattern(hihatSeq, hihatPatterns[currentPattern]);
+                applyPattern(clapSeq, clapPatterns[currentPattern]);
             }
         }
 
@@ -559,18 +587,18 @@ void update(Context& ctx) {
     // Pattern change
     if (ctx.key(GLFW_KEY_RIGHT).pressed) {
         currentPattern = (currentPattern + 1) % numPatterns;
-        kickSeq.setPattern(kickPatterns[currentPattern]);
-        snareSeq.setPattern(snarePatterns[currentPattern]);
-        hihatSeq.setPattern(hihatPatterns[currentPattern]);
-        clapSeq.setPattern(clapPatterns[currentPattern]);
+        applyPattern(kickSeq, kickPatterns[currentPattern]);
+        applyPattern(snareSeq, snarePatterns[currentPattern]);
+        applyPattern(hihatSeq, hihatPatterns[currentPattern]);
+        applyPattern(clapSeq, clapPatterns[currentPattern]);
         printStatus(bpmVal, clock.isRunning());
     }
     if (ctx.key(GLFW_KEY_LEFT).pressed) {
         currentPattern = (currentPattern - 1 + numPatterns) % numPatterns;
-        kickSeq.setPattern(kickPatterns[currentPattern]);
-        snareSeq.setPattern(snarePatterns[currentPattern]);
-        hihatSeq.setPattern(hihatPatterns[currentPattern]);
-        clapSeq.setPattern(clapPatterns[currentPattern]);
+        applyPattern(kickSeq, kickPatterns[currentPattern]);
+        applyPattern(snareSeq, snarePatterns[currentPattern]);
+        applyPattern(hihatSeq, hihatPatterns[currentPattern]);
+        applyPattern(clapSeq, clapPatterns[currentPattern]);
         printStatus(bpmVal, clock.isRunning());
     }
 

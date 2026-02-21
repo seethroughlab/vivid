@@ -47,11 +47,14 @@ void setup(Context& ctx) {
     // Drum machine - 4 voices with individual sequencers
     // =========================================================================
 
-    // Kick - four on the floor
+    // Kick - four on the floor with velocity variation
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setTriggerSource("clock");
     kickSeq.steps = 16;
-    kickSeq.setPattern(0b0001000100010001);
+    kickSeq.setStep(0,  {.velocity = 1.0f});
+    kickSeq.setStep(4,  {.velocity = 0.8f});
+    kickSeq.setStep(8,  {.velocity = 0.9f});
+    kickSeq.setStep(12, {.velocity = 0.75f});
 
     auto& kick = chain.add<Kick>("kick");
     kick.setTriggerSource("kickSeq");
@@ -60,11 +63,12 @@ void setup(Context& ctx) {
     kick.decay = 0.15f;  // Short for clear transients
     kick.drive = 0.3f;
 
-    // Snare - backbeat
+    // Snare - backbeat with velocity
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
     snareSeq.setTriggerSource("clock");
     snareSeq.steps = 16;
-    snareSeq.setPattern(0b0000000100000001);
+    snareSeq.setStep(0, {.velocity = 1.0f});
+    snareSeq.setStep(8, {.velocity = 0.85f});
 
     auto& snare = chain.add<Snare>("snare");
     snare.setTriggerSource("snareSeq");
@@ -85,11 +89,14 @@ void setup(Context& ctx) {
     hihat.decay = 0.08f;
     hihat.tone = 0.6f;
 
-    // Clap - syncopated
+    // Clap - syncopated with velocity variation
     auto& clapSeq = chain.add<Sequencer>("clapSeq");
     clapSeq.setTriggerSource("clock");
     clapSeq.steps = 16;
-    clapSeq.setPattern(0b0010001000100010);
+    clapSeq.setStep(1,  {.velocity = 0.8f});
+    clapSeq.setStep(5,  {.velocity = 0.6f});
+    clapSeq.setStep(9,  {.velocity = 0.9f});
+    clapSeq.setStep(13, {.velocity = 0.7f});
 
     auto& clap = chain.add<Clap>("clap");
     clap.setTriggerSource("clapSeq");

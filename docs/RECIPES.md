@@ -136,7 +136,7 @@ void setup(Context& ctx) {
     auto& seq = chain.add<Sequencer>("seq");
     seq.setTriggerSource("clock");
     seq.steps = 16;
-    seq.setPattern(0b1001001010010010);  // Syncopated rhythm
+    seq.setSteps({1, 4, 7, 9, 12, 15});  // Syncopated rhythm
 
     // Concentric circles
     auto& circle1 = chain.add<Shape>("circle1");
@@ -306,12 +306,12 @@ void setup(Context& ctx) {
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setTriggerSource("clock");
     kickSeq.steps = 16;
-    kickSeq.setPattern(0b0001000100010001);  // Four on floor
+    kickSeq.setSteps({0, 4, 8, 12});  // Four on floor
 
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
     snareSeq.setTriggerSource("clock");
     snareSeq.steps = 16;
-    snareSeq.setPattern(0b0000000100000001);  // Backbeat
+    snareSeq.setSteps({0, 8});  // Backbeat
 
     // Particles - emit only on trigger
     auto& particles = chain.add<Particles>("particles");
@@ -520,7 +520,7 @@ void setup(Context& ctx) {
 
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setTriggerSource("clock");
-    kickSeq.setPattern(0b0001000100010001);  // Kick on 1,5,9,13
+    kickSeq.setSteps({0, 4, 8, 12});  // Kick on 1,5,9,13
 
     auto& kick = chain.add<Kick>("kick");
     kick.setTriggerSource("kickSeq");  // Audio-thread triggering
@@ -1165,12 +1165,12 @@ void setup(Context& ctx) {
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setTriggerSource("clock");
     kickSeq.steps = 16;
-    kickSeq.setPattern(0b0001000100010001);  // Four on floor
+    kickSeq.setSteps({0, 4, 8, 12});  // Four on floor
 
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
     snareSeq.setTriggerSource("clock");
     snareSeq.steps = 16;
-    snareSeq.setPattern(0b0000000100000001);  // Backbeat
+    snareSeq.setSteps({0, 8});  // Backbeat
 
     auto& hatSeq = chain.add<Euclidean>("hatSeq");
     hatSeq.setTriggerSource("clock");

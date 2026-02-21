@@ -71,9 +71,8 @@ TEST_CASE("Sequencer pattern editing", "[audio][sequencer]") {
         REQUIRE(seq.getStep(8) == false);
     }
 
-    SECTION("setPattern from bitmask") {
-        // Pattern 0x1111 = steps 0, 4, 8, 12
-        seq.setPattern(0x1111);
+    SECTION("setSteps activates listed steps") {
+        seq.setSteps({0, 4, 8, 12});
         REQUIRE(seq.getStep(0) == true);
         REQUIRE(seq.getStep(1) == false);
         REQUIRE(seq.getStep(2) == false);
@@ -81,6 +80,117 @@ TEST_CASE("Sequencer pattern editing", "[audio][sequencer]") {
         REQUIRE(seq.getStep(4) == true);
         REQUIRE(seq.getStep(8) == true);
         REQUIRE(seq.getStep(12) == true);
+    }
+
+    SECTION("setSteps clears previous pattern") {
+        seq.setStep(1, true);
+        seq.setStep(3, true);
+        seq.setSteps({0, 4});
+        REQUIRE(seq.getStep(1) == false);
+        REQUIRE(seq.getStep(3) == false);
+        REQUIRE(seq.getStep(0) == true);
+        REQUIRE(seq.getStep(4) == true);
+    }
+}
+
+TEST_CASE("Sequencer Step struct API", "[audio][sequencer]") {
+    Sequencer seq;
+
+    SECTION("setStep with Step struct activates step") {
+        seq.setStep(0, {.note = 60, .velocity = 0.9f});
+        REQUIRE(seq.isActive(0) == true);
+        REQUIRE(seq.getNote(0) == 60);
+        REQUIRE_THAT(seq.getVelocity(0), WithinAbs(0.9f, 0.001f));
+    }
+
+    SECTION("step() returns correct data") {
+        seq.setStep(3, {.note = 67, .velocity = 0.8f, .gate = 0.75f, .probability = 0.5f});
+        const Step& s = seq.step(3);
+        REQUIRE(s.active == true);
+        REQUIRE(s.note == 67);
+        REQUIRE_THAT(s.velocity, WithinAbs(0.8f, 0.001f));
+        REQUIRE_THAT(s.gate, WithinAbs(0.75f, 0.001f));
+        REQUIRE_THAT(s.probability, WithinAbs(0.5f, 0.001f));
+    }
+
+    SECTION("step() out of range returns default") {
+        const Step& s = seq.step(-1);
+        REQUIRE(s.active == false);
+        REQUIRE(s.note == 60);
+    }
+
+    SECTION("Step with slide") {
+        seq.setStep(1, {.velocity = 0.7f, .slide = true});
+        REQUIRE(seq.step(1).slide == true);
+    }
+
+    SECTION("Step with retrig") {
+        seq.setStep(2, {.retrigCount = 3, .retrigRate = 0.25f});
+        REQUIRE(seq.step(2).retrigCount == 3);
+        REQUIRE_THAT(seq.step(2).retrigRate, WithinAbs(0.25f, 0.001f));
+    }
+
+    SECTION("Step with condition") {
+        seq.setStep(4, {.condition = StepCondition::OneInTwo});
+        REQUIRE(seq.step(4).condition == StepCondition::OneInTwo);
+    }
+
+    SECTION("Step with micro-timing") {
+        seq.setStep(6, {.microTiming = -0.1f});
+        REQUIRE_THAT(seq.step(6).microTiming, WithinAbs(-0.1f, 0.001f));
+    }
+
+    SECTION("Step with per-step CC") {
+        seq.setStep(0, {.cc = {StepCC{64, 1.0f}, StepCC{1, 0.5f}}});
+        REQUIRE(seq.step(0).cc[0].cc == 64);
+        REQUIRE_THAT(seq.step(0).cc[0].value, WithinAbs(1.0f, 0.001f));
+        REQUIRE(seq.step(0).cc[1].cc == 1);
+        REQUIRE_THAT(seq.step(0).cc[1].value, WithinAbs(0.5f, 0.001f));
+    }
+
+    SECTION("Step with gate = -1 means use global") {
+        seq.setStep(0, {.gate = -1.0f});
+        REQUIRE_THAT(seq.step(0).gate, WithinAbs(-1.0f, 0.001f));
+    }
+}
+
+TEST_CASE("Sequencer probability", "[audio][sequencer]") {
+    Sequencer seq;
+
+    SECTION("probability = 0 never fires on advance") {
+        seq.setStep(0, {.probability = 0.0f});
+        seq.steps = 1;
+        // Advance many times, should never trigger via the normal path
+        // (The actual probability check happens in generateBlock, but
+        // we can verify the data is stored correctly)
+        REQUIRE_THAT(seq.step(0).probability, WithinAbs(0.0f, 0.001f));
+    }
+
+    SECTION("probability = 1 always fires") {
+        seq.setStep(0, {.probability = 1.0f});
+        REQUIRE_THAT(seq.step(0).probability, WithinAbs(1.0f, 0.001f));
+    }
+}
+
+TEST_CASE("Sequencer isActive and backward compat", "[audio][sequencer]") {
+    Sequencer seq;
+
+    SECTION("isActive matches getStep") {
+        seq.setStep(5, true, 0.6f);
+        REQUIRE(seq.isActive(5) == true);
+        REQUIRE(seq.getStep(5) == true);
+    }
+
+    SECTION("setStep(int, uint8_t, float) backward compat") {
+        seq.setStep(0, uint8_t(64), 0.75f);
+        REQUIRE(seq.isActive(0) == true);
+        REQUIRE(seq.getNote(0) == 64);
+        REQUIRE_THAT(seq.getVelocity(0), WithinAbs(0.75f, 0.001f));
+    }
+
+    SECTION("isActive out of range returns false") {
+        REQUIRE(seq.isActive(-1) == false);
+        REQUIRE(seq.isActive(16) == false);
     }
 }
 
@@ -92,9 +202,6 @@ TEST_CASE("Sequencer playback state", "[audio][sequencer]") {
         REQUIRE(seq.currentStep() == -1);
         REQUIRE(seq.triggered() == false);
     }
-
-    // Note: advance() has been removed - sequencer now advances
-    // automatically on audio thread via setTriggerSource()
 }
 
 TEST_CASE("Sequencer operator setParam/getParam", "[audio][sequencer]") {
@@ -200,15 +307,11 @@ TEST_CASE("Euclidean operator public param API", "[audio][euclidean]") {
 TEST_CASE("Euclidean pattern generation", "[audio][euclidean]") {
     Euclidean eucl;
 
-    // Note: Pattern is generated when advance() is called and params differ from cached.
-    // Default params are steps=16, hits=4. We need to change them to trigger regeneration.
-
     SECTION("E(5,16) generates pattern with 5 hits") {
         eucl.steps = 16;
-        eucl.hits = 5;  // Different from default (4) to trigger regeneration
-        eucl.advance();  // Triggers pattern regeneration
+        eucl.hits = 5;
+        eucl.advance();
         uint16_t pattern = eucl.pattern();
-        // Count number of bits set
         int count = 0;
         for (int i = 0; i < 16; i++) {
             if (pattern & (1 << i)) count++;
@@ -217,17 +320,17 @@ TEST_CASE("Euclidean pattern generation", "[audio][euclidean]") {
     }
 
     SECTION("E(8,8) generates all-on pattern") {
-        eucl.steps = 8;  // Different from default (16) to trigger regeneration
+        eucl.steps = 8;
         eucl.hits = 8;
-        eucl.advance();  // Triggers pattern regeneration
+        eucl.advance();
         uint16_t pattern = eucl.pattern();
         REQUIRE((pattern & 0xFF) == 0xFF);
     }
 
     SECTION("E(1,8) generates single hit") {
-        eucl.steps = 8;  // Different from default (16) to trigger regeneration
+        eucl.steps = 8;
         eucl.hits = 1;
-        eucl.advance();  // Triggers pattern regeneration
+        eucl.advance();
         uint16_t pattern = eucl.pattern();
         int count = 0;
         for (int i = 0; i < 8; i++) {

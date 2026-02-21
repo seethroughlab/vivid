@@ -51,16 +51,24 @@ void setup(Context& ctx) {
     fmMetal.amount = 0.8f;
     fmMetal.decay = 0.2f;
 
-    // Sequencer for percussion
+    // Sequencer for bell - melodic pattern with per-step notes and slide
     auto& bellSeq = chain.add<Sequencer>("bellSeq");
     bellSeq.setTriggerSource("clock");
-    bellSeq.setPattern(0x0101);  // Every 8 steps
+    bellSeq.setTarget("fmBell");           // Route MIDI notes to FMDrum
+    bellSeq.setStep(0,  {.note = 72, .velocity = 0.9f});                // C5
+    bellSeq.setStep(4,  {.note = 76, .velocity = 0.7f, .slide = true}); // E5 (slide from C)
+    bellSeq.setStep(8,  {.note = 79, .velocity = 0.85f});               // G5
+    bellSeq.setStep(12, {.note = 74, .velocity = 0.6f, .slide = true,   // D5 (slide from G)
+                         .condition = StepCondition::TwoInThree});
 
+    // Sequencer for metallic hit - velocity-accented offbeats
     auto& metalSeq = chain.add<Sequencer>("metalSeq");
     metalSeq.setTriggerSource("clock");
-    metalSeq.setPattern(0x2222);  // Offbeat
+    metalSeq.setStep(1,  {.velocity = 0.8f});
+    metalSeq.setStep(5,  {.velocity = 0.6f, .probability = 0.7f});  // Probabilistic
+    metalSeq.setStep(9,  {.velocity = 0.9f});
+    metalSeq.setStep(13, {.velocity = 0.5f, .microTiming = 0.08f}); // Pushed late
 
-    fmBell.setTriggerSource("bellSeq");
     fmMetal.setTriggerSource("metalSeq");
 
     // Visual output

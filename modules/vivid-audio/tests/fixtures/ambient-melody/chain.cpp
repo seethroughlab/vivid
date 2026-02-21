@@ -124,11 +124,20 @@ void setup(Context& ctx) {
     // Drum sequencers - advance from clock on audio thread
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setTriggerSource("clock");
-    kickSeq.setPattern(0x1001);  // Downbeats
+    kickSeq.setStep(0,  {.velocity = 0.7f});                          // Gentle downbeat
+    kickSeq.setStep(12, {.velocity = 0.55f, .microTiming = -0.05f});  // Softer, slightly late
 
+    // Hihats with velocity variation and gate for open/closed feel
     auto& hihatSeq = chain.add<Sequencer>("hihatSeq");
     hihatSeq.setTriggerSource("clock");
-    hihatSeq.setPattern(0x5555);  // Every other 8th
+    hihatSeq.setStep(0,  {.velocity = 0.6f, .gate = 0.3f});
+    hihatSeq.setStep(2,  {.velocity = 0.4f, .gate = 0.2f, .microTiming = 0.04f});
+    hihatSeq.setStep(4,  {.velocity = 0.65f, .gate = 0.4f});          // Slightly open
+    hihatSeq.setStep(6,  {.velocity = 0.35f, .gate = 0.2f, .microTiming = 0.04f});
+    hihatSeq.setStep(8,  {.velocity = 0.6f, .gate = 0.3f});
+    hihatSeq.setStep(10, {.velocity = 0.4f, .gate = 0.2f, .microTiming = 0.04f});
+    hihatSeq.setStep(12, {.velocity = 0.7f, .gate = 0.5f});           // Open accent
+    hihatSeq.setStep(14, {.velocity = 0.35f, .gate = 0.2f, .microTiming = 0.04f});
 
     // Drums - trigger from sequencers on audio thread
     auto& kick = chain.add<Kick>("kick");

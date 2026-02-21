@@ -39,18 +39,31 @@ void setup(Context& ctx) {
     hat.decay = 50.0f;
     hat.volume = 0.3f;  // Softest
 
-    // Sequencers
+    // Sequencers with varied velocity — demonstrates dynamics processing
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setTriggerSource("clock");
-    kickSeq.setPattern(0x1111);
+    kickSeq.setStep(0,  {.velocity = 1.0f});                       // Hard hit
+    kickSeq.setStep(4,  {.velocity = 0.6f});                       // Softer
+    kickSeq.setStep(8,  {.velocity = 0.9f});
+    kickSeq.setStep(12, {.velocity = 0.5f});                       // Softest
 
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
     snareSeq.setTriggerSource("clock");
-    snareSeq.setPattern(0x0808);
+    snareSeq.setStep(3,  {.velocity = 1.0f});                      // Full backbeat
+    snareSeq.setStep(11, {.velocity = 0.7f});
+    snareSeq.setStep(7,  {.velocity = 0.25f, .probability = 0.5f});// Quiet ghost note
 
+    // Hihats with velocity accents — shows compressor taming peaks
     auto& hatSeq = chain.add<Sequencer>("hatSeq");
     hatSeq.setTriggerSource("clock");
-    hatSeq.setPattern(0xAAAA);
+    hatSeq.setStep(1,  {.velocity = 0.5f});
+    hatSeq.setStep(3,  {.velocity = 0.4f});
+    hatSeq.setStep(5,  {.velocity = 0.9f});                        // Accent
+    hatSeq.setStep(7,  {.velocity = 0.4f});
+    hatSeq.setStep(9,  {.velocity = 0.5f});
+    hatSeq.setStep(11, {.velocity = 0.4f});
+    hatSeq.setStep(13, {.velocity = 1.0f});                        // Strong accent
+    hatSeq.setStep(15, {.velocity = 0.4f});
 
     kick.setTriggerSource("kickSeq");
     snare.setTriggerSource("snareSeq");

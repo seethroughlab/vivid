@@ -25,12 +25,19 @@ void setup(Context& ctx) {
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setTriggerSource("clk");
     kickSeq.steps = 16;
-    kickSeq.setPattern(0b0000010001000001);  // Syncopated: 0, 6, 10
+    kickSeq.setStep(0,  {.velocity = 1.0f});
+    kickSeq.setStep(6,  {.velocity = 0.8f,
+                         .retrigCount = 2, .retrigRate = 0.4f});   // Stutter
+    kickSeq.setStep(10, {.velocity = 0.85f});
+    kickSeq.setStep(14, {.velocity = 0.4f, .probability = 0.6f}); // Ghost fill
 
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
     snareSeq.setTriggerSource("clk");
     snareSeq.steps = 16;
-    snareSeq.setPattern(0b0001000000010000);  // Backbeat: 4, 12
+    snareSeq.setStep(4,  {.velocity = 1.0f});                     // Backbeat
+    snareSeq.setStep(12, {.velocity = 0.9f});
+    snareSeq.setStep(9,  {.velocity = 0.3f, .probability = 0.35f, // Ghost note
+                          .microTiming = -0.08f});                 // Drag
 
     auto& hatSeq = chain.add<Euclidean>("hatSeq");
     hatSeq.setTriggerSource("clk");
