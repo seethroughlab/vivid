@@ -57,6 +57,15 @@
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
+// Case-insensitive string comparison
+static bool iequals(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); i++) {
+        if (std::tolower(a[i]) != std::tolower(b[i])) return false;
+    }
+    return true;
+}
+
 // Helper to convert ParamType to string (matches operator_registry.cpp)
 static const char* paramTypeName(vivid::ParamType type) {
     switch (type) {
@@ -1968,6 +1977,27 @@ private:
             // Determine in_place mode: explicit, or let CLI auto-detect
             bool hasExplicitInPlace = args.contains("in_place") && args["in_place"].is_boolean();
             bool explicitInPlace = hasExplicitInPlace ? args["in_place"].get<bool>() : false;
+
+            // Guard: explicit in_place=true with mismatched directory name is almost certainly a mistake
+            if (hasExplicitInPlace && explicitInPlace) {
+                fs::path resolvedPath = fs::absolute(fs::path(targetPath));
+                std::string dirName = resolvedPath.filename().string();
+                if (!iequals(dirName, projectName)) {
+                    fs::path intendedPath = resolvedPath / projectName;
+                    if (fs::exists(intendedPath) && fs::is_directory(intendedPath)) {
+                        // The subdirectory exists — they almost certainly meant to target it
+                        targetPath = intendedPath.string();
+                    } else {
+                        result["isError"] = true;
+                        result["content"] = {{{"type", "text"}, {"text",
+                            "in_place=true would create files directly in '" + resolvedPath.string() +
+                            "' (not in a '" + projectName + "' subdirectory). "
+                            "Either set path to '" + intendedPath.string() + "' or omit in_place to let auto-detection decide."
+                        }}};
+                        return result;
+                    }
+                }
+            }
 
             std::vector<std::string> cmdArgs = {
                 getVividExecutable(), "new", projectName,
