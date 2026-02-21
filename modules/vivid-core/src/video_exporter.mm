@@ -459,16 +459,23 @@ void VideoExporter::pushAudioSamples(const float* samples, uint32_t frameCount) 
     // Dispatch audio encoding to background queue (non-blocking)
     // This keeps audio encoding off the main thread
     if (m_impl->audioQueue) {
-        // Capture required values for the block
-        AVAssetWriterInput* audioInput = m_impl->audioInput;
-        AVAssetWriter* assetWriter = m_impl->assetWriter;
+        // Capture strong references to Obj-C objects so they survive even if
+        // stop() nils out the Impl members before this block executes.
+        __strong AVAssetWriterInput* strongInput = m_impl->audioInput;
+        __strong AVAssetWriter* strongWriter = m_impl->assetWriter;
         uint32_t channels = m_audioChannels;
         uint32_t sampleRate = m_audioSampleRate;
         Impl* impl = m_impl;
 
         dispatch_async(m_impl->audioQueue, ^{
+            // Bail early if writer is no longer active (stop() was called)
+            if (!strongWriter || strongWriter.status != AVAssetWriterStatusWriting) return;
+            if (!impl->audioWriterRunning) return;
+
             // Write queued audio while input is ready
-            while ([audioInput isReadyForMoreMediaData]) {
+            while ([strongInput isReadyForMoreMediaData]) {
+                if (!impl->audioWriterRunning) break;
+
                 AudioQueueEntry entry;
                 {
                     std::lock_guard<std::mutex> lock(impl->audioMutex);
@@ -479,7 +486,7 @@ void VideoExporter::pushAudioSamples(const float* samples, uint32_t frameCount) 
                     impl->audioEntries.pop();
                 }
 
-                writeAudioEntryImpl(audioInput, assetWriter, entry, channels, sampleRate);
+                writeAudioEntryImpl(strongInput, strongWriter, entry, channels, sampleRate);
             }
         });
     }
@@ -896,11 +903,14 @@ void VideoExporter::stop() {
         goto cleanup;
     }
 
-    // Stop audio writer
+    // Stop audio writer — signal first, then drain
     if (m_audioEnabled) {
+        // Signal audio blocks to stop accepting new work. This is atomic,
+        // so in-flight dispatch_async blocks will see it immediately.
         m_impl->audioWriterRunning = false;
 
-        // Wait for any pending async audio encoding to complete
+        // Barrier: wait for any in-flight async audio blocks to finish.
+        // After this returns, no previously dispatched blocks are running.
         if (m_impl->audioQueue) {
             dispatch_sync(m_impl->audioQueue, ^{
                 // This block runs after all previously queued blocks complete
@@ -958,8 +968,9 @@ void VideoExporter::stop() {
         dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
         __block AVAssetWriterStatus completionStatus = AVAssetWriterStatusUnknown;
 
-        [m_impl->assetWriter finishWritingWithCompletionHandler:^{
-            completionStatus = m_impl->assetWriter.status;
+        __strong AVAssetWriter* writerForCompletion = m_impl->assetWriter;
+        [writerForCompletion finishWritingWithCompletionHandler:^{
+            completionStatus = writerForCompletion.status;
             dispatch_semaphore_signal(semaphore);
         }];
 

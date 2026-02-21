@@ -57,6 +57,10 @@
 #include <vivid/effects/particles.h>
 #include <vivid/effects/point_sprites.h>
 #include <vivid/effects/plexus.h>
+#include <vivid/effects/particle_system.h>
+#include <vivid/effects/gpu_particles.h>
+#include <vivid/effects/particle_forces.h>
+#include <vivid/effects/forces/all_forces.h>
 
 // Canvas (Phase 5)
 #include <vivid/effects/canvas.h>

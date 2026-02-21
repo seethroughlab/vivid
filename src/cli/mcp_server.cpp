@@ -97,6 +97,10 @@ public:
         std::string url = "ws://127.0.0.1:" + std::to_string(port);
         m_ws.setUrl(url);
 
+        // Enable automatic WebSocket ping every 5 seconds to keep connection alive
+        // during long operations (e.g. advanceFrames with many frames)
+        m_ws.setPingInterval(5);
+
         m_ws.setOnMessageCallback([this](const ix::WebSocketMessagePtr& msg) {
             if (msg->type == ix::WebSocketMessageType::Message) {
                 handleMessage(msg->str);
@@ -223,9 +227,11 @@ public:
                         now - m_lastMessageTime).count();
 
                     if (elapsed > 15) {
-                        std::cerr << "[MCP] No messages for " << elapsed << "s, connection may be stale\n";
-                        // Don't set m_connected = false here, just log
-                        // The WebSocket error callback will handle actual disconnection
+                        std::cerr << "[MCP] No messages for " << elapsed << "s, sending ping...\n";
+                        // Send an explicit ping to probe the connection. If the peer
+                        // doesn't respond, IXWebSocket will fire an error/close callback,
+                        // which sets m_connected = false.
+                        m_ws.ping("");
                     }
                 }
             }
@@ -527,6 +533,10 @@ public:
 
     // Send advance_frames command and wait for completion
     json advanceFrames(int count, int timeoutMs = 30000) {
+        // Scale timeout with frame count: at least 30s, plus ~50ms per frame for
+        // complex chains. This prevents spurious timeouts on long advances.
+        int scaledTimeout = std::max(timeoutMs, count * 50 + 10000);
+
         // Clear any previous result
         {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -540,22 +550,46 @@ public:
         cmd["count"] = count;
         m_ws.send(cmd.dump());
 
-        // Wait for frame_advance_complete response
+        // Wait for frame_advance_complete response with keepalive
         auto start = std::chrono::steady_clock::now();
-        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(scaledTimeout)) {
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 if (m_frameAdvanceResultReceived) {
                     return m_frameAdvanceResult;
                 }
             }
+
+            // Check if connection dropped during the wait
+            if (!m_connected) {
+                // Attempt one reconnect before failing
+                std::cerr << "[MCP] Connection lost during advanceFrames, attempting reconnect...\n";
+                m_ws.stop();
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                m_ws.start();
+                // Wait up to 2 seconds for reconnection
+                for (int i = 0; i < 20 && !m_connected; ++i) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+                if (!m_connected) {
+                    json result;
+                    result["success"] = false;
+                    result["error"] = "WebSocket connection lost during frame advance and reconnect failed";
+                    return result;
+                }
+                // Re-send the advance command after reconnect
+                m_ws.send(cmd.dump());
+            }
+
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
 
         // Timeout
         json result;
         result["success"] = false;
-        result["error"] = "Timeout waiting for frame advance";
+        result["error"] = "Timeout waiting for frame advance (" +
+                          std::to_string(count) + " frames, " +
+                          std::to_string(scaledTimeout) + "ms timeout)";
         return result;
     }
 
@@ -1114,10 +1148,10 @@ private:
                 {"type", "object"},
                 {"properties", {
                     {"name", {{"type", "string"}, {"description", "Project name"}}},
-                    {"path", {{"type", "string"}, {"description", "Directory to create project in (optional, defaults to current directory)"}}},
+                    {"path", {{"type", "string"}, {"description", "Parent directory to create project in (optional, defaults to current directory). Project is created at path/name unless in_place is true."}}},
                     {"template", {{"type", "string"}, {"description", "Template: blank, noise-demo, feedback, audio-visualizer, 3d-orbit"}}},
                     {"modules", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Modules to include (use list_modules to see available)"}}},
-                    {"in_place", {{"type", "boolean"}, {"description", "If true, create files directly in path instead of path/name subdirectory. If false, force subdirectory creation. If not specified, auto-detect based on directory state."}}}
+                    {"in_place", {{"type", "boolean"}, {"description", "If true, path must be the target project directory itself (e.g. path='/tmp/myproject', name='myproject') — files are created directly in path without creating a subdirectory. If the directory name doesn't match name, an error is returned. If false, force path/name subdirectory creation. If not specified, auto-detect based on directory state."}}}
                 }},
                 {"required", json::array({"name"})}
             }}

@@ -104,3 +104,6 @@
 
 // Musical constants
 #include <vivid/audio/notes.h>
+
+// Audio output (from vivid-core)
+#include <vivid/audio_output.h>
