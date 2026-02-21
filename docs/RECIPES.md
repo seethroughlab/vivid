@@ -58,8 +58,8 @@ void setup(Context& ctx) {
     // Star shape - size driven by bass
     auto& shape = chain.add<Shape>("shape");
     shape.type = ShapeType::Star;
-    shape.points = 5;
-    shape.size = 0.3f;
+    shape.sides = 5;
+    shape.size.set(0.3f, 0.3f);
     shape.softness = 0.1f;
     shape.position.set(0.5f, 0.5f);
 
@@ -89,7 +89,8 @@ void update(Context& ctx) {
     float high = bands.high();
 
     // Bass drives size (center-scaling, so it pulses outward)
-    shape.size = 0.2f + bass * 0.5f;
+    float s = 0.2f + bass * 0.5f;
+    shape.size.set(s, s);
 
     // Mid drives rotation speed
     shape.rotation = static_cast<float>(ctx.time()) * (0.5f + mid);
@@ -634,7 +635,7 @@ void setup(Context& ctx) {
     // Seed shape in the center
     auto& shape = chain.add<Shape>("shape");
     shape.type = ShapeType::Star;
-    shape.size = 0.1f;
+    shape.size.set(0.1f, 0.1f);
     shape.position.set(0.5f, 0.5f);
     shape.color.set(1.0f, 0.3f, 0.5f);
 

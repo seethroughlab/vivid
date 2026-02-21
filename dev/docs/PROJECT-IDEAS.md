@@ -18,7 +18,7 @@ chain.add<FFT>("fft").input("mic");
 
 // Visuals that react to audio
 auto& shape = chain.add<Shape>("shape");
-// In update(): shape.size = 0.2f + beat.kick() * 0.5f;
+// In update(): float s = 0.2f + beat.kick() * 0.5f; shape.size.set(s, s);
 ```
 
 **Expand it:** Add multiple visual layers, each responding to different frequency bands.

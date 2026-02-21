@@ -53,7 +53,7 @@ See lesson 11 (shapes-reactive) for audio-reactive visuals without noise.
    ```cpp
    auto& shape = chain.add<Shape>("shape");
    shape.type = ShapeType::Star;
-   shape.size = 0.4f;
+   shape.size.set(0.4f, 0.4f);
    shape.position.set(0.5f, 0.5f);
    ```
 
