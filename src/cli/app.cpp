@@ -23,7 +23,9 @@
 #include <vivid/runtime_api.h>
 #include <vivid/audio_buffer.h>
 #include <vivid/audio_analysis.h>
+#include <vivid/temporal_analysis.h>
 #include <vivid/waveform_image.h>
+#include <vivid/spectrogram_image.h>
 #include <vivid/audio_buffer.h>
 #include <vivid/wav_writer.h>
 #include <vivid/video_exporter.h>
@@ -810,6 +812,7 @@ struct MainLoopContext {
     std::vector<int> inspectSampleFrames;  // Target frames for each sample
     int inspectSamplesCollected = 0;       // How many samples collected so far
     std::vector<std::string> inspectResults; // Collected JSON strings
+    std::unique_ptr<vivid::TemporalAnalyzer> temporalAnalyzer;  // Temporal analysis for multi-sample
 
     // Inspect audio accumulation (for waveform.png)
     bool inspectAudioStarted = false;
@@ -1875,6 +1878,19 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                             mlc.inspectAudioBuffer.data(),
                             mlc.inspectAudioFramesCaptured, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
                     }
+
+                    // Push frame into temporal analyzer
+                    if (mlc.temporalAnalyzer) {
+                        WGPUTexture outTex = mlc.ctx->chain().outputTexture();
+                        if (outTex) {
+                            uint32_t texW, texH;
+                            auto pixels = vivid::readbackTexturePixels(mlc.device, mlc.queue, outTex, texW, texH);
+                            if (!pixels.empty()) {
+                                mlc.temporalAnalyzer->pushFrame(pixels.data(), texW, texH);
+                            }
+                        }
+                    }
+
                     mlc.inspectResults.push_back(inspection.toJSON());
 
                     // Save per-sample snapshot if output dir specified
@@ -1908,6 +1924,13 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                     for (const auto& sample : mlc.inspectResults) {
                         envelope["samples"].push_back(nlohmann::json::parse(sample));
                     }
+
+                    // Include temporal analysis if available
+                    if (mlc.temporalAnalyzer && mlc.temporalAnalyzer->frameCount() >= 2) {
+                        auto temporal = mlc.temporalAnalyzer->analyze();
+                        envelope["temporal"] = nlohmann::json::parse(temporal.toJSON());
+                    }
+
                     outputJson = envelope.dump();
                 }
 
@@ -1926,12 +1949,18 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                         std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
                         renderWaveformPNG(waveformPath, mlc.inspectAudioBuffer.data(),
                                           mlc.inspectAudioFramesCaptured, AUDIO_CHANNELS);
+                        std::string spectrogramPath = (fs::path(mlc.inspectOutDir) / "spectrogram.png").string();
+                        renderSpectrogramPNG(spectrogramPath, mlc.inspectAudioBuffer.data(),
+                                             mlc.inspectAudioFramesCaptured, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
                     } else {
                         const auto* audioBuf = mlc.ctx->chain().audioOutputBuffer();
                         if (audioBuf && audioBuf->isValid()) {
                             std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
                             renderWaveformPNG(waveformPath, audioBuf->samples,
                                               audioBuf->frameCount, audioBuf->channels);
+                            std::string spectrogramPath = (fs::path(mlc.inspectOutDir) / "spectrogram.png").string();
+                            renderSpectrogramPNG(spectrogramPath, audioBuf->samples,
+                                                 audioBuf->frameCount, audioBuf->channels);
                         }
                     }
                 }
@@ -1973,12 +2002,18 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                         std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
                         renderWaveformPNG(waveformPath, mlc.inspectAudioBuffer.data(),
                                           mlc.inspectAudioFramesCaptured, AUDIO_CHANNELS);
+                        std::string spectrogramPath = (fs::path(mlc.inspectOutDir) / "spectrogram.png").string();
+                        renderSpectrogramPNG(spectrogramPath, mlc.inspectAudioBuffer.data(),
+                                             mlc.inspectAudioFramesCaptured, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
                     } else {
                         const auto* audioBuf = mlc.ctx->chain().audioOutputBuffer();
                         if (audioBuf && audioBuf->isValid()) {
                             std::string waveformPath = (fs::path(mlc.inspectOutDir) / "waveform.png").string();
                             renderWaveformPNG(waveformPath, audioBuf->samples,
                                               audioBuf->frameCount, audioBuf->channels);
+                            std::string spectrogramPath = (fs::path(mlc.inspectOutDir) / "spectrogram.png").string();
+                            renderSpectrogramPNG(spectrogramPath, audioBuf->samples,
+                                                 audioBuf->frameCount, audioBuf->channels);
                         }
                     }
                 }
@@ -3926,6 +3961,16 @@ int Application::init(const AppConfig& config) {
             }
             // Override checkFrame to the last sample frame so the loop runs long enough
             mlc.checkFrame = endFrame;
+
+            // Create temporal analyzer for multi-sample inspect
+            mlc.temporalAnalyzer = std::make_unique<vivid::TemporalAnalyzer>();
+            // Enable sparse mode if sample interval > 2 frames
+            if (mlc.inspectSamples >= 2 && endFrame > 0) {
+                int interval = endFrame / (mlc.inspectSamples - 1);
+                if (interval > 2) {
+                    mlc.temporalAnalyzer->setSparseMode(true);
+                }
+            }
         }
     }
 

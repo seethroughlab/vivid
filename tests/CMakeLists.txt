@@ -117,6 +117,50 @@ catch_discover_tests(test_audio_assertions
 )
 
 # -----------------------------------------------------------------------------
+# Unit Tests (frame analysis assertions — Tier 1 + temporal path resolution)
+# -----------------------------------------------------------------------------
+
+add_executable(test_frame_analysis_assertions
+    unit/test_frame_analysis_assertions.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/assertion.cpp
+)
+
+target_link_libraries(test_frame_analysis_assertions PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_frame_analysis_assertions PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+    ${CMAKE_SOURCE_DIR}/src/cli/include
+)
+
+catch_discover_tests(test_frame_analysis_assertions
+    PROPERTIES LABELS "unit"
+)
+
+# -----------------------------------------------------------------------------
+# Unit Tests (temporal analysis — TemporalAnalyzer)
+# -----------------------------------------------------------------------------
+
+add_executable(test_temporal_analysis
+    unit/test_temporal_analysis.cpp
+)
+
+target_link_libraries(test_temporal_analysis PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_temporal_analysis PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+)
+
+catch_discover_tests(test_temporal_analysis
+    PROPERTIES LABELS "unit"
+)
+
+# -----------------------------------------------------------------------------
 # Unit Tests (particle forces)
 # -----------------------------------------------------------------------------
 

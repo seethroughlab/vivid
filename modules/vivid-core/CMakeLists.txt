@@ -51,9 +51,11 @@ set(VIVID_CORE_LIB_SOURCES
     src/context.cpp
     src/chain.cpp
     src/frame_analysis.cpp
+    src/temporal_analysis.cpp
     src/audio_analysis.cpp
     src/wav_writer.cpp
     src/waveform_image.cpp
+    src/spectrogram_image.cpp
     src/asset_loader.cpp
     src/shader_preprocessor.cpp
     src/window_manager.cpp

@@ -127,6 +127,32 @@ static std::pair<bool, double> resolveFrameAnalysisField(const FrameAnalysis& fa
         if (idx >= 0 && idx < 8) return {true, static_cast<double>(fa.histogram[idx])};
     }
 
+    // Tier 1 additions
+    if (field == "textureEntropy") return {true, fa.textureEntropy};
+    if (field == "edgeDensity") return {true, fa.edgeDensity};
+    if (field == "avgGradientMag") return {true, fa.avgGradientMag};
+    if (field == "clipBlackPct") return {true, fa.clipBlackPct};
+    if (field == "clipWhitePct") return {true, fa.clipWhitePct};
+    if (field == "headroom") return {true, fa.headroom};
+    if (field == "rangeSpan") return {true, fa.rangeSpan};
+    if (field == "sharpness") return {true, fa.sharpness};
+    if (field == "noiseLevel") return {true, fa.noiseLevel};
+    if (field == "visualCenterX") return {true, fa.visualCenterX};
+    if (field == "visualCenterY") return {true, fa.visualCenterY};
+    if (field == "colorTemperature") return {true, fa.colorTemperature};
+    if (field == "uniqueHueCount") return {true, static_cast<double>(fa.uniqueHueCount)};
+    if (field == "hueEntropy") return {true, fa.hueEntropy};
+    if (field == "alphaOpaquePct") return {true, fa.alphaOpaquePct};
+    if (field == "alphaTransparentPct") return {true, fa.alphaTransparentPct};
+    if (field == "alphaPartialPct") return {true, fa.alphaPartialPct};
+    if (field == "alphaMean") return {true, fa.alphaMean};
+
+    // hueHistogram.0 through hueHistogram.11
+    if (field == "hueHistogram" && partIdx + 1 < parts.size()) {
+        int idx = std::stoi(parts[partIdx + 1]);
+        if (idx >= 0 && idx < 12) return {true, fa.hueHistogram[idx]};
+    }
+
     return {false, 0.0};
 }
 
@@ -162,6 +188,31 @@ std::pair<bool, double> resolvePath(const std::string& path,
             if (parts[2] == "high")     return {true, aa.spectrum[5]};
         }
 
+        return {false, 0.0};
+    }
+
+    // temporal.<field> -> TemporalAnalysis
+    if (parts[0] == "temporal" && parts.size() >= 2 && inspection.temporalAnalysis.has_value()) {
+        const auto& ta = *inspection.temporalAnalysis;
+        if (parts[1] == "flickerScore") return {true, ta.flickerScore};
+        if (parts[1] == "flickerFrequency") return {true, ta.flickerFrequency};
+        if (parts[1] == "frameDelta") return {true, ta.frameDelta};
+        if (parts[1] == "convergenceScore") return {true, ta.convergenceScore};
+        if (parts[1] == "isConverged") return {true, ta.isConverged ? 1.0 : 0.0};
+        if (parts[1] == "motionMagnitude") return {true, ta.motionMagnitude};
+        if (parts[1] == "frameDiversity") return {true, ta.frameDiversity};
+        if (parts[1] == "isFrozen") return {true, ta.isFrozen ? 1.0 : 0.0};
+        if (parts[1] == "isLooping") return {true, ta.isLooping ? 1.0 : 0.0};
+        if (parts[1] == "loopPeriodSeconds") return {true, ta.loopPeriodSeconds};
+        if (parts[1] == "loopPeriodFrames") return {true, static_cast<double>(ta.loopPeriodFrames)};
+        if (parts[1] == "loopConfidence") return {true, ta.loopConfidence};
+        if (parts[1] == "noveltyScore") return {true, ta.noveltyScore};
+        if (parts[1] == "noveltyTrend") return {true, ta.noveltyTrend};
+        if (parts[1] == "keyframeCount") return {true, static_cast<double>(ta.keyframeCount)};
+        if (parts[1] == "regionMotion" && parts.size() >= 3) {
+            int idx = std::stoi(parts[2]);
+            if (idx >= 0 && idx < 9) return {true, ta.regionMotion[idx]};
+        }
         return {false, 0.0};
     }
 
