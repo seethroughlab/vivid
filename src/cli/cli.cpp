@@ -1750,6 +1750,7 @@ ParseResult parseArgs(int argc, char** argv) {
     float exportDuration = 0.0f;
     float exportFps = 60.0f;
     bool exportAudio = false;
+    bool exportAudioOnly = false;
     std::string exportCodec = "h264";
     std::string exportResolution;
     bool exportQuiet = false;
@@ -1763,6 +1764,7 @@ ParseResult parseArgs(int argc, char** argv) {
     exportCmd->add_option("--fps", exportFps, "Frame rate (default: 60)")
              ->check(CLI::Range(0.1f, 240.0f));
     exportCmd->add_flag("--audio", exportAudio, "Include audio track");
+    exportCmd->add_flag("--audio-only", exportAudioOnly, "Export audio only to WAV file (no video)");
     exportCmd->add_option("--codec", exportCodec, "Video codec: h264, h265, prores")
              ->type_name("CODEC");
     exportCmd->add_option("--resolution", exportResolution, "Render resolution (e.g., 1920x1080)")
@@ -1957,6 +1959,7 @@ ParseResult parseArgs(int argc, char** argv) {
         config.exportDuration = exportDuration;
         config.exportFps = exportFps;
         config.exportAudio = exportAudio;
+        config.exportAudioOnly = exportAudioOnly;
         config.exportQuiet = exportQuiet;
 
         // Parse export resolution

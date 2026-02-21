@@ -1650,6 +1650,32 @@ private:
             }}
         });
 
+        // export_audio - Export audio only to WAV
+        tools.push_back({
+            {"name", "export_audio"},
+            {"description", "Export a Vivid project's audio to a WAV file. "
+                            "Runs headless deterministic rendering (faster than real-time). "
+                            "Returns file path, file size, and audio analysis metrics. "
+                            "No running Vivid instance needed."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"},
+                        {"description", "Path to project directory"}}},
+                    {"output", {{"type", "string"},
+                        {"description", "Output WAV file path (e.g., output.wav)"}}},
+                    {"duration", {{"type", "number"},
+                        {"description", "Duration in seconds"}}},
+                    {"fps", {{"type", "number"},
+                        {"description", "Simulation frame rate (default: 60)"}}},
+                    {"script", {{"type", "string"},
+                        {"description",
+                            "Path to playback script JSON (optional)"}}}
+                }},
+                {"required", json::array({"path", "output", "duration"})}
+            }}
+        });
+
         // run_project - Launch Vivid in the background
         tools.push_back({
             {"name", "run_project"},
@@ -3887,6 +3913,75 @@ private:
                 response["exitCode"] = cmdResult.exitCode;
                 result["isError"] = true;
                 result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            }
+        }
+        else if (name == "export_audio") {
+            std::string projectPath = args.value("path", "");
+            std::string outputPath = args.value("output", "");
+            float duration = args.value("duration", 0.0f);
+            std::string script = args.value("script", "");
+            float fps = args.value("fps", 0.0f);
+
+            if (projectPath.empty() || outputPath.empty() || duration <= 0.0f) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"},
+                    {"text", "path, output, and duration (> 0) are required"}}};
+                return result;
+            }
+
+            std::vector<std::string> cmdArgs = {
+                getVividExecutable(), "export", projectPath,
+                "-o", outputPath,
+                "--duration", std::to_string(duration),
+                "--audio-only",
+                "--quiet"
+            };
+            if (!script.empty()) {
+                cmdArgs.push_back("--script");
+                cmdArgs.push_back(script);
+            }
+            if (fps > 0.0f) {
+                cmdArgs.push_back("--fps");
+                cmdArgs.push_back(std::to_string(fps));
+            }
+
+            auto cmdResult = runCommand(cmdArgs, 600000);  // 10 min timeout
+
+            if (cmdResult.exitCode == 0) {
+                json response;
+                response["success"] = true;
+                response["output"] = outputPath;
+                response["duration"] = duration;
+                try {
+                    if (fs::exists(outputPath)) {
+                        auto fileSize = fs::file_size(outputPath);
+                        response["fileSizeBytes"] = fileSize;
+                        if (fileSize >= 1024 * 1024) {
+                            response["fileSize"] =
+                                std::to_string(fileSize / (1024 * 1024)) + " MB";
+                        } else if (fileSize >= 1024) {
+                            response["fileSize"] =
+                                std::to_string(fileSize / 1024) + " KB";
+                        }
+                    }
+                } catch (...) {}
+                if (!cmdResult.output.empty()) {
+                    response["log"] = cmdResult.output;
+                }
+                result["content"] = {{{"type", "text"},
+                    {"text", response.dump(2)}}};
+            } else {
+                json response;
+                response["success"] = false;
+                json errors = parseCompileErrors(cmdResult.output);
+                if (!errors.empty()) {
+                    response["compileErrors"] = errors;
+                }
+                response["raw"] = cmdResult.output;
+                response["exitCode"] = cmdResult.exitCode;
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"},
+                    {"text", response.dump(2)}}};
             }
         }
         else if (name == "run_project") {

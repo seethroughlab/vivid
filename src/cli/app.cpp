@@ -831,7 +831,13 @@ struct MainLoopContext {
     bool hasEventScript = false;
     int exportTotalFrames = 0;   // Total frames to export (duration * fps)
 
-    // Audio sidecar accumulation (export mode with audio)
+    // Audio-only export (WAV, no video)
+    bool exportAudioOnly = false;
+    bool audioOnlyStarted = false;
+    bool audioOnlyDone = false;
+    int audioOnlyFrameCount = 0;
+
+    // Audio sidecar accumulation (export mode with audio, or audio-only export)
     std::vector<float> exportAudioSidecarBuffer;
 
     // Project info
@@ -1340,6 +1346,12 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                 if (mlc.exportMode) {
                     mlc.ctx->setRecordingMode(true, mlc.exportFps);
 
+                    // Pause audio hardware so processBlock() isn't called concurrently
+                    // by both the miniaudio callback and generateForExport().
+                    if (mlc.recordAudio) {
+                        mlc.ctx->chain().pauseAudioPlayback();
+                    }
+
                     if (mlc.hasEventScript) {
                         auto warnings = mlc.eventInjector.validate(mlc.ctx->chain());
                         for (const auto& w : warnings) {
@@ -1412,6 +1424,66 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
         // Auto-process the chain
         mlc.ctx->chain().process(*mlc.ctx);
+
+        // Audio-only export: deterministic audio generation, no video encoder
+        if (mlc.exportMode && mlc.exportAudioOnly && !mlc.audioOnlyDone) {
+            if (!mlc.audioOnlyStarted) {
+                mlc.ctx->setRecordingMode(true, mlc.exportFps);
+                mlc.ctx->chain().pauseAudioPlayback();
+                mlc.audioOnlyStarted = true;
+                if (!mlc.exportQuiet) {
+                    std::cout << "Exporting audio: " << mlc.exportOutput
+                              << " (" << mlc.exportDuration << "s)" << std::endl;
+                }
+            }
+
+            uint32_t audioFramesPerVideoFrame = AUDIO_SAMPLE_RATE /
+                static_cast<uint32_t>(mlc.exportFps);
+            static std::vector<float> aoBuffer;
+            if (aoBuffer.size() < audioFramesPerVideoFrame * AUDIO_CHANNELS) {
+                aoBuffer.resize(audioFramesPerVideoFrame * AUDIO_CHANNELS);
+            }
+            mlc.ctx->chain().generateAudioForExport(
+                aoBuffer.data(), audioFramesPerVideoFrame);
+            mlc.exportAudioSidecarBuffer.insert(
+                mlc.exportAudioSidecarBuffer.end(),
+                aoBuffer.data(),
+                aoBuffer.data() + audioFramesPerVideoFrame * AUDIO_CHANNELS);
+            mlc.audioOnlyFrameCount++;
+
+            if (!mlc.exportQuiet && mlc.exportTotalFrames > 0 &&
+                mlc.audioOnlyFrameCount % 60 == 0) {
+                int pct = (mlc.audioOnlyFrameCount * 100) / mlc.exportTotalFrames;
+                std::cout << "\rExporting audio... " << pct << "%" << std::flush;
+            }
+
+            if (mlc.audioOnlyFrameCount >= mlc.exportTotalFrames) {
+                mlc.ctx->setRecordingMode(false);
+                uint32_t totalAudioFrames = static_cast<uint32_t>(
+                    mlc.exportAudioSidecarBuffer.size() / AUDIO_CHANNELS);
+
+                bool ok = writeWAV(mlc.exportOutput,
+                                   mlc.exportAudioSidecarBuffer.data(),
+                                   totalAudioFrames, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+                if (ok) {
+                    auto analysis = analyzeAudioBuffer(
+                        mlc.exportAudioSidecarBuffer.data(),
+                        totalAudioFrames, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+                    std::cout << "\rAudio export complete: " << mlc.exportOutput
+                              << " (" << mlc.exportDuration << "s, rms="
+                              << analysis.rmsLevel << ", peak="
+                              << analysis.peakLevel << ")" << std::endl;
+                } else {
+                    std::cerr << "Failed to write audio: " << mlc.exportOutput
+                              << std::endl;
+                }
+
+                mlc.exportAudioSidecarBuffer.clear();
+                mlc.exportAudioSidecarBuffer.shrink_to_fit();
+                mlc.audioOnlyDone = true;
+                glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+            }
+        }
 
         // Capture frame for video export if recording (visualizer UI initiated)
         auto* vizExporter = static_cast<VideoExporter*>(devtools_dynamic::tryGetExporter());
@@ -3749,13 +3821,16 @@ int Application::init(const AppConfig& config) {
         }
 
         mlc.exportTotalFrames = static_cast<int>(mlc.exportDuration * mlc.exportFps);
+        mlc.exportAudioOnly = config.exportAudioOnly;
 
-        // Set up recording path and mode — reuse the existing record infrastructure
-        mlc.recordPath = mlc.exportOutput;
-        mlc.recordFps = mlc.exportFps;
-        mlc.recordDuration = mlc.exportDuration;
-        mlc.recordAudio = mlc.exportAudio;
-        mlc.recordCodec = mlc.exportCodec;
+        if (!mlc.exportAudioOnly) {
+            // Normal video export — set up VideoExporter
+            mlc.recordPath = mlc.exportOutput;
+            mlc.recordFps = mlc.exportFps;
+            mlc.recordDuration = mlc.exportDuration;
+            mlc.recordAudio = mlc.exportAudio;
+            mlc.recordCodec = mlc.exportCodec;
+        }
     }
 
     // Load playback script for non-export modes (snapshot, interactive)

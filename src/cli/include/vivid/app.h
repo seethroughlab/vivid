@@ -72,6 +72,7 @@ struct AppConfig {
     float exportDuration = 0.0f;     // duration in seconds (overrides script)
     float exportFps = 60.0f;         // frame rate (overrides script)
     bool exportAudio = false;        // include audio track
+    bool exportAudioOnly = false;    // audio-only export (WAV, no video)
     ExportCodec exportCodec = ExportCodec::H264;
     bool exportQuiet = false;        // suppress progress output
 
