@@ -7,7 +7,7 @@ This document provides an overview of how resolution is managed throughout the V
 Vivid has two distinct resolution concepts:
 
 1. **Window Size** (`ctx.width()`, `ctx.height()`) - The actual display window dimensions, can change when resized
-2. **Render Resolution** (`ctx.renderWidth()`, `ctx.renderHeight()`) - The texture resolution for operators, set via CLI `--resolution` or `chain.resolution()`
+2. **Render Resolution** (`ctx.renderWidth()`, `ctx.renderHeight()`) - The overall render size, set via CLI `--resolution` or `chain.resolution()`
 
 The default resolution used throughout the codebase is **1280x720** (720p HD).
 
