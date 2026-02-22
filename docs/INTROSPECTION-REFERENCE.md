@@ -205,21 +205,45 @@ Capture frames across a parameter range. Find optimal values or verify smooth tr
 ### `sweep_param_audio`
 Capture audio across a parameter range. Evaluate how audio changes with parameters.
 
-## Visual Analysis Tools
+## Visual Analysis (Color Harmony, Symmetry, Spatial Balance)
 
-Work on any PNG — no running instance needed.
+Computed automatically during `vivid inspect` and included in inspection JSON as top-level `"harmony"`, `"symmetry"`, `"balance"` objects. Also available via MCP tools on any PNG.
 
-### `analyze_color_harmony`
-Extract 5-color palette via k-means clustering, score harmony against models.
-Returns: `palette` (hex array), `harmonyScore` (0–1), `harmonyType` (`"complementary"`/`"analogous"`/`"triadic"`/`"split-complementary"`/`"none"`), `paletteContrast` (0–1).
+Assertable via `harmony.*`, `symmetry.*`, `balance.*` paths in `vivid-assertions.json`.
 
-### `analyze_symmetry`
-Measure bilateral and rotational symmetry.
-Returns: `horizontalSymmetry` (0–1), `verticalSymmetry` (0–1), `radialSymmetry` (0–1).
+### ColorHarmonyAnalysis
 
-### `analyze_spatial_balance`
-Rule-of-thirds and compositional balance.
-Returns: `thirdsScore` (0–1), `horizontalBias` (-1 to +1), `verticalBias` (-1 to +1), `balanceScore` (0–1).
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| `harmonyScore` | float | 0–1 | Best harmony model fit score |
+| `harmonyType` | string | — | Best-fit model: `"complementary"`, `"analogous"`, `"triadic"`, `"split-complementary"`, `"none"` |
+| `paletteContrast` | float | 0–1 | Lightness range of extracted palette |
+| `palette` | string[] | — | Hex color strings (e.g. `"#ff0000"`), sorted by population |
+
+### SymmetryAnalysis
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| `horizontalSymmetry` | float | 0–1 | Left-right mirror similarity |
+| `verticalSymmetry` | float | 0–1 | Top-bottom mirror similarity |
+| `radialSymmetry` | float | 0–1 | 4-fold rotational similarity |
+
+### SpatialBalanceAnalysis
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| `thirdsScore` | float | 0–1 | Rule-of-thirds power point concentration |
+| `horizontalBias` | float | -1 to +1 | Left-right weight bias (0 = centered) |
+| `verticalBias` | float | -1 to +1 | Top-bottom weight bias (0 = centered) |
+| `balanceScore` | float | 0–1 | Quadrant uniformity (1 = perfectly balanced) |
+
+### MCP Tools
+
+These tools work on any PNG — no running instance needed:
+
+- **`analyze_color_harmony`** — Extract 5-color palette via k-means clustering, score harmony against models
+- **`analyze_symmetry`** — Measure bilateral and rotational symmetry
+- **`analyze_spatial_balance`** — Rule-of-thirds and compositional balance
 
 ## Audio-Visual Analysis
 

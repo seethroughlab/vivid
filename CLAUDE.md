@@ -146,20 +146,26 @@ Edit chain.cpp
 | Temperature | `colorTemperature` | 0.3–0.7 neutral |
 | Audio RMS | `rmsLevel` | 0.1–0.5 music, >0.9 clipping |
 | Loudness | `integratedLUFS` | -23 broadcast |
+| Harmony | `harmony.harmonyScore` | >0.5 strong harmony |
+| Symmetry | `symmetry.horizontalSymmetry` | >0.8 mirror-like |
+| Balance | `balance.balanceScore` | >0.6 well-balanced |
 
-For complete field tables (FrameAnalysis, TemporalAnalysis, AudioAnalysis, AudioVisualAnalysis), JSON examples, and comparison/analysis tool return formats, see `docs/INTROSPECTION-REFERENCE.md`.
+For complete field tables (FrameAnalysis, TemporalAnalysis, AudioAnalysis, AudioVisualAnalysis, ColorHarmonyAnalysis, SymmetryAnalysis, SpatialBalanceAnalysis), JSON examples, and comparison/analysis tool return formats, see `docs/INTROSPECTION-REFERENCE.md`.
 
 **Audio evaluation**: Use `capture_audio`/`compare_audio` for before/after diffs. Use `sweep_param_audio` for parameter exploration. Export sidecar: `vivid export --audio` produces `<output>.audio-analysis.json`.
 
 **AV reactivity**: Use `analyze_av_reactivity` (MCP) or `av.*` assertion paths. Multi-sample inspect with `--duration` includes `"audioVisual"` when audio chain is present.
 
-**Assertions** (`vivid check`): Define in `vivid-assertions.json`. Paths: `output.*`, `audio.*`, `temporal.*`, `av.*`, `operators.<name>.metrics.*`, `operators.<name>.textureAnalysis.*`. Operators: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between`, `exists`, `not_exists`. Optional: `name`, `after_frame`, `when_path`/`when_check`/`when_value` (conditional guard). Example:
+**Assertions** (`vivid check`): Define in `vivid-assertions.json`. Paths: `output.*`, `audio.*`, `temporal.*`, `av.*`, `harmony.*`, `symmetry.*`, `balance.*`, `operators.<name>.metrics.*`, `operators.<name>.textureAnalysis.*`. Operators: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between`, `exists`, `not_exists`. Optional: `name`, `after_frame`, `when_path`/`when_check`/`when_value` (conditional guard). Example:
 ```json
 {"name": "brightness-ok", "path": "output.meanBrightness", "op": "between", "value": [0.2, 0.8]}
 {"path": "output.contrast", "op": ">", "value": 0.15, "after_frame": 30, "message": "Contrast stabilizes after warmup"}
 {"path": "audio.rmsLevel", "op": ">", "value": 0.01, "message": "Audio not silent"}
 {"path": "temporal.isFrozen", "op": "==", "value": 0, "message": "Animation is running"}
 {"path": "av.correlation", "op": ">", "value": 0.3, "message": "Visuals respond to audio"}
+{"path": "harmony.harmonyScore", "op": ">", "value": 0.5, "message": "Good color harmony"}
+{"path": "symmetry.radialSymmetry", "op": ">", "value": 0.5, "message": "Has rotational symmetry"}
+{"path": "balance.balanceScore", "op": ">", "value": 0.6, "message": "Visually balanced"}
 ```
 
 For the full assertion catalog (~50 examples), syntax details, and all assertable paths, see `docs/ASSERTIONS-REFERENCE.md`.

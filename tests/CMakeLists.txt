@@ -184,6 +184,29 @@ catch_discover_tests(test_frame_analysis_assertions
 )
 
 # -----------------------------------------------------------------------------
+# Unit Tests (visual analysis assertions — harmony/symmetry/balance path resolution)
+# -----------------------------------------------------------------------------
+
+add_executable(test_visual_analysis_assertions
+    unit/test_visual_analysis_assertions.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/assertion.cpp
+)
+
+target_link_libraries(test_visual_analysis_assertions PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_visual_analysis_assertions PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+    ${CMAKE_SOURCE_DIR}/src/cli/include
+)
+
+catch_discover_tests(test_visual_analysis_assertions
+    PROPERTIES LABELS "unit"
+)
+
+# -----------------------------------------------------------------------------
 # Unit Tests (temporal analysis — TemporalAnalyzer)
 # -----------------------------------------------------------------------------
 

@@ -41,6 +41,15 @@ All AudioAnalysis fields are assertable (except `pitchNote` which is a string): 
 ### AV Paths
 Auto-enables multi-sample mode (2s, 60 samples): `av.correlation`, `av.correlationBrightness`, `av.correlationMotion`, `av.bandCorrelation.{subBass,bass,lowMid,mid,highMid,high}`, `av.reactivityLatencyFrames`, `av.reactivityLatencyMs`, `av.reactivityPeakCorrelation`, `av.onsetResponseRate`, `av.onsetResponseCount`, `av.totalOnsetsEvaluated`, `av.responseMagnitude`, `av.responseMagnitudeRatio`, `av.avgPostOnsetDelta`, `av.avgBaselineDelta`, `av.mutualInformation`, `av.mutualInformationRaw`, `av.sampleCount`, `av.durationSeconds`, `av.valid`.
 
+### Visual Analysis Paths
+Computed automatically during `vivid inspect` and `vivid check`:
+
+**Harmony**: `harmony.harmonyScore` (0–1), `harmony.harmonyType` (string: `==`/`!=` only), `harmony.paletteContrast` (0–1).
+
+**Symmetry**: `symmetry.horizontalSymmetry` (0–1), `symmetry.verticalSymmetry` (0–1), `symmetry.radialSymmetry` (0–1).
+
+**Balance**: `balance.thirdsScore` (0–1), `balance.horizontalBias` (-1 to +1), `balance.verticalBias` (-1 to +1), `balance.balanceScore` (0–1).
+
 ### Temporal Paths
 Requires `--duration` for multi-sample capture. Bool fields (`isConverged`, `isFrozen`, `isLooping`) resolve to 0.0/1.0: `flickerScore`, `flickerFrequency`, `frameDelta`, `convergenceScore`, `isConverged`, `motionMagnitude`, `regionMotion.N` (0–8), `frameDiversity`, `isFrozen`, `isLooping`, `loopPeriodSeconds`, `loopPeriodFrames`, `loopConfidence`, `noveltyScore`, `noveltyTrend`, `keyframeCount`.
 
@@ -108,4 +117,17 @@ All FrameAnalysis fields: `meanBrightness`, `contrast`, `dominantHue`, `saturati
 {"path": "av.bandCorrelation.bass", "op": ">", "value": 0.4, "message": "Bass drives visuals"}
 {"path": "av.mutualInformation", "op": ">", "value": 0.2, "message": "Non-linear AV relationship exists"}
 {"path": "av.responseMagnitudeRatio", "op": ">", "value": 1.5, "message": "Onset response exceeds baseline"}
+```
+
+### Visual Analysis (Color Harmony, Symmetry, Balance)
+
+```json
+{"path": "harmony.harmonyScore", "op": ">", "value": 0.5, "message": "Good color harmony"}
+{"path": "harmony.harmonyType", "op": "==", "value": "complementary", "message": "Complementary palette"}
+{"path": "harmony.paletteContrast", "op": ">", "value": 0.3, "message": "Palette has contrast"}
+{"path": "symmetry.horizontalSymmetry", "op": ">", "value": 0.8, "message": "Left-right mirror symmetry"}
+{"path": "symmetry.radialSymmetry", "op": ">", "value": 0.5, "message": "Has rotational symmetry"}
+{"path": "balance.balanceScore", "op": ">", "value": 0.6, "message": "Visually balanced"}
+{"path": "balance.horizontalBias", "op": "between", "value": [-0.3, 0.3], "message": "Not too left/right heavy"}
+{"path": "balance.thirdsScore", "op": ">", "value": 0.4, "message": "Interest at power points"}
 ```

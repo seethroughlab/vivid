@@ -279,6 +279,33 @@ std::pair<bool, double> resolvePath(const std::string& path,
         return {false, 0.0};
     }
 
+    // harmony.<field> -> ColorHarmonyAnalysis
+    if (parts[0] == "harmony" && parts.size() >= 2 && inspection.visualAnalysis.has_value()) {
+        const auto& ha = inspection.visualAnalysis->harmony;
+        if (parts[1] == "harmonyScore") return {true, ha.harmonyScore};
+        if (parts[1] == "paletteContrast") return {true, ha.paletteContrast};
+        return {false, 0.0};
+    }
+
+    // symmetry.<field> -> SymmetryAnalysis
+    if (parts[0] == "symmetry" && parts.size() >= 2 && inspection.visualAnalysis.has_value()) {
+        const auto& sa = inspection.visualAnalysis->symmetry;
+        if (parts[1] == "horizontalSymmetry") return {true, sa.horizontalSymmetry};
+        if (parts[1] == "verticalSymmetry") return {true, sa.verticalSymmetry};
+        if (parts[1] == "radialSymmetry") return {true, sa.radialSymmetry};
+        return {false, 0.0};
+    }
+
+    // balance.<field> -> SpatialBalanceAnalysis
+    if (parts[0] == "balance" && parts.size() >= 2 && inspection.visualAnalysis.has_value()) {
+        const auto& ba = inspection.visualAnalysis->balance;
+        if (parts[1] == "thirdsScore") return {true, ba.thirdsScore};
+        if (parts[1] == "horizontalBias") return {true, ba.horizontalBias};
+        if (parts[1] == "verticalBias") return {true, ba.verticalBias};
+        if (parts[1] == "balanceScore") return {true, ba.balanceScore};
+        return {false, 0.0};
+    }
+
     // operators.<name>.metrics.<key> -> InspectData float metric
     // operators.<name>.metadata.<key> -> handled separately (string)
     // operators.<name>.textureAnalysis.<field> -> FrameAnalysis
@@ -311,6 +338,13 @@ std::pair<bool, double> resolvePath(const std::string& path,
 static std::pair<bool, std::string> resolveStringPath(const std::string& path,
                                                        const ChainInspection& inspection) {
     auto parts = split(path, '.');
+
+    // harmony.harmonyType -> string
+    if (parts[0] == "harmony" && parts.size() >= 2 && parts[1] == "harmonyType"
+        && inspection.visualAnalysis.has_value()) {
+        return {true, inspection.visualAnalysis->harmony.harmonyType};
+    }
+
     if (parts[0] == "operators" && parts.size() >= 4) {
         const std::string& opName = parts[1];
         const std::string& category = parts[2];
@@ -396,10 +430,12 @@ CheckReport evaluateAssertions(const std::vector<Assertion>& assertions,
             continue;
         }
 
-        // Check if this is a string comparison (metadata)
+        // Check if this is a string comparison (metadata or harmony.harmonyType)
         if (!a.strValue.empty() || (a.op == "==" || a.op == "!=")) {
             auto parts = split(a.path, '.');
-            if (parts.size() >= 4 && parts[0] == "operators" && parts[2] == "metadata") {
+            bool isStringPath = (parts.size() >= 4 && parts[0] == "operators" && parts[2] == "metadata")
+                             || (parts.size() >= 2 && parts[0] == "harmony" && parts[1] == "harmonyType");
+            if (isStringPath) {
                 auto [found, strVal] = resolveStringPath(a.path, inspection);
                 if (!found) {
                     r.passed = false;

@@ -629,7 +629,17 @@ ChainInspection Chain::inspectAll(Context& ctx, bool perOperatorAnalysis) const 
     Operator* output = getOutput();
     WGPUTexture outTex = output ? output->outputTexture() : nullptr;
     if (outTex) {
-        result.outputAnalysis = analyzeTexture(ctx.device(), ctx.queue(), outTex);
+        uint32_t w, h;
+        auto pixels = readbackTexturePixels(ctx.device(), ctx.queue(), outTex, w, h);
+        if (!pixels.empty()) {
+            result.outputAnalysis = analyzePixels(pixels.data(), w, h);
+            // Compute visual analysis from same pixel buffer (zero extra GPU cost)
+            VisualAnalysis va;
+            va.harmony = analyzeColorHarmony(pixels.data(), w, h);
+            va.symmetry = analyzeSymmetry(pixels.data(), w, h);
+            va.balance = analyzeSpatialBalance(result.outputAnalysis);
+            result.visualAnalysis = std::move(va);
+        }
     }
 
     // Analyze audio output if available
