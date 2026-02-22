@@ -35,6 +35,7 @@
 #include <cmath>
 #include <vivid/io/image_loader.h>
 #include <vivid/frame_analysis.h>
+#include <vivid/visual_analysis.h>
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
@@ -82,115 +83,6 @@ static const char* paramTypeName(vivid::ParamType type) {
         case vivid::ParamType::FilePath: return "FilePath";
         default:                         return "Unknown";
     }
-}
-
-// --- Tier 3 Visual Analysis Helpers ---
-
-// sRGB linearization for color space conversion
-static float srgbToLinear(float c) {
-    return (c <= 0.04045f) ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
-}
-
-// RGB (0-1, linear) to CIE Lab color space via XYZ (D65 illuminant)
-static void rgbToLab(float r, float g, float b, float& L, float& a, float& labB) {
-    // Linearize sRGB
-    float lr = srgbToLinear(r);
-    float lg = srgbToLinear(g);
-    float lb = srgbToLinear(b);
-
-    // RGB to XYZ (sRGB D65)
-    float x = 0.4124564f * lr + 0.3575761f * lg + 0.1804375f * lb;
-    float y = 0.2126729f * lr + 0.7151522f * lg + 0.0721750f * lb;
-    float z = 0.0193339f * lr + 0.1191920f * lg + 0.9503041f * lb;
-
-    // Normalize to D65 white point
-    x /= 0.95047f;
-    // y /= 1.0f;
-    z /= 1.08883f;
-
-    // XYZ to Lab
-    auto f = [](float t) -> float {
-        const float delta = 6.0f / 29.0f;
-        return (t > delta * delta * delta) ? std::cbrt(t) : t / (3.0f * delta * delta) + 4.0f / 29.0f;
-    };
-
-    float fx = f(x), fy = f(y), fz = f(z);
-    L = 116.0f * fy - 16.0f;
-    a = 500.0f * (fx - fy);
-    labB = 200.0f * (fy - fz);
-}
-
-// RGB (0-1) to hex string "#rrggbb"
-static std::string rgbToHexString(float r, float g, float b) {
-    int ri = std::clamp(static_cast<int>(r * 255.0f + 0.5f), 0, 255);
-    int gi = std::clamp(static_cast<int>(g * 255.0f + 0.5f), 0, 255);
-    int bi = std::clamp(static_cast<int>(b * 255.0f + 0.5f), 0, 255);
-    char buf[8];
-    std::snprintf(buf, sizeof(buf), "#%02x%02x%02x", ri, gi, bi);
-    return std::string(buf);
-}
-
-// Downsample RGBA8 pixels to 64x64 RGB float buffer (box filter)
-static std::vector<std::array<float, 3>> downsampleToRGB64(const uint8_t* pixels, int width, int height) {
-    const int DS = 64;
-    std::vector<std::array<float, 3>> out(DS * DS);
-    float cellW = static_cast<float>(width) / DS;
-    float cellH = static_cast<float>(height) / DS;
-
-    for (int dy = 0; dy < DS; dy++) {
-        int sy0 = static_cast<int>(dy * cellH);
-        int sy1 = std::min(static_cast<int>((dy + 1) * cellH), height);
-        for (int dx = 0; dx < DS; dx++) {
-            int sx0 = static_cast<int>(dx * cellW);
-            int sx1 = std::min(static_cast<int>((dx + 1) * cellW), width);
-            float sumR = 0, sumG = 0, sumB = 0;
-            int count = 0;
-            for (int y = sy0; y < sy1; y++) {
-                for (int x = sx0; x < sx1; x++) {
-                    int idx = (y * width + x) * 4;
-                    sumR += pixels[idx] / 255.0f;
-                    sumG += pixels[idx + 1] / 255.0f;
-                    sumB += pixels[idx + 2] / 255.0f;
-                    count++;
-                }
-            }
-            if (count > 0) {
-                out[dy * DS + dx] = {sumR / count, sumG / count, sumB / count};
-            }
-        }
-    }
-    return out;
-}
-
-// Downsample RGBA8 pixels to 64x64 luminance buffer (box filter)
-static std::vector<float> downsampleToLuminance64(const uint8_t* pixels, int width, int height) {
-    const int DS = 64;
-    std::vector<float> out(DS * DS);
-    float cellW = static_cast<float>(width) / DS;
-    float cellH = static_cast<float>(height) / DS;
-
-    for (int dy = 0; dy < DS; dy++) {
-        int sy0 = static_cast<int>(dy * cellH);
-        int sy1 = std::min(static_cast<int>((dy + 1) * cellH), height);
-        for (int dx = 0; dx < DS; dx++) {
-            int sx0 = static_cast<int>(dx * cellW);
-            int sx1 = std::min(static_cast<int>((dx + 1) * cellW), width);
-            float sum = 0;
-            int count = 0;
-            for (int y = sy0; y < sy1; y++) {
-                for (int x = sx0; x < sx1; x++) {
-                    int idx = (y * width + x) * 4;
-                    float r = pixels[idx] / 255.0f;
-                    float g = pixels[idx + 1] / 255.0f;
-                    float b = pixels[idx + 2] / 255.0f;
-                    sum += 0.2126f * r + 0.7152f * g + 0.0722f * b;
-                    count++;
-                }
-            }
-            out[dy * DS + dx] = (count > 0) ? sum / count : 0.0f;
-        }
-    }
-    return out;
 }
 
 namespace vivid::mcp {
@@ -2218,7 +2110,7 @@ private:
             }
 
             // Add usage hint
-            info["usage_hint"] = "Use get_example with this operator name to see complete working code.";
+            info["usage_hint"] = "For full API details (enums, structs, methods), read the header at " + meta->headerPath + ". Use get_example for working code.";
 
             result["content"] = {{{"type", "text"}, {"text", info.dump(2)}}};
         }
@@ -3503,169 +3395,17 @@ private:
                 return result;
             }
 
-            // Downsample to 64x64 RGB for k-means
-            auto rgbPixels = downsampleToRGB64(img.pixels.data(), img.width, img.height);
-            const int N = static_cast<int>(rgbPixels.size());
+            auto ha = vivid::analyzeColorHarmony(img.pixels.data(), img.width, img.height);
 
-            // K-means clustering (k=5, Lab space)
-            const int K = 5;
-            const int MAX_ITER = 10;
-
-            // Convert to Lab
-            struct LabPixel { float L, a, b; float r, g, bVal; };
-            std::vector<LabPixel> labPixels(N);
-            for (int i = 0; i < N; i++) {
-                labPixels[i].r = rgbPixels[i][0];
-                labPixels[i].g = rgbPixels[i][1];
-                labPixels[i].bVal = rgbPixels[i][2];
-                rgbToLab(rgbPixels[i][0], rgbPixels[i][1], rgbPixels[i][2],
-                         labPixels[i].L, labPixels[i].a, labPixels[i].b);
-            }
-
-            // Initialize centroids by evenly sampling
-            struct Centroid { float L, a, b; float sumR, sumG, sumB; int count; };
-            std::vector<Centroid> centroids(K);
-            for (int k = 0; k < K; k++) {
-                int idx = (k * N) / K;
-                centroids[k] = {labPixels[idx].L, labPixels[idx].a, labPixels[idx].b, 0, 0, 0, 0};
-            }
-
-            std::vector<int> assignments(N, 0);
-
-            for (int iter = 0; iter < MAX_ITER; iter++) {
-                // Assign pixels to nearest centroid
-                for (int i = 0; i < N; i++) {
-                    float bestDist = std::numeric_limits<float>::max();
-                    for (int k = 0; k < K; k++) {
-                        float dL = labPixels[i].L - centroids[k].L;
-                        float da = labPixels[i].a - centroids[k].a;
-                        float db = labPixels[i].b - centroids[k].b;
-                        float dist = dL * dL + da * da + db * db;
-                        if (dist < bestDist) {
-                            bestDist = dist;
-                            assignments[i] = k;
-                        }
-                    }
-                }
-
-                // Update centroids
-                for (int k = 0; k < K; k++) {
-                    centroids[k] = {0, 0, 0, 0, 0, 0, 0};
-                }
-                for (int i = 0; i < N; i++) {
-                    int k = assignments[i];
-                    centroids[k].L += labPixels[i].L;
-                    centroids[k].a += labPixels[i].a;
-                    centroids[k].b += labPixels[i].b;
-                    centroids[k].sumR += labPixels[i].r;
-                    centroids[k].sumG += labPixels[i].g;
-                    centroids[k].sumB += labPixels[i].bVal;
-                    centroids[k].count++;
-                }
-                for (int k = 0; k < K; k++) {
-                    if (centroids[k].count > 0) {
-                        centroids[k].L /= centroids[k].count;
-                        centroids[k].a /= centroids[k].count;
-                        centroids[k].b /= centroids[k].count;
-                        centroids[k].sumR /= centroids[k].count;
-                        centroids[k].sumG /= centroids[k].count;
-                        centroids[k].sumB /= centroids[k].count;
-                    }
-                }
-            }
-
-            // Sort centroids by population (largest first)
-            std::sort(centroids.begin(), centroids.end(),
-                      [](const Centroid& a, const Centroid& b) { return a.count > b.count; });
-
-            // Build palette as hex colors and compute hue angles
             json palette = json::array();
-            std::vector<float> hues;
-            float maxL = -1e9f, minL = 1e9f;
-
-            for (int k = 0; k < K; k++) {
-                if (centroids[k].count == 0) continue;
-                palette.push_back(rgbToHexString(centroids[k].sumR, centroids[k].sumG, centroids[k].sumB));
-
-                // Hue angle from Lab a,b
-                float hue = std::atan2(centroids[k].b, centroids[k].a) * 180.0f / 3.14159265f;
-                if (hue < 0) hue += 360.0f;
-                hues.push_back(hue);
-
-                maxL = std::max(maxL, centroids[k].L);
-                minL = std::min(minL, centroids[k].L);
-            }
-
-            // Palette contrast (max delta L between palette colors, normalized)
-            float paletteContrast = (maxL > minL) ? (maxL - minL) / 100.0f : 0.0f;
-            paletteContrast = std::clamp(paletteContrast, 0.0f, 1.0f);
-
-            // Score harmony against models
-            // Compute pairwise hue angle differences
-            std::vector<float> pairDiffs;
-            for (size_t i = 0; i < hues.size(); i++) {
-                for (size_t j = i + 1; j < hues.size(); j++) {
-                    float diff = std::abs(hues[i] - hues[j]);
-                    if (diff > 180.0f) diff = 360.0f - diff;
-                    pairDiffs.push_back(diff);
-                }
-            }
-
-            // Score each harmony model
-            float bestScore = 0.0f;
-            std::string bestModel = "none";
-
-            if (!pairDiffs.empty()) {
-                // Complementary: pairs near 180 degrees
-                {
-                    float score = 0.0f;
-                    for (float d : pairDiffs) {
-                        float proximity = 1.0f - std::abs(d - 180.0f) / 180.0f;
-                        score = std::max(score, proximity);
-                    }
-                    if (score > bestScore) { bestScore = score; bestModel = "complementary"; }
-                }
-
-                // Analogous: all pairs within 30 degrees
-                {
-                    float maxDiff = 0.0f;
-                    for (float d : pairDiffs) maxDiff = std::max(maxDiff, d);
-                    float score = (maxDiff <= 60.0f) ? 1.0f - maxDiff / 60.0f : 0.0f;
-                    if (score > bestScore) { bestScore = score; bestModel = "analogous"; }
-                }
-
-                // Triadic: pairs near 120 degrees
-                {
-                    float score = 0.0f;
-                    int triadCount = 0;
-                    for (float d : pairDiffs) {
-                        float proximity = 1.0f - std::abs(d - 120.0f) / 120.0f;
-                        if (proximity > 0.5f) { score += proximity; triadCount++; }
-                    }
-                    if (triadCount >= 2) {
-                        score /= triadCount;
-                        if (score > bestScore) { bestScore = score; bestModel = "triadic"; }
-                    }
-                }
-
-                // Split-complementary: one pair ~180, others ~150 or ~30
-                {
-                    float score = 0.0f;
-                    for (float d : pairDiffs) {
-                        float compProx = 1.0f - std::abs(d - 180.0f) / 180.0f;
-                        float splitProx = 1.0f - std::abs(d - 150.0f) / 150.0f;
-                        score = std::max(score, (compProx + splitProx) / 2.0f);
-                    }
-                    if (score > bestScore) { bestScore = score; bestModel = "split-complementary"; }
-                }
-            }
+            for (const auto& hex : ha.palette) palette.push_back(hex);
 
             json response;
             response["success"] = true;
             response["palette"] = palette;
-            response["harmonyScore"] = std::round(bestScore * 1000.0f) / 1000.0f;
-            response["harmonyType"] = bestModel;
-            response["paletteContrast"] = std::round(paletteContrast * 1000.0f) / 1000.0f;
+            response["harmonyScore"] = std::round(ha.harmonyScore * 1000.0f) / 1000.0f;
+            response["harmonyType"] = ha.harmonyType;
+            response["paletteContrast"] = std::round(ha.paletteContrast * 1000.0f) / 1000.0f;
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else if (name == "analyze_symmetry") {
@@ -3685,61 +3425,13 @@ private:
                 return result;
             }
 
-            // Downsample to 64x64 luminance
-            auto lum = downsampleToLuminance64(img.pixels.data(), img.width, img.height);
-            const int DS = 64;
-
-            // Horizontal symmetry: compare lum(x, y) vs lum(63-x, y) for x in [0, 31]
-            float hDiff = 0.0f;
-            int hCount = 0;
-            for (int y = 0; y < DS; y++) {
-                for (int x = 0; x < DS / 2; x++) {
-                    hDiff += std::abs(lum[y * DS + x] - lum[y * DS + (DS - 1 - x)]);
-                    hCount++;
-                }
-            }
-            float horizontalSymmetry = (hCount > 0) ? 1.0f - hDiff / hCount : 0.0f;
-
-            // Vertical symmetry: compare lum(x, y) vs lum(x, 63-y) for y in [0, 31]
-            float vDiff = 0.0f;
-            int vCount = 0;
-            for (int y = 0; y < DS / 2; y++) {
-                for (int x = 0; x < DS; x++) {
-                    vDiff += std::abs(lum[y * DS + x] - lum[(DS - 1 - y) * DS + x]);
-                    vCount++;
-                }
-            }
-            float verticalSymmetry = (vCount > 0) ? 1.0f - vDiff / vCount : 0.0f;
-
-            // Radial (4-fold) symmetry: compare quadrants via 90-degree rotation
-            // Map each quadrant pixel to its 90-degree rotated counterpart
-            float rDiff = 0.0f;
-            int rCount = 0;
-            int half = DS / 2;
-            for (int y = 0; y < half; y++) {
-                for (int x = 0; x < half; x++) {
-                    // Top-left quadrant pixel
-                    float tl = lum[y * DS + x];
-                    // Top-right (90 CW rotation of TL): (x, y) -> (DS-1-y, x)
-                    float tr = lum[x * DS + (DS - 1 - y)];
-                    // Bottom-right (180 rotation): (x, y) -> (DS-1-x, DS-1-y)
-                    float br = lum[(DS - 1 - y) * DS + (DS - 1 - x)];
-                    // Bottom-left (270 rotation): (x, y) -> (y, DS-1-x)
-                    float bl = lum[(DS - 1 - x) * DS + y];
-
-                    float mean4 = (tl + tr + br + bl) / 4.0f;
-                    rDiff += std::abs(tl - mean4) + std::abs(tr - mean4) +
-                             std::abs(br - mean4) + std::abs(bl - mean4);
-                    rCount += 4;
-                }
-            }
-            float radialSymmetry = (rCount > 0) ? 1.0f - rDiff / rCount : 0.0f;
+            auto sa = vivid::analyzeSymmetry(img.pixels.data(), img.width, img.height);
 
             json response;
             response["success"] = true;
-            response["horizontalSymmetry"] = std::round(horizontalSymmetry * 1000.0f) / 1000.0f;
-            response["verticalSymmetry"] = std::round(verticalSymmetry * 1000.0f) / 1000.0f;
-            response["radialSymmetry"] = std::round(radialSymmetry * 1000.0f) / 1000.0f;
+            response["horizontalSymmetry"] = std::round(sa.horizontalSymmetry * 1000.0f) / 1000.0f;
+            response["verticalSymmetry"] = std::round(sa.verticalSymmetry * 1000.0f) / 1000.0f;
+            response["radialSymmetry"] = std::round(sa.radialSymmetry * 1000.0f) / 1000.0f;
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else if (name == "analyze_spatial_balance") {
@@ -3759,59 +3451,14 @@ private:
                 return result;
             }
 
-            // Run analyzePixels to get FrameAnalysis with regionBrightness
-            auto fa = vivid::analyzePixels(img.pixels.data(), img.width, img.height);
-
-            // regionBrightness layout (3x3 grid):
-            //  [0] [1] [2]   top-left, top-center, top-right
-            //  [3] [4] [5]   mid-left, mid-center, mid-right
-            //  [6] [7] [8]   bot-left, bot-center, bot-right
-            const auto& rb = fa.regionBrightness;
-
-            // Overall mean brightness
-            float mean = 0.0f;
-            for (int i = 0; i < 9; i++) mean += rb[i];
-            mean /= 9.0f;
-
-            // Rule-of-thirds: power points are at grid intersections (indices 0,2,6,8 corners of inner grid)
-            // The 4 power points in a 3x3 grid correspond to the boundaries between cells:
-            // Approximate by averaging neighboring cells at each intersection
-            float pp1 = (rb[0] + rb[1] + rb[3] + rb[4]) / 4.0f;  // top-left intersection
-            float pp2 = (rb[1] + rb[2] + rb[4] + rb[5]) / 4.0f;  // top-right intersection
-            float pp3 = (rb[3] + rb[4] + rb[6] + rb[7]) / 4.0f;  // bottom-left intersection
-            float pp4 = (rb[4] + rb[5] + rb[7] + rb[8]) / 4.0f;  // bottom-right intersection
-
-            float ppMean = (pp1 + pp2 + pp3 + pp4) / 4.0f;
-            float thirdsScore = (mean > 0.001f) ? std::clamp(ppMean / mean, 0.0f, 2.0f) / 2.0f : 0.5f;
-
-            // Edge bias
-            float leftWeight = (rb[0] + rb[3] + rb[6]) / 3.0f;
-            float rightWeight = (rb[2] + rb[5] + rb[8]) / 3.0f;
-            float topWeight = (rb[0] + rb[1] + rb[2]) / 3.0f;
-            float bottomWeight = (rb[6] + rb[7] + rb[8]) / 3.0f;
-
-            float epsilon = 0.001f;
-            float horizontalBias = (rightWeight - leftWeight) / (rightWeight + leftWeight + epsilon);
-            float verticalBias = (bottomWeight - topWeight) / (bottomWeight + topWeight + epsilon);
-
-            // Quadrant distribution
-            float q1 = (rb[0] + rb[1] + rb[3] + rb[4]) / 4.0f;  // top-left
-            float q2 = (rb[1] + rb[2] + rb[4] + rb[5]) / 4.0f;  // top-right
-            float q3 = (rb[3] + rb[4] + rb[6] + rb[7]) / 4.0f;  // bottom-left
-            float q4 = (rb[4] + rb[5] + rb[7] + rb[8]) / 4.0f;  // bottom-right
-
-            float qMean = (q1 + q2 + q3 + q4) / 4.0f;
-            float qVar = ((q1 - qMean) * (q1 - qMean) + (q2 - qMean) * (q2 - qMean) +
-                           (q3 - qMean) * (q3 - qMean) + (q4 - qMean) * (q4 - qMean)) / 4.0f;
-            float qStd = std::sqrt(qVar);
-            float balanceScore = (qMean > 0.001f) ? std::clamp(1.0f - qStd / qMean, 0.0f, 1.0f) : 1.0f;
+            auto ba = vivid::analyzeSpatialBalance(img.pixels.data(), img.width, img.height);
 
             json response;
             response["success"] = true;
-            response["thirdsScore"] = std::round(thirdsScore * 1000.0f) / 1000.0f;
-            response["horizontalBias"] = std::round(horizontalBias * 1000.0f) / 1000.0f;
-            response["verticalBias"] = std::round(verticalBias * 1000.0f) / 1000.0f;
-            response["balanceScore"] = std::round(balanceScore * 1000.0f) / 1000.0f;
+            response["thirdsScore"] = std::round(ba.thirdsScore * 1000.0f) / 1000.0f;
+            response["horizontalBias"] = std::round(ba.horizontalBias * 1000.0f) / 1000.0f;
+            response["verticalBias"] = std::round(ba.verticalBias * 1000.0f) / 1000.0f;
+            response["balanceScore"] = std::round(ba.balanceScore * 1000.0f) / 1000.0f;
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else if (name == "list_project_assets") {
