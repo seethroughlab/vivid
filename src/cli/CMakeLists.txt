@@ -9,6 +9,7 @@ set(VIVID_CLI_SOURCES
     app.cpp
     cli.cpp
     assertion.cpp
+    analysis_hints.cpp
     event_injector.cpp
     param_animator.cpp
     project_manifest.cpp
@@ -22,6 +23,7 @@ set(VIVID_CLI_SOURCES
 set(VIVID_CLI_HEADERS
     include/vivid/cli.h
     include/vivid/assertion.h
+    include/vivid/analysis_hints.h
     include/vivid/event_injector.h
     include/vivid/param_animator.h
     include/vivid/project_manifest.h

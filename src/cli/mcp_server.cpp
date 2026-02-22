@@ -14,6 +14,7 @@
 #include <vivid/module_loader.h>
 #include <vivid/docs_search.h>
 #include <vivid/audio_analysis.h>
+#include <vivid/analysis_hints.h>
 #include <vivid/wav_writer.h>
 #include <nlohmann/json.hpp>
 #include <ixwebsocket/IXWebSocket.h>
@@ -3090,6 +3091,11 @@ private:
             if (captureResult.contains("error")) {
                 response["error"] = captureResult["error"];
             }
+            // Generate actionable hints for out-of-range audio metrics
+            auto hints = vivid::collectHints(response);
+            if (!hints.empty()) {
+                response["hints"] = hints;
+            }
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else if (name == "analyze_av_reactivity") {
@@ -3121,6 +3127,11 @@ private:
             }
             if (avResult.contains("error")) {
                 response["error"] = avResult["error"];
+            }
+            // Generate actionable hints for out-of-range AV metrics
+            auto hints = vivid::collectHints(response);
+            if (!hints.empty()) {
+                response["hints"] = hints;
             }
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
@@ -3926,6 +3937,11 @@ private:
             } else {
                 response["success"] = true;
                 response["inspection"] = inspection;
+            }
+            // Generate actionable hints for out-of-range metrics
+            auto hints = vivid::collectHints(response);
+            if (!hints.empty()) {
+                response["hints"] = hints;
             }
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }

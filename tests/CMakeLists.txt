@@ -274,6 +274,29 @@ catch_discover_tests(test_snapshot
 )
 
 # -----------------------------------------------------------------------------
+# Unit Tests (analysis hints)
+# -----------------------------------------------------------------------------
+
+add_executable(test_analysis_hints
+    unit/test_analysis_hints.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/analysis_hints.cpp
+)
+
+target_link_libraries(test_analysis_hints PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_analysis_hints PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+    ${CMAKE_SOURCE_DIR}/src/cli/include
+)
+
+catch_discover_tests(test_analysis_hints
+    PROPERTIES LABELS "unit"
+)
+
+# -----------------------------------------------------------------------------
 # Unit Tests (hot reload)
 # -----------------------------------------------------------------------------
 
