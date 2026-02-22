@@ -13,6 +13,31 @@
 using namespace vivid::audio;
 using Catch::Matchers::WithinAbs;
 
+// Helper to build Step structs without C++20 designated initializers (MSVC C++17 compat)
+static Step makeStep() {
+    Step s;
+    s.active = true;  // setStep always marks active
+    return s;
+}
+
+static Step makeStep(uint8_t note, float velocity) {
+    Step s;
+    s.active = true;
+    s.note = note;
+    s.velocity = velocity;
+    return s;
+}
+
+static Step makeStep(uint8_t note, float velocity, float gate, float probability) {
+    Step s;
+    s.active = true;
+    s.note = note;
+    s.velocity = velocity;
+    s.gate = gate;
+    s.probability = probability;
+    return s;
+}
+
 TEST_CASE("Sequencer operator parameter defaults", "[audio][sequencer]") {
     Sequencer seq;
     float out[4] = {0};
@@ -97,14 +122,14 @@ TEST_CASE("Sequencer Step struct API", "[audio][sequencer]") {
     Sequencer seq;
 
     SECTION("setStep with Step struct activates step") {
-        seq.setStep(0, {.note = 60, .velocity = 0.9f});
+        seq.setStep(0, makeStep(60, 0.9f));
         REQUIRE(seq.isActive(0) == true);
         REQUIRE(seq.getNote(0) == 60);
         REQUIRE_THAT(seq.getVelocity(0), WithinAbs(0.9f, 0.001f));
     }
 
     SECTION("step() returns correct data") {
-        seq.setStep(3, {.note = 67, .velocity = 0.8f, .gate = 0.75f, .probability = 0.5f});
+        seq.setStep(3, makeStep(67, 0.8f, 0.75f, 0.5f));
         const Step& s = seq.step(3);
         REQUIRE(s.active == true);
         REQUIRE(s.note == 67);
@@ -120,28 +145,40 @@ TEST_CASE("Sequencer Step struct API", "[audio][sequencer]") {
     }
 
     SECTION("Step with slide") {
-        seq.setStep(1, {.velocity = 0.7f, .slide = true});
+        auto s = makeStep();
+        s.velocity = 0.7f;
+        s.slide = true;
+        seq.setStep(1, s);
         REQUIRE(seq.step(1).slide == true);
     }
 
     SECTION("Step with retrig") {
-        seq.setStep(2, {.retrigCount = 3, .retrigRate = 0.25f});
+        auto s = makeStep();
+        s.retrigCount = 3;
+        s.retrigRate = 0.25f;
+        seq.setStep(2, s);
         REQUIRE(seq.step(2).retrigCount == 3);
         REQUIRE_THAT(seq.step(2).retrigRate, WithinAbs(0.25f, 0.001f));
     }
 
     SECTION("Step with condition") {
-        seq.setStep(4, {.condition = StepCondition::OneInTwo});
+        auto s = makeStep();
+        s.condition = StepCondition::OneInTwo;
+        seq.setStep(4, s);
         REQUIRE(seq.step(4).condition == StepCondition::OneInTwo);
     }
 
     SECTION("Step with micro-timing") {
-        seq.setStep(6, {.microTiming = -0.1f});
+        auto s = makeStep();
+        s.microTiming = -0.1f;
+        seq.setStep(6, s);
         REQUIRE_THAT(seq.step(6).microTiming, WithinAbs(-0.1f, 0.001f));
     }
 
     SECTION("Step with per-step CC") {
-        seq.setStep(0, {.cc = {StepCC{64, 1.0f}, StepCC{1, 0.5f}}});
+        auto s = makeStep();
+        s.cc = {StepCC{64, 1.0f}, StepCC{1, 0.5f}};
+        seq.setStep(0, s);
         REQUIRE(seq.step(0).cc[0].cc == 64);
         REQUIRE_THAT(seq.step(0).cc[0].value, WithinAbs(1.0f, 0.001f));
         REQUIRE(seq.step(0).cc[1].cc == 1);
@@ -149,7 +186,9 @@ TEST_CASE("Sequencer Step struct API", "[audio][sequencer]") {
     }
 
     SECTION("Step with gate = -1 means use global") {
-        seq.setStep(0, {.gate = -1.0f});
+        auto s = makeStep();
+        s.gate = -1.0f;
+        seq.setStep(0, s);
         REQUIRE_THAT(seq.step(0).gate, WithinAbs(-1.0f, 0.001f));
     }
 }
@@ -158,7 +197,9 @@ TEST_CASE("Sequencer probability", "[audio][sequencer]") {
     Sequencer seq;
 
     SECTION("probability = 0 never fires on advance") {
-        seq.setStep(0, {.probability = 0.0f});
+        auto s = makeStep();
+        s.probability = 0.0f;
+        seq.setStep(0, s);
         seq.steps = 1;
         // Advance many times, should never trigger via the normal path
         // (The actual probability check happens in generateBlock, but
@@ -167,7 +208,9 @@ TEST_CASE("Sequencer probability", "[audio][sequencer]") {
     }
 
     SECTION("probability = 1 always fires") {
-        seq.setStep(0, {.probability = 1.0f});
+        auto s = makeStep();
+        s.probability = 1.0f;
+        seq.setStep(0, s);
         REQUIRE_THAT(seq.step(0).probability, WithinAbs(1.0f, 0.001f));
     }
 }

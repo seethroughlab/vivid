@@ -13,6 +13,7 @@
 
 #include <vivid/av_analysis.h>
 #include <cmath>
+#include <functional>
 #include <vector>
 
 using Catch::Matchers::WithinAbs;
