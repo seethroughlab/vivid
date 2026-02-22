@@ -127,8 +127,10 @@ HotReload::~HotReload() {
 }
 
 void HotReload::setSourceFile(const fs::path& chainPath) {
-    if (m_sourcePath != chainPath) {
-        m_sourcePath = chainPath;
+    // Always store absolute path so compilation works regardless of CWD changes
+    fs::path absPath = fs::absolute(chainPath);
+    if (m_sourcePath != absPath) {
+        m_sourcePath = absPath;
         m_lastModTime = fs::file_time_type::min();
         forceReload();
     }
@@ -137,7 +139,7 @@ void HotReload::setSourceFile(const fs::path& chainPath) {
 void HotReload::setSourcePath(const fs::path& chainPath) {
     // Set path for watching without triggering reload
     // Used when chain is already loaded (e.g., after early config extraction)
-    m_sourcePath = chainPath;
+    m_sourcePath = fs::absolute(chainPath);
     m_lastModTime = getFileModTime();  // Current time, won't trigger reload
 }
 
@@ -253,20 +255,25 @@ bool HotReload::update() {
     return reload();
 }
 
-// Find the directory containing the vivid executable
+// Find the directory containing the vivid executable (always returns absolute path)
 static fs::path getExecutableDir() {
 #ifdef __APPLE__
     char pathBuf[PATH_MAX];
     uint32_t size = sizeof(pathBuf);
     if (_NSGetExecutablePath(pathBuf, &size) == 0) {
-        return fs::path(pathBuf).parent_path();
+        // _NSGetExecutablePath may return a relative path; resolve to absolute
+        char resolved[PATH_MAX];
+        if (realpath(pathBuf, resolved)) {
+            return fs::path(resolved).parent_path();
+        }
+        return fs::absolute(fs::path(pathBuf)).parent_path();
     }
 #elif defined(_WIN32)
     char pathBuf[MAX_PATH];
     GetModuleFileNameA(NULL, pathBuf, MAX_PATH);
     return fs::path(pathBuf).parent_path();
 #else
-    // Linux: read /proc/self/exe
+    // Linux: read /proc/self/exe (always absolute)
     char pathBuf[PATH_MAX];
     ssize_t len = readlink("/proc/self/exe", pathBuf, sizeof(pathBuf) - 1);
     if (len != -1) {
@@ -341,7 +348,9 @@ bool HotReload::compile() {
     }
 
     if (isDevelopmentMode) {
-        vividInclude = fs::canonical(devVividInclude);
+        // Canonicalize rootDir so all derived paths are absolute
+        rootDir = fs::canonical(rootDir);
+        vividInclude = rootDir / "modules" / "vivid-core" / "include";
         // On multi-config generators (MSVC), libs are in build/lib/Debug or build/lib/Release
         // On single-config generators, they're in build/lib
         fs::path buildDir = rootDir / "build";
@@ -360,7 +369,7 @@ bool HotReload::compile() {
 #endif
 
         // Set up library registry for dynamic discovery
-        m_moduleRegistry->setRootDir(fs::canonical(rootDir));
+        m_moduleRegistry->setRootDir(rootDir);
 
         // Discover libraries needed by this chain
         auto libraries = m_moduleRegistry->discoverFromChain(m_sourcePath);

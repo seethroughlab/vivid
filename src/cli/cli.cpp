@@ -1908,7 +1908,7 @@ ParseResult parseArgs(int argc, char** argv) {
     // check/inspect subcommands — need full app lifecycle, so return AppConfig
     if (checkCmd->parsed()) {
         AppConfig config;
-        config.projectPath = checkProjectPath;
+        config.projectPath = fs::absolute(checkProjectPath);
         config.checkMode = true;
         config.headless = true;
         config.checkFrame = checkFrame;
@@ -1937,7 +1937,7 @@ ParseResult parseArgs(int argc, char** argv) {
 
     if (inspectCmd->parsed()) {
         AppConfig config;
-        config.projectPath = inspectProjectPath;
+        config.projectPath = fs::absolute(inspectProjectPath);
         config.inspectMode = true;
         config.headless = true;
         config.checkFrame = inspectFrame;
@@ -1970,7 +1970,7 @@ ParseResult parseArgs(int argc, char** argv) {
 
     if (exportCmd->parsed()) {
         AppConfig config;
-        config.projectPath = exportProjectPath;
+        config.projectPath = fs::absolute(exportProjectPath);
         config.exportMode = true;
         config.exportOutput = exportOutput;
         config.exportScript = exportScript;
@@ -2024,7 +2024,7 @@ ParseResult parseArgs(int argc, char** argv) {
 
     if (buildCmd->parsed()) {
         AppConfig config;
-        config.projectPath = buildProjectPath;
+        config.projectPath = fs::absolute(buildProjectPath);
         config.buildMode = true;
         result.config = config;
         return result;
@@ -2032,7 +2032,7 @@ ParseResult parseArgs(int argc, char** argv) {
 
     if (paramsCmd->parsed()) {
         AppConfig config;
-        config.projectPath = paramsProjectPath;
+        config.projectPath = fs::absolute(paramsProjectPath);
         config.paramsMode = true;
         result.config = config;
         return result;
@@ -2040,7 +2040,7 @@ ParseResult parseArgs(int argc, char** argv) {
 
     if (graphCmd->parsed()) {
         AppConfig config;
-        config.projectPath = graphProjectPath;
+        config.projectPath = fs::absolute(graphProjectPath);
         config.graphMode = true;
         result.config = config;
         return result;
@@ -2056,7 +2056,7 @@ ParseResult parseArgs(int argc, char** argv) {
 
     // Build AppConfig from parsed options
     AppConfig config;
-    config.projectPath = projectPath;
+    config.projectPath = projectPath.empty() ? fs::path{} : fs::absolute(projectPath);
     config.snapshotPath = snapshotPath;
     config.audioSnapshotPath = audioSnapshotPath;
     config.audioSnapshotDuration = audioSnapshotDuration;
