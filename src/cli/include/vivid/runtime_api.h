@@ -396,6 +396,25 @@ public:
                                  const std::string& analysisJson = "", const std::string& error = "");
 
     // -------------------------------------------------------------------------
+    // AV reactivity analysis (MCP analyze_av_reactivity tool)
+    // -------------------------------------------------------------------------
+
+    /// Callback type for analyze_av command
+    /// @param duration Duration in seconds to analyze
+    /// @param fps Sample rate for visual captures
+    using AnalyzeAVCallback = std::function<void(float duration, int fps)>;
+
+    /// Set callback for analyze_av command
+    void onAnalyzeAV(AnalyzeAVCallback callback) { m_analyzeAVCallback = callback; }
+
+    /// Send AV analysis result back to clients
+    /// @param success True if analysis succeeded
+    /// @param analysisJson JSON string with AudioVisualAnalysis data
+    /// @param error Error message if failed
+    void sendAnalyzeAVResult(bool success, const std::string& analysisJson = "",
+                              const std::string& error = "");
+
+    // -------------------------------------------------------------------------
     // Direct parameter control (MCP debugging tools)
     // -------------------------------------------------------------------------
 
@@ -489,6 +508,7 @@ private:
     DiscardChangesCallback m_discardChangesCallback;
     CaptureFrameCallback m_captureFrameCallback;
     CaptureAudioCallback m_captureAudioCallback;
+    AnalyzeAVCallback m_analyzeAVCallback;
     SetParamImmediateCallback m_setParamImmediateCallback;
     RecallSnapshotCallback m_recallSnapshotCallback;
     ParamRampCallback m_paramRampCallback;

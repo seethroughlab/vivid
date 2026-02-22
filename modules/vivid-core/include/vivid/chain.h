@@ -13,6 +13,7 @@
 #include <vivid/frame_analysis.h>
 #include <vivid/audio_analysis.h>
 #include <vivid/temporal_analysis.h>
+#include <vivid/av_analysis.h>
 #include <vivid/audio_graph.h>
 #include <vivid/snapshot.h>
 #include <vivid/midi_map.h>
@@ -60,6 +61,7 @@ struct ChainInspection {
     FrameAnalysis outputAnalysis; ///< Statistical analysis of output texture
     AudioAnalysis audioAnalysis;  ///< Statistical analysis of audio output
     std::optional<TemporalAnalysis> temporalAnalysis;  ///< Temporal metrics (multi-frame)
+    std::optional<AudioVisualAnalysis> avAnalysis;     ///< Audio-visual reactivity metrics
 
     std::string toJSON() const {
         std::ostringstream ss;
@@ -80,6 +82,9 @@ struct ChainInspection {
         ss << ",\"audioAnalysis\":" << audioAnalysis.toJSON();
         if (temporalAnalysis.has_value()) {
             ss << ",\"temporal\":" << temporalAnalysis->toJSON();
+        }
+        if (avAnalysis.has_value()) {
+            ss << ",\"audioVisual\":" << avAnalysis->toJSON();
         }
         ss << "}";
         return ss.str();

@@ -383,17 +383,20 @@ TEST_CASE("MCP tools/list includes visual analysis tools", "[mcp]") {
     bool hasColorHarmony = false;
     bool hasSymmetry = false;
     bool hasSpatialBalance = false;
+    bool hasAVReactivity = false;
 
     for (const auto& tool : response["result"]["tools"]) {
         std::string name = tool["name"];
         if (name == "analyze_color_harmony") hasColorHarmony = true;
         if (name == "analyze_symmetry") hasSymmetry = true;
         if (name == "analyze_spatial_balance") hasSpatialBalance = true;
+        if (name == "analyze_av_reactivity") hasAVReactivity = true;
     }
 
     REQUIRE(hasColorHarmony);
     REQUIRE(hasSymmetry);
     REQUIRE(hasSpatialBalance);
+    REQUIRE(hasAVReactivity);
 }
 
 TEST_CASE("MCP list_operators tool returns operators", "[mcp]") {

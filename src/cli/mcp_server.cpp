@@ -514,6 +514,42 @@ public:
         return result;
     }
 
+    json analyzeAV(float duration, int fps, int timeoutMs = 0) {
+        // Clear any previous result
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_analyzeAVResult = json::object();
+            m_analyzeAVResultReceived = false;
+        }
+
+        // Auto-compute timeout from duration + buffer for processing
+        if (timeoutMs <= 0) {
+            timeoutMs = static_cast<int>((duration + 10.0f) * 1000);
+        }
+
+        json cmd;
+        cmd["type"] = "analyze_av";
+        cmd["duration"] = duration;
+        cmd["fps"] = fps;
+        m_ws.send(cmd.dump());
+
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_analyzeAVResultReceived) {
+                    return m_analyzeAVResult;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        json result;
+        result["success"] = false;
+        result["error"] = "Timeout waiting for AV analysis result";
+        return result;
+    }
+
     // Send commands to Vivid
     void soloOperator(const std::string& opName) {
         json cmd;
@@ -884,6 +920,9 @@ private:
             } else if (type == "param_ramp_result") {
                 m_paramRampResult = msg;
                 m_paramRampResultReceived = true;
+            } else if (type == "av_analysis_result") {
+                m_analyzeAVResult = msg;
+                m_analyzeAVResultReceived = true;
             }
         } catch (const json::exception& e) {
             std::cerr << "[MCP] JSON parse error: " << e.what() << "\n";
@@ -929,6 +968,8 @@ private:
     bool m_recallSnapshotResultReceived{false};
     json m_paramRampResult = json::object();
     bool m_paramRampResultReceived{false};
+    json m_analyzeAVResult = json::object();
+    bool m_analyzeAVResultReceived{false};
 
     // Connection state tracking
     std::string m_lastError;
@@ -1616,6 +1657,23 @@ private:
                     {"image_path", {{"type", "string"}, {"description", "Path to PNG image to analyze"}}}
                 }},
                 {"required", json::array({"image_path"})}
+            }}
+        });
+
+        // analyze_av_reactivity - Audio-visual cross-correlation analysis
+        tools.push_back({
+            {"name", "analyze_av_reactivity"},
+            {"description", "Measure audio-visual reactivity on a running project. Captures synchronized audio and "
+                            "visual data over a duration, then computes correlation (brightness/motion vs audio RMS), "
+                            "per-band correlations, onset response rate, reactivity latency, and mutual information. "
+                            "Requires a running Vivid instance with audio output."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"duration", {{"type", "number"}, {"description", "Duration in seconds to analyze (default: 3.0)"}}},
+                    {"fps", {{"type", "integer"}, {"description", "Visual sample rate in frames per second (default: 30)"}}}
+                }},
+                {"required", json::array()}
             }}
         });
 
@@ -3034,6 +3092,38 @@ private:
             }
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
+        else if (name == "analyze_av_reactivity") {
+            float duration = args.value("duration", 3.0f);
+            int fps = args.value("fps", 30);
+            duration = std::max(0.5f, std::min(30.0f, duration));
+            fps = std::max(5, std::min(60, fps));
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot analyze AV reactivity: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            json avResult = m_vivid.analyzeAV(duration, fps);
+
+            json response;
+            response["connected"] = true;
+            response["success"] = avResult.value("success", false);
+            response["duration"] = duration;
+            response["fps"] = fps;
+            if (avResult.contains("analysis")) {
+                response["analysis"] = avResult["analysis"];
+            }
+            if (avResult.contains("error")) {
+                response["error"] = avResult["error"];
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
         else if (name == "sweep_param_audio") {
             std::string op = args.value("operator", "");
             std::string param = args.value("param", "");
@@ -3360,12 +3450,29 @@ private:
             response["audio_b"] = audioB;
             response["analysis_a"] = json::parse(analysisA.toJSON());
             response["analysis_b"] = json::parse(analysisB.toJSON());
-            response["diff"] = {
+            json diffObj = {
                 {"rmsDiff", std::round(rmsDiff * 10000.0f) / 10000.0f},
                 {"peakDiff", std::round(peakDiff * 10000.0f) / 10000.0f},
                 {"spectrumDiff", spectrumDiff},
                 {"correlation", std::round(correlation * 10000.0) / 10000.0}
             };
+
+            // Extended diff fields for new audio metrics
+            auto safeDiff = [](float a, float b) -> json {
+                if (!std::isfinite(a) || !std::isfinite(b)) return nullptr;
+                return std::round((b - a) * 10000.0f) / 10000.0f;
+            };
+            diffObj["centroidDiff"] = safeDiff(analysisA.spectralCentroid, analysisB.spectralCentroid);
+            diffObj["spreadDiff"] = safeDiff(analysisA.spectralSpread, analysisB.spectralSpread);
+            diffObj["fluxDiff"] = safeDiff(analysisA.spectralFlux, analysisB.spectralFlux);
+            diffObj["flatnessDiff"] = safeDiff(analysisA.spectralFlatness, analysisB.spectralFlatness);
+            diffObj["widthDiff"] = safeDiff(analysisA.stereoWidth, analysisB.stereoWidth);
+            diffObj["correlationDiff_stereo"] = safeDiff(analysisA.stereoCorrelation, analysisB.stereoCorrelation);
+            diffObj["onsetDensityDiff"] = safeDiff(analysisA.onsetDensity, analysisB.onsetDensity);
+            diffObj["lufsDiff"] = safeDiff(analysisA.integratedLUFS, analysisB.integratedLUFS);
+            diffObj["pitchDiff"] = safeDiff(analysisA.pitchHz, analysisB.pitchHz);
+
+            response["diff"] = diffObj;
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else if (name == "analyze_color_harmony") {

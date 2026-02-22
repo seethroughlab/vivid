@@ -117,6 +117,50 @@ catch_discover_tests(test_audio_assertions
 )
 
 # -----------------------------------------------------------------------------
+# Unit Tests (AV analysis — AudioVisualAnalyzer)
+# -----------------------------------------------------------------------------
+
+add_executable(test_av_analysis
+    unit/test_av_analysis.cpp
+)
+
+target_link_libraries(test_av_analysis PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_av_analysis PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+)
+
+catch_discover_tests(test_av_analysis
+    PROPERTIES LABELS "unit"
+)
+
+# -----------------------------------------------------------------------------
+# Unit Tests (AV assertions — av.* path resolution)
+# -----------------------------------------------------------------------------
+
+add_executable(test_av_assertions
+    unit/test_av_assertions.cpp
+    ${CMAKE_SOURCE_DIR}/src/cli/assertion.cpp
+)
+
+target_link_libraries(test_av_assertions PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_av_assertions PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+    ${CMAKE_SOURCE_DIR}/src/cli/include
+)
+
+catch_discover_tests(test_av_assertions
+    PROPERTIES LABELS "unit"
+)
+
+# -----------------------------------------------------------------------------
 # Unit Tests (frame analysis assertions — Tier 1 + temporal path resolution)
 # -----------------------------------------------------------------------------
 

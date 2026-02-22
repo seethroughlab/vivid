@@ -24,6 +24,7 @@
 #include <vivid/audio_buffer.h>
 #include <vivid/audio_analysis.h>
 #include <vivid/temporal_analysis.h>
+#include <vivid/av_analysis.h>
 #include <vivid/waveform_image.h>
 #include <vivid/spectrogram_image.h>
 #include <vivid/audio_buffer.h>
@@ -734,6 +735,21 @@ struct MainLoopContext {
     uint32_t mcpAudioCaptureFramesNeeded = 0;
     uint32_t mcpAudioCaptureFramesCaptured = 0;
 
+    // MCP AV analysis request
+    bool mcpAVAnalysisRequested = false;
+    bool mcpAVAnalysisActive = false;
+    float mcpAVAnalysisDuration = 3.0f;
+    int mcpAVAnalysisFps = 30;
+    int mcpAVAnalysisTotalFrames = 0;
+    int mcpAVAnalysisFrameCounter = 0;
+    int mcpAVAnalysisNextSampleFrame = 0;
+    int mcpAVAnalysisSampleIndex = 0;
+    int mcpAVAnalysisTotalSamples = 0;
+    std::vector<float> mcpAVAudioBuffer;
+    uint32_t mcpAVAudioFramesCaptured = 0;
+    std::vector<uint32_t> mcpAVAudioBufferOffsets;
+    std::vector<vivid::FrameAnalysis> mcpAVPerSampleVisual;
+
     // Core runtime objects (non-owning pointers)
     Context* ctx = nullptr;
     Display* display = nullptr;
@@ -818,6 +834,10 @@ struct MainLoopContext {
     bool inspectAudioStarted = false;
     std::vector<float> inspectAudioBuffer;
     uint32_t inspectAudioFramesCaptured = 0;
+
+    // Per-sample tracking for AV analysis
+    std::vector<uint32_t> inspectAudioBufferOffsets;    // Audio frame count at each sample
+    std::vector<vivid::FrameAnalysis> inspectPerSampleVisual;  // Per-sample visual data
 
     // Exit on any compile error (agent/CI mode)
     bool exitOnError = false;
@@ -1865,8 +1885,8 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             mlc.inspectAudioFramesCaptured += audioFramesPerVideoFrame;
         }
 
-        // Multi-sample inspect: collect sample at target frames
-        if (mlc.inspectMode && !mlc.inspectSampleFrames.empty()) {
+        // Multi-sample inspect/check: collect sample at target frames
+        if ((mlc.inspectMode || mlc.checkMode) && !mlc.inspectSampleFrames.empty()) {
             // Check if current frame is one of the target sample frames
             for (size_t i = 0; i < mlc.inspectSampleFrames.size(); i++) {
                 if (currentFrame == mlc.inspectSampleFrames[i] &&
@@ -1890,6 +1910,10 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                             }
                         }
                     }
+
+                    // Track per-sample data for AV analysis
+                    mlc.inspectAudioBufferOffsets.push_back(mlc.inspectAudioFramesCaptured);
+                    mlc.inspectPerSampleVisual.push_back(inspection.outputAnalysis);
 
                     mlc.inspectResults.push_back(inspection.toJSON());
 
@@ -1931,10 +1955,97 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                         envelope["temporal"] = nlohmann::json::parse(temporal.toJSON());
                     }
 
+                    // Compute AV analysis from per-sample audio + visual data
+                    vivid::AudioVisualAnalysis avResult;
+                    if (mlc.inspectAudioStarted &&
+                        mlc.inspectPerSampleVisual.size() >= 2 &&
+                        mlc.inspectAudioBufferOffsets.size() == mlc.inspectPerSampleVisual.size()) {
+
+                        vivid::AudioVisualAnalyzer::Config avConfig;
+                        avConfig.fps = 60.0f;
+                        vivid::AudioVisualAnalyzer avAnalyzer(avConfig);
+
+                        for (size_t si = 0; si < mlc.inspectPerSampleVisual.size(); si++) {
+                            // Compute windowed audio analysis for this sample
+                            uint32_t audioStart = (si == 0) ? 0 : mlc.inspectAudioBufferOffsets[si - 1];
+                            uint32_t audioEnd = mlc.inspectAudioBufferOffsets[si];
+                            uint32_t windowFrames = audioEnd - audioStart;
+
+                            vivid::AudioVisualAnalyzer::Sample avSample;
+
+                            if (windowFrames > 0 && audioEnd <= mlc.inspectAudioFramesCaptured) {
+                                auto windowedAudio = analyzeAudioBuffer(
+                                    mlc.inspectAudioBuffer.data() + (audioStart * AUDIO_CHANNELS),
+                                    windowFrames, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+                                avSample.audioRms = windowedAudio.rmsLevel;
+                                avSample.audioSpectrum = windowedAudio.spectrum;
+
+                                // Detect onsets from spectral flux
+                                avSample.isOnset = (windowedAudio.spectralFluxMax > 0.1f &&
+                                                    windowedAudio.onsetCount > 0);
+                            }
+
+                            const auto& vis = mlc.inspectPerSampleVisual[si];
+                            avSample.brightness = vis.meanBrightness;
+                            avSample.contrast = vis.contrast;
+
+                            // Motion = brightness delta between consecutive samples
+                            if (si > 0) {
+                                avSample.motionMagnitude = std::abs(
+                                    vis.meanBrightness - mlc.inspectPerSampleVisual[si - 1].meanBrightness);
+                            }
+                            avSample.frameDelta = avSample.motionMagnitude;
+
+                            avAnalyzer.pushSample(avSample);
+                        }
+
+                        avResult = avAnalyzer.analyze();
+                        if (avResult.valid) {
+                            envelope["audioVisual"] = nlohmann::json::parse(avResult.toJSON());
+                        }
+                    }
+
                     outputJson = envelope.dump();
+
+                    // Check mode with multi-sample: evaluate assertions with AV data
+                    if (mlc.checkMode && !mlc.assertions.empty()) {
+                        // Build a ChainInspection from the last sample + AV analysis
+                        auto lastSampleJson = nlohmann::json::parse(mlc.inspectResults.back());
+                        vivid::ChainInspection finalInspection;
+                        finalInspection.frame = lastSampleJson.value("frame", 0);
+                        finalInspection.time = lastSampleJson.value("time", 0.0f);
+                        if (lastSampleJson.contains("output")) {
+                            auto& o = lastSampleJson["output"];
+                            finalInspection.outputAnalysis.meanBrightness = o.value("meanBrightness", 0.0f);
+                            finalInspection.outputAnalysis.contrast = o.value("contrast", 0.0f);
+                        }
+                        // Attach audio analysis from full buffer
+                        if (mlc.inspectAudioStarted && mlc.inspectAudioFramesCaptured > 0) {
+                            finalInspection.audioAnalysis = analyzeAudioBuffer(
+                                mlc.inspectAudioBuffer.data(),
+                                mlc.inspectAudioFramesCaptured, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+                        }
+                        // Attach temporal analysis
+                        if (mlc.temporalAnalyzer && mlc.temporalAnalyzer->frameCount() >= 2) {
+                            finalInspection.temporalAnalysis = mlc.temporalAnalyzer->analyze();
+                        }
+                        // Attach AV analysis
+                        if (avResult.valid) {
+                            finalInspection.avAnalysis = avResult;
+                        }
+
+                        auto report = vivid::evaluateAssertions(mlc.assertions, finalInspection, mlc.checkFrame);
+                        if (mlc.verboseCheck) {
+                            std::cerr << report.toVerbose();
+                        }
+                        std::cout << report.toJSON() << std::endl;
+                        mlc.exitCode = report.allPassed ? 0 : 1;
+                    }
                 }
 
-                std::cout << outputJson << std::endl;
+                if (!mlc.checkMode) {
+                    std::cout << outputJson << std::endl;
+                }
 
                 // Save combined JSON + waveform to output dir
                 if (!mlc.inspectOutDir.empty()) {
@@ -2827,6 +2938,124 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                 mlc.mcpAudioCaptureRequestPath.clear();
                 mlc.mcpAudioCaptureActive = false;
                 mlc.mcpAudioCaptureBuffer.clear();
+            }
+        }
+
+        // Start MCP AV analysis if requested
+        if (mlc.mcpAVAnalysisRequested && !mlc.mcpAVAnalysisActive) {
+            mlc.mcpAVAnalysisActive = true;
+            mlc.mcpAVAnalysisRequested = false;
+            mlc.mcpAVAnalysisTotalFrames = static_cast<int>(mlc.mcpAVAnalysisDuration * 60.0f);
+            mlc.mcpAVAnalysisTotalSamples = static_cast<int>(mlc.mcpAVAnalysisDuration * mlc.mcpAVAnalysisFps);
+            mlc.mcpAVAnalysisFrameCounter = 0;
+            mlc.mcpAVAnalysisSampleIndex = 0;
+            mlc.mcpAVAnalysisNextSampleFrame = 0;
+            mlc.mcpAVAudioBuffer.clear();
+            mlc.mcpAVAudioFramesCaptured = 0;
+            mlc.mcpAVAudioBufferOffsets.clear();
+            mlc.mcpAVPerSampleVisual.clear();
+
+            if (mlc.ctx && mlc.ctx->hasChain()) {
+                mlc.ctx->chain().startAudioRecordingTap();
+                printf("[MCP AV] Started analysis: %.1fs @ %dfps (%d samples)\n",
+                       mlc.mcpAVAnalysisDuration, mlc.mcpAVAnalysisFps,
+                       mlc.mcpAVAnalysisTotalSamples);
+            } else {
+                if (mlc.editorBridge) {
+                    mlc.editorBridge->sendAnalyzeAVResult(
+                        false, "", "No chain running - cannot analyze AV reactivity");
+                }
+                mlc.mcpAVAnalysisActive = false;
+            }
+        }
+
+        // Accumulate audio during AV analysis
+        if (mlc.mcpAVAnalysisActive && mlc.ctx && mlc.ctx->hasChain()) {
+            constexpr uint32_t CHUNK = 4096;
+            std::vector<float> chunk(CHUNK * AUDIO_CHANNELS);
+            uint32_t framesRead = mlc.ctx->chain().popAudioRecordedSamples(
+                chunk.data(), CHUNK);
+            if (framesRead > 0) {
+                mlc.mcpAVAudioBuffer.insert(mlc.mcpAVAudioBuffer.end(),
+                    chunk.begin(), chunk.begin() + framesRead * AUDIO_CHANNELS);
+                mlc.mcpAVAudioFramesCaptured += framesRead;
+            }
+
+            // Collect visual sample at appropriate frame intervals
+            int frameInterval = std::max(1, mlc.mcpAVAnalysisTotalFrames / mlc.mcpAVAnalysisTotalSamples);
+            if (mlc.mcpAVAnalysisFrameCounter >= mlc.mcpAVAnalysisNextSampleFrame &&
+                mlc.mcpAVAnalysisSampleIndex < mlc.mcpAVAnalysisTotalSamples) {
+
+                auto inspection = mlc.ctx->chain().inspectAll(*mlc.ctx, false);
+                mlc.mcpAVAudioBufferOffsets.push_back(mlc.mcpAVAudioFramesCaptured);
+                mlc.mcpAVPerSampleVisual.push_back(inspection.outputAnalysis);
+
+                mlc.mcpAVAnalysisSampleIndex++;
+                mlc.mcpAVAnalysisNextSampleFrame = mlc.mcpAVAnalysisSampleIndex * frameInterval;
+            }
+
+            mlc.mcpAVAnalysisFrameCounter++;
+
+            // All done — compute AV analysis and send result
+            if (mlc.mcpAVAnalysisFrameCounter >= mlc.mcpAVAnalysisTotalFrames) {
+                mlc.ctx->chain().stopAudioRecordingTap();
+
+                std::string analysisJson;
+                bool success = false;
+
+                if (mlc.mcpAVPerSampleVisual.size() >= 2 &&
+                    mlc.mcpAVAudioBufferOffsets.size() == mlc.mcpAVPerSampleVisual.size()) {
+
+                    vivid::AudioVisualAnalyzer::Config avConfig;
+                    avConfig.fps = static_cast<float>(mlc.mcpAVAnalysisFps);
+                    vivid::AudioVisualAnalyzer avAnalyzer(avConfig);
+
+                    for (size_t si = 0; si < mlc.mcpAVPerSampleVisual.size(); si++) {
+                        uint32_t audioStart = (si == 0) ? 0 : mlc.mcpAVAudioBufferOffsets[si - 1];
+                        uint32_t audioEnd = mlc.mcpAVAudioBufferOffsets[si];
+                        uint32_t windowFrames = audioEnd - audioStart;
+
+                        vivid::AudioVisualAnalyzer::Sample avSample;
+
+                        if (windowFrames > 0 && audioEnd <= mlc.mcpAVAudioFramesCaptured) {
+                            auto windowedAudio = analyzeAudioBuffer(
+                                mlc.mcpAVAudioBuffer.data() + (audioStart * AUDIO_CHANNELS),
+                                windowFrames, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+                            avSample.audioRms = windowedAudio.rmsLevel;
+                            avSample.audioSpectrum = windowedAudio.spectrum;
+                            avSample.isOnset = (windowedAudio.spectralFluxMax > 0.1f &&
+                                                windowedAudio.onsetCount > 0);
+                        }
+
+                        const auto& vis = mlc.mcpAVPerSampleVisual[si];
+                        avSample.brightness = vis.meanBrightness;
+                        avSample.contrast = vis.contrast;
+                        if (si > 0) {
+                            avSample.motionMagnitude = std::abs(
+                                vis.meanBrightness - mlc.mcpAVPerSampleVisual[si - 1].meanBrightness);
+                        }
+                        avSample.frameDelta = avSample.motionMagnitude;
+
+                        avAnalyzer.pushSample(avSample);
+                    }
+
+                    auto avResult = avAnalyzer.analyze();
+                    success = avResult.valid;
+                    analysisJson = avResult.toJSON();
+
+                    printf("[MCP AV] Analysis complete: correlation=%.3f, onsetResponse=%.1f%%, valid=%s\n",
+                           avResult.avCorrelation, avResult.onsetResponseRate * 100.0f,
+                           avResult.valid ? "true" : "false");
+                }
+
+                if (mlc.editorBridge) {
+                    mlc.editorBridge->sendAnalyzeAVResult(
+                        success, analysisJson,
+                        success ? "" : "Insufficient data for AV analysis");
+                }
+
+                mlc.mcpAVAnalysisActive = false;
+                mlc.mcpAVAudioBuffer.clear();
             }
         }
     }
@@ -3777,6 +4006,14 @@ int Application::init(const AppConfig& config) {
         m_impl->mlc.mcpAudioCaptureDuration = duration;
     });
 
+    // MCP AV analysis callback
+    m_impl->editorBridge->onAnalyzeAV([this](float duration, int fps) {
+        std::lock_guard<std::mutex> lock(m_impl->mlc.mcpCaptureMutex);
+        m_impl->mlc.mcpAVAnalysisDuration = duration;
+        m_impl->mlc.mcpAVAnalysisFps = fps;
+        m_impl->mlc.mcpAVAnalysisRequested = true;
+    });
+
     // Extract project name and set up chain path
     std::string projectName;
     fs::path projectDir;
@@ -3930,12 +4167,29 @@ int Application::init(const AppConfig& config) {
                     break;
                 }
             }
+
+            // Auto-enable multi-sample when av.* assertions need AV analysis
+            bool hasAvAssertions = false;
+            for (const auto& a : mlc.assertions) {
+                if (a.path.substr(0, 3) == "av.") {
+                    hasAvAssertions = true;
+                    break;
+                }
+            }
+            if (hasAvAssertions && config.checkDuration <= 0.0f) {
+                // Auto-set duration for AV analysis
+                mlc.inspectDuration = 2.0f;
+                mlc.inspectSamples = 60;
+            }
         }
 
+        // Effective check duration: explicit --duration or auto-detected
+        float effectiveCheckDuration = config.checkDuration > 0.0f ? config.checkDuration : mlc.inspectDuration;
+
         // Priority: CLI --duration > CLI --frame > assertion file frame > default 10
-        if (mlc.checkMode && config.checkDuration > 0.0f) {
+        if (mlc.checkMode && effectiveCheckDuration > 0.0f) {
             // --duration overrides --frame: evaluate at the end of the duration
-            mlc.checkFrame = static_cast<int>(config.checkDuration * 60.0f);
+            mlc.checkFrame = static_cast<int>(effectiveCheckDuration * 60.0f);
         } else if (config.checkFrame >= 0) {
             mlc.checkFrame = config.checkFrame;
         } else if (fileFrame >= 0) {
@@ -3944,9 +4198,38 @@ int Application::init(const AppConfig& config) {
             mlc.checkFrame = 10;
         }
 
+        // Multi-sample for check mode with --duration (or auto-detected av.* assertions)
+        if (mlc.checkMode && effectiveCheckDuration > 0.0f) {
+            if (mlc.inspectDuration <= 0.0f) {
+                mlc.inspectDuration = effectiveCheckDuration;
+            }
+            if (mlc.inspectSamples <= 1) {
+                mlc.inspectSamples = 60;
+            }
+            int endFrame = static_cast<int>(mlc.inspectDuration * 60.0f);
+            mlc.inspectSampleFrames.clear();
+            for (int i = 0; i < mlc.inspectSamples; i++) {
+                int f = static_cast<int>(
+                    static_cast<float>(i) / static_cast<float>(mlc.inspectSamples - 1) * static_cast<float>(endFrame));
+                mlc.inspectSampleFrames.push_back(f);
+            }
+            mlc.checkFrame = endFrame;
+
+            // Create temporal analyzer for multi-sample check
+            mlc.temporalAnalyzer = std::make_unique<vivid::TemporalAnalyzer>();
+            if (mlc.inspectSamples >= 2 && endFrame > 0) {
+                int interval = endFrame / (mlc.inspectSamples - 1);
+                if (interval > 2) {
+                    mlc.temporalAnalyzer->setSparseMode(true);
+                }
+            }
+        }
+
         // Multi-sample inspect: compute target frames from --duration and --samples
-        mlc.inspectDuration = config.inspectDuration;
-        mlc.inspectSamples = config.inspectSamples;
+        if (mlc.inspectMode) {
+            mlc.inspectDuration = config.inspectDuration;
+            mlc.inspectSamples = config.inspectSamples;
+        }
         if (mlc.inspectMode && mlc.inspectDuration > 0.0f && mlc.inspectSamples >= 1) {
             int endFrame = static_cast<int>(mlc.inspectDuration * 60.0f);
             mlc.inspectSampleFrames.clear();

@@ -14,6 +14,7 @@
 #include <string>
 #include <cstdio>
 #include <array>
+#include <vector>
 #include <filesystem>
 #include <fstream>
 
@@ -32,6 +33,46 @@ namespace fs = std::filesystem;
 
 static std::string getVividPath() { return VIVID_BINARY_PATH; }
 static std::string getSourceDir() { return VIVID_SOURCE_DIR; }
+
+// Extract JSON from output that may contain log lines before/after.
+static std::string extractJson(const std::string& output) {
+    std::vector<size_t> candidates;
+    for (size_t i = 0; i < output.size(); ++i) {
+        if ((output[i] == '{' || output[i] == '[') &&
+            (i == 0 || output[i - 1] == '\n')) {
+            candidates.push_back(i);
+        }
+    }
+
+    for (auto it = candidates.rbegin(); it != candidates.rend(); ++it) {
+        size_t start = *it;
+        std::string sub = output.substr(start);
+        if (json::accept(sub)) {
+            return sub;
+        }
+        char opener = output[start];
+        char closer = (opener == '{') ? '}' : ']';
+        int depth = 0;
+        bool inString = false;
+        for (size_t j = start; j < output.size(); ++j) {
+            char c = output[j];
+            if (c == '"' && (j == start || output[j - 1] != '\\')) {
+                inString = !inString;
+            }
+            if (inString) continue;
+            if (c == opener) depth++;
+            else if (c == closer) depth--;
+            if (depth == 0) {
+                std::string candidate = output.substr(start, j - start + 1);
+                if (json::accept(candidate)) {
+                    return candidate;
+                }
+                break;
+            }
+        }
+    }
+    return "";
+}
 
 // A project with audio output: drum synthesis showcase
 static std::string audioProject() {
@@ -196,6 +237,278 @@ TEST_CASE("check: mixed visual + audio assertions", "[cli][audio_eval]") {
 
     auto [output, rc] = runCheck(audioProject(), assertFile);
     CHECK(rc == 0);
+}
+
+// ---------------------------------------------------------------------------
+// Tests: vivid check with new audio.* assertion paths
+// ---------------------------------------------------------------------------
+
+TEST_CASE("check: audio.dcOffset exists and is near zero", "[cli][audio_eval]") {
+    int buildRc = runBuild(audioProject());
+    REQUIRE(buildRc == 0);
+
+    // DC offset should be small for well-formed audio
+    json assertions = json::array({
+        {{"path", "audio.dcOffset"}, {"op", "between"}, {"value", {-0.5, 0.5}},
+         {"message", "DC offset within range"}}
+    });
+
+    auto assertFile = writeTempAssertions(assertions, 30);
+    TempFileGuard guard{assertFile};
+
+    auto [output, rc] = runCheck(audioProject(), assertFile);
+    CHECK(rc == 0);
+}
+
+TEST_CASE("check: audio.clippedSamplePct is low", "[cli][audio_eval]") {
+    int buildRc = runBuild(audioProject());
+    REQUIRE(buildRc == 0);
+
+    json assertions = json::array({
+        {{"path", "audio.clippedSamplePct"}, {"op", "<"}, {"value", 0.5},
+         {"message", "Less than 50% clipping"}}
+    });
+
+    auto assertFile = writeTempAssertions(assertions, 30);
+    TempFileGuard guard{assertFile};
+
+    auto [output, rc] = runCheck(audioProject(), assertFile);
+    CHECK(rc == 0);
+}
+
+TEST_CASE("check: audio.zeroCrossingRate resolves", "[cli][audio_eval]") {
+    int buildRc = runBuild(audioProject());
+    REQUIRE(buildRc == 0);
+
+    // ZCR should be non-negative for any audio
+    json assertions = json::array({
+        {{"path", "audio.zeroCrossingRate"}, {"op", ">="}, {"value", 0.0},
+         {"message", "ZCR is non-negative"}}
+    });
+
+    auto assertFile = writeTempAssertions(assertions, 30);
+    TempFileGuard guard{assertFile};
+
+    auto [output, rc] = runCheck(audioProject(), assertFile);
+    CHECK(rc == 0);
+}
+
+TEST_CASE("check: audio.stereoCorrelation and stereoWidth resolve", "[cli][audio_eval]") {
+    int buildRc = runBuild(audioProject());
+    REQUIRE(buildRc == 0);
+
+    json assertions = json::array({
+        {{"path", "audio.stereoCorrelation"}, {"op", "between"}, {"value", {-1.0, 1.0}},
+         {"message", "Stereo correlation in valid range"}},
+        {{"path", "audio.stereoWidth"}, {"op", ">="}, {"value", 0.0},
+         {"message", "Stereo width is non-negative"}}
+    });
+
+    auto assertFile = writeTempAssertions(assertions, 30);
+    TempFileGuard guard{assertFile};
+
+    auto [output, rc] = runCheck(audioProject(), assertFile);
+    CHECK(rc == 0);
+}
+
+TEST_CASE("check: STFT spectral metrics resolve", "[cli][audio_eval]") {
+    int buildRc = runBuild(audioProject());
+    REQUIRE(buildRc == 0);
+
+    // All STFT metrics should be non-negative
+    json assertions = json::array({
+        {{"path", "audio.spectralCentroid"}, {"op", ">="}, {"value", 0.0},
+         {"message", "Spectral centroid resolves"}},
+        {{"path", "audio.spectralSpread"}, {"op", ">="}, {"value", 0.0},
+         {"message", "Spectral spread resolves"}},
+        {{"path", "audio.spectralFlux"}, {"op", ">="}, {"value", 0.0},
+         {"message", "Spectral flux resolves"}},
+        {{"path", "audio.spectralFlatness"}, {"op", ">="}, {"value", 0.0},
+         {"message", "Spectral flatness resolves"}},
+        {{"path", "audio.spectralRolloff"}, {"op", ">="}, {"value", 0.0},
+         {"message", "Spectral rolloff resolves"}}
+    });
+
+    auto assertFile = writeTempAssertions(assertions, 30);
+    TempFileGuard guard{assertFile};
+
+    auto [output, rc] = runCheck(audioProject(), assertFile);
+    CHECK(rc == 0);
+}
+
+TEST_CASE("check: onset detection paths resolve", "[cli][audio_eval]") {
+    int buildRc = runBuild(audioProject());
+    REQUIRE(buildRc == 0);
+
+    json assertions = json::array({
+        {{"path", "audio.onsetCount"}, {"op", ">="}, {"value", 0},
+         {"message", "Onset count resolves"}},
+        {{"path", "audio.onsetDensity"}, {"op", ">="}, {"value", 0.0},
+         {"message", "Onset density resolves"}}
+    });
+
+    auto assertFile = writeTempAssertions(assertions, 30);
+    TempFileGuard guard{assertFile};
+
+    auto [output, rc] = runCheck(audioProject(), assertFile);
+    CHECK(rc == 0);
+}
+
+TEST_CASE("check: LUFS paths resolve", "[cli][audio_eval]") {
+    int buildRc = runBuild(audioProject());
+    REQUIRE(buildRc == 0);
+
+    // truePeak should be non-negative; LUFS fields may be -inf for short captures
+    // so use exists check for LUFS and a value check for truePeak
+    json assertions = json::array({
+        {{"path", "audio.integratedLUFS"}, {"op", "exists"}},
+        {{"path", "audio.shortTermLUFS"}, {"op", "exists"}},
+        {{"path", "audio.momentaryLUFS"}, {"op", "exists"}},
+        {{"path", "audio.truePeak"}, {"op", ">="}, {"value", 0.0},
+         {"message", "True peak is non-negative"}},
+        {{"path", "audio.truePeakDBTP"}, {"op", "exists"}},
+        {{"path", "audio.loudnessRange"}, {"op", ">="}, {"value", 0.0},
+         {"message", "LRA is non-negative"}}
+    });
+
+    auto assertFile = writeTempAssertions(assertions, 30);
+    TempFileGuard guard{assertFile};
+
+    auto [output, rc] = runCheck(audioProject(), assertFile);
+    CHECK(rc == 0);
+}
+
+TEST_CASE("check: pitch detection paths resolve", "[cli][audio_eval]") {
+    int buildRc = runBuild(audioProject());
+    REQUIRE(buildRc == 0);
+
+    json assertions = json::array({
+        {{"path", "audio.pitchHz"}, {"op", ">="}, {"value", 0.0},
+         {"message", "Pitch Hz resolves"}},
+        {{"path", "audio.pitchConfidence"}, {"op", ">="}, {"value", 0.0},
+         {"message", "Pitch confidence resolves"}},
+        {{"path", "audio.pitchCents"}, {"op", "between"}, {"value", {-50.0, 50.0}},
+         {"message", "Pitch cents in valid range"}}
+    });
+
+    auto assertFile = writeTempAssertions(assertions, 30);
+    TempFileGuard guard{assertFile};
+
+    auto [output, rc] = runCheck(audioProject(), assertFile);
+    CHECK(rc == 0);
+}
+
+TEST_CASE("check: HNR and dynamic range paths resolve", "[cli][audio_eval]") {
+    int buildRc = runBuild(audioProject());
+    REQUIRE(buildRc == 0);
+
+    json assertions = json::array({
+        {{"path", "audio.harmonicToNoiseRatio"}, {"op", ">="}, {"value", 0.0},
+         {"message", "HNR resolves"}},
+        {{"path", "audio.dynamicRangeDB"}, {"op", ">="}, {"value", 0.0},
+         {"message", "Dynamic range resolves"}},
+        {{"path", "audio.dynamicRangeCoeffVar"}, {"op", ">="}, {"value", 0.0},
+         {"message", "Dynamic range coeff var resolves"}}
+    });
+
+    auto assertFile = writeTempAssertions(assertions, 30);
+    TempFileGuard guard{assertFile};
+
+    auto [output, rc] = runCheck(audioProject(), assertFile);
+    CHECK(rc == 0);
+}
+
+TEST_CASE("check: all new audio paths in combined assertion", "[cli][audio_eval]") {
+    int buildRc = runBuild(audioProject());
+    REQUIRE(buildRc == 0);
+
+    // A comprehensive assertion that exercises every new path in one check
+    json assertions = json::array({
+        // Zero-cost extensions
+        {{"path", "audio.dcOffset"}, {"op", "between"}, {"value", {-1.0, 1.0}}},
+        {{"path", "audio.clippedSamplePct"}, {"op", ">="}, {"value", 0.0}},
+        {{"path", "audio.zeroCrossingRate"}, {"op", ">="}, {"value", 0.0}},
+        // Stereo
+        {{"path", "audio.stereoCorrelation"}, {"op", "between"}, {"value", {-1.0, 1.0}}},
+        {{"path", "audio.stereoWidth"}, {"op", ">="}, {"value", 0.0}},
+        // STFT spectral
+        {{"path", "audio.spectralCentroid"}, {"op", ">="}, {"value", 0.0}},
+        {{"path", "audio.spectralSpread"}, {"op", ">="}, {"value", 0.0}},
+        {{"path", "audio.spectralFlux"}, {"op", ">="}, {"value", 0.0}},
+        {{"path", "audio.spectralFluxMax"}, {"op", ">="}, {"value", 0.0}},
+        {{"path", "audio.spectralFlatness"}, {"op", ">="}, {"value", 0.0}},
+        {{"path", "audio.spectralRolloff"}, {"op", ">="}, {"value", 0.0}},
+        // Onset
+        {{"path", "audio.onsetCount"}, {"op", ">="}, {"value", 0}},
+        {{"path", "audio.onsetDensity"}, {"op", ">="}, {"value", 0.0}},
+        // LUFS
+        {{"path", "audio.integratedLUFS"}, {"op", "exists"}},
+        {{"path", "audio.truePeak"}, {"op", ">="}, {"value", 0.0}},
+        {{"path", "audio.loudnessRange"}, {"op", ">="}, {"value", 0.0}},
+        // Pitch
+        {{"path", "audio.pitchHz"}, {"op", ">="}, {"value", 0.0}},
+        {{"path", "audio.pitchConfidence"}, {"op", ">="}, {"value", 0.0}},
+        // HNR + dynamic range
+        {{"path", "audio.harmonicToNoiseRatio"}, {"op", ">="}, {"value", 0.0}},
+        {{"path", "audio.dynamicRangeDB"}, {"op", ">="}, {"value", 0.0}},
+        {{"path", "audio.dynamicRangeCoeffVar"}, {"op", ">="}, {"value", 0.0}}
+    });
+
+    auto assertFile = writeTempAssertions(assertions, 30);
+    TempFileGuard guard{assertFile};
+
+    auto [output, rc] = runCheck(audioProject(), assertFile);
+    CHECK(rc == 0);
+}
+
+// ---------------------------------------------------------------------------
+// Tests: vivid inspect includes new audio fields
+// ---------------------------------------------------------------------------
+
+TEST_CASE("inspect: audio JSON includes new analysis fields", "[cli][audio_eval]") {
+    int buildRc = runBuild(audioProject());
+    REQUIRE(buildRc == 0);
+
+    std::string cmd = "\"" + getVividPath() + "\" inspect \"" + audioProject() + "\" 2>/dev/null";
+    auto [output, rc] = runShell(cmd);
+    REQUIRE(rc == 0);
+    REQUIRE(!output.empty());
+
+    std::string jsonStr = extractJson(output);
+    REQUIRE(!jsonStr.empty());
+    json inspection = json::parse(jsonStr);
+    REQUIRE(inspection.contains("audioAnalysis"));
+
+    auto& audio = inspection["audioAnalysis"];
+
+    // New fields should be present in the inspection JSON
+    CHECK(audio.contains("dcOffset"));
+    CHECK(audio.contains("clippedSampleCount"));
+    CHECK(audio.contains("clippedSamplePct"));
+    CHECK(audio.contains("zeroCrossingRate"));
+    CHECK(audio.contains("stereoCorrelation"));
+    CHECK(audio.contains("stereoWidth"));
+    CHECK(audio.contains("spectralCentroid"));
+    CHECK(audio.contains("spectralSpread"));
+    CHECK(audio.contains("spectralFlux"));
+    CHECK(audio.contains("spectralFluxMax"));
+    CHECK(audio.contains("spectralFlatness"));
+    CHECK(audio.contains("spectralRolloff"));
+    CHECK(audio.contains("onsetDensity"));
+    CHECK(audio.contains("onsetCount"));
+    CHECK(audio.contains("integratedLUFS"));
+    CHECK(audio.contains("shortTermLUFS"));
+    CHECK(audio.contains("momentaryLUFS"));
+    CHECK(audio.contains("truePeak"));
+    CHECK(audio.contains("truePeakDBTP"));
+    CHECK(audio.contains("loudnessRange"));
+    CHECK(audio.contains("pitchHz"));
+    CHECK(audio.contains("pitchConfidence"));
+    CHECK(audio.contains("pitchNote"));
+    CHECK(audio.contains("pitchCents"));
+    CHECK(audio.contains("harmonicToNoiseRatio"));
+    CHECK(audio.contains("dynamicRangeDB"));
+    CHECK(audio.contains("dynamicRangeCoeffVar"));
 }
 
 // ---------------------------------------------------------------------------

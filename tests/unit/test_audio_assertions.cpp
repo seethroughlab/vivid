@@ -103,6 +103,58 @@ TEST_CASE("resolvePath: audio.isSilent (true)", "[assertions][audio]") {
 }
 
 // =============================================================================
+// resolvePath: zero-cost extensions and stereo metrics
+// =============================================================================
+
+TEST_CASE("resolvePath: audio.dcOffset", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.dcOffset = 0.05f;
+    auto [found, val] = vivid::resolvePath("audio.dcOffset", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.05, 0.001));
+}
+
+TEST_CASE("resolvePath: audio.clippedSampleCount", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.clippedSampleCount = 42;
+    auto [found, val] = vivid::resolvePath("audio.clippedSampleCount", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(42.0, 0.001));
+}
+
+TEST_CASE("resolvePath: audio.clippedSamplePct", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.clippedSamplePct = 0.02f;
+    auto [found, val] = vivid::resolvePath("audio.clippedSamplePct", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.02, 0.001));
+}
+
+TEST_CASE("resolvePath: audio.zeroCrossingRate", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.zeroCrossingRate = 200.0f;
+    auto [found, val] = vivid::resolvePath("audio.zeroCrossingRate", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(200.0, 0.001));
+}
+
+TEST_CASE("resolvePath: audio.stereoCorrelation", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.stereoCorrelation = 0.95f;
+    auto [found, val] = vivid::resolvePath("audio.stereoCorrelation", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.95, 0.001));
+}
+
+TEST_CASE("resolvePath: audio.stereoWidth", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.stereoWidth = 0.3f;
+    auto [found, val] = vivid::resolvePath("audio.stereoWidth", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.3, 0.001));
+}
+
+// =============================================================================
 // resolvePath: audio.spectrum.* bands
 // =============================================================================
 
@@ -146,6 +198,178 @@ TEST_CASE("resolvePath: audio.spectrum.high", "[assertions][audio]") {
     auto [found, val] = vivid::resolvePath("audio.spectrum.high", insp);
     REQUIRE(found);
     CHECK_THAT(val, WithinAbs(0.02, 0.001));
+}
+
+// =============================================================================
+// resolvePath: STFT spectral metrics and onset detection
+// =============================================================================
+
+TEST_CASE("resolvePath: audio.spectralCentroid", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.spectralCentroid = 1200.0f;
+    auto [found, val] = vivid::resolvePath("audio.spectralCentroid", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(1200.0, 0.1));
+}
+
+TEST_CASE("resolvePath: audio.spectralSpread", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.spectralSpread = 3000.0f;
+    auto [found, val] = vivid::resolvePath("audio.spectralSpread", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(3000.0, 0.1));
+}
+
+TEST_CASE("resolvePath: audio.spectralFlux", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.spectralFlux = 0.05f;
+    auto [found, val] = vivid::resolvePath("audio.spectralFlux", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.05, 0.001));
+}
+
+TEST_CASE("resolvePath: audio.spectralFluxMax", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.spectralFluxMax = 0.15f;
+    auto [found, val] = vivid::resolvePath("audio.spectralFluxMax", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.15, 0.001));
+}
+
+TEST_CASE("resolvePath: audio.spectralFlatness", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.spectralFlatness = 0.8f;
+    auto [found, val] = vivid::resolvePath("audio.spectralFlatness", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.8, 0.001));
+}
+
+TEST_CASE("resolvePath: audio.spectralRolloff", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.spectralRolloff = 5000.0f;
+    auto [found, val] = vivid::resolvePath("audio.spectralRolloff", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(5000.0, 0.1));
+}
+
+TEST_CASE("resolvePath: audio.onsetDensity", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.onsetDensity = 4.0f;
+    auto [found, val] = vivid::resolvePath("audio.onsetDensity", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(4.0, 0.001));
+}
+
+TEST_CASE("resolvePath: audio.onsetCount", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.onsetCount = 8;
+    auto [found, val] = vivid::resolvePath("audio.onsetCount", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(8.0, 0.001));
+}
+
+// =============================================================================
+// resolvePath: LUFS loudness
+// =============================================================================
+
+TEST_CASE("resolvePath: audio.integratedLUFS", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.integratedLUFS = -23.0f;
+    auto [found, val] = vivid::resolvePath("audio.integratedLUFS", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(-23.0, 0.1));
+}
+
+TEST_CASE("resolvePath: audio.shortTermLUFS", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.shortTermLUFS = -20.0f;
+    auto [found, val] = vivid::resolvePath("audio.shortTermLUFS", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(-20.0, 0.1));
+}
+
+TEST_CASE("resolvePath: audio.momentaryLUFS", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.momentaryLUFS = -18.0f;
+    auto [found, val] = vivid::resolvePath("audio.momentaryLUFS", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(-18.0, 0.1));
+}
+
+TEST_CASE("resolvePath: audio.truePeak", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.truePeak = 0.95f;
+    auto [found, val] = vivid::resolvePath("audio.truePeak", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.95, 0.001));
+}
+
+TEST_CASE("resolvePath: audio.truePeakDBTP", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.truePeakDBTP = -1.5f;
+    auto [found, val] = vivid::resolvePath("audio.truePeakDBTP", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(-1.5, 0.1));
+}
+
+TEST_CASE("resolvePath: audio.loudnessRange", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.loudnessRange = 5.0f;
+    auto [found, val] = vivid::resolvePath("audio.loudnessRange", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(5.0, 0.1));
+}
+
+// =============================================================================
+// resolvePath: pitch, HNR, dynamic range
+// =============================================================================
+
+TEST_CASE("resolvePath: audio.pitchHz", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.pitchHz = 440.0f;
+    auto [found, val] = vivid::resolvePath("audio.pitchHz", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(440.0, 0.1));
+}
+
+TEST_CASE("resolvePath: audio.pitchConfidence", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.pitchConfidence = 0.95f;
+    auto [found, val] = vivid::resolvePath("audio.pitchConfidence", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.95, 0.001));
+}
+
+TEST_CASE("resolvePath: audio.pitchCents", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.pitchCents = -5.0f;
+    auto [found, val] = vivid::resolvePath("audio.pitchCents", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(-5.0, 0.1));
+}
+
+TEST_CASE("resolvePath: audio.harmonicToNoiseRatio", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.harmonicToNoiseRatio = 20.0f;
+    auto [found, val] = vivid::resolvePath("audio.harmonicToNoiseRatio", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(20.0, 0.1));
+}
+
+TEST_CASE("resolvePath: audio.dynamicRangeDB", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.dynamicRangeDB = 12.0f;
+    auto [found, val] = vivid::resolvePath("audio.dynamicRangeDB", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(12.0, 0.1));
+}
+
+TEST_CASE("resolvePath: audio.dynamicRangeCoeffVar", "[assertions][audio]") {
+    auto insp = makeTestInspection();
+    insp.audioAnalysis.dynamicRangeCoeffVar = 0.3f;
+    auto [found, val] = vivid::resolvePath("audio.dynamicRangeCoeffVar", insp);
+    REQUIRE(found);
+    CHECK_THAT(val, WithinAbs(0.3, 0.001));
 }
 
 // =============================================================================

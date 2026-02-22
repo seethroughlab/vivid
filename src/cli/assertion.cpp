@@ -177,6 +177,32 @@ std::pair<bool, double> resolvePath(const std::string& path,
         if (parts[1] == "crestFactor") return {true, aa.crestFactor};
         if (parts[1] == "duration") return {true, aa.duration};
         if (parts[1] == "isSilent") return {true, aa.isSilent ? 1.0 : 0.0};
+        if (parts[1] == "dcOffset") return {true, aa.dcOffset};
+        if (parts[1] == "clippedSampleCount") return {true, static_cast<double>(aa.clippedSampleCount)};
+        if (parts[1] == "clippedSamplePct") return {true, aa.clippedSamplePct};
+        if (parts[1] == "zeroCrossingRate") return {true, aa.zeroCrossingRate};
+        if (parts[1] == "stereoCorrelation") return {true, aa.stereoCorrelation};
+        if (parts[1] == "stereoWidth") return {true, aa.stereoWidth};
+        if (parts[1] == "spectralCentroid") return {true, aa.spectralCentroid};
+        if (parts[1] == "spectralSpread") return {true, aa.spectralSpread};
+        if (parts[1] == "spectralFlux") return {true, aa.spectralFlux};
+        if (parts[1] == "spectralFluxMax") return {true, aa.spectralFluxMax};
+        if (parts[1] == "spectralFlatness") return {true, aa.spectralFlatness};
+        if (parts[1] == "spectralRolloff") return {true, aa.spectralRolloff};
+        if (parts[1] == "onsetDensity") return {true, aa.onsetDensity};
+        if (parts[1] == "onsetCount") return {true, static_cast<double>(aa.onsetCount)};
+        if (parts[1] == "integratedLUFS") return {true, aa.integratedLUFS};
+        if (parts[1] == "shortTermLUFS") return {true, aa.shortTermLUFS};
+        if (parts[1] == "momentaryLUFS") return {true, aa.momentaryLUFS};
+        if (parts[1] == "truePeak") return {true, aa.truePeak};
+        if (parts[1] == "truePeakDBTP") return {true, aa.truePeakDBTP};
+        if (parts[1] == "loudnessRange") return {true, aa.loudnessRange};
+        if (parts[1] == "pitchHz") return {true, aa.pitchHz};
+        if (parts[1] == "pitchConfidence") return {true, aa.pitchConfidence};
+        if (parts[1] == "pitchCents") return {true, aa.pitchCents};
+        if (parts[1] == "harmonicToNoiseRatio") return {true, aa.harmonicToNoiseRatio};
+        if (parts[1] == "dynamicRangeDB") return {true, aa.dynamicRangeDB};
+        if (parts[1] == "dynamicRangeCoeffVar") return {true, aa.dynamicRangeCoeffVar};
 
         // audio.spectrum.<band> -> spectrum array
         if (parts[1] == "spectrum" && parts.size() >= 3) {
@@ -213,6 +239,43 @@ std::pair<bool, double> resolvePath(const std::string& path,
             int idx = std::stoi(parts[2]);
             if (idx >= 0 && idx < 9) return {true, ta.regionMotion[idx]};
         }
+        return {false, 0.0};
+    }
+
+    // av.<field> -> AudioVisualAnalysis
+    if (parts[0] == "av" && parts.size() >= 2 && inspection.avAnalysis.has_value()) {
+        const auto& av = *inspection.avAnalysis;
+        if (parts[1] == "correlation") return {true, av.avCorrelation};
+        if (parts[1] == "correlationBrightness") return {true, av.avCorrelationBrightness};
+        if (parts[1] == "correlationMotion") return {true, av.avCorrelationMotion};
+        if (parts[1] == "reactivityLatencyFrames") return {true, static_cast<double>(av.reactivityLatencyFrames)};
+        if (parts[1] == "reactivityLatencyMs") return {true, av.reactivityLatencyMs};
+        if (parts[1] == "reactivityPeakCorrelation") return {true, av.reactivityPeakCorrelation};
+        if (parts[1] == "onsetResponseRate") return {true, av.onsetResponseRate};
+        if (parts[1] == "onsetResponseCount") return {true, static_cast<double>(av.onsetResponseCount)};
+        if (parts[1] == "totalOnsetsEvaluated") return {true, static_cast<double>(av.totalOnsetsEvaluated)};
+        if (parts[1] == "responseMagnitude") return {true, av.responseMagnitude};
+        if (parts[1] == "responseMagnitudeRatio") return {true, av.responseMagnitudeRatio};
+        if (parts[1] == "avgPostOnsetDelta") return {true, av.avgPostOnsetDelta};
+        if (parts[1] == "avgBaselineDelta") return {true, av.avgBaselineDelta};
+        if (parts[1] == "mutualInformation") return {true, av.avMutualInformation};
+        if (parts[1] == "mutualInformationRaw") return {true, av.avMutualInformationRaw};
+        if (parts[1] == "sampleCount") return {true, static_cast<double>(av.sampleCount)};
+        if (parts[1] == "durationSeconds") return {true, av.durationSeconds};
+        if (parts[1] == "valid") return {true, av.valid ? 1.0 : 0.0};
+
+        // av.bandCorrelation.<bandName> -> per-band correlation (absolute value)
+        if (parts[1] == "bandCorrelation" && parts.size() >= 3) {
+            int bandIdx = -1;
+            if (parts[2] == "subBass")  bandIdx = 0;
+            else if (parts[2] == "bass")     bandIdx = 1;
+            else if (parts[2] == "lowMid")   bandIdx = 2;
+            else if (parts[2] == "mid")      bandIdx = 3;
+            else if (parts[2] == "highMid")  bandIdx = 4;
+            else if (parts[2] == "high")     bandIdx = 5;
+            if (bandIdx >= 0) return {true, av.bandCorrelations[bandIdx].correlation};
+        }
+
         return {false, 0.0};
     }
 

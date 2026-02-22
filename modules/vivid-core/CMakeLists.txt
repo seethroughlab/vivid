@@ -53,6 +53,8 @@ set(VIVID_CORE_LIB_SOURCES
     src/frame_analysis.cpp
     src/temporal_analysis.cpp
     src/audio_analysis.cpp
+    src/av_analysis.cpp
+    src/dsp_utils.cpp
     src/wav_writer.cpp
     src/waveform_image.cpp
     src/spectrogram_image.cpp
