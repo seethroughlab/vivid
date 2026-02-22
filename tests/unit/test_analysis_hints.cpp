@@ -336,7 +336,7 @@ TEST_CASE("collectHints: max 5 hints enforced", "[analysis_hints]") {
     CHECK(hints.size() <= 5);
 }
 
-TEST_CASE("collectHints: severity ordering — critical first", "[analysis_hints]") {
+TEST_CASE("collectHints: severity ordering - critical first", "[analysis_hints]") {
     json response = {
         {"inspection", {
             {"output", {
