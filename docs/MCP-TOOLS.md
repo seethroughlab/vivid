@@ -24,6 +24,8 @@ Complete catalog of Vivid MCP server tools. Run with `vivid mcp`.
 
 ## Introspection
 
+> **Guide:** See [ANALYSIS-TOOLS.md](ANALYSIS-TOOLS.md) for how AI assistants use these tools and how to interpret the results.
+
 | Tool | Description |
 |------|-------------|
 | `inspect_chain` | Per-operator metrics + output analysis (brightness, contrast, histogram, spatial, audio). Pass `per_operator_analysis: true` for per-node texture analysis. |
@@ -96,6 +98,8 @@ Complete catalog of Vivid MCP server tools. Run with `vivid mcp`.
 | `list_modules` | List installed Vivid modules |
 
 ## Visual Analysis
+
+> **Guide:** See [ANALYSIS-TOOLS.md](ANALYSIS-TOOLS.md) for interpretation of scores, thresholds, and example workflows.
 
 | Tool | Description |
 |------|-------------|

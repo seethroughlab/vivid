@@ -2,6 +2,8 @@
 
 Complete field reference for Vivid's inspection data. Used by `vivid inspect` (CLI) and `inspect_chain` (MCP).
 
+> **New to analysis tools?** See [ANALYSIS-TOOLS.md](ANALYSIS-TOOLS.md) for a guide on how AI assistants use these metrics and how to interpret the results.
+
 ## FrameAnalysis (Output Texture Analysis)
 
 | Field | Type | Description | Healthy Range |

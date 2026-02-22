@@ -530,6 +530,8 @@ Repository: [vivid-onnx](https://github.com/seethroughlab/vivid-onnx)
 | [docs/RECIPES.md](docs/RECIPES.md) | Complete chain.cpp examples |
 | [docs/CREATING-OPERATORS.md](docs/CREATING-OPERATORS.md) | Custom operators and addons |
 | [docs/AI-WORKFLOW.md](docs/AI-WORKFLOW.md) | Working with AI assistants |
+| [docs/ANALYSIS-TOOLS.md](docs/ANALYSIS-TOOLS.md) | How AI perceives your project (analysis tools guide) |
+| [docs/MCP-TOOLS.md](docs/MCP-TOOLS.md) | Complete MCP tool catalog |
 
 **Tip:** Create `AGENTS.md` (operational context) and `BRIEF.md` (creative vision) in your project folder for AI assistants. See [docs/AI-WORKFLOW.md](docs/AI-WORKFLOW.md) for best practices.
 

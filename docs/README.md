@@ -16,6 +16,13 @@
 - [MODULES](MODULES.md) - Installing and creating modules
 - [CREATING-OPERATORS](CREATING-OPERATORS.md) - Custom operators and addons
 
+## AI & Analysis
+
+- [ANALYSIS-TOOLS](ANALYSIS-TOOLS.md) - How AI perceives your project (visual, audio, reactivity analysis)
+- [AI-WORKFLOW](AI-WORKFLOW.md) - Working with AI assistants (AGENTS.md, BRIEF.md)
+- [MCP-TOOLS](MCP-TOOLS.md) - Complete MCP tool catalog
+- [INTROSPECTION-REFERENCE](INTROSPECTION-REFERENCE.md) - Exhaustive field definitions for inspection data
+
 ## Contributing
 
 - [STYLE](STYLE.md) - Code conventions
