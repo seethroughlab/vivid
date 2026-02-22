@@ -132,75 +132,37 @@ Edit chain.cpp
 
 **Important:** `vivid build` is the only CLI command that exits with a non-zero code on compile failure. Other commands (`vivid inspect`, `vivid check`, `vivid export`) hang indefinitely on errors. Always use `vivid build` as a gate before running them.
 
-**What to look for in inspection data:**
-- **Brightness** (`meanBrightness`): 0.0 = black, 1.0 = white. Most visuals should be 0.2–0.8.
-- **Contrast** (`contrast`): Std dev of luminance. Near 0 = flat/washed out. 0.15–0.35 typical.
-- **Spatial distribution** (`regionBrightness`): 3×3 grid. Detect if content is centered, one-sided, or uniform.
-- **Histogram**: 8-bucket luminance distribution. Spikes at extremes = clipping. Even spread = good dynamic range.
-- **Texture complexity** (`textureEntropy`): 0 = uniform, 1 = maximal variety. Noise/detail: >0.5. Flat fills: <0.2.
-- **Edge density** (`edgeDensity`): Fraction of edge pixels. High-detail scenes: 0.1–0.3. Soft/blurred: <0.05.
-- **Sharpness** (`sharpness`): Laplacian variance. Higher = sharper edges. Blurred: <0.01. Crisp: >0.05.
-- **Noise level** (`noiseLevel`): Mean absolute Laplacian. High-frequency noise: >0.1. Clean: <0.02.
-- **Clipping** (`clipBlackPct`, `clipWhitePct`): Fraction of pixels at pure black/white. Should be <0.05 unless intentional.
-- **Dynamic range** (`headroom`, `rangeSpan`): `headroom` = room before white clip. `rangeSpan` = max−min luminance. Low rangeSpan = flat image.
-- **Visual center** (`visualCenterX`, `visualCenterY`): Brightness-weighted centroid (0–1). 0.5,0.5 = centered. Detect off-center compositions.
-- **Color temperature** (`colorTemperature`): 0 = cool/blue, 0.5 = neutral, 1 = warm/red.
-- **Hue diversity** (`uniqueHueCount`, `hueEntropy`): `uniqueHueCount` = hue bins >5% (0–12). `hueEntropy` = 0 (monochrome) to 1 (all hues equal). `hueHistogram.N` (N=0–11) = 12-bin hue distribution in 30° steps.
-- **Alpha** (`alphaOpaquePct`, `alphaTransparentPct`, `alphaPartialPct`, `alphaMean`): Detect transparency issues. Fully opaque content: `alphaOpaquePct ≈ 1.0`.
-- **Audio RMS** (`rmsLevel`): 0.0 = silence, >0.9 = clipping. Music/drones: 0.1–0.5. Percussive: peaks to 0.7.
-- **Spectrum bands** (6 bands: subBass, bass, lowMid, mid, highMid, high): Verify frequency content matches intent.
-- **Crest factor** (`crestFactor`): Peak/RMS ratio. High = percussive/dynamic. Low = compressed/steady.
+**Key inspection metrics and healthy ranges:**
 
-**Temporal metrics** (multi-sample inspect with `--duration`):
-- **Flicker** (`temporal.flickerScore`): 0 = stable, 1 = rapid oscillation. Alternating frames: >0.8. Smooth animation: <0.2.
-- **Convergence** (`temporal.isConverged`, `temporal.convergenceScore`): Detects when output has stabilized. Feedback loops should converge; `isConverged = true` after output stops changing.
-- **Motion** (`temporal.motionMagnitude`): Average per-pixel change. 0 = static. Animated content: 0.01–0.2. `temporal.regionMotion.N` (N=0–8) = per-region motion (3×3 grid).
-- **Frozen** (`temporal.isFrozen`): True when all recent frames are identical. Should be false for animated content.
-- **Loop detection** (`temporal.isLooping`, `temporal.loopPeriodFrames`, `temporal.loopConfidence`): Detects repeating brightness patterns via autocorrelation. Useful for verifying cyclic animations.
-- **Novelty** (`temporal.noveltyScore`, `temporal.noveltyTrend`): Distance from current frame to stored keyframes. 0 = repetitive, higher = exploring new visuals. `noveltyTrend` > 0.5 = increasingly novel, < 0.5 = collapsing toward repetition.
+| Metric | Field | Healthy Range |
+|--------|-------|---------------|
+| Brightness | `meanBrightness` | 0.2–0.8 |
+| Contrast | `contrast` | 0.15–0.35 |
+| Texture | `textureEntropy` | >0.5 detail, <0.2 flat |
+| Edges | `edgeDensity` | 0.1–0.3 detailed, <0.05 soft |
+| Sharpness | `sharpness` | >0.05 crisp, <0.01 blurred |
+| Clipping | `clipBlackPct`/`clipWhitePct` | <0.05 |
+| Center | `visualCenterX`/`Y` | ~0.5 centered |
+| Temperature | `colorTemperature` | 0.3–0.7 neutral |
+| Audio RMS | `rmsLevel` | 0.1–0.5 music, >0.9 clipping |
+| Loudness | `integratedLUFS` | -23 broadcast |
 
-**Audio evaluation tools:**
-- **Assertions** (`audio.*` paths): Validate audio properties in `vivid check`. Example paths: `audio.rmsLevel`, `audio.peakLevel`, `audio.spectrum.bass`, `audio.isSilent`, `audio.crestFactor`.
-- **`capture_audio` / `compare_audio`**: Capture WAV + analysis, then compare before/after to measure changes.
-- **`sweep_param_audio`**: Sweep a parameter across values, capturing audio at each step. Returns per-step RMS, spectrum, WAV files.
-- **Export sidecar**: `vivid export --audio` produces `<output>.audio-analysis.json` with summary + per-second time-series.
+For complete field tables (FrameAnalysis, TemporalAnalysis, AudioAnalysis, AudioVisualAnalysis), JSON examples, and comparison/analysis tool return formats, see `docs/INTROSPECTION-REFERENCE.md`.
 
-Example assertions (`vivid-assertions.json`):
+**Audio evaluation**: Use `capture_audio`/`compare_audio` for before/after diffs. Use `sweep_param_audio` for parameter exploration. Export sidecar: `vivid export --audio` produces `<output>.audio-analysis.json`.
+
+**AV reactivity**: Use `analyze_av_reactivity` (MCP) or `av.*` assertion paths. Multi-sample inspect with `--duration` includes `"audioVisual"` when audio chain is present.
+
+**Assertions** (`vivid check`): Define in `vivid-assertions.json`. Paths: `output.*`, `audio.*`, `temporal.*`, `av.*`, `operators.<name>.metrics.*`, `operators.<name>.textureAnalysis.*`. Operators: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between`, `exists`, `not_exists`. Optional: `name`, `after_frame`, `when_path`/`when_check`/`when_value` (conditional guard). Example:
 ```json
 {"name": "brightness-ok", "path": "output.meanBrightness", "op": "between", "value": [0.2, 0.8]}
 {"path": "output.contrast", "op": ">", "value": 0.15, "after_frame": 30, "message": "Contrast stabilizes after warmup"}
-{"path": "output.textureEntropy", "op": ">", "value": 0.3, "message": "Not a flat fill"}
-{"path": "output.clipBlackPct", "op": "<", "value": 0.5, "message": "Not mostly black"}
-{"path": "output.sharpness", "op": ">", "value": 0.01, "message": "Has visible edges"}
-{"path": "output.colorTemperature", "op": "between", "value": [0.3, 0.7], "message": "Neutral tones"}
-{"path": "output.hueHistogram.0", "op": ">", "value": 0.1, "message": "Has red hues"}
-{"path": "output.alphaOpaquePct", "op": "==", "value": 1.0, "message": "Fully opaque output"}
-{"path": "operators.bloom.textureAnalysis.meanBrightness", "op": ">", "value": 0.1}
-{"path": "operators.bloom.textureAnalysis.edgeDensity", "op": ">", "value": 0.01, "message": "Bloom has detail"}
 {"path": "audio.rmsLevel", "op": ">", "value": 0.01, "message": "Audio not silent"}
-{"path": "audio.spectrum.bass", "op": ">", "value": 0.05, "message": "Should have bass"}
-{"path": "audio.peakLevel", "op": "<", "value": 0.95, "message": "No clipping"}
-{"path": "audio.spectrum.bass", "op": ">", "value": 0.4, "when_path": "operators.kick.metrics.is_playing", "when_check": "==", "when_value": 1.0}
-```
-
-Temporal assertions (require `--duration` for multi-sample inspect):
-```json
 {"path": "temporal.isFrozen", "op": "==", "value": 0, "message": "Animation is running"}
-{"path": "temporal.flickerScore", "op": "<", "value": 0.3, "message": "No unwanted flicker"}
-{"path": "temporal.isConverged", "op": "==", "value": 1, "message": "Feedback loop stabilized"}
-{"path": "temporal.motionMagnitude", "op": ">", "value": 0.01, "message": "Has visible motion"}
-{"path": "temporal.isLooping", "op": "==", "value": 1, "message": "Animation loops correctly"}
-{"path": "temporal.noveltyScore", "op": ">", "value": 0.02, "message": "Visuals are evolving"}
+{"path": "av.correlation", "op": ">", "value": 0.3, "message": "Visuals respond to audio"}
 ```
 
-**Assertion features:**
-- **`name`** (optional): Human-readable label shown in verbose output and JSON (e.g. `"name": "feedback-alive"`)
-- **`between` operator**: Range check with array value `[low, high]`, inclusive on both ends
-- **`exists` / `not_exists` operators**: Check path presence without comparing values (no `value` field needed)
-- **`operators.<name>.textureAnalysis.<field>`**: Assert on per-operator texture analysis (auto-enables GPU readback). Supports all FrameAnalysis fields: `meanBrightness`, `contrast`, `dominantHue`, `saturationAvg`, `dominantColor.N`, `regionBrightness.N`, `histogram.N`, `textureEntropy`, `edgeDensity`, `avgGradientMag`, `clipBlackPct`, `clipWhitePct`, `headroom`, `rangeSpan`, `sharpness`, `noiseLevel`, `visualCenterX`, `visualCenterY`, `colorTemperature`, `hueHistogram.N` (0–11), `uniqueHueCount`, `hueEntropy`, `alphaOpaquePct`, `alphaTransparentPct`, `alphaPartialPct`, `alphaMean`
-- **`temporal.*`**: Assert on temporal metrics (requires `--duration` for multi-sample capture). Fields: `flickerScore`, `flickerFrequency`, `frameDelta`, `convergenceScore`, `isConverged`, `motionMagnitude`, `regionMotion.N` (0–8), `frameDiversity`, `isFrozen`, `isLooping`, `loopPeriodSeconds`, `loopPeriodFrames`, `loopConfidence`, `noveltyScore`, `noveltyTrend`, `keyframeCount`. Bool fields (`isConverged`, `isFrozen`, `isLooping`) resolve to 0.0/1.0.
-- **`after_frame`** (optional): Skip assertion if current frame < value. Useful for warmup periods (e.g. feedback loops).
-- **`when_path` / `when_check` / `when_value`** (optional): Conditional guard — assertion is only evaluated when the guard condition is met. Uses same dot-path format and operators. Skipped assertions show as `SKIP` and don't affect pass/fail.
+For the full assertion catalog (~50 examples), syntax details, and all assertable paths, see `docs/ASSERTIONS-REFERENCE.md`.
 
 ### Outer Loop (minutes, human review)
 
@@ -237,96 +199,18 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 
 ### Available MCP Tools
 
-#### Project Lifecycle
-| Tool | Description |
-|------|-------------|
-| `run_project` | Launch project in background window, connect via WebSocket |
-| `stop_project` | Stop running Vivid instance |
-| `create_project` | Create new project from template |
-| `bundle_project` | Bundle project as standalone application |
-| `list_templates` | List available project templates |
-| `list_project_assets` | List assets in project's assets/ folder |
+50+ tools organized by category. For full descriptions, see `docs/MCP-TOOLS.md`.
 
-#### Build & Reload
-| Tool | Description |
-|------|-------------|
-| `validate_chain` | Compile-check chain.cpp without running |
-| `get_runtime_status` | Get connection state, compile errors, runtime errors |
-| `get_compile_errors` | Get structured compile errors (file, line, severity, message) |
-| `wait_for_reload` | Block until hot-reload completes after editing chain.cpp |
-
-#### Introspection
-| Tool | Description |
-|------|-------------|
-| `inspect_chain` | Per-operator metrics + output analysis (brightness, contrast, histogram, spatial, audio). Pass `per_operator_analysis: true` for per-node texture analysis. |
-| `get_chain_structure` | Chain topology: operators, types, connections |
-| `get_live_params` | Real-time parameter values (optionally filtered by operator) |
-| `get_frame_info` | Current frame number, elapsed time, FPS |
-| `get_performance_stats` | FPS, frame time, per-operator timing, texture memory |
-
-#### Parameter Control
-| Tool | Description |
-|------|-------------|
-| `set_param` | Set parameter on running operator immediately |
-| `get_pending_changes` | Get slider changes waiting to be applied to chain.cpp |
-| `clear_pending_changes` | Confirm changes were applied (call after editing code) |
-| `discard_pending_changes` | Revert parameters to original values |
-
-#### Capture & Compare
-| Tool | Description |
-|------|-------------|
-| `capture_frame` | Capture current frame to PNG from running instance |
-| `capture_at_frame` | Advance to frame N and capture snapshot |
-| `capture_snapshot` | Render project to PNG (spawns new process, no running instance needed) |
-| `capture_audio` | Capture audio to WAV with analysis (RMS, peak, spectrum) |
-| `sweep_param` | Sweep parameter across values, capturing frames at each step |
-| `sweep_param_audio` | Sweep parameter across values, capturing audio at each step |
-| `compare_frames` | Compare two PNGs (RMSE, per-channel diff, changed pixels) |
-| `compare_audio` | Compare two WAVs (RMS diff, spectral diff, correlation) |
-| `export_video` | Export project to video (headless, with optional playback script) |
-
-#### Animation & Timing
-| Tool | Description |
-|------|-------------|
-| `advance_frames` | Advance simulation by N frames |
-| `reset_time` | Reset animation to frame 0 / time 0 |
-| `orbit_camera` | Position camera around a target point |
-
-#### Snapshots & Presets
-| Tool | Description |
-|------|-------------|
-| `save_snapshot` | Save current parameters to named snapshot |
-| `recall_snapshot` | Apply saved snapshot (optional crossfade) |
-| `list_snapshots` | List all saved snapshots for a project |
-| `delete_snapshot` | Delete a snapshot |
-| `save_preset` | Save parameters to preset file |
-| `load_preset` | Load parameters from preset file |
-
-#### Solo & Window
-| Tool | Description |
-|------|-------------|
-| `solo_operator` | Solo an operator to see only its output |
-| `exit_solo` | Exit solo mode, return to full chain |
-| `get_solo_state` | Check if solo mode is active |
-| `get_window_state` | Get window configuration (fullscreen, borderless, etc.) |
-| `set_window_mode` | Set fullscreen, borderless, always-on-top, cursor visibility |
-
-#### Documentation
-| Tool | Description |
-|------|-------------|
-| `list_operators` | List all operators grouped by category |
-| `get_operator` | Get operator details: parameters, types, ranges, usage example |
-| `get_example` | Get complete working code examples for an operator |
-| `get_recipe` | Get or list complete chain.cpp recipe examples |
-| `search_docs` | Search Vivid documentation |
-| `list_modules` | List installed Vivid modules |
-
-#### Visual Analysis
-| Tool | Description |
-|------|-------------|
-| `analyze_color_harmony` | Extract 5-color palette and score harmony (complementary, analogous, triadic) |
-| `analyze_symmetry` | Measure horizontal, vertical, and radial symmetry (0-1 scores) |
-| `analyze_spatial_balance` | Rule-of-thirds, edge bias, and quadrant balance scoring |
+- **Project Lifecycle**: `run_project`, `stop_project`, `create_project`, `bundle_project`, `list_templates`, `list_project_assets`
+- **Build & Reload**: `validate_chain`, `get_runtime_status`, `get_compile_errors`, `wait_for_reload`
+- **Introspection**: `inspect_chain` (pass `per_operator_analysis: true` for per-node texture), `get_chain_structure`, `get_live_params`, `get_frame_info`, `get_performance_stats`
+- **Parameter Control**: `set_param`, `get_pending_changes`, `clear_pending_changes`, `discard_pending_changes`
+- **Capture & Compare**: `capture_frame`, `capture_at_frame`, `capture_snapshot`, `capture_audio`, `sweep_param`, `sweep_param_audio`, `compare_frames`, `compare_audio`, `export_video`
+- **Animation & Timing**: `advance_frames`, `reset_time`, `orbit_camera`
+- **Snapshots & Presets**: `save_snapshot`, `recall_snapshot`, `list_snapshots`, `delete_snapshot`, `save_preset`, `load_preset`
+- **Solo & Window**: `solo_operator`, `exit_solo`, `get_solo_state`, `get_window_state`, `set_window_mode`
+- **Documentation**: `list_operators`, `get_operator`, `get_example`, `get_recipe`, `search_docs`, `list_modules`
+- **Visual Analysis**: `analyze_color_harmony`, `analyze_symmetry`, `analyze_spatial_balance`, `analyze_av_reactivity`
 
 ### Starting Vivid
 The MCP server queries and controls a running Vivid instance. **Start Vivid before using MCP tools:**
@@ -384,210 +268,36 @@ If compilation failed, read the error message and fix the code before proceeding
 
 ### Introspection & Validation
 
-The inner loop relies on structured data from `inspect_chain` (MCP) or `vivid inspect` (CLI).
-
-**FrameAnalysis** (output texture analysis):
-| Field | Type | Description |
-|-------|------|-------------|
-| `meanBrightness` | float | Average luminance (0–1) |
-| `contrast` | float | Std dev of luminance |
-| `dominantColor` | [r,g,b] | Most prominent color |
-| `dominantHue` | float | Hue (0–1) |
-| `saturationAvg` | float | Average saturation |
-| `histogram` | int[8] | 8-bucket luminance histogram |
-| `regionBrightness` | float[9] | 3×3 spatial brightness grid (top-left → bottom-right) |
-| `textureEntropy` | float | Normalized Shannon entropy of 64-bin histogram (0=uniform, 1=max variety) |
-| `edgeDensity` | float | Fraction of edge pixels (0–1) |
-| `avgGradientMag` | float | Mean gradient magnitude |
-| `clipBlackPct` | float | Fraction of pixels near pure black (lum < 0.005) |
-| `clipWhitePct` | float | Fraction of pixels near pure white (lum > 0.995) |
-| `headroom` | float | 1.0 − maxLuminance (room before white clip) |
-| `rangeSpan` | float | maxLuminance − minLuminance (dynamic range) |
-| `sharpness` | float | Laplacian variance (higher = sharper) |
-| `noiseLevel` | float | Mean absolute Laplacian (high-frequency content) |
-| `visualCenterX` | float | Brightness-weighted centroid X (0–1, 0.5=centered) |
-| `visualCenterY` | float | Brightness-weighted centroid Y (0–1, 0.5=centered) |
-| `colorTemperature` | float | 0=cool/blue, 0.5=neutral, 1=warm/red |
-| `hueHistogram` | float[12] | 12-bin hue distribution (30° bins, indexed 0–11) |
-| `uniqueHueCount` | int | Hue bins above 5% threshold (0–12) |
-| `hueEntropy` | float | Normalized hue entropy (0=monochrome, 1=all hues equal) |
-| `alphaOpaquePct` | float | Fraction fully opaque pixels |
-| `alphaTransparentPct` | float | Fraction fully transparent pixels |
-| `alphaPartialPct` | float | Fraction partially transparent pixels |
-| `alphaMean` | float | Mean alpha value (0–1) |
-
-**TemporalAnalysis** (multi-frame metrics, requires `--duration`):
-| Field | Type | Description |
-|-------|------|-------------|
-| `flickerScore` | float | High-frequency brightness oscillation (0=stable, 1=rapid flicker) |
-| `flickerFrequency` | float | Dominant flicker frequency in Hz |
-| `frameDelta` | float | Most recent per-pixel change between frames |
-| `convergenceScore` | float | 0=diverging, 0.5=stable, 1=fully converged |
-| `isConverged` | bool | True when output has stabilized (delta < threshold for 8+ frames) |
-| `motionMagnitude` | float | Average pixel displacement (0=still) |
-| `regionMotion` | float[9] | 3×3 regional motion grid (indexed 0–8) |
-| `frameDiversity` | float | Variance of frame deltas (0=frozen or steady) |
-| `isFrozen` | bool | True when all recent frames are identical |
-| `isLooping` | bool | True when repeating brightness pattern detected |
-| `loopPeriodFrames` | int | Detected loop period in frames |
-| `loopPeriodSeconds` | float | Detected loop period in seconds |
-| `loopConfidence` | float | Autocorrelation confidence (>0.7 = reliable) |
-| `noveltyScore` | float | Distance from current frame to keyframes (0=repetitive) |
-| `noveltyTrend` | float | 0–1; >0.5=increasingly novel, <0.5=collapsing |
-| `keyframeCount` | int | Number of stored keyframes |
-
-**AudioAnalysis** (per audio operator):
-| Field | Type | Description |
-|-------|------|-------------|
-| `rmsLevel` | float | Overall RMS level (0–1) |
-| `peakLevel` | float | Overall peak amplitude (0–1) |
-| `rmsLeft` / `rmsRight` | float | Per-channel RMS |
-| `isSilent` | bool | True if RMS < 0.001 |
-| `crestFactor` | float | Peak/RMS ratio (dynamics indicator) |
-| `spectrum` | float[6] | 6-band energy: subBass (<60Hz), bass (60–250), lowMid (250–500), mid (500–2k), highMid (2k–4k), high (4k+) |
-| `duration` | float | Buffer duration in seconds |
+The inner loop relies on structured data from `inspect_chain` (MCP) or `vivid inspect` (CLI). For complete field tables, see `docs/INTROSPECTION-REFERENCE.md`.
 
 **Sample inspection JSON** (abbreviated):
 ```json
 {
   "frame": 0, "time": 0.0,
-  "operators": {
-    "noise": { "scale": 4.0, "speed": 0.5 },
-    "feedback": { "decay": 0.95, "energy": 0.72, "pixel_change_pct": 18.3 },
-    "bloom": { "threshold": 0.6, "bright_pixel_pct": 12.1 }
-  },
-  "output": {
-    "meanBrightness": 0.48, "contrast": 0.22,
-    "textureEntropy": 0.61, "edgeDensity": 0.14, "sharpness": 0.032,
-    "clipBlackPct": 0.02, "clipWhitePct": 0.0, "rangeSpan": 0.91,
-    "visualCenterX": 0.52, "visualCenterY": 0.48,
-    "colorTemperature": 0.55, "uniqueHueCount": 4, "hueEntropy": 0.42,
-    "histogram": [12, 45, 89, 120, 95, 40, 8, 3],
-    "regionBrightness": [0.3, 0.4, 0.3, 0.5, 0.7, 0.5, 0.3, 0.4, 0.3]
-  }
+  "operators": {"noise": {"scale": 4.0, "speed": 0.5}},
+  "output": {"meanBrightness": 0.48, "contrast": 0.22, "textureEntropy": 0.61, "edgeDensity": 0.14}
 }
 ```
 
-**Multi-sample envelope** (`--duration 2 --samples 5`):
-```json
-{
-  "project": "my-project", "duration": 2, "sampleCount": 5,
-  "samples": [ {"frame": 0, "time": 0.0, "output": {"...": "..."}} ],
-  "temporal": {
-    "flickerScore": 0.05, "isConverged": true, "motionMagnitude": 0.03,
-    "isFrozen": false, "noveltyScore": 0.12, "isLooping": false
-  }
-}
-```
+With `--duration 2 --samples 5`, output is wrapped: `{"project", "duration", "sampleCount", "samples": [...], "temporal": {...}, "audioVisual": {...}}`. With `per_operator_analysis: true`, each texture operator includes `textureAnalysis` with all FrameAnalysis fields — useful for diagnosing where brightness/contrast drops occur.
 
-**With `per_operator_analysis: true`** — each texture operator includes `textureAnalysis`:
-```json
-{
-  "operators": {
-    "noise": {
-      "metrics": {"scale": 4.0, "speed": 0.5},
-      "metadata": {"type": "Noise", "output_kind": "Texture"},
-      "textureAnalysis": {"meanBrightness": 0.51, "contrast": 0.29, "...": "..."}
-    },
-    "bloom": {
-      "metrics": {"threshold": 0.6},
-      "metadata": {"type": "Bloom", "output_kind": "Texture"},
-      "textureAnalysis": {"meanBrightness": 0.05, "contrast": 0.03, "...": "..."}
-    }
-  }
-}
-```
-Useful for diagnosing where brightness/contrast drops occur in the chain.
+**Multi-sample inspect**: `--duration N` sets capture window (seconds), `--samples K` distributes inspections. With `--out <dir>`, saves `inspection.json`, `snapshot_NNNN.png`, and `waveform.png` (if audio).
 
-**Comparison tools** (no running instance needed):
-- `compare_frames`: RMSE, per-channel diff, changed pixel percentage. Verify visual changes had the intended effect.
-- `compare_audio`: RMS diff, spectral diff, correlation. Verify audio changes.
-- `sweep_param`: Capture frames across a parameter range. Find optimal values or verify smooth transitions.
-- `sweep_param_audio`: Capture audio across a parameter range. Evaluate how audio changes with parameters.
+**Snapshot/capture modes**: `--snapshot <path.png>` captures frames and exits. `--audio-snapshot <path.wav>` captures audio. Frame specs: `5` (single), `0,5,10` (list), `0-11` (range), `0-20:2` (range+step). Multi-frame filenames: `output_0000.png`, etc.
 
-**Assertions** (`vivid check`): Runs the chain and evaluates assertions from `vivid-assertions.json`. Exit code 0 = all pass, 1 = failure. Use in the inner loop to verify invariants. Supported paths: `output.*` (visual), `audio.*` (audio), `temporal.*` (multi-frame, requires `--duration`), `operators.<name>.metrics.<key>` (per-operator metrics), `operators.<name>.textureAnalysis.<field>` (per-operator texture analysis). Operators: `>`, `>=`, `<`, `<=`, `==`, `!=`, `between` (range), `exists`, `not_exists`. Assertions can have an optional `name` field for readable output. Conditional guards: `after_frame` (skip before frame N), `when_path`/`when_check`/`when_value` (skip unless guard condition met). Skipped assertions report as `SKIP` and don't affect pass/fail.
-
-### Snapshot & Audio Capture Mode (for CI/Testing)
-
-**Visual snapshots**: The `--snapshot` flag runs the chain, saves PNG(s), and exits.
-**Audio capture**: The `--audio-snapshot` flag captures audio output to a WAV file.
-
-Useful for:
-- **Automated testing**: Verify visual/audio output hasn't regressed
-- **AI evaluation**: Claude can run chains and inspect the output
-- **CI pipelines**: Generate thumbnails or verify examples compile and run
-- **GIF creation**: Capture multiple frames for animation
-
-Visual options:
-- `--snapshot <path.png>` - Output path for the snapshot
-- `--snapshot-frame <spec>` - Frame(s) to capture (default: 5)
-
-Audio options:
-- `--audio-snapshot <path.wav>` - Output path for audio capture
-- `--audio-snapshot-duration <seconds>` - Duration to capture (default: 1)
-
-Frame specification formats:
-- `5` - Single frame (backwards compatible)
-- `0,5,10,15` - Specific frames (comma-separated)
-- `0-11` - Range (frames 0 through 11, inclusive)
-- `0-20:2` - Range with step (frames 0, 2, 4, ..., 20)
-
-When capturing multiple frames, filenames include frame numbers: `output.png` becomes `output_0000.png`, `output_0001.png`, etc.
-
-### Multi-Sample Inspect
-
-`vivid inspect` supports capturing multiple inspection snapshots over time:
-
-```bash
-vivid inspect path/to/project --duration 2 --samples 5
-```
-
-- `--duration N` sets the capture window to N seconds (assumes 60fps)
-- `--samples K` distributes K evenly-spaced inspections across the duration
-- `--resolution WxH` overrides render resolution (e.g., `960x540`)
-- Output: wrapped envelope `{"project": "name", "duration": N, "sampleCount": K, "samples": [...]}` when using `--duration`; single JSON object without `--duration` (backward compatible)
-- Without `--duration`, behaves as single-frame inspect (at `--frame` or default frame 10)
-- With `--out <dir>`, saves `inspection.json`, `snapshot_NNNN.png` per sample, and `waveform.png` (if audio chain)
-
-### Playback Script Event Types
-
-Export scripts (`--script events.json`) support these event types:
-
-| Type | Fields | Description |
-|------|--------|-------------|
-| `param_set` | `operator`, `param`, `value` | Set parameter instantly |
-| `param_ramp` | `operator`, `param`, `from`, `to`, `end_frame` | Linear ramp over frames |
-| `key_press` | `key` | Inject key press (e.g. "space", "a") |
-| `key_release` | `key` | Inject key release |
-| `trigger` | `operator` | Fire a generic trigger |
-| `midi_note` | `operator`, `note`, `velocity` | MIDI note on |
-| `midi_note_off` | `operator`, `note` | MIDI note off |
-| `midi_cc` | `operator`, `cc`, `value`, `channel` | MIDI CC message |
-| `mouse_move` | `x`, `y` | Move mouse (normalized 0-1) |
-| `mouse_click` | `x`, `y`, `button` | Click mouse (auto-releases next frame) |
-| `snapshot_recall` | `value` (index), `valueTo` (duration) | Recall a saved snapshot |
+**Playback scripts**: `--script events.json` supports `param_set`, `param_ramp`, `key_press`, `key_release`, `trigger`, `midi_note`, `midi_note_off`, `midi_cc`, `mouse_move`, `mouse_click`, `snapshot_recall`. See `docs/MCP-TOOLS.md` for field details.
 
 ### Validation Workflow
 
-Use the inner loop for autonomous iteration on visual and audio output:
+Use the inner loop for autonomous iteration:
 
-1. **Start the project**: Use `run_project` to launch Vivid with MCP connection
-2. **Edit chain.cpp**: Make code changes
-3. **Verify compilation**: Use `vivid build` (CLI) or `get_runtime_status` / `wait_for_reload` (MCP) — fix errors before proceeding
-4. **Inspect output**: Call `inspect_chain` to get structured metrics (brightness, contrast, histogram, audio levels)
-5. **Validate visually**: Call `capture_frame` and review the image
-6. **Validate audio**: Call `capture_audio` to capture and analyze audio output
-7. **Compare**: Use `compare_frames` or `compare_audio` to measure the effect of changes
-8. **Iterate**: If metrics are off or assertions fail, go back to step 2
-
-**Key MCP tools for validation:**
-- `inspect_chain` - Structured metrics for autonomous reasoning (no pixels needed)
-- `capture_frame` / `capture_audio` - Capture current output
-- `compare_frames` / `compare_audio` - Measure change between before/after
-- `sweep_param` - Explore visual parameter space with frame captures
-- `sweep_param_audio` - Explore audio parameter space with audio captures
-- `solo_operator` - Isolate a single operator's output for debugging
-- `set_param` - Test parameter values in real-time before committing to code
+1. **Start/edit**: `run_project` (MCP) or launch CLI, then edit chain.cpp
+2. **Verify compile**: `vivid build` (CLI) or `get_runtime_status` (MCP) — fix errors before proceeding
+3. **Inspect**: `inspect_chain` for structured metrics. Use `capture_frame`/`capture_audio` for output files
+4. **Compare**: `compare_frames`/`compare_audio` to measure effect of changes. `compare_frames` includes semantic diffs (`brightness_diff`, `entropy_diff`, `sharpness_diff`, etc.)
+5. **Analyze**: `analyze_color_harmony`, `analyze_symmetry`, `analyze_spatial_balance` on any PNG. `analyze_av_reactivity` on running audio-reactive projects
+6. **Debug**: `solo_operator` to isolate nodes. `set_param` to test values before committing to code. `sweep_param`/`sweep_param_audio` to explore parameter space
+7. **Iterate**: If metrics are off or assertions fail, go back to step 1
 
 **Monitor for user adjustments**: Periodically check `get_pending_changes` — if the user adjusted sliders in the visualizer, ask "I see you changed X to Y. Would you like me to update chain.cpp with these values?"
 
@@ -761,3 +471,6 @@ Install external modules with: `vivid modules install <repo-url>`
 
 - `docs/RECIPES.md` - Complete chain.cpp examples
 - `docs/ROADMAP.md` - Architecture decisions and development history
+- `docs/INTROSPECTION-REFERENCE.md` - Field tables for FrameAnalysis, TemporalAnalysis, AudioAnalysis, AudioVisualAnalysis + JSON examples
+- `docs/ASSERTIONS-REFERENCE.md` - Full assertion catalog (~50 examples), syntax, assertable paths
+- `docs/MCP-TOOLS.md` - Complete MCP tool catalog, playback script events, capture/inspect details
