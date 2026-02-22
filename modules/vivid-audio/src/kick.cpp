@@ -111,8 +111,8 @@ void Kick::generateBlock(uint32_t frameCount) {
 
         // Decay envelopes (exponential)
         m_pitchEnvValue *= (1.0f - pitchDecayRate);
-        m_ampEnv *= (1.0f - ampDecayRate * 0.1f);  // Slower for smooth decay
-        m_ampEnv = std::max(0.0f, m_ampEnv - ampDecayRate * 0.001f);
+        m_ampEnv *= (1.0f - ampDecayRate);
+        m_ampEnv = std::max(0.0f, m_ampEnv - ampDecayRate * 0.01f);
         m_clickEnv *= (1.0f - clickDecayRate);
     }
 }
