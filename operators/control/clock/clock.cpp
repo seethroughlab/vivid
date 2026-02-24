@@ -4,6 +4,7 @@
 struct Clock : vivid::OperatorBase {
     static constexpr const char* kName   = "Clock";
     static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
+    static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> bpm{"bpm", 120.0f, 1.0f, 300.0f};
 

@@ -106,12 +106,13 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             s_params[i].max_value     = pbases[i]->max_value;                 \
         }                                                                     \
         tmp.collect_ports(s_ports);                                           \
-        desc.name        = ClassName::kName;                                  \
-        desc.domain      = ClassName::kDomain;                                \
-        desc.param_count = static_cast<uint32_t>(s_params.size());            \
-        desc.params      = s_params.data();                                   \
-        desc.port_count  = static_cast<uint32_t>(s_ports.size());             \
-        desc.ports       = s_ports.data();                                    \
+        desc.name           = ClassName::kName;                               \
+        desc.domain         = ClassName::kDomain;                             \
+        desc.param_count    = static_cast<uint32_t>(s_params.size());         \
+        desc.params         = s_params.data();                                \
+        desc.port_count     = static_cast<uint32_t>(s_ports.size());          \
+        desc.ports          = s_ports.data();                                 \
+        desc.time_dependent = ClassName::kTimeDependent ? 1 : 0;              \
     }                                                                         \
     return &desc;                                                             \
 }                                                                             \

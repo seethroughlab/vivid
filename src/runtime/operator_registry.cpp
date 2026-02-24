@@ -18,6 +18,9 @@ bool OperatorRegistry::scan(const char* directory) {
         size_t len = std::strlen(name);
         if (len < 7 || std::strcmp(name + len - 6, ".dylib") != 0)
             continue;
+        // Skip system/library dylibs (lib*.dylib); operators are name.dylib
+        if (std::strncmp(name, "lib", 3) == 0)
+            continue;
 
         std::string path = std::string(directory) + "/" + name;
         auto loader = std::make_unique<OperatorLoader>();

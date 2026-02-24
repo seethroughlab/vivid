@@ -205,13 +205,14 @@ void GpuContext::end_frame(const FrameState& frame) {
     WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(frame.encoder, &cmd_desc);
 
     wgpuQueueSubmit(queue_, 1, &cmd);
-
     wgpuCommandBufferRelease(cmd);
     wgpuCommandEncoderRelease(frame.encoder);
+
+    // Present BEFORE releasing the surface texture/view
+    wgpuSurfacePresent(surface_);
+
     wgpuTextureViewRelease(frame.view);
     wgpuTextureRelease(frame.texture);
-
-    wgpuSurfacePresent(surface_);
 }
 
 void GpuContext::shutdown() {

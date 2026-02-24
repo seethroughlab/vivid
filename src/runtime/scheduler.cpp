@@ -57,6 +57,12 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             }
         }
 
+        // Generation-based cooking metadata
+        ns.time_dependent = desc->time_dependent != 0;
+        ns.is_gpu = (desc->domain == VIVID_DOMAIN_GPU);
+        ns.generation = 0;
+        ns.prev_output_values.resize(ns.output_port_count, 0.0f);
+
         node_index[ndef.id] = static_cast<uint32_t>(nodes_.size());
         nodes_.push_back(std::move(ns));
     }
@@ -151,6 +157,21 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         w.to_node_idx   = old_to_new[w.to_node_idx];
     }
 
+    // Build per-node list of upstream node indices for generation tracking
+    for (auto& ns : nodes_)
+        ns.upstream_nodes.clear();
+    for (const auto& w : wires_) {
+        auto& ups = nodes_[w.to_node_idx].upstream_nodes;
+        bool found = false;
+        for (auto idx : ups) {
+            if (idx == w.from_node_idx) { found = true; break; }
+        }
+        if (!found)
+            ups.push_back(w.from_node_idx);
+    }
+    for (auto& ns : nodes_)
+        ns.upstream_gens_cached.resize(ns.upstream_nodes.size(), 0);
+
     // Print evaluation order
     std::fprintf(stderr, "[vivid] Evaluation order:");
     for (uint32_t i = 0; i < n; ++i) {
@@ -161,7 +182,7 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
     return true;
 }
 
-void Scheduler::tick(double time, double delta_time, uint64_t frame) {
+void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_state) {
     for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
         auto& ns = nodes_[ni];
 
@@ -176,6 +197,22 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame) {
             }
         }
 
+        // Generation-based skip: if not time-dependent and all upstream
+        // generations match what we saw last cook, skip processing.
+        if (!ns.time_dependent && !ns.upstream_nodes.empty()) {
+            bool all_match = true;
+            for (size_t i = 0; i < ns.upstream_nodes.size(); ++i) {
+                if (nodes_[ns.upstream_nodes[i]].generation != ns.upstream_gens_cached[i]) {
+                    all_match = false;
+                    break;
+                }
+            }
+            if (all_match) {
+                // Outputs unchanged — skip processing
+                continue;
+            }
+        }
+
         // Build process context and tick
         VividProcessContext ctx{};
         ctx.time          = time;
@@ -185,8 +222,42 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame) {
         ctx.input_values  = ns.input_values.data();
         ctx.output_values = ns.output_values.data();
 
+        // GPU state only for GPU-domain operators
+        ctx.gpu = ns.is_gpu ? gpu_state : nullptr;
+
         ns.loader->process(ns.instance, &ctx);
+
+        // Update generation: bump if outputs changed or this is a GPU node
+        // (GPU nodes always produce side effects we can't compare)
+        bool outputs_changed = ns.is_gpu;
+        if (!outputs_changed) {
+            for (size_t i = 0; i < ns.output_values.size(); ++i) {
+                if (ns.output_values[i] != ns.prev_output_values[i]) {
+                    outputs_changed = true;
+                    break;
+                }
+            }
+        }
+
+        if (outputs_changed) {
+            ns.generation++;
+            ns.prev_output_values = ns.output_values;
+        }
+
+        // Cache upstream generations for next tick's comparison
+        for (size_t i = 0; i < ns.upstream_nodes.size(); ++i) {
+            ns.upstream_gens_cached[i] = nodes_[ns.upstream_nodes[i]].generation;
+        }
     }
+}
+
+bool Scheduler::has_gpu_operators() const {
+    for (const auto& ns : nodes_) {
+        const VividOperatorDescriptor* desc = ns.loader->descriptor();
+        if (desc->domain == VIVID_DOMAIN_GPU)
+            return true;
+    }
+    return false;
 }
 
 void Scheduler::shutdown() {

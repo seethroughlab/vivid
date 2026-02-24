@@ -45,10 +45,16 @@ add_library(math MODULE operators/control/math/math.cpp)
 set_target_properties(math PROPERTIES PREFIX "" SUFFIX ".dylib")
 target_link_libraries(math PRIVATE vivid_operator_api)
 
+# --- GPU operator plugins ---
+add_library(noise MODULE operators/gpu/noise/noise.cpp)
+set_target_properties(noise PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(noise PRIVATE vivid_operator_api webgpu)
+
 # --- Vivid executable ---
 add_executable(vivid
     src/runtime/main.cpp
     src/runtime/gpu_context.cpp
+    src/runtime/fullscreen_blit.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/graph.cpp

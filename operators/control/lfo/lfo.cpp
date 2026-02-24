@@ -8,6 +8,7 @@
 struct LFO : vivid::OperatorBase {
     static constexpr const char* kName   = "LFO";
     static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
+    static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> frequency{"frequency", 1.0f, 0.01f, 20.0f};
     vivid::Param<float> amplitude{"amplitude", 1.0f, 0.0f, 1.0f};

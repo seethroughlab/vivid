@@ -5,6 +5,7 @@
 struct Math : vivid::OperatorBase {
     static constexpr const char* kName   = "Math";
     static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
+    static constexpr bool kTimeDependent = false;
 
     vivid::Param<int> operation{"operation", 0, 0, 3};
 

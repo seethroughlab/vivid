@@ -1,7 +1,9 @@
 #include "runtime/gpu_context.h"
+#include "runtime/fullscreen_blit.h"
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
+#include "operator_api/gpu_operator.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 #include <GLFW/glfw3.h>
@@ -12,6 +14,9 @@
 static constexpr double kClearLinear[4]  = { 0.00699, 0.00821, 0.01041, 1.0 };
 // #16191D as raw unorm (no gamma conversion)
 static constexpr double kClearRaw[4]     = { 0.0863, 0.0980, 0.1137, 1.0 };
+
+static constexpr uint32_t kWidth  = 1280;
+static constexpr uint32_t kHeight = 800;
 
 static bool is_srgb_format(WGPUTextureFormat fmt) {
     switch (fmt) {
@@ -39,7 +44,7 @@ int main(int argc, char* argv[]) {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(1280, 800, "Vivid", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(kWidth, kHeight, "Vivid", nullptr, nullptr);
     if (!window) {
         std::fprintf(stderr, "[vivid] Failed to create window\n");
         glfwTerminate();
@@ -48,13 +53,49 @@ int main(int argc, char* argv[]) {
 
     // --- GPU ---
     vivid::GpuContext gpu;
-    if (!gpu.init(window, 1280, 800)) {
+    if (!gpu.init(window, kWidth, kHeight)) {
         glfwDestroyWindow(window);
         glfwTerminate();
         return 1;
     }
 
     const double* clear = is_srgb_format(gpu.surface_format()) ? kClearLinear : kClearRaw;
+
+    // --- Offscreen texture (RGBA8Unorm, for GPU operators to render into) ---
+    static constexpr WGPUTextureFormat kOffscreenFormat = WGPUTextureFormat_RGBA16Float;
+
+    WGPUTextureDescriptor offscreen_desc{};
+    offscreen_desc.label = to_sv("Offscreen Texture");
+    offscreen_desc.size = { kWidth, kHeight, 1 };
+    offscreen_desc.mipLevelCount = 1;
+    offscreen_desc.sampleCount = 1;
+    offscreen_desc.dimension = WGPUTextureDimension_2D;
+    offscreen_desc.format = kOffscreenFormat;
+    offscreen_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+    WGPUTexture offscreen_tex = wgpuDeviceCreateTexture(gpu.device(), &offscreen_desc);
+
+    WGPUTextureViewDescriptor offscreen_view_desc{};
+    offscreen_view_desc.label = to_sv("Offscreen View");
+    offscreen_view_desc.format = kOffscreenFormat;
+    offscreen_view_desc.dimension = WGPUTextureViewDimension_2D;
+    offscreen_view_desc.baseMipLevel = 0;
+    offscreen_view_desc.mipLevelCount = 1;
+    offscreen_view_desc.baseArrayLayer = 0;
+    offscreen_view_desc.arrayLayerCount = 1;
+    offscreen_view_desc.aspect = WGPUTextureAspect_All;
+    WGPUTextureView offscreen_view = wgpuTextureCreateView(offscreen_tex, &offscreen_view_desc);
+
+    // --- Fullscreen blit (offscreen → surface) ---
+    vivid::FullscreenBlit blit;
+    if (!blit.init(gpu.device(), gpu.surface_format())) {
+        std::fprintf(stderr, "[vivid] Failed to init FullscreenBlit\n");
+        wgpuTextureViewRelease(offscreen_view);
+        wgpuTextureRelease(offscreen_tex);
+        gpu.shutdown();
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return 1;
+    }
 
     // --- Load operator plugins ---
     vivid::OperatorRegistry registry;
@@ -75,6 +116,8 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "[vivid] Graph load failed (non-fatal, continuing)\n");
     }
 
+    bool has_gpu_ops = graph_loaded && scheduler.has_gpu_operators();
+
     double prev_time = glfwGetTime();
     uint64_t frame_count = 0;
 
@@ -82,13 +125,27 @@ int main(int argc, char* argv[]) {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
+        vivid::FrameState frame;
+        if (!gpu.begin_frame(frame))
+            continue;
+
         // --- Tick graph ---
         if (graph_loaded) {
             double now = glfwGetTime();
             double dt = now - prev_time;
             prev_time = now;
 
-            scheduler.tick(now, dt, frame_count);
+            // Fill GPU state for GPU operators (render to offscreen texture)
+            VividGpuState gpu_state{};
+            gpu_state.device              = gpu.device();
+            gpu_state.queue               = gpu.queue();
+            gpu_state.command_encoder     = frame.encoder;
+            gpu_state.output_texture_view = offscreen_view;
+            gpu_state.output_width        = kWidth;
+            gpu_state.output_height       = kHeight;
+            gpu_state.output_format       = kOffscreenFormat;
+
+            scheduler.tick(now, dt, frame_count, &gpu_state);
 
             if (frame_count % 60 == 0) {
                 std::fprintf(stderr, "[vivid] frame=%llu",
@@ -105,31 +162,32 @@ int main(int argc, char* argv[]) {
             frame_count++;
         }
 
-        vivid::FrameState frame;
-        if (!gpu.begin_frame(frame))
-            continue;
+        if (has_gpu_ops) {
+            // Blit offscreen texture → surface
+            blit.blit(frame.encoder, offscreen_view, frame.view);
+        } else {
+            // Fallback: clear-only pass (#16191D)
+            WGPURenderPassColorAttachment color_att{};
+            color_att.nextInChain = nullptr;
+            color_att.view = frame.view;
+            color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            color_att.resolveTarget = nullptr;
+            color_att.loadOp = WGPULoadOp_Clear;
+            color_att.storeOp = WGPUStoreOp_Store;
+            color_att.clearValue = { clear[0], clear[1], clear[2], clear[3] };
 
-        // Render pass — clear only
-        WGPURenderPassColorAttachment color_att{};
-        color_att.nextInChain = nullptr;
-        color_att.view = frame.view;
-        color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-        color_att.resolveTarget = nullptr;
-        color_att.loadOp = WGPULoadOp_Clear;
-        color_att.storeOp = WGPUStoreOp_Store;
-        color_att.clearValue = { clear[0], clear[1], clear[2], clear[3] };
+            WGPURenderPassDescriptor rp_desc{};
+            rp_desc.nextInChain = nullptr;
+            rp_desc.label = to_sv("Clear Pass");
+            rp_desc.colorAttachmentCount = 1;
+            rp_desc.colorAttachments = &color_att;
+            rp_desc.depthStencilAttachment = nullptr;
+            rp_desc.timestampWrites = nullptr;
 
-        WGPURenderPassDescriptor rp_desc{};
-        rp_desc.nextInChain = nullptr;
-        rp_desc.label = to_sv("Clear Pass");
-        rp_desc.colorAttachmentCount = 1;
-        rp_desc.colorAttachments = &color_att;
-        rp_desc.depthStencilAttachment = nullptr;
-        rp_desc.timestampWrites = nullptr;
-
-        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(frame.encoder, &rp_desc);
-        wgpuRenderPassEncoderEnd(pass);
-        wgpuRenderPassEncoderRelease(pass);
+            WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(frame.encoder, &rp_desc);
+            wgpuRenderPassEncoderEnd(pass);
+            wgpuRenderPassEncoderRelease(pass);
+        }
 
         gpu.end_frame(frame);
 
@@ -143,6 +201,9 @@ int main(int argc, char* argv[]) {
     }
     // Registry destructor handles dlclose via OperatorLoader destructors
 
+    blit.shutdown();
+    wgpuTextureViewRelease(offscreen_view);
+    wgpuTextureRelease(offscreen_tex);
     gpu.shutdown();
     glfwDestroyWindow(window);
     glfwTerminate();

@@ -59,6 +59,7 @@ typedef struct VividOperatorDescriptor {
     const VividParamDescriptor* params;
     uint32_t                  port_count;
     const VividPortDescriptor*  ports;
+    int                       time_dependent;  // 1 if operator reads ctx->time, 0 otherwise
 } VividOperatorDescriptor;
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,7 @@ typedef struct VividProcessContext {
     float*    param_values;   // indexed by param descriptor order
     float*    input_values;   // indexed by input port order (VIVID_PORT_INPUT only)
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
+    void*     gpu;            // VividGpuState* for GPU operators, NULL otherwise
 } VividProcessContext;
 
 // ---------------------------------------------------------------------------
