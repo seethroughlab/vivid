@@ -23,11 +23,20 @@ struct LFO : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"phase", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT});
         out.push_back({"value", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {
-        double phase = std::fmod(ctx->time * static_cast<double>(frequency.value), 1.0);
+        float phase_in = ctx->input_values[0];
+        double phase;
+        if (phase_in != 0.0f) {
+            // Driven by external source (e.g. Clock beat_phase)
+            phase = std::fmod(static_cast<double>(phase_in), 1.0);
+        } else {
+            // Free-running from wall time
+            phase = std::fmod(ctx->time * static_cast<double>(frequency.value), 1.0);
+        }
 
         double raw = 0.0;
         switch (waveform.int_value()) {
