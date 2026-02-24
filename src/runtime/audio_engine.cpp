@@ -3,6 +3,7 @@
 
 #include "runtime/audio_engine.h"
 #include <algorithm>
+#include <cmath>
 #include <queue>
 #include <cstdio>
 #include <cstring>
@@ -186,11 +187,38 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         }
     }
 
+    // Initialize analysis snapshots
+    for (auto& snap : analysis_snapshots_) {
+        snap.rms.resize(n, 0.0f);
+        snap.peak.resize(n, 0.0f);
+    }
+
+    // Build analysis mappings: match audio nodes to scheduler nodes
+    analysis_mappings_.clear();
+    for (uint32_t ai = 0; ai < n; ++ai) {
+        for (uint32_t si = 0; si < static_cast<uint32_t>(scheduler.nodes().size()); ++si) {
+            if (scheduler.nodes()[si].node_id == nodes_[ai].node_id) {
+                auto rms_it = scheduler.nodes()[si].output_port_indices.find("rms");
+                auto peak_it = scheduler.nodes()[si].output_port_indices.find("peak");
+                if (rms_it != scheduler.nodes()[si].output_port_indices.end() &&
+                    peak_it != scheduler.nodes()[si].output_port_indices.end()) {
+                    AudioToControlMapping m;
+                    m.audio_engine_idx = ai;
+                    m.scheduler_node_idx = si;
+                    m.rms_port_idx = rms_it->second;
+                    m.peak_port_idx = peak_it->second;
+                    analysis_mappings_.push_back(m);
+                }
+                break;
+            }
+        }
+    }
+
     std::fprintf(stderr, "[vivid] Audio evaluation order:");
     for (uint32_t i = 0; i < n; ++i) {
         std::fprintf(stderr, "%s%s", (i == 0 ? " " : " -> "), nodes_[i].node_id.c_str());
     }
-    std::fprintf(stderr, "\n");
+    std::fprintf(stderr, " (%zu analysis mappings)\n", analysis_mappings_.size());
 
     return true;
 }
@@ -250,6 +278,16 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
     }
 
     active_.store(write_idx, std::memory_order_release);
+}
+
+void AudioEngine::inject_analysis(Scheduler& scheduler) {
+    const auto& snap = analysis_snapshots_[analysis_active_.load(std::memory_order_acquire)];
+    for (const auto& m : analysis_mappings_) {
+        scheduler.inject_external_output(m.scheduler_node_idx, m.rms_port_idx,
+                                         snap.rms[m.audio_engine_idx]);
+        scheduler.inject_external_output(m.scheduler_node_idx, m.peak_port_idx,
+                                         snap.peak[m.audio_engine_idx]);
+    }
 }
 
 void AudioEngine::shutdown() {
@@ -362,6 +400,24 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
 
         frames_written += chunk;
     }
+
+    // Compute RMS and peak for each audio node, write to analysis snapshot
+    int write_idx = 1 - analysis_active_.load(std::memory_order_acquire);
+    auto& analysis = analysis_snapshots_[write_idx];
+    for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
+        if (nodes_[ni].output_port_count > 0) {
+            const float* buf = nodes_[ni].output_buffers[0].data();
+            float sum_sq = 0.0f, pk = 0.0f;
+            for (uint32_t s = 0; s < frame_count; ++s) {
+                sum_sq += buf[s] * buf[s];
+                float a = buf[s] < 0 ? -buf[s] : buf[s];
+                if (a > pk) pk = a;
+            }
+            analysis.rms[ni] = std::sqrt(sum_sq / frame_count);
+            analysis.peak[ni] = pk;
+        }
+    }
+    analysis_active_.store(write_idx, std::memory_order_release);
 
     audio_frame_ += frame_count;
 }

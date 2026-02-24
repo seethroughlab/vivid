@@ -51,6 +51,18 @@ struct ParamSnapshot {
     std::vector<std::vector<float>> node_params;  // [audio_node_idx][param_idx]
 };
 
+struct AnalysisSnapshot {
+    std::vector<float> rms;   // [audio_node_idx]
+    std::vector<float> peak;  // [audio_node_idx]
+};
+
+struct AudioToControlMapping {
+    uint32_t audio_engine_idx;    // index in AudioEngine::nodes_
+    uint32_t scheduler_node_idx;  // index in Scheduler::nodes_
+    uint32_t rms_port_idx;        // "rms" output port index in scheduler
+    uint32_t peak_port_idx;       // "peak" output port index in scheduler
+};
+
 class AudioEngine {
 public:
     AudioEngine();
@@ -59,6 +71,7 @@ public:
     bool build(const Graph& graph, OperatorRegistry& registry, const Scheduler& scheduler);
     bool start();
     void push_params(const Scheduler& scheduler);
+    void inject_analysis(Scheduler& scheduler);
     void shutdown();
 
     static constexpr uint32_t kBufferSize = 256;
@@ -73,9 +86,14 @@ private:
     std::vector<AudioWire> wires_;
     std::vector<CrossDomainWire> cross_wires_;
 
-    // Double-buffered param bridge
+    // Double-buffered param bridge (control→audio)
     ParamSnapshot snapshots_[2];
     std::atomic<int> active_{0};
+
+    // Double-buffered analysis bridge (audio→control)
+    AnalysisSnapshot analysis_snapshots_[2];
+    std::atomic<int> analysis_active_{0};
+    std::vector<AudioToControlMapping> analysis_mappings_;
 
     // Audio time tracking
     uint64_t audio_frame_ = 0;

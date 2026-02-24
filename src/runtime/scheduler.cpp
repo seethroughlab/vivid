@@ -65,6 +65,14 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         ns.generation = 0;
         ns.prev_output_values.resize(ns.output_port_count, 0.0f);
 
+        // Implicit analysis ports for audio-domain nodes
+        if (ns.is_audio) {
+            ns.output_port_indices["rms"] = ns.output_port_count++;
+            ns.output_port_indices["peak"] = ns.output_port_count++;
+            ns.output_values.resize(ns.output_port_count, 0.0f);
+            ns.prev_output_values.resize(ns.output_port_count, 0.0f);
+        }
+
         node_index[ndef.id] = static_cast<uint32_t>(nodes_.size());
         nodes_.push_back(std::move(ns));
     }
@@ -283,6 +291,15 @@ bool Scheduler::has_audio_operators() const {
             return true;
     }
     return false;
+}
+
+void Scheduler::inject_external_output(uint32_t node_idx, uint32_t port_idx, float value) {
+    auto& ns = nodes_[node_idx];
+    if (ns.output_values[port_idx] != value) {
+        ns.output_values[port_idx] = value;
+        ns.prev_output_values[port_idx] = value;
+        ns.generation++;
+    }
 }
 
 void Scheduler::shutdown() {

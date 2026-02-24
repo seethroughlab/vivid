@@ -46,6 +46,7 @@ public:
     const std::vector<NodeState>& nodes() const { return nodes_; }
     bool has_gpu_operators() const;
     bool has_audio_operators() const;
+    void inject_external_output(uint32_t node_idx, uint32_t port_idx, float value);
 
 private:
     std::vector<NodeState> nodes_;

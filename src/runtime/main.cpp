@@ -157,10 +157,14 @@ int main(int argc, char* argv[]) {
             gpu_state.output_height       = kHeight;
             gpu_state.output_format       = kOffscreenFormat;
 
+            if (has_audio) {
+                audio_engine.inject_analysis(scheduler);  // audio→control
+            }
+
             scheduler.tick(now, dt, frame_count, &gpu_state);
 
             if (has_audio) {
-                audio_engine.push_params(scheduler);
+                audio_engine.push_params(scheduler);      // control→audio
             }
 
             if (frame_count % 60 == 0) {
