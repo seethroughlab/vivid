@@ -1,8 +1,0 @@
-{
-  "name": "vivid-texshare",
-  "version": "0.1.0",
-  "description": "Texture sharing between applications (Syphon/Spout)",
-  "author": "Vivid",
-  "license": "MIT",
-  "vivid": ">=0.1.0"
-}

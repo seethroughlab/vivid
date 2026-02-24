@@ -1,6 +1,0 @@
-{
-  "events": [
-    {"frame": 10, "type": "mouse_move", "x": 0.344, "y": 0.597},
-    {"frame": 11, "type": "mouse_click", "x": 0.344, "y": 0.597, "button": 0}
-  ]
-}

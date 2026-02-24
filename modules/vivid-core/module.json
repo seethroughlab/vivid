@@ -1,8 +1,0 @@
-{
-  "name": "vivid-core",
-  "version": "0.1.0",
-  "description": "Core runtime engine for Vivid - context, chain, operators, and effects",
-  "author": "Vivid",
-  "license": "MIT",
-  "vivid": ">=0.1.0"
-}

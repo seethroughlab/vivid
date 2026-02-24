@@ -1,7 +1,0 @@
-{
-  "frame": 60,
-  "assertions": [
-    {"path": "output.meanBrightness", "op": "between", "value": [0.05, 0.95], "message": "Not black or white"},
-    {"path": "operators.osc_mix.metrics.rms", "op": ">", "value": 0.01, "message": "Oscillator mix produces sound"}
-  ]
-}

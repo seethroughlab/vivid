@@ -1,8 +1,0 @@
-{
-  "name": "vivid-cef",
-  "version": "0.1.0",
-  "description": "CEF (Chromium Embedded Framework) browser operator for rendering web content with WebGL/three.js support",
-  "author": "Vivid",
-  "license": "MIT",
-  "vivid": ">=0.1.0"
-}
