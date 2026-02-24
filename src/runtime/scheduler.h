@@ -44,6 +44,7 @@ public:
     void tick(double time, double delta_time, uint64_t frame, void* gpu_state = nullptr);
     void shutdown();
     const std::vector<NodeState>& nodes() const { return nodes_; }
+    const std::vector<Wire>& wires() const { return wires_; }
     bool has_gpu_operators() const;
     bool has_audio_operators() const;
     void inject_external_output(uint32_t node_idx, uint32_t port_idx, float value);

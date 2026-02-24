@@ -9,6 +9,7 @@
 #include "runtime/runtime_api.h"
 #include "runtime/text_renderer.h"
 #include "runtime/repl.h"
+#include "runtime/node_graph.h"
 #include "operator_api/gpu_operator.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
@@ -42,6 +43,7 @@ static WGPUStringView to_sv(const char* s) {
 // GLFW callback trampolines
 struct WindowUserData {
     vivid::Repl* repl = nullptr;
+    vivid::NodeGraphUI* graph_ui = nullptr;
 };
 
 static void char_callback(GLFWwindow* w, unsigned int codepoint) {
@@ -52,6 +54,16 @@ static void char_callback(GLFWwindow* w, unsigned int codepoint) {
 static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, int mods) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
     if (ud && ud->repl) ud->repl->on_key(key, action, mods);
+}
+
+static void cursor_pos_callback(GLFWwindow* w, double xpos, double ypos) {
+    auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
+    if (ud && ud->graph_ui) ud->graph_ui->on_mouse_move(static_cast<float>(xpos), static_cast<float>(ypos));
+}
+
+static void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) {
+    auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
+    if (ud && ud->graph_ui) ud->graph_ui->on_mouse_button(button, action);
 }
 
 int main(int argc, char* argv[]) {
@@ -173,13 +185,17 @@ int main(int argc, char* argv[]) {
     }
 
     vivid::Repl repl(runtime_api);
+    vivid::NodeGraphUI graph_ui(runtime_api, graph, scheduler);
 
-    // Set up GLFW input callbacks for REPL
+    // Set up GLFW input callbacks
     WindowUserData window_user_data;
     window_user_data.repl = &repl;
+    window_user_data.graph_ui = &graph_ui;
     glfwSetWindowUserPointer(window, &window_user_data);
     glfwSetCharCallback(window, char_callback);
     glfwSetKeyCallback(window, key_callback);
+    glfwSetCursorPosCallback(window, cursor_pos_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
 
     // --- Hot-reload ---
     vivid::FileWatcher file_watcher;
@@ -359,8 +375,10 @@ int main(int argc, char* argv[]) {
             wgpuRenderPassEncoderRelease(pass);
         }
 
-        // --- REPL overlay ---
+        // --- Node graph UI + REPL overlay ---
         if (repl_enabled) {
+            graph_ui.update();
+            graph_ui.draw(text_renderer, kWidth, kHeight);
             repl.draw(text_renderer, kWidth, kHeight);
             text_renderer.flush(frame.encoder, frame.view, kWidth, kHeight);
         }

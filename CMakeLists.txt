@@ -108,6 +108,7 @@ add_executable(vivid
     src/runtime/runtime_api.cpp
     src/runtime/text_renderer.cpp
     src/runtime/repl.cpp
+    src/runtime/node_graph.cpp
 )
 
 target_include_directories(vivid PRIVATE src)
