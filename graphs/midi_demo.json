@@ -1,0 +1,11 @@
+{
+  "nodes": {
+    "midi1":  { "type": "MidiInput", "params": { "device": 0, "channel": 0, "cc_number": 1 } },
+    "lfo1":   { "type": "LFO",      "params": { "amplitude": 2.0, "offset": 4.0 } },
+    "noise1": { "type": "Noise",    "params": { "speed": 1.0 } }
+  },
+  "connections": [
+    { "from": "midi1/cc_value", "to": "lfo1/frequency" },
+    { "from": "lfo1/value",     "to": "noise1/scale" }
+  ]
+}

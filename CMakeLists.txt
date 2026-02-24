@@ -36,6 +36,16 @@ target_include_directories(miniaudio INTERFACE deps/miniaudio)
 add_library(stb_truetype INTERFACE)
 target_include_directories(stb_truetype INTERFACE deps/stb)
 
+# --- RtMidi (vendored, CoreMIDI backend on macOS) ---
+add_library(rtmidi STATIC deps/rtmidi/RtMidi.cpp)
+target_include_directories(rtmidi PUBLIC deps/rtmidi)
+target_compile_definitions(rtmidi PUBLIC __MACOSX_CORE__)
+target_link_libraries(rtmidi PUBLIC
+    "-framework CoreMIDI"
+    "-framework CoreAudio"
+    "-framework CoreFoundation"
+)
+
 # --- Operator API (header-only interface library) ---
 add_library(vivid_operator_api INTERFACE)
 target_include_directories(vivid_operator_api INTERFACE src)
@@ -56,6 +66,10 @@ target_link_libraries(math PRIVATE vivid_operator_api)
 add_library(envelope MODULE operators/control/envelope/envelope.cpp)
 set_target_properties(envelope PROPERTIES PREFIX "" SUFFIX ".dylib")
 target_link_libraries(envelope PRIVATE vivid_operator_api)
+
+add_library(midi_input MODULE operators/control/midi_input/midi_input.cpp)
+set_target_properties(midi_input PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(midi_input PRIVATE vivid_operator_api rtmidi)
 
 # --- GPU operator plugins ---
 add_library(noise MODULE operators/gpu/noise/noise.cpp)
@@ -103,6 +117,7 @@ target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu vivid_operator_api y
 configure_file(graphs/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
 configure_file(graphs/audio_demo.json ${CMAKE_BINARY_DIR}/audio_demo.json COPYONLY)
 configure_file(graphs/av_sync_demo.json ${CMAKE_BINARY_DIR}/av_sync_demo.json COPYONLY)
+configure_file(graphs/midi_demo.json ${CMAKE_BINARY_DIR}/midi_demo.json COPYONLY)
 
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)
