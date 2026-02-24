@@ -1,0 +1,30 @@
+.{
+    .name = .vivid,
+    .version = "0.1.0",
+    .fingerprint = 0x58023bb6da157d31,
+    .minimum_zig_version = "0.15.1",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+    .dependencies = .{
+        .zglfw = .{
+            .url = "https://github.com/zig-gamedev/zglfw/archive/1b008a0224def3e35a6affb1e7d77dbe36643de2.tar.gz",
+            .hash = "zglfw-0.10.0-dev-zgVDNES4IQAAXAcsFiHfmadlpDCHhF2cUqWxBGIViyU6",
+        },
+        .zgpu = .{
+            .url = "https://github.com/zig-gamedev/zgpu/archive/b582a62c13af1a8228f72c47ea2eaa21259760eb.tar.gz",
+            .hash = "zgpu-0.12.0-dev-nqFT5IChCACWEis11EjrBQGaA0QXEqXfsi1e6cF3_AL3",
+        },
+        .system_sdk = .{
+            .url = "https://github.com/zig-gamedev/system_sdk/archive/c0dbf11cdc17da5904ea8a17eadc54dee26567ec.tar.gz",
+            .hash = "system_sdk-0.3.0-dev-alwUNnYaaAJAtIdE2fg4NQfDqEKs7QCXy_qYukAOBfmF",
+        },
+        .dawn_aarch64_macos = .{
+            .url = "https://github.com/michal-z/webgpu_dawn-aarch64-macos/archive/d2360cdfff0cf4a780cb77aa47c57aca03cc6dfe.tar.gz",
+            .hash = "N-V-__8AALVIRAIf5nfpx8-4mEo2RGsynVryPQPcHk95qFM5",
+            .lazy = true,
+        },
+    },
+}

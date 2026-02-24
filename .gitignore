@@ -4,6 +4,9 @@ build-prod/
 build-bundle/
 cmake-build-*/
 out/
+zig-out/
+.zig-cache/
+zig-cache/
 
 # IDE and editor files
 .vscode/
