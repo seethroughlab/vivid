@@ -3,6 +3,7 @@
 
 #include "runtime/operator_loader.h"
 #include <string>
+#include <vector>
 #include <unordered_map>
 #include <memory>
 
@@ -12,6 +13,9 @@ class OperatorRegistry {
 public:
     bool scan(const char* directory);
     OperatorLoader* find(const std::string& type_name);
+
+    // Introspection
+    std::vector<std::string> type_names() const;
 
     // Hot-reload support
     const std::string* type_name_for_target(const std::string& target) const;

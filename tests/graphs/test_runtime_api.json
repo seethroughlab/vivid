@@ -1,0 +1,9 @@
+{
+  "nodes": {
+    "a": { "type": "TestOp", "params": { "scale": 3.0 } },
+    "b": { "type": "TestOp", "params": { "scale": 2.0 } }
+  },
+  "connections": [
+    { "from": "a/out", "to": "b/scale" }
+  ]
+}

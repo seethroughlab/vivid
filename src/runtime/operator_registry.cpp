@@ -2,6 +2,7 @@
 #include <dirent.h>
 #include <cstring>
 #include <cstdio>
+#include <algorithm>
 
 namespace vivid {
 
@@ -47,6 +48,16 @@ OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
     if (it == loaders_.end())
         return nullptr;
     return it->second.get();
+}
+
+std::vector<std::string> OperatorRegistry::type_names() const {
+    std::vector<std::string> names;
+    names.reserve(loaders_.size());
+    for (const auto& [name, _] : loaders_) {
+        names.push_back(name);
+    }
+    std::sort(names.begin(), names.end());
+    return names;
 }
 
 const std::string* OperatorRegistry::type_name_for_target(const std::string& target) const {

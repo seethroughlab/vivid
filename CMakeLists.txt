@@ -32,6 +32,10 @@ target_include_directories(yyjson PUBLIC deps/yyjson)
 add_library(miniaudio INTERFACE)
 target_include_directories(miniaudio INTERFACE deps/miniaudio)
 
+# --- stb_truetype (vendored, header-only) ---
+add_library(stb_truetype INTERFACE)
+target_include_directories(stb_truetype INTERFACE deps/stb)
+
 # --- Operator API (header-only interface library) ---
 add_library(vivid_operator_api INTERFACE)
 target_include_directories(vivid_operator_api INTERFACE src)
@@ -87,15 +91,21 @@ add_executable(vivid
     src/runtime/audio_engine.cpp
     src/runtime/file_watcher.cpp
     src/runtime/hot_reload.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/text_renderer.cpp
+    src/runtime/repl.cpp
 )
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio)
+target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype)
 
 # Copy demo graphs to build directory
 configure_file(graphs/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
 configure_file(graphs/audio_demo.json ${CMAKE_BINARY_DIR}/audio_demo.json COPYONLY)
 configure_file(graphs/av_sync_demo.json ${CMAKE_BINARY_DIR}/av_sync_demo.json COPYONLY)
+
+# Copy font to build directory
+configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)
 
 # Copy Dawn shared library next to the executable (if dynamically linked)
 target_copy_webgpu_binaries(vivid)
@@ -132,5 +142,20 @@ target_include_directories(test_hot_reload PRIVATE src)
 target_link_libraries(test_hot_reload PRIVATE vivid_operator_api yyjson)
 add_dependencies(test_hot_reload test_op_v1 test_op_v2)
 
-# Copy test graph to build directory
+# RuntimeAPI integration test (no GPU, no audio, no window)
+add_executable(test_runtime_api
+    tests/test_runtime_api.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/runtime_api.cpp
+)
+target_include_directories(test_runtime_api PRIVATE src)
+target_link_libraries(test_runtime_api PRIVATE vivid_operator_api yyjson miniaudio)
+add_dependencies(test_runtime_api test_op_v1)
+
+# Copy test graphs to build directory
 configure_file(tests/graphs/test_reload.json ${CMAKE_BINARY_DIR}/test_reload.json COPYONLY)
+configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runtime_api.json COPYONLY)

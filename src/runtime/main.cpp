@@ -6,6 +6,9 @@
 #include "runtime/audio_engine.h"
 #include "runtime/file_watcher.h"
 #include "runtime/hot_reload.h"
+#include "runtime/runtime_api.h"
+#include "runtime/text_renderer.h"
+#include "runtime/repl.h"
 #include "operator_api/gpu_operator.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
@@ -34,6 +37,21 @@ static bool is_srgb_format(WGPUTextureFormat fmt) {
 
 static WGPUStringView to_sv(const char* s) {
     return { s, s ? std::strlen(s) : 0 };
+}
+
+// GLFW callback trampolines
+struct WindowUserData {
+    vivid::Repl* repl = nullptr;
+};
+
+static void char_callback(GLFWwindow* w, unsigned int codepoint) {
+    auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
+    if (ud && ud->repl) ud->repl->on_char(codepoint);
+}
+
+static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, int mods) {
+    auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
+    if (ud && ud->repl) ud->repl->on_key(key, action, mods);
 }
 
 int main(int argc, char* argv[]) {
@@ -133,6 +151,36 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // --- RuntimeAPI + REPL ---
+    vivid::RuntimeAPI runtime_api(graph, scheduler, audio_engine, registry);
+
+    vivid::TextRenderer text_renderer;
+    bool repl_enabled = false;
+    {
+        // Look for font next to executable, or in source tree
+        std::string font_path = "JetBrainsMono-Regular.ttf";
+        if (!std::filesystem::exists(font_path)) {
+            // Try source tree relative to build dir
+            auto parent = std::filesystem::current_path().parent_path();
+            auto alt = parent / "fonts" / "JetBrainsMono-Regular.ttf";
+            if (std::filesystem::exists(alt)) font_path = alt.string();
+        }
+        if (text_renderer.init(gpu.device(), gpu.surface_format(), font_path.c_str(), 16.0f)) {
+            repl_enabled = true;
+        } else {
+            std::fprintf(stderr, "[vivid] REPL disabled (font not found)\n");
+        }
+    }
+
+    vivid::Repl repl(runtime_api);
+
+    // Set up GLFW input callbacks for REPL
+    WindowUserData window_user_data;
+    window_user_data.repl = &repl;
+    glfwSetWindowUserPointer(window, &window_user_data);
+    glfwSetCharCallback(window, char_callback);
+    glfwSetKeyCallback(window, key_callback);
+
     // --- Hot-reload ---
     vivid::FileWatcher file_watcher;
     vivid::HotReloader hot_reloader;
@@ -175,6 +223,13 @@ int main(int argc, char* argv[]) {
     // --- Main loop ---
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        // --- REPL update (process pending command before tick) ---
+        repl.update(has_gpu_ops, has_audio);
+        // After topology changes, graph_loaded might need updating
+        if (!graph_loaded && !scheduler.nodes().empty()) {
+            graph_loaded = true;
+        }
 
         vivid::FrameState frame;
         if (!gpu.begin_frame(frame))
@@ -304,6 +359,12 @@ int main(int argc, char* argv[]) {
             wgpuRenderPassEncoderRelease(pass);
         }
 
+        // --- REPL overlay ---
+        if (repl_enabled) {
+            repl.draw(text_renderer, kWidth, kHeight);
+            text_renderer.flush(frame.encoder, frame.view, kWidth, kHeight);
+        }
+
         gpu.end_frame(frame);
 
         // wgpu-native: poll the device to process async operations
@@ -323,6 +384,9 @@ int main(int argc, char* argv[]) {
     }
     // Registry destructor handles dlclose via OperatorLoader destructors
 
+    if (repl_enabled) {
+        text_renderer.shutdown();
+    }
     blit.shutdown();
     wgpuTextureViewRelease(offscreen_view);
     wgpuTextureRelease(offscreen_tex);

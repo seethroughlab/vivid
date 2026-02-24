@@ -1,6 +1,7 @@
 #include "runtime/graph.h"
 #include "yyjson.h"
 #include <cstdio>
+#include <algorithm>
 
 namespace vivid {
 
@@ -15,6 +16,7 @@ static bool split_address(const char* addr, std::string& node, std::string& port
 bool Graph::load(const char* path) {
     nodes_.clear();
     connections_.clear();
+    source_path_ = path;
 
     yyjson_read_err err;
     yyjson_doc* doc = yyjson_read_file(path, 0, nullptr, &err);
@@ -85,6 +87,125 @@ bool Graph::load(const char* path) {
     yyjson_doc_free(doc);
 
     std::fprintf(stderr, "[vivid] Loaded graph: %s (%zu nodes, %zu connections)\n",
+        path, nodes_.size(), connections_.size());
+    return true;
+}
+
+// --- Mutation ---
+
+bool Graph::add_node(const std::string& id, const std::string& type,
+                     const std::unordered_map<std::string, float>& params) {
+    if (find_node(id)) return false;  // duplicate id
+    NodeDef node;
+    node.id = id;
+    node.type = type;
+    node.params = params;
+    nodes_.push_back(std::move(node));
+    return true;
+}
+
+bool Graph::remove_node(const std::string& id) {
+    auto it = std::find_if(nodes_.begin(), nodes_.end(),
+        [&](const NodeDef& n) { return n.id == id; });
+    if (it == nodes_.end()) return false;
+    nodes_.erase(it);
+    // Remove all connections involving this node
+    connections_.erase(
+        std::remove_if(connections_.begin(), connections_.end(),
+            [&](const ConnectionDef& c) {
+                return c.from_node == id || c.to_node == id;
+            }),
+        connections_.end());
+    return true;
+}
+
+bool Graph::add_connection(const std::string& from_node, const std::string& from_port,
+                           const std::string& to_node, const std::string& to_port) {
+    // Check for duplicate
+    for (const auto& c : connections_) {
+        if (c.from_node == from_node && c.from_port == from_port &&
+            c.to_node == to_node && c.to_port == to_port)
+            return false;
+    }
+    connections_.push_back({from_node, from_port, to_node, to_port});
+    return true;
+}
+
+bool Graph::remove_connection(const std::string& from_node, const std::string& from_port,
+                              const std::string& to_node, const std::string& to_port) {
+    auto it = std::find_if(connections_.begin(), connections_.end(),
+        [&](const ConnectionDef& c) {
+            return c.from_node == from_node && c.from_port == from_port &&
+                   c.to_node == to_node && c.to_port == to_port;
+        });
+    if (it == connections_.end()) return false;
+    connections_.erase(it);
+    return true;
+}
+
+const NodeDef* Graph::find_node(const std::string& id) const {
+    for (const auto& n : nodes_) {
+        if (n.id == id) return &n;
+    }
+    return nullptr;
+}
+
+NodeDef* Graph::find_node(const std::string& id) {
+    for (auto& n : nodes_) {
+        if (n.id == id) return &n;
+    }
+    return nullptr;
+}
+
+// --- Serialization ---
+
+bool Graph::save(const char* path) const {
+    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
+    yyjson_mut_val* root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+
+    // Nodes
+    yyjson_mut_val* nodes_obj = yyjson_mut_obj(doc);
+    for (const auto& node : nodes_) {
+        yyjson_mut_val* node_obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_str(doc, node_obj, "type", node.type.c_str());
+
+        if (!node.params.empty()) {
+            yyjson_mut_val* params_obj = yyjson_mut_obj(doc);
+            for (const auto& [pname, pval] : node.params) {
+                yyjson_mut_obj_add_real(doc, params_obj, pname.c_str(), static_cast<double>(pval));
+            }
+            yyjson_mut_obj_add_val(doc, node_obj, "params", params_obj);
+        }
+
+        yyjson_mut_obj_add_val(doc, nodes_obj, node.id.c_str(), node_obj);
+    }
+    yyjson_mut_obj_add_val(doc, root, "nodes", nodes_obj);
+
+    // Connections
+    yyjson_mut_val* conns_arr = yyjson_mut_arr(doc);
+    for (const auto& conn : connections_) {
+        yyjson_mut_val* conn_obj = yyjson_mut_obj(doc);
+        std::string from_addr = conn.from_node + "/" + conn.from_port;
+        std::string to_addr = conn.to_node + "/" + conn.to_port;
+        yyjson_mut_obj_add_strcpy(doc, conn_obj, "from", from_addr.c_str());
+        yyjson_mut_obj_add_strcpy(doc, conn_obj, "to", to_addr.c_str());
+        yyjson_mut_arr_add_val(conns_arr, conn_obj);
+    }
+    yyjson_mut_obj_add_val(doc, root, "connections", conns_arr);
+
+    // Write
+    yyjson_write_err werr;
+    bool ok = yyjson_mut_write_file(path, doc, YYJSON_WRITE_PRETTY | YYJSON_WRITE_NEWLINE_AT_END,
+                                     nullptr, &werr);
+    yyjson_mut_doc_free(doc);
+
+    if (!ok) {
+        std::fprintf(stderr, "[vivid] Graph: failed to write %s: %s\n", path, werr.msg);
+        return false;
+    }
+
+    std::fprintf(stderr, "[vivid] Graph saved: %s (%zu nodes, %zu connections)\n",
         path, nodes_.size(), connections_.size());
     return true;
 }
