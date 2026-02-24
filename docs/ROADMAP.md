@@ -18,7 +18,7 @@ This scenario exercises every layer of Vivid's architecture: three-domain data f
 
 The goal is to validate every risky integration before building anything on top. If Dawn doesn't link, or operator dylibs crash on dlopen, or audio clicks and pops — you want to know now, not after building a UI.
 
-### Phase 1: Window
+### Phase 1: Window — DONE
 
 Set up CMake, vendor dependencies (Dawn, GLFW, miniaudio, stb, yyjson), create a GLFW window with a Metal surface via Dawn.
 
@@ -26,7 +26,13 @@ Set up CMake, vendor dependencies (Dawn, GLFW, miniaudio, stb, yyjson), create a
 
 **Why it matters:** Validates the build system and Dawn integration — CMake finding Dawn's pre-built libraries, GLFW creating a Metal surface, Dawn rendering to it. Everything downstream depends on this working.
 
-### Phase 2: First Operator
+**Implementation notes:**
+- Started in Zig (`3419be3`), restarted in C++ (`3914775`) — Zig's WebGPU bindings were too immature
+- Dawn via eliemichel's WebGPU-distribution (CMake FetchContent, pre-built binaries), not Google's Dawn repo directly
+- GLFW added as a git submodule; `glfw3webgpu` bridge library handles Metal surface creation
+- Window clears to `#16191D` as specified
+
+### Phase 2: First Operator — DONE
 
 Define the operator contract (`operator.h`, `types.h`). Build a single Control operator (LFO) as a .dylib. Load it via dlopen, read its parameter metadata, call its process function.
 
@@ -34,13 +40,28 @@ Define the operator contract (`operator.h`, `types.h`). Build a single Control o
 
 **Why it matters:** Validates the hot-reload architecture — compiling a single .cpp to .dylib, loading it at runtime via `extern "C"` entry points, and calling across the dlopen boundary without crashing. This is the foundation for every operator.
 
-### Phase 3: Graph + Data Flow
+**Implementation notes:**
+- `operator.h` defines `OperatorBase` with `collect_params()`, `collect_ports()`, `process()` virtual methods
+- `VIVID_REGISTER(ClassName)` macro generates `extern "C"` entry points for dlopen loading
+- `Param<float>`, `Param<int>`, `Param<bool>` typed wrappers over `ParamBase` for type-safe parameter declaration
+- LFO built as `operators/control/lfo/lfo.cpp` → compiled to `lfo.dylib`
+- Commit: `2ecc4df`
+
+### Phase 3: Graph + Data Flow — DONE
 
 Build the graph loader (yyjson), parameter store, and a synchronous control-domain scheduler that evaluates nodes in topological order. Add Clock and Math operators.
 
 **Verify:** Load a JSON graph with Clock → Math ← LFO. Scheduler ticks. Values flow through connections. Printed to stdout: you can see the Math operator combining Clock and LFO outputs correctly.
 
 **Why it matters:** This is the first time data flows through the system the way the architecture describes. The JSON graph schema is real — not a spec in a document but a file the runtime actually reads and executes. Every feature from here forward is built on this graph.
+
+**Implementation notes:**
+- `Graph` class loads JSON via yyjson, stores nodes and connections
+- `Scheduler` performs topological sort, ticks control-domain nodes in dependency order
+- Generation-based cooking: nodes skip re-processing when inputs haven't changed
+- Clock, Math, LFO operators all working
+- Demo graph: `graphs/demo.json` (Clock → LFO → Noise scale param)
+- Commit: `3e1c17e`
 
 *North Star progress: Clock operator works. Graph connections work. 2 of 8 pieces.*
 
@@ -50,7 +71,7 @@ Build the graph loader (yyjson), parameter store, and a synchronous control-doma
 
 The runtime works. Now make it produce output a human can perceive.
 
-### Phase 4: GPU Rendering
+### Phase 4: GPU Rendering — DONE
 
 Build the GPU operator pipeline: runtime provides Dawn device/queue/output texture to operators. First GPU operator (Noise) with a WGSL shader. Fullscreen blit to the window.
 
@@ -58,7 +79,15 @@ Build the GPU operator pipeline: runtime provides Dawn device/queue/output textu
 
 **Why it matters:** First visual output. Proves the GPU operator model works — C++ host code dispatching WGSL compute/render passes via Dawn's WebGPU API. Also validates that the window's render loop can present GPU operator output at frame rate.
 
-### Phase 5: Control Drives Visuals
+**Implementation notes:**
+- `GpuContext` wraps Dawn device/queue/surface/output texture
+- `FullscreenBlit` renders operator output texture to the window
+- Noise GPU operator: WGSL compute shader, writes to output texture
+- Shape GPU operator: WGSL rendering of n-sided polygon/star shapes (bonus — not in original plan)
+- GPU state passed to operators via `ctx->gpu` pointer (`VividGpuState`)
+- Commit: `a23ac87`
+
+### Phase 5: Control Drives Visuals — DONE
 
 Wire the Control→GPU bridge: control-domain parameter changes are picked up by the GPU render loop on the next frame. Connect the LFO from Phase 2 to the Noise operator's scale parameter via the graph JSON.
 
@@ -66,15 +95,32 @@ Wire the Control→GPU bridge: control-domain parameter changes are picked up by
 
 **Why it matters:** First cross-domain data flow. This is the architectural thesis in miniature: a control signal driving a visual parameter through the graph, with the JSON as the single source of truth. If the bridge introduces stutter or latency, the parameter store design needs revision.
 
+**Implementation notes:**
+- Wires can target params (not just input ports) via `Wire::targets_param` flag
+- Connection resolution: if target port name matches a param name (not an input port), wire writes to `param_values[]`
+- `graphs/demo.json`: LFO → Noise/scale works as a cross-domain param wire
+- Commit: `18b2db5`
+
 *North Star progress: LFO → visual parameter works. This is the same path that will later drive rectangle color from envelope values.*
 
-### Phase 6: Audio Output
+### Phase 6: Audio Output — DONE
 
 Build the audio context (miniaudio device, 48kHz, 256 samples), pull-based audio scheduling, and the Control→Audio bridge (double-buffered parameter snapshot). First audio operators: Oscillator and Gain.
 
 **Verify:** Sine tone plays through speakers. Gain is controllable. Change oscillator frequency via JSON reload — pitch changes.
 
 **Why it matters:** Audio threading is where most creative coding frameworks accumulate bugs. The lock-free bridge between control and audio must work under real conditions — no clicks, no pops, no blocking. Test with a small buffer (64 samples) to surface races early.
+
+**Implementation notes:**
+- `AudioEngine` class wraps miniaudio device (48kHz, 256 frames/buffer)
+- Pull-based audio callback runs on a dedicated thread
+- Double-buffered `ParamSnapshot` for lock-free control→audio parameter bridge
+- `CrossDomainWire` maps control output ports to audio param indices
+- Scheduler skips audio-domain nodes during control tick (they run on the audio thread)
+- Audio operators: Oscillator (sine/saw/square/tri), Gain, Drum (percussive synth), Envelope (control-rate)
+- Demo graphs: `graphs/audio_demo.json` (Oscillator → Gain), `graphs/av_sync_demo.json` (Clock → Envelope → Shape/radius + Clock → Drum/phase)
+- Note: the AV sync demo uses Clock as a shared trigger — true audio→control feedback (Phase 7) is not yet built
+- Commits: `eceb89b`, `3a664f7`
 
 ### Phase 7: Audio Drives Visuals
 
