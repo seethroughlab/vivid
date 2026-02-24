@@ -10,13 +10,35 @@ The phases are grouped into tiers. Each tier represents a qualitative shift in w
 
 The goal is to validate every risky integration before building anything on top. If Dawn doesn't link, or operator dylibs crash on dlopen, or audio clicks and pops — you want to know now, not after building a UI.
 
-### Phase 1: Window
+### Phase 1: Window ✓
 
 Set up CMake, vendor dependencies (Dawn, GLFW, miniaudio, stb, yyjson), create a GLFW window with a Metal surface via Dawn.
 
 **Verify:** `cmake --build build && ./build/vivid` opens a window cleared to `#16191D`. Nothing else.
 
 **Why it matters:** Validates the build system and Dawn integration — CMake finding Dawn's pre-built libraries, GLFW creating a Metal surface, Dawn rendering to it. Everything downstream depends on this working.
+
+<details>
+<summary><strong>Implementation Notes</strong></summary>
+
+**WebGPU backend:** Uses [eliemichel/WebGPU-distribution](https://github.com/eliemichel/WebGPU-distribution) via FetchContent (`main` branch), which provides **wgpu-native v24** pre-built binaries — not Dawn. wgpu-native implements the same WebGPU C API over Metal on macOS. The pre-built distribution avoids a 30+ minute Dawn source build.
+
+**API version:** wgpu-native v24 uses the 2024+ WebGPU C spec, which differs from older tutorials:
+- Labels are `WGPUStringView` (struct with `data` + `length`), not `const char*`
+- Adapter/device requests use `WGPURequestAdapterCallbackInfo` / `WGPURequestDeviceCallbackInfo` structs with `WGPUCallbackMode`, returning `WGPUFuture`
+- `wgpuSurfaceGetPreferredFormat` does not exist — use `wgpuSurfaceGetCapabilities` instead
+- Error/device-lost callbacks are set via fields on `WGPUDeviceDescriptor` (`deviceLostCallbackInfo`, `uncapturedErrorCallbackInfo`), not standalone setters
+- Surface texture status uses `SuccessOptimal` / `SuccessSuboptimal` (no plain `Success`)
+- `wgpuDevicePoll` (in `webgpu/wgpu.h` extension header) replaces Dawn's `wgpuDeviceTick`
+
+**Dependencies (Phase 1 only):**
+- GLFW 3.4 — git submodule at `deps/glfw`
+- glfw3webgpu — git submodule at `deps/glfw3webgpu`, provides `glfwCreateWindowWGPUSurface()`
+- miniaudio, stb, yyjson deferred to later phases
+
+**Surface format:** Reports `BGRA8Unorm` (format 24) on macOS/Apple Silicon. Clear color uses raw unorm values (`0.0863, 0.0980, 0.1137`); sRGB formats would use linearized values instead.
+
+</details>
 
 ### Phase 2: First Operator
 

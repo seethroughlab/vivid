@@ -1,0 +1,89 @@
+#ifndef VIVID_OPERATOR_API_TYPES_H
+#define VIVID_OPERATOR_API_TYPES_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+typedef enum VividDomain {
+    VIVID_DOMAIN_CONTROL = 0,
+    VIVID_DOMAIN_AUDIO   = 1,
+    VIVID_DOMAIN_GPU     = 2,
+} VividDomain;
+
+typedef enum VividParamType {
+    VIVID_PARAM_FLOAT = 0,
+    VIVID_PARAM_INT   = 1,
+    VIVID_PARAM_BOOL  = 2,
+} VividParamType;
+
+typedef enum VividPortType {
+    VIVID_PORT_CONTROL_FLOAT = 0,
+    VIVID_PORT_CONTROL_INT   = 1,
+    VIVID_PORT_CONTROL_BOOL  = 2,
+} VividPortType;
+
+typedef enum VividPortDirection {
+    VIVID_PORT_INPUT  = 0,
+    VIVID_PORT_OUTPUT = 1,
+} VividPortDirection;
+
+// ---------------------------------------------------------------------------
+// Descriptors
+// ---------------------------------------------------------------------------
+
+typedef struct VividParamDescriptor {
+    const char*    name;
+    VividParamType type;
+    float          default_value;
+    float          min_value;
+    float          max_value;
+} VividParamDescriptor;
+
+typedef struct VividPortDescriptor {
+    const char*       name;
+    VividPortType     type;
+    VividPortDirection direction;
+} VividPortDescriptor;
+
+typedef struct VividOperatorDescriptor {
+    const char*               name;
+    VividDomain               domain;
+    uint32_t                  param_count;
+    const VividParamDescriptor* params;
+    uint32_t                  port_count;
+    const VividPortDescriptor*  ports;
+} VividOperatorDescriptor;
+
+// ---------------------------------------------------------------------------
+// Process context — passed each tick
+// ---------------------------------------------------------------------------
+
+typedef struct VividProcessContext {
+    double    time;
+    double    delta_time;
+    uint64_t  frame;
+    float*    param_values;   // indexed by param descriptor order
+    float*    output_values;  // indexed by port descriptor order (outputs only)
+} VividProcessContext;
+
+// ---------------------------------------------------------------------------
+// Function pointer typedefs (dlopen entry points)
+// ---------------------------------------------------------------------------
+
+typedef const VividOperatorDescriptor* (*VividDescriptorFn)(void);
+typedef void*  (*VividCreateFn)(void);
+typedef void   (*VividDestroyFn)(void* instance);
+typedef void   (*VividProcessFn)(void* instance, const VividProcessContext* ctx);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // VIVID_OPERATOR_API_TYPES_H

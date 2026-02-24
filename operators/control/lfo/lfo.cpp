@@ -1,0 +1,52 @@
+#include "operator_api/operator.h"
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+struct LFO : vivid::OperatorBase {
+    static constexpr const char* kName   = "LFO";
+    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
+
+    vivid::Param<float> frequency{"frequency", 1.0f, 0.01f, 20.0f};
+    vivid::Param<float> amplitude{"amplitude", 1.0f, 0.0f, 1.0f};
+    vivid::Param<float> offset   {"offset",    0.0f, 0.0f, 1.0f};
+    vivid::Param<int>   waveform {"waveform",  0,    0,    3};
+
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out.push_back(&frequency);
+        out.push_back(&amplitude);
+        out.push_back(&offset);
+        out.push_back(&waveform);
+    }
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"value", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+    }
+
+    void process(const VividProcessContext* ctx) override {
+        double phase = std::fmod(ctx->time * static_cast<double>(frequency.value), 1.0);
+
+        double raw = 0.0;
+        switch (waveform.int_value()) {
+            case 0: // sine
+                raw = std::sin(phase * 2.0 * M_PI);
+                break;
+            case 1: // saw (rising from -1 to +1)
+                raw = 2.0 * phase - 1.0;
+                break;
+            case 2: // square
+                raw = phase < 0.5 ? 1.0 : -1.0;
+                break;
+            case 3: // triangle
+                raw = 4.0 * (phase < 0.5 ? phase : (1.0 - phase)) - 1.0;
+                break;
+        }
+
+        float output = static_cast<float>(raw) * amplitude.value + offset.value;
+        ctx->output_values[0] = output;
+    }
+};
+
+VIVID_REGISTER(LFO)
