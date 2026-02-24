@@ -28,6 +28,10 @@ add_subdirectory(deps/glfw3webgpu)
 add_library(yyjson STATIC deps/yyjson/yyjson.c)
 target_include_directories(yyjson PUBLIC deps/yyjson)
 
+# --- miniaudio (vendored, header-only) ---
+add_library(miniaudio INTERFACE)
+target_include_directories(miniaudio INTERFACE deps/miniaudio)
+
 # --- Operator API (header-only interface library) ---
 add_library(vivid_operator_api INTERFACE)
 target_include_directories(vivid_operator_api INTERFACE src)
@@ -45,10 +49,31 @@ add_library(math MODULE operators/control/math/math.cpp)
 set_target_properties(math PROPERTIES PREFIX "" SUFFIX ".dylib")
 target_link_libraries(math PRIVATE vivid_operator_api)
 
+add_library(envelope MODULE operators/control/envelope/envelope.cpp)
+set_target_properties(envelope PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(envelope PRIVATE vivid_operator_api)
+
 # --- GPU operator plugins ---
 add_library(noise MODULE operators/gpu/noise/noise.cpp)
 set_target_properties(noise PROPERTIES PREFIX "" SUFFIX ".dylib")
 target_link_libraries(noise PRIVATE vivid_operator_api webgpu)
+
+add_library(shape MODULE operators/gpu/shape/shape.cpp)
+set_target_properties(shape PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(shape PRIVATE vivid_operator_api webgpu)
+
+# --- Audio operator plugins ---
+add_library(oscillator MODULE operators/audio/oscillator/oscillator.cpp)
+set_target_properties(oscillator PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(oscillator PRIVATE vivid_operator_api)
+
+add_library(gain MODULE operators/audio/gain/gain.cpp)
+set_target_properties(gain PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(gain PRIVATE vivid_operator_api)
+
+add_library(drum MODULE operators/audio/drum/drum.cpp)
+set_target_properties(drum PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(drum PRIVATE vivid_operator_api)
 
 # --- Vivid executable ---
 add_executable(vivid
@@ -59,13 +84,16 @@ add_executable(vivid
     src/runtime/operator_registry.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
 )
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu vivid_operator_api yyjson)
+target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio)
 
-# Copy demo graph to build directory
+# Copy demo graphs to build directory
 configure_file(graphs/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
+configure_file(graphs/audio_demo.json ${CMAKE_BINARY_DIR}/audio_demo.json COPYONLY)
+configure_file(graphs/av_sync_demo.json ${CMAKE_BINARY_DIR}/av_sync_demo.json COPYONLY)
 
 # Copy Dawn shared library next to the executable (if dynamically linked)
 target_copy_webgpu_binaries(vivid)

@@ -61,6 +61,7 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         // Generation-based cooking metadata
         ns.time_dependent = desc->time_dependent != 0;
         ns.is_gpu = (desc->domain == VIVID_DOMAIN_GPU);
+        ns.is_audio = (desc->domain == VIVID_DOMAIN_AUDIO);
         ns.generation = 0;
         ns.prev_output_values.resize(ns.output_port_count, 0.0f);
 
@@ -194,6 +195,9 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
     for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
         auto& ns = nodes_[ni];
 
+        // Skip audio-domain nodes — they run on the audio thread
+        if (ns.is_audio) continue;
+
         // Zero input values (unwired ports default to 0.0)
         std::fill(ns.input_values.begin(), ns.input_values.end(), 0.0f);
 
@@ -267,6 +271,15 @@ bool Scheduler::has_gpu_operators() const {
     for (const auto& ns : nodes_) {
         const VividOperatorDescriptor* desc = ns.loader->descriptor();
         if (desc->domain == VIVID_DOMAIN_GPU)
+            return true;
+    }
+    return false;
+}
+
+bool Scheduler::has_audio_operators() const {
+    for (const auto& ns : nodes_) {
+        const VividOperatorDescriptor* desc = ns.loader->descriptor();
+        if (desc->domain == VIVID_DOMAIN_AUDIO)
             return true;
     }
     return false;

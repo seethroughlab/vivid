@@ -25,6 +25,7 @@ struct NodeState {
     // Generation-based cooking
     bool time_dependent = false;
     bool is_gpu = false;
+    bool is_audio = false;
     uint64_t generation = 0;
     std::vector<uint32_t> upstream_nodes;       // indices of nodes feeding into this one
     std::vector<uint64_t> upstream_gens_cached;  // generation of each upstream at last cook
@@ -44,6 +45,7 @@ public:
     void shutdown();
     const std::vector<NodeState>& nodes() const { return nodes_; }
     bool has_gpu_operators() const;
+    bool has_audio_operators() const;
 
 private:
     std::vector<NodeState> nodes_;

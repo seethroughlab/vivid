@@ -27,6 +27,7 @@ typedef enum VividPortType {
     VIVID_PORT_CONTROL_FLOAT = 0,
     VIVID_PORT_CONTROL_INT   = 1,
     VIVID_PORT_CONTROL_BOOL  = 2,
+    VIVID_PORT_AUDIO_FLOAT   = 3,
 } VividPortType;
 
 typedef enum VividPortDirection {
@@ -74,6 +75,7 @@ typedef struct VividProcessContext {
     float*    input_values;   // indexed by input port order (VIVID_PORT_INPUT only)
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
     void*     gpu;            // VividGpuState* for GPU operators, NULL otherwise
+    void*     audio;          // VividAudioState* for audio operators, NULL otherwise
 } VividProcessContext;
 
 // ---------------------------------------------------------------------------

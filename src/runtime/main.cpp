@@ -3,6 +3,7 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
+#include "runtime/audio_engine.h"
 #include "operator_api/gpu_operator.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
@@ -118,6 +119,17 @@ int main(int argc, char* argv[]) {
 
     bool has_gpu_ops = graph_loaded && scheduler.has_gpu_operators();
 
+    // --- Audio engine ---
+    vivid::AudioEngine audio_engine;
+    bool has_audio = false;
+    if (graph_loaded && scheduler.has_audio_operators()) {
+        if (audio_engine.build(graph, registry, scheduler)) {
+            if (audio_engine.start()) {
+                has_audio = true;
+            }
+        }
+    }
+
     double prev_time = glfwGetTime();
     uint64_t frame_count = 0;
 
@@ -146,6 +158,10 @@ int main(int argc, char* argv[]) {
             gpu_state.output_format       = kOffscreenFormat;
 
             scheduler.tick(now, dt, frame_count, &gpu_state);
+
+            if (has_audio) {
+                audio_engine.push_params(scheduler);
+            }
 
             if (frame_count % 60 == 0) {
                 std::fprintf(stderr, "[vivid] frame=%llu",
@@ -196,6 +212,9 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Shutdown ---
+    if (has_audio) {
+        audio_engine.shutdown();
+    }
     if (graph_loaded) {
         scheduler.shutdown();
     }

@@ -1,0 +1,9 @@
+{
+  "nodes": {
+    "osc1":  { "type": "Oscillator", "params": { "frequency": 440.0, "amplitude": 0.5 } },
+    "gain1": { "type": "Gain",       "params": { "gain": 0.8 } }
+  },
+  "connections": [
+    { "from": "osc1/output", "to": "gain1/input" }
+  ]
+}

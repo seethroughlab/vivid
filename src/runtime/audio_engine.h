@@ -1,0 +1,90 @@
+#ifndef VIVID_RUNTIME_AUDIO_ENGINE_H
+#define VIVID_RUNTIME_AUDIO_ENGINE_H
+
+#include "runtime/scheduler.h"
+#include "runtime/graph.h"
+#include "runtime/operator_registry.h"
+#include "operator_api/audio_operator.h"
+#include <atomic>
+#include <vector>
+#include <string>
+#include <unordered_map>
+
+struct ma_device;
+
+namespace vivid {
+
+struct AudioNodeState {
+    std::string node_id;
+    OperatorLoader* loader;
+    void* instance;
+    uint32_t input_port_count;
+    uint32_t output_port_count;
+    uint32_t param_count;
+    std::vector<float> param_values;
+
+    // Audio buffers: [port][sample]
+    std::vector<std::vector<float>> input_buffers;
+    std::vector<std::vector<float>> output_buffers;
+
+    // Port name → index mappings
+    std::unordered_map<std::string, uint32_t> input_port_indices;
+    std::unordered_map<std::string, uint32_t> output_port_indices;
+    std::unordered_map<std::string, uint32_t> param_indices;
+};
+
+// Wire within the audio subgraph (audio output → audio input)
+struct AudioWire {
+    uint32_t from_node_idx, from_port_idx;
+    uint32_t to_node_idx, to_port_idx;
+};
+
+// Cross-domain wire: control output → audio param
+struct CrossDomainWire {
+    std::string control_node_id;
+    uint32_t control_output_port_idx;
+    uint32_t audio_node_idx;
+    uint32_t audio_param_idx;
+};
+
+struct ParamSnapshot {
+    std::vector<std::vector<float>> node_params;  // [audio_node_idx][param_idx]
+};
+
+class AudioEngine {
+public:
+    AudioEngine();
+    ~AudioEngine();
+
+    bool build(const Graph& graph, OperatorRegistry& registry, const Scheduler& scheduler);
+    bool start();
+    void push_params(const Scheduler& scheduler);
+    void shutdown();
+
+    static constexpr uint32_t kBufferSize = 256;
+    static constexpr uint32_t kSampleRate = 48000;
+
+private:
+    // Called from the audio thread
+    void audio_callback(float* output, uint32_t frame_count);
+    static void ma_data_callback(struct ma_device* device, void* output, const void* input, unsigned int frame_count);
+
+    std::vector<AudioNodeState> nodes_;
+    std::vector<AudioWire> wires_;
+    std::vector<CrossDomainWire> cross_wires_;
+
+    // Double-buffered param bridge
+    ParamSnapshot snapshots_[2];
+    std::atomic<int> active_{0};
+
+    // Audio time tracking
+    uint64_t audio_frame_ = 0;
+
+    // miniaudio device (opaque pointer to avoid including miniaudio.h in header)
+    ma_device* device_ = nullptr;
+    bool running_ = false;
+};
+
+} // namespace vivid
+
+#endif // VIVID_RUNTIME_AUDIO_ENGINE_H
