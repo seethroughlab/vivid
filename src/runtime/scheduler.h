@@ -48,6 +48,11 @@ public:
     bool has_audio_operators() const;
     void inject_external_output(uint32_t node_idx, uint32_t port_idx, float value);
 
+    // Hot-reload: destroy old instances, swap dylib, recreate with param reconciliation
+    bool reload_operator(const std::string& type_name, OperatorRegistry& registry,
+                         const std::string& new_dylib_path);
+    std::string type_name(uint32_t node_idx) const;
+
 private:
     std::vector<NodeState> nodes_;
     std::vector<Wire> wires_;

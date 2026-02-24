@@ -30,6 +30,11 @@ bool OperatorRegistry::scan(const char* directory) {
         const VividOperatorDescriptor* desc = loader->descriptor();
         std::string type_name = desc->name;
         std::fprintf(stderr, "[vivid] Registry: loaded %s from %s\n", type_name.c_str(), name);
+
+        // Map cmake target name (filename stem) → descriptor type name
+        std::string target_name(name, len - 6);  // strip ".dylib"
+        target_to_type_[target_name] = type_name;
+
         loaders_[type_name] = std::move(loader);
     }
 
@@ -42,6 +47,30 @@ OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
     if (it == loaders_.end())
         return nullptr;
     return it->second.get();
+}
+
+const std::string* OperatorRegistry::type_name_for_target(const std::string& target) const {
+    auto it = target_to_type_.find(target);
+    if (it == target_to_type_.end())
+        return nullptr;
+    return &it->second;
+}
+
+bool OperatorRegistry::reload_operator(const std::string& type_name, const std::string& new_dylib_path) {
+    auto it = loaders_.find(type_name);
+    if (it == loaders_.end()) {
+        std::fprintf(stderr, "[vivid] Registry: unknown type '%s' for reload\n", type_name.c_str());
+        return false;
+    }
+
+    // OperatorLoader::load() calls unload() (dlclose) then dlopen on new path
+    if (!it->second->load(new_dylib_path.c_str())) {
+        std::fprintf(stderr, "[vivid] Registry: failed to reload '%s' from %s\n",
+            type_name.c_str(), new_dylib_path.c_str());
+        return false;
+    }
+
+    return true;
 }
 
 } // namespace vivid

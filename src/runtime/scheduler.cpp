@@ -302,6 +302,113 @@ void Scheduler::inject_external_output(uint32_t node_idx, uint32_t port_idx, flo
     }
 }
 
+std::string Scheduler::type_name(uint32_t node_idx) const {
+    if (node_idx >= nodes_.size()) return {};
+    const auto* desc = nodes_[node_idx].loader->descriptor();
+    return desc ? desc->name : std::string{};
+}
+
+bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& registry,
+                                const std::string& new_dylib_path) {
+    // 1. Find all nodes of this type and save their param values by name
+    struct SavedParams {
+        uint32_t node_idx;
+        std::unordered_map<std::string, float> values;
+    };
+    std::vector<SavedParams> saved;
+
+    for (uint32_t i = 0; i < static_cast<uint32_t>(nodes_.size()); ++i) {
+        auto& ns = nodes_[i];
+        const auto* desc = ns.loader->descriptor();
+        if (!desc || std::string(desc->name) != type_name) continue;
+
+        SavedParams sp;
+        sp.node_idx = i;
+        // Save param values by name
+        for (const auto& [name, idx] : ns.param_indices) {
+            sp.values[name] = ns.param_values[idx];
+        }
+        saved.push_back(std::move(sp));
+    }
+
+    if (saved.empty()) return true;  // no instances to reload
+
+    // 2. Destroy old instances (using old dylib's vivid_destroy)
+    for (const auto& sp : saved) {
+        auto& ns = nodes_[sp.node_idx];
+        if (ns.instance) {
+            ns.loader->destroy_instance(ns.instance);
+            ns.instance = nullptr;
+        }
+    }
+
+    // 3. Reload the dylib (dlclose old, dlopen new)
+    if (!registry.reload_operator(type_name, new_dylib_path)) {
+        std::fprintf(stderr, "[vivid] Scheduler: dylib reload failed for '%s'\n", type_name.c_str());
+        return false;
+    }
+
+    // 4. Update loader pointer and recreate instances with param reconciliation
+    OperatorLoader* new_loader = registry.find(type_name);
+    if (!new_loader) return false;
+    const auto* new_desc = new_loader->descriptor();
+    if (!new_desc) return false;
+
+    for (const auto& sp : saved) {
+        auto& ns = nodes_[sp.node_idx];
+        ns.loader = new_loader;
+        ns.instance = new_loader->create_instance();
+
+        // Rebuild port/param indices from new descriptor
+        ns.input_port_count = 0;
+        ns.output_port_count = 0;
+        ns.input_port_indices.clear();
+        ns.output_port_indices.clear();
+        ns.param_indices.clear();
+
+        for (uint32_t p = 0; p < new_desc->port_count; ++p) {
+            if (new_desc->ports[p].direction == VIVID_PORT_INPUT) {
+                ns.input_port_indices[new_desc->ports[p].name] = ns.input_port_count++;
+            } else {
+                ns.output_port_indices[new_desc->ports[p].name] = ns.output_port_count++;
+            }
+        }
+
+        ns.input_values.assign(ns.input_port_count, 0.0f);
+        ns.output_values.assign(ns.output_port_count, 0.0f);
+        ns.prev_output_values.assign(ns.output_port_count, 0.0f);
+
+        // Implicit analysis ports for audio-domain nodes
+        if (new_desc->domain == VIVID_DOMAIN_AUDIO) {
+            ns.output_port_indices["rms"] = ns.output_port_count++;
+            ns.output_port_indices["peak"] = ns.output_port_count++;
+            ns.output_values.resize(ns.output_port_count, 0.0f);
+            ns.prev_output_values.resize(ns.output_port_count, 0.0f);
+        }
+
+        // Reconcile params by name: preserve values that still exist, use defaults for new
+        ns.param_values.resize(new_desc->param_count);
+        for (uint32_t p = 0; p < new_desc->param_count; ++p) {
+            ns.param_indices[new_desc->params[p].name] = p;
+            auto it = sp.values.find(new_desc->params[p].name);
+            if (it != sp.values.end()) {
+                ns.param_values[p] = it->second;  // preserve old value
+            } else {
+                ns.param_values[p] = new_desc->params[p].default_value;  // new param
+            }
+        }
+
+        ns.time_dependent = new_desc->time_dependent != 0;
+        ns.is_gpu = (new_desc->domain == VIVID_DOMAIN_GPU);
+        ns.is_audio = (new_desc->domain == VIVID_DOMAIN_AUDIO);
+
+        // Bump generation to force downstream recompute
+        ns.generation++;
+    }
+
+    return true;
+}
+
 void Scheduler::shutdown() {
     for (auto& ns : nodes_) {
         if (ns.instance) {

@@ -4,12 +4,15 @@
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "runtime/audio_engine.h"
+#include "runtime/file_watcher.h"
+#include "runtime/hot_reload.h"
 #include "operator_api/gpu_operator.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 #include <GLFW/glfw3.h>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 
 // #16191D in sRGB → linear: pow(x/255, 2.2)
 static constexpr double kClearLinear[4]  = { 0.00699, 0.00821, 0.01041, 1.0 };
@@ -130,6 +133,42 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // --- Hot-reload ---
+    vivid::FileWatcher file_watcher;
+    vivid::HotReloader hot_reloader;
+    bool hot_reload_enabled = false;
+    {
+        // Derive source root from build dir: the build dir is the cwd,
+        // and the source root is typically one level up, or passed via --src-dir.
+        std::string src_dir;
+        for (int i = 1; i < argc - 1; ++i) {
+            if (std::strcmp(argv[i], "--src-dir") == 0) {
+                src_dir = argv[i + 1];
+                break;
+            }
+        }
+        if (src_dir.empty()) {
+            // Default: assume build dir is <project_root>/build
+            auto cwd = std::filesystem::current_path();
+            auto parent = cwd.parent_path();
+            if (std::filesystem::exists(parent / "operators")) {
+                src_dir = parent.string();
+            }
+        }
+
+        if (!src_dir.empty()) {
+            std::string operators_dir = src_dir + "/operators";
+            std::string build_dir = std::filesystem::current_path().string();
+            if (file_watcher.start(operators_dir)) {
+                hot_reloader.start(build_dir);
+                hot_reload_enabled = true;
+                std::fprintf(stderr, "[vivid] Hot-reload enabled (watching %s)\n", operators_dir.c_str());
+            }
+        } else {
+            std::fprintf(stderr, "[vivid] Hot-reload disabled (operators/ not found; use --src-dir)\n");
+        }
+    }
+
     double prev_time = glfwGetTime();
     uint64_t frame_count = 0;
 
@@ -156,6 +195,62 @@ int main(int argc, char* argv[]) {
             gpu_state.output_width        = kWidth;
             gpu_state.output_height       = kHeight;
             gpu_state.output_format       = kOffscreenFormat;
+
+            // --- Hot-reload polling ---
+            if (hot_reload_enabled) {
+                // 1. Poll file watcher → queue rebuilds
+                auto changes = file_watcher.poll_changes();
+                for (const auto& change : changes) {
+                    hot_reloader.queue_rebuild(change.target_name);
+                }
+
+                // 2. Poll reloader → perform reload sequence
+                auto ready = hot_reloader.poll_ready();
+                for (const auto& result : ready) {
+                    if (!result.success) continue;
+
+                    const std::string* type_name_ptr = registry.type_name_for_target(result.target_name);
+                    if (!type_name_ptr) {
+                        std::fprintf(stderr, "[vivid] Hot-reload: unknown target '%s'\n",
+                            result.target_name.c_str());
+                        continue;
+                    }
+                    const std::string& tn = *type_name_ptr;
+
+                    std::fprintf(stderr, "[vivid] Hot-reload: reloading %s...\n", tn.c_str());
+
+                    // Check if this is an audio operator
+                    bool is_audio_op = false;
+                    for (const auto& ns : scheduler.nodes()) {
+                        if (std::string(ns.loader->descriptor()->name) == tn &&
+                            ns.loader->descriptor()->domain == VIVID_DOMAIN_AUDIO) {
+                            is_audio_op = true;
+                            break;
+                        }
+                    }
+
+                    // Pause audio before touching the dylib if this is an audio operator
+                    if (is_audio_op && has_audio) {
+                        audio_engine.pause();
+                    }
+
+                    if (scheduler.reload_operator(tn, registry, result.staged_dylib_path)) {
+                        if (is_audio_op && has_audio) {
+                            // AudioEngine needs to reload too (loader already swapped by scheduler)
+                            // This recreates audio instances and resumes playback
+                            audio_engine.reload_operator(tn, registry);
+                        }
+                        std::fprintf(stderr, "[vivid] Hot-reload: %s reloaded successfully\n", tn.c_str());
+                    } else {
+                        std::fprintf(stderr, "[vivid] Hot-reload: %s reload FAILED\n", tn.c_str());
+                    }
+
+                    // Ensure audio is resumed even if reload failed
+                    if (is_audio_op && has_audio) {
+                        audio_engine.resume();  // safe to call if already running
+                    }
+                }
+            }
 
             if (has_audio) {
                 audio_engine.inject_analysis(scheduler);  // audio→control
@@ -216,6 +311,10 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Shutdown ---
+    if (hot_reload_enabled) {
+        file_watcher.stop();
+        hot_reloader.stop();
+    }
     if (has_audio) {
         audio_engine.shutdown();
     }

@@ -85,6 +85,8 @@ add_executable(vivid
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/file_watcher.cpp
+    src/runtime/hot_reload.cpp
 )
 
 target_include_directories(vivid PRIVATE src)
@@ -107,3 +109,28 @@ if(APPLE)
         "-framework QuartzCore"
     )
 endif()
+
+# --- Tests ---
+# Test operator plugins (two versions of the same operator)
+add_library(test_op_v1 MODULE tests/operators/test_op_v1.cpp)
+set_target_properties(test_op_v1 PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(test_op_v1 PRIVATE vivid_operator_api)
+
+add_library(test_op_v2 MODULE tests/operators/test_op_v2.cpp)
+set_target_properties(test_op_v2 PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(test_op_v2 PRIVATE vivid_operator_api)
+
+# Hot-reload integration test (no GPU, no audio, no window)
+add_executable(test_hot_reload
+    tests/test_hot_reload.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_hot_reload PRIVATE src)
+target_link_libraries(test_hot_reload PRIVATE vivid_operator_api yyjson)
+add_dependencies(test_hot_reload test_op_v1 test_op_v2)
+
+# Copy test graph to build directory
+configure_file(tests/graphs/test_reload.json ${CMAKE_BINARY_DIR}/test_reload.json COPYONLY)

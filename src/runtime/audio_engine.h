@@ -74,6 +74,11 @@ public:
     void inject_analysis(Scheduler& scheduler);
     void shutdown();
 
+    // Hot-reload support
+    void pause();
+    void resume();
+    bool reload_operator(const std::string& type_name, OperatorRegistry& registry);
+
     static constexpr uint32_t kBufferSize = 256;
     static constexpr uint32_t kSampleRate = 48000;
 

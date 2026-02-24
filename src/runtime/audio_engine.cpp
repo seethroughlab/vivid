@@ -290,6 +290,102 @@ void AudioEngine::inject_analysis(Scheduler& scheduler) {
     }
 }
 
+void AudioEngine::pause() {
+    if (device_ && running_) {
+        ma_device_stop(device_);
+        running_ = false;
+    }
+}
+
+void AudioEngine::resume() {
+    if (device_ && !running_) {
+        if (ma_device_start(device_) == MA_SUCCESS) {
+            running_ = true;
+        } else {
+            std::fprintf(stderr, "[vivid] AudioEngine: failed to resume\n");
+        }
+    }
+}
+
+bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry& registry) {
+    pause();
+
+    OperatorLoader* new_loader = registry.find(type_name);
+    if (!new_loader) {
+        resume();
+        return false;
+    }
+    const auto* new_desc = new_loader->descriptor();
+    if (!new_desc) {
+        resume();
+        return false;
+    }
+
+    for (auto& ns : nodes_) {
+        const auto* old_desc = ns.loader->descriptor();
+        if (!old_desc || std::string(old_desc->name) != type_name) continue;
+
+        // Save param values by name
+        std::unordered_map<std::string, float> saved_params;
+        for (const auto& [name, idx] : ns.param_indices) {
+            saved_params[name] = ns.param_values[idx];
+        }
+
+        // Destroy old instance
+        if (ns.instance) {
+            ns.loader->destroy_instance(ns.instance);
+            ns.instance = nullptr;
+        }
+
+        // Update loader and create new instance
+        ns.loader = new_loader;
+        ns.instance = new_loader->create_instance();
+
+        // Rebuild port indices
+        ns.input_port_count = 0;
+        ns.output_port_count = 0;
+        ns.input_port_indices.clear();
+        ns.output_port_indices.clear();
+        ns.param_indices.clear();
+
+        for (uint32_t p = 0; p < new_desc->port_count; ++p) {
+            if (new_desc->ports[p].direction == VIVID_PORT_INPUT) {
+                ns.input_port_indices[new_desc->ports[p].name] = ns.input_port_count++;
+            } else {
+                ns.output_port_indices[new_desc->ports[p].name] = ns.output_port_count++;
+            }
+        }
+
+        ns.input_buffers.resize(ns.input_port_count, std::vector<float>(kBufferSize, 0.0f));
+        ns.output_buffers.resize(ns.output_port_count, std::vector<float>(kBufferSize, 0.0f));
+
+        // Reconcile params by name
+        ns.param_count = new_desc->param_count;
+        ns.param_values.resize(new_desc->param_count);
+        for (uint32_t p = 0; p < new_desc->param_count; ++p) {
+            ns.param_indices[new_desc->params[p].name] = p;
+            auto it = saved_params.find(new_desc->params[p].name);
+            if (it != saved_params.end()) {
+                ns.param_values[p] = it->second;
+            } else {
+                ns.param_values[p] = new_desc->params[p].default_value;
+            }
+        }
+    }
+
+    // Update param snapshots to match new layout
+    uint32_t n = static_cast<uint32_t>(nodes_.size());
+    for (auto& snap : snapshots_) {
+        snap.node_params.resize(n);
+        for (uint32_t i = 0; i < n; ++i) {
+            snap.node_params[i] = nodes_[i].param_values;
+        }
+    }
+
+    resume();
+    return true;
+}
+
 void AudioEngine::shutdown() {
     if (device_) {
         if (running_) {
