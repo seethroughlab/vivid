@@ -6,7 +6,7 @@ Section 3 of the PRD describes *what* the experimentation interfaces are. This d
 
 **Decision: The interface runs natively in the same GPU context as the Vivid runtime.** This is constrained by a single non-negotiable requirement: the "See Every Step" principle demands live GPU texture thumbnails for every node in the chain, potentially 20+ simultaneously at frame rate.
 
-A web-based interface (React/Svelte + WebSocket) was eliminated because GPU→CPU readback, encoding, and transport don't scale to 20+ thumbnails at 30fps. A hybrid approach using Chromium Embedded Framework was eliminated after direct implementation experience — texture sharing between wgpu-native's GPU context and Chromium's compositor proved unworkable, and the module added ~200MB of dependency for a fragile integration.
+A web-based interface (React/Svelte + WebSocket) was eliminated because GPU→CPU readback, encoding, and transport don't scale to 20+ thumbnails at 30fps. A hybrid approach using Chromium Embedded Framework was eliminated after direct implementation experience — texture sharing between Dawn's GPU context and Chromium's compositor proved unworkable, and the module added ~200MB of dependency for a fragile integration.
 
 Native rendering gives zero-copy texture thumbnails (every intermediate texture is a handle that can be blitted directly), no process boundary, no IPC overhead, and sub-frame latency for parameter changes. The tradeoff is slower UI iteration compared to web technologies.
 

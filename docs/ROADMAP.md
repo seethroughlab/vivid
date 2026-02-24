@@ -8,23 +8,23 @@ The phases are grouped into tiers. Each tier represents a qualitative shift in w
 
 ## Tier 1: Can It Run?
 
-The goal is to validate every risky integration before building anything on top. If Zig can't load wgpu, or C++ dylibs crash on dlopen, or audio clicks and pops — you want to know now, not after building a UI.
+The goal is to validate every risky integration before building anything on top. If Dawn doesn't link, or operator dylibs crash on dlopen, or audio clicks and pops — you want to know now, not after building a UI.
 
 ### Phase 1: Window
 
-Build the Zig build system, vendor dependencies, get wgpu-native linked, create a GLFW window with a Metal surface.
+Set up CMake, vendor dependencies (Dawn, GLFW, miniaudio, stb, yyjson), create a GLFW window with a Metal surface via Dawn.
 
-**Verify:** `zig build run` opens a window cleared to `#16191D`. Nothing else.
+**Verify:** `cmake --build build && ./build/vivid` opens a window cleared to `#16191D`. Nothing else.
 
-**Why it matters:** Validates the single riskiest integration — Zig talking to wgpu-native's pre-built Rust binaries. If this doesn't link, the entire toolchain choice is in question. Everything downstream depends on this working.
+**Why it matters:** Validates the build system and Dawn integration — CMake finding Dawn's pre-built libraries, GLFW creating a Metal surface, Dawn rendering to it. Everything downstream depends on this working.
 
 ### Phase 2: First Operator
 
-Define the C ABI contract (`operator.h`, `types.h`). Build a single Control operator (LFO) as a .dylib. Load it via dlopen, read its parameter metadata, call its process function.
+Define the operator contract (`operator.h`, `types.h`). Build a single Control operator (LFO) as a .dylib. Load it via dlopen, read its parameter metadata, call its process function.
 
 **Verify:** Runtime loads `lfo.dylib`, prints parameter descriptors, ticks the LFO, prints oscillating values to stdout.
 
-**Why it matters:** Validates that Zig can compile C++, produce a shared library, load it at runtime, and call across the ABI boundary without crashing. This is the second riskiest integration. If it fails, the fallback is invoking system clang for operator builds — better to know now.
+**Why it matters:** Validates the hot-reload architecture — compiling a single .cpp to .dylib, loading it at runtime via `extern "C"` entry points, and calling across the dlopen boundary without crashing. This is the foundation for every operator.
 
 ### Phase 3: Graph + Data Flow
 
@@ -42,11 +42,11 @@ The runtime works. Now make it produce output a human can perceive.
 
 ### Phase 4: GPU Rendering
 
-Build the GPU operator pipeline: runtime provides wgpu device/queue/output texture to operators via the C ABI. First GPU operator (Noise) with a WGSL shader. Fullscreen blit to the window.
+Build the GPU operator pipeline: runtime provides Dawn device/queue/output texture to operators. First GPU operator (Noise) with a WGSL shader. Fullscreen blit to the window.
 
 **Verify:** Window shows animated procedural noise. A control value (hardcoded, not yet wired) changes the noise scale.
 
-**Why it matters:** First visual output. Proves the GPU operator model works — C++ host code dispatching WGSL compute/render passes via wgpu-native's C API. Also validates that the window's render loop can present GPU operator output at frame rate.
+**Why it matters:** First visual output. Proves the GPU operator model works — C++ host code dispatching WGSL compute/render passes via Dawn's WebGPU API. Also validates that the window's render loop can present GPU operator output at frame rate.
 
 ### Phase 5: Control Drives Visuals
 
@@ -80,7 +80,7 @@ Output works. Now make it interactive — something you can actually work with, 
 
 ### Phase 8: Hot-Reload
 
-File watching (kqueue) on operator directories. On save: recompile the changed operator, dlclose the old library, dlopen the new one, re-create the operator instance. Parameters survive (they live in the parameter store, outside the operator).
+File watching (kqueue) on operator directories. On save: recompile the changed operator via system clang, dlclose the old library, dlopen the new one, re-create the operator instance. Parameters survive (they live in the parameter store, outside the operator).
 
 **Verify:** Edit noise.wgsl in your editor. Save. Within 1–3 seconds, the visual output changes. LFO frequency (a parameter) is unchanged. No crash, no restart.
 
@@ -88,7 +88,7 @@ File watching (kqueue) on operator directories. On save: recompile the changed o
 
 ### Phase 9: REPL
 
-Text input at the bottom of the window (minimal: just a text field, not a full chat UI). Build the Runtime API as an internal Zig interface. REPL commands map to Runtime API calls. Topology changes buffered and applied between frames; parameter changes immediate.
+Text input at the bottom of the window (minimal: just a text field, not a full chat UI). Build the Runtime API as an internal C++ interface. REPL commands map to Runtime API calls. Topology changes buffered and applied between frames; parameter changes immediate.
 
 **Verify:** `set lfo1/frequency 4.0` → instant pitch change. `add Blur blur1` + `connect noise1/output blur1/input` → blur appears in the output. `save` → JSON written to disk. `reload` → graph reloads from JSON.
 
@@ -96,7 +96,7 @@ Text input at the bottom of the window (minimal: just a text field, not a full c
 
 ### Phase 10: Minimal UI — Node Graph + Inspector
 
-Retained-mode UI renderer (wgpu draw calls), text rendering (stb_truetype, monospace, 2–3 sizes), GLFW input dispatch to widget tree. Node graph view: rectangles with labels, lines for connections. Click a node → inspector panel shows parameter sliders. Drag a slider → parameter changes instantly.
+Retained-mode UI renderer (Dawn/WebGPU draw calls), text rendering (stb_truetype, monospace, 2–3 sizes), GLFW input dispatch to widget tree. Node graph view: rectangles with labels, lines for connections. Click a node → inspector panel shows parameter sliders. Drag a slider → parameter changes instantly.
 
 **Scope boundary:** The UI is a viewer and parameter tweaker. No draggable nodes, no interactive wire creation, no context menus, no undo/redo. Structural changes still happen via REPL or JSON. This boundary is deliberate — a usable viewer is achievable; a full graph editor is a multi-month project.
 
@@ -106,7 +106,7 @@ Retained-mode UI renderer (wgpu draw calls), text rendering (stb_truetype, monos
 
 ### Phase 11: Live Thumbnails
 
-GPU texture thumbnails on every GPU node in the graph view (zero-copy blit — same wgpu context). Audio waveform rendering on audio nodes. Control nodes show current value + sparkline.
+GPU texture thumbnails on every GPU node in the graph view (zero-copy blit — same Dawn context). Audio waveform rendering on audio nodes. Control nodes show current value + sparkline.
 
 **Verify:** Every node in the graph shows its live output: GPU nodes show textures, audio nodes show waveforms, control nodes show values. The "See Every Step" principle is now real.
 
@@ -136,7 +136,7 @@ stdio JSON-RPC server (`vivid mcp` subcommand), exposing the Runtime API as MCP 
 
 ### Phase 14: Built-in Chat Panel
 
-Collapsible chat panel in the UI. HTTP client for Anthropic API (Zig stdlib or curl subprocess fallback). LLM receives graph JSON as context, Runtime API as tool definitions. Streaming response rendering in a scrollable text widget.
+Collapsible chat panel in the UI. HTTP client for Anthropic API (libcurl or curl subprocess). LLM receives graph JSON as context, Runtime API as tool definitions. Streaming response rendering in a scrollable text widget.
 
 **Verify:** Type "add a blur after noise" in the chat panel → LLM calls `add_node` + `connect` via tools → blur appears in the graph and output. Type "make the LFO faster" → LLM calls `set_param` → oscillation speed increases.
 
@@ -186,7 +186,7 @@ Named states (intro, build, drop, ambient) with per-state parameter configuratio
 
 ### Phase 19: Export / Standalone Builds
 
-Static compilation of operators into a single binary. Tree-shaking (only compile referenced operators). Graph JSON embedded as compile-time resource. Headless mode for LED wall / projection servers.
+Static linking of operators into a single binary. Tree-shaking (only compile referenced operators). Graph JSON embedded as compile-time resource. Headless mode for LED wall / projection servers.
 
 ### Phase 20: Operator Library System
 
@@ -213,6 +213,7 @@ These are acknowledged as important but depend on decisions that can only be mad
 - **Accessibility** — keyboard navigation, screen reader, high-contrast
 - **Library version pinning** — lockfile vs vendoring
 - **Project file format** — single JSON vs directory with assets
+- **Bundled compiler** — optionally shipping a C++ compiler (e.g., Zig's `zig c++`) so users don't need Xcode CLI tools. Packaging problem, not architecture problem.
 
 ---
 

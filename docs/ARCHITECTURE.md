@@ -4,11 +4,19 @@
 
 **Fast path** — parameter adjustments and connection routing are instantaneous. No compilation, just reconfiguring the live graph. This layer is entirely declarative (parameters, topology), making it inherently LLM-friendly.
 
-**Slow path** — editing an operator's C++ implementation. The user right-clicks a node and selects "Edit in IDE," which opens the operator's source file in their configured external editor (VS Code, CLion, etc.). On save, Vivid detects the file change, builds just that operator's shared library via the bundled compiler, and hot-swaps it into the running graph. Expected latency: 1–3 seconds. For new operators, Vivid scaffolds the boilerplate C++ with the correct base class and port declarations before opening the file.
+**Slow path** — editing an operator's C++ implementation. The user right-clicks a node and selects "Edit in IDE," which opens the operator's source file in their configured external editor (VS Code, CLion, etc.). On save, Vivid detects the file change, builds just that operator's shared library, and hot-swaps it into the running graph. Expected latency: 1–3 seconds. For new operators, Vivid scaffolds the boilerplate C++ with the correct base class and port declarations before opening the file.
 
-## 5.2 Compiler Toolchain
+## 5.2 Language and Toolchain
 
-**Decision: Bundle Zig as the default compiler,** with an advanced setting to point at a custom system compiler. Zig ships as a single ~40MB binary with a full C/C++ compiler (Clang frontend), requires no system dependencies, and has first-class support for building shared libraries with stable C ABIs. Its build system is Zig code, so build configurations for each operator can be generated programmatically. Bundling means zero-friction onboarding, a consistent compiler version, and a self-contained app bundle.
+**Decision: C++ throughout.** The runtime, interface, and operators are all C++. This eliminates any ABI translation layer between the runtime and operators — they share types, headers, and conventions directly. The only boundary is the `extern "C"` interface used for `dlopen`-based hot-reload during development (see §5.8).
+
+C++ was chosen over Zig and Rust for one overriding reason: library integration. Vivid is a creative technology tool that will integrate specialized libraries on client timelines — OpenCV, ONNX Runtime, NDI, Syphon, libtorch, CEF, and others. All of these are C or C++ libraries. In C++, integration is just "link and include." In Zig or Rust, every library requires FFI bindings, wrappers, and ongoing maintenance — friction that compounds over time.
+
+**Build system: CMake.** The standard for C++ projects. Every library Vivid might depend on supports CMake. Dependencies are managed via git submodules or CMake FetchContent — no package manager.
+
+**Compiler: System clang on macOS** (Xcode Command Line Tools). This is a one-time install (`xcode-select --install`) that virtually every developer on macOS already has. Cross-platform builds will use the platform's native compiler (MSVC on Windows, GCC or Clang on Linux).
+
+**Operator compilation for hot-reload:** during development, operators are compiled by invoking the system C++ compiler as a subprocess. Vivid detects which compiler is available and invokes it directly. For future zero-friction onboarding (no system compiler required), a bundled compiler option can be added later — Zig's `zig c++` command is a single-binary C++ compiler that could serve this role without requiring Vivid's runtime to be written in Zig.
 
 ## 5.3 Three Domains
 
@@ -16,7 +24,7 @@ The system has three execution domains, each with distinct timing and resource c
 
 - **Control** — floats, ints, bools, events, strings, buffers. Updated at arbitrary rates. Runs on the main thread or a dedicated control thread. No fixed timing — values propagate immediately on change.
 - **Audio** — sample buffers at a fixed rate (48kHz typical). Runs on a real-time audio thread managed by miniaudio. Operators produce a buffer every callback, even if silence.
-- **GPU** — textures, shaders, meshes, compute buffers. Runs at display refresh rate. Operators execute as wgpu render/compute passes.
+- **GPU** — textures, shaders, meshes, compute buffers. Runs at display refresh rate. Operators execute as Dawn/WebGPU render/compute passes.
 
 ## 5.4 Execution Model: Hybrid Push/Pull
 
@@ -56,10 +64,11 @@ Port types can carry optional semantic tags: normalized (0–1), bipolar (-1 to 
 
 ## 5.7 Operator API Contract
 
-Each operator is a self-contained compilation unit — a shared library with a known C ABI interface. The graph runtime introspects inputs, outputs, and parameter declarations:
+Each operator is a self-contained compilation unit — a shared library (`.dylib`) with a known interface. The runtime and operators share C++ types via common headers, but the hot-reload boundary uses `extern "C"` functions for `dlopen` stability:
 
 ```cpp
 #include "vivid/operator.h"
+
 struct MyFilter : vivid::ImageOp {
     Param<float> intensity{"intensity", 0.5, 0.0, 1.0};
     void process(const Image& in, Image& out) override { ... }
@@ -67,11 +76,17 @@ struct MyFilter : vivid::ImageOp {
 VIVID_REGISTER(MyFilter)
 ```
 
+The `VIVID_REGISTER` macro generates `extern "C"` functions (`vivid_descriptor`, `vivid_create`, `vivid_destroy`, `vivid_process`) that the runtime calls through `dlopen`. The C++ types (`Param<float>`, `Image`, base classes) are shared via headers — operators are full C++ code, not C code with C++ wrappers.
+
+For statically linked export builds (§5.16), the `extern "C"` boundary is unnecessary — everything links together as one C++ binary. The macro handles both cases.
+
 The simpler this contract, the better everything downstream works: auto-generated UI knobs, confident LLM generation, and fast compilation of small self-contained units.
 
 ## 5.8 Hot-Reload Behavior
 
 **Decision: Parameters survive, internal state resets.** Since parameters live outside the operator in the graph's Control-layer parameter store, they are untouched by a reload. The operator's private internal state reinitializes fresh. This avoids serialize/deserialize complexity and matches creative workflows where the user is iterating on behavior.
+
+Hot-reload flow: file system watcher (kqueue on macOS) detects operator source change → invoke system C++ compiler to build `.dylib` → `dlclose` old library → `dlopen` new library → call `vivid_create` with existing parameter values → operator resumes with new behavior, old parameter state intact.
 
 ## 5.9 Spreads: Implicit Vectorization
 
@@ -148,65 +163,66 @@ The JSON graph is the single source of truth for the entire system. Every operat
 
 ## 5.12 Platform Target
 
-**Decision: macOS first.** Phase 1 targets macOS exclusively. This eliminates cross-platform build/test complexity and matches the primary development environment. The architecture does not paint into a corner — Zig, wgpu-native, GLFW, and miniaudio all support Linux and Windows, so cross-platform is a matter of build configuration, not redesign.
+**Decision: macOS first.** Phase 1 targets macOS exclusively. This eliminates cross-platform build/test complexity and matches the primary development environment. The architecture does not paint into a corner — Dawn, GLFW, and miniaudio all support Linux and Windows, so cross-platform is a matter of build configuration, not redesign.
 
 ## 5.13 Windowing: GLFW
 
-**Decision: GLFW 3.4 for window creation and input.** GLFW creates the OS window, provides the Metal surface for wgpu, and handles keyboard/mouse input events. It is minimal (~200KB source), mature, and has proven wgpu-native integration.
+**Decision: GLFW 3.4 for window creation and input.** GLFW creates the OS window, provides the Metal surface for Dawn, and handles keyboard/mouse input events. It is minimal (~200KB source), mature, and has proven WebGPU integration.
 
-Alternatives considered: SDL3 provides file dialogs, pen/tablet pressure, touch input, and a structured event queue, but adds ~2MB of surface area and capabilities that are not needed for Phase 1. Raw Cocoa (NSWindow + CAMetalLayer) provides maximum control but is macOS-only with no migration path and requires Objective-C interop from Zig.
+Alternatives considered: SDL3 provides file dialogs, pen/tablet pressure, touch input, and a structured event queue, but adds ~2MB of surface area and capabilities that are not needed for Phase 1. Raw Cocoa (NSWindow + CAMetalLayer) provides maximum control but is macOS-only with no migration path.
 
 GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialogs will be added via tinyfiledialogs (single-header C library) or a small Cocoa shim when save/load is implemented. Tablet pressure support is a Phase 2+ concern and can be added via platform-specific input handling without replacing the windowing library.
 
 ## 5.14 Dependency Manifest
 
-**Decision: Seven dependencies, four of which are single-header C libraries.** Zig compiles all of them from source as part of the build. No package manager, no pre-built binaries, no Node.js or Rust in the toolchain.
+**Decision: Seven dependencies, most of which are small C libraries.** CMake manages the build. No external package manager required.
 
-| Dependency | Purpose | Size |
-|---|---|---|
-| **Zig** (0.13.x or 0.14.x) | Compiler toolchain, builds C/C++, build system | ~40MB |
-| **wgpu-native** (latest stable) | GPU abstraction over Metal/Vulkan/DX12 | ~5MB |
-| **GLFW** (3.4) | Window creation, input events, Metal surface | ~200KB source |
-| **miniaudio** (0.11.x) | Audio device I/O (not DSP) | single header |
-| **stb_truetype** | Font rasterization for UI text | single header |
-| **yyjson** | JSON parsing (graph files, project files) | ~40KB |
-| **stb_image** | Image loading (PNG, JPEG, BMP) | single header |
+| Dependency | Purpose | Size | Integration |
+|---|---|---|---|
+| **Dawn** (latest stable) | GPU abstraction (WebGPU over Metal/Vulkan/DX12) | ~17MB binary | Pre-built static lib or FetchContent |
+| **GLFW** (3.4) | Window creation, input events, Metal surface | ~200KB source | git submodule, compiled by CMake |
+| **miniaudio** (0.11.x) | Audio device I/O (not DSP) | single header | included directly |
+| **stb_truetype** | Font rasterization for UI text | single header | included directly |
+| **yyjson** | JSON parsing (graph files, project files) | ~40KB source | git submodule or included directly |
+| **stb_image** | Image loading (PNG, JPEG, BMP) | single header | included directly |
 
-**Not included in Phase 1:** WebSocket library (Phase 3), HTTP/networking, UI framework (custom widgets per §6.3), tinyfiledialogs (added when save/load is implemented).
+**Not included in Phase 1:** WebSocket library (Phase 3), HTTP client (for Anthropic API — use libcurl or curl subprocess), tinyfiledialogs (added when save/load is implemented).
+
+**Compiler requirement:** Xcode Command Line Tools on macOS (`xcode-select --install`). Provides clang, libc++, and Metal framework headers.
 
 ## 5.15 Project Directory Structure
 
-**Decision: Three compilation targets with a four-level operator search path.** The build produces three distinct artifacts: the runtime (core engine, Zig), the interface (UI layer, Zig), and the operators (individual shared libraries, C++ compiled by Zig). The operator API is a C ABI contract that bridges the Zig runtime and C++ operators.
+**Decision: Single C++ codebase with a four-level operator search path.** The runtime and operators are all C++. Operators compile as individual shared libraries for hot-reload during development.
 
 ```
 vivid/
-├── build.zig                 # Build system entry point
-├── build.zig.zon             # Zig package manifest
-├── deps/                     # Third-party source (compiled by Zig)
-│   ├── wgpu/  ├── glfw/  ├── miniaudio/  ├── stb/  └── yyjson/
+├── CMakeLists.txt            # Top-level build
+├── deps/                     # Third-party (submodules or FetchContent)
+│   ├── dawn/  ├── glfw/  ├── miniaudio/  ├── stb/  └── yyjson/
 ├── src/
-│   ├── runtime/              # Core engine (Zig)
-│   │   ├── main.zig          # Entry point, window, main loop
-│   │   ├── graph.zig         # JSON graph loading, node management
-│   │   ├── scheduler.zig     # Frame scheduling, domain threads
-│   │   ├── spreads.zig       # Spread type, broadcasting
-│   │   ├── simulation.zig    # Simulation Zone state
-│   │   ├── bridges.zig       # Control↔GPU, Control↔Audio
-│   │   ├── params.zig        # Parameter store
-│   │   ├── gpu_context.zig   # wgpu device, queue, surface
-│   │   ├── audio_context.zig # miniaudio device, buffers
-│   │   ├── hot_reload.zig    # File watch, compile, swap
-│   │   └── export.zig        # Standalone build logic
-│   ├── interface/            # UI layer (Zig)
+│   ├── runtime/              # Core engine
+│   │   ├── main.cpp          # Entry point, window, main loop
+│   │   ├── graph.cpp/.h      # JSON graph loading, node management
+│   │   ├── scheduler.cpp/.h  # Frame scheduling, domain threads
+│   │   ├── spreads.cpp/.h    # Spread type, broadcasting
+│   │   ├── simulation.cpp/.h # Simulation Zone state
+│   │   ├── bridges.cpp/.h    # Control↔GPU, Control↔Audio
+│   │   ├── params.cpp/.h     # Parameter store
+│   │   ├── gpu_context.cpp/.h # Dawn device, queue, surface
+│   │   ├── audio_context.cpp/.h # miniaudio device, buffers
+│   │   ├── hot_reload.cpp/.h # File watch, compile, swap
+│   │   ├── runtime_api.cpp/.h # Internal API (used by REPL, MCP, chat)
+│   │   └── export.cpp/.h     # Standalone build logic
+│   ├── interface/            # UI layer
 │   │   ├── widgets/          # Panel, Button, Slider, Knob, etc.
-│   │   ├── layout.zig        # Application layout
-│   │   ├── input.zig         # GLFW event → widget events
-│   │   ├── renderer.zig      # Widget → wgpu draw calls
-│   │   ├── theme.zig         # Visual style (§6.6)
-│   │   └── text.zig          # Text rendering (stb_truetype)
-│   └── operator_api/         # C ABI contract
-│       ├── operator.h        # Header operators #include
-│       ├── spread.h          # Spread types for C/C++
+│   │   ├── layout.cpp/.h     # Application layout
+│   │   ├── input.cpp/.h      # GLFW event → widget events
+│   │   ├── renderer.cpp/.h   # Widget → Dawn/WebGPU draw calls
+│   │   ├── theme.cpp/.h      # Visual style (§6.6)
+│   │   └── text.cpp/.h       # Text rendering (stb_truetype)
+│   └── operator_api/         # Shared headers for operator contract
+│       ├── operator.h        # Base classes, Param<T>, VIVID_REGISTER
+│       ├── spread.h          # Spread types
 │       └── types.h           # Shared type definitions
 ├── operators/                # Built-in operators (each a directory)
 │   ├── gpu/
@@ -240,17 +256,19 @@ When two operators share the same name, earlier in the path wins. This lets user
 
 ## 5.16 Export: Standalone Builds
 
-**Decision: Export compiles the graph and its operators into a single standalone binary.** During development, operators are separate .dylib files loaded via dlopen so they can hot-reload independently. For export, those same C++ source files are compiled as static .o files and linked into one binary alongside the Zig runtime.
+**Decision: Export compiles the graph and its operators into a single standalone binary.** During development, operators are separate .dylib files loaded via dlopen so they can hot-reload independently. For export, those same C++ source files are compiled and statically linked into one binary.
 
-Zig handles this naturally — it can compile C++ and link statically in the same build step. The C ABI boundary between runtime and operators is identical whether resolved via dlopen at runtime or at link time. The graph JSON is embedded as a compile-time resource.
+CMake handles this with a separate build target that compiles operators as static libraries instead of shared libraries and links everything together. The `extern "C"` functions from `VIVID_REGISTER` are resolved at link time instead of via `dlopen`.
 
-**Tree-shaking:** exported builds compile only the operators the graph actually references. The build system reads the graph JSON, resolves operator types to source directories via the search path, and compiles only those. A graph using three operators produces a binary containing three operators, not the entire built-in set.
+**Tree-shaking:** exported builds compile only the operators the graph actually references. The build reads the graph JSON, resolves operator types to source directories via the search path, and generates a CMake target containing only those operators. A graph using three operators produces a binary containing three operators, not the entire built-in set.
 
-The exported binary includes: the Zig runtime, wgpu-native, miniaudio, the referenced operators, and the embedded graph. It does not include: the editor interface, GLFW, hot-reload machinery, or the LLM perception system. For windowed output (e.g., a projection application), a minimal GLFW window is included; for headless output (e.g., an LED wall media server), no window is needed.
+The graph JSON is embedded as a compile-time resource (e.g., via `xxd` or CMake's file embedding).
+
+The exported binary includes: the runtime, Dawn, miniaudio, the referenced operators, and the embedded graph. It does not include: the editor interface, GLFW (for headless), hot-reload machinery, or the LLM perception system. For windowed output (e.g., a projection application), a minimal GLFW window is included; for headless output (e.g., an LED wall media server), no window is needed.
 
 ## 5.17 Operator Libraries
 
-**Decision: Third-party operator libraries are GitHub repositories installed from source and compiled locally by Zig.** No pre-built binaries, no CI pipeline required, no platform-specific distribution. Zig IS the C/C++ toolchain, so every user who has Vivid can compile any library.
+**Decision: Third-party operator libraries are GitHub repositories installed from source and compiled locally.** No pre-built binaries, no CI pipeline required, no platform-specific distribution.
 
 A library is a repository with a manifest and operator directories:
 
@@ -277,10 +295,10 @@ The manifest is minimal:
 }
 ```
 
-**Install flow:** `vivid install github.com/user/awesome-particles` → clones to `~/.vivid/libraries/awesome-particles/` → Zig compiles all operators → they appear in the operator palette. Compilation is fast (single operators compile in under a second).
+**Install flow:** `vivid install github.com/user/awesome-particles` → clones to `~/.vivid/libraries/awesome-particles/` → compiles all operators to .dylib → they appear in the operator palette. Compilation is fast (single operators compile in under a second with clang).
 
-**Library template:** a template GitHub repository provides the directory structure, a starter operator with boilerplate, and the vivid-library.json manifest. Unlike the previous Vivid, no GitHub Actions are needed for CI builds — Zig compiles from source on the user's machine, eliminating the need to maintain per-platform binary distribution.
+**Library template:** a template GitHub repository provides the directory structure, a starter operator with boilerplate, and the vivid-library.json manifest. No GitHub Actions needed for CI builds — operators compile from source on the user's machine.
 
 **For export:** the build system follows the same search path to find operator source files. If a graph uses fluid_sim from an installed library, the export compiles that library's source directly into the standalone binary.
 
-**Constraints:** libraries may only depend on the Vivid operator API and standard C/C++. External C library dependencies (OpenCV, FFTW) are not managed by the library system — users who need them are responsible for making them available to the build. This keeps the package manager from becoming a general-purpose build system.
+**Constraints:** libraries may only depend on the Vivid operator API and standard C/C++. External library dependencies (OpenCV, FFTW) are not managed by the library system — users who need them are responsible for making them available to the build. This keeps the package manager from becoming a general-purpose build system.
