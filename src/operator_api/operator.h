@@ -138,10 +138,7 @@ extern "C" void vivid_destroy(void* instance) {                               \
 extern "C" void vivid_process(void* instance,                                 \
                               const VividProcessContext* ctx) {                \
     auto* op = static_cast<ClassName*>(instance);                              \
-    static thread_local std::vector<vivid::ParamBase*> param_ptrs;            \
-    if (param_ptrs.empty()) {                                                 \
-        param_ptrs = _vivid_collect_param_ptrs(op);                           \
-    }                                                                         \
+    std::vector<vivid::ParamBase*> param_ptrs = _vivid_collect_param_ptrs(op); \
     for (size_t i = 0; i < param_ptrs.size(); ++i) {                          \
         param_ptrs[i]->value = ctx->param_values[i];                          \
     }                                                                         \

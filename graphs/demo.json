@@ -1,0 +1,11 @@
+{
+  "nodes": {
+    "clock1": { "type": "Clock", "params": { "bpm": 120.0 } },
+    "lfo1":   { "type": "LFO",   "params": { "frequency": 1.0 } },
+    "math1":  { "type": "Math",  "params": { "operation": 0 } }
+  },
+  "connections": [
+    { "from": "clock1/beat_phase", "to": "math1/a" },
+    { "from": "lfo1/value",        "to": "math1/b" }
+  ]
+}

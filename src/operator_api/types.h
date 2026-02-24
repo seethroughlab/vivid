@@ -70,7 +70,8 @@ typedef struct VividProcessContext {
     double    delta_time;
     uint64_t  frame;
     float*    param_values;   // indexed by param descriptor order
-    float*    output_values;  // indexed by port descriptor order (outputs only)
+    float*    input_values;   // indexed by input port order (VIVID_PORT_INPUT only)
+    float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
 } VividProcessContext;
 
 // ---------------------------------------------------------------------------

@@ -24,26 +24,42 @@ add_subdirectory(deps/glfw)
 # --- glfw3webgpu bridge (submodule) ---
 add_subdirectory(deps/glfw3webgpu)
 
+# --- yyjson (vendored JSON parser) ---
+add_library(yyjson STATIC deps/yyjson/yyjson.c)
+target_include_directories(yyjson PUBLIC deps/yyjson)
+
 # --- Operator API (header-only interface library) ---
 add_library(vivid_operator_api INTERFACE)
 target_include_directories(vivid_operator_api INTERFACE src)
 
-# --- LFO operator (dynamically loaded plugin) ---
-add_library(lfo MODULE
-    operators/control/lfo/lfo.cpp
-)
-set_target_properties(lfo PROPERTIES PREFIX "" SUFFIX ".dylib")  # lfo.dylib
+# --- Operator plugins (dynamically loaded) ---
+add_library(lfo MODULE operators/control/lfo/lfo.cpp)
+set_target_properties(lfo PROPERTIES PREFIX "" SUFFIX ".dylib")
 target_link_libraries(lfo PRIVATE vivid_operator_api)
+
+add_library(clock MODULE operators/control/clock/clock.cpp)
+set_target_properties(clock PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(clock PRIVATE vivid_operator_api)
+
+add_library(math MODULE operators/control/math/math.cpp)
+set_target_properties(math PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(math PRIVATE vivid_operator_api)
 
 # --- Vivid executable ---
 add_executable(vivid
     src/runtime/main.cpp
     src/runtime/gpu_context.cpp
     src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
 )
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu vivid_operator_api)
+target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu vivid_operator_api yyjson)
+
+# Copy demo graph to build directory
+configure_file(graphs/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
 
 # Copy Dawn shared library next to the executable (if dynamically linked)
 target_copy_webgpu_binaries(vivid)

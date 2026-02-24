@@ -1,11 +1,12 @@
 #include "runtime/gpu_context.h"
-#include "runtime/operator_loader.h"
+#include "runtime/operator_registry.h"
+#include "runtime/graph.h"
+#include "runtime/scheduler.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 #include <GLFW/glfw3.h>
 #include <cstdio>
 #include <cstring>
-#include <vector>
 
 // #16191D in sRGB → linear: pow(x/255, 2.2)
 static constexpr double kClearLinear[4]  = { 0.00699, 0.00821, 0.01041, 1.0 };
@@ -26,7 +27,9 @@ static WGPUStringView to_sv(const char* s) {
     return { s, s ? std::strlen(s) : 0 };
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    const char* graph_path = (argc > 1) ? argv[1] : "graph.json";
+
     // --- GLFW ---
     if (!glfwInit()) {
         std::fprintf(stderr, "[vivid] Failed to init GLFW\n");
@@ -51,72 +54,53 @@ int main() {
         return 1;
     }
 
-    // Pick clear color based on surface format
     const double* clear = is_srgb_format(gpu.surface_format()) ? kClearLinear : kClearRaw;
 
-    // --- Load LFO operator ---
-    vivid::OperatorLoader lfo_loader;
-    void* lfo_instance = nullptr;
-    std::vector<float> param_values;
-    std::vector<float> output_values;
-    uint64_t frame_count = 0;
+    // --- Load operator plugins ---
+    vivid::OperatorRegistry registry;
+    registry.scan(".");
 
-    if (lfo_loader.load("lfo.dylib")) {
-        const VividOperatorDescriptor* desc = lfo_loader.descriptor();
-        std::fprintf(stderr, "[vivid] Loaded operator: lfo.dylib\n");
-        std::fprintf(stderr, "[vivid] Operator: %s (domain=%d)\n", desc->name, desc->domain);
-        std::fprintf(stderr, "[vivid] Parameters (%u):\n", desc->param_count);
-        for (uint32_t i = 0; i < desc->param_count; ++i) {
-            std::fprintf(stderr, "  [%u] %s: default=%.3f min=%.3f max=%.3f\n",
-                i, desc->params[i].name,
-                desc->params[i].default_value,
-                desc->params[i].min_value,
-                desc->params[i].max_value);
+    // --- Load graph ---
+    vivid::Graph graph;
+    vivid::Scheduler scheduler;
+    bool graph_loaded = false;
+
+    if (graph.load(graph_path)) {
+        if (scheduler.build(graph, registry)) {
+            graph_loaded = true;
+        } else {
+            std::fprintf(stderr, "[vivid] Scheduler build failed (non-fatal, continuing)\n");
         }
-        std::fprintf(stderr, "[vivid] Ports (%u):\n", desc->port_count);
-        for (uint32_t i = 0; i < desc->port_count; ++i) {
-            std::fprintf(stderr, "  [%u] %s: type=%d dir=%d\n",
-                i, desc->ports[i].name,
-                desc->ports[i].type,
-                desc->ports[i].direction);
-        }
-
-        // Init param values from defaults
-        param_values.resize(desc->param_count);
-        for (uint32_t i = 0; i < desc->param_count; ++i) {
-            param_values[i] = desc->params[i].default_value;
-        }
-
-        // Allocate output values
-        output_values.resize(desc->port_count, 0.0f);
-
-        lfo_instance = lfo_loader.create_instance();
     } else {
-        std::fprintf(stderr, "[vivid] LFO load failed (non-fatal, continuing)\n");
+        std::fprintf(stderr, "[vivid] Graph load failed (non-fatal, continuing)\n");
     }
 
     double prev_time = glfwGetTime();
+    uint64_t frame_count = 0;
 
     // --- Main loop ---
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
-        // --- Tick LFO ---
-        if (lfo_instance) {
+        // --- Tick graph ---
+        if (graph_loaded) {
             double now = glfwGetTime();
-            VividProcessContext pctx{};
-            pctx.time          = now;
-            pctx.delta_time    = now - prev_time;
-            pctx.frame         = frame_count;
-            pctx.param_values  = param_values.data();
-            pctx.output_values = output_values.data();
+            double dt = now - prev_time;
             prev_time = now;
 
-            lfo_loader.process(lfo_instance, &pctx);
+            scheduler.tick(now, dt, frame_count);
 
             if (frame_count % 60 == 0) {
-                std::fprintf(stderr, "[vivid] LFO frame=%llu time=%.2f value=%.4f\n",
-                    static_cast<unsigned long long>(frame_count), now, output_values[0]);
+                std::fprintf(stderr, "[vivid] frame=%llu",
+                    static_cast<unsigned long long>(frame_count));
+                for (const auto& ns : scheduler.nodes()) {
+                    for (const auto& [port_name, port_idx] : ns.output_port_indices) {
+                        std::fprintf(stderr, " | %s/%s=%.4f",
+                            ns.node_id.c_str(), port_name.c_str(),
+                            ns.output_values[port_idx]);
+                    }
+                }
+                std::fprintf(stderr, "\n");
             }
             frame_count++;
         }
@@ -154,11 +138,10 @@ int main() {
     }
 
     // --- Shutdown ---
-    if (lfo_instance) {
-        lfo_loader.destroy_instance(lfo_instance);
-        lfo_instance = nullptr;
+    if (graph_loaded) {
+        scheduler.shutdown();
     }
-    // lfo_loader destructor handles dlclose
+    // Registry destructor handles dlclose via OperatorLoader destructors
 
     gpu.shutdown();
     glfwDestroyWindow(window);
