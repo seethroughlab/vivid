@@ -20,6 +20,7 @@ struct NodeState {
     std::vector<float> output_values;
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
+    std::unordered_map<std::string, uint32_t> param_indices;
 
     // Generation-based cooking
     bool time_dependent = false;
@@ -33,6 +34,7 @@ struct NodeState {
 struct Wire {
     uint32_t from_node_idx, from_port_idx;
     uint32_t to_node_idx, to_port_idx;
+    bool targets_param = false;  // true → to_port_idx indexes into param_values
 };
 
 class Scheduler {

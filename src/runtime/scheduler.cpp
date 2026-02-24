@@ -48,12 +48,13 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         for (uint32_t i = 0; i < desc->param_count; ++i) {
             ns.param_values[i] = desc->params[i].default_value;
         }
+        for (uint32_t i = 0; i < desc->param_count; ++i) {
+            ns.param_indices[desc->params[i].name] = i;
+        }
         for (const auto& [pname, pval] : ndef.params) {
-            for (uint32_t i = 0; i < desc->param_count; ++i) {
-                if (pname == desc->params[i].name) {
-                    ns.param_values[i] = pval;
-                    break;
-                }
+            auto pi = ns.param_indices.find(pname);
+            if (pi != ns.param_indices.end()) {
+                ns.param_values[pi->second] = pval;
             }
         }
 
@@ -98,18 +99,25 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             return false;
         }
 
-        auto tp_it = to_ns.input_port_indices.find(conn.to_port);
-        if (tp_it == to_ns.input_port_indices.end()) {
-            std::fprintf(stderr, "[vivid] Scheduler: node '%s' has no input port '%s'\n",
-                conn.to_node.c_str(), conn.to_port.c_str());
-            return false;
-        }
-
         Wire w;
         w.from_node_idx = fi;
         w.from_port_idx = fp_it->second;
         w.to_node_idx   = ti;
-        w.to_port_idx   = tp_it->second;
+
+        auto tp_it = to_ns.input_port_indices.find(conn.to_port);
+        if (tp_it != to_ns.input_port_indices.end()) {
+            w.to_port_idx = tp_it->second;
+            w.targets_param = false;
+        } else {
+            auto pp_it = to_ns.param_indices.find(conn.to_port);
+            if (pp_it == to_ns.param_indices.end()) {
+                std::fprintf(stderr, "[vivid] Scheduler: node '%s' has no input port or parameter '%s'\n",
+                    conn.to_node.c_str(), conn.to_port.c_str());
+                return false;
+            }
+            w.to_port_idx = pp_it->second;
+            w.targets_param = true;
+        }
         wires_.push_back(w);
 
         adj[fi].push_back(ti);
@@ -189,11 +197,15 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         // Zero input values (unwired ports default to 0.0)
         std::fill(ns.input_values.begin(), ns.input_values.end(), 0.0f);
 
-        // Copy upstream outputs into this node's inputs
+        // Copy upstream outputs into this node's inputs / params
         for (const auto& w : wires_) {
             if (w.to_node_idx == ni) {
-                ns.input_values[w.to_port_idx] =
-                    nodes_[w.from_node_idx].output_values[w.from_port_idx];
+                float val = nodes_[w.from_node_idx].output_values[w.from_port_idx];
+                if (w.targets_param) {
+                    ns.param_values[w.to_port_idx] = val;
+                } else {
+                    ns.input_values[w.to_port_idx] = val;
+                }
             }
         }
 
