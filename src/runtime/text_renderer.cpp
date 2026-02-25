@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -341,6 +342,26 @@ void TextRenderer::draw_rect(float x, float y, float w, float h,
     float su0 = 0.0f, sv0 = 0.0f;
     float su1 = 1.0f / kAtlasWidth, sv1 = 1.0f / kAtlasHeight;
     push_quad(x, y, x + w, y + h, su0, sv0, su1, sv1, r, g, b, a);
+}
+
+void TextRenderer::draw_line(float x1, float y1, float x2, float y2, float thickness,
+                              float r, float g, float b, float a) {
+    if (vertices_.size() + 6 > kMaxVertices) return;
+    float dx = x2 - x1, dy = y2 - y1;
+    float len = std::sqrt(dx * dx + dy * dy);
+    if (len < 0.001f) return;
+    // Perpendicular offset for thickness
+    float nx = -dy / len * thickness * 0.5f;
+    float ny =  dx / len * thickness * 0.5f;
+    // Solid white UV from atlas corner
+    float su = 0.5f / kAtlasWidth, sv = 0.5f / kAtlasHeight;
+    // 6 vertices: two triangles forming a rotated quad
+    vertices_.push_back({x1 + nx, y1 + ny, su, sv, r, g, b, a});
+    vertices_.push_back({x1 - nx, y1 - ny, su, sv, r, g, b, a});
+    vertices_.push_back({x2 + nx, y2 + ny, su, sv, r, g, b, a});
+    vertices_.push_back({x2 + nx, y2 + ny, su, sv, r, g, b, a});
+    vertices_.push_back({x1 - nx, y1 - ny, su, sv, r, g, b, a});
+    vertices_.push_back({x2 - nx, y2 - ny, su, sv, r, g, b, a});
 }
 
 float TextRenderer::text_width(const char* text, float scale) const {
