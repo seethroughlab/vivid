@@ -53,7 +53,7 @@ struct ParamSnapshot {
 };
 
 struct AnalysisSnapshot {
-    static constexpr uint32_t kWaveformSamples = 128;
+    static constexpr uint32_t kWaveformSamples = 1024;
     std::vector<float> rms;   // [audio_node_idx]
     std::vector<float> peak;  // [audio_node_idx]
     std::vector<std::array<float, kWaveformSamples>> waveform; // [audio_node_idx]
@@ -64,6 +64,7 @@ struct AudioToControlMapping {
     uint32_t scheduler_node_idx;  // index in Scheduler::nodes_
     uint32_t rms_port_idx;        // "rms" output port index in scheduler
     uint32_t peak_port_idx;       // "peak" output port index in scheduler
+    uint32_t waveform_port_idx;   // "waveform" output port index in scheduler
 };
 
 class AudioEngine {
@@ -110,6 +111,10 @@ private:
 
     // Node ID → audio engine index mapping (built during build())
     std::unordered_map<std::string, int> node_id_to_index_;
+
+    // Per-node ring buffer for raw waveform sample accumulation
+    std::vector<std::array<float, 1024>> waveform_rings_;
+    std::vector<uint32_t> waveform_ring_pos_;
 
     // Audio time tracking
     uint64_t audio_frame_ = 0;

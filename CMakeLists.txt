@@ -71,6 +71,10 @@ add_library(midi_input MODULE operators/control/midi_input/midi_input.cpp)
 set_target_properties(midi_input PROPERTIES PREFIX "" SUFFIX ".dylib")
 target_link_libraries(midi_input PRIVATE vivid_operator_api rtmidi)
 
+add_library(fft_analysis MODULE operators/control/fft_analysis/fft_analysis.cpp)
+set_target_properties(fft_analysis PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(fft_analysis PRIVATE vivid_operator_api)
+
 # --- GPU operator plugins ---
 add_library(noise MODULE operators/gpu/noise/noise.cpp)
 set_target_properties(noise PROPERTIES PREFIX "" SUFFIX ".dylib")
@@ -79,6 +83,10 @@ target_link_libraries(noise PRIVATE vivid_operator_api webgpu)
 add_library(shape MODULE operators/gpu/shape/shape.cpp)
 set_target_properties(shape PROPERTIES PREFIX "" SUFFIX ".dylib")
 target_link_libraries(shape PRIVATE vivid_operator_api webgpu)
+
+add_library(bars MODULE operators/gpu/bars/bars.cpp)
+set_target_properties(bars PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(bars PRIVATE vivid_operator_api webgpu)
 
 # --- Audio operator plugins ---
 add_library(oscillator MODULE operators/audio/oscillator/oscillator.cpp)
@@ -121,6 +129,7 @@ configure_file(graphs/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
 configure_file(graphs/audio_demo.json ${CMAKE_BINARY_DIR}/audio_demo.json COPYONLY)
 configure_file(graphs/av_sync_demo.json ${CMAKE_BINARY_DIR}/av_sync_demo.json COPYONLY)
 configure_file(graphs/midi_demo.json ${CMAKE_BINARY_DIR}/midi_demo.json COPYONLY)
+configure_file(graphs/fft_bars_demo.json ${CMAKE_BINARY_DIR}/fft_bars_demo.json COPYONLY)
 
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)

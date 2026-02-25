@@ -24,10 +24,11 @@ typedef enum VividParamType {
 } VividParamType;
 
 typedef enum VividPortType {
-    VIVID_PORT_CONTROL_FLOAT = 0,
-    VIVID_PORT_CONTROL_INT   = 1,
-    VIVID_PORT_CONTROL_BOOL  = 2,
-    VIVID_PORT_AUDIO_FLOAT   = 3,
+    VIVID_PORT_CONTROL_FLOAT  = 0,
+    VIVID_PORT_CONTROL_INT    = 1,
+    VIVID_PORT_CONTROL_BOOL   = 2,
+    VIVID_PORT_AUDIO_FLOAT    = 3,
+    VIVID_PORT_CONTROL_SPREAD = 4,
 } VividPortType;
 
 typedef enum VividPortDirection {
@@ -64,6 +65,16 @@ typedef struct VividOperatorDescriptor {
 } VividOperatorDescriptor;
 
 // ---------------------------------------------------------------------------
+// Spread port — variable-length float array
+// ---------------------------------------------------------------------------
+
+typedef struct VividSpreadPort {
+    float*   data;      // pointer to spread data
+    uint32_t length;    // current number of floats
+    uint32_t capacity;  // allocated size (for output ports)
+} VividSpreadPort;
+
+// ---------------------------------------------------------------------------
 // Process context — passed each tick
 // ---------------------------------------------------------------------------
 
@@ -76,6 +87,8 @@ typedef struct VividProcessContext {
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
     void*     gpu;            // VividGpuState* for GPU operators, NULL otherwise
     void*     audio;          // VividAudioState* for audio operators, NULL otherwise
+    VividSpreadPort* input_spreads;   // [input_port_idx], NULL if none
+    VividSpreadPort* output_spreads;  // [output_port_idx], NULL if none
 } VividProcessContext;
 
 // ---------------------------------------------------------------------------

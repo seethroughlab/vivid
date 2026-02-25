@@ -200,6 +200,11 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         node_id_to_index_[nodes_[i].node_id] = static_cast<int>(i);
     }
 
+    // Initialize waveform ring buffers (one per audio node)
+    waveform_rings_.resize(n);
+    waveform_ring_pos_.resize(n, 0);
+    for (auto& ring : waveform_rings_) ring.fill(0.0f);
+
     // Build analysis mappings: match audio nodes to scheduler nodes
     analysis_mappings_.clear();
     for (uint32_t ai = 0; ai < n; ++ai) {
@@ -207,13 +212,16 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
             if (scheduler.nodes()[si].node_id == nodes_[ai].node_id) {
                 auto rms_it = scheduler.nodes()[si].output_port_indices.find("rms");
                 auto peak_it = scheduler.nodes()[si].output_port_indices.find("peak");
+                auto wave_it = scheduler.nodes()[si].output_port_indices.find("waveform");
                 if (rms_it != scheduler.nodes()[si].output_port_indices.end() &&
-                    peak_it != scheduler.nodes()[si].output_port_indices.end()) {
+                    peak_it != scheduler.nodes()[si].output_port_indices.end() &&
+                    wave_it != scheduler.nodes()[si].output_port_indices.end()) {
                     AudioToControlMapping m;
                     m.audio_engine_idx = ai;
                     m.scheduler_node_idx = si;
                     m.rms_port_idx = rms_it->second;
                     m.peak_port_idx = peak_it->second;
+                    m.waveform_port_idx = wave_it->second;
                     analysis_mappings_.push_back(m);
                 }
                 break;
@@ -268,12 +276,23 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
     int write_idx = 1 - active_.load(std::memory_order_acquire);
     auto& snap = snapshots_[write_idx];
 
-    // Copy current param values from audio nodes
+    // Base: audio engine's own param values (initial defaults)
     for (size_t i = 0; i < nodes_.size(); ++i) {
         snap.node_params[i] = nodes_[i].param_values;
     }
 
-    // Apply cross-domain wires: read control outputs → write audio params
+    // Overlay: scheduler's param values (where set_param/inspector writes)
+    for (const auto& m : analysis_mappings_) {
+        const auto& sched_ns = scheduler.nodes()[m.scheduler_node_idx];
+        for (const auto& [pname, ae_idx] : nodes_[m.audio_engine_idx].param_indices) {
+            auto sit = sched_ns.param_indices.find(pname);
+            if (sit != sched_ns.param_indices.end()) {
+                snap.node_params[m.audio_engine_idx][ae_idx] = sched_ns.param_values[sit->second];
+            }
+        }
+    }
+
+    // Cross-domain wires override everything (live control modulation)
     for (const auto& cw : cross_wires_) {
         for (const auto& ctrl_ns : scheduler.nodes()) {
             if (ctrl_ns.node_id == cw.control_node_id) {
@@ -294,6 +313,12 @@ void AudioEngine::inject_analysis(Scheduler& scheduler) {
                                          snap.rms[m.audio_engine_idx]);
         scheduler.inject_external_output(m.scheduler_node_idx, m.peak_port_idx,
                                          snap.peak[m.audio_engine_idx]);
+        // Inject waveform as spread
+        if (m.audio_engine_idx < snap.waveform.size()) {
+            scheduler.inject_external_spread(m.scheduler_node_idx, m.waveform_port_idx,
+                                             snap.waveform[m.audio_engine_idx].data(),
+                                             AnalysisSnapshot::kWaveformSamples);
+        }
     }
 }
 
@@ -528,12 +553,19 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             analysis.rms[ni] = std::sqrt(sum_sq / frame_count);
             analysis.peak[ni] = pk;
 
-            // Downsample output buffer to waveform (pick every other sample)
+            // Write raw output samples into ring buffer
+            auto& ring = waveform_rings_[ni];
+            uint32_t& pos = waveform_ring_pos_[ni];
+            for (uint32_t s = 0; s < frame_count; ++s) {
+                ring[pos] = buf[s];
+                pos = (pos + 1) % 1024;
+            }
+
+            // Linearize ring buffer into analysis waveform
             constexpr uint32_t kWaveN = AnalysisSnapshot::kWaveformSamples;
             auto& wave = analysis.waveform[ni];
             for (uint32_t w = 0; w < kWaveN; ++w) {
-                uint32_t src_idx = w * 2;
-                wave[w] = (src_idx < frame_count) ? buf[src_idx] : 0.0f;
+                wave[w] = ring[(pos + w) % 1024];
             }
         }
     }

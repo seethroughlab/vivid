@@ -42,6 +42,8 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
 
         ns.input_values.resize(ns.input_port_count, 0.0f);
         ns.output_values.resize(ns.output_port_count, 0.0f);
+        ns.input_spreads.resize(ns.input_port_count);
+        ns.output_spreads.resize(ns.output_port_count);
 
         // Init param_values from descriptor defaults, then override from JSON
         ns.param_values.resize(desc->param_count);
@@ -69,8 +71,10 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         if (ns.is_audio) {
             ns.output_port_indices["rms"] = ns.output_port_count++;
             ns.output_port_indices["peak"] = ns.output_port_count++;
+            ns.output_port_indices["waveform"] = ns.output_port_count++;
             ns.output_values.resize(ns.output_port_count, 0.0f);
             ns.prev_output_values.resize(ns.output_port_count, 0.0f);
+            ns.output_spreads.resize(ns.output_port_count);
         }
 
         node_index[ndef.id] = static_cast<uint32_t>(nodes_.size());
@@ -207,8 +211,9 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         // Skip audio-domain nodes — they run on the audio thread
         if (ns.is_audio) continue;
 
-        // Zero input values (unwired ports default to 0.0)
+        // Zero input values and clear input spreads (unwired ports default to 0.0)
         std::fill(ns.input_values.begin(), ns.input_values.end(), 0.0f);
+        for (auto& sp : ns.input_spreads) sp.clear();
 
         // Copy upstream outputs into this node's inputs / params
         for (const auto& w : wires_) {
@@ -218,6 +223,12 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                     ns.param_values[w.to_port_idx] = val;
                 } else {
                     ns.input_values[w.to_port_idx] = val;
+                    // Spread propagation
+                    const auto& src_spread = nodes_[w.from_node_idx].output_spreads[w.from_port_idx];
+                    if (!src_spread.empty()) {
+                        ns.input_spreads[w.to_port_idx] = src_spread;
+                        ns.input_values[w.to_port_idx] = src_spread[0];  // scalar fallback
+                    }
                 }
             }
         }
@@ -238,6 +249,25 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             }
         }
 
+        // Build spread port arrays for process context
+        std::vector<VividSpreadPort> in_spreads(ns.input_port_count);
+        for (uint32_t p = 0; p < ns.input_port_count; ++p) {
+            auto& isp = ns.input_spreads[p];
+            in_spreads[p].data     = isp.empty() ? nullptr : isp.data();
+            in_spreads[p].length   = static_cast<uint32_t>(isp.size());
+            in_spreads[p].capacity = static_cast<uint32_t>(isp.size());
+        }
+
+        std::vector<VividSpreadPort> out_spreads(ns.output_port_count);
+        // Pre-allocate output spread buffers
+        std::vector<std::vector<float>> out_spread_storage(ns.output_port_count);
+        for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+            out_spread_storage[p].resize(1024, 0.0f);
+            out_spreads[p].data     = out_spread_storage[p].data();
+            out_spreads[p].length   = 0;
+            out_spreads[p].capacity = 1024;
+        }
+
         // Build process context and tick
         VividProcessContext ctx{};
         ctx.time          = time;
@@ -246,23 +276,43 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         ctx.param_values  = ns.param_values.data();
         ctx.input_values  = ns.input_values.data();
         ctx.output_values = ns.output_values.data();
+        ctx.input_spreads  = in_spreads.data();
+        ctx.output_spreads = out_spreads.data();
 
         // GPU state only for GPU-domain operators
         ctx.gpu = ns.is_gpu ? gpu_state : nullptr;
 
         ns.loader->process(ns.instance, &ctx);
 
+        // Read back output spreads
+        for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+            if (out_spreads[p].length > 0) {
+                ns.output_spreads[p].assign(
+                    out_spreads[p].data,
+                    out_spreads[p].data + out_spreads[p].length);
+            } else {
+                ns.output_spreads[p].clear();
+            }
+        }
+
         // Invoke post-GPU-node callback (for thumbnail capture)
         if (ns.is_gpu && on_gpu_node) {
             on_gpu_node(ni, ns.node_id);
         }
 
-        // Update generation: bump if outputs changed or this is a GPU node
-        // (GPU nodes always produce side effects we can't compare)
+        // Update generation: bump if outputs changed, spreads changed, or GPU node
         bool outputs_changed = ns.is_gpu;
         if (!outputs_changed) {
             for (size_t i = 0; i < ns.output_values.size(); ++i) {
                 if (ns.output_values[i] != ns.prev_output_values[i]) {
+                    outputs_changed = true;
+                    break;
+                }
+            }
+        }
+        if (!outputs_changed) {
+            for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+                if (!ns.output_spreads[p].empty()) {
                     outputs_changed = true;
                     break;
                 }
@@ -304,6 +354,15 @@ void Scheduler::inject_external_output(uint32_t node_idx, uint32_t port_idx, flo
     if (ns.output_values[port_idx] != value) {
         ns.output_values[port_idx] = value;
         ns.prev_output_values[port_idx] = value;
+        ns.generation++;
+    }
+}
+
+void Scheduler::inject_external_spread(uint32_t node_idx, uint32_t port_idx,
+                                       const float* data, uint32_t length) {
+    auto& ns = nodes_[node_idx];
+    if (port_idx < ns.output_spreads.size()) {
+        ns.output_spreads[port_idx].assign(data, data + length);
         ns.generation++;
     }
 }
@@ -384,12 +443,17 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
         ns.output_values.assign(ns.output_port_count, 0.0f);
         ns.prev_output_values.assign(ns.output_port_count, 0.0f);
 
+        ns.input_spreads.resize(ns.input_port_count);
+        ns.output_spreads.resize(ns.output_port_count);
+
         // Implicit analysis ports for audio-domain nodes
         if (new_desc->domain == VIVID_DOMAIN_AUDIO) {
             ns.output_port_indices["rms"] = ns.output_port_count++;
             ns.output_port_indices["peak"] = ns.output_port_count++;
+            ns.output_port_indices["waveform"] = ns.output_port_count++;
             ns.output_values.resize(ns.output_port_count, 0.0f);
             ns.prev_output_values.resize(ns.output_port_count, 0.0f);
+            ns.output_spreads.resize(ns.output_port_count);
         }
 
         // Reconcile params by name: preserve values that still exist, use defaults for new

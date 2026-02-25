@@ -31,6 +31,10 @@ struct NodeState {
     std::vector<uint32_t> upstream_nodes;       // indices of nodes feeding into this one
     std::vector<uint64_t> upstream_gens_cached;  // generation of each upstream at last cook
     std::vector<float> prev_output_values;
+
+    // Spread data
+    std::vector<std::vector<float>> output_spreads;   // [port_idx] → spread data
+    std::vector<std::vector<float>> input_spreads;    // [port_idx] → spread data
 };
 
 struct Wire {
@@ -53,6 +57,8 @@ public:
     bool has_gpu_operators() const;
     bool has_audio_operators() const;
     void inject_external_output(uint32_t node_idx, uint32_t port_idx, float value);
+    void inject_external_spread(uint32_t node_idx, uint32_t port_idx,
+                                const float* data, uint32_t length);
 
     // Hot-reload: destroy old instances, swap dylib, recreate with param reconciliation
     bool reload_operator(const std::string& type_name, OperatorRegistry& registry,
