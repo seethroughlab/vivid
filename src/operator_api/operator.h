@@ -3,6 +3,7 @@
 
 #include "operator_api/types.h"
 #include <vector>
+#include <initializer_list>
 #include <cstring>
 #include <cmath>
 
@@ -21,6 +22,9 @@ struct ParamBase {
 
     // Current value stored as float (bool/int reinterpreted)
     float value;
+
+    const char**   choice_labels = nullptr;
+    uint32_t       choice_count  = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -52,7 +56,21 @@ struct Param<int> : ParamBase {
         max_value = static_cast<float>(hi);
         value = default_value;
     }
+    // Enum constructor with choice labels
+    Param(const char* n, int def, std::initializer_list<const char*> labels) {
+        name = n;
+        type = VIVID_PARAM_INT;
+        default_value = static_cast<float>(def);
+        min_value = 0;
+        max_value = static_cast<float>(labels.size() - 1);
+        value = default_value;
+        static_labels_.assign(labels.begin(), labels.end());
+        choice_labels = static_labels_.data();
+        choice_count = static_cast<uint32_t>(static_labels_.size());
+    }
     int int_value() const { return static_cast<int>(value); }
+private:
+    std::vector<const char*> static_labels_;
 };
 
 template<>
@@ -92,6 +110,7 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     static VividOperatorDescriptor desc{};                                    \
     static std::vector<VividParamDescriptor> s_params;                        \
     static std::vector<VividPortDescriptor>  s_ports;                         \
+    static std::vector<std::vector<const char*>> s_label_storage;             \
     static bool inited = false;                                               \
     if (!inited) {                                                            \
         inited = true;                                                        \
@@ -99,12 +118,23 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         std::vector<vivid::ParamBase*> pbases;                                \
         tmp.collect_params(pbases);                                           \
         s_params.resize(pbases.size());                                       \
+        s_label_storage.resize(pbases.size());                                \
         for (size_t i = 0; i < pbases.size(); ++i) {                          \
             s_params[i].name          = pbases[i]->name;                      \
             s_params[i].type          = pbases[i]->type;                      \
             s_params[i].default_value = pbases[i]->default_value;             \
             s_params[i].min_value     = pbases[i]->min_value;                 \
             s_params[i].max_value     = pbases[i]->max_value;                 \
+            if (pbases[i]->choice_count > 0) {                                \
+                s_label_storage[i].assign(                                    \
+                    pbases[i]->choice_labels,                                 \
+                    pbases[i]->choice_labels + pbases[i]->choice_count);      \
+                s_params[i].choice_labels = s_label_storage[i].data();        \
+                s_params[i].choice_count  = pbases[i]->choice_count;          \
+            } else {                                                          \
+                s_params[i].choice_labels = nullptr;                          \
+                s_params[i].choice_count  = 0;                                \
+            }                                                                 \
         }                                                                     \
         tmp.collect_ports(s_ports);                                           \
         desc.name           = ClassName::kName;                               \

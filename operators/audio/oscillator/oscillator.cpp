@@ -13,7 +13,7 @@ struct Oscillator : vivid::OperatorBase {
 
     vivid::Param<float> frequency{"frequency", 440.0f, 20.0f, 20000.0f};
     vivid::Param<float> amplitude{"amplitude", 0.5f, 0.0f, 1.0f};
-    vivid::Param<int>   waveform {"waveform",  0,     0,    3};
+    vivid::Param<int>   waveform {"waveform",  0, {"sine", "saw", "square", "triangle"}};
 
     double phase_ = 0.0;
 

@@ -13,7 +13,7 @@ struct LFO : vivid::OperatorBase {
     vivid::Param<float> frequency{"frequency", 1.0f, 0.01f, 20.0f};
     vivid::Param<float> amplitude{"amplitude", 1.0f, 0.0f, 10000.0f};
     vivid::Param<float> offset   {"offset",    0.0f, -20000.0f, 20000.0f};
-    vivid::Param<int>   waveform {"waveform",  0,    0,    3};
+    vivid::Param<int>   waveform {"waveform",  0, {"sine", "saw", "square", "triangle"}};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&frequency);

@@ -12,7 +12,7 @@ struct FFTAnalysis : vivid::OperatorBase {
     static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
-    vivid::Param<int> window   {"window",   1, 0, 2};    // 0=none, 1=hann, 2=hamming
+    vivid::Param<int> window   {"window",   1, {"none", "hann", "hamming"}};
     vivid::Param<int> fft_size {"fft_size", 512, 256, 1024};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

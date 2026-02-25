@@ -7,7 +7,7 @@ struct Math : vivid::OperatorBase {
     static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
-    vivid::Param<int> operation{"operation", 0, 0, 3};
+    vivid::Param<int> operation{"operation", 0, {"add", "multiply", "min", "max"}};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&operation);

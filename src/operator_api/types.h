@@ -46,6 +46,8 @@ typedef struct VividParamDescriptor {
     float          default_value;
     float          min_value;
     float          max_value;
+    const char**   choice_labels;   /* NULL if not an enum, else array of choice_count strings */
+    uint32_t       choice_count;    /* 0 for regular params */
 } VividParamDescriptor;
 
 typedef struct VividPortDescriptor {
