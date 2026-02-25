@@ -168,7 +168,7 @@ Build the MIDI input operator using RtMidi (or platform-native CoreMIDI wrapper)
 
 Retained-mode UI renderer (Dawn/WebGPU draw calls), text rendering (stb_truetype, monospace, 2–3 sizes), GLFW input dispatch to widget tree. Node graph view: rectangles with labels, lines for connections. Click a node → inspector panel shows parameter sliders. Drag a slider → parameter changes instantly.
 
-**Scope boundary:** The UI is a viewer and parameter tweaker. No draggable nodes, no interactive wire creation, no context menus, no undo/redo. Structural changes still happen via REPL or JSON. This boundary is deliberate — a usable viewer is achievable; a full graph editor is a multi-month project.
+**Scope boundary:** The UI is a viewer and parameter tweaker — no interactive wire creation, no context menus, no undo/redo. Structural changes still happen via REPL or JSON. (Draggable nodes, zoom/pan, and an operator chooser are added in Phases 12a–12c.) This boundary is deliberate — a usable viewer is achievable; a full graph editor is a multi-month project.
 
 **Verify:** Window shows the node graph laid out with live labels. Click any node → inspector appears with sliders for all parameters. Drag slider → output changes in real time.
 
@@ -181,6 +181,53 @@ GPU texture thumbnails on every GPU node in the graph view (zero-copy blit — s
 **Verify:** Every node in the graph shows its live output: GPU nodes show textures, audio nodes show waveforms, control nodes show values. The "See Every Step" principle is now real.
 
 **Why it matters:** Thumbnails are why the UI is native rather than web-based. They're the payoff for the architectural decision in §6.1 — zero-copy GPU texture blitting with no readback, no encoding, no transport. If 6+ thumbnails at frame rate cause performance problems, the on-hover fallback mode needs to be implemented. This is also what makes Vivid's graph view genuinely useful for debugging — you can see where a signal goes wrong by scanning the chain.
+
+### Phase 12a: Draggable Nodes & Position Persistence
+
+Extend the existing slider-drag pattern in `NodeGraphUI::update()` to support dragging entire nodes. Click on a node body to start a drag; release commits the new position. Positions are persisted in the graph JSON so layouts survive save/reload.
+
+- New state: `active_node_drag_idx_`, drag offset tracking
+- Positions stored in `NodeDef` via optional `layout` JSON field: `{"x": 100, "y": 50}`
+- `layout_nodes()` uses saved positions when present, falls back to Sugiyama auto-layout for nodes without positions
+- Port positions recomputed relative to node position after drag
+- Saved via existing `Graph::save()` → `RuntimeAPI::save()` chain
+- Files: `node_graph.h/cpp`, `graph.h/cpp`
+
+**Verify:** Drag a node, save, reload — node stays where you put it. Nodes without saved positions still auto-layout correctly.
+
+**Why it matters:** The graph view has been read-only for layout since Phase 11. Draggable nodes are the smallest step toward making it interactive — they reuse the existing mouse-drag infrastructure and don't require new graph operations. Position persistence via the `layout` field means users can arrange complex graphs to their liking without losing the layout on reload.
+
+### Phase 12b: Graph Zoom & Pan
+
+Add zoom and pan controls to the node graph view. Middle-click-drag (or scroll-drag) pans the view; scroll wheel zooms toward the cursor position.
+
+- New state on `NodeGraphUI`: `pan_x_`, `pan_y_`, `zoom_`
+- New GLFW callback: `glfwSetScrollCallback` routed to `NodeGraphUI::on_scroll()`
+- CPU-side transform (recommended over shader approach): transform node positions before passing to `draw_text`/`draw_rect`. Inspector stays fixed, unaffected by pan/zoom
+- All drawing applies: `screen_pos = (logical_pos - pan) * zoom`
+- Hit testing applies inverse: `logical_pos = screen_pos / zoom + pan`
+- Thumbnail viewports scaled by zoom and offset by pan (on top of existing `dpi_scale`)
+- Clamp zoom to 0.25x–3x range
+- Files: `node_graph.h/cpp`, `main.cpp` (scroll callback)
+
+**Verify:** Scroll to zoom, middle-drag to pan, click on nodes still works, thumbnails track position correctly. Inspector panel is not affected by zoom/pan.
+
+**Why it matters:** Without zoom/pan, graphs with more than ~8 nodes overflow the visible area. This is the minimum navigation needed to work with real patches. The CPU-side approach keeps the implementation simple — no shader changes, and the inspector/REPL stay fixed on screen.
+
+### Phase 12c: Operator Chooser
+
+Spacebar (or Tab) opens a floating popup listing available operator types. The user can filter by typing, navigate with arrow keys, and press Enter to add a new node to the graph — no REPL required.
+
+- Registry already has `type_names()` returning sorted names; `find()` returns `OperatorLoader*` with full descriptor (name, domain, params, ports)
+- Popup: text filter + domain-grouped list drawn via `TextRenderer`
+- Keyboard navigation: arrow keys to select, Enter to confirm, Escape to dismiss
+- On confirm: generate unique ID (e.g. `lfo2`), call `RuntimeAPI::add_node(type, id)`
+- Requires routing key events to `NodeGraphUI` — add `on_key()` method, update `main.cpp` callbacks
+- Files: `node_graph.h/cpp`, `main.cpp` (key routing), `operator_registry.h` (already has what's needed)
+
+**Verify:** Press Space, type "osc", see filtered list, Enter to add — node appears in graph. Escape dismisses without adding.
+
+**Why it matters:** This is the first way to add operators without the REPL or JSON editing. Combined with 12a (drag to position) and the existing inspector (click to tweak parameters), the UI becomes a self-contained creative tool for basic patching. The operator chooser is also the natural hook point for the LLM chat panel (Phase 17) — the same `add_node` call, triggered by conversation instead of keyboard.
 
 ---
 
@@ -308,7 +355,6 @@ These are acknowledged as important but depend on decisions that can only be mad
 
 - **Subpatches** — depends on Spreads + Simulation Zones interaction
 - **Simulation Zones** — frame-to-frame feedback, design depends on how GPU state management works in practice
-- **Draggable graph editing** — full interactive node editor (create, move, wire, delete via mouse). Significant UX engineering; REPL + MCP handle structural changes until this is built
 - **Multi-window / multi-monitor** — output undocking for projector/LED wall
 - **Accessibility** — keyboard navigation, screen reader, high-contrast
 - **Library version pinning** — lockfile vs vendoring

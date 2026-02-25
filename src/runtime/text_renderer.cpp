@@ -56,7 +56,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 )";
 
 bool TextRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format,
-                         const char* font_path, float font_size) {
+                         const char* font_path, float font_size, float dpi_scale) {
     device_ = device;
     font_size_ = font_size;
 
@@ -80,11 +80,14 @@ bool TextRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format,
         return false;
     }
 
-    float scale = stbtt_ScaleForPixelHeight(&font, font_size);
+    // Rasterize at physical pixel size for sharp glyphs on HiDPI displays
+    float raster_size = font_size * dpi_scale;
+    float scale = stbtt_ScaleForPixelHeight(&font, raster_size);
 
     int ascent, descent, line_gap;
     stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
-    line_height_ = (ascent - descent + line_gap) * scale;
+    // Store line_height in logical coordinates
+    line_height_ = (ascent - descent + line_gap) * scale / dpi_scale;
 
     // Bake ASCII 32-126 into atlas
     std::vector<unsigned char> atlas(kAtlasWidth * kAtlasHeight, 0);
@@ -123,14 +126,15 @@ bool TextRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format,
         gi.v0 = (float)pen_y / kAtlasHeight;
         gi.u1 = (float)(pen_x + gw) / kAtlasWidth;
         gi.v1 = (float)(pen_y + gh) / kAtlasHeight;
-        gi.x0 = (float)x0;
-        gi.y0 = (float)y0;
-        gi.x1 = (float)x1;
-        gi.y1 = (float)y1;
+        // Store glyph metrics in logical coordinates (divide by dpi_scale)
+        gi.x0 = (float)x0 / dpi_scale;
+        gi.y0 = (float)y0 / dpi_scale;
+        gi.x1 = (float)x1 / dpi_scale;
+        gi.y1 = (float)y1 / dpi_scale;
 
         int advance, lsb;
         stbtt_GetCodepointHMetrics(&font, c, &advance, &lsb);
-        gi.advance = advance * scale;
+        gi.advance = advance * scale / dpi_scale;
 
         pen_x += gw + 1;
         if ((uint32_t)gh > row_height) row_height = gh;
@@ -294,8 +298,8 @@ bool TextRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format,
         return false;
     }
 
-    std::fprintf(stderr, "[vivid] TextRenderer initialized (%.0fpx, atlas %ux%u)\n",
-        font_size, kAtlasWidth, kAtlasHeight);
+    std::fprintf(stderr, "[vivid] TextRenderer initialized (%.0fpt @ %.1fx, raster %.0fpx, atlas %ux%u)\n",
+        font_size, dpi_scale, raster_size, kAtlasWidth, kAtlasHeight);
     return true;
 }
 
@@ -313,19 +317,19 @@ void TextRenderer::push_quad(float x0, float y0, float x1, float y1,
 }
 
 void TextRenderer::draw_text(float x, float y, const char* text,
-                              float r, float g, float b, float a) {
-    float baseline = y + font_size_ * 0.8f; // approximate ascent
+                              float r, float g, float b, float a, float scale) {
+    float baseline = y + font_size_ * 0.8f * scale;
     float pen = x;
     for (const char* p = text; *p; ++p) {
         unsigned char c = *p;
         if (c < 32 || c > 126) continue;
         const auto& gi = glyphs_[c];
-        float gx0 = pen + gi.x0;
-        float gy0 = baseline + gi.y0;
-        float gx1 = pen + gi.x1;
-        float gy1 = baseline + gi.y1;
+        float gx0 = pen + gi.x0 * scale;
+        float gy0 = baseline + gi.y0 * scale;
+        float gx1 = pen + gi.x1 * scale;
+        float gy1 = baseline + gi.y1 * scale;
         push_quad(gx0, gy0, gx1, gy1, gi.u0, gi.v0, gi.u1, gi.v1, r, g, b, a);
-        pen += gi.advance;
+        pen += gi.advance * scale;
     }
 }
 
@@ -337,11 +341,11 @@ void TextRenderer::draw_rect(float x, float y, float w, float h,
     push_quad(x, y, x + w, y + h, su0, sv0, su1, sv1, r, g, b, a);
 }
 
-float TextRenderer::text_width(const char* text) const {
+float TextRenderer::text_width(const char* text, float scale) const {
     float w = 0;
     for (const char* p = text; *p; ++p) {
         unsigned char c = *p;
-        if (c >= 32 && c <= 126) w += glyphs_[c].advance;
+        if (c >= 32 && c <= 126) w += glyphs_[c].advance * scale;
     }
     return w;
 }

@@ -172,6 +172,8 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     config.viewFormats = nullptr;
     wgpuSurfaceConfigure(surface_, &config);
 
+    width_ = width;
+    height_ = height;
     std::fprintf(stderr, "[vivid] GPU context initialized (%ux%u)\n", width, height);
     return true;
 }

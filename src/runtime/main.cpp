@@ -77,6 +77,12 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int /*m
     if (ud && ud->graph_ui) ud->graph_ui->on_mouse_button(button, action);
 }
 
+static void scroll_callback(GLFWwindow* w, double xoffset, double yoffset) {
+    auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
+    if (ud && ud->graph_ui) ud->graph_ui->on_scroll(
+        static_cast<float>(xoffset), static_cast<float>(yoffset));
+}
+
 int main(int argc, char* argv[]) {
     // Derive exe directory so resource lookup works from any CWD
     auto exe_path = std::filesystem::canonical(std::filesystem::path(argv[0]));
@@ -119,9 +125,18 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // --- Query physical framebuffer size and DPI scale ---
+    int fb_width, fb_height;
+    glfwGetFramebufferSize(window, &fb_width, &fb_height);
+    float xscale, yscale;
+    glfwGetWindowContentScale(window, &xscale, &yscale);
+    float dpi_scale = xscale; // on macOS, xscale == yscale
+    std::fprintf(stderr, "[vivid] Framebuffer: %dx%d, DPI scale: %.1f\n",
+                 fb_width, fb_height, dpi_scale);
+
     // --- GPU ---
     vivid::GpuContext gpu;
-    if (!gpu.init(window, kWidth, kHeight)) {
+    if (!gpu.init(window, fb_width, fb_height)) {
         glfwDestroyWindow(window);
         glfwTerminate();
         return 1;
@@ -134,7 +149,7 @@ int main(int argc, char* argv[]) {
 
     WGPUTextureDescriptor offscreen_desc{};
     offscreen_desc.label = to_sv("Offscreen Texture");
-    offscreen_desc.size = { kWidth, kHeight, 1 };
+    offscreen_desc.size = { (uint32_t)fb_width, (uint32_t)fb_height, 1 };
     offscreen_desc.mipLevelCount = 1;
     offscreen_desc.sampleCount = 1;
     offscreen_desc.dimension = WGPUTextureDimension_2D;
@@ -222,7 +237,7 @@ int main(int argc, char* argv[]) {
             auto alt = exe_dir.parent_path() / "fonts" / "JetBrainsMono-Regular.ttf";
             if (std::filesystem::exists(alt)) font_path = alt.string();
         }
-        if (text_renderer.init(gpu.device(), gpu.surface_format(), font_path.c_str(), 16.0f)) {
+        if (text_renderer.init(gpu.device(), gpu.surface_format(), font_path.c_str(), 16.0f, dpi_scale)) {
             repl_enabled = true;
         } else {
             std::fprintf(stderr, "[vivid] REPL disabled (font not found)\n");
@@ -232,6 +247,7 @@ int main(int argc, char* argv[]) {
     vivid::Repl repl(runtime_api);
     vivid::NodeGraphUI graph_ui(runtime_api, graph, scheduler,
                                 has_audio ? &audio_engine : nullptr);
+    graph_ui.set_dpi_scale(dpi_scale);
 
     // Set up GLFW input callbacks
     WindowUserData window_user_data;
@@ -242,6 +258,7 @@ int main(int argc, char* argv[]) {
     glfwSetKeyCallback(window, key_callback);
     glfwSetCursorPosCallback(window, cursor_pos_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
+    glfwSetScrollCallback(window, scroll_callback);
 
     // --- Hot-reload ---
     vivid::FileWatcher file_watcher;
@@ -304,8 +321,8 @@ int main(int argc, char* argv[]) {
             gpu_state.queue               = gpu.queue();
             gpu_state.command_encoder     = frame.encoder;
             gpu_state.output_texture_view = offscreen_view;
-            gpu_state.output_width        = kWidth;
-            gpu_state.output_height       = kHeight;
+            gpu_state.output_width        = fb_width;
+            gpu_state.output_height       = fb_height;
             gpu_state.output_format       = kOffscreenFormat;
 
             // --- Hot-reload polling ---
@@ -450,7 +467,8 @@ int main(int argc, char* argv[]) {
             // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
             if (thumb_renderer_ok) {
                 graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
-                                         frame.encoder, frame.view, kWidth, kHeight);
+                                         frame.encoder, frame.view,
+                                         (uint32_t)fb_width, (uint32_t)fb_height);
             }
             // Pass 3: REPL on top
             repl.draw(text_renderer, kWidth, kHeight);
@@ -461,10 +479,12 @@ int main(int argc, char* argv[]) {
         if (!screenshot_path.empty() && gpu.surface_supports_copy_src()
             && static_cast<int>(frame_count) >= screenshot_delay) {
             // Row alignment: WebGPU requires 256-byte aligned rows for buffer copies
+            const uint32_t ss_w = static_cast<uint32_t>(fb_width);
+            const uint32_t ss_h = static_cast<uint32_t>(fb_height);
             const uint32_t bpp = 4;
-            const uint32_t unpadded_row = kWidth * bpp;
+            const uint32_t unpadded_row = ss_w * bpp;
             const uint32_t aligned_row = (unpadded_row + 255) & ~255u;
-            const uint64_t buf_size = static_cast<uint64_t>(aligned_row) * kHeight;
+            const uint64_t buf_size = static_cast<uint64_t>(aligned_row) * ss_h;
 
             WGPUBufferDescriptor staging_desc{};
             staging_desc.label = to_sv("Screenshot Staging");
@@ -484,9 +504,9 @@ int main(int argc, char* argv[]) {
             dst.buffer = staging;
             dst.layout.offset = 0;
             dst.layout.bytesPerRow = aligned_row;
-            dst.layout.rowsPerImage = kHeight;
+            dst.layout.rowsPerImage = ss_h;
 
-            WGPUExtent3D copy_size = { kWidth, kHeight, 1 };
+            WGPUExtent3D copy_size = { ss_w, ss_h, 1 };
             wgpuCommandEncoderCopyTextureToBuffer(frame.encoder, &src, &dst, &copy_size);
 
             // Finish and submit the command buffer (end_frame does this + present)
@@ -522,11 +542,11 @@ int main(int argc, char* argv[]) {
                 wgpuBufferGetConstMappedRange(staging, 0, buf_size));
 
             // Copy to contiguous buffer with BGRA → RGBA swizzle
-            std::vector<uint8_t> pixels(kWidth * kHeight * bpp);
-            for (uint32_t y = 0; y < kHeight; ++y) {
+            std::vector<uint8_t> pixels(ss_w * ss_h * bpp);
+            for (uint32_t y = 0; y < ss_h; ++y) {
                 const uint8_t* src_row = mapped + y * aligned_row;
                 uint8_t* dst_row = pixels.data() + y * unpadded_row;
-                for (uint32_t x = 0; x < kWidth; ++x) {
+                for (uint32_t x = 0; x < ss_w; ++x) {
                     dst_row[x * 4 + 0] = src_row[x * 4 + 2]; // R ← B
                     dst_row[x * 4 + 1] = src_row[x * 4 + 1]; // G ← G
                     dst_row[x * 4 + 2] = src_row[x * 4 + 0]; // B ← R
@@ -537,8 +557,8 @@ int main(int argc, char* argv[]) {
             wgpuBufferUnmap(staging);
             wgpuBufferRelease(staging);
 
-            if (stbi_write_png(screenshot_path.c_str(), kWidth, kHeight, 4,
-                               pixels.data(), kWidth * bpp)) {
+            if (stbi_write_png(screenshot_path.c_str(), ss_w, ss_h, 4,
+                               pixels.data(), ss_w * bpp)) {
                 std::fprintf(stderr, "[vivid] Screenshot saved: %s\n", screenshot_path.c_str());
             } else {
                 std::fprintf(stderr, "[vivid] Screenshot FAILED: %s\n", screenshot_path.c_str());

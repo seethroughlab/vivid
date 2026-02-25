@@ -94,7 +94,33 @@ void NodeGraphUI::on_mouse_button(int button, int action) {
             mouse_.left_down = false;
             mouse_.left_released = true;
         }
+    } else if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
+        if (action == GLFW_PRESS) {
+            panning_ = true;
+            pan_start_mx_ = mouse_.x;
+            pan_start_my_ = mouse_.y;
+            pan_start_px_ = pan_x_;
+            pan_start_py_ = pan_y_;
+        } else if (action == GLFW_RELEASE) {
+            panning_ = false;
+        }
     }
+}
+
+void NodeGraphUI::on_scroll(float /*x_offset*/, float y_offset) {
+    // Only zoom when cursor is in graph area
+    if (mouse_.x >= kInspectorX) return;
+
+    float factor = std::pow(1.12f, y_offset);
+    float new_zoom = zoom_ * factor;
+    new_zoom = std::max(0.4f, std::min(2.5f, new_zoom));
+
+    // Pivot around mouse cursor
+    float gx = sx_to_gx(mouse_.x);
+    float gy = sy_to_gy(mouse_.y);
+    zoom_ = new_zoom;
+    pan_x_ = mouse_.x - gx * zoom_;
+    pan_y_ = mouse_.y - gy * zoom_;
 }
 
 // -----------------------------------------------------------------------
@@ -307,20 +333,27 @@ void NodeGraphUI::draw_graph(TextRenderer& tr) {
         const float* bg = selected ? kNodeSelBg : kNodeBg;
         const float* dcol = domain_color(r.domain);
 
+        // Transform graph-space rect to screen space
+        float sx = gx_to_sx(r.x), sy = gy_to_sy(r.y);
+        float sw = g_to_s(r.w), sh = g_to_s(r.h);
+
         // Node background
-        tr.draw_rect(r.x, r.y, r.w, r.h, bg[0], bg[1], bg[2], 0.92f);
+        tr.draw_rect(sx, sy, sw, sh, bg[0], bg[1], bg[2], 0.92f);
 
         // Accent bar at top (step 1)
-        tr.draw_rect(r.x, r.y, r.w, kAccentBarH, dcol[0], dcol[1], dcol[2]);
+        float s_accent_h = g_to_s(kAccentBarH);
+        tr.draw_rect(sx, sy, sw, s_accent_h, dcol[0], dcol[1], dcol[2]);
 
         // --- Domain body region ---
-        float body_y = r.y + kAccentBarH;
+        float s_body_y = sy + s_accent_h;
         bool has_ct = custom_thumb_nodes_.count(r.node_id) > 0;
         float body_h = domain_body_height(r.domain, has_ct);
+        float s_body_h = g_to_s(body_h);
 
         if (r.domain == VIVID_DOMAIN_CONTROL && !has_ct) {
             // Sparkline (step 3)
-            tr.draw_rect(r.x + 2, body_y + 2, r.w - 4, body_h - 4,
+            tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
+                         sw - g_to_s(4), s_body_h - g_to_s(4),
                          kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
 
             // Find sparkline data for this node's first output
@@ -346,14 +379,14 @@ void NodeGraphUI::draw_graph(TextRenderer& tr) {
                     float cur_val = sd.values[last_idx];
                     char val_buf[16];
                     std::snprintf(val_buf, sizeof(val_buf), "%.2f", cur_val);
-                    tr.draw_text(r.x + 5, body_y + 4, val_buf,
-                                 dcol[0], dcol[1], dcol[2]);
+                    tr.draw_text(sx + g_to_s(5), s_body_y + g_to_s(4), val_buf,
+                                 dcol[0], dcol[1], dcol[2], 1.0f, zoom_);
 
                     // Sparkline plot (right side)
-                    float spark_x = r.x + 52;
-                    float spark_w = r.w - 56;
-                    float spark_y = body_y + 4;
-                    float spark_h = body_h - 8;
+                    float spark_x = sx + g_to_s(52);
+                    float spark_w = sw - g_to_s(56);
+                    float spark_y = s_body_y + g_to_s(4);
+                    float spark_h = s_body_h - g_to_s(8);
 
                     // Find min/max
                     float vmin = sd.values[0], vmax = sd.values[0];
@@ -381,7 +414,8 @@ void NodeGraphUI::draw_graph(TextRenderer& tr) {
             }
         } else if (r.domain == VIVID_DOMAIN_AUDIO && !has_ct) {
             // Waveform (step 4)
-            tr.draw_rect(r.x + 2, body_y + 2, r.w - 4, body_h - 4,
+            tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
+                         sw - g_to_s(4), s_body_h - g_to_s(4),
                          kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
 
             if (audio_engine_) {
@@ -390,10 +424,10 @@ void NodeGraphUI::draw_graph(TextRenderer& tr) {
                     const auto& snap = audio_engine_->analysis_read();
                     if (ae_idx < static_cast<int>(snap.waveform.size())) {
                         const auto& wave = snap.waveform[ae_idx];
-                        float wave_x = r.x + 4;
-                        float wave_w = r.w - 8;
-                        float wave_y = body_y + 4;
-                        float wave_h = body_h - 10;
+                        float wave_x = sx + g_to_s(4);
+                        float wave_w = sw - g_to_s(8);
+                        float wave_y = s_body_y + g_to_s(4);
+                        float wave_h = s_body_h - g_to_s(10);
                         float center_y = wave_y + wave_h * 0.5f;
 
                         // Center line
@@ -414,10 +448,10 @@ void NodeGraphUI::draw_graph(TextRenderer& tr) {
                         }
 
                         // Peak meter strip at bottom
-                        float peak_y = body_y + body_h - 4;
+                        float peak_y = s_body_y + s_body_h - g_to_s(4);
                         if (ae_idx < static_cast<int>(snap.peak.size())) {
                             float pk = std::min(1.0f, snap.peak[ae_idx]);
-                            tr.draw_rect(wave_x, peak_y, wave_w * pk, 2,
+                            tr.draw_rect(wave_x, peak_y, wave_w * pk, g_to_s(2),
                                          dcol[0], dcol[1], dcol[2], 0.9f);
                         }
                     }
@@ -427,33 +461,37 @@ void NodeGraphUI::draw_graph(TextRenderer& tr) {
         // GPU domain: body region left blank (thumbnails drawn in separate pass)
 
         // Type name (centered, below accent bar + body)
-        float text_y = r.y + kAccentBarH + body_h + kNodePadY;
-        float tw = tr.text_width(r.type_name.c_str());
-        float tx = r.x + (r.w - tw) * 0.5f;
-        tr.draw_text(tx, text_y, r.type_name.c_str(), 1.0f, 1.0f, 1.0f);
+        float text_y = sy + s_accent_h + s_body_h + g_to_s(kNodePadY);
+        float tw = tr.text_width(r.type_name.c_str(), zoom_);
+        float tx = sx + (sw - tw) * 0.5f;
+        tr.draw_text(tx, text_y, r.type_name.c_str(), 1.0f, 1.0f, 1.0f, 1.0f, zoom_);
 
         // Node ID below type
-        float iw = tr.text_width(r.node_id.c_str());
-        float ix = r.x + (r.w - iw) * 0.5f;
-        tr.draw_text(ix, text_y + kLineH, r.node_id.c_str(),
-                     kDimText[0], kDimText[1], kDimText[2]);
+        float iw = tr.text_width(r.node_id.c_str(), zoom_);
+        float ix = sx + (sw - iw) * 0.5f;
+        tr.draw_text(ix, text_y + g_to_s(kLineH), r.node_id.c_str(),
+                     kDimText[0], kDimText[1], kDimText[2], 1.0f, zoom_);
 
         // Input port dots and labels (use domain color)
+        float s_dot = kPortDotSize * zoom_;
+        float s_line_h = tr.line_height() * zoom_;
         for (const auto& p : r.inputs) {
-            tr.draw_rect(p.x - kPortDotSize, p.y - kPortDotSize * 0.5f,
-                         kPortDotSize, kPortDotSize,
+            float spx = gx_to_sx(p.x), spy = gy_to_sy(p.y);
+            tr.draw_rect(spx - s_dot, spy - s_dot * 0.5f,
+                         s_dot, s_dot,
                          dcol[0], dcol[1], dcol[2]);
-            tr.draw_text(p.x + 4, p.y - tr.line_height() * 0.5f, p.name.c_str(),
-                         kDimText[0], kDimText[1], kDimText[2]);
+            tr.draw_text(spx + g_to_s(4), spy - s_line_h * 0.5f, p.name.c_str(),
+                         kDimText[0], kDimText[1], kDimText[2], 1.0f, zoom_);
         }
         // Output port dots and labels (use domain color)
         for (const auto& p : r.outputs) {
-            tr.draw_rect(p.x, p.y - kPortDotSize * 0.5f,
-                         kPortDotSize, kPortDotSize,
+            float spx = gx_to_sx(p.x), spy = gy_to_sy(p.y);
+            tr.draw_rect(spx, spy - s_dot * 0.5f,
+                         s_dot, s_dot,
                          dcol[0], dcol[1], dcol[2]);
-            float lw = tr.text_width(p.name.c_str());
-            tr.draw_text(p.x - lw - 4, p.y - tr.line_height() * 0.5f, p.name.c_str(),
-                         kDimText[0], kDimText[1], kDimText[2]);
+            float lw = tr.text_width(p.name.c_str(), zoom_);
+            tr.draw_text(spx - lw - g_to_s(4), spy - s_line_h * 0.5f, p.name.c_str(),
+                         kDimText[0], kDimText[1], kDimText[2], 1.0f, zoom_);
         }
     }
 }
@@ -474,18 +512,22 @@ void NodeGraphUI::draw_connections(TextRenderer& tr) {
         const auto& from_rect = node_rects_[fi->second];
         const auto& to_rect = node_rects_[ti->second];
 
-        // Find output port position (at node edge so wire passes through dot)
-        float sx = from_rect.x + from_rect.w;
-        float sy = from_rect.y + from_rect.h * 0.5f;
+        // Find output port position in graph space
+        float gsx = from_rect.x + from_rect.w;
+        float gsy = from_rect.y + from_rect.h * 0.5f;
         for (const auto& p : from_rect.outputs) {
-            if (p.name == c.from_port) { sx = p.x; sy = p.y; break; }
+            if (p.name == c.from_port) { gsx = p.x; gsy = p.y; break; }
         }
-        // Find input port position (at node edge so wire passes through dot)
-        float ex = to_rect.x;
-        float ey = to_rect.y + to_rect.h * 0.5f;
+        // Find input port position in graph space
+        float gex = to_rect.x;
+        float gey = to_rect.y + to_rect.h * 0.5f;
         for (const auto& p : to_rect.inputs) {
-            if (p.name == c.to_port) { ex = p.x; ey = p.y; break; }
+            if (p.name == c.to_port) { gex = p.x; gey = p.y; break; }
         }
+
+        // Transform to screen space
+        float ssx = gx_to_sx(gsx), ssy = gy_to_sy(gsy);
+        float sex = gx_to_sx(gex), sey = gy_to_sy(gey);
 
         // Domain-colored wires (source node's accent color)
         const float* dcol = domain_color(from_rect.domain);
@@ -496,12 +538,13 @@ void NodeGraphUI::draw_connections(TextRenderer& tr) {
         float a = sel ? 0.95f : 0.8f;
 
         // Z-route: horizontal from source → vertical → horizontal to dest
-        float mid_x = (sx + ex) * 0.5f;
-        tr.draw_rect(sx, sy - 1, mid_x - sx, 3, cr, cg, cb, a);
-        float vy = std::min(sy, ey);
-        float vh = std::fabs(ey - sy);
-        tr.draw_rect(mid_x - 1, vy, 3, vh + 3, cr, cg, cb, a);
-        tr.draw_rect(mid_x, ey - 1, ex - mid_x, 3, cr, cg, cb, a);
+        float wire_th = std::max(1.0f, 3.0f * zoom_);
+        float mid_x = (ssx + sex) * 0.5f;
+        tr.draw_rect(ssx, ssy - 1, mid_x - ssx, wire_th, cr, cg, cb, a);
+        float vy = std::min(ssy, sey);
+        float vh = std::fabs(sey - ssy);
+        tr.draw_rect(mid_x - 1, vy, wire_th, vh + wire_th, cr, cg, cb, a);
+        tr.draw_rect(mid_x, sey - 1, sex - mid_x, wire_th, cr, cg, cb, a);
     }
 }
 
@@ -626,9 +669,10 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
 // Hit testing
 // -----------------------------------------------------------------------
 int NodeGraphUI::hit_test_node(float mx, float my) const {
+    float gx = sx_to_gx(mx), gy = sy_to_gy(my);
     for (int i = static_cast<int>(node_rects_.size()) - 1; i >= 0; --i) {
         const auto& r = node_rects_[i];
-        if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h)
+        if (gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + r.h)
             return i;
     }
     return -1;
@@ -665,12 +709,18 @@ void NodeGraphUI::update() {
         }
     }
 
+    // Active pan (middle-mouse drag)
+    if (panning_) {
+        pan_x_ = pan_start_px_ + (mouse_.x - pan_start_mx_);
+        pan_y_ = pan_start_py_ + (mouse_.y - pan_start_my_);
+    }
+
     // Active node drag
     if (dragging_node_idx_ >= 0) {
         if (mouse_.left_down) {
             auto& rect = node_rects_[dragging_node_idx_];
-            rect.x = mouse_.x - drag_offset_x_;
-            rect.y = mouse_.y - drag_offset_y_;
+            rect.x = sx_to_gx(mouse_.x) - drag_offset_x_;
+            rect.y = sy_to_gy(mouse_.y) - drag_offset_y_;
             // Find the corresponding NodeState for port recomputation
             const auto& sched_nodes = scheduler_.nodes();
             for (const auto& ns : sched_nodes) {
@@ -743,12 +793,22 @@ void NodeGraphUI::update() {
             if (ni >= 0) {
                 selected_node_id_ = node_rects_[ni].node_id;
                 dragging_node_idx_ = ni;
-                drag_offset_x_ = mouse_.x - node_rects_[ni].x;
-                drag_offset_y_ = mouse_.y - node_rects_[ni].y;
+                drag_offset_x_ = sx_to_gx(mouse_.x) - node_rects_[ni].x;
+                drag_offset_y_ = sy_to_gy(mouse_.y) - node_rects_[ni].y;
             } else {
                 selected_node_id_.clear();
+                // Start left-drag pan on empty canvas
+                panning_ = true;
+                pan_start_mx_ = mouse_.x;
+                pan_start_my_ = mouse_.y;
+                pan_start_px_ = pan_x_;
+                pan_start_py_ = pan_y_;
             }
         }
+    }
+
+    if (mouse_.left_released && panning_ && dragging_node_idx_ < 0) {
+        panning_ = false;
     }
 
     // Clear one-frame flags
@@ -804,10 +864,24 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
     for (const auto& r : node_rects_) {
         WGPUTextureView thumb_view = cache.get_view(r.node_id);
         if (!thumb_view) continue;
-        // Viewport units are physical pixels — scale logical coords by dpi_scale
-        renderer.draw(thumb_view,
-                      r.x * dpi_scale_, (r.y + kAccentBarH) * dpi_scale_,
-                      r.w * dpi_scale_, kGpuThumbH * dpi_scale_);
+        // Viewport units are physical pixels — apply zoom/pan then dpi_scale
+        float tx = gx_to_sx(r.x) * dpi_scale_;
+        float ty = gy_to_sy(r.y + kAccentBarH) * dpi_scale_;
+        float tw = g_to_s(r.w) * dpi_scale_;
+        float th = g_to_s(kGpuThumbH) * dpi_scale_;
+        // Skip thumbnails that are fully offscreen or have non-positive size
+        if (tx + tw <= 0 || ty + th <= 0 || tx >= w || ty >= h || tw <= 0 || th <= 0)
+            continue;
+        // Clamp viewport to render target bounds (WebGPU requirement)
+        if (tx < 0) { tw += tx; tx = 0; }
+        if (ty < 0) { th += ty; ty = 0; }
+        if (tx + tw > w) tw = w - tx;
+        if (ty + th > h) th = h - ty;
+        // Clip to graph area (don't draw over inspector panel)
+        float graph_right = kGraphW * dpi_scale_;
+        if (tx >= graph_right) continue;
+        if (tx + tw > graph_right) tw = graph_right - tx;
+        renderer.draw(thumb_view, tx, ty, tw, th);
     }
     renderer.end();
 }

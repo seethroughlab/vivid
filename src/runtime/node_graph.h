@@ -44,6 +44,7 @@ public:
     // GLFW callbacks
     void on_mouse_move(float x, float y);
     void on_mouse_button(int button, int action);
+    void on_scroll(float x_offset, float y_offset);
 
     // Per-frame
     void update();
@@ -72,6 +73,13 @@ private:
     int hit_test_slider(float mx, float my) const;
     int hit_test_bool(float mx, float my) const;
 
+    // Graph space ↔ screen space helpers
+    float gx_to_sx(float gx) const { return gx * zoom_ + pan_x_; }
+    float gy_to_sy(float gy) const { return gy * zoom_ + pan_y_; }
+    float g_to_s(float gv) const { return gv * zoom_; }  // sizes
+    float sx_to_gx(float sx) const { return (sx - pan_x_) / zoom_; }
+    float sy_to_gy(float sy) const { return (sy - pan_y_) / zoom_; }
+
     RuntimeAPI& api_;
     const Graph& graph_;
     const Scheduler& scheduler_;
@@ -87,6 +95,13 @@ private:
     // Node drag state
     int dragging_node_idx_ = -1;
     float drag_offset_x_ = 0, drag_offset_y_ = 0;
+
+    // Zoom/pan state
+    float zoom_ = 1.0f;
+    float pan_x_ = 0.0f, pan_y_ = 0.0f;
+    bool panning_ = false;
+    float pan_start_mx_ = 0, pan_start_my_ = 0;
+    float pan_start_px_ = 0, pan_start_py_ = 0;
 
     // Slider drag state
     int active_slider_idx_ = -1;
