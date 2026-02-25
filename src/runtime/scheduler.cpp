@@ -329,6 +329,18 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ns.upstream_gens_cached[i] = nodes_[ns.upstream_nodes[i]].generation;
         }
     }
+
+    // Propagate control→audio param wires for inspector display.
+    // Audio nodes are skipped in the main loop (they run on the audio thread),
+    // but their scheduler-side param_values must reflect modulation so the
+    // inspector shows animated values.
+    for (const auto& w : wires_) {
+        if (!w.targets_param) continue;
+        auto& to_ns = nodes_[w.to_node_idx];
+        if (!to_ns.is_audio) continue;
+        to_ns.param_values[w.to_port_idx] =
+            nodes_[w.from_node_idx].output_values[w.from_port_idx];
+    }
 }
 
 bool Scheduler::has_gpu_operators() const {

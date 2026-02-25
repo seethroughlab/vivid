@@ -78,6 +78,19 @@ static float domain_body_height(VividDomain domain, bool has_custom_thumb = fals
     }
 }
 
+// Bezier wire rendering
+static constexpr int kBezierSegments = 30;
+
+static void eval_bezier(float t, float x0, float y0, float x1, float y1,
+                         float x2, float y2, float x3, float y3,
+                         float& ox, float& oy) {
+    float u = 1.0f - t;
+    float uu = u * u, uuu = uu * u;
+    float tt = t * t, ttt = tt * t;
+    ox = uuu * x0 + 3 * uu * t * x1 + 3 * u * tt * x2 + ttt * x3;
+    oy = uuu * y0 + 3 * uu * t * y1 + 3 * u * tt * y2 + ttt * y3;
+}
+
 NodeGraphUI::NodeGraphUI(RuntimeAPI& api, const Graph& graph, const Scheduler& scheduler,
                          AudioEngine* audio_engine)
     : api_(api), graph_(graph), scheduler_(scheduler), audio_engine_(audio_engine) {}
@@ -555,20 +568,37 @@ void NodeGraphUI::draw_connections(TextRenderer& tr) {
         float cb = sel ? std::min(1.0f, dcol[2] * 1.3f) : dcol[2];
         float a = sel ? 0.95f : 0.8f;
 
-        // Z-route: horizontal from source → vertical → horizontal to dest
         float wire_th = std::max(1.0f, 3.0f * zoom_);
-        float mid_x = (ssx + sex) * 0.5f;
-        tr.draw_rect(ssx, ssy - 1, mid_x - ssx, wire_th, cr, cg, cb, a);
-        float vy = std::min(ssy, sey);
-        float vh = std::fabs(sey - ssy);
-        tr.draw_rect(mid_x - 1, vy, wire_th, vh + wire_th, cr, cg, cb, a);
-        tr.draw_rect(mid_x, sey - 1, sex - mid_x, wire_th, cr, cg, cb, a);
+
+        if (bezier_wires_) {
+            // Cubic bezier with horizontal tangents
+            float cp_off = std::fabs(sex - ssx) * 0.5f;
+            float px = ssx, py = ssy;
+            for (int seg = 1; seg <= kBezierSegments; ++seg) {
+                float t = static_cast<float>(seg) / kBezierSegments;
+                float nx, ny;
+                eval_bezier(t, ssx, ssy, ssx + cp_off, ssy,
+                            sex - cp_off, sey, sex, sey, nx, ny);
+                tr.draw_line(px, py, nx, ny, wire_th, cr, cg, cb, a);
+                px = nx; py = ny;
+            }
+        } else {
+            // Z-route: horizontal from source → vertical → horizontal to dest
+            float mid_x = (ssx + sex) * 0.5f;
+            tr.draw_rect(ssx, ssy - 1, mid_x - ssx, wire_th, cr, cg, cb, a);
+            float vy = std::min(ssy, sey);
+            float vh = std::fabs(sey - ssy);
+            tr.draw_rect(mid_x - 1, vy, wire_th, vh + wire_th, cr, cg, cb, a);
+            tr.draw_rect(mid_x, sey - 1, sex - mid_x, wire_th, cr, cg, cb, a);
+        }
     }
 }
 
 void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
     slider_rects_.clear();
     bool_rects_.clear();
+    value_text_rects_.clear();
+    dropdown_rects_.clear();
 
     // Inspector background
     tr.draw_rect(kInspectorX, 0, kInspectorW, kGraphH, kInspBg[0], kInspBg[1], kInspBg[2], 0.95f);
@@ -612,20 +642,51 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
         const auto& pd = desc->params[pi];
         float val = sel_node->param_values[pi];
 
+        bool is_editing_this = editing_param_ &&
+                               edit_node_id_ == selected_node_id_ &&
+                               edit_param_name_ == pd.name;
+
         // Label
         tr.draw_text(px, py, pd.name, 0.8f, 0.82f, 0.85f);
 
-        // Value text
+        // Value text (right-aligned on the label line)
         char val_buf[32];
         if (pd.type == VIVID_PARAM_BOOL) {
             std::snprintf(val_buf, sizeof(val_buf), "%s", val > 0.5f ? "true" : "false");
+        } else if (pd.choice_count > 0) {
+            int idx = static_cast<int>(val);
+            if (idx >= 0 && idx < static_cast<int>(pd.choice_count))
+                std::snprintf(val_buf, sizeof(val_buf), "%s", pd.choice_labels[idx]);
+            else
+                std::snprintf(val_buf, sizeof(val_buf), "%d", idx);
         } else if (pd.type == VIVID_PARAM_INT) {
             std::snprintf(val_buf, sizeof(val_buf), "%d", static_cast<int>(val));
         } else {
             std::snprintf(val_buf, sizeof(val_buf), "%.2f", val);
         }
+
         float vw = tr.text_width(val_buf);
-        tr.draw_text(px + panel_w - vw, py, val_buf, 0.8f, 0.82f, 0.85f);
+        float val_x = px + panel_w - vw;
+        float val_y = py;
+
+        if (is_editing_this) {
+            // Draw text-edit field in place of value text
+            float edit_w = panel_w * 0.4f;
+            float edit_x = px + panel_w - edit_w;
+            float edit_h = kLineH;
+            tr.draw_rect(edit_x - 1, val_y - 1, edit_w + 2, edit_h + 2,
+                         kAccent[0], kAccent[1], kAccent[2]);
+            tr.draw_rect(edit_x, val_y, edit_w, edit_h, 0.08f, 0.09f, 0.11f);
+            std::string display = edit_buffer_ + "_";
+            tr.draw_text(edit_x + 2, val_y, display.c_str(), 0.95f, 0.95f, 0.95f);
+        } else {
+            tr.draw_text(val_x, py, val_buf, 0.8f, 0.82f, 0.85f);
+            // Track value text rect for click-to-edit (not for bools or enums)
+            if (pd.type != VIVID_PARAM_BOOL && pd.choice_count == 0) {
+                value_text_rects_.push_back({val_x, val_y, vw, kLineH,
+                                             selected_node_id_, pd.name});
+            }
+        }
         py += kLineH;
 
         if (pd.type == VIVID_PARAM_BOOL) {
@@ -638,33 +699,35 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
             }
             bool_rects_.push_back({bx, by, bsz, bsz, selected_node_id_, pd.name});
             py += bsz + 6;
+        } else if (pd.choice_count > 0) {
+            // Dropdown row for enum params
+            float dx = px, dy = py;
+            float dw = panel_w, dh = 18.0f;
+            tr.draw_rect(dx, dy, dw, dh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+            // Show current label
+            int idx = static_cast<int>(val);
+            const char* label = (idx >= 0 && idx < static_cast<int>(pd.choice_count))
+                                ? pd.choice_labels[idx] : "?";
+            tr.draw_text(dx + 6, dy + 1, label, 0.9f, 0.92f, 0.95f);
+            // Down-arrow indicator
+            float arrow_x = dx + dw - 16;
+            tr.draw_text(arrow_x, dy + 1, "\xE2\x96\xBE", kDimText[0], kDimText[1], kDimText[2]);
+            dropdown_rects_.push_back({dx, dy, dw, dh, selected_node_id_, pd.name});
+            py += dh + 6;
         } else {
+            // Normal slider
             float sx = px, sy = py;
             float sw = panel_w, sh = 10.0f;
 
-            bool is_editing_this = editing_param_ &&
-                                   edit_node_id_ == selected_node_id_ &&
-                                   edit_param_name_ == pd.name;
+            tr.draw_rect(sx, sy, sw, sh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
 
-            if (is_editing_this) {
-                // Draw text-edit field with accent border
-                tr.draw_rect(sx - 1, sy - 1, sw + 2, sh + 2,
-                             kAccent[0], kAccent[1], kAccent[2]);
-                tr.draw_rect(sx, sy, sw, sh, 0.08f, 0.09f, 0.11f);
-                std::string display = edit_buffer_ + "_";
-                tr.draw_text(sx + 2, sy - 1, display.c_str(), 0.95f, 0.95f, 0.95f);
-            } else {
-                // Normal slider
-                tr.draw_rect(sx, sy, sw, sh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+            float range = pd.max_value - pd.min_value;
+            float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
+            t = std::max(0.0f, std::min(1.0f, t));
+            tr.draw_rect(sx, sy, sw * t, sh, kSliderFill[0], kSliderFill[1], kSliderFill[2]);
 
-                float range = pd.max_value - pd.min_value;
-                float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
-                t = std::max(0.0f, std::min(1.0f, t));
-                tr.draw_rect(sx, sy, sw * t, sh, kSliderFill[0], kSliderFill[1], kSliderFill[2]);
-
-                float thumb_x = sx + sw * t - 3;
-                tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, kAccent[0], kAccent[1], kAccent[2]);
-            }
+            float thumb_x = sx + sw * t - 3;
+            tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, kAccent[0], kAccent[1], kAccent[2]);
 
             slider_rects_.push_back({sx, sy, sw, sh, selected_node_id_, pd.name});
             py += sh + 10;
@@ -717,6 +780,27 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;  // consume all keys while editing
     }
 
+    if (dropdown_open_) {
+        switch (key) {
+            case GLFW_KEY_ESCAPE:
+                dropdown_open_ = false;
+                break;
+            case GLFW_KEY_UP:
+                if (dropdown_sel_ > 0) dropdown_sel_--;
+                break;
+            case GLFW_KEY_DOWN:
+                if (dropdown_sel_ < static_cast<int>(dropdown_labels_.size()) - 1)
+                    dropdown_sel_++;
+                break;
+            case GLFW_KEY_ENTER:
+                api_.set_param(dropdown_node_id_, dropdown_param_name_,
+                               static_cast<float>(dropdown_sel_));
+                dropdown_open_ = false;
+                break;
+        }
+        return;
+    }
+
     if (!chooser_open_) {
         // Tab opens the chooser (only if cursor is in graph area)
         if (key == GLFW_KEY_TAB && action == GLFW_PRESS && registry_) {
@@ -729,6 +813,17 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 chooser_items_ = registry_->type_names();
                 std::sort(chooser_items_.begin(), chooser_items_.end());
                 chooser_open_ = true;
+            }
+        }
+        // B toggles bezier wire rendering
+        if (key == GLFW_KEY_B && action == GLFW_PRESS) {
+            bezier_wires_ = !bezier_wires_;
+        }
+        // Delete selected node
+        if (key == GLFW_KEY_DELETE && action == GLFW_PRESS) {
+            if (!selected_node_id_.empty()) {
+                api_.remove_node(selected_node_id_);
+                selected_node_id_.clear();
             }
         }
         return;
@@ -826,13 +921,27 @@ void NodeGraphUI::draw_preview_wire(TextRenderer& tr) {
     float ssx = gx_to_sx(wire_from_gx_), ssy = gy_to_sy(wire_from_gy_);
     float sex = mouse_.x, sey = mouse_.y;
     float wire_th = std::max(1.0f, 3.0f * zoom_);
-    float mid_x = (ssx + sex) * 0.5f;
-    // Z-route: horizontal → vertical → horizontal (white, alpha 0.5)
-    tr.draw_rect(ssx, ssy - 1, mid_x - ssx, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
-    float vy = std::min(ssy, sey);
-    float vh = std::fabs(sey - ssy);
-    tr.draw_rect(mid_x - 1, vy, wire_th, vh + wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
-    tr.draw_rect(mid_x, sey - 1, sex - mid_x, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
+
+    if (bezier_wires_) {
+        float cp_off = std::fabs(sex - ssx) * 0.5f;
+        float px = ssx, py = ssy;
+        for (int seg = 1; seg <= kBezierSegments; ++seg) {
+            float t = static_cast<float>(seg) / kBezierSegments;
+            float nx, ny;
+            eval_bezier(t, ssx, ssy, ssx + cp_off, ssy,
+                        sex - cp_off, sey, sex, sey, nx, ny);
+            tr.draw_line(px, py, nx, ny, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
+            px = nx; py = ny;
+        }
+    } else {
+        float mid_x = (ssx + sex) * 0.5f;
+        // Z-route: horizontal → vertical → horizontal (white, alpha 0.5)
+        tr.draw_rect(ssx, ssy - 1, mid_x - ssx, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
+        float vy = std::min(ssy, sey);
+        float vh = std::fabs(sey - ssy);
+        tr.draw_rect(mid_x - 1, vy, wire_th, vh + wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
+        tr.draw_rect(mid_x, sey - 1, sex - mid_x, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
+    }
 }
 
 void NodeGraphUI::draw_chooser(TextRenderer& tr) {
@@ -956,6 +1065,24 @@ int NodeGraphUI::hit_test_bool(float mx, float my) const {
     return -1;
 }
 
+int NodeGraphUI::hit_test_value_text(float mx, float my) const {
+    for (int i = 0; i < static_cast<int>(value_text_rects_.size()); ++i) {
+        const auto& v = value_text_rects_[i];
+        if (mx >= v.x && mx <= v.x + v.w && my >= v.y && my <= v.y + v.h)
+            return i;
+    }
+    return -1;
+}
+
+int NodeGraphUI::hit_test_dropdown(float mx, float my) const {
+    for (int i = 0; i < static_cast<int>(dropdown_rects_.size()); ++i) {
+        const auto& d = dropdown_rects_[i];
+        if (mx >= d.x && mx <= d.x + d.w && my >= d.y && my <= d.y + d.h)
+            return i;
+    }
+    return -1;
+}
+
 void NodeGraphUI::confirm_param_edit() {
     if (!editing_param_) return;
     try {
@@ -1066,54 +1193,163 @@ void NodeGraphUI::update() {
         }
     }
 
+    // Chooser hover: update selection to follow cursor
+    if (chooser_open_) {
+        float cpx = (kGraphW - kChooserW) * 0.5f;
+        float cpy = 80.0f;
+        int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
+        float items_y = cpy + kChooserHeaderH;
+        if (mouse_.x >= cpx && mouse_.x <= cpx + kChooserW &&
+            mouse_.y >= items_y && mouse_.y < items_y + visible * kChooserItemH &&
+            !chooser_items_.empty()) {
+            int idx = chooser_scroll_ + static_cast<int>((mouse_.y - items_y) / kChooserItemH);
+            if (idx >= 0 && idx < static_cast<int>(chooser_items_.size()))
+                chooser_sel_ = idx;
+        }
+    }
+
     // Click handling
     if (mouse_.left_clicked) {
+        // Handle chooser click first (it floats over everything)
+        if (chooser_open_) {
+            float cpx = (kGraphW - kChooserW) * 0.5f;
+            float cpy = 80.0f;
+            int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
+            if (visible == 0) visible = 1;
+            float panel_h = kChooserHeaderH + visible * kChooserItemH + 4;
+            float items_y = cpy + kChooserHeaderH;
+
+            if (mouse_.x >= cpx && mouse_.x <= cpx + kChooserW &&
+                mouse_.y >= items_y && mouse_.y <= items_y + visible * kChooserItemH &&
+                !chooser_items_.empty()) {
+                // Clicked on an item
+                int idx = chooser_scroll_ + static_cast<int>((mouse_.y - items_y) / kChooserItemH);
+                if (idx >= 0 && idx < static_cast<int>(chooser_items_.size())) {
+                    const std::string& type = chooser_items_[idx];
+                    std::string id;
+                    for (int n = 1; ; ++n) {
+                        id = type + std::to_string(n);
+                        if (!graph_.find_node(id)) break;
+                    }
+                    api_.add_node(type, id);
+                    api_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
+                    selected_node_id_ = id;
+                }
+            }
+            chooser_open_ = false;
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            goto click_done;
+        }
+
+        // Handle dropdown popup click first (it floats over everything)
+        if (dropdown_open_ && !dropdown_labels_.empty()) {
+            float item_h = 20.0f;
+            float popup_h = dropdown_labels_.size() * item_h + 4;
+            if (mouse_.x >= dropdown_x_ && mouse_.x <= dropdown_x_ + dropdown_w_ &&
+                mouse_.y >= dropdown_y_ && mouse_.y <= dropdown_y_ + popup_h) {
+                int idx = static_cast<int>((mouse_.y - dropdown_y_ - 2) / item_h);
+                if (idx >= 0 && idx < static_cast<int>(dropdown_labels_.size())) {
+                    api_.set_param(dropdown_node_id_, dropdown_param_name_,
+                                   static_cast<float>(idx));
+                }
+                dropdown_open_ = false;
+                // Consume click
+                mouse_.left_clicked = false;
+                mouse_.left_released = false;
+                goto click_done;
+            } else {
+                dropdown_open_ = false;
+            }
+        }
+
         if (mouse_.x >= kInspectorX && mouse_.y < kGraphH) {
+
             // Confirm any active text edit when clicking in inspector
             if (editing_param_) confirm_param_edit();
 
-            int si = hit_test_slider(mouse_.x, mouse_.y);
-            if (si >= 0) {
-                float now = static_cast<float>(glfwGetTime());
-                if (si == last_click_slider_idx_ && (now - last_click_time_) < 0.35f) {
-                    // Double-click → enter text-edit mode
-                    editing_param_ = true;
-                    edit_node_id_ = slider_rects_[si].node_id;
-                    edit_param_name_ = slider_rects_[si].param_name;
-                    // Pre-fill with current value
+            // Check value text click-to-edit first
+            int vt = hit_test_value_text(mouse_.x, mouse_.y);
+            if (vt >= 0) {
+                editing_param_ = true;
+                edit_node_id_ = value_text_rects_[vt].node_id;
+                edit_param_name_ = value_text_rects_[vt].param_name;
+                // Pre-fill with current value
+                const auto& sched_nodes = scheduler_.nodes();
+                for (const auto& ns : sched_nodes) {
+                    if (ns.node_id != edit_node_id_) continue;
+                    auto it = ns.param_indices.find(edit_param_name_);
+                    if (it != ns.param_indices.end()) {
+                        const auto* d = ns.loader->descriptor();
+                        for (uint32_t pi = 0; pi < d->param_count; ++pi) {
+                            if (std::string(d->params[pi].name) != edit_param_name_) continue;
+                            if (d->params[pi].type == VIVID_PARAM_INT) {
+                                char buf[32];
+                                std::snprintf(buf, sizeof(buf), "%d",
+                                              static_cast<int>(ns.param_values[it->second]));
+                                edit_buffer_ = buf;
+                            } else {
+                                char buf[32];
+                                std::snprintf(buf, sizeof(buf), "%.2f",
+                                              ns.param_values[it->second]);
+                                edit_buffer_ = buf;
+                            }
+                            break;
+                        }
+                    }
+                    break;
+                }
+            } else {
+                // Check dropdown click
+                int di = hit_test_dropdown(mouse_.x, mouse_.y);
+                if (di >= 0) {
+                    const auto& dr = dropdown_rects_[di];
+                    dropdown_node_id_ = dr.node_id;
+                    dropdown_param_name_ = dr.param_name;
+                    dropdown_x_ = dr.x;
+                    dropdown_y_ = dr.y + dr.h;
+                    dropdown_w_ = dr.w;
+                    // Find choice labels from descriptor
+                    dropdown_labels_.clear();
                     const auto& sched_nodes = scheduler_.nodes();
                     for (const auto& ns : sched_nodes) {
-                        if (ns.node_id != edit_node_id_) continue;
-                        auto it = ns.param_indices.find(edit_param_name_);
-                        if (it != ns.param_indices.end()) {
-                            char buf[32];
-                            std::snprintf(buf, sizeof(buf), "%.2f", ns.param_values[it->second]);
-                            edit_buffer_ = buf;
+                        if (ns.node_id != dr.node_id) continue;
+                        const auto* d = ns.loader->descriptor();
+                        for (uint32_t pi = 0; pi < d->param_count; ++pi) {
+                            if (std::string(d->params[pi].name) != dr.param_name) continue;
+                            for (uint32_t ci = 0; ci < d->params[pi].choice_count; ++ci)
+                                dropdown_labels_.push_back(d->params[pi].choice_labels[ci]);
+                            auto it = ns.param_indices.find(dr.param_name);
+                            if (it != ns.param_indices.end())
+                                dropdown_sel_ = static_cast<int>(ns.param_values[it->second]);
+                            break;
                         }
                         break;
                     }
-                    last_click_slider_idx_ = -1;
+                    dropdown_open_ = !dropdown_labels_.empty();
                 } else {
-                    // Single click → normal drag
-                    active_slider_idx_ = si;
-                    active_slider_node_id_ = slider_rects_[si].node_id;
-                    active_slider_param_name_ = slider_rects_[si].param_name;
-                    last_click_time_ = now;
-                    last_click_slider_idx_ = si;
-                }
-            } else {
-                int bi = hit_test_bool(mouse_.x, mouse_.y);
-                if (bi >= 0) {
-                    const auto& br = bool_rects_[bi];
-                    const auto& sched_nodes = scheduler_.nodes();
-                    for (const auto& ns : sched_nodes) {
-                        if (ns.node_id != br.node_id) continue;
-                        auto it = ns.param_indices.find(br.param_name);
-                        if (it != ns.param_indices.end()) {
-                            float cur = ns.param_values[it->second];
-                            api_.set_param(br.node_id, br.param_name, cur > 0.5f ? 0.0f : 1.0f);
+                    // Check slider
+                    int si = hit_test_slider(mouse_.x, mouse_.y);
+                    if (si >= 0) {
+                        active_slider_idx_ = si;
+                        active_slider_node_id_ = slider_rects_[si].node_id;
+                        active_slider_param_name_ = slider_rects_[si].param_name;
+                    } else {
+                        int bi = hit_test_bool(mouse_.x, mouse_.y);
+                        if (bi >= 0) {
+                            const auto& br = bool_rects_[bi];
+                            const auto& sched_nodes = scheduler_.nodes();
+                            for (const auto& ns : sched_nodes) {
+                                if (ns.node_id != br.node_id) continue;
+                                auto it = ns.param_indices.find(br.param_name);
+                                if (it != ns.param_indices.end()) {
+                                    float cur = ns.param_values[it->second];
+                                    api_.set_param(br.node_id, br.param_name,
+                                                   cur > 0.5f ? 0.0f : 1.0f);
+                                }
+                                break;
+                            }
                         }
-                        break;
                     }
                 }
             }
@@ -1162,6 +1398,8 @@ void NodeGraphUI::update() {
         }
     }
 
+    click_done:
+
     if (mouse_.left_released && panning_ && dragging_node_idx_ < 0) {
         panning_ = false;
     }
@@ -1209,6 +1447,27 @@ void NodeGraphUI::draw(TextRenderer& tr, uint32_t w, uint32_t h) {
     draw_preview_wire(tr);
     draw_inspector(tr, w);
     draw_chooser(tr);
+
+    // Dropdown popup (drawn last, on top of everything)
+    if (dropdown_open_ && !dropdown_labels_.empty()) {
+        float item_h = 20.0f;
+        float popup_h = dropdown_labels_.size() * item_h + 4;
+        // Background
+        tr.draw_rect(dropdown_x_, dropdown_y_, dropdown_w_, popup_h,
+                     0.14f, 0.15f, 0.18f, 0.97f);
+        // Border
+        tr.draw_rect(dropdown_x_, dropdown_y_, dropdown_w_, 1,
+                     kAccent[0], kAccent[1], kAccent[2]);
+        for (int i = 0; i < static_cast<int>(dropdown_labels_.size()); ++i) {
+            float iy = dropdown_y_ + 2 + i * item_h;
+            if (i == dropdown_sel_) {
+                tr.draw_rect(dropdown_x_ + 2, iy, dropdown_w_ - 4, item_h,
+                             kNodeSelBg[0], kNodeSelBg[1], kNodeSelBg[2], 0.9f);
+            }
+            tr.draw_text(dropdown_x_ + 8, iy + 2, dropdown_labels_[i].c_str(),
+                         0.9f, 0.92f, 0.95f);
+        }
+    }
 }
 
 // -----------------------------------------------------------------------

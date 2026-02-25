@@ -49,8 +49,8 @@ public:
     void on_key(int key, int action, int mods);
     void on_char(unsigned int codepoint);
 
-    // Returns true when the chooser popup is open and wants keyboard focus
-    bool wants_keyboard() const { return chooser_open_ || editing_param_; }
+    // Returns true when a popup is open and wants keyboard focus
+    bool wants_keyboard() const { return chooser_open_ || editing_param_ || dropdown_open_; }
 
     void set_registry(OperatorRegistry* reg) { registry_ = reg; }
 
@@ -82,6 +82,8 @@ private:
     int hit_test_node(float mx, float my) const;
     int hit_test_slider(float mx, float my) const;
     int hit_test_bool(float mx, float my) const;
+    int hit_test_value_text(float mx, float my) const;
+    int hit_test_dropdown(float mx, float my) const;
     void confirm_param_edit();
     void cancel_param_edit();
 
@@ -138,16 +140,28 @@ private:
     struct SliderRect { float x, y, w, h; std::string node_id; std::string param_name; };
     std::vector<SliderRect> slider_rects_;
 
-    // Slider text-edit state (double-click to type a value)
+    // Slider text-edit state (click value text to type a value)
     bool editing_param_ = false;
     std::string edit_node_id_;
     std::string edit_param_name_;
     std::string edit_buffer_;
-    float last_click_time_ = 0.0f;
-    int last_click_slider_idx_ = -1;
 
     struct BoolRect { float x, y, w, h; std::string node_id; std::string param_name; };
     std::vector<BoolRect> bool_rects_;
+
+    struct ValueTextRect { float x, y, w, h; std::string node_id; std::string param_name; };
+    std::vector<ValueTextRect> value_text_rects_;
+
+    struct DropdownRect { float x, y, w, h; std::string node_id; std::string param_name; };
+    std::vector<DropdownRect> dropdown_rects_;
+
+    // Dropdown popup state
+    bool dropdown_open_ = false;
+    std::string dropdown_node_id_;
+    std::string dropdown_param_name_;
+    int dropdown_sel_ = 0;
+    float dropdown_x_ = 0, dropdown_y_ = 0, dropdown_w_ = 0;
+    std::vector<std::string> dropdown_labels_;
 
     // Sparkline ring buffers for control nodes
     static constexpr uint32_t kSparklineLen = 64;
@@ -171,6 +185,9 @@ private:
     std::vector<std::string> chooser_items_;
     float chooser_cursor_gx_ = 0, chooser_cursor_gy_ = 0;
     OperatorRegistry* registry_ = nullptr;
+
+    // Wire rendering style toggle (B key)
+    bool bezier_wires_ = false;
 };
 
 } // namespace vivid

@@ -55,6 +55,7 @@ static WGPUStringView to_sv(const char* s) {
 struct WindowUserData {
     vivid::Repl* repl = nullptr;
     vivid::NodeGraphUI* graph_ui = nullptr;
+    vivid::RuntimeAPI* runtime_api = nullptr;
 };
 
 static void char_callback(GLFWwindow* w, unsigned int codepoint) {
@@ -69,11 +70,23 @@ static void char_callback(GLFWwindow* w, unsigned int codepoint) {
 static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, int mods) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
     if (!ud) return;
+
+    // Cmd+S / Ctrl+S saves the graph (intercept before any dispatch)
+    if (key == GLFW_KEY_S && action == GLFW_PRESS &&
+        (mods & (GLFW_MOD_SUPER | GLFW_MOD_CONTROL))) {
+        if (ud->runtime_api) {
+            auto result = ud->runtime_api->save();
+            std::fprintf(stderr, "[vivid] Save: %s\n", result.message.c_str());
+        }
+        return;
+    }
+
     if (ud->graph_ui && ud->graph_ui->wants_keyboard()) {
         ud->graph_ui->on_key(key, action, mods);
     } else {
-        // Tab opens the chooser on the graph UI; everything else goes to REPL
-        if (ud->graph_ui && key == GLFW_KEY_TAB && action == GLFW_PRESS) {
+        // Tab/B/Delete open features on the graph UI; everything else goes to REPL
+        if (ud->graph_ui && action == GLFW_PRESS &&
+            (key == GLFW_KEY_TAB || key == GLFW_KEY_B || key == GLFW_KEY_DELETE)) {
             ud->graph_ui->on_key(key, action, mods);
         } else if (ud->repl) {
             ud->repl->on_key(key, action, mods);
@@ -268,6 +281,7 @@ int main(int argc, char* argv[]) {
     WindowUserData window_user_data;
     window_user_data.repl = &repl;
     window_user_data.graph_ui = &graph_ui;
+    window_user_data.runtime_api = &runtime_api;
     glfwSetWindowUserPointer(window, &window_user_data);
     glfwSetCharCallback(window, char_callback);
     glfwSetKeyCallback(window, key_callback);
