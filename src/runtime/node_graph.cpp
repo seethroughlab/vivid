@@ -98,6 +98,37 @@ void NodeGraphUI::on_mouse_button(int button, int action) {
 }
 
 // -----------------------------------------------------------------------
+// Port position helper
+// -----------------------------------------------------------------------
+void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeState& ns) {
+    bool has_ct = custom_thumb_nodes_.count(rect.node_id) > 0;
+    float body_h = domain_body_height(rect.domain, has_ct);
+
+    rect.inputs.clear();
+    rect.outputs.clear();
+
+    std::vector<std::pair<uint32_t, std::string>> sorted_inputs;
+    for (const auto& [name, idx] : ns.input_port_indices)
+        sorted_inputs.push_back({idx, name});
+    std::sort(sorted_inputs.begin(), sorted_inputs.end());
+
+    std::vector<std::pair<uint32_t, std::string>> sorted_outputs;
+    for (const auto& [name, idx] : ns.output_port_indices)
+        sorted_outputs.push_back({idx, name});
+    std::sort(sorted_outputs.begin(), sorted_outputs.end());
+
+    float port_start_y = rect.y + kAccentBarH + body_h + kNodePadY + kLineH * 2;
+    for (size_t pi = 0; pi < sorted_inputs.size(); ++pi) {
+        float py = port_start_y + pi * kLineH + kLineH * 0.5f;
+        rect.inputs.push_back({sorted_inputs[pi].second, rect.x, py});
+    }
+    for (size_t pi = 0; pi < sorted_outputs.size(); ++pi) {
+        float py = port_start_y + pi * kLineH + kLineH * 0.5f;
+        rect.outputs.push_back({sorted_outputs[pi].second, rect.x + rect.w, py});
+    }
+}
+
+// -----------------------------------------------------------------------
 // Sugiyama-inspired auto-layout
 // -----------------------------------------------------------------------
 void NodeGraphUI::layout_nodes() {
@@ -247,33 +278,14 @@ void NodeGraphUI::layout_nodes() {
             rect.w = kNodeW;
             rect.h = heights[r];
 
-            bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-            float body_h = domain_body_height(rect.domain, has_ct);
-
-            // Compute port positions
-            rect.inputs.clear();
-            rect.outputs.clear();
-
-            std::vector<std::pair<uint32_t, std::string>> sorted_inputs;
-            for (const auto& [name, idx] : ns.input_port_indices)
-                sorted_inputs.push_back({idx, name});
-            std::sort(sorted_inputs.begin(), sorted_inputs.end());
-
-            std::vector<std::pair<uint32_t, std::string>> sorted_outputs;
-            for (const auto& [name, idx] : ns.output_port_indices)
-                sorted_outputs.push_back({idx, name});
-            std::sort(sorted_outputs.begin(), sorted_outputs.end());
-
-            // Port start Y accounts for accent bar + body region
-            float port_start_y = rect.y + kAccentBarH + body_h + kNodePadY + kLineH * 2;
-            for (size_t pi = 0; pi < sorted_inputs.size(); ++pi) {
-                float py = port_start_y + pi * kLineH + kLineH * 0.5f;
-                rect.inputs.push_back({sorted_inputs[pi].second, rect.x, py});
+            // Override with saved layout position if present
+            const NodeDef* ndef = graph_.find_node(ns.node_id);
+            if (ndef && ndef->has_layout()) {
+                rect.x = ndef->layout_x;
+                rect.y = ndef->layout_y;
             }
-            for (size_t pi = 0; pi < sorted_outputs.size(); ++pi) {
-                float py = port_start_y + pi * kLineH + kLineH * 0.5f;
-                rect.outputs.push_back({sorted_outputs[pi].second, rect.x + rect.w, py});
-            }
+
+            recompute_ports(rect, ns);
 
             cur_y += heights[r] + kRowSpacing;
         }
@@ -644,15 +656,39 @@ int NodeGraphUI::hit_test_bool(float mx, float my) const {
 // Update (process mouse input + sparkline recording)
 // -----------------------------------------------------------------------
 void NodeGraphUI::update() {
-    // Re-layout if topology changed
+    // Re-layout if topology changed (but not mid-drag)
     size_t cur_nodes = scheduler_.nodes().size();
     size_t cur_conns = graph_.connections().size();
     if (cur_nodes != last_node_count_ || cur_conns != last_conn_count_) {
-        layout_nodes();
+        if (dragging_node_idx_ < 0) {
+            layout_nodes();
+        }
     }
 
-    // Active slider drag
-    if (active_slider_idx_ >= 0) {
+    // Active node drag
+    if (dragging_node_idx_ >= 0) {
+        if (mouse_.left_down) {
+            auto& rect = node_rects_[dragging_node_idx_];
+            rect.x = mouse_.x - drag_offset_x_;
+            rect.y = mouse_.y - drag_offset_y_;
+            // Find the corresponding NodeState for port recomputation
+            const auto& sched_nodes = scheduler_.nodes();
+            for (const auto& ns : sched_nodes) {
+                if (ns.node_id == rect.node_id) {
+                    recompute_ports(rect, ns);
+                    break;
+                }
+            }
+        }
+        if (mouse_.left_released) {
+            auto& rect = node_rects_[dragging_node_idx_];
+            api_.set_node_layout(rect.node_id, rect.x, rect.y);
+            dragging_node_idx_ = -1;
+        }
+    }
+
+    // Active slider drag (skip if node drag is active)
+    if (active_slider_idx_ >= 0 && dragging_node_idx_ < 0) {
         if (mouse_.left_down) {
             const auto& s = slider_rects_[active_slider_idx_];
             const auto& sched_nodes = scheduler_.nodes();
@@ -706,6 +742,9 @@ void NodeGraphUI::update() {
             int ni = hit_test_node(mouse_.x, mouse_.y);
             if (ni >= 0) {
                 selected_node_id_ = node_rects_[ni].node_id;
+                dragging_node_idx_ = ni;
+                drag_offset_x_ = mouse_.x - node_rects_[ni].x;
+                drag_offset_y_ = mouse_.y - node_rects_[ni].y;
             } else {
                 selected_node_id_.clear();
             }
@@ -765,7 +804,10 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
     for (const auto& r : node_rects_) {
         WGPUTextureView thumb_view = cache.get_view(r.node_id);
         if (!thumb_view) continue;
-        renderer.draw(thumb_view, r.x, r.y + kAccentBarH, r.w, kGpuThumbH);
+        // Viewport units are physical pixels — scale logical coords by dpi_scale
+        renderer.draw(thumb_view,
+                      r.x * dpi_scale_, (r.y + kAccentBarH) * dpi_scale_,
+                      r.w * dpi_scale_, kGpuThumbH * dpi_scale_);
     }
     renderer.end();
 }

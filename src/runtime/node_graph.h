@@ -14,6 +14,7 @@ namespace vivid {
 class RuntimeAPI;
 class Graph;
 class Scheduler;
+struct NodeState;
 class TextRenderer;
 class AudioEngine;
 class ThumbnailRenderer;
@@ -59,8 +60,11 @@ public:
         custom_thumb_nodes_ = std::move(ids);
     }
 
+    void set_dpi_scale(float scale) { dpi_scale_ = scale; }
+
 private:
     void layout_nodes();
+    void recompute_ports(NodeRect& rect, const NodeState& ns);
     void draw_graph(TextRenderer& tr);
     void draw_connections(TextRenderer& tr);
     void draw_inspector(TextRenderer& tr, uint32_t w);
@@ -79,6 +83,10 @@ private:
     // Track topology version to re-layout on changes
     size_t last_node_count_ = 0;
     size_t last_conn_count_ = 0;
+
+    // Node drag state
+    int dragging_node_idx_ = -1;
+    float drag_offset_x_ = 0, drag_offset_y_ = 0;
 
     // Slider drag state
     int active_slider_idx_ = -1;
@@ -102,6 +110,8 @@ private:
 
     // Nodes with custom draw_thumbnail (get full kGpuThumbH body height)
     std::unordered_set<std::string> custom_thumb_nodes_;
+
+    float dpi_scale_ = 1.0f;
 };
 
 } // namespace vivid

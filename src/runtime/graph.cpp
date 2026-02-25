@@ -60,6 +60,17 @@ bool Graph::load(const char* path) {
                 }
             }
 
+            // Optional layout position
+            yyjson_val* layout_obj = yyjson_obj_get(val, "layout");
+            if (layout_obj && yyjson_is_obj(layout_obj)) {
+                yyjson_val* lx = yyjson_obj_get(layout_obj, "x");
+                yyjson_val* ly = yyjson_obj_get(layout_obj, "y");
+                if (lx && yyjson_is_num(lx) && ly && yyjson_is_num(ly)) {
+                    node.layout_x = static_cast<float>(yyjson_get_num(lx));
+                    node.layout_y = static_cast<float>(yyjson_get_num(ly));
+                }
+            }
+
             nodes_.push_back(std::move(node));
         }
     }
@@ -176,6 +187,13 @@ bool Graph::save(const char* path) const {
                 yyjson_mut_obj_add_real(doc, params_obj, pname.c_str(), static_cast<double>(pval));
             }
             yyjson_mut_obj_add_val(doc, node_obj, "params", params_obj);
+        }
+
+        if (node.has_layout()) {
+            yyjson_mut_val* layout_obj = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_real(doc, layout_obj, "x", static_cast<double>(node.layout_x));
+            yyjson_mut_obj_add_real(doc, layout_obj, "y", static_cast<double>(node.layout_y));
+            yyjson_mut_obj_add_val(doc, node_obj, "layout", layout_obj);
         }
 
         yyjson_mut_obj_add_val(doc, nodes_obj, node.id.c_str(), node_obj);

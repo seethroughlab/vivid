@@ -61,6 +61,16 @@ CommandResult RuntimeAPI::get_param(const std::string& node_id, const std::strin
     return {false, "unknown node '" + node_id + "'"};
 }
 
+// --- Layout ---
+
+CommandResult RuntimeAPI::set_node_layout(const std::string& node_id, float x, float y) {
+    NodeDef* ndef = graph_.find_node(node_id);
+    if (!ndef) return {false, "unknown node '" + node_id + "'"};
+    ndef->layout_x = x;
+    ndef->layout_y = y;
+    return {true, "layout set"};
+}
+
 // --- Buffered topology changes ---
 
 CommandResult RuntimeAPI::add_node(const std::string& type, const std::string& id) {

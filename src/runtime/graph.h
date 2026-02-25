@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <cmath>
 
 namespace vivid {
 
@@ -11,6 +12,10 @@ struct NodeDef {
     std::string id;
     std::string type;
     std::unordered_map<std::string, float> params;
+    // Optional layout position (NaN = use auto-layout)
+    float layout_x = NAN;
+    float layout_y = NAN;
+    bool has_layout() const { return !std::isnan(layout_x); }
 };
 
 struct ConnectionDef {

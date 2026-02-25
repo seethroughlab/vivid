@@ -24,6 +24,9 @@ public:
 
     // Immediate: modify param on live scheduler node
     CommandResult set_param(const std::string& node_id, const std::string& param, float value);
+
+    // Layout: persist node position for the graph UI
+    CommandResult set_node_layout(const std::string& node_id, float x, float y);
     CommandResult get_param(const std::string& node_id, const std::string& param);
 
     // Buffered topology changes (require apply_pending)
