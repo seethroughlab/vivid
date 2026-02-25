@@ -50,7 +50,8 @@ private:
     WGPUTexture atlas_tex_ = nullptr;
     WGPUTextureView atlas_view_ = nullptr;
     WGPUSampler sampler_ = nullptr;
-    WGPUBuffer vertex_buf_ = nullptr;
+    WGPUBuffer vertex_bufs_[2]{};   // double-buffered vertex buffers
+    int buf_idx_ = 0;               // alternates 0/1 each flush
 
     GlyphInfo glyphs_[128]{}; // ASCII 0-127 (only 32-126 used)
     float line_height_ = 0.0f;

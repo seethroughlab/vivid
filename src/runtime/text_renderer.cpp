@@ -189,13 +189,15 @@ bool TextRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format,
     samp_desc.maxAnisotropy = 1;
     sampler_ = wgpuDeviceCreateSampler(device, &samp_desc);
 
-    // --- Vertex buffer (dynamic, overwritten each frame) ---
-    WGPUBufferDescriptor buf_desc{};
-    buf_desc.label = to_sv("Text Vertex Buffer");
-    buf_desc.size = kMaxVertices * sizeof(TextVertex);
-    buf_desc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-    buf_desc.mappedAtCreation = false;
-    vertex_buf_ = wgpuDeviceCreateBuffer(device, &buf_desc);
+    // --- Double-buffered vertex buffers ---
+    for (int i = 0; i < 2; ++i) {
+        WGPUBufferDescriptor buf_desc{};
+        buf_desc.label = to_sv(i == 0 ? "Text VB 0" : "Text VB 1");
+        buf_desc.size = kMaxVertices * sizeof(TextVertex);
+        buf_desc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+        buf_desc.mappedAtCreation = false;
+        vertex_bufs_[i] = wgpuDeviceCreateBuffer(device, &buf_desc);
+    }
 
     // --- Shader module ---
     WGPUShaderSourceWGSL wgsl_src{};
@@ -356,9 +358,14 @@ void TextRenderer::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_vie
 
     WGPUQueue queue = wgpuDeviceGetQueue(device_);
 
-    // Upload vertex data
+    // Double-buffered vertex upload: alternate buffers each flush so the
+    // GPU never reads from a buffer that was just written. Works around a
+    // wgpu-native bug where wgpuQueueWriteBuffer data may not be visible
+    // to the GPU in time, causing early quads to render as invisible.
     size_t data_size = vertices_.size() * sizeof(TextVertex);
-    wgpuQueueWriteBuffer(queue, vertex_buf_, 0, vertices_.data(), data_size);
+    WGPUBuffer vb = vertex_bufs_[buf_idx_];
+    buf_idx_ ^= 1;
+    wgpuQueueWriteBuffer(queue, vb, 0, vertices_.data(), data_size);
 
     // Create uniform buffer with screen size
     float uniforms[2] = { (float)surface_width, (float)surface_height };
@@ -405,8 +412,10 @@ void TextRenderer::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_vie
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rp_desc);
     wgpuRenderPassEncoderSetPipeline(pass, pipeline_);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group, 0, nullptr);
-    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vertex_buf_, 0, data_size);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, 0, data_size);
+
     wgpuRenderPassEncoderDraw(pass, static_cast<uint32_t>(vertices_.size()), 1, 0, 0);
+
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
@@ -418,7 +427,9 @@ void TextRenderer::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_vie
 
 void TextRenderer::shutdown() {
     vertices_.clear();
-    if (vertex_buf_)  { wgpuBufferRelease(vertex_buf_);           vertex_buf_  = nullptr; }
+    for (auto& vb : vertex_bufs_) {
+        if (vb) { wgpuBufferRelease(vb); vb = nullptr; }
+    }
     if (pipeline_)    { wgpuRenderPipelineRelease(pipeline_);     pipeline_    = nullptr; }
     if (bind_layout_) { wgpuBindGroupLayoutRelease(bind_layout_); bind_layout_ = nullptr; }
     if (sampler_)     { wgpuSamplerRelease(sampler_);             sampler_     = nullptr; }
