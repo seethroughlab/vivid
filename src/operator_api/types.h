@@ -87,6 +87,24 @@ typedef void*  (*VividCreateFn)(void);
 typedef void   (*VividDestroyFn)(void* instance);
 typedef void   (*VividProcessFn)(void* instance, const VividProcessContext* ctx);
 
+// ---------------------------------------------------------------------------
+// Thumbnail context — optional custom thumbnail rendering
+// ---------------------------------------------------------------------------
+
+typedef struct VividThumbnailContext {
+    uint8_t*  pixels;         // RGBA8 buffer (pre-allocated, row-major)
+    uint32_t  width;          // 140
+    uint32_t  height;         // 88
+    uint32_t  stride;         // width * 4
+    double    time;
+    float*    output_values;
+    uint32_t  output_count;
+    float*    param_values;
+    uint32_t  param_count;
+} VividThumbnailContext;
+
+typedef void (*VividDrawThumbnailFn)(void* instance, const VividThumbnailContext* ctx);
+
 #ifdef __cplusplus
 }
 #endif

@@ -77,6 +77,7 @@ struct OperatorBase {
     virtual void collect_params(std::vector<ParamBase*>& out) = 0;
     virtual void collect_ports(std::vector<VividPortDescriptor>& out) = 0;
     virtual void process(const VividProcessContext* ctx) = 0;
+    virtual void draw_thumbnail(const VividThumbnailContext*) {}  // optional override
 };
 
 } // namespace vivid
@@ -144,6 +145,17 @@ extern "C" void vivid_process(void* instance,                                 \
         param_ptrs[i]->value = ctx->param_values[i];                          \
     }                                                                         \
     op->process(ctx);                                                         \
+}
+
+// ---------------------------------------------------------------------------
+// VIVID_THUMBNAIL(ClassName) — exports vivid_draw_thumbnail entry point
+// Place alongside VIVID_REGISTER for operators that override draw_thumbnail.
+// ---------------------------------------------------------------------------
+
+#define VIVID_THUMBNAIL(ClassName)                                             \
+extern "C" void vivid_draw_thumbnail(void* instance,                           \
+                                     const VividThumbnailContext* ctx) {        \
+    static_cast<ClassName*>(instance)->draw_thumbnail(ctx);                     \
 }
 
 #endif // VIVID_OPERATOR_API_OPERATOR_H

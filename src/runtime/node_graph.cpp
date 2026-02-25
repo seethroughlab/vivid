@@ -3,6 +3,9 @@
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "runtime/text_renderer.h"
+#include "runtime/audio_engine.h"
+#include "runtime/thumbnail_cache.h"
+#include "runtime/thumbnail_renderer.h"
 #include "runtime/operator_loader.h"
 #include "operator_api/types.h"
 #include <GLFW/glfw3.h>
@@ -23,13 +26,19 @@ static constexpr float kGraphH = 640.0f;
 static constexpr float kInspectorX = 960.0f;
 static constexpr float kInspectorW = 320.0f;
 static constexpr float kNodeW = 140.0f;
-static constexpr float kColSpacing = 180.0f;
+static constexpr float kColSpacing = 200.0f;
 static constexpr float kRowSpacing = 16.0f;
 static constexpr float kPortDotSize = 4.0f;
 static constexpr float kLeftMargin = 30.0f;
 static constexpr float kTopMargin = 30.0f;
-static constexpr float kLineH = 18.0f;  // line height for node internals
+static constexpr float kLineH = 18.0f;
 static constexpr float kNodePadY = 8.0f;
+
+// Domain body heights (step 2)
+static constexpr float kAccentBarH = 3.0f;
+static constexpr float kGpuThumbH = 88.0f;    // 140 * 10/16 ≈ 87.5
+static constexpr float kAudioWaveH = 40.0f;
+static constexpr float kControlSparkH = 30.0f;
 
 // Colors
 static constexpr float kNodeBg[] = { 0.12f, 0.13f, 0.15f };
@@ -41,9 +50,35 @@ static constexpr float kAccent[] = { 0.35f, 0.55f, 0.85f };
 static constexpr float kDimText[] = { 0.55f, 0.58f, 0.62f };
 static constexpr float kSliderTrack[] = { 0.18f, 0.19f, 0.22f };
 static constexpr float kSliderFill[] = { 0.25f, 0.42f, 0.68f };
+static constexpr float kDarkBg[] = { 0.07f, 0.08f, 0.09f };
 
-NodeGraphUI::NodeGraphUI(RuntimeAPI& api, const Graph& graph, const Scheduler& scheduler)
-    : api_(api), graph_(graph), scheduler_(scheduler) {}
+// Domain accent colors (step 1)
+static constexpr float kGpuAccent[] = { 0.306f, 0.804f, 0.769f };     // #4ECDC4 cyan
+static constexpr float kAudioAccent[] = { 0.941f, 0.627f, 0.188f };   // #F0A030 amber
+static constexpr float kControlAccent[] = { 0.753f, 0.784f, 0.816f }; // #C0C8D0 gray
+
+static const float* domain_color(VividDomain domain) {
+    switch (domain) {
+        case VIVID_DOMAIN_GPU:     return kGpuAccent;
+        case VIVID_DOMAIN_AUDIO:   return kAudioAccent;
+        case VIVID_DOMAIN_CONTROL: return kControlAccent;
+        default:                   return kControlAccent;
+    }
+}
+
+static float domain_body_height(VividDomain domain, bool has_custom_thumb = false) {
+    if (has_custom_thumb && domain != VIVID_DOMAIN_GPU) return kGpuThumbH;
+    switch (domain) {
+        case VIVID_DOMAIN_GPU:     return kGpuThumbH;
+        case VIVID_DOMAIN_AUDIO:   return kAudioWaveH;
+        case VIVID_DOMAIN_CONTROL: return kControlSparkH;
+        default:                   return kControlSparkH;
+    }
+}
+
+NodeGraphUI::NodeGraphUI(RuntimeAPI& api, const Graph& graph, const Scheduler& scheduler,
+                         AudioEngine* audio_engine)
+    : api_(api), graph_(graph), scheduler_(scheduler), audio_engine_(audio_engine) {}
 
 void NodeGraphUI::on_mouse_move(float x, float y) {
     mouse_.x = x;
@@ -130,13 +165,11 @@ void NodeGraphUI::layout_nodes() {
     // Barycenter crossing reduction: 4 passes (forward + backward)
     for (int pass = 0; pass < 4; ++pass) {
         if (pass % 2 == 0) {
-            // Forward pass
             for (int l = 1; l <= max_layer; ++l) {
                 std::vector<std::pair<float, uint32_t>> bary;
                 for (uint32_t n : layers[l]) {
                     float sum = 0; int count = 0;
                     for (uint32_t p : preds[n]) {
-                        // Find position of p in its layer
                         auto& prev = layers[l - 1];
                         for (int j = 0; j < (int)prev.size(); ++j) {
                             if (prev[j] == p) { sum += j; count++; break; }
@@ -151,7 +184,6 @@ void NodeGraphUI::layout_nodes() {
                     layers[l][j] = bary[j].second;
             }
         } else {
-            // Backward pass
             for (int l = max_layer - 1; l >= 0; --l) {
                 std::vector<std::pair<float, uint32_t>> bary;
                 for (uint32_t n : layers[l]) {
@@ -184,10 +216,15 @@ void NodeGraphUI::layout_nodes() {
         for (size_t r = 0; r < layers[l].size(); ++r) {
             uint32_t ni = layers[l][r];
             const auto& ns = nodes[ni];
+
+            VividDomain dom = ns.loader->descriptor()->domain;
+            bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
+            float body_h = domain_body_height(dom, has_ct);
+
             uint32_t n_inputs = static_cast<uint32_t>(ns.input_port_indices.size());
             uint32_t n_outputs = static_cast<uint32_t>(ns.output_port_indices.size());
             uint32_t port_rows = std::max(n_inputs, n_outputs);
-            float h = kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
+            float h = kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
             heights[r] = h;
             total_h += h;
         }
@@ -204,16 +241,19 @@ void NodeGraphUI::layout_nodes() {
             auto& rect = node_rects_[ni];
             rect.node_id = ns.node_id;
             rect.type_name = scheduler_.type_name(ni);
+            rect.domain = ns.loader->descriptor()->domain;
             rect.x = col_x;
             rect.y = cur_y;
             rect.w = kNodeW;
             rect.h = heights[r];
 
-            // Compute port positions — collect sorted port names for deterministic layout
+            bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
+            float body_h = domain_body_height(rect.domain, has_ct);
+
+            // Compute port positions
             rect.inputs.clear();
             rect.outputs.clear();
 
-            // Sort input ports by their index for stable ordering
             std::vector<std::pair<uint32_t, std::string>> sorted_inputs;
             for (const auto& [name, idx] : ns.input_port_indices)
                 sorted_inputs.push_back({idx, name});
@@ -224,7 +264,8 @@ void NodeGraphUI::layout_nodes() {
                 sorted_outputs.push_back({idx, name});
             std::sort(sorted_outputs.begin(), sorted_outputs.end());
 
-            float port_start_y = rect.y + kNodePadY + kLineH * 2;
+            // Port start Y accounts for accent bar + body region
+            float port_start_y = rect.y + kAccentBarH + body_h + kNodePadY + kLineH * 2;
             for (size_t pi = 0; pi < sorted_inputs.size(); ++pi) {
                 float py = port_start_y + pi * kLineH + kLineH * 0.5f;
                 rect.inputs.push_back({sorted_inputs[pi].second, rect.x, py});
@@ -246,38 +287,158 @@ void NodeGraphUI::layout_nodes() {
 // Drawing
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_graph(TextRenderer& tr) {
+    const auto& sched_nodes = scheduler_.nodes();
+
     for (size_t i = 0; i < node_rects_.size(); ++i) {
         const auto& r = node_rects_[i];
         bool selected = (r.node_id == selected_node_id_);
         const float* bg = selected ? kNodeSelBg : kNodeBg;
+        const float* dcol = domain_color(r.domain);
 
         // Node background
         tr.draw_rect(r.x, r.y, r.w, r.h, bg[0], bg[1], bg[2], 0.92f);
 
-        // Type name (centered at top)
+        // Accent bar at top (step 1)
+        tr.draw_rect(r.x, r.y, r.w, kAccentBarH, dcol[0], dcol[1], dcol[2]);
+
+        // --- Domain body region ---
+        float body_y = r.y + kAccentBarH;
+        bool has_ct = custom_thumb_nodes_.count(r.node_id) > 0;
+        float body_h = domain_body_height(r.domain, has_ct);
+
+        if (r.domain == VIVID_DOMAIN_CONTROL && !has_ct) {
+            // Sparkline (step 3)
+            tr.draw_rect(r.x + 2, body_y + 2, r.w - 4, body_h - 4,
+                         kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
+
+            // Find sparkline data for this node's first output
+            std::string spark_key;
+            if (i < sched_nodes.size()) {
+                const auto& ns = sched_nodes[i];
+                // Find first output port
+                std::vector<std::pair<uint32_t, std::string>> sorted_outs;
+                for (const auto& [name, idx] : ns.output_port_indices)
+                    sorted_outs.push_back({idx, name});
+                std::sort(sorted_outs.begin(), sorted_outs.end());
+                if (!sorted_outs.empty())
+                    spark_key = ns.node_id + "/" + sorted_outs[0].second;
+            }
+
+            auto it = sparklines_.find(spark_key);
+            if (it != sparklines_.end() && !spark_key.empty()) {
+                const auto& sd = it->second;
+                uint32_t count = sd.filled ? kSparklineLen : sd.write_idx;
+                if (count > 0) {
+                    // Current value text (left side)
+                    uint32_t last_idx = (sd.write_idx == 0 ? kSparklineLen - 1 : sd.write_idx - 1);
+                    float cur_val = sd.values[last_idx];
+                    char val_buf[16];
+                    std::snprintf(val_buf, sizeof(val_buf), "%.2f", cur_val);
+                    tr.draw_text(r.x + 5, body_y + 4, val_buf,
+                                 dcol[0], dcol[1], dcol[2]);
+
+                    // Sparkline plot (right side)
+                    float spark_x = r.x + 52;
+                    float spark_w = r.w - 56;
+                    float spark_y = body_y + 4;
+                    float spark_h = body_h - 8;
+
+                    // Find min/max
+                    float vmin = sd.values[0], vmax = sd.values[0];
+                    for (uint32_t si = 0; si < count; ++si) {
+                        uint32_t idx = sd.filled ? (sd.write_idx + si) % kSparklineLen : si;
+                        float v = sd.values[idx];
+                        if (v < vmin) vmin = v;
+                        if (v > vmax) vmax = v;
+                    }
+                    float range = vmax - vmin;
+                    if (range < 0.001f) range = 1.0f;
+
+                    float bar_w = spark_w / kSparklineLen;
+                    for (uint32_t si = 0; si < count; ++si) {
+                        uint32_t idx = sd.filled ? (sd.write_idx + si) % kSparklineLen : si;
+                        float v = sd.values[idx];
+                        float t = (v - vmin) / range;
+                        float bh = std::max(1.0f, t * spark_h);
+                        float bx = spark_x + si * bar_w;
+                        float by = spark_y + spark_h - bh;
+                        tr.draw_rect(bx, by, std::max(1.0f, bar_w - 0.5f), bh,
+                                     dcol[0], dcol[1], dcol[2], 0.7f);
+                    }
+                }
+            }
+        } else if (r.domain == VIVID_DOMAIN_AUDIO && !has_ct) {
+            // Waveform (step 4)
+            tr.draw_rect(r.x + 2, body_y + 2, r.w - 4, body_h - 4,
+                         kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
+
+            if (audio_engine_) {
+                int ae_idx = audio_engine_->audio_node_index(r.node_id);
+                if (ae_idx >= 0) {
+                    const auto& snap = audio_engine_->analysis_read();
+                    if (ae_idx < static_cast<int>(snap.waveform.size())) {
+                        const auto& wave = snap.waveform[ae_idx];
+                        float wave_x = r.x + 4;
+                        float wave_w = r.w - 8;
+                        float wave_y = body_y + 4;
+                        float wave_h = body_h - 10;
+                        float center_y = wave_y + wave_h * 0.5f;
+
+                        // Center line
+                        tr.draw_rect(wave_x, center_y, wave_w, 1,
+                                     dcol[0], dcol[1], dcol[2], 0.2f);
+
+                        // Waveform bars
+                        constexpr uint32_t kWaveN = AnalysisSnapshot::kWaveformSamples;
+                        float bar_w = wave_w / kWaveN;
+                        for (uint32_t si = 0; si < kWaveN; ++si) {
+                            float amp = wave[si];
+                            float bh = std::fabs(amp) * wave_h * 0.5f;
+                            bh = std::max(0.5f, bh);
+                            float bx = wave_x + si * bar_w;
+                            float by = (amp >= 0) ? center_y - bh : center_y;
+                            tr.draw_rect(bx, by, std::max(0.5f, bar_w - 0.3f), bh,
+                                         dcol[0], dcol[1], dcol[2], 0.8f);
+                        }
+
+                        // Peak meter strip at bottom
+                        float peak_y = body_y + body_h - 4;
+                        if (ae_idx < static_cast<int>(snap.peak.size())) {
+                            float pk = std::min(1.0f, snap.peak[ae_idx]);
+                            tr.draw_rect(wave_x, peak_y, wave_w * pk, 2,
+                                         dcol[0], dcol[1], dcol[2], 0.9f);
+                        }
+                    }
+                }
+            }
+        }
+        // GPU domain: body region left blank (thumbnails drawn in separate pass)
+
+        // Type name (centered, below accent bar + body)
+        float text_y = r.y + kAccentBarH + body_h + kNodePadY;
         float tw = tr.text_width(r.type_name.c_str());
         float tx = r.x + (r.w - tw) * 0.5f;
-        tr.draw_text(tx, r.y + kNodePadY, r.type_name.c_str(), 1.0f, 1.0f, 1.0f);
+        tr.draw_text(tx, text_y, r.type_name.c_str(), 1.0f, 1.0f, 1.0f);
 
         // Node ID below type
         float iw = tr.text_width(r.node_id.c_str());
         float ix = r.x + (r.w - iw) * 0.5f;
-        tr.draw_text(ix, r.y + kNodePadY + kLineH, r.node_id.c_str(),
+        tr.draw_text(ix, text_y + kLineH, r.node_id.c_str(),
                      kDimText[0], kDimText[1], kDimText[2]);
 
-        // Input port dots and labels
+        // Input port dots and labels (use domain color)
         for (const auto& p : r.inputs) {
             tr.draw_rect(p.x - kPortDotSize, p.y - kPortDotSize * 0.5f,
                          kPortDotSize, kPortDotSize,
-                         kAccent[0], kAccent[1], kAccent[2]);
+                         dcol[0], dcol[1], dcol[2]);
             tr.draw_text(p.x + 4, p.y - tr.line_height() * 0.5f, p.name.c_str(),
                          kDimText[0], kDimText[1], kDimText[2]);
         }
-        // Output port dots and labels
+        // Output port dots and labels (use domain color)
         for (const auto& p : r.outputs) {
             tr.draw_rect(p.x, p.y - kPortDotSize * 0.5f,
                          kPortDotSize, kPortDotSize,
-                         kAccent[0], kAccent[1], kAccent[2]);
+                         dcol[0], dcol[1], dcol[2]);
             float lw = tr.text_width(p.name.c_str());
             tr.draw_text(p.x - lw - 4, p.y - tr.line_height() * 0.5f, p.name.c_str(),
                          kDimText[0], kDimText[1], kDimText[2]);
@@ -318,13 +479,10 @@ void NodeGraphUI::draw_connections(TextRenderer& tr) {
 
         // Z-route: horizontal from source → vertical → horizontal to dest
         float mid_x = (sx + ex) * 0.5f;
-        // Horizontal segment from source
         tr.draw_rect(sx, sy - 1, mid_x - sx, 2, col[0], col[1], col[2], a);
-        // Vertical segment
         float vy = std::min(sy, ey);
         float vh = std::fabs(ey - sy);
         tr.draw_rect(mid_x - 1, vy, 2, vh + 2, col[0], col[1], col[2], a);
-        // Horizontal segment to dest
         tr.draw_rect(mid_x, ey - 1, ex - mid_x, 2, col[0], col[1], col[2], a);
     }
 }
@@ -392,7 +550,6 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
         py += kLineH;
 
         if (pd.type == VIVID_PARAM_BOOL) {
-            // Toggle square
             float bx = px, by = py;
             float bsz = 14.0f;
             tr.draw_rect(bx, by, bsz, bsz, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
@@ -403,18 +560,15 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
             bool_rects_.push_back({bx, by, bsz, bsz, selected_node_id_, pd.name});
             py += bsz + 6;
         } else {
-            // Slider track
             float sx = px, sy = py;
             float sw = panel_w, sh = 10.0f;
             tr.draw_rect(sx, sy, sw, sh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
 
-            // Fill
             float range = pd.max_value - pd.min_value;
             float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
             t = std::max(0.0f, std::min(1.0f, t));
             tr.draw_rect(sx, sy, sw * t, sh, kSliderFill[0], kSliderFill[1], kSliderFill[2]);
 
-            // Thumb
             float thumb_x = sx + sw * t - 3;
             tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, kAccent[0], kAccent[1], kAccent[2]);
 
@@ -432,7 +586,6 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
     tr.draw_text(px, py, "Outputs", kDimText[0], kDimText[1], kDimText[2]);
     py += kLineH;
 
-    // Sort outputs by index for stable display
     std::vector<std::pair<uint32_t, std::string>> sorted_outputs;
     for (const auto& [name, idx] : sel_node->output_port_indices)
         sorted_outputs.push_back({idx, name});
@@ -461,7 +614,6 @@ int NodeGraphUI::hit_test_node(float mx, float my) const {
 int NodeGraphUI::hit_test_slider(float mx, float my) const {
     for (int i = 0; i < static_cast<int>(slider_rects_.size()); ++i) {
         const auto& s = slider_rects_[i];
-        // Expand hit area vertically for easier dragging
         if (mx >= s.x && mx <= s.x + s.w && my >= s.y - 4 && my <= s.y + s.h + 4)
             return i;
     }
@@ -478,7 +630,7 @@ int NodeGraphUI::hit_test_bool(float mx, float my) const {
 }
 
 // -----------------------------------------------------------------------
-// Update (process mouse input)
+// Update (process mouse input + sparkline recording)
 // -----------------------------------------------------------------------
 void NodeGraphUI::update() {
     // Re-layout if topology changed
@@ -491,10 +643,7 @@ void NodeGraphUI::update() {
     // Active slider drag
     if (active_slider_idx_ >= 0) {
         if (mouse_.left_down) {
-            // Map mouse.x to slider value
             const auto& s = slider_rects_[active_slider_idx_];
-
-            // Find param descriptor for min/max
             const auto& sched_nodes = scheduler_.nodes();
             for (const auto& ns : sched_nodes) {
                 if (ns.node_id != active_slider_node_id_) continue;
@@ -520,7 +669,6 @@ void NodeGraphUI::update() {
 
     // Click handling
     if (mouse_.left_clicked) {
-        // Priority: inspector sliders/bools > graph nodes
         if (mouse_.x >= kInspectorX && mouse_.y < kGraphH) {
             int si = hit_test_slider(mouse_.x, mouse_.y);
             if (si >= 0) {
@@ -530,7 +678,6 @@ void NodeGraphUI::update() {
             } else {
                 int bi = hit_test_bool(mouse_.x, mouse_.y);
                 if (bi >= 0) {
-                    // Toggle bool
                     const auto& br = bool_rects_[bi];
                     const auto& sched_nodes = scheduler_.nodes();
                     for (const auto& ns : sched_nodes) {
@@ -557,6 +704,28 @@ void NodeGraphUI::update() {
     // Clear one-frame flags
     mouse_.left_clicked = false;
     mouse_.left_released = false;
+
+    // Record sparkline data for control nodes (step 3)
+    const auto& sched_nodes = scheduler_.nodes();
+    for (const auto& ns : sched_nodes) {
+        if (ns.is_gpu || ns.is_audio) continue;
+
+        // Find first output port
+        std::vector<std::pair<uint32_t, std::string>> sorted_outs;
+        for (const auto& [name, idx] : ns.output_port_indices)
+            sorted_outs.push_back({idx, name});
+        std::sort(sorted_outs.begin(), sorted_outs.end());
+
+        if (sorted_outs.empty()) continue;
+
+        std::string key = ns.node_id + "/" + sorted_outs[0].second;
+        float val = ns.output_values[sorted_outs[0].first];
+
+        auto& sd = sparklines_[key];
+        sd.values[sd.write_idx] = val;
+        sd.write_idx = (sd.write_idx + 1) % kSparklineLen;
+        if (sd.write_idx == 0) sd.filled = true;
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -570,6 +739,21 @@ void NodeGraphUI::draw(TextRenderer& tr, uint32_t w, uint32_t h) {
     draw_connections(tr);
     draw_graph(tr);
     draw_inspector(tr, w);
+}
+
+// -----------------------------------------------------------------------
+// GPU thumbnail overlay (step 6)
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCache& cache,
+                                  WGPUCommandEncoder encoder, WGPUTextureView surface,
+                                  uint32_t w, uint32_t h) {
+    renderer.begin(encoder, surface, w, h);
+    for (const auto& r : node_rects_) {
+        WGPUTextureView thumb_view = cache.get_view(r.node_id);
+        if (!thumb_view) continue;
+        renderer.draw(thumb_view, r.x, r.y + kAccentBarH, r.w, kGpuThumbH);
+    }
+    renderer.end();
 }
 
 } // namespace vivid

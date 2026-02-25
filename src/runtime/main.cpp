@@ -1,5 +1,7 @@
 #include "runtime/gpu_context.h"
 #include "runtime/fullscreen_blit.h"
+#include "runtime/thumbnail_cache.h"
+#include "runtime/thumbnail_renderer.h"
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
@@ -11,12 +13,14 @@
 #include "runtime/repl.h"
 #include "runtime/node_graph.h"
 #include "operator_api/gpu_operator.h"
+#include "operator_api/types.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 #include <GLFW/glfw3.h>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <unordered_set>
 
 // #16191D in sRGB → linear: pow(x/255, 2.2)
 static constexpr double kClearLinear[4]  = { 0.00699, 0.00821, 0.01041, 1.0 };
@@ -25,6 +29,10 @@ static constexpr double kClearRaw[4]     = { 0.0863, 0.0980, 0.1137, 1.0 };
 
 static constexpr uint32_t kWidth  = 1280;
 static constexpr uint32_t kHeight = 800;
+
+// Thumbnail size: node width × 16:10 aspect
+static constexpr uint32_t kThumbW = 140;
+static constexpr uint32_t kThumbH = 88;
 
 static bool is_srgb_format(WGPUTextureFormat fmt) {
     switch (fmt) {
@@ -67,6 +75,10 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int /*m
 }
 
 int main(int argc, char* argv[]) {
+    // Derive exe directory so resource lookup works from any CWD
+    auto exe_path = std::filesystem::canonical(std::filesystem::path(argv[0]));
+    auto exe_dir = exe_path.parent_path();
+
     const char* graph_path = (argc > 1) ? argv[1] : "graph.json";
 
     // --- GLFW ---
@@ -95,7 +107,7 @@ int main(int argc, char* argv[]) {
 
     const double* clear = is_srgb_format(gpu.surface_format()) ? kClearLinear : kClearRaw;
 
-    // --- Offscreen texture (RGBA8Unorm, for GPU operators to render into) ---
+    // --- Offscreen texture (RGBA16Float, for GPU operators to render into) ---
     static constexpr WGPUTextureFormat kOffscreenFormat = WGPUTextureFormat_RGBA16Float;
 
     WGPUTextureDescriptor offscreen_desc{};
@@ -131,9 +143,22 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // --- Thumbnail cache + renderer ---
+    vivid::ThumbnailCache thumb_cache;
+    thumb_cache.init(gpu.device(), gpu.queue(), kThumbW, kThumbH);
+
+    // Separate blit pipeline for offscreen→thumbnail (targets RGBA16Float, not surface format)
+    vivid::FullscreenBlit thumb_blit;
+    if (!thumb_blit.init(gpu.device(), kOffscreenFormat)) {
+        std::fprintf(stderr, "[vivid] Failed to init thumbnail blit\n");
+    }
+
+    vivid::ThumbnailRenderer thumb_renderer;
+    bool thumb_renderer_ok = thumb_renderer.init(gpu.device(), gpu.surface_format());
+
     // --- Load operator plugins ---
     vivid::OperatorRegistry registry;
-    registry.scan(".");
+    registry.scan(exe_dir.string().c_str());
 
     // --- Load graph ---
     vivid::Graph graph;
@@ -170,11 +195,9 @@ int main(int argc, char* argv[]) {
     bool repl_enabled = false;
     {
         // Look for font next to executable, or in source tree
-        std::string font_path = "JetBrainsMono-Regular.ttf";
+        std::string font_path = (exe_dir / "JetBrainsMono-Regular.ttf").string();
         if (!std::filesystem::exists(font_path)) {
-            // Try source tree relative to build dir
-            auto parent = std::filesystem::current_path().parent_path();
-            auto alt = parent / "fonts" / "JetBrainsMono-Regular.ttf";
+            auto alt = exe_dir.parent_path() / "fonts" / "JetBrainsMono-Regular.ttf";
             if (std::filesystem::exists(alt)) font_path = alt.string();
         }
         if (text_renderer.init(gpu.device(), gpu.surface_format(), font_path.c_str(), 16.0f)) {
@@ -185,7 +208,8 @@ int main(int argc, char* argv[]) {
     }
 
     vivid::Repl repl(runtime_api);
-    vivid::NodeGraphUI graph_ui(runtime_api, graph, scheduler);
+    vivid::NodeGraphUI graph_ui(runtime_api, graph, scheduler,
+                                has_audio ? &audio_engine : nullptr);
 
     // Set up GLFW input callbacks
     WindowUserData window_user_data;
@@ -202,8 +226,6 @@ int main(int argc, char* argv[]) {
     vivid::HotReloader hot_reloader;
     bool hot_reload_enabled = false;
     {
-        // Derive source root from build dir: the build dir is the cwd,
-        // and the source root is typically one level up, or passed via --src-dir.
         std::string src_dir;
         for (int i = 1; i < argc - 1; ++i) {
             if (std::strcmp(argv[i], "--src-dir") == 0) {
@@ -212,9 +234,7 @@ int main(int argc, char* argv[]) {
             }
         }
         if (src_dir.empty()) {
-            // Default: assume build dir is <project_root>/build
-            auto cwd = std::filesystem::current_path();
-            auto parent = cwd.parent_path();
+            auto parent = exe_dir.parent_path();
             if (std::filesystem::exists(parent / "operators")) {
                 src_dir = parent.string();
             }
@@ -222,7 +242,7 @@ int main(int argc, char* argv[]) {
 
         if (!src_dir.empty()) {
             std::string operators_dir = src_dir + "/operators";
-            std::string build_dir = std::filesystem::current_path().string();
+            std::string build_dir = exe_dir.string();
             if (file_watcher.start(operators_dir)) {
                 hot_reloader.start(build_dir);
                 hot_reload_enabled = true;
@@ -242,7 +262,6 @@ int main(int argc, char* argv[]) {
 
         // --- REPL update (process pending command before tick) ---
         repl.update(has_gpu_ops, has_audio);
-        // After topology changes, graph_loaded might need updating
         if (!graph_loaded && !scheduler.nodes().empty()) {
             graph_loaded = true;
         }
@@ -269,13 +288,11 @@ int main(int argc, char* argv[]) {
 
             // --- Hot-reload polling ---
             if (hot_reload_enabled) {
-                // 1. Poll file watcher → queue rebuilds
                 auto changes = file_watcher.poll_changes();
                 for (const auto& change : changes) {
                     hot_reloader.queue_rebuild(change.target_name);
                 }
 
-                // 2. Poll reloader → perform reload sequence
                 auto ready = hot_reloader.poll_ready();
                 for (const auto& result : ready) {
                     if (!result.success) continue;
@@ -290,7 +307,6 @@ int main(int argc, char* argv[]) {
 
                     std::fprintf(stderr, "[vivid] Hot-reload: reloading %s...\n", tn.c_str());
 
-                    // Check if this is an audio operator
                     bool is_audio_op = false;
                     for (const auto& ns : scheduler.nodes()) {
                         if (std::string(ns.loader->descriptor()->name) == tn &&
@@ -300,15 +316,12 @@ int main(int argc, char* argv[]) {
                         }
                     }
 
-                    // Pause audio before touching the dylib if this is an audio operator
                     if (is_audio_op && has_audio) {
                         audio_engine.pause();
                     }
 
                     if (scheduler.reload_operator(tn, registry, result.staged_dylib_path)) {
                         if (is_audio_op && has_audio) {
-                            // AudioEngine needs to reload too (loader already swapped by scheduler)
-                            // This recreates audio instances and resumes playback
                             audio_engine.reload_operator(tn, registry);
                         }
                         std::fprintf(stderr, "[vivid] Hot-reload: %s reloaded successfully\n", tn.c_str());
@@ -316,21 +329,52 @@ int main(int argc, char* argv[]) {
                         std::fprintf(stderr, "[vivid] Hot-reload: %s reload FAILED\n", tn.c_str());
                     }
 
-                    // Ensure audio is resumed even if reload failed
                     if (is_audio_op && has_audio) {
-                        audio_engine.resume();  // safe to call if already running
+                        audio_engine.resume();
                     }
                 }
             }
 
             if (has_audio) {
-                audio_engine.inject_analysis(scheduler);  // audio→control
+                audio_engine.inject_analysis(scheduler);
             }
 
-            scheduler.tick(now, dt, frame_count, &gpu_state);
+            // Tick with thumbnail capture callback for GPU nodes
+            scheduler.tick(now, dt, frame_count, &gpu_state,
+                [&](uint32_t, const std::string& node_id) {
+                    // Blit offscreen → per-node thumbnail (uses RGBA16Float pipeline)
+                    auto* thumb_view = thumb_cache.get_or_create(node_id);
+                    if (thumb_view) {
+                        thumb_blit.blit(frame.encoder, offscreen_view, thumb_view);
+                    }
+                });
+
+            // Custom thumbnail pass: call draw_thumbnail for operators that implement it
+            {
+                std::vector<uint8_t> thumb_pixels(kThumbW * kThumbH * 4);
+                std::unordered_set<std::string> custom_thumb_ids;
+                for (const auto& ns : scheduler.nodes()) {
+                    if (!ns.loader->has_draw_thumbnail()) continue;
+                    VividThumbnailContext tctx{};
+                    tctx.pixels = thumb_pixels.data();
+                    tctx.width = kThumbW;
+                    tctx.height = kThumbH;
+                    tctx.stride = kThumbW * 4;
+                    tctx.time = now;
+                    tctx.output_values = const_cast<float*>(ns.output_values.data());
+                    tctx.output_count = ns.output_port_count;
+                    tctx.param_values = const_cast<float*>(ns.param_values.data());
+                    tctx.param_count = static_cast<uint32_t>(ns.param_values.size());
+                    std::memset(thumb_pixels.data(), 0, thumb_pixels.size());
+                    ns.loader->draw_thumbnail(ns.instance, &tctx);
+                    thumb_cache.upload_cpu(ns.node_id, thumb_pixels.data());
+                    custom_thumb_ids.insert(ns.node_id);
+                }
+                graph_ui.set_custom_thumbnail_nodes(std::move(custom_thumb_ids));
+            }
 
             if (has_audio) {
-                audio_engine.push_params(scheduler);      // control→audio
+                audio_engine.push_params(scheduler);
             }
 
             if (frame_count % 60 == 0) {
@@ -375,10 +419,18 @@ int main(int argc, char* argv[]) {
             wgpuRenderPassEncoderRelease(pass);
         }
 
-        // --- Node graph UI + REPL overlay ---
+        // --- Node graph UI + REPL overlay (3-pass rendering) ---
         if (repl_enabled) {
             graph_ui.update();
             graph_ui.draw(text_renderer, kWidth, kHeight);
+            // Pass 1: text/rects
+            text_renderer.flush(frame.encoder, frame.view, kWidth, kHeight);
+            // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
+            if (thumb_renderer_ok) {
+                graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
+                                         frame.encoder, frame.view, kWidth, kHeight);
+            }
+            // Pass 3: REPL on top
             repl.draw(text_renderer, kWidth, kHeight);
             text_renderer.flush(frame.encoder, frame.view, kWidth, kHeight);
         }
@@ -400,11 +452,13 @@ int main(int argc, char* argv[]) {
     if (graph_loaded) {
         scheduler.shutdown();
     }
-    // Registry destructor handles dlclose via OperatorLoader destructors
 
     if (repl_enabled) {
         text_renderer.shutdown();
     }
+    thumb_renderer.shutdown();
+    thumb_cache.shutdown();
+    thumb_blit.shutdown();
     blit.shutdown();
     wgpuTextureViewRelease(offscreen_view);
     wgpuTextureRelease(offscreen_tex);

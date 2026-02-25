@@ -15,27 +15,31 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , create_fn_(other.create_fn_)
     , destroy_fn_(other.destroy_fn_)
     , process_fn_(other.process_fn_)
+    , draw_thumb_fn_(other.draw_thumb_fn_)
 {
-    other.handle_     = nullptr;
-    other.desc_fn_    = nullptr;
-    other.create_fn_  = nullptr;
-    other.destroy_fn_ = nullptr;
-    other.process_fn_ = nullptr;
+    other.handle_        = nullptr;
+    other.desc_fn_       = nullptr;
+    other.create_fn_     = nullptr;
+    other.destroy_fn_    = nullptr;
+    other.process_fn_    = nullptr;
+    other.draw_thumb_fn_ = nullptr;
 }
 
 OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
     if (this != &other) {
         unload();
-        handle_     = other.handle_;
-        desc_fn_    = other.desc_fn_;
-        create_fn_  = other.create_fn_;
-        destroy_fn_ = other.destroy_fn_;
-        process_fn_ = other.process_fn_;
-        other.handle_     = nullptr;
-        other.desc_fn_    = nullptr;
-        other.create_fn_  = nullptr;
-        other.destroy_fn_ = nullptr;
-        other.process_fn_ = nullptr;
+        handle_        = other.handle_;
+        desc_fn_       = other.desc_fn_;
+        create_fn_     = other.create_fn_;
+        destroy_fn_    = other.destroy_fn_;
+        process_fn_    = other.process_fn_;
+        draw_thumb_fn_ = other.draw_thumb_fn_;
+        other.handle_        = nullptr;
+        other.desc_fn_       = nullptr;
+        other.create_fn_     = nullptr;
+        other.destroy_fn_    = nullptr;
+        other.process_fn_    = nullptr;
+        other.draw_thumb_fn_ = nullptr;
     }
     return *this;
 }
@@ -65,17 +69,21 @@ bool OperatorLoader::load(const char* path) {
         return false;
     }
 
+    // Optional: custom thumbnail drawing
+    draw_thumb_fn_ = reinterpret_cast<VividDrawThumbnailFn>(dlsym(handle_, "vivid_draw_thumbnail"));
+
     return true;
 }
 
 void OperatorLoader::unload() {
     if (handle_) {
         dlclose(handle_);
-        handle_     = nullptr;
-        desc_fn_    = nullptr;
-        create_fn_  = nullptr;
-        destroy_fn_ = nullptr;
-        process_fn_ = nullptr;
+        handle_        = nullptr;
+        desc_fn_       = nullptr;
+        create_fn_     = nullptr;
+        destroy_fn_    = nullptr;
+        process_fn_    = nullptr;
+        draw_thumb_fn_ = nullptr;
     }
 }
 
@@ -96,6 +104,12 @@ void OperatorLoader::destroy_instance(void* instance) const {
 void OperatorLoader::process(void* instance, const VividProcessContext* ctx) const {
     if (process_fn_ && instance) {
         process_fn_(instance, ctx);
+    }
+}
+
+void OperatorLoader::draw_thumbnail(void* instance, const VividThumbnailContext* ctx) const {
+    if (draw_thumb_fn_ && instance) {
+        draw_thumb_fn_(instance, ctx);
     }
 }
 

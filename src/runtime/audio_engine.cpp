@@ -191,6 +191,13 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     for (auto& snap : analysis_snapshots_) {
         snap.rms.resize(n, 0.0f);
         snap.peak.resize(n, 0.0f);
+        snap.waveform.resize(n);
+    }
+
+    // Build node_id → index map
+    node_id_to_index_.clear();
+    for (uint32_t i = 0; i < n; ++i) {
+        node_id_to_index_[nodes_[i].node_id] = static_cast<int>(i);
     }
 
     // Build analysis mappings: match audio nodes to scheduler nodes
@@ -288,6 +295,15 @@ void AudioEngine::inject_analysis(Scheduler& scheduler) {
         scheduler.inject_external_output(m.scheduler_node_idx, m.peak_port_idx,
                                          snap.peak[m.audio_engine_idx]);
     }
+}
+
+const AnalysisSnapshot& AudioEngine::analysis_read() const {
+    return analysis_snapshots_[analysis_active_.load(std::memory_order_acquire)];
+}
+
+int AudioEngine::audio_node_index(const std::string& node_id) const {
+    auto it = node_id_to_index_.find(node_id);
+    return (it != node_id_to_index_.end()) ? it->second : -1;
 }
 
 void AudioEngine::pause() {
@@ -497,7 +513,7 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
         frames_written += chunk;
     }
 
-    // Compute RMS and peak for each audio node, write to analysis snapshot
+    // Compute RMS, peak, and waveform for each audio node, write to analysis snapshot
     int write_idx = 1 - analysis_active_.load(std::memory_order_acquire);
     auto& analysis = analysis_snapshots_[write_idx];
     for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
@@ -511,6 +527,14 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             }
             analysis.rms[ni] = std::sqrt(sum_sq / frame_count);
             analysis.peak[ni] = pk;
+
+            // Downsample output buffer to waveform (pick every other sample)
+            constexpr uint32_t kWaveN = AnalysisSnapshot::kWaveformSamples;
+            auto& wave = analysis.waveform[ni];
+            for (uint32_t w = 0; w < kWaveN; ++w) {
+                uint32_t src_idx = w * 2;
+                wave[w] = (src_idx < frame_count) ? buf[src_idx] : 0.0f;
+            }
         }
     }
     analysis_active_.store(write_idx, std::memory_order_release);

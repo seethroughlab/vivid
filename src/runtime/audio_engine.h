@@ -5,6 +5,7 @@
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
 #include "operator_api/audio_operator.h"
+#include <array>
 #include <atomic>
 #include <vector>
 #include <string>
@@ -52,8 +53,10 @@ struct ParamSnapshot {
 };
 
 struct AnalysisSnapshot {
+    static constexpr uint32_t kWaveformSamples = 128;
     std::vector<float> rms;   // [audio_node_idx]
     std::vector<float> peak;  // [audio_node_idx]
+    std::vector<std::array<float, kWaveformSamples>> waveform; // [audio_node_idx]
 };
 
 struct AudioToControlMapping {
@@ -73,6 +76,11 @@ public:
     void push_params(const Scheduler& scheduler);
     void inject_analysis(Scheduler& scheduler);
     void shutdown();
+
+    // Read active analysis snapshot (call from main thread)
+    const AnalysisSnapshot& analysis_read() const;
+    // Map node_id to audio engine index (-1 if not found)
+    int audio_node_index(const std::string& node_id) const;
 
     // Hot-reload support
     void pause();
@@ -99,6 +107,9 @@ private:
     AnalysisSnapshot analysis_snapshots_[2];
     std::atomic<int> analysis_active_{0};
     std::vector<AudioToControlMapping> analysis_mappings_;
+
+    // Node ID → audio engine index mapping (built during build())
+    std::unordered_map<std::string, int> node_id_to_index_;
 
     // Audio time tracking
     uint64_t audio_frame_ = 0;

@@ -199,7 +199,8 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
     return true;
 }
 
-void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_state) {
+void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_state,
+                     PostNodeFn on_gpu_node) {
     for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
         auto& ns = nodes_[ni];
 
@@ -250,6 +251,11 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         ctx.gpu = ns.is_gpu ? gpu_state : nullptr;
 
         ns.loader->process(ns.instance, &ctx);
+
+        // Invoke post-GPU-node callback (for thumbnail capture)
+        if (ns.is_gpu && on_gpu_node) {
+            on_gpu_node(ni, ns.node_id);
+        }
 
         // Update generation: bump if outputs changed or this is a GPU node
         // (GPU nodes always produce side effects we can't compare)

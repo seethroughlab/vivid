@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <functional>
 
 namespace vivid {
 
@@ -38,10 +39,14 @@ struct Wire {
     bool targets_param = false;  // true → to_port_idx indexes into param_values
 };
 
+// Optional callback invoked after each GPU node's process()
+using PostNodeFn = std::function<void(uint32_t node_idx, const std::string& node_id)>;
+
 class Scheduler {
 public:
     bool build(const Graph& graph, OperatorRegistry& registry);
-    void tick(double time, double delta_time, uint64_t frame, void* gpu_state = nullptr);
+    void tick(double time, double delta_time, uint64_t frame, void* gpu_state = nullptr,
+              PostNodeFn on_gpu_node = nullptr);
     void shutdown();
     const std::vector<NodeState>& nodes() const { return nodes_; }
     const std::vector<Wire>& wires() const { return wires_; }
