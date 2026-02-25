@@ -19,6 +19,7 @@ class TextRenderer;
 class AudioEngine;
 class ThumbnailRenderer;
 class ThumbnailCache;
+class OperatorRegistry;
 
 struct MouseState {
     float x = 0, y = 0;
@@ -31,7 +32,7 @@ struct NodeRect {
     std::string node_id;
     std::string type_name;
     VividDomain domain = VIVID_DOMAIN_CONTROL;
-    float x, y, w, h;
+    float x = 0, y = 0, w = 0, h = 0;
     struct PortPos { std::string name; float x, y; };
     std::vector<PortPos> inputs, outputs;
 };
@@ -45,6 +46,13 @@ public:
     void on_mouse_move(float x, float y);
     void on_mouse_button(int button, int action);
     void on_scroll(float x_offset, float y_offset);
+    void on_key(int key, int action, int mods);
+    void on_char(unsigned int codepoint);
+
+    // Returns true when the chooser popup is open and wants keyboard focus
+    bool wants_keyboard() const { return chooser_open_ || editing_param_; }
+
+    void set_registry(OperatorRegistry* reg) { registry_ = reg; }
 
     // Per-frame
     void update();
@@ -69,9 +77,22 @@ private:
     void draw_graph(TextRenderer& tr);
     void draw_connections(TextRenderer& tr);
     void draw_inspector(TextRenderer& tr, uint32_t w);
+    void draw_chooser(TextRenderer& tr);
+    void rebuild_chooser_items();
     int hit_test_node(float mx, float my) const;
     int hit_test_slider(float mx, float my) const;
     int hit_test_bool(float mx, float my) const;
+    void confirm_param_edit();
+    void cancel_param_edit();
+
+    struct PortHit {
+        int node_idx = -1;
+        std::string port_name;
+        bool is_output = false;
+        float gx = 0, gy = 0;
+    };
+    PortHit hit_test_port(float mx, float my) const;
+    void draw_preview_wire(TextRenderer& tr);
 
     // Graph space ↔ screen space helpers
     float gx_to_sx(float gx) const { return gx * zoom_ + pan_x_; }
@@ -96,6 +117,12 @@ private:
     int dragging_node_idx_ = -1;
     float drag_offset_x_ = 0, drag_offset_y_ = 0;
 
+    // Wire drag state
+    bool dragging_wire_ = false;
+    std::string wire_from_node_id_;
+    std::string wire_from_port_;
+    float wire_from_gx_ = 0, wire_from_gy_ = 0;
+
     // Zoom/pan state
     float zoom_ = 1.0f;
     float pan_x_ = 0.0f, pan_y_ = 0.0f;
@@ -110,6 +137,14 @@ private:
 
     struct SliderRect { float x, y, w, h; std::string node_id; std::string param_name; };
     std::vector<SliderRect> slider_rects_;
+
+    // Slider text-edit state (double-click to type a value)
+    bool editing_param_ = false;
+    std::string edit_node_id_;
+    std::string edit_param_name_;
+    std::string edit_buffer_;
+    float last_click_time_ = 0.0f;
+    int last_click_slider_idx_ = -1;
 
     struct BoolRect { float x, y, w, h; std::string node_id; std::string param_name; };
     std::vector<BoolRect> bool_rects_;
@@ -127,6 +162,15 @@ private:
     std::unordered_set<std::string> custom_thumb_nodes_;
 
     float dpi_scale_ = 1.0f;
+
+    // Operator chooser popup
+    bool chooser_open_ = false;
+    std::string chooser_filter_;
+    int chooser_sel_ = 0;
+    int chooser_scroll_ = 0;
+    std::vector<std::string> chooser_items_;
+    float chooser_cursor_gx_ = 0, chooser_cursor_gy_ = 0;
+    OperatorRegistry* registry_ = nullptr;
 };
 
 } // namespace vivid

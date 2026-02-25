@@ -59,12 +59,26 @@ struct WindowUserData {
 
 static void char_callback(GLFWwindow* w, unsigned int codepoint) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
-    if (ud && ud->repl) ud->repl->on_char(codepoint);
+    if (!ud) return;
+    if (ud->graph_ui && ud->graph_ui->wants_keyboard())
+        ud->graph_ui->on_char(codepoint);
+    else if (ud->repl)
+        ud->repl->on_char(codepoint);
 }
 
 static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, int mods) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
-    if (ud && ud->repl) ud->repl->on_key(key, action, mods);
+    if (!ud) return;
+    if (ud->graph_ui && ud->graph_ui->wants_keyboard()) {
+        ud->graph_ui->on_key(key, action, mods);
+    } else {
+        // Tab opens the chooser on the graph UI; everything else goes to REPL
+        if (ud->graph_ui && key == GLFW_KEY_TAB && action == GLFW_PRESS) {
+            ud->graph_ui->on_key(key, action, mods);
+        } else if (ud->repl) {
+            ud->repl->on_key(key, action, mods);
+        }
+    }
 }
 
 static void cursor_pos_callback(GLFWwindow* w, double xpos, double ypos) {
@@ -248,6 +262,7 @@ int main(int argc, char* argv[]) {
     vivid::NodeGraphUI graph_ui(runtime_api, graph, scheduler,
                                 has_audio ? &audio_engine : nullptr);
     graph_ui.set_dpi_scale(dpi_scale);
+    graph_ui.set_registry(&registry);
 
     // Set up GLFW input callbacks
     WindowUserData window_user_data;
@@ -301,6 +316,9 @@ int main(int argc, char* argv[]) {
 
         // --- REPL update (process pending command before tick) ---
         repl.update(has_gpu_ops, has_audio);
+        if (runtime_api.has_pending()) {
+            runtime_api.apply_pending(has_gpu_ops, has_audio);
+        }
         if (!graph_loaded && !scheduler.nodes().empty()) {
             graph_loaded = true;
         }
@@ -460,9 +478,22 @@ int main(int argc, char* argv[]) {
 
         // --- Node graph UI + REPL overlay (3-pass rendering) ---
         if (repl_enabled) {
+            // When GPU ops are active, the fullscreen blit paints the entire
+            // surface with the offscreen texture (black in non-rendered areas).
+            // Fill below the graph viewport with the background color so the
+            // strip between the graph area and the REPL isn't black.
+            if (has_gpu_ops) {
+                constexpr float kGraphAreaH = 640.0f; // matches kGraphH in node_graph.cpp
+                text_renderer.draw_rect(0, kGraphAreaH,
+                                        static_cast<float>(kWidth),
+                                        static_cast<float>(kHeight) - kGraphAreaH,
+                                        static_cast<float>(clear[0]),
+                                        static_cast<float>(clear[1]),
+                                        static_cast<float>(clear[2]), 1.0f);
+            }
             graph_ui.update();
             graph_ui.draw(text_renderer, kWidth, kHeight);
-            // Pass 1: text/rects
+            // Pass 1: text/rects (now the second render pass — quads render correctly)
             text_renderer.flush(frame.encoder, frame.view, kWidth, kHeight);
             // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
             if (thumb_renderer_ok) {

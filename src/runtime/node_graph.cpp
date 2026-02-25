@@ -7,6 +7,7 @@
 #include "runtime/thumbnail_cache.h"
 #include "runtime/thumbnail_renderer.h"
 #include "runtime/operator_loader.h"
+#include "runtime/operator_registry.h"
 #include "operator_api/types.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -15,6 +16,7 @@
 #include <queue>
 #include <cstdio>
 #include <cmath>
+#include <cctype>
 
 namespace vivid {
 
@@ -144,10 +146,23 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeState& ns) {
     std::sort(sorted_outputs.begin(), sorted_outputs.end());
 
     float port_start_y = rect.y + kAccentBarH + body_h + kNodePadY + kLineH * 2;
-    for (size_t pi = 0; pi < sorted_inputs.size(); ++pi) {
+    size_t pi = 0;
+    for (; pi < sorted_inputs.size(); ++pi) {
         float py = port_start_y + pi * kLineH + kLineH * 0.5f;
         rect.inputs.push_back({sorted_inputs[pi].second, rect.x, py});
     }
+
+    // Add parameters as input ports (sorted by index for stable ordering)
+    std::vector<std::pair<uint32_t, std::string>> sorted_params;
+    for (const auto& [name, idx] : ns.param_indices)
+        if (!ns.input_port_indices.count(name)) sorted_params.push_back({idx, name});
+    std::sort(sorted_params.begin(), sorted_params.end());
+    for (const auto& [idx, name] : sorted_params) {
+        float py = port_start_y + pi * kLineH + kLineH * 0.5f;
+        rect.inputs.push_back({name, rect.x, py});
+        ++pi;
+    }
+
     for (size_t pi = 0; pi < sorted_outputs.size(); ++pi) {
         float py = port_start_y + pi * kLineH + kLineH * 0.5f;
         rect.outputs.push_back({sorted_outputs[pi].second, rect.x + rect.w, py});
@@ -278,7 +293,10 @@ void NodeGraphUI::layout_nodes() {
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
             float body_h = domain_body_height(dom, has_ct);
 
-            uint32_t n_inputs = static_cast<uint32_t>(ns.input_port_indices.size());
+            uint32_t n_param_inputs = 0;
+            for (const auto& [name, _] : ns.param_indices)
+                if (!ns.input_port_indices.count(name)) n_param_inputs++;
+            uint32_t n_inputs = static_cast<uint32_t>(ns.input_port_indices.size()) + n_param_inputs;
             uint32_t n_outputs = static_cast<uint32_t>(ns.output_port_indices.size());
             uint32_t port_rows = std::max(n_inputs, n_outputs);
             float h = kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
@@ -338,7 +356,7 @@ void NodeGraphUI::draw_graph(TextRenderer& tr) {
         float sw = g_to_s(r.w), sh = g_to_s(r.h);
 
         // Node background
-        tr.draw_rect(sx, sy, sw, sh, bg[0], bg[1], bg[2], 0.92f);
+        tr.draw_rect(sx, sy, sw, sh, bg[0], bg[1], bg[2]);
 
         // Accent bar at top (step 1)
         float s_accent_h = g_to_s(kAccentBarH);
@@ -623,15 +641,30 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
         } else {
             float sx = px, sy = py;
             float sw = panel_w, sh = 10.0f;
-            tr.draw_rect(sx, sy, sw, sh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
 
-            float range = pd.max_value - pd.min_value;
-            float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
-            t = std::max(0.0f, std::min(1.0f, t));
-            tr.draw_rect(sx, sy, sw * t, sh, kSliderFill[0], kSliderFill[1], kSliderFill[2]);
+            bool is_editing_this = editing_param_ &&
+                                   edit_node_id_ == selected_node_id_ &&
+                                   edit_param_name_ == pd.name;
 
-            float thumb_x = sx + sw * t - 3;
-            tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, kAccent[0], kAccent[1], kAccent[2]);
+            if (is_editing_this) {
+                // Draw text-edit field with accent border
+                tr.draw_rect(sx - 1, sy - 1, sw + 2, sh + 2,
+                             kAccent[0], kAccent[1], kAccent[2]);
+                tr.draw_rect(sx, sy, sw, sh, 0.08f, 0.09f, 0.11f);
+                std::string display = edit_buffer_ + "_";
+                tr.draw_text(sx + 2, sy - 1, display.c_str(), 0.95f, 0.95f, 0.95f);
+            } else {
+                // Normal slider
+                tr.draw_rect(sx, sy, sw, sh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+
+                float range = pd.max_value - pd.min_value;
+                float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
+                t = std::max(0.0f, std::min(1.0f, t));
+                tr.draw_rect(sx, sy, sw * t, sh, kSliderFill[0], kSliderFill[1], kSliderFill[2]);
+
+                float thumb_x = sx + sw * t - 3;
+                tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, kAccent[0], kAccent[1], kAccent[2]);
+            }
 
             slider_rects_.push_back({sx, sy, sw, sh, selected_node_id_, pd.name});
             py += sh + 10;
@@ -666,6 +699,201 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
 }
 
 // -----------------------------------------------------------------------
+// Operator chooser
+// -----------------------------------------------------------------------
+static constexpr int kChooserMaxVisible = 12;
+static constexpr float kChooserW = 300.0f;
+static constexpr float kChooserHeaderH = 28.0f;
+static constexpr float kChooserItemH = 22.0f;
+
+void NodeGraphUI::on_key(int key, int action, int mods) {
+    if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
+
+    if (editing_param_) {
+        if (key == GLFW_KEY_ENTER)       confirm_param_edit();
+        else if (key == GLFW_KEY_ESCAPE) cancel_param_edit();
+        else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
+            edit_buffer_.pop_back();
+        return;  // consume all keys while editing
+    }
+
+    if (!chooser_open_) {
+        // Tab opens the chooser (only if cursor is in graph area)
+        if (key == GLFW_KEY_TAB && action == GLFW_PRESS && registry_) {
+            if (mouse_.x < kInspectorX) {
+                chooser_cursor_gx_ = sx_to_gx(mouse_.x);
+                chooser_cursor_gy_ = sy_to_gy(mouse_.y);
+                chooser_filter_.clear();
+                chooser_sel_ = 0;
+                chooser_scroll_ = 0;
+                chooser_items_ = registry_->type_names();
+                std::sort(chooser_items_.begin(), chooser_items_.end());
+                chooser_open_ = true;
+            }
+        }
+        return;
+    }
+
+    // Chooser is open
+    switch (key) {
+        case GLFW_KEY_ESCAPE:
+            chooser_open_ = false;
+            break;
+
+        case GLFW_KEY_ENTER: {
+            if (!chooser_items_.empty() && chooser_sel_ >= 0 &&
+                chooser_sel_ < static_cast<int>(chooser_items_.size())) {
+                const std::string& type = chooser_items_[chooser_sel_];
+                // Generate unique ID: type1, type2, ...
+                std::string id;
+                for (int n = 1; ; ++n) {
+                    id = type + std::to_string(n);
+                    if (!graph_.find_node(id)) break;
+                }
+                api_.add_node(type, id);
+                api_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
+                selected_node_id_ = id;
+            }
+            chooser_open_ = false;
+            break;
+        }
+
+        case GLFW_KEY_UP:
+            if (chooser_sel_ > 0) {
+                chooser_sel_--;
+                if (chooser_sel_ < chooser_scroll_)
+                    chooser_scroll_ = chooser_sel_;
+            }
+            break;
+
+        case GLFW_KEY_DOWN:
+            if (chooser_sel_ < static_cast<int>(chooser_items_.size()) - 1) {
+                chooser_sel_++;
+                if (chooser_sel_ >= chooser_scroll_ + kChooserMaxVisible)
+                    chooser_scroll_ = chooser_sel_ - kChooserMaxVisible + 1;
+            }
+            break;
+
+        case GLFW_KEY_BACKSPACE:
+            if (!chooser_filter_.empty()) {
+                chooser_filter_.pop_back();
+                rebuild_chooser_items();
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+void NodeGraphUI::on_char(unsigned int codepoint) {
+    if (editing_param_) {
+        char ch = static_cast<char>(codepoint);
+        if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-')
+            edit_buffer_ += ch;
+        return;
+    }
+    if (!chooser_open_) return;
+    if (codepoint >= 32 && codepoint < 127) {
+        chooser_filter_ += static_cast<char>(codepoint);
+        rebuild_chooser_items();
+    }
+}
+
+void NodeGraphUI::rebuild_chooser_items() {
+    if (!registry_) return;
+    auto all = registry_->type_names();
+    std::sort(all.begin(), all.end());
+    chooser_items_.clear();
+
+    // Case-insensitive substring match
+    std::string lower_filter = chooser_filter_;
+    for (auto& c : lower_filter) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    for (const auto& name : all) {
+        std::string lower_name = name;
+        for (auto& c : lower_name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (lower_name.find(lower_filter) != std::string::npos)
+            chooser_items_.push_back(name);
+    }
+
+    chooser_sel_ = 0;
+    chooser_scroll_ = 0;
+}
+
+void NodeGraphUI::draw_preview_wire(TextRenderer& tr) {
+    if (!dragging_wire_) return;
+    float ssx = gx_to_sx(wire_from_gx_), ssy = gy_to_sy(wire_from_gy_);
+    float sex = mouse_.x, sey = mouse_.y;
+    float wire_th = std::max(1.0f, 3.0f * zoom_);
+    float mid_x = (ssx + sex) * 0.5f;
+    // Z-route: horizontal → vertical → horizontal (white, alpha 0.5)
+    tr.draw_rect(ssx, ssy - 1, mid_x - ssx, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
+    float vy = std::min(ssy, sey);
+    float vh = std::fabs(sey - ssy);
+    tr.draw_rect(mid_x - 1, vy, wire_th, vh + wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
+    tr.draw_rect(mid_x, sey - 1, sex - mid_x, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
+}
+
+void NodeGraphUI::draw_chooser(TextRenderer& tr) {
+    if (!chooser_open_) return;
+
+    int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
+    if (visible == 0) visible = 1; // show at least the header area
+    float panel_h = kChooserHeaderH + visible * kChooserItemH + 4;
+
+    float px = (kGraphW - kChooserW) * 0.5f;
+    float py = 80.0f;
+
+    // Background
+    tr.draw_rect(px, py, kChooserW, panel_h, kInspBg[0], kInspBg[1], kInspBg[2], 0.97f);
+    // Top accent bar
+    tr.draw_rect(px, py, kChooserW, 2, kAccent[0], kAccent[1], kAccent[2]);
+
+    // Filter text
+    float tx = px + 8;
+    float ty = py + 6;
+    std::string display_filter = chooser_filter_ + "_";
+    tr.draw_text(tx, ty, display_filter.c_str(), 1.0f, 1.0f, 1.0f);
+
+    // Items
+    float iy = py + kChooserHeaderH;
+    for (int i = 0; i < visible; ++i) {
+        int idx = chooser_scroll_ + i;
+        if (idx >= static_cast<int>(chooser_items_.size())) break;
+
+        float item_y = iy + i * kChooserItemH;
+
+        // Highlight selected
+        if (idx == chooser_sel_) {
+            tr.draw_rect(px + 2, item_y, kChooserW - 4, kChooserItemH,
+                         kNodeSelBg[0], kNodeSelBg[1], kNodeSelBg[2], 0.9f);
+        }
+
+        // Domain color dot
+        const std::string& name = chooser_items_[idx];
+        const float* dcol = kControlAccent; // default
+        if (registry_) {
+            auto* loader = registry_->find(name);
+            if (loader && loader->descriptor()) {
+                dcol = domain_color(loader->descriptor()->domain);
+            }
+        }
+        float dot_x = px + 10;
+        float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
+        tr.draw_rect(dot_x, dot_y, 6, 6, dcol[0], dcol[1], dcol[2]);
+
+        // Type name
+        tr.draw_text(px + 22, item_y + 3, name.c_str(), 0.85f, 0.87f, 0.90f);
+    }
+
+    // Show "no matches" if empty
+    if (chooser_items_.empty()) {
+        tr.draw_text(px + 8, iy + 3, "no matches", kDimText[0], kDimText[1], kDimText[2]);
+    }
+}
+
+// -----------------------------------------------------------------------
 // Hit testing
 // -----------------------------------------------------------------------
 int NodeGraphUI::hit_test_node(float mx, float my) const {
@@ -676,6 +904,38 @@ int NodeGraphUI::hit_test_node(float mx, float my) const {
             return i;
     }
     return -1;
+}
+
+NodeGraphUI::PortHit NodeGraphUI::hit_test_port(float mx, float my) const {
+    float gx = sx_to_gx(mx), gy = sy_to_gy(my);
+    constexpr float kPortHitRadius = 10.0f;
+    float best_dist2 = kPortHitRadius * kPortHitRadius;
+    PortHit best;
+    // Check outputs first (drag source), then inputs
+    for (int i = static_cast<int>(node_rects_.size()) - 1; i >= 0; --i) {
+        const auto& r = node_rects_[i];
+        for (const auto& p : r.outputs) {
+            float dx = gx - p.x, dy = gy - p.y;
+            float d2 = dx * dx + dy * dy;
+            if (d2 < best_dist2) {
+                best_dist2 = d2;
+                best = {i, p.name, true, p.x, p.y};
+            }
+        }
+    }
+    if (best.node_idx >= 0) return best;
+    for (int i = static_cast<int>(node_rects_.size()) - 1; i >= 0; --i) {
+        const auto& r = node_rects_[i];
+        for (const auto& p : r.inputs) {
+            float dx = gx - p.x, dy = gy - p.y;
+            float d2 = dx * dx + dy * dy;
+            if (d2 < best_dist2) {
+                best_dist2 = d2;
+                best = {i, p.name, false, p.x, p.y};
+            }
+        }
+    }
+    return best;
 }
 
 int NodeGraphUI::hit_test_slider(float mx, float my) const {
@@ -696,6 +956,37 @@ int NodeGraphUI::hit_test_bool(float mx, float my) const {
     return -1;
 }
 
+void NodeGraphUI::confirm_param_edit() {
+    if (!editing_param_) return;
+    try {
+        float val = std::stof(edit_buffer_);
+        const auto& sched_nodes = scheduler_.nodes();
+        for (const auto& ns : sched_nodes) {
+            if (ns.node_id != edit_node_id_) continue;
+            const auto* desc = ns.loader ? ns.loader->descriptor() : nullptr;
+            if (!desc) break;
+            for (uint32_t pi = 0; pi < desc->param_count; ++pi) {
+                if (std::string(desc->params[pi].name) != edit_param_name_) continue;
+                const auto& pd = desc->params[pi];
+                val = std::max(pd.min_value, std::min(pd.max_value, val));
+                if (pd.type == VIVID_PARAM_INT) val = std::round(val);
+                api_.set_param(edit_node_id_, edit_param_name_, val);
+                break;
+            }
+            break;
+        }
+    } catch (...) {
+        // Invalid input — silently discard
+    }
+    editing_param_ = false;
+    edit_buffer_.clear();
+}
+
+void NodeGraphUI::cancel_param_edit() {
+    editing_param_ = false;
+    edit_buffer_.clear();
+}
+
 // -----------------------------------------------------------------------
 // Update (process mouse input + sparkline recording)
 // -----------------------------------------------------------------------
@@ -704,7 +995,7 @@ void NodeGraphUI::update() {
     size_t cur_nodes = scheduler_.nodes().size();
     size_t cur_conns = graph_.connections().size();
     if (cur_nodes != last_node_count_ || cur_conns != last_conn_count_) {
-        if (dragging_node_idx_ < 0) {
+        if (dragging_node_idx_ < 0 && !dragging_wire_) {
             layout_nodes();
         }
     }
@@ -737,6 +1028,17 @@ void NodeGraphUI::update() {
         }
     }
 
+    // Wire drag release
+    if (mouse_.left_released && dragging_wire_) {
+        PortHit ph = hit_test_port(mouse_.x, mouse_.y);
+        if (ph.node_idx >= 0 && !ph.is_output) {
+            std::string to_node = node_rects_[ph.node_idx].node_id;
+            api_.connect(wire_from_node_id_ + "/" + wire_from_port_,
+                         to_node + "/" + ph.port_name);
+        }
+        dragging_wire_ = false;
+    }
+
     // Active slider drag (skip if node drag is active)
     if (active_slider_idx_ >= 0 && dragging_node_idx_ < 0) {
         if (mouse_.left_down) {
@@ -767,11 +1069,38 @@ void NodeGraphUI::update() {
     // Click handling
     if (mouse_.left_clicked) {
         if (mouse_.x >= kInspectorX && mouse_.y < kGraphH) {
+            // Confirm any active text edit when clicking in inspector
+            if (editing_param_) confirm_param_edit();
+
             int si = hit_test_slider(mouse_.x, mouse_.y);
             if (si >= 0) {
-                active_slider_idx_ = si;
-                active_slider_node_id_ = slider_rects_[si].node_id;
-                active_slider_param_name_ = slider_rects_[si].param_name;
+                float now = static_cast<float>(glfwGetTime());
+                if (si == last_click_slider_idx_ && (now - last_click_time_) < 0.35f) {
+                    // Double-click → enter text-edit mode
+                    editing_param_ = true;
+                    edit_node_id_ = slider_rects_[si].node_id;
+                    edit_param_name_ = slider_rects_[si].param_name;
+                    // Pre-fill with current value
+                    const auto& sched_nodes = scheduler_.nodes();
+                    for (const auto& ns : sched_nodes) {
+                        if (ns.node_id != edit_node_id_) continue;
+                        auto it = ns.param_indices.find(edit_param_name_);
+                        if (it != ns.param_indices.end()) {
+                            char buf[32];
+                            std::snprintf(buf, sizeof(buf), "%.2f", ns.param_values[it->second]);
+                            edit_buffer_ = buf;
+                        }
+                        break;
+                    }
+                    last_click_slider_idx_ = -1;
+                } else {
+                    // Single click → normal drag
+                    active_slider_idx_ = si;
+                    active_slider_node_id_ = slider_rects_[si].node_id;
+                    active_slider_param_name_ = slider_rects_[si].param_name;
+                    last_click_time_ = now;
+                    last_click_slider_idx_ = si;
+                }
             } else {
                 int bi = hit_test_bool(mouse_.x, mouse_.y);
                 if (bi >= 0) {
@@ -789,20 +1118,46 @@ void NodeGraphUI::update() {
                 }
             }
         } else if (mouse_.x < kGraphW && mouse_.y < kGraphH) {
-            int ni = hit_test_node(mouse_.x, mouse_.y);
-            if (ni >= 0) {
-                selected_node_id_ = node_rects_[ni].node_id;
-                dragging_node_idx_ = ni;
-                drag_offset_x_ = sx_to_gx(mouse_.x) - node_rects_[ni].x;
-                drag_offset_y_ = sy_to_gy(mouse_.y) - node_rects_[ni].y;
+            // Clicking in graph area confirms any active text edit
+            if (editing_param_) confirm_param_edit();
+
+            // Port hit test first (ports are on node edges, inside node AABB)
+            PortHit ph = hit_test_port(mouse_.x, mouse_.y);
+            if (ph.node_idx >= 0) {
+                if (ph.is_output) {
+                    // Start wire drag from output port
+                    dragging_wire_ = true;
+                    wire_from_node_id_ = node_rects_[ph.node_idx].node_id;
+                    wire_from_port_ = ph.port_name;
+                    wire_from_gx_ = ph.gx;
+                    wire_from_gy_ = ph.gy;
+                } else {
+                    // Click on input port → disconnect existing wires to this input
+                    std::string to_node = node_rects_[ph.node_idx].node_id;
+                    const auto& conns = graph_.connections();
+                    for (const auto& c : conns) {
+                        if (c.to_node == to_node && c.to_port == ph.port_name) {
+                            api_.disconnect(c.from_node + "/" + c.from_port,
+                                            to_node + "/" + ph.port_name);
+                        }
+                    }
+                }
             } else {
-                selected_node_id_.clear();
-                // Start left-drag pan on empty canvas
-                panning_ = true;
-                pan_start_mx_ = mouse_.x;
-                pan_start_my_ = mouse_.y;
-                pan_start_px_ = pan_x_;
-                pan_start_py_ = pan_y_;
+                int ni = hit_test_node(mouse_.x, mouse_.y);
+                if (ni >= 0) {
+                    selected_node_id_ = node_rects_[ni].node_id;
+                    dragging_node_idx_ = ni;
+                    drag_offset_x_ = sx_to_gx(mouse_.x) - node_rects_[ni].x;
+                    drag_offset_y_ = sy_to_gy(mouse_.y) - node_rects_[ni].y;
+                } else {
+                    selected_node_id_.clear();
+                    // Start left-drag pan on empty canvas
+                    panning_ = true;
+                    pan_start_mx_ = mouse_.x;
+                    pan_start_my_ = mouse_.y;
+                    pan_start_px_ = pan_x_;
+                    pan_start_py_ = pan_y_;
+                }
             }
         }
     }
@@ -851,7 +1206,9 @@ void NodeGraphUI::draw(TextRenderer& tr, uint32_t w, uint32_t h) {
 
     draw_graph(tr);
     draw_connections(tr);
+    draw_preview_wire(tr);
     draw_inspector(tr, w);
+    draw_chooser(tr);
 }
 
 // -----------------------------------------------------------------------
