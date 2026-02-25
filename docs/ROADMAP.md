@@ -122,13 +122,20 @@ Build the audio context (miniaudio device, 48kHz, 256 samples), pull-based audio
 - Note: the AV sync demo uses Clock as a shared trigger — true audio→control feedback (Phase 7) is not yet built
 - Commits: `eceb89b`, `3a664f7`
 
-### Phase 7: Audio Drives Visuals
+### Phase 7: Audio Drives Visuals — DONE
 
 Build the Audio→Control bridge (lock-free queue). Audio operators write analysis results (RMS level) to the control domain. Wire audio RMS to a visual parameter.
 
 **Verify:** Audio plays. Noise brightness responds to audio volume in real time. Turn audio input up → visuals get brighter. Visible correlation, low latency.
 
 **Why it matters:** This is Vivid's thesis: audio and visuals in the same graph, driven by the same data. Phase 7 is the first time you can point at the screen and say "the visuals are responding to the audio." It's also the first round-trip through all three domains: Audio → Control → GPU.
+
+**Implementation notes:**
+- `AnalysisSnapshot` in `audio_engine.h` carries RMS and peak values from the audio thread
+- Double-buffered analysis bridge: audio callback writes snapshots, `inject_analysis()` reads them into the scheduler on the main thread
+- Waveform analysis mapped per-node via `AnalysisMapping` entries
+- Demo graphs: `audio_demo.json`, `fft_bars_demo.json`
+- Commit: `a537719`
 
 *North Star progress: Audio→Control→GPU pipeline proven. The bridge that will carry envelope Spreads to rectangle colors works for scalar values.*
 
@@ -138,7 +145,7 @@ Build the Audio→Control bridge (lock-free queue). Audio operators write analys
 
 Output works. Now make it interactive — something you can actually work with, not just watch.
 
-### Phase 8: Hot-Reload
+### Phase 8: Hot-Reload — DONE
 
 File watching (kqueue) on operator directories. On save: recompile the changed operator via system clang, dlclose the old library, dlopen the new one, re-create the operator instance. Parameters survive (they live in the parameter store, outside the operator).
 
@@ -146,7 +153,14 @@ File watching (kqueue) on operator directories. On save: recompile the changed o
 
 **Why it matters:** Hot-reload is what makes the development loop tolerable. Without it, every operator change requires restarting the app and re-loading the graph. With it, you can iterate on shaders and DSP in real time. This also validates the architectural decision that parameters live outside operators.
 
-### Phase 9: REPL
+**Implementation notes:**
+- `FileWatcher` (kqueue-based) watches all `.cpp`/`.h`/`.wgsl` files under `operators/`
+- `HotReloader` spawns async clang builds, stages dylibs, reports completion
+- Audio operators paused during reload, resumed after — no clicks/pops
+- Scheduler's `reload_operator()` handles dlclose/dlopen and instance re-creation
+- Commit: `b208118`
+
+### Phase 9: REPL — DONE
 
 Text input at the bottom of the window (minimal: just a text field, not a full chat UI). Build the Runtime API as an internal C++ interface. REPL commands map to Runtime API calls. Topology changes buffered and applied between frames; parameter changes immediate.
 
@@ -154,7 +168,14 @@ Text input at the bottom of the window (minimal: just a text field, not a full c
 
 **Why it matters:** The REPL is the first way to modify the running graph without editing JSON and restarting. It exercises the Runtime API that MCP and the chat panel will later wrap. Building it now means you can use the system productively while the UI is still being developed. It also proves the Runtime API design — if `addNode` or `connect` feel wrong from the REPL, they'll feel wrong from MCP too.
 
-### Phase 10: MIDI Input
+**Implementation notes:**
+- `Repl` class with text input, cursor, command history (up/down arrows)
+- `RuntimeAPI` as internal C++ interface: `set_param()`, `add_node()`, `connect()`, `disconnect()`, `save()`, `reload()`
+- Topology changes buffered via `has_pending()` / `apply_pending()`, applied between frames
+- GPU text rendering via `TextRenderer` (stb_truetype, JetBrains Mono)
+- Commit: `189d393`
+
+### Phase 10: MIDI Input — DONE
 
 Build the MIDI input operator using RtMidi (or platform-native CoreMIDI wrapper). MIDI CC messages become Control-domain values. MIDI note-on/note-off become Control events. Device enumeration and selection via parameter. CC learn mode: wiggle a physical knob, the operator auto-assigns the CC number to a named output port.
 
@@ -162,9 +183,16 @@ Build the MIDI input operator using RtMidi (or platform-native CoreMIDI wrapper)
 
 **Why it matters:** MIDI is how hardware enters the Vivid graph. Without it, the system is screen-only. This phase validates that external hardware events flow through the same Control domain as internal operators — a MIDI CC driving a shader parameter is the same gesture as an LFO driving it. CC learn is essential for live performance: you shouldn't need to look up CC numbers.
 
+**Implementation notes:**
+- `operators/control/midi_input/midi_input.cpp` using RtMidi
+- Device enumeration at init; device selection via `device` parameter
+- Output ports: note, velocity, gate, trigger, pitch_bend, mod_wheel, cc_value
+- CC learn mode via `channel` and `cc_number` parameters
+- Commit: `0e1a3f4`
+
 *North Star progress: MIDI controller → parameter mapping works. You can now plug in hardware and tweak synth parameters by hand.*
 
-### Phase 11: Minimal UI — Node Graph + Inspector
+### Phase 11: Minimal UI — Node Graph + Inspector — DONE
 
 Retained-mode UI renderer (Dawn/WebGPU draw calls), text rendering (stb_truetype, monospace, 2–3 sizes), GLFW input dispatch to widget tree. Node graph view: rectangles with labels, lines for connections. Click a node → inspector panel shows parameter sliders. Drag a slider → parameter changes instantly.
 
@@ -174,7 +202,15 @@ Retained-mode UI renderer (Dawn/WebGPU draw calls), text rendering (stb_truetype
 
 **Why it matters:** This is the first time Vivid looks like a creative tool instead of a terminal program. Even without interactive graph editing, seeing the node layout and tweaking parameters via sliders is a qualitatively different experience from typing REPL commands. The retained-mode renderer built here is the foundation for every future UI element (patchbay, session grid, chat panel).
 
-### Phase 12: Live Thumbnails
+**Implementation notes:**
+- `NodeGraphUI` class in `node_graph.h/cpp` — retained-mode UI rendered via `TextRenderer`
+- `TextRenderer` uses stb_truetype with JetBrains Mono, HiDPI-aware glyph atlas (1024x1024)
+- Inspector panel: click node to select, shows all parameters with draggable sliders
+- Sugiyama-style auto-layout for initial node placement
+- Domain-colored accent bars and wires (orange=audio, cyan=control, teal=GPU)
+- Commit: `2fdbf98`
+
+### Phase 12: Live Thumbnails — DONE
 
 GPU texture thumbnails on every GPU node in the graph view (zero-copy blit — same Dawn context). Audio waveform rendering on audio nodes. Control nodes show current value + sparkline.
 
@@ -182,7 +218,14 @@ GPU texture thumbnails on every GPU node in the graph view (zero-copy blit — s
 
 **Why it matters:** Thumbnails are why the UI is native rather than web-based. They're the payoff for the architectural decision in §6.1 — zero-copy GPU texture blitting with no readback, no encoding, no transport. If 6+ thumbnails at frame rate cause performance problems, the on-hover fallback mode needs to be implemented. This is also what makes Vivid's graph view genuinely useful for debugging — you can see where a signal goes wrong by scanning the chain.
 
-### Phase 12a: Draggable Nodes & Position Persistence
+**Implementation notes:**
+- `ThumbnailCache` manages per-node 140×88 textures; `ThumbnailRenderer` blits them into the graph view
+- GPU operators: zero-copy blit from offscreen texture → thumbnail texture (same device/queue)
+- CPU operators: `draw_thumbnail()` callback renders to pixel buffer, uploaded via `upload_cpu()`
+- Audio nodes show waveform sparklines; control nodes show current value + sparkline history
+- Commit: `88314de`
+
+### Phase 12a: Draggable Nodes & Position Persistence — DONE
 
 Extend the existing slider-drag pattern in `NodeGraphUI::update()` to support dragging entire nodes. Click on a node body to start a drag; release commits the new position. Positions are persisted in the graph JSON so layouts survive save/reload.
 
@@ -197,7 +240,10 @@ Extend the existing slider-drag pattern in `NodeGraphUI::update()` to support dr
 
 **Why it matters:** The graph view has been read-only for layout since Phase 11. Draggable nodes are the smallest step toward making it interactive — they reuse the existing mouse-drag infrastructure and don't require new graph operations. Position persistence via the `layout` field means users can arrange complex graphs to their liking without losing the layout on reload.
 
-### Phase 12b: Graph Zoom & Pan
+**Implementation notes:**
+- Commit: `fb67e92`
+
+### Phase 12b: Graph Zoom & Pan — DONE
 
 Add zoom and pan controls to the node graph view. Middle-click-drag (or scroll-drag) pans the view; scroll wheel zooms toward the cursor position.
 
@@ -214,7 +260,10 @@ Add zoom and pan controls to the node graph view. Middle-click-drag (or scroll-d
 
 **Why it matters:** Without zoom/pan, graphs with more than ~8 nodes overflow the visible area. This is the minimum navigation needed to work with real patches. The CPU-side approach keeps the implementation simple — no shader changes, and the inspector/REPL stay fixed on screen.
 
-### Phase 12c: Operator Chooser
+**Implementation notes:**
+- Commit: `c81343f`
+
+### Phase 12c: Operator Chooser — DONE
 
 Spacebar (or Tab) opens a floating popup listing available operator types. The user can filter by typing, navigate with arrow keys, and press Enter to add a new node to the graph — no REPL required.
 
@@ -229,19 +278,53 @@ Spacebar (or Tab) opens a floating popup listing available operator types. The u
 
 **Why it matters:** This is the first way to add operators without the REPL or JSON editing. Combined with 12a (drag to position) and the existing inspector (click to tweak parameters), the UI becomes a self-contained creative tool for basic patching. The operator chooser is also the natural hook point for the LLM chat panel (Phase 17) — the same `add_node` call, triggered by conversation instead of keyboard.
 
+**Implementation notes:**
+- Tab opens chooser; typing filters by name via `rebuild_chooser_items()`
+- Domain-grouped list with arrow key navigation
+- Enter confirms and calls `RuntimeAPI::add_node()`; Escape dismisses
+
+### Phase 12d: Interactive Wire Dragging — DONE
+
+Click an output port dot to start a wire drag. A preview wire follows the cursor. Release on a compatible input port to create the connection; release elsewhere to cancel. Click an existing wire to disconnect it.
+
+- Hit-test output port dots on mouse-down; start drag state tracking (`drag_from_node`, `drag_from_port`, cursor position)
+- During drag: draw a preview wire from the source port to the cursor using the existing Z-route wire style
+- Hit-test input port dots on mouse-up; if valid, call `RuntimeAPI::connect()` + flush pending topology change
+- Type compatibility: only highlight compatible input ports during drag (same domain or valid cross-domain bridge)
+- Disconnection: click an existing wire (hit-test against wire paths) to call `RuntimeAPI::disconnect()`
+- Files: `node_graph.h/cpp`, `main.cpp` (pending flush, already added in 12c fix)
+
+**Verify:** Drag from an output dot to an input dot — wire appears, data flows. Release on empty space — no connection made. Click an existing wire — it disconnects. Save and reload — connections persist.
+
+**Why it matters:** Wire dragging completes the basic graph editing loop: add nodes (12c), position them (12a), connect them (12d), and tweak parameters (Phase 11). With this, the UI is a fully self-contained patching environment — no REPL required for basic workflows. This is the last piece needed before the graph view can stand on its own as a creative tool.
+
+**Implementation notes:**
+- `dragging_wire_` state with `wire_from_node_`/`wire_from_port_` tracking
+- `draw_preview_wire()` renders Z-routed preview during drag
+- `hit_test_port()` for both start and end of drag
+- Click input port to disconnect existing wire
+
 ---
 
 ## Tier 4: Can It Do the Thing?
 
 The tool works. Now make it do what no other tool does: audio-reactive visuals through Spreads, polyphonic audio, LLM-assisted creative exploration, and the North Star Demo.
 
-### Phase 13: Spreads
+### Phase 13: Spreads — DONE
 
 Build the Spread type (contiguous array + length, broadcasting logic). FFT Analysis operator (512-bin, simple radix-2 in C++, no FFTW). Bars operator (GPU bar graph visualization sized by Spread input). Spread data crossing the Control→GPU bridge as a GPU storage buffer.
 
 **Verify:** Audio input → FFT → 512 bins → bar heights. Real-time audio-reactive bars flowing through the graph, with Spreads carrying the data.
 
 **Why it matters:** Spreads are the most impactful data model decision in the architecture. This phase proves they work end-to-end: an audio operator produces a Spread, it flows through the control domain, it crosses into the GPU domain, and it drives 512 independent visual elements. If broadcasting or the GPU storage buffer path has problems, you find out on a concrete, visually obvious test case. The Spread plumbing validated here is what Phase 15 will use for per-voice envelope → per-rectangle color.
+
+**Implementation notes:**
+- `VividSpreadPort` type in `operator_api/types.h` — contiguous float array + count
+- `VIVID_PORT_CONTROL_SPREAD` port type for spread-carrying connections
+- FFT Analysis operator: 512-bin radix-2 FFT in C++, takes waveform Spread input, outputs spectrum Spread
+- Bars GPU operator: instanced bar graph visualization driven by Spread input via storage buffer
+- Demo graph: `graphs/fft_bars_demo.json` (Oscillator → Gain → FFT → Bars)
+- Commit: `e800755`
 
 ### Phase 14: Polyphonic Audio
 
