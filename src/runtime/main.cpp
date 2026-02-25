@@ -17,10 +17,13 @@
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 #include <GLFW/glfw3.h>
+#include <stb_image_write.h>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <string>
 #include <unordered_set>
+#include <vector>
 
 // #16191D in sRGB → linear: pow(x/255, 2.2)
 static constexpr double kClearLinear[4]  = { 0.00699, 0.00821, 0.01041, 1.0 };
@@ -81,6 +84,22 @@ int main(int argc, char* argv[]) {
 
     const char* graph_path = (argc > 1) ? argv[1] : "graph.json";
 
+    // --- Screenshot / headless flags ---
+    std::string screenshot_path;
+    int screenshot_delay = 5;
+    bool headless = false;
+
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
+            screenshot_path = argv[++i];
+        } else if (std::strcmp(argv[i], "--screenshot-delay") == 0 && i + 1 < argc) {
+            screenshot_delay = std::atoi(argv[++i]);
+            if (screenshot_delay < 1) screenshot_delay = 1;
+        } else if (std::strcmp(argv[i], "--headless") == 0) {
+            headless = true;
+        }
+    }
+
     // --- GLFW ---
     if (!glfwInit()) {
         std::fprintf(stderr, "[vivid] Failed to init GLFW\n");
@@ -89,6 +108,9 @@ int main(int argc, char* argv[]) {
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    if (headless) {
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    }
 
     GLFWwindow* window = glfwCreateWindow(kWidth, kHeight, "Vivid", nullptr, nullptr);
     if (!window) {
@@ -433,6 +455,97 @@ int main(int argc, char* argv[]) {
             // Pass 3: REPL on top
             repl.draw(text_renderer, kWidth, kHeight);
             text_renderer.flush(frame.encoder, frame.view, kWidth, kHeight);
+        }
+
+        // --- Screenshot capture ---
+        if (!screenshot_path.empty() && gpu.surface_supports_copy_src()
+            && static_cast<int>(frame_count) >= screenshot_delay) {
+            // Row alignment: WebGPU requires 256-byte aligned rows for buffer copies
+            const uint32_t bpp = 4;
+            const uint32_t unpadded_row = kWidth * bpp;
+            const uint32_t aligned_row = (unpadded_row + 255) & ~255u;
+            const uint64_t buf_size = static_cast<uint64_t>(aligned_row) * kHeight;
+
+            WGPUBufferDescriptor staging_desc{};
+            staging_desc.label = to_sv("Screenshot Staging");
+            staging_desc.size = buf_size;
+            staging_desc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+            staging_desc.mappedAtCreation = false;
+            WGPUBuffer staging = wgpuDeviceCreateBuffer(gpu.device(), &staging_desc);
+
+            // Copy surface texture → staging buffer
+            WGPUTexelCopyTextureInfo src{};
+            src.texture = frame.texture;
+            src.mipLevel = 0;
+            src.origin = { 0, 0, 0 };
+            src.aspect = WGPUTextureAspect_All;
+
+            WGPUTexelCopyBufferInfo dst{};
+            dst.buffer = staging;
+            dst.layout.offset = 0;
+            dst.layout.bytesPerRow = aligned_row;
+            dst.layout.rowsPerImage = kHeight;
+
+            WGPUExtent3D copy_size = { kWidth, kHeight, 1 };
+            wgpuCommandEncoderCopyTextureToBuffer(frame.encoder, &src, &dst, &copy_size);
+
+            // Finish and submit the command buffer (end_frame does this + present)
+            gpu.end_frame(frame);
+
+            // Wait for GPU work to complete
+            {
+                bool work_done = false;
+                WGPUQueueWorkDoneCallbackInfo work_cb{};
+                work_cb.mode = WGPUCallbackMode_AllowSpontaneous;
+                work_cb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
+                    *static_cast<bool*>(ud1) = true;
+                };
+                work_cb.userdata1 = &work_done;
+                wgpuQueueOnSubmittedWorkDone(gpu.queue(), work_cb);
+                while (!work_done)
+                    wgpuDevicePoll(gpu.device(), true, nullptr);
+            }
+
+            // Map the staging buffer
+            bool map_done = false;
+            WGPUBufferMapCallbackInfo map_cb{};
+            map_cb.mode = WGPUCallbackMode_AllowSpontaneous;
+            map_cb.callback = [](WGPUMapAsyncStatus, WGPUStringView, void* ud1, void*) {
+                *static_cast<bool*>(ud1) = true;
+            };
+            map_cb.userdata1 = &map_done;
+            wgpuBufferMapAsync(staging, WGPUMapMode_Read, 0, buf_size, map_cb);
+            while (!map_done)
+                wgpuDevicePoll(gpu.device(), true, nullptr);
+
+            const uint8_t* mapped = static_cast<const uint8_t*>(
+                wgpuBufferGetConstMappedRange(staging, 0, buf_size));
+
+            // Copy to contiguous buffer with BGRA → RGBA swizzle
+            std::vector<uint8_t> pixels(kWidth * kHeight * bpp);
+            for (uint32_t y = 0; y < kHeight; ++y) {
+                const uint8_t* src_row = mapped + y * aligned_row;
+                uint8_t* dst_row = pixels.data() + y * unpadded_row;
+                for (uint32_t x = 0; x < kWidth; ++x) {
+                    dst_row[x * 4 + 0] = src_row[x * 4 + 2]; // R ← B
+                    dst_row[x * 4 + 1] = src_row[x * 4 + 1]; // G ← G
+                    dst_row[x * 4 + 2] = src_row[x * 4 + 0]; // B ← R
+                    dst_row[x * 4 + 3] = src_row[x * 4 + 3]; // A ← A
+                }
+            }
+
+            wgpuBufferUnmap(staging);
+            wgpuBufferRelease(staging);
+
+            if (stbi_write_png(screenshot_path.c_str(), kWidth, kHeight, 4,
+                               pixels.data(), kWidth * bpp)) {
+                std::fprintf(stderr, "[vivid] Screenshot saved: %s\n", screenshot_path.c_str());
+            } else {
+                std::fprintf(stderr, "[vivid] Screenshot FAILED: %s\n", screenshot_path.c_str());
+            }
+
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+            continue; // skip normal end_frame — already called above
         }
 
         gpu.end_frame(frame);

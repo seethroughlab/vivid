@@ -29,6 +29,7 @@ public:
     WGPUDevice device() const { return device_; }
     WGPUQueue queue() const { return queue_; }
     WGPUTextureFormat surface_format() const { return surface_format_; }
+    bool surface_supports_copy_src() const { return surface_copy_src_; }
 
 private:
     WGPUInstance instance_ = nullptr;
@@ -37,6 +38,7 @@ private:
     WGPUQueue queue_ = nullptr;
     WGPUSurface surface_ = nullptr;
     WGPUTextureFormat surface_format_ = WGPUTextureFormat_Undefined;
+    bool surface_copy_src_ = false;
 };
 
 } // namespace vivid

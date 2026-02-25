@@ -146,15 +146,24 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     } else {
         surface_format_ = WGPUTextureFormat_BGRA8Unorm;
     }
+
+    // Check if CopySrc is supported for surface textures (needed for screenshot)
+    WGPUTextureUsage usage = WGPUTextureUsage_RenderAttachment;
+    if (caps.usages & WGPUTextureUsage_CopySrc) {
+        surface_copy_src_ = true;
+        usage |= WGPUTextureUsage_CopySrc;
+    }
+
     wgpuSurfaceCapabilitiesFreeMembers(caps);
-    std::fprintf(stderr, "[vivid] Surface format: %d\n", (int)surface_format_);
+    std::fprintf(stderr, "[vivid] Surface format: %d (CopySrc: %s)\n",
+                 (int)surface_format_, surface_copy_src_ ? "yes" : "no");
 
     // 7. Configure surface
     WGPUSurfaceConfiguration config{};
     config.nextInChain = nullptr;
     config.device = device_;
     config.format = surface_format_;
-    config.usage = WGPUTextureUsage_RenderAttachment;
+    config.usage = usage;
     config.alphaMode = WGPUCompositeAlphaMode_Auto;
     config.width = width;
     config.height = height;

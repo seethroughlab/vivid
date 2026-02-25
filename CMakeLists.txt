@@ -119,6 +119,7 @@ add_executable(vivid
     src/runtime/node_graph.cpp
     src/runtime/thumbnail_cache.cpp
     src/runtime/thumbnail_renderer.cpp
+    src/runtime/screenshot.cpp
 )
 
 target_include_directories(vivid PRIVATE src)
