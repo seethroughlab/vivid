@@ -28,7 +28,7 @@ static constexpr float kInspectorW = 320.0f;
 static constexpr float kNodeW = 140.0f;
 static constexpr float kColSpacing = 200.0f;
 static constexpr float kRowSpacing = 16.0f;
-static constexpr float kPortDotSize = 4.0f;
+static constexpr float kPortDotSize = 6.0f;
 static constexpr float kLeftMargin = 30.0f;
 static constexpr float kTopMargin = 30.0f;
 static constexpr float kLineH = 18.0f;
@@ -43,8 +43,8 @@ static constexpr float kControlSparkH = 30.0f;
 // Colors
 static constexpr float kNodeBg[] = { 0.12f, 0.13f, 0.15f };
 static constexpr float kNodeSelBg[] = { 0.18f, 0.22f, 0.30f };
-static constexpr float kConnColor[] = { 0.4f, 0.5f, 0.55f, 0.5f };
-static constexpr float kConnSelColor[] = { 0.5f, 0.65f, 0.75f, 0.8f };
+static constexpr float kConnColor[] = { 0.5f, 0.6f, 0.65f, 0.7f };
+static constexpr float kConnSelColor[] = { 0.6f, 0.75f, 0.85f, 0.9f };
 static constexpr float kInspBg[] = { 0.10f, 0.11f, 0.13f };
 static constexpr float kAccent[] = { 0.35f, 0.55f, 0.85f };
 static constexpr float kDimText[] = { 0.55f, 0.58f, 0.62f };
@@ -462,28 +462,34 @@ void NodeGraphUI::draw_connections(TextRenderer& tr) {
         const auto& from_rect = node_rects_[fi->second];
         const auto& to_rect = node_rects_[ti->second];
 
-        // Find output port position
-        float sx = from_rect.x + from_rect.w, sy = from_rect.y + from_rect.h * 0.5f;
+        // Find output port position (at node edge so wire passes through dot)
+        float sx = from_rect.x + from_rect.w;
+        float sy = from_rect.y + from_rect.h * 0.5f;
         for (const auto& p : from_rect.outputs) {
             if (p.name == c.from_port) { sx = p.x; sy = p.y; break; }
         }
-        // Find input port position
-        float ex = to_rect.x, ey = to_rect.y + to_rect.h * 0.5f;
+        // Find input port position (at node edge so wire passes through dot)
+        float ex = to_rect.x;
+        float ey = to_rect.y + to_rect.h * 0.5f;
         for (const auto& p : to_rect.inputs) {
             if (p.name == c.to_port) { ex = p.x; ey = p.y; break; }
         }
 
+        // Domain-colored wires (source node's accent color)
+        const float* dcol = domain_color(from_rect.domain);
         bool sel = (c.from_node == selected_node_id_ || c.to_node == selected_node_id_);
-        const float* col = sel ? kConnSelColor : kConnColor;
-        float a = sel ? kConnSelColor[3] : kConnColor[3];
+        float cr = sel ? std::min(1.0f, dcol[0] * 1.3f) : dcol[0];
+        float cg = sel ? std::min(1.0f, dcol[1] * 1.3f) : dcol[1];
+        float cb = sel ? std::min(1.0f, dcol[2] * 1.3f) : dcol[2];
+        float a = sel ? 0.95f : 0.8f;
 
         // Z-route: horizontal from source → vertical → horizontal to dest
         float mid_x = (sx + ex) * 0.5f;
-        tr.draw_rect(sx, sy - 1, mid_x - sx, 2, col[0], col[1], col[2], a);
+        tr.draw_rect(sx, sy - 1, mid_x - sx, 3, cr, cg, cb, a);
         float vy = std::min(sy, ey);
         float vh = std::fabs(ey - sy);
-        tr.draw_rect(mid_x - 1, vy, 2, vh + 2, col[0], col[1], col[2], a);
-        tr.draw_rect(mid_x, ey - 1, ex - mid_x, 2, col[0], col[1], col[2], a);
+        tr.draw_rect(mid_x - 1, vy, 3, vh + 3, cr, cg, cb, a);
+        tr.draw_rect(mid_x, ey - 1, ex - mid_x, 3, cr, cg, cb, a);
     }
 }
 
@@ -593,7 +599,12 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
 
     for (const auto& [idx, name] : sorted_outputs) {
         char line[64];
-        std::snprintf(line, sizeof(line), "%s = %.4f", name.c_str(), sel_node->output_values[idx]);
+        if (idx < sel_node->output_spreads.size() && !sel_node->output_spreads[idx].empty()) {
+            std::snprintf(line, sizeof(line), "%s = [%u bins]", name.c_str(),
+                          static_cast<unsigned>(sel_node->output_spreads[idx].size()));
+        } else {
+            std::snprintf(line, sizeof(line), "%s = %.4f", name.c_str(), sel_node->output_values[idx]);
+        }
         tr.draw_text(px, py, line, kDimText[0], kDimText[1], kDimText[2]);
         py += kLineH;
     }
@@ -736,8 +747,11 @@ void NodeGraphUI::draw(TextRenderer& tr, uint32_t w, uint32_t h) {
         layout_nodes();
     }
 
-    draw_connections(tr);
+    // Semi-transparent scrim so wires are visible over the visualization
+    tr.draw_rect(kGraphX, kGraphY, kGraphW, kGraphH, 0.05f, 0.06f, 0.07f, 0.55f);
+
     draw_graph(tr);
+    draw_connections(tr);
     draw_inspector(tr, w);
 }
 
