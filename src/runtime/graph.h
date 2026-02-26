@@ -16,6 +16,10 @@ struct NodeDef {
     float layout_x = NAN;
     float layout_y = NAN;
     bool has_layout() const { return !std::isnan(layout_x); }
+
+    // Per-node GPU texture resolution (0 = inherit or default 800x600)
+    uint32_t tex_width  = 0;
+    uint32_t tex_height = 0;
 };
 
 struct ConnectionDef {

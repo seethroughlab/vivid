@@ -137,7 +137,7 @@ struct Shape : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        (void)out;  // Shape is a pure visual output — no wire ports needed
+        out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {

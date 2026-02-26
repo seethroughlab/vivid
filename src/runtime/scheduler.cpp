@@ -1,7 +1,9 @@
 #include "runtime/scheduler.h"
+#include "operator_api/gpu_operator.h"
 #include <algorithm>
 #include <queue>
 #include <cstdio>
+#include <cstring>
 
 namespace vivid {
 
@@ -77,6 +79,32 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             ns.output_spreads.resize(ns.output_port_count);
         }
 
+        // Identify GPU_TEXTURE input ports for per-node texture wiring
+        if (ns.is_gpu) {
+            uint32_t input_idx = 0;
+            for (uint32_t i = 0; i < desc->port_count; ++i) {
+                if (desc->ports[i].direction == VIVID_PORT_INPUT) {
+                    if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
+                        ns.texture_input_port_indices.push_back(input_idx);
+                    }
+                    input_idx++;
+                }
+            }
+            ns.gpu_tex_width  = ndef.tex_width;
+            ns.gpu_tex_height = ndef.tex_height;
+
+            // Structural detection: GPU sink = has texture inputs but no texture outputs
+            bool has_tex_output = false;
+            for (uint32_t i = 0; i < desc->port_count; ++i) {
+                if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
+                    desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
+                    has_tex_output = true;
+                    break;
+                }
+            }
+            ns.is_gpu_sink = !ns.texture_input_port_indices.empty() && !has_tex_output;
+        }
+
         node_index[ndef.id] = static_cast<uint32_t>(nodes_.size());
         nodes_.push_back(std::move(ns));
     }
@@ -112,6 +140,22 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             return false;
         }
 
+        // Determine source port type
+        VividPortType from_port_type = VIVID_PORT_CONTROL_FLOAT;
+        {
+            const auto* from_desc = from_ns.loader->descriptor();
+            uint32_t out_idx = 0;
+            for (uint32_t pi = 0; pi < from_desc->port_count; ++pi) {
+                if (from_desc->ports[pi].direction == VIVID_PORT_OUTPUT) {
+                    if (out_idx == fp_it->second) {
+                        from_port_type = from_desc->ports[pi].type;
+                        break;
+                    }
+                    out_idx++;
+                }
+            }
+        }
+
         Wire w;
         w.from_node_idx = fi;
         w.from_port_idx = fp_it->second;
@@ -121,6 +165,33 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         if (tp_it != to_ns.input_port_indices.end()) {
             w.to_port_idx = tp_it->second;
             w.targets_param = false;
+
+            // Determine destination port type
+            VividPortType to_port_type = VIVID_PORT_CONTROL_FLOAT;
+            const auto* to_op_desc = to_ns.loader->descriptor();
+            uint32_t inp_idx = 0;
+            for (uint32_t pi = 0; pi < to_op_desc->port_count; ++pi) {
+                if (to_op_desc->ports[pi].direction == VIVID_PORT_INPUT) {
+                    if (inp_idx == tp_it->second) {
+                        to_port_type = to_op_desc->ports[pi].type;
+                        break;
+                    }
+                    inp_idx++;
+                }
+            }
+
+            // Validate texture wire: both ends must be GPU_TEXTURE
+            if (from_port_type == VIVID_PORT_GPU_TEXTURE &&
+                to_port_type == VIVID_PORT_GPU_TEXTURE) {
+                w.is_texture_wire = true;
+            } else if (from_port_type == VIVID_PORT_GPU_TEXTURE ||
+                       to_port_type == VIVID_PORT_GPU_TEXTURE) {
+                std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
+                    "(GPU_TEXTURE on only one end)\n",
+                    conn.from_node.c_str(), conn.from_port.c_str(),
+                    conn.to_node.c_str(), conn.to_port.c_str());
+                continue;  // skip this wire
+            }
         } else {
             auto pp_it = to_ns.param_indices.find(conn.to_port);
             if (pp_it == to_ns.param_indices.end()) {
@@ -216,8 +287,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         for (auto& sp : ns.input_spreads) sp.clear();
 
         // Copy upstream outputs into this node's inputs / params
+        // (skip texture-type wires — those are resolved separately)
         for (const auto& w : wires_) {
             if (w.to_node_idx == ni) {
+                if (w.is_texture_wire) continue;
                 float val = nodes_[w.from_node_idx].output_values[w.from_port_idx];
                 if (w.targets_param) {
                     ns.param_values[w.to_port_idx] = val;
@@ -279,8 +352,39 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         ctx.input_spreads  = in_spreads.data();
         ctx.output_spreads = out_spreads.data();
 
-        // GPU state only for GPU-domain operators
-        ctx.gpu = ns.is_gpu ? gpu_state : nullptr;
+        // GPU state: build per-node VividGpuState with this node's texture
+        VividGpuState per_node_gpu{};
+        if (ns.is_gpu && gpu_state) {
+            auto* base_gpu = static_cast<VividGpuState*>(gpu_state);
+            per_node_gpu.device          = base_gpu->device;
+            per_node_gpu.queue           = base_gpu->queue;
+            per_node_gpu.command_encoder = base_gpu->command_encoder;
+            per_node_gpu.output_format   = base_gpu->output_format;
+            per_node_gpu.output_texture_view = ns.gpu_texture_view;
+            per_node_gpu.output_width    = ns.gpu_tex_width;
+            per_node_gpu.output_height   = ns.gpu_tex_height;
+
+            // Resolve texture inputs from upstream nodes
+            ns.resolved_tex_inputs.clear();
+            ns.resolved_tex_inputs.resize(ns.texture_input_port_indices.size(), nullptr);
+            for (size_t ti = 0; ti < ns.texture_input_port_indices.size(); ++ti) {
+                uint32_t port_idx = ns.texture_input_port_indices[ti];
+                for (const auto& w : wires_) {
+                    if (w.to_node_idx == ni && !w.targets_param &&
+                        w.to_port_idx == port_idx && w.is_texture_wire) {
+                        ns.resolved_tex_inputs[ti] = nodes_[w.from_node_idx].gpu_texture_view;
+                        break;
+                    }
+                }
+            }
+            per_node_gpu.input_texture_views = ns.resolved_tex_inputs.empty()
+                                                ? nullptr : ns.resolved_tex_inputs.data();
+            per_node_gpu.input_texture_count = static_cast<uint32_t>(ns.resolved_tex_inputs.size());
+
+            ctx.gpu = &per_node_gpu;
+        } else {
+            ctx.gpu = nullptr;
+        }
 
         ns.loader->process(ns.instance, &ctx);
 
@@ -297,7 +401,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
 
         // Invoke post-GPU-node callback (for thumbnail capture)
         if (ns.is_gpu && on_gpu_node) {
-            on_gpu_node(ni, ns.node_id);
+            on_gpu_node(ni, ns.node_id, ns.gpu_texture_view);
         }
 
         // Update generation: bump if outputs changed, spreads changed, or GPU node
@@ -484,6 +588,31 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
         ns.is_gpu = (new_desc->domain == VIVID_DOMAIN_GPU);
         ns.is_audio = (new_desc->domain == VIVID_DOMAIN_AUDIO);
 
+        // Rebuild texture port indices for GPU operators
+        ns.texture_input_port_indices.clear();
+        if (ns.is_gpu) {
+            uint32_t input_idx = 0;
+            for (uint32_t p = 0; p < new_desc->port_count; ++p) {
+                if (new_desc->ports[p].direction == VIVID_PORT_INPUT) {
+                    if (new_desc->ports[p].type == VIVID_PORT_GPU_TEXTURE) {
+                        ns.texture_input_port_indices.push_back(input_idx);
+                    }
+                    input_idx++;
+                }
+            }
+            bool has_tex_output = false;
+            for (uint32_t p = 0; p < new_desc->port_count; ++p) {
+                if (new_desc->ports[p].direction == VIVID_PORT_OUTPUT &&
+                    new_desc->ports[p].type == VIVID_PORT_GPU_TEXTURE) {
+                    has_tex_output = true;
+                    break;
+                }
+            }
+            ns.is_gpu_sink = !ns.texture_input_port_indices.empty() && !has_tex_output;
+        } else {
+            ns.is_gpu_sink = false;
+        }
+
         // Bump generation to force downstream recompute
         ns.generation++;
     }
@@ -491,8 +620,100 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
     return true;
 }
 
+static WGPUStringView sched_sv(const char* s) {
+    return { s, s ? std::strlen(s) : 0 };
+}
+
+void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uint32_t default_h,
+                                      WGPUTextureFormat format) {
+    // Iterate nodes in topological order (they're already sorted)
+    for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
+        auto& ns = nodes_[ni];
+        if (!ns.is_gpu) continue;
+
+        // Release existing texture if any
+        if (ns.gpu_texture_view) { wgpuTextureViewRelease(ns.gpu_texture_view); ns.gpu_texture_view = nullptr; }
+        if (ns.gpu_texture) { wgpuTextureRelease(ns.gpu_texture); ns.gpu_texture = nullptr; }
+
+        // GPU sinks read input textures but don't produce their own
+        if (ns.is_gpu_sink) {
+            ns.gpu_tex_width  = 0;
+            ns.gpu_tex_height = 0;
+            continue;
+        }
+
+        // Resolve texture size
+        uint32_t w = ns.gpu_tex_width;
+        uint32_t h = ns.gpu_tex_height;
+
+        if (w == 0 || h == 0) {
+            // Try to inherit from first connected upstream GPU node
+            bool inherited = false;
+            if (!ns.texture_input_port_indices.empty()) {
+                uint32_t first_tex_port = ns.texture_input_port_indices[0];
+                for (const auto& wire : wires_) {
+                    if (wire.to_node_idx == ni && !wire.targets_param &&
+                        wire.to_port_idx == first_tex_port && wire.is_texture_wire) {
+                        const auto& upstream = nodes_[wire.from_node_idx];
+                        if (upstream.gpu_tex_width > 0 && upstream.gpu_tex_height > 0) {
+                            w = upstream.gpu_tex_width;
+                            h = upstream.gpu_tex_height;
+                            inherited = true;
+                        }
+                        break;
+                    }
+                }
+            }
+            if (!inherited) {
+                w = default_w;
+                h = default_h;
+            }
+            ns.gpu_tex_width  = w;
+            ns.gpu_tex_height = h;
+        }
+
+        // Create texture
+        WGPUTextureDescriptor tex_desc{};
+        std::string label = "Node Texture [" + ns.node_id + "]";
+        tex_desc.label = sched_sv(label.c_str());
+        tex_desc.size = { w, h, 1 };
+        tex_desc.mipLevelCount = 1;
+        tex_desc.sampleCount = 1;
+        tex_desc.dimension = WGPUTextureDimension_2D;
+        tex_desc.format = format;
+        tex_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+        ns.gpu_texture = wgpuDeviceCreateTexture(device, &tex_desc);
+
+        WGPUTextureViewDescriptor view_desc{};
+        std::string view_label = "Node View [" + ns.node_id + "]";
+        view_desc.label = sched_sv(view_label.c_str());
+        view_desc.format = format;
+        view_desc.dimension = WGPUTextureViewDimension_2D;
+        view_desc.baseMipLevel = 0;
+        view_desc.mipLevelCount = 1;
+        view_desc.baseArrayLayer = 0;
+        view_desc.arrayLayerCount = 1;
+        view_desc.aspect = WGPUTextureAspect_All;
+        ns.gpu_texture_view = wgpuTextureCreateView(ns.gpu_texture, &view_desc);
+
+        std::fprintf(stderr, "[vivid] Allocated %ux%u texture for node '%s'\n",
+                     w, h, ns.node_id.c_str());
+    }
+}
+
+int Scheduler::find_gpu_sink() const {
+    for (uint32_t i = 0; i < static_cast<uint32_t>(nodes_.size()); ++i) {
+        if (nodes_[i].is_gpu_sink) return static_cast<int>(i);
+    }
+    return -1;
+}
+
 void Scheduler::shutdown() {
     for (auto& ns : nodes_) {
+        // Release per-node GPU textures
+        if (ns.gpu_texture_view) { wgpuTextureViewRelease(ns.gpu_texture_view); ns.gpu_texture_view = nullptr; }
+        if (ns.gpu_texture) { wgpuTextureRelease(ns.gpu_texture); ns.gpu_texture = nullptr; }
+
         if (ns.instance) {
             ns.loader->destroy_instance(ns.instance);
             ns.instance = nullptr;

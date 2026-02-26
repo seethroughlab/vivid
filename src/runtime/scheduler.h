@@ -3,6 +3,7 @@
 
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
+#include <webgpu/webgpu.h>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -35,16 +36,28 @@ struct NodeState {
     // Spread data
     std::vector<std::vector<float>> output_spreads;   // [port_idx] → spread data
     std::vector<std::vector<float>> input_spreads;    // [port_idx] → spread data
+
+    // Per-node GPU texture
+    WGPUTexture      gpu_texture      = nullptr;
+    WGPUTextureView  gpu_texture_view = nullptr;
+    uint32_t         gpu_tex_width    = 0;
+    uint32_t         gpu_tex_height   = 0;
+    std::vector<uint32_t> texture_input_port_indices;   // which input ports are GPU_TEXTURE
+    std::vector<WGPUTextureView> resolved_tex_inputs;   // filled before process()
+    bool is_gpu_sink = false;  // GPU domain + texture inputs + no texture outputs
 };
 
 struct Wire {
     uint32_t from_node_idx, from_port_idx;
     uint32_t to_node_idx, to_port_idx;
-    bool targets_param = false;  // true → to_port_idx indexes into param_values
+    bool targets_param = false;   // true → to_port_idx indexes into param_values
+    bool is_texture_wire = false; // true → carries GPU_TEXTURE data
 };
 
 // Optional callback invoked after each GPU node's process()
-using PostNodeFn = std::function<void(uint32_t node_idx, const std::string& node_id)>;
+// texture_view is the node's per-node output texture (for thumbnail capture)
+using PostNodeFn = std::function<void(uint32_t node_idx, const std::string& node_id,
+                                      WGPUTextureView texture_view)>;
 
 class Scheduler {
 public:
@@ -56,6 +69,9 @@ public:
     const std::vector<Wire>& wires() const { return wires_; }
     bool has_gpu_operators() const;
     bool has_audio_operators() const;
+    void allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uint32_t default_h,
+                               WGPUTextureFormat format);
+    int find_gpu_sink() const;  // returns first GPU sink node index, or -1
     void inject_external_output(uint32_t node_idx, uint32_t port_idx, float value);
     void inject_external_spread(uint32_t node_idx, uint32_t port_idx,
                                 const float* data, uint32_t length);

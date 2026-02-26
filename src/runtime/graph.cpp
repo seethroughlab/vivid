@@ -71,6 +71,17 @@ bool Graph::load(const char* path) {
                 }
             }
 
+            // Optional per-node GPU texture resolution
+            yyjson_val* res_arr = yyjson_obj_get(val, "resolution");
+            if (res_arr && yyjson_is_arr(res_arr) && yyjson_arr_size(res_arr) == 2) {
+                yyjson_val* rw = yyjson_arr_get(res_arr, 0);
+                yyjson_val* rh = yyjson_arr_get(res_arr, 1);
+                if (rw && yyjson_is_int(rw) && rh && yyjson_is_int(rh)) {
+                    node.tex_width  = static_cast<uint32_t>(yyjson_get_int(rw));
+                    node.tex_height = static_cast<uint32_t>(yyjson_get_int(rh));
+                }
+            }
+
             nodes_.push_back(std::move(node));
         }
     }
@@ -194,6 +205,13 @@ bool Graph::save(const char* path) const {
             yyjson_mut_obj_add_real(doc, layout_obj, "x", static_cast<double>(node.layout_x));
             yyjson_mut_obj_add_real(doc, layout_obj, "y", static_cast<double>(node.layout_y));
             yyjson_mut_obj_add_val(doc, node_obj, "layout", layout_obj);
+        }
+
+        if (node.tex_width > 0 && node.tex_height > 0) {
+            yyjson_mut_val* res_arr = yyjson_mut_arr(doc);
+            yyjson_mut_arr_add_int(doc, res_arr, static_cast<int64_t>(node.tex_width));
+            yyjson_mut_arr_add_int(doc, res_arr, static_cast<int64_t>(node.tex_height));
+            yyjson_mut_obj_add_val(doc, node_obj, "resolution", res_arr);
         }
 
         yyjson_mut_obj_add_val(doc, nodes_obj, node.id.c_str(), node_obj);

@@ -11,6 +11,10 @@ struct VividGpuState {
     uint32_t           output_width;
     uint32_t           output_height;
     WGPUTextureFormat  output_format;
+
+    // Texture inputs (one per GPU_TEXTURE input port, nullptr if disconnected)
+    WGPUTextureView*   input_texture_views;
+    uint32_t           input_texture_count;
 };
 
 static inline VividGpuState* vivid_gpu(const VividProcessContext* ctx) {
