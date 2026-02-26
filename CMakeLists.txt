@@ -169,10 +169,11 @@ add_executable(vivid
     src/runtime/screenshot.cpp
     src/runtime/builtin_operators.cpp
     src/runtime/control_server.cpp
+    src/runtime/system_midi.cpp
 )
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype ixwebsocket)
+target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype ixwebsocket rtmidi)
 
 # Copy demo graphs to build directory
 configure_file(graphs/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
@@ -233,9 +234,10 @@ add_executable(test_runtime_api
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
+    src/runtime/system_midi.cpp
 )
 target_include_directories(test_runtime_api PRIVATE src)
-target_link_libraries(test_runtime_api PRIVATE vivid_operator_api yyjson miniaudio webgpu)
+target_link_libraries(test_runtime_api PRIVATE vivid_operator_api yyjson miniaudio webgpu rtmidi)
 add_dependencies(test_runtime_api test_op_v1)
 add_test(NAME test_runtime_api COMMAND test_runtime_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -249,10 +251,11 @@ add_executable(test_control_server
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/control_server.cpp
+    src/runtime/system_midi.cpp
 )
 target_include_directories(test_control_server PRIVATE src)
 target_link_libraries(test_control_server PRIVATE
-    vivid_operator_api yyjson miniaudio ixwebsocket webgpu)
+    vivid_operator_api yyjson miniaudio ixwebsocket webgpu rtmidi)
 add_dependencies(test_control_server test_op_v1)
 add_test(NAME test_control_server COMMAND test_control_server WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -282,10 +285,11 @@ add_executable(test_audio_engine
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
+    src/runtime/system_midi.cpp
 )
 target_include_directories(test_audio_engine PRIVATE src)
 target_link_libraries(test_audio_engine PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu)
+    vivid_operator_api yyjson miniaudio webgpu rtmidi)
 add_dependencies(test_audio_engine test_op_v1 audio_test_op)
 add_test(NAME test_audio_engine COMMAND test_audio_engine WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 

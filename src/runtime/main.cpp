@@ -15,6 +15,7 @@
 #include "ui/ui_command_sink.h"
 #include "runtime/builtin_operators.h"
 #include "runtime/control_server.h"
+#include "runtime/system_midi.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/types.h"
 #include "common/gpu_util.h"
@@ -83,6 +84,17 @@ public:
     void set_resolution(const std::string& node_id, uint32_t w, uint32_t h) override {
         api_.set_resolution(node_id, w, h);
     }
+    void add_midi_mapping(const std::string& node_id, const std::string& param,
+                          int cc, int channel, float range_min, float range_max) override {
+        api_.add_midi_mapping(node_id, param, cc, channel, range_min, range_max);
+    }
+    void remove_midi_mapping(const std::string& node_id, const std::string& param) override {
+        api_.remove_midi_mapping(node_id, param);
+    }
+    void update_midi_mapping(const std::string& node_id, const std::string& param,
+                             float range_min, float range_max) override {
+        api_.update_midi_mapping(node_id, param, range_min, range_max);
+    }
 private:
     vivid::RuntimeAPI& api_;
 };
@@ -141,7 +153,8 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         const vivid::Scheduler& scheduler,
         vivid::AudioEngine* audio_engine,
         vivid::OperatorRegistry& registry,
-        OperatorInfoCache& op_cache) {
+        OperatorInfoCache& op_cache,
+        vivid::SystemMidiListener* system_midi = nullptr) {
     vivid::ui::GraphSnapshot snap;
 
     const auto& sched_nodes = scheduler.nodes();
@@ -212,6 +225,30 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
     for (const auto& tn : snap.operator_types) {
         auto info = op_cache.get(tn, registry);
         if (info) snap.operator_catalog[tn] = info;
+    }
+
+    // MIDI mappings
+    const auto& mappings = graph.midi_mappings();
+    snap.midi_mappings.resize(mappings.size());
+    for (size_t i = 0; i < mappings.size(); ++i) {
+        auto& sm = snap.midi_mappings[i];
+        const auto& gm = mappings[i];
+        sm.node_id = gm.node_id;
+        sm.param_name = gm.param_name;
+        sm.cc_number = gm.cc_number;
+        sm.channel = gm.channel;
+        sm.range_min = gm.range_min;
+        sm.range_max = gm.range_max;
+        snap.midi_mapping_index[gm.node_id + "\t" + gm.param_name] = i;
+    }
+
+    // Pending CC events from system MIDI listener
+    if (system_midi) {
+        const auto& events = system_midi->last_drained_events();
+        snap.pending_cc_events.resize(events.size());
+        for (size_t i = 0; i < events.size(); ++i) {
+            snap.pending_cc_events[i] = {events[i].channel, events[i].cc_number, events[i].value};
+        }
     }
 
     return snap;
@@ -579,8 +616,12 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // --- System MIDI listener (for MIDI mapping) ---
+    vivid::SystemMidiListener system_midi;
+    system_midi.open_all();  // listen on all available MIDI ports
+
     // --- RuntimeAPI ---
-    vivid::RuntimeAPI runtime_api(graph, scheduler, audio_engine, registry);
+    vivid::RuntimeAPI runtime_api(graph, scheduler, audio_engine, registry, &system_midi);
 
     // --- Control server (MCP HTTP bridge) ---
     vivid::ControlServer control_server;
@@ -704,6 +745,9 @@ int main(int argc, char* argv[]) {
         prev_time = now;
         graph_ui.set_dt(static_cast<float>(dt));
 
+        // --- Apply MIDI mappings (before tick so wire wins on conflict) ---
+        runtime_api.apply_midi_mappings();
+
         // --- Tick graph ---
         if (graph_loaded) {
 
@@ -793,7 +837,7 @@ int main(int argc, char* argv[]) {
         if (text_renderer_ok && graph_ui.visible()) {
             auto snapshot = build_graph_snapshot(
                 graph, scheduler, has_audio ? &audio_engine : nullptr,
-                registry, op_info_cache);
+                registry, op_info_cache, &system_midi);
             graph_ui.update(snapshot);
             graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
             // Pass 1: text/rects
@@ -820,6 +864,7 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Shutdown ---
+    system_midi.close();
     control_server.stop();
     if (hot_reload_enabled) {
         file_watcher.stop();

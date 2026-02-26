@@ -16,6 +16,11 @@ public:
     virtual void disconnect(const std::string& from, const std::string& to) = 0;
     virtual void set_node_layout(const std::string& node_id, float x, float y) = 0;
     virtual void set_resolution(const std::string& node_id, uint32_t w, uint32_t h) = 0;
+    virtual void add_midi_mapping(const std::string& node_id, const std::string& param,
+                                  int cc, int channel, float range_min, float range_max) = 0;
+    virtual void remove_midi_mapping(const std::string& node_id, const std::string& param) = 0;
+    virtual void update_midi_mapping(const std::string& node_id, const std::string& param,
+                                     float range_min, float range_max) = 0;
 };
 
 } // namespace vivid::ui

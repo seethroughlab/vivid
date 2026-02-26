@@ -1,0 +1,64 @@
+#ifndef VIVID_RUNTIME_SYSTEM_MIDI_H
+#define VIVID_RUNTIME_SYSTEM_MIDI_H
+
+#include <array>
+#include <mutex>
+#include <string>
+#include <vector>
+#include <memory>
+
+class RtMidiIn;
+
+namespace vivid {
+
+struct MidiCCEvent {
+    int channel = 0;   // 1-16
+    int cc_number = 0;  // 0-127
+    float value = 0.0f; // 0.0-1.0 (raw CC / 127)
+};
+
+class SystemMidiListener {
+public:
+    SystemMidiListener();
+    ~SystemMidiListener();
+
+    // Open all available MIDI input ports.
+    bool open_all();
+    void close();
+    bool is_open() const { return !inputs_.empty(); }
+
+    // Call once per frame from main thread. Drains buffered events,
+    // updates cc_state_, and returns the events for UI relay.
+    std::vector<MidiCCEvent> drain_cc_events();
+
+    // Read latest CC value (main-thread only, no lock needed after drain).
+    // channel: 1-16. Returns 0.0 if never received.
+    float cc_value(int channel, int cc) const;
+
+    // Returns copy of most recent drain (for snapshot relay to UI).
+    const std::vector<MidiCCEvent>& last_drained_events() const { return last_drained_; }
+
+    // Enumerate available MIDI input ports.
+    std::vector<std::string> port_names() const;
+
+private:
+    static void midi_callback(double timestamp, std::vector<unsigned char>* message, void* user_data);
+
+    // One RtMidiIn per open port (RtMidi limitation: one port per instance)
+    std::vector<std::unique_ptr<RtMidiIn>> inputs_;
+
+    // Probe instance (never opened, used for port enumeration)
+    std::unique_ptr<RtMidiIn> probe_;
+
+    // Callback thread pushes here (shared across all inputs)
+    std::mutex mutex_;
+    std::vector<MidiCCEvent> event_buffer_;
+
+    // Main-thread state (no lock needed after drain)
+    std::array<std::array<float, 128>, 16> cc_state_{};
+    std::vector<MidiCCEvent> last_drained_;
+};
+
+} // namespace vivid
+
+#endif // VIVID_RUNTIME_SYSTEM_MIDI_H

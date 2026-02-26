@@ -3,14 +3,16 @@
 #include "runtime/scheduler.h"
 #include "runtime/audio_engine.h"
 #include "runtime/operator_registry.h"
+#include "runtime/system_midi.h"
 #include <cstdio>
 #include <sstream>
 
 namespace vivid {
 
 RuntimeAPI::RuntimeAPI(Graph& graph, Scheduler& scheduler, AudioEngine& audio_engine,
-                       OperatorRegistry& registry)
-    : graph_(graph), scheduler_(scheduler), audio_engine_(audio_engine), registry_(registry) {}
+                       OperatorRegistry& registry, SystemMidiListener* system_midi)
+    : graph_(graph), scheduler_(scheduler), audio_engine_(audio_engine),
+      registry_(registry), system_midi_(system_midi) {}
 
 bool RuntimeAPI::split_addr(const std::string& addr, std::string& node, std::string& port) {
     auto slash = addr.find('/');
@@ -273,6 +275,50 @@ CommandResult RuntimeAPI::list_types() {
     std::string result = oss.str();
     if (!result.empty() && result.back() == '\n') result.pop_back();
     return {true, result};
+}
+
+// --- MIDI Mapping ---
+
+CommandResult RuntimeAPI::add_midi_mapping(const std::string& node_id, const std::string& param,
+                                           int cc, int channel, float range_min, float range_max) {
+    graph_.add_midi_mapping(node_id, param, cc, channel, range_min, range_max);
+    return {true, "mapped CC " + std::to_string(cc) + " -> " + node_id + "/" + param};
+}
+
+CommandResult RuntimeAPI::remove_midi_mapping(const std::string& node_id, const std::string& param) {
+    if (!graph_.remove_midi_mapping(node_id, param))
+        return {false, "no mapping for " + node_id + "/" + param};
+    return {true, "unmapped " + node_id + "/" + param};
+}
+
+CommandResult RuntimeAPI::update_midi_mapping(const std::string& node_id, const std::string& param,
+                                              float range_min, float range_max) {
+    if (!graph_.update_midi_mapping(node_id, param, range_min, range_max))
+        return {false, "no mapping for " + node_id + "/" + param};
+    return {true, "updated range for " + node_id + "/" + param};
+}
+
+void RuntimeAPI::apply_midi_mappings() {
+    if (!system_midi_ || !system_midi_->is_open()) return;
+
+    system_midi_->drain_cc_events();
+
+    for (const auto& mm : graph_.midi_mappings()) {
+        // For omni (channel 0), check all 16 channels and use highest value
+        float raw = 0.0f;
+        if (mm.channel == 0) {
+            for (int ch = 1; ch <= 16; ++ch) {
+                float v = system_midi_->cc_value(ch, mm.cc_number);
+                if (v > raw) raw = v;
+            }
+        } else {
+            raw = system_midi_->cc_value(mm.channel, mm.cc_number);
+        }
+
+        // Remap [0,1] -> [range_min, range_max]
+        float mapped = mm.range_min + raw * (mm.range_max - mm.range_min);
+        set_param(mm.node_id, mm.param_name, mapped);
+    }
 }
 
 // --- Persistence ---

@@ -11,6 +11,7 @@ class Graph;
 class Scheduler;
 class AudioEngine;
 class OperatorRegistry;
+class SystemMidiListener;
 
 struct CommandResult {
     bool ok;
@@ -20,7 +21,7 @@ struct CommandResult {
 class RuntimeAPI {
 public:
     RuntimeAPI(Graph& graph, Scheduler& scheduler, AudioEngine& audio_engine,
-               OperatorRegistry& registry);
+               OperatorRegistry& registry, SystemMidiListener* system_midi = nullptr);
 
     // Immediate: modify param on live scheduler node
     CommandResult set_param(const std::string& node_id, const std::string& param, float value);
@@ -47,6 +48,16 @@ public:
     CommandResult list_nodes();
     CommandResult list_types();
 
+    // MIDI mapping
+    CommandResult add_midi_mapping(const std::string& node_id, const std::string& param,
+                                   int cc, int channel, float range_min, float range_max);
+    CommandResult remove_midi_mapping(const std::string& node_id, const std::string& param);
+    CommandResult update_midi_mapping(const std::string& node_id, const std::string& param,
+                                      float range_min, float range_max);
+
+    // Per-frame: apply MIDI CC values to mapped params
+    void apply_midi_mappings();
+
     // Persistence
     CommandResult save();
     CommandResult save_as(const std::string& path);
@@ -63,6 +74,7 @@ private:
     Scheduler& scheduler_;
     AudioEngine& audio_engine_;
     OperatorRegistry& registry_;
+    SystemMidiListener* system_midi_ = nullptr;
     bool pending_topology_change_ = false;
     bool needs_gpu_realloc_ = false;
 };

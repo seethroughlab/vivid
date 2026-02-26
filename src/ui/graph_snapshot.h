@@ -67,6 +67,19 @@ struct ConnectionSnapshot {
     std::string to_port;
 };
 
+// MIDI mapping snapshot for UI
+struct MidiMappingSnapshot {
+    std::string node_id, param_name;
+    int cc_number = 0, channel = 0;
+    float range_min = 0.0f, range_max = 1.0f;
+};
+
+// MIDI CC event (for UI relay)
+struct MidiCCEventSnapshot {
+    int channel = 0, cc_number = 0;
+    float value = 0.0f;
+};
+
 // Per-audio-node visualization data
 struct AudioNodeAnalysis {
     float peak = 0.0f;
@@ -86,6 +99,11 @@ struct GraphSnapshot {
     std::unordered_map<std::string, int> audio_index;  // node_id -> audio engine index
     std::vector<AudioNodeAnalysis> audio_analysis;
 
+    // MIDI mapping data
+    std::vector<MidiMappingSnapshot> midi_mappings;
+    std::unordered_map<std::string, size_t> midi_mapping_index; // "node_id\tparam" -> index
+    std::vector<MidiCCEventSnapshot> pending_cc_events;
+
     // Operator catalog for chooser popup
     std::vector<std::string> operator_types;  // sorted list
     std::unordered_map<std::string, std::shared_ptr<const OperatorInfo>> operator_catalog;
@@ -98,6 +116,13 @@ struct GraphSnapshot {
 
     bool has_node(const std::string& id) const {
         return node_index.count(id) > 0;
+    }
+
+    const MidiMappingSnapshot* find_midi_mapping(const std::string& node_id,
+                                                  const std::string& param) const {
+        auto it = midi_mapping_index.find(node_id + "\t" + param);
+        if (it == midi_mapping_index.end()) return nullptr;
+        return &midi_mappings[it->second];
     }
 };
 
