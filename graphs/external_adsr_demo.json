@@ -1,0 +1,32 @@
+{
+  "nodes": {
+    "clock1": { "type": "Clock", "params": { "bpm": 110.0 } },
+    "np1": { "type": "NotePattern", "params": {
+      "steps": 4,
+      "root_0": 0, "type_0": 1,
+      "root_1": 4, "type_1": 0,
+      "root_2": 7, "type_2": 1,
+      "root_3": 5, "type_3": 0,
+      "octave": 4, "beats_per_step": 4, "gate_length": 0.9,
+      "velocity": 0.8
+    }},
+    "adsr1": { "type": "SpreadADSR", "params": {
+      "attack": 0.15, "decay": 0.3, "sustain": 0.5, "release": 0.6
+    }},
+    "ps1": { "type": "Polysynth", "params": {
+      "waveform": 1, "attack": 0.01, "decay": 0.1,
+      "sustain": 0.7, "release": 0.3, "amplitude": 0.3,
+      "env_bypass": 1.0
+    }},
+    "out1": { "type": "audio_out", "params": {} }
+  },
+  "connections": [
+    { "from": "clock1/beat_phase", "to": "np1/beat_phase" },
+    { "from": "np1/notes",      "to": "ps1/notes" },
+    { "from": "np1/velocities", "to": "ps1/velocities" },
+    { "from": "np1/gates",      "to": "ps1/gates" },
+    { "from": "np1/gates",      "to": "adsr1/gates" },
+    { "from": "adsr1/envelopes", "to": "ps1/amp_mod" },
+    { "from": "ps1/output",     "to": "out1/input" }
+  ]
+}

@@ -181,6 +181,7 @@ configure_file(graphs/av_sync_demo.json ${CMAKE_BINARY_DIR}/av_sync_demo.json CO
 configure_file(graphs/midi_demo.json ${CMAKE_BINARY_DIR}/midi_demo.json COPYONLY)
 configure_file(graphs/fft_bars_demo.json ${CMAKE_BINARY_DIR}/fft_bars_demo.json COPYONLY)
 configure_file(graphs/polysynth_demo.json ${CMAKE_BINARY_DIR}/polysynth_demo.json COPYONLY)
+configure_file(graphs/external_adsr_demo.json ${CMAKE_BINARY_DIR}/external_adsr_demo.json COPYONLY)
 
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)
