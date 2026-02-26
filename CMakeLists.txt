@@ -88,6 +88,10 @@ add_library(bars MODULE operators/gpu/bars/bars.cpp)
 set_target_properties(bars PROPERTIES PREFIX "" SUFFIX ".dylib")
 target_link_libraries(bars PRIVATE vivid_operator_api webgpu)
 
+add_library(composite MODULE operators/gpu/composite/composite.cpp)
+set_target_properties(composite PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(composite PRIVATE vivid_operator_api webgpu)
+
 # --- Audio operator plugins ---
 add_library(oscillator MODULE operators/audio/oscillator/oscillator.cpp)
 set_target_properties(oscillator PROPERTIES PREFIX "" SUFFIX ".dylib")
@@ -120,6 +124,7 @@ add_executable(vivid
     src/runtime/thumbnail_cache.cpp
     src/runtime/thumbnail_renderer.cpp
     src/runtime/screenshot.cpp
+    src/runtime/builtin_operators.cpp
 )
 
 target_include_directories(vivid PRIVATE src)
@@ -167,7 +172,7 @@ add_executable(test_hot_reload
     src/runtime/scheduler.cpp
 )
 target_include_directories(test_hot_reload PRIVATE src)
-target_link_libraries(test_hot_reload PRIVATE vivid_operator_api yyjson)
+target_link_libraries(test_hot_reload PRIVATE vivid_operator_api yyjson webgpu)
 add_dependencies(test_hot_reload test_op_v1 test_op_v2)
 
 # RuntimeAPI integration test (no GPU, no audio, no window)
@@ -181,7 +186,7 @@ add_executable(test_runtime_api
     src/runtime/runtime_api.cpp
 )
 target_include_directories(test_runtime_api PRIVATE src)
-target_link_libraries(test_runtime_api PRIVATE vivid_operator_api yyjson miniaudio)
+target_link_libraries(test_runtime_api PRIVATE vivid_operator_api yyjson miniaudio webgpu)
 add_dependencies(test_runtime_api test_op_v1)
 
 # Copy test graphs to build directory

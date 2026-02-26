@@ -12,6 +12,7 @@
 #include "runtime/text_renderer.h"
 #include "runtime/repl.h"
 #include "runtime/node_graph.h"
+#include "runtime/builtin_operators.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/types.h"
 #include <webgpu/webgpu.h>
@@ -61,7 +62,7 @@ struct WindowUserData {
 static void char_callback(GLFWwindow* w, unsigned int codepoint) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
     if (!ud) return;
-    if (ud->graph_ui && ud->graph_ui->wants_keyboard())
+    if (ud->graph_ui && ud->graph_ui->visible() && ud->graph_ui->wants_keyboard())
         ud->graph_ui->on_char(codepoint);
     else if (ud->repl)
         ud->repl->on_char(codepoint);
@@ -70,6 +71,12 @@ static void char_callback(GLFWwindow* w, unsigned int codepoint) {
 static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, int mods) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
     if (!ud) return;
+
+    // Tilde toggles graph UI visibility (intercept before any dispatch)
+    if (key == GLFW_KEY_GRAVE_ACCENT && action == GLFW_PRESS && mods == 0) {
+        if (ud->graph_ui) ud->graph_ui->toggle_visible();
+        return;
+    }
 
     // Cmd+S / Ctrl+S saves the graph (intercept before any dispatch)
     if (key == GLFW_KEY_S && action == GLFW_PRESS &&
@@ -81,12 +88,13 @@ static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, i
         return;
     }
 
-    if (ud->graph_ui && ud->graph_ui->wants_keyboard()) {
+    if (ud->graph_ui && ud->graph_ui->visible() && ud->graph_ui->wants_keyboard()) {
         ud->graph_ui->on_key(key, action, mods);
     } else {
         // Tab/B/Delete open features on the graph UI; everything else goes to REPL
-        if (ud->graph_ui && action == GLFW_PRESS &&
-            (key == GLFW_KEY_TAB || key == GLFW_KEY_B || key == GLFW_KEY_DELETE)) {
+        if (ud->graph_ui && ud->graph_ui->visible() && action == GLFW_PRESS &&
+            (key == GLFW_KEY_TAB || key == GLFW_KEY_B || key == GLFW_KEY_DELETE ||
+             (key == GLFW_KEY_BACKSPACE && ud->graph_ui->has_selection()))) {
             ud->graph_ui->on_key(key, action, mods);
         } else if (ud->repl) {
             ud->repl->on_key(key, action, mods);
@@ -96,18 +104,21 @@ static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, i
 
 static void cursor_pos_callback(GLFWwindow* w, double xpos, double ypos) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
-    if (ud && ud->graph_ui) ud->graph_ui->on_mouse_move(static_cast<float>(xpos), static_cast<float>(ypos));
+    if (ud && ud->graph_ui && ud->graph_ui->visible())
+        ud->graph_ui->on_mouse_move(static_cast<float>(xpos), static_cast<float>(ypos));
 }
 
 static void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
-    if (ud && ud->graph_ui) ud->graph_ui->on_mouse_button(button, action);
+    if (ud && ud->graph_ui && ud->graph_ui->visible())
+        ud->graph_ui->on_mouse_button(button, action);
 }
 
 static void scroll_callback(GLFWwindow* w, double xoffset, double yoffset) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
-    if (ud && ud->graph_ui) ud->graph_ui->on_scroll(
-        static_cast<float>(xoffset), static_cast<float>(yoffset));
+    if (ud && ud->graph_ui && ud->graph_ui->visible())
+        ud->graph_ui->on_scroll(
+            static_cast<float>(xoffset), static_cast<float>(yoffset));
 }
 
 int main(int argc, char* argv[]) {
@@ -171,36 +182,13 @@ int main(int argc, char* argv[]) {
 
     const double* clear = is_srgb_format(gpu.surface_format()) ? kClearLinear : kClearRaw;
 
-    // --- Offscreen texture (RGBA16Float, for GPU operators to render into) ---
+    // --- Offscreen texture format (used by per-node GPU textures) ---
     static constexpr WGPUTextureFormat kOffscreenFormat = WGPUTextureFormat_RGBA16Float;
 
-    WGPUTextureDescriptor offscreen_desc{};
-    offscreen_desc.label = to_sv("Offscreen Texture");
-    offscreen_desc.size = { (uint32_t)fb_width, (uint32_t)fb_height, 1 };
-    offscreen_desc.mipLevelCount = 1;
-    offscreen_desc.sampleCount = 1;
-    offscreen_desc.dimension = WGPUTextureDimension_2D;
-    offscreen_desc.format = kOffscreenFormat;
-    offscreen_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
-    WGPUTexture offscreen_tex = wgpuDeviceCreateTexture(gpu.device(), &offscreen_desc);
-
-    WGPUTextureViewDescriptor offscreen_view_desc{};
-    offscreen_view_desc.label = to_sv("Offscreen View");
-    offscreen_view_desc.format = kOffscreenFormat;
-    offscreen_view_desc.dimension = WGPUTextureViewDimension_2D;
-    offscreen_view_desc.baseMipLevel = 0;
-    offscreen_view_desc.mipLevelCount = 1;
-    offscreen_view_desc.baseArrayLayer = 0;
-    offscreen_view_desc.arrayLayerCount = 1;
-    offscreen_view_desc.aspect = WGPUTextureAspect_All;
-    WGPUTextureView offscreen_view = wgpuTextureCreateView(offscreen_tex, &offscreen_view_desc);
-
-    // --- Fullscreen blit (offscreen → surface) ---
+    // --- Fullscreen blit (per-node texture → surface) ---
     vivid::FullscreenBlit blit;
     if (!blit.init(gpu.device(), gpu.surface_format())) {
         std::fprintf(stderr, "[vivid] Failed to init FullscreenBlit\n");
-        wgpuTextureViewRelease(offscreen_view);
-        wgpuTextureRelease(offscreen_tex);
         gpu.shutdown();
         glfwDestroyWindow(window);
         glfwTerminate();
@@ -218,11 +206,12 @@ int main(int argc, char* argv[]) {
     }
 
     vivid::ThumbnailRenderer thumb_renderer;
-    bool thumb_renderer_ok = thumb_renderer.init(gpu.device(), gpu.surface_format());
+    bool thumb_renderer_ok = thumb_renderer.init(gpu.device(), gpu.queue(), gpu.surface_format());
 
     // --- Load operator plugins ---
     vivid::OperatorRegistry registry;
     registry.scan(exe_dir.string().c_str());
+    register_builtin_operators(registry);
 
     // --- Load graph ---
     vivid::Graph graph;
@@ -240,6 +229,12 @@ int main(int argc, char* argv[]) {
     }
 
     bool has_gpu_ops = graph_loaded && scheduler.has_gpu_operators();
+
+    // Allocate per-node GPU textures
+    if (has_gpu_ops) {
+        scheduler.allocate_gpu_textures(gpu.device(), 800, 600, kOffscreenFormat);
+    }
+    int video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
 
     // --- Audio engine ---
     vivid::AudioEngine audio_engine;
@@ -332,6 +327,17 @@ int main(int argc, char* argv[]) {
         repl.update(has_gpu_ops, has_audio);
         if (runtime_api.has_pending()) {
             runtime_api.apply_pending(has_gpu_ops, has_audio);
+            // Re-allocate per-node GPU textures after topology change
+            if (has_gpu_ops) {
+                scheduler.allocate_gpu_textures(gpu.device(), 800, 600, kOffscreenFormat);
+            }
+            video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
+        }
+        // Handle GPU realloc after reload command
+        if (runtime_api.needs_gpu_realloc()) {
+            runtime_api.clear_gpu_realloc();
+            scheduler.allocate_gpu_textures(gpu.device(), 800, 600, kOffscreenFormat);
+            video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
         }
         if (!graph_loaded && !scheduler.nodes().empty()) {
             graph_loaded = true;
@@ -347,15 +353,17 @@ int main(int argc, char* argv[]) {
             double dt = now - prev_time;
             prev_time = now;
 
-            // Fill GPU state for GPU operators (render to offscreen texture)
+            // Base GPU state (per-node textures are set by scheduler)
             VividGpuState gpu_state{};
             gpu_state.device              = gpu.device();
             gpu_state.queue               = gpu.queue();
             gpu_state.command_encoder     = frame.encoder;
-            gpu_state.output_texture_view = offscreen_view;
-            gpu_state.output_width        = fb_width;
-            gpu_state.output_height       = fb_height;
+            gpu_state.output_texture_view = nullptr;  // per-node
+            gpu_state.output_width        = 0;
+            gpu_state.output_height       = 0;
             gpu_state.output_format       = kOffscreenFormat;
+            gpu_state.input_texture_views = nullptr;
+            gpu_state.input_texture_count = 0;
 
             // --- Hot-reload polling ---
             if (hot_reload_enabled) {
@@ -412,11 +420,12 @@ int main(int argc, char* argv[]) {
 
             // Tick with thumbnail capture callback for GPU nodes
             scheduler.tick(now, dt, frame_count, &gpu_state,
-                [&](uint32_t, const std::string& node_id) {
-                    // Blit offscreen → per-node thumbnail (uses RGBA16Float pipeline)
+                [&](uint32_t, const std::string& node_id, WGPUTextureView node_tex_view) {
+                    // Blit per-node texture → thumbnail (uses RGBA16Float pipeline)
+                    if (!node_tex_view) return;
                     auto* thumb_view = thumb_cache.get_or_create(node_id);
                     if (thumb_view) {
-                        thumb_blit.blit(frame.encoder, offscreen_view, thumb_view);
+                        thumb_blit.blit(frame.encoder, node_tex_view, thumb_view);
                     }
                 });
 
@@ -463,9 +472,52 @@ int main(int argc, char* argv[]) {
             frame_count++;
         }
 
-        if (has_gpu_ops) {
-            // Blit offscreen texture → surface
-            blit.blit(frame.encoder, offscreen_view, frame.view);
+        if (has_gpu_ops && video_out_idx >= 0) {
+            // Find video_out's input texture from its resolved_tex_inputs
+            const auto& vo_ns = scheduler.nodes()[video_out_idx];
+            WGPUTextureView display_tex = nullptr;
+            uint32_t src_w = 0, src_h = 0;
+            if (!vo_ns.resolved_tex_inputs.empty()) {
+                display_tex = vo_ns.resolved_tex_inputs[0];
+                // Find the upstream node to get its resolution
+                for (const auto& w : scheduler.wires()) {
+                    if (w.to_node_idx == static_cast<uint32_t>(video_out_idx) &&
+                        w.is_texture_wire && !w.targets_param) {
+                        src_w = scheduler.nodes()[w.from_node_idx].gpu_tex_width;
+                        src_h = scheduler.nodes()[w.from_node_idx].gpu_tex_height;
+                        break;
+                    }
+                }
+            }
+
+            if (display_tex && src_w > 0 && src_h > 0) {
+                int fit_mode = 0;
+                auto fm_it = vo_ns.param_indices.find("fit_mode");
+                if (fm_it != vo_ns.param_indices.end() && fm_it->second < vo_ns.param_values.size())
+                    fit_mode = static_cast<int>(vo_ns.param_values[fm_it->second]);
+                bool ui_vis = graph_ui.visible();
+                blit.blit_fit(frame.encoder, display_tex, frame.view,
+                              src_w, src_h,
+                              static_cast<uint32_t>(fb_width),
+                              static_cast<uint32_t>(fb_height),
+                              fit_mode, ui_vis);
+            } else {
+                // No input connected — clear to background
+                WGPURenderPassColorAttachment color_att{};
+                color_att.view = frame.view;
+                color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+                color_att.resolveTarget = nullptr;
+                color_att.loadOp = WGPULoadOp_Clear;
+                color_att.storeOp = WGPUStoreOp_Store;
+                color_att.clearValue = { clear[0], clear[1], clear[2], clear[3] };
+                WGPURenderPassDescriptor rp_desc{};
+                rp_desc.label = to_sv("Clear Pass");
+                rp_desc.colorAttachmentCount = 1;
+                rp_desc.colorAttachments = &color_att;
+                WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(frame.encoder, &rp_desc);
+                wgpuRenderPassEncoderEnd(pass);
+                wgpuRenderPassEncoderRelease(pass);
+            }
         } else {
             // Fallback: clear-only pass (#16191D)
             WGPURenderPassColorAttachment color_att{};
@@ -492,28 +544,17 @@ int main(int argc, char* argv[]) {
 
         // --- Node graph UI + REPL overlay (3-pass rendering) ---
         if (repl_enabled) {
-            // When GPU ops are active, the fullscreen blit paints the entire
-            // surface with the offscreen texture (black in non-rendered areas).
-            // Fill below the graph viewport with the background color so the
-            // strip between the graph area and the REPL isn't black.
-            if (has_gpu_ops) {
-                constexpr float kGraphAreaH = 640.0f; // matches kGraphH in node_graph.cpp
-                text_renderer.draw_rect(0, kGraphAreaH,
-                                        static_cast<float>(kWidth),
-                                        static_cast<float>(kHeight) - kGraphAreaH,
-                                        static_cast<float>(clear[0]),
-                                        static_cast<float>(clear[1]),
-                                        static_cast<float>(clear[2]), 1.0f);
-            }
-            graph_ui.update();
-            graph_ui.draw(text_renderer, kWidth, kHeight);
-            // Pass 1: text/rects (now the second render pass — quads render correctly)
-            text_renderer.flush(frame.encoder, frame.view, kWidth, kHeight);
-            // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
-            if (thumb_renderer_ok) {
-                graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
-                                         frame.encoder, frame.view,
-                                         (uint32_t)fb_width, (uint32_t)fb_height);
+            if (graph_ui.visible()) {
+                graph_ui.update();
+                graph_ui.draw(text_renderer, kWidth, kHeight);
+                // Pass 1: text/rects (now the second render pass — quads render correctly)
+                text_renderer.flush(frame.encoder, frame.view, kWidth, kHeight);
+                // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
+                if (thumb_renderer_ok) {
+                    graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
+                                             frame.encoder, frame.view,
+                                             (uint32_t)fb_width, (uint32_t)fb_height);
+                }
             }
             // Pass 3: REPL on top
             repl.draw(text_renderer, kWidth, kHeight);
@@ -638,8 +679,6 @@ int main(int argc, char* argv[]) {
     thumb_cache.shutdown();
     thumb_blit.shutdown();
     blit.shutdown();
-    wgpuTextureViewRelease(offscreen_view);
-    wgpuTextureRelease(offscreen_tex);
     gpu.shutdown();
     glfwDestroyWindow(window);
     glfwTerminate();
