@@ -1,0 +1,479 @@
+#include "runtime/operator_registry.h"
+#include "runtime/graph.h"
+#include "runtime/scheduler.h"
+#include "operator_api/gpu_operator.h"
+#include "common/gpu_util.h"
+#include <webgpu/webgpu.h>
+#include <webgpu/wgpu.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
+#include <filesystem>
+
+// ============================================================================
+// Test infrastructure
+// ============================================================================
+
+static int failures = 0;
+static int skipped  = 0;
+
+static void check(bool cond, const char* msg) {
+    if (!cond) {
+        std::fprintf(stderr, "  FAIL: %s\n", msg);
+        failures++;
+    } else {
+        std::fprintf(stderr, "  PASS: %s\n", msg);
+    }
+}
+
+static void skip(const char* msg) {
+    std::fprintf(stderr, "  SKIP: %s\n", msg);
+    skipped++;
+}
+
+// ============================================================================
+// Headless WebGPU init (no window, no surface)
+// ============================================================================
+
+struct HeadlessGpu {
+    WGPUInstance instance = nullptr;
+    WGPUAdapter  adapter  = nullptr;
+    WGPUDevice   device   = nullptr;
+    WGPUQueue    queue    = nullptr;
+
+    bool init() {
+        // 1. Instance
+        WGPUInstanceDescriptor inst_desc{};
+        instance = wgpuCreateInstance(&inst_desc);
+        if (!instance) {
+            std::fprintf(stderr, "[headless] Failed to create WebGPU instance\n");
+            return false;
+        }
+
+        // 2. Adapter (no surface)
+        struct AdapterData { WGPUAdapter adapter = nullptr; bool done = false; };
+        AdapterData ad;
+
+        WGPURequestAdapterCallbackInfo acb{};
+        acb.mode = WGPUCallbackMode_AllowSpontaneous;
+        acb.callback = [](WGPURequestAdapterStatus status, WGPUAdapter adapter,
+                          WGPUStringView message, void* ud1, void* /*ud2*/) {
+            auto* d = static_cast<AdapterData*>(ud1);
+            if (status == WGPURequestAdapterStatus_Success) {
+                d->adapter = adapter;
+            } else {
+                std::fprintf(stderr, "[headless] Adapter request failed: %.*s\n",
+                             static_cast<int>(message.length), message.data ? message.data : "");
+            }
+            d->done = true;
+        };
+        acb.userdata1 = &ad;
+
+        WGPURequestAdapterOptions adapter_opts{};
+        adapter_opts.compatibleSurface = nullptr;
+        adapter_opts.powerPreference = WGPUPowerPreference_HighPerformance;
+        wgpuInstanceRequestAdapter(instance, &adapter_opts, acb);
+        if (!ad.done || !ad.adapter) {
+            std::fprintf(stderr, "[headless] No GPU adapter available\n");
+            return false;
+        }
+        adapter = ad.adapter;
+
+        // 3. Device
+        struct DeviceData { WGPUDevice device = nullptr; bool done = false; };
+        DeviceData dd;
+
+        WGPURequestDeviceCallbackInfo dcb{};
+        dcb.mode = WGPUCallbackMode_AllowSpontaneous;
+        dcb.callback = [](WGPURequestDeviceStatus status, WGPUDevice device,
+                          WGPUStringView message, void* ud1, void* /*ud2*/) {
+            auto* d = static_cast<DeviceData*>(ud1);
+            if (status == WGPURequestDeviceStatus_Success) {
+                d->device = device;
+            } else {
+                std::fprintf(stderr, "[headless] Device request failed: %.*s\n",
+                             static_cast<int>(message.length), message.data ? message.data : "");
+            }
+            d->done = true;
+        };
+        dcb.userdata1 = &dd;
+
+        WGPUDeviceDescriptor dev_desc{};
+        dev_desc.label = vivid::to_sv("Test Device");
+        dev_desc.deviceLostCallbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
+        dev_desc.deviceLostCallbackInfo.callback =
+            [](WGPUDevice const*, WGPUDeviceLostReason, WGPUStringView, void*, void*) {};
+        dev_desc.uncapturedErrorCallbackInfo.callback =
+            [](WGPUDevice const*, WGPUErrorType type, WGPUStringView message, void*, void*) {
+                std::fprintf(stderr, "[headless] WebGPU error (%d): %.*s\n",
+                             static_cast<int>(type), static_cast<int>(message.length),
+                             message.data ? message.data : "");
+            };
+
+        wgpuAdapterRequestDevice(adapter, &dev_desc, dcb);
+        if (!dd.done || !dd.device) {
+            std::fprintf(stderr, "[headless] Failed to get device\n");
+            return false;
+        }
+        device = dd.device;
+
+        // 4. Queue
+        queue = wgpuDeviceGetQueue(device);
+        return true;
+    }
+
+    void shutdown() {
+        if (queue)    { wgpuQueueRelease(queue);    queue    = nullptr; }
+        if (device)   { wgpuDeviceRelease(device);  device   = nullptr; }
+        if (adapter)  { wgpuAdapterRelease(adapter); adapter = nullptr; }
+        if (instance) { wgpuInstanceRelease(instance); instance = nullptr; }
+    }
+};
+
+// ============================================================================
+// GPU readback utility
+// ============================================================================
+
+static const uint32_t kRowAlignment = 256;
+
+static uint32_t aligned_bytes_per_row(uint32_t width) {
+    uint32_t unpadded = width * 4;  // RGBA8 = 4 bytes/pixel
+    return (unpadded + kRowAlignment - 1) & ~(kRowAlignment - 1);
+}
+
+// Read back an RGBA8 texture to CPU. Returns dense RGBA pixels (no padding).
+static std::vector<uint8_t> readback_texture(WGPUDevice device, WGPUQueue queue,
+                                              WGPUTexture texture,
+                                              uint32_t width, uint32_t height) {
+    uint32_t padded_row = aligned_bytes_per_row(width);
+    uint64_t buf_size = static_cast<uint64_t>(padded_row) * height;
+
+    // Staging buffer
+    WGPUBufferDescriptor buf_desc{};
+    buf_desc.label = vivid::to_sv("Readback Buffer");
+    buf_desc.size  = buf_size;
+    buf_desc.usage = WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst;
+    WGPUBuffer staging = wgpuDeviceCreateBuffer(device, &buf_desc);
+
+    // Encode copy
+    WGPUCommandEncoderDescriptor enc_desc{};
+    enc_desc.label = vivid::to_sv("Readback Encoder");
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, &enc_desc);
+
+    WGPUTexelCopyTextureInfo src{};
+    src.texture  = texture;
+    src.mipLevel = 0;
+    src.origin   = { 0, 0, 0 };
+    src.aspect   = WGPUTextureAspect_All;
+
+    WGPUTexelCopyBufferInfo dst{};
+    dst.buffer = staging;
+    dst.layout.offset = 0;
+    dst.layout.bytesPerRow = padded_row;
+    dst.layout.rowsPerImage = height;
+
+    WGPUExtent3D extent = { width, height, 1 };
+    wgpuCommandEncoderCopyTextureToBuffer(encoder, &src, &dst, &extent);
+
+    WGPUCommandBufferDescriptor cmd_desc{};
+    cmd_desc.label = vivid::to_sv("Readback Commands");
+    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(encoder, &cmd_desc);
+    wgpuQueueSubmit(queue, 1, &cmd);
+    wgpuCommandBufferRelease(cmd);
+    wgpuCommandEncoderRelease(encoder);
+
+    // Wait for GPU work to complete
+    {
+        struct WorkDone { bool done = false; };
+        WorkDone wd;
+        WGPUQueueWorkDoneCallbackInfo wcb{};
+        wcb.mode = WGPUCallbackMode_AllowSpontaneous;
+        wcb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
+            static_cast<WorkDone*>(ud1)->done = true;
+        };
+        wcb.userdata1 = &wd;
+        wgpuQueueOnSubmittedWorkDone(queue, wcb);
+        while (!wd.done) {
+            wgpuDevicePoll(device, true, nullptr);
+        }
+    }
+
+    // Map and read
+    struct MapData { bool done = false; WGPUMapAsyncStatus status; };
+    MapData md;
+    WGPUBufferMapCallbackInfo mcb{};
+    mcb.mode = WGPUCallbackMode_AllowSpontaneous;
+    mcb.callback = [](WGPUMapAsyncStatus status, WGPUStringView, void* ud1, void*) {
+        auto* d = static_cast<MapData*>(ud1);
+        d->status = status;
+        d->done = true;
+    };
+    mcb.userdata1 = &md;
+    wgpuBufferMapAsync(staging, WGPUMapMode_Read, 0, buf_size, mcb);
+    while (!md.done) {
+        wgpuDevicePoll(device, true, nullptr);
+    }
+
+    std::vector<uint8_t> pixels;
+    if (md.status == WGPUMapAsyncStatus_Success) {
+        const uint8_t* mapped = static_cast<const uint8_t*>(
+            wgpuBufferGetConstMappedRange(staging, 0, buf_size));
+        // Strip row padding
+        uint32_t dense_row = width * 4;
+        pixels.resize(static_cast<size_t>(dense_row) * height);
+        for (uint32_t y = 0; y < height; ++y) {
+            std::memcpy(pixels.data() + y * dense_row,
+                        mapped + y * padded_row,
+                        dense_row);
+        }
+        wgpuBufferUnmap(staging);
+    }
+
+    wgpuBufferRelease(staging);
+    return pixels;
+}
+
+// Helper: run one scheduler tick with a GPU command encoder, then submit.
+// Returns the encoder so the caller can record additional commands (like readback)
+// before finishing.
+static void tick_and_submit(vivid::Scheduler& sched, HeadlessGpu& gpu,
+                            WGPUTextureFormat format) {
+    WGPUCommandEncoderDescriptor enc_desc{};
+    enc_desc.label = vivid::to_sv("Tick Encoder");
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(gpu.device, &enc_desc);
+
+    VividGpuState gpu_state{};
+    gpu_state.device          = gpu.device;
+    gpu_state.queue           = gpu.queue;
+    gpu_state.command_encoder = encoder;
+    gpu_state.output_format   = format;
+
+    sched.tick(0.0, 0.016, 0, &gpu_state);
+
+    WGPUCommandBufferDescriptor cmd_desc{};
+    cmd_desc.label = vivid::to_sv("Tick Commands");
+    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(encoder, &cmd_desc);
+    wgpuQueueSubmit(gpu.queue, 1, &cmd);
+    wgpuCommandBufferRelease(cmd);
+    wgpuCommandEncoderRelease(encoder);
+
+    // Wait for completion
+    struct WorkDone { bool done = false; };
+    WorkDone wd;
+    WGPUQueueWorkDoneCallbackInfo wcb{};
+    wcb.mode = WGPUCallbackMode_AllowSpontaneous;
+    wcb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
+        static_cast<WorkDone*>(ud1)->done = true;
+    };
+    wcb.userdata1 = &wd;
+    wgpuQueueOnSubmittedWorkDone(gpu.queue, wcb);
+    while (!wd.done) {
+        wgpuDevicePoll(gpu.device, true, nullptr);
+    }
+}
+
+// ============================================================================
+// Main
+// ============================================================================
+
+int main() {
+    static constexpr WGPUTextureFormat kFormat = WGPUTextureFormat_RGBA8Unorm;
+
+    // =====================================================================
+    // Test 1: Headless GPU init
+    // =====================================================================
+    std::fprintf(stderr, "\n=== Test 1: Headless GPU init ===\n");
+    HeadlessGpu gpu;
+    if (!gpu.init()) {
+        skip("No GPU available — skipping all GPU tests");
+        std::fprintf(stderr, "\n%d passed, %d failed, %d skipped\n", 0, 0, 1);
+        return 0;  // Graceful skip, not a failure
+    }
+    check(gpu.instance != nullptr, "WebGPU instance created");
+    check(gpu.adapter  != nullptr, "Adapter obtained (no surface)");
+    check(gpu.device   != nullptr, "Device created");
+    check(gpu.queue    != nullptr, "Queue obtained");
+
+    // Set up operator registry
+    std::string staging = "./.test_gpu_staging";
+    std::filesystem::create_directories(staging);
+    std::filesystem::copy_file("gpu_fill_op.dylib", staging + "/gpu_fill_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file("shape.dylib", staging + "/shape.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+
+    vivid::OperatorRegistry registry;
+    check(registry.scan(staging.c_str()), "registry.scan() succeeds");
+    check(registry.find("GpuFillOp") != nullptr, "GpuFillOp registered");
+    check(registry.find("Shape") != nullptr, "Shape registered");
+
+    // =====================================================================
+    // Test 2: Solid red fill
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 2: Solid red fill ===\n");
+        constexpr uint32_t W = 64, H = 64;
+
+        vivid::Graph g;
+        g.add_node("fill", "GpuFillOp", {{"r", 1.0f}, {"g", 0.0f}, {"b", 0.0f}});
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+        sched.allocate_gpu_textures(gpu.device, W, H, kFormat, WGPUTextureUsage_CopySrc);
+
+        tick_and_submit(sched, gpu, kFormat);
+
+        // Readback
+        auto& ns = sched.nodes_mut()[0];
+        auto pixels = readback_texture(gpu.device, gpu.queue, ns.gpu_texture, W, H);
+        check(!pixels.empty(), "readback returned pixels");
+
+        if (!pixels.empty()) {
+            // Check center pixel
+            uint32_t cx = W / 2, cy = H / 2;
+            size_t idx = (cy * W + cx) * 4;
+            uint8_t r = pixels[idx], g_ = pixels[idx+1], b = pixels[idx+2], a = pixels[idx+3];
+            std::fprintf(stderr, "  Center pixel: (%u, %u, %u, %u)\n", r, g_, b, a);
+            check(r == 255 && g_ == 0 && b == 0 && a == 255, "center pixel is (255,0,0,255)");
+        }
+
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 3: Param change to green
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 3: Param change to green ===\n");
+        constexpr uint32_t W = 64, H = 64;
+
+        vivid::Graph g;
+        g.add_node("fill", "GpuFillOp", {{"r", 1.0f}, {"g", 0.0f}, {"b", 0.0f}});
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+        sched.allocate_gpu_textures(gpu.device, W, H, kFormat, WGPUTextureUsage_CopySrc);
+
+        // First tick: red
+        tick_and_submit(sched, gpu, kFormat);
+
+        // Change params to green
+        auto* ns = sched.find_node_mut("fill");
+        check(ns != nullptr, "found fill node");
+        if (ns) {
+            auto pi_r = ns->param_indices.find("r");
+            auto pi_g = ns->param_indices.find("g");
+            if (pi_r != ns->param_indices.end()) ns->param_values[pi_r->second] = 0.0f;
+            if (pi_g != ns->param_indices.end()) ns->param_values[pi_g->second] = 1.0f;
+            // Bump generation so the node re-processes
+            ns->generation++;
+        }
+
+        // Second tick: should be green now
+        tick_and_submit(sched, gpu, kFormat);
+
+        auto pixels = readback_texture(gpu.device, gpu.queue,
+                                        sched.nodes_mut()[0].gpu_texture, W, H);
+        check(!pixels.empty(), "readback returned pixels");
+
+        if (!pixels.empty()) {
+            uint32_t cx = W / 2, cy = H / 2;
+            size_t idx = (cy * W + cx) * 4;
+            uint8_t r = pixels[idx], g_ = pixels[idx+1], b = pixels[idx+2], a = pixels[idx+3];
+            std::fprintf(stderr, "  Center pixel: (%u, %u, %u, %u)\n", r, g_, b, a);
+            check(r == 0 && g_ == 255 && b == 0 && a == 255, "center pixel is (0,255,0,255)");
+        }
+
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 4: Shape operator renders non-black
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 4: Shape operator render ===\n");
+        constexpr uint32_t W = 64, H = 64;
+
+        vivid::Graph g;
+        g.add_node("shape", "Shape", {});
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+        sched.allocate_gpu_textures(gpu.device, W, H, kFormat, WGPUTextureUsage_CopySrc);
+
+        tick_and_submit(sched, gpu, kFormat);
+
+        auto pixels = readback_texture(gpu.device, gpu.queue,
+                                        sched.nodes_mut()[0].gpu_texture, W, H);
+        check(!pixels.empty(), "readback returned pixels");
+
+        if (!pixels.empty()) {
+            // Center pixel should be non-black (Shape renders white geometry at center by default)
+            uint32_t cx = W / 2, cy = H / 2;
+            size_t idx = (cy * W + cx) * 4;
+            uint8_t r = pixels[idx], g_ = pixels[idx+1], b = pixels[idx+2];
+            std::fprintf(stderr, "  Center pixel: (%u, %u, %u, %u)\n",
+                         r, g_, b, pixels[idx+3]);
+            check(r > 0 || g_ > 0 || b > 0,
+                  "center pixel is non-black (Shape produces visible geometry)");
+        }
+
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 5: Resolution propagation (128x128)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 5: Resolution propagation ===\n");
+        constexpr uint32_t W = 128, H = 128;
+
+        vivid::Graph g;
+        // Add node with explicit tex_width/height
+        g.add_node("fill", "GpuFillOp", {{"r", 0.0f}, {"g", 0.0f}, {"b", 1.0f}});
+        // Set resolution on the node definition
+        auto& nodes = g.nodes();
+        for (auto& n : nodes) {
+            if (n.id == "fill") {
+                const_cast<vivid::NodeDef&>(n).tex_width  = W;
+                const_cast<vivid::NodeDef&>(n).tex_height = H;
+            }
+        }
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+        sched.allocate_gpu_textures(gpu.device, 64, 64, kFormat, WGPUTextureUsage_CopySrc);
+
+        // Verify the node got 128×128, not the 64×64 default
+        auto& ns = sched.nodes_mut()[0];
+        check(ns.gpu_tex_width == W, "texture width is 128");
+        check(ns.gpu_tex_height == H, "texture height is 128");
+
+        tick_and_submit(sched, gpu, kFormat);
+
+        auto pixels = readback_texture(gpu.device, gpu.queue, ns.gpu_texture, W, H);
+        check(!pixels.empty(), "readback returned pixels");
+
+        if (!pixels.empty()) {
+            // Should be a 128×128 blue fill
+            check(pixels.size() == W * H * 4, "pixel count matches 128x128");
+            uint32_t cx = W / 2, cy = H / 2;
+            size_t idx = (cy * W + cx) * 4;
+            uint8_t r = pixels[idx], g_ = pixels[idx+1], b = pixels[idx+2], a = pixels[idx+3];
+            std::fprintf(stderr, "  Center pixel: (%u, %u, %u, %u)\n", r, g_, b, a);
+            check(r == 0 && g_ == 0 && b == 255 && a == 255, "center pixel is (0,0,255,255)");
+        }
+
+        sched.shutdown();
+    }
+
+    // Clean up
+    gpu.shutdown();
+    std::filesystem::remove_all(staging);
+
+    int passed = (failures == 0) ? 1 : 0;
+    std::fprintf(stderr, "\n%s: %d failure(s), %d skipped\n",
+                 failures == 0 ? "ALL PASSED" : "SOME FAILED", failures, skipped);
+    return failures > 0 ? 1 : 0;
+}

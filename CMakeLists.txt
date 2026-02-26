@@ -291,6 +291,24 @@ target_link_libraries(test_operator_loader PRIVATE vivid_operator_api)
 add_dependencies(test_operator_loader test_op_v1 test_op_v2 control_pass_op)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# GPU operator plugin for testing (solid color fill)
+add_library(gpu_fill_op MODULE tests/operators/gpu_fill_op.cpp)
+set_target_properties(gpu_fill_op PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(gpu_fill_op PRIVATE vivid_operator_api webgpu)
+
+# GPU operator integration tests (headless WebGPU, no window)
+add_executable(test_gpu_operators
+    tests/test_gpu_operators.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_gpu_operators PRIVATE src)
+target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_gpu_operators gpu_fill_op shape)
+add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Copy test graphs to build directory
 configure_file(tests/graphs/test_reload.json ${CMAKE_BINARY_DIR}/test_reload.json COPYONLY)
 configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runtime_api.json COPYONLY)

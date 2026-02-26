@@ -319,7 +319,7 @@ bool NodeGraphUI::handle_chooser_click() {
 bool NodeGraphUI::handle_dropdown_click() {
     if (!dropdown_open_ || dropdown_labels_.empty()) return false;
 
-    float item_h = 20.0f;
+    float item_h = kDropdownItemH;
     float popup_h = dropdown_labels_.size() * item_h + 4;
     if (mouse_.x >= dropdown_x_ && mouse_.x <= dropdown_x_ + dropdown_w_ &&
         mouse_.y >= dropdown_y_ && mouse_.y <= dropdown_y_ + popup_h) {

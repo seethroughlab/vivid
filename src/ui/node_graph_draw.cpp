@@ -217,13 +217,13 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         const float* dcol = domain_color(from_rect.domain);
         bool sel = (c.from_node == selected_node_id_ || c.to_node == selected_node_id_);
         bool hov = (ci == hovered_wire_idx_);
-        float brightness = (hov || sel) ? 1.3f : 1.0f;
+        float brightness = (hov || sel) ? kWireHoverBright : 1.0f;
         float cr = std::min(1.0f, dcol[0] * brightness);
         float cg = std::min(1.0f, dcol[1] * brightness);
         float cb = std::min(1.0f, dcol[2] * brightness);
         float a = (hov || sel) ? 0.95f : 0.8f;
 
-        float wire_th = std::max(1.0f, (hov ? 5.0f : 3.0f) * zoom_);
+        float wire_th = std::max(1.0f, (hov ? kWireHoverThickness : kWireThickness) * zoom_);
 
         traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
             [&](float x0, float y0, float x1, float y1) {
@@ -316,14 +316,14 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     // Find the selected node in snapshot
     const auto* sel_node = snap_->find_node(selected_node_id_);
     if (!sel_node || !sel_node->op_info) {
-        tr.draw_text(insp_x + 16, 20, "Node not found", kDimText[0], kDimText[1], kDimText[2]);
+        tr.draw_text(insp_x + kInspPadX, 20, "Node not found", kDimText[0], kDimText[1], kDimText[2]);
         return;
     }
 
     const auto& op = *sel_node->op_info;
-    float px = insp_x + 16;
+    float px = insp_x + kInspPadX;
     float py = kPerfBarH + 8;
-    float panel_w = kInspectorW - 32;
+    float panel_w = kInspContentW;
 
     // Header: type name
     tr.draw_text(px, py, op.name.c_str(), 1.0f, 1.0f, 1.0f);
@@ -390,18 +390,17 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
 
         if (pd.type == VIVID_PARAM_BOOL) {
             float bx = px, by = py;
-            float bsz = 14.0f;
-            tr.draw_rect(bx, by, bsz, bsz, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+            tr.draw_rect(bx, by, kCheckboxSize, kCheckboxSize, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
             if (val > 0.5f) {
-                tr.draw_rect(bx + 2, by + 2, bsz - 4, bsz - 4,
+                tr.draw_rect(bx + 2, by + 2, kCheckboxSize - 4, kCheckboxSize - 4,
                              kAccent[0], kAccent[1], kAccent[2]);
             }
-            bool_rects_.push_back({bx, by, bsz, bsz, selected_node_id_, pd.name});
-            py += bsz + 6;
+            bool_rects_.push_back({bx, by, kCheckboxSize, kCheckboxSize, selected_node_id_, pd.name});
+            py += kCheckboxSize + 6;
         } else if (pd.choice_count > 0) {
             // Dropdown row for enum params
             float dx = px, dy = py;
-            float dw = panel_w, dh = 18.0f;
+            float dw = panel_w, dh = kDropdownH;
             tr.draw_rect(dx, dy, dw, dh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
             // Show current label
             int idx = static_cast<int>(val);
@@ -416,7 +415,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         } else {
             // Normal slider
             float sx = px, sy = py;
-            float sw = panel_w, sh = 10.0f;
+            float sw = panel_w, sh = kSliderH;
 
             tr.draw_rect(sx, sy, sw, sh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
 
@@ -454,7 +453,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         std::string h_str = editing_h ? (edit_buffer_ + "_") : format_uint(sel_node->gpu_tex_height);
 
         float val_x = px + 4;
-        float w_text_w = 40.0f;
+        float w_text_w = kResInputW;
 
         if (is_generator) {
             // Clickable width value
@@ -520,7 +519,7 @@ void NodeGraphUI::draw_preview_wire(Renderer2D& tr) {
     if (!dragging_wire_) return;
     float ssx = gx_to_sx(wire_from_gx_), ssy = gy_to_sy(wire_from_gy_);
     float sex = mouse_.x, sey = mouse_.y;
-    float wire_th = std::max(1.0f, 3.0f * zoom_);
+    float wire_th = std::max(1.0f, kWireThickness * zoom_);
 
     traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
         [&](float x0, float y0, float x1, float y1) {
@@ -614,7 +613,7 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
 
     // Dropdown popup (drawn last, on top of everything)
     if (dropdown_open_ && !dropdown_labels_.empty()) {
-        float item_h = 20.0f;
+        float item_h = kDropdownItemH;
         float popup_h = dropdown_labels_.size() * item_h + 4;
         // Background
         tr.draw_rect(dropdown_x_, dropdown_y_, dropdown_w_, popup_h,

@@ -445,6 +445,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
 bool Scheduler::has_gpu_operators() const {
     for (const auto& ns : nodes_) {
         const VividOperatorDescriptor* desc = ns.loader->descriptor();
+        if (!desc) continue;
         if (desc->domain == VIVID_DOMAIN_GPU)
             return true;
     }
@@ -454,6 +455,7 @@ bool Scheduler::has_gpu_operators() const {
 bool Scheduler::has_audio_operators() const {
     for (const auto& ns : nodes_) {
         const VividOperatorDescriptor* desc = ns.loader->descriptor();
+        if (!desc) continue;
         if (desc->domain == VIVID_DOMAIN_AUDIO)
             return true;
     }
@@ -474,8 +476,10 @@ bool Scheduler::gpu_sink_source_size(int sink_idx, uint32_t& w, uint32_t& h) con
 
 bool Scheduler::is_audio_type(const std::string& type_name) const {
     for (const auto& ns : nodes_) {
-        if (std::string(ns.loader->descriptor()->name) == type_name &&
-            ns.loader->descriptor()->domain == VIVID_DOMAIN_AUDIO) {
+        const VividOperatorDescriptor* desc = ns.loader->descriptor();
+        if (!desc) continue;
+        if (std::string(desc->name) == type_name &&
+            desc->domain == VIVID_DOMAIN_AUDIO) {
             return true;
         }
     }
@@ -573,7 +577,8 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
 }
 
 void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uint32_t default_h,
-                                      WGPUTextureFormat format) {
+                                      WGPUTextureFormat format,
+                                      WGPUTextureUsage extra_usage) {
     // Iterate nodes in topological order (they're already sorted)
     for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
         auto& ns = nodes_[ni];
@@ -629,7 +634,7 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
         tex_desc.sampleCount = 1;
         tex_desc.dimension = WGPUTextureDimension_2D;
         tex_desc.format = format;
-        tex_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+        tex_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding | extra_usage;
         ns.gpu_texture = wgpuDeviceCreateTexture(device, &tex_desc);
 
         WGPUTextureViewDescriptor view_desc{};

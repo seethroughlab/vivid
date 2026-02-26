@@ -72,7 +72,8 @@ public:
     bool has_gpu_operators() const;
     bool has_audio_operators() const;
     void allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uint32_t default_h,
-                               WGPUTextureFormat format);
+                               WGPUTextureFormat format,
+                               WGPUTextureUsage extra_usage = 0);
     int find_gpu_sink() const;  // returns first GPU sink node index, or -1
     void inject_external_output(uint32_t node_idx, uint32_t port_idx, float value);
     void inject_external_spread(uint32_t node_idx, uint32_t port_idx,
