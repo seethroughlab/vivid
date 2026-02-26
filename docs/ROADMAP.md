@@ -338,19 +338,53 @@ Build the Spread type (contiguous array + length, broadcasting logic). FFT Analy
 > - **Fullscreen blit fit modes** — Fit/Fill/Stretch for video_out display
 > - **Code quality refactoring** — split `node_graph.cpp` into draw/input/core files, deduplicated shared utilities, replaced magic numbers with named constants, added utility headers
 
-### Phase 14: Polyphonic Audio
+### Phase 14a: Cross-Domain Spreads + Polyphonic Synthesis
 
-Build the operators that make Vivid a musical instrument, not just a signal processor:
+The core infrastructure and operators that make Vivid a musical instrument:
 
-- **NotePattern** — a Control operator that emits a Spread of note-on/note-off events on each tick. Takes a pattern description (chord progression, sequence, or arpeggio) as parameters. The LLM generates these parameter configurations; the operator interprets them.
-- **Polysynth** — an Audio operator with voice allocation. Receives note events from Control domain. Internally manages N voices, each with its own oscillator and ADSR envelope. Mixes to stereo output. Exposes per-voice envelope values back to the Control domain as a Spread — this is the critical output that will drive visuals.
-- **Envelope** — a standalone Control operator (ADSR) that can also be used independently of the Polysynth, for per-note or per-event amplitude shaping on any parameter.
+- **Cross-domain Spread bridge** — extend `AudioEngine`'s double-buffered bridges to carry Spread data between Control and Audio threads (currently only scalars). Fixed-size `SpreadSnapshot` buffers avoid audio-thread allocations. Pre-allocate pointer arrays to eliminate existing audio-thread `std::vector` allocations.
+- **NotePattern** — a Control operator that emits chord progressions as Spreads (notes/velocities/gates). Takes root note, chord type, and timing parameters per step. Driven by Clock's `beat_phase`.
+- **Polysynth** — an Audio operator with voice allocation, ADSR envelopes, and waveform generation. Receives note Spreads from Control domain via the new cross-domain bridge. Manages up to 16 voices. Exposes per-voice envelope values back to Control domain as a Spread. DSP algorithms ported from the legacy branch's `PolySynth` implementation.
 
-**Verify:** Clock → NotePattern → Polysynth. Chord progression plays. Adjust attack/release parameters → timbre changes in real time. The Polysynth's envelope Spread output (one value per active voice) is visible in the REPL: `inspect polysynth1/envelopes` shows a Spread of 4 values rising and falling with each chord.
+**Verify:** Clock → NotePattern → Polysynth plays an audible chord progression through speakers. `set ps1/attack 1.0` → slow attack ramp audible. `set np1/root_0 2` → progression starts on D instead of C.
 
-**Why it matters:** This is where Vivid stops being a demo and becomes a creative audio tool. Voice allocation, per-voice state, and dynamic-length Spreads are the hardest test of the architecture. If a polysynth with 8 voices can produce a Spread of 8 envelope values that flow cleanly through the Control domain at audio rate without glitches, the Spread system works for real musical use. If it can't, the architecture needs revision — better to find out now than after building the LLM integration on top.
+**Why it matters:** This is where Vivid stops being a demo and becomes a creative audio tool. The cross-domain Spread bridge is the critical infrastructure — without it, Spread data (note events, envelope values) cannot flow between the control thread and the audio thread. Voice allocation, per-voice state, and dynamic-length Spreads are the hardest test of the architecture. If a polysynth with 8 voices can produce a Spread of 8 envelope values that flow cleanly through the Control domain at audio rate without glitches, the Spread system works for real musical use.
 
-*North Star progress: Clock → chord progression → Polysynth works. MIDI knobs control timbre. Envelope Spread is produced. 6 of 8 pieces.*
+### Phase 14b: Envelope ADSR + Inspect + Tests
+
+Polish and testing that builds on 14a's infrastructure:
+
+- **Envelope ADSR upgrade** — extend the existing AD envelope operator (`operators/control/envelope/envelope.cpp`) to full ADSR with `sustain`, `release` params and a `gate` input port. Backward-compatible: without a gate connection, falls back to phase-wrap trigger (existing AD behavior).
+- **inspect() Spread display** — extend `RuntimeAPI::inspect()` and MCP `inspect_graph` to show Spread data for CONTROL_SPREAD output ports (e.g., `inspect ps1` shows `envelopes: [0.8, 0.3, 0.0, 0.7]`).
+- **Cross-domain Spread tests** — integration tests for the Spread bridge path: control Spread → audio input, audio Spread → control output, with a minimal test operator pair.
+
+**Verify:** `inspect ps1` shows `envelopes` spread with per-voice values. Envelope ADSR works with gate input. `ctest --test-dir build` — all new and existing tests pass. Existing graphs still work (backward compatible).
+
+### Phase 14c: Per-Voice Modulation System
+
+Bring the legacy `ModulatorHost` capability to the dylib architecture via Spread-based audio-domain modulator operators:
+
+- **SpreadADSR** — an Audio operator that takes `gates` (CONTROL_SPREAD input) and produces per-slot ADSR envelopes (CONTROL_SPREAD output). Each spread slot maintains independent envelope state. Runs on the audio thread for sample-accurate modulation.
+- **SpreadLFO** — an Audio operator that produces a Spread of LFO values. Supports per-voice mode (independent phase per slot, retrigger on gate) and free-running mode (all slots share phase).
+- **Polysynth modulation inputs** — add CONTROL_SPREAD input ports to the Polysynth: `filter_env`, `pitch_mod`, `amp_mod`. The per-sample voice loop reads per-voice modulation values from these inputs.
+- **Audio→audio spread wires** — extend `AudioWire` in the AudioEngine to pass CONTROL_SPREAD data between audio-domain operators (currently only AUDIO_FLOAT buffers are passed).
+
+**Verify:** Wire `NotePattern/gates → SpreadADSR/gates → Polysynth/filter_env`. Each voice's filter cutoff follows its own independent ADSR envelope. Wire `SpreadLFO/output → Polysynth/pitch_mod` for vibrato. Modulation routing is visible in the graph view.
+
+**Why it matters:** This is the dylib equivalent of the legacy `ModulatorHost` — per-voice modulation that made the legacy PolySynth musically expressive. The key architectural difference: modulation routing is done through graph wires (visible, inspectable, hot-reloadable) rather than internal `synth.modulate()` calls.
+
+### Phase 14d: Stereo Output
+
+Upgrade the entire audio pipeline to stereo:
+
+- **AudioEngine** — `config.playback.channels = 2`, stereo buffer layout in `VividAudioState`
+- **audio_out** — stereo passthrough
+- **Polysynth** — L/R phases with `unisonDetune` for stereo spread (ported from legacy `phaseL`/`phaseR`)
+- **Existing audio operators** — update Oscillator, Gain, Drum for stereo output
+
+**Verify:** Polysynth with `unisonDetune = 8.0` produces audible stereo spread. Panning between L/R is perceptible on headphones.
+
+*North Star progress: Clock → chord progression → Polysynth works. MIDI knobs control timbre. Envelope Spread is produced. Per-voice modulation shapes timbre. 6 of 8 pieces.*
 
 ### Phase 15: The North Star Demo — Audio-Reactive Rectangles
 

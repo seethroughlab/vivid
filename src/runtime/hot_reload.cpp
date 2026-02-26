@@ -8,6 +8,15 @@
 
 namespace vivid {
 
+// Platform-specific shared library suffix
+#if defined(__APPLE__)
+static constexpr const char* kPluginSuffix = ".dylib";
+#elif defined(_WIN32)
+static constexpr const char* kPluginSuffix = ".dll";
+#else
+static constexpr const char* kPluginSuffix = ".so";
+#endif
+
 HotReloader::HotReloader() = default;
 
 HotReloader::~HotReloader() {
@@ -102,14 +111,14 @@ void HotReloader::compile_thread() {
             // Clean up previous staging file for this target
             if (counter > 0) {
                 std::string prev = staging_dir_ + "/" + target + "_" +
-                    std::to_string(counter - 1) + ".dylib";
+                    std::to_string(counter - 1) + kPluginSuffix;
                 std::filesystem::remove(prev);
             }
 
-            // Copy rebuilt dylib to staging directory with unique name
-            std::string src_path = build_dir_ + "/" + target + ".dylib";
+            // Copy rebuilt plugin to staging directory with unique name
+            std::string src_path = build_dir_ + "/" + target + kPluginSuffix;
             std::string staged_path = staging_dir_ + "/" + target + "_" +
-                std::to_string(counter) + ".dylib";
+                std::to_string(counter) + kPluginSuffix;
 
             std::error_code ec;
             std::filesystem::copy_file(src_path, staged_path,

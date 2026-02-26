@@ -20,17 +20,45 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
     ns.input_port_indices.clear();
     ns.output_port_indices.clear();
     ns.param_indices.clear();
+    ns.input_port_types.clear();
+    ns.output_port_types.clear();
+    ns.has_spread_ports = false;
 
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             ns.input_port_indices[desc->ports[i].name] = ns.input_port_count++;
+            ns.input_port_types.push_back(desc->ports[i].type);
         } else {
             ns.output_port_indices[desc->ports[i].name] = ns.output_port_count++;
+            ns.output_port_types.push_back(desc->ports[i].type);
+        }
+        if (desc->ports[i].type == VIVID_PORT_CONTROL_SPREAD) {
+            ns.has_spread_ports = true;
         }
     }
 
     ns.input_buffers.resize(ns.input_port_count, std::vector<float>(kBufferSize, 0.0f));
     ns.output_buffers.resize(ns.output_port_count, std::vector<float>(kBufferSize, 0.0f));
+
+    // Pre-allocate spread data structures
+    ns.spread_inputs.resize(ns.input_port_count);
+    ns.spread_outputs.resize(ns.output_port_count);
+    ns.spread_in_ports.resize(ns.input_port_count);
+    ns.spread_out_ports.resize(ns.output_port_count);
+    for (uint32_t p = 0; p < ns.input_port_count; ++p) {
+        ns.spread_in_ports[p].data = ns.spread_inputs[p].data;
+        ns.spread_in_ports[p].length = 0;
+        ns.spread_in_ports[p].capacity = SpreadSnapshot::kMaxLength;
+    }
+    for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+        ns.spread_out_ports[p].data = ns.spread_outputs[p].data;
+        ns.spread_out_ports[p].length = 0;
+        ns.spread_out_ports[p].capacity = SpreadSnapshot::kMaxLength;
+    }
+
+    // Pre-allocate pointer arrays (avoids audio-thread allocation)
+    ns.in_ptrs.resize(ns.input_port_count);
+    ns.out_ptrs.resize(ns.output_port_count);
 
     ns.param_count = desc->param_count;
     ns.param_values.resize(desc->param_count);
@@ -55,7 +83,9 @@ AudioEngine::~AudioEngine() {
 bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Scheduler& scheduler) {
     nodes_.clear();
     wires_.clear();
+    audio_spread_wires_.clear();
     cross_wires_.clear();
+    cross_spread_wires_.clear();
 
     // Map node id → audio node index
     std::unordered_map<std::string, uint32_t> audio_node_index;
@@ -106,23 +136,35 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
             auto tp_it = to_ns.input_port_indices.find(conn.to_port);
             if (fp_it != from_ns.output_port_indices.end() &&
                 tp_it != to_ns.input_port_indices.end()) {
-                AudioWire w;
-                w.from_node_idx = fi;
-                w.from_port_idx = fp_it->second;
-                w.to_node_idx = ti;
-                w.to_port_idx = tp_it->second;
-                wires_.push_back(w);
+                // Type-check: both CONTROL_SPREAD → AudioSpreadWire, else AudioWire
+                bool from_spread = fp_it->second < from_ns.output_port_types.size() &&
+                                   from_ns.output_port_types[fp_it->second] == VIVID_PORT_CONTROL_SPREAD;
+                bool to_spread = tp_it->second < to_ns.input_port_types.size() &&
+                                 to_ns.input_port_types[tp_it->second] == VIVID_PORT_CONTROL_SPREAD;
+
+                if (from_spread && to_spread) {
+                    AudioSpreadWire sw;
+                    sw.from_node_idx = fi;
+                    sw.from_port_idx = fp_it->second;
+                    sw.to_node_idx = ti;
+                    sw.to_port_idx = tp_it->second;
+                    audio_spread_wires_.push_back(sw);
+                } else {
+                    AudioWire w;
+                    w.from_node_idx = fi;
+                    w.from_port_idx = fp_it->second;
+                    w.to_node_idx = ti;
+                    w.to_port_idx = tp_it->second;
+                    wires_.push_back(w);
+                }
 
                 adj[fi].push_back(ti);
                 in_degree[ti]++;
             }
         } else if (from_audio == audio_node_index.end() && to_audio != audio_node_index.end()) {
-            // Control → Audio cross-domain wire (control output → audio param)
+            // Control → Audio cross-domain wire
             uint32_t ti = to_audio->second;
             auto& to_ns = nodes_[ti];
-
-            auto pp_it = to_ns.param_indices.find(conn.to_port);
-            if (pp_it == to_ns.param_indices.end()) continue;
 
             // Find the control node's output port index
             auto ctrl_it = control_node_map.find(conn.from_node);
@@ -132,12 +174,29 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
             auto cp_it = ctrl_ns.output_port_indices.find(conn.from_port);
             if (cp_it == ctrl_ns.output_port_indices.end()) continue;
 
-            CrossDomainWire cw;
-            cw.control_node_id = conn.from_node;
-            cw.control_output_port_idx = cp_it->second;
-            cw.audio_node_idx = ti;
-            cw.audio_param_idx = pp_it->second;
-            cross_wires_.push_back(cw);
+            // Try param mapping first (scalar control → audio param)
+            auto pp_it = to_ns.param_indices.find(conn.to_port);
+            if (pp_it != to_ns.param_indices.end()) {
+                CrossDomainWire cw;
+                cw.control_node_id = conn.from_node;
+                cw.control_output_port_idx = cp_it->second;
+                cw.audio_node_idx = ti;
+                cw.audio_param_idx = pp_it->second;
+                cross_wires_.push_back(cw);
+            } else {
+                // Try input port mapping (for CONTROL_SPREAD cross-domain wires)
+                auto ip_it = to_ns.input_port_indices.find(conn.to_port);
+                if (ip_it != to_ns.input_port_indices.end() &&
+                    ip_it->second < to_ns.input_port_types.size() &&
+                    to_ns.input_port_types[ip_it->second] == VIVID_PORT_CONTROL_SPREAD) {
+                    CrossDomainSpreadWire sw;
+                    sw.control_node_id = conn.from_node;
+                    sw.control_spread_port_idx = cp_it->second;
+                    sw.audio_node_idx = ti;
+                    sw.audio_port_idx = ip_it->second;
+                    cross_spread_wires_.push_back(sw);
+                }
+            }
         }
     }
 
@@ -164,15 +223,24 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         w.from_node_idx = old_to_new[w.from_node_idx];
         w.to_node_idx = old_to_new[w.to_node_idx];
     }
+    for (auto& sw : audio_spread_wires_) {
+        sw.from_node_idx = old_to_new[sw.from_node_idx];
+        sw.to_node_idx = old_to_new[sw.to_node_idx];
+    }
     for (auto& cw : cross_wires_) {
         cw.audio_node_idx = old_to_new[cw.audio_node_idx];
+    }
+    for (auto& sw : cross_spread_wires_) {
+        sw.audio_node_idx = old_to_new[sw.audio_node_idx];
     }
 
     // Initialize param snapshots
     for (auto& snap : snapshots_) {
         snap.node_params.resize(n);
+        snap.spread_inputs.resize(n);
         for (uint32_t i = 0; i < n; ++i) {
             snap.node_params[i] = nodes_[i].param_values;
+            snap.spread_inputs[i].resize(nodes_[i].input_port_count);
         }
     }
 
@@ -181,6 +249,10 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         snap.rms.resize(n, 0.0f);
         snap.peak.resize(n, 0.0f);
         snap.waveform.resize(n);
+        snap.spread_outputs.resize(n);
+        for (uint32_t i = 0; i < n; ++i) {
+            snap.spread_outputs[i].resize(nodes_[i].output_port_count);
+        }
     }
 
     // Build node_id → index map
@@ -211,6 +283,29 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     m.rms_port_idx = rms_it->second;
                     m.peak_port_idx = peak_it->second;
                     m.waveform_port_idx = wave_it->second;
+
+                    // Build spread output mappings for CONTROL_SPREAD output ports
+                    for (uint32_t op = 0; op < nodes_[ai].output_port_count; ++op) {
+                        if (op < nodes_[ai].output_port_types.size() &&
+                            nodes_[ai].output_port_types[op] == VIVID_PORT_CONTROL_SPREAD) {
+                            // Find matching port name in scheduler node
+                            const auto* desc = nodes_[ai].loader->descriptor();
+                            uint32_t out_idx = 0;
+                            for (uint32_t pi = 0; pi < desc->port_count; ++pi) {
+                                if (desc->ports[pi].direction == VIVID_PORT_OUTPUT) {
+                                    if (out_idx == op) {
+                                        auto sched_it = scheduler.nodes()[si].output_port_indices.find(desc->ports[pi].name);
+                                        if (sched_it != scheduler.nodes()[si].output_port_indices.end()) {
+                                            m.spread_output_mappings.push_back({op, sched_it->second});
+                                        }
+                                        break;
+                                    }
+                                    out_idx++;
+                                }
+                            }
+                        }
+                    }
+
                     analysis_mappings_.push_back(m);
                 }
                 break;
@@ -318,6 +413,25 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
         }
     }
 
+    // Cross-domain spread wires: copy spread data from scheduler to param snapshot
+    for (const auto& sw : cross_spread_wires_) {
+        for (const auto& ctrl_ns : scheduler.nodes()) {
+            if (ctrl_ns.node_id == sw.control_node_id) {
+                auto& dst = snap.spread_inputs[sw.audio_node_idx][sw.audio_port_idx];
+                if (sw.control_spread_port_idx < ctrl_ns.output_spreads.size()) {
+                    const auto& src = ctrl_ns.output_spreads[sw.control_spread_port_idx];
+                    dst.length = std::min(static_cast<uint32_t>(src.size()), SpreadSnapshot::kMaxLength);
+                    if (dst.length > 0) {
+                        std::memcpy(dst.data, src.data(), dst.length * sizeof(float));
+                    }
+                } else {
+                    dst.length = 0;
+                }
+                break;
+            }
+        }
+    }
+
     active_.store(write_idx, std::memory_order_release);
 }
 
@@ -333,6 +447,17 @@ void AudioEngine::inject_analysis(Scheduler& scheduler) {
             scheduler.inject_external_spread(m.scheduler_node_idx, m.waveform_port_idx,
                                              snap.waveform[m.audio_engine_idx].data(),
                                              AnalysisSnapshot::kWaveformSamples);
+        }
+        // Inject CONTROL_SPREAD outputs from audio nodes back to scheduler
+        for (const auto& sm : m.spread_output_mappings) {
+            if (m.audio_engine_idx < snap.spread_outputs.size() &&
+                sm.audio_port_idx < snap.spread_outputs[m.audio_engine_idx].size()) {
+                const auto& ss = snap.spread_outputs[m.audio_engine_idx][sm.audio_port_idx];
+                if (ss.length > 0) {
+                    scheduler.inject_external_spread(m.scheduler_node_idx, sm.scheduler_port_idx,
+                                                     ss.data, ss.length);
+                }
+            }
         }
     }
 }
@@ -403,8 +528,10 @@ bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry
     uint32_t n = static_cast<uint32_t>(nodes_.size());
     for (auto& snap : snapshots_) {
         snap.node_params.resize(n);
+        snap.spread_inputs.resize(n);
         for (uint32_t i = 0; i < n; ++i) {
             snap.node_params[i] = nodes_[i].param_values;
+            snap.spread_inputs[i].resize(nodes_[i].input_port_count);
         }
     }
 
@@ -431,7 +558,9 @@ void AudioEngine::shutdown() {
     }
     nodes_.clear();
     wires_.clear();
+    audio_spread_wires_.clear();
     cross_wires_.clear();
+    cross_spread_wires_.clear();
 
     std::fprintf(stderr, "[vivid] AudioEngine: shutdown\n");
 }
@@ -451,6 +580,12 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
         if (i < snap.node_params.size()) {
             for (size_t p = 0; p < ns.param_values.size() && p < snap.node_params[i].size(); ++p) {
                 ns.param_values[p] = snap.node_params[i][p];
+            }
+        }
+        // Apply spread inputs from param snapshot
+        if (ns.has_spread_ports && i < snap.spread_inputs.size()) {
+            for (size_t p = 0; p < ns.spread_inputs.size() && p < snap.spread_inputs[i].size(); ++p) {
+                ns.spread_inputs[p] = snap.spread_inputs[i][p];
             }
         }
     }
@@ -478,19 +613,27 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                 }
             }
 
-            // Build pointer arrays for VividAudioState
-            std::vector<float*> in_ptrs(ns.input_port_count);
-            std::vector<float*> out_ptrs(ns.output_port_count);
+            // Build pointer arrays for VividAudioState (pre-allocated)
             for (uint32_t p = 0; p < ns.input_port_count; ++p)
-                in_ptrs[p] = ns.input_buffers[p].data();
+                ns.in_ptrs[p] = ns.input_buffers[p].data();
             for (uint32_t p = 0; p < ns.output_port_count; ++p)
-                out_ptrs[p] = ns.output_buffers[p].data();
+                ns.out_ptrs[p] = ns.output_buffers[p].data();
 
             VividAudioState audio_state{};
-            audio_state.input_buffers = in_ptrs.data();
-            audio_state.output_buffers = out_ptrs.data();
+            audio_state.input_buffers = ns.in_ptrs.data();
+            audio_state.output_buffers = ns.out_ptrs.data();
             audio_state.buffer_size = chunk;
             audio_state.sample_rate = kSampleRate;
+
+            // Set up spread ports for nodes that have them
+            if (ns.has_spread_ports) {
+                for (uint32_t p = 0; p < ns.input_port_count; ++p) {
+                    ns.spread_in_ports[p].length = ns.spread_inputs[p].length;
+                }
+                for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+                    ns.spread_out_ports[p].length = 0;
+                }
+            }
 
             double time = static_cast<double>(audio_frame_ + frames_written) / kSampleRate;
 
@@ -503,8 +646,29 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             ctx.output_values = nullptr;
             ctx.gpu = nullptr;
             ctx.audio = &audio_state;
+            ctx.input_spreads = ns.has_spread_ports ? ns.spread_in_ports.data() : nullptr;
+            ctx.output_spreads = ns.has_spread_ports ? ns.spread_out_ports.data() : nullptr;
 
             ns.loader->process(ns.instance, &ctx);
+
+            // Read back spread output lengths
+            if (ns.has_spread_ports) {
+                for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+                    ns.spread_outputs[p].length = ns.spread_out_ports[p].length;
+                    // Data is already in spread_outputs[p].data via pointer alias
+                }
+            }
+
+            // Route spread outputs to downstream audio nodes via audio spread wires
+            for (const auto& sw : audio_spread_wires_) {
+                if (sw.from_node_idx == ni) {
+                    const auto& src = ns.spread_outputs[sw.from_port_idx];
+                    auto& dst = nodes_[sw.to_node_idx].spread_inputs[sw.to_port_idx];
+                    dst.length = src.length;
+                    if (src.length > 0)
+                        std::memcpy(dst.data, src.data, src.length * sizeof(float));
+                }
+            }
         }
 
         // Copy sink node's audio to device buffer
@@ -556,6 +720,13 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             auto& wave = analysis.waveform[ni];
             for (uint32_t w = 0; w < kWaveN; ++w) {
                 wave[w] = ring[(pos + w) % 1024];
+            }
+        }
+
+        // Copy spread outputs to analysis snapshot
+        if (nodes_[ni].has_spread_ports) {
+            for (uint32_t p = 0; p < nodes_[ni].output_port_count; ++p) {
+                analysis.spread_outputs[ni][p] = nodes_[ni].spread_outputs[p];
             }
         }
     }

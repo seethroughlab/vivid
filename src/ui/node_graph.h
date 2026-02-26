@@ -82,6 +82,10 @@ private:
     void draw_graph(Renderer2D& tr);
     void draw_connections(Renderer2D& tr);
     void draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h);
+    void draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_chooser(Renderer2D& tr);
     void draw_preview_wire(Renderer2D& tr);
     void draw_wire_tooltip(Renderer2D& tr);

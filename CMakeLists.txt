@@ -60,60 +60,85 @@ target_link_libraries(rtmidi PUBLIC
 add_library(vivid_operator_api INTERFACE)
 target_include_directories(vivid_operator_api INTERFACE src)
 
+# --- Operator plugin suffix (platform-aware) ---
+if(APPLE)
+    set(VIVID_PLUGIN_SUFFIX ".dylib")
+elseif(WIN32)
+    set(VIVID_PLUGIN_SUFFIX ".dll")
+else()
+    set(VIVID_PLUGIN_SUFFIX ".so")
+endif()
+
 # --- Operator plugins (dynamically loaded) ---
 add_library(lfo MODULE operators/control/lfo/lfo.cpp)
-set_target_properties(lfo PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(lfo PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(lfo PRIVATE vivid_operator_api)
 
 add_library(clock MODULE operators/control/clock/clock.cpp)
-set_target_properties(clock PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(clock PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(clock PRIVATE vivid_operator_api)
 
 add_library(math MODULE operators/control/math/math.cpp)
-set_target_properties(math PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(math PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(math PRIVATE vivid_operator_api)
 
 add_library(envelope MODULE operators/control/envelope/envelope.cpp)
-set_target_properties(envelope PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(envelope PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(envelope PRIVATE vivid_operator_api)
 
 add_library(midi_input MODULE operators/control/midi_input/midi_input.cpp)
-set_target_properties(midi_input PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(midi_input PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(midi_input PRIVATE vivid_operator_api rtmidi)
 
 add_library(fft_analysis MODULE operators/control/fft_analysis/fft_analysis.cpp)
-set_target_properties(fft_analysis PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(fft_analysis PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(fft_analysis PRIVATE vivid_operator_api)
 
 # --- GPU operator plugins ---
 add_library(noise MODULE operators/gpu/noise/noise.cpp)
-set_target_properties(noise PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(noise PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(noise PRIVATE vivid_operator_api webgpu)
 
 add_library(shape MODULE operators/gpu/shape/shape.cpp)
-set_target_properties(shape PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(shape PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(shape PRIVATE vivid_operator_api webgpu)
 
 add_library(bars MODULE operators/gpu/bars/bars.cpp)
-set_target_properties(bars PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(bars PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(bars PRIVATE vivid_operator_api webgpu)
 
 add_library(composite MODULE operators/gpu/composite/composite.cpp)
-set_target_properties(composite PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(composite PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(composite PRIVATE vivid_operator_api webgpu)
 
 # --- Audio operator plugins ---
 add_library(oscillator MODULE operators/audio/oscillator/oscillator.cpp)
-set_target_properties(oscillator PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(oscillator PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(oscillator PRIVATE vivid_operator_api)
 
 add_library(gain MODULE operators/audio/gain/gain.cpp)
-set_target_properties(gain PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(gain PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(gain PRIVATE vivid_operator_api)
 
 add_library(drum MODULE operators/audio/drum/drum.cpp)
-set_target_properties(drum PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(drum PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(drum PRIVATE vivid_operator_api)
+
+add_library(note_pattern MODULE operators/control/note_pattern/note_pattern.cpp)
+set_target_properties(note_pattern PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(note_pattern PRIVATE vivid_operator_api)
+
+add_library(polysynth MODULE operators/audio/polysynth/polysynth.cpp)
+set_target_properties(polysynth PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(polysynth PRIVATE vivid_operator_api)
+
+add_library(spread_adsr MODULE operators/audio/spread_adsr/spread_adsr.cpp)
+set_target_properties(spread_adsr PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(spread_adsr PRIVATE vivid_operator_api)
+
+add_library(spread_lfo MODULE operators/audio/spread_lfo/spread_lfo.cpp)
+set_target_properties(spread_lfo PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(spread_lfo PRIVATE vivid_operator_api)
 
 # --- UI library ---
 add_library(vivid_ui STATIC
@@ -155,6 +180,7 @@ configure_file(graphs/audio_demo.json ${CMAKE_BINARY_DIR}/audio_demo.json COPYON
 configure_file(graphs/av_sync_demo.json ${CMAKE_BINARY_DIR}/av_sync_demo.json COPYONLY)
 configure_file(graphs/midi_demo.json ${CMAKE_BINARY_DIR}/midi_demo.json COPYONLY)
 configure_file(graphs/fft_bars_demo.json ${CMAKE_BINARY_DIR}/fft_bars_demo.json COPYONLY)
+configure_file(graphs/polysynth_demo.json ${CMAKE_BINARY_DIR}/polysynth_demo.json COPYONLY)
 
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)
@@ -177,11 +203,11 @@ enable_testing()
 # --- Tests ---
 # Test operator plugins (two versions of the same operator)
 add_library(test_op_v1 MODULE tests/operators/test_op_v1.cpp)
-set_target_properties(test_op_v1 PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(test_op_v1 PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(test_op_v1 PRIVATE vivid_operator_api)
 
 add_library(test_op_v2 MODULE tests/operators/test_op_v2.cpp)
-set_target_properties(test_op_v2 PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(test_op_v2 PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(test_op_v2 PRIVATE vivid_operator_api)
 
 # Hot-reload integration test (no GPU, no audio, no window)
@@ -231,16 +257,20 @@ add_test(NAME test_control_server COMMAND test_control_server WORKING_DIRECTORY 
 
 # Audio test operator plugin
 add_library(audio_test_op MODULE tests/operators/audio_test_op.cpp)
-set_target_properties(audio_test_op PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(audio_test_op PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(audio_test_op PRIVATE vivid_operator_api)
 
 add_library(control_pass_op MODULE tests/operators/control_pass_op.cpp)
-set_target_properties(control_pass_op PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(control_pass_op PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(control_pass_op PRIVATE vivid_operator_api)
 
 add_library(spread_source_op MODULE tests/operators/spread_source_op.cpp)
-set_target_properties(spread_source_op PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(spread_source_op PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(spread_source_op PRIVATE vivid_operator_api)
+
+add_library(audio_spread_op MODULE tests/operators/audio_spread_op.cpp)
+set_target_properties(audio_spread_op PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(audio_spread_op PRIVATE vivid_operator_api)
 
 # AudioEngine integration test (null audio backend, no GPU, no window)
 add_executable(test_audio_engine
@@ -293,7 +323,7 @@ add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTOR
 
 # GPU operator plugin for testing (solid color fill)
 add_library(gpu_fill_op MODULE tests/operators/gpu_fill_op.cpp)
-set_target_properties(gpu_fill_op PROPERTIES PREFIX "" SUFFIX ".dylib")
+set_target_properties(gpu_fill_op PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(gpu_fill_op PRIVATE vivid_operator_api webgpu)
 
 # GPU operator integration tests (headless WebGPU, no window)
@@ -309,7 +339,41 @@ target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api yyjson webgp
 add_dependencies(test_gpu_operators gpu_fill_op shape)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Cross-domain spread integration test
+add_executable(test_cross_domain_spread
+    tests/test_cross_domain_spread.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+)
+target_include_directories(test_cross_domain_spread PRIVATE src)
+target_link_libraries(test_cross_domain_spread PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu)
+add_dependencies(test_cross_domain_spread spread_source_op audio_spread_op)
+add_test(NAME test_cross_domain_spread COMMAND test_cross_domain_spread
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Audio spread wire integration test
+add_executable(test_audio_spread_wire
+    tests/test_audio_spread_wire.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+)
+target_include_directories(test_audio_spread_wire PRIVATE src)
+target_link_libraries(test_audio_spread_wire PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu)
+add_dependencies(test_audio_spread_wire spread_source_op audio_spread_op spread_adsr)
+add_test(NAME test_audio_spread_wire COMMAND test_audio_spread_wire
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Copy test graphs to build directory
 configure_file(tests/graphs/test_reload.json ${CMAKE_BINARY_DIR}/test_reload.json COPYONLY)
 configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runtime_api.json COPYONLY)
 configure_file(tests/graphs/test_audio_engine.json ${CMAKE_BINARY_DIR}/test_audio_engine.json COPYONLY)
+configure_file(tests/graphs/test_cross_domain_spread.json ${CMAKE_BINARY_DIR}/test_cross_domain_spread.json COPYONLY)
+configure_file(tests/graphs/test_audio_spread_wire.json ${CMAKE_BINARY_DIR}/test_audio_spread_wire.json COPYONLY)

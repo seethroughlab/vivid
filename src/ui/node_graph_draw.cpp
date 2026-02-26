@@ -320,26 +320,36 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         return;
     }
 
-    const auto& op = *sel_node->op_info;
     float px = insp_x + kInspPadX;
     float py = kPerfBarH + 8;
-    float panel_w = kInspContentW;
 
-    // Header: type name
+    draw_inspector_header(tr, *sel_node, px, py);
+    draw_inspector_params(tr, *sel_node, px, py);
+    draw_inspector_resolution(tr, *sel_node, px, py);
+    draw_inspector_outputs(tr, *sel_node, px, py);
+}
+
+void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node,
+                                        float px, float& py) {
+    const auto& op = *node.op_info;
     tr.draw_text(px, py, op.name.c_str(), 1.0f, 1.0f, 1.0f);
     py += kLineH;
-    // Node ID
     tr.draw_text(px, py, selected_node_id_.c_str(), kDimText[0], kDimText[1], kDimText[2]);
     py += kLineH + 8;
 
     // Separator
-    tr.draw_rect(px, py, panel_w, 1, 0.25f, 0.27f, 0.30f);
+    tr.draw_rect(px, py, kInspContentW, 1, 0.25f, 0.27f, 0.30f);
     py += 8;
+}
 
-    // Parameters
+void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node,
+                                        float px, float& py) {
+    const auto& op = *node.op_info;
+    float panel_w = kInspContentW;
+
     for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
         const auto& pd = op.params[pi];
-        float val = sel_node->param_values[pi];
+        float val = node.param_values[pi];
 
         bool is_editing_this = editing_param_ &&
                                edit_node_id_ == selected_node_id_ &&
@@ -431,84 +441,88 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             py += sh + 10;
         }
     }
+}
 
-    // GPU texture resolution (editable for generators, read-only for filters)
-    if (sel_node->is_gpu && sel_node->gpu_tex_width > 0 && sel_node->gpu_tex_height > 0) {
-        bool is_generator = sel_node->is_generator;
+void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node,
+                                            float px, float& py) {
+    if (!node.is_gpu || node.gpu_tex_width == 0 || node.gpu_tex_height == 0)
+        return;
 
-        py += 4;
-        tr.draw_rect(px, py, panel_w, 1, 0.25f, 0.27f, 0.30f);
-        py += 8;
+    bool is_generator = node.is_generator;
+    float panel_w = kInspContentW;
 
-        tr.draw_text(px, py, "Resolution", kDimText[0], kDimText[1], kDimText[2]);
-        py += kLineH;
+    py += 4;
+    tr.draw_rect(px, py, panel_w, 1, 0.25f, 0.27f, 0.30f);
+    py += 8;
 
-        // Width
-        bool editing_w = editing_resolution_ &&
-                         edit_res_node_id_ == selected_node_id_ && edit_res_is_width_;
-        bool editing_h = editing_resolution_ &&
-                         edit_res_node_id_ == selected_node_id_ && !edit_res_is_width_;
+    tr.draw_text(px, py, "Resolution", kDimText[0], kDimText[1], kDimText[2]);
+    py += kLineH;
 
-        std::string w_str = editing_w ? (edit_buffer_ + "_") : format_uint(sel_node->gpu_tex_width);
-        std::string h_str = editing_h ? (edit_buffer_ + "_") : format_uint(sel_node->gpu_tex_height);
+    bool editing_w = editing_resolution_ &&
+                     edit_res_node_id_ == selected_node_id_ && edit_res_is_width_;
+    bool editing_h = editing_resolution_ &&
+                     edit_res_node_id_ == selected_node_id_ && !edit_res_is_width_;
 
-        float val_x = px + 4;
-        float w_text_w = kResInputW;
+    std::string w_str = editing_w ? (edit_buffer_ + "_") : format_uint(node.gpu_tex_width);
+    std::string h_str = editing_h ? (edit_buffer_ + "_") : format_uint(node.gpu_tex_height);
 
-        if (is_generator) {
-            // Clickable width value
-            if (editing_w) {
-                tr.draw_rect(val_x, py, w_text_w, kLineH, 0.12f, 0.14f, 0.18f);
-            }
-            tr.draw_text(val_x, py, w_str.c_str(),
-                         editing_w ? 1.0f : 0.8f,
-                         editing_w ? 1.0f : 0.82f,
-                         editing_w ? 1.0f : 0.85f);
-            resolution_rects_.push_back({val_x, py, w_text_w, kLineH,
-                                         selected_node_id_, true});
-        } else {
-            tr.draw_text(val_x, py, w_str.c_str(), 0.5f, 0.52f, 0.55f);
+    float val_x = px + 4;
+
+    if (is_generator) {
+        if (editing_w) {
+            tr.draw_rect(val_x, py, kResInputW, kLineH, 0.12f, 0.14f, 0.18f);
         }
-
-        tr.draw_text(val_x + w_text_w, py, " x ", kDimText[0], kDimText[1], kDimText[2]);
-
-        float h_val_x = val_x + w_text_w + 24.0f;
-
-        if (is_generator) {
-            // Clickable height value
-            if (editing_h) {
-                tr.draw_rect(h_val_x, py, w_text_w, kLineH, 0.12f, 0.14f, 0.18f);
-            }
-            tr.draw_text(h_val_x, py, h_str.c_str(),
-                         editing_h ? 1.0f : 0.8f,
-                         editing_h ? 1.0f : 0.82f,
-                         editing_h ? 1.0f : 0.85f);
-            resolution_rects_.push_back({h_val_x, py, w_text_w, kLineH,
-                                         selected_node_id_, false});
-        } else {
-            tr.draw_text(h_val_x, py, h_str.c_str(), 0.5f, 0.52f, 0.55f);
-        }
-
-        py += kLineH;
+        tr.draw_text(val_x, py, w_str.c_str(),
+                     editing_w ? 1.0f : 0.8f,
+                     editing_w ? 1.0f : 0.82f,
+                     editing_w ? 1.0f : 0.85f);
+        resolution_rects_.push_back({val_x, py, kResInputW, kLineH,
+                                     selected_node_id_, true});
+    } else {
+        tr.draw_text(val_x, py, w_str.c_str(), 0.5f, 0.52f, 0.55f);
     }
+
+    tr.draw_text(val_x + kResInputW, py, " x ", kDimText[0], kDimText[1], kDimText[2]);
+
+    float h_val_x = val_x + kResInputW + 24.0f;
+
+    if (is_generator) {
+        if (editing_h) {
+            tr.draw_rect(h_val_x, py, kResInputW, kLineH, 0.12f, 0.14f, 0.18f);
+        }
+        tr.draw_text(h_val_x, py, h_str.c_str(),
+                     editing_h ? 1.0f : 0.8f,
+                     editing_h ? 1.0f : 0.82f,
+                     editing_h ? 1.0f : 0.85f);
+        resolution_rects_.push_back({h_val_x, py, kResInputW, kLineH,
+                                     selected_node_id_, false});
+    } else {
+        tr.draw_text(h_val_x, py, h_str.c_str(), 0.5f, 0.52f, 0.55f);
+    }
+
+    py += kLineH;
+}
+
+void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node,
+                                         float px, float& py) {
+    float panel_w = kInspContentW;
 
     // Separator before outputs
     py += 4;
     tr.draw_rect(px, py, panel_w, 1, 0.25f, 0.27f, 0.30f);
     py += 8;
 
-    // Output values
     tr.draw_text(px, py, "Outputs", kDimText[0], kDimText[1], kDimText[2]);
     py += kLineH;
 
-    auto sorted_outs = sorted_ports(sel_node->output_port_indices);
+    auto sorted_outs = sorted_ports(node.output_port_indices);
 
     for (const auto& [idx, name] : sorted_outs) {
         std::string line;
-        if (idx < sel_node->output_spreads.size() && !sel_node->output_spreads[idx].empty()) {
-            line = name + " = [" + std::to_string(sel_node->output_spreads[idx].size()) + " bins]";
+        if (idx < node.output_spreads.size() && !node.output_spreads[idx].empty()) {
+            line = name + " = [" + std::to_string(node.output_spreads[idx].size()) + " bins]";
         } else {
-            line = name + " = " + format_float(sel_node->output_values[idx]);
+            line = name + " = " + format_float(node.output_values[idx]);
         }
         tr.draw_text(px, py, line.c_str(), kDimText[0], kDimText[1], kDimText[2]);
         py += kLineH;

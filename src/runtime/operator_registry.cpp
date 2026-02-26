@@ -6,7 +6,14 @@
 
 namespace vivid {
 
-static constexpr size_t kDylibSuffixLen = 6;  // strlen(".dylib")
+// Platform-specific shared library suffix
+#if defined(__APPLE__)
+static constexpr const char* kPluginSuffix = ".dylib";
+#elif defined(_WIN32)
+static constexpr const char* kPluginSuffix = ".dll";
+#else
+static constexpr const char* kPluginSuffix = ".so";
+#endif
 
 bool OperatorRegistry::scan(const char* directory) {
     DIR* dir = opendir(directory);
@@ -15,13 +22,15 @@ bool OperatorRegistry::scan(const char* directory) {
         return false;
     }
 
+    size_t suffix_len = std::strlen(kPluginSuffix);
+
     struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr) {
         const char* name = entry->d_name;
         size_t len = std::strlen(name);
-        if (len < kDylibSuffixLen + 1 || std::strcmp(name + len - kDylibSuffixLen, ".dylib") != 0)
+        if (len < suffix_len + 1 || std::strcmp(name + len - suffix_len, kPluginSuffix) != 0)
             continue;
-        // Skip system/library dylibs (lib*.dylib); operators are name.dylib
+        // Skip system/library shared objects (lib*); operators are name.dylib/.so/.dll
         if (std::strncmp(name, "lib", 3) == 0)
             continue;
 
@@ -35,7 +44,7 @@ bool OperatorRegistry::scan(const char* directory) {
         std::fprintf(stderr, "[vivid] Registry: loaded %s from %s\n", type_name.c_str(), name);
 
         // Map cmake target name (filename stem) → descriptor type name
-        std::string target_name(name, len - kDylibSuffixLen);  // strip ".dylib"
+        std::string target_name(name, len - suffix_len);
         target_to_type_[target_name] = type_name;
 
         loaders_[type_name] = std::move(loader);

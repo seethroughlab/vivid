@@ -222,11 +222,27 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
         oss << "\n  outputs:";
         for (const auto& [name, idx] : ns.output_port_indices) {
             oss << " " << name << "=" << ns.output_values[idx];
+            if (idx < ns.output_spreads.size() && !ns.output_spreads[idx].empty()) {
+                oss << " [";
+                for (size_t si = 0; si < ns.output_spreads[idx].size(); ++si) {
+                    if (si > 0) oss << ",";
+                    oss << ns.output_spreads[idx][si];
+                }
+                oss << "]";
+            }
         }
         if (!ns.input_port_indices.empty()) {
             oss << "\n  inputs:";
             for (const auto& [name, idx] : ns.input_port_indices) {
                 oss << " " << name << "=" << ns.input_values[idx];
+                if (idx < ns.input_spreads.size() && !ns.input_spreads[idx].empty()) {
+                    oss << " [";
+                    for (size_t si = 0; si < ns.input_spreads[idx].size(); ++si) {
+                        if (si > 0) oss << ",";
+                        oss << ns.input_spreads[idx][si];
+                    }
+                    oss << "]";
+                }
             }
         }
         return {true, oss.str()};

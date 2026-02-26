@@ -16,6 +16,12 @@ namespace vivid {
 
 class Scheduler;
 
+struct SpreadSnapshot {
+    static constexpr uint32_t kMaxLength = 16;
+    float data[kMaxLength] = {};
+    uint32_t length = 0;
+};
+
 struct AudioNodeState {
     std::string node_id;
     OperatorLoader* loader;
@@ -33,10 +39,31 @@ struct AudioNodeState {
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
     std::unordered_map<std::string, uint32_t> param_indices;
+
+    // Port type arrays (indexed by input/output port order)
+    std::vector<VividPortType> input_port_types;
+    std::vector<VividPortType> output_port_types;
+    bool has_spread_ports = false;
+
+    // Spread data for cross-domain bridge
+    std::vector<SpreadSnapshot> spread_inputs;    // [input_port_idx]
+    std::vector<SpreadSnapshot> spread_outputs;   // [output_port_idx]
+    std::vector<VividSpreadPort> spread_in_ports;  // pre-allocated for process ctx
+    std::vector<VividSpreadPort> spread_out_ports;
+
+    // Pre-allocated pointer arrays (avoids audio-thread allocation)
+    std::vector<float*> in_ptrs;
+    std::vector<float*> out_ptrs;
 };
 
 // Wire within the audio subgraph (audio output → audio input)
 struct AudioWire {
+    uint32_t from_node_idx, from_port_idx;
+    uint32_t to_node_idx, to_port_idx;
+};
+
+// Wire for CONTROL_SPREAD data between audio-domain nodes
+struct AudioSpreadWire {
     uint32_t from_node_idx, from_port_idx;
     uint32_t to_node_idx, to_port_idx;
 };
@@ -49,8 +76,17 @@ struct CrossDomainWire {
     uint32_t audio_param_idx;
 };
 
+// Cross-domain wire: control spread output → audio spread input
+struct CrossDomainSpreadWire {
+    std::string control_node_id;
+    uint32_t control_spread_port_idx;   // scheduler output port index
+    uint32_t audio_node_idx;
+    uint32_t audio_port_idx;            // unified input port index
+};
+
 struct ParamSnapshot {
     std::vector<std::vector<float>> node_params;  // [audio_node_idx][param_idx]
+    std::vector<std::vector<SpreadSnapshot>> spread_inputs; // [audio_node_idx][input_port_idx]
 };
 
 struct AnalysisSnapshot {
@@ -58,6 +94,7 @@ struct AnalysisSnapshot {
     std::vector<float> rms;   // [audio_node_idx]
     std::vector<float> peak;  // [audio_node_idx]
     std::vector<std::array<float, kWaveformSamples>> waveform; // [audio_node_idx]
+    std::vector<std::vector<SpreadSnapshot>> spread_outputs; // [audio_node_idx][output_port_idx]
 };
 
 struct AudioToControlMapping {
@@ -66,6 +103,13 @@ struct AudioToControlMapping {
     uint32_t rms_port_idx;        // "rms" output port index in scheduler
     uint32_t peak_port_idx;       // "peak" output port index in scheduler
     uint32_t waveform_port_idx;   // "waveform" output port index in scheduler
+
+    // Spread output mappings: audio spread output → scheduler spread output
+    struct SpreadOutputMapping {
+        uint32_t audio_port_idx;      // output port in audio engine node
+        uint32_t scheduler_port_idx;  // output port in scheduler node
+    };
+    std::vector<SpreadOutputMapping> spread_output_mappings;
 };
 
 class AudioEngine {
@@ -102,7 +146,9 @@ private:
 
     std::vector<AudioNodeState> nodes_;
     std::vector<AudioWire> wires_;
+    std::vector<AudioSpreadWire> audio_spread_wires_;
     std::vector<CrossDomainWire> cross_wires_;
+    std::vector<CrossDomainSpreadWire> cross_spread_wires_;
 
     // Double-buffered param bridge (control→audio)
     ParamSnapshot snapshots_[2];

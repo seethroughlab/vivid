@@ -163,6 +163,31 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                         yyjson_mut_obj_add_real(doc, p, "current_value",
                             static_cast<double>(ns->output_values[oi->second]));
                     }
+                    if (oi != ns->output_port_indices.end() &&
+                        oi->second < ns->output_spreads.size() &&
+                        !ns->output_spreads[oi->second].empty()) {
+                        yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                        for (float sv : ns->output_spreads[oi->second])
+                            yyjson_mut_arr_add_real(doc, spread_arr, static_cast<double>(sv));
+                        yyjson_mut_obj_add_val(doc, p, "spread", spread_arr);
+                    }
+                }
+
+                if (pd.direction == VIVID_PORT_INPUT && ns) {
+                    auto ii = ns->input_port_indices.find(pd.name);
+                    if (ii != ns->input_port_indices.end() &&
+                        ii->second < ns->input_values.size()) {
+                        yyjson_mut_obj_add_real(doc, p, "current_value",
+                            static_cast<double>(ns->input_values[ii->second]));
+                    }
+                    if (ii != ns->input_port_indices.end() &&
+                        ii->second < ns->input_spreads.size() &&
+                        !ns->input_spreads[ii->second].empty()) {
+                        yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                        for (float sv : ns->input_spreads[ii->second])
+                            yyjson_mut_arr_add_real(doc, spread_arr, static_cast<double>(sv));
+                        yyjson_mut_obj_add_val(doc, p, "spread", spread_arr);
+                    }
                 }
 
                 if (pd.direction == VIVID_PORT_INPUT)
