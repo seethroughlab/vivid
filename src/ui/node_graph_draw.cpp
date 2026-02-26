@@ -4,8 +4,10 @@
 #include "ui/thumbnail_cache.h"
 #include "ui/thumbnail_renderer.h"
 #include "common/string_util.h"
+#include "common/system_info.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace vivid::ui {
 
@@ -320,7 +322,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
 
     const auto& op = *sel_node->op_info;
     float px = insp_x + 16;
-    float py = 16;
+    float py = kPerfBarH + 8;
     float panel_w = kInspectorW - 32;
 
     // Header: type name
@@ -599,6 +601,8 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
 
     // Semi-transparent scrim so wires are visible over the visualization
     tr.draw_rect(0, 0, static_cast<float>(w), static_cast<float>(h), 0.05f, 0.06f, 0.07f, 0.55f);
+
+    draw_perf_bar(tr);
 
     draw_graph(tr);
     draw_connections(tr);

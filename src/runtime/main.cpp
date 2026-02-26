@@ -698,11 +698,14 @@ int main(int argc, char* argv[]) {
         if (!gpu.begin_frame(frame))
             continue;
 
+        // --- Compute dt unconditionally (for perf stats even with no graph) ---
+        double now = glfwGetTime();
+        double dt = now - prev_time;
+        prev_time = now;
+        graph_ui.set_dt(static_cast<float>(dt));
+
         // --- Tick graph ---
         if (graph_loaded) {
-            double now = glfwGetTime();
-            double dt = now - prev_time;
-            prev_time = now;
 
             // Base GPU state (per-node textures are set by scheduler)
             VividGpuState gpu_state{};

@@ -86,6 +86,14 @@ private:
     void draw_preview_wire(Renderer2D& tr);
     void draw_wire_tooltip(Renderer2D& tr);
 
+    // --- Performance bar ---
+    void draw_perf_bar(Renderer2D& tr);
+    void draw_perf_sparkline(Renderer2D& tr, const float* buf, uint32_t buf_len,
+                             uint32_t write_idx, bool filled,
+                             float x, float y, float w, float h,
+                             float r, float g, float b, float a);
+    void draw_perf_expanded(Renderer2D& tr);
+
     // --- Chooser ---
     void rebuild_chooser_items();
 
@@ -246,6 +254,38 @@ private:
 
     // UI visibility toggle (tilde key)
     bool visible_ = true;
+
+    // --- Performance stats ---
+    struct PerfRingBuffer {
+        float values[kPerfHistoryLen]{};
+        uint32_t write_idx = 0;
+        bool filled = false;
+
+        void push(float v) {
+            values[write_idx] = v;
+            write_idx = (write_idx + 1) % kPerfHistoryLen;
+            if (write_idx == 0) filled = true;
+        }
+        uint32_t count() const { return filled ? kPerfHistoryLen : write_idx; }
+        float newest() const {
+            uint32_t idx = (write_idx == 0) ? kPerfHistoryLen - 1 : write_idx - 1;
+            return values[idx];
+        }
+    };
+
+    PerfRingBuffer fps_history_;
+    PerfRingBuffer frame_time_history_;
+    PerfRingBuffer memory_history_;
+
+    float dt_ = 0.0f;
+    float smoothed_fps_ = 0.0f;
+    float smoothed_ms_ = 0.0f;
+    float smoothed_mem_mb_ = 0.0f;
+    uint64_t perf_frame_counter_ = 0;
+
+    bool perf_mem_hovered_ = false;
+    float perf_mem_graph_x_ = 0.0f;
+    float perf_mem_graph_y_ = 0.0f;
 };
 
 } // namespace vivid::ui
