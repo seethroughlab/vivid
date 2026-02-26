@@ -1,8 +1,8 @@
 #include "runtime/thumbnail_renderer.h"
-#include "operator_api/gpu_common.h"
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <algorithm>
 
 namespace vivid {
 
@@ -10,24 +10,44 @@ static WGPUStringView to_sv(const char* s) {
     return { s, s ? std::strlen(s) : 0 };
 }
 
-// Same blit shader as FullscreenBlit — fullscreen triangle fills the viewport
-static const char* kThumbFragment = R"(
+// Vertex shader positions an oversized triangle at the thumbnail's pixel rect
+// by converting pixel coords to NDC via a uniform buffer.
+// Fragment shader samples the source texture.
+static const char* kThumbShader = R"(
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) uv: vec2f,
 };
 
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
+struct ThumbRect {
+    rect: vec4f,       // x, y, w, h in pixels
+    surface: vec2f,    // surface width, height
+    _pad: vec2f,
+};
 
 @group(0) @binding(0) var textureSampler: sampler;
 @group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@group(1) @binding(0) var<uniform> thumb: ThumbRect;
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    var uvs = array<vec2f, 3>(
+        vec2f(0.0, 0.0),
+        vec2f(2.0, 0.0),
+        vec2f(0.0, 2.0)
+    );
+    let uv = uvs[vertexIndex];
+    let px = thumb.rect.x + uv.x * thumb.rect.z;
+    let py = thumb.rect.y + uv.y * thumb.rect.w;
+    let ndc = vec2f(
+        px / thumb.surface.x * 2.0 - 1.0,
+        1.0 - py / thumb.surface.y * 2.0
+    );
+    var out: VertexOutput;
+    out.position = vec4f(ndc, 0.0, 1.0);
+    out.uv = uv;
+    return out;
+}
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
@@ -35,17 +55,14 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
-static std::string make_thumb_shader() {
-    return std::string(vivid::gpu::FULLSCREEN_VERTEX_WGSL) + kThumbFragment;
-}
-
-bool ThumbnailRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format) {
+bool ThumbnailRenderer::init(WGPUDevice device, WGPUQueue queue,
+                              WGPUTextureFormat surface_format) {
     device_ = device;
+    queue_ = queue;
 
-    std::string shader_src = make_thumb_shader();
     WGPUShaderSourceWGSL wgsl_src{};
     wgsl_src.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgsl_src.code = to_sv(shader_src.c_str());
+    wgsl_src.code = to_sv(kThumbShader);
 
     WGPUShaderModuleDescriptor shader_desc{};
     shader_desc.nextInChain = &wgsl_src.chain;
@@ -68,32 +85,68 @@ bool ThumbnailRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format
     sampler_desc.maxAnisotropy = 1;
     sampler_ = wgpuDeviceCreateSampler(device_, &sampler_desc);
 
-    // Bind group layout: sampler (0) + texture (1)
-    WGPUBindGroupLayoutEntry entries[2]{};
-    entries[0].binding = 0;
-    entries[0].visibility = WGPUShaderStage_Fragment;
-    entries[0].sampler.type = WGPUSamplerBindingType_Filtering;
+    // Group 0: sampler + texture
+    WGPUBindGroupLayoutEntry tex_entries[2]{};
+    tex_entries[0].binding = 0;
+    tex_entries[0].visibility = WGPUShaderStage_Fragment;
+    tex_entries[0].sampler.type = WGPUSamplerBindingType_Filtering;
 
-    entries[1].binding = 1;
-    entries[1].visibility = WGPUShaderStage_Fragment;
-    entries[1].texture.sampleType = WGPUTextureSampleType_Float;
-    entries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
-    entries[1].texture.multisampled = false;
+    tex_entries[1].binding = 1;
+    tex_entries[1].visibility = WGPUShaderStage_Fragment;
+    tex_entries[1].texture.sampleType = WGPUTextureSampleType_Float;
+    tex_entries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+    tex_entries[1].texture.multisampled = false;
 
     WGPUBindGroupLayoutDescriptor bgl_desc{};
     bgl_desc.label = to_sv("Thumb BGL");
     bgl_desc.entryCount = 2;
-    bgl_desc.entries = entries;
+    bgl_desc.entries = tex_entries;
     bind_layout_ = wgpuDeviceCreateBindGroupLayout(device_, &bgl_desc);
 
-    // Pipeline layout
+    // Group 1: rect uniform (dynamic offset)
+    WGPUBindGroupLayoutEntry rect_entry{};
+    rect_entry.binding = 0;
+    rect_entry.visibility = WGPUShaderStage_Vertex;
+    rect_entry.buffer.type = WGPUBufferBindingType_Uniform;
+    rect_entry.buffer.hasDynamicOffset = true;
+    rect_entry.buffer.minBindingSize = 32;  // vec4f + vec2f + vec2f = 32 bytes
+
+    WGPUBindGroupLayoutDescriptor rect_bgl_desc{};
+    rect_bgl_desc.label = to_sv("Thumb Rect BGL");
+    rect_bgl_desc.entryCount = 1;
+    rect_bgl_desc.entries = &rect_entry;
+    rect_layout_ = wgpuDeviceCreateBindGroupLayout(device_, &rect_bgl_desc);
+
+    // Rect uniform buffer (kMaxThumbs * kRectStride)
+    WGPUBufferDescriptor buf_desc{};
+    buf_desc.label = to_sv("Thumb Rect UBO");
+    buf_desc.size = kMaxThumbs * kRectStride;
+    buf_desc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    rect_buf_ = wgpuDeviceCreateBuffer(device_, &buf_desc);
+
+    // Bind group for rect uniform (dynamic offset)
+    WGPUBindGroupEntry rect_bg_entry{};
+    rect_bg_entry.binding = 0;
+    rect_bg_entry.buffer = rect_buf_;
+    rect_bg_entry.offset = 0;
+    rect_bg_entry.size = 32;
+
+    WGPUBindGroupDescriptor rect_bg_desc{};
+    rect_bg_desc.label = to_sv("Thumb Rect BG");
+    rect_bg_desc.layout = rect_layout_;
+    rect_bg_desc.entryCount = 1;
+    rect_bg_desc.entries = &rect_bg_entry;
+    rect_bind_group_ = wgpuDeviceCreateBindGroup(device_, &rect_bg_desc);
+
+    // Pipeline layout with 2 bind group layouts
+    WGPUBindGroupLayout layouts[2] = { bind_layout_, rect_layout_ };
     WGPUPipelineLayoutDescriptor pl_desc{};
     pl_desc.label = to_sv("Thumb Pipeline Layout");
-    pl_desc.bindGroupLayoutCount = 1;
-    pl_desc.bindGroupLayouts = &bind_layout_;
+    pl_desc.bindGroupLayoutCount = 2;
+    pl_desc.bindGroupLayouts = layouts;
     pipe_layout_ = wgpuDeviceCreatePipelineLayout(device_, &pl_desc);
 
-    // Render pipeline (same as FullscreenBlit but we'll use loadOp=Load)
+    // Render pipeline
     WGPUColorTargetState color_target{};
     color_target.format = surface_format;
     color_target.writeMask = WGPUColorWriteMask_All;
@@ -129,37 +182,86 @@ bool ThumbnailRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format
 
 void ThumbnailRenderer::begin(WGPUCommandEncoder encoder, WGPUTextureView surface,
                                uint32_t surface_w, uint32_t surface_h) {
-    WGPURenderPassColorAttachment color_att{};
-    color_att.view = surface;
-    color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-    color_att.resolveTarget = nullptr;
-    color_att.loadOp = WGPULoadOp_Load;   // preserve existing content
-    color_att.storeOp = WGPUStoreOp_Store;
-
-    WGPURenderPassDescriptor rp_desc{};
-    rp_desc.label = to_sv("Thumb Pass");
-    rp_desc.colorAttachmentCount = 1;
-    rp_desc.colorAttachments = &color_att;
-
-    pass_ = wgpuCommandEncoderBeginRenderPass(encoder, &rp_desc);
-    wgpuRenderPassEncoderSetPipeline(pass_, pipeline_);
+    pending_encoder_ = encoder;
+    pending_surface_ = surface;
+    surface_w_ = surface_w;
+    surface_h_ = surface_h;
+    pending_.clear();
 }
 
-void ThumbnailRenderer::draw(WGPUTextureView source, float x, float y, float w, float h) {
-    if (!pass_) return;
-
-    WGPUBindGroup bg = get_bind_group(source);
-    wgpuRenderPassEncoderSetViewport(pass_, x, y, w, h, 0.0f, 1.0f);
-    wgpuRenderPassEncoderSetBindGroup(pass_, 0, bg, 0, nullptr);
-    wgpuRenderPassEncoderDraw(pass_, 3, 1, 0, 0);
+void ThumbnailRenderer::draw(WGPUTextureView source, float x, float y, float w, float h,
+                              uint32_t scissor_x, uint32_t scissor_y,
+                              uint32_t scissor_w, uint32_t scissor_h) {
+    if (!pending_encoder_) return;
+    if (pending_.size() >= kMaxThumbs) return;
+    pending_.push_back({ source, x, y, w, h, scissor_x, scissor_y, scissor_w, scissor_h });
 }
 
 void ThumbnailRenderer::end() {
-    if (pass_) {
-        wgpuRenderPassEncoderEnd(pass_);
-        wgpuRenderPassEncoderRelease(pass_);
-        pass_ = nullptr;
+    if (!pending_encoder_) return;
+
+    if (!pending_.empty()) {
+        // Write all rect uniforms in one batch
+        // Each entry is 32 bytes of data at kRectStride-byte intervals
+        struct RectUniform {
+            float rect[4];     // x, y, w, h
+            float surface[2];  // surface_w, surface_h
+            float _pad[2];
+        };
+        static_assert(sizeof(RectUniform) == 32, "RectUniform must be 32 bytes");
+
+        // Build staging buffer
+        std::vector<uint8_t> staging(pending_.size() * kRectStride, 0);
+        for (size_t i = 0; i < pending_.size(); i++) {
+            RectUniform ru;
+            ru.rect[0] = pending_[i].x;
+            ru.rect[1] = pending_[i].y;
+            ru.rect[2] = pending_[i].w;
+            ru.rect[3] = pending_[i].h;
+            ru.surface[0] = static_cast<float>(surface_w_);
+            ru.surface[1] = static_cast<float>(surface_h_);
+            ru._pad[0] = 0.0f;
+            ru._pad[1] = 0.0f;
+            std::memcpy(staging.data() + i * kRectStride, &ru, sizeof(ru));
+        }
+        wgpuQueueWriteBuffer(queue_, rect_buf_, 0, staging.data(), staging.size());
+
+        // Create render pass
+        WGPURenderPassColorAttachment color_att{};
+        color_att.view = pending_surface_;
+        color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        color_att.resolveTarget = nullptr;
+        color_att.loadOp = WGPULoadOp_Load;
+        color_att.storeOp = WGPUStoreOp_Store;
+
+        WGPURenderPassDescriptor rp_desc{};
+        rp_desc.label = to_sv("Thumb Pass");
+        rp_desc.colorAttachmentCount = 1;
+        rp_desc.colorAttachments = &color_att;
+
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(pending_encoder_, &rp_desc);
+        wgpuRenderPassEncoderSetPipeline(pass, pipeline_);
+        wgpuRenderPassEncoderSetViewport(pass, 0, 0,
+                                          static_cast<float>(surface_w_),
+                                          static_cast<float>(surface_h_),
+                                          0.0f, 1.0f);
+
+        for (size_t i = 0; i < pending_.size(); i++) {
+            const auto& d = pending_[i];
+            WGPUBindGroup tex_bg = get_bind_group(d.source);
+            uint32_t dyn_offset = static_cast<uint32_t>(i * kRectStride);
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, tex_bg, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(pass, 1, rect_bind_group_, 1, &dyn_offset);
+            wgpuRenderPassEncoderSetScissorRect(pass, d.sc_x, d.sc_y, d.sc_w, d.sc_h);
+            wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+        }
+
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
     }
+
+    pending_encoder_ = nullptr;
+    pending_surface_ = nullptr;
 }
 
 WGPUBindGroup ThumbnailRenderer::get_bind_group(WGPUTextureView source) {
@@ -188,13 +290,19 @@ void ThumbnailRenderer::shutdown() {
         wgpuBindGroupRelease(bg);
     }
     bind_cache_.clear();
+    pending_.clear();
 
-    if (pipeline_)    { wgpuRenderPipelineRelease(pipeline_);      pipeline_    = nullptr; }
-    if (bind_layout_) { wgpuBindGroupLayoutRelease(bind_layout_);  bind_layout_ = nullptr; }
-    if (sampler_)     { wgpuSamplerRelease(sampler_);              sampler_     = nullptr; }
-    if (pipe_layout_) { wgpuPipelineLayoutRelease(pipe_layout_);   pipe_layout_ = nullptr; }
-    if (shader_)      { wgpuShaderModuleRelease(shader_);          shader_      = nullptr; }
-    pass_ = nullptr;
+    if (rect_bind_group_) { wgpuBindGroupRelease(rect_bind_group_);        rect_bind_group_ = nullptr; }
+    if (rect_buf_)        { wgpuBufferRelease(rect_buf_);                  rect_buf_        = nullptr; }
+    if (rect_layout_)     { wgpuBindGroupLayoutRelease(rect_layout_);      rect_layout_     = nullptr; }
+    if (pipeline_)        { wgpuRenderPipelineRelease(pipeline_);          pipeline_         = nullptr; }
+    if (bind_layout_)     { wgpuBindGroupLayoutRelease(bind_layout_);      bind_layout_      = nullptr; }
+    if (sampler_)         { wgpuSamplerRelease(sampler_);                  sampler_           = nullptr; }
+    if (pipe_layout_)     { wgpuPipelineLayoutRelease(pipe_layout_);       pipe_layout_       = nullptr; }
+    if (shader_)          { wgpuShaderModuleRelease(shader_);              shader_            = nullptr; }
+    pending_encoder_ = nullptr;
+    pending_surface_ = nullptr;
+    queue_ = nullptr;
     device_ = nullptr;
 }
 
