@@ -1,0 +1,393 @@
+#include "runtime/operator_registry.h"
+#include "runtime/graph.h"
+#include "runtime/scheduler.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+#include <filesystem>
+#include <string>
+
+static int failures = 0;
+
+static void check(bool cond, const char* msg) {
+    if (!cond) {
+        std::fprintf(stderr, "  FAIL: %s\n", msg);
+        failures++;
+    } else {
+        std::fprintf(stderr, "  PASS: %s\n", msg);
+    }
+}
+
+static void check_float(float actual, float expected, const char* msg) {
+    if (std::fabs(actual - expected) > 1e-4f) {
+        std::fprintf(stderr, "  FAIL: %s (expected %f, got %f)\n", msg, expected, actual);
+        failures++;
+    } else {
+        std::fprintf(stderr, "  PASS: %s (%f)\n", msg, actual);
+    }
+}
+
+// Helper: find node index by id in a scheduler
+static int find_idx(const vivid::Scheduler& sched, const std::string& id) {
+    const auto& nodes = sched.nodes();
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        if (nodes[i].node_id == id) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+int main() {
+    // --- Set up shared registry ---
+    std::string staging = "./.test_sched_staging";
+    std::filesystem::create_directories(staging);
+    std::filesystem::copy_file("test_op_v1.dylib", staging + "/test_op_v1.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file("control_pass_op.dylib", staging + "/control_pass_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file("spread_source_op.dylib", staging + "/spread_source_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file("audio_test_op.dylib", staging + "/audio_test_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+
+    vivid::OperatorRegistry registry;
+    check(registry.scan(staging.c_str()), "registry.scan() succeeds");
+    check(registry.find("TestOp") != nullptr, "TestOp registered");
+    check(registry.find("ControlPassOp") != nullptr, "ControlPassOp registered");
+    check(registry.find("SpreadSourceOp") != nullptr, "SpreadSourceOp registered");
+    check(registry.find("AudioTestOp") != nullptr, "AudioTestOp registered");
+
+    // =====================================================================
+    // Test 1: Linear chain  TestOp(scale=1) → ControlPassOp(gain=2) → ControlPassOp(gain=3)
+    // TestOp: output = scale * 2.0 = 1*2 = 2.0
+    // ControlPassOp(gain=2): output = 2.0 * 2 = 4.0
+    // ControlPassOp(gain=3): output = 4.0 * 3 = 12.0
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 1: Linear chain ===\n");
+        vivid::Graph g;
+        g.add_node("a", "TestOp", {{"scale", 1.0f}});
+        g.add_node("b", "ControlPassOp", {{"gain", 2.0f}});
+        g.add_node("c", "ControlPassOp", {{"gain", 3.0f}});
+        g.add_connection("a", "out", "b", "in");
+        g.add_connection("b", "out", "c", "in");
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+        sched.tick(0.0, 0.016, 0);
+
+        auto* na = sched.find_node_mut("a");
+        auto* nb = sched.find_node_mut("b");
+        auto* nc = sched.find_node_mut("c");
+        check(na && nb && nc, "all nodes found");
+        check_float(na->output_values[0], 2.0f, "a output = 2.0");
+        check_float(nb->output_values[0], 4.0f, "b output = 4.0");
+        check_float(nc->output_values[0], 12.0f, "c output = 12.0");
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 2: Diamond topology
+    // a(TestOp,scale=3) → b(gain=2), a → c(gain=5), b→d/in, c→d/gain
+    // a: output = 3*2 = 6
+    // b: output = 6*2 = 12
+    // c: output = 6*5 = 30
+    // d: input=12, gain overridden to 30, output = 12*30 = 360
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 2: Diamond topology ===\n");
+        vivid::Graph g;
+        g.add_node("a", "TestOp", {{"scale", 3.0f}});
+        g.add_node("b", "ControlPassOp", {{"gain", 2.0f}});
+        g.add_node("c", "ControlPassOp", {{"gain", 5.0f}});
+        g.add_node("d", "ControlPassOp", {{"gain", 1.0f}});
+        g.add_connection("a", "out", "b", "in");
+        g.add_connection("a", "out", "c", "in");
+        g.add_connection("b", "out", "d", "in");
+        g.add_connection("c", "out", "d", "gain");  // param wire
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+
+        // Verify evaluation order: a before b,c; b,c before d
+        int ia = find_idx(sched, "a");
+        int ib = find_idx(sched, "b");
+        int ic = find_idx(sched, "c");
+        int id = find_idx(sched, "d");
+        check(ia >= 0 && ib >= 0 && ic >= 0 && id >= 0, "all nodes have indices");
+        check(ia < ib && ia < ic, "a before b and c");
+        check(ib < id && ic < id, "b and c before d");
+
+        sched.tick(0.0, 0.016, 0);
+
+        auto* na = sched.find_node_mut("a");
+        auto* nb = sched.find_node_mut("b");
+        auto* nc = sched.find_node_mut("c");
+        auto* nd = sched.find_node_mut("d");
+        check_float(na->output_values[0], 6.0f, "a output = 6.0");
+        check_float(nb->output_values[0], 12.0f, "b output = 12.0");
+        check_float(nc->output_values[0], 30.0f, "c output = 30.0");
+        check_float(nd->output_values[0], 360.0f, "d output = 360.0");
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 3: Cycle detection
+    // a(ControlPassOp) → b → a  (cycle)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 3: Cycle detection ===\n");
+        vivid::Graph g;
+        g.add_node("a", "ControlPassOp", {});
+        g.add_node("b", "ControlPassOp", {});
+        g.add_connection("a", "out", "b", "in");
+        g.add_connection("b", "out", "a", "in");
+
+        vivid::Scheduler sched;
+        check(!sched.build(g, registry), "build returns false for cycle");
+    }
+
+    // =====================================================================
+    // Test 4: Generation tracking
+    // a→b→c chain, 3 ticks
+    // Tick 1: all gens bump (first eval, outputs change from 0)
+    // Tick 2 (unchanged): gens stable (outputs same as tick 1)
+    // Tick 3 (a/scale changed): all gens bump again
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 4: Generation tracking ===\n");
+        vivid::Graph g;
+        g.add_node("a", "TestOp", {{"scale", 1.0f}});
+        g.add_node("b", "ControlPassOp", {{"gain", 2.0f}});
+        g.add_node("c", "ControlPassOp", {{"gain", 3.0f}});
+        g.add_connection("a", "out", "b", "in");
+        g.add_connection("b", "out", "c", "in");
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+
+        // Tick 1: first evaluation, all outputs change from 0
+        sched.tick(0.0, 0.016, 0);
+        auto* na = sched.find_node_mut("a");
+        auto* nb = sched.find_node_mut("b");
+        auto* nc = sched.find_node_mut("c");
+
+        uint64_t ga1 = na->generation;
+        uint64_t gb1 = nb->generation;
+        uint64_t gc1 = nc->generation;
+        check(ga1 > 0, "tick 1: a gen bumped");
+        check(gb1 > 0, "tick 1: b gen bumped");
+        check(gc1 > 0, "tick 1: c gen bumped");
+
+        // Tick 2: nothing changed — gens should be stable
+        sched.tick(0.0, 0.016, 1);
+        check(na->generation == ga1, "tick 2: a gen stable");
+        check(nb->generation == gb1, "tick 2: b gen stable");
+        check(nc->generation == gc1, "tick 2: c gen stable");
+
+        // Tick 3: change a's scale param → all downstream should bump
+        na->param_values[0] = 5.0f;  // scale = 5
+        sched.tick(0.0, 0.016, 2);
+        check(na->generation > ga1, "tick 3: a gen bumped after param change");
+        check(nb->generation > gb1, "tick 3: b gen bumped (downstream)");
+        check(nc->generation > gc1, "tick 3: c gen bumped (downstream)");
+
+        // Verify new values: a=5*2=10, b=10*2=20, c=20*3=60
+        check_float(na->output_values[0], 10.0f, "tick 3: a output = 10.0");
+        check_float(nb->output_values[0], 20.0f, "tick 3: b output = 20.0");
+        check_float(nc->output_values[0], 60.0f, "tick 3: c output = 60.0");
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 5: Param wire
+    // src(TestOp,scale=2) → dst/in, mod(TestOp,scale=3) → dst/gain
+    // src: output = 2*2 = 4.0
+    // mod: output = 3*2 = 6.0
+    // dst: input=4.0, gain overridden to 6.0, output = 4.0 * 6.0 = 24.0
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 5: Param wire ===\n");
+        vivid::Graph g;
+        g.add_node("src", "TestOp", {{"scale", 2.0f}});
+        g.add_node("mod", "TestOp", {{"scale", 3.0f}});
+        g.add_node("dst", "ControlPassOp", {{"gain", 1.0f}});
+        g.add_connection("src", "out", "dst", "in");
+        g.add_connection("mod", "out", "dst", "gain");  // param wire
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+        sched.tick(0.0, 0.016, 0);
+
+        auto* nsrc = sched.find_node_mut("src");
+        auto* nmod = sched.find_node_mut("mod");
+        auto* ndst = sched.find_node_mut("dst");
+        check_float(nsrc->output_values[0], 4.0f, "src output = 4.0");
+        check_float(nmod->output_values[0], 6.0f, "mod output = 6.0");
+        check_float(ndst->input_values[0], 4.0f, "dst input = 4.0");
+        check_float(ndst->param_values[0], 6.0f, "dst gain overridden to 6.0");
+        check_float(ndst->output_values[0], 24.0f, "dst output = 24.0");
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 6: Spread propagation
+    // SpreadSourceOp(base=1,count=4) → ControlPassOp(gain=2)
+    // Source: scalar=1, spread=[1,2,3,4]
+    // Pass: scalar=1*2=2, spread=[2,4,6,8]
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 6: Spread propagation ===\n");
+        vivid::Graph g;
+        g.add_node("src", "SpreadSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
+        g.add_node("pass", "ControlPassOp", {{"gain", 2.0f}});
+        g.add_connection("src", "out", "pass", "in");
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+        sched.tick(0.0, 0.016, 0);
+
+        auto* nsrc = sched.find_node_mut("src");
+        auto* npass = sched.find_node_mut("pass");
+
+        check_float(nsrc->output_values[0], 1.0f, "src scalar = 1.0");
+        check(nsrc->output_spreads[0].size() == 4, "src spread has 4 elements");
+
+        // After spread propagation, scalar fallback = spread[0] = 1.0, * gain 2 = 2.0
+        check_float(npass->output_values[0], 2.0f, "pass scalar = 2.0");
+        check(npass->output_spreads[0].size() == 4, "pass spread has 4 elements");
+        if (npass->output_spreads[0].size() == 4) {
+            check_float(npass->output_spreads[0][0], 2.0f, "spread[0] = 2.0");
+            check_float(npass->output_spreads[0][1], 4.0f, "spread[1] = 4.0");
+            check_float(npass->output_spreads[0][2], 6.0f, "spread[2] = 6.0");
+            check_float(npass->output_spreads[0][3], 8.0f, "spread[3] = 8.0");
+        }
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 7: Audio node skip + param wire
+    // ctrl(TestOp,scale=0.8) → audio(AudioTestOp)/level
+    // Audio nodes are skipped in tick loop but param wires are propagated
+    // audio.output_values[0] = 0 (skipped), audio.param_values[level] = 1.6
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 7: Audio node skip + param wire ===\n");
+        vivid::Graph g;
+        g.add_node("ctrl", "TestOp", {{"scale", 0.8f}});
+        g.add_node("audio", "AudioTestOp", {{"level", 0.5f}});
+        g.add_connection("ctrl", "out", "audio", "level");  // param wire
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+
+        // AudioTestOp gets 3 implicit analysis ports: rms, peak, waveform
+        auto* naudio = sched.find_node_mut("audio");
+        check(naudio != nullptr, "audio node found");
+        check(naudio->output_port_count == 4, "audio has 4 output ports (1 declared + 3 implicit)");
+        check(naudio->is_audio, "audio node flagged as audio");
+
+        sched.tick(0.0, 0.016, 0);
+
+        // Audio skipped in main loop → output stays 0
+        check_float(naudio->output_values[0], 0.0f, "audio output = 0 (skipped)");
+
+        // Post-loop param propagation: ctrl output = 0.8*2 = 1.6 → audio level
+        check_float(naudio->param_values[0], 1.6f, "audio level param = 1.6 (from ctrl)");
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 8: inject_external_output
+    // a→b chain, inject 99.0 on a's output
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 8: inject_external_output ===\n");
+        vivid::Graph g;
+        g.add_node("a", "TestOp", {{"scale", 1.0f}});
+        g.add_node("b", "ControlPassOp", {{"gain", 1.0f}});
+        g.add_connection("a", "out", "b", "in");
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+
+        // Tick once to establish baseline
+        sched.tick(0.0, 0.016, 0);
+        auto* na = sched.find_node_mut("a");
+        check_float(na->output_values[0], 2.0f, "baseline: a output = 2.0");
+
+        uint64_t gen_before = na->generation;
+
+        // Inject 99.0 on a's output port 0
+        int a_idx = find_idx(sched, "a");
+        check(a_idx >= 0, "a index found");
+        sched.inject_external_output(static_cast<uint32_t>(a_idx), 0, 99.0f);
+
+        check_float(na->output_values[0], 99.0f, "injected: a output = 99.0");
+        check(na->generation > gen_before, "generation bumped after inject");
+
+        uint64_t gen_after = na->generation;
+
+        // Inject same value again: idempotent
+        sched.inject_external_output(static_cast<uint32_t>(a_idx), 0, 99.0f);
+        check(na->generation == gen_after, "generation unchanged (idempotent)");
+
+        // Tick and verify downstream picks up injected value
+        sched.tick(0.0, 0.016, 1);
+        auto* nb = sched.find_node_mut("b");
+        // After tick, a recomputes: scale=1 → output = 1*2 = 2.0 (overrides injection)
+        // But b sees the value from a's process, which is 2.0
+        // Actually, a is a source node with no upstream, so it always processes.
+        // The injected value gets overwritten by a's process().
+        // To properly test downstream propagation, we need to check after inject but before tick overwrites.
+        // Let's inject again after the tick and verify the generation behavior
+        sched.inject_external_output(static_cast<uint32_t>(a_idx), 0, 99.0f);
+        uint64_t gen_99 = na->generation;
+        sched.inject_external_output(static_cast<uint32_t>(a_idx), 0, 99.0f);
+        check(na->generation == gen_99, "re-inject same value: gen unchanged");
+        sched.inject_external_output(static_cast<uint32_t>(a_idx), 0, 50.0f);
+        check(na->generation > gen_99, "inject different value: gen bumped");
+
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 9: Utility methods
+    // Mixed graph (TestOp + AudioTestOp)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 9: Utility methods ===\n");
+        vivid::Graph g;
+        g.add_node("ctrl", "TestOp", {{"scale", 1.0f}});
+        g.add_node("audio", "AudioTestOp", {{"level", 0.5f}});
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+
+        check(!sched.has_gpu_operators(), "has_gpu = false");
+        check(sched.has_audio_operators(), "has_audio = true");
+
+        // type_name
+        int ctrl_idx = find_idx(sched, "ctrl");
+        int audio_idx = find_idx(sched, "audio");
+        check(ctrl_idx >= 0 && audio_idx >= 0, "node indices found");
+        check(sched.type_name(static_cast<uint32_t>(ctrl_idx)) == "TestOp", "type_name(ctrl) = TestOp");
+        check(sched.type_name(static_cast<uint32_t>(audio_idx)) == "AudioTestOp", "type_name(audio) = AudioTestOp");
+
+        // find_node_mut
+        check(sched.find_node_mut("ctrl") != nullptr, "find_node_mut(ctrl) works");
+        check(sched.find_node_mut("nonexistent") == nullptr, "find_node_mut(nonexistent) = nullptr");
+
+        // is_audio_type
+        check(sched.is_audio_type("AudioTestOp"), "is_audio_type(AudioTestOp) = true");
+        check(!sched.is_audio_type("TestOp"), "is_audio_type(TestOp) = false");
+
+        sched.shutdown();
+    }
+
+    // --- Cleanup ---
+    std::filesystem::remove_all(staging);
+
+    std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
+        failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);
+    return failures == 0 ? 0 : 1;
+}
