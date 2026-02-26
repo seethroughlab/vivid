@@ -27,6 +27,7 @@ struct Polysynth : vivid::OperatorBase {
     vivid::Param<float> detune           {"detune",           0.0f,     0.0f,   50.0f};
     vivid::Param<float> filter_cutoff    {"filter_cutoff",    20000.0f, 20.0f,  20000.0f};
     vivid::Param<float> filter_env_depth {"filter_env_depth", 0.0f,     0.0f,   8.0f};
+    vivid::Param<bool>  env_bypass       {"env_bypass",       false};
 
     static constexpr int kMaxVoices = 16;
 
@@ -61,6 +62,7 @@ struct Polysynth : vivid::OperatorBase {
         out.push_back(&detune);
         out.push_back(&filter_cutoff);
         out.push_back(&filter_env_depth);
+        out.push_back(&env_bypass);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -225,6 +227,8 @@ struct Polysynth : vivid::OperatorBase {
         const VividSpreadPort* pitch_mod_sp  = ctx->input_spreads ? &ctx->input_spreads[4] : nullptr;
         const VividSpreadPort* amp_mod_sp    = ctx->input_spreads ? &ctx->input_spreads[5] : nullptr;
 
+        bool bypass = env_bypass.value > 0.5f;
+
         update_gates(ctx);
 
         bool filter_active = (filt_cutoff < 19999.0f) || (filt_env_depth > 0.001f);
@@ -254,7 +258,7 @@ struct Polysynth : vivid::OperatorBase {
                 if (!v.is_active()) continue;
 
                 float sig = static_cast<float>(generate_sample(v.phase, wave));
-                sig *= v.env.env_value * v.velocity;
+                sig *= (bypass ? 1.0f : v.env.env_value) * v.velocity;
                 sig *= read_spread_slot(amp_mod_sp, v.gate_slot, 1.0f);
 
                 // Per-voice one-pole lowpass filter
