@@ -16,6 +16,7 @@ static bool split_address(const char* addr, std::string& node, std::string& port
 bool Graph::load(const char* path) {
     nodes_.clear();
     connections_.clear();
+    midi_mappings_.clear();
     source_path_ = path;
 
     yyjson_read_err err;
@@ -106,6 +107,33 @@ bool Graph::load(const char* path) {
         }
     }
 
+    // Parse MIDI mappings
+    yyjson_val* midi_arr = yyjson_obj_get(root, "midi_mappings");
+    if (midi_arr && yyjson_is_arr(midi_arr)) {
+        size_t midx, mmax;
+        yyjson_val* mval;
+        yyjson_arr_foreach(midi_arr, midx, mmax, mval) {
+            MidiMappingDef mm;
+            yyjson_val* node_val = yyjson_obj_get(mval, "node");
+            yyjson_val* param_val = yyjson_obj_get(mval, "param");
+            yyjson_val* cc_val = yyjson_obj_get(mval, "cc");
+            if (!node_val || !param_val || !cc_val) continue;
+            mm.node_id = yyjson_get_str(node_val);
+            mm.param_name = yyjson_get_str(param_val);
+            mm.cc_number = static_cast<int>(yyjson_get_int(cc_val));
+            yyjson_val* chan_val = yyjson_obj_get(mval, "channel");
+            if (chan_val && yyjson_is_int(chan_val))
+                mm.channel = static_cast<int>(yyjson_get_int(chan_val));
+            yyjson_val* rmin_val = yyjson_obj_get(mval, "range_min");
+            if (rmin_val && yyjson_is_num(rmin_val))
+                mm.range_min = static_cast<float>(yyjson_get_num(rmin_val));
+            yyjson_val* rmax_val = yyjson_obj_get(mval, "range_max");
+            if (rmax_val && yyjson_is_num(rmax_val))
+                mm.range_max = static_cast<float>(yyjson_get_num(rmax_val));
+            midi_mappings_.push_back(std::move(mm));
+        }
+    }
+
     yyjson_doc_free(doc);
 
     std::fprintf(stderr, "[vivid] Loaded graph: %s (%zu nodes, %zu connections)\n",
@@ -138,6 +166,11 @@ bool Graph::remove_node(const std::string& id) {
                 return c.from_node == id || c.to_node == id;
             }),
         connections_.end());
+    // Remove all MIDI mappings referencing this node
+    midi_mappings_.erase(
+        std::remove_if(midi_mappings_.begin(), midi_mappings_.end(),
+            [&](const MidiMappingDef& m) { return m.node_id == id; }),
+        midi_mappings_.end());
     return true;
 }
 
@@ -175,6 +208,54 @@ const NodeDef* Graph::find_node(const std::string& id) const {
 NodeDef* Graph::find_node(const std::string& id) {
     for (auto& n : nodes_) {
         if (n.id == id) return &n;
+    }
+    return nullptr;
+}
+
+// --- MIDI Mapping Mutation ---
+
+bool Graph::add_midi_mapping(const std::string& node_id, const std::string& param,
+                             int cc, int channel, float range_min, float range_max) {
+    // Replace existing mapping for the same node/param
+    for (auto& m : midi_mappings_) {
+        if (m.node_id == node_id && m.param_name == param) {
+            m.cc_number = cc;
+            m.channel = channel;
+            m.range_min = range_min;
+            m.range_max = range_max;
+            return true;
+        }
+    }
+    midi_mappings_.push_back({node_id, param, cc, channel, range_min, range_max});
+    return true;
+}
+
+bool Graph::remove_midi_mapping(const std::string& node_id, const std::string& param) {
+    auto it = std::find_if(midi_mappings_.begin(), midi_mappings_.end(),
+        [&](const MidiMappingDef& m) {
+            return m.node_id == node_id && m.param_name == param;
+        });
+    if (it == midi_mappings_.end()) return false;
+    midi_mappings_.erase(it);
+    return true;
+}
+
+bool Graph::update_midi_mapping(const std::string& node_id, const std::string& param,
+                                float range_min, float range_max) {
+    for (auto& m : midi_mappings_) {
+        if (m.node_id == node_id && m.param_name == param) {
+            m.range_min = range_min;
+            m.range_max = range_max;
+            return true;
+        }
+    }
+    return false;
+}
+
+const MidiMappingDef* Graph::find_midi_mapping(const std::string& node_id,
+                                               const std::string& param) const {
+    for (const auto& m : midi_mappings_) {
+        if (m.node_id == node_id && m.param_name == param) return &m;
     }
     return nullptr;
 }
@@ -229,6 +310,23 @@ bool Graph::save(const char* path) const {
         yyjson_mut_arr_add_val(conns_arr, conn_obj);
     }
     yyjson_mut_obj_add_val(doc, root, "connections", conns_arr);
+
+    // MIDI mappings
+    if (!midi_mappings_.empty()) {
+        yyjson_mut_val* midi_arr = yyjson_mut_arr(doc);
+        for (const auto& mm : midi_mappings_) {
+            yyjson_mut_val* mm_obj = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_strcpy(doc, mm_obj, "node", mm.node_id.c_str());
+            yyjson_mut_obj_add_strcpy(doc, mm_obj, "param", mm.param_name.c_str());
+            yyjson_mut_obj_add_int(doc, mm_obj, "cc", mm.cc_number);
+            if (mm.channel != 0)
+                yyjson_mut_obj_add_int(doc, mm_obj, "channel", mm.channel);
+            yyjson_mut_obj_add_real(doc, mm_obj, "range_min", static_cast<double>(mm.range_min));
+            yyjson_mut_obj_add_real(doc, mm_obj, "range_max", static_cast<double>(mm.range_max));
+            yyjson_mut_arr_add_val(midi_arr, mm_obj);
+        }
+        yyjson_mut_obj_add_val(doc, root, "midi_mappings", midi_arr);
+    }
 
     // Write
     yyjson_write_err werr;

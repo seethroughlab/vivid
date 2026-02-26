@@ -27,11 +27,21 @@ struct ConnectionDef {
     std::string to_node, to_port;
 };
 
+struct MidiMappingDef {
+    std::string node_id;
+    std::string param_name;
+    int cc_number = 0;        // 0-127
+    int channel = 0;          // 0 = omni, 1-16 = specific
+    float range_min = 0.0f;
+    float range_max = 1.0f;
+};
+
 class Graph {
 public:
     bool load(const char* path);
     const std::vector<NodeDef>& nodes() const { return nodes_; }
     const std::vector<ConnectionDef>& connections() const { return connections_; }
+    const std::vector<MidiMappingDef>& midi_mappings() const { return midi_mappings_; }
     const std::string& source_path() const { return source_path_; }
 
     // Mutation
@@ -43,6 +53,15 @@ public:
     bool remove_connection(const std::string& from_node, const std::string& from_port,
                            const std::string& to_node, const std::string& to_port);
 
+    // MIDI mapping mutation
+    bool add_midi_mapping(const std::string& node_id, const std::string& param,
+                          int cc, int channel, float range_min, float range_max);
+    bool remove_midi_mapping(const std::string& node_id, const std::string& param);
+    bool update_midi_mapping(const std::string& node_id, const std::string& param,
+                             float range_min, float range_max);
+    const MidiMappingDef* find_midi_mapping(const std::string& node_id,
+                                            const std::string& param) const;
+
     // Lookup
     const NodeDef* find_node(const std::string& id) const;
     NodeDef* find_node(const std::string& id);
@@ -53,6 +72,7 @@ public:
 private:
     std::vector<NodeDef> nodes_;
     std::vector<ConnectionDef> connections_;
+    std::vector<MidiMappingDef> midi_mappings_;
     std::string source_path_;
 };
 

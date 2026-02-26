@@ -327,6 +327,88 @@ int main() {
         }
     }
 
+    // =====================================================================
+    // Test 15: MIDI mappings round-trip
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 15: MIDI mappings round-trip ===\n");
+
+        // Load graph with midi_mappings in JSON
+        std::string path = write_temp("midi_map", R"({
+            "nodes": {
+                "lfo1": { "type": "LFO", "params": { "frequency": 2.0 } },
+                "gain1": { "type": "Gain" }
+            },
+            "connections": [],
+            "midi_mappings": [
+                { "node": "lfo1", "param": "frequency", "cc": 74, "range_min": 0.1, "range_max": 10.0 },
+                { "node": "gain1", "param": "level", "cc": 7, "channel": 1, "range_min": 0.0, "range_max": 1.0 }
+            ]
+        })");
+
+        vivid::Graph g;
+        check(g.load(path.c_str()), "load with midi_mappings succeeds");
+        check(g.midi_mappings().size() == 2, "2 midi mappings loaded");
+
+        const auto* mm0 = g.find_midi_mapping("lfo1", "frequency");
+        check(mm0 != nullptr, "find lfo1/frequency mapping");
+        if (mm0) {
+            check(mm0->cc_number == 74, "cc = 74");
+            check(mm0->channel == 0, "channel = 0 (omni)");
+            check_float(mm0->range_min, 0.1f, "range_min = 0.1");
+            check_float(mm0->range_max, 10.0f, "range_max = 10.0");
+        }
+
+        const auto* mm1 = g.find_midi_mapping("gain1", "level");
+        check(mm1 != nullptr, "find gain1/level mapping");
+        if (mm1) {
+            check(mm1->cc_number == 7, "cc = 7");
+            check(mm1->channel == 1, "channel = 1");
+        }
+
+        // Add a mapping via API
+        g.add_midi_mapping("lfo1", "depth", 1, 0, 0.0f, 1.0f);
+        check(g.midi_mappings().size() == 3, "3 mappings after add");
+
+        // Update range
+        check(g.update_midi_mapping("lfo1", "frequency", 0.5f, 5.0f), "update succeeds");
+        const auto* updated = g.find_midi_mapping("lfo1", "frequency");
+        if (updated) {
+            check_float(updated->range_min, 0.5f, "updated range_min");
+            check_float(updated->range_max, 5.0f, "updated range_max");
+        }
+
+        // Remove a mapping
+        check(g.remove_midi_mapping("gain1", "level"), "remove succeeds");
+        check(g.midi_mappings().size() == 2, "2 mappings after remove");
+        check(g.find_midi_mapping("gain1", "level") == nullptr, "removed mapping gone");
+
+        // remove_node cleans up mappings
+        g.remove_node("lfo1");
+        check(g.midi_mappings().empty(), "mappings cleaned up after node removal");
+
+        // Save/load round-trip
+        vivid::Graph g2;
+        g2.add_node("synth1", "Synth");
+        g2.add_midi_mapping("synth1", "cutoff", 71, 2, 100.0f, 8000.0f);
+
+        std::string rt_path = "/tmp/vivid_test_midi_rt.json";
+        check(g2.save(rt_path.c_str()), "save with midi mapping");
+
+        vivid::Graph g3;
+        check(g3.load(rt_path.c_str()), "reload succeeds");
+        check(g3.midi_mappings().size() == 1, "1 mapping after reload");
+        const auto* rt_mm = g3.find_midi_mapping("synth1", "cutoff");
+        check(rt_mm != nullptr, "mapping found after reload");
+        if (rt_mm) {
+            check(rt_mm->cc_number == 71, "cc preserved");
+            check(rt_mm->channel == 2, "channel preserved");
+            check_float(rt_mm->range_min, 100.0f, "range_min preserved");
+            check_float(rt_mm->range_max, 8000.0f, "range_max preserved");
+        }
+        std::remove(rt_path.c_str());
+    }
+
     // --- Cleanup temp files ---
     std::remove("/tmp/vivid_test_valid.json");
     std::remove("/tmp/vivid_test_layout.json");
@@ -336,6 +418,7 @@ int main() {
     std::remove("/tmp/vivid_test_srcpath.json");
     std::remove("/tmp/vivid_test_roundtrip.json");
     std::remove("/tmp/vivid_test_nan_layout.json");
+    std::remove("/tmp/vivid_test_midi_map.json");
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
         failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);
