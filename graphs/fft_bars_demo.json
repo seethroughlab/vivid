@@ -2,12 +2,16 @@
   "nodes": {
     "osc1":  { "type": "Oscillator", "params": { "frequency": 440.0 } },
     "gain1": { "type": "Gain",       "params": { "gain": 0.5 } },
+    "out1":  { "type": "audio_out",  "params": {} },
     "fft1":  { "type": "FFTAnalysis", "params": { "window": 1 } },
-    "bars1": { "type": "Bars",       "params": { "scale": 4.0, "r": 0.3, "g": 0.8, "b": 0.77 } }
+    "bars1": { "type": "Bars",       "params": { "scale": 4.0, "r": 0.3, "g": 0.8, "b": 0.77 } },
+    "vout":  { "type": "video_out",  "params": {} }
   },
   "connections": [
-    { "from": "osc1/output", "to": "gain1/input" },
+    { "from": "osc1/output",    "to": "gain1/input" },
+    { "from": "gain1/output",   "to": "out1/input" },
     { "from": "gain1/waveform", "to": "fft1/waveform" },
-    { "from": "fft1/spectrum", "to": "bars1/values" }
+    { "from": "fft1/spectrum",  "to": "bars1/values" },
+    { "from": "bars1/texture",  "to": "vout/input" }
   ]
 }

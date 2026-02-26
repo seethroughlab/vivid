@@ -5,13 +5,17 @@
     "lfo_aud": { "type": "LFO",        "params": { "amplitude": 100.0, "offset": 330.0 } },
     "noise1":  { "type": "Noise",       "params": { "speed": 1.0 } },
     "osc1":    { "type": "Oscillator",  "params": { "frequency": 330.0, "amplitude": 0.5 } },
-    "gain1":   { "type": "Gain",        "params": { "gain": 0.3 } }
+    "gain1":   { "type": "Gain",        "params": { "gain": 0.3 } },
+    "out1":    { "type": "audio_out",   "params": {} },
+    "vout":    { "type": "video_out",   "params": {} }
   },
   "connections": [
     { "from": "clock1/beat_phase", "to": "lfo_vis/phase" },
     { "from": "clock1/beat_phase", "to": "lfo_aud/phase" },
     { "from": "lfo_vis/value",     "to": "noise1/scale" },
     { "from": "lfo_aud/value",     "to": "osc1/frequency" },
-    { "from": "osc1/output",       "to": "gain1/input" }
+    { "from": "osc1/output",       "to": "gain1/input" },
+    { "from": "gain1/output",      "to": "out1/input" },
+    { "from": "noise1/texture",    "to": "vout/input" }
   ]
 }
