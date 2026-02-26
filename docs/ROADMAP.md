@@ -326,6 +326,18 @@ Build the Spread type (contiguous array + length, broadcasting logic). FFT Analy
 - Demo graph: `graphs/fft_bars_demo.json` (Oscillator → Gain → FFT → Bars)
 - Commit: `e800755`
 
+---
+
+> **Interstitial work (between Phase 13 and Phase 16):**
+> Significant development occurred outside the phased roadmap:
+>
+> - **audio_out / video_out built-in sink operators** — terminal nodes for audio and video output
+> - **Composite blend-mode GPU operator** — two-texture blending with Normal/Add/Multiply/Screen/Overlay modes
+> - **Per-node GPU texture system** — each GPU node owns its own offscreen texture, with texture port wiring between nodes
+> - **Graph UI enhancements** — context menus, bezier wires, node delete, Cmd+S save, wire tooltips, dropdown/enum params, resolution editing, node visibility toggles
+> - **Fullscreen blit fit modes** — Fit/Fill/Stretch for video_out display
+> - **Code quality refactoring** — split `node_graph.cpp` into draw/input/core files, deduplicated shared utilities, replaced magic numbers with named constants, added utility headers
+
 ### Phase 14: Polyphonic Audio
 
 Build the operators that make Vivid a musical instrument, not just a signal processor:
