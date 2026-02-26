@@ -17,6 +17,7 @@ public:
     OperatorLoader& operator=(OperatorLoader&& other) noexcept;
 
     bool load(const char* path);
+    void init_builtin(VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFn);
     void unload();
 
     const VividOperatorDescriptor* descriptor() const;
@@ -27,7 +28,7 @@ public:
     bool has_draw_thumbnail() const { return draw_thumb_fn_ != nullptr; }
     void draw_thumbnail(void* instance, const VividThumbnailContext* ctx) const;
 
-    bool is_loaded() const { return handle_ != nullptr; }
+    bool is_loaded() const { return handle_ != nullptr || desc_fn_ != nullptr; }
 
 private:
     void*                  handle_         = nullptr;

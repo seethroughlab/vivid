@@ -43,6 +43,15 @@ bool OperatorRegistry::scan(const char* directory) {
     return true;
 }
 
+void OperatorRegistry::register_builtin(const std::string& type_name,
+                                        VividDescriptorFn desc_fn, VividCreateFn create_fn,
+                                        VividDestroyFn destroy_fn, VividProcessFn process_fn) {
+    auto loader = std::make_unique<OperatorLoader>();
+    loader->init_builtin(desc_fn, create_fn, destroy_fn, process_fn);
+    std::fprintf(stderr, "[vivid] Registry: registered built-in %s\n", type_name.c_str());
+    loaders_[type_name] = std::move(loader);
+}
+
 OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
     auto it = loaders_.find(type_name);
     if (it == loaders_.end())

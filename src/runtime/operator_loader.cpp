@@ -75,6 +75,15 @@ bool OperatorLoader::load(const char* path) {
     return true;
 }
 
+void OperatorLoader::init_builtin(VividDescriptorFn desc, VividCreateFn create,
+                                   VividDestroyFn destroy, VividProcessFn process) {
+    unload();
+    desc_fn_    = desc;
+    create_fn_  = create;
+    destroy_fn_ = destroy;
+    process_fn_ = process;
+}
+
 void OperatorLoader::unload() {
     if (handle_) {
         dlclose(handle_);

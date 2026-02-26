@@ -229,11 +229,30 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         }
     }
 
+    // Find audio_out sink node, or fall back to last node with output ports
+    sink_node_idx_ = -1;
+    int audio_out_count = 0;
+    for (uint32_t i = 0; i < n; ++i) {
+        const auto* desc = nodes_[i].loader->descriptor();
+        if (desc && std::string(desc->name) == "audio_out") {
+            if (sink_node_idx_ == -1) {
+                sink_node_idx_ = static_cast<int>(i);
+            } else {
+                std::fprintf(stderr, "[vivid] AudioEngine: warning: multiple audio_out nodes, using first\n");
+            }
+            audio_out_count++;
+        }
+    }
+    if (sink_node_idx_ == -1) {
+        std::fprintf(stderr, "[vivid] AudioEngine: no audio_out node — audio will be silent\n");
+    }
+
     std::fprintf(stderr, "[vivid] Audio evaluation order:");
     for (uint32_t i = 0; i < n; ++i) {
         std::fprintf(stderr, "%s%s", (i == 0 ? " " : " -> "), nodes_[i].node_id.c_str());
     }
-    std::fprintf(stderr, " (%zu analysis mappings)\n", analysis_mappings_.size());
+    std::fprintf(stderr, " (sink=%d, %zu analysis mappings)\n",
+        sink_node_idx_, analysis_mappings_.size());
 
     return true;
 }
@@ -522,11 +541,16 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             ns.loader->process(ns.instance, &ctx);
         }
 
-        // Copy last node's output to device buffer (it's the sink)
-        if (!nodes_.empty()) {
-            auto& sink = nodes_.back();
+        // Copy sink node's audio to device buffer
+        if (sink_node_idx_ >= 0) {
+            auto& sink = nodes_[sink_node_idx_];
             if (sink.output_port_count > 0) {
+                // Traditional sink (last node with outputs)
                 const float* src = sink.output_buffers[0].data();
+                std::memcpy(output + frames_written, src, chunk * sizeof(float));
+            } else if (sink.input_port_count > 0) {
+                // audio_out node: read from its input buffer (passthrough)
+                const float* src = sink.input_buffers[0].data();
                 std::memcpy(output + frames_written, src, chunk * sizeof(float));
             } else {
                 std::memset(output + frames_written, 0, chunk * sizeof(float));

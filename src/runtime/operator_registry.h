@@ -12,6 +12,8 @@ namespace vivid {
 class OperatorRegistry {
 public:
     bool scan(const char* directory);
+    void register_builtin(const std::string& type_name,
+                          VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFn);
     OperatorLoader* find(const std::string& type_name);
 
     // Introspection

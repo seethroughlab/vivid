@@ -116,6 +116,9 @@ private:
     std::vector<std::array<float, 1024>> waveform_rings_;
     std::vector<uint32_t> waveform_ring_pos_;
 
+    // Sink node (audio_out or last node with outputs as fallback)
+    int sink_node_idx_ = -1;
+
     // Audio time tracking
     uint64_t audio_frame_ = 0;
 
