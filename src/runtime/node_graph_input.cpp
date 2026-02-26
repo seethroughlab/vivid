@@ -296,7 +296,7 @@ bool NodeGraphUI::handle_chooser_click() {
     if (visible == 0) visible = 1;
     float items_y = kChooserY + kChooserHeaderH;
 
-    if (mouse_.x >= kChooserX && mouse_.x <= kChooserX + kChooserW &&
+    if (mouse_.x >= chooser_x() && mouse_.x <= chooser_x() + kChooserW &&
         mouse_.y >= items_y && mouse_.y <= items_y + visible * kChooserItemH &&
         !chooser_items_.empty()) {
         int idx = chooser_scroll_ + static_cast<int>((mouse_.y - items_y) / kChooserItemH);

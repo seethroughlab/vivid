@@ -24,7 +24,7 @@ NodeGraphUI::NodeGraphUI(RuntimeAPI& api, const Graph& graph, const Scheduler& s
     : api_(api), graph_(graph), scheduler_(scheduler), audio_engine_(audio_engine) {}
 
 float NodeGraphUI::graph_right() const {
-    return has_selection() ? kInspectorX : static_cast<float>(win_w_);
+    return has_selection() ? inspector_x() : static_cast<float>(win_w_);
 }
 
 // -----------------------------------------------------------------------
@@ -217,7 +217,7 @@ void NodeGraphUI::layout_nodes() {
         total_h += (layers[l].size() > 1 ? (layers[l].size() - 1) : 0) * kRowSpacing;
 
         // Center vertically in graph area
-        float start_y = kTopMargin + (kGraphH - 2 * kTopMargin - total_h) * 0.5f;
+        float start_y = kTopMargin + (static_cast<float>(win_h_) - 2 * kTopMargin - total_h) * 0.5f;
         if (start_y < kTopMargin) start_y = kTopMargin;
 
         float cur_y = start_y;
@@ -515,7 +515,7 @@ void NodeGraphUI::update_chooser_hover() {
     if (!chooser_open_) return;
     float items_y = kChooserY + kChooserHeaderH;
     int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
-    if (mouse_.x >= kChooserX && mouse_.x <= kChooserX + kChooserW &&
+    if (mouse_.x >= chooser_x() && mouse_.x <= chooser_x() + kChooserW &&
         mouse_.y >= items_y && mouse_.y < items_y + visible * kChooserItemH &&
         !chooser_items_.empty()) {
         int idx = chooser_scroll_ + static_cast<int>((mouse_.y - items_y) / kChooserItemH);

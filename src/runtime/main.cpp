@@ -31,9 +31,6 @@ static constexpr double kClearLinear[4]  = { 0.00699, 0.00821, 0.01041, 1.0 };
 // #16191D as raw unorm (no gamma conversion)
 static constexpr double kClearRaw[4]     = { 0.0863, 0.0980, 0.1137, 1.0 };
 
-static constexpr uint32_t kWidth  = 1280;
-static constexpr uint32_t kHeight = 800;
-
 // Thumbnail size: node width × 16:10 aspect
 static constexpr uint32_t kThumbW = 140;
 static constexpr uint32_t kThumbH = 88;
@@ -318,12 +315,12 @@ int main(int argc, char* argv[]) {
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     if (headless) {
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     }
 
-    GLFWwindow* window = glfwCreateWindow(kWidth, kHeight, "Vivid", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1280, 800, "Vivid", nullptr, nullptr);
     if (!window) {
         std::fprintf(stderr, "[vivid] Failed to create window\n");
         glfwTerminate();
@@ -488,6 +485,21 @@ int main(int argc, char* argv[]) {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
+        int win_w, win_h;
+        glfwGetWindowSize(window, &win_w, &win_h);
+        int fb_w, fb_h;
+        glfwGetFramebufferSize(window, &fb_w, &fb_h);
+
+        // Skip frame if minimized
+        if (fb_w == 0 || fb_h == 0) continue;
+
+        // Reconfigure GPU surface if framebuffer size changed
+        if (fb_w != fb_width || fb_h != fb_height) {
+            fb_width = fb_w;
+            fb_height = fb_h;
+            gpu.resize(static_cast<uint32_t>(fb_width), static_cast<uint32_t>(fb_height));
+        }
+
         if (runtime_api.has_pending()) {
             runtime_api.apply_pending(has_gpu_ops, has_audio);
             // Re-allocate per-node GPU textures after topology change
@@ -601,9 +613,9 @@ int main(int argc, char* argv[]) {
         // --- Node graph UI overlay (2-pass rendering) ---
         if (text_renderer_ok && graph_ui.visible()) {
             graph_ui.update();
-            graph_ui.draw(text_renderer, kWidth, kHeight);
+            graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
             // Pass 1: text/rects
-            text_renderer.flush(frame.encoder, frame.view, kWidth, kHeight);
+            text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
             // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
             if (thumb_renderer_ok) {
                 graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,

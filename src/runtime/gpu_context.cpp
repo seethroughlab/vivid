@@ -173,6 +173,22 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     return true;
 }
 
+void GpuContext::resize(uint32_t width, uint32_t height) {
+    if (width == width_ && height == height_) return;
+    wgpuSurfaceUnconfigure(surface_);
+    WGPUSurfaceConfiguration config{};
+    config.device = device_;
+    config.format = surface_format_;
+    config.usage = WGPUTextureUsage_RenderAttachment | (surface_copy_src_ ? WGPUTextureUsage_CopySrc : 0);
+    config.alphaMode = WGPUCompositeAlphaMode_Auto;
+    config.width = width;
+    config.height = height;
+    config.presentMode = WGPUPresentMode_Fifo;
+    wgpuSurfaceConfigure(surface_, &config);
+    width_ = width;
+    height_ = height;
+}
+
 bool GpuContext::begin_frame(FrameState& frame) {
     WGPUSurfaceTexture surface_tex{};
     wgpuSurfaceGetCurrentTexture(surface_, &surface_tex);

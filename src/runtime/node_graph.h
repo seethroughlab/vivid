@@ -1,6 +1,7 @@
 #ifndef VIVID_RUNTIME_NODE_GRAPH_H
 #define VIVID_RUNTIME_NODE_GRAPH_H
 
+#include "runtime/node_graph_constants.h"
 #include "operator_api/types.h"
 #include <webgpu/webgpu.h>
 #include <string>
@@ -151,6 +152,8 @@ private:
 
     // Right edge of interactive graph area (shrinks when inspector is visible)
     float graph_right() const;
+    float inspector_x() const { return static_cast<float>(win_w_) - kInspectorW; }
+    float chooser_x() const { return (graph_right() - kChooserW) * 0.5f; }
 
     RuntimeAPI& api_;
     const Graph& graph_;

@@ -22,6 +22,7 @@ public:
     GpuContext& operator=(const GpuContext&) = delete;
 
     bool init(GLFWwindow* window, uint32_t width, uint32_t height);
+    void resize(uint32_t width, uint32_t height);
     bool begin_frame(FrameState& frame);
     void end_frame(const FrameState& frame);
     void shutdown();

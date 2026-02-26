@@ -9,9 +9,6 @@ namespace vivid {
 // Layout constants
 static constexpr float kGraphX = 0.0f;
 static constexpr float kGraphY = 0.0f;
-static constexpr float kGraphW = 960.0f;
-static constexpr float kGraphH = 640.0f;
-static constexpr float kInspectorX = 960.0f;
 static constexpr float kInspectorW = 320.0f;
 static constexpr float kNodeW = 140.0f;
 static constexpr float kColSpacing = 200.0f;
@@ -53,7 +50,6 @@ static constexpr int kChooserMaxVisible = 12;
 static constexpr float kChooserW = 300.0f;
 static constexpr float kChooserHeaderH = 28.0f;
 static constexpr float kChooserItemH = 22.0f;
-static constexpr float kChooserX = (kGraphW - kChooserW) * 0.5f;
 static constexpr float kChooserY = 80.0f;
 
 // Context menu

@@ -314,19 +314,20 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h) {
     if (selected_node_id_.empty()) return;
 
     // Inspector background
-    tr.draw_rect(kInspectorX, 0, kInspectorW, static_cast<float>(h), kInspBg[0], kInspBg[1], kInspBg[2], 0.95f);
+    float insp_x = inspector_x();
+    tr.draw_rect(insp_x, 0, kInspectorW, static_cast<float>(h), kInspBg[0], kInspBg[1], kInspBg[2], 0.95f);
     // Separator line
-    tr.draw_rect(kInspectorX, 0, 2, static_cast<float>(h), 0.25f, 0.27f, 0.30f);
+    tr.draw_rect(insp_x, 0, 2, static_cast<float>(h), 0.25f, 0.27f, 0.30f);
 
     // Find the selected node in scheduler
     const NodeState* sel_node = find_sched_node(selected_node_id_);
     if (!sel_node) {
-        tr.draw_text(kInspectorX + 16, 20, "Node not found", kDimText[0], kDimText[1], kDimText[2]);
+        tr.draw_text(insp_x + 16, 20, "Node not found", kDimText[0], kDimText[1], kDimText[2]);
         return;
     }
 
     const auto* desc = sel_node->loader->descriptor();
-    float px = kInspectorX + 16;
+    float px = insp_x + 16;
     float py = 16;
     float panel_w = kInspectorW - 32;
 
@@ -540,7 +541,7 @@ void NodeGraphUI::draw_chooser(TextRenderer& tr) {
     if (visible == 0) visible = 1; // show at least the header area
     float panel_h = kChooserHeaderH + visible * kChooserItemH + 4;
 
-    float px = kChooserX;
+    float px = chooser_x();
     float py = kChooserY;
 
     // Background
@@ -596,10 +597,13 @@ void NodeGraphUI::draw_chooser(TextRenderer& tr) {
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw(TextRenderer& tr, uint32_t w, uint32_t h) {
     if (!visible_) return;
+    bool size_changed = (w != win_w_ || h != win_h_);
     win_w_ = w;
     win_h_ = h;
 
     if (node_rects_.empty() && !scheduler_.nodes().empty()) {
+        layout_nodes();
+    } else if (size_changed && !node_rects_.empty()) {
         layout_nodes();
     }
 
