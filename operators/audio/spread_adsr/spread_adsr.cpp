@@ -1,8 +1,10 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
+#include "operator_api/adsr.h"
 #include <cmath>
-#include <cstring>
 #include <algorithm>
+
+namespace adsr = vivid::adsr;
 
 struct SpreadADSR : vivid::OperatorBase {
     static constexpr const char* kName   = "SpreadADSR";
@@ -16,16 +18,7 @@ struct SpreadADSR : vivid::OperatorBase {
 
     static constexpr int kMaxSlots = 16;
 
-    enum Stage { IDLE, ATTACK, DECAY, SUSTAIN, RELEASE };
-
-    struct SlotState {
-        Stage stage = IDLE;
-        float env_value = 0.0f;
-        float env_progress = 0.0f;
-        float release_start = 0.0f;
-    };
-
-    SlotState slots_[kMaxSlots] = {};
+    adsr::State slots_[kMaxSlots] = {};
     float prev_gates_[kMaxSlots] = {};
     uint32_t prev_len_ = 0;
 
@@ -39,60 +32,6 @@ struct SpreadADSR : vivid::OperatorBase {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"gates",     VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});
         out.push_back({"envelopes", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});
-    }
-
-    static float compute_envelope(const SlotState& s, float sustain_level) {
-        switch (s.stage) {
-            case ATTACK:
-                return s.env_progress;
-            case DECAY:
-                return 1.0f - s.env_progress * (1.0f - sustain_level);
-            case SUSTAIN:
-                return sustain_level;
-            case RELEASE:
-                return s.release_start * (1.0f - s.env_progress);
-            case IDLE:
-            default:
-                return 0.0f;
-        }
-    }
-
-    static void advance_envelope(SlotState& s, float dt, float attack_t, float decay_t,
-                                 float sustain_level, float release_t) {
-        if (s.stage == IDLE) return;
-
-        switch (s.stage) {
-            case ATTACK: {
-                s.env_progress += dt / std::max(0.001f, attack_t);
-                if (s.env_progress >= 1.0f) {
-                    s.env_progress = 0.0f;
-                    s.stage = DECAY;
-                }
-                break;
-            }
-            case DECAY: {
-                s.env_progress += dt / std::max(0.001f, decay_t);
-                if (s.env_progress >= 1.0f) {
-                    s.env_progress = 0.0f;
-                    s.stage = SUSTAIN;
-                }
-                break;
-            }
-            case SUSTAIN:
-                break;
-            case RELEASE: {
-                s.env_progress += dt / std::max(0.001f, release_t);
-                if (s.env_progress >= 1.0f) {
-                    s.stage = IDLE;
-                    s.env_value = 0.0f;
-                }
-                break;
-            }
-            default:
-                break;
-        }
-
-        s.env_value = compute_envelope(s, sustain_level);
     }
 
     void process(const VividProcessContext* ctx) override {
@@ -120,42 +59,27 @@ struct SpreadADSR : vivid::OperatorBase {
             float cur_gate = gate_data ? gate_data[i] : 0.0f;
             float prev_gate = (i < prev_len_) ? prev_gates_[i] : 0.0f;
 
-            bool gate_on  = (cur_gate > 0.5f) && (prev_gate <= 0.5f);
-            bool gate_off = (cur_gate <= 0.5f) && (prev_gate > 0.5f);
-
-            if (gate_on) {
-                slots_[i].stage = ATTACK;
-                slots_[i].env_progress = 0.0f;
-            } else if (gate_off) {
-                if (slots_[i].stage != IDLE) {
-                    slots_[i].release_start = slots_[i].env_value;
-                    slots_[i].stage = RELEASE;
-                    slots_[i].env_progress = 0.0f;
-                }
-            }
+            if ((cur_gate > 0.5f) && (prev_gate <= 0.5f))
+                adsr::gate_on(slots_[i]);
+            else if ((cur_gate <= 0.5f) && (prev_gate > 0.5f))
+                adsr::gate_off(slots_[i]);
 
             prev_gates_[i] = cur_gate;
         }
 
-        // Handle disappeared slots (spread shrank → release those slots)
+        // Handle disappeared slots (spread shrank -> release those slots)
         for (uint32_t i = len; i < prev_len_; ++i) {
-            if (prev_gates_[i] > 0.5f && slots_[i].stage != IDLE && slots_[i].stage != RELEASE) {
-                slots_[i].release_start = slots_[i].env_value;
-                slots_[i].stage = RELEASE;
-                slots_[i].env_progress = 0.0f;
-            }
+            if (prev_gates_[i] > 0.5f)
+                adsr::gate_off(slots_[i]);
             prev_gates_[i] = 0.0f;
         }
 
         prev_len_ = len;
 
         // Advance envelopes per-sample for all active slots
-        uint32_t max_slot = std::max(len, prev_len_);
-        if (max_slot > static_cast<uint32_t>(kMaxSlots)) max_slot = kMaxSlots;
-
         for (uint32_t s = 0; s < frames; ++s) {
             for (uint32_t i = 0; i < static_cast<uint32_t>(kMaxSlots); ++i) {
-                advance_envelope(slots_[i], dt, att, dec, sus, rel);
+                adsr::advance(slots_[i], dt, att, dec, sus, rel);
             }
         }
 
@@ -167,7 +91,7 @@ struct SpreadADSR : vivid::OperatorBase {
             // Include all slots that are either gated or still active (releasing)
             uint32_t out_len = len;
             for (uint32_t i = len; i < static_cast<uint32_t>(kMaxSlots); ++i) {
-                if (slots_[i].stage != IDLE) out_len = i + 1;
+                if (slots_[i].is_active()) out_len = i + 1;
             }
             out_len = std::min(out_len, env_sp.capacity);
             env_sp.length = out_len;

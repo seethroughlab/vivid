@@ -1,5 +1,6 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
+#include "operator_api/adsr.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -10,39 +11,36 @@
 
 static constexpr double TWO_PI = 2.0 * M_PI;
 
+namespace adsr = vivid::adsr;
+
 struct Polysynth : vivid::OperatorBase {
     static constexpr const char* kName   = "Polysynth";
     static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = true;
 
-    vivid::Param<int>   waveform {"waveform",  1, {"sine", "saw", "square", "triangle"}};
-    vivid::Param<float> attack   {"attack",    0.01f, 0.001f, 5.0f};
-    vivid::Param<float> decay    {"decay",     0.1f,  0.001f, 5.0f};
-    vivid::Param<float> sustain  {"sustain",   0.7f,  0.0f,   1.0f};
-    vivid::Param<float> release  {"release",   0.3f,  0.001f, 10.0f};
-    vivid::Param<float> amplitude    {"amplitude",       0.3f,     0.0f,   1.0f};
-    vivid::Param<float> detune       {"detune",          0.0f,     0.0f,   50.0f};
-    vivid::Param<float> filter_cutoff{"filter_cutoff",   20000.0f, 20.0f,  20000.0f};
-    vivid::Param<float> filter_env_depth{"filter_env_depth", 0.0f, 0.0f,   8.0f};
+    vivid::Param<int>   waveform         {"waveform",         1,        {"sine", "saw", "square", "triangle"}};
+    vivid::Param<float> attack           {"attack",           0.01f,    0.001f, 5.0f};
+    vivid::Param<float> decay            {"decay",            0.1f,     0.001f, 5.0f};
+    vivid::Param<float> sustain          {"sustain",          0.7f,     0.0f,   1.0f};
+    vivid::Param<float> release          {"release",          0.3f,     0.001f, 10.0f};
+    vivid::Param<float> amplitude        {"amplitude",        0.3f,     0.0f,   1.0f};
+    vivid::Param<float> detune           {"detune",           0.0f,     0.0f,   50.0f};
+    vivid::Param<float> filter_cutoff    {"filter_cutoff",    20000.0f, 20.0f,  20000.0f};
+    vivid::Param<float> filter_env_depth {"filter_env_depth", 0.0f,     0.0f,   8.0f};
 
     static constexpr int kMaxVoices = 16;
-
-    enum Stage { IDLE, ATTACK, DECAY, SUSTAIN, RELEASE };
 
     struct Voice {
         float note = 0;
         float velocity = 0;
         double phase = 0;
-        float env_value = 0;
-        float env_progress = 0;
-        float release_start = 0;
-        Stage stage = IDLE;
-        bool gate = false;
         uint64_t note_id = 0;
         int gate_slot = -1;
         float filter_state = 0.0f;
+        double cached_freq = 0.0;
+        adsr::State env;
 
-        bool is_active() const { return stage != IDLE; }
+        bool is_active() const { return env.is_active(); }
     };
 
     Voice voices_[kMaxVoices] = {};
@@ -76,10 +74,16 @@ struct Polysynth : vivid::OperatorBase {
         out.push_back({"envelopes",  VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT}); // out 1
     }
 
-    // --- DSP helpers (ported from legacy poly_synth.cpp) ---
+    // --- DSP helpers ---
 
     static float cents_to_ratio(float cents) {
         return std::pow(2.0f, cents / 1200.0f);
+    }
+
+    static float read_spread_slot(const VividSpreadPort* sp, int slot, float fallback = 0.0f) {
+        if (sp && sp->data && slot >= 0 && static_cast<uint32_t>(slot) < sp->length)
+            return sp->data[slot];
+        return fallback;
     }
 
     static double generate_sample(double phase, int wave) {
@@ -101,60 +105,6 @@ struct Polysynth : vivid::OperatorBase {
         }
     }
 
-    static float compute_envelope(const Voice& v, float sustain_level) {
-        switch (v.stage) {
-            case ATTACK:
-                return v.env_progress;
-            case DECAY:
-                return 1.0f - v.env_progress * (1.0f - sustain_level);
-            case SUSTAIN:
-                return sustain_level;
-            case RELEASE:
-                return v.release_start * (1.0f - v.env_progress);
-            case IDLE:
-            default:
-                return 0.0f;
-        }
-    }
-
-    static void advance_envelope(Voice& v, float dt, float attack_t, float decay_t,
-                                 float sustain_level, float release_t) {
-        if (v.stage == IDLE) return;
-
-        switch (v.stage) {
-            case ATTACK: {
-                v.env_progress += dt / std::max(0.001f, attack_t);
-                if (v.env_progress >= 1.0f) {
-                    v.env_progress = 0.0f;
-                    v.stage = DECAY;
-                }
-                break;
-            }
-            case DECAY: {
-                v.env_progress += dt / std::max(0.001f, decay_t);
-                if (v.env_progress >= 1.0f) {
-                    v.env_progress = 0.0f;
-                    v.stage = SUSTAIN;
-                }
-                break;
-            }
-            case SUSTAIN:
-                break;
-            case RELEASE: {
-                v.env_progress += dt / std::max(0.001f, release_t);
-                if (v.env_progress >= 1.0f) {
-                    v.stage = IDLE;
-                    v.env_value = 0.0f;
-                }
-                break;
-            }
-            default:
-                break;
-        }
-
-        v.env_value = compute_envelope(v, sustain_level);
-    }
-
     int find_free_voice() const {
         for (int i = 0; i < kMaxVoices; ++i) {
             if (!voices_[i].is_active()) return i;
@@ -163,7 +113,6 @@ struct Polysynth : vivid::OperatorBase {
     }
 
     int find_voice_to_steal() const {
-        // Oldest voice stealing
         int steal_idx = -1;
         uint64_t oldest_id = UINT64_MAX;
         for (int i = 0; i < kMaxVoices; ++i) {
@@ -177,7 +126,7 @@ struct Polysynth : vivid::OperatorBase {
 
     int find_voice_by_note(float note) const {
         for (int i = 0; i < kMaxVoices; ++i) {
-            if (voices_[i].is_active() && voices_[i].stage != RELEASE &&
+            if (voices_[i].is_active() && voices_[i].env.stage != adsr::RELEASE &&
                 std::abs(voices_[i].note - note) < 0.5f) {
                 return i;
             }
@@ -197,11 +146,7 @@ struct Polysynth : vivid::OperatorBase {
         v.note = note;
         v.velocity = vel;
         v.phase = 0.0;
-        v.stage = ATTACK;
-        v.env_value = 0.0f;
-        v.env_progress = 0.0f;
-        v.release_start = 0.0f;
-        v.gate = true;
+        adsr::gate_on(v.env);
         v.note_id = ++note_counter_;
         v.gate_slot = slot;
         v.filter_state = 0.0f;
@@ -209,15 +154,51 @@ struct Polysynth : vivid::OperatorBase {
 
     void trigger_note_off(float note) {
         int vi = find_voice_by_note(note);
-        if (vi >= 0) {
-            Voice& v = voices_[vi];
-            if (v.stage != IDLE && v.stage != RELEASE) {
-                v.release_start = v.env_value;
-                v.stage = RELEASE;
-                v.env_progress = 0.0f;
-                v.gate = false;
-            }
+        if (vi >= 0)
+            adsr::gate_off(voices_[vi].env);
+    }
+
+    void update_gates(const VividProcessContext* ctx) {
+        if (!ctx->input_spreads) return;
+
+        const auto& notes_sp = ctx->input_spreads[0];
+        const auto& vel_sp   = ctx->input_spreads[1];
+        const auto& gates_sp = ctx->input_spreads[2];
+
+        uint32_t len = gates_sp.length;
+        if (len > static_cast<uint32_t>(kMaxVoices)) len = kMaxVoices;
+
+        for (uint32_t i = 0; i < len; ++i) {
+            float cur_gate = read_spread_slot(&gates_sp, static_cast<int>(i));
+            float cur_note = read_spread_slot(&notes_sp, static_cast<int>(i));
+            float cur_vel  = read_spread_slot(&vel_sp,   static_cast<int>(i), 0.8f);
+
+            float prev_gate = (i < prev_spread_len_) ? prev_gates_[i] : 0.0f;
+            float prev_note = (i < prev_spread_len_) ? prev_notes_[i] : 0.0f;
+
+            bool on        = (cur_gate > 0.5f) && (prev_gate <= 0.5f);
+            bool off       = (cur_gate <= 0.5f) && (prev_gate > 0.5f);
+            bool retrigger = (cur_gate > 0.5f) && (prev_gate > 0.5f) &&
+                             (std::abs(cur_note - prev_note) > 0.5f);
+
+            if (on || retrigger)
+                trigger_note_on(cur_note, cur_vel, static_cast<int>(i));
+            else if (off)
+                trigger_note_off(prev_note);
+
+            prev_gates_[i] = cur_gate;
+            prev_notes_[i] = cur_note;
         }
+
+        // Handle slots that disappeared (spread got shorter)
+        for (uint32_t i = len; i < prev_spread_len_; ++i) {
+            if (prev_gates_[i] > 0.5f)
+                trigger_note_off(prev_notes_[i]);
+            prev_gates_[i] = 0.0f;
+            prev_notes_[i] = 0.0f;
+        }
+
+        prev_spread_len_ = len;
     }
 
     void process(const VividProcessContext* ctx) override {
@@ -229,14 +210,14 @@ struct Polysynth : vivid::OperatorBase {
         double sample_rate = static_cast<double>(audio->sample_rate);
         float dt = 1.0f / static_cast<float>(audio->sample_rate);
 
-        int wave = waveform.int_value();
-        float att = attack.value;
-        float dec = decay.value;
-        float sus = sustain.value;
-        float rel = release.value;
-        float amp = amplitude.value;
-        float det_cents = detune.value;
-        float filt_cutoff = filter_cutoff.value;
+        int   wave           = waveform.int_value();
+        float att            = attack.value;
+        float dec            = decay.value;
+        float sus            = sustain.value;
+        float rel            = release.value;
+        float amp            = amplitude.value;
+        float det_cents      = detune.value;
+        float filt_cutoff    = filter_cutoff.value;
         float filt_env_depth = filter_env_depth.value;
 
         // Read modulation spread inputs
@@ -244,60 +225,23 @@ struct Polysynth : vivid::OperatorBase {
         const VividSpreadPort* pitch_mod_sp  = ctx->input_spreads ? &ctx->input_spreads[4] : nullptr;
         const VividSpreadPort* amp_mod_sp    = ctx->input_spreads ? &ctx->input_spreads[5] : nullptr;
 
-        // Read spread inputs for voice allocation
-        if (ctx->input_spreads) {
-            const auto& notes_sp = ctx->input_spreads[0];
-            const auto& vel_sp   = ctx->input_spreads[1];
-            const auto& gates_sp = ctx->input_spreads[2];
+        update_gates(ctx);
 
-            uint32_t len = gates_sp.length;
-            if (len > static_cast<uint32_t>(kMaxVoices)) len = kMaxVoices;
+        bool filter_active = (filt_cutoff < 19999.0f) || (filt_env_depth > 0.001f);
+        float norm = 1.0f / std::sqrt(static_cast<float>(kMaxVoices));
+        float detune_ratio = cents_to_ratio(det_cents);
 
-            for (uint32_t i = 0; i < len; ++i) {
-                float cur_gate = gates_sp.data ? gates_sp.data[i] : 0.0f;
-                float cur_note = (notes_sp.data && i < notes_sp.length) ? notes_sp.data[i] : 0.0f;
-                float cur_vel  = (vel_sp.data && i < vel_sp.length) ? vel_sp.data[i] : 0.8f;
-
-                float prev_gate = (i < prev_spread_len_) ? prev_gates_[i] : 0.0f;
-                float prev_note = (i < prev_spread_len_) ? prev_notes_[i] : 0.0f;
-
-                bool gate_on  = (cur_gate > 0.5f) && (prev_gate <= 0.5f);
-                bool gate_off = (cur_gate <= 0.5f) && (prev_gate > 0.5f);
-                bool retrigger = (cur_gate > 0.5f) && (prev_gate > 0.5f) &&
-                                 (std::abs(cur_note - prev_note) > 0.5f);
-
-                if (gate_on || retrigger) {
-                    trigger_note_on(cur_note, cur_vel, static_cast<int>(i));
-                } else if (gate_off) {
-                    trigger_note_off(prev_note);
-                }
-
-                prev_gates_[i] = cur_gate;
-                prev_notes_[i] = cur_note;
-            }
-
-            // Handle slots that disappeared (spread got shorter)
-            for (uint32_t i = len; i < prev_spread_len_; ++i) {
-                if (prev_gates_[i] > 0.5f) {
-                    trigger_note_off(prev_notes_[i]);
-                }
-                prev_gates_[i] = 0.0f;
-                prev_notes_[i] = 0.0f;
-            }
-
-            prev_spread_len_ = len;
+        // Cache per-voice frequency (avoid std::pow per sample)
+        for (int vi = 0; vi < kMaxVoices; ++vi) {
+            Voice& v = voices_[vi];
+            if (!v.is_active()) continue;
+            float pitch_offset = read_spread_slot(pitch_mod_sp, v.gate_slot);
+            double note_val = static_cast<double>(v.note + pitch_offset);
+            v.cached_freq = 440.0 * std::pow(2.0, (note_val - 69.0) / 12.0)
+                            * static_cast<double>(detune_ratio);
         }
 
-        // Check if filter is active
-        bool filter_active = (filt_cutoff < 19999.0f) || (filt_env_depth > 0.001f);
-
-        // Normalization factor: 1/sqrt(maxVoices)
-        float norm = 1.0f / std::sqrt(static_cast<float>(kMaxVoices));
-
-        // Per-sample synthesis loop
         std::memset(out, 0, frames * sizeof(float));
-
-        float detune_ratio = cents_to_ratio(det_cents);
 
         for (uint32_t s = 0; s < frames; ++s) {
             float mix = 0.0f;
@@ -306,45 +250,21 @@ struct Polysynth : vivid::OperatorBase {
                 Voice& v = voices_[vi];
                 if (!v.is_active()) continue;
 
-                // Advance envelope per sample
-                advance_envelope(v, dt, att, dec, sus, rel);
-                if (v.stage == IDLE) continue;
+                adsr::advance(v.env, dt, att, dec, sus, rel);
+                if (!v.is_active()) continue;
 
-                // Pitch modulation (semitones offset)
-                float note_val = v.note;
-                if (pitch_mod_sp && pitch_mod_sp->length > 0 &&
-                    v.gate_slot >= 0 && v.gate_slot < static_cast<int>(pitch_mod_sp->length)) {
-                    note_val += pitch_mod_sp->data[v.gate_slot];
-                }
-
-                // MIDI note to frequency
-                double freq = 440.0 * std::pow(2.0, (static_cast<double>(note_val) - 69.0) / 12.0);
-                freq *= static_cast<double>(detune_ratio);
-
-                // Generate sample
                 float sig = static_cast<float>(generate_sample(v.phase, wave));
-
-                // Apply envelope and velocity
-                sig *= v.env_value * v.velocity;
-
-                // Amplitude modulation (multiplier)
-                if (amp_mod_sp && amp_mod_sp->length > 0 &&
-                    v.gate_slot >= 0 && v.gate_slot < static_cast<int>(amp_mod_sp->length)) {
-                    sig *= amp_mod_sp->data[v.gate_slot];
-                }
+                sig *= v.env.env_value * v.velocity;
+                sig *= read_spread_slot(amp_mod_sp, v.gate_slot, 1.0f);
 
                 // Per-voice one-pole lowpass filter
                 if (filter_active) {
-                    float mod_cutoff = filt_cutoff;
-                    if (filter_env_sp && filter_env_sp->length > 0 &&
-                        v.gate_slot >= 0 && v.gate_slot < static_cast<int>(filter_env_sp->length)) {
-                        float env_val = filter_env_sp->data[v.gate_slot];
-                        mod_cutoff = filt_cutoff * std::pow(2.0f, env_val * filt_env_depth);
-                    }
-                    // Clamp to Nyquist
+                    float filt_env_val = read_spread_slot(filter_env_sp, v.gate_slot);
+                    float mod_cutoff = filt_cutoff * std::pow(2.0f, filt_env_val * filt_env_depth);
                     if (mod_cutoff > static_cast<float>(audio->sample_rate) * 0.5f)
                         mod_cutoff = static_cast<float>(audio->sample_rate) * 0.5f;
-                    float alpha = 2.0f * static_cast<float>(M_PI) * mod_cutoff / static_cast<float>(audio->sample_rate);
+                    float alpha = 2.0f * static_cast<float>(M_PI) * mod_cutoff
+                                  / static_cast<float>(audio->sample_rate);
                     if (alpha > 1.0f) alpha = 1.0f;
                     if (alpha < 0.0f) alpha = 0.0f;
                     v.filter_state += alpha * (sig - v.filter_state);
@@ -353,8 +273,7 @@ struct Polysynth : vivid::OperatorBase {
 
                 mix += sig;
 
-                // Advance phase
-                v.phase += freq * TWO_PI / sample_rate;
+                v.phase += v.cached_freq * TWO_PI / sample_rate;
                 if (v.phase >= TWO_PI) v.phase -= TWO_PI;
             }
 
@@ -367,9 +286,8 @@ struct Polysynth : vivid::OperatorBase {
             uint32_t active_count = 0;
             for (int vi = 0; vi < kMaxVoices; ++vi) {
                 if (voices_[vi].is_active()) {
-                    if (active_count < env_sp.capacity) {
-                        env_sp.data[active_count] = voices_[vi].env_value;
-                    }
+                    if (active_count < env_sp.capacity)
+                        env_sp.data[active_count] = voices_[vi].env.env_value;
                     active_count++;
                 }
             }
