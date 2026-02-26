@@ -412,6 +412,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_pan();
     update_node_drag();
     update_wire_drag();
+    update_scrollbar_drag();
     update_slider_drag();
     update_chooser_hover();
     update_context_menu();   // may consume left_clicked

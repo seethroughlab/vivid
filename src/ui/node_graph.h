@@ -84,11 +84,16 @@ private:
     void draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h);
     void draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& node,
+                                  float px, float& py, uint32_t pi);
     void draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_adsr_preview(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_chooser(Renderer2D& tr);
     void draw_preview_wire(Renderer2D& tr);
     void draw_wire_tooltip(Renderer2D& tr);
+    void draw_inspector_scrollbar(Renderer2D& tr);
 
     // --- Performance bar ---
     void draw_perf_bar(Renderer2D& tr);
@@ -139,6 +144,7 @@ private:
     void clear_frame_flags();
     void update_wire_hover();
     void update_sparklines();
+    void update_scrollbar_drag();
 
     // --- Input handling (node_graph_input.cpp) ---
     void handle_right_click();
@@ -249,6 +255,14 @@ private:
     std::string context_node_id_;   // non-empty if node menu
     int context_wire_idx_ = -1;     // >= 0 if wire menu
     int hovered_wire_idx_ = -1;
+
+    // Inspector scroll state
+    float insp_scroll_y_ = 0.0f;
+    float insp_content_h_ = 0.0f;
+    std::string insp_scroll_node_id_;    // reset scroll when selection changes
+    bool insp_scrollbar_dragging_ = false;
+    float insp_sb_drag_start_y_ = 0.0f;
+    float insp_sb_drag_start_scroll_ = 0.0f;
 
     // Cached window dimensions (updated each frame in draw())
     uint32_t win_w_ = 1280, win_h_ = 720;

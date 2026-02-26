@@ -47,8 +47,14 @@ void NodeGraphUI::on_mouse_button(int button, int action) {
 }
 
 void NodeGraphUI::on_scroll(float /*x_offset*/, float y_offset) {
-    // Only zoom when cursor is in graph area
-    if (mouse_.x >= graph_right()) return;
+    // Inspector scroll when cursor is in inspector area
+    if (mouse_.x >= graph_right() && has_selection()) {
+        insp_scroll_y_ -= y_offset * kInspScrollSpeed;
+        float viewport_h = static_cast<float>(win_h_) - kPerfBarH;
+        float max_scroll = std::max(0.0f, insp_content_h_ - viewport_h);
+        insp_scroll_y_ = std::max(0.0f, std::min(insp_scroll_y_, max_scroll));
+        return;
+    }
 
     float factor = std::pow(1.12f, y_offset);
     float new_zoom = zoom_ * factor;
@@ -342,6 +348,27 @@ bool NodeGraphUI::handle_inspector_click() {
     if (mouse_.x < graph_right() || mouse_.y >= static_cast<float>(win_h_))
         return false;
 
+    // Scrollbar hit test — check the scrollbar track area
+    if (insp_content_h_ > static_cast<float>(win_h_) - kPerfBarH) {
+        float insp_x = inspector_x();
+        float track_x = insp_x + kInspectorW - kInspScrollbarW - 2.0f;
+        float viewport_top = kPerfBarH;
+        float viewport_h = static_cast<float>(win_h_) - viewport_top;
+        float track_y = viewport_top + 2.0f;
+        float track_h = viewport_h - 4.0f;
+
+        if (mouse_.x >= track_x && mouse_.x <= track_x + kInspScrollbarW + 2.0f &&
+            mouse_.y >= track_y && mouse_.y <= track_y + track_h) {
+            insp_scrollbar_dragging_ = true;
+            insp_sb_drag_start_y_ = mouse_.y;
+            insp_sb_drag_start_scroll_ = insp_scroll_y_;
+            return true;
+        }
+    }
+
+    // Reject clicks above perf bar (clipped-off content)
+    if (mouse_.y < kPerfBarH) return true;
+
     // Confirm any active text edit when clicking in inspector
     if (editing_param_) confirm_param_edit();
     if (editing_resolution_) confirm_resolution_edit();
@@ -483,6 +510,30 @@ void NodeGraphUI::handle_graph_click() {
             pan_start_px_ = pan_x_;
             pan_start_py_ = pan_y_;
         }
+    }
+}
+
+void NodeGraphUI::update_scrollbar_drag() {
+    if (!insp_scrollbar_dragging_) return;
+
+    if (mouse_.left_down) {
+        float viewport_h = static_cast<float>(win_h_) - kPerfBarH;
+        float track_h = viewport_h - 4.0f;
+        float ratio = viewport_h / insp_content_h_;
+        float thumb_h = std::max(kInspScrollbarMinThumb, track_h * ratio);
+        float scrollable_track = track_h - thumb_h;
+
+        if (scrollable_track > 0.0f) {
+            float max_scroll = insp_content_h_ - viewport_h;
+            float mouse_delta = mouse_.y - insp_sb_drag_start_y_;
+            float scroll_delta = (mouse_delta / scrollable_track) * max_scroll;
+            insp_scroll_y_ = std::max(0.0f, std::min(max_scroll,
+                                      insp_sb_drag_start_scroll_ + scroll_delta));
+        }
+    }
+
+    if (mouse_.left_released) {
+        insp_scrollbar_dragging_ = false;
     }
 }
 

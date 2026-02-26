@@ -43,6 +43,8 @@ static constexpr std::array<float, 3> kAudioAccent   = { 0.941f, 0.627f, 0.188f 
 static constexpr std::array<float, 3> kControlAccent = { 0.753f, 0.784f, 0.816f };     // #C0C8D0 gray
 
 // Inspector widget sizes
+static constexpr float kAdsrPreviewH = 80.0f;
+static constexpr float kNotePatternPreviewH = 60.0f;
 static constexpr float kSliderH = 10.0f;
 static constexpr float kCheckboxSize = 14.0f;
 static constexpr float kDropdownH = 18.0f;
@@ -70,6 +72,11 @@ static constexpr float kChooserY = 80.0f;
 static constexpr float kCtxMenuW = 120.0f;
 static constexpr float kCtxMenuItemH = 22.0f;
 static constexpr float kCtxMenuPadTop = 3.0f;
+
+// Inspector scrollbar
+static constexpr float kInspScrollbarW = 6.0f;
+static constexpr float kInspScrollSpeed = 40.0f;     // px per scroll tick
+static constexpr float kInspScrollbarMinThumb = 20.0f;
 
 // Shared domain helpers (inline so they can live in the header)
 

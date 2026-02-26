@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <unordered_set>
 
 namespace vivid::ui {
 
@@ -120,14 +121,23 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                     tr.draw_rect(wave_x, center_y, wave_w, 1,
                                  dcol[0], dcol[1], dcol[2], 0.2f);
 
-                    // Waveform bars
+                    // Waveform bars — downsample 1024 source samples to
+                    // ~256 visual bars (max-amplitude per bucket) to cut
+                    // vertex cost from 6144 to ~1536 with no visible loss.
                     constexpr uint32_t kWaveN = AudioNodeAnalysis::kWaveformSamples;
-                    float bar_w = wave_w / kWaveN;
-                    for (uint32_t si = 0; si < kWaveN; ++si) {
-                        float amp = analysis.waveform[si];
+                    constexpr uint32_t kVisualBars = 256;
+                    constexpr uint32_t kStride = kWaveN / kVisualBars; // 4
+                    float bar_w = wave_w / kVisualBars;
+                    for (uint32_t bi = 0; bi < kVisualBars; ++bi) {
+                        // Find the sample with the largest absolute amplitude in this bucket
+                        float amp = analysis.waveform[bi * kStride];
+                        for (uint32_t j = 1; j < kStride; ++j) {
+                            float s = analysis.waveform[bi * kStride + j];
+                            if (std::fabs(s) > std::fabs(amp)) amp = s;
+                        }
                         float bh = std::fabs(amp) * wave_h * 0.5f;
                         bh = std::max(0.5f, bh);
-                        float bx = wave_x + si * bar_w;
+                        float bx = wave_x + bi * bar_w;
                         float by = (amp >= 0) ? center_y - bh : center_y;
                         tr.draw_rect(bx, by, std::max(0.5f, bar_w - 0.3f), bh,
                                      dcol[0], dcol[1], dcol[2], 0.8f);
@@ -307,10 +317,15 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
 
     if (selected_node_id_.empty()) return;
 
-    // Inspector background
+    // Reset scroll when selection changes
+    if (selected_node_id_ != insp_scroll_node_id_) {
+        insp_scroll_y_ = 0.0f;
+        insp_scroll_node_id_ = selected_node_id_;
+    }
+
+    // Inspector background + separator (drawn outside clip rect)
     float insp_x = inspector_x();
     tr.draw_rect(insp_x, 0, kInspectorW, static_cast<float>(h), kInspBg[0], kInspBg[1], kInspBg[2], 0.95f);
-    // Separator line
     tr.draw_rect(insp_x, 0, 2, static_cast<float>(h), 0.25f, 0.27f, 0.30f);
 
     // Find the selected node in snapshot
@@ -320,13 +335,65 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         return;
     }
 
+    float viewport_top = kPerfBarH;
+    float viewport_h = static_cast<float>(h) - viewport_top;
+
+    // Clamp scroll before drawing
+    float max_scroll = std::max(0.0f, insp_content_h_ - viewport_h);
+    insp_scroll_y_ = std::max(0.0f, std::min(insp_scroll_y_, max_scroll));
+
+    // Clip rect for scrollable content
+    tr.push_clip_rect(insp_x, viewport_top, kInspectorW, viewport_h);
+
     float px = insp_x + kInspPadX;
-    float py = kPerfBarH + 8;
+    float py = viewport_top + 8 - insp_scroll_y_;
 
     draw_inspector_header(tr, *sel_node, px, py);
     draw_inspector_params(tr, *sel_node, px, py);
+    draw_inspector_adsr_preview(tr, *sel_node, px, py);
+    draw_inspector_note_pattern(tr, *sel_node, px, py);
     draw_inspector_resolution(tr, *sel_node, px, py);
     draw_inspector_outputs(tr, *sel_node, px, py);
+
+    tr.pop_clip_rect();
+
+    // Compute content height from final py (relative to viewport top)
+    insp_content_h_ = (py + insp_scroll_y_) - viewport_top;
+
+    // Draw scrollbar outside clip rect
+    draw_inspector_scrollbar(tr);
+}
+
+void NodeGraphUI::draw_inspector_scrollbar(Renderer2D& tr) {
+    float viewport_top = kPerfBarH;
+    float viewport_h = static_cast<float>(win_h_) - viewport_top;
+
+    // Only show scrollbar when content overflows
+    if (insp_content_h_ <= viewport_h) return;
+
+    float insp_x = inspector_x();
+    float track_x = insp_x + kInspectorW - kInspScrollbarW - 2.0f;
+    float track_y = viewport_top + 2.0f;
+    float track_h = viewport_h - 4.0f;
+
+    // Track background
+    tr.draw_rect(track_x, track_y, kInspScrollbarW, track_h, 0.15f, 0.16f, 0.18f, 0.5f);
+
+    // Thumb size proportional to viewport/content ratio
+    float ratio = viewport_h / insp_content_h_;
+    float thumb_h = std::max(kInspScrollbarMinThumb, track_h * ratio);
+
+    // Thumb position based on scroll ratio
+    float max_scroll = insp_content_h_ - viewport_h;
+    float scroll_ratio = (max_scroll > 0) ? insp_scroll_y_ / max_scroll : 0.0f;
+    float thumb_y = track_y + scroll_ratio * (track_h - thumb_h);
+
+    // Thumb
+    bool hovered = mouse_.x >= track_x && mouse_.x <= track_x + kInspScrollbarW &&
+                   mouse_.y >= thumb_y && mouse_.y <= thumb_y + thumb_h;
+    float thumb_alpha = (hovered || insp_scrollbar_dragging_) ? 0.8f : 0.5f;
+    tr.draw_rect(track_x, thumb_y, kInspScrollbarW, thumb_h,
+                 0.45f, 0.48f, 0.52f, thumb_alpha);
 }
 
 void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node,
@@ -342,105 +409,401 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
     py += 8;
 }
 
+void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& node,
+                                           float px, float& py, uint32_t pi) {
+    const auto& op = *node.op_info;
+    float panel_w = kInspContentW;
+    const auto& pd = op.params[pi];
+    float val = node.param_values[pi];
+
+    bool is_editing_this = editing_param_ &&
+                           edit_node_id_ == selected_node_id_ &&
+                           edit_param_name_ == pd.name;
+
+    // Label
+    tr.draw_text(px, py, pd.name.c_str(), 0.8f, 0.82f, 0.85f);
+
+    // Value text (right-aligned on the label line)
+    std::string val_str;
+    if (pd.type == VIVID_PARAM_BOOL) {
+        val_str = val > 0.5f ? "true" : "false";
+    } else if (pd.choice_count > 0) {
+        int idx = static_cast<int>(val);
+        if (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
+            val_str = pd.choice_labels[idx];
+        else
+            val_str = format_int(idx);
+    } else if (pd.type == VIVID_PARAM_INT) {
+        val_str = format_int(static_cast<int>(val));
+    } else {
+        val_str = format_float(val, 2);
+    }
+
+    float vw = tr.text_width(val_str.c_str());
+    float val_x = px + panel_w - vw;
+    float val_y = py;
+
+    if (is_editing_this) {
+        float edit_w = panel_w * 0.4f;
+        float edit_x = px + panel_w - edit_w;
+        float edit_h = kLineH;
+        tr.draw_rect(edit_x - 1, val_y - 1, edit_w + 2, edit_h + 2,
+                     kAccent[0], kAccent[1], kAccent[2]);
+        tr.draw_rect(edit_x, val_y, edit_w, edit_h, 0.08f, 0.09f, 0.11f);
+        std::string display = edit_buffer_ + "_";
+        tr.draw_text(edit_x + 2, val_y, display.c_str(), 0.95f, 0.95f, 0.95f);
+    } else {
+        tr.draw_text(val_x, py, val_str.c_str(), 0.8f, 0.82f, 0.85f);
+        if (pd.type != VIVID_PARAM_BOOL && pd.choice_count == 0) {
+            value_text_rects_.push_back({val_x, val_y, vw, kLineH,
+                                         selected_node_id_, pd.name});
+        }
+    }
+    py += kLineH;
+
+    if (pd.type == VIVID_PARAM_BOOL) {
+        float bx = px, by = py;
+        tr.draw_rect(bx, by, kCheckboxSize, kCheckboxSize, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+        if (val > 0.5f) {
+            tr.draw_rect(bx + 2, by + 2, kCheckboxSize - 4, kCheckboxSize - 4,
+                         kAccent[0], kAccent[1], kAccent[2]);
+        }
+        bool_rects_.push_back({bx, by, kCheckboxSize, kCheckboxSize, selected_node_id_, pd.name});
+        py += kCheckboxSize + 6;
+    } else if (pd.choice_count > 0) {
+        float dx = px, dy = py;
+        float dw = panel_w, dh = kDropdownH;
+        tr.draw_rect(dx, dy, dw, dh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+        int idx = static_cast<int>(val);
+        const char* label = (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
+                            ? pd.choice_labels[idx].c_str() : "?";
+        tr.draw_text(dx + 6, dy + 1, label, 0.9f, 0.92f, 0.95f);
+        float arrow_x = dx + dw - 16;
+        tr.draw_text(arrow_x, dy + 1, "\xE2\x96\xBE", kDimText[0], kDimText[1], kDimText[2]);
+        dropdown_rects_.push_back({dx, dy, dw, dh, selected_node_id_, pd.name});
+        py += dh + 6;
+    } else {
+        float sx = px, sy = py;
+        float sw = panel_w, sh = kSliderH;
+        tr.draw_rect(sx, sy, sw, sh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+        float range = pd.max_value - pd.min_value;
+        float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
+        t = std::max(0.0f, std::min(1.0f, t));
+        tr.draw_rect(sx, sy, sw * t, sh, kSliderFill[0], kSliderFill[1], kSliderFill[2]);
+        float thumb_x = sx + sw * t - 3;
+        tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, kAccent[0], kAccent[1], kAccent[2]);
+        slider_rects_.push_back({sx, sy - 4, sw, sh + 8, selected_node_id_, pd.name});
+        py += sh + 10;
+    }
+}
+
 void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node,
                                         float px, float& py) {
     const auto& op = *node.op_info;
-    float panel_w = kInspContentW;
 
-    for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
-        const auto& pd = op.params[pi];
-        float val = node.param_values[pi];
+    // Detect NotePattern: has "steps" + "root_0".."root_7" + "type_0".."type_7"
+    auto steps_it = node.param_indices.find("steps");
+    auto root0_it = node.param_indices.find("root_0");
+    auto type0_it = node.param_indices.find("type_0");
+    bool is_note_pattern = (steps_it != node.param_indices.end() &&
+                            root0_it != node.param_indices.end() &&
+                            type0_it != node.param_indices.end());
 
-        bool is_editing_this = editing_param_ &&
-                               edit_node_id_ == selected_node_id_ &&
-                               edit_param_name_ == pd.name;
+    if (is_note_pattern) {
+        int num_steps = static_cast<int>(node.param_values[steps_it->second]);
+        num_steps = std::max(1, std::min(8, num_steps));
 
-        // Label
-        tr.draw_text(px, py, pd.name.c_str(), 0.8f, 0.82f, 0.85f);
+        uint32_t root_base = root0_it->second;
+        uint32_t type_base = type0_it->second;
 
-        // Value text (right-aligned on the label line)
-        std::string val_str;
-        if (pd.type == VIVID_PARAM_BOOL) {
-            val_str = val > 0.5f ? "true" : "false";
-        } else if (pd.choice_count > 0) {
-            int idx = static_cast<int>(val);
-            if (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
-                val_str = pd.choice_labels[idx];
-            else
-                val_str = format_int(idx);
-        } else if (pd.type == VIVID_PARAM_INT) {
-            val_str = format_int(static_cast<int>(val));
-        } else {
-            val_str = format_float(val, 2);
+        // Build set of step-indexed param indices to skip in the tail
+        std::unordered_set<uint32_t> step_params;
+        for (int s = 0; s < 8; ++s) {
+            step_params.insert(root_base + s);
+            step_params.insert(type_base + s);
         }
 
-        float vw = tr.text_width(val_str.c_str());
-        float val_x = px + panel_w - vw;
-        float val_y = py;
+        // Draw "steps" slider first
+        draw_one_inspector_param(tr, node, px, py, steps_it->second);
 
-        if (is_editing_this) {
-            // Draw text-edit field in place of value text
-            float edit_w = panel_w * 0.4f;
-            float edit_x = px + panel_w - edit_w;
-            float edit_h = kLineH;
-            tr.draw_rect(edit_x - 1, val_y - 1, edit_w + 2, edit_h + 2,
-                         kAccent[0], kAccent[1], kAccent[2]);
-            tr.draw_rect(edit_x, val_y, edit_w, edit_h, 0.08f, 0.09f, 0.11f);
-            std::string display = edit_buffer_ + "_";
-            tr.draw_text(edit_x + 2, val_y, display.c_str(), 0.95f, 0.95f, 0.95f);
-        } else {
-            tr.draw_text(val_x, py, val_str.c_str(), 0.8f, 0.82f, 0.85f);
-            // Track value text rect for click-to-edit (not for bools or enums)
-            if (pd.type != VIVID_PARAM_BOOL && pd.choice_count == 0) {
-                value_text_rects_.push_back({val_x, val_y, vw, kLineH,
-                                             selected_node_id_, pd.name});
+        // Draw grouped steps: "Step N" header + root_N dropdown + type_N dropdown
+        for (int s = 0; s < num_steps; ++s) {
+            // Step header
+            char header[16];
+            std::snprintf(header, sizeof(header), "Step %d", s + 1);
+            py += 4;
+            tr.draw_text(px, py, header, kDimText[0], kDimText[1], kDimText[2]);
+            py += kLineH;
+
+            // Draw root (key) and type (mode) side by side
+            {
+                float gap = 8.0f;
+                float half_w = (kInspContentW - gap) / 2.0f;
+
+                auto draw_half_dropdown = [&](uint32_t pi, float dx, float dw) {
+                    const auto& pd = op.params[pi];
+                    float val = node.param_values[pi];
+                    int idx = static_cast<int>(val);
+                    const char* label = (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
+                                        ? pd.choice_labels[idx].c_str() : "?";
+                    tr.draw_rect(dx, py, dw, kDropdownH,
+                                 kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+                    tr.draw_text(dx + 6, py + 1, label, 0.9f, 0.92f, 0.95f);
+                    float arrow_x = dx + dw - 16;
+                    tr.draw_text(arrow_x, py + 1, "\xE2\x96\xBE",
+                                 kDimText[0], kDimText[1], kDimText[2]);
+                    dropdown_rects_.push_back({dx, py, dw, kDropdownH,
+                                               selected_node_id_, pd.name});
+                };
+
+                draw_half_dropdown(root_base + s, px, half_w);
+                draw_half_dropdown(type_base + s, px + half_w + gap, half_w);
+                py += kDropdownH + 6;
             }
         }
-        py += kLineH;
 
-        if (pd.type == VIVID_PARAM_BOOL) {
-            float bx = px, by = py;
-            tr.draw_rect(bx, by, kCheckboxSize, kCheckboxSize, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
-            if (val > 0.5f) {
-                tr.draw_rect(bx + 2, by + 2, kCheckboxSize - 4, kCheckboxSize - 4,
-                             kAccent[0], kAccent[1], kAccent[2]);
-            }
-            bool_rects_.push_back({bx, by, kCheckboxSize, kCheckboxSize, selected_node_id_, pd.name});
-            py += kCheckboxSize + 6;
-        } else if (pd.choice_count > 0) {
-            // Dropdown row for enum params
-            float dx = px, dy = py;
-            float dw = panel_w, dh = kDropdownH;
-            tr.draw_rect(dx, dy, dw, dh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
-            // Show current label
-            int idx = static_cast<int>(val);
-            const char* label = (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
-                                ? pd.choice_labels[idx].c_str() : "?";
-            tr.draw_text(dx + 6, dy + 1, label, 0.9f, 0.92f, 0.95f);
-            // Down-arrow indicator
-            float arrow_x = dx + dw - 16;
-            tr.draw_text(arrow_x, dy + 1, "\xE2\x96\xBE", kDimText[0], kDimText[1], kDimText[2]);
-            dropdown_rects_.push_back({dx, dy, dw, dh, selected_node_id_, pd.name});
-            py += dh + 6;
-        } else {
-            // Normal slider
-            float sx = px, sy = py;
-            float sw = panel_w, sh = kSliderH;
-
-            tr.draw_rect(sx, sy, sw, sh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
-
-            float range = pd.max_value - pd.min_value;
-            float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
-            t = std::max(0.0f, std::min(1.0f, t));
-            tr.draw_rect(sx, sy, sw * t, sh, kSliderFill[0], kSliderFill[1], kSliderFill[2]);
-
-            float thumb_x = sx + sw * t - 3;
-            tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, kAccent[0], kAccent[1], kAccent[2]);
-
-            slider_rects_.push_back({sx, sy - 4, sw, sh + 8, selected_node_id_, pd.name});
-            py += sh + 10;
+        // Draw remaining params (octave, beats_per_step, gate_length, velocity)
+        // skipping steps (already drawn) and all root_*/type_* params
+        step_params.insert(steps_it->second);
+        for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
+            if (step_params.count(pi)) continue;
+            draw_one_inspector_param(tr, node, px, py, pi);
+        }
+    } else {
+        // Default: sequential rendering
+        for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
+            draw_one_inspector_param(tr, node, px, py, pi);
         }
     }
+}
+
+void NodeGraphUI::draw_inspector_adsr_preview(Renderer2D& tr, const NodeSnapshot& node,
+                                               float px, float& py) {
+    // Only draw if all 4 ADSR params exist
+    auto a_it = node.param_indices.find("attack");
+    auto d_it = node.param_indices.find("decay");
+    auto s_it = node.param_indices.find("sustain");
+    auto r_it = node.param_indices.find("release");
+    if (a_it == node.param_indices.end() || d_it == node.param_indices.end() ||
+        s_it == node.param_indices.end() || r_it == node.param_indices.end())
+        return;
+
+    float atk = node.param_values[a_it->second];
+    float dec = node.param_values[d_it->second];
+    float sus = node.param_values[s_it->second];
+    float rel = node.param_values[r_it->second];
+
+    // Clamp to sane minimums
+    if (atk < 0.0001f) atk = 0.0001f;
+    if (dec < 0.001f)  dec = 0.001f;
+    if (rel < 0.001f)  rel = 0.001f;
+    sus = std::max(0.0f, std::min(1.0f, sus));
+
+    // Check env_bypass state
+    bool bypassed = false;
+    auto bp_it = node.param_indices.find("env_bypass");
+    if (bp_it != node.param_indices.end())
+        bypassed = node.param_values[bp_it->second] > 0.5f;
+
+    float alpha_mult = bypassed ? 0.35f : 1.0f;
+
+    // Layout
+    float w = kInspContentW;
+    float h = kAdsrPreviewH;
+    float pad = 6.0f;
+
+    py += 4;
+
+    // Dark background
+    tr.draw_rect(px, py, w, h, kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
+
+    // Curve geometry (same math as Envelope::draw_thumbnail)
+    float sustain_width = 0.3f * (atk + dec + rel);
+    float total_time = atk + dec + sustain_width + rel;
+
+    auto env_at = [&](float t) -> float {
+        if (t <= atk)
+            return t / atk;
+        t -= atk;
+        if (t <= dec)
+            return 1.0f - (1.0f - sus) * (t / dec);
+        t -= dec;
+        if (t <= sustain_width)
+            return sus;
+        t -= sustain_width;
+        if (t <= rel)
+            return sus * (1.0f - t / rel);
+        return 0.0f;
+    };
+
+    auto time_to_x = [&](float t) -> float {
+        return px + pad + (t / total_time) * (w - 2.0f * pad);
+    };
+    auto env_to_y = [&](float e) -> float {
+        return py + pad + (1.0f - e) * (h - 2.0f * pad);
+    };
+
+    // Filled region below curve (3px-wide translucent rects)
+    float plot_w = w - 2.0f * pad;
+    int cols = static_cast<int>(plot_w / 3.0f);
+    float col_w = plot_w / static_cast<float>(cols);
+    float bottom_y = env_to_y(0.0f);
+
+    for (int i = 0; i < cols; ++i) {
+        float fx = px + pad + static_cast<float>(i) * col_w;
+        float t = (static_cast<float>(i) / static_cast<float>(cols)) * total_time;
+        float e = env_at(t);
+        float ey = env_to_y(e);
+        float fill_h = bottom_y - ey;
+        if (fill_h > 0.0f) {
+            tr.draw_rect(fx, ey, col_w, fill_h,
+                         kAccent[0], kAccent[1], kAccent[2], 0.15f * alpha_mult);
+        }
+    }
+
+    // Curve line segments (~1 point per 2px)
+    int segments = std::max(4, cols / 2);
+    float prev_x = time_to_x(0.0f);
+    float prev_y = env_to_y(env_at(0.0f));
+    for (int i = 1; i <= segments; ++i) {
+        float t = (static_cast<float>(i) / static_cast<float>(segments)) * total_time;
+        float cx = time_to_x(t);
+        float cy = env_to_y(env_at(t));
+        tr.draw_line(prev_x, prev_y, cx, cy, 1.5f,
+                     kAccent[0], kAccent[1], kAccent[2], 0.9f * alpha_mult);
+        prev_x = cx;
+        prev_y = cy;
+    }
+
+    // Vertical dashed markers at attack/decay/release boundaries
+    float marker_times[3] = { atk, atk + dec, atk + dec + sustain_width };
+    for (float mt : marker_times) {
+        float mx = time_to_x(mt);
+        float top_y = py + pad;
+        // Draw dashes (4px on, 4px off)
+        for (float dy = top_y; dy < bottom_y; dy += 8.0f) {
+            float dash_end = std::min(dy + 4.0f, bottom_y);
+            tr.draw_line(mx, dy, mx, dash_end, 1.0f,
+                         kDimText[0], kDimText[1], kDimText[2], 0.3f * alpha_mult);
+        }
+    }
+
+    // "bypassed" label when env_bypass is on
+    if (bypassed) {
+        tr.draw_text(px + w - tr.text_width("bypassed") - 4, py + 2, "bypassed",
+                     kDimText[0], kDimText[1], kDimText[2], 0.5f);
+    }
+
+    py += h + 4;
+}
+
+void NodeGraphUI::draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot& node,
+                                               float px, float& py) {
+    // Only draw if this is a NotePattern (has steps, root_0, type_0)
+    auto steps_it = node.param_indices.find("steps");
+    auto root0_it = node.param_indices.find("root_0");
+    auto type0_it = node.param_indices.find("type_0");
+    if (steps_it == node.param_indices.end() ||
+        root0_it == node.param_indices.end() ||
+        type0_it == node.param_indices.end())
+        return;
+
+    int num_steps = static_cast<int>(node.param_values[steps_it->second]);
+    num_steps = std::max(1, std::min(8, num_steps));
+
+    uint32_t root_base = root0_it->second;
+    uint32_t type_base = type0_it->second;
+
+    // Note names and chord abbreviations
+    static const char* kNoteNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+    static const char* kChordAbbr[] = {"M","m","dim","aug","7","m7","M7"};
+
+    // 7-color palette for chord types (matches thumbnail)
+    static constexpr std::array<float, 3> kTypeColors[7] = {
+        {0.39f, 0.63f, 0.86f},   // Major  — blue
+        {0.63f, 0.39f, 0.78f},   // Minor  — purple
+        {0.78f, 0.39f, 0.39f},   // Dim    — red
+        {0.86f, 0.71f, 0.31f},   // Aug    — gold
+        {0.31f, 0.71f, 0.63f},   // Dom7   — teal
+        {0.55f, 0.47f, 0.78f},   // Min7   — lavender
+        {0.31f, 0.55f, 0.86f},   // Maj7   — sky blue
+    };
+
+    // Detect current step from first output note
+    int current_step = -1;
+    auto notes_it = node.output_port_indices.find("notes");
+    if (notes_it != node.output_port_indices.end()) {
+        uint32_t pidx = notes_it->second;
+        float out_note = 0.0f;
+        if (pidx < node.output_spreads.size() && !node.output_spreads[pidx].empty())
+            out_note = node.output_spreads[pidx][0];
+        else if (pidx < node.output_values.size())
+            out_note = node.output_values[pidx];
+
+        auto oct_it = node.param_indices.find("octave");
+        int oct = (oct_it != node.param_indices.end()) ? static_cast<int>(node.param_values[oct_it->second]) : 4;
+
+        for (int s = 0; s < num_steps; ++s) {
+            int root = static_cast<int>(node.param_values[root_base + s]);
+            float expected = static_cast<float>(root + oct * 12);
+            if (std::fabs(out_note - expected) < 0.5f) {
+                current_step = s;
+                break;
+            }
+        }
+    }
+
+    float w = kInspContentW;
+    float h = kNotePatternPreviewH;
+    float cell_w = w / static_cast<float>(num_steps);
+
+    py += 4;
+
+    // Dark background
+    tr.draw_rect(px, py, w, h, kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
+
+    for (int s = 0; s < num_steps; ++s) {
+        int root = static_cast<int>(node.param_values[root_base + s]);
+        int chord_type = static_cast<int>(node.param_values[type_base + s]);
+        root = std::max(0, std::min(11, root));
+        chord_type = std::max(0, std::min(6, chord_type));
+
+        float cx = px + s * cell_w;
+        bool is_current = (s == current_step);
+
+        // Current step highlight
+        if (is_current) {
+            tr.draw_rect(cx, py, cell_w, h, 0.18f, 0.22f, 0.30f, 0.6f);
+        }
+
+        // Note name centered
+        const char* note = kNoteNames[root];
+        float nw = tr.text_width(note);
+        float text_x = cx + (cell_w - nw) * 0.5f;
+        float text_y = py + 6;
+        float bright = is_current ? 1.0f : 0.85f;
+        tr.draw_text(text_x, text_y, note, bright, bright, bright);
+
+        // Chord abbreviation below in dim color
+        const char* chord = kChordAbbr[chord_type];
+        float cw = tr.text_width(chord);
+        float chord_x = cx + (cell_w - cw) * 0.5f;
+        float chord_y = text_y + kLineH;
+        const auto& tc = kTypeColors[chord_type];
+        tr.draw_text(chord_x, chord_y, chord, tc[0], tc[1], tc[2], is_current ? 1.0f : 0.7f);
+
+        // Colored bar at bottom
+        float bar_h = 4.0f;
+        float bar_y = py + h - bar_h - 2.0f;
+        tr.draw_rect(cx + 2, bar_y, cell_w - 4, bar_h, tc[0], tc[1], tc[2], is_current ? 0.9f : 0.6f);
+
+        // Cell divider
+        if (s > 0) {
+            tr.draw_rect(cx, py, 1, h, 0.25f, 0.27f, 0.30f, 0.5f);
+        }
+    }
+
+    py += h + 4;
 }
 
 void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node,
