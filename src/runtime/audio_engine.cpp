@@ -3,7 +3,7 @@
 
 #include "runtime/audio_engine.h"
 #include "runtime/scheduler.h"
-#include "runtime/topo_sort.h"
+#include "common/topo_sort.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -246,7 +246,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     return true;
 }
 
-bool AudioEngine::start() {
+bool AudioEngine::start(bool use_null_device) {
     if (nodes_.empty()) return false;
 
     device_ = new ma_device;
@@ -259,7 +259,14 @@ bool AudioEngine::start() {
     config.dataCallback = &AudioEngine::ma_data_callback;
     config.pUserData = this;
 
-    if (ma_device_init(nullptr, &config, device_) != MA_SUCCESS) {
+    ma_result init_result;
+    if (use_null_device) {
+        ma_backend backends[] = { ma_backend_null };
+        init_result = ma_device_init_ex(backends, 1, nullptr, &config, device_);
+    } else {
+        init_result = ma_device_init(nullptr, &config, device_);
+    }
+    if (init_result != MA_SUCCESS) {
         std::fprintf(stderr, "[vivid] AudioEngine: failed to init miniaudio device\n");
         delete device_;
         device_ = nullptr;
