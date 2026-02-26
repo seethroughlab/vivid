@@ -77,24 +77,23 @@ public:
     void set_dpi_scale(float scale) { dpi_scale_ = scale; }
 
 private:
+    // --- Layout ---
     void layout_nodes();
     void recompute_ports(NodeRect& rect, const NodeState& ns);
+
+    // --- Drawing (node_graph_draw.cpp) ---
     void draw_graph(TextRenderer& tr);
     void draw_connections(TextRenderer& tr);
     void draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h);
     void draw_chooser(TextRenderer& tr);
+    void draw_preview_wire(TextRenderer& tr);
+    void draw_wire_tooltip(TextRenderer& tr);
+
+    // --- Chooser ---
     void rebuild_chooser_items();
+
+    // --- Hit testing ---
     int hit_test_node(float mx, float my) const;
-    int hit_test_slider(float mx, float my) const;
-    int hit_test_bool(float mx, float my) const;
-    int hit_test_value_text(float mx, float my) const;
-    int hit_test_dropdown(float mx, float my) const;
-    int hit_test_resolution(float mx, float my) const;
-    int hit_test_wire(float sx, float sy) const;
-    void confirm_param_edit();
-    void cancel_param_edit();
-    void confirm_resolution_edit();
-    void cancel_resolution_edit();
 
     struct PortHit {
         int node_idx = -1;
@@ -103,10 +102,47 @@ private:
         float gx = 0, gy = 0;
     };
     PortHit hit_test_port(float mx, float my) const;
-    void draw_preview_wire(TextRenderer& tr);
-    void draw_wire_tooltip(TextRenderer& tr);
+    int hit_test_wire(float sx, float sy) const;
 
-    // Graph space ↔ screen space helpers
+    // Generic AABB hit test for rect vectors (replaces 5 individual methods)
+    template<typename RectT>
+    static int hit_test_rect(const std::vector<RectT>& rects, float mx, float my);
+
+    // --- Text editing ---
+    void confirm_param_edit();
+    void cancel_param_edit();
+    void confirm_resolution_edit();
+    void cancel_resolution_edit();
+
+    // --- Node lookup helper ---
+    const NodeState* find_sched_node(const std::string& id) const;
+
+    // --- Sorted port indices helper ---
+    static std::vector<std::pair<uint32_t, std::string>> sorted_ports(
+        const std::unordered_map<std::string, uint32_t>& port_indices);
+
+    // --- Decomposed update() sub-methods ---
+    void check_relayout();
+    void update_pan();
+    void update_node_drag();
+    void update_wire_drag();
+    void update_slider_drag();
+    void update_chooser_hover();
+    void update_context_menu();
+    void update_pan_release();
+    void clear_frame_flags();
+    void update_wire_hover();
+    void update_sparklines();
+
+    // --- Input handling (node_graph_input.cpp) ---
+    void handle_right_click();
+    void handle_left_click();
+    bool handle_chooser_click();
+    bool handle_dropdown_click();
+    bool handle_inspector_click();
+    void handle_graph_click();
+
+    // Graph space <-> screen space helpers
     float gx_to_sx(float gx) const { return gx * zoom_ + pan_x_; }
     float gy_to_sy(float gy) const { return gy * zoom_ + pan_y_; }
     float g_to_s(float gv) const { return gv * zoom_; }  // sizes

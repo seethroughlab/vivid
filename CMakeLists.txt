@@ -121,6 +121,8 @@ add_executable(vivid
     src/runtime/text_renderer.cpp
     src/runtime/repl.cpp
     src/runtime/node_graph.cpp
+    src/runtime/node_graph_draw.cpp
+    src/runtime/node_graph_input.cpp
     src/runtime/thumbnail_cache.cpp
     src/runtime/thumbnail_renderer.cpp
     src/runtime/screenshot.cpp
