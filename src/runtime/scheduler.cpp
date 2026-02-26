@@ -1,6 +1,6 @@
 #include "runtime/scheduler.h"
-#include "runtime/gpu_util.h"
-#include "runtime/topo_sort.h"
+#include "common/gpu_util.h"
+#include "common/topo_sort.h"
 #include "operator_api/gpu_operator.h"
 #include <algorithm>
 #include <cstdio>

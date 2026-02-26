@@ -1,11 +1,13 @@
-#include "runtime/thumbnail_renderer.h"
-#include "runtime/gpu_util.h"
+#include "ui/thumbnail_renderer.h"
+#include "common/gpu_util.h"
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <algorithm>
 
-namespace vivid {
+namespace vivid::ui {
+
+using vivid::to_sv;
 
 // Vertex shader positions an oversized triangle at the thumbnail's pixel rect
 // by converting pixel coords to NDC via a uniform buffer.
@@ -303,4 +305,4 @@ void ThumbnailRenderer::shutdown() {
     device_ = nullptr;
 }
 
-} // namespace vivid
+} // namespace vivid::ui

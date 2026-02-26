@@ -14,6 +14,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(webgpu)
 
+FetchContent_Declare(
+    ixwebsocket
+    GIT_REPOSITORY https://github.com/machinezone/IXWebSocket
+    GIT_TAG        v11.4.5
+    GIT_SHALLOW    TRUE
+)
+set(USE_TLS OFF CACHE BOOL "" FORCE)
+set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(ixwebsocket)
+
 # --- GLFW (submodule) ---
 set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
@@ -105,6 +115,19 @@ add_library(drum MODULE operators/audio/drum/drum.cpp)
 set_target_properties(drum PROPERTIES PREFIX "" SUFFIX ".dylib")
 target_link_libraries(drum PRIVATE vivid_operator_api)
 
+# --- UI library ---
+add_library(vivid_ui STATIC
+    src/ui/renderer_2d.cpp
+    src/ui/thumbnail_renderer.cpp
+    src/ui/thumbnail_cache.cpp
+    src/ui/node_graph.cpp
+    src/ui/node_graph_draw.cpp
+    src/ui/node_graph_input.cpp
+)
+target_include_directories(vivid_ui PRIVATE src)
+target_link_libraries(vivid_ui PUBLIC vivid_operator_api webgpu)
+target_link_libraries(vivid_ui PRIVATE stb_truetype glfw)
+
 # --- Vivid executable ---
 add_executable(vivid
     src/runtime/main.cpp
@@ -118,18 +141,13 @@ add_executable(vivid
     src/runtime/file_watcher.cpp
     src/runtime/hot_reload.cpp
     src/runtime/runtime_api.cpp
-    src/runtime/text_renderer.cpp
-    src/runtime/node_graph.cpp
-    src/runtime/node_graph_draw.cpp
-    src/runtime/node_graph_input.cpp
-    src/runtime/thumbnail_cache.cpp
-    src/runtime/thumbnail_renderer.cpp
     src/runtime/screenshot.cpp
     src/runtime/builtin_operators.cpp
+    src/runtime/control_server.cpp
 )
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype)
+target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype ixwebsocket)
 
 # Copy demo graphs to build directory
 configure_file(graphs/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
@@ -154,6 +172,8 @@ if(APPLE)
     )
 endif()
 
+enable_testing()
+
 # --- Tests ---
 # Test operator plugins (two versions of the same operator)
 add_library(test_op_v1 MODULE tests/operators/test_op_v1.cpp)
@@ -175,6 +195,7 @@ add_executable(test_hot_reload
 target_include_directories(test_hot_reload PRIVATE src)
 target_link_libraries(test_hot_reload PRIVATE vivid_operator_api yyjson webgpu)
 add_dependencies(test_hot_reload test_op_v1 test_op_v2)
+add_test(NAME test_hot_reload COMMAND test_hot_reload WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # RuntimeAPI integration test (no GPU, no audio, no window)
 add_executable(test_runtime_api
@@ -189,7 +210,88 @@ add_executable(test_runtime_api
 target_include_directories(test_runtime_api PRIVATE src)
 target_link_libraries(test_runtime_api PRIVATE vivid_operator_api yyjson miniaudio webgpu)
 add_dependencies(test_runtime_api test_op_v1)
+add_test(NAME test_runtime_api COMMAND test_runtime_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# ControlServer integration test (HTTP endpoints, no GPU, no audio, no window)
+add_executable(test_control_server
+    tests/test_control_server.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/control_server.cpp
+)
+target_include_directories(test_control_server PRIVATE src)
+target_link_libraries(test_control_server PRIVATE
+    vivid_operator_api yyjson miniaudio ixwebsocket webgpu)
+add_dependencies(test_control_server test_op_v1)
+add_test(NAME test_control_server COMMAND test_control_server WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Audio test operator plugin
+add_library(audio_test_op MODULE tests/operators/audio_test_op.cpp)
+set_target_properties(audio_test_op PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(audio_test_op PRIVATE vivid_operator_api)
+
+add_library(control_pass_op MODULE tests/operators/control_pass_op.cpp)
+set_target_properties(control_pass_op PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(control_pass_op PRIVATE vivid_operator_api)
+
+add_library(spread_source_op MODULE tests/operators/spread_source_op.cpp)
+set_target_properties(spread_source_op PROPERTIES PREFIX "" SUFFIX ".dylib")
+target_link_libraries(spread_source_op PRIVATE vivid_operator_api)
+
+# AudioEngine integration test (null audio backend, no GPU, no window)
+add_executable(test_audio_engine
+    tests/test_audio_engine.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/runtime_api.cpp
+)
+target_include_directories(test_audio_engine PRIVATE src)
+target_link_libraries(test_audio_engine PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu)
+add_dependencies(test_audio_engine test_op_v1 audio_test_op)
+add_test(NAME test_audio_engine COMMAND test_audio_engine WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Scheduler unit test (no GPU, no audio playback, no window)
+add_executable(test_scheduler
+    tests/test_scheduler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_scheduler PRIVATE src)
+target_link_libraries(test_scheduler PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_scheduler test_op_v1 control_pass_op spread_source_op audio_test_op)
+add_test(NAME test_scheduler COMMAND test_scheduler WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Graph data-model unit test (no operators, no scheduler, no GPU)
+add_executable(test_graph
+    tests/test_graph.cpp
+    src/runtime/graph.cpp
+)
+target_include_directories(test_graph PRIVATE src)
+target_link_libraries(test_graph PRIVATE yyjson)
+add_test(NAME test_graph COMMAND test_graph WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# OperatorLoader + OperatorRegistry unit tests (no GPU, no scheduler, no graph)
+add_executable(test_operator_loader
+    tests/test_operator_loader.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+)
+target_include_directories(test_operator_loader PRIVATE src)
+target_link_libraries(test_operator_loader PRIVATE vivid_operator_api)
+add_dependencies(test_operator_loader test_op_v1 test_op_v2 control_pass_op)
+add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Copy test graphs to build directory
 configure_file(tests/graphs/test_reload.json ${CMAKE_BINARY_DIR}/test_reload.json COPYONLY)
 configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runtime_api.json COPYONLY)
+configure_file(tests/graphs/test_audio_engine.json ${CMAKE_BINARY_DIR}/test_audio_engine.json COPYONLY)

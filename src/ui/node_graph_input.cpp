@@ -1,18 +1,16 @@
-#include "runtime/node_graph.h"
-#include "runtime/node_graph_constants.h"
-#include "runtime/string_util.h"
-#include "runtime/runtime_api.h"
-#include "runtime/graph.h"
-#include "runtime/scheduler.h"
-#include "runtime/operator_loader.h"
-#include "runtime/operator_registry.h"
-#include "operator_api/types.h"
+#include "ui/node_graph.h"
+#include "ui/node_graph_constants.h"
+#include "common/string_util.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cmath>
 #include <cctype>
 
-namespace vivid {
+namespace vivid::ui {
+
+using vivid::format_float;
+using vivid::format_int;
+using vivid::format_uint;
 
 // -----------------------------------------------------------------------
 // GLFW callbacks
@@ -104,7 +102,7 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
                     dropdown_sel_++;
                 break;
             case GLFW_KEY_ENTER:
-                api_.set_param(dropdown_node_id_, dropdown_param_name_,
+                commands_.set_param(dropdown_node_id_, dropdown_param_name_,
                                static_cast<float>(dropdown_sel_));
                 dropdown_open_ = false;
                 break;
@@ -114,15 +112,15 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
 
     if (!chooser_open_) {
         // Tab opens the chooser (only if cursor is in graph area)
-        if (key == GLFW_KEY_TAB && action == GLFW_PRESS && registry_) {
+        if (key == GLFW_KEY_TAB && action == GLFW_PRESS &&
+            snap_ && !snap_->operator_types.empty()) {
             if (mouse_.x < graph_right()) {
                 chooser_cursor_gx_ = sx_to_gx(mouse_.x);
                 chooser_cursor_gy_ = sy_to_gy(mouse_.y);
                 chooser_filter_.clear();
                 chooser_sel_ = 0;
                 chooser_scroll_ = 0;
-                chooser_items_ = registry_->type_names();
-                std::sort(chooser_items_.begin(), chooser_items_.end());
+                chooser_items_ = snap_->operator_types;
                 chooser_open_ = true;
             }
         }
@@ -133,7 +131,7 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
         // Delete selected node (Delete or Backspace)
         if ((key == GLFW_KEY_DELETE || key == GLFW_KEY_BACKSPACE) && action == GLFW_PRESS) {
             if (!selected_node_id_.empty()) {
-                api_.remove_node(selected_node_id_);
+                commands_.remove_node(selected_node_id_);
                 selected_node_id_.clear();
             }
         }
@@ -153,10 +151,10 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
                 std::string id;
                 for (int n = 1; ; ++n) {
                     id = type + std::to_string(n);
-                    if (!graph_.find_node(id)) break;
+                    if (!snap_->has_node(id)) break;
                 }
-                api_.add_node(type, id);
-                api_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
+                commands_.add_node(type, id);
+                commands_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
                 selected_node_id_ = id;
             }
             chooser_open_ = false;
@@ -215,8 +213,8 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
 // Context menu interaction (called from update())
 // -----------------------------------------------------------------------
 void NodeGraphUI::update_context_menu() {
-    size_t cur_nodes = scheduler_.nodes().size();
-    size_t cur_conns = graph_.connections().size();
+    size_t cur_nodes = snap_->nodes.size();
+    size_t cur_conns = snap_->connections.size();
 
     // Close context menu on topology change
     if (context_menu_open_ &&
@@ -231,13 +229,13 @@ void NodeGraphUI::update_context_menu() {
             mouse_.y >= context_menu_y_ && mouse_.y <= context_menu_y_ + menu_h) {
             // Clicked inside menu — execute action
             if (!context_node_id_.empty()) {
-                api_.remove_node(context_node_id_);
+                commands_.remove_node(context_node_id_);
                 if (selected_node_id_ == context_node_id_) selected_node_id_.clear();
             } else if (context_wire_idx_ >= 0) {
-                const auto& conns = graph_.connections();
+                const auto& conns = snap_->connections;
                 if (context_wire_idx_ < static_cast<int>(conns.size())) {
                     const auto& c = conns[context_wire_idx_];
-                    api_.disconnect(c.from_node + "/" + c.from_port,
+                    commands_.disconnect(c.from_node + "/" + c.from_port,
                                     c.to_node + "/" + c.to_port);
                 }
             }
@@ -305,10 +303,10 @@ bool NodeGraphUI::handle_chooser_click() {
             std::string id;
             for (int n = 1; ; ++n) {
                 id = type + std::to_string(n);
-                if (!graph_.find_node(id)) break;
+                if (!snap_->has_node(id)) break;
             }
-            api_.add_node(type, id);
-            api_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
+            commands_.add_node(type, id);
+            commands_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
             selected_node_id_ = id;
         }
     }
@@ -327,7 +325,7 @@ bool NodeGraphUI::handle_dropdown_click() {
         mouse_.y >= dropdown_y_ && mouse_.y <= dropdown_y_ + popup_h) {
         int idx = static_cast<int>((mouse_.y - dropdown_y_ - 2) / item_h);
         if (idx >= 0 && idx < static_cast<int>(dropdown_labels_.size())) {
-            api_.set_param(dropdown_node_id_, dropdown_param_name_,
+            commands_.set_param(dropdown_node_id_, dropdown_param_name_,
                            static_cast<float>(idx));
         }
         dropdown_open_ = false;
@@ -355,7 +353,7 @@ bool NodeGraphUI::handle_inspector_click() {
         editing_resolution_ = true;
         edit_res_node_id_ = rr.node_id;
         edit_res_is_width_ = rr.is_width;
-        const NodeState* ns = find_sched_node(rr.node_id);
+        const auto* ns = snap_->find_node(rr.node_id);
         if (ns) {
             edit_buffer_ = format_uint(rr.is_width ? ns->gpu_tex_width : ns->gpu_tex_height);
         }
@@ -368,14 +366,13 @@ bool NodeGraphUI::handle_inspector_click() {
         editing_param_ = true;
         edit_node_id_ = value_text_rects_[vt].node_id;
         edit_param_name_ = value_text_rects_[vt].param_name;
-        const NodeState* ns = find_sched_node(edit_node_id_);
-        if (ns) {
+        const auto* ns = snap_->find_node(edit_node_id_);
+        if (ns && ns->op_info) {
             auto it = ns->param_indices.find(edit_param_name_);
             if (it != ns->param_indices.end()) {
-                const auto* d = ns->loader->descriptor();
-                for (uint32_t pi = 0; pi < d->param_count; ++pi) {
-                    if (std::string(d->params[pi].name) != edit_param_name_) continue;
-                    if (d->params[pi].type == VIVID_PARAM_INT) {
+                for (const auto& pd : ns->op_info->params) {
+                    if (pd.name != edit_param_name_) continue;
+                    if (pd.type == VIVID_PARAM_INT) {
                         edit_buffer_ = format_int(static_cast<int>(ns->param_values[it->second]));
                     } else {
                         edit_buffer_ = format_float(ns->param_values[it->second], 2);
@@ -397,13 +394,12 @@ bool NodeGraphUI::handle_inspector_click() {
         dropdown_y_ = dr.y + dr.h;
         dropdown_w_ = dr.w;
         dropdown_labels_.clear();
-        const NodeState* ns = find_sched_node(dr.node_id);
-        if (ns) {
-            const auto* d = ns->loader->descriptor();
-            for (uint32_t pi = 0; pi < d->param_count; ++pi) {
-                if (std::string(d->params[pi].name) != dr.param_name) continue;
-                for (uint32_t ci = 0; ci < d->params[pi].choice_count; ++ci)
-                    dropdown_labels_.push_back(d->params[pi].choice_labels[ci]);
+        const auto* ns = snap_->find_node(dr.node_id);
+        if (ns && ns->op_info) {
+            for (const auto& pd : ns->op_info->params) {
+                if (pd.name != dr.param_name) continue;
+                for (const auto& label : pd.choice_labels)
+                    dropdown_labels_.push_back(label);
                 auto it = ns->param_indices.find(dr.param_name);
                 if (it != ns->param_indices.end())
                     dropdown_sel_ = static_cast<int>(ns->param_values[it->second]);
@@ -427,12 +423,12 @@ bool NodeGraphUI::handle_inspector_click() {
     int bi = hit_test_rect(bool_rects_, mouse_.x, mouse_.y);
     if (bi >= 0) {
         const auto& br = bool_rects_[bi];
-        const NodeState* ns = find_sched_node(br.node_id);
+        const auto* ns = snap_->find_node(br.node_id);
         if (ns) {
             auto it = ns->param_indices.find(br.param_name);
             if (it != ns->param_indices.end()) {
                 float cur = ns->param_values[it->second];
-                api_.set_param(br.node_id, br.param_name,
+                commands_.set_param(br.node_id, br.param_name,
                                cur > 0.5f ? 0.0f : 1.0f);
             }
         }
@@ -463,10 +459,10 @@ void NodeGraphUI::handle_graph_click() {
         } else {
             // Click on input port — disconnect existing wires to this input
             std::string to_node = node_rects_[ph.node_idx].node_id;
-            const auto& conns = graph_.connections();
+            const auto& conns = snap_->connections;
             for (const auto& c : conns) {
                 if (c.to_node == to_node && c.to_port == ph.port_name) {
-                    api_.disconnect(c.from_node + "/" + c.from_port,
+                    commands_.disconnect(c.from_node + "/" + c.from_port,
                                     to_node + "/" + ph.port_name);
                 }
             }
@@ -490,4 +486,4 @@ void NodeGraphUI::handle_graph_click() {
     }
 }
 
-} // namespace vivid
+} // namespace vivid::ui

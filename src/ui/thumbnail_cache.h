@@ -4,7 +4,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace vivid {
+namespace vivid::ui {
 
 class ThumbnailCache {
 public:
@@ -32,4 +32,4 @@ private:
     std::unordered_map<std::string, Entry> entries_;
 };
 
-} // namespace vivid
+} // namespace vivid::ui

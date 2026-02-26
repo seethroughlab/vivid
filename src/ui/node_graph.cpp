@@ -1,27 +1,25 @@
-#include "runtime/node_graph.h"
-#include "runtime/node_graph_constants.h"
-#include "runtime/topo_sort.h"
-#include "runtime/string_util.h"
-#include "runtime/runtime_api.h"
-#include "runtime/graph.h"
-#include "runtime/scheduler.h"
-#include "runtime/operator_loader.h"
-#include "runtime/operator_registry.h"
-#include "operator_api/types.h"
+#include "ui/node_graph.h"
+#include "ui/node_graph_constants.h"
+#include "common/topo_sort.h"
+#include "common/string_util.h"
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 #include <cmath>
 #include <cctype>
 
-namespace vivid {
+namespace vivid::ui {
+
+using vivid::format_float;
+using vivid::format_int;
+using vivid::format_uint;
+using vivid::kahn_sort;
 
 // -----------------------------------------------------------------------
 // Constructor
 // -----------------------------------------------------------------------
-NodeGraphUI::NodeGraphUI(RuntimeAPI& api, const Graph& graph, const Scheduler& scheduler,
-                         AudioEngine* audio_engine)
-    : api_(api), graph_(graph), scheduler_(scheduler), audio_engine_(audio_engine) {}
+NodeGraphUI::NodeGraphUI(UICommandSink& commands)
+    : commands_(commands) {}
 
 float NodeGraphUI::graph_right() const {
     return has_selection() ? inspector_x() : static_cast<float>(win_w_);
@@ -30,13 +28,6 @@ float NodeGraphUI::graph_right() const {
 // -----------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------
-const NodeState* NodeGraphUI::find_sched_node(const std::string& id) const {
-    for (const auto& ns : scheduler_.nodes()) {
-        if (ns.node_id == id) return &ns;
-    }
-    return nullptr;
-}
-
 std::vector<std::pair<uint32_t, std::string>> NodeGraphUI::sorted_ports(
     const std::unordered_map<std::string, uint32_t>& port_indices) {
     std::vector<std::pair<uint32_t, std::string>> result;
@@ -63,7 +54,7 @@ template int NodeGraphUI::hit_test_rect(const std::vector<ResolutionRect>& rects
 // -----------------------------------------------------------------------
 // Port position helper
 // -----------------------------------------------------------------------
-void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeState& ns) {
+void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
     bool has_ct = custom_thumb_nodes_.count(rect.node_id) > 0;
     float body_h = domain_body_height(rect.domain, has_ct);
 
@@ -102,8 +93,8 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeState& ns) {
 // -----------------------------------------------------------------------
 void NodeGraphUI::layout_nodes() {
     node_rects_.clear();
-    const auto& nodes = scheduler_.nodes();
-    const auto& conns = graph_.connections();
+    const auto& nodes = snap_->nodes;
+    const auto& conns = snap_->connections;
     if (nodes.empty()) return;
 
     // Build node_id -> index map
@@ -200,9 +191,8 @@ void NodeGraphUI::layout_nodes() {
             uint32_t ni = layers[l][r];
             const auto& ns = nodes[ni];
 
-            VividDomain dom = ns.loader->descriptor()->domain;
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
-            float body_h = domain_body_height(dom, has_ct);
+            float body_h = domain_body_height(ns.domain, has_ct);
 
             uint32_t n_param_inputs = 0;
             for (const auto& [name, _] : ns.param_indices)
@@ -226,18 +216,17 @@ void NodeGraphUI::layout_nodes() {
             const auto& ns = nodes[ni];
             auto& rect = node_rects_[ni];
             rect.node_id = ns.node_id;
-            rect.type_name = scheduler_.type_name(ni);
-            rect.domain = ns.loader->descriptor()->domain;
+            rect.type_name = ns.type_name;
+            rect.domain = ns.domain;
             rect.x = col_x;
             rect.y = cur_y;
             rect.w = kNodeW;
             rect.h = heights[r];
 
             // Override with saved layout position if present
-            const NodeDef* ndef = graph_.find_node(ns.node_id);
-            if (ndef && ndef->has_layout()) {
-                rect.x = ndef->layout_x;
-                rect.y = ndef->layout_y;
+            if (ns.has_layout) {
+                rect.x = ns.layout_x;
+                rect.y = ns.layout_y;
             }
 
             recompute_ports(rect, ns);
@@ -296,7 +285,7 @@ NodeGraphUI::PortHit NodeGraphUI::hit_test_port(float mx, float my) const {
 }
 
 int NodeGraphUI::hit_test_wire(float sx, float sy) const {
-    const auto& conns = graph_.connections();
+    const auto& conns = snap_->connections;
 
     // Build fast lookup: node_id -> index in node_rects_
     std::unordered_map<std::string, size_t> id_to_rect;
@@ -344,18 +333,14 @@ void NodeGraphUI::confirm_param_edit() {
     if (!editing_param_) return;
     try {
         float val = std::stof(edit_buffer_);
-        const NodeState* ns = find_sched_node(edit_node_id_);
-        if (ns) {
-            const auto* desc = ns->loader ? ns->loader->descriptor() : nullptr;
-            if (desc) {
-                for (uint32_t pi = 0; pi < desc->param_count; ++pi) {
-                    if (std::string(desc->params[pi].name) != edit_param_name_) continue;
-                    const auto& pd = desc->params[pi];
-                    val = std::max(pd.min_value, std::min(pd.max_value, val));
-                    if (pd.type == VIVID_PARAM_INT) val = std::round(val);
-                    api_.set_param(edit_node_id_, edit_param_name_, val);
-                    break;
-                }
+        const auto* ns = snap_->find_node(edit_node_id_);
+        if (ns && ns->op_info) {
+            for (const auto& pd : ns->op_info->params) {
+                if (pd.name != edit_param_name_) continue;
+                val = std::max(pd.min_value, std::min(pd.max_value, val));
+                if (pd.type == VIVID_PARAM_INT) val = std::round(val);
+                commands_.set_param(edit_node_id_, edit_param_name_, val);
+                break;
             }
         }
     } catch (...) {
@@ -377,11 +362,11 @@ void NodeGraphUI::confirm_resolution_edit() {
         if (val < 1) val = 1;
         if (val > 8192) val = 8192;
 
-        const NodeState* ns = find_sched_node(edit_res_node_id_);
+        const auto* ns = snap_->find_node(edit_res_node_id_);
         if (ns) {
             uint32_t new_w = edit_res_is_width_ ? static_cast<uint32_t>(val) : ns->gpu_tex_width;
             uint32_t new_h = edit_res_is_width_ ? ns->gpu_tex_height : static_cast<uint32_t>(val);
-            api_.set_resolution(edit_res_node_id_, new_w, new_h);
+            commands_.set_resolution(edit_res_node_id_, new_w, new_h);
         }
     } catch (...) {
         // Invalid input — silently discard
@@ -399,9 +384,8 @@ void NodeGraphUI::cancel_resolution_edit() {
 // Chooser filter
 // -----------------------------------------------------------------------
 void NodeGraphUI::rebuild_chooser_items() {
-    if (!registry_) return;
-    auto all = registry_->type_names();
-    std::sort(all.begin(), all.end());
+    if (!snap_) return;
+    const auto& all = snap_->operator_types;
     chooser_items_.clear();
 
     // Case-insensitive substring match
@@ -422,7 +406,8 @@ void NodeGraphUI::rebuild_chooser_items() {
 // -----------------------------------------------------------------------
 // Update — thin dispatcher calling decomposed sub-methods
 // -----------------------------------------------------------------------
-void NodeGraphUI::update() {
+void NodeGraphUI::update(const GraphSnapshot& snapshot) {
+    snap_ = &snapshot;
     check_relayout();
     update_pan();
     update_node_drag();
@@ -439,8 +424,8 @@ void NodeGraphUI::update() {
 }
 
 void NodeGraphUI::check_relayout() {
-    size_t cur_nodes = scheduler_.nodes().size();
-    size_t cur_conns = graph_.connections().size();
+    size_t cur_nodes = snap_->nodes.size();
+    size_t cur_conns = snap_->connections.size();
     if (cur_nodes > last_node_count_) {
         if (dragging_node_idx_ < 0 && !dragging_wire_) {
             layout_nodes();
@@ -464,12 +449,12 @@ void NodeGraphUI::update_node_drag() {
         auto& rect = node_rects_[dragging_node_idx_];
         rect.x = sx_to_gx(mouse_.x) - drag_offset_x_;
         rect.y = sy_to_gy(mouse_.y) - drag_offset_y_;
-        const NodeState* ns = find_sched_node(rect.node_id);
+        const auto* ns = snap_->find_node(rect.node_id);
         if (ns) recompute_ports(rect, *ns);
     }
     if (mouse_.left_released) {
         auto& rect = node_rects_[dragging_node_idx_];
-        api_.set_node_layout(rect.node_id, rect.x, rect.y);
+        commands_.set_node_layout(rect.node_id, rect.x, rect.y);
         dragging_node_idx_ = -1;
     }
 }
@@ -479,7 +464,7 @@ void NodeGraphUI::update_wire_drag() {
         PortHit ph = hit_test_port(mouse_.x, mouse_.y);
         if (ph.node_idx >= 0 && !ph.is_output) {
             std::string to_node = node_rects_[ph.node_idx].node_id;
-            api_.connect(wire_from_node_id_ + "/" + wire_from_port_,
+            commands_.connect(wire_from_node_id_ + "/" + wire_from_port_,
                          to_node + "/" + ph.port_name);
         }
         dragging_wire_ = false;
@@ -490,18 +475,17 @@ void NodeGraphUI::update_slider_drag() {
     if (active_slider_idx_ < 0 || dragging_node_idx_ >= 0) return;
     if (mouse_.left_down) {
         const auto& s = slider_rects_[active_slider_idx_];
-        const NodeState* ns = find_sched_node(active_slider_node_id_);
-        if (ns) {
-            const auto* desc = ns->loader->descriptor();
-            for (uint32_t pi = 0; pi < desc->param_count; ++pi) {
-                if (std::string(desc->params[pi].name) != active_slider_param_name_) continue;
+        const auto* ns = snap_->find_node(active_slider_node_id_);
+        if (ns && ns->op_info) {
+            for (const auto& pd : ns->op_info->params) {
+                if (pd.name != active_slider_param_name_) continue;
                 float t = (mouse_.x - s.x) / s.w;
                 t = std::max(0.0f, std::min(1.0f, t));
-                float val = desc->params[pi].min_value + t * (desc->params[pi].max_value - desc->params[pi].min_value);
-                if (desc->params[pi].type == VIVID_PARAM_INT) {
+                float val = pd.min_value + t * (pd.max_value - pd.min_value);
+                if (pd.type == VIVID_PARAM_INT) {
                     val = std::round(val);
                 }
-                api_.set_param(active_slider_node_id_, active_slider_param_name_, val);
+                commands_.set_param(active_slider_node_id_, active_slider_param_name_, val);
                 break;
             }
         }
@@ -546,8 +530,7 @@ void NodeGraphUI::update_wire_hover() {
 }
 
 void NodeGraphUI::update_sparklines() {
-    const auto& sched_nodes = scheduler_.nodes();
-    for (const auto& ns : sched_nodes) {
+    for (const auto& ns : snap_->nodes) {
         if (ns.is_gpu || ns.is_audio) continue;
 
         auto sorted_outs = sorted_ports(ns.output_port_indices);
@@ -563,4 +546,4 @@ void NodeGraphUI::update_sparklines() {
     }
 }
 
-} // namespace vivid
+} // namespace vivid::ui

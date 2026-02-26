@@ -5,7 +5,7 @@
 #include <vector>
 #include <cstdint>
 
-namespace vivid {
+namespace vivid::ui {
 
 // Renders textured quads at specific pixel positions on the surface.
 // Uses a uniform buffer for positioning (NDC) and scissor for clipping,
@@ -61,4 +61,4 @@ private:
     std::unordered_map<WGPUTextureView, WGPUBindGroup> bind_cache_;
 };
 
-} // namespace vivid
+} // namespace vivid::ui

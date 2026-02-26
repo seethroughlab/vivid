@@ -1,10 +1,10 @@
-#ifndef VIVID_RUNTIME_NODE_GRAPH_CONSTANTS_H
-#define VIVID_RUNTIME_NODE_GRAPH_CONSTANTS_H
+#ifndef VIVID_UI_NODE_GRAPH_CONSTANTS_H
+#define VIVID_UI_NODE_GRAPH_CONSTANTS_H
 
 #include "operator_api/types.h"
 #include <array>
 
-namespace vivid {
+namespace vivid::ui {
 
 // Layout constants
 static constexpr float kGraphX = 0.0f;
@@ -147,6 +147,26 @@ void traverse_wire(float ssx, float ssy, float sex, float sey,
     }
 }
 
-} // namespace vivid
+// Performance bar layout
+static constexpr float kPerfBarH = 28.0f;
+static constexpr float kPerfBarPadX = 10.0f;
+static constexpr float kPerfSepW = 1.0f;
+static constexpr float kPerfSepMargin = 8.0f;
+static constexpr float kPerfMiniGraphW = 60.0f;
+static constexpr float kPerfMiniGraphH = 14.0f;
+static constexpr float kPerfExpandedW = 200.0f;
+static constexpr float kPerfExpandedH = 100.0f;
 
-#endif // VIVID_RUNTIME_NODE_GRAPH_CONSTANTS_H
+// Performance bar colors
+static constexpr std::array<float, 3> kPerfFpsColor = { 0.40f, 0.85f, 0.45f };   // green
+static constexpr std::array<float, 3> kPerfMsColor  = { 0.45f, 0.65f, 0.95f };   // blue
+static constexpr std::array<float, 3> kPerfMemColor = { 0.95f, 0.65f, 0.25f };   // orange
+static constexpr std::array<float, 4> kPerfBarBg    = { 0.06f, 0.07f, 0.08f, 0.85f };
+
+// Performance ring buffer
+static constexpr uint32_t kPerfHistoryLen = 128;
+static constexpr uint32_t kPerfMemSampleInterval = 30;
+
+} // namespace vivid::ui
+
+#endif // VIVID_UI_NODE_GRAPH_CONSTANTS_H

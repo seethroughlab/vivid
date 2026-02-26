@@ -1,5 +1,5 @@
 #include "runtime/fullscreen_blit.h"
-#include "runtime/gpu_util.h"
+#include "common/gpu_util.h"
 #include "operator_api/gpu_common.h"
 #include <cstdio>
 #include <cstring>

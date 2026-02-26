@@ -1,9 +1,11 @@
-#include "runtime/thumbnail_cache.h"
-#include "runtime/gpu_util.h"
+#include "ui/thumbnail_cache.h"
+#include "common/gpu_util.h"
 #include <cstdio>
 #include <cstring>
 
-namespace vivid {
+namespace vivid::ui {
+
+using vivid::to_sv;
 
 bool ThumbnailCache::init(WGPUDevice device, WGPUQueue queue, uint32_t thumb_w, uint32_t thumb_h) {
     device_ = device;
@@ -119,4 +121,4 @@ WGPUTextureView ThumbnailCache::get_view(const std::string& node_id) const {
     return (it != entries_.end()) ? it->second.view : nullptr;
 }
 
-} // namespace vivid
+} // namespace vivid::ui

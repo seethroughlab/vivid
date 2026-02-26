@@ -1,12 +1,12 @@
-#ifndef VIVID_RUNTIME_TEXT_RENDERER_H
-#define VIVID_RUNTIME_TEXT_RENDERER_H
+#ifndef VIVID_UI_RENDERER_2D_H
+#define VIVID_UI_RENDERER_2D_H
 
 #include <webgpu/webgpu.h>
 #include <cstdint>
 #include <vector>
 #include <string>
 
-namespace vivid {
+namespace vivid::ui {
 
 struct TextVertex {
     float x, y;     // position (pixels)
@@ -20,7 +20,7 @@ struct GlyphInfo {
     float advance;          // horizontal advance
 };
 
-class TextRenderer {
+class Renderer2D {
 public:
     bool init(WGPUDevice device, WGPUTextureFormat surface_format,
               const char* font_path, float font_size, float dpi_scale = 1.0f);
@@ -66,6 +66,6 @@ private:
     std::vector<TextVertex> vertices_;
 };
 
-} // namespace vivid
+} // namespace vivid::ui
 
-#endif // VIVID_RUNTIME_TEXT_RENDERER_H
+#endif // VIVID_UI_RENDERER_2D_H

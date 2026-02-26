@@ -1,26 +1,22 @@
-#include "runtime/node_graph.h"
-#include "runtime/node_graph_constants.h"
-#include "runtime/string_util.h"
-#include "runtime/graph.h"
-#include "runtime/scheduler.h"
-#include "runtime/text_renderer.h"
-#include "runtime/audio_engine.h"
-#include "runtime/thumbnail_cache.h"
-#include "runtime/thumbnail_renderer.h"
-#include "runtime/operator_loader.h"
-#include "runtime/operator_registry.h"
-#include "operator_api/types.h"
+#include "ui/node_graph.h"
+#include "ui/node_graph_constants.h"
+#include "ui/renderer_2d.h"
+#include "ui/thumbnail_cache.h"
+#include "ui/thumbnail_renderer.h"
+#include "common/string_util.h"
 #include <algorithm>
 #include <cmath>
 
-namespace vivid {
+namespace vivid::ui {
+
+using vivid::format_float;
+using vivid::format_int;
+using vivid::format_uint;
 
 // -----------------------------------------------------------------------
 // Drawing
 // -----------------------------------------------------------------------
-void NodeGraphUI::draw_graph(TextRenderer& tr) {
-    const auto& sched_nodes = scheduler_.nodes();
-
+void NodeGraphUI::draw_graph(Renderer2D& tr) {
     for (size_t i = 0; i < node_rects_.size(); ++i) {
         const auto& r = node_rects_[i];
         bool selected = (r.node_id == selected_node_id_);
@@ -52,8 +48,8 @@ void NodeGraphUI::draw_graph(TextRenderer& tr) {
 
             // Find sparkline data for this node's first output
             std::string spark_key;
-            if (i < sched_nodes.size()) {
-                const auto& ns = sched_nodes[i];
+            if (i < snap_->nodes.size()) {
+                const auto& ns = snap_->nodes[i];
                 auto sorted_outs = sorted_ports(ns.output_port_indices);
                 if (!sorted_outs.empty())
                     spark_key = ns.node_id + "/" + sorted_outs[0].second;
@@ -107,43 +103,39 @@ void NodeGraphUI::draw_graph(TextRenderer& tr) {
                          sw - g_to_s(4), s_body_h - g_to_s(4),
                          kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
 
-            if (audio_engine_) {
-                int ae_idx = audio_engine_->audio_node_index(r.node_id);
-                if (ae_idx >= 0) {
-                    const auto& snap = audio_engine_->analysis_read();
-                    if (ae_idx < static_cast<int>(snap.waveform.size())) {
-                        const auto& wave = snap.waveform[ae_idx];
-                        float wave_x = sx + g_to_s(4);
-                        float wave_w = sw - g_to_s(8);
-                        float wave_y = s_body_y + g_to_s(4);
-                        float wave_h = s_body_h - g_to_s(10);
-                        float center_y = wave_y + wave_h * 0.5f;
+            auto ae_it = snap_->audio_index.find(r.node_id);
+            if (ae_it != snap_->audio_index.end() && ae_it->second >= 0) {
+                int ae_idx = ae_it->second;
+                if (ae_idx < static_cast<int>(snap_->audio_analysis.size())) {
+                    const auto& analysis = snap_->audio_analysis[ae_idx];
+                    float wave_x = sx + g_to_s(4);
+                    float wave_w = sw - g_to_s(8);
+                    float wave_y = s_body_y + g_to_s(4);
+                    float wave_h = s_body_h - g_to_s(10);
+                    float center_y = wave_y + wave_h * 0.5f;
 
-                        // Center line
-                        tr.draw_rect(wave_x, center_y, wave_w, 1,
-                                     dcol[0], dcol[1], dcol[2], 0.2f);
+                    // Center line
+                    tr.draw_rect(wave_x, center_y, wave_w, 1,
+                                 dcol[0], dcol[1], dcol[2], 0.2f);
 
-                        // Waveform bars
-                        constexpr uint32_t kWaveN = AnalysisSnapshot::kWaveformSamples;
-                        float bar_w = wave_w / kWaveN;
-                        for (uint32_t si = 0; si < kWaveN; ++si) {
-                            float amp = wave[si];
-                            float bh = std::fabs(amp) * wave_h * 0.5f;
-                            bh = std::max(0.5f, bh);
-                            float bx = wave_x + si * bar_w;
-                            float by = (amp >= 0) ? center_y - bh : center_y;
-                            tr.draw_rect(bx, by, std::max(0.5f, bar_w - 0.3f), bh,
-                                         dcol[0], dcol[1], dcol[2], 0.8f);
-                        }
-
-                        // Peak meter strip at bottom
-                        float peak_y = s_body_y + s_body_h - g_to_s(4);
-                        if (ae_idx < static_cast<int>(snap.peak.size())) {
-                            float pk = std::min(1.0f, snap.peak[ae_idx]);
-                            tr.draw_rect(wave_x, peak_y, wave_w * pk, g_to_s(2),
-                                         dcol[0], dcol[1], dcol[2], 0.9f);
-                        }
+                    // Waveform bars
+                    constexpr uint32_t kWaveN = AudioNodeAnalysis::kWaveformSamples;
+                    float bar_w = wave_w / kWaveN;
+                    for (uint32_t si = 0; si < kWaveN; ++si) {
+                        float amp = analysis.waveform[si];
+                        float bh = std::fabs(amp) * wave_h * 0.5f;
+                        bh = std::max(0.5f, bh);
+                        float bx = wave_x + si * bar_w;
+                        float by = (amp >= 0) ? center_y - bh : center_y;
+                        tr.draw_rect(bx, by, std::max(0.5f, bar_w - 0.3f), bh,
+                                     dcol[0], dcol[1], dcol[2], 0.8f);
                     }
+
+                    // Peak meter strip at bottom
+                    float peak_y = s_body_y + s_body_h - g_to_s(4);
+                    float pk = std::min(1.0f, analysis.peak);
+                    tr.draw_rect(wave_x, peak_y, wave_w * pk, g_to_s(2),
+                                 dcol[0], dcol[1], dcol[2], 0.9f);
                 }
             }
         }
@@ -185,8 +177,8 @@ void NodeGraphUI::draw_graph(TextRenderer& tr) {
     }
 }
 
-void NodeGraphUI::draw_connections(TextRenderer& tr) {
-    const auto& conns = graph_.connections();
+void NodeGraphUI::draw_connections(Renderer2D& tr) {
+    const auto& conns = snap_->connections;
 
     // Build fast lookup: node_id -> index in node_rects_
     std::unordered_map<std::string, size_t> id_to_rect;
@@ -238,15 +230,15 @@ void NodeGraphUI::draw_connections(TextRenderer& tr) {
     }
 }
 
-void NodeGraphUI::draw_wire_tooltip(TextRenderer& tr) {
+void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
     if (hovered_wire_idx_ < 0) return;
 
-    const auto& conns = graph_.connections();
+    const auto& conns = snap_->connections;
     if (hovered_wire_idx_ >= static_cast<int>(conns.size())) return;
     const auto& c = conns[hovered_wire_idx_];
 
-    // Find source node in scheduler to read current value
-    const NodeState* src_ns = find_sched_node(c.from_node);
+    // Find source node in snapshot to read current value
+    const auto* src_ns = snap_->find_node(c.from_node);
 
     // Build label line
     std::string label = c.from_node + "/" + c.from_port + " -> " + c.to_node + "/" + c.to_port;
@@ -304,7 +296,7 @@ void NodeGraphUI::draw_wire_tooltip(TextRenderer& tr) {
     }
 }
 
-void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h) {
+void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     slider_rects_.clear();
     bool_rects_.clear();
     value_text_rects_.clear();
@@ -319,20 +311,20 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h) {
     // Separator line
     tr.draw_rect(insp_x, 0, 2, static_cast<float>(h), 0.25f, 0.27f, 0.30f);
 
-    // Find the selected node in scheduler
-    const NodeState* sel_node = find_sched_node(selected_node_id_);
-    if (!sel_node) {
+    // Find the selected node in snapshot
+    const auto* sel_node = snap_->find_node(selected_node_id_);
+    if (!sel_node || !sel_node->op_info) {
         tr.draw_text(insp_x + 16, 20, "Node not found", kDimText[0], kDimText[1], kDimText[2]);
         return;
     }
 
-    const auto* desc = sel_node->loader->descriptor();
+    const auto& op = *sel_node->op_info;
     float px = insp_x + 16;
     float py = 16;
     float panel_w = kInspectorW - 32;
 
     // Header: type name
-    tr.draw_text(px, py, desc->name, 1.0f, 1.0f, 1.0f);
+    tr.draw_text(px, py, op.name.c_str(), 1.0f, 1.0f, 1.0f);
     py += kLineH;
     // Node ID
     tr.draw_text(px, py, selected_node_id_.c_str(), kDimText[0], kDimText[1], kDimText[2]);
@@ -343,8 +335,8 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h) {
     py += 8;
 
     // Parameters
-    for (uint32_t pi = 0; pi < desc->param_count; ++pi) {
-        const auto& pd = desc->params[pi];
+    for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
+        const auto& pd = op.params[pi];
         float val = sel_node->param_values[pi];
 
         bool is_editing_this = editing_param_ &&
@@ -352,7 +344,7 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h) {
                                edit_param_name_ == pd.name;
 
         // Label
-        tr.draw_text(px, py, pd.name, 0.8f, 0.82f, 0.85f);
+        tr.draw_text(px, py, pd.name.c_str(), 0.8f, 0.82f, 0.85f);
 
         // Value text (right-aligned on the label line)
         std::string val_str;
@@ -360,7 +352,7 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h) {
             val_str = val > 0.5f ? "true" : "false";
         } else if (pd.choice_count > 0) {
             int idx = static_cast<int>(val);
-            if (idx >= 0 && idx < static_cast<int>(pd.choice_count))
+            if (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
                 val_str = pd.choice_labels[idx];
             else
                 val_str = format_int(idx);
@@ -411,8 +403,8 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h) {
             tr.draw_rect(dx, dy, dw, dh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
             // Show current label
             int idx = static_cast<int>(val);
-            const char* label = (idx >= 0 && idx < static_cast<int>(pd.choice_count))
-                                ? pd.choice_labels[idx] : "?";
+            const char* label = (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
+                                ? pd.choice_labels[idx].c_str() : "?";
             tr.draw_text(dx + 6, dy + 1, label, 0.9f, 0.92f, 0.95f);
             // Down-arrow indicator
             float arrow_x = dx + dw - 16;
@@ -441,7 +433,7 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h) {
 
     // GPU texture resolution (editable for generators, read-only for filters)
     if (sel_node->is_gpu && sel_node->gpu_tex_width > 0 && sel_node->gpu_tex_height > 0) {
-        bool is_generator = sel_node->texture_input_port_indices.empty() && !sel_node->is_gpu_sink;
+        bool is_generator = sel_node->is_generator;
 
         py += 4;
         tr.draw_rect(px, py, panel_w, 1, 0.25f, 0.27f, 0.30f);
@@ -522,7 +514,7 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h) {
     }
 }
 
-void NodeGraphUI::draw_preview_wire(TextRenderer& tr) {
+void NodeGraphUI::draw_preview_wire(Renderer2D& tr) {
     if (!dragging_wire_) return;
     float ssx = gx_to_sx(wire_from_gx_), ssy = gy_to_sy(wire_from_gy_);
     float sex = mouse_.x, sey = mouse_.y;
@@ -534,7 +526,7 @@ void NodeGraphUI::draw_preview_wire(TextRenderer& tr) {
         });
 }
 
-void NodeGraphUI::draw_chooser(TextRenderer& tr) {
+void NodeGraphUI::draw_chooser(Renderer2D& tr) {
     if (!chooser_open_) return;
 
     int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
@@ -572,11 +564,9 @@ void NodeGraphUI::draw_chooser(TextRenderer& tr) {
         // Domain color dot
         const std::string& name = chooser_items_[idx];
         const float* dcol = kControlAccent.data(); // default
-        if (registry_) {
-            auto* loader = registry_->find(name);
-            if (loader && loader->descriptor()) {
-                dcol = domain_color(loader->descriptor()->domain);
-            }
+        auto cat_it = snap_->operator_catalog.find(name);
+        if (cat_it != snap_->operator_catalog.end()) {
+            dcol = domain_color(cat_it->second->domain);
         }
         float dot_x = px + 10;
         float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
@@ -595,13 +585,13 @@ void NodeGraphUI::draw_chooser(TextRenderer& tr) {
 // -----------------------------------------------------------------------
 // Draw (top-level)
 // -----------------------------------------------------------------------
-void NodeGraphUI::draw(TextRenderer& tr, uint32_t w, uint32_t h) {
+void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     if (!visible_) return;
     bool size_changed = (w != win_w_ || h != win_h_);
     win_w_ = w;
     win_h_ = h;
 
-    if (node_rects_.empty() && !scheduler_.nodes().empty()) {
+    if (node_rects_.empty() && !snap_->nodes.empty()) {
         layout_nodes();
     } else if (size_changed && !node_rects_.empty()) {
         layout_nodes();
@@ -695,4 +685,4 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
     renderer.end();
 }
 
-} // namespace vivid
+} // namespace vivid::ui

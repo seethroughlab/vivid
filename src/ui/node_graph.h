@@ -1,7 +1,9 @@
-#ifndef VIVID_RUNTIME_NODE_GRAPH_H
-#define VIVID_RUNTIME_NODE_GRAPH_H
+#ifndef VIVID_UI_NODE_GRAPH_H
+#define VIVID_UI_NODE_GRAPH_H
 
-#include "runtime/node_graph_constants.h"
+#include "ui/node_graph_constants.h"
+#include "ui/graph_snapshot.h"
+#include "ui/ui_command_sink.h"
 #include "operator_api/types.h"
 #include <webgpu/webgpu.h>
 #include <string>
@@ -10,17 +12,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace vivid {
+namespace vivid::ui {
 
-class RuntimeAPI;
-class Graph;
-class Scheduler;
-struct NodeState;
-class TextRenderer;
-class AudioEngine;
+class Renderer2D;
 class ThumbnailRenderer;
 class ThumbnailCache;
-class OperatorRegistry;
 
 struct MouseState {
     float x = 0, y = 0;
@@ -41,8 +37,7 @@ struct NodeRect {
 
 class NodeGraphUI {
 public:
-    NodeGraphUI(RuntimeAPI& api, const Graph& graph, const Scheduler& scheduler,
-                AudioEngine* audio_engine = nullptr);
+    NodeGraphUI(UICommandSink& commands);
 
     // GLFW callbacks
     void on_mouse_move(float x, float y);
@@ -58,11 +53,12 @@ public:
     void toggle_visible() { visible_ = !visible_; }
     bool visible() const { return visible_; }
 
-    void set_registry(OperatorRegistry* reg) { registry_ = reg; }
+    // Called by main loop each frame with delta time
+    void set_dt(float dt) { dt_ = dt; }
 
     // Per-frame
-    void update();
-    void draw(TextRenderer& tr, uint32_t w, uint32_t h);
+    void update(const GraphSnapshot& snapshot);
+    void draw(Renderer2D& tr, uint32_t w, uint32_t h);
 
     // GPU thumbnail overlay (separate render pass after text)
     void draw_thumbnails(ThumbnailRenderer& tr, const ThumbnailCache& cache,
@@ -80,15 +76,15 @@ public:
 private:
     // --- Layout ---
     void layout_nodes();
-    void recompute_ports(NodeRect& rect, const NodeState& ns);
+    void recompute_ports(NodeRect& rect, const NodeSnapshot& ns);
 
     // --- Drawing (node_graph_draw.cpp) ---
-    void draw_graph(TextRenderer& tr);
-    void draw_connections(TextRenderer& tr);
-    void draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h);
-    void draw_chooser(TextRenderer& tr);
-    void draw_preview_wire(TextRenderer& tr);
-    void draw_wire_tooltip(TextRenderer& tr);
+    void draw_graph(Renderer2D& tr);
+    void draw_connections(Renderer2D& tr);
+    void draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h);
+    void draw_chooser(Renderer2D& tr);
+    void draw_preview_wire(Renderer2D& tr);
+    void draw_wire_tooltip(Renderer2D& tr);
 
     // --- Chooser ---
     void rebuild_chooser_items();
@@ -114,9 +110,6 @@ private:
     void cancel_param_edit();
     void confirm_resolution_edit();
     void cancel_resolution_edit();
-
-    // --- Node lookup helper ---
-    const NodeState* find_sched_node(const std::string& id) const;
 
     // --- Sorted port indices helper ---
     static std::vector<std::pair<uint32_t, std::string>> sorted_ports(
@@ -155,10 +148,8 @@ private:
     float inspector_x() const { return static_cast<float>(win_w_) - kInspectorW; }
     float chooser_x() const { return (graph_right() - kChooserW) * 0.5f; }
 
-    RuntimeAPI& api_;
-    const Graph& graph_;
-    const Scheduler& scheduler_;
-    AudioEngine* audio_engine_ = nullptr;
+    UICommandSink& commands_;
+    const GraphSnapshot* snap_ = nullptr;
     MouseState mouse_;
     std::string selected_node_id_;
     std::vector<NodeRect> node_rects_;
@@ -239,7 +230,6 @@ private:
     int chooser_scroll_ = 0;
     std::vector<std::string> chooser_items_;
     float chooser_cursor_gx_ = 0, chooser_cursor_gy_ = 0;
-    OperatorRegistry* registry_ = nullptr;
 
     // Right-click context menu state
     bool context_menu_open_ = false;
@@ -258,6 +248,6 @@ private:
     bool visible_ = true;
 };
 
-} // namespace vivid
+} // namespace vivid::ui
 
-#endif // VIVID_RUNTIME_NODE_GRAPH_H
+#endif // VIVID_UI_NODE_GRAPH_H

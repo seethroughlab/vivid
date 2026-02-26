@@ -1,5 +1,5 @@
 #include "runtime/gpu_context.h"
-#include "runtime/gpu_util.h"
+#include "common/gpu_util.h"
 #include <glfw3webgpu.h>
 #include <cstdio>
 #include <cstring>

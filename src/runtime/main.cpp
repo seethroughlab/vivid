@@ -1,7 +1,7 @@
 #include "runtime/gpu_context.h"
 #include "runtime/fullscreen_blit.h"
-#include "runtime/thumbnail_cache.h"
-#include "runtime/thumbnail_renderer.h"
+#include "ui/thumbnail_cache.h"
+#include "ui/thumbnail_renderer.h"
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
@@ -9,12 +9,15 @@
 #include "runtime/file_watcher.h"
 #include "runtime/hot_reload.h"
 #include "runtime/runtime_api.h"
-#include "runtime/text_renderer.h"
-#include "runtime/node_graph.h"
+#include "ui/renderer_2d.h"
+#include "ui/node_graph.h"
+#include "ui/graph_snapshot.h"
+#include "ui/ui_command_sink.h"
 #include "runtime/builtin_operators.h"
+#include "runtime/control_server.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/types.h"
-#include "runtime/gpu_util.h"
+#include "common/gpu_util.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 #include <GLFW/glfw3.h>
@@ -23,6 +26,8 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <algorithm>
+#include <memory>
 #include <unordered_set>
 #include <vector>
 
@@ -51,6 +56,167 @@ static bool is_srgb_format(WGPUTextureFormat fmt) {
 
 using vivid::to_sv;
 
+// ---------------------------------------------------------------------------
+// RuntimeCommandSink — adapts RuntimeAPI to UICommandSink
+// ---------------------------------------------------------------------------
+class RuntimeCommandSink : public vivid::ui::UICommandSink {
+public:
+    explicit RuntimeCommandSink(vivid::RuntimeAPI& api) : api_(api) {}
+    void set_param(const std::string& node_id, const std::string& param, float value) override {
+        api_.set_param(node_id, param, value);
+    }
+    void add_node(const std::string& type, const std::string& id) override {
+        api_.add_node(type, id);
+    }
+    void remove_node(const std::string& id) override {
+        api_.remove_node(id);
+    }
+    void connect(const std::string& from, const std::string& to) override {
+        api_.connect(from, to);
+    }
+    void disconnect(const std::string& from, const std::string& to) override {
+        api_.disconnect(from, to);
+    }
+    void set_node_layout(const std::string& node_id, float x, float y) override {
+        api_.set_node_layout(node_id, x, y);
+    }
+    void set_resolution(const std::string& node_id, uint32_t w, uint32_t h) override {
+        api_.set_resolution(node_id, w, h);
+    }
+private:
+    vivid::RuntimeAPI& api_;
+};
+
+// ---------------------------------------------------------------------------
+// OperatorInfoCache — caches shared_ptr<const OperatorInfo> by type name
+// ---------------------------------------------------------------------------
+class OperatorInfoCache {
+public:
+    std::shared_ptr<const vivid::ui::OperatorInfo> get(
+            const std::string& type_name, vivid::OperatorRegistry& registry) {
+        auto it = cache_.find(type_name);
+        if (it != cache_.end()) return it->second;
+
+        auto* loader = registry.find(type_name);
+        if (!loader) return nullptr;
+        const auto* desc = loader->descriptor();
+        if (!desc) return nullptr;
+
+        auto info = std::make_shared<vivid::ui::OperatorInfo>();
+        info->name = desc->name;
+        info->domain = desc->domain;
+        info->params.resize(desc->param_count);
+        for (uint32_t i = 0; i < desc->param_count; ++i) {
+            auto& pi = info->params[i];
+            const auto& pd = desc->params[i];
+            pi.name = pd.name;
+            pi.type = pd.type;
+            pi.default_value = pd.default_value;
+            pi.min_value = pd.min_value;
+            pi.max_value = pd.max_value;
+            pi.choice_count = pd.choice_count;
+            if (pd.choice_labels && pd.choice_count > 0) {
+                pi.choice_labels.reserve(pd.choice_count);
+                for (uint32_t ci = 0; ci < pd.choice_count; ++ci)
+                    pi.choice_labels.push_back(pd.choice_labels[ci]);
+            }
+        }
+
+        cache_[type_name] = info;
+        return info;
+    }
+
+    void invalidate(const std::string& type_name) { cache_.erase(type_name); }
+    void invalidate_all() { cache_.clear(); }
+
+private:
+    std::unordered_map<std::string, std::shared_ptr<const vivid::ui::OperatorInfo>> cache_;
+};
+
+// ---------------------------------------------------------------------------
+// build_graph_snapshot — produces a GraphSnapshot from runtime state
+// ---------------------------------------------------------------------------
+static vivid::ui::GraphSnapshot build_graph_snapshot(
+        const vivid::Graph& graph,
+        const vivid::Scheduler& scheduler,
+        vivid::AudioEngine* audio_engine,
+        vivid::OperatorRegistry& registry,
+        OperatorInfoCache& op_cache) {
+    vivid::ui::GraphSnapshot snap;
+
+    const auto& sched_nodes = scheduler.nodes();
+    const auto& conns = graph.connections();
+
+    // Nodes
+    snap.nodes.resize(sched_nodes.size());
+    for (size_t i = 0; i < sched_nodes.size(); ++i) {
+        const auto& ns = sched_nodes[i];
+        auto& sn = snap.nodes[i];
+        sn.node_id = ns.node_id;
+        sn.type_name = scheduler.type_name(static_cast<uint32_t>(i));
+        sn.domain = ns.loader->descriptor()->domain;
+        sn.is_gpu = ns.is_gpu;
+        sn.is_audio = ns.is_audio;
+        sn.is_gpu_sink = ns.is_gpu_sink;
+        sn.is_generator = ns.texture_input_port_indices.empty() && !ns.is_gpu_sink;
+        sn.input_port_indices = ns.input_port_indices;
+        sn.output_port_indices = ns.output_port_indices;
+        sn.param_indices = ns.param_indices;
+        sn.param_values = ns.param_values;
+        sn.output_values = ns.output_values;
+        sn.output_spreads = ns.output_spreads;
+        sn.gpu_tex_width = ns.gpu_tex_width;
+        sn.gpu_tex_height = ns.gpu_tex_height;
+
+        // Layout from graph
+        const auto* ndef = graph.find_node(ns.node_id);
+        if (ndef && ndef->has_layout()) {
+            sn.layout_x = ndef->layout_x;
+            sn.layout_y = ndef->layout_y;
+            sn.has_layout = true;
+        }
+
+        // Operator info (cached)
+        sn.op_info = op_cache.get(sn.type_name, registry);
+
+        // Index
+        snap.node_index[ns.node_id] = i;
+    }
+
+    // Connections
+    snap.connections.resize(conns.size());
+    for (size_t i = 0; i < conns.size(); ++i) {
+        snap.connections[i] = {conns[i].from_node, conns[i].from_port,
+                               conns[i].to_node, conns[i].to_port};
+    }
+
+    // Audio analysis
+    if (audio_engine) {
+        const auto& analysis = audio_engine->analysis_read();
+        for (const auto& ns : sched_nodes) {
+            int ae_idx = audio_engine->audio_node_index(ns.node_id);
+            if (ae_idx >= 0) {
+                snap.audio_index[ns.node_id] = ae_idx;
+            }
+        }
+        snap.audio_analysis.resize(analysis.waveform.size());
+        for (size_t i = 0; i < analysis.waveform.size(); ++i) {
+            snap.audio_analysis[i].peak = (i < analysis.peak.size()) ? analysis.peak[i] : 0.0f;
+            snap.audio_analysis[i].waveform = analysis.waveform[i];
+        }
+    }
+
+    // Operator catalog
+    snap.operator_types = registry.type_names();
+    std::sort(snap.operator_types.begin(), snap.operator_types.end());
+    for (const auto& tn : snap.operator_types) {
+        auto info = op_cache.get(tn, registry);
+        if (info) snap.operator_catalog[tn] = info;
+    }
+
+    return snap;
+}
+
 static void emit_clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, const double clear[4]) {
     WGPURenderPassColorAttachment color_att{};
     color_att.view = view;
@@ -70,7 +236,8 @@ static void emit_clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, co
 
 static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
                             vivid::Scheduler& scheduler, vivid::OperatorRegistry& registry,
-                            vivid::AudioEngine& audio_engine, bool has_audio) {
+                            vivid::AudioEngine& audio_engine, bool has_audio,
+                            OperatorInfoCache* op_cache = nullptr) {
     auto changes = fw.poll_changes();
     for (const auto& change : changes) {
         hr.queue_rebuild(change.target_name);
@@ -100,6 +267,7 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
             if (is_audio_op && has_audio) {
                 audio_engine.reload_operator(tn, registry);
             }
+            if (op_cache) op_cache->invalidate(tn);
             std::fprintf(stderr, "[vivid] Hot-reload: %s reloaded successfully\n", tn.c_str());
         } else {
             std::fprintf(stderr, "[vivid] Hot-reload: %s reload FAILED\n", tn.c_str());
@@ -112,7 +280,7 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
 }
 
 static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
-                                   vivid::ThumbnailCache& cache, vivid::NodeGraphUI& graph_ui,
+                                   vivid::ui::ThumbnailCache& cache, vivid::ui::NodeGraphUI& graph_ui,
                                    double time, uint32_t thumb_w, uint32_t thumb_h) {
     std::vector<uint8_t> thumb_pixels(thumb_w * thumb_h * 4);
     std::unordered_set<std::string> custom_thumb_ids;
@@ -231,7 +399,7 @@ static bool try_capture_screenshot(const std::string& path, vivid::GpuContext& g
 
 // GLFW callback trampolines
 struct WindowUserData {
-    vivid::NodeGraphUI* graph_ui = nullptr;
+    vivid::ui::NodeGraphUI* graph_ui = nullptr;
     vivid::RuntimeAPI* runtime_api = nullptr;
 };
 
@@ -360,7 +528,7 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Thumbnail cache + renderer ---
-    vivid::ThumbnailCache thumb_cache;
+    vivid::ui::ThumbnailCache thumb_cache;
     thumb_cache.init(gpu.device(), gpu.queue(), kThumbW, kThumbH);
 
     // Separate blit pipeline for offscreen→thumbnail (targets RGBA16Float, not surface format)
@@ -369,7 +537,7 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "[vivid] Failed to init thumbnail blit\n");
     }
 
-    vivid::ThumbnailRenderer thumb_renderer;
+    vivid::ui::ThumbnailRenderer thumb_renderer;
     bool thumb_renderer_ok = thumb_renderer.init(gpu.device(), gpu.queue(), gpu.surface_format());
 
     // --- Load operator plugins ---
@@ -414,7 +582,11 @@ int main(int argc, char* argv[]) {
     // --- RuntimeAPI ---
     vivid::RuntimeAPI runtime_api(graph, scheduler, audio_engine, registry);
 
-    vivid::TextRenderer text_renderer;
+    // --- Control server (MCP HTTP bridge) ---
+    vivid::ControlServer control_server;
+    control_server.start(9876);
+
+    vivid::ui::Renderer2D text_renderer;
     bool text_renderer_ok = false;
     {
         // Look for font next to executable, or in source tree
@@ -430,10 +602,10 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    vivid::NodeGraphUI graph_ui(runtime_api, graph, scheduler,
-                                has_audio ? &audio_engine : nullptr);
+    RuntimeCommandSink command_sink(runtime_api);
+    OperatorInfoCache op_info_cache;
+    vivid::ui::NodeGraphUI graph_ui(command_sink);
     graph_ui.set_dpi_scale(dpi_scale);
-    graph_ui.set_registry(&registry);
 
     // Set up GLFW input callbacks
     WindowUserData window_user_data;
@@ -500,6 +672,10 @@ int main(int argc, char* argv[]) {
             gpu.resize(static_cast<uint32_t>(fb_width), static_cast<uint32_t>(fb_height));
         }
 
+        // Drain control server requests (may set pending topology changes)
+        control_server.process_requests(runtime_api, graph, scheduler, registry,
+                                        has_gpu_ops, has_audio);
+
         if (runtime_api.has_pending()) {
             runtime_api.apply_pending(has_gpu_ops, has_audio);
             // Re-allocate per-node GPU textures after topology change
@@ -543,7 +719,7 @@ int main(int argc, char* argv[]) {
             // --- Hot-reload polling ---
             if (hot_reload_enabled) {
                 poll_hot_reload(file_watcher, hot_reloader, scheduler, registry,
-                                audio_engine, has_audio);
+                                audio_engine, has_audio, &op_info_cache);
             }
 
             if (has_audio) {
@@ -612,7 +788,10 @@ int main(int argc, char* argv[]) {
 
         // --- Node graph UI overlay (2-pass rendering) ---
         if (text_renderer_ok && graph_ui.visible()) {
-            graph_ui.update();
+            auto snapshot = build_graph_snapshot(
+                graph, scheduler, has_audio ? &audio_engine : nullptr,
+                registry, op_info_cache);
+            graph_ui.update(snapshot);
             graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
             // Pass 1: text/rects
             text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
@@ -638,6 +817,7 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Shutdown ---
+    control_server.stop();
     if (hot_reload_enabled) {
         file_watcher.stop();
         hot_reloader.stop();

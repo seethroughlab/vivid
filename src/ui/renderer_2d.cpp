@@ -1,8 +1,8 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
-#include "runtime/text_renderer.h"
-#include "runtime/gpu_util.h"
+#include "ui/renderer_2d.h"
+#include "common/gpu_util.h"
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -10,7 +10,9 @@
 #include <string>
 #include <vector>
 
-namespace vivid {
+namespace vivid::ui {
+
+using vivid::to_sv;
 
 static const char* kTextShaderWGSL = R"(
 struct Uniforms {
@@ -53,7 +55,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
-bool TextRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format,
+bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
                          const char* font_path, float font_size, float dpi_scale) {
     device_ = device;
     font_size_ = font_size;
@@ -61,7 +63,7 @@ bool TextRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format,
     // --- Load font file ---
     FILE* f = std::fopen(font_path, "rb");
     if (!f) {
-        std::fprintf(stderr, "[vivid] TextRenderer: failed to open font %s\n", font_path);
+        std::fprintf(stderr, "[vivid] Renderer2D: failed to open font %s\n", font_path);
         return false;
     }
     std::fseek(f, 0, SEEK_END);
@@ -74,7 +76,7 @@ bool TextRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format,
     // --- Bake glyph atlas using stb_truetype ---
     stbtt_fontinfo font;
     if (!stbtt_InitFont(&font, font_data.data(), 0)) {
-        std::fprintf(stderr, "[vivid] TextRenderer: failed to init font\n");
+        std::fprintf(stderr, "[vivid] Renderer2D: failed to init font\n");
         return false;
     }
 
@@ -112,7 +114,7 @@ bool TextRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format,
         }
 
         if (pen_y + gh >= kAtlasHeight) {
-            std::fprintf(stderr, "[vivid] TextRenderer: atlas overflow at char %d\n", c);
+            std::fprintf(stderr, "[vivid] Renderer2D: atlas overflow at char %d\n", c);
             break;
         }
 
@@ -294,16 +296,16 @@ bool TextRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format,
 
     pipeline_ = wgpuDeviceCreateRenderPipeline(device, &rp_desc);
     if (!pipeline_) {
-        std::fprintf(stderr, "[vivid] TextRenderer: failed to create pipeline\n");
+        std::fprintf(stderr, "[vivid] Renderer2D: failed to create pipeline\n");
         return false;
     }
 
-    std::fprintf(stderr, "[vivid] TextRenderer initialized (%.0fpt @ %.1fx, raster %.0fpx, atlas %ux%u)\n",
+    std::fprintf(stderr, "[vivid] Renderer2D initialized (%.0fpt @ %.1fx, raster %.0fpx, atlas %ux%u)\n",
         font_size, dpi_scale, raster_size, kAtlasWidth, kAtlasHeight);
     return true;
 }
 
-void TextRenderer::push_quad(float x0, float y0, float x1, float y1,
+void Renderer2D::push_quad(float x0, float y0, float x1, float y1,
                               float u0, float v0, float u1, float v1,
                               float r, float g, float b, float a) {
     if (vertices_.size() + 6 > kMaxVertices) return;
@@ -316,7 +318,7 @@ void TextRenderer::push_quad(float x0, float y0, float x1, float y1,
     vertices_.push_back({x1, y1, u1, v1, r, g, b, a});
 }
 
-void TextRenderer::draw_text(float x, float y, const char* text,
+void Renderer2D::draw_text(float x, float y, const char* text,
                               float r, float g, float b, float a, float scale) {
     float baseline = y + font_size_ * 0.8f * scale;
     float pen = x;
@@ -333,7 +335,7 @@ void TextRenderer::draw_text(float x, float y, const char* text,
     }
 }
 
-void TextRenderer::draw_rect(float x, float y, float w, float h,
+void Renderer2D::draw_rect(float x, float y, float w, float h,
                               float r, float g, float b, float a) {
     // UV points to the solid white 2x2 block at top-left of atlas
     float su0 = 0.0f, sv0 = 0.0f;
@@ -341,7 +343,7 @@ void TextRenderer::draw_rect(float x, float y, float w, float h,
     push_quad(x, y, x + w, y + h, su0, sv0, su1, sv1, r, g, b, a);
 }
 
-void TextRenderer::draw_line(float x1, float y1, float x2, float y2, float thickness,
+void Renderer2D::draw_line(float x1, float y1, float x2, float y2, float thickness,
                               float r, float g, float b, float a) {
     if (vertices_.size() + 6 > kMaxVertices) return;
     float dx = x2 - x1, dy = y2 - y1;
@@ -361,7 +363,7 @@ void TextRenderer::draw_line(float x1, float y1, float x2, float y2, float thick
     vertices_.push_back({x2 - nx, y2 - ny, su, sv, r, g, b, a});
 }
 
-float TextRenderer::text_width(const char* text, float scale) const {
+float Renderer2D::text_width(const char* text, float scale) const {
     float w = 0;
     for (const char* p = text; *p; ++p) {
         unsigned char c = *p;
@@ -370,7 +372,7 @@ float TextRenderer::text_width(const char* text, float scale) const {
     return w;
 }
 
-void TextRenderer::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
+void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
                           uint32_t surface_width, uint32_t surface_height) {
     if (vertices_.empty()) return;
 
@@ -443,7 +445,7 @@ void TextRenderer::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_vie
     vertices_.clear();
 }
 
-void TextRenderer::shutdown() {
+void Renderer2D::shutdown() {
     vertices_.clear();
     for (auto& vb : vertex_bufs_) {
         if (vb) { wgpuBufferRelease(vb); vb = nullptr; }
@@ -458,4 +460,4 @@ void TextRenderer::shutdown() {
     device_ = nullptr;
 }
 
-} // namespace vivid
+} // namespace vivid::ui
