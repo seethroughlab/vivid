@@ -6,6 +6,9 @@
 
 namespace vivid {
 
+// Fallback clear color: #16191D as raw unorm (used when no source texture covers a region)
+static constexpr WGPUColor kFallbackClear = { 0.0863, 0.0980, 0.1137, 1.0 };
+
 static WGPUStringView to_sv(const char* s) {
     return { s, s ? std::strlen(s) : 0 };
 }
@@ -161,7 +164,7 @@ void FullscreenBlit::blit(WGPUCommandEncoder encoder,
     color_att.resolveTarget = nullptr;
     color_att.loadOp = WGPULoadOp_Clear;
     color_att.storeOp = WGPUStoreOp_Store;
-    color_att.clearValue = { 0.0863, 0.0980, 0.1137, 1.0 }; // #16191D fallback
+    color_att.clearValue = kFallbackClear;
 
     WGPURenderPassDescriptor rp_desc{};
     rp_desc.label = to_sv("Blit Pass");
@@ -394,7 +397,7 @@ void FullscreenBlit::blit_fit(WGPUCommandEncoder encoder,
     color_att.resolveTarget = nullptr;
     color_att.loadOp = WGPULoadOp_Clear;
     color_att.storeOp = WGPUStoreOp_Store;
-    color_att.clearValue = { 0.0863, 0.0980, 0.1137, 1.0 }; // #16191D fallback
+    color_att.clearValue = kFallbackClear;
 
     WGPURenderPassDescriptor rp_desc{};
     rp_desc.label = to_sv("Fit Blit Pass");

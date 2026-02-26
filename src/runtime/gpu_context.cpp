@@ -31,7 +31,7 @@ static WGPUAdapter request_adapter_sync(WGPUInstance instance, const WGPURequest
             d->adapter = adapter;
         } else {
             std::fprintf(stderr, "[vivid] Adapter request failed: %.*s\n",
-                         (int)message.length, message.data ? message.data : "");
+                         static_cast<int>(message.length), message.data ? message.data : "");
         }
         d->done = true;
     };
@@ -56,7 +56,7 @@ static WGPUDevice request_device_sync(WGPUAdapter adapter, const WGPUDeviceDescr
             d->device = device;
         } else {
             std::fprintf(stderr, "[vivid] Device request failed: %.*s\n",
-                         (int)message.length, message.data ? message.data : "");
+                         static_cast<int>(message.length), message.data ? message.data : "");
         }
         d->done = true;
     };
@@ -119,14 +119,16 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     device_desc.deviceLostCallbackInfo.callback =
         [](WGPUDevice const*, WGPUDeviceLostReason reason, WGPUStringView message, void*, void*) {
             std::fprintf(stderr, "[vivid] Device lost (reason %d): %.*s\n",
-                         (int)reason, (int)message.length, message.data ? message.data : "");
+                         static_cast<int>(reason), static_cast<int>(message.length),
+                         message.data ? message.data : "");
         };
 
     // Uncaptured error callback
     device_desc.uncapturedErrorCallbackInfo.callback =
         [](WGPUDevice const*, WGPUErrorType type, WGPUStringView message, void*, void*) {
             std::fprintf(stderr, "[vivid] WebGPU error (%d): %.*s\n",
-                         (int)type, (int)message.length, message.data ? message.data : "");
+                         static_cast<int>(type), static_cast<int>(message.length),
+                         message.data ? message.data : "");
         };
 
     device_ = request_device_sync(adapter_, &device_desc);
@@ -156,7 +158,7 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
 
     wgpuSurfaceCapabilitiesFreeMembers(caps);
     std::fprintf(stderr, "[vivid] Surface format: %d (CopySrc: %s)\n",
-                 (int)surface_format_, surface_copy_src_ ? "yes" : "no");
+                 static_cast<int>(surface_format_), surface_copy_src_ ? "yes" : "no");
 
     // 7. Configure surface
     WGPUSurfaceConfiguration config{};
@@ -184,7 +186,7 @@ bool GpuContext::begin_frame(FrameState& frame) {
     if (surface_tex.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
         surface_tex.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
         std::fprintf(stderr, "[vivid] Failed to acquire surface texture (status %d)\n",
-                     (int)surface_tex.status);
+                     static_cast<int>(surface_tex.status));
         return false;
     }
 

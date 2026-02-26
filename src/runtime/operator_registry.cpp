@@ -6,6 +6,8 @@
 
 namespace vivid {
 
+static constexpr size_t kDylibSuffixLen = 6;  // strlen(".dylib")
+
 bool OperatorRegistry::scan(const char* directory) {
     DIR* dir = opendir(directory);
     if (!dir) {
@@ -17,7 +19,7 @@ bool OperatorRegistry::scan(const char* directory) {
     while ((entry = readdir(dir)) != nullptr) {
         const char* name = entry->d_name;
         size_t len = std::strlen(name);
-        if (len < 7 || std::strcmp(name + len - 6, ".dylib") != 0)
+        if (len < kDylibSuffixLen + 1 || std::strcmp(name + len - kDylibSuffixLen, ".dylib") != 0)
             continue;
         // Skip system/library dylibs (lib*.dylib); operators are name.dylib
         if (std::strncmp(name, "lib", 3) == 0)
@@ -33,7 +35,7 @@ bool OperatorRegistry::scan(const char* directory) {
         std::fprintf(stderr, "[vivid] Registry: loaded %s from %s\n", type_name.c_str(), name);
 
         // Map cmake target name (filename stem) → descriptor type name
-        std::string target_name(name, len - 6);  // strip ".dylib"
+        std::string target_name(name, len - kDylibSuffixLen);  // strip ".dylib"
         target_to_type_[target_name] = type_name;
 
         loaders_[type_name] = std::move(loader);

@@ -553,7 +553,8 @@ int main(int argc, char* argv[]) {
                 if (thumb_renderer_ok) {
                     graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
                                              frame.encoder, frame.view,
-                                             (uint32_t)fb_width, (uint32_t)fb_height);
+                                             static_cast<uint32_t>(fb_width),
+                                             static_cast<uint32_t>(fb_height));
                 }
             }
             // Pass 3: REPL on top
@@ -569,7 +570,8 @@ int main(int argc, char* argv[]) {
             const uint32_t ss_h = static_cast<uint32_t>(fb_height);
             const uint32_t bpp = 4;
             const uint32_t unpadded_row = ss_w * bpp;
-            const uint32_t aligned_row = (unpadded_row + 255) & ~255u;
+            static constexpr uint32_t kGpuRowAlignment = 256;
+            const uint32_t aligned_row = (unpadded_row + kGpuRowAlignment - 1) & ~(kGpuRowAlignment - 1);
             const uint64_t buf_size = static_cast<uint64_t>(aligned_row) * ss_h;
 
             WGPUBufferDescriptor staging_desc{};

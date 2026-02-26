@@ -9,6 +9,10 @@
 
 namespace vivid {
 
+static constexpr int kWatchTimeoutMs = 200;
+static constexpr int64_t kDebounceMs = 100;
+static constexpr int kReopenRetryMs = 50;
+
 FileWatcher::FileWatcher() = default;
 
 FileWatcher::~FileWatcher() {
@@ -143,7 +147,7 @@ void FileWatcher::reopen_file(const std::string& path, const std::string& target
             }
             close(fd);
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(kReopenRetryMs));
     }
     std::fprintf(stderr, "[vivid] FileWatcher: failed to reopen %s\n", path.c_str());
 }
@@ -151,7 +155,7 @@ void FileWatcher::reopen_file(const std::string& path, const std::string& target
 void FileWatcher::watch_thread() {
     while (running_) {
         struct kevent ev;
-        struct timespec timeout = {0, 200000000};  // 200ms timeout for shutdown check
+        struct timespec timeout = {0, kWatchTimeoutMs * 1000000};  // shutdown check interval
         int nev = kevent(kq_, nullptr, 0, &ev, 1, &timeout);
         if (nev < 0) break;  // kqueue fd closed or error
         if (nev == 0) continue;  // timeout
@@ -166,7 +170,7 @@ void FileWatcher::watch_thread() {
         auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
         auto& last = last_event_time_[entry.target_name];
-        if (now - last < 100) {
+        if (now - last < kDebounceMs) {
             // Handle rename/delete even when debounced, to keep watch alive
             if (ev.fflags & (NOTE_RENAME | NOTE_DELETE)) {
                 close(fd);

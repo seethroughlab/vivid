@@ -123,22 +123,22 @@ bool TextRenderer::init(WGPUDevice device, WGPUTextureFormat surface_format,
                                    gw, gh, kAtlasWidth, scale, scale, c);
 
         auto& gi = glyphs_[c];
-        gi.u0 = (float)pen_x / kAtlasWidth;
-        gi.v0 = (float)pen_y / kAtlasHeight;
-        gi.u1 = (float)(pen_x + gw) / kAtlasWidth;
-        gi.v1 = (float)(pen_y + gh) / kAtlasHeight;
+        gi.u0 = static_cast<float>(pen_x) / kAtlasWidth;
+        gi.v0 = static_cast<float>(pen_y) / kAtlasHeight;
+        gi.u1 = static_cast<float>(pen_x + gw) / kAtlasWidth;
+        gi.v1 = static_cast<float>(pen_y + gh) / kAtlasHeight;
         // Store glyph metrics in logical coordinates (divide by dpi_scale)
-        gi.x0 = (float)x0 / dpi_scale;
-        gi.y0 = (float)y0 / dpi_scale;
-        gi.x1 = (float)x1 / dpi_scale;
-        gi.y1 = (float)y1 / dpi_scale;
+        gi.x0 = static_cast<float>(x0) / dpi_scale;
+        gi.y0 = static_cast<float>(y0) / dpi_scale;
+        gi.x1 = static_cast<float>(x1) / dpi_scale;
+        gi.y1 = static_cast<float>(y1) / dpi_scale;
 
         int advance, lsb;
         stbtt_GetCodepointHMetrics(&font, c, &advance, &lsb);
         gi.advance = advance * scale / dpi_scale;
 
         pen_x += gw + 1;
-        if ((uint32_t)gh > row_height) row_height = gh;
+        if (static_cast<uint32_t>(gh) > row_height) row_height = gh;
     }
 
     // --- Create atlas texture (R8Unorm) ---
