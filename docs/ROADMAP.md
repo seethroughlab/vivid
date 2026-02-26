@@ -356,13 +356,17 @@ You hear a chord progression. You see rectangles lighting up in sync. You turn a
 
 **Why it matters:** This is the proof. Not a tech demo — a creative workflow. Every architectural decision (three domains, Spreads, cross-domain bridges, JSON graph, operator contract) is validated in a single session. If you can sit in front of this and make something that sounds and looks good by tweaking parameters and connections, Vivid works. If you can't, something fundamental needs to change. Building this before the LLM integration means the pipeline is solid when the chat panel wraps it.
 
-### Phase 16: MCP Server
+### Phase 16: MCP Server & Operator Scaffolding
 
-stdio JSON-RPC server (`vivid mcp` subcommand), exposing the Runtime API as MCP tools: `inspect_graph`, `set_param`, `add_node`, `remove_node`, `connect`, `disconnect`, `scaffold_operator`, `save_graph`, `load_graph`.
+Two halves, sharing the same `OperatorCreator` module:
 
-**Verify:** Claude Code connects via MCP. `inspect_graph` returns the full graph JSON. `set_param lfo1/frequency 8.0` changes the live output. `scaffold_operator gpu MyShader` creates the directory with boilerplate and opens it in the editor.
+**MCP Server** — stdio JSON-RPC server (`vivid mcp` subcommand), exposing the Runtime API as MCP tools: `inspect_graph`, `set_param`, `add_node`, `remove_node`, `connect`, `disconnect`, `scaffold_operator`, `save_graph`, `load_graph`.
 
-**Why it matters:** MCP is the bridge between Vivid and external LLM tools. Once this works, Claude Code can inspect and modify a running Vivid instance — which means you can develop operators and iterate on patches from your terminal. It also validates the Runtime API design under real external use: if the tool interface is awkward for Claude Code, it needs revision before the built-in chat wraps the same API.
+**Operator Scaffolding** — `scaffold_operator` MCP tool + in-app `+ New Operator...` UI (at the top of the Tab chooser). Both backed by `OperatorCreator`: validates the name, writes a domain-appropriate template (control/audio/GPU), patches CMakeLists.txt, and hands off to `HotReloader` for compilation. New operators load into the registry and appear in the chooser without restarting. See [phase-16-design.md](phase-16-design.md) for the full design.
+
+**Verify:** Claude Code connects via MCP. `inspect_graph` returns the full graph JSON. `set_param lfo1/frequency 8.0` changes the live output. `scaffold_operator gpu MyShader` creates the directory with boilerplate and opens it in the editor. In-app: press Tab, select `+ New Operator...`, pick a domain and name — operator compiles, loads, and appears in the chooser.
+
+**Why it matters:** MCP is the bridge between Vivid and external LLM tools. Once this works, Claude Code can inspect and modify a running Vivid instance — which means you can develop operators and iterate on patches from your terminal. It also validates the Runtime API design under real external use: if the tool interface is awkward for Claude Code, it needs revision before the built-in chat wraps the same API. The in-app scaffolding UI makes the same creation flow available without leaving the app — the user hits Tab, realizes the operator they want doesn't exist, and creates it on the spot.
 
 ### Phase 17: Built-in Chat Panel
 
