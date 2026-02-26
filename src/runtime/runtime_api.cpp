@@ -71,6 +71,38 @@ CommandResult RuntimeAPI::set_node_layout(const std::string& node_id, float x, f
     return {true, "layout set"};
 }
 
+// --- Resolution ---
+
+CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t width, uint32_t height) {
+    if (width == 0 || height == 0)
+        return {false, "resolution must be non-zero"};
+    if (width > 8192 || height > 8192)
+        return {false, "resolution exceeds 8192 limit"};
+
+    // Update graph NodeDef
+    NodeDef* ndef = graph_.find_node(node_id);
+    if (!ndef) return {false, "unknown node '" + node_id + "'"};
+    ndef->tex_width  = width;
+    ndef->tex_height = height;
+
+    // Update live scheduler NodeState
+    const auto& nodes = scheduler_.nodes();
+    for (uint32_t i = 0; i < static_cast<uint32_t>(nodes.size()); ++i) {
+        if (nodes[i].node_id != node_id) continue;
+        auto& ns = const_cast<NodeState&>(nodes[i]);
+        ns.gpu_tex_width  = width;
+        ns.gpu_tex_height = height;
+        ns.generation++;
+        break;
+    }
+
+    needs_gpu_realloc_ = true;
+
+    std::ostringstream oss;
+    oss << node_id << " resolution = " << width << "x" << height;
+    return {true, oss.str()};
+}
+
 // --- Buffered topology changes ---
 
 CommandResult RuntimeAPI::add_node(const std::string& type, const std::string& id) {
@@ -281,6 +313,7 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
     }
 
     has_gpu_ops = scheduler_.has_gpu_operators();
+    if (has_gpu_ops) needs_gpu_realloc_ = true;
 
     if (scheduler_.has_audio_operators()) {
         if (audio_engine_.build(graph_, registry_, scheduler_)) {

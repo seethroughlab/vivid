@@ -27,6 +27,9 @@ public:
 
     // Layout: persist node position for the graph UI
     CommandResult set_node_layout(const std::string& node_id, float x, float y);
+
+    // Set GPU texture resolution for a node (0 = inherit/default)
+    CommandResult set_resolution(const std::string& node_id, uint32_t width, uint32_t height);
     CommandResult get_param(const std::string& node_id, const std::string& param);
 
     // Buffered topology changes (require apply_pending)
@@ -50,6 +53,8 @@ public:
     CommandResult reload(bool& has_gpu_ops, bool& has_audio);
 
     bool has_pending() const { return pending_topology_change_; }
+    bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
+    void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
 
 private:
     static bool split_addr(const std::string& addr, std::string& node, std::string& port);
@@ -59,6 +64,7 @@ private:
     AudioEngine& audio_engine_;
     OperatorRegistry& registry_;
     bool pending_topology_change_ = false;
+    bool needs_gpu_realloc_ = false;
 };
 
 } // namespace vivid
