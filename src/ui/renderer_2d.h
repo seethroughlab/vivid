@@ -33,6 +33,11 @@ public:
     float text_width(const char* text, float scale = 1.0f) const;
     float line_height() const { return line_height_; }
 
+    // Clip rect stack — content drawn between push/pop is scissored to (x,y,w,h)
+    // in logical pixel coordinates. Calls finalize the current vertex batch.
+    void push_clip_rect(float x, float y, float w, float h);
+    void pop_clip_rect();
+
     // Flush all accumulated quads in a render pass on top of the given surface view.
     // Uses loadOp=Load to composite over existing content.
     void flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
@@ -42,6 +47,7 @@ private:
     void push_quad(float x0, float y0, float x1, float y1,
                    float u0, float v0, float u1, float v1,
                    float r, float g, float b, float a);
+    void finalize_batch();
 
     WGPUDevice device_ = nullptr;
     WGPURenderPipeline pipeline_ = nullptr;
@@ -61,9 +67,20 @@ private:
 
     static constexpr uint32_t kAtlasWidth = 1024;
     static constexpr uint32_t kAtlasHeight = 1024;
-    static constexpr uint32_t kMaxVertices = 6 * 4096; // 4096 quads
+    static constexpr uint32_t kMaxVertices = 6 * 21845; // 21845 quads
 
     std::vector<TextVertex> vertices_;
+
+    // Clip rect batching: each batch records a vertex range + optional scissor rect
+    struct DrawBatch {
+        uint32_t start = 0, count = 0;
+        bool has_scissor = false;
+        float sx = 0, sy = 0, sw = 0, sh = 0; // physical pixel coords
+    };
+    std::vector<DrawBatch> batches_;
+    std::vector<DrawBatch> clip_stack_; // push/pop stack (reuses DrawBatch for rect storage)
+    float dpi_scale_ = 1.0f;
+    uint32_t overflow_count_ = 0; // quads dropped this frame due to full vertex buffer
 };
 
 } // namespace vivid::ui

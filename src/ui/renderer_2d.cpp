@@ -59,6 +59,7 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
                          const char* font_path, float font_size, float dpi_scale) {
     device_ = device;
     font_size_ = font_size;
+    dpi_scale_ = dpi_scale;
 
     // --- Load font file ---
     FILE* f = std::fopen(font_path, "rb");
@@ -308,7 +309,7 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
 void Renderer2D::push_quad(float x0, float y0, float x1, float y1,
                               float u0, float v0, float u1, float v1,
                               float r, float g, float b, float a) {
-    if (vertices_.size() + 6 > kMaxVertices) return;
+    if (vertices_.size() + 6 > kMaxVertices) { ++overflow_count_; return; }
     // Two triangles: TL, TR, BL, BL, TR, BR
     vertices_.push_back({x0, y0, u0, v0, r, g, b, a});
     vertices_.push_back({x1, y0, u1, v0, r, g, b, a});
@@ -345,7 +346,7 @@ void Renderer2D::draw_rect(float x, float y, float w, float h,
 
 void Renderer2D::draw_line(float x1, float y1, float x2, float y2, float thickness,
                               float r, float g, float b, float a) {
-    if (vertices_.size() + 6 > kMaxVertices) return;
+    if (vertices_.size() + 6 > kMaxVertices) { ++overflow_count_; return; }
     float dx = x2 - x1, dy = y2 - y1;
     float len = std::sqrt(dx * dx + dy * dy);
     if (len < 0.001f) return;
@@ -363,6 +364,44 @@ void Renderer2D::draw_line(float x1, float y1, float x2, float y2, float thickne
     vertices_.push_back({x2 - nx, y2 - ny, su, sv, r, g, b, a});
 }
 
+void Renderer2D::finalize_batch() {
+    uint32_t batch_start = 0;
+    if (!batches_.empty()) {
+        auto& last = batches_.back();
+        batch_start = last.start + last.count;
+    }
+    uint32_t verts_now = static_cast<uint32_t>(vertices_.size());
+    if (verts_now > batch_start) {
+        DrawBatch b;
+        b.start = batch_start;
+        b.count = verts_now - batch_start;
+        if (!clip_stack_.empty()) {
+            b.has_scissor = true;
+            b.sx = clip_stack_.back().sx;
+            b.sy = clip_stack_.back().sy;
+            b.sw = clip_stack_.back().sw;
+            b.sh = clip_stack_.back().sh;
+        }
+        batches_.push_back(b);
+    }
+}
+
+void Renderer2D::push_clip_rect(float x, float y, float w, float h) {
+    finalize_batch();
+    DrawBatch clip;
+    clip.has_scissor = true;
+    clip.sx = x * dpi_scale_;
+    clip.sy = y * dpi_scale_;
+    clip.sw = w * dpi_scale_;
+    clip.sh = h * dpi_scale_;
+    clip_stack_.push_back(clip);
+}
+
+void Renderer2D::pop_clip_rect() {
+    finalize_batch();
+    if (!clip_stack_.empty()) clip_stack_.pop_back();
+}
+
 float Renderer2D::text_width(const char* text, float scale) const {
     float w = 0;
     for (const char* p = text; *p; ++p) {
@@ -374,7 +413,14 @@ float Renderer2D::text_width(const char* text, float scale) const {
 
 void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
                           uint32_t surface_width, uint32_t surface_height) {
-    if (vertices_.empty()) return;
+    if (vertices_.empty()) {
+        batches_.clear();
+        clip_stack_.clear();
+        return;
+    }
+
+    // Finalize any remaining vertices into the last batch
+    finalize_batch();
 
     WGPUQueue queue = wgpuDeviceGetQueue(device_);
 
@@ -434,7 +480,28 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
     wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group, 0, nullptr);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, 0, data_size);
 
-    wgpuRenderPassEncoderDraw(pass, static_cast<uint32_t>(vertices_.size()), 1, 0, 0);
+    // SetScissorRect requires physical pixels; surface_width/height are logical.
+    uint32_t phys_w = static_cast<uint32_t>(surface_width * dpi_scale_);
+    uint32_t phys_h = static_cast<uint32_t>(surface_height * dpi_scale_);
+
+    // Draw batches with per-batch scissor rects
+    for (const auto& batch : batches_) {
+        if (batch.count == 0) continue;
+        if (batch.has_scissor) {
+            // batch.sx/sy/sw/sh are already in physical pixels (scaled in push_clip_rect)
+            uint32_t sx = static_cast<uint32_t>(std::max(0.0f, batch.sx));
+            uint32_t sy = static_cast<uint32_t>(std::max(0.0f, batch.sy));
+            uint32_t sw = static_cast<uint32_t>(std::max(0.0f, batch.sw));
+            uint32_t sh = static_cast<uint32_t>(std::max(0.0f, batch.sh));
+            // Clamp to surface bounds
+            if (sx + sw > phys_w) sw = phys_w > sx ? phys_w - sx : 0;
+            if (sy + sh > phys_h) sh = phys_h > sy ? phys_h - sy : 0;
+            wgpuRenderPassEncoderSetScissorRect(pass, sx, sy, sw, sh);
+        } else {
+            wgpuRenderPassEncoderSetScissorRect(pass, 0, 0, phys_w, phys_h);
+        }
+        wgpuRenderPassEncoderDraw(pass, batch.count, 1, batch.start, 0);
+    }
 
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
@@ -442,7 +509,15 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
     wgpuBindGroupRelease(bind_group);
     wgpuBufferRelease(uniform_buf);
 
+    if (overflow_count_ > 0) {
+        std::fprintf(stderr, "[vivid] Renderer2D: dropped %u quads (vertex buffer full, %u/%u verts used)\n",
+                     overflow_count_, static_cast<uint32_t>(vertices_.size()), kMaxVertices);
+        overflow_count_ = 0;
+    }
+
     vertices_.clear();
+    batches_.clear();
+    clip_stack_.clear();
 }
 
 void Renderer2D::shutdown() {
