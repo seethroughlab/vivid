@@ -74,6 +74,14 @@ void NodeGraphUI::on_scroll(float /*x_offset*/, float y_offset) {
 void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
 
+    if (editing_midi_range_) {
+        if (key == GLFW_KEY_ENTER)       confirm_midi_range_edit();
+        else if (key == GLFW_KEY_ESCAPE) cancel_midi_range_edit();
+        else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
+            edit_buffer_.pop_back();
+        return;
+    }
+
     if (editing_param_) {
         if (key == GLFW_KEY_ENTER)       confirm_param_edit();
         else if (key == GLFW_KEY_ESCAPE) cancel_param_edit();
@@ -133,6 +141,14 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
         // B toggles bezier wire rendering
         if (key == GLFW_KEY_B && action == GLFW_PRESS) {
             bezier_wires_ = !bezier_wires_;
+        }
+        // M toggles MIDI map mode
+        if (key == GLFW_KEY_M && action == GLFW_PRESS) {
+            midi_map_mode_ = !midi_map_mode_;
+            if (!midi_map_mode_) {
+                midi_map_waiting_ = false;
+                editing_midi_range_ = false;
+            }
         }
         // Delete selected node (Delete or Backspace)
         if ((key == GLFW_KEY_DELETE || key == GLFW_KEY_BACKSPACE) && action == GLFW_PRESS) {
@@ -196,6 +212,12 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
 }
 
 void NodeGraphUI::on_char(unsigned int codepoint) {
+    if (editing_midi_range_) {
+        char ch = static_cast<char>(codepoint);
+        if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-')
+            edit_buffer_ += ch;
+        return;
+    }
     if (editing_param_) {
         char ch = static_cast<char>(codepoint);
         if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-')
@@ -347,6 +369,58 @@ bool NodeGraphUI::handle_dropdown_click() {
 bool NodeGraphUI::handle_inspector_click() {
     if (mouse_.x < graph_right() || mouse_.y >= static_cast<float>(win_h_))
         return false;
+
+    // --- MIDI map mode click guard ---
+    if (midi_map_mode_) {
+        if (mouse_.y < kPerfBarH) return true;
+
+        // Confirm any active midi range edit
+        if (editing_midi_range_) confirm_midi_range_edit();
+
+        // Hit-test remove rects
+        int rmi = hit_test_rect(midi_remove_rects_, mouse_.x, mouse_.y);
+        if (rmi >= 0) {
+            const auto& rr = midi_remove_rects_[rmi];
+            commands_.remove_midi_mapping(rr.node_id, rr.param_name);
+            return true;
+        }
+
+        // Hit-test range rects (min/max edit fields)
+        int rri = hit_test_rect(midi_range_rects_, mouse_.x, mouse_.y);
+        if (rri >= 0) {
+            const auto& mr = midi_range_rects_[rri];
+            editing_midi_range_ = true;
+            midi_range_node_id_ = mr.node_id;
+            midi_range_param_name_ = mr.param_name;
+            midi_range_editing_min_ = mr.is_min;
+            // Pre-fill with current value
+            const auto* mm = snap_->find_midi_mapping(mr.node_id, mr.param_name);
+            if (mm) {
+                edit_buffer_ = format_float(mr.is_min ? mm->range_min : mm->range_max, 2);
+            } else {
+                edit_buffer_.clear();
+            }
+            return true;
+        }
+
+        // Hit-test any slider/value_text/bool/dropdown rect -> set waiting target
+        auto check_param_rect = [&](const std::vector<InspectorRect>& rects) -> bool {
+            int idx = hit_test_rect(rects, mouse_.x, mouse_.y);
+            if (idx >= 0) {
+                midi_map_waiting_ = true;
+                midi_map_node_id_ = rects[idx].node_id;
+                midi_map_param_name_ = rects[idx].param_name;
+                return true;
+            }
+            return false;
+        };
+        if (check_param_rect(slider_rects_)) return true;
+        if (check_param_rect(value_text_rects_)) return true;
+        if (check_param_rect(bool_rects_)) return true;
+        if (check_param_rect(dropdown_rects_)) return true;
+
+        return true; // Consume all inspector clicks in MIDI map mode
+    }
 
     // Scrollbar hit test — check the scrollbar track area
     if (insp_content_h_ > static_cast<float>(win_h_) - kPerfBarH) {

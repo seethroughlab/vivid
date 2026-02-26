@@ -50,6 +50,8 @@ int NodeGraphUI::hit_test_rect(const std::vector<RectT>& rects, float mx, float 
 // Explicit instantiations for rect types used across translation units
 template int NodeGraphUI::hit_test_rect(const std::vector<InspectorRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<ResolutionRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<MidiRemoveRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<MidiRangeRect>& rects, float mx, float my);
 
 // -----------------------------------------------------------------------
 // Port position helper
@@ -380,6 +382,28 @@ void NodeGraphUI::cancel_resolution_edit() {
     edit_buffer_.clear();
 }
 
+void NodeGraphUI::confirm_midi_range_edit() {
+    if (!editing_midi_range_) return;
+    try {
+        float val = std::stof(edit_buffer_);
+        const auto* mm = snap_->find_midi_mapping(midi_range_node_id_, midi_range_param_name_);
+        if (mm) {
+            float new_min = midi_range_editing_min_ ? val : mm->range_min;
+            float new_max = midi_range_editing_min_ ? mm->range_max : val;
+            commands_.update_midi_mapping(midi_range_node_id_, midi_range_param_name_, new_min, new_max);
+        }
+    } catch (...) {
+        // Invalid input — silently discard
+    }
+    editing_midi_range_ = false;
+    edit_buffer_.clear();
+}
+
+void NodeGraphUI::cancel_midi_range_edit() {
+    editing_midi_range_ = false;
+    edit_buffer_.clear();
+}
+
 // -----------------------------------------------------------------------
 // Chooser filter
 // -----------------------------------------------------------------------
@@ -408,6 +432,27 @@ void NodeGraphUI::rebuild_chooser_items() {
 // -----------------------------------------------------------------------
 void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     snap_ = &snapshot;
+
+    // MIDI map mode: capture CC event when waiting for knob wiggle
+    if (midi_map_waiting_ && !snap_->pending_cc_events.empty()) {
+        const auto& ev = snap_->pending_cc_events[0];
+        // Look up param descriptor for default range
+        float range_min = 0.0f, range_max = 1.0f;
+        const auto* ns = snap_->find_node(midi_map_node_id_);
+        if (ns && ns->op_info) {
+            for (const auto& pd : ns->op_info->params) {
+                if (pd.name == midi_map_param_name_) {
+                    range_min = pd.min_value;
+                    range_max = pd.max_value;
+                    break;
+                }
+            }
+        }
+        commands_.add_midi_mapping(midi_map_node_id_, midi_map_param_name_,
+                                   ev.cc_number, 0, range_min, range_max);
+        midi_map_waiting_ = false;
+    }
+
     check_relayout();
     update_pan();
     update_node_drag();

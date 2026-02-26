@@ -47,7 +47,7 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_; }
+    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_; }
     bool has_selection() const { return !selected_node_id_.empty(); }
 
     void toggle_visible() { visible_ = !visible_; }
@@ -94,6 +94,7 @@ private:
     void draw_preview_wire(Renderer2D& tr);
     void draw_wire_tooltip(Renderer2D& tr);
     void draw_inspector_scrollbar(Renderer2D& tr);
+    void draw_midi_map_banner(Renderer2D& tr);
 
     // --- Performance bar ---
     void draw_perf_bar(Renderer2D& tr);
@@ -127,6 +128,8 @@ private:
     void cancel_param_edit();
     void confirm_resolution_edit();
     void cancel_resolution_edit();
+    void confirm_midi_range_edit();
+    void cancel_midi_range_edit();
 
     // --- Sorted port indices helper ---
     static std::vector<std::pair<uint32_t, std::string>> sorted_ports(
@@ -218,6 +221,20 @@ private:
     bool editing_resolution_ = false;
     std::string edit_res_node_id_;
     bool edit_res_is_width_ = true;
+
+    // MIDI map mode state
+    bool midi_map_mode_ = false;
+    bool midi_map_waiting_ = false;          // clicked param, waiting for CC
+    std::string midi_map_node_id_;
+    std::string midi_map_param_name_;
+    bool editing_midi_range_ = false;        // typing into a min/max field
+    std::string midi_range_node_id_;
+    std::string midi_range_param_name_;
+    bool midi_range_editing_min_ = true;
+    struct MidiRemoveRect { float x, y, w, h; std::string node_id; std::string param_name; };
+    struct MidiRangeRect { float x, y, w, h; std::string node_id; std::string param_name; bool is_min; };
+    std::vector<MidiRemoveRect> midi_remove_rects_;
+    std::vector<MidiRangeRect> midi_range_rects_;
 
     // Dropdown popup state
     bool dropdown_open_ = false;

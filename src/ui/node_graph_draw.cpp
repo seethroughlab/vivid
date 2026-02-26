@@ -314,6 +314,8 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     value_text_rects_.clear();
     dropdown_rects_.clear();
     resolution_rects_.clear();
+    midi_remove_rects_.clear();
+    midi_range_rects_.clear();
 
     if (selected_node_id_.empty()) return;
 
@@ -396,6 +398,22 @@ void NodeGraphUI::draw_inspector_scrollbar(Renderer2D& tr) {
                  0.45f, 0.48f, 0.52f, thumb_alpha);
 }
 
+void NodeGraphUI::draw_midi_map_banner(Renderer2D& tr) {
+    if (!midi_map_mode_) return;
+
+    float banner_y = kPerfBarH;
+    float banner_w = static_cast<float>(win_w_);
+    if (has_selection()) banner_w = graph_right();
+
+    tr.draw_rect(0, banner_y, banner_w, kMidiMapBannerH,
+                 kMidiMapBanner[0], kMidiMapBanner[1], kMidiMapBanner[2], kMidiMapBanner[3]);
+
+    const char* status = midi_map_waiting_
+        ? "MIDI MAP: Wiggle a knob..."
+        : "MIDI MAP: Click a parameter...";
+    tr.draw_text(10, banner_y + 4, status, 0.9f, 0.95f, 1.0f);
+}
+
 void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node,
                                         float px, float& py) {
     const auto& op = *node.op_info;
@@ -420,8 +438,30 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                            edit_node_id_ == selected_node_id_ &&
                            edit_param_name_ == pd.name;
 
+    // CC badge (if this param has a MIDI mapping)
+    const auto* midi_mm = snap_->find_midi_mapping(selected_node_id_, pd.name);
+
     // Label
     tr.draw_text(px, py, pd.name.c_str(), 0.8f, 0.82f, 0.85f);
+
+    // CC badge inline with label
+    if (midi_mm) {
+        std::string badge = "CC " + std::to_string(midi_mm->cc_number);
+        float label_w = tr.text_width(pd.name.c_str());
+        float badge_x = px + label_w + 6;
+        float badge_w = tr.text_width(badge.c_str()) + 8;
+        tr.draw_rect(badge_x, py, badge_w, kMidiBadgeH,
+                     kMidiMapBadge[0], kMidiMapBadge[1], kMidiMapBadge[2], kMidiMapBadge[3]);
+        tr.draw_text(badge_x + 4, py, badge.c_str(), 0.85f, 0.90f, 1.0f);
+    }
+
+    // "Waiting" highlight (pulsing blue outline)
+    if (midi_map_waiting_ && midi_map_node_id_ == selected_node_id_ &&
+        midi_map_param_name_ == pd.name) {
+        float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(perf_frame_counter_) * 0.15f);
+        tr.draw_rect(px - 2, py - 2, panel_w + 4, kLineH + 4,
+                     0.3f, 0.5f, 0.9f, pulse * 0.6f);
+    }
 
     // Value text (right-aligned on the label line)
     std::string val_str;
@@ -494,6 +534,67 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, kAccent[0], kAccent[1], kAccent[2]);
         slider_rects_.push_back({sx, sy - 4, sw, sh + 8, selected_node_id_, pd.name});
         py += sh + 10;
+    }
+
+    // Inline MIDI min/max controls (only in MIDI map mode, only for mapped params)
+    if (midi_map_mode_ && midi_mm) {
+        float row_y = py;
+        float field_w = 50.0f;
+
+        bool is_editing_min = editing_midi_range_ &&
+                              midi_range_node_id_ == selected_node_id_ &&
+                              midi_range_param_name_ == pd.name &&
+                              midi_range_editing_min_;
+        bool is_editing_max = editing_midi_range_ &&
+                              midi_range_node_id_ == selected_node_id_ &&
+                              midi_range_param_name_ == pd.name &&
+                              !midi_range_editing_min_;
+
+        // "min" label
+        tr.draw_text(px, row_y, "min", kDimText[0], kDimText[1], kDimText[2]);
+        float min_x = px + 28;
+        if (is_editing_min) {
+            tr.draw_rect(min_x - 1, row_y - 1, field_w + 2, kMidiRangeH,
+                         kAccent[0], kAccent[1], kAccent[2]);
+            tr.draw_rect(min_x, row_y, field_w, kMidiRangeH - 2, 0.08f, 0.09f, 0.11f);
+            std::string display = edit_buffer_ + "_";
+            tr.draw_text(min_x + 2, row_y, display.c_str(), 0.95f, 0.95f, 0.95f);
+        } else {
+            tr.draw_rect(min_x, row_y, field_w, kMidiRangeH - 2,
+                         kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+            std::string min_str = format_float(midi_mm->range_min, 2);
+            tr.draw_text(min_x + 2, row_y, min_str.c_str(), 0.8f, 0.82f, 0.85f);
+        }
+        midi_range_rects_.push_back({min_x, row_y, field_w, kMidiRangeH,
+                                     selected_node_id_, pd.name, true});
+
+        // "max" label
+        float max_label_x = min_x + field_w + 10;
+        tr.draw_text(max_label_x, row_y, "max", kDimText[0], kDimText[1], kDimText[2]);
+        float max_x = max_label_x + 30;
+        if (is_editing_max) {
+            tr.draw_rect(max_x - 1, row_y - 1, field_w + 2, kMidiRangeH,
+                         kAccent[0], kAccent[1], kAccent[2]);
+            tr.draw_rect(max_x, row_y, field_w, kMidiRangeH - 2, 0.08f, 0.09f, 0.11f);
+            std::string display = edit_buffer_ + "_";
+            tr.draw_text(max_x + 2, row_y, display.c_str(), 0.95f, 0.95f, 0.95f);
+        } else {
+            tr.draw_rect(max_x, row_y, field_w, kMidiRangeH - 2,
+                         kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+            std::string max_str = format_float(midi_mm->range_max, 2);
+            tr.draw_text(max_x + 2, row_y, max_str.c_str(), 0.8f, 0.82f, 0.85f);
+        }
+        midi_range_rects_.push_back({max_x, row_y, field_w, kMidiRangeH,
+                                     selected_node_id_, pd.name, false});
+
+        // "x" remove button
+        float remove_x = max_x + field_w + 8;
+        tr.draw_rect(remove_x, row_y, 16, kMidiRangeH - 2, 0.5f, 0.2f, 0.2f, 0.8f);
+        tr.draw_text(remove_x + 3, row_y, "x", 0.9f, 0.6f, 0.6f);
+        midi_remove_rects_.push_back({remove_x, row_y, 16, kMidiRangeH,
+                                      selected_node_id_, pd.name});
+
+        py += kMidiRangeH + 4;
     }
 }
 
@@ -979,6 +1080,7 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     tr.draw_rect(0, 0, static_cast<float>(w), static_cast<float>(h), 0.05f, 0.06f, 0.07f, 0.55f);
 
     draw_perf_bar(tr);
+    draw_midi_map_banner(tr);
 
     draw_graph(tr);
     draw_connections(tr);

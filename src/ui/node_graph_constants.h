@@ -168,6 +168,13 @@ void traverse_wire(float ssx, float ssy, float sex, float sey,
     }
 }
 
+// MIDI map mode colors
+static constexpr std::array<float, 4> kMidiMapBanner = { 0.15f, 0.25f, 0.50f, 0.90f };
+static constexpr std::array<float, 4> kMidiMapBadge  = { 0.20f, 0.35f, 0.60f, 0.80f };
+static constexpr float kMidiMapBannerH = 24.0f;
+static constexpr float kMidiBadgeH = 14.0f;
+static constexpr float kMidiRangeH = 18.0f;
+
 // Performance bar layout
 static constexpr float kPerfBarH = 28.0f;
 static constexpr float kPerfBarPadX = 10.0f;
