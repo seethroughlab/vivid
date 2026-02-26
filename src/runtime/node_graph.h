@@ -26,6 +26,7 @@ struct MouseState {
     bool left_down = false;
     bool left_clicked = false;   // true on the frame the button went down
     bool left_released = false;  // true on the frame the button went up
+    bool right_clicked = false;  // true on the frame right button went down
 };
 
 struct NodeRect {
@@ -50,7 +51,11 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return chooser_open_ || editing_param_ || dropdown_open_; }
+    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_; }
+    bool has_selection() const { return !selected_node_id_.empty(); }
+
+    void toggle_visible() { visible_ = !visible_; }
+    bool visible() const { return visible_; }
 
     void set_registry(OperatorRegistry* reg) { registry_ = reg; }
 
@@ -76,7 +81,7 @@ private:
     void recompute_ports(NodeRect& rect, const NodeState& ns);
     void draw_graph(TextRenderer& tr);
     void draw_connections(TextRenderer& tr);
-    void draw_inspector(TextRenderer& tr, uint32_t w);
+    void draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h);
     void draw_chooser(TextRenderer& tr);
     void rebuild_chooser_items();
     int hit_test_node(float mx, float my) const;
@@ -84,8 +89,12 @@ private:
     int hit_test_bool(float mx, float my) const;
     int hit_test_value_text(float mx, float my) const;
     int hit_test_dropdown(float mx, float my) const;
+    int hit_test_resolution(float mx, float my) const;
+    int hit_test_wire(float sx, float sy) const;
     void confirm_param_edit();
     void cancel_param_edit();
+    void confirm_resolution_edit();
+    void cancel_resolution_edit();
 
     struct PortHit {
         int node_idx = -1;
@@ -95,6 +104,7 @@ private:
     };
     PortHit hit_test_port(float mx, float my) const;
     void draw_preview_wire(TextRenderer& tr);
+    void draw_wire_tooltip(TextRenderer& tr);
 
     // Graph space ↔ screen space helpers
     float gx_to_sx(float gx) const { return gx * zoom_ + pan_x_; }
@@ -102,6 +112,9 @@ private:
     float g_to_s(float gv) const { return gv * zoom_; }  // sizes
     float sx_to_gx(float sx) const { return (sx - pan_x_) / zoom_; }
     float sy_to_gy(float sy) const { return (sy - pan_y_) / zoom_; }
+
+    // Right edge of interactive graph area (shrinks when inspector is visible)
+    float graph_right() const;
 
     RuntimeAPI& api_;
     const Graph& graph_;
@@ -155,6 +168,14 @@ private:
     struct DropdownRect { float x, y, w, h; std::string node_id; std::string param_name; };
     std::vector<DropdownRect> dropdown_rects_;
 
+    struct ResolutionRect { float x, y, w, h; std::string node_id; bool is_width; };
+    std::vector<ResolutionRect> resolution_rects_;
+
+    // Resolution editing state
+    bool editing_resolution_ = false;
+    std::string edit_res_node_id_;
+    bool edit_res_is_width_ = true;
+
     // Dropdown popup state
     bool dropdown_open_ = false;
     std::string dropdown_node_id_;
@@ -186,8 +207,21 @@ private:
     float chooser_cursor_gx_ = 0, chooser_cursor_gy_ = 0;
     OperatorRegistry* registry_ = nullptr;
 
+    // Right-click context menu state
+    bool context_menu_open_ = false;
+    float context_menu_x_ = 0, context_menu_y_ = 0;  // screen space
+    std::string context_node_id_;   // non-empty if node menu
+    int context_wire_idx_ = -1;     // >= 0 if wire menu
+    int hovered_wire_idx_ = -1;
+
+    // Cached window dimensions (updated each frame in draw())
+    uint32_t win_w_ = 1280, win_h_ = 720;
+
     // Wire rendering style toggle (B key)
     bool bezier_wires_ = false;
+
+    // UI visibility toggle (tilde key)
+    bool visible_ = true;
 };
 
 } // namespace vivid

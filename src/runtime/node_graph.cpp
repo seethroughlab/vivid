@@ -109,6 +109,10 @@ void NodeGraphUI::on_mouse_button(int button, int action) {
             mouse_.left_down = false;
             mouse_.left_released = true;
         }
+    } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+        if (action == GLFW_PRESS) {
+            mouse_.right_clicked = true;
+        }
     } else if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
         if (action == GLFW_PRESS) {
             panning_ = true;
@@ -124,7 +128,7 @@ void NodeGraphUI::on_mouse_button(int button, int action) {
 
 void NodeGraphUI::on_scroll(float /*x_offset*/, float y_offset) {
     // Only zoom when cursor is in graph area
-    if (mouse_.x >= kInspectorX) return;
+    if (mouse_.x >= graph_right()) return;
 
     float factor = std::pow(1.12f, y_offset);
     float new_zoom = zoom_ * factor;
@@ -136,6 +140,10 @@ void NodeGraphUI::on_scroll(float /*x_offset*/, float y_offset) {
     zoom_ = new_zoom;
     pan_x_ = mouse_.x - gx * zoom_;
     pan_y_ = mouse_.y - gy * zoom_;
+}
+
+float NodeGraphUI::graph_right() const {
+    return has_selection() ? kInspectorX : static_cast<float>(win_w_);
 }
 
 // -----------------------------------------------------------------------
@@ -535,7 +543,8 @@ void NodeGraphUI::draw_connections(TextRenderer& tr) {
     for (size_t i = 0; i < node_rects_.size(); ++i)
         id_to_rect[node_rects_[i].node_id] = i;
 
-    for (const auto& c : conns) {
+    for (int ci = 0; ci < static_cast<int>(conns.size()); ++ci) {
+        const auto& c = conns[ci];
         auto fi = id_to_rect.find(c.from_node);
         auto ti = id_to_rect.find(c.to_node);
         if (fi == id_to_rect.end() || ti == id_to_rect.end()) continue;
@@ -563,12 +572,14 @@ void NodeGraphUI::draw_connections(TextRenderer& tr) {
         // Domain-colored wires (source node's accent color)
         const float* dcol = domain_color(from_rect.domain);
         bool sel = (c.from_node == selected_node_id_ || c.to_node == selected_node_id_);
-        float cr = sel ? std::min(1.0f, dcol[0] * 1.3f) : dcol[0];
-        float cg = sel ? std::min(1.0f, dcol[1] * 1.3f) : dcol[1];
-        float cb = sel ? std::min(1.0f, dcol[2] * 1.3f) : dcol[2];
-        float a = sel ? 0.95f : 0.8f;
+        bool hov = (ci == hovered_wire_idx_);
+        float brightness = (hov || sel) ? 1.3f : 1.0f;
+        float cr = std::min(1.0f, dcol[0] * brightness);
+        float cg = std::min(1.0f, dcol[1] * brightness);
+        float cb = std::min(1.0f, dcol[2] * brightness);
+        float a = (hov || sel) ? 0.95f : 0.8f;
 
-        float wire_th = std::max(1.0f, 3.0f * zoom_);
+        float wire_th = std::max(1.0f, (hov ? 5.0f : 3.0f) * zoom_);
 
         if (bezier_wires_) {
             // Cubic bezier with horizontal tangents
@@ -594,21 +605,93 @@ void NodeGraphUI::draw_connections(TextRenderer& tr) {
     }
 }
 
-void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
+void NodeGraphUI::draw_wire_tooltip(TextRenderer& tr) {
+    if (hovered_wire_idx_ < 0) return;
+
+    const auto& conns = graph_.connections();
+    if (hovered_wire_idx_ >= static_cast<int>(conns.size())) return;
+    const auto& c = conns[hovered_wire_idx_];
+
+    // Find source node in scheduler to read current value
+    const auto& sched_nodes = scheduler_.nodes();
+    const NodeState* src_ns = nullptr;
+    for (const auto& ns : sched_nodes) {
+        if (ns.node_id == c.from_node) { src_ns = &ns; break; }
+    }
+
+    // Build label line: "from_node/port -> to_node/port"
+    char label[256];
+    std::snprintf(label, sizeof(label), "%s/%s -> %s/%s",
+                  c.from_node.c_str(), c.from_port.c_str(),
+                  c.to_node.c_str(), c.to_port.c_str());
+
+    // Build value line
+    char value_str[128] = "";
+    if (src_ns) {
+        auto it = src_ns->output_port_indices.find(c.from_port);
+        if (it != src_ns->output_port_indices.end()) {
+            uint32_t pidx = it->second;
+            if (pidx < src_ns->output_values.size()) {
+                float val = src_ns->output_values[pidx];
+                // Check for spread data
+                if (pidx < src_ns->output_spreads.size() &&
+                    !src_ns->output_spreads[pidx].empty()) {
+                    std::snprintf(value_str, sizeof(value_str), "%.4f [spread: %zu]",
+                                  val, src_ns->output_spreads[pidx].size());
+                } else {
+                    std::snprintf(value_str, sizeof(value_str), "%.4f", val);
+                }
+            }
+        }
+    }
+
+    // Measure text and compute popup dimensions
+    float label_w = tr.text_width(label);
+    float value_w = value_str[0] ? tr.text_width(value_str) : 0.0f;
+    float pad = 8.0f;
+    float popup_w = std::max(label_w, value_w) + pad * 2;
+    float line_h = 16.0f;
+    float popup_h = (value_str[0] ? line_h * 2 : line_h) + pad * 2;
+
+    // Position near cursor, offset down-right, clamped to graph bounds
+    float px = mouse_.x + 14;
+    float py = mouse_.y + 14;
+    if (px + popup_w > graph_right()) px = mouse_.x - popup_w - 6;
+    if (py + popup_h > static_cast<float>(win_h_)) py = mouse_.y - popup_h - 6;
+
+    // Find domain color for accent from source node rect
+    const float* dcol = nullptr;
+    for (const auto& r : node_rects_) {
+        if (r.node_id == c.from_node) { dcol = domain_color(r.domain); break; }
+    }
+
+    // Background
+    tr.draw_rect(px, py, popup_w, popup_h, 0.10f, 0.11f, 0.13f, 0.95f);
+    // Accent line at top
+    if (dcol) {
+        tr.draw_rect(px, py, popup_w, 2.0f, dcol[0], dcol[1], dcol[2], 0.9f);
+    }
+    // Label text
+    tr.draw_text(px + pad, py + pad, label, kDimText[0], kDimText[1], kDimText[2]);
+    // Value text
+    if (value_str[0]) {
+        tr.draw_text(px + pad, py + pad + line_h, value_str, 0.9f, 0.92f, 0.95f);
+    }
+}
+
+void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w, uint32_t h) {
     slider_rects_.clear();
     bool_rects_.clear();
     value_text_rects_.clear();
     dropdown_rects_.clear();
+    resolution_rects_.clear();
+
+    if (selected_node_id_.empty()) return;
 
     // Inspector background
-    tr.draw_rect(kInspectorX, 0, kInspectorW, kGraphH, kInspBg[0], kInspBg[1], kInspBg[2], 0.95f);
+    tr.draw_rect(kInspectorX, 0, kInspectorW, static_cast<float>(h), kInspBg[0], kInspBg[1], kInspBg[2], 0.95f);
     // Separator line
-    tr.draw_rect(kInspectorX, 0, 2, kGraphH, 0.25f, 0.27f, 0.30f);
-
-    if (selected_node_id_.empty()) {
-        tr.draw_text(kInspectorX + 16, 20, "Select a node", kDimText[0], kDimText[1], kDimText[2]);
-        return;
-    }
+    tr.draw_rect(kInspectorX, 0, 2, static_cast<float>(h), 0.25f, 0.27f, 0.30f);
 
     // Find the selected node in scheduler
     const auto& sched_nodes = scheduler_.nodes();
@@ -734,6 +817,75 @@ void NodeGraphUI::draw_inspector(TextRenderer& tr, uint32_t w) {
         }
     }
 
+    // GPU texture resolution (editable for generators, read-only for filters)
+    if (sel_node->is_gpu && sel_node->gpu_tex_width > 0 && sel_node->gpu_tex_height > 0) {
+        bool is_generator = sel_node->texture_input_port_indices.empty() && !sel_node->is_gpu_sink;
+
+        py += 4;
+        tr.draw_rect(px, py, panel_w, 1, 0.25f, 0.27f, 0.30f);
+        py += 8;
+
+        tr.draw_text(px, py, "Resolution", kDimText[0], kDimText[1], kDimText[2]);
+        py += kLineH;
+
+        // Width
+        bool editing_w = editing_resolution_ &&
+                         edit_res_node_id_ == selected_node_id_ && edit_res_is_width_;
+        bool editing_h = editing_resolution_ &&
+                         edit_res_node_id_ == selected_node_id_ && !edit_res_is_width_;
+
+        char w_buf[16], h_buf[16];
+        if (editing_w) {
+            std::snprintf(w_buf, sizeof(w_buf), "%s_", edit_buffer_.c_str());
+        } else {
+            std::snprintf(w_buf, sizeof(w_buf), "%u", sel_node->gpu_tex_width);
+        }
+        if (editing_h) {
+            std::snprintf(h_buf, sizeof(h_buf), "%s_", edit_buffer_.c_str());
+        } else {
+            std::snprintf(h_buf, sizeof(h_buf), "%u", sel_node->gpu_tex_height);
+        }
+
+        float val_x = px + 4;
+        float w_text_w = 40.0f;
+
+        if (is_generator) {
+            // Clickable width value
+            if (editing_w) {
+                tr.draw_rect(val_x, py, w_text_w, kLineH, 0.12f, 0.14f, 0.18f);
+            }
+            tr.draw_text(val_x, py, w_buf,
+                         editing_w ? 1.0f : 0.8f,
+                         editing_w ? 1.0f : 0.82f,
+                         editing_w ? 1.0f : 0.85f);
+            resolution_rects_.push_back({val_x, py, w_text_w, kLineH,
+                                         selected_node_id_, true});
+        } else {
+            tr.draw_text(val_x, py, w_buf, 0.5f, 0.52f, 0.55f);
+        }
+
+        tr.draw_text(val_x + w_text_w, py, " x ", kDimText[0], kDimText[1], kDimText[2]);
+
+        float h_val_x = val_x + w_text_w + 24.0f;
+
+        if (is_generator) {
+            // Clickable height value
+            if (editing_h) {
+                tr.draw_rect(h_val_x, py, w_text_w, kLineH, 0.12f, 0.14f, 0.18f);
+            }
+            tr.draw_text(h_val_x, py, h_buf,
+                         editing_h ? 1.0f : 0.8f,
+                         editing_h ? 1.0f : 0.82f,
+                         editing_h ? 1.0f : 0.85f);
+            resolution_rects_.push_back({h_val_x, py, w_text_w, kLineH,
+                                         selected_node_id_, false});
+        } else {
+            tr.draw_text(h_val_x, py, h_buf, 0.5f, 0.52f, 0.55f);
+        }
+
+        py += kLineH;
+    }
+
     // Separator before outputs
     py += 4;
     tr.draw_rect(px, py, panel_w, 1, 0.25f, 0.27f, 0.30f);
@@ -768,6 +920,13 @@ static constexpr int kChooserMaxVisible = 12;
 static constexpr float kChooserW = 300.0f;
 static constexpr float kChooserHeaderH = 28.0f;
 static constexpr float kChooserItemH = 22.0f;
+static constexpr float kChooserX = (kGraphW - kChooserW) * 0.5f;
+static constexpr float kChooserY = 80.0f;
+
+// Context menu constants
+static constexpr float kCtxMenuW = 120.0f;
+static constexpr float kCtxMenuItemH = 22.0f;
+static constexpr float kCtxMenuPadTop = 3.0f;  // accent bar + padding
 
 void NodeGraphUI::on_key(int key, int action, int mods) {
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
@@ -778,6 +937,19 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
             edit_buffer_.pop_back();
         return;  // consume all keys while editing
+    }
+
+    if (editing_resolution_) {
+        if (key == GLFW_KEY_ENTER)       confirm_resolution_edit();
+        else if (key == GLFW_KEY_ESCAPE) cancel_resolution_edit();
+        else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
+            edit_buffer_.pop_back();
+        return;
+    }
+
+    if (context_menu_open_) {
+        if (key == GLFW_KEY_ESCAPE) context_menu_open_ = false;
+        return;
     }
 
     if (dropdown_open_) {
@@ -804,7 +976,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
     if (!chooser_open_) {
         // Tab opens the chooser (only if cursor is in graph area)
         if (key == GLFW_KEY_TAB && action == GLFW_PRESS && registry_) {
-            if (mouse_.x < kInspectorX) {
+            if (mouse_.x < graph_right()) {
                 chooser_cursor_gx_ = sx_to_gx(mouse_.x);
                 chooser_cursor_gy_ = sy_to_gy(mouse_.y);
                 chooser_filter_.clear();
@@ -819,8 +991,8 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         if (key == GLFW_KEY_B && action == GLFW_PRESS) {
             bezier_wires_ = !bezier_wires_;
         }
-        // Delete selected node
-        if (key == GLFW_KEY_DELETE && action == GLFW_PRESS) {
+        // Delete selected node (Delete or Backspace)
+        if ((key == GLFW_KEY_DELETE || key == GLFW_KEY_BACKSPACE) && action == GLFW_PRESS) {
             if (!selected_node_id_.empty()) {
                 api_.remove_node(selected_node_id_);
                 selected_node_id_.clear();
@@ -888,6 +1060,12 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
             edit_buffer_ += ch;
         return;
     }
+    if (editing_resolution_) {
+        char ch = static_cast<char>(codepoint);
+        if (std::isdigit(static_cast<unsigned char>(ch)))
+            edit_buffer_ += ch;
+        return;
+    }
     if (!chooser_open_) return;
     if (codepoint >= 32 && codepoint < 127) {
         chooser_filter_ += static_cast<char>(codepoint);
@@ -951,8 +1129,8 @@ void NodeGraphUI::draw_chooser(TextRenderer& tr) {
     if (visible == 0) visible = 1; // show at least the header area
     float panel_h = kChooserHeaderH + visible * kChooserItemH + 4;
 
-    float px = (kGraphW - kChooserW) * 0.5f;
-    float py = 80.0f;
+    float px = kChooserX;
+    float py = kChooserY;
 
     // Background
     tr.draw_rect(px, py, kChooserW, panel_h, kInspBg[0], kInspBg[1], kInspBg[2], 0.97f);
@@ -1083,6 +1261,82 @@ int NodeGraphUI::hit_test_dropdown(float mx, float my) const {
     return -1;
 }
 
+int NodeGraphUI::hit_test_resolution(float mx, float my) const {
+    for (int i = 0; i < static_cast<int>(resolution_rects_.size()); ++i) {
+        const auto& r = resolution_rects_[i];
+        if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h)
+            return i;
+    }
+    return -1;
+}
+
+// Point-to-segment squared distance helper
+static float point_seg_dist2(float px, float py, float ax, float ay, float bx, float by) {
+    float dx = bx - ax, dy = by - ay;
+    float len2 = dx * dx + dy * dy;
+    float t = (len2 > 0) ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0.0f;
+    t = std::max(0.0f, std::min(1.0f, t));
+    float cx = ax + t * dx, cy = ay + t * dy;
+    float ex = px - cx, ey = py - cy;
+    return ex * ex + ey * ey;
+}
+
+int NodeGraphUI::hit_test_wire(float sx, float sy) const {
+    const auto& conns = graph_.connections();
+
+    // Build fast lookup: node_id → index in node_rects_
+    std::unordered_map<std::string, size_t> id_to_rect;
+    for (size_t i = 0; i < node_rects_.size(); ++i)
+        id_to_rect[node_rects_[i].node_id] = i;
+
+    constexpr float kHitThresh = 8.0f;
+    float thresh2 = kHitThresh * kHitThresh;
+
+    for (int ci = 0; ci < static_cast<int>(conns.size()); ++ci) {
+        const auto& c = conns[ci];
+        auto fi = id_to_rect.find(c.from_node);
+        auto ti = id_to_rect.find(c.to_node);
+        if (fi == id_to_rect.end() || ti == id_to_rect.end()) continue;
+
+        const auto& from_rect = node_rects_[fi->second];
+        const auto& to_rect = node_rects_[ti->second];
+
+        // Find port positions in graph space (same as draw_connections)
+        float gsx = from_rect.x + from_rect.w, gsy = from_rect.y + from_rect.h * 0.5f;
+        for (const auto& p : from_rect.outputs)
+            if (p.name == c.from_port) { gsx = p.x; gsy = p.y; break; }
+        float gex = to_rect.x, gey = to_rect.y + to_rect.h * 0.5f;
+        for (const auto& p : to_rect.inputs)
+            if (p.name == c.to_port) { gex = p.x; gey = p.y; break; }
+
+        float ssx = gx_to_sx(gsx), ssy = gy_to_sy(gsy);
+        float sex = gx_to_sx(gex), sey = gy_to_sy(gey);
+
+        if (bezier_wires_) {
+            float cp_off = std::fabs(sex - ssx) * 0.5f;
+            float px = ssx, py = ssy;
+            for (int seg = 1; seg <= kBezierSegments; ++seg) {
+                float t = static_cast<float>(seg) / kBezierSegments;
+                float nx, ny;
+                eval_bezier(t, ssx, ssy, ssx + cp_off, ssy,
+                            sex - cp_off, sey, sex, sey, nx, ny);
+                if (point_seg_dist2(sx, sy, px, py, nx, ny) < thresh2)
+                    return ci;
+                px = nx; py = ny;
+            }
+        } else {
+            float mid_x = (ssx + sex) * 0.5f;
+            // Horizontal from source to mid
+            if (point_seg_dist2(sx, sy, ssx, ssy, mid_x, ssy) < thresh2) return ci;
+            // Vertical at mid
+            if (point_seg_dist2(sx, sy, mid_x, ssy, mid_x, sey) < thresh2) return ci;
+            // Horizontal from mid to dest
+            if (point_seg_dist2(sx, sy, mid_x, sey, sex, sey) < thresh2) return ci;
+        }
+    }
+    return -1;
+}
+
 void NodeGraphUI::confirm_param_edit() {
     if (!editing_param_) return;
     try {
@@ -1114,6 +1368,34 @@ void NodeGraphUI::cancel_param_edit() {
     edit_buffer_.clear();
 }
 
+void NodeGraphUI::confirm_resolution_edit() {
+    if (!editing_resolution_) return;
+    try {
+        int val = std::stoi(edit_buffer_);
+        if (val < 1) val = 1;
+        if (val > 8192) val = 8192;
+
+        // Find current resolution to preserve the other dimension
+        const auto& sched_nodes = scheduler_.nodes();
+        for (const auto& ns : sched_nodes) {
+            if (ns.node_id != edit_res_node_id_) continue;
+            uint32_t new_w = edit_res_is_width_ ? static_cast<uint32_t>(val) : ns.gpu_tex_width;
+            uint32_t new_h = edit_res_is_width_ ? ns.gpu_tex_height : static_cast<uint32_t>(val);
+            api_.set_resolution(edit_res_node_id_, new_w, new_h);
+            break;
+        }
+    } catch (...) {
+        // Invalid input — silently discard
+    }
+    editing_resolution_ = false;
+    edit_buffer_.clear();
+}
+
+void NodeGraphUI::cancel_resolution_edit() {
+    editing_resolution_ = false;
+    edit_buffer_.clear();
+}
+
 // -----------------------------------------------------------------------
 // Update (process mouse input + sparkline recording)
 // -----------------------------------------------------------------------
@@ -1121,10 +1403,14 @@ void NodeGraphUI::update() {
     // Re-layout if topology changed (but not mid-drag)
     size_t cur_nodes = scheduler_.nodes().size();
     size_t cur_conns = graph_.connections().size();
-    if (cur_nodes != last_node_count_ || cur_conns != last_conn_count_) {
+    if (cur_nodes > last_node_count_) {
         if (dragging_node_idx_ < 0 && !dragging_wire_) {
             layout_nodes();
         }
+    } else if (cur_nodes != last_node_count_ || cur_conns != last_conn_count_) {
+        // Topology changed but no new nodes — just update counts without re-layout
+        last_node_count_ = cur_nodes;
+        last_conn_count_ = cur_conns;
     }
 
     // Active pan (middle-mouse drag)
@@ -1195,11 +1481,9 @@ void NodeGraphUI::update() {
 
     // Chooser hover: update selection to follow cursor
     if (chooser_open_) {
-        float cpx = (kGraphW - kChooserW) * 0.5f;
-        float cpy = 80.0f;
+        float items_y = kChooserY + kChooserHeaderH;
         int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
-        float items_y = cpy + kChooserHeaderH;
-        if (mouse_.x >= cpx && mouse_.x <= cpx + kChooserW &&
+        if (mouse_.x >= kChooserX && mouse_.x <= kChooserX + kChooserW &&
             mouse_.y >= items_y && mouse_.y < items_y + visible * kChooserItemH &&
             !chooser_items_.empty()) {
             int idx = chooser_scroll_ + static_cast<int>((mouse_.y - items_y) / kChooserItemH);
@@ -1208,18 +1492,71 @@ void NodeGraphUI::update() {
         }
     }
 
+    // Close context menu on topology change
+    if (context_menu_open_ &&
+        (cur_nodes != last_node_count_ || cur_conns != last_conn_count_)) {
+        context_menu_open_ = false;
+    }
+
+    // Context menu interaction
+    if (context_menu_open_ && mouse_.left_clicked) {
+        float menu_h = kCtxMenuPadTop + kCtxMenuItemH + 2.0f;
+        if (mouse_.x >= context_menu_x_ && mouse_.x <= context_menu_x_ + kCtxMenuW &&
+            mouse_.y >= context_menu_y_ && mouse_.y <= context_menu_y_ + menu_h) {
+            // Clicked inside menu → execute action
+            if (!context_node_id_.empty()) {
+                api_.remove_node(context_node_id_);
+                if (selected_node_id_ == context_node_id_) selected_node_id_.clear();
+            } else if (context_wire_idx_ >= 0) {
+                const auto& conns = graph_.connections();
+                if (context_wire_idx_ < static_cast<int>(conns.size())) {
+                    const auto& c = conns[context_wire_idx_];
+                    api_.disconnect(c.from_node + "/" + c.from_port,
+                                    c.to_node + "/" + c.to_port);
+                }
+            }
+            context_menu_open_ = false;
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            goto click_done;
+        } else {
+            // Clicked outside → close
+            context_menu_open_ = false;
+        }
+    }
+
+    // Right-click → open context menu
+    if (mouse_.right_clicked) {
+        context_menu_open_ = false;
+        int ni = hit_test_node(mouse_.x, mouse_.y);
+        if (ni >= 0) {
+            context_menu_open_ = true;
+            context_node_id_ = node_rects_[ni].node_id;
+            context_wire_idx_ = -1;
+            context_menu_x_ = mouse_.x;
+            context_menu_y_ = mouse_.y;
+        } else {
+            int wi = hit_test_wire(mouse_.x, mouse_.y);
+            if (wi >= 0) {
+                context_menu_open_ = true;
+                context_node_id_.clear();
+                context_wire_idx_ = wi;
+                context_menu_x_ = mouse_.x;
+                context_menu_y_ = mouse_.y;
+            }
+        }
+    }
+
     // Click handling
     if (mouse_.left_clicked) {
         // Handle chooser click first (it floats over everything)
         if (chooser_open_) {
-            float cpx = (kGraphW - kChooserW) * 0.5f;
-            float cpy = 80.0f;
             int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
             if (visible == 0) visible = 1;
             float panel_h = kChooserHeaderH + visible * kChooserItemH + 4;
-            float items_y = cpy + kChooserHeaderH;
+            float items_y = kChooserY + kChooserHeaderH;
 
-            if (mouse_.x >= cpx && mouse_.x <= cpx + kChooserW &&
+            if (mouse_.x >= kChooserX && mouse_.x <= kChooserX + kChooserW &&
                 mouse_.y >= items_y && mouse_.y <= items_y + visible * kChooserItemH &&
                 !chooser_items_.empty()) {
                 // Clicked on an item
@@ -1263,10 +1600,31 @@ void NodeGraphUI::update() {
             }
         }
 
-        if (mouse_.x >= kInspectorX && mouse_.y < kGraphH) {
+        if (mouse_.x >= graph_right() && mouse_.y < static_cast<float>(win_h_)) {
 
             // Confirm any active text edit when clicking in inspector
             if (editing_param_) confirm_param_edit();
+            if (editing_resolution_) confirm_resolution_edit();
+
+            // Check resolution rect click-to-edit
+            int ri = hit_test_resolution(mouse_.x, mouse_.y);
+            if (ri >= 0) {
+                const auto& rr = resolution_rects_[ri];
+                editing_resolution_ = true;
+                edit_res_node_id_ = rr.node_id;
+                edit_res_is_width_ = rr.is_width;
+                // Pre-fill with current value
+                const auto& sched_nodes = scheduler_.nodes();
+                for (const auto& ns : sched_nodes) {
+                    if (ns.node_id != rr.node_id) continue;
+                    char buf[16];
+                    std::snprintf(buf, sizeof(buf), "%u",
+                                  rr.is_width ? ns.gpu_tex_width : ns.gpu_tex_height);
+                    edit_buffer_ = buf;
+                    break;
+                }
+                goto click_done;
+            }
 
             // Check value text click-to-edit first
             int vt = hit_test_value_text(mouse_.x, mouse_.y);
@@ -1353,9 +1711,10 @@ void NodeGraphUI::update() {
                     }
                 }
             }
-        } else if (mouse_.x < kGraphW && mouse_.y < kGraphH) {
+        } else if (mouse_.x < graph_right() && mouse_.y < static_cast<float>(win_h_)) {
             // Clicking in graph area confirms any active text edit
             if (editing_param_) confirm_param_edit();
+            if (editing_resolution_) confirm_resolution_edit();
 
             // Port hit test first (ports are on node edges, inside node AABB)
             PortHit ph = hit_test_port(mouse_.x, mouse_.y);
@@ -1407,6 +1766,15 @@ void NodeGraphUI::update() {
     // Clear one-frame flags
     mouse_.left_clicked = false;
     mouse_.left_released = false;
+    mouse_.right_clicked = false;
+
+    // Wire hover detection
+    if (!dragging_wire_ && !panning_ && dragging_node_idx_ < 0 &&
+        !context_menu_open_ && !chooser_open_ && !dropdown_open_) {
+        hovered_wire_idx_ = hit_test_wire(mouse_.x, mouse_.y);
+    } else {
+        hovered_wire_idx_ = -1;
+    }
 
     // Record sparkline data for control nodes (step 3)
     const auto& sched_nodes = scheduler_.nodes();
@@ -1435,17 +1803,23 @@ void NodeGraphUI::update() {
 // Draw
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw(TextRenderer& tr, uint32_t w, uint32_t h) {
+    if (!visible_) return;
+    win_w_ = w;
+    win_h_ = h;
+
     if (node_rects_.empty() && !scheduler_.nodes().empty()) {
         layout_nodes();
     }
 
     // Semi-transparent scrim so wires are visible over the visualization
-    tr.draw_rect(kGraphX, kGraphY, kGraphW, kGraphH, 0.05f, 0.06f, 0.07f, 0.55f);
+    tr.draw_rect(0, 0, static_cast<float>(w), static_cast<float>(h), 0.05f, 0.06f, 0.07f, 0.55f);
 
     draw_graph(tr);
     draw_connections(tr);
     draw_preview_wire(tr);
-    draw_inspector(tr, w);
+    draw_wire_tooltip(tr);
+
+    draw_inspector(tr, w, h);
     draw_chooser(tr);
 
     // Dropdown popup (drawn last, on top of everything)
@@ -1468,6 +1842,28 @@ void NodeGraphUI::draw(TextRenderer& tr, uint32_t w, uint32_t h) {
                          0.9f, 0.92f, 0.95f);
         }
     }
+
+    // Right-click context menu (drawn last, on top of everything)
+    if (context_menu_open_) {
+        float menu_h = kCtxMenuPadTop + kCtxMenuItemH + 2.0f;
+        float mx = context_menu_x_, my = context_menu_y_;
+
+        // Background
+        tr.draw_rect(mx, my, kCtxMenuW, menu_h, 0.14f, 0.15f, 0.18f, 0.97f);
+        // Accent bar
+        tr.draw_rect(mx, my, kCtxMenuW, 1, kAccent[0], kAccent[1], kAccent[2]);
+
+        // Hover highlight
+        float item_y = my + kCtxMenuPadTop;
+        if (mouse_.x >= mx && mouse_.x <= mx + kCtxMenuW &&
+            mouse_.y >= item_y && mouse_.y <= item_y + kCtxMenuItemH) {
+            tr.draw_rect(mx + 2, item_y, kCtxMenuW - 4, kCtxMenuItemH,
+                         kNodeSelBg[0], kNodeSelBg[1], kNodeSelBg[2], 0.9f);
+        }
+
+        const char* label = !context_node_id_.empty() ? "Delete Node" : "Delete Wire";
+        tr.draw_text(mx + 8, item_y + 3, label, 0.9f, 0.92f, 0.95f);
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -1485,19 +1881,20 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
         float ty = gy_to_sy(r.y + kAccentBarH) * dpi_scale_;
         float tw = g_to_s(r.w) * dpi_scale_;
         float th = g_to_s(kGpuThumbH) * dpi_scale_;
-        // Skip thumbnails that are fully offscreen or have non-positive size
-        if (tx + tw <= 0 || ty + th <= 0 || tx >= w || ty >= h || tw <= 0 || th <= 0)
-            continue;
-        // Clamp viewport to render target bounds (WebGPU requirement)
-        if (tx < 0) { tw += tx; tx = 0; }
-        if (ty < 0) { th += ty; ty = 0; }
-        if (tx + tw > w) tw = w - tx;
-        if (ty + th > h) th = h - ty;
-        // Clip to graph area (don't draw over inspector panel)
-        float graph_right = kGraphW * dpi_scale_;
-        if (tx >= graph_right) continue;
-        if (tx + tw > graph_right) tw = graph_right - tx;
-        renderer.draw(thumb_view, tx, ty, tw, th);
+        if (tw <= 0 || th <= 0) continue;
+        // Compute visible intersection with render target
+        float fw = static_cast<float>(w), fh = static_cast<float>(h);
+        float vis_x0 = std::max(tx, 0.0f);
+        float vis_y0 = std::max(ty, 0.0f);
+        float vis_x1 = std::min(tx + tw, fw);
+        float vis_y1 = std::min(ty + th, fh);
+        if (vis_x0 >= vis_x1 || vis_y0 >= vis_y1) continue;  // fully off-screen
+        uint32_t sc_x = static_cast<uint32_t>(vis_x0);
+        uint32_t sc_y = static_cast<uint32_t>(vis_y0);
+        uint32_t sc_w = static_cast<uint32_t>(vis_x1 - vis_x0);
+        uint32_t sc_h = static_cast<uint32_t>(vis_y1 - vis_y0);
+        if (sc_w == 0 || sc_h == 0) continue;
+        renderer.draw(thumb_view, tx, ty, tw, th, sc_x, sc_y, sc_w, sc_h);
     }
     renderer.end();
 }
