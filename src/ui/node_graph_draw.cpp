@@ -657,6 +657,213 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
 }
 
 // -----------------------------------------------------------------------
+// Performance bar
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
+    // Update smoothed values (EMA)
+    constexpr float kSmooth = 0.05f;
+    float raw_fps = (dt_ > 0.0f) ? 1.0f / dt_ : 0.0f;
+    float raw_ms = dt_ * 1000.0f;
+
+    if (perf_frame_counter_ == 0) {
+        smoothed_fps_ = raw_fps;
+        smoothed_ms_ = raw_ms;
+    } else {
+        smoothed_fps_ += kSmooth * (raw_fps - smoothed_fps_);
+        smoothed_ms_ += kSmooth * (raw_ms - smoothed_ms_);
+    }
+
+    fps_history_.push(smoothed_fps_);
+    frame_time_history_.push(smoothed_ms_);
+
+    // Sample memory at lower cadence
+    if (perf_frame_counter_ % kPerfMemSampleInterval == 0) {
+        uint64_t mem_bytes = vivid::get_process_memory_bytes();
+        float mem_mb = static_cast<float>(mem_bytes) / (1024.0f * 1024.0f);
+        smoothed_mem_mb_ = mem_mb;
+        memory_history_.push(mem_mb);
+    }
+    perf_frame_counter_++;
+
+    float fw = static_cast<float>(win_w_);
+
+    // Bar background
+    tr.draw_rect(0, 0, fw, kPerfBarH,
+                 kPerfBarBg[0], kPerfBarBg[1], kPerfBarBg[2], kPerfBarBg[3]);
+
+    // Bottom separator line
+    tr.draw_rect(0, kPerfBarH - 1, fw, 1, 0.20f, 0.22f, 0.25f, 0.6f);
+
+    float x = kPerfBarPadX;
+    float text_y = (kPerfBarH - tr.line_height()) * 0.5f;
+
+    // --- FPS ---
+    // Color-code: green >= 55, yellow >= 30, red < 30
+    float fr, fg, fb;
+    if (smoothed_fps_ >= 55.0f) {
+        fr = kPerfFpsColor[0]; fg = kPerfFpsColor[1]; fb = kPerfFpsColor[2];
+    } else if (smoothed_fps_ >= 30.0f) {
+        fr = 0.95f; fg = 0.85f; fb = 0.30f; // yellow
+    } else {
+        fr = 0.95f; fg = 0.35f; fb = 0.30f; // red
+    }
+
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.0f FPS", smoothed_fps_);
+    tr.draw_text(x, text_y, buf, fr, fg, fb);
+    x += tr.text_width(buf) + kPerfSepMargin;
+
+    // Separator
+    tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
+    x += kPerfSepW + kPerfSepMargin;
+
+    // --- Frame time ---
+    std::snprintf(buf, sizeof(buf), "%.1f ms", smoothed_ms_);
+    tr.draw_text(x, text_y, buf, kPerfMsColor[0], kPerfMsColor[1], kPerfMsColor[2]);
+    x += tr.text_width(buf) + kPerfSepMargin;
+
+    // Separator
+    tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
+    x += kPerfSepW + kPerfSepMargin;
+
+    // --- Memory ---
+    char mem_buf[64];
+    vivid::format_memory(mem_buf, sizeof(mem_buf),
+                         static_cast<uint64_t>(smoothed_mem_mb_ * 1024.0f * 1024.0f));
+    std::snprintf(buf, sizeof(buf), "MEM %s", mem_buf);
+    tr.draw_text(x, text_y, buf, kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2]);
+    x += tr.text_width(buf) + kPerfSepMargin;
+
+    // --- Mini memory sparkline ---
+    float graph_x = x;
+    float graph_y = (kPerfBarH - kPerfMiniGraphH) * 0.5f;
+    perf_mem_graph_x_ = graph_x;
+    perf_mem_graph_y_ = graph_y;
+
+    // Dark background for sparkline
+    tr.draw_rect(graph_x, graph_y, kPerfMiniGraphW, kPerfMiniGraphH,
+                 0.04f, 0.05f, 0.06f, 0.8f);
+
+    draw_perf_sparkline(tr, memory_history_.values, kPerfHistoryLen,
+                        memory_history_.write_idx, memory_history_.filled,
+                        graph_x, graph_y, kPerfMiniGraphW, kPerfMiniGraphH,
+                        kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2], 0.7f);
+
+    // Check hover over mini graph
+    bool in_mini = mouse_.x >= graph_x && mouse_.x <= graph_x + kPerfMiniGraphW &&
+                   mouse_.y >= graph_y && mouse_.y <= graph_y + kPerfMiniGraphH;
+
+    // Also check if mouse is in the expanded popup region (prevents flicker)
+    float exp_x = graph_x;
+    float exp_right = exp_x + kPerfExpandedW;
+    if (exp_right > fw - 10.0f) exp_x = fw - 10.0f - kPerfExpandedW;
+    bool in_expanded = perf_mem_hovered_ &&
+                       mouse_.x >= exp_x && mouse_.x <= exp_x + kPerfExpandedW &&
+                       mouse_.y >= kPerfBarH && mouse_.y <= kPerfBarH + kPerfExpandedH + 30.0f;
+
+    perf_mem_hovered_ = in_mini || in_expanded;
+
+    if (perf_mem_hovered_) {
+        draw_perf_expanded(tr);
+    }
+}
+
+void NodeGraphUI::draw_perf_sparkline(Renderer2D& tr, const float* buf, uint32_t buf_len,
+                                      uint32_t write_idx, bool filled,
+                                      float x, float y, float w, float h,
+                                      float r, float g, float b, float a) {
+    uint32_t count = filled ? buf_len : write_idx;
+    if (count == 0) return;
+
+    // Find min/max for auto-scaling
+    float vmin = buf[0], vmax = buf[0];
+    for (uint32_t i = 0; i < count; ++i) {
+        uint32_t idx = filled ? (write_idx + i) % buf_len : i;
+        float v = buf[idx];
+        if (v < vmin) vmin = v;
+        if (v > vmax) vmax = v;
+    }
+    float range = vmax - vmin;
+    if (range < 0.001f) range = 1.0f;
+
+    float bar_w = w / static_cast<float>(buf_len);
+    for (uint32_t i = 0; i < count; ++i) {
+        uint32_t idx = filled ? (write_idx + i) % buf_len : i;
+        float v = buf[idx];
+        float t = (v - vmin) / range;
+        float bh = std::max(1.0f, t * h);
+        float bx = x + static_cast<float>(i) * bar_w;
+        float by = y + h - bh;
+        tr.draw_rect(bx, by, std::max(1.0f, bar_w - 0.3f), bh, r, g, b, a);
+    }
+}
+
+void NodeGraphUI::draw_perf_expanded(Renderer2D& tr) {
+    float fw = static_cast<float>(win_w_);
+
+    // Position below the perf bar, aligned to the mini graph X
+    float ex = perf_mem_graph_x_;
+    if (ex + kPerfExpandedW > fw - 10.0f) {
+        ex = fw - 10.0f - kPerfExpandedW;
+    }
+    float ey = kPerfBarH;
+
+    float pad = 8.0f;
+    float total_h = kPerfExpandedH + 30.0f; // extra for title/labels
+
+    // Panel background
+    tr.draw_rect(ex, ey, kPerfExpandedW, total_h, 0.08f, 0.09f, 0.10f, 0.95f);
+    // Top accent
+    tr.draw_rect(ex, ey, kPerfExpandedW, 2, kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2], 0.8f);
+
+    // Title
+    float tx = ex + pad;
+    float ty = ey + pad;
+    tr.draw_text(tx, ty, "Memory", 0.85f, 0.87f, 0.90f);
+
+    // Current value
+    char mem_buf[64];
+    vivid::format_memory(mem_buf, sizeof(mem_buf),
+                         static_cast<uint64_t>(smoothed_mem_mb_ * 1024.0f * 1024.0f));
+    float val_w = tr.text_width(mem_buf);
+    tr.draw_text(ex + kPerfExpandedW - pad - val_w, ty, mem_buf,
+                 kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2]);
+
+    // Sparkline area
+    float graph_y = ty + tr.line_height() + 4.0f;
+    float graph_h = total_h - (graph_y - ey) - pad;
+    float graph_x = tx;
+    float graph_w = kPerfExpandedW - pad * 2;
+
+    // Dark background
+    tr.draw_rect(graph_x, graph_y, graph_w, graph_h, 0.04f, 0.05f, 0.06f, 0.8f);
+
+    draw_perf_sparkline(tr, memory_history_.values, kPerfHistoryLen,
+                        memory_history_.write_idx, memory_history_.filled,
+                        graph_x, graph_y, graph_w, graph_h,
+                        kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2], 0.7f);
+
+    // Min/max labels
+    uint32_t count = memory_history_.filled ? kPerfHistoryLen : memory_history_.write_idx;
+    if (count > 0) {
+        float vmin = memory_history_.values[0], vmax = memory_history_.values[0];
+        for (uint32_t i = 0; i < count; ++i) {
+            uint32_t idx = memory_history_.filled
+                ? (memory_history_.write_idx + i) % kPerfHistoryLen : i;
+            float v = memory_history_.values[idx];
+            if (v < vmin) vmin = v;
+            if (v > vmax) vmax = v;
+        }
+        char label[32];
+        std::snprintf(label, sizeof(label), "%.0f", vmax);
+        tr.draw_text(graph_x + 2, graph_y, label, kDimText[0], kDimText[1], kDimText[2], 0.7f);
+        std::snprintf(label, sizeof(label), "%.0f", vmin);
+        tr.draw_text(graph_x + 2, graph_y + graph_h - tr.line_height(), label,
+                     kDimText[0], kDimText[1], kDimText[2], 0.7f);
+    }
+}
+
+// -----------------------------------------------------------------------
 // GPU thumbnail overlay
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCache& cache,
