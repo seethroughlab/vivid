@@ -2,15 +2,51 @@
 #include <miniaudio.h>
 
 #include "runtime/audio_engine.h"
+#include "runtime/scheduler.h"
+#include "runtime/topo_sort.h"
 #include <algorithm>
 #include <cmath>
-#include <queue>
 #include <cstdio>
 #include <cstring>
 
 namespace vivid {
 
 AudioEngine::AudioEngine() = default;
+
+void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorDescriptor* desc,
+                                        const std::unordered_map<std::string, float>* param_overrides) {
+    ns.input_port_count = 0;
+    ns.output_port_count = 0;
+    ns.input_port_indices.clear();
+    ns.output_port_indices.clear();
+    ns.param_indices.clear();
+
+    for (uint32_t i = 0; i < desc->port_count; ++i) {
+        if (desc->ports[i].direction == VIVID_PORT_INPUT) {
+            ns.input_port_indices[desc->ports[i].name] = ns.input_port_count++;
+        } else {
+            ns.output_port_indices[desc->ports[i].name] = ns.output_port_count++;
+        }
+    }
+
+    ns.input_buffers.resize(ns.input_port_count, std::vector<float>(kBufferSize, 0.0f));
+    ns.output_buffers.resize(ns.output_port_count, std::vector<float>(kBufferSize, 0.0f));
+
+    ns.param_count = desc->param_count;
+    ns.param_values.resize(desc->param_count);
+    for (uint32_t i = 0; i < desc->param_count; ++i) {
+        ns.param_values[i] = desc->params[i].default_value;
+        ns.param_indices[desc->params[i].name] = i;
+    }
+    if (param_overrides) {
+        for (const auto& [pname, pval] : *param_overrides) {
+            auto pi = ns.param_indices.find(pname);
+            if (pi != ns.param_indices.end()) {
+                ns.param_values[pi->second] = pval;
+            }
+        }
+    }
+}
 
 AudioEngine::~AudioEngine() {
     shutdown();
@@ -36,37 +72,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         ns.node_id = ndef.id;
         ns.loader = loader;
         ns.instance = loader->create_instance();
-        ns.input_port_count = 0;
-        ns.output_port_count = 0;
-        ns.param_count = desc->param_count;
-
-        // Count and index ports by direction
-        for (uint32_t i = 0; i < desc->port_count; ++i) {
-            if (desc->ports[i].direction == VIVID_PORT_INPUT) {
-                ns.input_port_indices[desc->ports[i].name] = ns.input_port_count;
-                ns.input_port_count++;
-            } else {
-                ns.output_port_indices[desc->ports[i].name] = ns.output_port_count;
-                ns.output_port_count++;
-            }
-        }
-
-        // Allocate audio buffers
-        ns.input_buffers.resize(ns.input_port_count, std::vector<float>(kBufferSize, 0.0f));
-        ns.output_buffers.resize(ns.output_port_count, std::vector<float>(kBufferSize, 0.0f));
-
-        // Init params from descriptor defaults, then override from JSON
-        ns.param_values.resize(desc->param_count);
-        for (uint32_t i = 0; i < desc->param_count; ++i) {
-            ns.param_values[i] = desc->params[i].default_value;
-            ns.param_indices[desc->params[i].name] = i;
-        }
-        for (const auto& [pname, pval] : ndef.params) {
-            auto pi = ns.param_indices.find(pname);
-            if (pi != ns.param_indices.end()) {
-                ns.param_values[pi->second] = pval;
-            }
-        }
+        init_audio_node_state(ns, desc, &ndef.params);
 
         audio_node_index[ndef.id] = static_cast<uint32_t>(nodes_.size());
         nodes_.push_back(std::move(ns));
@@ -135,26 +141,9 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         }
     }
 
-    // 3. Topological sort (Kahn's algorithm)
-    std::queue<uint32_t> q;
-    for (uint32_t i = 0; i < n; ++i) {
-        if (in_degree[i] == 0)
-            q.push(i);
-    }
-
-    std::vector<uint32_t> sorted_order;
-    sorted_order.reserve(n);
-    while (!q.empty()) {
-        uint32_t cur = q.front();
-        q.pop();
-        sorted_order.push_back(cur);
-        for (uint32_t next : adj[cur]) {
-            if (--in_degree[next] == 0)
-                q.push(next);
-        }
-    }
-
-    if (sorted_order.size() != n) {
+    // 3. Topological sort
+    auto sorted_order = kahn_sort(n, adj, in_degree);
+    if (sorted_order.empty()) {
         std::fprintf(stderr, "[vivid] AudioEngine: cycle detected in audio subgraph\n");
         return false;
     }
@@ -400,37 +389,7 @@ bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry
         // Update loader and create new instance
         ns.loader = new_loader;
         ns.instance = new_loader->create_instance();
-
-        // Rebuild port indices
-        ns.input_port_count = 0;
-        ns.output_port_count = 0;
-        ns.input_port_indices.clear();
-        ns.output_port_indices.clear();
-        ns.param_indices.clear();
-
-        for (uint32_t p = 0; p < new_desc->port_count; ++p) {
-            if (new_desc->ports[p].direction == VIVID_PORT_INPUT) {
-                ns.input_port_indices[new_desc->ports[p].name] = ns.input_port_count++;
-            } else {
-                ns.output_port_indices[new_desc->ports[p].name] = ns.output_port_count++;
-            }
-        }
-
-        ns.input_buffers.resize(ns.input_port_count, std::vector<float>(kBufferSize, 0.0f));
-        ns.output_buffers.resize(ns.output_port_count, std::vector<float>(kBufferSize, 0.0f));
-
-        // Reconcile params by name
-        ns.param_count = new_desc->param_count;
-        ns.param_values.resize(new_desc->param_count);
-        for (uint32_t p = 0; p < new_desc->param_count; ++p) {
-            ns.param_indices[new_desc->params[p].name] = p;
-            auto it = saved_params.find(new_desc->params[p].name);
-            if (it != saved_params.end()) {
-                ns.param_values[p] = it->second;
-            } else {
-                ns.param_values[p] = new_desc->params[p].default_value;
-            }
-        }
+        init_audio_node_state(ns, new_desc, &saved_params);
     }
 
     // Update param snapshots to match new layout

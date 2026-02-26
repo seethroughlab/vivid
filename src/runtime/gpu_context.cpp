@@ -1,18 +1,11 @@
 #include "runtime/gpu_context.h"
+#include "runtime/gpu_util.h"
 #include <glfw3webgpu.h>
 #include <cstdio>
 #include <cstring>
 #include <cassert>
 
 namespace vivid {
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-static WGPUStringView to_sv(const char* s) {
-    return { s, s ? std::strlen(s) : 0 };
-}
 
 // ---------------------------------------------------------------------------
 // Synchronous request wrappers (wgpu-native v24 / WebGPU spec 2024+)

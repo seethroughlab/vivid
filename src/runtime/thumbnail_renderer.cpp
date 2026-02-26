@@ -1,14 +1,11 @@
 #include "runtime/thumbnail_renderer.h"
+#include "runtime/gpu_util.h"
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <algorithm>
 
 namespace vivid {
-
-static WGPUStringView to_sv(const char* s) {
-    return { s, s ? std::strlen(s) : 0 };
-}
 
 // Vertex shader positions an oversized triangle at the thumbnail's pixel rect
 // by converting pixel coords to NDC via a uniform buffer.

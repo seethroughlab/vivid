@@ -1,12 +1,9 @@
 #include "runtime/thumbnail_cache.h"
+#include "runtime/gpu_util.h"
 #include <cstdio>
 #include <cstring>
 
 namespace vivid {
-
-static WGPUStringView to_sv(const char* s) {
-    return { s, s ? std::strlen(s) : 0 };
-}
 
 bool ThumbnailCache::init(WGPUDevice device, WGPUQueue queue, uint32_t thumb_w, uint32_t thumb_h) {
     device_ = device;

@@ -4,6 +4,8 @@
 
 namespace vivid {
 
+enum class FitMode { Fit = 0, Fill = 1, Stretch = 2 };
+
 class FullscreenBlit {
 public:
     bool init(WGPUDevice device, WGPUTextureFormat target_format);
@@ -14,8 +16,8 @@ public:
                   WGPUTextureView source, WGPUTextureView dest,
                   uint32_t src_w, uint32_t src_h,
                   uint32_t dst_w, uint32_t dst_h,
-                  int fit_mode,       // 0=Fit, 1=Fill, 2=Stretch
-                  bool ui_visible);   // transparent bars when UI showing
+                  FitMode fit_mode,
+                  bool ui_visible);
     void shutdown();
 
 private:

@@ -2,6 +2,7 @@
 #include "stb_truetype.h"
 
 #include "runtime/text_renderer.h"
+#include "runtime/gpu_util.h"
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -10,10 +11,6 @@
 #include <vector>
 
 namespace vivid {
-
-static WGPUStringView to_sv(const char* s) {
-    return { s, s ? std::strlen(s) : 0 };
-}
 
 static const char* kTextShaderWGSL = R"(
 struct Uniforms {

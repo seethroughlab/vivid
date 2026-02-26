@@ -10,11 +10,11 @@
 #include "runtime/hot_reload.h"
 #include "runtime/runtime_api.h"
 #include "runtime/text_renderer.h"
-#include "runtime/repl.h"
 #include "runtime/node_graph.h"
 #include "runtime/builtin_operators.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/types.h"
+#include "runtime/gpu_util.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 #include <GLFW/glfw3.h>
@@ -38,6 +38,10 @@ static constexpr uint32_t kHeight = 800;
 static constexpr uint32_t kThumbW = 140;
 static constexpr uint32_t kThumbH = 88;
 
+// Default GPU texture resolution for nodes without explicit size
+static constexpr uint32_t kDefaultTexW = 800;
+static constexpr uint32_t kDefaultTexH = 600;
+
 static bool is_srgb_format(WGPUTextureFormat fmt) {
     switch (fmt) {
         case WGPUTextureFormat_RGBA8UnormSrgb:
@@ -48,13 +52,188 @@ static bool is_srgb_format(WGPUTextureFormat fmt) {
     }
 }
 
-static WGPUStringView to_sv(const char* s) {
-    return { s, s ? std::strlen(s) : 0 };
+using vivid::to_sv;
+
+static void emit_clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, const double clear[4]) {
+    WGPURenderPassColorAttachment color_att{};
+    color_att.view = view;
+    color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+    color_att.resolveTarget = nullptr;
+    color_att.loadOp = WGPULoadOp_Clear;
+    color_att.storeOp = WGPUStoreOp_Store;
+    color_att.clearValue = { clear[0], clear[1], clear[2], clear[3] };
+    WGPURenderPassDescriptor rp_desc{};
+    rp_desc.label = to_sv("Clear Pass");
+    rp_desc.colorAttachmentCount = 1;
+    rp_desc.colorAttachments = &color_att;
+    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rp_desc);
+    wgpuRenderPassEncoderEnd(pass);
+    wgpuRenderPassEncoderRelease(pass);
+}
+
+static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
+                            vivid::Scheduler& scheduler, vivid::OperatorRegistry& registry,
+                            vivid::AudioEngine& audio_engine, bool has_audio) {
+    auto changes = fw.poll_changes();
+    for (const auto& change : changes) {
+        hr.queue_rebuild(change.target_name);
+    }
+
+    auto ready = hr.poll_ready();
+    for (const auto& result : ready) {
+        if (!result.success) continue;
+
+        const std::string* type_name_ptr = registry.type_name_for_target(result.target_name);
+        if (!type_name_ptr) {
+            std::fprintf(stderr, "[vivid] Hot-reload: unknown target '%s'\n",
+                result.target_name.c_str());
+            continue;
+        }
+        const std::string& tn = *type_name_ptr;
+
+        std::fprintf(stderr, "[vivid] Hot-reload: reloading %s...\n", tn.c_str());
+
+        bool is_audio_op = scheduler.is_audio_type(tn);
+
+        if (is_audio_op && has_audio) {
+            audio_engine.pause();
+        }
+
+        if (scheduler.reload_operator(tn, registry, result.staged_dylib_path)) {
+            if (is_audio_op && has_audio) {
+                audio_engine.reload_operator(tn, registry);
+            }
+            std::fprintf(stderr, "[vivid] Hot-reload: %s reloaded successfully\n", tn.c_str());
+        } else {
+            std::fprintf(stderr, "[vivid] Hot-reload: %s reload FAILED\n", tn.c_str());
+        }
+
+        if (is_audio_op && has_audio) {
+            audio_engine.resume();
+        }
+    }
+}
+
+static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
+                                   vivid::ThumbnailCache& cache, vivid::NodeGraphUI& graph_ui,
+                                   double time, uint32_t thumb_w, uint32_t thumb_h) {
+    std::vector<uint8_t> thumb_pixels(thumb_w * thumb_h * 4);
+    std::unordered_set<std::string> custom_thumb_ids;
+    for (const auto& ns : scheduler.nodes()) {
+        if (!ns.loader->has_draw_thumbnail()) continue;
+        VividThumbnailContext tctx{};
+        tctx.pixels = thumb_pixels.data();
+        tctx.width = thumb_w;
+        tctx.height = thumb_h;
+        tctx.stride = thumb_w * 4;
+        tctx.time = time;
+        tctx.output_values = const_cast<float*>(ns.output_values.data());
+        tctx.output_count = ns.output_port_count;
+        tctx.param_values = const_cast<float*>(ns.param_values.data());
+        tctx.param_count = static_cast<uint32_t>(ns.param_values.size());
+        std::memset(thumb_pixels.data(), 0, thumb_pixels.size());
+        ns.loader->draw_thumbnail(ns.instance, &tctx);
+        cache.upload_cpu(ns.node_id, thumb_pixels.data());
+        custom_thumb_ids.insert(ns.node_id);
+    }
+    graph_ui.set_custom_thumbnail_nodes(std::move(custom_thumb_ids));
+}
+
+static bool try_capture_screenshot(const std::string& path, vivid::GpuContext& gpu,
+                                   vivid::FrameState& frame, int fb_w, int fb_h,
+                                   uint64_t frame_count, int delay, GLFWwindow* window) {
+    if (path.empty() || !gpu.surface_supports_copy_src()
+        || static_cast<int>(frame_count) < delay) {
+        return false;
+    }
+
+    const uint32_t ss_w = static_cast<uint32_t>(fb_w);
+    const uint32_t ss_h = static_cast<uint32_t>(fb_h);
+    const uint32_t bpp = 4;
+    const uint32_t unpadded_row = ss_w * bpp;
+    static constexpr uint32_t kGpuRowAlignment = 256;
+    const uint32_t aligned_row = (unpadded_row + kGpuRowAlignment - 1) & ~(kGpuRowAlignment - 1);
+    const uint64_t buf_size = static_cast<uint64_t>(aligned_row) * ss_h;
+
+    WGPUBufferDescriptor staging_desc{};
+    staging_desc.label = to_sv("Screenshot Staging");
+    staging_desc.size = buf_size;
+    staging_desc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+    staging_desc.mappedAtCreation = false;
+    WGPUBuffer staging = wgpuDeviceCreateBuffer(gpu.device(), &staging_desc);
+
+    WGPUTexelCopyTextureInfo src{};
+    src.texture = frame.texture;
+    src.mipLevel = 0;
+    src.origin = { 0, 0, 0 };
+    src.aspect = WGPUTextureAspect_All;
+
+    WGPUTexelCopyBufferInfo dst{};
+    dst.buffer = staging;
+    dst.layout.offset = 0;
+    dst.layout.bytesPerRow = aligned_row;
+    dst.layout.rowsPerImage = ss_h;
+
+    WGPUExtent3D copy_size = { ss_w, ss_h, 1 };
+    wgpuCommandEncoderCopyTextureToBuffer(frame.encoder, &src, &dst, &copy_size);
+
+    gpu.end_frame(frame);
+
+    // Wait for GPU work to complete
+    {
+        bool work_done = false;
+        WGPUQueueWorkDoneCallbackInfo work_cb{};
+        work_cb.mode = WGPUCallbackMode_AllowSpontaneous;
+        work_cb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
+            *static_cast<bool*>(ud1) = true;
+        };
+        work_cb.userdata1 = &work_done;
+        wgpuQueueOnSubmittedWorkDone(gpu.queue(), work_cb);
+        while (!work_done)
+            wgpuDevicePoll(gpu.device(), true, nullptr);
+    }
+
+    bool map_done = false;
+    WGPUBufferMapCallbackInfo map_cb{};
+    map_cb.mode = WGPUCallbackMode_AllowSpontaneous;
+    map_cb.callback = [](WGPUMapAsyncStatus, WGPUStringView, void* ud1, void*) {
+        *static_cast<bool*>(ud1) = true;
+    };
+    map_cb.userdata1 = &map_done;
+    wgpuBufferMapAsync(staging, WGPUMapMode_Read, 0, buf_size, map_cb);
+    while (!map_done)
+        wgpuDevicePoll(gpu.device(), true, nullptr);
+
+    const uint8_t* mapped = static_cast<const uint8_t*>(
+        wgpuBufferGetConstMappedRange(staging, 0, buf_size));
+
+    std::vector<uint8_t> pixels(ss_w * ss_h * bpp);
+    for (uint32_t y = 0; y < ss_h; ++y) {
+        const uint8_t* src_row = mapped + y * aligned_row;
+        uint8_t* dst_row = pixels.data() + y * unpadded_row;
+        for (uint32_t x = 0; x < ss_w; ++x) {
+            dst_row[x * 4 + 0] = src_row[x * 4 + 2]; // R <- B
+            dst_row[x * 4 + 1] = src_row[x * 4 + 1]; // G <- G
+            dst_row[x * 4 + 2] = src_row[x * 4 + 0]; // B <- R
+            dst_row[x * 4 + 3] = src_row[x * 4 + 3]; // A <- A
+        }
+    }
+
+    wgpuBufferUnmap(staging);
+    wgpuBufferRelease(staging);
+
+    if (stbi_write_png(path.c_str(), ss_w, ss_h, 4, pixels.data(), ss_w * bpp)) {
+        std::fprintf(stderr, "[vivid] Screenshot saved: %s\n", path.c_str());
+    } else {
+        std::fprintf(stderr, "[vivid] Screenshot FAILED: %s\n", path.c_str());
+    }
+
+    glfwSetWindowShouldClose(window, GLFW_TRUE);
+    return true;  // frame already submitted
 }
 
 // GLFW callback trampolines
 struct WindowUserData {
-    vivid::Repl* repl = nullptr;
     vivid::NodeGraphUI* graph_ui = nullptr;
     vivid::RuntimeAPI* runtime_api = nullptr;
 };
@@ -64,8 +243,6 @@ static void char_callback(GLFWwindow* w, unsigned int codepoint) {
     if (!ud) return;
     if (ud->graph_ui && ud->graph_ui->visible() && ud->graph_ui->wants_keyboard())
         ud->graph_ui->on_char(codepoint);
-    else if (ud->repl)
-        ud->repl->on_char(codepoint);
 }
 
 static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, int mods) {
@@ -88,18 +265,8 @@ static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, i
         return;
     }
 
-    if (ud->graph_ui && ud->graph_ui->visible() && ud->graph_ui->wants_keyboard()) {
+    if (ud->graph_ui && ud->graph_ui->visible())
         ud->graph_ui->on_key(key, action, mods);
-    } else {
-        // Tab/B/Delete open features on the graph UI; everything else goes to REPL
-        if (ud->graph_ui && ud->graph_ui->visible() && action == GLFW_PRESS &&
-            (key == GLFW_KEY_TAB || key == GLFW_KEY_B || key == GLFW_KEY_DELETE ||
-             (key == GLFW_KEY_BACKSPACE && ud->graph_ui->has_selection()))) {
-            ud->graph_ui->on_key(key, action, mods);
-        } else if (ud->repl) {
-            ud->repl->on_key(key, action, mods);
-        }
-    }
 }
 
 static void cursor_pos_callback(GLFWwindow* w, double xpos, double ypos) {
@@ -232,7 +399,7 @@ int main(int argc, char* argv[]) {
 
     // Allocate per-node GPU textures
     if (has_gpu_ops) {
-        scheduler.allocate_gpu_textures(gpu.device(), 800, 600, kOffscreenFormat);
+        scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
     }
     int video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
 
@@ -247,11 +414,11 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // --- RuntimeAPI + REPL ---
+    // --- RuntimeAPI ---
     vivid::RuntimeAPI runtime_api(graph, scheduler, audio_engine, registry);
 
     vivid::TextRenderer text_renderer;
-    bool repl_enabled = false;
+    bool text_renderer_ok = false;
     {
         // Look for font next to executable, or in source tree
         std::string font_path = (exe_dir / "JetBrainsMono-Regular.ttf").string();
@@ -260,13 +427,12 @@ int main(int argc, char* argv[]) {
             if (std::filesystem::exists(alt)) font_path = alt.string();
         }
         if (text_renderer.init(gpu.device(), gpu.surface_format(), font_path.c_str(), 16.0f, dpi_scale)) {
-            repl_enabled = true;
+            text_renderer_ok = true;
         } else {
-            std::fprintf(stderr, "[vivid] REPL disabled (font not found)\n");
+            std::fprintf(stderr, "[vivid] Text renderer disabled (font not found)\n");
         }
     }
 
-    vivid::Repl repl(runtime_api);
     vivid::NodeGraphUI graph_ui(runtime_api, graph, scheduler,
                                 has_audio ? &audio_engine : nullptr);
     graph_ui.set_dpi_scale(dpi_scale);
@@ -274,7 +440,6 @@ int main(int argc, char* argv[]) {
 
     // Set up GLFW input callbacks
     WindowUserData window_user_data;
-    window_user_data.repl = &repl;
     window_user_data.graph_ui = &graph_ui;
     window_user_data.runtime_api = &runtime_api;
     glfwSetWindowUserPointer(window, &window_user_data);
@@ -323,20 +488,18 @@ int main(int argc, char* argv[]) {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
-        // --- REPL update (process pending command before tick) ---
-        repl.update(has_gpu_ops, has_audio);
         if (runtime_api.has_pending()) {
             runtime_api.apply_pending(has_gpu_ops, has_audio);
             // Re-allocate per-node GPU textures after topology change
             if (has_gpu_ops) {
-                scheduler.allocate_gpu_textures(gpu.device(), 800, 600, kOffscreenFormat);
+                scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
             }
             video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
         }
         // Handle GPU realloc after reload command
         if (runtime_api.needs_gpu_realloc()) {
             runtime_api.clear_gpu_realloc();
-            scheduler.allocate_gpu_textures(gpu.device(), 800, 600, kOffscreenFormat);
+            scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
             video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
         }
         if (!graph_loaded && !scheduler.nodes().empty()) {
@@ -367,51 +530,8 @@ int main(int argc, char* argv[]) {
 
             // --- Hot-reload polling ---
             if (hot_reload_enabled) {
-                auto changes = file_watcher.poll_changes();
-                for (const auto& change : changes) {
-                    hot_reloader.queue_rebuild(change.target_name);
-                }
-
-                auto ready = hot_reloader.poll_ready();
-                for (const auto& result : ready) {
-                    if (!result.success) continue;
-
-                    const std::string* type_name_ptr = registry.type_name_for_target(result.target_name);
-                    if (!type_name_ptr) {
-                        std::fprintf(stderr, "[vivid] Hot-reload: unknown target '%s'\n",
-                            result.target_name.c_str());
-                        continue;
-                    }
-                    const std::string& tn = *type_name_ptr;
-
-                    std::fprintf(stderr, "[vivid] Hot-reload: reloading %s...\n", tn.c_str());
-
-                    bool is_audio_op = false;
-                    for (const auto& ns : scheduler.nodes()) {
-                        if (std::string(ns.loader->descriptor()->name) == tn &&
-                            ns.loader->descriptor()->domain == VIVID_DOMAIN_AUDIO) {
-                            is_audio_op = true;
-                            break;
-                        }
-                    }
-
-                    if (is_audio_op && has_audio) {
-                        audio_engine.pause();
-                    }
-
-                    if (scheduler.reload_operator(tn, registry, result.staged_dylib_path)) {
-                        if (is_audio_op && has_audio) {
-                            audio_engine.reload_operator(tn, registry);
-                        }
-                        std::fprintf(stderr, "[vivid] Hot-reload: %s reloaded successfully\n", tn.c_str());
-                    } else {
-                        std::fprintf(stderr, "[vivid] Hot-reload: %s reload FAILED\n", tn.c_str());
-                    }
-
-                    if (is_audio_op && has_audio) {
-                        audio_engine.resume();
-                    }
-                }
+                poll_hot_reload(file_watcher, hot_reloader, scheduler, registry,
+                                audio_engine, has_audio);
             }
 
             if (has_audio) {
@@ -429,29 +549,7 @@ int main(int argc, char* argv[]) {
                     }
                 });
 
-            // Custom thumbnail pass: call draw_thumbnail for operators that implement it
-            {
-                std::vector<uint8_t> thumb_pixels(kThumbW * kThumbH * 4);
-                std::unordered_set<std::string> custom_thumb_ids;
-                for (const auto& ns : scheduler.nodes()) {
-                    if (!ns.loader->has_draw_thumbnail()) continue;
-                    VividThumbnailContext tctx{};
-                    tctx.pixels = thumb_pixels.data();
-                    tctx.width = kThumbW;
-                    tctx.height = kThumbH;
-                    tctx.stride = kThumbW * 4;
-                    tctx.time = now;
-                    tctx.output_values = const_cast<float*>(ns.output_values.data());
-                    tctx.output_count = ns.output_port_count;
-                    tctx.param_values = const_cast<float*>(ns.param_values.data());
-                    tctx.param_count = static_cast<uint32_t>(ns.param_values.size());
-                    std::memset(thumb_pixels.data(), 0, thumb_pixels.size());
-                    ns.loader->draw_thumbnail(ns.instance, &tctx);
-                    thumb_cache.upload_cpu(ns.node_id, thumb_pixels.data());
-                    custom_thumb_ids.insert(ns.node_id);
-                }
-                graph_ui.set_custom_thumbnail_nodes(std::move(custom_thumb_ids));
-            }
+            draw_custom_thumbnails(scheduler, thumb_cache, graph_ui, now, kThumbW, kThumbH);
 
             if (has_audio) {
                 audio_engine.push_params(scheduler);
@@ -479,22 +577,14 @@ int main(int argc, char* argv[]) {
             uint32_t src_w = 0, src_h = 0;
             if (!vo_ns.resolved_tex_inputs.empty()) {
                 display_tex = vo_ns.resolved_tex_inputs[0];
-                // Find the upstream node to get its resolution
-                for (const auto& w : scheduler.wires()) {
-                    if (w.to_node_idx == static_cast<uint32_t>(video_out_idx) &&
-                        w.is_texture_wire && !w.targets_param) {
-                        src_w = scheduler.nodes()[w.from_node_idx].gpu_tex_width;
-                        src_h = scheduler.nodes()[w.from_node_idx].gpu_tex_height;
-                        break;
-                    }
-                }
+                scheduler.gpu_sink_source_size(video_out_idx, src_w, src_h);
             }
 
             if (display_tex && src_w > 0 && src_h > 0) {
-                int fit_mode = 0;
+                auto fit_mode = vivid::FitMode::Fit;
                 auto fm_it = vo_ns.param_indices.find("fit_mode");
                 if (fm_it != vo_ns.param_indices.end() && fm_it->second < vo_ns.param_values.size())
-                    fit_mode = static_cast<int>(vo_ns.param_values[fm_it->second]);
+                    fit_mode = static_cast<vivid::FitMode>(static_cast<int>(vo_ns.param_values[fm_it->second]));
                 bool ui_vis = graph_ui.visible();
                 blit.blit_fit(frame.encoder, display_tex, frame.view,
                               src_w, src_h,
@@ -502,158 +592,31 @@ int main(int argc, char* argv[]) {
                               static_cast<uint32_t>(fb_height),
                               fit_mode, ui_vis);
             } else {
-                // No input connected — clear to background
-                WGPURenderPassColorAttachment color_att{};
-                color_att.view = frame.view;
-                color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-                color_att.resolveTarget = nullptr;
-                color_att.loadOp = WGPULoadOp_Clear;
-                color_att.storeOp = WGPUStoreOp_Store;
-                color_att.clearValue = { clear[0], clear[1], clear[2], clear[3] };
-                WGPURenderPassDescriptor rp_desc{};
-                rp_desc.label = to_sv("Clear Pass");
-                rp_desc.colorAttachmentCount = 1;
-                rp_desc.colorAttachments = &color_att;
-                WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(frame.encoder, &rp_desc);
-                wgpuRenderPassEncoderEnd(pass);
-                wgpuRenderPassEncoderRelease(pass);
+                emit_clear_pass(frame.encoder, frame.view, clear);
             }
         } else {
-            // Fallback: clear-only pass (#16191D)
-            WGPURenderPassColorAttachment color_att{};
-            color_att.nextInChain = nullptr;
-            color_att.view = frame.view;
-            color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-            color_att.resolveTarget = nullptr;
-            color_att.loadOp = WGPULoadOp_Clear;
-            color_att.storeOp = WGPUStoreOp_Store;
-            color_att.clearValue = { clear[0], clear[1], clear[2], clear[3] };
-
-            WGPURenderPassDescriptor rp_desc{};
-            rp_desc.nextInChain = nullptr;
-            rp_desc.label = to_sv("Clear Pass");
-            rp_desc.colorAttachmentCount = 1;
-            rp_desc.colorAttachments = &color_att;
-            rp_desc.depthStencilAttachment = nullptr;
-            rp_desc.timestampWrites = nullptr;
-
-            WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(frame.encoder, &rp_desc);
-            wgpuRenderPassEncoderEnd(pass);
-            wgpuRenderPassEncoderRelease(pass);
+            emit_clear_pass(frame.encoder, frame.view, clear);
         }
 
-        // --- Node graph UI + REPL overlay (3-pass rendering) ---
-        if (repl_enabled) {
-            if (graph_ui.visible()) {
-                graph_ui.update();
-                graph_ui.draw(text_renderer, kWidth, kHeight);
-                // Pass 1: text/rects (now the second render pass — quads render correctly)
-                text_renderer.flush(frame.encoder, frame.view, kWidth, kHeight);
-                // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
-                if (thumb_renderer_ok) {
-                    graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
-                                             frame.encoder, frame.view,
-                                             static_cast<uint32_t>(fb_width),
-                                             static_cast<uint32_t>(fb_height));
-                }
-            }
-            // Pass 3: REPL on top
-            repl.draw(text_renderer, kWidth, kHeight);
+        // --- Node graph UI overlay (2-pass rendering) ---
+        if (text_renderer_ok && graph_ui.visible()) {
+            graph_ui.update();
+            graph_ui.draw(text_renderer, kWidth, kHeight);
+            // Pass 1: text/rects
             text_renderer.flush(frame.encoder, frame.view, kWidth, kHeight);
+            // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
+            if (thumb_renderer_ok) {
+                graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
+                                         frame.encoder, frame.view,
+                                         static_cast<uint32_t>(fb_width),
+                                         static_cast<uint32_t>(fb_height));
+            }
         }
 
         // --- Screenshot capture ---
-        if (!screenshot_path.empty() && gpu.surface_supports_copy_src()
-            && static_cast<int>(frame_count) >= screenshot_delay) {
-            // Row alignment: WebGPU requires 256-byte aligned rows for buffer copies
-            const uint32_t ss_w = static_cast<uint32_t>(fb_width);
-            const uint32_t ss_h = static_cast<uint32_t>(fb_height);
-            const uint32_t bpp = 4;
-            const uint32_t unpadded_row = ss_w * bpp;
-            static constexpr uint32_t kGpuRowAlignment = 256;
-            const uint32_t aligned_row = (unpadded_row + kGpuRowAlignment - 1) & ~(kGpuRowAlignment - 1);
-            const uint64_t buf_size = static_cast<uint64_t>(aligned_row) * ss_h;
-
-            WGPUBufferDescriptor staging_desc{};
-            staging_desc.label = to_sv("Screenshot Staging");
-            staging_desc.size = buf_size;
-            staging_desc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
-            staging_desc.mappedAtCreation = false;
-            WGPUBuffer staging = wgpuDeviceCreateBuffer(gpu.device(), &staging_desc);
-
-            // Copy surface texture → staging buffer
-            WGPUTexelCopyTextureInfo src{};
-            src.texture = frame.texture;
-            src.mipLevel = 0;
-            src.origin = { 0, 0, 0 };
-            src.aspect = WGPUTextureAspect_All;
-
-            WGPUTexelCopyBufferInfo dst{};
-            dst.buffer = staging;
-            dst.layout.offset = 0;
-            dst.layout.bytesPerRow = aligned_row;
-            dst.layout.rowsPerImage = ss_h;
-
-            WGPUExtent3D copy_size = { ss_w, ss_h, 1 };
-            wgpuCommandEncoderCopyTextureToBuffer(frame.encoder, &src, &dst, &copy_size);
-
-            // Finish and submit the command buffer (end_frame does this + present)
-            gpu.end_frame(frame);
-
-            // Wait for GPU work to complete
-            {
-                bool work_done = false;
-                WGPUQueueWorkDoneCallbackInfo work_cb{};
-                work_cb.mode = WGPUCallbackMode_AllowSpontaneous;
-                work_cb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
-                    *static_cast<bool*>(ud1) = true;
-                };
-                work_cb.userdata1 = &work_done;
-                wgpuQueueOnSubmittedWorkDone(gpu.queue(), work_cb);
-                while (!work_done)
-                    wgpuDevicePoll(gpu.device(), true, nullptr);
-            }
-
-            // Map the staging buffer
-            bool map_done = false;
-            WGPUBufferMapCallbackInfo map_cb{};
-            map_cb.mode = WGPUCallbackMode_AllowSpontaneous;
-            map_cb.callback = [](WGPUMapAsyncStatus, WGPUStringView, void* ud1, void*) {
-                *static_cast<bool*>(ud1) = true;
-            };
-            map_cb.userdata1 = &map_done;
-            wgpuBufferMapAsync(staging, WGPUMapMode_Read, 0, buf_size, map_cb);
-            while (!map_done)
-                wgpuDevicePoll(gpu.device(), true, nullptr);
-
-            const uint8_t* mapped = static_cast<const uint8_t*>(
-                wgpuBufferGetConstMappedRange(staging, 0, buf_size));
-
-            // Copy to contiguous buffer with BGRA → RGBA swizzle
-            std::vector<uint8_t> pixels(ss_w * ss_h * bpp);
-            for (uint32_t y = 0; y < ss_h; ++y) {
-                const uint8_t* src_row = mapped + y * aligned_row;
-                uint8_t* dst_row = pixels.data() + y * unpadded_row;
-                for (uint32_t x = 0; x < ss_w; ++x) {
-                    dst_row[x * 4 + 0] = src_row[x * 4 + 2]; // R ← B
-                    dst_row[x * 4 + 1] = src_row[x * 4 + 1]; // G ← G
-                    dst_row[x * 4 + 2] = src_row[x * 4 + 0]; // B ← R
-                    dst_row[x * 4 + 3] = src_row[x * 4 + 3]; // A ← A
-                }
-            }
-
-            wgpuBufferUnmap(staging);
-            wgpuBufferRelease(staging);
-
-            if (stbi_write_png(screenshot_path.c_str(), ss_w, ss_h, 4,
-                               pixels.data(), ss_w * bpp)) {
-                std::fprintf(stderr, "[vivid] Screenshot saved: %s\n", screenshot_path.c_str());
-            } else {
-                std::fprintf(stderr, "[vivid] Screenshot FAILED: %s\n", screenshot_path.c_str());
-            }
-
-            glfwSetWindowShouldClose(window, GLFW_TRUE);
-            continue; // skip normal end_frame — already called above
+        if (try_capture_screenshot(screenshot_path, gpu, frame, fb_width, fb_height,
+                                   frame_count, screenshot_delay, window)) {
+            continue; // frame already submitted inside try_capture_screenshot
         }
 
         gpu.end_frame(frame);
@@ -674,7 +637,7 @@ int main(int argc, char* argv[]) {
         scheduler.shutdown();
     }
 
-    if (repl_enabled) {
+    if (text_renderer_ok) {
         text_renderer.shutdown();
     }
     thumb_renderer.shutdown();

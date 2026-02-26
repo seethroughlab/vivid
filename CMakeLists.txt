@@ -119,7 +119,6 @@ add_executable(vivid
     src/runtime/hot_reload.cpp
     src/runtime/runtime_api.cpp
     src/runtime/text_renderer.cpp
-    src/runtime/repl.cpp
     src/runtime/node_graph.cpp
     src/runtime/node_graph_draw.cpp
     src/runtime/node_graph_input.cpp

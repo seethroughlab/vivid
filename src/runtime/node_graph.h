@@ -186,8 +186,8 @@ private:
     std::string active_slider_node_id_;
     std::string active_slider_param_name_;
 
-    struct SliderRect { float x, y, w, h; std::string node_id; std::string param_name; };
-    std::vector<SliderRect> slider_rects_;
+    struct InspectorRect { float x, y, w, h; std::string node_id; std::string param_name; };
+    std::vector<InspectorRect> slider_rects_;
 
     // Slider text-edit state (click value text to type a value)
     bool editing_param_ = false;
@@ -195,14 +195,9 @@ private:
     std::string edit_param_name_;
     std::string edit_buffer_;
 
-    struct BoolRect { float x, y, w, h; std::string node_id; std::string param_name; };
-    std::vector<BoolRect> bool_rects_;
-
-    struct ValueTextRect { float x, y, w, h; std::string node_id; std::string param_name; };
-    std::vector<ValueTextRect> value_text_rects_;
-
-    struct DropdownRect { float x, y, w, h; std::string node_id; std::string param_name; };
-    std::vector<DropdownRect> dropdown_rects_;
+    std::vector<InspectorRect> bool_rects_;
+    std::vector<InspectorRect> value_text_rects_;
+    std::vector<InspectorRect> dropdown_rects_;
 
     struct ResolutionRect { float x, y, w, h; std::string node_id; bool is_width; };
     std::vector<ResolutionRect> resolution_rects_;

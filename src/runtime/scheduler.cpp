@@ -1,11 +1,90 @@
 #include "runtime/scheduler.h"
+#include "runtime/gpu_util.h"
+#include "runtime/topo_sort.h"
 #include "operator_api/gpu_operator.h"
 #include <algorithm>
-#include <queue>
 #include <cstdio>
 #include <cstring>
 
 namespace vivid {
+
+void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* desc,
+                                const std::unordered_map<std::string, float>* param_overrides) {
+    // Count and index ports by direction
+    ns.input_port_count = 0;
+    ns.output_port_count = 0;
+    ns.input_port_indices.clear();
+    ns.output_port_indices.clear();
+    ns.param_indices.clear();
+
+    for (uint32_t i = 0; i < desc->port_count; ++i) {
+        if (desc->ports[i].direction == VIVID_PORT_INPUT) {
+            ns.input_port_indices[desc->ports[i].name] = ns.input_port_count++;
+        } else {
+            ns.output_port_indices[desc->ports[i].name] = ns.output_port_count++;
+        }
+    }
+
+    ns.input_values.assign(ns.input_port_count, 0.0f);
+    ns.output_values.assign(ns.output_port_count, 0.0f);
+    ns.input_spreads.resize(ns.input_port_count);
+    ns.output_spreads.resize(ns.output_port_count);
+
+    // Init param_values from descriptor defaults, then apply overrides
+    ns.param_values.resize(desc->param_count);
+    for (uint32_t i = 0; i < desc->param_count; ++i) {
+        ns.param_values[i] = desc->params[i].default_value;
+        ns.param_indices[desc->params[i].name] = i;
+    }
+    if (param_overrides) {
+        for (const auto& [pname, pval] : *param_overrides) {
+            auto pi = ns.param_indices.find(pname);
+            if (pi != ns.param_indices.end()) {
+                ns.param_values[pi->second] = pval;
+            }
+        }
+    }
+
+    // Domain flags
+    ns.time_dependent = desc->time_dependent != 0;
+    ns.is_gpu = (desc->domain == VIVID_DOMAIN_GPU);
+    ns.is_audio = (desc->domain == VIVID_DOMAIN_AUDIO);
+    ns.prev_output_values.assign(ns.output_port_count, 0.0f);
+
+    // Implicit analysis ports for audio-domain nodes
+    if (ns.is_audio) {
+        ns.output_port_indices["rms"] = ns.output_port_count++;
+        ns.output_port_indices["peak"] = ns.output_port_count++;
+        ns.output_port_indices["waveform"] = ns.output_port_count++;
+        ns.output_values.resize(ns.output_port_count, 0.0f);
+        ns.prev_output_values.resize(ns.output_port_count, 0.0f);
+        ns.output_spreads.resize(ns.output_port_count);
+    }
+
+    // Identify GPU_TEXTURE input ports and detect GPU sinks
+    ns.texture_input_port_indices.clear();
+    ns.is_gpu_sink = false;
+    if (ns.is_gpu) {
+        uint32_t input_idx = 0;
+        for (uint32_t i = 0; i < desc->port_count; ++i) {
+            if (desc->ports[i].direction == VIVID_PORT_INPUT) {
+                if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
+                    ns.texture_input_port_indices.push_back(input_idx);
+                }
+                input_idx++;
+            }
+        }
+        bool has_tex_output = false;
+        for (uint32_t i = 0; i < desc->port_count; ++i) {
+            if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
+                desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
+                has_tex_output = true;
+                break;
+            }
+        }
+        ns.is_gpu_sink = !ns.texture_input_port_indices.empty() && !has_tex_output;
+    }
+}
 
 bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
     nodes_.clear();
@@ -28,81 +107,13 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         ns.node_id = ndef.id;
         ns.loader = loader;
         ns.instance = loader->create_instance();
-        ns.input_port_count = 0;
-        ns.output_port_count = 0;
-
-        // Count and index ports by direction
-        for (uint32_t i = 0; i < desc->port_count; ++i) {
-            if (desc->ports[i].direction == VIVID_PORT_INPUT) {
-                ns.input_port_indices[desc->ports[i].name] = ns.input_port_count;
-                ns.input_port_count++;
-            } else {
-                ns.output_port_indices[desc->ports[i].name] = ns.output_port_count;
-                ns.output_port_count++;
-            }
-        }
-
-        ns.input_values.resize(ns.input_port_count, 0.0f);
-        ns.output_values.resize(ns.output_port_count, 0.0f);
-        ns.input_spreads.resize(ns.input_port_count);
-        ns.output_spreads.resize(ns.output_port_count);
-
-        // Init param_values from descriptor defaults, then override from JSON
-        ns.param_values.resize(desc->param_count);
-        for (uint32_t i = 0; i < desc->param_count; ++i) {
-            ns.param_values[i] = desc->params[i].default_value;
-        }
-        for (uint32_t i = 0; i < desc->param_count; ++i) {
-            ns.param_indices[desc->params[i].name] = i;
-        }
-        for (const auto& [pname, pval] : ndef.params) {
-            auto pi = ns.param_indices.find(pname);
-            if (pi != ns.param_indices.end()) {
-                ns.param_values[pi->second] = pval;
-            }
-        }
-
-        // Generation-based cooking metadata
-        ns.time_dependent = desc->time_dependent != 0;
-        ns.is_gpu = (desc->domain == VIVID_DOMAIN_GPU);
-        ns.is_audio = (desc->domain == VIVID_DOMAIN_AUDIO);
         ns.generation = 0;
-        ns.prev_output_values.resize(ns.output_port_count, 0.0f);
+        init_node_state(ns, desc, &ndef.params);
 
-        // Implicit analysis ports for audio-domain nodes
-        if (ns.is_audio) {
-            ns.output_port_indices["rms"] = ns.output_port_count++;
-            ns.output_port_indices["peak"] = ns.output_port_count++;
-            ns.output_port_indices["waveform"] = ns.output_port_count++;
-            ns.output_values.resize(ns.output_port_count, 0.0f);
-            ns.prev_output_values.resize(ns.output_port_count, 0.0f);
-            ns.output_spreads.resize(ns.output_port_count);
-        }
-
-        // Identify GPU_TEXTURE input ports for per-node texture wiring
+        // Per-node GPU texture resolution from graph definition
         if (ns.is_gpu) {
-            uint32_t input_idx = 0;
-            for (uint32_t i = 0; i < desc->port_count; ++i) {
-                if (desc->ports[i].direction == VIVID_PORT_INPUT) {
-                    if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
-                        ns.texture_input_port_indices.push_back(input_idx);
-                    }
-                    input_idx++;
-                }
-            }
             ns.gpu_tex_width  = ndef.tex_width;
             ns.gpu_tex_height = ndef.tex_height;
-
-            // Structural detection: GPU sink = has texture inputs but no texture outputs
-            bool has_tex_output = false;
-            for (uint32_t i = 0; i < desc->port_count; ++i) {
-                if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
-                    desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
-                    has_tex_output = true;
-                    break;
-                }
-            }
-            ns.is_gpu_sink = !ns.texture_input_port_indices.empty() && !has_tex_output;
         }
 
         node_index[ndef.id] = static_cast<uint32_t>(nodes_.size());
@@ -208,26 +219,9 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         in_degree[ti]++;
     }
 
-    // 3. Kahn's algorithm — topological sort
-    std::queue<uint32_t> q;
-    for (uint32_t i = 0; i < n; ++i) {
-        if (in_degree[i] == 0)
-            q.push(i);
-    }
-
-    std::vector<uint32_t> sorted_order;
-    sorted_order.reserve(n);
-    while (!q.empty()) {
-        uint32_t cur = q.front();
-        q.pop();
-        sorted_order.push_back(cur);
-        for (uint32_t next : adj[cur]) {
-            if (--in_degree[next] == 0)
-                q.push(next);
-        }
-    }
-
-    if (sorted_order.size() != n) {
+    // 3. Topological sort
+    auto sorted_order = kahn_sort(n, adj, in_degree);
+    if (sorted_order.empty()) {
         std::fprintf(stderr, "[vivid] Scheduler: cycle detected in graph\n");
         return false;
     }
@@ -466,6 +460,28 @@ bool Scheduler::has_audio_operators() const {
     return false;
 }
 
+bool Scheduler::gpu_sink_source_size(int sink_idx, uint32_t& w, uint32_t& h) const {
+    for (const auto& wire : wires_) {
+        if (wire.to_node_idx == static_cast<uint32_t>(sink_idx) &&
+            wire.is_texture_wire && !wire.targets_param) {
+            w = nodes_[wire.from_node_idx].gpu_tex_width;
+            h = nodes_[wire.from_node_idx].gpu_tex_height;
+            return w > 0 && h > 0;
+        }
+    }
+    return false;
+}
+
+bool Scheduler::is_audio_type(const std::string& type_name) const {
+    for (const auto& ns : nodes_) {
+        if (std::string(ns.loader->descriptor()->name) == type_name &&
+            ns.loader->descriptor()->domain == VIVID_DOMAIN_AUDIO) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void Scheduler::inject_external_output(uint32_t node_idx, uint32_t port_idx, float value) {
     auto& ns = nodes_[node_idx];
     if (ns.output_values[port_idx] != value) {
@@ -547,89 +563,13 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
         auto& ns = nodes_[sp.node_idx];
         ns.loader = new_loader;
         ns.instance = new_loader->create_instance();
-
-        // Rebuild port/param indices from new descriptor
-        ns.input_port_count = 0;
-        ns.output_port_count = 0;
-        ns.input_port_indices.clear();
-        ns.output_port_indices.clear();
-        ns.param_indices.clear();
-
-        for (uint32_t p = 0; p < new_desc->port_count; ++p) {
-            if (new_desc->ports[p].direction == VIVID_PORT_INPUT) {
-                ns.input_port_indices[new_desc->ports[p].name] = ns.input_port_count++;
-            } else {
-                ns.output_port_indices[new_desc->ports[p].name] = ns.output_port_count++;
-            }
-        }
-
-        ns.input_values.assign(ns.input_port_count, 0.0f);
-        ns.output_values.assign(ns.output_port_count, 0.0f);
-        ns.prev_output_values.assign(ns.output_port_count, 0.0f);
-
-        ns.input_spreads.resize(ns.input_port_count);
-        ns.output_spreads.resize(ns.output_port_count);
-
-        // Implicit analysis ports for audio-domain nodes
-        if (new_desc->domain == VIVID_DOMAIN_AUDIO) {
-            ns.output_port_indices["rms"] = ns.output_port_count++;
-            ns.output_port_indices["peak"] = ns.output_port_count++;
-            ns.output_port_indices["waveform"] = ns.output_port_count++;
-            ns.output_values.resize(ns.output_port_count, 0.0f);
-            ns.prev_output_values.resize(ns.output_port_count, 0.0f);
-            ns.output_spreads.resize(ns.output_port_count);
-        }
-
-        // Reconcile params by name: preserve values that still exist, use defaults for new
-        ns.param_values.resize(new_desc->param_count);
-        for (uint32_t p = 0; p < new_desc->param_count; ++p) {
-            ns.param_indices[new_desc->params[p].name] = p;
-            auto it = sp.values.find(new_desc->params[p].name);
-            if (it != sp.values.end()) {
-                ns.param_values[p] = it->second;  // preserve old value
-            } else {
-                ns.param_values[p] = new_desc->params[p].default_value;  // new param
-            }
-        }
-
-        ns.time_dependent = new_desc->time_dependent != 0;
-        ns.is_gpu = (new_desc->domain == VIVID_DOMAIN_GPU);
-        ns.is_audio = (new_desc->domain == VIVID_DOMAIN_AUDIO);
-
-        // Rebuild texture port indices for GPU operators
-        ns.texture_input_port_indices.clear();
-        if (ns.is_gpu) {
-            uint32_t input_idx = 0;
-            for (uint32_t p = 0; p < new_desc->port_count; ++p) {
-                if (new_desc->ports[p].direction == VIVID_PORT_INPUT) {
-                    if (new_desc->ports[p].type == VIVID_PORT_GPU_TEXTURE) {
-                        ns.texture_input_port_indices.push_back(input_idx);
-                    }
-                    input_idx++;
-                }
-            }
-            bool has_tex_output = false;
-            for (uint32_t p = 0; p < new_desc->port_count; ++p) {
-                if (new_desc->ports[p].direction == VIVID_PORT_OUTPUT &&
-                    new_desc->ports[p].type == VIVID_PORT_GPU_TEXTURE) {
-                    has_tex_output = true;
-                    break;
-                }
-            }
-            ns.is_gpu_sink = !ns.texture_input_port_indices.empty() && !has_tex_output;
-        } else {
-            ns.is_gpu_sink = false;
-        }
+        init_node_state(ns, new_desc, &sp.values);
 
         // Bump generation to force downstream recompute
         ns.generation++;
     }
 
     return true;
-}
-
-static WGPUStringView sched_sv(const char* s) {
-    return { s, s ? std::strlen(s) : 0 };
 }
 
 void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uint32_t default_h,
@@ -683,7 +623,7 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
         // Create texture
         WGPUTextureDescriptor tex_desc{};
         std::string label = "Node Texture [" + ns.node_id + "]";
-        tex_desc.label = sched_sv(label.c_str());
+        tex_desc.label = to_sv(label.c_str());
         tex_desc.size = { w, h, 1 };
         tex_desc.mipLevelCount = 1;
         tex_desc.sampleCount = 1;
@@ -694,7 +634,7 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
 
         WGPUTextureViewDescriptor view_desc{};
         std::string view_label = "Node View [" + ns.node_id + "]";
-        view_desc.label = sched_sv(view_label.c_str());
+        view_desc.label = to_sv(view_label.c_str());
         view_desc.format = format;
         view_desc.dimension = WGPUTextureViewDimension_2D;
         view_desc.baseMipLevel = 0;

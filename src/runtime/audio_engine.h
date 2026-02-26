@@ -1,7 +1,6 @@
 #ifndef VIVID_RUNTIME_AUDIO_ENGINE_H
 #define VIVID_RUNTIME_AUDIO_ENGINE_H
 
-#include "runtime/scheduler.h"
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
 #include "operator_api/audio_operator.h"
@@ -14,6 +13,8 @@
 struct ma_device;
 
 namespace vivid {
+
+class Scheduler;
 
 struct AudioNodeState {
     std::string node_id;
@@ -95,6 +96,9 @@ private:
     // Called from the audio thread
     void audio_callback(float* output, uint32_t frame_count);
     static void ma_data_callback(struct ma_device* device, void* output, const void* input, unsigned int frame_count);
+
+    void init_audio_node_state(AudioNodeState& ns, const VividOperatorDescriptor* desc,
+                               const std::unordered_map<std::string, float>* param_overrides);
 
     std::vector<AudioNodeState> nodes_;
     std::vector<AudioWire> wires_;

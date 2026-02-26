@@ -231,26 +231,10 @@ void NodeGraphUI::draw_connections(TextRenderer& tr) {
 
         float wire_th = std::max(1.0f, (hov ? 5.0f : 3.0f) * zoom_);
 
-        if (bezier_wires_) {
-            auto pts = wire_bezier_points(ssx, ssy, sex, sey);
-            float px = ssx, py = ssy;
-            for (int seg = 1; seg <= kBezierSegments; ++seg) {
-                float t = static_cast<float>(seg) / kBezierSegments;
-                float nx, ny;
-                eval_bezier(t, pts[0].first, pts[0].second, pts[1].first, pts[1].second,
-                            pts[2].first, pts[2].second, pts[3].first, pts[3].second, nx, ny);
-                tr.draw_line(px, py, nx, ny, wire_th, cr, cg, cb, a);
-                px = nx; py = ny;
-            }
-        } else {
-            auto segs = wire_zroute_segments(ssx, ssy, sex, sey);
-            float mid_x = (ssx + sex) * 0.5f;
-            tr.draw_rect(ssx, ssy - 1, mid_x - ssx, wire_th, cr, cg, cb, a);
-            float vy = std::min(ssy, sey);
-            float vh = std::fabs(sey - ssy);
-            tr.draw_rect(mid_x - 1, vy, wire_th, vh + wire_th, cr, cg, cb, a);
-            tr.draw_rect(mid_x, sey - 1, sex - mid_x, wire_th, cr, cg, cb, a);
-        }
+        traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
+            [&](float x0, float y0, float x1, float y1) {
+                tr.draw_line(x0, y0, x1, y1, wire_th, cr, cg, cb, a);
+            });
     }
 }
 
@@ -543,25 +527,10 @@ void NodeGraphUI::draw_preview_wire(TextRenderer& tr) {
     float sex = mouse_.x, sey = mouse_.y;
     float wire_th = std::max(1.0f, 3.0f * zoom_);
 
-    if (bezier_wires_) {
-        auto pts = wire_bezier_points(ssx, ssy, sex, sey);
-        float px = ssx, py = ssy;
-        for (int seg = 1; seg <= kBezierSegments; ++seg) {
-            float t = static_cast<float>(seg) / kBezierSegments;
-            float nx, ny;
-            eval_bezier(t, pts[0].first, pts[0].second, pts[1].first, pts[1].second,
-                        pts[2].first, pts[2].second, pts[3].first, pts[3].second, nx, ny);
-            tr.draw_line(px, py, nx, ny, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
-            px = nx; py = ny;
-        }
-    } else {
-        float mid_x = (ssx + sex) * 0.5f;
-        tr.draw_rect(ssx, ssy - 1, mid_x - ssx, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
-        float vy = std::min(ssy, sey);
-        float vh = std::fabs(sey - ssy);
-        tr.draw_rect(mid_x - 1, vy, wire_th, vh + wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
-        tr.draw_rect(mid_x, sey - 1, sex - mid_x, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
-    }
+    traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
+        [&](float x0, float y0, float x1, float y1) {
+            tr.draw_line(x0, y0, x1, y1, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
+        });
 }
 
 void NodeGraphUI::draw_chooser(TextRenderer& tr) {

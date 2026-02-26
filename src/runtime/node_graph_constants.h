@@ -128,6 +128,29 @@ wire_zroute_segments(float sx, float sy, float ex, float ey) {
     }};
 }
 
+// Traverse a wire (bezier or z-route) and call visit(x0, y0, x1, y1) for each segment.
+template<typename Visitor>
+void traverse_wire(float ssx, float ssy, float sex, float sey,
+                   bool bezier, Visitor&& visit) {
+    if (bezier) {
+        auto pts = wire_bezier_points(ssx, ssy, sex, sey);
+        float px = ssx, py = ssy;
+        for (int seg = 1; seg <= kBezierSegments; ++seg) {
+            float t = static_cast<float>(seg) / kBezierSegments;
+            float nx, ny;
+            eval_bezier(t, pts[0].first, pts[0].second, pts[1].first, pts[1].second,
+                        pts[2].first, pts[2].second, pts[3].first, pts[3].second, nx, ny);
+            visit(px, py, nx, ny);
+            px = nx; py = ny;
+        }
+    } else {
+        auto segs = wire_zroute_segments(ssx, ssy, sex, sey);
+        for (const auto& seg : segs) {
+            visit(seg.first.first, seg.first.second, seg.second.first, seg.second.second);
+        }
+    }
+}
+
 } // namespace vivid
 
 #endif // VIVID_RUNTIME_NODE_GRAPH_CONSTANTS_H

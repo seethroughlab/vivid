@@ -1,4 +1,5 @@
 #include "runtime/fullscreen_blit.h"
+#include "runtime/gpu_util.h"
 #include "operator_api/gpu_common.h"
 #include <cstdio>
 #include <cstring>
@@ -8,10 +9,6 @@ namespace vivid {
 
 // Fallback clear color: #16191D as raw unorm (used when no source texture covers a region)
 static constexpr WGPUColor kFallbackClear = { 0.0863, 0.0980, 0.1137, 1.0 };
-
-static WGPUStringView to_sv(const char* s) {
-    return { s, s ? std::strlen(s) : 0 };
-}
 
 // Blit fragment shader (specific to blitting — uses shared vertex code)
 static const char* kBlitFragment = R"(
@@ -319,7 +316,7 @@ void FullscreenBlit::blit_fit(WGPUCommandEncoder encoder,
                                WGPUTextureView source, WGPUTextureView dest,
                                uint32_t src_w, uint32_t src_h,
                                uint32_t dst_w, uint32_t dst_h,
-                               int fit_mode, bool ui_visible) {
+                               FitMode fit_mode, bool ui_visible) {
     if (!init_fit_pipeline()) {
         // Fall back to regular stretch blit
         blit(encoder, source, dest);
@@ -331,13 +328,13 @@ void FullscreenBlit::blit_fit(WGPUCommandEncoder encoder,
     float src_aspect = static_cast<float>(src_w) / static_cast<float>(src_h);
     float dst_aspect = static_cast<float>(dst_w) / static_cast<float>(dst_h);
 
-    if (fit_mode == 2) {
+    if (fit_mode == FitMode::Stretch) {
         // Stretch: 1:1 UV mapping
         u.scale[0] = 1.0f;
         u.scale[1] = 1.0f;
         u.offset[0] = 0.0f;
         u.offset[1] = 0.0f;
-    } else if (fit_mode == 0) {
+    } else if (fit_mode == FitMode::Fit) {
         // Fit: scale uniformly so entire source fits, letterbox remaining
         if (src_aspect > dst_aspect) {
             // Source wider → letterbox top/bottom

@@ -83,7 +83,13 @@ public:
                          const std::string& new_dylib_path);
     std::string type_name(uint32_t node_idx) const;
 
+    bool gpu_sink_source_size(int sink_idx, uint32_t& w, uint32_t& h) const;
+    bool is_audio_type(const std::string& type_name) const;
+
 private:
+    void init_node_state(NodeState& ns, const VividOperatorDescriptor* desc,
+                         const std::unordered_map<std::string, float>* param_overrides);
+
     std::vector<NodeState> nodes_;
     std::vector<Wire> wires_;
 };

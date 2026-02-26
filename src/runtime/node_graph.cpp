@@ -1,5 +1,6 @@
 #include "runtime/node_graph.h"
 #include "runtime/node_graph_constants.h"
+#include "runtime/topo_sort.h"
 #include "runtime/string_util.h"
 #include "runtime/runtime_api.h"
 #include "runtime/graph.h"
@@ -10,7 +11,6 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
-#include <queue>
 #include <cmath>
 #include <cctype>
 
@@ -56,11 +56,8 @@ int NodeGraphUI::hit_test_rect(const std::vector<RectT>& rects, float mx, float 
     return -1;
 }
 
-// Explicit instantiations for all rect types used across translation units
-template int NodeGraphUI::hit_test_rect(const std::vector<SliderRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<BoolRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<ValueTextRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<DropdownRect>& rects, float mx, float my);
+// Explicit instantiations for rect types used across translation units
+template int NodeGraphUI::hit_test_rect(const std::vector<InspectorRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<ResolutionRect>& rects, float mx, float my);
 
 // -----------------------------------------------------------------------
@@ -126,30 +123,13 @@ void NodeGraphUI::layout_nodes() {
         }
     }
 
-    // Topological order (Kahn's algorithm)
-    std::vector<uint32_t> in_degree(nodes.size(), 0);
-    for (uint32_t i = 0; i < nodes.size(); ++i)
+    // Topological order
+    uint32_t nn = static_cast<uint32_t>(nodes.size());
+    std::vector<uint32_t> in_degree(nn);
+    for (uint32_t i = 0; i < nn; ++i)
         in_degree[i] = static_cast<uint32_t>(preds[i].size());
 
-    std::queue<uint32_t> q;
-    for (uint32_t i = 0; i < nodes.size(); ++i)
-        if (in_degree[i] == 0) q.push(i);
-
-    std::vector<uint32_t> topo_order;
-    topo_order.reserve(nodes.size());
-    while (!q.empty()) {
-        uint32_t n = q.front(); q.pop();
-        topo_order.push_back(n);
-        for (uint32_t s : succs[n]) {
-            if (--in_degree[s] == 0) q.push(s);
-        }
-    }
-    // If cycle, append remaining
-    if (topo_order.size() < nodes.size()) {
-        std::unordered_set<uint32_t> visited(topo_order.begin(), topo_order.end());
-        for (uint32_t i = 0; i < nodes.size(); ++i)
-            if (visited.find(i) == visited.end()) topo_order.push_back(i);
-    }
+    auto topo_order = kahn_sort(nn, succs, in_degree, /*soft_on_cycle=*/true);
 
     // Layer assignment: longest path from sources
     std::vector<int> layer(nodes.size(), 0);
@@ -346,30 +326,13 @@ int NodeGraphUI::hit_test_wire(float sx, float sy) const {
         float ssx = gx_to_sx(gsx), ssy = gy_to_sy(gsy);
         float sex = gx_to_sx(gex), sey = gy_to_sy(gey);
 
-        if (bezier_wires_) {
-            auto pts = wire_bezier_points(ssx, ssy, sex, sey);
-            float px = ssx, py = ssy;
-            for (int seg = 1; seg <= kBezierSegments; ++seg) {
-                float t = static_cast<float>(seg) / kBezierSegments;
-                float nx, ny;
-                eval_bezier(t, pts[0].first, pts[0].second, pts[1].first, pts[1].second,
-                            pts[2].first, pts[2].second, pts[3].first, pts[3].second, nx, ny);
-                if (point_seg_dist2(sx, sy, px, py, nx, ny) < thresh2)
-                    return ci;
-                px = nx; py = ny;
-            }
-        } else {
-            auto segs = wire_zroute_segments(ssx, ssy, sex, sey);
-            if (point_seg_dist2(sx, sy, segs[0].first.first, segs[0].first.second,
-                                segs[0].second.first, segs[0].second.second) < thresh2)
-                return ci;
-            if (point_seg_dist2(sx, sy, segs[1].first.first, segs[1].first.second,
-                                segs[1].second.first, segs[1].second.second) < thresh2)
-                return ci;
-            if (point_seg_dist2(sx, sy, segs[2].first.first, segs[2].first.second,
-                                segs[2].second.first, segs[2].second.second) < thresh2)
-                return ci;
-        }
+        int found = -1;
+        traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
+            [&](float x0, float y0, float x1, float y1) {
+                if (found < 0 && point_seg_dist2(sx, sy, x0, y0, x1, y1) < thresh2)
+                    found = ci;
+            });
+        if (found >= 0) return found;
     }
     return -1;
 }
