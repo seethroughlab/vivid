@@ -23,27 +23,24 @@ bool RuntimeAPI::split_addr(const std::string& addr, std::string& node, std::str
 // --- Immediate param changes ---
 
 CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::string& param, float value) {
-    const auto& nodes = scheduler_.nodes();
-    for (uint32_t i = 0; i < static_cast<uint32_t>(nodes.size()); ++i) {
-        if (nodes[i].node_id != node_id) continue;
-        auto pi = nodes[i].param_indices.find(param);
-        if (pi == nodes[i].param_indices.end()) {
-            return {false, "unknown param '" + param + "' on " + node_id};
-        }
-        // Write directly to the scheduler's live param_values
-        // (const_cast is safe here — scheduler owns the data, we're the control thread)
-        const_cast<NodeState&>(nodes[i]).param_values[pi->second] = value;
-        const_cast<NodeState&>(nodes[i]).generation++;
+    NodeState* ns = scheduler_.find_node_mut(node_id);
+    if (!ns) return {false, "unknown node '" + node_id + "'"};
 
-        // Also update graph's NodeDef so save reflects the change
-        NodeDef* ndef = graph_.find_node(node_id);
-        if (ndef) ndef->params[param] = value;
-
-        std::ostringstream oss;
-        oss << node_id << "/" << param << " = " << value;
-        return {true, oss.str()};
+    auto pi = ns->param_indices.find(param);
+    if (pi == ns->param_indices.end()) {
+        return {false, "unknown param '" + param + "' on " + node_id};
     }
-    return {false, "unknown node '" + node_id + "'"};
+
+    ns->param_values[pi->second] = value;
+    ns->generation++;
+
+    // Also update graph's NodeDef so save reflects the change
+    NodeDef* ndef = graph_.find_node(node_id);
+    if (ndef) ndef->params[param] = value;
+
+    std::ostringstream oss;
+    oss << node_id << "/" << param << " = " << value;
+    return {true, oss.str()};
 }
 
 CommandResult RuntimeAPI::get_param(const std::string& node_id, const std::string& param) {
@@ -86,14 +83,11 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
     ndef->tex_height = height;
 
     // Update live scheduler NodeState
-    const auto& nodes = scheduler_.nodes();
-    for (uint32_t i = 0; i < static_cast<uint32_t>(nodes.size()); ++i) {
-        if (nodes[i].node_id != node_id) continue;
-        auto& ns = const_cast<NodeState&>(nodes[i]);
-        ns.gpu_tex_width  = width;
-        ns.gpu_tex_height = height;
-        ns.generation++;
-        break;
+    NodeState* ns = scheduler_.find_node_mut(node_id);
+    if (ns) {
+        ns->gpu_tex_width  = width;
+        ns->gpu_tex_height = height;
+        ns->generation++;
     }
 
     needs_gpu_realloc_ = true;
@@ -187,7 +181,7 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     }
 
     // 5. Restore saved params
-    for (auto& ns : const_cast<std::vector<NodeState>&>(scheduler_.nodes())) {
+    for (auto& ns : scheduler_.nodes_mut()) {
         auto sit = saved_params.find(ns.node_id);
         if (sit == saved_params.end()) continue;
         for (const auto& [pname, pval] : sit->second) {

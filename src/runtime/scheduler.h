@@ -66,7 +66,9 @@ public:
               PostNodeFn on_gpu_node = nullptr);
     void shutdown();
     const std::vector<NodeState>& nodes() const { return nodes_; }
+    std::vector<NodeState>& nodes_mut() { return nodes_; }
     const std::vector<Wire>& wires() const { return wires_; }
+    NodeState* find_node_mut(const std::string& id);
     bool has_gpu_operators() const;
     bool has_audio_operators() const;
     void allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uint32_t default_h,

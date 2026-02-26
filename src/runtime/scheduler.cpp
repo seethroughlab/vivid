@@ -333,12 +333,13 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
 
         std::vector<VividSpreadPort> out_spreads(ns.output_port_count);
         // Pre-allocate output spread buffers
+        static constexpr uint32_t kMaxSpreadCapacity = 1024;
         std::vector<std::vector<float>> out_spread_storage(ns.output_port_count);
         for (uint32_t p = 0; p < ns.output_port_count; ++p) {
-            out_spread_storage[p].resize(1024, 0.0f);
+            out_spread_storage[p].resize(kMaxSpreadCapacity, 0.0f);
             out_spreads[p].data     = out_spread_storage[p].data();
             out_spreads[p].length   = 0;
-            out_spreads[p].capacity = 1024;
+            out_spreads[p].capacity = kMaxSpreadCapacity;
         }
 
         // Build process context and tick
@@ -481,6 +482,13 @@ void Scheduler::inject_external_spread(uint32_t node_idx, uint32_t port_idx,
         ns.output_spreads[port_idx].assign(data, data + length);
         ns.generation++;
     }
+}
+
+NodeState* Scheduler::find_node_mut(const std::string& id) {
+    for (auto& ns : nodes_) {
+        if (ns.node_id == id) return &ns;
+    }
+    return nullptr;
 }
 
 std::string Scheduler::type_name(uint32_t node_idx) const {
