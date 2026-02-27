@@ -98,7 +98,7 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
 // -----------------------------------------------------------------------
 // Sugiyama-inspired auto-layout
 // -----------------------------------------------------------------------
-void NodeGraphUI::layout_nodes() {
+void NodeGraphUI::layout_nodes(bool force) {
     node_rects_.clear();
     const auto& nodes = snap_.nodes;
     const auto& conns = snap_.connections;
@@ -230,8 +230,8 @@ void NodeGraphUI::layout_nodes() {
             rect.w = kNodeW;
             rect.h = heights[r];
 
-            // Override with saved layout position if present
-            if (ns.has_layout) {
+            // Override with saved layout position if present (unless forced)
+            if (ns.has_layout && !force) {
                 rect.x = ns.layout_x;
                 rect.y = ns.layout_y;
             }
@@ -240,6 +240,161 @@ void NodeGraphUI::layout_nodes() {
 
             cur_y += heights[r] + kRowSpacing;
         }
+    }
+
+    last_node_count_ = nodes.size();
+    last_conn_count_ = conns.size();
+    first_layout_done_ = true;
+}
+
+// -----------------------------------------------------------------------
+// Incremental layout — only position newly added nodes
+// -----------------------------------------------------------------------
+void NodeGraphUI::place_new_nodes() {
+    const auto& nodes = snap_.nodes;
+    const auto& conns = snap_.connections;
+
+    // Build old node_id -> NodeRect map
+    std::unordered_map<std::string, NodeRect> old_rects;
+    for (const auto& r : node_rects_)
+        old_rects[r.node_id] = r;
+
+    // Rebuild node_rects_ sized to current snapshot, copying existing rects
+    node_rects_.resize(nodes.size());
+    std::vector<size_t> new_indices;
+
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        auto it = old_rects.find(nodes[i].node_id);
+        if (it != old_rects.end()) {
+            node_rects_[i] = it->second;
+        } else {
+            new_indices.push_back(i);
+        }
+    }
+
+    // Build node_id -> index map for connection lookup
+    std::unordered_map<std::string, size_t> id_to_idx;
+    for (size_t i = 0; i < nodes.size(); ++i)
+        id_to_idx[nodes[i].node_id] = i;
+
+    // Compute node height helper
+    auto compute_height = [&](size_t ni) -> float {
+        const auto& ns = nodes[ni];
+        bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
+        float body_h = domain_body_height(ns.domain, has_ct);
+        uint32_t n_param_inputs = 0;
+        for (const auto& [name, _] : ns.param_indices)
+            if (!ns.input_port_indices.count(name)) n_param_inputs++;
+        uint32_t n_inputs = static_cast<uint32_t>(ns.input_port_indices.size()) + n_param_inputs;
+        uint32_t n_outputs = static_cast<uint32_t>(ns.output_port_indices.size());
+        uint32_t port_rows = std::max(n_inputs, n_outputs);
+        return kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
+    };
+
+    // Position each new node
+    for (size_t ni : new_indices) {
+        const auto& ns = nodes[ni];
+        float h = compute_height(ni);
+
+        auto& rect = node_rects_[ni];
+        rect.node_id = ns.node_id;
+        rect.type_name = ns.type_name;
+        rect.domain = ns.domain;
+        rect.w = kNodeW;
+        rect.h = h;
+
+        // If the node already has a saved layout position (e.g. from chooser), use it
+        if (ns.has_layout) {
+            rect.x = ns.layout_x;
+            rect.y = ns.layout_y;
+            recompute_ports(rect, ns);
+            continue;
+        }
+
+        // Find predecessors and successors of this new node
+        std::vector<size_t> pred_indices, succ_indices;
+        for (const auto& c : conns) {
+            if (c.to_node == ns.node_id) {
+                auto it = id_to_idx.find(c.from_node);
+                if (it != id_to_idx.end()) pred_indices.push_back(it->second);
+            }
+            if (c.from_node == ns.node_id) {
+                auto it = id_to_idx.find(c.to_node);
+                if (it != id_to_idx.end()) succ_indices.push_back(it->second);
+            }
+        }
+
+        if (!pred_indices.empty() && succ_indices.empty()) {
+            // Has predecessors only — place to the right, centered vertically
+            float rightmost_x = -1e9f;
+            float sum_y = 0;
+            for (size_t pi : pred_indices) {
+                const auto& pr = node_rects_[pi];
+                rightmost_x = std::max(rightmost_x, pr.x + pr.w);
+                sum_y += pr.y + pr.h * 0.5f;
+            }
+            rect.x = rightmost_x + (kColSpacing - kNodeW);
+            rect.y = sum_y / pred_indices.size() - h * 0.5f;
+        } else if (pred_indices.empty() && !succ_indices.empty()) {
+            // Has successors only — place to the left, centered vertically
+            float leftmost_x = 1e9f;
+            float sum_y = 0;
+            for (size_t si : succ_indices) {
+                const auto& sr = node_rects_[si];
+                leftmost_x = std::min(leftmost_x, sr.x);
+                sum_y += sr.y + sr.h * 0.5f;
+            }
+            rect.x = leftmost_x - kColSpacing + (kColSpacing - kNodeW);
+            rect.y = sum_y / succ_indices.size() - h * 0.5f;
+        } else if (!pred_indices.empty() && !succ_indices.empty()) {
+            // Has both — place midway
+            float rightmost_x = -1e9f;
+            float leftmost_x = 1e9f;
+            float sum_y = 0;
+            size_t count = 0;
+            for (size_t pi : pred_indices) {
+                const auto& pr = node_rects_[pi];
+                rightmost_x = std::max(rightmost_x, pr.x + pr.w);
+                sum_y += pr.y + pr.h * 0.5f;
+                count++;
+            }
+            for (size_t si : succ_indices) {
+                const auto& sr = node_rects_[si];
+                leftmost_x = std::min(leftmost_x, sr.x);
+                sum_y += sr.y + sr.h * 0.5f;
+                count++;
+            }
+            rect.x = (rightmost_x + leftmost_x) * 0.5f - kNodeW * 0.5f;
+            rect.y = sum_y / count - h * 0.5f;
+        } else {
+            // No connections — place to the right of all existing nodes
+            float rightmost_edge = kLeftMargin;
+            for (size_t i = 0; i < nodes.size(); ++i) {
+                if (i == ni) continue;
+                rightmost_edge = std::max(rightmost_edge, node_rects_[i].x + node_rects_[i].w);
+            }
+            rect.x = rightmost_edge + (kColSpacing - kNodeW);
+            rect.y = kTopMargin;
+        }
+
+        // Nudge to avoid overlap with existing and other new nodes
+        for (int attempt = 0; attempt < 20; ++attempt) {
+            bool overlap = false;
+            for (size_t i = 0; i < nodes.size(); ++i) {
+                if (i == ni) continue;
+                const auto& other = node_rects_[i];
+                if (other.node_id.empty()) continue;
+                if (rect.x < other.x + other.w && rect.x + rect.w > other.x &&
+                    rect.y < other.y + other.h && rect.y + rect.h > other.y) {
+                    overlap = true;
+                    break;
+                }
+            }
+            if (!overlap) break;
+            rect.y += kRowSpacing + h;
+        }
+
+        recompute_ports(rect, ns);
     }
 
     last_node_count_ = nodes.size();
@@ -410,6 +565,40 @@ void NodeGraphUI::cancel_midi_range_edit() {
 }
 
 // -----------------------------------------------------------------------
+// Port type compatibility helpers (for insert-on-wire)
+// -----------------------------------------------------------------------
+static bool is_control_type(VividPortType t) {
+    return t == VIVID_PORT_CONTROL_FLOAT || t == VIVID_PORT_CONTROL_INT ||
+           t == VIVID_PORT_CONTROL_BOOL  || t == VIVID_PORT_CONTROL_SPREAD;
+}
+
+static bool port_type_compatible(VividPortType wire_type, VividPortType port_type) {
+    if (wire_type == VIVID_PORT_GPU_TEXTURE)   return port_type == VIVID_PORT_GPU_TEXTURE;
+    if (wire_type == VIVID_PORT_AUDIO_FLOAT)   return port_type == VIVID_PORT_AUDIO_FLOAT;
+    // Any control type matches any control type
+    return is_control_type(wire_type) && is_control_type(port_type);
+}
+
+static bool can_insert_on_wire(const OperatorInfo& op, VividPortType src, VividPortType dst) {
+    bool has_input = false, has_output = false;
+    for (const auto& p : op.ports) {
+        if (p.direction == VIVID_PORT_INPUT  && port_type_compatible(src, p.type)) has_input = true;
+        if (p.direction == VIVID_PORT_OUTPUT && port_type_compatible(dst, p.type)) has_output = true;
+        if (has_input && has_output) return true;
+    }
+    return false;
+}
+
+static std::string find_compatible_port(const OperatorInfo& op, VividPortType wire_type,
+                                        VividPortDirection dir) {
+    for (const auto& p : op.ports) {
+        if (p.direction == dir && port_type_compatible(wire_type, p.type))
+            return p.name;
+    }
+    return {};
+}
+
+// -----------------------------------------------------------------------
 // Chooser filter
 // -----------------------------------------------------------------------
 void NodeGraphUI::rebuild_chooser_items() {
@@ -424,12 +613,60 @@ void NodeGraphUI::rebuild_chooser_items() {
     for (const auto& name : all) {
         std::string lower_name = name;
         for (auto& c : lower_name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (lower_name.find(lower_filter) != std::string::npos)
-            chooser_items_.push_back(name);
+        if (lower_name.find(lower_filter) == std::string::npos)
+            continue;
+        // When inserting on a wire, filter to compatible operators
+        if (chooser_insert_wire_) {
+            auto cat_it = snap_.operator_catalog.find(name);
+            if (cat_it == snap_.operator_catalog.end() || !cat_it->second) continue;
+            if (!can_insert_on_wire(*cat_it->second, insert_wire_source_type_, insert_wire_dest_type_))
+                continue;
+        }
+        chooser_items_.push_back(name);
     }
 
     chooser_sel_ = 0;
     chooser_scroll_ = 0;
+}
+
+// -----------------------------------------------------------------------
+// Shared chooser confirm — creates node and optionally splices into wire
+// -----------------------------------------------------------------------
+void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
+    // Generate unique node ID
+    std::string id;
+    for (int n = 1; ; ++n) {
+        id = type + std::to_string(n);
+        if (!snap_.has_node(id)) break;
+    }
+    commands_.add_node(type, id);
+    commands_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
+
+    if (chooser_insert_wire_) {
+        auto cat_it = snap_.operator_catalog.find(type);
+        if (cat_it != snap_.operator_catalog.end() && cat_it->second) {
+            const auto& op = *cat_it->second;
+            // Remove original wire
+            commands_.disconnect(
+                chooser_insert_conn_.from_node + "/" + chooser_insert_conn_.from_port,
+                chooser_insert_conn_.to_node   + "/" + chooser_insert_conn_.to_port);
+            // Find compatible ports on the new node
+            std::string in_port  = find_compatible_port(op, insert_wire_source_type_, VIVID_PORT_INPUT);
+            std::string out_port = find_compatible_port(op, insert_wire_dest_type_,   VIVID_PORT_OUTPUT);
+            // Wire source → new node
+            if (!in_port.empty())
+                commands_.connect(chooser_insert_conn_.from_node + "/" + chooser_insert_conn_.from_port,
+                                  id + "/" + in_port);
+            // Wire new node → dest
+            if (!out_port.empty())
+                commands_.connect(id + "/" + out_port,
+                                  chooser_insert_conn_.to_node + "/" + chooser_insert_conn_.to_port);
+        }
+    }
+
+    selected_node_ids_ = { id };
+    chooser_insert_wire_ = false;
+    chooser_open_ = false;
 }
 
 // -----------------------------------------------------------------------
@@ -462,6 +699,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     check_relayout();
     update_pan();
     update_node_drag();
+    update_box_select();
     update_wire_drag();
     update_scrollbar_drag();
     update_slider_drag();
@@ -482,12 +720,47 @@ void NodeGraphUI::check_relayout() {
     size_t cur_conns = snap_.connections.size();
     if (cur_nodes > last_node_count_) {
         if (dragging_node_idx_ < 0 && !dragging_wire_) {
-            layout_nodes();
+            if (!first_layout_done_)
+                layout_nodes();       // first time: full Sugiyama
+            else
+                place_new_nodes();    // subsequent: incremental
         }
-    } else if (cur_nodes != last_node_count_ || cur_conns != last_conn_count_) {
+    } else if (cur_nodes < last_node_count_) {
+        prune_node_rects();
+    } else if (cur_conns != last_conn_count_) {
         last_node_count_ = cur_nodes;
         last_conn_count_ = cur_conns;
     }
+}
+
+void NodeGraphUI::prune_node_rects() {
+    std::unordered_map<std::string, NodeRect> old_rects;
+    for (const auto& r : node_rects_)
+        old_rects[r.node_id] = r;
+
+    const auto& nodes = snap_.nodes;
+    node_rects_.resize(nodes.size());
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        auto it = old_rects.find(nodes[i].node_id);
+        if (it != old_rects.end())
+            node_rects_[i] = it->second;
+    }
+
+    if (nodes.empty())
+        first_layout_done_ = false;
+
+    // Prune stale selection IDs
+    std::unordered_set<std::string> live_ids;
+    for (const auto& n : nodes) live_ids.insert(n.node_id);
+    for (auto it = selected_node_ids_.begin(); it != selected_node_ids_.end(); ) {
+        if (!live_ids.count(*it))
+            it = selected_node_ids_.erase(it);
+        else
+            ++it;
+    }
+
+    last_node_count_ = nodes.size();
+    last_conn_count_ = snap_.connections.size();
 }
 
 void NodeGraphUI::update_pan() {
@@ -500,16 +773,66 @@ void NodeGraphUI::update_pan() {
 void NodeGraphUI::update_node_drag() {
     if (dragging_node_idx_ < 0) return;
     if (mouse_.left_down) {
-        auto& rect = node_rects_[dragging_node_idx_];
-        rect.x = sx_to_gx(mouse_.x) - drag_offset_x_;
-        rect.y = sy_to_gy(mouse_.y) - drag_offset_y_;
-        const auto* ns = snap_.find_node(rect.node_id);
-        if (ns) recompute_ports(rect, *ns);
+        float mgx = sx_to_gx(mouse_.x);
+        float mgy = sy_to_gy(mouse_.y);
+
+        if (group_drag_offsets_.size() > 1) {
+            // Group drag: move all selected nodes
+            for (auto& nr : node_rects_) {
+                auto it = group_drag_offsets_.find(nr.node_id);
+                if (it == group_drag_offsets_.end()) continue;
+                nr.x = mgx - it->second.dx;
+                nr.y = mgy - it->second.dy;
+                const auto* ns = snap_.find_node(nr.node_id);
+                if (ns) recompute_ports(nr, *ns);
+            }
+        } else {
+            // Single drag
+            auto& rect = node_rects_[dragging_node_idx_];
+            rect.x = mgx - drag_offset_x_;
+            rect.y = mgy - drag_offset_y_;
+            const auto* ns = snap_.find_node(rect.node_id);
+            if (ns) recompute_ports(rect, *ns);
+        }
     }
     if (mouse_.left_released) {
-        auto& rect = node_rects_[dragging_node_idx_];
-        commands_.set_node_layout(rect.node_id, rect.x, rect.y);
+        if (group_drag_offsets_.size() > 1) {
+            for (const auto& nr : node_rects_) {
+                if (group_drag_offsets_.count(nr.node_id))
+                    commands_.set_node_layout(nr.node_id, nr.x, nr.y);
+            }
+            group_drag_offsets_.clear();
+        } else {
+            auto& rect = node_rects_[dragging_node_idx_];
+            commands_.set_node_layout(rect.node_id, rect.x, rect.y);
+        }
         dragging_node_idx_ = -1;
+    }
+}
+
+void NodeGraphUI::update_box_select() {
+    if (!box_selecting_) return;
+    if (mouse_.left_released) {
+        // Compute graph-space AABB from anchor + current mouse
+        float cur_gx = sx_to_gx(mouse_.x);
+        float cur_gy = sy_to_gy(mouse_.y);
+        float min_gx = std::min(box_start_gx_, cur_gx);
+        float max_gx = std::max(box_start_gx_, cur_gx);
+        float min_gy = std::min(box_start_gy_, cur_gy);
+        float max_gy = std::max(box_start_gy_, cur_gy);
+
+        // If not shift, start fresh
+        if (!box_shift_held_)
+            selected_node_ids_.clear();
+
+        // Test intersection against all node_rects_
+        for (const auto& r : node_rects_) {
+            if (r.x + r.w >= min_gx && r.x <= max_gx &&
+                r.y + r.h >= min_gy && r.y <= max_gy) {
+                selected_node_ids_.insert(r.node_id);
+            }
+        }
+        box_selecting_ = false;
     }
 }
 
@@ -575,7 +898,7 @@ void NodeGraphUI::clear_frame_flags() {
 }
 
 void NodeGraphUI::update_wire_hover() {
-    if (!dragging_wire_ && !panning_ && dragging_node_idx_ < 0 &&
+    if (!dragging_wire_ && !panning_ && !box_selecting_ && dragging_node_idx_ < 0 &&
         !context_menu_open_ && !chooser_open_ && !dropdown_open_) {
         hovered_wire_idx_ = hit_test_wire(mouse_.x, mouse_.y);
     } else {

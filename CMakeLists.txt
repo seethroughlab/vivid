@@ -233,6 +233,7 @@ add_executable(vivid
     src/runtime/platform.cpp
     src/runtime/settings.cpp
     src/runtime/editor_detect.cpp
+    src/runtime/macos_frame_timer.cpp
 )
 
 target_include_directories(vivid PRIVATE src)

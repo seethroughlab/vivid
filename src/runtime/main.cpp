@@ -41,6 +41,10 @@
 #include <vector>
 #include <CLI/CLI.hpp>
 
+#ifdef __APPLE__
+#include "runtime/macos_frame_timer.h"
+#endif
+
 // #16191D in sRGB → linear: pow(x/255, 2.2)
 static constexpr double kClearLinear[4]  = { 0.00699, 0.00821, 0.01041, 1.0 };
 // #16191D as raw unorm (no gamma conversion)
@@ -431,10 +435,10 @@ static void cursor_pos_callback(GLFWwindow* w, double xpos, double ypos) {
         ud->graph_ui->on_mouse_move(static_cast<float>(xpos), static_cast<float>(ypos));
 }
 
-static void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) {
+static void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
     if (ud && ud->graph_ui && ud->graph_ui->visible())
-        ud->graph_ui->on_mouse_button(button, action);
+        ud->graph_ui->on_mouse_button(button, action, mods);
 }
 
 static void scroll_callback(GLFWwindow* w, double xoffset, double yoffset) {
@@ -760,8 +764,9 @@ int main(int argc, char* argv[]) {
     uint64_t frame_count = 0;
 
     // --- Main loop ---
-    while (!glfwWindowShouldClose(window)) {
+    auto tick_frame = [&]() -> bool {
         glfwPollEvents();
+        if (glfwWindowShouldClose(window)) return false;
 
         int win_w, win_h;
         glfwGetWindowSize(window, &win_w, &win_h);
@@ -769,7 +774,7 @@ int main(int argc, char* argv[]) {
         glfwGetFramebufferSize(window, &fb_w, &fb_h);
 
         // Skip frame if minimized
-        if (fb_w == 0 || fb_h == 0) continue;
+        if (fb_w == 0 || fb_h == 0) return true;
 
         // Reconfigure GPU surface if framebuffer size changed
         if (fb_w != fb_width || fb_h != fb_height) {
@@ -803,7 +808,7 @@ int main(int argc, char* argv[]) {
 
         vivid::FrameState frame;
         if (!gpu.begin_frame(frame))
-            continue;
+            return true;
 
         // --- Compute dt unconditionally (for perf stats even with no graph) ---
         double now = glfwGetTime();
@@ -924,14 +929,21 @@ int main(int argc, char* argv[]) {
         // --- Screenshot capture ---
         if (try_capture_screenshot(screenshot_path, gpu, frame, fb_width, fb_height,
                                    frame_count, screenshot_delay, window)) {
-            continue; // frame already submitted inside try_capture_screenshot
+            return true; // frame already submitted inside try_capture_screenshot
         }
 
         gpu.end_frame(frame);
 
         // wgpu-native: poll the device to process async operations
         wgpuDevicePoll(gpu.device(), false, nullptr);
-    }
+        return true;
+    };
+
+#ifdef __APPLE__
+    vivid::macos_run_frame_loop(tick_frame);
+#else
+    while (tick_frame()) {}
+#endif
 
     // --- Shutdown ---
     system_midi.close();

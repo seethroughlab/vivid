@@ -24,6 +24,7 @@ struct MouseState {
     bool left_clicked = false;   // true on the frame the button went down
     bool left_released = false;  // true on the frame the button went up
     bool right_clicked = false;  // true on the frame right button went down
+    bool shift_down = false;
 };
 
 struct NodeRect {
@@ -41,14 +42,16 @@ public:
 
     // GLFW callbacks
     void on_mouse_move(float x, float y);
-    void on_mouse_button(int button, int action);
+    void on_mouse_button(int button, int action, int mods);
     void on_scroll(float x_offset, float y_offset);
     void on_key(int key, int action, int mods);
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
     bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_; }
-    bool has_selection() const { return !selected_node_id_.empty(); }
+    bool has_selection() const { return !selected_node_ids_.empty(); }
+    bool has_single_selection() const { return selected_node_ids_.size() == 1; }
+    const std::string& single_selected_id() const { return *selected_node_ids_.begin(); }
 
     void toggle_visible() { visible_ = !visible_; }
     bool visible() const { return visible_; }
@@ -92,7 +95,9 @@ public:
 
 private:
     // --- Layout ---
-    void layout_nodes();
+    void layout_nodes(bool force = false);
+    void place_new_nodes();
+    void prune_node_rects();
     void recompute_ports(NodeRect& rect, const NodeSnapshot& ns);
 
     // --- Drawing (node_graph_draw.cpp) ---
@@ -106,9 +111,11 @@ private:
     void draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_adsr_preview(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_drum_grid(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_chooser(Renderer2D& tr);
     void draw_preview_wire(Renderer2D& tr);
+    void draw_box_select(Renderer2D& tr);
     void draw_wire_tooltip(Renderer2D& tr);
     void draw_inspector_scrollbar(Renderer2D& tr);
     void draw_midi_map_banner(Renderer2D& tr);
@@ -126,6 +133,7 @@ private:
 
     // --- Chooser ---
     void rebuild_chooser_items();
+    void confirm_chooser_selection(const std::string& type);
 
     // --- Hit testing ---
     int hit_test_node(float mx, float my) const;
@@ -176,6 +184,7 @@ private:
     void update_wire_hover();
     void update_sparklines();
     void update_scrollbar_drag();
+    void update_box_select();
 
     // --- Input handling (node_graph_input.cpp) ---
     void handle_right_click();
@@ -201,16 +210,26 @@ private:
     GraphSnapshot snap_;
     bool snap_valid_ = false;
     MouseState mouse_;
-    std::string selected_node_id_;
+    std::unordered_set<std::string> selected_node_ids_;
     std::vector<NodeRect> node_rects_;
 
     // Track topology version to re-layout on changes
     size_t last_node_count_ = 0;
     size_t last_conn_count_ = 0;
+    bool first_layout_done_ = false;
 
     // Node drag state
     int dragging_node_idx_ = -1;
     float drag_offset_x_ = 0, drag_offset_y_ = 0;
+
+    // Group drag state
+    struct DragOffset { float dx, dy; };
+    std::unordered_map<std::string, DragOffset> group_drag_offsets_;
+
+    // Box-select state
+    bool box_selecting_ = false;
+    float box_start_gx_ = 0, box_start_gy_ = 0;
+    bool box_shift_held_ = false;
 
     // Wire drag state
     bool dragging_wire_ = false;
@@ -243,6 +262,7 @@ private:
     std::vector<InspectorRect> value_text_rects_;
     std::vector<InspectorRect> dropdown_rects_;
     std::vector<InspectorRect> file_button_rects_;
+    std::vector<InspectorRect> drum_grid_rects_;
 
     struct ResolutionRect { float x, y, w, h; std::string node_id; bool is_width; };
     std::vector<ResolutionRect> resolution_rects_;
@@ -296,6 +316,12 @@ private:
     std::vector<std::string> chooser_items_;
     float chooser_cursor_gx_ = 0, chooser_cursor_gy_ = 0;
 
+    // Insert-on-wire state (chooser opened from wire context menu)
+    bool chooser_insert_wire_ = false;
+    ConnectionSnapshot chooser_insert_conn_;
+    VividPortType insert_wire_source_type_ = VIVID_PORT_CONTROL_FLOAT;
+    VividPortType insert_wire_dest_type_ = VIVID_PORT_CONTROL_FLOAT;
+
     // Right-click context menu state
     bool context_menu_open_ = false;
     float context_menu_x_ = 0, context_menu_y_ = 0;  // screen space
@@ -303,6 +329,7 @@ private:
     std::string context_node_type_; // type of context node (for duplicate filter)
     bool context_node_has_shader_ = false;  // true if node is a shader-based filter
     int context_wire_idx_ = -1;     // >= 0 if wire menu
+    bool context_bg_menu_ = false;  // true if background menu (no node/wire)
     int hovered_wire_idx_ = -1;
 
     // Inspector scroll state

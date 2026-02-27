@@ -22,7 +22,7 @@ using vivid::format_uint;
 void NodeGraphUI::draw_graph(Renderer2D& tr) {
     for (size_t i = 0; i < node_rects_.size(); ++i) {
         const auto& r = node_rects_[i];
-        bool selected = (r.node_id == selected_node_id_);
+        bool selected = selected_node_ids_.count(r.node_id) > 0;
         const float* bg = selected ? style_.node_sel_bg.data() : style_.node_bg.data();
         bool node_errored = (i < snap_.nodes.size() && snap_.nodes[i].errored);
         const float* dcol = node_errored ? kErrorAccent.data() : domain_color(r.domain);
@@ -236,7 +236,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
 
         // Domain-colored wires (source node's accent color)
         const float* dcol = domain_color(from_rect.domain);
-        bool sel = (c.from_node == selected_node_id_ || c.to_node == selected_node_id_);
+        bool sel = selected_node_ids_.count(c.from_node) > 0 || selected_node_ids_.count(c.to_node) > 0;
         bool hov = (ci == hovered_wire_idx_);
         float brightness = (hov || sel) ? kWireHoverBright : 1.0f;
         float cr = std::min(1.0f, dcol[0] * brightness);
@@ -355,25 +355,40 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     value_text_rects_.clear();
     dropdown_rects_.clear();
     file_button_rects_.clear();
+    drum_grid_rects_.clear();
     resolution_rects_.clear();
     midi_remove_rects_.clear();
     midi_range_rects_.clear();
 
-    if (selected_node_id_.empty()) return;
-
-    // Reset scroll when selection changes
-    if (selected_node_id_ != insp_scroll_node_id_) {
-        insp_scroll_y_ = 0.0f;
-        insp_scroll_node_id_ = selected_node_id_;
-    }
+    if (selected_node_ids_.empty()) return;
 
     // Inspector background + separator (drawn outside clip rect)
     float insp_x = inspector_x();
     tr.draw_rect(insp_x, 0, kInspectorW, static_cast<float>(h), style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.95f);
     tr.draw_rect(insp_x, 0, 2, static_cast<float>(h), style_.separator[0], style_.separator[1], style_.separator[2]);
 
+    // Multi-selection summary panel
+    if (selected_node_ids_.size() > 1) {
+        float px = insp_x + kInspPadX;
+        float py = kPerfBarH + 8;
+        std::string label = std::to_string(selected_node_ids_.size()) + " nodes selected";
+        tr.draw_text(px, py, label.c_str(), 1.0f, 1.0f, 1.0f);
+        py += kLineH + 4;
+        tr.draw_text(px, py, "Delete / Backspace to remove", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        insp_content_h_ = 0;
+        return;
+    }
+
+    const auto& sel_id = single_selected_id();
+
+    // Reset scroll when selection changes
+    if (sel_id != insp_scroll_node_id_) {
+        insp_scroll_y_ = 0.0f;
+        insp_scroll_node_id_ = sel_id;
+    }
+
     // Find the selected node in snapshot
-    const auto* sel_node = snap_.find_node(selected_node_id_);
+    const auto* sel_node = snap_.find_node(sel_id);
     if (!sel_node || !sel_node->op_info) {
         tr.draw_text(insp_x + kInspPadX, 20, "Node not found", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         return;
@@ -404,6 +419,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_inspector_params(tr, *sel_node, px, py);
     draw_inspector_adsr_preview(tr, *sel_node, px, py);
     draw_inspector_note_pattern(tr, *sel_node, px, py);
+    draw_inspector_drum_grid(tr, *sel_node, px, py);
     draw_inspector_resolution(tr, *sel_node, px, py);
     draw_inspector_outputs(tr, *sel_node, px, py);
 
@@ -470,7 +486,7 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
     const auto& op = *node.op_info;
     tr.draw_text(px, py, op.name.c_str(), 1.0f, 1.0f, 1.0f);
     py += kLineH;
-    tr.draw_text(px, py, selected_node_id_.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    tr.draw_text(px, py, single_selected_id().c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH + 8;
 
     // Separator
@@ -490,7 +506,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
     std::string conn_from_node, conn_from_port;
     bool is_connected = false;
     for (const auto& c : snap_.connections) {
-        if (c.to_node == selected_node_id_ && c.to_port == pd.name) {
+        if (c.to_node == single_selected_id() && c.to_port == pd.name) {
             is_connected = true;
             conn_from_node = c.from_node;
             conn_from_port = c.from_port;
@@ -500,11 +516,11 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
     }
 
     bool is_editing_this = editing_param_ &&
-                           edit_node_id_ == selected_node_id_ &&
+                           edit_node_id_ == single_selected_id() &&
                            edit_param_name_ == pd.name;
 
     // CC badge (if this param has a MIDI mapping)
-    const auto* midi_mm = snap_.find_midi_mapping(selected_node_id_, pd.name);
+    const auto* midi_mm = snap_.find_midi_mapping(single_selected_id(), pd.name);
 
     // Label (dimmed if driven by connection)
     if (is_connected)
@@ -524,7 +540,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
     }
 
     // "Waiting" highlight (pulsing blue outline)
-    if (midi_map_waiting_ && midi_map_node_id_ == selected_node_id_ &&
+    if (midi_map_waiting_ && midi_map_node_id_ == single_selected_id() &&
         midi_map_param_name_ == pd.name) {
         float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(perf_frame_counter_) * 0.15f);
         tr.draw_rect(px - 2, py - 2, panel_w + 4, kLineH + 4,
@@ -560,7 +576,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         tr.draw_text(px + 6, py + 1, truncated.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         file_button_rects_.push_back({px, py, panel_w, btn_h,
-                                      selected_node_id_, pd.name});
+                                      single_selected_id(), pd.name});
         py += btn_h + 6;
         return;
     }
@@ -601,7 +617,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
             tr.draw_text(val_x, py, val_str.c_str(), 0.8f, 0.82f, 0.85f);
         if (pd.type != VIVID_PARAM_BOOL && pd.choice_count == 0) {
             value_text_rects_.push_back({val_x, val_y, vw, kLineH,
-                                         selected_node_id_, pd.name});
+                                         single_selected_id(), pd.name});
         }
     }
     py += kLineH;
@@ -614,7 +630,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
             tr.draw_rect(bx + 2, by + 2, kCheckboxSize - 4, kCheckboxSize - 4,
                          style_.accent[0], style_.accent[1], style_.accent[2], check_a);
         }
-        bool_rects_.push_back({bx, by, kCheckboxSize, kCheckboxSize, selected_node_id_, pd.name});
+        bool_rects_.push_back({bx, by, kCheckboxSize, kCheckboxSize, single_selected_id(), pd.name});
         py += kCheckboxSize + 6;
     } else if (pd.choice_count > 0) {
         float dx = px, dy = py;
@@ -629,7 +645,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
             tr.draw_text(dx + 6, dy + 1, label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         float arrow_x = dx + dw - 16;
         tr.draw_text(arrow_x, dy + 1, "\xE2\x96\xBE", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-        dropdown_rects_.push_back({dx, dy, dw, dh, selected_node_id_, pd.name});
+        dropdown_rects_.push_back({dx, dy, dw, dh, single_selected_id(), pd.name});
         py += dh + 6;
     } else {
         float sx = px, sy = py;
@@ -661,7 +677,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
             float thumb_x = sx + sw * t - 3;
             tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, style_.accent[0], style_.accent[1], style_.accent[2]);
         }
-        slider_rects_.push_back({sx, sy - 4, sw, sh + 8, selected_node_id_, pd.name});
+        slider_rects_.push_back({sx, sy - 4, sw, sh + 8, single_selected_id(), pd.name});
         py += sh + 10;
     }
 
@@ -678,11 +694,11 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float field_w = 50.0f;
 
         bool is_editing_min = editing_midi_range_ &&
-                              midi_range_node_id_ == selected_node_id_ &&
+                              midi_range_node_id_ == single_selected_id() &&
                               midi_range_param_name_ == pd.name &&
                               midi_range_editing_min_;
         bool is_editing_max = editing_midi_range_ &&
-                              midi_range_node_id_ == selected_node_id_ &&
+                              midi_range_node_id_ == single_selected_id() &&
                               midi_range_param_name_ == pd.name &&
                               !midi_range_editing_min_;
 
@@ -702,7 +718,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
             tr.draw_text(min_x + 2, row_y, min_str.c_str(), 0.8f, 0.82f, 0.85f);
         }
         midi_range_rects_.push_back({min_x, row_y, field_w, kMidiRangeH,
-                                     selected_node_id_, pd.name, true});
+                                     single_selected_id(), pd.name, true});
 
         // "max" label
         float max_label_x = min_x + field_w + 10;
@@ -721,14 +737,14 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
             tr.draw_text(max_x + 2, row_y, max_str.c_str(), 0.8f, 0.82f, 0.85f);
         }
         midi_range_rects_.push_back({max_x, row_y, field_w, kMidiRangeH,
-                                     selected_node_id_, pd.name, false});
+                                     single_selected_id(), pd.name, false});
 
         // "x" remove button
         float remove_x = max_x + field_w + 8;
         tr.draw_rect(remove_x, row_y, 16, kMidiRangeH - 2, 0.5f, 0.2f, 0.2f, 0.8f);
         tr.draw_text(remove_x + 3, row_y, "x", 0.9f, 0.6f, 0.6f);
         midi_remove_rects_.push_back({remove_x, row_y, 16, kMidiRangeH,
-                                      selected_node_id_, pd.name});
+                                      single_selected_id(), pd.name});
 
         py += kMidiRangeH + 4;
     }
@@ -737,6 +753,47 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
 void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node,
                                         float px, float& py) {
     const auto& op = *node.op_info;
+
+    // Detect DrumSequencer: has "kick_0" + "snare_0" + "hat_0"
+    auto kick0_it = node.param_indices.find("kick_0");
+    auto snare0_it = node.param_indices.find("snare_0");
+    auto hat0_it = node.param_indices.find("hat_0");
+    bool is_drum_seq = (kick0_it != node.param_indices.end() &&
+                        snare0_it != node.param_indices.end() &&
+                        hat0_it != node.param_indices.end());
+
+    if (is_drum_seq) {
+        // Draw steps and swing normally, skip all 96 grid params
+        auto ds_steps_it = node.param_indices.find("steps");
+        auto ds_swing_it = node.param_indices.find("swing");
+        if (ds_steps_it != node.param_indices.end())
+            draw_one_inspector_param(tr, node, px, py, ds_steps_it->second);
+        if (ds_swing_it != node.param_indices.end())
+            draw_one_inspector_param(tr, node, px, py, ds_swing_it->second);
+
+        // Build skip set for the 96 grid params
+        std::unordered_set<uint32_t> grid_params;
+        static const char* kDrumPrefixes[] = {"kick_", "snare_", "hat_", "oh_", "clap_", "tom_"};
+        for (const char* prefix : kDrumPrefixes) {
+            for (int s = 0; s < 16; ++s) {
+                std::string name = std::string(prefix) + std::to_string(s);
+                auto it = node.param_indices.find(name);
+                if (it != node.param_indices.end())
+                    grid_params.insert(it->second);
+            }
+        }
+        if (ds_steps_it != node.param_indices.end())
+            grid_params.insert(ds_steps_it->second);
+        if (ds_swing_it != node.param_indices.end())
+            grid_params.insert(ds_swing_it->second);
+
+        // Draw remaining params, skipping grid params
+        for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
+            if (grid_params.count(pi)) continue;
+            draw_one_inspector_param(tr, node, px, py, pi);
+        }
+        return;
+    }
 
     // Detect NotePattern: has "steps" + "root_0".."root_7" + "type_0".."type_7"
     auto steps_it = node.param_indices.find("steps");
@@ -790,7 +847,7 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                     tr.draw_text(arrow_x, py + 1, "\xE2\x96\xBE",
                                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
                     dropdown_rects_.push_back({dx, py, dw, kDropdownH,
-                                               selected_node_id_, pd.name});
+                                               single_selected_id(), pd.name});
                 };
 
                 draw_half_dropdown(root_base + s, px, half_w);
@@ -1043,6 +1100,109 @@ void NodeGraphUI::draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot
     py += h + 4;
 }
 
+void NodeGraphUI::draw_inspector_drum_grid(Renderer2D& tr, const NodeSnapshot& node,
+                                           float px, float& py) {
+    // Only draw if this is a DrumSequencer (has kick_0, snare_0, hat_0)
+    auto kick0_it = node.param_indices.find("kick_0");
+    auto snare0_it = node.param_indices.find("snare_0");
+    auto hat0_it = node.param_indices.find("hat_0");
+    if (kick0_it == node.param_indices.end() ||
+        snare0_it == node.param_indices.end() ||
+        hat0_it == node.param_indices.end())
+        return;
+
+    // Read steps param
+    auto steps_it = node.param_indices.find("steps");
+    int num_steps = 16;
+    if (steps_it != node.param_indices.end())
+        num_steps = std::max(1, std::min(16, static_cast<int>(node.param_values[steps_it->second])));
+
+    // Detect current step from "step" output port
+    int current_step = -1;
+    auto step_out_it = node.output_port_indices.find("step");
+    if (step_out_it != node.output_port_indices.end()) {
+        uint32_t pidx = step_out_it->second;
+        if (pidx < node.output_values.size())
+            current_step = static_cast<int>(node.output_values[pidx]);
+    }
+
+    // Drum row config: prefix, label, color
+    static const char* kDrumPrefix[] = {"kick_", "snare_", "hat_", "oh_", "clap_", "tom_"};
+    static const char* kDrumLabel[]  = {"KK", "SN", "CH", "OH", "CP", "TM"};
+    static constexpr std::array<float, 3> kDrumColors[6] = {
+        {0.86f, 0.31f, 0.31f},  // kick — red
+        {0.86f, 0.75f, 0.24f},  // snare — gold
+        {0.24f, 0.78f, 0.71f},  // hat — teal
+        {0.31f, 0.51f, 0.86f},  // oh — blue
+        {0.63f, 0.35f, 0.78f},  // clap — purple
+        {0.31f, 0.78f, 0.39f},  // tom — green
+    };
+
+    // Layout
+    float panel_w = kInspContentW;
+    float label_w = 28.0f;
+    float grid_w = panel_w - label_w;
+    float cell_w = grid_w / 16.0f;
+    float cell_h = 14.0f;
+    float cell_pad = 2.0f;
+    float grid_h = 6.0f * cell_h;
+    float total_h = grid_h + 8.0f;  // padding
+
+    py += 4;
+
+    // Dark background
+    tr.draw_rect(px, py, panel_w, total_h, style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
+
+    float grid_x = px + label_w;
+    float grid_y = py + 4.0f;
+
+    // Current step column highlight (full height)
+    if (current_step >= 0 && current_step < num_steps) {
+        float hx = grid_x + current_step * cell_w;
+        tr.draw_rect(hx, grid_y, cell_w, grid_h,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.15f);
+    }
+
+    // Beat group separators (every 4 steps)
+    for (int b = 1; b < 4; ++b) {
+        float sx = grid_x + b * 4 * cell_w;
+        tr.draw_rect(sx - 0.5f, grid_y, 1.0f, grid_h,
+                     style_.separator[0], style_.separator[1], style_.separator[2], 0.6f);
+    }
+
+    for (int drum = 0; drum < 6; ++drum) {
+        float row_y = grid_y + drum * cell_h;
+
+        // Row label
+        tr.draw_text(px + 2, row_y + 1, kDrumLabel[drum],
+                     kDrumColors[drum][0], kDrumColors[drum][1], kDrumColors[drum][2], 0.8f);
+
+        for (int s = 0; s < 16; ++s) {
+            float cx = grid_x + s * cell_w;
+            std::string param_name = std::string(kDrumPrefix[drum]) + std::to_string(s);
+            auto pit = node.param_indices.find(param_name);
+            bool active = false;
+            if (pit != node.param_indices.end())
+                active = node.param_values[pit->second] > 0.5f;
+
+            bool beyond_steps = (s >= num_steps);
+
+            if (active) {
+                float alpha = beyond_steps ? 0.25f : 0.9f;
+                tr.draw_rect(cx + cell_pad, row_y + cell_pad,
+                             cell_w - 2 * cell_pad, cell_h - 2 * cell_pad,
+                             kDrumColors[drum][0], kDrumColors[drum][1], kDrumColors[drum][2], alpha);
+            }
+
+            // Push hit rect for click handling
+            drum_grid_rects_.push_back({cx, row_y, cell_w, cell_h,
+                                        single_selected_id(), param_name});
+        }
+    }
+
+    py += total_h + 4;
+}
+
 void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node,
                                             float px, float& py) {
     if (!node.is_gpu || node.gpu_tex_width == 0 || node.gpu_tex_height == 0)
@@ -1059,9 +1219,9 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
     py += kLineH;
 
     bool editing_w = editing_resolution_ &&
-                     edit_res_node_id_ == selected_node_id_ && edit_res_is_width_;
+                     edit_res_node_id_ == single_selected_id() && edit_res_is_width_;
     bool editing_h = editing_resolution_ &&
-                     edit_res_node_id_ == selected_node_id_ && !edit_res_is_width_;
+                     edit_res_node_id_ == single_selected_id() && !edit_res_is_width_;
 
     std::string w_str = editing_w ? (edit_buffer_ + "_") : format_uint(node.gpu_tex_width);
     std::string h_str = editing_h ? (edit_buffer_ + "_") : format_uint(node.gpu_tex_height);
@@ -1077,7 +1237,7 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
                      editing_w ? 1.0f : 0.82f,
                      editing_w ? 1.0f : 0.85f);
         resolution_rects_.push_back({val_x, py, kResInputW, kLineH,
-                                     selected_node_id_, true});
+                                     single_selected_id(), true});
     } else {
         tr.draw_text(val_x, py, w_str.c_str(), 0.5f, 0.52f, 0.55f);
     }
@@ -1095,7 +1255,7 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
                      editing_h ? 1.0f : 0.82f,
                      editing_h ? 1.0f : 0.85f);
         resolution_rects_.push_back({h_val_x, py, kResInputW, kLineH,
-                                     selected_node_id_, false});
+                                     single_selected_id(), false});
     } else {
         tr.draw_text(h_val_x, py, h_str.c_str(), 0.5f, 0.52f, 0.55f);
     }
@@ -1139,6 +1299,27 @@ void NodeGraphUI::draw_preview_wire(Renderer2D& tr) {
         [&](float x0, float y0, float x1, float y1) {
             tr.draw_line(x0, y0, x1, y1, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
         });
+}
+
+void NodeGraphUI::draw_box_select(Renderer2D& tr) {
+    if (!box_selecting_) return;
+    // Convert graph-space rect to screen-space
+    float cur_gx = sx_to_gx(mouse_.x);
+    float cur_gy = sy_to_gy(mouse_.y);
+    float sx0 = gx_to_sx(std::min(box_start_gx_, cur_gx));
+    float sy0 = gy_to_sy(std::min(box_start_gy_, cur_gy));
+    float sx1 = gx_to_sx(std::max(box_start_gx_, cur_gx));
+    float sy1 = gy_to_sy(std::max(box_start_gy_, cur_gy));
+    float sw = sx1 - sx0;
+    float sh = sy1 - sy0;
+    // Semi-transparent fill
+    tr.draw_rect(sx0, sy0, sw, sh, style_.accent[0], style_.accent[1], style_.accent[2], 0.12f);
+    // Border
+    float bw = 1.0f;
+    tr.draw_rect(sx0, sy0, sw, bw, style_.accent[0], style_.accent[1], style_.accent[2], 0.6f); // top
+    tr.draw_rect(sx0, sy1 - bw, sw, bw, style_.accent[0], style_.accent[1], style_.accent[2], 0.6f); // bottom
+    tr.draw_rect(sx0, sy0, bw, sh, style_.accent[0], style_.accent[1], style_.accent[2], 0.6f); // left
+    tr.draw_rect(sx1 - bw, sy0, bw, sh, style_.accent[0], style_.accent[1], style_.accent[2], 0.6f); // right
 }
 
 void NodeGraphUI::draw_chooser(Renderer2D& tr) {
@@ -1195,6 +1376,27 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
     if (chooser_items_.empty()) {
         tr.draw_text(px + 8, iy + 3, "no matches", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     }
+
+    // Scrollbar when items overflow
+    int total_items = static_cast<int>(chooser_items_.size());
+    if (total_items > kChooserMaxVisible) {
+        float track_x = px + kChooserW - kInspScrollbarW - 2.0f;
+        float track_y = iy;
+        float track_h = visible * kChooserItemH;
+
+        // Track background
+        tr.draw_rect(track_x, track_y, kInspScrollbarW, track_h,
+                     style_.scrollbar_track[0], style_.scrollbar_track[1], style_.scrollbar_track[2], 0.5f);
+
+        // Thumb
+        float ratio = static_cast<float>(kChooserMaxVisible) / static_cast<float>(total_items);
+        float thumb_h = std::max(kInspScrollbarMinThumb, track_h * ratio);
+        int max_scroll = total_items - kChooserMaxVisible;
+        float scroll_ratio = (max_scroll > 0) ? static_cast<float>(chooser_scroll_) / static_cast<float>(max_scroll) : 0.0f;
+        float thumb_y = track_y + scroll_ratio * (track_h - thumb_h);
+        tr.draw_rect(track_x, thumb_y, kInspScrollbarW, thumb_h,
+                     style_.scrollbar_thumb[0], style_.scrollbar_thumb[1], style_.scrollbar_thumb[2], 0.6f);
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -1238,13 +1440,10 @@ void NodeGraphUI::draw_grid(Renderer2D& tr) {
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     if (!visible_) return;
-    bool size_changed = (w != win_w_ || h != win_h_);
     win_w_ = w;
     win_h_ = h;
 
     if (node_rects_.empty() && !snap_.nodes.empty()) {
-        layout_nodes();
-    } else if (size_changed && !node_rects_.empty()) {
         layout_nodes();
     }
 
@@ -1258,9 +1457,8 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_graph(tr);
     draw_connections(tr);
     draw_preview_wire(tr);
+    draw_box_select(tr);
     draw_wire_tooltip(tr);
-
-    draw_inspector(tr, w, h);
 }
 
 // -----------------------------------------------------------------------
@@ -1268,6 +1466,9 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
 // popups (context menu, dropdown) appear on top of everything.
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_overlays(Renderer2D& tr) {
+    // Inspector — drawn in overlay pass so it paints over GPU thumbnails
+    draw_inspector(tr, win_w_, win_h_);
+
     // Operator chooser — drawn here (overlay pass) so it appears above GPU thumbnails
     draw_chooser(tr);
 
@@ -1297,6 +1498,8 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
         int item_count = 1;
         if (!context_node_id_.empty() && context_node_has_shader_)
             item_count = 2;
+        if (context_wire_idx_ >= 0)
+            item_count = 2;
 
         float menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
         float mx = context_menu_x_, my = context_menu_y_;
@@ -1307,12 +1510,21 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
         tr.draw_rect(mx, my, kCtxMenuW, 1, style_.accent[0], style_.accent[1], style_.accent[2]);
 
         // Item labels
-        const char* labels[2];
-        if (!context_node_id_.empty()) {
-            labels[0] = "Delete Node";
+        std::string delete_label;
+        const char* labels[3];
+        if (context_bg_menu_) {
+            labels[0] = "Re-layout All";
+        } else if (!context_node_id_.empty()) {
+            if (selected_node_ids_.count(context_node_id_) && selected_node_ids_.size() > 1) {
+                delete_label = "Delete " + std::to_string(selected_node_ids_.size()) + " Nodes";
+                labels[0] = delete_label.c_str();
+            } else {
+                labels[0] = "Delete Node";
+            }
             labels[1] = "Clone & Edit";
         } else {
             labels[0] = "Delete Wire";
+            labels[1] = "Insert Node";
         }
 
         for (int i = 0; i < item_count; ++i) {

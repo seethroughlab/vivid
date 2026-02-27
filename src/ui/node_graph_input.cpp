@@ -13,6 +13,23 @@ using vivid::format_float;
 using vivid::format_int;
 using vivid::format_uint;
 
+// Resolve the VividPortType for a given port on a node
+static VividPortType resolve_port_type(const GraphSnapshot& snap,
+                                       const std::string& node_id,
+                                       const std::string& port_name,
+                                       bool is_output) {
+    const auto* ns = snap.find_node(node_id);
+    if (!ns || !ns->op_info) return VIVID_PORT_CONTROL_FLOAT;
+    for (const auto& p : ns->op_info->ports) {
+        if (p.name == port_name &&
+            ((is_output && p.direction == VIVID_PORT_OUTPUT) ||
+             (!is_output && p.direction == VIVID_PORT_INPUT)))
+            return p.type;
+    }
+    // If not found in ports, it's a param input — control float
+    return VIVID_PORT_CONTROL_FLOAT;
+}
+
 // -----------------------------------------------------------------------
 // GLFW callbacks
 // -----------------------------------------------------------------------
@@ -21,7 +38,8 @@ void NodeGraphUI::on_mouse_move(float x, float y) {
     mouse_.y = y;
 }
 
-void NodeGraphUI::on_mouse_button(int button, int action) {
+void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
+    mouse_.shift_down = (mods & GLFW_MOD_SHIFT) != 0;
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
             mouse_.left_down = true;
@@ -48,6 +66,21 @@ void NodeGraphUI::on_mouse_button(int button, int action) {
 }
 
 void NodeGraphUI::on_scroll(float /*x_offset*/, float y_offset) {
+    // Chooser scroll when cursor is over the chooser panel
+    if (chooser_open_) {
+        float px = chooser_x();
+        float panel_top = kChooserY;
+        int visible = std::min(static_cast<int>(chooser_items_.size()), kChooserMaxVisible);
+        float panel_h = kChooserHeaderH + visible * kChooserItemH + 4;
+        if (mouse_.x >= px && mouse_.x <= px + kChooserW &&
+            mouse_.y >= panel_top && mouse_.y <= panel_top + panel_h) {
+            chooser_scroll_ -= static_cast<int>(y_offset);
+            int max_scroll = std::max(0, static_cast<int>(chooser_items_.size()) - kChooserMaxVisible);
+            chooser_scroll_ = std::max(0, std::min(chooser_scroll_, max_scroll));
+            return;
+        }
+    }
+
     // Inspector scroll when cursor is in inspector area
     if (mouse_.x >= graph_right() && has_selection()) {
         insp_scroll_y_ -= y_offset * kInspScrollSpeed;
@@ -173,11 +206,13 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
                 editing_midi_range_ = false;
             }
         }
-        // Delete selected node (Delete or Backspace)
+        // Delete selected nodes (Delete or Backspace)
         if ((key == GLFW_KEY_DELETE || key == GLFW_KEY_BACKSPACE) && action == GLFW_PRESS) {
-            if (!selected_node_id_.empty()) {
-                commands_.remove_node(selected_node_id_);
-                selected_node_id_.clear();
+            if (!selected_node_ids_.empty()) {
+                auto ids_copy = selected_node_ids_;
+                for (const auto& id : ids_copy)
+                    commands_.remove_node(id);
+                selected_node_ids_.clear();
             }
         }
         return;
@@ -187,22 +222,17 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
     switch (key) {
         case GLFW_KEY_ESCAPE:
             chooser_open_ = false;
+            chooser_insert_wire_ = false;
             break;
 
         case GLFW_KEY_ENTER: {
             if (!chooser_items_.empty() && chooser_sel_ >= 0 &&
                 chooser_sel_ < static_cast<int>(chooser_items_.size())) {
-                const std::string& type = chooser_items_[chooser_sel_];
-                std::string id;
-                for (int n = 1; ; ++n) {
-                    id = type + std::to_string(n);
-                    if (!snap_.has_node(id)) break;
-                }
-                commands_.add_node(type, id);
-                commands_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
-                selected_node_id_ = id;
+                confirm_chooser_selection(chooser_items_[chooser_sel_]);
+            } else {
+                chooser_insert_wire_ = false;
+                chooser_open_ = false;
             }
-            chooser_open_ = false;
             break;
         }
 
@@ -321,7 +351,9 @@ void NodeGraphUI::update_context_menu() {
     if (context_menu_open_ && mouse_.left_clicked) {
         int item_count = 1;  // "Delete Node" or "Delete Wire"
         if (!context_node_id_.empty() && context_node_has_shader_)
-            item_count = 2;  // + "Duplicate Filter"
+            item_count = 2;  // + "Clone & Edit"
+        if (context_wire_idx_ >= 0)
+            item_count = 2;  // + "Insert Node"
 
         float menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
         if (mouse_.x >= context_menu_x_ && mouse_.x <= context_menu_x_ + kCtxMenuW &&
@@ -332,11 +364,23 @@ void NodeGraphUI::update_context_menu() {
             if (clicked_item < 0) clicked_item = 0;
             if (clicked_item >= item_count) clicked_item = item_count - 1;
 
-            if (!context_node_id_.empty()) {
+            if (context_bg_menu_) {
                 if (clicked_item == 0) {
-                    // "Delete Node"
-                    commands_.remove_node(context_node_id_);
-                    if (selected_node_id_ == context_node_id_) selected_node_id_.clear();
+                    // "Re-layout All" — force ignores saved positions
+                    layout_nodes(/*force=*/true);
+                }
+            } else if (!context_node_id_.empty()) {
+                if (clicked_item == 0) {
+                    // "Delete Node(s)"
+                    if (selected_node_ids_.count(context_node_id_) && selected_node_ids_.size() > 1) {
+                        auto ids_copy = selected_node_ids_;
+                        for (const auto& id : ids_copy)
+                            commands_.remove_node(id);
+                        selected_node_ids_.clear();
+                    } else {
+                        commands_.remove_node(context_node_id_);
+                        selected_node_ids_.erase(context_node_id_);
+                    }
                 } else if (clicked_item == 1 && context_node_has_shader_) {
                     // "Clone & Edit"
                     commands_.clone_and_edit(context_node_type_);
@@ -345,8 +389,22 @@ void NodeGraphUI::update_context_menu() {
                 const auto& conns = snap_.connections;
                 if (context_wire_idx_ < static_cast<int>(conns.size())) {
                     const auto& c = conns[context_wire_idx_];
-                    commands_.disconnect(c.from_node + "/" + c.from_port,
-                                    c.to_node + "/" + c.to_port);
+                    if (clicked_item == 0) {
+                        // "Delete Wire"
+                        commands_.disconnect(c.from_node + "/" + c.from_port,
+                                        c.to_node + "/" + c.to_port);
+                    } else if (clicked_item == 1) {
+                        // "Insert Node" — open chooser filtered to compatible types
+                        insert_wire_source_type_ = resolve_port_type(snap_, c.from_node, c.from_port, true);
+                        insert_wire_dest_type_   = resolve_port_type(snap_, c.to_node, c.to_port, false);
+                        chooser_insert_conn_ = c;
+                        chooser_insert_wire_ = true;
+                        chooser_cursor_gx_ = sx_to_gx(context_menu_x_);
+                        chooser_cursor_gy_ = sy_to_gy(context_menu_y_);
+                        chooser_filter_.clear();
+                        rebuild_chooser_items();
+                        chooser_open_ = true;
+                    }
                 }
             }
             context_menu_open_ = false;
@@ -369,6 +427,7 @@ void NodeGraphUI::handle_right_click() {
     context_menu_open_ = false;
     context_node_has_shader_ = false;
     context_node_type_.clear();
+    context_bg_menu_ = false;
     int ni = hit_test_node(mouse_.x, mouse_.y);
     if (ni >= 0) {
         context_menu_open_ = true;
@@ -387,6 +446,14 @@ void NodeGraphUI::handle_right_click() {
             context_menu_open_ = true;
             context_node_id_.clear();
             context_wire_idx_ = wi;
+            context_menu_x_ = mouse_.x;
+            context_menu_y_ = mouse_.y;
+        } else if (mouse_.x < graph_right()) {
+            // Right-click on empty canvas — background menu
+            context_menu_open_ = true;
+            context_node_id_.clear();
+            context_wire_idx_ = -1;
+            context_bg_menu_ = true;
             context_menu_x_ = mouse_.x;
             context_menu_y_ = mouse_.y;
         }
@@ -416,17 +483,13 @@ bool NodeGraphUI::handle_chooser_click() {
         !chooser_items_.empty()) {
         int idx = chooser_scroll_ + static_cast<int>((mouse_.y - items_y) / kChooserItemH);
         if (idx >= 0 && idx < static_cast<int>(chooser_items_.size())) {
-            const std::string& type = chooser_items_[idx];
-            std::string id;
-            for (int n = 1; ; ++n) {
-                id = type + std::to_string(n);
-                if (!snap_.has_node(id)) break;
-            }
-            commands_.add_node(type, id);
-            commands_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
-            selected_node_id_ = id;
+            confirm_chooser_selection(chooser_items_[idx]);
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return true;
         }
     }
+    chooser_insert_wire_ = false;
     chooser_open_ = false;
     mouse_.left_clicked = false;
     mouse_.left_released = false;
@@ -507,6 +570,7 @@ bool NodeGraphUI::handle_inspector_click() {
         if (check_param_rect(value_text_rects_)) return true;
         if (check_param_rect(bool_rects_)) return true;
         if (check_param_rect(dropdown_rects_)) return true;
+        if (check_param_rect(drum_grid_rects_)) return true;
 
         return true; // Consume all inspector clicks in MIDI map mode
     }
@@ -636,6 +700,22 @@ bool NodeGraphUI::handle_inspector_click() {
         return true;
     }
 
+    // Check drum grid cell toggle
+    int dgi = hit_test_rect(drum_grid_rects_, mouse_.x, mouse_.y);
+    if (dgi >= 0) {
+        const auto& dr = drum_grid_rects_[dgi];
+        const auto* ns = snap_.find_node(dr.node_id);
+        if (ns) {
+            auto it = ns->param_indices.find(dr.param_name);
+            if (it != ns->param_indices.end()) {
+                float cur = ns->param_values[it->second];
+                commands_.set_param(dr.node_id, dr.param_name,
+                               cur > 0.5f ? 0.0f : 1.0f);
+            }
+        }
+        return true;
+    }
+
     return true;  // Click was in inspector area, consume it
 }
 
@@ -671,9 +751,10 @@ void NodeGraphUI::handle_graph_click() {
     } else {
         int ni = hit_test_node(mouse_.x, mouse_.y);
         if (ni >= 0) {
+            std::string node_id = node_rects_[ni].node_id;
+
             // Double-click detection: open/clone operator
             double now = glfwGetTime();
-            std::string node_id = node_rects_[ni].node_id;
             if (node_id == last_click_node_id_ && (now - last_click_time_) < 0.3) {
                 const std::string& type_name = node_rects_[ni].type_name;
                 auto cat_it = snap_.operator_catalog.find(type_name);
@@ -691,18 +772,45 @@ void NodeGraphUI::handle_graph_click() {
                 last_click_time_ = now;
             }
 
-            selected_node_id_ = node_id;
-            dragging_node_idx_ = ni;
-            drag_offset_x_ = sx_to_gx(mouse_.x) - node_rects_[ni].x;
-            drag_offset_y_ = sy_to_gy(mouse_.y) - node_rects_[ni].y;
+            if (mouse_.shift_down) {
+                // Shift-click: toggle node in/out of selection, no drag
+                if (selected_node_ids_.count(node_id))
+                    selected_node_ids_.erase(node_id);
+                else
+                    selected_node_ids_.insert(node_id);
+            } else if (selected_node_ids_.count(node_id)) {
+                // Already selected: keep selection, begin group drag
+                dragging_node_idx_ = ni;
+                drag_offset_x_ = sx_to_gx(mouse_.x) - node_rects_[ni].x;
+                drag_offset_y_ = sy_to_gy(mouse_.y) - node_rects_[ni].y;
+                // Compute per-node offsets for group drag
+                group_drag_offsets_.clear();
+                float mgx = sx_to_gx(mouse_.x);
+                float mgy = sy_to_gy(mouse_.y);
+                for (const auto& sel_id : selected_node_ids_) {
+                    for (const auto& r : node_rects_) {
+                        if (r.node_id == sel_id) {
+                            group_drag_offsets_[sel_id] = { mgx - r.x, mgy - r.y };
+                            break;
+                        }
+                    }
+                }
+            } else {
+                // Not selected: replace selection with this node, begin drag
+                selected_node_ids_ = { node_id };
+                dragging_node_idx_ = ni;
+                drag_offset_x_ = sx_to_gx(mouse_.x) - node_rects_[ni].x;
+                drag_offset_y_ = sy_to_gy(mouse_.y) - node_rects_[ni].y;
+                group_drag_offsets_.clear();
+            }
         } else {
-            selected_node_id_.clear();
-            // Start left-drag pan on empty canvas
-            panning_ = true;
-            pan_start_mx_ = mouse_.x;
-            pan_start_my_ = mouse_.y;
-            pan_start_px_ = pan_x_;
-            pan_start_py_ = pan_y_;
+            // Empty canvas: start box-select
+            if (!mouse_.shift_down)
+                selected_node_ids_.clear();
+            box_selecting_ = true;
+            box_start_gx_ = sx_to_gx(mouse_.x);
+            box_start_gy_ = sy_to_gy(mouse_.y);
+            box_shift_held_ = mouse_.shift_down;
         }
     }
 }
