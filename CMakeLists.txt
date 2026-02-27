@@ -117,6 +117,7 @@ add_vivid_operator(dither               operators/gpu/dither/dither.cpp         
 add_vivid_operator(transform            operators/gpu/transform/transform.cpp                     EXTRA_LIBS webgpu)
 add_vivid_operator(crt_effect           operators/gpu/crt_effect/crt_effect.cpp                   EXTRA_LIBS webgpu)
 add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp                             EXTRA_LIBS webgpu)
+add_vivid_operator(switch_op            operators/gpu/switch_op/switch_op.cpp                     EXTRA_LIBS webgpu)
 
 # --- Movie File In (image + video loader) ---
 if(APPLE)
