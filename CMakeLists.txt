@@ -101,6 +101,7 @@ add_vivid_operator(gate              operators/control/gate/gate.cpp)
 add_vivid_operator(random            operators/control/random/random.cpp)
 add_vivid_operator(smooth            operators/control/smooth/smooth.cpp)
 add_vivid_operator(sequencer         operators/control/sequencer/sequencer.cpp)
+add_vivid_operator(drum_sequencer    operators/control/drum_sequencer/drum_sequencer.cpp)
 
 # --- GPU operator plugins ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu)
