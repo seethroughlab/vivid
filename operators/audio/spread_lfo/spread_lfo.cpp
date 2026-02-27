@@ -1,12 +1,9 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
+#include "../audio_dsp.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 struct SpreadLFO : vivid::OperatorBase {
     static constexpr const char* kName   = "SpreadLFO";
@@ -37,21 +34,6 @@ struct SpreadLFO : vivid::OperatorBase {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"gates",  VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});
         out.push_back({"values", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});
-    }
-
-    static double compute_waveform(double phase, int wave) {
-        switch (wave) {
-            case 0: // sine
-                return std::sin(phase * 2.0 * M_PI);
-            case 1: // saw (rising from -1 to +1)
-                return 2.0 * phase - 1.0;
-            case 2: // square
-                return phase < 0.5 ? 1.0 : -1.0;
-            case 3: // triangle
-                return 4.0 * (phase < 0.5 ? phase : (1.0 - phase)) - 1.0;
-            default:
-                return 0.0;
-        }
     }
 
     void process(const VividProcessContext* ctx) override {
@@ -88,7 +70,7 @@ struct SpreadLFO : vivid::OperatorBase {
             // Free-running: single phase from time, all slots get same value
             double phase = std::fmod(ctx->time * static_cast<double>(freq), 1.0);
             if (phase < 0.0) phase += 1.0;
-            double raw = compute_waveform(phase, wave);
+            double raw = audio_dsp::waveform(phase, wave);
             float value = static_cast<float>(raw) * amp + off;
 
             if (ctx->output_spreads) {
@@ -129,7 +111,7 @@ struct SpreadLFO : vivid::OperatorBase {
                 uint32_t out_len = std::min(len, out_sp.capacity);
                 out_sp.length = out_len;
                 for (uint32_t i = 0; i < out_len; ++i) {
-                    double raw = compute_waveform(phases_[i], wave);
+                    double raw = audio_dsp::waveform(phases_[i], wave);
                     out_sp.data[i] = static_cast<float>(raw) * amp + off;
                 }
             }

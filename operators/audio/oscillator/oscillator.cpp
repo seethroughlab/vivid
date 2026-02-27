@@ -1,10 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
+#include "../audio_dsp.h"
 #include <cmath>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 struct Oscillator : vivid::OperatorBase {
     static constexpr const char* kName   = "Oscillator";
@@ -37,23 +34,7 @@ struct Oscillator : vivid::OperatorBase {
         int wave = waveform.int_value();
 
         for (uint32_t i = 0; i < audio->buffer_size; i++) {
-            double sample = 0.0;
-            switch (wave) {
-                case 0:  // Sine
-                    sample = std::sin(phase_ * 2.0 * M_PI);
-                    break;
-                case 1:  // Saw (rising from -1 to 1)
-                    sample = 2.0 * phase_ - 1.0;
-                    break;
-                case 2:  // Square
-                    sample = (phase_ < 0.5) ? 1.0 : -1.0;
-                    break;
-                case 3:  // Triangle
-                    sample = (phase_ < 0.5)
-                        ? (4.0 * phase_ - 1.0)
-                        : (3.0 - 4.0 * phase_);
-                    break;
-            }
+            double sample = audio_dsp::waveform(phase_, wave);
             out[i] = static_cast<float>(sample) * amp;
             phase_ += phase_inc;
             if (phase_ >= 1.0) phase_ -= 1.0;
