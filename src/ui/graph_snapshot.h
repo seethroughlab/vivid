@@ -20,6 +20,13 @@ struct ParamInfo {
     uint32_t choice_count = 0;
 };
 
+// Owned copy of port metadata
+struct PortInfo {
+    std::string name;
+    VividPortType type = VIVID_PORT_CONTROL_FLOAT;
+    VividPortDirection direction = VIVID_PORT_INPUT;
+};
+
 // Owned copy of operator metadata
 struct OperatorInfo {
     std::string name;
@@ -27,6 +34,7 @@ struct OperatorInfo {
     bool has_shader = false;
     bool is_user = false;
     std::vector<ParamInfo> params;
+    std::vector<PortInfo> ports;
 };
 
 // Per-node snapshot data

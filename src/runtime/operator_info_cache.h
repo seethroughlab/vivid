@@ -45,6 +45,14 @@ public:
             }
         }
 
+        info->ports.resize(desc->port_count);
+        for (uint32_t i = 0; i < desc->port_count; ++i) {
+            auto& pi = info->ports[i];
+            pi.name = desc->ports[i].name;
+            pi.type = desc->ports[i].type;
+            pi.direction = desc->ports[i].direction;
+        }
+
         // Only check shader/user status for fully-loaded operators
         if (loader) {
             if (loader->is_data_driven()) {
