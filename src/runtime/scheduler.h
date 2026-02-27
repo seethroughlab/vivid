@@ -96,6 +96,7 @@ public:
     bool is_audio_type(const std::string& type_name) const;
 
     void set_operators_src_dir(const std::string& dir) { operators_src_dir_ = dir; }
+    const std::string& operators_src_dir() const { return operators_src_dir_; }
 
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }

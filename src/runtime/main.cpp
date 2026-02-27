@@ -208,7 +208,8 @@ static void emit_clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, co
 static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
                             vivid::Scheduler& scheduler, vivid::OperatorRegistry& registry,
                             vivid::AudioEngine& audio_engine, bool has_audio,
-                            OperatorInfoCache* op_cache = nullptr) {
+                            OperatorInfoCache* op_cache = nullptr,
+                            const std::string& operators_dir = {}) {
     auto changes = fw.poll_changes();
     for (const auto& change : changes) {
         hr.queue_rebuild(change.target_name);
@@ -220,8 +221,26 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
 
         const std::string* type_name_ptr = registry.type_name_for_target(result.target_name);
         if (!type_name_ptr) {
-            std::fprintf(stderr, "[vivid] Hot-reload: unknown target '%s'\n",
-                result.target_name.c_str());
+            // New operator (just scaffolded) — load its dylib into the registry
+            if (registry.register_loaded_operator(result.staged_dylib_path)) {
+                // Register file watch for the new operator's source files
+                if (!operators_dir.empty()) {
+                    // Scan all domain subdirs for the target directory
+                    for (const char* domain : {"control", "audio", "gpu"}) {
+                        std::string cpp_path = operators_dir + "/" + domain + "/" +
+                                               result.target_name + "/" + result.target_name + ".cpp";
+                        if (std::filesystem::exists(cpp_path)) {
+                            fw.add_watch(cpp_path, result.target_name);
+                            break;
+                        }
+                    }
+                }
+                std::fprintf(stderr, "[vivid] New operator '%s' loaded\n",
+                    result.target_name.c_str());
+            } else {
+                std::fprintf(stderr, "[vivid] Hot-reload: failed to load new target '%s'\n",
+                    result.target_name.c_str());
+            }
             continue;
         }
         const std::string& tn = *type_name_ptr;
@@ -653,6 +672,8 @@ int main(int argc, char* argv[]) {
     // --- Control server (MCP HTTP bridge) ---
     vivid::ControlServer control_server;
     control_server.start(9876);
+    if (!src_dir.empty())
+        control_server.set_src_dir(src_dir);
 
     vivid::ui::Renderer2D text_renderer;
     bool text_renderer_ok = false;
@@ -754,6 +775,7 @@ int main(int argc, char* argv[]) {
             if (file_watcher.start(operators_dir)) {
                 hot_reloader.start(build_dir);
                 hot_reload_enabled = true;
+                control_server.set_hot_reloader(&hot_reloader);
                 std::fprintf(stderr, "[vivid] Hot-reload enabled (watching %s)\n", operators_dir.c_str());
             }
         } else {
@@ -766,23 +788,25 @@ int main(int argc, char* argv[]) {
 
     // --- Main loop ---
     auto tick_frame = [&]() -> bool {
-        // On macOS, this callback fires in both kCFRunLoopDefaultMode (normal)
-        // and NSEventTrackingRunLoopMode (during window drag/resize/menus).
-        // In tracking mode, Cocoa owns event dispatch — calling glfwPollEvents()
-        // would re-enter GLFW's event processing and steal tracking events.
-        // We skip event polling in that case but still render + push audio.
+        // Close button may fire during macOS tracking (resize/menus).
+        if (glfwWindowShouldClose(window)) return false;
+
+        // Detect macOS tracking mode for deferred resize logic.
 #ifdef __APPLE__
         CFStringRef mode = CFRunLoopCopyCurrentMode(CFRunLoopGetMain());
         bool in_default_mode = !mode || CFEqual(mode, kCFRunLoopDefaultMode);
-        if (mode) CFRelease(mode);
 
-        if (in_default_mode) {
-            glfwPollEvents();
-            if (glfwWindowShouldClose(window)) return false;
+        // DEBUG: log run loop mode to diagnose tracking-mode timer behavior
+        if (frame_count % 60 == 0 || !in_default_mode) {
+            char mode_buf[128] = "NULL";
+            if (mode) {
+                CFStringGetCString(mode, mode_buf, sizeof(mode_buf), kCFStringEncodingUTF8);
+            }
+            std::fprintf(stderr, "[vivid-dbg] frame=%llu mode=%s default=%d\n",
+                static_cast<unsigned long long>(frame_count), mode_buf, in_default_mode);
         }
-#else
-        glfwPollEvents();
-        if (glfwWindowShouldClose(window)) return false;
+
+        if (mode) CFRelease(mode);
 #endif
 
         int win_w, win_h;
@@ -793,11 +817,22 @@ int main(int argc, char* argv[]) {
         // Skip frame if minimized
         if (fb_w == 0 || fb_h == 0) return true;
 
-        // Reconfigure GPU surface if framebuffer size changed
-        if (fb_w != fb_width || fb_h != fb_height) {
-            fb_width = fb_w;
-            fb_height = fb_h;
-            gpu.resize(static_cast<uint32_t>(fb_width), static_cast<uint32_t>(fb_height));
+        // Reconfigure GPU surface if framebuffer size changed.
+        // During macOS tracking mode (drag/resize), defer the resize to avoid
+        // unconfigure/reconfigure thrashing that causes begin_frame failures.
+        // The compositor stretches the old-sized surface to fit; we resize
+        // properly once tracking ends and we return to default mode.
+        {
+            bool defer_resize = false;
+#ifdef __APPLE__
+            defer_resize = !in_default_mode;
+#endif
+            if (!defer_resize && (fb_w != fb_width || fb_h != fb_height)) {
+                fb_width = fb_w;
+                fb_height = fb_h;
+                gpu.resize(static_cast<uint32_t>(fb_width), static_cast<uint32_t>(fb_height));
+                std::fprintf(stderr, "[vivid-dbg] resize to %dx%d\n", fb_w, fb_h);
+            }
         }
 
         // Drain control server requests (may set pending topology changes)
@@ -823,11 +858,7 @@ int main(int argc, char* argv[]) {
             graph_loaded = true;
         }
 
-        vivid::FrameState frame;
-        if (!gpu.begin_frame(frame))
-            return true;
-
-        // --- Compute dt unconditionally (for perf stats even with no graph) ---
+        // --- Compute dt unconditionally (before GPU work) ---
         double now = glfwGetTime();
         double dt = now - prev_time;
         prev_time = now;
@@ -836,14 +867,35 @@ int main(int argc, char* argv[]) {
         // --- Apply MIDI mappings (before tick so wire wins on conflict) ---
         runtime_api.apply_midi_mappings();
 
-        // --- Tick graph ---
+        // --- Try to acquire surface texture for presentation ---
+        vivid::FrameState frame;
+        bool have_surface = gpu.begin_frame(frame);
+
+        // If no surface (e.g. during resize), create a standalone encoder
+        // so offscreen GPU work (scheduler tick, thumbnails) still runs.
+        WGPUCommandEncoder tick_encoder = nullptr;
+        if (have_surface) {
+            tick_encoder = frame.encoder;
+        } else {
+            WGPUCommandEncoderDescriptor enc_desc{};
+            enc_desc.label = to_sv("Offscreen Tick Encoder");
+            tick_encoder = wgpuDeviceCreateCommandEncoder(gpu.device(), &enc_desc);
+#ifdef __APPLE__
+            if (!in_default_mode) {
+                std::fprintf(stderr, "[vivid-dbg] begin_frame FAILED in tracking mode, frame=%llu\n",
+                    static_cast<unsigned long long>(frame_count));
+            }
+#endif
+        }
+
+        // --- Tick graph (always runs, even without a surface) ---
         if (graph_loaded) {
 
             // Base GPU state (per-node textures are set by scheduler)
             VividGpuState gpu_state{};
             gpu_state.device              = gpu.device();
             gpu_state.queue               = gpu.queue();
-            gpu_state.command_encoder     = frame.encoder;
+            gpu_state.command_encoder     = tick_encoder;
             gpu_state.output_texture_view = nullptr;  // per-node
             gpu_state.output_width        = 0;
             gpu_state.output_height       = 0;
@@ -854,7 +906,8 @@ int main(int argc, char* argv[]) {
             // --- Hot-reload polling ---
             if (hot_reload_enabled) {
                 poll_hot_reload(file_watcher, hot_reloader, scheduler, registry,
-                                audio_engine, has_audio, &op_info_cache);
+                                audio_engine, has_audio, &op_info_cache,
+                                scheduler.operators_src_dir());
             }
 
             if (has_audio) {
@@ -869,7 +922,7 @@ int main(int argc, char* argv[]) {
                     if (!node_tex_view) return;
                     auto* thumb_view = thumb_cache.get_or_create(node_id);
                     if (thumb_view) {
-                        thumb_blit.blit(frame.encoder, node_tex_view, thumb_view);
+                        thumb_blit.blit(tick_encoder, node_tex_view, thumb_view);
                     }
                 });
 
@@ -894,62 +947,74 @@ int main(int argc, char* argv[]) {
             frame_count++;
         }
 
-        if (has_gpu_ops && video_out_idx >= 0) {
-            // Find video_out's input texture from its resolved_tex_inputs
-            const auto& vo_ns = scheduler.nodes()[video_out_idx];
-            WGPUTextureView display_tex = nullptr;
-            uint32_t src_w = 0, src_h = 0;
-            if (!vo_ns.resolved_tex_inputs.empty()) {
-                display_tex = vo_ns.resolved_tex_inputs[0];
-                scheduler.gpu_sink_source_size(video_out_idx, src_w, src_h);
-            }
+        if (have_surface) {
+            // --- Surface presentation path ---
+            if (has_gpu_ops && video_out_idx >= 0) {
+                // Find video_out's input texture from its resolved_tex_inputs
+                const auto& vo_ns = scheduler.nodes()[video_out_idx];
+                WGPUTextureView display_tex = nullptr;
+                uint32_t src_w = 0, src_h = 0;
+                if (!vo_ns.resolved_tex_inputs.empty()) {
+                    display_tex = vo_ns.resolved_tex_inputs[0];
+                    scheduler.gpu_sink_source_size(video_out_idx, src_w, src_h);
+                }
 
-            if (display_tex && src_w > 0 && src_h > 0) {
-                auto fit_mode = vivid::FitMode::Fit;
-                auto fm_it = vo_ns.param_indices.find("fit_mode");
-                if (fm_it != vo_ns.param_indices.end() && fm_it->second < vo_ns.param_values.size())
-                    fit_mode = static_cast<vivid::FitMode>(static_cast<int>(vo_ns.param_values[fm_it->second]));
-                bool ui_vis = graph_ui.visible();
-                blit.blit_fit(frame.encoder, display_tex, frame.view,
-                              src_w, src_h,
-                              static_cast<uint32_t>(fb_width),
-                              static_cast<uint32_t>(fb_height),
-                              fit_mode, ui_vis);
+                if (display_tex && src_w > 0 && src_h > 0) {
+                    auto fit_mode = vivid::FitMode::Fit;
+                    auto fm_it = vo_ns.param_indices.find("fit_mode");
+                    if (fm_it != vo_ns.param_indices.end() && fm_it->second < vo_ns.param_values.size())
+                        fit_mode = static_cast<vivid::FitMode>(static_cast<int>(vo_ns.param_values[fm_it->second]));
+                    bool ui_vis = graph_ui.visible();
+                    blit.blit_fit(frame.encoder, display_tex, frame.view,
+                                  src_w, src_h,
+                                  static_cast<uint32_t>(fb_width),
+                                  static_cast<uint32_t>(fb_height),
+                                  fit_mode, ui_vis);
+                } else {
+                    emit_clear_pass(frame.encoder, frame.view, clear);
+                }
             } else {
                 emit_clear_pass(frame.encoder, frame.view, clear);
             }
-        } else {
-            emit_clear_pass(frame.encoder, frame.view, clear);
-        }
 
-        // --- Node graph UI overlay (2-pass rendering) ---
-        if (text_renderer_ok && graph_ui.visible()) {
-            auto snapshot = build_graph_snapshot(
-                graph, scheduler, has_audio ? &audio_engine : nullptr,
-                registry, op_info_cache, &system_midi);
-            graph_ui.update(snapshot);
-            graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
-            // Pass 1: text/rects
-            text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
-            // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
-            if (thumb_renderer_ok) {
-                graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
-                                         frame.encoder, frame.view,
-                                         static_cast<uint32_t>(fb_width),
-                                         static_cast<uint32_t>(fb_height));
+            // --- Node graph UI overlay (2-pass rendering) ---
+            if (text_renderer_ok && graph_ui.visible()) {
+                auto snapshot = build_graph_snapshot(
+                    graph, scheduler, has_audio ? &audio_engine : nullptr,
+                    registry, op_info_cache, &system_midi);
+                graph_ui.update(snapshot);
+                graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
+                // Pass 1: text/rects
+                text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
+                // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
+                if (thumb_renderer_ok) {
+                    graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
+                                             frame.encoder, frame.view,
+                                             static_cast<uint32_t>(fb_width),
+                                             static_cast<uint32_t>(fb_height));
+                }
+                // Pass 3: overlays (context menu, dropdown) on top of thumbnails
+                graph_ui.draw_overlays(text_renderer);
+                text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
             }
-            // Pass 3: overlays (context menu, dropdown) on top of thumbnails
-            graph_ui.draw_overlays(text_renderer);
-            text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
-        }
 
-        // --- Screenshot capture ---
-        if (try_capture_screenshot(screenshot_path, gpu, frame, fb_width, fb_height,
-                                   frame_count, screenshot_delay, window)) {
-            return true; // frame already submitted inside try_capture_screenshot
-        }
+            // --- Screenshot capture ---
+            if (try_capture_screenshot(screenshot_path, gpu, frame, fb_width, fb_height,
+                                       frame_count, screenshot_delay, window)) {
+                return true; // frame already submitted inside try_capture_screenshot
+            }
 
-        gpu.end_frame(frame);
+            gpu.end_frame(frame);
+        } else {
+            // No surface — submit offscreen GPU work (scheduler tick, thumbnails)
+            // and poll the device so audio/compute operators still advance.
+            WGPUCommandBufferDescriptor cmd_desc{};
+            cmd_desc.label = to_sv("Offscreen Commands");
+            WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(tick_encoder, &cmd_desc);
+            wgpuQueueSubmit(gpu.queue(), 1, &cmd);
+            wgpuCommandBufferRelease(cmd);
+            wgpuCommandEncoderRelease(tick_encoder);
+        }
 
         // wgpu-native: poll the device to process async operations
         wgpuDevicePoll(gpu.device(), false, nullptr);
@@ -957,9 +1022,17 @@ int main(int argc, char* argv[]) {
     };
 
 #ifdef __APPLE__
-    vivid::macos_run_frame_loop(tick_frame);
+    auto poll_events = [&]() -> bool {
+        glfwPollEvents();
+        return !glfwWindowShouldClose(window);
+    };
+    vivid::macos_run_frame_loop(poll_events, tick_frame);
 #else
-    while (tick_frame()) {}
+    while (true) {
+        glfwPollEvents();
+        if (glfwWindowShouldClose(window)) break;
+        if (!tick_frame()) break;
+    }
 #endif
 
     // --- Shutdown ---

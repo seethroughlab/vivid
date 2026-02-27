@@ -229,6 +229,7 @@ add_executable(vivid
     src/runtime/screenshot.cpp
     src/runtime/builtin_operators.cpp
     src/runtime/control_server.cpp
+    src/runtime/operator_creator.cpp
     src/runtime/system_midi.cpp
     src/runtime/platform.cpp
     src/runtime/settings.cpp
@@ -343,6 +344,8 @@ add_executable(test_control_server
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/control_server.cpp
+    src/runtime/operator_creator.cpp
+    src/runtime/hot_reload.cpp
     src/runtime/system_midi.cpp
 )
 target_include_directories(test_control_server PRIVATE src)

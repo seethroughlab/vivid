@@ -26,9 +26,11 @@ public:
     // Called from main thread each frame; drains pending events
     std::vector<FileChangeEvent> poll_changes();
 
+    // Register a single file for watching (thread-safe for kqueue registration)
+    bool add_watch(const std::string& path, const std::string& target_name);
+
 private:
     void watch_thread();
-    bool add_watch(const std::string& path, const std::string& target_name);
     void reopen_file(const std::string& path, const std::string& target_name);
 
     int kq_ = -1;

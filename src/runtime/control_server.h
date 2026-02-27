@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 namespace vivid {
 
@@ -8,6 +9,7 @@ class RuntimeAPI;
 class Graph;
 class Scheduler;
 class OperatorRegistry;
+class HotReloader;
 
 class ControlServer {
 public:
@@ -21,6 +23,10 @@ public:
     bool start(int port = 9876);
     void stop();
 
+    // Set context needed by scaffold_operator (call before main loop)
+    void set_src_dir(const std::string& src_dir);
+    void set_hot_reloader(HotReloader* hr);
+
     // Call from main loop each frame. Drains pending HTTP requests,
     // dispatches commands against the runtime, and signals responses.
     // has_gpu_ops/has_audio are updated by reload commands.
@@ -32,6 +38,8 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
+    std::string src_dir_;
+    HotReloader* hot_reloader_ = nullptr;
 };
 
 } // namespace vivid

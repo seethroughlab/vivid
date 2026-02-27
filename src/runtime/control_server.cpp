@@ -4,6 +4,8 @@
 #include "runtime/scheduler.h"
 #include "runtime/operator_registry.h"
 #include "runtime/operator_loader.h"
+#include "runtime/operator_creator.h"
+#include "runtime/hot_reload.h"
 #include "operator_api/types.h"
 #include "yyjson.h"
 #include <ixwebsocket/IXHttpServer.h>
@@ -285,7 +287,8 @@ static std::string handle_list_types(OperatorRegistry& registry) {
 static std::string dispatch(const std::string& method, const std::string& body,
                             RuntimeAPI& api, Graph& graph,
                             Scheduler& scheduler, OperatorRegistry& registry,
-                            bool& has_gpu_ops, bool& has_audio) {
+                            bool& has_gpu_ops, bool& has_audio,
+                            const std::string& src_dir, HotReloader* hot_reloader) {
     // Read-only queries (no body needed)
     if (method == "inspect_graph") return handle_inspect_graph(graph, scheduler);
     if (method == "list_types")    return handle_list_types(registry);
@@ -406,6 +409,146 @@ static std::string dispatch(const std::string& method, const std::string& body,
         // reload updates has_gpu_ops/has_audio via out-params;
         // main loop's needs_gpu_realloc() check handles GPU textures.
         result = command_result_to_json(api.reload(has_gpu_ops, has_audio));
+    } else if (method == "set_resolution") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid = yyjson_obj_get(root, "node_id");
+            yyjson_val* w   = yyjson_obj_get(root, "width");
+            yyjson_val* h   = yyjson_obj_get(root, "height");
+            if (!nid || !w || !h || !yyjson_is_str(nid) || !yyjson_is_num(w) || !yyjson_is_num(h))
+                result = json_err("missing 'node_id', 'width', or 'height'");
+            else
+                result = command_result_to_json(
+                    api.set_resolution(yyjson_get_str(nid),
+                                       static_cast<uint32_t>(yyjson_get_int(w)),
+                                       static_cast<uint32_t>(yyjson_get_int(h))));
+        }
+    } else if (method == "set_node_layout") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid = yyjson_obj_get(root, "node_id");
+            yyjson_val* x   = yyjson_obj_get(root, "x");
+            yyjson_val* y   = yyjson_obj_get(root, "y");
+            if (!nid || !x || !y || !yyjson_is_str(nid) || !yyjson_is_num(x) || !yyjson_is_num(y))
+                result = json_err("missing 'node_id', 'x', or 'y'");
+            else
+                result = command_result_to_json(
+                    api.set_node_layout(yyjson_get_str(nid),
+                                        static_cast<float>(yyjson_get_num(x)),
+                                        static_cast<float>(yyjson_get_num(y))));
+        }
+    } else if (method == "inspect") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid = yyjson_obj_get(root, "node_id");
+            if (!nid || !yyjson_is_str(nid))
+                result = json_err("missing 'node_id'");
+            else
+                result = command_result_to_json(api.inspect(yyjson_get_str(nid)));
+        }
+    } else if (method == "list_nodes") {
+        result = command_result_to_json(api.list_nodes());
+    } else if (method == "add_midi_mapping") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
+            yyjson_val* param = yyjson_obj_get(root, "param");
+            yyjson_val* cc    = yyjson_obj_get(root, "cc");
+            yyjson_val* ch    = yyjson_obj_get(root, "channel");
+            yyjson_val* rmin  = yyjson_obj_get(root, "range_min");
+            yyjson_val* rmax  = yyjson_obj_get(root, "range_max");
+            if (!nid || !param || !cc || !ch || !rmin || !rmax ||
+                !yyjson_is_str(nid) || !yyjson_is_str(param) ||
+                !yyjson_is_num(cc) || !yyjson_is_num(ch) ||
+                !yyjson_is_num(rmin) || !yyjson_is_num(rmax))
+                result = json_err("missing or invalid params for add_midi_mapping");
+            else
+                result = command_result_to_json(
+                    api.add_midi_mapping(yyjson_get_str(nid), yyjson_get_str(param),
+                                         static_cast<int>(yyjson_get_int(cc)),
+                                         static_cast<int>(yyjson_get_int(ch)),
+                                         static_cast<float>(yyjson_get_num(rmin)),
+                                         static_cast<float>(yyjson_get_num(rmax))));
+        }
+    } else if (method == "remove_midi_mapping") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
+            yyjson_val* param = yyjson_obj_get(root, "param");
+            if (!nid || !param || !yyjson_is_str(nid) || !yyjson_is_str(param))
+                result = json_err("missing 'node_id' or 'param'");
+            else
+                result = command_result_to_json(
+                    api.remove_midi_mapping(yyjson_get_str(nid), yyjson_get_str(param)));
+        }
+    } else if (method == "update_midi_mapping") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
+            yyjson_val* param = yyjson_obj_get(root, "param");
+            yyjson_val* rmin  = yyjson_obj_get(root, "range_min");
+            yyjson_val* rmax  = yyjson_obj_get(root, "range_max");
+            if (!nid || !param || !rmin || !rmax ||
+                !yyjson_is_str(nid) || !yyjson_is_str(param) ||
+                !yyjson_is_num(rmin) || !yyjson_is_num(rmax))
+                result = json_err("missing or invalid params for update_midi_mapping");
+            else
+                result = command_result_to_json(
+                    api.update_midi_mapping(yyjson_get_str(nid), yyjson_get_str(param),
+                                            static_cast<float>(yyjson_get_num(rmin)),
+                                            static_cast<float>(yyjson_get_num(rmax))));
+        }
+    } else if (method == "get_graph_errors") {
+        yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+        yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+        yyjson_mut_val* errs = yyjson_mut_arr(rdoc);
+        for (const auto& ns : scheduler.nodes()) {
+            if (!ns.errored) continue;
+            yyjson_mut_val* e = yyjson_mut_obj(rdoc);
+            yyjson_mut_obj_add_strcpy(rdoc, e, "node_id", ns.node_id.c_str());
+            yyjson_mut_obj_add_strcpy(rdoc, e, "error", ns.error_message.c_str());
+            yyjson_mut_arr_add_val(errs, e);
+        }
+        yyjson_mut_obj_add_val(rdoc, res, "errors", errs);
+        result = json_ok(rdoc, res);
+    } else if (method == "scaffold_operator") {
+        result = [&]() -> std::string {
+            if (src_dir.empty())
+                return json_err("scaffold_operator requires --src-dir");
+            if (!root)
+                return json_err("invalid JSON body");
+
+            yyjson_val* name_v   = yyjson_obj_get(root, "name");
+            yyjson_val* domain_v = yyjson_obj_get(root, "domain");
+            if (!name_v || !domain_v || !yyjson_is_str(name_v) || !yyjson_is_str(domain_v))
+                return json_err("missing 'name' or 'domain'");
+
+            std::string name = yyjson_get_str(name_v);
+            std::string domain_str_val = yyjson_get_str(domain_v);
+
+            VividDomain domain;
+            if (domain_str_val == "control")      domain = VIVID_DOMAIN_CONTROL;
+            else if (domain_str_val == "audio")    domain = VIVID_DOMAIN_AUDIO;
+            else if (domain_str_val == "gpu")      domain = VIVID_DOMAIN_GPU;
+            else return json_err("domain must be 'control', 'audio', or 'gpu'");
+
+            std::string err = OperatorCreator::validate_name(name, registry);
+            if (!err.empty()) return json_err(err);
+
+            auto cr = OperatorCreator::create(name, domain, src_dir);
+            if (!cr.success) return json_err(cr.error);
+
+            if (hot_reloader)
+                hot_reloader->queue_rebuild(cr.target_name);
+
+            OperatorCreator::open_in_editor(cr.cpp_path);
+
+            yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+            yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+            yyjson_mut_obj_add_strcpy(rdoc, res, "cpp_path", cr.cpp_path.c_str());
+            yyjson_mut_obj_add_strcpy(rdoc, res, "target_name", cr.target_name.c_str());
+            return json_ok(rdoc, res);
+        }();
     } else {
         result = json_err("unknown method '" + method + "'");
     }
@@ -439,6 +582,9 @@ struct ControlServer::Impl {
 
 ControlServer::ControlServer() = default;
 ControlServer::~ControlServer() { stop(); }
+
+void ControlServer::set_src_dir(const std::string& src_dir) { src_dir_ = src_dir; }
+void ControlServer::set_hot_reloader(HotReloader* hr) { hot_reloader_ = hr; }
 
 bool ControlServer::start(int port) {
     impl_ = std::make_unique<Impl>(port);
@@ -543,7 +689,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
     for (auto& req : local) {
         std::string response = dispatch(req.method, req.body,
                                         api, graph, scheduler, registry,
-                                        has_gpu_ops, has_audio);
+                                        has_gpu_ops, has_audio,
+                                        src_dir_, hot_reloader_);
         req.promise.set_value(std::move(response));
     }
 }

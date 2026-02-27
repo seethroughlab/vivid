@@ -143,5 +143,122 @@ async def load_graph() -> str:
     return await _post("load_graph")
 
 
+@mcp.tool()
+async def set_string_param(node_id: str, param: str, value: str) -> str:
+    """Set a string parameter (e.g. file path) on a node.
+
+    Args:
+        node_id: Target node
+        param: Parameter name
+        value: String value (e.g. a file path)
+    """
+    return await _post("set_string_param", {"node_id": node_id, "param": param, "value": value})
+
+
+@mcp.tool()
+async def set_resolution(node_id: str, width: int, height: int) -> str:
+    """Set GPU texture resolution for a node. Use 0,0 to reset to default.
+
+    Args:
+        node_id: Target node
+        width: Texture width in pixels
+        height: Texture height in pixels
+    """
+    return await _post("set_resolution", {"node_id": node_id, "width": width, "height": height})
+
+
+@mcp.tool()
+async def set_node_layout(node_id: str, x: float, y: float) -> str:
+    """Set the visual position of a node in the graph editor.
+
+    Args:
+        node_id: Target node
+        x: X position
+        y: Y position
+    """
+    return await _post("set_node_layout", {"node_id": node_id, "x": x, "y": y})
+
+
+@mcp.tool()
+async def inspect_node(node_id: str) -> str:
+    """Inspect a single node: params with live values, input/output port values.
+
+    Args:
+        node_id: The node to inspect
+    """
+    return await _post("inspect", {"node_id": node_id})
+
+
+@mcp.tool()
+async def list_nodes() -> str:
+    """List all nodes in the graph (lightweight: just id and type)."""
+    return await _post("list_nodes")
+
+
+@mcp.tool()
+async def add_midi_mapping(node_id: str, param: str, cc: int, channel: int,
+                           range_min: float, range_max: float) -> str:
+    """Map a MIDI CC to a node parameter.
+
+    Args:
+        node_id: Target node
+        param: Parameter name to control
+        cc: MIDI CC number (0-127)
+        channel: MIDI channel (0-15)
+        range_min: Parameter value when CC is 0
+        range_max: Parameter value when CC is 127
+    """
+    return await _post("add_midi_mapping", {
+        "node_id": node_id, "param": param,
+        "cc": cc, "channel": channel,
+        "range_min": range_min, "range_max": range_max,
+    })
+
+
+@mcp.tool()
+async def remove_midi_mapping(node_id: str, param: str) -> str:
+    """Remove a MIDI CC mapping from a node parameter.
+
+    Args:
+        node_id: Target node
+        param: Parameter name to unmap
+    """
+    return await _post("remove_midi_mapping", {"node_id": node_id, "param": param})
+
+
+@mcp.tool()
+async def update_midi_mapping(node_id: str, param: str,
+                              range_min: float, range_max: float) -> str:
+    """Update the range of an existing MIDI mapping.
+
+    Args:
+        node_id: Target node
+        param: Parameter name
+        range_min: New minimum value
+        range_max: New maximum value
+    """
+    return await _post("update_midi_mapping", {
+        "node_id": node_id, "param": param,
+        "range_min": range_min, "range_max": range_max,
+    })
+
+
+@mcp.tool()
+async def get_graph_errors() -> str:
+    """Get a list of nodes that are in an error state."""
+    return await _post("get_graph_errors")
+
+
+@mcp.tool()
+async def scaffold_operator(name: str, domain: str) -> str:
+    """Create a new operator from a template. Writes source, patches CMakeLists, triggers build.
+
+    Args:
+        name: Operator name in lowercase_with_underscores (e.g. "tone_gen")
+        domain: One of "control", "audio", "gpu"
+    """
+    return await _post("scaffold_operator", {"name": name, "domain": domain})
+
+
 if __name__ == "__main__":
     mcp.run()
