@@ -24,15 +24,18 @@ struct MidiInput : vivid::OperatorBase {
         out.push_back(&learn);
     }
 
-    // Output ports: note, velocity, gate, trigger, pitch_bend, mod_wheel, cc_value
+    // Output ports: scalar note/vel/gate/trigger/pitch_bend/mod_wheel/cc_value + spread notes/velocities/gates
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"note",       VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});  // [0]
-        out.push_back({"velocity",   VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});  // [1]
-        out.push_back({"gate",       VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});  // [2]
-        out.push_back({"trigger",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});  // [3]
-        out.push_back({"pitch_bend", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});  // [4]
-        out.push_back({"mod_wheel",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});  // [5]
-        out.push_back({"cc_value",   VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});  // [6]
+        out.push_back({"note",       VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [0]
+        out.push_back({"velocity",   VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [1]
+        out.push_back({"gate",       VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [2]
+        out.push_back({"trigger",    VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [3]
+        out.push_back({"pitch_bend", VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [4]
+        out.push_back({"mod_wheel",  VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [5]
+        out.push_back({"cc_value",   VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [6]
+        out.push_back({"notes",      VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // [7]
+        out.push_back({"velocities", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // [8]
+        out.push_back({"gates",      VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // [9]
     }
 
     MidiInput() {
@@ -106,18 +109,19 @@ struct MidiInput : vivid::OperatorBase {
                 if (vel > 0) {
                     last_note_ = note;
                     last_velocity_ = static_cast<float>(vel) / 127.0f;
-                    held_notes_++;
                     had_note_on = true;
+                    // Add to held buffer (update velocity if already present)
+                    held_note_on(note, static_cast<float>(vel) / 127.0f);
                     fprintf(stderr, "[MidiInput] Note ON: %d vel=%d\n", note, vel);
                 } else {
                     // Note On with vel=0 is Note Off
-                    if (held_notes_ > 0) held_notes_--;
+                    held_note_off(note);
                     fprintf(stderr, "[MidiInput] Note OFF: %d (vel=0)\n", note);
                 }
             } else if (msg_type == 0x80 && msg.size() >= 3) {
                 // Note Off
                 unsigned char note = msg[1];
-                if (held_notes_ > 0) held_notes_--;
+                held_note_off(note);
                 fprintf(stderr, "[MidiInput] Note OFF: %d\n", note);
             } else if (msg_type == 0xB0 && msg.size() >= 3) {
                 // Control Change
@@ -138,30 +142,87 @@ struct MidiInput : vivid::OperatorBase {
             }
         }
 
-        // Write outputs
+        // Write scalar outputs
         int cc_idx = cc_number.int_value();
         if (cc_idx < 0) cc_idx = 0;
         if (cc_idx > 127) cc_idx = 127;
 
         ctx->output_values[0] = static_cast<float>(last_note_);        // note
         ctx->output_values[1] = last_velocity_;                         // velocity
-        ctx->output_values[2] = (held_notes_ > 0) ? 1.0f : 0.0f;      // gate
+        ctx->output_values[2] = (held_count_ > 0) ? 1.0f : 0.0f;      // gate
         ctx->output_values[3] = had_note_on ? 1.0f : 0.0f;             // trigger
         ctx->output_values[4] = pitch_bend_;                            // pitch_bend
         ctx->output_values[5] = cc_values_[1];                          // mod_wheel (CC1)
         ctx->output_values[6] = cc_values_[cc_idx];                     // cc_value
+
+        // Write spread outputs: all currently held notes
+        if (ctx->output_spreads) {
+            auto& notes_sp = ctx->output_spreads[0];
+            auto& vel_sp   = ctx->output_spreads[1];
+            auto& gates_sp = ctx->output_spreads[2];
+
+            uint32_t len = static_cast<uint32_t>(held_count_);
+            if (notes_sp.capacity >= len) {
+                notes_sp.length = len;
+                vel_sp.length   = len;
+                gates_sp.length = len;
+                for (uint32_t i = 0; i < len; ++i) {
+                    notes_sp.data[i] = static_cast<float>(held_buffer_[i].note);
+                    vel_sp.data[i]   = held_buffer_[i].velocity;
+                    gates_sp.data[i] = 1.0f;
+                }
+            }
+        }
     }
 
 private:
+    static constexpr int kMaxHeld = 16;
+
+    struct HeldNote {
+        uint8_t note;
+        float   velocity;
+    };
+
     std::unique_ptr<RtMidiIn> midi_in_;
     std::mutex event_mutex_;
     std::vector<std::vector<unsigned char>> event_buffer_;
     float cc_values_[128];
     int current_device_ = -1;
-    int held_notes_ = 0;
     int last_note_ = 0;
     float last_velocity_ = 0.0f;
     float pitch_bend_ = 0.0f;
+
+    HeldNote held_buffer_[kMaxHeld] = {};
+    int held_count_ = 0;
+
+    void held_note_on(uint8_t note, float velocity) {
+        // Update velocity if already held
+        for (int i = 0; i < held_count_; ++i) {
+            if (held_buffer_[i].note == note) {
+                held_buffer_[i].velocity = velocity;
+                return;
+            }
+        }
+        // Add if room
+        if (held_count_ < kMaxHeld) {
+            held_buffer_[held_count_].note = note;
+            held_buffer_[held_count_].velocity = velocity;
+            held_count_++;
+        }
+    }
+
+    void held_note_off(uint8_t note) {
+        for (int i = 0; i < held_count_; ++i) {
+            if (held_buffer_[i].note == note) {
+                // Shift remaining down
+                for (int j = i; j < held_count_ - 1; ++j) {
+                    held_buffer_[j] = held_buffer_[j + 1];
+                }
+                held_count_--;
+                return;
+            }
+        }
+    }
 
     static void midi_callback(double /*timestamp*/,
                                std::vector<unsigned char>* message,
