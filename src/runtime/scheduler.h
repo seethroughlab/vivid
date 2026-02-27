@@ -49,6 +49,10 @@ struct NodeState {
     std::vector<std::string> file_param_storage;     // owned strings
     std::vector<const char*> file_param_ptrs;        // pointers into storage
     std::unordered_map<std::string, uint32_t> file_param_indices;
+
+    // Error state — set by try/catch in tick(), cleared on reload
+    bool errored = false;
+    std::string error_message;
 };
 
 struct Wire {

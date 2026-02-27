@@ -303,6 +303,13 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         // Skip audio-domain nodes — they run on the audio thread
         if (ns.is_audio) continue;
 
+        // Skip errored nodes — zero outputs and move on
+        if (ns.errored) {
+            std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
+            for (auto& sp : ns.output_spreads) sp.clear();
+            continue;
+        }
+
         // Zero input values and clear input spreads (unwired ports default to 0.0)
         std::fill(ns.input_values.begin(), ns.input_values.end(), 0.0f);
         for (auto& sp : ns.input_spreads) sp.clear();
@@ -413,7 +420,23 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ctx.gpu = nullptr;
         }
 
-        ns.loader->process(ns.instance, &ctx);
+        try {
+            ns.loader->process(ns.instance, &ctx);
+        } catch (const std::exception& e) {
+            ns.errored = true;
+            ns.error_message = e.what();
+            std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
+            for (auto& sp : ns.output_spreads) sp.clear();
+            std::fprintf(stderr, "[vivid] operator '%s' threw: %s\n",
+                         ns.node_id.c_str(), e.what());
+        } catch (...) {
+            ns.errored = true;
+            ns.error_message = "Unknown exception";
+            std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
+            for (auto& sp : ns.output_spreads) sp.clear();
+            std::fprintf(stderr, "[vivid] operator '%s' threw unknown exception\n",
+                         ns.node_id.c_str());
+        }
 
         // Check if the operator requested a texture resize
         if (ctx.preferred_tex_width > 0 && ctx.preferred_tex_height > 0 &&
@@ -615,6 +638,10 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
         ns.instance = new_loader->create_instance();
         init_node_state(ns, new_desc, &sp.values,
                         sp.string_values.empty() ? nullptr : &sp.string_values);
+
+        // Clear error state on successful reload
+        ns.errored = false;
+        ns.error_message.clear();
 
         // Bump generation to force downstream recompute
         ns.generation++;

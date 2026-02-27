@@ -86,6 +86,9 @@ public:
 
     ~WgslFilterBase() override = default;
 
+    bool has_shader_error() const { return shader_error_; }
+    const std::string& shader_error_msg() const { return shader_error_msg_; }
+
 private:
     std::string shader_filename_;
     std::string shader_path_override_;
@@ -114,6 +117,10 @@ private:
     time_t last_mtime_ = 0;
     uint32_t reload_counter_ = 0;
     bool initialized_ = false;
+
+    // Shader error state (deferred: UI surfacing not yet implemented)
+    bool shader_error_ = false;
+    std::string shader_error_msg_;
 
     // Cached GPU state for hot-reload
     WGPUDevice cached_device_ = nullptr;
@@ -438,6 +445,8 @@ private:
         std::string preamble = generate_preamble();
         WGPUShaderModule sm = compile_shader(gpu->device, preamble, fragment_src);
         if (!sm) {
+            shader_error_ = true;
+            shader_error_msg_ = "Compile error: " + shader_path_;
             std::fprintf(stderr, "[wgsl_filter] Compile error (keeping old pipeline): %s\n",
                          shader_path_.c_str());
             last_mtime_ = mt;  // don't retry every 30 frames
@@ -447,13 +456,17 @@ private:
         WGPURenderPipeline rp = create_pipeline(gpu->device, sm, gpu->output_format);
         if (!rp) {
             wgpuShaderModuleRelease(sm);
+            shader_error_ = true;
+            shader_error_msg_ = "Pipeline error: " + shader_path_;
             std::fprintf(stderr, "[wgsl_filter] Pipeline error (keeping old): %s\n",
                          shader_path_.c_str());
             last_mtime_ = mt;
             return;
         }
 
-        // Success — swap in new shader + pipeline
+        // Success — swap in new shader + pipeline, clear error
+        shader_error_ = false;
+        shader_error_msg_.clear();
         shader_.reset(sm);
         pipeline_.reset(rp);
         // Force bind group recreation on next frame

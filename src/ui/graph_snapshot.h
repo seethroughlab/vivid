@@ -52,6 +52,10 @@ struct NodeSnapshot {
     uint32_t gpu_tex_width = 0;
     uint32_t gpu_tex_height = 0;
 
+    // Error state (from scheduler)
+    bool errored = false;
+    std::string error_message;
+
     // Layout position from graph
     float layout_x = 0.0f;
     float layout_y = 0.0f;
@@ -101,10 +105,21 @@ struct GraphSnapshot {
     std::unordered_map<std::string, int> audio_index;  // node_id -> audio engine index
     std::vector<AudioNodeAnalysis> audio_analysis;
 
+    // Audio underrun detection
+    uint32_t audio_underrun_count = 0;
+    bool audio_underrun_active = false;
+
     // MIDI mapping data
     std::vector<MidiMappingSnapshot> midi_mappings;
     std::unordered_map<std::string, size_t> midi_mapping_index; // "node_id\tparam" -> index
     std::vector<MidiCCEventSnapshot> pending_cc_events;
+
+    // Transport bar (from Clock operator, if present)
+    float transport_bpm = 120.0f;
+    float transport_beat_phase = 0.0f;   // 0..1 within current beat
+    int   transport_beat_index = 0;      // 0-3 in 4/4 bar
+    double transport_elapsed = 0.0;
+    bool  transport_has_clock = false;
 
     // Operator catalog for chooser popup
     std::vector<std::string> operator_types;  // sorted list

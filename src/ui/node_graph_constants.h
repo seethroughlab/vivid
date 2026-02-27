@@ -40,6 +40,7 @@ static constexpr std::array<float, 3> kDarkBg       = { 0.07f, 0.08f, 0.09f };
 static constexpr std::array<float, 3> kGpuAccent     = { 0.306f, 0.804f, 0.769f };     // #4ECDC4 cyan
 static constexpr std::array<float, 3> kAudioAccent   = { 0.941f, 0.627f, 0.188f };     // #F0A030 amber
 static constexpr std::array<float, 3> kControlAccent = { 0.753f, 0.784f, 0.816f };     // #C0C8D0 gray
+static constexpr std::array<float, 3> kErrorAccent   = { 0.90f, 0.25f, 0.25f };       // red
 
 // Inspector widget sizes
 static constexpr float kAdsrPreviewH = 80.0f;
@@ -52,10 +53,18 @@ static constexpr float kResInputW = 40.0f;
 static constexpr float kInspPadX = 16.0f;
 static constexpr float kInspContentW = kInspectorW - 2 * kInspPadX;
 
+// Workspace grid
+static constexpr float kGridSpacing = 40.0f;
+static constexpr float kGridLineAlpha = 0.06f;
+
 // Wire rendering
 static constexpr float kWireHoverBright = 1.3f;
 static constexpr float kWireThickness = 3.0f;
 static constexpr float kWireHoverThickness = 5.0f;
+
+// Cross-domain wire dashing
+static constexpr float kDashOn = 8.0f;
+static constexpr float kDashOff = 6.0f;
 
 // Bezier wire rendering
 static constexpr int kBezierSegments = 30;
@@ -173,6 +182,11 @@ static constexpr std::array<float, 4> kMidiMapBadge  = { 0.20f, 0.35f, 0.60f, 0.
 static constexpr float kMidiMapBannerH = 24.0f;
 static constexpr float kMidiBadgeH = 14.0f;
 static constexpr float kMidiRangeH = 18.0f;
+
+// Transport bar layout
+static constexpr float kTransportBarH = 28.0f;
+static constexpr float kTransportDotSize = 8.0f;
+static constexpr float kTransportDotSpacing = 16.0f;
 
 // Performance bar layout
 static constexpr float kPerfBarH = 28.0f;

@@ -133,6 +133,9 @@ public:
     void resume();
     bool reload_operator(const std::string& type_name, OperatorRegistry& registry);
 
+    uint32_t underrun_count() const { return underrun_count_.load(std::memory_order_relaxed); }
+    bool last_buffer_underrun() const { return last_buffer_underrun_.load(std::memory_order_relaxed); }
+
     static constexpr uint32_t kBufferSize = 256;
     static constexpr uint32_t kSampleRate = 48000;
 
@@ -175,6 +178,10 @@ private:
     // miniaudio device (opaque pointer to avoid including miniaudio.h in header)
     ma_device* device_ = nullptr;
     bool running_ = false;
+
+    // Underrun detection
+    std::atomic<uint32_t> underrun_count_{0};
+    std::atomic<bool> last_buffer_underrun_{false};
 };
 
 } // namespace vivid

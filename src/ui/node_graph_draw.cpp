@@ -24,7 +24,8 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         const auto& r = node_rects_[i];
         bool selected = (r.node_id == selected_node_id_);
         const float* bg = selected ? style_.node_sel_bg.data() : style_.node_bg.data();
-        const float* dcol = domain_color(r.domain);
+        bool node_errored = (i < snap_.nodes.size() && snap_.nodes[i].errored);
+        const float* dcol = node_errored ? kErrorAccent.data() : domain_color(r.domain);
 
         // Transform graph-space rect to screen space
         float sx = gx_to_sx(r.x), sy = gy_to_sy(r.y);
@@ -33,6 +34,15 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         // Node background
         float sr = g_to_s(style_.corner_radius);
         tr.draw_rounded_rect(sx, sy, sw, sh, sr, bg[0], bg[1], bg[2]);
+
+        // Red border on errored nodes (2px)
+        if (node_errored) {
+            float bw = g_to_s(2.0f);
+            tr.draw_rect(sx, sy, sw, bw, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);           // top
+            tr.draw_rect(sx, sy + sh - bw, sw, bw, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]); // bottom
+            tr.draw_rect(sx, sy, bw, sh, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);           // left
+            tr.draw_rect(sx + sw - bw, sy, bw, sh, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]); // right
+        }
 
         // Accent bar at top
         float s_accent_h = g_to_s(kAccentBarH);
@@ -236,10 +246,40 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
 
         float wire_th = std::max(1.0f, (hov ? kWireHoverThickness : kWireThickness) * zoom_);
 
-        traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
-            [&](float x0, float y0, float x1, float y1) {
-                tr.draw_line(x0, y0, x1, y1, wire_th, cr, cg, cb, a);
-            });
+        bool cross_domain = from_rect.domain != to_rect.domain;
+        if (cross_domain) {
+            // Dashed wire: traverse and subdivide segments at dash boundaries
+            float cumulative = 0.0f;
+            float dash_cycle = kDashOn + kDashOff;
+            traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
+                [&](float x0, float y0, float x1, float y1) {
+                    float dx = x1 - x0, dy = y1 - y0;
+                    float seg_len = std::sqrt(dx * dx + dy * dy);
+                    if (seg_len < 0.001f) { cumulative += seg_len; return; }
+                    float nx = dx / seg_len, ny = dy / seg_len;
+                    float consumed = 0.0f;
+                    while (consumed < seg_len) {
+                        float phase = std::fmod(cumulative + consumed, dash_cycle);
+                        bool on = (phase < kDashOn);
+                        float remain_in_state = on ? (kDashOn - phase) : (dash_cycle - phase);
+                        float chunk = std::min(remain_in_state, seg_len - consumed);
+                        if (on) {
+                            float cx0 = x0 + nx * consumed;
+                            float cy0 = y0 + ny * consumed;
+                            float cx1 = x0 + nx * (consumed + chunk);
+                            float cy1 = y0 + ny * (consumed + chunk);
+                            tr.draw_line(cx0, cy0, cx1, cy1, wire_th, cr, cg, cb, a);
+                        }
+                        consumed += chunk;
+                    }
+                    cumulative += seg_len;
+                });
+        } else {
+            traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
+                [&](float x0, float y0, float x1, float y1) {
+                    tr.draw_line(x0, y0, x1, y1, wire_th, cr, cg, cb, a);
+                });
+        }
     }
 }
 
@@ -353,6 +393,14 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     float py = viewport_top + 8 - insp_scroll_y_;
 
     draw_inspector_header(tr, *sel_node, px, py);
+
+    // Error banner for errored nodes
+    if (sel_node->errored) {
+        tr.draw_text(px, py, ("ERROR: " + sel_node->error_message).c_str(),
+                     kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);
+        py += kLineH + 4;
+    }
+
     draw_inspector_params(tr, *sel_node, px, py);
     draw_inspector_adsr_preview(tr, *sel_node, px, py);
     draw_inspector_note_pattern(tr, *sel_node, px, py);
@@ -439,10 +487,13 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
 
     // Check if this param is driven by a wire connection
     std::string conn_source_label;
+    std::string conn_from_node, conn_from_port;
     bool is_connected = false;
     for (const auto& c : snap_.connections) {
         if (c.to_node == selected_node_id_ && c.to_port == pd.name) {
             is_connected = true;
+            conn_from_node = c.from_node;
+            conn_from_port = c.from_port;
             conn_source_label = "\xE2\x86\x90 " + c.from_node + "/" + c.from_port;  // "← node/port"
             break;
         }
@@ -587,10 +638,26 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float range = pd.max_value - pd.min_value;
         float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
         t = std::max(0.0f, std::min(1.0f, t));
+        const float* sc = domain_color(node.domain);
         if (is_connected) {
-            tr.draw_rect(sx, sy, sw * t, sh, style_.slider_fill[0], style_.slider_fill[1], style_.slider_fill[2], 0.3f);
+            tr.draw_rect(sx, sy, sw * t, sh, sc[0], sc[1], sc[2], 0.3f);
+            // Modulation range overlay: show range between static value and modulated value
+            if (!conn_from_node.empty()) {
+                auto ni = snap_.node_index.find(conn_from_node);
+                if (ni != snap_.node_index.end()) {
+                    const auto& src = snap_.nodes[ni->second];
+                    auto pi_it = src.output_port_indices.find(conn_from_port);
+                    if (pi_it != src.output_port_indices.end() && pi_it->second < src.output_values.size()) {
+                        float mod_val = src.output_values[pi_it->second];
+                        float mod_t = (range > 0) ? std::clamp((mod_val - pd.min_value) / range, 0.0f, 1.0f) : 0.0f;
+                        float t_min = std::min(t, mod_t);
+                        float t_max = std::max(t, mod_t);
+                        tr.draw_rect(sx + sw * t_min, sy, sw * (t_max - t_min), sh, sc[0], sc[1], sc[2], 0.20f);
+                    }
+                }
+            }
         } else {
-            tr.draw_rect(sx, sy, sw * t, sh, style_.slider_fill[0], style_.slider_fill[1], style_.slider_fill[2]);
+            tr.draw_rect(sx, sy, sw * t, sh, sc[0], sc[1], sc[2]);
             float thumb_x = sx + sw * t - 3;
             tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, style_.accent[0], style_.accent[1], style_.accent[2]);
         }
@@ -1131,6 +1198,93 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
 }
 
 // -----------------------------------------------------------------------
+// Workspace grid
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_grid(Renderer2D& tr) {
+    // Skip when zoomed out so far that grid lines would be < 8px apart
+    float screen_spacing = kGridSpacing * zoom_;
+    if (screen_spacing < 8.0f) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+
+    // Find the range of graph-space coordinates visible on screen
+    float g_left   = sx_to_gx(0.0f);
+    float g_right  = sx_to_gx(wf);
+    float g_top    = sy_to_gy(0.0f);
+    float g_bottom = sy_to_gy(hf);
+
+    // Snap to grid boundaries
+    float gx_start = std::floor(g_left / kGridSpacing) * kGridSpacing;
+    float gy_start = std::floor(g_top / kGridSpacing) * kGridSpacing;
+
+    // Vertical lines
+    for (float gx = gx_start; gx <= g_right; gx += kGridSpacing) {
+        float sx = gx_to_sx(gx);
+        tr.draw_rect(sx, 0.0f, 1.0f, hf,
+                     kGpuAccent[0], kGpuAccent[1], kGpuAccent[2], kGridLineAlpha);
+    }
+
+    // Horizontal lines
+    for (float gy = gy_start; gy <= g_bottom; gy += kGridSpacing) {
+        float sy = gy_to_sy(gy);
+        tr.draw_rect(0.0f, sy, wf, 1.0f,
+                     kGpuAccent[0], kGpuAccent[1], kGpuAccent[2], kGridLineAlpha);
+    }
+}
+
+// -----------------------------------------------------------------------
+// Transport bar
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_transport_bar(Renderer2D& tr) {
+    if (!snap_.transport_has_clock) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+    float bar_y = hf - kTransportBarH;
+
+    // Dark background strip
+    tr.draw_rect(0.0f, bar_y, wf, kTransportBarH,
+                 kPerfBarBg[0], kPerfBarBg[1], kPerfBarBg[2], kPerfBarBg[3]);
+
+    float cx = 12.0f;  // cursor x
+
+    // 4 beat dots
+    for (int i = 0; i < 4; ++i) {
+        float dot_x = cx + i * kTransportDotSpacing;
+        float dot_y = bar_y + (kTransportBarH - kTransportDotSize) * 0.5f;
+        if (i == snap_.transport_beat_index) {
+            // Filled dot for current beat
+            tr.draw_rect(dot_x, dot_y, kTransportDotSize, kTransportDotSize,
+                         kControlAccent[0], kControlAccent[1], kControlAccent[2], 1.0f);
+        } else {
+            // Outline dot (draw border then dark interior)
+            tr.draw_rect(dot_x, dot_y, kTransportDotSize, kTransportDotSize,
+                         kControlAccent[0], kControlAccent[1], kControlAccent[2], 0.4f);
+            tr.draw_rect(dot_x + 1.5f, dot_y + 1.5f,
+                         kTransportDotSize - 3.0f, kTransportDotSize - 3.0f,
+                         kPerfBarBg[0], kPerfBarBg[1], kPerfBarBg[2], 1.0f);
+        }
+    }
+    cx += 4 * kTransportDotSpacing + 8.0f;
+
+    // BPM text
+    char bpm_buf[32];
+    std::snprintf(bpm_buf, sizeof(bpm_buf), "%.0f BPM", snap_.transport_bpm);
+    tr.draw_text(cx, bar_y + 7.0f, bpm_buf, kControlAccent[0], kControlAccent[1], kControlAccent[2]);
+    cx += tr.text_width(bpm_buf) + 16.0f;
+
+    // Elapsed time (m:ss)
+    int total_sec = static_cast<int>(snap_.transport_elapsed);
+    int mins = total_sec / 60;
+    int secs = total_sec % 60;
+    char time_buf[32];
+    std::snprintf(time_buf, sizeof(time_buf), "%d:%02d", mins, secs);
+    tr.draw_text(cx, bar_y + 7.0f, time_buf,
+                 kDimText[0], kDimText[1], kDimText[2]);
+}
+
+// -----------------------------------------------------------------------
 // Draw (top-level)
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
@@ -1148,6 +1302,7 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     // Semi-transparent scrim so wires are visible over the visualization
     tr.draw_rect(0, 0, static_cast<float>(w), static_cast<float>(h), 0.05f, 0.06f, 0.07f, 0.55f);
 
+    draw_grid(tr);
     draw_perf_bar(tr);
     draw_midi_map_banner(tr);
 
@@ -1157,6 +1312,8 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_wire_tooltip(tr);
 
     draw_inspector(tr, w, h);
+
+    draw_transport_bar(tr);
 
 }
 
@@ -1517,6 +1674,19 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
                         memory_history_.write_idx, memory_history_.filled,
                         graph_x, graph_y, kPerfMiniGraphW, kPerfMiniGraphH,
                         kPerfMemColor[0], kPerfMemColor[1], kPerfMemColor[2], 0.7f);
+
+    x = graph_x + kPerfMiniGraphW + kPerfSepMargin;
+
+    // --- XRUN counter ---
+    if (snap_.audio_underrun_count > 0) {
+        tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
+        x += kPerfSepW + kPerfSepMargin;
+        std::snprintf(buf, sizeof(buf), "XRUN %u", snap_.audio_underrun_count);
+        float xr = kErrorAccent[0], xg = kErrorAccent[1], xb = kErrorAccent[2];
+        if (snap_.audio_underrun_active) { xr = 1.0f; xg = 0.4f; xb = 0.4f; }
+        tr.draw_text(x, text_y, buf, xr, xg, xb);
+        x += tr.text_width(buf) + kPerfSepMargin;
+    }
 
     // Check hover over mini graph
     bool in_mini = mouse_.x >= graph_x && mouse_.x <= graph_x + kPerfMiniGraphW &&

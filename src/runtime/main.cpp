@@ -39,6 +39,7 @@
 #include <memory>
 #include <unordered_set>
 #include <vector>
+#include <CLI/CLI.hpp>
 
 // #16191D in sRGB → linear: pow(x/255, 2.2)
 static constexpr double kClearLinear[4]  = { 0.00699, 0.00821, 0.01041, 1.0 };
@@ -75,7 +76,8 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         vivid::AudioEngine* audio_engine,
         vivid::OperatorRegistry& registry,
         OperatorInfoCache& op_cache,
-        vivid::SystemMidiListener* system_midi = nullptr) {
+        vivid::SystemMidiListener* system_midi = nullptr,
+        double elapsed_time = 0.0) {
     vivid::ui::GraphSnapshot snap;
 
     const auto& sched_nodes = scheduler.nodes();
@@ -103,6 +105,8 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
             sn.file_param_values[name] = ns.file_param_storage[idx];
         sn.gpu_tex_width = ns.gpu_tex_width;
         sn.gpu_tex_height = ns.gpu_tex_height;
+        sn.errored = ns.errored;
+        sn.error_message = ns.error_message;
 
         // Layout from graph
         const auto* ndef = graph.find_node(ns.node_id);
@@ -140,6 +144,9 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
             snap.audio_analysis[i].peak = (i < analysis.peak.size()) ? analysis.peak[i] : 0.0f;
             snap.audio_analysis[i].waveform = analysis.waveform[i];
         }
+
+        snap.audio_underrun_count = audio_engine->underrun_count();
+        snap.audio_underrun_active = audio_engine->last_buffer_underrun();
     }
 
     // Operator catalog
@@ -171,6 +178,24 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         snap.pending_cc_events.resize(events.size());
         for (size_t i = 0; i < events.size(); ++i) {
             snap.pending_cc_events[i] = {events[i].channel, events[i].cc_number, events[i].value};
+        }
+    }
+
+    // Transport bar: scan for Clock operator
+    for (const auto& sn : snap.nodes) {
+        if (sn.type_name == "Clock") {
+            snap.transport_has_clock = true;
+            auto bpm_it = sn.param_indices.find("bpm");
+            if (bpm_it != sn.param_indices.end() && bpm_it->second < sn.param_values.size())
+                snap.transport_bpm = sn.param_values[bpm_it->second];
+            auto phase_it = sn.output_port_indices.find("beat_phase");
+            if (phase_it != sn.output_port_indices.end() && phase_it->second < sn.output_values.size())
+                snap.transport_beat_phase = sn.output_values[phase_it->second];
+            if (snap.transport_bpm > 0.0f)
+                snap.transport_beat_index = static_cast<int>(std::fmod(
+                    elapsed_time * snap.transport_bpm / 60.0, 4.0));
+            snap.transport_elapsed = elapsed_time;
+            break;
         }
     }
 
@@ -443,22 +468,27 @@ int main(int argc, char* argv[]) {
     auto exe_path = std::filesystem::canonical(std::filesystem::path(argv[0]));
     auto exe_dir = exe_path.parent_path();
 
-    const char* graph_path = (argc > 1) ? argv[1] : "graph.json";
-
-    // --- Screenshot / headless flags ---
+    // --- CLI argument parsing ---
+    std::string graph_file = "graph.json";
     std::string screenshot_path;
     int screenshot_delay = 5;
     bool headless = false;
+    std::string src_dir;
 
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
-            screenshot_path = argv[++i];
-        } else if (std::strcmp(argv[i], "--screenshot-delay") == 0 && i + 1 < argc) {
-            screenshot_delay = std::atoi(argv[++i]);
-            if (screenshot_delay < 1) screenshot_delay = 1;
-        } else if (std::strcmp(argv[i], "--headless") == 0) {
-            headless = true;
-        }
+    CLI::App app{"Vivid - Real-time audio-visual graph engine\n\n"
+                 "Loads a JSON graph file and runs it in real-time.\n"
+                 "Control server listens on http://127.0.0.1:9876 for live manipulation."};
+
+    app.add_option("graph", graph_file, "Graph file to load")->type_name("FILE");
+    app.add_option("--screenshot", screenshot_path, "Capture a screenshot to PNG and exit")->type_name("FILE");
+    app.add_option("--screenshot-delay", screenshot_delay, "Frames to wait before capture (default: 5)");
+    app.add_flag("--headless", headless, "Run without displaying a window");
+    app.add_option("--src-dir", src_dir, "Source directory for operator hot-reload")->type_name("PATH");
+
+    try {
+        app.parse(argc, argv);
+    } catch (const CLI::ParseError& e) {
+        return app.exit(e);
     }
 
     // --- GLFW ---
@@ -561,7 +591,7 @@ int main(int argc, char* argv[]) {
     // Working directory for user filter shaders: {graph_dir}/{graph_stem}_filters/
     std::string working_filters_dir;
 
-    if (graph.load(graph_path)) {
+    if (graph.load(graph_file.c_str())) {
         // Register user filters from graph before building the scheduler
         if (!graph.filters().empty()) {
             auto gp = std::filesystem::path(graph.source_path());
@@ -715,13 +745,6 @@ int main(int argc, char* argv[]) {
     vivid::HotReloader hot_reloader;
     bool hot_reload_enabled = false;
     {
-        std::string src_dir;
-        for (int i = 1; i < argc - 1; ++i) {
-            if (std::strcmp(argv[i], "--src-dir") == 0) {
-                src_dir = argv[i + 1];
-                break;
-            }
-        }
         if (src_dir.empty()) {
             auto parent = exe_dir.parent_path();
             if (std::filesystem::exists(parent / "operators")) {
@@ -900,7 +923,7 @@ int main(int argc, char* argv[]) {
         if (text_renderer_ok && graph_ui.visible()) {
             auto snapshot = build_graph_snapshot(
                 graph, scheduler, has_audio ? &audio_engine : nullptr,
-                registry, op_info_cache, &system_midi);
+                registry, op_info_cache, &system_midi, now);
             graph_ui.update(snapshot);
             graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
             // Pass 1: text/rects

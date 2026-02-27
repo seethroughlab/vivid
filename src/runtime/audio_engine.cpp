@@ -6,6 +6,7 @@
 #include "common/topo_sort.h"
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 
@@ -592,6 +593,8 @@ void AudioEngine::ma_data_callback(ma_device* device_ptr, void* output, const vo
 }
 
 void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
+    auto cb_start = std::chrono::steady_clock::now();
+
     // Read params from the active snapshot (lock-free)
     const auto& snap = snapshots_[active_.load(std::memory_order_acquire)];
 
@@ -727,6 +730,19 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
         }
 
         frames_written += chunk;
+    }
+
+    // Underrun detection: check if processing exceeded the buffer budget
+    auto cb_end = std::chrono::steady_clock::now();
+    double budget_us = static_cast<double>(frame_count) / kSampleRate * 1e6;
+    double elapsed_us = std::chrono::duration<double, std::micro>(cb_end - cb_start).count();
+    if (elapsed_us > budget_us) {
+        underrun_count_.fetch_add(1, std::memory_order_relaxed);
+        last_buffer_underrun_.store(true, std::memory_order_relaxed);
+        // Zero output to avoid glitchy audio
+        std::memset(output, 0, frame_count * 2 * sizeof(float));
+    } else {
+        last_buffer_underrun_.store(false, std::memory_order_relaxed);
     }
 
     // Compute RMS, peak, and waveform for each audio node, write to analysis snapshot
