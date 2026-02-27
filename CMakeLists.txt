@@ -24,6 +24,15 @@ set(USE_TLS OFF CACHE BOOL "" FORCE)
 set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(ixwebsocket)
 
+# CLI11 - Command-line argument parser (header-only)
+FetchContent_Declare(
+    cli11
+    GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+    GIT_TAG        v2.6.1
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(cli11)
+
 # --- GLFW (submodule) ---
 set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
@@ -224,7 +233,7 @@ add_executable(vivid
 )
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype ixwebsocket rtmidi)
+target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11)
 
 # Copy demo graphs to build directory
 configure_file(graphs/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
