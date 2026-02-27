@@ -86,6 +86,7 @@ add_vivid_operator(midi_input     operators/control/midi_input/midi_input.cpp   
 add_vivid_operator(fft_analysis   operators/control/fft_analysis/fft_analysis.cpp)
 add_vivid_operator(note_pattern   operators/control/note_pattern/note_pattern.cpp)
 add_vivid_operator(chord_progression operators/control/chord_progression/chord_progression.cpp)
+add_vivid_operator(arpeggiator      operators/control/arpeggiator/arpeggiator.cpp)
 
 # --- GPU operator plugins ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu)
@@ -97,6 +98,15 @@ add_vivid_operator(blur           operators/gpu/blur/blur.cpp            EXTRA_L
 add_vivid_operator(halftone       operators/gpu/halftone/halftone.cpp    EXTRA_LIBS webgpu)
 add_vivid_operator(levels         operators/gpu/levels/levels.cpp        EXTRA_LIBS webgpu)
 add_vivid_operator(displace       operators/gpu/displace/displace.cpp    EXTRA_LIBS webgpu)
+add_vivid_operator(solid_color          operators/gpu/solid_color/solid_color.cpp          EXTRA_LIBS webgpu)
+add_vivid_operator(pixelate             operators/gpu/pixelate/pixelate.cpp                 EXTRA_LIBS webgpu)
+add_vivid_operator(tile                 operators/gpu/tile/tile.cpp                         EXTRA_LIBS webgpu)
+add_vivid_operator(chromatic_aberration operators/gpu/chromatic_aberration/chromatic_aberration.cpp EXTRA_LIBS webgpu)
+add_vivid_operator(gradient             operators/gpu/gradient/gradient.cpp                       EXTRA_LIBS webgpu)
+add_vivid_operator(hsv                  operators/gpu/hsv/hsv.cpp                                 EXTRA_LIBS webgpu)
+add_vivid_operator(mirror               operators/gpu/mirror/mirror.cpp                           EXTRA_LIBS webgpu)
+add_vivid_operator(edge                 operators/gpu/edge/edge.cpp                               EXTRA_LIBS webgpu)
+add_vivid_operator(scanlines            operators/gpu/scanlines/scanlines.cpp                     EXTRA_LIBS webgpu)
 
 # --- Movie File In (image + video loader) ---
 if(APPLE)
@@ -121,7 +131,12 @@ target_include_directories(movie_file_in PRIVATE ${CMAKE_SOURCE_DIR}/deps/stb)
 # --- Audio operator plugins ---
 add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp)
 add_vivid_operator(gain           operators/audio/gain/gain.cpp)
-add_vivid_operator(drum           operators/audio/drum/drum.cpp)
+add_vivid_operator(drum_kick      operators/audio/drum_kick/drum_kick.cpp)
+add_vivid_operator(drum_snare     operators/audio/drum_snare/drum_snare.cpp)
+add_vivid_operator(drum_hihat     operators/audio/drum_hihat/drum_hihat.cpp)
+add_vivid_operator(drum_clap      operators/audio/drum_clap/drum_clap.cpp)
+add_vivid_operator(drum_tom       operators/audio/drum_tom/drum_tom.cpp)
+add_vivid_operator(drum_cymbal    operators/audio/drum_cymbal/drum_cymbal.cpp)
 add_vivid_operator(wavetable_synth operators/audio/wavetable_synth/wavetable_synth.cpp)
 add_vivid_operator(spread_adsr    operators/audio/spread_adsr/spread_adsr.cpp)
 add_vivid_operator(spread_lfo     operators/audio/spread_lfo/spread_lfo.cpp)
@@ -129,6 +144,16 @@ add_vivid_operator(reverb         operators/audio/reverb/reverb.cpp)
 add_vivid_operator(delay          operators/audio/delay/delay.cpp)
 add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp)
 add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp)
+
+# --- Glitch operator plugins ---
+add_vivid_operator(stutter        operators/audio/stutter/stutter.cpp)
+add_vivid_operator(tape_stop      operators/audio/tape_stop/tape_stop.cpp)
+add_vivid_operator(beat_repeat    operators/audio/beat_repeat/beat_repeat.cpp)
+add_vivid_operator(reverse        operators/audio/reverse/reverse.cpp)
+add_vivid_operator(scratch        operators/audio/scratch/scratch.cpp)
+add_vivid_operator(stretch        operators/audio/stretch/stretch.cpp)
+add_vivid_operator(freq_shift     operators/audio/freq_shift/freq_shift.cpp)
+add_vivid_operator(glitch         operators/audio/glitch/glitch.cpp)
 
 # --- Movie File Audio In (audio extraction from video files) ---
 if(APPLE)
@@ -205,6 +230,9 @@ configure_file(graphs/mfi_displace_demo.json ${CMAKE_BINARY_DIR}/mfi_displace_de
 configure_file(graphs/mfi_composite_demo.json ${CMAKE_BINARY_DIR}/mfi_composite_demo.json COPYONLY)
 configure_file(graphs/mfi_kitchen_sink_demo.json ${CMAKE_BINARY_DIR}/mfi_kitchen_sink_demo.json COPYONLY)
 configure_file(graphs/mfi_av_sync_demo.json ${CMAKE_BINARY_DIR}/mfi_av_sync_demo.json COPYONLY)
+configure_file(graphs/breakbeat_demo.json ${CMAKE_BINARY_DIR}/breakbeat_demo.json COPYONLY)
+configure_file(graphs/glitch_demo.json ${CMAKE_BINARY_DIR}/glitch_demo.json COPYONLY)
+configure_file(graphs/arpeggiator_demo.json ${CMAKE_BINARY_DIR}/arpeggiator_demo.json COPYONLY)
 
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)
