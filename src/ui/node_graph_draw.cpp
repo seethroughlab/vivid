@@ -314,6 +314,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     bool_rects_.clear();
     value_text_rects_.clear();
     dropdown_rects_.clear();
+    file_button_rects_.clear();
     resolution_rects_.clear();
     midi_remove_rects_.clear();
     midi_range_rects_.clear();
@@ -436,6 +437,17 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
     const auto& pd = op.params[pi];
     float val = node.param_values[pi];
 
+    // Check if this param is driven by a wire connection
+    std::string conn_source_label;
+    bool is_connected = false;
+    for (const auto& c : snap_.connections) {
+        if (c.to_node == selected_node_id_ && c.to_port == pd.name) {
+            is_connected = true;
+            conn_source_label = "\xE2\x86\x90 " + c.from_node + "/" + c.from_port;  // "← node/port"
+            break;
+        }
+    }
+
     bool is_editing_this = editing_param_ &&
                            edit_node_id_ == selected_node_id_ &&
                            edit_param_name_ == pd.name;
@@ -443,8 +455,11 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
     // CC badge (if this param has a MIDI mapping)
     const auto* midi_mm = snap_.find_midi_mapping(selected_node_id_, pd.name);
 
-    // Label
-    tr.draw_text(px, py, pd.name.c_str(), 0.8f, 0.82f, 0.85f);
+    // Label (dimmed if driven by connection)
+    if (is_connected)
+        tr.draw_text(px, py, pd.name.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+    else
+        tr.draw_text(px, py, pd.name.c_str(), 0.8f, 0.82f, 0.85f);
 
     // CC badge inline with label
     if (midi_mm) {
@@ -463,6 +478,40 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(perf_frame_counter_) * 0.15f);
         tr.draw_rect(px - 2, py - 2, panel_w + 4, kLineH + 4,
                      0.3f, 0.5f, 0.9f, pulse * 0.6f);
+    }
+
+    // File params: special rendering (filename + browse button), then return
+    if (pd.type == VIVID_PARAM_FILE) {
+        py += kLineH;
+        // Look up current file path
+        std::string file_path;
+        auto fp_it = node.file_param_values.find(pd.name);
+        if (fp_it != node.file_param_values.end())
+            file_path = fp_it->second;
+
+        // Extract just the filename for display
+        std::string display_name = "Browse\xe2\x80\xa6";  // "Browse…"
+        if (!file_path.empty()) {
+            auto slash = file_path.rfind('/');
+            display_name = (slash != std::string::npos) ? file_path.substr(slash + 1) : file_path;
+        }
+
+        // Draw button background
+        float btn_h = kDropdownH;
+        tr.draw_rect(px, py, panel_w, btn_h,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+        // Truncate display name if it's too wide
+        float max_text_w = panel_w - 12;
+        std::string truncated = display_name;
+        while (tr.text_width(truncated.c_str()) > max_text_w && truncated.size() > 4) {
+            truncated = "\xe2\x80\xa6" + truncated.substr(truncated.size() - (truncated.size() - 4));
+        }
+        tr.draw_text(px + 6, py + 1, truncated.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        file_button_rects_.push_back({px, py, panel_w, btn_h,
+                                      selected_node_id_, pd.name});
+        py += btn_h + 6;
+        return;
     }
 
     // Value text (right-aligned on the label line)
@@ -495,7 +544,10 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         std::string display = edit_buffer_ + "_";
         tr.draw_text(edit_x + 2, val_y, display.c_str(), 0.95f, 0.95f, 0.95f);
     } else {
-        tr.draw_text(val_x, py, val_str.c_str(), 0.8f, 0.82f, 0.85f);
+        if (is_connected)
+            tr.draw_text(val_x, py, val_str.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+        else
+            tr.draw_text(val_x, py, val_str.c_str(), 0.8f, 0.82f, 0.85f);
         if (pd.type != VIVID_PARAM_BOOL && pd.choice_count == 0) {
             value_text_rects_.push_back({val_x, val_y, vw, kLineH,
                                          selected_node_id_, pd.name});
@@ -507,8 +559,9 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float bx = px, by = py;
         tr.draw_rect(bx, by, kCheckboxSize, kCheckboxSize, style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
         if (val > 0.5f) {
+            float check_a = is_connected ? 0.3f : 1.0f;
             tr.draw_rect(bx + 2, by + 2, kCheckboxSize - 4, kCheckboxSize - 4,
-                         style_.accent[0], style_.accent[1], style_.accent[2]);
+                         style_.accent[0], style_.accent[1], style_.accent[2], check_a);
         }
         bool_rects_.push_back({bx, by, kCheckboxSize, kCheckboxSize, selected_node_id_, pd.name});
         py += kCheckboxSize + 6;
@@ -519,7 +572,10 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         int idx = static_cast<int>(val);
         const char* label = (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
                             ? pd.choice_labels[idx].c_str() : "?";
-        tr.draw_text(dx + 6, dy + 1, label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        if (is_connected)
+            tr.draw_text(dx + 6, dy + 1, label, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+        else
+            tr.draw_text(dx + 6, dy + 1, label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         float arrow_x = dx + dw - 16;
         tr.draw_text(arrow_x, dy + 1, "\xE2\x96\xBE", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         dropdown_rects_.push_back({dx, dy, dw, dh, selected_node_id_, pd.name});
@@ -531,11 +587,22 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float range = pd.max_value - pd.min_value;
         float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
         t = std::max(0.0f, std::min(1.0f, t));
-        tr.draw_rect(sx, sy, sw * t, sh, style_.slider_fill[0], style_.slider_fill[1], style_.slider_fill[2]);
-        float thumb_x = sx + sw * t - 3;
-        tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, style_.accent[0], style_.accent[1], style_.accent[2]);
+        if (is_connected) {
+            tr.draw_rect(sx, sy, sw * t, sh, style_.slider_fill[0], style_.slider_fill[1], style_.slider_fill[2], 0.3f);
+        } else {
+            tr.draw_rect(sx, sy, sw * t, sh, style_.slider_fill[0], style_.slider_fill[1], style_.slider_fill[2]);
+            float thumb_x = sx + sw * t - 3;
+            tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, style_.accent[0], style_.accent[1], style_.accent[2]);
+        }
         slider_rects_.push_back({sx, sy - 4, sw, sh + 8, selected_node_id_, pd.name});
         py += sh + 10;
+    }
+
+    // Source label for connected params (e.g. "← lfo_1/value")
+    if (is_connected) {
+        tr.draw_text(px, py - 4, conn_source_label.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f);
+        py += kLineH - 2;
     }
 
     // Inline MIDI min/max controls (only in MIDI map mode, only for mapped params)
@@ -1090,7 +1157,6 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_wire_tooltip(tr);
 
     draw_inspector(tr, w, h);
-    draw_chooser(tr);
 
 }
 
@@ -1099,6 +1165,9 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
 // popups (context menu, dropdown) appear on top of everything.
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_overlays(Renderer2D& tr) {
+    // Operator chooser — drawn here (overlay pass) so it appears above GPU thumbnails
+    draw_chooser(tr);
+
     // Dropdown popup
     if (dropdown_open_ && !dropdown_labels_.empty()) {
         float item_h = kDropdownItemH;
