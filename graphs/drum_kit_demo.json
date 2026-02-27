@@ -1,0 +1,29 @@
+{
+  "nodes": {
+    "clock1":      { "type": "Clock",      "params": { "bpm": 120.0 } },
+    "clock_half":  { "type": "Clock",      "params": { "bpm": 60.0 } },
+    "kick":        { "type": "DrumKick",   "params": { "pitch": 60.0, "decay": 0.3, "click": 0.3, "drive": 0.2, "volume": 0.8 } },
+    "snare":       { "type": "DrumSnare",  "params": { "pitch": 200.0, "tone_decay": 0.1, "noise_decay": 0.2, "snappy": 0.5, "volume": 0.7 } },
+    "hihat":       { "type": "DrumHiHat",  "params": { "decay": 0.08, "tone": 0.6, "ring": 0.5, "volume": 0.5 } },
+    "mix":         { "type": "Gain",       "params": { "gain": 0.6 } },
+    "stutter":     { "type": "Stutter",    "params": { "chance": 0.3, "size": 0.12, "count": 4, "envelope": 0, "env_amount": 0.5, "mix": 1.0 } },
+    "reverse":     { "type": "Reverse",    "params": { "chance": 0.2, "size": 0.25, "mix": 1.0 } },
+    "out1":        { "type": "audio_out",  "params": {} }
+  },
+  "connections": [
+    { "from": "clock1/beat_phase",     "to": "kick/phase" },
+    { "from": "clock1/beat_phase",     "to": "snare/phase" },
+    { "from": "clock1/beat_phase",     "to": "hihat/phase" },
+
+    { "from": "kick/output",           "to": "mix/input" },
+    { "from": "snare/output",          "to": "mix/input" },
+    { "from": "hihat/output",          "to": "mix/input" },
+
+    { "from": "clock1/beat_phase",     "to": "stutter/phase" },
+    { "from": "clock_half/beat_phase", "to": "reverse/phase" },
+
+    { "from": "mix/output",            "to": "stutter/input" },
+    { "from": "stutter/output",        "to": "reverse/input" },
+    { "from": "reverse/output",        "to": "out1/input" }
+  ]
+}
