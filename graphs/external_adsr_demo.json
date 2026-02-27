@@ -13,8 +13,9 @@
     "adsr1": { "type": "SpreadADSR", "params": {
       "attack": 0.15, "decay": 0.3, "sustain": 0.5, "release": 0.6
     }},
-    "ps1": { "type": "Polysynth", "params": {
-      "waveform": 1, "attack": 0.01, "decay": 0.1,
+    "ps1": { "type": "WavetableSynth", "params": {
+      "wavetable": 0, "position": 0.0,
+      "attack": 0.01, "decay": 0.1,
       "sustain": 0.7, "release": 0.3, "amplitude": 0.3,
       "env_bypass": 1.0
     }},

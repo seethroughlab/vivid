@@ -10,8 +10,9 @@
       "octave": 3, "beats_per_step": 2, "gate_length": 0.7,
       "velocity": 0.9
     }},
-    "ps1": { "type": "Polysynth", "params": {
-      "waveform": 1, "attack": 0.005, "decay": 0.2,
+    "ps1": { "type": "WavetableSynth", "params": {
+      "wavetable": 1, "position": 0.5,
+      "attack": 0.005, "decay": 0.2,
       "sustain": 0.5, "release": 0.2, "amplitude": 0.35
     }},
     "crush1": { "type": "Bitcrush", "params": {

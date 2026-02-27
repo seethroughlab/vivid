@@ -10,8 +10,9 @@
       "octave": 4, "beats_per_step": 4, "gate_length": 0.4,
       "velocity": 0.7
     }},
-    "ps1": { "type": "Polysynth", "params": {
-      "waveform": 0, "attack": 0.01, "decay": 0.15,
+    "ps1": { "type": "WavetableSynth", "params": {
+      "wavetable": 0, "position": 0.0,
+      "attack": 0.01, "decay": 0.15,
       "sustain": 0.3, "release": 0.6, "amplitude": 0.3
     }},
     "reverb1": { "type": "Reverb", "params": {

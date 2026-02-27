@@ -1,0 +1,889 @@
+#include "operator_api/operator.h"
+#include "operator_api/audio_operator.h"
+#include "operator_api/adsr.h"
+#include <cmath>
+#include <cstring>
+#include <algorithm>
+#include <vector>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+static constexpr float PI_F    = static_cast<float>(M_PI);
+static constexpr float TWO_PI_F = 2.0f * PI_F;
+
+namespace adsr = vivid::adsr;
+
+// =============================================================================
+// Wavetable storage
+// =============================================================================
+
+static constexpr uint32_t SAMPLES_PER_FRAME = 2048;
+static constexpr uint32_t MAX_FRAMES        = 256;
+
+struct Wavetable {
+    std::vector<float> data;   // frames * SAMPLES_PER_FRAME
+    uint32_t frame_count = 0;
+
+    void allocate(uint32_t frames) {
+        frame_count = std::min(frames, MAX_FRAMES);
+        data.assign(frame_count * SAMPLES_PER_FRAME, 0.0f);
+    }
+
+    float* frame_ptr(uint32_t f) {
+        return data.data() + f * SAMPLES_PER_FRAME;
+    }
+
+    float sample(float phase, float position) const {
+        if (data.empty() || frame_count == 0) return 0.0f;
+
+        position = std::clamp(position, 0.0f, 1.0f);
+        float frame_pos = position * static_cast<float>(frame_count - 1);
+        uint32_t f0 = static_cast<uint32_t>(frame_pos);
+        uint32_t f1 = std::min(f0 + 1, frame_count - 1);
+        float ff = frame_pos - static_cast<float>(f0);
+
+        phase = phase - std::floor(phase);
+        float sp = phase * static_cast<float>(SAMPLES_PER_FRAME);
+        uint32_t s0 = static_cast<uint32_t>(sp) % SAMPLES_PER_FRAME;
+        uint32_t s1 = (s0 + 1) % SAMPLES_PER_FRAME;
+        float sf = sp - std::floor(sp);
+
+        const float* d0 = data.data() + f0 * SAMPLES_PER_FRAME;
+        const float* d1 = data.data() + f1 * SAMPLES_PER_FRAME;
+
+        float a = d0[s0] + (d0[s1] - d0[s0]) * sf;
+        float b = d1[s0] + (d1[s1] - d1[s0]) * sf;
+        return a + (b - a) * ff;
+    }
+};
+
+// =============================================================================
+// Built-in wavetable generators
+// =============================================================================
+
+static void generate_basic(Wavetable& wt) {
+    wt.allocate(8);
+    for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
+        float* d = wt.frame_ptr(fr);
+        float t = static_cast<float>(fr) / 7.0f;
+        for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
+            float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
+            float sine     = std::sin(p * TWO_PI_F);
+            float triangle = 4.0f * std::abs(p - 0.5f) - 1.0f;
+            float saw      = 2.0f * p - 1.0f;
+            float square   = p < 0.5f ? 1.0f : -1.0f;
+            float s;
+            if (t < 0.333f) {
+                float b = t / 0.333f;
+                s = sine * (1.0f - b) + triangle * b;
+            } else if (t < 0.666f) {
+                float b = (t - 0.333f) / 0.333f;
+                s = triangle * (1.0f - b) + saw * b;
+            } else {
+                float b = (t - 0.666f) / 0.334f;
+                s = saw * (1.0f - b) + square * b;
+            }
+            d[i] = s;
+        }
+    }
+}
+
+static void generate_analog(Wavetable& wt) {
+    wt.allocate(8);
+    for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
+        float* d = wt.frame_ptr(fr);
+        float t = static_cast<float>(fr) / 7.0f;
+        for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
+            float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
+            float sample = 0.0f;
+            int nh = 3 + static_cast<int>(t * 12);
+            for (int h = 1; h <= nh; ++h) {
+                float amp = 1.0f / static_cast<float>(h);
+                if (h % 2 == 1) amp *= 1.2f;
+                float drift = std::sin(static_cast<float>(fr * h) * 0.1f) * 0.02f;
+                sample += amp * std::sin((p + drift) * TWO_PI_F * static_cast<float>(h));
+            }
+            d[i] = std::tanh(sample * 0.8f);
+        }
+    }
+}
+
+static void generate_digital(Wavetable& wt) {
+    wt.allocate(8);
+    for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
+        float* d = wt.frame_ptr(fr);
+        float t = static_cast<float>(fr) / 7.0f;
+        float mod_index = t * 8.0f;
+        float ratio = 1.0f + std::floor(t * 4.0f);
+        for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
+            float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
+            float mod = std::sin(p * TWO_PI_F * ratio);
+            d[i] = std::sin(p * TWO_PI_F + mod * mod_index);
+        }
+    }
+}
+
+static void generate_vocal(Wavetable& wt) {
+    wt.allocate(5);
+    const float formants[5][3] = {
+        {800.0f, 1150.0f, 2800.0f},
+        {400.0f, 2000.0f, 2550.0f},
+        {350.0f, 2700.0f, 2900.0f},
+        {450.0f, 800.0f,  2830.0f},
+        {325.0f, 700.0f,  2530.0f}
+    };
+    const float amps[5][3] = {
+        {1.0f, 0.6f, 0.2f},
+        {1.0f, 0.4f, 0.3f},
+        {1.0f, 0.2f, 0.3f},
+        {1.0f, 0.8f, 0.1f},
+        {1.0f, 0.8f, 0.1f}
+    };
+    for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
+        float* d = wt.frame_ptr(fr);
+        for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
+            float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
+            float sample = 0.0f;
+            float fundamental = 120.0f;
+            for (int h = 1; h <= 40; ++h) {
+                float freq = fundamental * static_cast<float>(h);
+                float amp = 0.0f;
+                for (int f = 0; f < 3; ++f) {
+                    float bw = 80.0f + static_cast<float>(f) * 40.0f;
+                    float dist = (freq - formants[fr][f]) / bw;
+                    amp += amps[fr][f] * std::exp(-dist * dist * 0.5f);
+                }
+                sample += amp * std::sin(p * TWO_PI_F * static_cast<float>(h));
+            }
+            d[i] = std::tanh(sample * 0.3f);
+        }
+    }
+}
+
+static void generate_texture(Wavetable& wt) {
+    wt.allocate(8);
+    uint32_t seed = 12345;
+    auto rand_f = [&seed]() -> float {
+        seed = seed * 1103515245 + 12345;
+        return (static_cast<float>(seed & 0x7FFFFFFF) /
+                static_cast<float>(0x7FFFFFFF)) * 2.0f - 1.0f;
+    };
+    for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
+        float* d = wt.frame_ptr(fr);
+        float t = static_cast<float>(fr) / 7.0f;
+        for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
+            float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
+            float harm = std::sin(p * TWO_PI_F)
+                       + 0.5f * std::sin(p * TWO_PI_F * 2.0f)
+                       + 0.25f * std::sin(p * TWO_PI_F * 3.0f);
+            harm *= 0.5f;
+            d[i] = harm * (1.0f - t) + rand_f() * t;
+        }
+        for (int pass = 0; pass < 3; ++pass) {
+            for (uint32_t i = 1; i < SAMPLES_PER_FRAME - 1; ++i)
+                d[i] = d[i] * 0.5f + (d[i-1] + d[i+1]) * 0.25f;
+        }
+    }
+}
+
+static void generate_pwm(Wavetable& wt) {
+    wt.allocate(8);
+    for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
+        float* d = wt.frame_ptr(fr);
+        float t = static_cast<float>(fr) / 7.0f;
+        float pw = 0.1f + t * 0.8f;
+        for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
+            float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
+            d[i] = p < pw ? 1.0f : -1.0f;
+        }
+        for (int pass = 0; pass < 2; ++pass) {
+            float prev = d[SAMPLES_PER_FRAME - 1];
+            for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
+                float next = d[(i + 1) % SAMPLES_PER_FRAME];
+                float smoothed = d[i] * 0.7f + (prev + next) * 0.15f;
+                prev = d[i];
+                d[i] = smoothed;
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Phase warp
+// =============================================================================
+
+enum WarpMode {
+    WARP_NONE, WARP_SYNC, WARP_BEND_PLUS, WARP_BEND_MINUS,
+    WARP_MIRROR, WARP_ASYM, WARP_QUANTIZE, WARP_FM, WARP_FLIP
+};
+
+static float warp_phase(float phase, int mode, float amount, float last_sample) {
+    if (amount <= 0.0f || mode == WARP_NONE) return phase;
+    phase = phase - std::floor(phase);
+
+    switch (mode) {
+        case WARP_SYNC: {
+            float r = 1.0f + amount * 7.0f;
+            float sp = phase * r;
+            return sp - std::floor(sp);
+        }
+        case WARP_BEND_PLUS:
+            return std::pow(phase, 1.0f + amount * 3.0f);
+        case WARP_BEND_MINUS:
+            return std::pow(phase, 1.0f / (1.0f + amount * 3.0f));
+        case WARP_MIRROR: {
+            float mid = 0.5f - amount * 0.3f;
+            if (phase > mid) return mid - (phase - mid);
+            return phase / mid * 0.5f;
+        }
+        case WARP_ASYM: {
+            float stretch = 0.5f + amount * 0.3f;
+            if (phase < 0.5f) return (phase / 0.5f) * stretch;
+            return stretch + ((phase - 0.5f) / 0.5f) * (1.0f - stretch);
+        }
+        case WARP_QUANTIZE: {
+            int steps = std::max(4, static_cast<int>(256.0f - amount * 252.0f));
+            return std::floor(phase * static_cast<float>(steps)) / static_cast<float>(steps);
+        }
+        case WARP_FM: {
+            float mp = phase + last_sample * amount * 0.5f;
+            return mp - std::floor(mp);
+        }
+        case WARP_FLIP:
+            if (phase >= 0.5f) {
+                float flipped = 1.0f - phase;
+                return phase * (1.0f - amount) + flipped * amount;
+            }
+            return phase;
+        default:
+            return phase;
+    }
+}
+
+// =============================================================================
+// Biquad filter types
+// =============================================================================
+
+enum FilterType {
+    FILTER_LP12, FILTER_LP24, FILTER_HP12, FILTER_BP, FILTER_NOTCH
+};
+
+// =============================================================================
+// WavetableSynth operator
+// =============================================================================
+
+struct WavetableSynth : vivid::OperatorBase {
+    static constexpr const char* kName   = "WavetableSynth";
+    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
+    static constexpr bool kTimeDependent = true;
+
+    // --- Parameters ---
+
+    // Core
+    vivid::Param<int>   wavetable        {"wavetable",        0,        {"Basic", "Analog", "Digital", "Vocal", "Texture", "PWM"}};
+    vivid::Param<float> position         {"position",         0.0f,     0.0f, 1.0f};
+    vivid::Param<float> amplitude        {"amplitude",        0.3f,     0.0f, 1.0f};
+
+    // Warp
+    vivid::Param<int>   warp_mode        {"warp_mode",        0,        {"None", "Sync", "BendPlus", "BendMinus", "Mirror", "Asym", "Quantize", "FM", "Flip"}};
+    vivid::Param<float> warp_amount      {"warp_amount",      0.0f,     0.0f, 1.0f};
+
+    // Unison
+    vivid::Param<int>   unison_voices    {"unison_voices",    1,        1, 8};
+    vivid::Param<float> unison_spread    {"unison_spread",    20.0f,    0.0f, 100.0f};
+    vivid::Param<float> unison_stereo    {"unison_stereo",    1.0f,     0.0f, 1.0f};
+
+    // Sub oscillator
+    vivid::Param<float> sub_level        {"sub_level",        0.0f,     0.0f, 1.0f};
+    vivid::Param<int>   sub_octave       {"sub_octave",       0,        {"-1", "-2"}};
+
+    // Portamento
+    vivid::Param<float> portamento       {"portamento",       0.0f,     0.0f, 2000.0f};
+
+    // Amplitude envelope
+    vivid::Param<float> attack           {"attack",           0.01f,    0.001f, 5.0f};
+    vivid::Param<float> decay            {"decay",            0.1f,     0.001f, 5.0f};
+    vivid::Param<float> sustain          {"sustain",          0.7f,     0.0f,   1.0f};
+    vivid::Param<float> release          {"release",          0.3f,     0.001f, 10.0f};
+
+    // Filter
+    vivid::Param<int>   filter_type      {"filter_type",      1,        {"LP12", "LP24", "HP12", "BP", "Notch"}};
+    vivid::Param<float> filter_cutoff    {"filter_cutoff",    20000.0f, 20.0f,  20000.0f};
+    vivid::Param<float> filter_resonance {"filter_resonance", 0.0f,     0.0f,   1.0f};
+    vivid::Param<float> filter_keytrack  {"filter_keytrack",  0.0f,     0.0f,   1.0f};
+
+    // Filter envelope
+    vivid::Param<float> filter_attack    {"filter_attack",    0.01f,    0.001f, 10.0f};
+    vivid::Param<float> filter_decay     {"filter_decay",     0.3f,     0.001f, 10.0f};
+    vivid::Param<float> filter_sustain   {"filter_sustain",   0.0f,     0.0f,   1.0f};
+    vivid::Param<float> filter_release   {"filter_release",   0.3f,     0.001f, 10.0f};
+    vivid::Param<float> filter_env_amount{"filter_env_amount",0.0f,    -1.0f,   1.0f};
+
+    // Velocity
+    vivid::Param<float> vel_to_volume    {"vel_to_volume",    1.0f,     0.0f,   1.0f};
+    vivid::Param<float> vel_to_attack    {"vel_to_attack",    0.0f,    -1.0f,   1.0f};
+
+    // Stereo & misc
+    vivid::Param<float> stereo_spread    {"stereo_spread",    0.5f,     0.0f,   1.0f};
+    vivid::Param<float> detune           {"detune",           0.0f,     0.0f,   50.0f};
+    vivid::Param<bool>  env_bypass       {"env_bypass",       false};
+
+    // --- Voice state ---
+
+    static constexpr int kMaxVoices = 16;
+
+    struct Voice {
+        float  note           = 0;
+        float  velocity       = 0;
+        double phase          = 0;
+        double sub_phase      = 0;
+        float  current_freq   = 0;
+        float  target_freq    = 0;
+        float  detune_offset  = 0;  // cents offset for unison
+        float  pan            = 0;  // -1..1 for unison stereo
+        float  last_sample    = 0;  // FM warp feedback
+        uint64_t note_id      = 0;
+        int    gate_slot      = -1;
+
+        adsr::State amp_env;
+        adsr::State filt_env;
+
+        // Biquad filter state (2 cascaded stages for LP24)
+        float fz1[2] = {};
+        float fz2[2] = {};
+
+        bool is_active() const { return amp_env.is_active(); }
+
+        void reset_filter() {
+            fz1[0] = fz1[1] = 0.0f;
+            fz2[0] = fz2[1] = 0.0f;
+        }
+    };
+
+    Voice    voices_[kMaxVoices] = {};
+    uint64_t note_counter_       = 0;
+
+    // Previous spread inputs for gate edge detection
+    float    prev_gates_[kMaxVoices] = {};
+    float    prev_notes_[kMaxVoices] = {};
+    uint32_t prev_spread_len_        = 0;
+
+    // Wavetable (lazy-inited)
+    Wavetable wt_;
+    int       loaded_table_ = -1;
+    bool      initialized_  = false;
+
+    // --- Param / port registration ---
+
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out.push_back(&wavetable);
+        out.push_back(&position);
+        out.push_back(&amplitude);
+        out.push_back(&warp_mode);
+        out.push_back(&warp_amount);
+        out.push_back(&unison_voices);
+        out.push_back(&unison_spread);
+        out.push_back(&unison_stereo);
+        out.push_back(&sub_level);
+        out.push_back(&sub_octave);
+        out.push_back(&portamento);
+        out.push_back(&attack);
+        out.push_back(&decay);
+        out.push_back(&sustain);
+        out.push_back(&release);
+        out.push_back(&filter_type);
+        out.push_back(&filter_cutoff);
+        out.push_back(&filter_resonance);
+        out.push_back(&filter_keytrack);
+        out.push_back(&filter_attack);
+        out.push_back(&filter_decay);
+        out.push_back(&filter_sustain);
+        out.push_back(&filter_release);
+        out.push_back(&filter_env_amount);
+        out.push_back(&vel_to_volume);
+        out.push_back(&vel_to_attack);
+        out.push_back(&stereo_spread);
+        out.push_back(&detune);
+        out.push_back(&env_bypass);
+    }
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"notes",      VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 0
+        out.push_back({"velocities", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 1
+        out.push_back({"gates",      VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 2
+        out.push_back({"filter_env", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 3
+        out.push_back({"pitch_mod",  VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 4
+        out.push_back({"amp_mod",    VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 5
+        out.push_back({"output_left",  VIVID_PORT_AUDIO_FLOAT,    VIVID_PORT_OUTPUT}); // out 0
+        out.push_back({"output_right", VIVID_PORT_AUDIO_FLOAT,    VIVID_PORT_OUTPUT}); // out 1
+        out.push_back({"envelopes",    VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT}); // out 2
+    }
+
+    // --- Helpers ---
+
+    static float cents_to_ratio(float cents) {
+        return std::pow(2.0f, cents / 1200.0f);
+    }
+
+    static float read_spread_slot(const VividSpreadPort* sp, int slot, float fallback = 0.0f) {
+        if (sp && sp->data && slot >= 0 && static_cast<uint32_t>(slot) < sp->length)
+            return sp->data[slot];
+        return fallback;
+    }
+
+    static float midi_to_freq(float note) {
+        return 440.0f * std::pow(2.0f, (note - 69.0f) / 12.0f);
+    }
+
+    // --- Wavetable loading ---
+
+    void ensure_wavetable(int table_idx) {
+        if (loaded_table_ == table_idx && !wt_.data.empty()) return;
+        switch (table_idx) {
+            case 0: generate_basic(wt_);   break;
+            case 1: generate_analog(wt_);  break;
+            case 2: generate_digital(wt_); break;
+            case 3: generate_vocal(wt_);   break;
+            case 4: generate_texture(wt_); break;
+            case 5: generate_pwm(wt_);     break;
+            default: generate_basic(wt_);  break;
+        }
+        loaded_table_ = table_idx;
+    }
+
+    // --- Voice management ---
+
+    int find_free_voice() const {
+        for (int i = 0; i < kMaxVoices; ++i)
+            if (!voices_[i].is_active()) return i;
+        return -1;
+    }
+
+    int find_voice_to_steal() const {
+        int idx = -1;
+        uint64_t oldest = UINT64_MAX;
+        for (int i = 0; i < kMaxVoices; ++i) {
+            if (voices_[i].is_active() && voices_[i].note_id < oldest) {
+                oldest = voices_[i].note_id;
+                idx = i;
+            }
+        }
+        return idx;
+    }
+
+    int find_voice_by_slot(int slot) const {
+        for (int i = 0; i < kMaxVoices; ++i) {
+            if (voices_[i].is_active() &&
+                voices_[i].amp_env.stage != adsr::RELEASE &&
+                voices_[i].gate_slot == slot)
+                return i;
+        }
+        return -1;
+    }
+
+    void trigger_note_on(float note, float vel, int slot, float porta_ms) {
+        int num_uni   = unison_voices.int_value();
+        float uni_spr = unison_spread.value;
+        float uni_st  = unison_stereo.value;
+
+        for (int u = 0; u < num_uni; ++u) {
+            // Check if there's already a voice for this slot+unison index
+            // For portamento: reuse existing voice instead of allocating new
+            int vi = -1;
+            if (porta_ms > 0.0f) {
+                // Find existing voice for this slot with matching unison position
+                int found = 0;
+                for (int i = 0; i < kMaxVoices; ++i) {
+                    if (voices_[i].is_active() &&
+                        voices_[i].amp_env.stage != adsr::RELEASE &&
+                        voices_[i].gate_slot == slot) {
+                        if (found == u) { vi = i; break; }
+                        ++found;
+                    }
+                }
+            }
+
+            if (vi >= 0) {
+                // Portamento: update target frequency, don't reset envelope
+                voices_[vi].note = note;
+                voices_[vi].target_freq = midi_to_freq(note);
+                voices_[vi].velocity = vel;
+                voices_[vi].note_id = ++note_counter_;
+                continue;
+            }
+
+            // Allocate new voice
+            vi = find_free_voice();
+            if (vi < 0) vi = find_voice_to_steal();
+            if (vi < 0) break;
+
+            Voice& v = voices_[vi];
+            v.note = note;
+            v.velocity = vel;
+            v.gate_slot = slot;
+            v.note_id = ++note_counter_;
+
+            // Unison detune & pan
+            if (num_uni > 1) {
+                float t = static_cast<float>(u) / static_cast<float>(num_uni - 1);
+                v.detune_offset = (t - 0.5f) * uni_spr;
+                v.pan = (t - 0.5f) * 2.0f * uni_st;
+            } else {
+                v.detune_offset = 0.0f;
+                v.pan = 0.0f;
+            }
+
+            float freq = midi_to_freq(note);
+            v.target_freq = freq;
+            v.current_freq = freq; // no portamento for new voice
+            v.phase = 0.0;
+            v.sub_phase = 0.0;
+            v.last_sample = 0.0f;
+
+            adsr::gate_on(v.amp_env);
+            adsr::gate_on(v.filt_env);
+            v.reset_filter();
+        }
+    }
+
+    void trigger_note_off_slot(int slot) {
+        for (int i = 0; i < kMaxVoices; ++i) {
+            if (voices_[i].is_active() &&
+                voices_[i].amp_env.stage != adsr::RELEASE &&
+                voices_[i].gate_slot == slot) {
+                adsr::gate_off(voices_[i].amp_env);
+                adsr::gate_off(voices_[i].filt_env);
+            }
+        }
+    }
+
+    // --- Biquad filter ---
+
+    float apply_biquad(Voice& v, float input, float cutoff_hz, float reso,
+                       int ftype, float sr) {
+        cutoff_hz = std::clamp(cutoff_hz, 20.0f, sr * 0.45f);
+        reso = std::clamp(reso, 0.0f, 1.0f);
+
+        float omega = TWO_PI_F * cutoff_hz / sr;
+        float sin_w = std::sin(omega);
+        float cos_w = std::cos(omega);
+        float Q     = 0.5f + reso * 19.5f;
+        float alpha = sin_w / (2.0f * Q);
+
+        float b0, b1, b2, a0, a1, a2;
+
+        switch (ftype) {
+            case FILTER_LP12:
+            case FILTER_LP24:
+                b0 = (1.0f - cos_w) * 0.5f;
+                b1 =  1.0f - cos_w;
+                b2 = (1.0f - cos_w) * 0.5f;
+                a0 =  1.0f + alpha;
+                a1 = -2.0f * cos_w;
+                a2 =  1.0f - alpha;
+                break;
+            case FILTER_HP12:
+                b0 = (1.0f + cos_w) * 0.5f;
+                b1 = -(1.0f + cos_w);
+                b2 = (1.0f + cos_w) * 0.5f;
+                a0 =  1.0f + alpha;
+                a1 = -2.0f * cos_w;
+                a2 =  1.0f - alpha;
+                break;
+            case FILTER_BP:
+                b0 =  sin_w * 0.5f;
+                b1 =  0.0f;
+                b2 = -sin_w * 0.5f;
+                a0 =  1.0f + alpha;
+                a1 = -2.0f * cos_w;
+                a2 =  1.0f - alpha;
+                break;
+            case FILTER_NOTCH:
+                b0 =  1.0f;
+                b1 = -2.0f * cos_w;
+                b2 =  1.0f;
+                a0 =  1.0f + alpha;
+                a1 = -2.0f * cos_w;
+                a2 =  1.0f - alpha;
+                break;
+            default:
+                return input;
+        }
+
+        // Normalize
+        float inv_a0 = 1.0f / a0;
+        b0 *= inv_a0; b1 *= inv_a0; b2 *= inv_a0;
+        a1 *= inv_a0; a2 *= inv_a0;
+
+        // Stage 1 (transposed direct form II)
+        float out = b0 * input + v.fz1[0];
+        v.fz1[0] = b1 * input - a1 * out + v.fz2[0];
+        v.fz2[0] = b2 * input - a2 * out;
+
+        // Stage 2 for LP24 (4-pole)
+        if (ftype == FILTER_LP24) {
+            float in2 = out;
+            out = b0 * in2 + v.fz1[1];
+            v.fz1[1] = b1 * in2 - a1 * out + v.fz2[1];
+            v.fz2[1] = b2 * in2 - a2 * out;
+        }
+
+        return out;
+    }
+
+    // --- Gate processing ---
+
+    void update_gates(const VividProcessContext* ctx) {
+        if (!ctx->input_spreads) return;
+
+        const auto& notes_sp = ctx->input_spreads[0];
+        const auto& vel_sp   = ctx->input_spreads[1];
+        const auto& gates_sp = ctx->input_spreads[2];
+
+        uint32_t len = gates_sp.length;
+        if (len > static_cast<uint32_t>(kMaxVoices)) len = kMaxVoices;
+
+        float porta_ms = portamento.value;
+
+        for (uint32_t i = 0; i < len; ++i) {
+            float cur_gate = read_spread_slot(&gates_sp, static_cast<int>(i));
+            float cur_note = read_spread_slot(&notes_sp, static_cast<int>(i));
+            float cur_vel  = read_spread_slot(&vel_sp,   static_cast<int>(i), 0.8f);
+
+            float prev_gate = (i < prev_spread_len_) ? prev_gates_[i] : 0.0f;
+            float prev_note = (i < prev_spread_len_) ? prev_notes_[i] : 0.0f;
+
+            bool on        = (cur_gate > 0.5f) && (prev_gate <= 0.5f);
+            bool off       = (cur_gate <= 0.5f) && (prev_gate > 0.5f);
+            bool retrigger = (cur_gate > 0.5f) && (prev_gate > 0.5f) &&
+                             (std::abs(cur_note - prev_note) > 0.5f);
+
+            if (on || retrigger) {
+                if (retrigger && porta_ms <= 0.0f)
+                    trigger_note_off_slot(static_cast<int>(i));
+                trigger_note_on(cur_note, cur_vel, static_cast<int>(i), retrigger ? porta_ms : 0.0f);
+            } else if (off) {
+                trigger_note_off_slot(static_cast<int>(i));
+            }
+
+            prev_gates_[i] = cur_gate;
+            prev_notes_[i] = cur_note;
+        }
+
+        for (uint32_t i = len; i < prev_spread_len_; ++i) {
+            if (prev_gates_[i] > 0.5f)
+                trigger_note_off_slot(static_cast<int>(i));
+            prev_gates_[i] = 0.0f;
+            prev_notes_[i] = 0.0f;
+        }
+
+        prev_spread_len_ = len;
+    }
+
+    // --- Main process ---
+
+    void process(const VividProcessContext* ctx) override {
+        auto* audio = vivid_audio(ctx);
+        if (!audio) return;
+
+        // Lazy-init wavetable
+        ensure_wavetable(wavetable.int_value());
+
+        float* out_l = audio->output_buffers[0];
+        float* out_r = audio->output_buffers[1];
+        uint32_t frames = audio->buffer_size;
+        float sr  = static_cast<float>(audio->sample_rate);
+        float dt  = 1.0f / sr;
+
+        // Read params
+        int   wt_idx       = wavetable.int_value();
+        float pos          = position.value;
+        float amp          = amplitude.value;
+        int   warp_m       = warp_mode.int_value();
+        float warp_a       = warp_amount.value;
+        int   num_uni      = unison_voices.int_value();
+        float sub_lvl      = sub_level.value;
+        int   sub_oct      = sub_octave.int_value();
+        float porta_ms     = portamento.value;
+        float att          = attack.value;
+        float dec          = decay.value;
+        float sus          = sustain.value;
+        float rel          = release.value;
+        int   ftype        = filter_type.int_value();
+        float f_cutoff     = filter_cutoff.value;
+        float f_reso       = filter_resonance.value;
+        float f_keytrack   = filter_keytrack.value;
+        float f_att        = filter_attack.value;
+        float f_dec        = filter_decay.value;
+        float f_sus        = filter_sustain.value;
+        float f_rel        = filter_release.value;
+        float f_env_amt    = filter_env_amount.value;
+        float v2vol        = vel_to_volume.value;
+        float v2atk        = vel_to_attack.value;
+        float spread       = stereo_spread.value;
+        float det_cents    = detune.value;
+        bool  bypass       = env_bypass.value > 0.5f;
+
+        // Reload wavetable if changed
+        ensure_wavetable(wt_idx);
+
+        // Modulation spread inputs
+        const VividSpreadPort* filter_env_sp = ctx->input_spreads ? &ctx->input_spreads[3] : nullptr;
+        const VividSpreadPort* pitch_mod_sp  = ctx->input_spreads ? &ctx->input_spreads[4] : nullptr;
+        const VividSpreadPort* amp_mod_sp    = ctx->input_spreads ? &ctx->input_spreads[5] : nullptr;
+
+        update_gates(ctx);
+
+        // Portamento rate (per-sample exponential glide)
+        float porta_rate = 1.0f;
+        if (porta_ms > 0.0f) {
+            float porta_samples = porta_ms * 0.001f * sr;
+            porta_rate = 1.0f - std::exp(-4.0f / porta_samples);
+        }
+
+        // Sub oscillator divisor
+        float sub_div = (sub_oct == 1) ? 4.0f : 2.0f; // choice 0="-1"(÷2), 1="-2"(÷4)
+
+        // Filter active check
+        bool filter_active = (f_cutoff < 19999.0f) || (f_reso > 0.01f) ||
+                             (std::abs(f_env_amt) > 0.001f);
+
+        float norm = 1.0f / std::sqrt(static_cast<float>(kMaxVoices));
+
+        // Pre-compute per-voice stereo pan gains
+        uint32_t spread_len = prev_spread_len_;
+        float voice_gain_l[kMaxVoices] = {};
+        float voice_gain_r[kMaxVoices] = {};
+
+        for (int vi = 0; vi < kMaxVoices; ++vi) {
+            Voice& v = voices_[vi];
+            if (!v.is_active()) continue;
+
+            // Combine slot-based stereo spread and unison pan
+            float pan = v.pan; // unison pan
+            if (num_uni <= 1 && spread_len > 1 && v.gate_slot >= 0) {
+                // No unison: use slot-based spread (like original Polysynth)
+                pan = (static_cast<float>(v.gate_slot) /
+                       static_cast<float>(spread_len - 1) * 2.0f - 1.0f) * spread;
+            }
+            float theta = (pan + 1.0f) * PI_F * 0.25f;
+            voice_gain_l[vi] = std::cos(theta);
+            voice_gain_r[vi] = std::sin(theta);
+        }
+
+        std::memset(out_l, 0, frames * sizeof(float));
+        std::memset(out_r, 0, frames * sizeof(float));
+
+        for (uint32_t s = 0; s < frames; ++s) {
+            float left_mix  = 0.0f;
+            float right_mix = 0.0f;
+
+            for (int vi = 0; vi < kMaxVoices; ++vi) {
+                Voice& v = voices_[vi];
+                if (!v.is_active()) continue;
+
+                // Velocity→attack modulation
+                float eff_att = att;
+                if (v2atk != 0.0f) {
+                    float vel_mod = v2atk * (1.0f - v.velocity);
+                    eff_att *= std::pow(2.0f, vel_mod * 2.0f);
+                    eff_att = std::clamp(eff_att, 0.001f, 10.0f);
+                }
+
+                // Advance envelopes
+                adsr::advance(v.amp_env, dt, eff_att, dec, sus, rel);
+                if (!v.is_active()) continue;
+
+                if (filter_active)
+                    adsr::advance(v.filt_env, dt, f_att, f_dec, f_sus, f_rel);
+
+                // Portamento: glide current_freq toward target_freq
+                if (porta_ms > 0.0f && v.current_freq != v.target_freq) {
+                    v.current_freq += (v.target_freq - v.current_freq) * porta_rate;
+                    if (std::abs(v.current_freq - v.target_freq) < 0.01f)
+                        v.current_freq = v.target_freq;
+                }
+
+                // Pitch modulation
+                float pitch_offset = read_spread_slot(pitch_mod_sp, v.gate_slot);
+                float freq = v.current_freq *
+                             cents_to_ratio(v.detune_offset + det_cents) *
+                             std::pow(2.0f, pitch_offset / 12.0f);
+
+                float phase_inc = static_cast<float>(freq) / sr;
+
+                // Phase warp + wavetable sample
+                float warped = warp_phase(static_cast<float>(v.phase), warp_m, warp_a, v.last_sample);
+                float sig = wt_.sample(warped, pos);
+                v.last_sample = sig;
+
+                // Sub oscillator
+                if (sub_lvl > 0.0f) {
+                    float sub_freq = v.current_freq / sub_div;
+                    float sub_inc  = sub_freq / sr;
+                    float sub_sig  = std::sin(static_cast<float>(v.sub_phase) * TWO_PI_F);
+                    sig = sig * (1.0f - sub_lvl) + sub_sig * sub_lvl;
+                    v.sub_phase += static_cast<double>(sub_inc);
+                    if (v.sub_phase >= 1.0) v.sub_phase -= 1.0;
+                }
+
+                // Per-voice biquad filter
+                if (filter_active) {
+                    float cutoff = f_cutoff;
+
+                    // Filter envelope modulation (bipolar)
+                    float env_mod = v.filt_env.env_value * f_env_amt;
+                    cutoff *= std::pow(2.0f, env_mod * 4.0f);
+
+                    // External filter envelope modulation
+                    float ext_fenv = read_spread_slot(filter_env_sp, v.gate_slot);
+                    if (ext_fenv != 0.0f)
+                        cutoff *= std::pow(2.0f, ext_fenv * 4.0f);
+
+                    // Keytracking
+                    if (f_keytrack > 0.0f) {
+                        float oct_from_c4 = std::log2(v.current_freq / 261.63f);
+                        cutoff *= std::pow(2.0f, oct_from_c4 * f_keytrack);
+                    }
+
+                    if (cutoff < sr * 0.45f)
+                        sig = apply_biquad(v, sig, cutoff, f_reso, ftype, sr);
+                }
+
+                // Envelope & velocity
+                float env = bypass ? 1.0f : v.amp_env.env_value;
+                float vel_vol = 1.0f - v2vol * (1.0f - v.velocity);
+                sig *= env * vel_vol;
+                sig *= read_spread_slot(amp_mod_sp, v.gate_slot, 1.0f);
+
+                left_mix  += sig * voice_gain_l[vi];
+                right_mix += sig * voice_gain_r[vi];
+
+                // Advance phase
+                v.phase += static_cast<double>(phase_inc);
+                if (v.phase >= 1.0) v.phase -= 1.0;
+            }
+
+            out_l[s] = left_mix * amp * norm;
+            out_r[s] = right_mix * amp * norm;
+        }
+
+        // Write per-voice envelope values to output spread
+        if (ctx->output_spreads) {
+            auto& env_sp = ctx->output_spreads[2];
+            uint32_t active_count = 0;
+            for (int vi = 0; vi < kMaxVoices; ++vi) {
+                if (voices_[vi].is_active()) {
+                    if (active_count < env_sp.capacity)
+                        env_sp.data[active_count] = voices_[vi].amp_env.env_value;
+                    active_count++;
+                }
+            }
+            env_sp.length = std::min(active_count, env_sp.capacity);
+        }
+    }
+};
+
+VIVID_REGISTER(WavetableSynth)

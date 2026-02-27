@@ -153,9 +153,9 @@ add_library(chord_progression MODULE operators/control/chord_progression/chord_p
 set_target_properties(chord_progression PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(chord_progression PRIVATE vivid_operator_api)
 
-add_library(polysynth MODULE operators/audio/polysynth/polysynth.cpp)
-set_target_properties(polysynth PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(polysynth PRIVATE vivid_operator_api)
+add_library(wavetable_synth MODULE operators/audio/wavetable_synth/wavetable_synth.cpp)
+set_target_properties(wavetable_synth PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(wavetable_synth PRIVATE vivid_operator_api)
 
 add_library(spread_adsr MODULE operators/audio/spread_adsr/spread_adsr.cpp)
 set_target_properties(spread_adsr PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
@@ -223,6 +223,7 @@ configure_file(graphs/av_sync_demo.json ${CMAKE_BINARY_DIR}/av_sync_demo.json CO
 configure_file(graphs/midi_demo.json ${CMAKE_BINARY_DIR}/midi_demo.json COPYONLY)
 configure_file(graphs/fft_bars_demo.json ${CMAKE_BINARY_DIR}/fft_bars_demo.json COPYONLY)
 configure_file(graphs/polysynth_demo.json ${CMAKE_BINARY_DIR}/polysynth_demo.json COPYONLY)
+configure_file(graphs/wavetable_demo.json ${CMAKE_BINARY_DIR}/wavetable_demo.json COPYONLY)
 configure_file(graphs/external_adsr_demo.json ${CMAKE_BINARY_DIR}/external_adsr_demo.json COPYONLY)
 configure_file(graphs/chord_progression_demo.json ${CMAKE_BINARY_DIR}/chord_progression_demo.json COPYONLY)
 configure_file(graphs/displace_demo.json ${CMAKE_BINARY_DIR}/displace_demo.json COPYONLY)

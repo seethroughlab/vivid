@@ -1,0 +1,48 @@
+{
+  "nodes": {
+    "clock1": { "type": "Clock", "params": { "bpm": 80.0 } },
+    "cp1": { "type": "ChordProgression", "params": {
+      "steps": 4,
+      "key_root": 0, "mode": 0, "octave": 3,
+      "beats_per_step": 8, "gate_length": 0.9, "velocity": 0.7,
+      "degree_0": 1, "voicing_0": 1, "ext_0": 1,
+      "degree_1": 5, "voicing_1": 0, "ext_1": 1,
+      "degree_2": 4, "voicing_2": 1, "ext_2": 0,
+      "degree_3": 0, "voicing_3": 0, "ext_3": 0
+    }},
+    "lfo1": { "type": "LFO", "params": {
+      "rate": 0.15, "waveform": 0, "amplitude": 1.0, "offset": 0.0
+    }},
+    "math1": { "type": "Math", "params": {
+      "operation": 0, "operand": 0.5
+    }},
+    "wt1": { "type": "WavetableSynth", "params": {
+      "wavetable": 3, "position": 0.5,
+      "warp_mode": 1, "warp_amount": 0.3,
+      "unison_voices": 3, "unison_spread": 25.0, "unison_stereo": 0.8,
+      "sub_level": 0.2, "sub_octave": 0,
+      "portamento": 80.0,
+      "attack": 0.3, "decay": 0.5,
+      "sustain": 0.6, "release": 1.0, "amplitude": 0.25,
+      "filter_type": 1, "filter_cutoff": 3000.0,
+      "filter_resonance": 0.4, "filter_keytrack": 0.5,
+      "filter_attack": 0.1, "filter_decay": 0.8,
+      "filter_sustain": 0.2, "filter_release": 0.6,
+      "filter_env_amount": 0.6
+    }},
+    "reverb1": { "type": "Reverb", "params": {
+      "room_size": 0.8, "damping": 0.3, "mix": 0.4
+    }},
+    "gain1": { "type": "Gain", "params": { "gain": 0.8 } },
+    "out1": { "type": "audio_out", "params": {} }
+  },
+  "connections": [
+    { "from": "clock1/beat_phase", "to": "cp1/beat_phase" },
+    { "from": "cp1/notes",      "to": "wt1/notes" },
+    { "from": "cp1/velocities", "to": "wt1/velocities" },
+    { "from": "cp1/gates",      "to": "wt1/gates" },
+    { "from": "wt1/output_left", "to": "reverb1/input" },
+    { "from": "reverb1/output",  "to": "gain1/input" },
+    { "from": "gain1/output",    "to": "out1/input" }
+  ]
+}
