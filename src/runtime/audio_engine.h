@@ -120,6 +120,7 @@ public:
     bool build(const Graph& graph, OperatorRegistry& registry, const Scheduler& scheduler);
     bool start(bool use_null_device = false);
     void push_params(const Scheduler& scheduler);
+    void update_sources(double time, const Scheduler& scheduler);
     void inject_analysis(Scheduler& scheduler);
     void shutdown();
 

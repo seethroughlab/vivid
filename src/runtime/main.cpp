@@ -1236,6 +1236,7 @@ int main(int argc, char* argv[]) {
 
             if (has_audio) {
                 audio_engine.inject_analysis(scheduler);
+                audio_engine.update_sources(now, scheduler);
             }
 
             // Tick with thumbnail capture callback for GPU nodes

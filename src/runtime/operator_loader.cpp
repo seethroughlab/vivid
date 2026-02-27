@@ -17,6 +17,7 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , destroy_fn_(other.destroy_fn_)
     , process_fn_(other.process_fn_)
     , draw_thumb_fn_(other.draw_thumb_fn_)
+    , main_update_fn_(other.main_update_fn_)
     , dd_config_(std::move(other.dd_config_))
     , dd_name_(std::move(other.dd_name_))
     , dd_param_names_(std::move(other.dd_param_names_))
@@ -30,6 +31,7 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     other.destroy_fn_    = nullptr;
     other.process_fn_    = nullptr;
     other.draw_thumb_fn_ = nullptr;
+    other.main_update_fn_ = nullptr;
     other.dd_desc_ = {};
     // Fixup descriptor pointers to our own storage
     if (dd_config_) {
@@ -48,6 +50,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         destroy_fn_    = other.destroy_fn_;
         process_fn_    = other.process_fn_;
         draw_thumb_fn_ = other.draw_thumb_fn_;
+        main_update_fn_ = other.main_update_fn_;
         dd_config_     = std::move(other.dd_config_);
         dd_name_       = std::move(other.dd_name_);
         dd_param_names_ = std::move(other.dd_param_names_);
@@ -60,6 +63,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         other.destroy_fn_    = nullptr;
         other.process_fn_    = nullptr;
         other.draw_thumb_fn_ = nullptr;
+        other.main_update_fn_ = nullptr;
         other.dd_desc_ = {};
         // Fixup descriptor pointers to our own storage
         if (dd_config_) {
@@ -98,6 +102,9 @@ bool OperatorLoader::load(const char* path) {
 
     // Optional: custom thumbnail drawing
     draw_thumb_fn_ = reinterpret_cast<VividDrawThumbnailFn>(dlsym(handle_, "vivid_draw_thumbnail"));
+
+    // Optional: main-thread update hook (for audio operators with file I/O)
+    main_update_fn_ = reinterpret_cast<VividMainThreadUpdateFn>(dlsym(handle_, "vivid_main_thread_update"));
 
     return true;
 }
@@ -159,6 +166,7 @@ void OperatorLoader::unload() {
         destroy_fn_    = nullptr;
         process_fn_    = nullptr;
         draw_thumb_fn_ = nullptr;
+        main_update_fn_ = nullptr;
     }
     if (dd_config_) {
         dd_config_.reset();
@@ -203,6 +211,14 @@ void OperatorLoader::process(void* instance, const VividProcessContext* ctx) con
 void OperatorLoader::draw_thumbnail(void* instance, const VividThumbnailContext* ctx) const {
     if (draw_thumb_fn_ && instance) {
         draw_thumb_fn_(instance, ctx);
+    }
+}
+
+void OperatorLoader::main_thread_update(void* instance, double time,
+                                         const char** file_param_values,
+                                         uint32_t file_param_count) const {
+    if (main_update_fn_ && instance) {
+        main_update_fn_(instance, time, file_param_values, file_param_count);
     }
 }
 

@@ -117,6 +117,7 @@ struct OperatorBase {
     virtual void collect_ports(std::vector<VividPortDescriptor>& out) = 0;
     virtual void process(const VividProcessContext* ctx) = 0;
     virtual void draw_thumbnail(const VividThumbnailContext*) {}  // optional override
+    virtual void main_thread_update(double time) {}               // optional override
 };
 
 } // namespace vivid
@@ -217,6 +218,26 @@ extern "C" void vivid_process(void* instance,                                 \
         }                                                                     \
     }                                                                         \
     op->process(ctx);                                                         \
+}                                                                             \
+                                                                              \
+extern "C" void vivid_main_thread_update(void* instance, double time,         \
+                                         const char** file_param_values,       \
+                                         uint32_t file_param_count) {          \
+    auto* op = static_cast<ClassName*>(instance);                              \
+    std::vector<vivid::ParamBase*> param_ptrs = _vivid_collect_param_ptrs(op); \
+    uint32_t file_idx = 0;                                                    \
+    for (size_t i = 0; i < param_ptrs.size(); ++i) {                          \
+        if (param_ptrs[i]->type == VIVID_PARAM_FILE) {                        \
+            if (file_param_values && file_idx < file_param_count) {           \
+                auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(       \
+                    param_ptrs[i]);                                           \
+                if (file_param_values[file_idx])                              \
+                    fp->str_value = file_param_values[file_idx];              \
+            }                                                                 \
+            file_idx++;                                                       \
+        }                                                                     \
+    }                                                                         \
+    op->main_thread_update(time);                                             \
 }
 
 // ---------------------------------------------------------------------------

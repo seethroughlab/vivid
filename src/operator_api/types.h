@@ -125,6 +125,12 @@ typedef struct VividThumbnailContext {
 
 typedef void (*VividDrawThumbnailFn)(void* instance, const VividThumbnailContext* ctx);
 
+// Optional main-thread update hook for operators that need non-audio-thread work
+// (e.g. AVFoundation decoding, file I/O, ring buffer pre-fill)
+typedef void (*VividMainThreadUpdateFn)(void* instance, double time,
+                                        const char** file_param_values,
+                                        uint32_t file_param_count);
+
 #ifdef __cplusplus
 }
 #endif

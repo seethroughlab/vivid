@@ -201,6 +201,23 @@ add_library(distortion MODULE operators/audio/distortion/distortion.cpp)
 set_target_properties(distortion PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(distortion PRIVATE vivid_operator_api)
 
+# --- Movie File Audio In (audio extraction from video files) ---
+if(APPLE)
+    add_library(movie_file_audio_in MODULE
+        operators/audio/movie_file_audio_in/movie_file_audio_in.cpp
+        operators/audio/movie_file_audio_in/avf_audio_extractor.mm
+    )
+    target_link_libraries(movie_file_audio_in PRIVATE
+        vivid_operator_api
+        "-framework AVFoundation" "-framework CoreMedia" "-framework Foundation"
+    )
+    set_source_files_properties(
+        operators/audio/movie_file_audio_in/avf_audio_extractor.mm
+        PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    set_target_properties(movie_file_audio_in PROPERTIES
+        PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+endif()
+
 # --- UI library ---
 add_library(vivid_ui STATIC
     src/ui/renderer_2d.cpp

@@ -435,6 +435,27 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
     active_.store(write_idx, std::memory_order_release);
 }
 
+void AudioEngine::update_sources(double time, const Scheduler& scheduler) {
+    for (auto& ns : nodes_) {
+        if (!ns.loader->has_main_thread_update()) continue;
+
+        // Find matching scheduler node to get file param values
+        const char** fps = nullptr;
+        uint32_t fpc = 0;
+        for (const auto& sched_ns : scheduler.nodes()) {
+            if (sched_ns.node_id == ns.node_id) {
+                if (!sched_ns.file_param_ptrs.empty()) {
+                    fps = const_cast<const char**>(sched_ns.file_param_ptrs.data());
+                }
+                fpc = static_cast<uint32_t>(sched_ns.file_param_ptrs.size());
+                break;
+            }
+        }
+
+        ns.loader->main_thread_update(ns.instance, time, fps, fpc);
+    }
+}
+
 void AudioEngine::inject_analysis(Scheduler& scheduler) {
     const auto& snap = analysis_snapshots_[analysis_active_.load(std::memory_order_acquire)];
     for (const auto& m : analysis_mappings_) {

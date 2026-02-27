@@ -34,6 +34,10 @@ public:
     bool has_draw_thumbnail() const { return draw_thumb_fn_ != nullptr; }
     void draw_thumbnail(void* instance, const VividThumbnailContext* ctx) const;
 
+    bool has_main_thread_update() const { return main_update_fn_ != nullptr; }
+    void main_thread_update(void* instance, double time,
+                            const char** file_param_values, uint32_t file_param_count) const;
+
     bool is_loaded() const { return handle_ != nullptr || desc_fn_ != nullptr || dd_config_ != nullptr; }
     bool is_data_driven() const { return dd_config_ != nullptr; }
 
@@ -44,6 +48,7 @@ private:
     VividDestroyFn         destroy_fn_     = nullptr;
     VividProcessFn         process_fn_     = nullptr;
     VividDrawThumbnailFn   draw_thumb_fn_  = nullptr;
+    VividMainThreadUpdateFn main_update_fn_ = nullptr;
 
     // Data-driven filter support
     std::shared_ptr<DataDrivenFilterConfig> dd_config_;

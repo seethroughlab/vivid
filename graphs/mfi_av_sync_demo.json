@@ -1,0 +1,15 @@
+{
+  "nodes": {
+    "vid":   { "type": "MovieFileIn",      "params": { "file": "media/camera.mp4" } },
+    "audio": { "type": "MovieFileAudioIn", "params": { "file": "media/camera.mp4" } },
+    "rev":   { "type": "Reverb",           "params": { "room_size": 0.5, "damping": 0.4 } },
+    "vout":  { "type": "video_out" },
+    "aout":  { "type": "audio_out" }
+  },
+  "connections": [
+    { "from": "vid/texture",  "to": "vout/input" },
+    { "from": "vid/time",     "to": "audio/video_time" },
+    { "from": "audio/left",   "to": "rev/input" },
+    { "from": "rev/output",   "to": "aout/input" }
+  ]
+}
