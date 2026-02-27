@@ -99,6 +99,8 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.param_values = ns.param_values;
         sn.output_values = ns.output_values;
         sn.output_spreads = ns.output_spreads;
+        for (const auto& [name, idx] : ns.file_param_indices)
+            sn.file_param_values[name] = ns.file_param_storage[idx];
         sn.gpu_tex_width = ns.gpu_tex_width;
         sn.gpu_tex_height = ns.gpu_tex_height;
 
@@ -784,9 +786,10 @@ int main(int argc, char* argv[]) {
             }
             video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
         }
-        // Handle GPU realloc after reload command
-        if (runtime_api.needs_gpu_realloc()) {
+        // Handle GPU realloc after reload command or operator-requested resize
+        if (runtime_api.needs_gpu_realloc() || scheduler.needs_gpu_realloc()) {
             runtime_api.clear_gpu_realloc();
+            scheduler.clear_gpu_realloc();
             scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
             video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
         }

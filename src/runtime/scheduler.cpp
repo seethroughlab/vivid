@@ -415,6 +415,16 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
 
         ns.loader->process(ns.instance, &ctx);
 
+        // Check if the operator requested a texture resize
+        if (ctx.preferred_tex_width > 0 && ctx.preferred_tex_height > 0 &&
+            (ctx.preferred_tex_width != ns.gpu_tex_width ||
+             ctx.preferred_tex_height != ns.gpu_tex_height)) {
+            ns.gpu_tex_width  = ctx.preferred_tex_width;
+            ns.gpu_tex_height = ctx.preferred_tex_height;
+            ns.generation++;
+            needs_gpu_realloc_ = true;
+        }
+
         // Read back output spreads
         for (uint32_t p = 0; p < ns.output_port_count; ++p) {
             if (out_spreads[p].length > 0) {

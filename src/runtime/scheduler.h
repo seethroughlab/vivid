@@ -93,6 +93,9 @@ public:
 
     void set_operators_src_dir(const std::string& dir) { operators_src_dir_ = dir; }
 
+    bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
+    void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
+
 private:
     void init_node_state(NodeState& ns, const VividOperatorDescriptor* desc,
                          const std::unordered_map<std::string, float>* param_overrides,
@@ -101,6 +104,7 @@ private:
     std::vector<NodeState> nodes_;
     std::vector<Wire> wires_;
     std::string operators_src_dir_;
+    bool needs_gpu_realloc_ = false;
 };
 
 } // namespace vivid

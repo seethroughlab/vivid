@@ -64,6 +64,39 @@ static bool is_video_extension(const std::string& path) {
 }
 
 // =============================================================================
+// Embedded 5×7 bitmap font (A-Z), each glyph stored as 7 rows, MSB = leftmost
+// =============================================================================
+
+static const uint8_t kFont5x7[26][7] = {
+    {0x70,0x88,0x88,0xF8,0x88,0x88,0x88}, // A
+    {0xF0,0x88,0x88,0xF0,0x88,0x88,0xF0}, // B
+    {0x70,0x88,0x80,0x80,0x80,0x88,0x70}, // C
+    {0xF0,0x88,0x88,0x88,0x88,0x88,0xF0}, // D
+    {0xF8,0x80,0x80,0xF0,0x80,0x80,0xF8}, // E
+    {0xF8,0x80,0x80,0xF0,0x80,0x80,0x80}, // F
+    {0x70,0x88,0x80,0xB8,0x88,0x88,0x70}, // G
+    {0x88,0x88,0x88,0xF8,0x88,0x88,0x88}, // H
+    {0x70,0x20,0x20,0x20,0x20,0x20,0x70}, // I
+    {0x38,0x10,0x10,0x10,0x10,0x90,0x60}, // J
+    {0x88,0x90,0xA0,0xC0,0xA0,0x90,0x88}, // K
+    {0x80,0x80,0x80,0x80,0x80,0x80,0xF8}, // L
+    {0x88,0xD8,0xA8,0xA8,0x88,0x88,0x88}, // M
+    {0x88,0xC8,0xC8,0xA8,0x98,0x98,0x88}, // N
+    {0x70,0x88,0x88,0x88,0x88,0x88,0x70}, // O
+    {0xF0,0x88,0x88,0xF0,0x80,0x80,0x80}, // P
+    {0x70,0x88,0x88,0x88,0xA8,0x90,0x68}, // Q
+    {0xF0,0x88,0x88,0xF0,0xA0,0x90,0x88}, // R
+    {0x70,0x88,0x80,0x70,0x08,0x88,0x70}, // S
+    {0xF8,0x20,0x20,0x20,0x20,0x20,0x20}, // T
+    {0x88,0x88,0x88,0x88,0x88,0x88,0x70}, // U
+    {0x88,0x88,0x88,0x88,0x50,0x50,0x20}, // V
+    {0x88,0x88,0x88,0xA8,0xA8,0xD8,0x88}, // W
+    {0x88,0x88,0x50,0x20,0x50,0x88,0x88}, // X
+    {0x88,0x88,0x50,0x20,0x20,0x20,0x20}, // Y
+    {0xF8,0x08,0x10,0x20,0x40,0x80,0xF8}, // Z
+};
+
+// =============================================================================
 // MovieFileIn Operator
 // =============================================================================
 
@@ -105,7 +138,7 @@ struct MovieFileIn : vivid::OperatorBase {
         }
 
         // For video sources, decode the next frame
-        if (decoder_ && decoder_->is_open()) {
+        if (decoder_ && decoder_->is_open() && !placeholder_active_) {
             // Update playback params
             decoder_->set_loop(play_mode.int_value() == 0);
             decoder_->set_speed(speed.value);
@@ -122,6 +155,13 @@ struct MovieFileIn : vivid::OperatorBase {
                     upload_pixels(gpu, pixels, w, h);
                 }
             }
+        }
+
+        // Request output texture match media dimensions
+        if (staging_width_ > 0 && staging_height_ > 0) {
+            auto* mutable_ctx = const_cast<VividProcessContext*>(ctx);
+            mutable_ctx->preferred_tex_width  = staging_width_;
+            mutable_ctx->preferred_tex_height = staging_height_;
         }
 
         // If we have a staging texture and valid bind group, blit it to output
@@ -166,6 +206,7 @@ private:
     // Media state
     std::string last_path_;
     std::unique_ptr<VideoDecoder> decoder_;
+    bool placeholder_active_ = false;
     WGPUDevice cached_device_ = nullptr;  // for staging texture recreation
 
     void load_media(VividGpuState* gpu) {
@@ -174,13 +215,10 @@ private:
             decoder_->close();
             decoder_.reset();
         }
+        placeholder_active_ = false;
 
         if (last_path_.empty()) {
-            // Release staging
-            vivid::gpu::release(staging_tex_);
-            vivid::gpu::release(staging_view_);
-            vivid::gpu::release(bind_group_);
-            staging_width_ = staging_height_ = 0;
+            show_placeholder(gpu);
             return;
         }
 
@@ -198,9 +236,11 @@ private:
                 std::fprintf(stderr, "[movie_file_in] Failed to open video: %s\n",
                              last_path_.c_str());
                 decoder_.reset();
+                show_placeholder(gpu);
             }
 #else
             std::fprintf(stderr, "[movie_file_in] Video playback not supported on this platform\n");
+            show_placeholder(gpu);
 #endif
         } else {
             // Try loading as image
@@ -214,6 +254,7 @@ private:
         if (!data) {
             std::fprintf(stderr, "[movie_file_in] Failed to load image: %s\n",
                          last_path_.c_str());
+            show_placeholder(gpu);
             return;
         }
 
@@ -310,6 +351,63 @@ private:
             wgpuQueueWriteTexture(gpu->queue, &dest, padded.data(),
                                   padded.size(), &layout, &extent);
         }
+    }
+
+    void show_placeholder(VividGpuState* gpu) {
+        static constexpr uint32_t kW = 320;
+        static constexpr uint32_t kH = 180;
+        static constexpr int kScale  = 2;
+        static constexpr int kGlyphW = 5;
+        static constexpr int kGlyphH = 7;
+        static constexpr int kCharW  = kGlyphW * kScale + 2; // 12px per char
+        static constexpr int kCharH  = kGlyphH * kScale;     // 14px tall
+
+        std::vector<uint8_t> pixels(kW * kH * 4);
+
+        // Background: dark charcoal with subtle diagonal stripes + 1px border
+        for (uint32_t y = 0; y < kH; ++y) {
+            for (uint32_t x = 0; x < kW; ++x) {
+                uint8_t v = ((x + y) % 8 < 2) ? 0x22 : 0x1A;
+                if (x == 0 || y == 0 || x == kW - 1 || y == kH - 1) v = 0x33;
+                auto* p = &pixels[(y * kW + x) * 4];
+                p[0] = v; p[1] = v; p[2] = v; p[3] = 0xFF; // BGRA gray
+            }
+        }
+
+        // Render "MEDIA MISSING" centered
+        static const char kText[] = "MEDIA MISSING";
+        static constexpr int kLen = sizeof(kText) - 1; // 13
+        int text_w = kLen * kCharW - 2;                // 154px (no trailing gap)
+        int ox = static_cast<int>(kW - text_w) / 2;
+        int oy = static_cast<int>(kH - kCharH) / 2;
+
+        for (int c = 0; c < kLen; ++c) {
+            char ch = kText[c];
+            if (ch == ' ') continue;
+            int gi = ch - 'A';
+            if (gi < 0 || gi >= 26) continue;
+
+            for (int gy = 0; gy < kGlyphH; ++gy) {
+                uint8_t row = kFont5x7[gi][gy];
+                for (int gx = 0; gx < kGlyphW; ++gx) {
+                    if (!(row & (0x80 >> gx))) continue;
+                    for (int sy = 0; sy < kScale; ++sy) {
+                        for (int sx = 0; sx < kScale; ++sx) {
+                            int px = ox + c * kCharW + gx * kScale + sx;
+                            int py = oy + gy * kScale + sy;
+                            if (px < 0 || px >= (int)kW) continue;
+                            if (py < 0 || py >= (int)kH) continue;
+                            auto* p = &pixels[(py * kW + px) * 4];
+                            p[0] = 0x88; p[1] = 0x88; p[2] = 0x88; p[3] = 0xFF;
+                        }
+                    }
+                }
+            }
+        }
+
+        recreate_staging(gpu, kW, kH);
+        upload_pixels(gpu, pixels.data(), kW, kH);
+        placeholder_active_ = true;
     }
 
     void blit(VividGpuState* gpu) {

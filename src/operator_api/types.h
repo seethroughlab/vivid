@@ -95,6 +95,8 @@ typedef struct VividProcessContext {
     VividSpreadPort* output_spreads;  // [output_port_idx], NULL if none
     const char** file_param_values;   // indexed by file param order, NULL if none
     uint32_t     file_param_count;
+    uint32_t  preferred_tex_width;   // operator writes non-zero to request resize
+    uint32_t  preferred_tex_height;  // 0 = no preference (keep current)
 } VividProcessContext;
 
 // ---------------------------------------------------------------------------
