@@ -27,6 +27,7 @@
     { "from": "np1/gates",      "to": "ps1/gates" },
     { "from": "np1/gates",      "to": "adsr1/gates" },
     { "from": "adsr1/envelopes", "to": "ps1/amp_mod" },
-    { "from": "ps1/output",     "to": "out1/input" }
+    { "from": "ps1/output_left",  "to": "out1/left" },
+    { "from": "ps1/output_right", "to": "out1/right" }
   ]
 }

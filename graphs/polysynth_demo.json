@@ -21,6 +21,7 @@
     { "from": "np1/notes", "to": "ps1/notes" },
     { "from": "np1/velocities", "to": "ps1/velocities" },
     { "from": "np1/gates", "to": "ps1/gates" },
-    { "from": "ps1/output", "to": "out1/input" }
+    { "from": "ps1/output_left",  "to": "out1/left" },
+    { "from": "ps1/output_right", "to": "out1/right" }
   ]
 }

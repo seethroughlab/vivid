@@ -1,0 +1,32 @@
+{
+  "nodes": {
+    "clock1": { "type": "Clock", "params": { "bpm": 120.0 } },
+    "np1": { "type": "NotePattern", "params": {
+      "steps": 4,
+      "root_0": 0, "type_0": 1,
+      "root_1": 12, "type_1": 0,
+      "root_2": 7, "type_2": 1,
+      "root_3": 12, "type_3": 0,
+      "octave": 5, "beats_per_step": 2, "gate_length": 0.3,
+      "velocity": 0.8
+    }},
+    "ps1": { "type": "Polysynth", "params": {
+      "waveform": 2, "attack": 0.005, "decay": 0.1,
+      "sustain": 0.0, "release": 0.15, "amplitude": 0.35
+    }},
+    "delay1": { "type": "Delay", "params": {
+      "time": 250.0, "feedback": 0.45, "mix": 0.5
+    }},
+    "gain1": { "type": "Gain", "params": { "gain": 0.7 } },
+    "out1": { "type": "audio_out", "params": {} }
+  },
+  "connections": [
+    { "from": "clock1/beat_phase", "to": "np1/beat_phase" },
+    { "from": "np1/notes",      "to": "ps1/notes" },
+    { "from": "np1/velocities", "to": "ps1/velocities" },
+    { "from": "np1/gates",      "to": "ps1/gates" },
+    { "from": "ps1/output_left", "to": "delay1/input" },
+    { "from": "delay1/output",   "to": "gain1/input" },
+    { "from": "gain1/output",    "to": "out1/input" }
+  ]
+}

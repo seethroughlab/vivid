@@ -111,6 +111,27 @@ add_library(composite MODULE operators/gpu/composite/composite.cpp)
 set_target_properties(composite PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(composite PRIVATE vivid_operator_api webgpu)
 
+# --- WGSL filter operator plugins ---
+add_library(posterize MODULE operators/gpu/posterize/posterize.cpp)
+set_target_properties(posterize PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(posterize PRIVATE vivid_operator_api webgpu)
+
+add_library(blur MODULE operators/gpu/blur/blur.cpp)
+set_target_properties(blur PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(blur PRIVATE vivid_operator_api webgpu)
+
+add_library(halftone MODULE operators/gpu/halftone/halftone.cpp)
+set_target_properties(halftone PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(halftone PRIVATE vivid_operator_api webgpu)
+
+add_library(levels MODULE operators/gpu/levels/levels.cpp)
+set_target_properties(levels PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(levels PRIVATE vivid_operator_api webgpu)
+
+add_library(displace MODULE operators/gpu/displace/displace.cpp)
+set_target_properties(displace PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(displace PRIVATE vivid_operator_api webgpu)
+
 # --- Audio operator plugins ---
 add_library(oscillator MODULE operators/audio/oscillator/oscillator.cpp)
 set_target_properties(oscillator PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
@@ -128,6 +149,10 @@ add_library(note_pattern MODULE operators/control/note_pattern/note_pattern.cpp)
 set_target_properties(note_pattern PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(note_pattern PRIVATE vivid_operator_api)
 
+add_library(chord_progression MODULE operators/control/chord_progression/chord_progression.cpp)
+set_target_properties(chord_progression PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(chord_progression PRIVATE vivid_operator_api)
+
 add_library(polysynth MODULE operators/audio/polysynth/polysynth.cpp)
 set_target_properties(polysynth PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(polysynth PRIVATE vivid_operator_api)
@@ -139,6 +164,22 @@ target_link_libraries(spread_adsr PRIVATE vivid_operator_api)
 add_library(spread_lfo MODULE operators/audio/spread_lfo/spread_lfo.cpp)
 set_target_properties(spread_lfo PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(spread_lfo PRIVATE vivid_operator_api)
+
+add_library(reverb MODULE operators/audio/reverb/reverb.cpp)
+set_target_properties(reverb PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(reverb PRIVATE vivid_operator_api)
+
+add_library(delay MODULE operators/audio/delay/delay.cpp)
+set_target_properties(delay PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(delay PRIVATE vivid_operator_api)
+
+add_library(bitcrush MODULE operators/audio/bitcrush/bitcrush.cpp)
+set_target_properties(bitcrush PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(bitcrush PRIVATE vivid_operator_api)
+
+add_library(distortion MODULE operators/audio/distortion/distortion.cpp)
+set_target_properties(distortion PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_link_libraries(distortion PRIVATE vivid_operator_api)
 
 # --- UI library ---
 add_library(vivid_ui STATIC
@@ -183,6 +224,8 @@ configure_file(graphs/midi_demo.json ${CMAKE_BINARY_DIR}/midi_demo.json COPYONLY
 configure_file(graphs/fft_bars_demo.json ${CMAKE_BINARY_DIR}/fft_bars_demo.json COPYONLY)
 configure_file(graphs/polysynth_demo.json ${CMAKE_BINARY_DIR}/polysynth_demo.json COPYONLY)
 configure_file(graphs/external_adsr_demo.json ${CMAKE_BINARY_DIR}/external_adsr_demo.json COPYONLY)
+configure_file(graphs/chord_progression_demo.json ${CMAKE_BINARY_DIR}/chord_progression_demo.json COPYONLY)
+configure_file(graphs/displace_demo.json ${CMAKE_BINARY_DIR}/displace_demo.json COPYONLY)
 
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)
@@ -322,7 +365,7 @@ add_executable(test_operator_loader
     src/runtime/operator_registry.cpp
 )
 target_include_directories(test_operator_loader PRIVATE src)
-target_link_libraries(test_operator_loader PRIVATE vivid_operator_api)
+target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu)
 add_dependencies(test_operator_loader test_op_v1 test_op_v2 control_pass_op)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
