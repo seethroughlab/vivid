@@ -302,11 +302,14 @@ int main() {
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file("shape.dylib", staging + "/shape.dylib",
         std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file("instance.dylib", staging + "/instance.dylib",
+        std::filesystem::copy_options::overwrite_existing);
 
     vivid::OperatorRegistry registry;
     check(registry.scan(staging.c_str()), "registry.scan() succeeds");
     check(registry.find("GpuFillOp") != nullptr, "GpuFillOp registered");
     check(registry.find("Shape") != nullptr, "Shape registered");
+    check(registry.find("Instance") != nullptr, "Instance registered");
 
     // =====================================================================
     // Test 2: Solid red fill
@@ -463,6 +466,83 @@ int main() {
             uint8_t r = pixels[idx], g_ = pixels[idx+1], b = pixels[idx+2], a = pixels[idx+3];
             std::fprintf(stderr, "  Center pixel: (%u, %u, %u, %u)\n", r, g_, b, a);
             check(r == 0 && g_ == 0 && b == 255 && a == 255, "center pixel is (0,0,255,255)");
+        }
+
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 6: Instance operator renders visible quad (with fill input)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 6: Instance with fill input ===\n");
+        constexpr uint32_t W = 64, H = 64;
+
+        vivid::Graph g;
+        g.add_node("fill", "GpuFillOp", {{"r", 1.0f}, {"g", 1.0f}, {"b", 1.0f}});
+        g.add_node("inst", "Instance", {{"size", 0.15f}});
+        g.add_connection("fill", "texture", "inst", "input");
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+        sched.allocate_gpu_textures(gpu.device, W, H, kFormat, WGPUTextureUsage_CopySrc);
+
+        tick_and_submit(sched, gpu, kFormat);
+
+        // Find the instance node's texture (it's the second node)
+        auto* inst_ns = sched.find_node_mut("inst");
+        check(inst_ns != nullptr, "found inst node");
+        if (inst_ns && inst_ns->gpu_texture) {
+            auto pixels = readback_texture(gpu.device, gpu.queue,
+                                            inst_ns->gpu_texture, W, H);
+            check(!pixels.empty(), "readback returned pixels");
+
+            if (!pixels.empty()) {
+                uint32_t cx = W / 2, cy = H / 2;
+                size_t idx = (cy * W + cx) * 4;
+                uint8_t r = pixels[idx], g_ = pixels[idx+1], b = pixels[idx+2];
+                std::fprintf(stderr, "  Center pixel: (%u, %u, %u, %u)\n",
+                             r, g_, b, pixels[idx+3]);
+                check(r > 0 || g_ > 0 || b > 0,
+                      "center pixel is non-black (Instance quad visible)");
+            }
+        }
+
+        sched.shutdown();
+    }
+
+    // =====================================================================
+    // Test 7: Instance with no input (fallback texture)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 7: Instance with no input (fallback) ===\n");
+        constexpr uint32_t W = 64, H = 64;
+
+        vivid::Graph g;
+        g.add_node("inst", "Instance", {{"size", 0.15f}});
+
+        vivid::Scheduler sched;
+        check(sched.build(g, registry), "build succeeds");
+        sched.allocate_gpu_textures(gpu.device, W, H, kFormat, WGPUTextureUsage_CopySrc);
+
+        tick_and_submit(sched, gpu, kFormat);
+
+        auto* inst_ns = sched.find_node_mut("inst");
+        check(inst_ns != nullptr, "found inst node");
+        if (inst_ns && inst_ns->gpu_texture) {
+            auto pixels = readback_texture(gpu.device, gpu.queue,
+                                            inst_ns->gpu_texture, W, H);
+            check(!pixels.empty(), "readback returned pixels");
+
+            if (!pixels.empty()) {
+                uint32_t cx = W / 2, cy = H / 2;
+                size_t idx = (cy * W + cx) * 4;
+                uint8_t r = pixels[idx], g_ = pixels[idx+1], b = pixels[idx+2];
+                std::fprintf(stderr, "  Center pixel: (%u, %u, %u, %u)\n",
+                             r, g_, b, pixels[idx+3]);
+                check(r > 0 || g_ > 0 || b > 0,
+                      "center pixel is non-black (fallback white texture visible)");
+            }
         }
 
         sched.shutdown();

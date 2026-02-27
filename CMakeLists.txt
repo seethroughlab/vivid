@@ -420,7 +420,7 @@ add_executable(test_gpu_operators
 )
 target_include_directories(test_gpu_operators PRIVATE src)
 target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api yyjson webgpu)
-add_dependencies(test_gpu_operators gpu_fill_op shape)
+add_dependencies(test_gpu_operators gpu_fill_op shape instance)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Cross-domain spread integration test
@@ -455,12 +455,31 @@ add_dependencies(test_audio_spread_wire spread_source_op audio_spread_op spread_
 add_test(NAME test_audio_spread_wire COMMAND test_audio_spread_wire
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Wavetable position envelope test
+add_executable(test_wavetable_position_env
+    tests/test_wavetable_position_env.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+)
+target_include_directories(test_wavetable_position_env PRIVATE src)
+target_link_libraries(test_wavetable_position_env PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu)
+add_dependencies(test_wavetable_position_env
+    clock note_pattern wavetable_synth spread_adsr spread_source_op)
+add_test(NAME test_wavetable_position_env
+    COMMAND test_wavetable_position_env ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Copy test graphs to build directory
 configure_file(tests/graphs/test_reload.json ${CMAKE_BINARY_DIR}/test_reload.json COPYONLY)
 configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runtime_api.json COPYONLY)
 configure_file(tests/graphs/test_audio_engine.json ${CMAKE_BINARY_DIR}/test_audio_engine.json COPYONLY)
 configure_file(tests/graphs/test_cross_domain_spread.json ${CMAKE_BINARY_DIR}/test_cross_domain_spread.json COPYONLY)
 configure_file(tests/graphs/test_audio_spread_wire.json ${CMAKE_BINARY_DIR}/test_audio_spread_wire.json COPYONLY)
+configure_file(tests/graphs/test_wavetable_position_env.json ${CMAKE_BINARY_DIR}/test_wavetable_position_env.json COPYONLY)
 
 # Demo graph smoke test (loads every demo graph, builds scheduler, ticks 5 frames)
 add_executable(test_demo_graphs

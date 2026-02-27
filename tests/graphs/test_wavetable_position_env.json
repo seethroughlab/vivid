@@ -1,0 +1,38 @@
+{
+    "nodes": {
+        "clock": {
+            "type": "Clock",
+            "params": { "bpm": 120.0 }
+        },
+        "np": {
+            "type": "NotePattern",
+            "params": {
+                "steps": 1.0,
+                "beats_per_step": 1.0,
+                "gate_length": 0.95,
+                "note_0": 60.0,
+                "velocity": 1.0
+            }
+        },
+        "synth": {
+            "type": "WavetableSynth",
+            "params": {
+                "wavetable": 0.0,
+                "position": 0.0,
+                "amplitude": 0.5,
+                "attack": 0.001,
+                "decay": 0.5,
+                "sustain": 0.8,
+                "release": 0.1,
+                "filter_cutoff": 20000.0,
+                "position_env_amount": 0.0
+            }
+        }
+    },
+    "connections": [
+        { "from": "clock/beat_phase", "to": "np/beat_phase" },
+        { "from": "np/notes",        "to": "synth/notes" },
+        { "from": "np/velocities",   "to": "synth/velocities" },
+        { "from": "np/gates",        "to": "synth/gates" }
+    ]
+}
