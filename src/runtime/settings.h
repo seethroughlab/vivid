@@ -1,0 +1,25 @@
+#pragma once
+#include <cstdint>
+#include <string>
+
+namespace vivid {
+
+struct Settings {
+    int window_x      = -1;   // -1 means "no saved position, center it"
+    int window_y      = -1;
+    int window_width  = 1280;
+    int window_height = 800;
+    bool bezier_wires = false;
+
+    std::string editor;          // app name for `open -a`, empty = system default
+    std::string editor_command;  // custom command template with {file} placeholder
+    std::string style_id;        // "dark_steel", "midnight", "slate"
+};
+
+Settings load_settings();
+void save_settings(const Settings& s);
+
+// Open a file in the user's preferred editor
+void open_in_editor(const std::string& file_path, const Settings& settings);
+
+} // namespace vivid

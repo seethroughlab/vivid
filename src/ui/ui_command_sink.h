@@ -24,6 +24,9 @@ public:
     virtual void open_shader(const std::string& type_name) {}
     virtual void duplicate_as_user_filter(const std::string& type_name) {}
     virtual void clone_and_edit(const std::string& type_name) {}
+    virtual void set_editor_preference(const std::string& editor_id,
+                                       const std::string& custom_command) {}
+    virtual void set_style_preference(const std::string& style_id) {}
 };
 
 } // namespace vivid::ui

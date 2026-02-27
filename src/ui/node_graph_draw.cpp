@@ -23,7 +23,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
     for (size_t i = 0; i < node_rects_.size(); ++i) {
         const auto& r = node_rects_[i];
         bool selected = (r.node_id == selected_node_id_);
-        const float* bg = selected ? kNodeSelBg.data() : kNodeBg.data();
+        const float* bg = selected ? style_.node_sel_bg.data() : style_.node_bg.data();
         const float* dcol = domain_color(r.domain);
 
         // Transform graph-space rect to screen space
@@ -31,7 +31,8 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float sw = g_to_s(r.w), sh = g_to_s(r.h);
 
         // Node background
-        tr.draw_rect(sx, sy, sw, sh, bg[0], bg[1], bg[2]);
+        float sr = g_to_s(style_.corner_radius);
+        tr.draw_rounded_rect(sx, sy, sw, sh, sr, bg[0], bg[1], bg[2]);
 
         // Accent bar at top
         float s_accent_h = g_to_s(kAccentBarH);
@@ -47,7 +48,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
             // Sparkline
             tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
                          sw - g_to_s(4), s_body_h - g_to_s(4),
-                         kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
+                         style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
 
             // Find sparkline data for this node's first output
             std::string spark_key;
@@ -104,7 +105,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
             // Waveform
             tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
                          sw - g_to_s(4), s_body_h - g_to_s(4),
-                         kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
+                         style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
 
             auto ae_it = snap_.audio_index.find(r.node_id);
             if (ae_it != snap_.audio_index.end() && ae_it->second >= 0) {
@@ -163,7 +164,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float iw = tr.text_width(r.node_id.c_str(), zoom_);
         float ix = sx + (sw - iw) * 0.5f;
         tr.draw_text(ix, text_y + g_to_s(kLineH), r.node_id.c_str(),
-                     kDimText[0], kDimText[1], kDimText[2], 1.0f, zoom_);
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, zoom_);
 
         // Input port dots and labels (use domain color)
         float s_dot = kPortDotSize * zoom_;
@@ -174,7 +175,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                          s_dot, s_dot,
                          dcol[0], dcol[1], dcol[2]);
             tr.draw_text(spx + g_to_s(4), spy - s_line_h * 0.5f, p.name.c_str(),
-                         kDimText[0], kDimText[1], kDimText[2], 1.0f, zoom_);
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, zoom_);
         }
         // Output port dots and labels (use domain color)
         for (const auto& p : r.outputs) {
@@ -184,7 +185,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                          dcol[0], dcol[1], dcol[2]);
             float lw = tr.text_width(p.name.c_str(), zoom_);
             tr.draw_text(spx - lw - g_to_s(4), spy - s_line_h * 0.5f, p.name.c_str(),
-                         kDimText[0], kDimText[1], kDimText[2], 1.0f, zoom_);
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, zoom_);
         }
     }
 }
@@ -295,16 +296,16 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
     }
 
     // Background
-    tr.draw_rect(px, py, popup_w, popup_h, 0.10f, 0.11f, 0.13f, 0.95f);
+    tr.draw_rect(px, py, popup_w, popup_h, style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.95f);
     // Accent line at top
     if (dcol) {
         tr.draw_rect(px, py, popup_w, 2.0f, dcol[0], dcol[1], dcol[2], 0.9f);
     }
     // Label text
-    tr.draw_text(px + pad, py + pad, label.c_str(), kDimText[0], kDimText[1], kDimText[2]);
+    tr.draw_text(px + pad, py + pad, label.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     // Value text
     if (!value_str.empty()) {
-        tr.draw_text(px + pad, py + pad + line_h, value_str.c_str(), 0.9f, 0.92f, 0.95f);
+        tr.draw_text(px + pad, py + pad + line_h, value_str.c_str(), style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     }
 }
 
@@ -327,13 +328,13 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
 
     // Inspector background + separator (drawn outside clip rect)
     float insp_x = inspector_x();
-    tr.draw_rect(insp_x, 0, kInspectorW, static_cast<float>(h), kInspBg[0], kInspBg[1], kInspBg[2], 0.95f);
-    tr.draw_rect(insp_x, 0, 2, static_cast<float>(h), 0.25f, 0.27f, 0.30f);
+    tr.draw_rect(insp_x, 0, kInspectorW, static_cast<float>(h), style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.95f);
+    tr.draw_rect(insp_x, 0, 2, static_cast<float>(h), style_.separator[0], style_.separator[1], style_.separator[2]);
 
     // Find the selected node in snapshot
     const auto* sel_node = snap_.find_node(selected_node_id_);
     if (!sel_node || !sel_node->op_info) {
-        tr.draw_text(insp_x + kInspPadX, 20, "Node not found", kDimText[0], kDimText[1], kDimText[2]);
+        tr.draw_text(insp_x + kInspPadX, 20, "Node not found", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         return;
     }
 
@@ -379,7 +380,8 @@ void NodeGraphUI::draw_inspector_scrollbar(Renderer2D& tr) {
     float track_h = viewport_h - 4.0f;
 
     // Track background
-    tr.draw_rect(track_x, track_y, kInspScrollbarW, track_h, 0.15f, 0.16f, 0.18f, 0.5f);
+    tr.draw_rect(track_x, track_y, kInspScrollbarW, track_h,
+                 style_.scrollbar_track[0], style_.scrollbar_track[1], style_.scrollbar_track[2], 0.5f);
 
     // Thumb size proportional to viewport/content ratio
     float ratio = viewport_h / insp_content_h_;
@@ -395,7 +397,7 @@ void NodeGraphUI::draw_inspector_scrollbar(Renderer2D& tr) {
                    mouse_.y >= thumb_y && mouse_.y <= thumb_y + thumb_h;
     float thumb_alpha = (hovered || insp_scrollbar_dragging_) ? 0.8f : 0.5f;
     tr.draw_rect(track_x, thumb_y, kInspScrollbarW, thumb_h,
-                 0.45f, 0.48f, 0.52f, thumb_alpha);
+                 style_.scrollbar_thumb[0], style_.scrollbar_thumb[1], style_.scrollbar_thumb[2], thumb_alpha);
 }
 
 void NodeGraphUI::draw_midi_map_banner(Renderer2D& tr) {
@@ -419,11 +421,11 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
     const auto& op = *node.op_info;
     tr.draw_text(px, py, op.name.c_str(), 1.0f, 1.0f, 1.0f);
     py += kLineH;
-    tr.draw_text(px, py, selected_node_id_.c_str(), kDimText[0], kDimText[1], kDimText[2]);
+    tr.draw_text(px, py, selected_node_id_.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH + 8;
 
     // Separator
-    tr.draw_rect(px, py, kInspContentW, 1, 0.25f, 0.27f, 0.30f);
+    tr.draw_rect(px, py, kInspContentW, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
     py += 8;
 }
 
@@ -488,8 +490,8 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float edit_x = px + panel_w - edit_w;
         float edit_h = kLineH;
         tr.draw_rect(edit_x - 1, val_y - 1, edit_w + 2, edit_h + 2,
-                     kAccent[0], kAccent[1], kAccent[2]);
-        tr.draw_rect(edit_x, val_y, edit_w, edit_h, 0.08f, 0.09f, 0.11f);
+                     style_.accent[0], style_.accent[1], style_.accent[2]);
+        tr.draw_rect(edit_x, val_y, edit_w, edit_h, style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
         std::string display = edit_buffer_ + "_";
         tr.draw_text(edit_x + 2, val_y, display.c_str(), 0.95f, 0.95f, 0.95f);
     } else {
@@ -503,35 +505,35 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
 
     if (pd.type == VIVID_PARAM_BOOL) {
         float bx = px, by = py;
-        tr.draw_rect(bx, by, kCheckboxSize, kCheckboxSize, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+        tr.draw_rect(bx, by, kCheckboxSize, kCheckboxSize, style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
         if (val > 0.5f) {
             tr.draw_rect(bx + 2, by + 2, kCheckboxSize - 4, kCheckboxSize - 4,
-                         kAccent[0], kAccent[1], kAccent[2]);
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
         }
         bool_rects_.push_back({bx, by, kCheckboxSize, kCheckboxSize, selected_node_id_, pd.name});
         py += kCheckboxSize + 6;
     } else if (pd.choice_count > 0) {
         float dx = px, dy = py;
         float dw = panel_w, dh = kDropdownH;
-        tr.draw_rect(dx, dy, dw, dh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+        tr.draw_rect(dx, dy, dw, dh, style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
         int idx = static_cast<int>(val);
         const char* label = (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
                             ? pd.choice_labels[idx].c_str() : "?";
-        tr.draw_text(dx + 6, dy + 1, label, 0.9f, 0.92f, 0.95f);
+        tr.draw_text(dx + 6, dy + 1, label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         float arrow_x = dx + dw - 16;
-        tr.draw_text(arrow_x, dy + 1, "\xE2\x96\xBE", kDimText[0], kDimText[1], kDimText[2]);
+        tr.draw_text(arrow_x, dy + 1, "\xE2\x96\xBE", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         dropdown_rects_.push_back({dx, dy, dw, dh, selected_node_id_, pd.name});
         py += dh + 6;
     } else {
         float sx = px, sy = py;
         float sw = panel_w, sh = kSliderH;
-        tr.draw_rect(sx, sy, sw, sh, kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+        tr.draw_rect(sx, sy, sw, sh, style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
         float range = pd.max_value - pd.min_value;
         float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
         t = std::max(0.0f, std::min(1.0f, t));
-        tr.draw_rect(sx, sy, sw * t, sh, kSliderFill[0], kSliderFill[1], kSliderFill[2]);
+        tr.draw_rect(sx, sy, sw * t, sh, style_.slider_fill[0], style_.slider_fill[1], style_.slider_fill[2]);
         float thumb_x = sx + sw * t - 3;
-        tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, kAccent[0], kAccent[1], kAccent[2]);
+        tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, style_.accent[0], style_.accent[1], style_.accent[2]);
         slider_rects_.push_back({sx, sy - 4, sw, sh + 8, selected_node_id_, pd.name});
         py += sh + 10;
     }
@@ -551,17 +553,17 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                               !midi_range_editing_min_;
 
         // "min" label
-        tr.draw_text(px, row_y, "min", kDimText[0], kDimText[1], kDimText[2]);
+        tr.draw_text(px, row_y, "min", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         float min_x = px + 28;
         if (is_editing_min) {
             tr.draw_rect(min_x - 1, row_y - 1, field_w + 2, kMidiRangeH,
-                         kAccent[0], kAccent[1], kAccent[2]);
-            tr.draw_rect(min_x, row_y, field_w, kMidiRangeH - 2, 0.08f, 0.09f, 0.11f);
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+            tr.draw_rect(min_x, row_y, field_w, kMidiRangeH - 2, style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
             std::string display = edit_buffer_ + "_";
             tr.draw_text(min_x + 2, row_y, display.c_str(), 0.95f, 0.95f, 0.95f);
         } else {
             tr.draw_rect(min_x, row_y, field_w, kMidiRangeH - 2,
-                         kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
             std::string min_str = format_float(midi_mm->range_min, 2);
             tr.draw_text(min_x + 2, row_y, min_str.c_str(), 0.8f, 0.82f, 0.85f);
         }
@@ -570,17 +572,17 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
 
         // "max" label
         float max_label_x = min_x + field_w + 10;
-        tr.draw_text(max_label_x, row_y, "max", kDimText[0], kDimText[1], kDimText[2]);
+        tr.draw_text(max_label_x, row_y, "max", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         float max_x = max_label_x + 30;
         if (is_editing_max) {
             tr.draw_rect(max_x - 1, row_y - 1, field_w + 2, kMidiRangeH,
-                         kAccent[0], kAccent[1], kAccent[2]);
-            tr.draw_rect(max_x, row_y, field_w, kMidiRangeH - 2, 0.08f, 0.09f, 0.11f);
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+            tr.draw_rect(max_x, row_y, field_w, kMidiRangeH - 2, style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
             std::string display = edit_buffer_ + "_";
             tr.draw_text(max_x + 2, row_y, display.c_str(), 0.95f, 0.95f, 0.95f);
         } else {
             tr.draw_rect(max_x, row_y, field_w, kMidiRangeH - 2,
-                         kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
             std::string max_str = format_float(midi_mm->range_max, 2);
             tr.draw_text(max_x + 2, row_y, max_str.c_str(), 0.8f, 0.82f, 0.85f);
         }
@@ -633,7 +635,7 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
             char header[16];
             std::snprintf(header, sizeof(header), "Step %d", s + 1);
             py += 4;
-            tr.draw_text(px, py, header, kDimText[0], kDimText[1], kDimText[2]);
+            tr.draw_text(px, py, header, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
             py += kLineH;
 
             // Draw root (key) and type (mode) side by side
@@ -648,11 +650,11 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                     const char* label = (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
                                         ? pd.choice_labels[idx].c_str() : "?";
                     tr.draw_rect(dx, py, dw, kDropdownH,
-                                 kSliderTrack[0], kSliderTrack[1], kSliderTrack[2]);
-                    tr.draw_text(dx + 6, py + 1, label, 0.9f, 0.92f, 0.95f);
+                                 style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+                    tr.draw_text(dx + 6, py + 1, label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
                     float arrow_x = dx + dw - 16;
                     tr.draw_text(arrow_x, py + 1, "\xE2\x96\xBE",
-                                 kDimText[0], kDimText[1], kDimText[2]);
+                                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
                     dropdown_rects_.push_back({dx, py, dw, kDropdownH,
                                                selected_node_id_, pd.name});
                 };
@@ -716,7 +718,7 @@ void NodeGraphUI::draw_inspector_adsr_preview(Renderer2D& tr, const NodeSnapshot
     py += 4;
 
     // Dark background
-    tr.draw_rect(px, py, w, h, kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
+    tr.draw_rect(px, py, w, h, style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
 
     // Curve geometry (same math as Envelope::draw_thumbnail)
     float sustain_width = 0.3f * (atk + dec + rel);
@@ -758,7 +760,7 @@ void NodeGraphUI::draw_inspector_adsr_preview(Renderer2D& tr, const NodeSnapshot
         float fill_h = bottom_y - ey;
         if (fill_h > 0.0f) {
             tr.draw_rect(fx, ey, col_w, fill_h,
-                         kAccent[0], kAccent[1], kAccent[2], 0.15f * alpha_mult);
+                         style_.accent[0], style_.accent[1], style_.accent[2], 0.15f * alpha_mult);
         }
     }
 
@@ -771,7 +773,7 @@ void NodeGraphUI::draw_inspector_adsr_preview(Renderer2D& tr, const NodeSnapshot
         float cx = time_to_x(t);
         float cy = env_to_y(env_at(t));
         tr.draw_line(prev_x, prev_y, cx, cy, 1.5f,
-                     kAccent[0], kAccent[1], kAccent[2], 0.9f * alpha_mult);
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.9f * alpha_mult);
         prev_x = cx;
         prev_y = cy;
     }
@@ -785,14 +787,14 @@ void NodeGraphUI::draw_inspector_adsr_preview(Renderer2D& tr, const NodeSnapshot
         for (float dy = top_y; dy < bottom_y; dy += 8.0f) {
             float dash_end = std::min(dy + 4.0f, bottom_y);
             tr.draw_line(mx, dy, mx, dash_end, 1.0f,
-                         kDimText[0], kDimText[1], kDimText[2], 0.3f * alpha_mult);
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.3f * alpha_mult);
         }
     }
 
     // "bypassed" label when env_bypass is on
     if (bypassed) {
         tr.draw_text(px + w - tr.text_width("bypassed") - 4, py + 2, "bypassed",
-                     kDimText[0], kDimText[1], kDimText[2], 0.5f);
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
     }
 
     py += h + 4;
@@ -861,7 +863,7 @@ void NodeGraphUI::draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot
     py += 4;
 
     // Dark background
-    tr.draw_rect(px, py, w, h, kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
+    tr.draw_rect(px, py, w, h, style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
 
     for (int s = 0; s < num_steps; ++s) {
         int root = static_cast<int>(node.param_values[root_base + s]);
@@ -874,7 +876,7 @@ void NodeGraphUI::draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot
 
         // Current step highlight
         if (is_current) {
-            tr.draw_rect(cx, py, cell_w, h, 0.18f, 0.22f, 0.30f, 0.6f);
+            tr.draw_rect(cx, py, cell_w, h, style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.6f);
         }
 
         // Note name centered
@@ -900,7 +902,7 @@ void NodeGraphUI::draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot
 
         // Cell divider
         if (s > 0) {
-            tr.draw_rect(cx, py, 1, h, 0.25f, 0.27f, 0.30f, 0.5f);
+            tr.draw_rect(cx, py, 1, h, style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
         }
     }
 
@@ -916,10 +918,10 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
     float panel_w = kInspContentW;
 
     py += 4;
-    tr.draw_rect(px, py, panel_w, 1, 0.25f, 0.27f, 0.30f);
+    tr.draw_rect(px, py, panel_w, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
     py += 8;
 
-    tr.draw_text(px, py, "Resolution", kDimText[0], kDimText[1], kDimText[2]);
+    tr.draw_text(px, py, "Resolution", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH;
 
     bool editing_w = editing_resolution_ &&
@@ -946,7 +948,7 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
         tr.draw_text(val_x, py, w_str.c_str(), 0.5f, 0.52f, 0.55f);
     }
 
-    tr.draw_text(val_x + kResInputW, py, " x ", kDimText[0], kDimText[1], kDimText[2]);
+    tr.draw_text(val_x + kResInputW, py, " x ", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 
     float h_val_x = val_x + kResInputW + 24.0f;
 
@@ -973,10 +975,10 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
 
     // Separator before outputs
     py += 4;
-    tr.draw_rect(px, py, panel_w, 1, 0.25f, 0.27f, 0.30f);
+    tr.draw_rect(px, py, panel_w, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
     py += 8;
 
-    tr.draw_text(px, py, "Outputs", kDimText[0], kDimText[1], kDimText[2]);
+    tr.draw_text(px, py, "Outputs", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH;
 
     auto sorted_outs = sorted_ports(node.output_port_indices);
@@ -988,7 +990,7 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
         } else {
             line = name + " = " + format_float(node.output_values[idx]);
         }
-        tr.draw_text(px, py, line.c_str(), kDimText[0], kDimText[1], kDimText[2]);
+        tr.draw_text(px, py, line.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         py += kLineH;
     }
 }
@@ -1016,9 +1018,9 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
     float py = kChooserY;
 
     // Background
-    tr.draw_rect(px, py, kChooserW, panel_h, kInspBg[0], kInspBg[1], kInspBg[2], 0.97f);
+    tr.draw_rect(px, py, kChooserW, panel_h, style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.97f);
     // Top accent bar
-    tr.draw_rect(px, py, kChooserW, 2, kAccent[0], kAccent[1], kAccent[2]);
+    tr.draw_rect(px, py, kChooserW, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
 
     // Filter text
     float tx = px + 8;
@@ -1037,7 +1039,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
         // Highlight selected
         if (idx == chooser_sel_) {
             tr.draw_rect(px + 2, item_y, kChooserW - 4, kChooserItemH,
-                         kNodeSelBg[0], kNodeSelBg[1], kNodeSelBg[2], 0.9f);
+                         style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
         }
 
         // Domain color dot
@@ -1057,7 +1059,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
 
     // Show "no matches" if empty
     if (chooser_items_.empty()) {
-        tr.draw_text(px + 8, iy + 3, "no matches", kDimText[0], kDimText[1], kDimText[2]);
+        tr.draw_text(px + 8, iy + 3, "no matches", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     }
 }
 
@@ -1103,18 +1105,18 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
         float popup_h = dropdown_labels_.size() * item_h + 4;
         // Background
         tr.draw_rect(dropdown_x_, dropdown_y_, dropdown_w_, popup_h,
-                     0.14f, 0.15f, 0.18f, 0.97f);
+                     style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
         // Border
         tr.draw_rect(dropdown_x_, dropdown_y_, dropdown_w_, 1,
-                     kAccent[0], kAccent[1], kAccent[2]);
+                     style_.accent[0], style_.accent[1], style_.accent[2]);
         for (int i = 0; i < static_cast<int>(dropdown_labels_.size()); ++i) {
             float iy = dropdown_y_ + 2 + i * item_h;
             if (i == dropdown_sel_) {
                 tr.draw_rect(dropdown_x_ + 2, iy, dropdown_w_ - 4, item_h,
-                             kNodeSelBg[0], kNodeSelBg[1], kNodeSelBg[2], 0.9f);
+                             style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
             }
             tr.draw_text(dropdown_x_ + 8, iy + 2, dropdown_labels_[i].c_str(),
-                         0.9f, 0.92f, 0.95f);
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         }
     }
 
@@ -1128,9 +1130,9 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
         float mx = context_menu_x_, my = context_menu_y_;
 
         // Background
-        tr.draw_rect(mx, my, kCtxMenuW, menu_h, 0.14f, 0.15f, 0.18f, 0.97f);
+        tr.draw_rect(mx, my, kCtxMenuW, menu_h, style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
         // Accent bar
-        tr.draw_rect(mx, my, kCtxMenuW, 1, kAccent[0], kAccent[1], kAccent[2]);
+        tr.draw_rect(mx, my, kCtxMenuW, 1, style_.accent[0], style_.accent[1], style_.accent[2]);
 
         // Item labels
         const char* labels[2];
@@ -1147,13 +1149,14 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
             if (mouse_.x >= mx && mouse_.x <= mx + kCtxMenuW &&
                 mouse_.y >= item_y && mouse_.y <= item_y + kCtxMenuItemH) {
                 tr.draw_rect(mx + 2, item_y, kCtxMenuW - 4, kCtxMenuItemH,
-                             kNodeSelBg[0], kNodeSelBg[1], kNodeSelBg[2], 0.9f);
+                             style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
             }
-            tr.draw_text(mx + 8, item_y + 3, labels[i], 0.9f, 0.92f, 0.95f);
+            tr.draw_text(mx + 8, item_y + 3, labels[i], style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         }
     }
 
     draw_clone_confirm(tr);
+    draw_preferences(tr);
 }
 
 // -----------------------------------------------------------------------
@@ -1164,7 +1167,7 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
 
     // Scrim over entire window
     tr.draw_rect(0, 0, static_cast<float>(win_w_), static_cast<float>(win_h_),
-                 0.0f, 0.0f, 0.0f, 0.45f);
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
 
     // Dialog panel (centered)
     float dw = 280.0f, dh = 70.0f;
@@ -1172,13 +1175,13 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
     float dy = (static_cast<float>(win_h_) - dh) * 0.5f;
 
     // Background
-    tr.draw_rect(dx, dy, dw, dh, 0.14f, 0.15f, 0.18f, 0.97f);
+    tr.draw_rounded_rect(dx, dy, dw, dh, style_.corner_radius, style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     // Accent bar at top
-    tr.draw_rect(dx, dy, dw, 2, kAccent[0], kAccent[1], kAccent[2]);
+    tr.draw_rect(dx, dy, dw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
 
     // Label text
     std::string label = "Clone " + clone_confirm_type_ + " for editing?";
-    tr.draw_text(dx + 12, dy + 10, label.c_str(), 0.9f, 0.92f, 0.95f);
+    tr.draw_text(dx + 12, dy + 10, label.c_str(), style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
     // Buttons
     float btn_w = 70.0f, btn_h = 22.0f;
@@ -1190,19 +1193,167 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
     bool clone_hover = mouse_.x >= clone_x && mouse_.x <= clone_x + btn_w &&
                        mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h;
     if (clone_hover)
-        tr.draw_rect(clone_x, btn_y, btn_w, btn_h, kAccent[0], kAccent[1], kAccent[2], 0.9f);
+        tr.draw_rect(clone_x, btn_y, btn_w, btn_h, style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
     else
-        tr.draw_rect(clone_x, btn_y, btn_w, btn_h, 0.22f, 0.24f, 0.28f, 0.9f);
-    tr.draw_text(clone_x + 16, btn_y + 3, "Clone", 0.95f, 0.96f, 0.98f);
+        tr.draw_rect(clone_x, btn_y, btn_w, btn_h, style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
+    tr.draw_text(clone_x + 16, btn_y + 3, "Clone", style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
     // Cancel button
     bool cancel_hover = mouse_.x >= cancel_x && mouse_.x <= cancel_x + btn_w &&
                         mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h;
     if (cancel_hover)
-        tr.draw_rect(cancel_x, btn_y, btn_w, btn_h, 0.28f, 0.30f, 0.35f, 0.9f);
+        tr.draw_rect(cancel_x, btn_y, btn_w, btn_h, style_.button_hover[0], style_.button_hover[1], style_.button_hover[2], 0.9f);
     else
-        tr.draw_rect(cancel_x, btn_y, btn_w, btn_h, 0.18f, 0.19f, 0.22f, 0.9f);
-    tr.draw_text(cancel_x + 13, btn_y + 3, "Cancel", 0.7f, 0.72f, 0.75f);
+        tr.draw_rect(cancel_x, btn_y, btn_w, btn_h, style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
+    tr.draw_text(cancel_x + 13, btn_y + 3, "Cancel", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+}
+
+// -----------------------------------------------------------------------
+// Preferences panel
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_preferences(Renderer2D& tr) {
+    if (!prefs_open_) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+
+    // Scrim
+    tr.draw_rect(0, 0, wf, hf,
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+
+    // Compute panel height dynamically
+    int editor_count = static_cast<int>(prefs_editor_names_.size());
+    int style_count = static_cast<int>(prefs_styles_.size());
+    bool show_custom = (prefs_editor_sel_ >= 0 &&
+                        prefs_editor_sel_ < static_cast<int>(prefs_editor_ids_.size()) &&
+                        prefs_editor_ids_[prefs_editor_sel_] == "custom");
+
+    float content_h = kPrefsPadY
+        + kPrefsRowH                              // "Preferences" title
+        + kPrefsSectionGap
+        + kPrefsRowH                              // "TEXT EDITOR" section header
+        + editor_count * kPrefsRowH               // radio items
+        + (show_custom ? kPrefsRowH + 4 : 0)      // custom command field
+        + kPrefsSectionGap
+        + kPrefsRowH                              // "STYLE" section header
+        + style_count * kPrefsRowH                // radio items
+        + kPrefsSectionGap
+        + kPrefsBtnH                              // buttons
+        + kPrefsPadY;
+
+    float pw = kPrefsW;
+    float ph = content_h;
+    float px = (wf - pw) * 0.5f;
+    float py = (hf - ph) * 0.5f;
+
+    // Panel background
+    tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
+                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    // Accent bar
+    tr.draw_rect(px, py, pw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    float cx = px + kPrefsPadX;
+    float cy = py + kPrefsPadY;
+    float inner_w = pw - 2 * kPrefsPadX;
+
+    // Title
+    tr.draw_text(cx, cy, "Preferences",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    cy += kPrefsRowH + kPrefsSectionGap;
+
+    // --- TEXT EDITOR section ---
+    tr.draw_text(cx, cy, "TEXT EDITOR",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+    cy += kPrefsRowH;
+
+    for (int i = 0; i < editor_count; ++i) {
+        bool sel = (i == prefs_editor_sel_);
+        // Radio button circle
+        float radio_x = cx + 2;
+        float radio_y = cy + kPrefsRowH * 0.5f - 5;
+        tr.draw_rect(radio_x, radio_y, 10, 10,
+                     style_.separator[0], style_.separator[1], style_.separator[2]);
+        if (sel) {
+            tr.draw_rect(radio_x + 2, radio_y + 2, 6, 6,
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+        }
+        // Label
+        tr.draw_text(cx + 18, cy + 1, prefs_editor_names_[i].c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        cy += kPrefsRowH;
+    }
+
+    // Custom command text field
+    if (show_custom) {
+        cy += 2;
+        tr.draw_rect(cx + 18, cy, inner_w - 18, kPrefsRowH - 2,
+                     style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+        if (prefs_editing_custom_) {
+            tr.draw_rect(cx + 18, cy, inner_w - 18, 1,
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+        }
+        std::string display = prefs_custom_command_;
+        if (prefs_editing_custom_) display += "_";
+        if (display.empty()) display = "/usr/local/bin/code {file}";
+        float text_alpha = prefs_custom_command_.empty() && !prefs_editing_custom_ ? 0.4f : 1.0f;
+        tr.draw_text(cx + 22, cy + 2, display.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], text_alpha);
+        cy += kPrefsRowH + 2;
+    }
+
+    cy += kPrefsSectionGap;
+
+    // --- STYLE section ---
+    tr.draw_text(cx, cy, "STYLE",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+    cy += kPrefsRowH;
+
+    for (int i = 0; i < style_count; ++i) {
+        bool sel = (i == prefs_style_sel_);
+        float radio_x = cx + 2;
+        float radio_y = cy + kPrefsRowH * 0.5f - 5;
+        tr.draw_rect(radio_x, radio_y, 10, 10,
+                     style_.separator[0], style_.separator[1], style_.separator[2]);
+        if (sel) {
+            tr.draw_rect(radio_x + 2, radio_y + 2, 6, 6,
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+        }
+        tr.draw_text(cx + 18, cy + 1, prefs_styles_[i].name.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        cy += kPrefsRowH;
+    }
+
+    cy += kPrefsSectionGap;
+
+    // --- Buttons ---
+    float btn_total = 2 * kPrefsBtnW + 12;
+    float save_x = px + (pw - btn_total) * 0.5f;
+    float cancel_x = save_x + kPrefsBtnW + 12;
+
+    bool save_hover = mouse_.x >= save_x && mouse_.x <= save_x + kPrefsBtnW &&
+                      mouse_.y >= cy && mouse_.y <= cy + kPrefsBtnH;
+    bool cancel_hover = mouse_.x >= cancel_x && mouse_.x <= cancel_x + kPrefsBtnW &&
+                        mouse_.y >= cy && mouse_.y <= cy + kPrefsBtnH;
+
+    if (save_hover)
+        tr.draw_rounded_rect(save_x, cy, kPrefsBtnW, kPrefsBtnH, style_.corner_radius,
+                             style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+    else
+        tr.draw_rounded_rect(save_x, cy, kPrefsBtnW, kPrefsBtnH, style_.corner_radius,
+                             style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
+    float save_tw = tr.text_width("Save");
+    tr.draw_text(save_x + (kPrefsBtnW - save_tw) * 0.5f, cy + 4, "Save",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+    if (cancel_hover)
+        tr.draw_rounded_rect(cancel_x, cy, kPrefsBtnW, kPrefsBtnH, style_.corner_radius,
+                             style_.button_hover[0], style_.button_hover[1], style_.button_hover[2], 0.9f);
+    else
+        tr.draw_rounded_rect(cancel_x, cy, kPrefsBtnW, kPrefsBtnH, style_.corner_radius,
+                             style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
+    float cancel_tw = tr.text_width("Cancel");
+    tr.draw_text(cancel_x + (kPrefsBtnW - cancel_tw) * 0.5f, cy + 4, "Cancel",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 }
 
 // -----------------------------------------------------------------------
@@ -1405,10 +1556,10 @@ void NodeGraphUI::draw_perf_expanded(Renderer2D& tr) {
         }
         char label[32];
         std::snprintf(label, sizeof(label), "%.0f", vmax);
-        tr.draw_text(graph_x + 2, graph_y, label, kDimText[0], kDimText[1], kDimText[2], 0.7f);
+        tr.draw_text(graph_x + 2, graph_y, label, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
         std::snprintf(label, sizeof(label), "%.0f", vmin);
         tr.draw_text(graph_x + 2, graph_y + graph_h - tr.line_height(), label,
-                     kDimText[0], kDimText[1], kDimText[2], 0.7f);
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
     }
 }
 

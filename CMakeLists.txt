@@ -209,6 +209,7 @@ add_library(vivid_ui STATIC
     src/ui/node_graph.cpp
     src/ui/node_graph_draw.cpp
     src/ui/node_graph_input.cpp
+    src/ui/ui_style.cpp
 )
 target_include_directories(vivid_ui PRIVATE src)
 target_link_libraries(vivid_ui PUBLIC vivid_operator_api webgpu)
@@ -231,6 +232,9 @@ add_executable(vivid
     src/runtime/builtin_operators.cpp
     src/runtime/control_server.cpp
     src/runtime/system_midi.cpp
+    src/runtime/platform.cpp
+    src/runtime/settings.cpp
+    src/runtime/editor_detect.cpp
 )
 
 target_include_directories(vivid PRIVATE src)

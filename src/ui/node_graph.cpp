@@ -1,5 +1,6 @@
 #include "ui/node_graph.h"
 #include "ui/node_graph_constants.h"
+#include "ui/ui_style.h"
 #include "common/topo_sort.h"
 #include "common/string_util.h"
 #include <algorithm>
@@ -19,7 +20,11 @@ using vivid::kahn_sort;
 // Constructor
 // -----------------------------------------------------------------------
 NodeGraphUI::NodeGraphUI(UICommandSink& commands)
-    : commands_(commands) {}
+    : commands_(commands) {
+    // Initialize with default Dark Steel style
+    auto styles = builtin_styles();
+    if (!styles.empty()) style_ = styles[0];
+}
 
 float NodeGraphUI::graph_right() const {
     return has_selection() ? inspector_x() : static_cast<float>(win_w_);
@@ -461,6 +466,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_scrollbar_drag();
     update_slider_drag();
     update_chooser_hover();
+    update_preferences();    // may consume left_clicked
     update_clone_confirm();  // may consume left_clicked
     update_context_menu();   // may consume left_clicked
     handle_right_click();
@@ -591,6 +597,41 @@ void NodeGraphUI::update_sparklines() {
         sd.values[sd.write_idx] = val;
         sd.write_idx = (sd.write_idx + 1) % kSparklineLen;
         if (sd.write_idx == 0) sd.filled = true;
+    }
+}
+
+void NodeGraphUI::toggle_preferences() {
+    if (prefs_open_) {
+        // Cancel: revert style
+        if (prefs_saved_style_sel_ >= 0 &&
+            prefs_saved_style_sel_ < static_cast<int>(prefs_styles_.size())) {
+            style_ = prefs_styles_[prefs_saved_style_sel_];
+        }
+        prefs_open_ = false;
+        prefs_editing_custom_ = false;
+    } else {
+        prefs_open_ = true;
+        prefs_editing_custom_ = false;
+        prefs_saved_style_sel_ = prefs_style_sel_;
+    }
+}
+
+void NodeGraphUI::set_editor_options(std::vector<std::string> names,
+                                     std::vector<std::string> ids,
+                                     int current_idx,
+                                     const std::string& custom_command) {
+    prefs_editor_names_ = std::move(names);
+    prefs_editor_ids_ = std::move(ids);
+    prefs_editor_sel_ = current_idx;
+    prefs_custom_command_ = custom_command;
+}
+
+void NodeGraphUI::set_style_options(std::vector<UIStyle> styles, int current_idx) {
+    prefs_styles_ = std::move(styles);
+    prefs_style_sel_ = current_idx;
+    prefs_saved_style_sel_ = current_idx;
+    if (current_idx >= 0 && current_idx < static_cast<int>(prefs_styles_.size())) {
+        style_ = prefs_styles_[current_idx];
     }
 }
 

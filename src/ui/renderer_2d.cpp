@@ -301,6 +301,10 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
         return false;
     }
 
+    // Cache the solid-white UV (center of the 2x2 block at atlas origin)
+    solid_u_ = 0.5f / kAtlasWidth;
+    solid_v_ = 0.5f / kAtlasHeight;
+
     std::fprintf(stderr, "[vivid] Renderer2D initialized (%.0fpt @ %.1fx, raster %.0fpx, atlas %ux%u)\n",
         font_size, dpi_scale, raster_size, kAtlasWidth, kAtlasHeight);
     return true;
@@ -317,6 +321,53 @@ void Renderer2D::push_quad(float x0, float y0, float x1, float y1,
     vertices_.push_back({x0, y1, u0, v1, r, g, b, a});
     vertices_.push_back({x1, y0, u1, v0, r, g, b, a});
     vertices_.push_back({x1, y1, u1, v1, r, g, b, a});
+}
+
+void Renderer2D::push_tri(float x0, float y0, float x1, float y1, float x2, float y2,
+                             float r, float g, float b, float a) {
+    if (vertices_.size() + 3 > kMaxVertices) { ++overflow_count_; return; }
+    vertices_.push_back({x0, y0, solid_u_, solid_v_, r, g, b, a});
+    vertices_.push_back({x1, y1, solid_u_, solid_v_, r, g, b, a});
+    vertices_.push_back({x2, y2, solid_u_, solid_v_, r, g, b, a});
+}
+
+void Renderer2D::draw_rounded_rect(float x, float y, float w, float h, float radius,
+                                      float r, float g, float b, float a) {
+    if (radius <= 0.0f) { draw_rect(x, y, w, h, r, g, b, a); return; }
+    // Clamp radius to half the smaller dimension
+    float max_r = std::min(w, h) * 0.5f;
+    if (radius > max_r) radius = max_r;
+
+    // 3 body rectangles forming a cross shape
+    // Center band (full width, excluding corner rows)
+    push_quad(x, y + radius, x + w, y + h - radius,
+              0.0f, 0.0f, 1.0f / kAtlasWidth, 1.0f / kAtlasHeight, r, g, b, a);
+    // Top band (between corners)
+    push_quad(x + radius, y, x + w - radius, y + radius,
+              0.0f, 0.0f, 1.0f / kAtlasWidth, 1.0f / kAtlasHeight, r, g, b, a);
+    // Bottom band (between corners)
+    push_quad(x + radius, y + h - radius, x + w - radius, y + h,
+              0.0f, 0.0f, 1.0f / kAtlasWidth, 1.0f / kAtlasHeight, r, g, b, a);
+
+    // 4 corner fans (8 segments each)
+    constexpr int kCornerSegs = 8;
+    constexpr float kPi = 3.14159265358979323846f;
+    float cx[4] = { x + radius, x + w - radius, x + w - radius, x + radius };
+    float cy[4] = { y + radius, y + radius, y + h - radius, y + h - radius };
+    float start_angle[4] = { kPi, 1.5f * kPi, 0.0f, 0.5f * kPi };
+
+    for (int c = 0; c < 4; ++c) {
+        float angle_step = (kPi * 0.5f) / kCornerSegs;
+        for (int s = 0; s < kCornerSegs; ++s) {
+            float a0 = start_angle[c] + s * angle_step;
+            float a1 = a0 + angle_step;
+            float px0 = cx[c] + radius * std::cos(a0);
+            float py0 = cy[c] + radius * std::sin(a0);
+            float px1 = cx[c] + radius * std::cos(a1);
+            float py1 = cy[c] + radius * std::sin(a1);
+            push_tri(cx[c], cy[c], px0, py0, px1, py1, r, g, b, a);
+        }
+    }
 }
 
 void Renderer2D::draw_text(float x, float y, const char* text,

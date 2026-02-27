@@ -28,6 +28,8 @@ public:
 
     void draw_text(float x, float y, const char* text, float r, float g, float b, float a = 1.0f, float scale = 1.0f);
     void draw_rect(float x, float y, float w, float h, float r, float g, float b, float a = 1.0f);
+    void draw_rounded_rect(float x, float y, float w, float h, float radius,
+                           float r, float g, float b, float a = 1.0f);
     void draw_line(float x1, float y1, float x2, float y2, float thickness,
                    float r, float g, float b, float a = 1.0f);
     float text_width(const char* text, float scale = 1.0f) const;
@@ -47,6 +49,8 @@ private:
     void push_quad(float x0, float y0, float x1, float y1,
                    float u0, float v0, float u1, float v1,
                    float r, float g, float b, float a);
+    void push_tri(float x0, float y0, float x1, float y1, float x2, float y2,
+                  float r, float g, float b, float a);
     void finalize_batch();
 
     WGPUDevice device_ = nullptr;
@@ -64,6 +68,8 @@ private:
     GlyphInfo glyphs_[128]{}; // ASCII 0-127 (only 32-126 used)
     float line_height_ = 0.0f;
     float font_size_ = 0.0f;
+    float solid_u_ = 0.0f;   // UV center of the solid-white 2x2 atlas block
+    float solid_v_ = 0.0f;
 
     static constexpr uint32_t kAtlasWidth = 1024;
     static constexpr uint32_t kAtlasHeight = 1024;

@@ -4,6 +4,7 @@
 #include "ui/node_graph_constants.h"
 #include "ui/graph_snapshot.h"
 #include "ui/ui_command_sink.h"
+#include "ui/ui_style.h"
 #include "operator_api/types.h"
 #include <webgpu/webgpu.h>
 #include <string>
@@ -47,7 +48,7 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_; }
+    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_; }
     bool has_selection() const { return !selected_node_id_.empty(); }
 
     void toggle_visible() { visible_ = !visible_; }
@@ -73,6 +74,22 @@ public:
     }
 
     void set_dpi_scale(float scale) { dpi_scale_ = scale; }
+
+    float pan_x() const { return pan_x_; }
+    float pan_y() const { return pan_y_; }
+    float zoom() const { return zoom_; }
+    void set_viewport(float px, float py, float z) { pan_x_ = px; pan_y_ = py; zoom_ = z; }
+
+    bool bezier_wires() const { return bezier_wires_; }
+    void set_bezier_wires(bool v) { bezier_wires_ = v; }
+
+    const UIStyle& style() const { return style_; }
+    void set_style(const UIStyle& s) { style_ = s; }
+
+    void toggle_preferences();
+    void set_editor_options(std::vector<std::string> names, std::vector<std::string> ids,
+                            int current_idx = 0, const std::string& custom_command = "");
+    void set_style_options(std::vector<UIStyle> styles, int current_idx);
 
 private:
     // --- Layout ---
@@ -139,6 +156,10 @@ private:
     // --- Clone confirmation dialog ---
     void update_clone_confirm();
     void draw_clone_confirm(Renderer2D& tr);
+
+    // --- Preferences panel ---
+    void update_preferences();
+    void draw_preferences(Renderer2D& tr);
 
     // --- Decomposed update() sub-methods ---
     void check_relayout();
@@ -299,6 +320,20 @@ private:
     // Clone confirmation dialog state
     bool clone_confirm_open_ = false;
     std::string clone_confirm_type_;
+
+    // Preferences panel state
+    bool prefs_open_ = false;
+    int prefs_editor_sel_ = 0;
+    std::vector<std::string> prefs_editor_names_;
+    std::vector<std::string> prefs_editor_ids_;
+    std::string prefs_custom_command_;
+    bool prefs_editing_custom_ = false;
+    int prefs_style_sel_ = 0;
+    std::vector<UIStyle> prefs_styles_;
+    int prefs_saved_style_sel_ = 0;   // to revert on cancel
+
+    // Active UI style
+    UIStyle style_;
 
     // Wire rendering style toggle (B key)
     bool bezier_wires_ = false;

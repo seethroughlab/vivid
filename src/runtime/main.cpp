@@ -16,6 +16,9 @@
 #include "runtime/builtin_operators.h"
 #include "runtime/control_server.h"
 #include "runtime/system_midi.h"
+#include "runtime/settings.h"
+#include "runtime/editor_detect.h"
+#include "ui/ui_style.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/data_driven_filter.h"
 #include "operator_api/types.h"
@@ -165,8 +168,7 @@ public:
         if (registry_ && registry_->is_user_operator(type_name)) {
             auto* src = registry_->user_operator_source(type_name);
             if (src) {
-                std::string cmd = "open -t \"" + *src + "\"";
-                std::system(cmd.c_str());
+                vivid::open_in_editor(*src, settings_ ? *settings_ : vivid::Settings{});
             }
             return;
         }
@@ -174,8 +176,7 @@ public:
         if (registry_ && registry_->is_user_filter(type_name)) {
             std::string path = working_filters_dir_ + "/" + type_name + ".wgsl";
             if (std::filesystem::exists(path)) {
-                std::string cmd = "open -t \"" + path + "\"";
-                std::system(cmd.c_str());
+                vivid::open_in_editor(path, settings_ ? *settings_ : vivid::Settings{});
             }
             return;
         }
@@ -192,8 +193,7 @@ public:
             // Non-filter operator → open .cpp if it exists
             std::string cpp_path = operators_dir_ + "/gpu/" + name + "/" + name + ".cpp";
             if (std::filesystem::exists(cpp_path)) {
-                std::string cmd = "open -t \"" + cpp_path + "\"";
-                std::system(cmd.c_str());
+                vivid::open_in_editor(cpp_path, settings_ ? *settings_ : vivid::Settings{});
             }
         }
     }
@@ -273,8 +273,7 @@ public:
             op_cache_->invalidate_all();
 
             // Open in external editor
-            std::string cmd = "open -t \"" + working_path + "\"";
-            std::system(cmd.c_str());
+            vivid::open_in_editor(working_path, settings_ ? *settings_ : vivid::Settings{});
         }
 
         std::fprintf(stderr, "[vivid] Duplicated '%s' as user filter '%s'\n",
@@ -303,12 +302,27 @@ public:
         clone_cpp_operator(type_name);
     }
 
+    void set_editor_preference(const std::string& editor_id,
+                               const std::string& custom_command) override {
+        if (!settings_) return;
+        settings_->editor = editor_id;
+        settings_->editor_command = custom_command;
+        vivid::save_settings(*settings_);
+    }
+
+    void set_style_preference(const std::string& style_id) override {
+        if (!settings_) return;
+        settings_->style_id = style_id;
+        vivid::save_settings(*settings_);
+    }
+
     void set_operators_dir(const std::string& dir) { operators_dir_ = dir; }
     void set_registry(vivid::OperatorRegistry* r) { registry_ = r; }
     void set_graph(vivid::Graph* g) { graph_ = g; }
     void set_op_cache(OperatorInfoCache* c) { op_cache_ = c; }
     void set_working_filters_dir(const std::string& dir) { working_filters_dir_ = dir; }
     void set_build_dir(const std::string& dir) { build_dir_ = dir; }
+    void set_settings(vivid::Settings* s) { settings_ = s; }
 
 private:
     void clone_cpp_operator(const std::string& type_name) {
@@ -446,8 +460,7 @@ private:
         op_cache_->invalidate_all();
 
         // Open source in editor
-        std::string open_cmd = "open -t \"" + new_cpp + "\"";
-        std::system(open_cmd.c_str());
+        vivid::open_in_editor(new_cpp, settings_ ? *settings_ : vivid::Settings{});
 
         std::fprintf(stderr, "[vivid] Cloned '%s' as '%s'\n", type_name.c_str(), new_type.c_str());
     }
@@ -459,6 +472,7 @@ private:
     vivid::OperatorRegistry* registry_ = nullptr;
     vivid::Graph* graph_ = nullptr;
     OperatorInfoCache* op_cache_ = nullptr;
+    vivid::Settings* settings_ = nullptr;
 };
 
 // ---------------------------------------------------------------------------
@@ -756,6 +770,7 @@ struct WindowUserData {
     vivid::RuntimeAPI* runtime_api = nullptr;
     vivid::Graph* graph = nullptr;
     std::string working_filters_dir;
+    vivid::Settings* settings = nullptr;
 };
 
 static void char_callback(GLFWwindow* w, unsigned int codepoint) {
@@ -779,6 +794,9 @@ static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, i
     if (key == GLFW_KEY_S && action == GLFW_PRESS &&
         (mods & (GLFW_MOD_SUPER | GLFW_MOD_CONTROL))) {
         if (ud->runtime_api) {
+            // Capture viewport before saving
+            if (ud->graph && ud->graph_ui)
+                ud->graph->set_viewport(ud->graph_ui->pan_x(), ud->graph_ui->pan_y(), ud->graph_ui->zoom());
             // Read back working filter shaders before saving
             if (ud->graph && !ud->working_filters_dir.empty()) {
                 for (const auto& fd : ud->graph->filters()) {
@@ -794,6 +812,13 @@ static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, i
             auto result = ud->runtime_api->save();
             std::fprintf(stderr, "[vivid] Save: %s\n", result.message.c_str());
         }
+        return;
+    }
+
+    // Cmd+, / Ctrl+, opens preferences
+    if (key == GLFW_KEY_COMMA && action == GLFW_PRESS &&
+        (mods & (GLFW_MOD_SUPER | GLFW_MOD_CONTROL))) {
+        if (ud->graph_ui) ud->graph_ui->toggle_preferences();
         return;
     }
 
@@ -855,11 +880,34 @@ int main(int argc, char* argv[]) {
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     }
 
-    GLFWwindow* window = glfwCreateWindow(1280, 800, "Vivid", nullptr, nullptr);
+    vivid::Settings settings = vivid::load_settings();
+
+    GLFWwindow* window = glfwCreateWindow(settings.window_width, settings.window_height,
+                                           "Vivid", nullptr, nullptr);
     if (!window) {
         std::fprintf(stderr, "[vivid] Failed to create window\n");
         glfwTerminate();
         return 1;
+    }
+
+    // Restore saved window position, validating it's on a visible monitor
+    if (settings.window_x != -1 && settings.window_y != -1) {
+        bool on_screen = false;
+        int mon_count = 0;
+        GLFWmonitor** monitors = glfwGetMonitors(&mon_count);
+        for (int i = 0; i < mon_count; i++) {
+            int mx, my, mw, mh;
+            glfwGetMonitorWorkarea(monitors[i], &mx, &my, &mw, &mh);
+            // Check that at least a 100x100 corner of the window is visible
+            if (settings.window_x + 100 > mx && settings.window_x < mx + mw &&
+                settings.window_y + 100 > my && settings.window_y < my + mh) {
+                on_screen = true;
+                break;
+            }
+        }
+        if (on_screen) {
+            glfwSetWindowPos(window, settings.window_x, settings.window_y);
+        }
     }
 
     // --- Query physical framebuffer size and DPI scale ---
@@ -1016,8 +1064,41 @@ int main(int argc, char* argv[]) {
     command_sink.set_graph(&graph);
     command_sink.set_op_cache(&op_info_cache);
     command_sink.set_working_filters_dir(working_filters_dir);
+    command_sink.set_settings(&settings);
     vivid::ui::NodeGraphUI graph_ui(command_sink);
     graph_ui.set_dpi_scale(dpi_scale);
+    graph_ui.set_bezier_wires(settings.bezier_wires);
+    if (graph.has_viewport())
+        graph_ui.set_viewport(graph.viewport_pan_x, graph.viewport_pan_y, graph.viewport_zoom);
+
+    // Detect available text editors and set up style options
+    {
+        auto detected = vivid::detect_editors();
+        std::vector<std::string> editor_names, editor_ids;
+        int editor_sel = 0;
+        for (size_t i = 0; i < detected.size(); ++i) {
+            editor_names.push_back(detected[i].name);
+            editor_ids.push_back(detected[i].app_id);
+            if (detected[i].app_id == settings.editor)
+                editor_sel = static_cast<int>(i);
+        }
+        // If editor is "custom", select that
+        if (settings.editor == "custom") {
+            for (size_t i = 0; i < editor_ids.size(); ++i) {
+                if (editor_ids[i] == "custom") { editor_sel = static_cast<int>(i); break; }
+            }
+        }
+        graph_ui.set_editor_options(std::move(editor_names), std::move(editor_ids),
+                                    editor_sel, settings.editor_command);
+
+        auto styles = vivid::ui::builtin_styles();
+        int style_sel = 0;
+        for (size_t i = 0; i < styles.size(); ++i) {
+            if (styles[i].id == settings.style_id)
+                style_sel = static_cast<int>(i);
+        }
+        graph_ui.set_style_options(std::move(styles), style_sel);
+    }
 
     // Set up GLFW input callbacks
     WindowUserData window_user_data;
@@ -1025,6 +1106,7 @@ int main(int argc, char* argv[]) {
     window_user_data.runtime_api = &runtime_api;
     window_user_data.graph = &graph;
     window_user_data.working_filters_dir = working_filters_dir;
+    window_user_data.settings = &settings;
     glfwSetWindowUserPointer(window, &window_user_data);
     glfwSetCharCallback(window, char_callback);
     glfwSetKeyCallback(window, key_callback);
@@ -1271,6 +1353,16 @@ int main(int argc, char* argv[]) {
     thumb_blit.shutdown();
     blit.shutdown();
     gpu.shutdown();
+
+    // Save window geometry for next launch
+    {
+        vivid::Settings s = settings;  // preserve editor/style prefs
+        glfwGetWindowPos(window, &s.window_x, &s.window_y);
+        glfwGetWindowSize(window, &s.window_width, &s.window_height);
+        s.bezier_wires = graph_ui.bezier_wires();
+        vivid::save_settings(s);
+    }
+
     glfwDestroyWindow(window);
     glfwTerminate();
 

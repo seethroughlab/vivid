@@ -74,6 +74,23 @@ void NodeGraphUI::on_scroll(float /*x_offset*/, float y_offset) {
 void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
 
+    if (prefs_open_) {
+        if (key == GLFW_KEY_ESCAPE) {
+            // Cancel: revert style
+            if (prefs_saved_style_sel_ >= 0 &&
+                prefs_saved_style_sel_ < static_cast<int>(prefs_styles_.size())) {
+                style_ = prefs_styles_[prefs_saved_style_sel_];
+                prefs_style_sel_ = prefs_saved_style_sel_;
+            }
+            prefs_open_ = false;
+            prefs_editing_custom_ = false;
+        } else if (prefs_editing_custom_) {
+            if (key == GLFW_KEY_BACKSPACE && !prefs_custom_command_.empty())
+                prefs_custom_command_.pop_back();
+        }
+        return;
+    }
+
     if (editing_midi_range_) {
         if (key == GLFW_KEY_ENTER)       confirm_midi_range_edit();
         else if (key == GLFW_KEY_ESCAPE) cancel_midi_range_edit();
@@ -217,6 +234,11 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
 }
 
 void NodeGraphUI::on_char(unsigned int codepoint) {
+    if (prefs_open_ && prefs_editing_custom_) {
+        if (codepoint >= 32 && codepoint < 127)
+            prefs_custom_command_ += static_cast<char>(codepoint);
+        return;
+    }
     if (editing_midi_range_) {
         char ch = static_cast<char>(codepoint);
         if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-')
@@ -695,6 +717,152 @@ void NodeGraphUI::update_scrollbar_drag() {
     if (mouse_.left_released) {
         insp_scrollbar_dragging_ = false;
     }
+}
+
+// -----------------------------------------------------------------------
+// Preferences panel click handling (called from update())
+// -----------------------------------------------------------------------
+void NodeGraphUI::update_preferences() {
+    if (!prefs_open_ || !mouse_.left_clicked) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+
+    int editor_count = static_cast<int>(prefs_editor_names_.size());
+    int style_count = static_cast<int>(prefs_styles_.size());
+    bool show_custom = (prefs_editor_sel_ >= 0 &&
+                        prefs_editor_sel_ < static_cast<int>(prefs_editor_ids_.size()) &&
+                        prefs_editor_ids_[prefs_editor_sel_] == "custom");
+
+    float content_h = kPrefsPadY
+        + kPrefsRowH + kPrefsSectionGap
+        + kPrefsRowH + editor_count * kPrefsRowH
+        + (show_custom ? kPrefsRowH + 4 : 0)
+        + kPrefsSectionGap
+        + kPrefsRowH + style_count * kPrefsRowH
+        + kPrefsSectionGap + kPrefsBtnH + kPrefsPadY;
+
+    float pw = kPrefsW;
+    float ph = content_h;
+    float px = (wf - pw) * 0.5f;
+    float py = (hf - ph) * 0.5f;
+
+    // Click outside panel → close (cancel)
+    if (mouse_.x < px || mouse_.x > px + pw ||
+        mouse_.y < py || mouse_.y > py + ph) {
+        // Revert style
+        if (prefs_saved_style_sel_ >= 0 &&
+            prefs_saved_style_sel_ < static_cast<int>(prefs_styles_.size())) {
+            style_ = prefs_styles_[prefs_saved_style_sel_];
+            prefs_style_sel_ = prefs_saved_style_sel_;
+        }
+        prefs_open_ = false;
+        prefs_editing_custom_ = false;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
+    float cx = px + kPrefsPadX;
+    float inner_w = pw - 2 * kPrefsPadX;
+    float cy = py + kPrefsPadY + kPrefsRowH + kPrefsSectionGap;
+
+    // Skip section header
+    cy += kPrefsRowH;
+
+    // Editor radio items
+    for (int i = 0; i < editor_count; ++i) {
+        if (mouse_.x >= cx && mouse_.x <= cx + inner_w &&
+            mouse_.y >= cy && mouse_.y <= cy + kPrefsRowH) {
+            prefs_editor_sel_ = i;
+            prefs_editing_custom_ = false;
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+        cy += kPrefsRowH;
+    }
+
+    // Custom command field click
+    if (show_custom) {
+        cy += 2;
+        if (mouse_.x >= cx + 18 && mouse_.x <= cx + inner_w &&
+            mouse_.y >= cy && mouse_.y <= cy + kPrefsRowH - 2) {
+            prefs_editing_custom_ = true;
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+        cy += kPrefsRowH + 2;
+    }
+
+    cy += kPrefsSectionGap;
+
+    // Skip STYLE section header
+    cy += kPrefsRowH;
+
+    // Style radio items
+    for (int i = 0; i < style_count; ++i) {
+        if (mouse_.x >= cx && mouse_.x <= cx + inner_w &&
+            mouse_.y >= cy && mouse_.y <= cy + kPrefsRowH) {
+            prefs_style_sel_ = i;
+            // Live preview: apply style immediately
+            if (i >= 0 && i < static_cast<int>(prefs_styles_.size())) {
+                style_ = prefs_styles_[i];
+            }
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+        cy += kPrefsRowH;
+    }
+
+    cy += kPrefsSectionGap;
+
+    // Buttons
+    float btn_total = 2 * kPrefsBtnW + 12;
+    float save_x = px + (pw - btn_total) * 0.5f;
+    float cancel_x = save_x + kPrefsBtnW + 12;
+
+    if (mouse_.x >= save_x && mouse_.x <= save_x + kPrefsBtnW &&
+        mouse_.y >= cy && mouse_.y <= cy + kPrefsBtnH) {
+        // Save
+        std::string editor_id;
+        if (prefs_editor_sel_ >= 0 && prefs_editor_sel_ < static_cast<int>(prefs_editor_ids_.size()))
+            editor_id = prefs_editor_ids_[prefs_editor_sel_];
+        commands_.set_editor_preference(editor_id, prefs_custom_command_);
+
+        if (prefs_style_sel_ >= 0 && prefs_style_sel_ < static_cast<int>(prefs_styles_.size())) {
+            commands_.set_style_preference(prefs_styles_[prefs_style_sel_].id);
+            prefs_saved_style_sel_ = prefs_style_sel_;
+        }
+
+        prefs_open_ = false;
+        prefs_editing_custom_ = false;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
+    if (mouse_.x >= cancel_x && mouse_.x <= cancel_x + kPrefsBtnW &&
+        mouse_.y >= cy && mouse_.y <= cy + kPrefsBtnH) {
+        // Cancel: revert style
+        if (prefs_saved_style_sel_ >= 0 &&
+            prefs_saved_style_sel_ < static_cast<int>(prefs_styles_.size())) {
+            style_ = prefs_styles_[prefs_saved_style_sel_];
+            prefs_style_sel_ = prefs_saved_style_sel_;
+        }
+        prefs_open_ = false;
+        prefs_editing_custom_ = false;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
+    // Consume click inside panel
+    prefs_editing_custom_ = false;
+    mouse_.left_clicked = false;
+    mouse_.left_released = false;
 }
 
 } // namespace vivid::ui

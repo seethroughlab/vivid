@@ -195,6 +195,15 @@ static constexpr std::array<float, 4> kPerfBarBg    = { 0.06f, 0.07f, 0.08f, 0.8
 static constexpr uint32_t kPerfHistoryLen = 128;
 static constexpr uint32_t kPerfMemSampleInterval = 30;
 
+// Preferences panel layout
+static constexpr float kPrefsW = 360.0f;
+static constexpr float kPrefsPadX = 20.0f;
+static constexpr float kPrefsPadY = 16.0f;
+static constexpr float kPrefsRowH = 22.0f;
+static constexpr float kPrefsSectionGap = 12.0f;
+static constexpr float kPrefsBtnW = 70.0f;
+static constexpr float kPrefsBtnH = 24.0f;
+
 } // namespace vivid::ui
 
 #endif // VIVID_UI_NODE_GRAPH_CONSTANTS_H
