@@ -1,0 +1,26 @@
+{
+  "nodes": {
+    "clock1": { "type": "Clock", "params": { "bpm": 120.0 } },
+    "seq1": { "type": "Sequencer", "params": {
+      "steps": 8,
+      "val_0": 0.2, "val_1": 0.5, "val_2": 0.8, "val_3": 1.0,
+      "val_4": 0.7, "val_5": 0.4, "val_6": 0.6, "val_7": 0.3
+    }},
+    "smooth1": { "type": "Smooth", "params": { "rise_time": 0.05, "fall_time": 0.15 } },
+    "lfo1": { "type": "LFO", "params": { "frequency": 0.5, "waveform": 2 } },
+    "random1": { "type": "Random", "params": {
+      "min": 0.0, "max": 1.0, "distribution": 0, "free_run": false
+    }},
+    "logic1": { "type": "Logic", "params": { "operation": 1 } },
+    "gate1": { "type": "Gate", "params": { "threshold": 0.5 } }
+  },
+  "connections": [
+    { "from": "clock1/beat_phase", "to": "seq1/phase" },
+    { "from": "seq1/value",        "to": "smooth1/input" },
+    { "from": "seq1/trigger",      "to": "random1/trigger" },
+    { "from": "lfo1/value",        "to": "logic1/a" },
+    { "from": "random1/value",     "to": "logic1/b" },
+    { "from": "smooth1/value",     "to": "gate1/signal" },
+    { "from": "logic1/result",     "to": "gate1/gate" }
+  ]
+}
