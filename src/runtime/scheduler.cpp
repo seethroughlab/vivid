@@ -240,6 +240,7 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             w.to_port_idx = pp_it->second;
             w.targets_param = true;
         }
+        w.scale = conn.scale;
         wires_.push_back(w);
 
         adj[fi].push_back(ti);
@@ -319,7 +320,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         for (const auto& w : wires_) {
             if (w.to_node_idx == ni) {
                 if (w.is_texture_wire) continue;
-                float val = nodes_[w.from_node_idx].output_values[w.from_port_idx];
+                float val = nodes_[w.from_node_idx].output_values[w.from_port_idx] * w.scale;
                 if (w.targets_param) {
                     ns.param_values[w.to_port_idx] = val;
                 } else {
@@ -327,8 +328,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                     // Spread propagation
                     const auto& src_spread = nodes_[w.from_node_idx].output_spreads[w.from_port_idx];
                     if (!src_spread.empty()) {
-                        ns.input_spreads[w.to_port_idx] = src_spread;
-                        ns.input_values[w.to_port_idx] = src_spread[0];  // scalar fallback
+                        ns.input_spreads[w.to_port_idx].resize(src_spread.size());
+                        for (size_t si = 0; si < src_spread.size(); ++si)
+                            ns.input_spreads[w.to_port_idx][si] = src_spread[si] * w.scale;
+                        ns.input_values[w.to_port_idx] = src_spread[0] * w.scale;
                     }
                 }
             }

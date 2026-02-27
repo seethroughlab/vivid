@@ -153,6 +153,9 @@ bool Graph::load(const char* path) {
                 std::fprintf(stderr, "[vivid] Graph: invalid connection address\n");
                 continue;
             }
+            yyjson_val* scale_val = yyjson_obj_get(val, "scale");
+            if (scale_val && yyjson_is_num(scale_val))
+                conn.scale = static_cast<float>(yyjson_get_num(scale_val));
             connections_.push_back(std::move(conn));
         }
     }
@@ -261,6 +264,18 @@ bool Graph::remove_connection(const std::string& from_node, const std::string& f
     if (it == connections_.end()) return false;
     connections_.erase(it);
     return true;
+}
+
+bool Graph::set_connection_scale(const std::string& from_node, const std::string& from_port,
+                                  const std::string& to_node, const std::string& to_port, float scale) {
+    for (auto& c : connections_) {
+        if (c.from_node == from_node && c.from_port == from_port &&
+            c.to_node == to_node && c.to_port == to_port) {
+            c.scale = scale;
+            return true;
+        }
+    }
+    return false;
 }
 
 const NodeDef* Graph::find_node(const std::string& id) const {
@@ -446,6 +461,8 @@ bool Graph::save(const char* path) const {
         std::string to_addr = conn.to_node + "/" + conn.to_port;
         yyjson_mut_obj_add_strcpy(doc, conn_obj, "from", from_addr.c_str());
         yyjson_mut_obj_add_strcpy(doc, conn_obj, "to", to_addr.c_str());
+        if (conn.scale != 1.0f)
+            yyjson_mut_obj_add_real(doc, conn_obj, "scale", static_cast<double>(conn.scale));
         yyjson_mut_arr_add_val(conns_arr, conn_obj);
     }
     yyjson_mut_obj_add_val(doc, root, "connections", conns_arr);

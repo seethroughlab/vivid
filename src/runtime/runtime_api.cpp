@@ -170,6 +170,19 @@ CommandResult RuntimeAPI::disconnect(const std::string& from_addr, const std::st
     return {true, "disconnected " + from_addr + " -> " + to_addr};
 }
 
+CommandResult RuntimeAPI::set_connection_scale(const std::string& from_addr,
+                                                const std::string& to_addr, float scale) {
+    std::string fn, fp, tn, tp;
+    if (!split_addr(from_addr, fn, fp) || !split_addr(to_addr, tn, tp)) {
+        return {false, "invalid address (expected node/port)"};
+    }
+    if (!graph_.set_connection_scale(fn, fp, tn, tp, scale)) {
+        return {false, "connection not found"};
+    }
+    pending_topology_change_ = true;
+    return {true, "set scale " + std::to_string(scale) + " on " + from_addr + " -> " + to_addr};
+}
+
 // --- apply_pending: full rebuild with param preservation ---
 
 bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {

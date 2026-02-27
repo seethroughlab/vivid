@@ -32,6 +32,9 @@ public:
     void disconnect(const std::string& from, const std::string& to) override {
         api_.disconnect(from, to);
     }
+    void set_connection_scale(const std::string& from, const std::string& to, float scale) override {
+        api_.set_connection_scale(from, to, scale);
+    }
     void set_node_layout(const std::string& node_id, float x, float y) override {
         api_.set_node_layout(node_id, x, y);
     }

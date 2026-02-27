@@ -79,6 +79,7 @@ struct ConnectionSnapshot {
     std::string from_port;
     std::string to_node;
     std::string to_port;
+    float scale = 1.0f;
 };
 
 // MIDI mapping snapshot for UI

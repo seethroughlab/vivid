@@ -60,6 +60,7 @@ struct Wire {
     uint32_t to_node_idx, to_port_idx;
     bool targets_param = false;   // true → to_port_idx indexes into param_values
     bool is_texture_wire = false; // true → carries GPU_TEXTURE data
+    float scale = 1.0f;          // multiplied into propagated values
 };
 
 // Optional callback invoked after each GPU node's process()

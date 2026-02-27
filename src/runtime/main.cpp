@@ -131,7 +131,8 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
     snap.connections.resize(conns.size());
     for (size_t i = 0; i < conns.size(); ++i) {
         snap.connections[i] = {conns[i].from_node, conns[i].from_port,
-                               conns[i].to_node, conns[i].to_port};
+                               conns[i].to_node, conns[i].to_port,
+                               conns[i].scale};
     }
 
     // Audio analysis

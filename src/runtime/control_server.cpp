@@ -221,6 +221,8 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
         std::string to_addr = conn.to_node + "/" + conn.to_port;
         yyjson_mut_obj_add_strcpy(doc, c, "from", from_addr.c_str());
         yyjson_mut_obj_add_strcpy(doc, c, "to", to_addr.c_str());
+        if (conn.scale != 1.0f)
+            yyjson_mut_obj_add_real(doc, c, "scale", conn.scale);
         yyjson_mut_arr_add_val(conns_arr, c);
     }
     yyjson_mut_obj_add_val(doc, result, "connections", conns_arr);
@@ -340,6 +342,20 @@ static std::string dispatch(const std::string& method, const std::string& body,
             else
                 result = command_result_to_json(
                     api.disconnect(yyjson_get_str(from), yyjson_get_str(to)));
+        }
+    } else if (method == "set_connection_scale") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* from  = yyjson_obj_get(root, "from_addr");
+            yyjson_val* to    = yyjson_obj_get(root, "to_addr");
+            yyjson_val* scale = yyjson_obj_get(root, "scale");
+            if (!from || !to || !scale ||
+                !yyjson_is_str(from) || !yyjson_is_str(to) || !yyjson_is_num(scale))
+                result = json_err("missing 'from_addr', 'to_addr', or 'scale'");
+            else
+                result = command_result_to_json(
+                    api.set_connection_scale(yyjson_get_str(from), yyjson_get_str(to),
+                                             static_cast<float>(yyjson_get_num(scale))));
         }
     } else if (method == "set_param") {
         if (!root) { result = json_err("invalid JSON body"); }

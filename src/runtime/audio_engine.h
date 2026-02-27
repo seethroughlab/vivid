@@ -59,12 +59,14 @@ struct AudioNodeState {
 struct AudioWire {
     uint32_t from_node_idx, from_port_idx;
     uint32_t to_node_idx, to_port_idx;
+    float scale = 1.0f;
 };
 
 // Wire for CONTROL_SPREAD data between audio-domain nodes
 struct AudioSpreadWire {
     uint32_t from_node_idx, from_port_idx;
     uint32_t to_node_idx, to_port_idx;
+    float scale = 1.0f;
 };
 
 // Cross-domain wire: control output → audio param
@@ -73,6 +75,7 @@ struct CrossDomainWire {
     uint32_t control_output_port_idx;
     uint32_t audio_node_idx;
     uint32_t audio_param_idx;
+    float scale = 1.0f;
 };
 
 // Cross-domain wire: control spread output → audio spread input
@@ -81,6 +84,7 @@ struct CrossDomainSpreadWire {
     uint32_t control_spread_port_idx;   // scheduler output port index
     uint32_t audio_node_idx;
     uint32_t audio_port_idx;            // unified input port index
+    float scale = 1.0f;
 };
 
 struct ParamSnapshot {

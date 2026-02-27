@@ -25,6 +25,7 @@ struct NodeDef {
 struct ConnectionDef {
     std::string from_node, from_port;
     std::string to_node, to_port;
+    float scale = 1.0f;
 };
 
 struct FilterDef {
@@ -68,6 +69,8 @@ public:
                         const std::string& to_node, const std::string& to_port);
     bool remove_connection(const std::string& from_node, const std::string& from_port,
                            const std::string& to_node, const std::string& to_port);
+    bool set_connection_scale(const std::string& from_node, const std::string& from_port,
+                              const std::string& to_node, const std::string& to_port, float scale);
 
     // Filter mutation
     void add_filter(FilterDef filter);

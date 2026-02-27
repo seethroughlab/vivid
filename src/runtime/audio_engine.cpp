@@ -149,6 +149,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     sw.from_port_idx = fp_it->second;
                     sw.to_node_idx = ti;
                     sw.to_port_idx = tp_it->second;
+                    sw.scale = conn.scale;
                     audio_spread_wires_.push_back(sw);
                 } else {
                     AudioWire w;
@@ -156,6 +157,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     w.from_port_idx = fp_it->second;
                     w.to_node_idx = ti;
                     w.to_port_idx = tp_it->second;
+                    w.scale = conn.scale;
                     wires_.push_back(w);
                 }
 
@@ -183,6 +185,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                 cw.control_output_port_idx = cp_it->second;
                 cw.audio_node_idx = ti;
                 cw.audio_param_idx = pp_it->second;
+                cw.scale = conn.scale;
                 cross_wires_.push_back(cw);
             } else {
                 // Try input port mapping (for CONTROL_SPREAD cross-domain wires)
@@ -195,6 +198,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     sw.control_spread_port_idx = cp_it->second;
                     sw.audio_node_idx = ti;
                     sw.audio_port_idx = ip_it->second;
+                    sw.scale = conn.scale;
                     cross_spread_wires_.push_back(sw);
                 }
             }
@@ -407,7 +411,7 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
     for (const auto& cw : cross_wires_) {
         for (const auto& ctrl_ns : scheduler.nodes()) {
             if (ctrl_ns.node_id == cw.control_node_id) {
-                float val = ctrl_ns.output_values[cw.control_output_port_idx];
+                float val = ctrl_ns.output_values[cw.control_output_port_idx] * cw.scale;
                 snap.node_params[cw.audio_node_idx][cw.audio_param_idx] = val;
                 break;
             }
@@ -633,7 +637,7 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                     const float* src = nodes_[w.from_node_idx].output_buffers[w.from_port_idx].data();
                     float* dst = ns.input_buffers[w.to_port_idx].data();
                     for (uint32_t s = 0; s < chunk; ++s)
-                        dst[s] += src[s];  // additive mixing for multiple sources
+                        dst[s] += src[s] * w.scale;  // additive mixing with scaling
                 }
             }
 
