@@ -1,5 +1,3 @@
-const TAU: f32 = 6.28318530718;
-
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     let center = vec2f(u.center_x, u.center_y);
@@ -9,7 +7,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     if (mode == 3) {
         // Kaleidoscope
         let p = uv - center;
-        let rot = u.angle * 3.14159265 / 180.0;
+        let rot = u.angle * PI / 180.0;
         var a = atan2(p.y, p.x) + rot;
         let r = length(p);
 

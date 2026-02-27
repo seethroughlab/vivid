@@ -10,7 +10,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
         v = length(uv - center) * 2.0 * u.scale + u.offset;
     } else {
         // Linear
-        let rad = u.angle * 3.14159265 / 180.0;
+        let rad = u.angle * PI / 180.0;
         let dir = vec2f(cos(rad), sin(rad));
         v = dot(uv - vec2f(0.5), dir) * u.scale + 0.5 + u.offset;
     }
