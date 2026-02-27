@@ -1,0 +1,68 @@
+{
+    "nodes": {
+        "clock1": {
+            "type": "Clock",
+            "params": {
+                "bpm": 80.0
+            },
+            "layout": { "x": 50.0, "y": 200.0 }
+        },
+        "seq1": {
+            "type": "NotePattern",
+            "params": {
+                "steps": 4.0,
+                "beats_per_step": 2.0,
+                "gate_length": 0.9,
+                "note_0": 48.0,
+                "note_1": 55.0,
+                "note_2": 52.0,
+                "note_3": 60.0,
+                "velocity": 1.0
+            },
+            "layout": { "x": 250.0, "y": 200.0 }
+        },
+        "pos_env1": {
+            "type": "SpreadADSR",
+            "params": {
+                "attack": 0.01,
+                "decay": 1.5,
+                "sustain": 0.0,
+                "release": 0.3
+            },
+            "layout": { "x": 450.0, "y": 350.0 }
+        },
+        "synth1": {
+            "type": "WavetableSynth",
+            "params": {
+                "wavetable": 0.0,
+                "position": 0.0,
+                "amplitude": 0.3,
+                "warp_mode": 0.0,
+                "warp_amount": 0.0,
+                "attack": 0.01,
+                "decay": 2.0,
+                "sustain": 0.5,
+                "release": 0.5,
+                "filter_cutoff": 20000.0,
+                "sub_level": 0.0,
+                "detune": 0.0,
+                "position_env_amount": 0.0
+            },
+            "layout": { "x": 650.0, "y": 200.0 }
+        },
+        "out1": {
+            "type": "audio_out",
+            "layout": { "x": 900.0, "y": 200.0 }
+        }
+    },
+    "connections": [
+        { "from": "clock1/beat_phase", "to": "seq1/beat_phase" },
+        { "from": "seq1/notes",        "to": "synth1/notes" },
+        { "from": "seq1/velocities",   "to": "synth1/velocities" },
+        { "from": "seq1/gates",        "to": "synth1/gates" },
+        { "from": "seq1/gates",        "to": "pos_env1/gates" },
+        { "from": "pos_env1/envelopes","to": "synth1/position_mod" },
+        { "from": "synth1/output_left", "to": "out1/left" },
+        { "from": "synth1/output_right","to": "out1/right" }
+    ]
+}

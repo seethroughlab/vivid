@@ -321,6 +321,13 @@ struct WavetableSynth : vivid::OperatorBase {
     vivid::Param<float> filter_release   {"filter_release",   0.3f,     0.001f, 10.0f};
     vivid::Param<float> filter_env_amount{"filter_env_amount",0.0f,    -1.0f,   1.0f};
 
+    // Position envelope
+    vivid::Param<float> position_attack     {"position_attack",     0.01f, 0.001f, 10.0f};
+    vivid::Param<float> position_decay      {"position_decay",      0.3f,  0.001f, 10.0f};
+    vivid::Param<float> position_sustain    {"position_sustain",    0.0f,  0.0f,   1.0f};
+    vivid::Param<float> position_release    {"position_release",    0.3f,  0.001f, 10.0f};
+    vivid::Param<float> position_env_amount {"position_env_amount", 0.0f, -1.0f,   1.0f};
+
     // Velocity
     vivid::Param<float> vel_to_volume    {"vel_to_volume",    1.0f,     0.0f,   1.0f};
     vivid::Param<float> vel_to_attack    {"vel_to_attack",    0.0f,    -1.0f,   1.0f};
@@ -349,6 +356,7 @@ struct WavetableSynth : vivid::OperatorBase {
 
         adsr::State amp_env;
         adsr::State filt_env;
+        adsr::State pos_env;
 
         // Biquad filter state (2 cascaded stages for LP24)
         float fz1[2] = {};
@@ -402,6 +410,11 @@ struct WavetableSynth : vivid::OperatorBase {
         out.push_back(&filter_sustain);
         out.push_back(&filter_release);
         out.push_back(&filter_env_amount);
+        out.push_back(&position_attack);
+        out.push_back(&position_decay);
+        out.push_back(&position_sustain);
+        out.push_back(&position_release);
+        out.push_back(&position_env_amount);
         out.push_back(&vel_to_volume);
         out.push_back(&vel_to_attack);
         out.push_back(&stereo_spread);
@@ -415,7 +428,8 @@ struct WavetableSynth : vivid::OperatorBase {
         out.push_back({"gates",      VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 2
         out.push_back({"filter_env", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 3
         out.push_back({"pitch_mod",  VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 4
-        out.push_back({"amp_mod",    VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 5
+        out.push_back({"amp_mod",      VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 5
+        out.push_back({"position_mod", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});  // 6
         out.push_back({"output_left",  VIVID_PORT_AUDIO_FLOAT,    VIVID_PORT_OUTPUT}); // out 0
         out.push_back({"output_right", VIVID_PORT_AUDIO_FLOAT,    VIVID_PORT_OUTPUT}); // out 1
         out.push_back({"envelopes",    VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT}); // out 2
@@ -544,6 +558,7 @@ struct WavetableSynth : vivid::OperatorBase {
 
             adsr::gate_on(v.amp_env);
             adsr::gate_on(v.filt_env);
+            adsr::gate_on(v.pos_env);
             v.reset_filter();
         }
     }
@@ -555,6 +570,7 @@ struct WavetableSynth : vivid::OperatorBase {
                 voices_[i].gate_slot == slot) {
                 adsr::gate_off(voices_[i].amp_env);
                 adsr::gate_off(voices_[i].filt_env);
+                adsr::gate_off(voices_[i].pos_env);
             }
         }
     }
@@ -720,6 +736,11 @@ struct WavetableSynth : vivid::OperatorBase {
         float f_sus        = filter_sustain.value;
         float f_rel        = filter_release.value;
         float f_env_amt    = filter_env_amount.value;
+        float p_att        = position_attack.value;
+        float p_dec        = position_decay.value;
+        float p_sus        = position_sustain.value;
+        float p_rel        = position_release.value;
+        float p_env_amt    = position_env_amount.value;
         float v2vol        = vel_to_volume.value;
         float v2atk        = vel_to_attack.value;
         float spread       = stereo_spread.value;
@@ -733,6 +754,7 @@ struct WavetableSynth : vivid::OperatorBase {
         const VividSpreadPort* filter_env_sp = ctx->input_spreads ? &ctx->input_spreads[3] : nullptr;
         const VividSpreadPort* pitch_mod_sp  = ctx->input_spreads ? &ctx->input_spreads[4] : nullptr;
         const VividSpreadPort* amp_mod_sp    = ctx->input_spreads ? &ctx->input_spreads[5] : nullptr;
+        const VividSpreadPort* position_mod_sp = ctx->input_spreads ? &ctx->input_spreads[6] : nullptr;
 
         update_gates(ctx);
 
@@ -749,6 +771,7 @@ struct WavetableSynth : vivid::OperatorBase {
         // Filter active check
         bool filter_active = (f_cutoff < 19999.0f) || (f_reso > 0.01f) ||
                              (std::abs(f_env_amt) > 0.001f);
+        bool pos_env_active = p_env_amt != 0.0f;
 
         float norm = 1.0f / std::sqrt(static_cast<float>(kMaxVoices));
 
@@ -798,6 +821,8 @@ struct WavetableSynth : vivid::OperatorBase {
 
                 if (filter_active)
                     adsr::advance(v.filt_env, dt, f_att, f_dec, f_sus, f_rel);
+                if (pos_env_active)
+                    adsr::advance(v.pos_env, dt, p_att, p_dec, p_sus, p_rel);
 
                 // Portamento: glide current_freq toward target_freq
                 if (porta_ms > 0.0f && v.current_freq != v.target_freq) {
@@ -816,7 +841,16 @@ struct WavetableSynth : vivid::OperatorBase {
 
                 // Phase warp + wavetable sample
                 float warped = warp_phase(static_cast<float>(v.phase), warp_m, warp_a, v.last_sample);
-                float sig = wt_.sample(warped, pos);
+
+                // Position modulation (internal envelope + external spread)
+                float effective_pos = pos;
+                if (pos_env_active)
+                    effective_pos += v.pos_env.env_value * p_env_amt;
+                float ext_pos = read_spread_slot(position_mod_sp, v.gate_slot);
+                effective_pos += ext_pos;
+                effective_pos = std::clamp(effective_pos, 0.0f, 1.0f);
+
+                float sig = wt_.sample(warped, effective_pos);
                 v.last_sample = sig;
 
                 // Sub oscillator
