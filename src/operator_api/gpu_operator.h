@@ -15,6 +15,9 @@ struct VividGpuState {
     // Texture inputs (one per GPU_TEXTURE input port, nullptr if disconnected)
     WGPUTextureView*   input_texture_views;
     uint32_t           input_texture_count;
+
+    // Path to operators/ source tree (for WGSL filter hot-reload)
+    const char*        operators_src_dir;
 };
 
 static inline VividGpuState* vivid_gpu(const VividProcessContext* ctx) {

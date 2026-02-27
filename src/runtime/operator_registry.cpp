@@ -1,4 +1,5 @@
 #include "runtime/operator_registry.h"
+#include "operator_api/data_driven_filter.h"
 #include <dirent.h>
 #include <cstring>
 #include <cstdio>
@@ -68,6 +69,61 @@ OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
     if (it == loaders_.end())
         return nullptr;
     return it->second.get();
+}
+
+void OperatorRegistry::register_user_filter(const std::string& name,
+                                            std::shared_ptr<DataDrivenFilterConfig> config) {
+    auto loader = std::make_unique<OperatorLoader>();
+    loader->init_data_driven(std::move(config));
+    std::fprintf(stderr, "[vivid] Registry: registered user filter %s\n", name.c_str());
+    loaders_[name] = std::move(loader);
+    user_filter_types_.insert(name);
+}
+
+void OperatorRegistry::unregister_user_filter(const std::string& name) {
+    loaders_.erase(name);
+    user_filter_types_.erase(name);
+}
+
+bool OperatorRegistry::is_user_filter(const std::string& name) const {
+    return user_filter_types_.count(name) > 0;
+}
+
+void OperatorRegistry::register_user_operator(const std::string& name, const std::string& source_path) {
+    user_operator_sources_[name] = source_path;
+}
+
+bool OperatorRegistry::is_user_operator(const std::string& name) const {
+    return user_operator_sources_.count(name) > 0;
+}
+
+const std::string* OperatorRegistry::user_operator_source(const std::string& name) const {
+    auto it = user_operator_sources_.find(name);
+    if (it == user_operator_sources_.end()) return nullptr;
+    return &it->second;
+}
+
+bool OperatorRegistry::register_loaded_operator(const std::string& dylib_path) {
+    auto loader = std::make_unique<OperatorLoader>();
+    if (!loader->load(dylib_path.c_str()))
+        return false;
+
+    const VividOperatorDescriptor* desc = loader->descriptor();
+    std::string type_name = desc->name;
+    std::fprintf(stderr, "[vivid] Registry: loaded new operator %s from %s\n",
+                 type_name.c_str(), dylib_path.c_str());
+
+    // Extract stem from path for target mapping
+    std::string filename = dylib_path;
+    auto slash = filename.rfind('/');
+    if (slash != std::string::npos) filename = filename.substr(slash + 1);
+    size_t suffix_len = std::strlen(kPluginSuffix);
+    if (filename.size() > suffix_len)
+        filename = filename.substr(0, filename.size() - suffix_len);
+    target_to_type_[filename] = type_name;
+
+    loaders_[type_name] = std::move(loader);
+    return true;
 }
 
 std::vector<std::string> OperatorRegistry::type_names() const {

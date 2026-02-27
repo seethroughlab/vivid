@@ -1,0 +1,520 @@
+#pragma once
+
+#include "operator_api/operator.h"
+#include "operator_api/gpu_operator.h"
+#include "operator_api/gpu_common.h"
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <sys/stat.h>
+
+namespace vivid {
+
+// =============================================================================
+// WgslFilterBase — generic base class for WGSL fragment-shader filters.
+//
+// Subclasses declare params and point to a .wgsl file containing only
+// @fragment fn fs_main(...).  Everything else (pipeline, uniforms, vertex
+// shader, texture bindings, hot-reload) is handled here.
+// =============================================================================
+
+struct WgslFilterBase : OperatorBase {
+
+    explicit WgslFilterBase(const char* shader_filename)
+        : shader_filename_(shader_filename) {}
+
+protected:
+    // Override the shader path entirely (for data-driven filters).
+    // Must be called before the first process() frame.
+    void set_shader_path_override(const std::string& path) {
+        shader_path_override_ = path;
+    }
+
+public:
+    // --- OperatorBase overrides -------------------------------------------
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"input", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
+        out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
+    }
+
+    void process(const VividProcessContext* ctx) override {
+        VividGpuState* gpu = vivid_gpu(ctx);
+        if (!gpu) return;
+
+        if (!initialized_) {
+            if (!lazy_init(gpu)) return;
+        }
+
+        // Shader hot-reload: check file every 30 frames
+        reload_counter_++;
+        if (reload_counter_ >= 30) {
+            reload_counter_ = 0;
+            check_hot_reload(gpu);
+        }
+
+        // Update uniform buffer
+        fill_uniforms(gpu, ctx);
+        wgpuQueueWriteBuffer(gpu->queue, uniform_buf_.get(), 0,
+                             uniform_data_.data(), uniform_size_);
+
+        // Resolve N input textures, using fallback for disconnected
+        std::vector<WGPUTextureView> input_texs(tex_input_count_);
+        for (uint32_t i = 0; i < tex_input_count_; ++i) {
+            WGPUTextureView v = nullptr;
+            if (gpu->input_texture_views && i < gpu->input_texture_count)
+                v = gpu->input_texture_views[i];
+            if (!v) {
+                if (!fallback_view_) create_fallback(gpu);
+                v = fallback_view_.get();
+            }
+            input_texs[i] = v;
+        }
+
+        // Recreate bind group if any input texture changed
+        if (input_texs != cached_input_texs_) {
+            bind_group_.reset(create_bind_group(gpu, input_texs));
+            cached_input_texs_ = input_texs;
+        }
+
+        // Render pass
+        WGPURenderPassColorAttachment color_att{};
+        color_att.view = gpu->output_texture_view;
+        color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        color_att.resolveTarget = nullptr;
+        color_att.loadOp  = WGPULoadOp_Clear;
+        color_att.storeOp = WGPUStoreOp_Store;
+        color_att.clearValue = { 0.0, 0.0, 0.0, 1.0 };
+
+        WGPURenderPassDescriptor rp_desc{};
+        rp_desc.label = vivid_sv("WgslFilter Pass");
+        rp_desc.colorAttachmentCount = 1;
+        rp_desc.colorAttachments = &color_att;
+
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(
+            gpu->command_encoder, &rp_desc);
+        wgpuRenderPassEncoderSetPipeline(pass, pipeline_.get());
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group_.get(), 0, nullptr);
+        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
+
+    ~WgslFilterBase() override = default;
+
+private:
+    std::string shader_filename_;
+    std::string shader_path_override_;
+
+    // GPU resources (RAII handles)
+    gpu::PipelineHandle   pipeline_;
+    gpu::BindLayoutHandle bind_layout_;
+    gpu::BufferHandle     uniform_buf_;
+    gpu::ShaderHandle     shader_;
+    gpu::PipeLayoutHandle pipe_layout_;
+    gpu::SamplerHandle    sampler_;
+    gpu::BindGroupHandle  bind_group_;
+    gpu::TextureHandle    fallback_tex_;
+    gpu::TexViewHandle    fallback_view_;
+
+    uint32_t tex_input_count_ = 0;
+    std::vector<WGPUTextureView> cached_input_texs_;
+
+    // Uniform buffer
+    std::vector<uint8_t> uniform_data_;
+    uint32_t uniform_size_ = 0;
+    uint32_t param_count_  = 0;
+
+    // Hot-reload state
+    std::string shader_path_;
+    time_t last_mtime_ = 0;
+    uint32_t reload_counter_ = 0;
+    bool initialized_ = false;
+
+    // Cached GPU state for hot-reload
+    WGPUDevice cached_device_ = nullptr;
+    WGPUTextureFormat cached_format_ = WGPUTextureFormat_Undefined;
+
+    // -----------------------------------------------------------------------
+    // Preamble generation — builds WGSL prefix from param names
+    // -----------------------------------------------------------------------
+    std::string generate_preamble() {
+        std::vector<ParamBase*> params;
+        collect_params(params);
+        param_count_ = static_cast<uint32_t>(params.size());
+
+        std::ostringstream s;
+
+        // Fullscreen triangle helper + math constants
+        s << vivid::gpu::FULLSCREEN_VERTEX_WGSL << "\n";
+        s << vivid::gpu::WGSL_CONSTANTS << "\n";
+
+        // Uniforms struct
+        s << "struct Uniforms {\n";
+        s << "    resolution: vec2f,\n";
+        s << "    time: f32,\n";
+        s << "    frame: u32,\n";
+        for (uint32_t i = 0; i < param_count_; ++i) {
+            s << "    " << params[i]->name << ": f32,\n";
+        }
+        s << "}\n\n";
+
+        // VertexOutput
+        s << "struct VertexOutput {\n";
+        s << "    @builtin(position) position: vec4f,\n";
+        s << "    @location(0) uv: vec2f,\n";
+        s << "}\n\n";
+
+        // Bindings
+        s << "@group(0) @binding(0) var<uniform> u: Uniforms;\n";
+        s << "@group(0) @binding(1) var texSampler: sampler;\n";
+        if (tex_input_count_ <= 1) {
+            s << "@group(0) @binding(2) var inputTex: texture_2d<f32>;\n\n";
+        } else {
+            for (uint32_t i = 0; i < tex_input_count_; ++i)
+                s << "@group(0) @binding(" << (2 + i) << ") var inputTex"
+                  << i << ": texture_2d<f32>;\n";
+            s << "\n";
+        }
+
+        // Vertex shader
+        s << "@vertex\n";
+        s << "fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {\n";
+        s << "    let fs = fullscreenTriangle(vertexIndex, true);\n";
+        s << "    var out: VertexOutput;\n";
+        s << "    out.position = fs.position;\n";
+        s << "    out.uv = fs.uv;\n";
+        s << "    return out;\n";
+        s << "}\n\n";
+
+        return s.str();
+    }
+
+    // -----------------------------------------------------------------------
+    // Uniform buffer helpers
+    // -----------------------------------------------------------------------
+    void compute_uniform_size() {
+        uint32_t raw = 16 + 4 * param_count_;  // header (16) + params
+        uniform_size_ = (raw + 15) & ~15u;     // round up to 16-byte alignment
+        uniform_data_.resize(uniform_size_, 0);
+    }
+
+    void fill_uniforms(VividGpuState* gpu, const VividProcessContext* ctx) {
+        std::memset(uniform_data_.data(), 0, uniform_size_);
+        float* f = reinterpret_cast<float*>(uniform_data_.data());
+        f[0] = static_cast<float>(gpu->output_width);
+        f[1] = static_cast<float>(gpu->output_height);
+        f[2] = static_cast<float>(ctx->time);
+        uint32_t* u = reinterpret_cast<uint32_t*>(uniform_data_.data());
+        u[3] = static_cast<uint32_t>(ctx->frame);
+        for (uint32_t i = 0; i < param_count_; ++i) {
+            f[4 + i] = ctx->param_values[i];
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // File I/O
+    // -----------------------------------------------------------------------
+    static std::string read_file(const std::string& path) {
+        std::ifstream ifs(path);
+        if (!ifs) return {};
+        std::ostringstream ss;
+        ss << ifs.rdbuf();
+        return ss.str();
+    }
+
+    static time_t file_mtime(const std::string& path) {
+        struct stat st{};
+        if (stat(path.c_str(), &st) != 0) return 0;
+        return st.st_mtime;
+    }
+
+    // -----------------------------------------------------------------------
+    // Resolve shader path from operators_src_dir + shader_filename
+    // -----------------------------------------------------------------------
+    bool resolve_shader_path(VividGpuState* gpu) {
+        // Data-driven filters supply their own path
+        if (!shader_path_override_.empty()) {
+            shader_path_ = shader_path_override_;
+            return true;
+        }
+
+        if (!gpu->operators_src_dir) return false;
+
+        // Derive stem from filename: "posterize.wgsl" → "posterize"
+        std::string fname = shader_filename_;
+        std::string stem = fname;
+        auto dot = stem.rfind('.');
+        if (dot != std::string::npos) stem = stem.substr(0, dot);
+
+        shader_path_ = std::string(gpu->operators_src_dir) +
+                        "/gpu/" + stem + "/" + fname;
+        return true;
+    }
+
+    // -----------------------------------------------------------------------
+    // Shader compilation — returns nullptr on failure
+    // -----------------------------------------------------------------------
+    WGPUShaderModule compile_shader(WGPUDevice device, const std::string& preamble,
+                                    const std::string& fragment_src) {
+        std::string full = preamble + "\n" + fragment_src;
+
+        WGPUShaderSourceWGSL wgsl_src{};
+        wgsl_src.chain.sType = WGPUSType_ShaderSourceWGSL;
+        wgsl_src.code = vivid_sv(full.c_str());
+
+        WGPUShaderModuleDescriptor desc{};
+        desc.nextInChain = &wgsl_src.chain;
+        desc.label = vivid_sv("WgslFilter Shader");
+        return wgpuDeviceCreateShaderModule(device, &desc);
+    }
+
+    // -----------------------------------------------------------------------
+    // Pipeline creation
+    // -----------------------------------------------------------------------
+    WGPURenderPipeline create_pipeline(WGPUDevice device, WGPUShaderModule shader,
+                                       WGPUTextureFormat format) {
+        WGPUColorTargetState color_target{};
+        color_target.format = format;
+        color_target.writeMask = WGPUColorWriteMask_All;
+
+        WGPUFragmentState fragment{};
+        fragment.module = shader;
+        fragment.entryPoint = vivid_sv("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color_target;
+
+        WGPURenderPipelineDescriptor rp_desc{};
+        rp_desc.label = vivid_sv("WgslFilter Pipeline");
+        rp_desc.layout = pipe_layout_.get();
+        rp_desc.vertex.module = shader;
+        rp_desc.vertex.entryPoint = vivid_sv("vs_main");
+        rp_desc.vertex.bufferCount = 0;
+        rp_desc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        rp_desc.primitive.frontFace = WGPUFrontFace_CCW;
+        rp_desc.primitive.cullMode = WGPUCullMode_None;
+        rp_desc.multisample.count = 1;
+        rp_desc.multisample.mask = 0xFFFFFFFF;
+        rp_desc.fragment = &fragment;
+
+        return wgpuDeviceCreateRenderPipeline(device, &rp_desc);
+    }
+
+    // -----------------------------------------------------------------------
+    // Bind group creation (recreated when input texture changes)
+    // -----------------------------------------------------------------------
+    WGPUBindGroup create_bind_group(VividGpuState* gpu,
+                                    const std::vector<WGPUTextureView>& textures) {
+        std::vector<WGPUBindGroupEntry> entries(2 + textures.size(), WGPUBindGroupEntry{});
+        entries[0].binding = 0;
+        entries[0].buffer  = uniform_buf_.get();
+        entries[0].offset  = 0;
+        entries[0].size    = uniform_size_;
+        entries[1].binding = 1;
+        entries[1].sampler = sampler_.get();
+        for (size_t i = 0; i < textures.size(); ++i) {
+            entries[2 + i].binding = static_cast<uint32_t>(2 + i);
+            entries[2 + i].textureView = textures[i];
+        }
+
+        WGPUBindGroupDescriptor desc{};
+        desc.label = vivid_sv("WgslFilter BG");
+        desc.layout = bind_layout_.get();
+        desc.entryCount = static_cast<uint32_t>(entries.size());
+        desc.entries = entries.data();
+        return wgpuDeviceCreateBindGroup(gpu->device, &desc);
+    }
+
+    // -----------------------------------------------------------------------
+    // Fallback 1x1 texture for disconnected inputs
+    // -----------------------------------------------------------------------
+    void create_fallback(VividGpuState* gpu) {
+        WGPUTextureDescriptor td{};
+        td.label = vivid_sv("WgslFilter Fallback");
+        td.size = { 1, 1, 1 };
+        td.mipLevelCount = 1;
+        td.sampleCount = 1;
+        td.dimension = WGPUTextureDimension_2D;
+        td.format = gpu->output_format;
+        td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        fallback_tex_.reset(wgpuDeviceCreateTexture(gpu->device, &td));
+
+        WGPUTextureViewDescriptor vd{};
+        vd.format = gpu->output_format;
+        vd.dimension = WGPUTextureViewDimension_2D;
+        vd.mipLevelCount = 1;
+        vd.arrayLayerCount = 1;
+        vd.aspect = WGPUTextureAspect_All;
+        fallback_view_.reset(wgpuTextureCreateView(fallback_tex_.get(), &vd));
+
+        const uint8_t zero[8] = {};  // transparent black (up to 8 bytes for RGBA16Float)
+        WGPUTexelCopyTextureInfo dest{};
+        dest.texture = fallback_tex_.get();
+        dest.aspect = WGPUTextureAspect_All;
+        WGPUTexelCopyBufferLayout layout{};
+        layout.bytesPerRow = 8;
+        layout.rowsPerImage = 1;
+        WGPUExtent3D extent = { 1, 1, 1 };
+        wgpuQueueWriteTexture(gpu->queue, &dest, zero, sizeof(zero), &layout, &extent);
+    }
+
+    // -----------------------------------------------------------------------
+    // lazy_init — first-frame setup
+    // -----------------------------------------------------------------------
+    bool lazy_init(VividGpuState* gpu) {
+        // Count GPU_TEXTURE input ports
+        std::vector<VividPortDescriptor> ports;
+        collect_ports(ports);
+        tex_input_count_ = 0;
+        for (auto& p : ports)
+            if (p.direction == VIVID_PORT_INPUT && p.type == VIVID_PORT_GPU_TEXTURE)
+                tex_input_count_++;
+        cached_input_texs_.resize(tex_input_count_, nullptr);
+
+        // Generate preamble (also counts params)
+        std::string preamble = generate_preamble();
+        compute_uniform_size();
+
+        // Resolve shader file path
+        if (!resolve_shader_path(gpu)) {
+            std::fprintf(stderr, "[wgsl_filter] No operators_src_dir, cannot locate %s\n",
+                         shader_filename_.c_str());
+            return false;
+        }
+
+        // Read fragment shader from file
+        std::string fragment_src = read_file(shader_path_);
+        if (fragment_src.empty()) {
+            std::fprintf(stderr, "[wgsl_filter] Cannot read shader: %s\n", shader_path_.c_str());
+            return false;
+        }
+        last_mtime_ = file_mtime(shader_path_);
+
+        // Compile shader
+        WGPUShaderModule sm = compile_shader(gpu->device, preamble, fragment_src);
+        if (!sm) {
+            std::fprintf(stderr, "[wgsl_filter] Shader compile failed: %s\n", shader_path_.c_str());
+            return false;
+        }
+        shader_.reset(sm);
+
+        // Uniform buffer
+        WGPUBufferDescriptor buf_desc{};
+        buf_desc.label = vivid_sv("WgslFilter Uniforms");
+        buf_desc.size  = uniform_size_;
+        buf_desc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        uniform_buf_.reset(wgpuDeviceCreateBuffer(gpu->device, &buf_desc));
+
+        // Sampler
+        WGPUSamplerDescriptor sampler_desc{};
+        sampler_desc.label = vivid_sv("WgslFilter Sampler");
+        sampler_desc.addressModeU = WGPUAddressMode_ClampToEdge;
+        sampler_desc.addressModeV = WGPUAddressMode_ClampToEdge;
+        sampler_desc.addressModeW = WGPUAddressMode_ClampToEdge;
+        sampler_desc.magFilter = WGPUFilterMode_Linear;
+        sampler_desc.minFilter = WGPUFilterMode_Linear;
+        sampler_desc.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+        sampler_desc.maxAnisotropy = 1;
+        sampler_.reset(wgpuDeviceCreateSampler(gpu->device, &sampler_desc));
+
+        // Bind group layout: uniform(0) + sampler(1) + N textures(2..)
+        std::vector<WGPUBindGroupLayoutEntry> bgl_entries(2 + tex_input_count_, WGPUBindGroupLayoutEntry{});
+        bgl_entries[0].binding = 0;
+        bgl_entries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+        bgl_entries[0].buffer.type = WGPUBufferBindingType_Uniform;
+        bgl_entries[0].buffer.minBindingSize = uniform_size_;
+
+        bgl_entries[1].binding = 1;
+        bgl_entries[1].visibility = WGPUShaderStage_Fragment;
+        bgl_entries[1].sampler.type = WGPUSamplerBindingType_Filtering;
+
+        for (uint32_t i = 0; i < tex_input_count_; ++i) {
+            bgl_entries[2 + i].binding = 2 + i;
+            bgl_entries[2 + i].visibility = WGPUShaderStage_Fragment;
+            bgl_entries[2 + i].texture.sampleType = WGPUTextureSampleType_Float;
+            bgl_entries[2 + i].texture.viewDimension = WGPUTextureViewDimension_2D;
+            bgl_entries[2 + i].texture.multisampled = false;
+        }
+
+        WGPUBindGroupLayoutDescriptor bgl_desc{};
+        bgl_desc.label = vivid_sv("WgslFilter BGL");
+        bgl_desc.entryCount = static_cast<uint32_t>(bgl_entries.size());
+        bgl_desc.entries = bgl_entries.data();
+        bind_layout_.reset(wgpuDeviceCreateBindGroupLayout(gpu->device, &bgl_desc));
+
+        // Pipeline layout
+        WGPUBindGroupLayout raw_layout = bind_layout_.get();
+        WGPUPipelineLayoutDescriptor pl_desc{};
+        pl_desc.label = vivid_sv("WgslFilter Pipeline Layout");
+        pl_desc.bindGroupLayoutCount = 1;
+        pl_desc.bindGroupLayouts = &raw_layout;
+        pipe_layout_.reset(wgpuDeviceCreatePipelineLayout(gpu->device, &pl_desc));
+
+        // Render pipeline
+        WGPURenderPipeline rp = create_pipeline(gpu->device, shader_.get(), gpu->output_format);
+        if (!rp) {
+            std::fprintf(stderr, "[wgsl_filter] Pipeline creation failed: %s\n", shader_path_.c_str());
+            return false;
+        }
+        pipeline_.reset(rp);
+
+        cached_device_ = gpu->device;
+        cached_format_ = gpu->output_format;
+        initialized_ = true;
+
+        std::fprintf(stderr, "[wgsl_filter] Initialized: %s (%u params, %u byte uniforms)\n",
+                     shader_path_.c_str(), param_count_, uniform_size_);
+        return true;
+    }
+
+    // -----------------------------------------------------------------------
+    // Hot-reload — check mtime and recompile on change
+    // -----------------------------------------------------------------------
+    void check_hot_reload(VividGpuState* gpu) {
+        if (shader_path_.empty()) return;
+
+        time_t mt = file_mtime(shader_path_);
+        if (mt == 0 || mt == last_mtime_) return;
+
+        std::fprintf(stderr, "[wgsl_filter] Shader changed, recompiling: %s\n", shader_path_.c_str());
+
+        std::string fragment_src = read_file(shader_path_);
+        if (fragment_src.empty()) {
+            std::fprintf(stderr, "[wgsl_filter] Cannot read shader (keeping old): %s\n",
+                         shader_path_.c_str());
+            return;
+        }
+
+        std::string preamble = generate_preamble();
+        WGPUShaderModule sm = compile_shader(gpu->device, preamble, fragment_src);
+        if (!sm) {
+            std::fprintf(stderr, "[wgsl_filter] Compile error (keeping old pipeline): %s\n",
+                         shader_path_.c_str());
+            last_mtime_ = mt;  // don't retry every 30 frames
+            return;
+        }
+
+        WGPURenderPipeline rp = create_pipeline(gpu->device, sm, gpu->output_format);
+        if (!rp) {
+            wgpuShaderModuleRelease(sm);
+            std::fprintf(stderr, "[wgsl_filter] Pipeline error (keeping old): %s\n",
+                         shader_path_.c_str());
+            last_mtime_ = mt;
+            return;
+        }
+
+        // Success — swap in new shader + pipeline
+        shader_.reset(sm);
+        pipeline_.reset(rp);
+        // Force bind group recreation on next frame
+        cached_input_texs_.assign(tex_input_count_, nullptr);
+        last_mtime_ = mt;
+
+        std::fprintf(stderr, "[wgsl_filter] Hot-reloaded: %s\n", shader_path_.c_str());
+    }
+};
+
+} // namespace vivid
