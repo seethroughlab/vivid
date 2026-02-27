@@ -75,26 +75,8 @@ struct GpuFillOp : vivid::OperatorBase {
         u.color[3] = 1.0f;
         wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
 
-        WGPURenderPassColorAttachment color_att{};
-        color_att.view = gpu->output_texture_view;
-        color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-        color_att.resolveTarget = nullptr;
-        color_att.loadOp  = WGPULoadOp_Clear;
-        color_att.storeOp = WGPUStoreOp_Store;
-        color_att.clearValue = { 0.0, 0.0, 0.0, 1.0 };
-
-        WGPURenderPassDescriptor rp_desc{};
-        rp_desc.label = vivid_sv("GpuFill Pass");
-        rp_desc.colorAttachmentCount = 1;
-        rp_desc.colorAttachments = &color_att;
-
-        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(
-            gpu->command_encoder, &rp_desc);
-        wgpuRenderPassEncoderSetPipeline(pass, pipeline_);
-        wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group_, 0, nullptr);
-        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
-        wgpuRenderPassEncoderEnd(pass);
-        wgpuRenderPassEncoderRelease(pass);
+        vivid::gpu::run_pass(gpu->command_encoder, pipeline_, bind_group_,
+                             gpu->output_texture_view, "GpuFill Pass");
     }
 
     ~GpuFillOp() override {
@@ -115,23 +97,10 @@ private:
     WGPUPipelineLayout  pipe_layout_ = nullptr;
 
     bool lazy_init(VividGpuState* gpu) {
-        std::string shader_src = std::string(vivid::gpu::FULLSCREEN_VERTEX_WGSL)
-                               + kFillFragment;
-        WGPUShaderSourceWGSL wgsl_src{};
-        wgsl_src.chain.sType = WGPUSType_ShaderSourceWGSL;
-        wgsl_src.code = vivid_sv(shader_src.c_str());
-
-        WGPUShaderModuleDescriptor shader_desc{};
-        shader_desc.nextInChain = &wgsl_src.chain;
-        shader_desc.label = vivid_sv("GpuFill Shader");
-        shader_ = wgpuDeviceCreateShaderModule(gpu->device, &shader_desc);
+        shader_ = vivid::gpu::create_shader(gpu->device, kFillFragment, "GpuFill Shader");
         if (!shader_) return false;
 
-        WGPUBufferDescriptor buf_desc{};
-        buf_desc.label = vivid_sv("GpuFill Uniforms");
-        buf_desc.size  = sizeof(FillUniforms);
-        buf_desc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
-        uniform_buf_ = wgpuDeviceCreateBuffer(gpu->device, &buf_desc);
+        uniform_buf_ = vivid::gpu::create_uniform_buffer(gpu->device, sizeof(FillUniforms), "GpuFill Uniforms");
 
         WGPUBindGroupLayoutEntry bgl_entry{};
         bgl_entry.binding = 0;
@@ -164,30 +133,7 @@ private:
         bg_desc.entries = &bg_entry;
         bind_group_ = wgpuDeviceCreateBindGroup(gpu->device, &bg_desc);
 
-        WGPUColorTargetState color_target{};
-        color_target.format = gpu->output_format;
-        color_target.writeMask = WGPUColorWriteMask_All;
-
-        WGPUFragmentState fragment{};
-        fragment.module = shader_;
-        fragment.entryPoint = vivid_sv("fs_main");
-        fragment.targetCount = 1;
-        fragment.targets = &color_target;
-
-        WGPURenderPipelineDescriptor rp_desc{};
-        rp_desc.label = vivid_sv("GpuFill Pipeline");
-        rp_desc.layout = pipe_layout_;
-        rp_desc.vertex.module = shader_;
-        rp_desc.vertex.entryPoint = vivid_sv("vs_main");
-        rp_desc.vertex.bufferCount = 0;
-        rp_desc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-        rp_desc.primitive.frontFace = WGPUFrontFace_CCW;
-        rp_desc.primitive.cullMode = WGPUCullMode_None;
-        rp_desc.multisample.count = 1;
-        rp_desc.multisample.mask = 0xFFFFFFFF;
-        rp_desc.fragment = &fragment;
-
-        pipeline_ = wgpuDeviceCreateRenderPipeline(gpu->device, &rp_desc);
+        pipeline_ = vivid::gpu::create_pipeline(gpu->device, shader_, pipe_layout_, gpu->output_format, "GpuFill Pipeline");
         if (!pipeline_) return false;
 
         return true;

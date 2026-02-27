@@ -80,27 +80,8 @@ public:
             cached_input_texs_ = input_texs;
         }
 
-        // Render pass
-        WGPURenderPassColorAttachment color_att{};
-        color_att.view = gpu->output_texture_view;
-        color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-        color_att.resolveTarget = nullptr;
-        color_att.loadOp  = WGPULoadOp_Clear;
-        color_att.storeOp = WGPUStoreOp_Store;
-        color_att.clearValue = { 0.0, 0.0, 0.0, 1.0 };
-
-        WGPURenderPassDescriptor rp_desc{};
-        rp_desc.label = vivid_sv("WgslFilter Pass");
-        rp_desc.colorAttachmentCount = 1;
-        rp_desc.colorAttachments = &color_att;
-
-        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(
-            gpu->command_encoder, &rp_desc);
-        wgpuRenderPassEncoderSetPipeline(pass, pipeline_.get());
-        wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group_.get(), 0, nullptr);
-        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
-        wgpuRenderPassEncoderEnd(pass);
-        wgpuRenderPassEncoderRelease(pass);
+        vivid::gpu::run_pass(gpu->command_encoder, pipeline_.get(), bind_group_.get(),
+                             gpu->output_texture_view, "WgslFilter Pass");
     }
 
     ~WgslFilterBase() override = default;
@@ -277,30 +258,7 @@ private:
     // -----------------------------------------------------------------------
     WGPURenderPipeline create_pipeline(WGPUDevice device, WGPUShaderModule shader,
                                        WGPUTextureFormat format) {
-        WGPUColorTargetState color_target{};
-        color_target.format = format;
-        color_target.writeMask = WGPUColorWriteMask_All;
-
-        WGPUFragmentState fragment{};
-        fragment.module = shader;
-        fragment.entryPoint = vivid_sv("fs_main");
-        fragment.targetCount = 1;
-        fragment.targets = &color_target;
-
-        WGPURenderPipelineDescriptor rp_desc{};
-        rp_desc.label = vivid_sv("WgslFilter Pipeline");
-        rp_desc.layout = pipe_layout_.get();
-        rp_desc.vertex.module = shader;
-        rp_desc.vertex.entryPoint = vivid_sv("vs_main");
-        rp_desc.vertex.bufferCount = 0;
-        rp_desc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-        rp_desc.primitive.frontFace = WGPUFrontFace_CCW;
-        rp_desc.primitive.cullMode = WGPUCullMode_None;
-        rp_desc.multisample.count = 1;
-        rp_desc.multisample.mask = 0xFFFFFFFF;
-        rp_desc.fragment = &fragment;
-
-        return wgpuDeviceCreateRenderPipeline(device, &rp_desc);
+        return vivid::gpu::create_pipeline(device, shader, pipe_layout_.get(), format, "WgslFilter Pipeline");
     }
 
     // -----------------------------------------------------------------------
@@ -401,24 +359,8 @@ private:
         }
         shader_.reset(sm);
 
-        // Uniform buffer
-        WGPUBufferDescriptor buf_desc{};
-        buf_desc.label = vivid_sv("WgslFilter Uniforms");
-        buf_desc.size  = uniform_size_;
-        buf_desc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
-        uniform_buf_.reset(wgpuDeviceCreateBuffer(gpu->device, &buf_desc));
-
-        // Sampler
-        WGPUSamplerDescriptor sampler_desc{};
-        sampler_desc.label = vivid_sv("WgslFilter Sampler");
-        sampler_desc.addressModeU = WGPUAddressMode_ClampToEdge;
-        sampler_desc.addressModeV = WGPUAddressMode_ClampToEdge;
-        sampler_desc.addressModeW = WGPUAddressMode_ClampToEdge;
-        sampler_desc.magFilter = WGPUFilterMode_Linear;
-        sampler_desc.minFilter = WGPUFilterMode_Linear;
-        sampler_desc.mipmapFilter = WGPUMipmapFilterMode_Nearest;
-        sampler_desc.maxAnisotropy = 1;
-        sampler_.reset(wgpuDeviceCreateSampler(gpu->device, &sampler_desc));
+        uniform_buf_.reset(vivid::gpu::create_uniform_buffer(gpu->device, uniform_size_, "WgslFilter Uniforms"));
+        sampler_.reset(vivid::gpu::create_linear_sampler(gpu->device, "WgslFilter Sampler"));
 
         // Bind group layout: uniform(0) + sampler(1) + N textures(2..)
         std::vector<WGPUBindGroupLayoutEntry> bgl_entries(2 + tex_input_count_, WGPUBindGroupLayoutEntry{});
