@@ -73,9 +73,14 @@ public:
         auto it = cache_.find(type_name);
         if (it != cache_.end()) return it->second;
 
-        auto* loader = registry.find(type_name);
-        if (!loader) return nullptr;
-        const auto* desc = loader->descriptor();
+        // Try fully-loaded first (without triggering lazy load)
+        const VividOperatorDescriptor* desc = nullptr;
+        auto* loader = registry.find_loaded(type_name);
+        if (loader) {
+            desc = loader->descriptor();
+        } else {
+            desc = registry.probe_descriptor(type_name);  // deferred metadata
+        }
         if (!desc) return nullptr;
 
         auto info = std::make_shared<vivid::ui::OperatorInfo>();
@@ -98,18 +103,18 @@ public:
             }
         }
 
-        // Determine if this type has an editable shader
-        if (loader->is_data_driven()) {
-            info->has_shader = true;
-        } else if (!operators_dir_.empty()) {
-            std::string stem = type_name;
-            for (auto& c : stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            std::string wgsl_path = operators_dir_ + "/gpu/" + stem + "/" + stem + ".wgsl";
-            info->has_shader = std::filesystem::exists(wgsl_path);
+        // Only check shader/user status for fully-loaded operators
+        if (loader) {
+            if (loader->is_data_driven()) {
+                info->has_shader = true;
+            } else if (!operators_dir_.empty()) {
+                std::string stem = type_name;
+                for (auto& c : stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                std::string wgsl_path = operators_dir_ + "/gpu/" + stem + "/" + stem + ".wgsl";
+                info->has_shader = std::filesystem::exists(wgsl_path);
+            }
+            info->is_user = registry.is_user_filter(type_name) || registry.is_user_operator(type_name);
         }
-
-        // Determine if this is a user-created operator
-        info->is_user = registry.is_user_filter(type_name) || registry.is_user_operator(type_name);
 
         cache_[type_name] = info;
         return info;
@@ -957,7 +962,7 @@ int main(int argc, char* argv[]) {
 
     // --- Load operator plugins ---
     vivid::OperatorRegistry registry;
-    registry.scan(exe_dir.string().c_str());
+    registry.scan_deferred(exe_dir.string().c_str());  // probe only — no full loads
     register_builtin_operators(registry);
 
     // --- Load graph ---
@@ -1002,6 +1007,9 @@ int main(int argc, char* argv[]) {
                 registry.register_user_filter(fd.name, config);
             }
         }
+
+        // Load only the operators this graph actually uses
+        registry.load_for_graph(graph);
 
         if (scheduler.build(graph, registry)) {
             graph_loaded = true;

@@ -11,13 +11,31 @@
 namespace vivid {
 
 struct DataDrivenFilterConfig;
+class Graph;
+
+// Probed operator metadata — enough for UI catalog without a full dlopen
+struct DeferredEntry {
+    std::string dylib_path;
+    VividOperatorDescriptor desc{};                // owned copy (pointers into vectors below)
+    std::vector<VividParamDescriptor> params;       // owned param descriptors
+    std::vector<VividPortDescriptor> ports;         // owned port descriptors
+    std::vector<std::string> param_names;           // stable strings for param name pointers
+    std::vector<std::string> port_names;            // stable strings for port name pointers
+    std::vector<std::string> default_strings;       // stable strings for default_string pointers
+    std::vector<std::vector<std::string>> choice_labels;     // owned choice label strings
+    std::vector<std::vector<const char*>> choice_label_ptrs; // C pointer arrays into choice_labels
+};
 
 class OperatorRegistry {
 public:
     bool scan(const char* directory);
+    bool scan_deferred(const char* directory);       // probe-only scan (no full load)
+    bool load_for_graph(const Graph& graph);         // load only operators the graph uses
     void register_builtin(const std::string& type_name,
                           VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFn);
-    OperatorLoader* find(const std::string& type_name);
+    OperatorLoader* find(const std::string& type_name);       // lazy-loads deferred if needed
+    OperatorLoader* find_loaded(const std::string& type_name); // no lazy loading
+    const VividOperatorDescriptor* probe_descriptor(const std::string& type_name) const;
 
     // User-defined filter management
     void register_user_filter(const std::string& name,
@@ -41,7 +59,11 @@ public:
     bool reload_operator(const std::string& type_name, const std::string& new_dylib_path);
 
 private:
+    // Helper: extract target name from dylib path and register loader
+    void register_target_mapping(const std::string& dylib_path, const std::string& type_name);
+
     std::unordered_map<std::string, std::unique_ptr<OperatorLoader>> loaders_;
+    std::unordered_map<std::string, DeferredEntry> deferred_;  // probed but not yet loaded
     std::unordered_map<std::string, std::string> target_to_type_;  // cmake target → descriptor name
     std::unordered_set<std::string> user_filter_types_;
     std::unordered_map<std::string, std::string> user_operator_sources_;

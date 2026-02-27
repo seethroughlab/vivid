@@ -1,5 +1,7 @@
 #include "runtime/operator_registry.h"
+#include "runtime/graph.h"
 #include "operator_api/data_driven_filter.h"
+#include <dlfcn.h>
 #include <dirent.h>
 #include <cstring>
 #include <cstdio>
@@ -55,6 +57,187 @@ bool OperatorRegistry::scan(const char* directory) {
     return true;
 }
 
+// Deep-copy a VividOperatorDescriptor into a DeferredEntry with fully owned storage
+static DeferredEntry deep_copy_descriptor(const VividOperatorDescriptor* src,
+                                           const std::string& dylib_path) {
+    DeferredEntry entry;
+    entry.dylib_path = dylib_path;
+
+    // Copy param descriptors with owned strings
+    entry.params.resize(src->param_count);
+    entry.param_names.resize(src->param_count);
+    entry.default_strings.resize(src->param_count);
+    entry.choice_labels.resize(src->param_count);
+    entry.choice_label_ptrs.resize(src->param_count);
+    for (uint32_t i = 0; i < src->param_count; ++i) {
+        const auto& sp = src->params[i];
+        auto& dp = entry.params[i];
+        entry.param_names[i] = sp.name ? sp.name : "";
+        dp.name = entry.param_names[i].c_str();
+        dp.type = sp.type;
+        dp.default_value = sp.default_value;
+        dp.min_value = sp.min_value;
+        dp.max_value = sp.max_value;
+        dp.choice_count = sp.choice_count;
+
+        // Deep-copy choice labels
+        if (sp.choice_labels && sp.choice_count > 0) {
+            entry.choice_labels[i].resize(sp.choice_count);
+            entry.choice_label_ptrs[i].resize(sp.choice_count);
+            for (uint32_t ci = 0; ci < sp.choice_count; ++ci) {
+                entry.choice_labels[i][ci] = sp.choice_labels[ci] ? sp.choice_labels[ci] : "";
+                entry.choice_label_ptrs[i][ci] = entry.choice_labels[i][ci].c_str();
+            }
+            dp.choice_labels = entry.choice_label_ptrs[i].data();
+        } else {
+            dp.choice_labels = nullptr;
+        }
+
+        // Deep-copy default_string (for file params)
+        if (sp.default_string) {
+            entry.default_strings[i] = sp.default_string;
+            dp.default_string = entry.default_strings[i].c_str();
+        } else {
+            dp.default_string = nullptr;
+        }
+    }
+
+    // Copy port descriptors with owned strings
+    entry.ports.resize(src->port_count);
+    entry.port_names.resize(src->port_count);
+    for (uint32_t i = 0; i < src->port_count; ++i) {
+        const auto& sp = src->ports[i];
+        auto& dp = entry.ports[i];
+        entry.port_names[i] = sp.name ? sp.name : "";
+        dp.name = entry.port_names[i].c_str();
+        dp.type = sp.type;
+        dp.direction = sp.direction;
+    }
+
+    // Build the owned descriptor
+    std::string name_str = src->name ? src->name : "";
+    entry.desc.name = nullptr;  // will be set via param_names trick — actually store in a dedicated field
+    entry.desc.domain = src->domain;
+    entry.desc.param_count = src->param_count;
+    entry.desc.params = entry.params.data();
+    entry.desc.port_count = src->port_count;
+    entry.desc.ports = entry.ports.data();
+    entry.desc.time_dependent = src->time_dependent;
+
+    return entry;
+}
+
+bool OperatorRegistry::scan_deferred(const char* directory) {
+    DIR* dir = opendir(directory);
+    if (!dir) {
+        std::fprintf(stderr, "[vivid] Registry: failed to open directory: %s\n", directory);
+        return false;
+    }
+
+    size_t suffix_len = std::strlen(kPluginSuffix);
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        const char* name = entry->d_name;
+        size_t len = std::strlen(name);
+        if (len < suffix_len + 1 || std::strcmp(name + len - suffix_len, kPluginSuffix) != 0)
+            continue;
+        if (std::strncmp(name, "lib", 3) == 0)
+            continue;
+
+        std::string path = std::string(directory) + "/" + name;
+
+        // Probe only: open, read descriptor, close
+        void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (!handle) {
+            std::fprintf(stderr, "[vivid] probe dlopen failed: %s\n", dlerror());
+            continue;
+        }
+
+        auto desc_fn = reinterpret_cast<VividDescriptorFn>(dlsym(handle, "vivid_descriptor"));
+        if (!desc_fn) {
+            std::fprintf(stderr, "[vivid] probe: missing vivid_descriptor in %s\n", name);
+            dlclose(handle);
+            continue;
+        }
+
+        const VividOperatorDescriptor* desc = desc_fn();
+        if (!desc || !desc->name) {
+            dlclose(handle);
+            continue;
+        }
+
+        std::string type_name = desc->name;
+
+        // Skip if already fully loaded (e.g. registered as builtin)
+        if (loaders_.count(type_name)) {
+            dlclose(handle);
+            continue;
+        }
+
+        // Deep-copy descriptor into owned storage
+        DeferredEntry de = deep_copy_descriptor(desc, path);
+
+        dlclose(handle);
+
+        // Store the type name in the entry (desc.name needs to point to owned storage)
+        // We'll use a small trick: store the name string as the first port_name slot won't work.
+        // Instead, add a dedicated name field. Actually, let's just store it in param_names
+        // by convention. No — cleaner: the DeferredEntry is keyed by type_name in the map,
+        // and we need desc.name to point at stable storage. Use the map key.
+
+        auto [it, inserted] = deferred_.emplace(type_name, std::move(de));
+        // Point desc.name at the map key (stable after emplace)
+        it->second.desc.name = it->first.c_str();
+
+        std::fprintf(stderr, "[vivid] Registry: probed %s from %s\n", type_name.c_str(), name);
+    }
+
+    closedir(dir);
+    return true;
+}
+
+void OperatorRegistry::register_target_mapping(const std::string& dylib_path,
+                                                const std::string& type_name) {
+    std::string filename = dylib_path;
+    auto slash = filename.rfind('/');
+    if (slash != std::string::npos) filename = filename.substr(slash + 1);
+    size_t slen = std::strlen(kPluginSuffix);
+    if (filename.size() > slen) filename = filename.substr(0, filename.size() - slen);
+    target_to_type_[filename] = type_name;
+}
+
+bool OperatorRegistry::load_for_graph(const Graph& graph) {
+    for (const auto& ndef : graph.nodes()) {
+        if (loaders_.count(ndef.type)) continue;      // already loaded
+        auto dit = deferred_.find(ndef.type);
+        if (dit == deferred_.end()) continue;          // builtin or unknown
+
+        auto loader = std::make_unique<OperatorLoader>();
+        if (!loader->load(dit->second.dylib_path.c_str())) {
+            std::fprintf(stderr, "[vivid] Registry: failed to load %s\n", ndef.type.c_str());
+            return false;
+        }
+
+        register_target_mapping(dit->second.dylib_path, ndef.type);
+        loaders_[ndef.type] = std::move(loader);
+        deferred_.erase(dit);
+        std::fprintf(stderr, "[vivid] Registry: loaded %s (on demand)\n", ndef.type.c_str());
+    }
+    return true;
+}
+
+OperatorLoader* OperatorRegistry::find_loaded(const std::string& type_name) {
+    auto it = loaders_.find(type_name);
+    return (it != loaders_.end()) ? it->second.get() : nullptr;
+}
+
+const VividOperatorDescriptor* OperatorRegistry::probe_descriptor(const std::string& type_name) const {
+    auto dit = deferred_.find(type_name);
+    if (dit == deferred_.end()) return nullptr;
+    return &dit->second.desc;
+}
+
 void OperatorRegistry::register_builtin(const std::string& type_name,
                                         VividDescriptorFn desc_fn, VividCreateFn create_fn,
                                         VividDestroyFn destroy_fn, VividProcessFn process_fn) {
@@ -66,9 +249,21 @@ void OperatorRegistry::register_builtin(const std::string& type_name,
 
 OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
     auto it = loaders_.find(type_name);
-    if (it == loaders_.end())
-        return nullptr;
-    return it->second.get();
+    if (it != loaders_.end()) return it->second.get();
+
+    // Try deferred loading
+    auto dit = deferred_.find(type_name);
+    if (dit == deferred_.end()) return nullptr;
+
+    auto loader = std::make_unique<OperatorLoader>();
+    if (!loader->load(dit->second.dylib_path.c_str())) return nullptr;
+
+    register_target_mapping(dit->second.dylib_path, type_name);
+    auto* ptr = loader.get();
+    loaders_[type_name] = std::move(loader);
+    deferred_.erase(dit);
+    std::fprintf(stderr, "[vivid] Registry: loaded %s (lazy)\n", type_name.c_str());
+    return ptr;
 }
 
 void OperatorRegistry::register_user_filter(const std::string& name,
@@ -113,25 +308,16 @@ bool OperatorRegistry::register_loaded_operator(const std::string& dylib_path) {
     std::fprintf(stderr, "[vivid] Registry: loaded new operator %s from %s\n",
                  type_name.c_str(), dylib_path.c_str());
 
-    // Extract stem from path for target mapping
-    std::string filename = dylib_path;
-    auto slash = filename.rfind('/');
-    if (slash != std::string::npos) filename = filename.substr(slash + 1);
-    size_t suffix_len = std::strlen(kPluginSuffix);
-    if (filename.size() > suffix_len)
-        filename = filename.substr(0, filename.size() - suffix_len);
-    target_to_type_[filename] = type_name;
-
+    register_target_mapping(dylib_path, type_name);
     loaders_[type_name] = std::move(loader);
     return true;
 }
 
 std::vector<std::string> OperatorRegistry::type_names() const {
     std::vector<std::string> names;
-    names.reserve(loaders_.size());
-    for (const auto& [name, _] : loaders_) {
-        names.push_back(name);
-    }
+    names.reserve(loaders_.size() + deferred_.size());
+    for (const auto& [name, _] : loaders_) names.push_back(name);
+    for (const auto& [name, _] : deferred_) names.push_back(name);
     std::sort(names.begin(), names.end());
     return names;
 }
