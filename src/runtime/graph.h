@@ -12,6 +12,7 @@ struct NodeDef {
     std::string id;
     std::string type;
     std::unordered_map<std::string, float> params;
+    std::unordered_map<std::string, std::string> string_params;
     // Optional layout position (NaN = use auto-layout)
     float layout_x = NAN;
     float layout_y = NAN;
@@ -61,7 +62,8 @@ public:
 
     // Mutation
     bool add_node(const std::string& id, const std::string& type,
-                  const std::unordered_map<std::string, float>& params = {});
+                  const std::unordered_map<std::string, float>& params = {},
+                  const std::unordered_map<std::string, std::string>& string_params = {});
     bool remove_node(const std::string& id);
     bool add_connection(const std::string& from_node, const std::string& from_port,
                         const std::string& to_node, const std::string& to_port);
@@ -87,6 +89,13 @@ public:
     // Lookup
     const NodeDef* find_node(const std::string& id) const;
     NodeDef* find_node(const std::string& id);
+
+    // Viewport (NaN = not set, use default)
+    float viewport_pan_x = NAN;
+    float viewport_pan_y = NAN;
+    float viewport_zoom  = NAN;
+    bool has_viewport() const { return !std::isnan(viewport_pan_x); }
+    void set_viewport(float px, float py, float z) { viewport_pan_x = px; viewport_pan_y = py; viewport_zoom = z; }
 
     // Serialization
     bool save(const char* path) const;

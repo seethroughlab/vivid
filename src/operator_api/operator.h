@@ -3,6 +3,7 @@
 
 #include "operator_api/types.h"
 #include <vector>
+#include <string>
 #include <initializer_list>
 #include <cstring>
 #include <cmath>
@@ -87,6 +88,26 @@ struct Param<bool> : ParamBase {
 };
 
 // ---------------------------------------------------------------------------
+// FilePath — tag type for file path parameters
+// ---------------------------------------------------------------------------
+
+struct FilePath {};
+
+template<>
+struct Param<FilePath> : ParamBase {
+    std::string str_value;
+    Param(const char* n, const char* def = "") {
+        name = n;
+        type = VIVID_PARAM_FILE;
+        default_value = 0;
+        min_value = 0;
+        max_value = 0;
+        value = 0;
+        str_value = def;
+    }
+};
+
+// ---------------------------------------------------------------------------
 // OperatorBase — abstract base class for operators
 // ---------------------------------------------------------------------------
 
@@ -111,6 +132,7 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     static std::vector<VividParamDescriptor> s_params;                        \
     static std::vector<VividPortDescriptor>  s_ports;                         \
     static std::vector<std::vector<const char*>> s_label_storage;             \
+    static std::vector<std::string> s_file_defaults;                          \
     static bool inited = false;                                               \
     if (!inited) {                                                            \
         inited = true;                                                        \
@@ -119,6 +141,7 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         tmp.collect_params(pbases);                                           \
         s_params.resize(pbases.size());                                       \
         s_label_storage.resize(pbases.size());                                \
+        s_file_defaults.resize(pbases.size());                                 \
         for (size_t i = 0; i < pbases.size(); ++i) {                          \
             s_params[i].name          = pbases[i]->name;                      \
             s_params[i].type          = pbases[i]->type;                      \
@@ -134,6 +157,14 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             } else {                                                          \
                 s_params[i].choice_labels = nullptr;                          \
                 s_params[i].choice_count  = 0;                                \
+            }                                                                 \
+            if (pbases[i]->type == VIVID_PARAM_FILE) {                        \
+                auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(       \
+                    pbases[i]);                                               \
+                s_file_defaults[i] = fp->str_value;                           \
+                s_params[i].default_string = s_file_defaults[i].c_str();      \
+            } else {                                                          \
+                s_params[i].default_string = nullptr;                         \
             }                                                                 \
         }                                                                     \
         tmp.collect_ports(s_ports);                                           \
@@ -171,8 +202,19 @@ extern "C" void vivid_process(void* instance,                                 \
                               const VividProcessContext* ctx) {                \
     auto* op = static_cast<ClassName*>(instance);                              \
     std::vector<vivid::ParamBase*> param_ptrs = _vivid_collect_param_ptrs(op); \
+    uint32_t file_idx = 0;                                                    \
     for (size_t i = 0; i < param_ptrs.size(); ++i) {                          \
-        param_ptrs[i]->value = ctx->param_values[i];                          \
+        if (param_ptrs[i]->type == VIVID_PARAM_FILE) {                        \
+            if (ctx->file_param_values && file_idx < ctx->file_param_count) { \
+                auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(       \
+                    param_ptrs[i]);                                           \
+                if (ctx->file_param_values[file_idx])                         \
+                    fp->str_value = ctx->file_param_values[file_idx];         \
+            }                                                                 \
+            file_idx++;                                                       \
+        } else {                                                              \
+            param_ptrs[i]->value = ctx->param_values[i];                      \
+        }                                                                     \
     }                                                                         \
     op->process(ctx);                                                         \
 }

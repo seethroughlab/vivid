@@ -1,0 +1,440 @@
+#include "operator_api/operator.h"
+#include "operator_api/gpu_operator.h"
+#include "operator_api/gpu_common.h"
+#include "video_decoder.h"
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <memory>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+// =============================================================================
+// Blit WGSL Fragment Shader — samples staging texture, outputs to render target
+// =============================================================================
+
+static const char* kBlitFragment = R"(
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) uv: vec2f,
+}
+
+@group(0) @binding(0) var texSampler: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    let fs = fullscreenTriangle(vertexIndex, true);
+    var out: VertexOutput;
+    out.position = fs.position;
+    out.uv = fs.uv;
+    return out;
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    return textureSample(tex, texSampler, input.uv);
+}
+)";
+
+// =============================================================================
+// Forward declarations for platform-specific video decoder factory
+// =============================================================================
+
+#ifdef __APPLE__
+std::unique_ptr<VideoDecoder> create_avf_decoder();
+#endif
+
+// =============================================================================
+// Helper: check if file extension matches video types
+// =============================================================================
+
+static bool is_video_extension(const std::string& path) {
+    auto dot = path.rfind('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = path.substr(dot);
+    // Convert to lowercase
+    for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == ".mp4" || ext == ".mov" || ext == ".m4v" ||
+           ext == ".avi" || ext == ".mkv" || ext == ".webm";
+}
+
+// =============================================================================
+// MovieFileIn Operator
+// =============================================================================
+
+struct MovieFileIn : vivid::OperatorBase {
+    static constexpr const char* kName   = "MovieFileIn";
+    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
+    static constexpr bool kTimeDependent = true;
+
+    vivid::Param<vivid::FilePath> file {"file"};
+    vivid::Param<int>   play_mode {"play_mode", 0, {"Loop", "Once", "Hold Last"}};
+    vivid::Param<float> speed     {"speed", 1.0f, 0.0f, 4.0f};
+
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out.push_back(&file);
+        out.push_back(&play_mode);
+        out.push_back(&speed);
+    }
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
+        out.push_back({"time", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+    }
+
+    void process(const VividProcessContext* ctx) override {
+        VividGpuState* gpu = vivid_gpu(ctx);
+        if (!gpu) return;
+
+        if (!pipeline_) {
+            if (!lazy_init(gpu)) {
+                std::fprintf(stderr, "[movie_file_in] lazy_init FAILED\n");
+                return;
+            }
+        }
+
+        // Check if file path changed
+        if (file.str_value != last_path_) {
+            last_path_ = file.str_value;
+            load_media(gpu);
+        }
+
+        // For video sources, decode the next frame
+        if (decoder_ && decoder_->is_open()) {
+            // Update playback params
+            decoder_->set_loop(play_mode.int_value() == 0);
+            decoder_->set_speed(speed.value);
+
+            if (decoder_->decode_frame()) {
+                const uint8_t* pixels = decoder_->pixel_data();
+                uint32_t w = decoder_->width();
+                uint32_t h = decoder_->height();
+                if (pixels && w > 0 && h > 0) {
+                    // Recreate staging texture if dimensions changed
+                    if (w != staging_width_ || h != staging_height_) {
+                        recreate_staging(gpu, w, h);
+                    }
+                    upload_pixels(gpu, pixels, w, h);
+                }
+            }
+        }
+
+        // If we have a staging texture and valid bind group, blit it to output
+        if (staging_view_ && bind_group_) {
+            blit(gpu);
+        } else {
+            // Clear to black if nothing loaded
+            clear_output(gpu);
+        }
+
+        // Write current playback time to control output port
+        if (ctx->output_values) {
+            ctx->output_values[1] = decoder_ ? decoder_->current_time() : 0.0f;
+        }
+    }
+
+    ~MovieFileIn() override {
+        decoder_.reset();
+        vivid::gpu::release(pipeline_);
+        vivid::gpu::release(bind_layout_);
+        vivid::gpu::release(pipe_layout_);
+        vivid::gpu::release(shader_);
+        vivid::gpu::release(sampler_);
+        vivid::gpu::release(staging_tex_);
+        vivid::gpu::release(staging_view_);
+        vivid::gpu::release(bind_group_);
+    }
+
+private:
+    // GPU resources
+    WGPURenderPipeline  pipeline_    = nullptr;
+    WGPUBindGroupLayout bind_layout_ = nullptr;
+    WGPUPipelineLayout  pipe_layout_ = nullptr;
+    WGPUShaderModule    shader_      = nullptr;
+    WGPUSampler         sampler_     = nullptr;
+    WGPUTexture         staging_tex_ = nullptr;
+    WGPUTextureView     staging_view_= nullptr;
+    WGPUBindGroup       bind_group_  = nullptr;
+    uint32_t            staging_width_  = 0;
+    uint32_t            staging_height_ = 0;
+
+    // Media state
+    std::string last_path_;
+    std::unique_ptr<VideoDecoder> decoder_;
+    WGPUDevice cached_device_ = nullptr;  // for staging texture recreation
+
+    void load_media(VividGpuState* gpu) {
+        // Close any existing decoder
+        if (decoder_) {
+            decoder_->close();
+            decoder_.reset();
+        }
+
+        if (last_path_.empty()) {
+            // Release staging
+            vivid::gpu::release(staging_tex_);
+            vivid::gpu::release(staging_view_);
+            vivid::gpu::release(bind_group_);
+            staging_width_ = staging_height_ = 0;
+            return;
+        }
+
+        if (is_video_extension(last_path_)) {
+#ifdef __APPLE__
+            decoder_ = create_avf_decoder();
+            if (decoder_ && decoder_->open(last_path_)) {
+                std::fprintf(stderr, "[movie_file_in] Opened video: %s (%ux%u, %.1fs)\n",
+                             last_path_.c_str(), decoder_->width(), decoder_->height(),
+                             decoder_->duration());
+                decoder_->set_loop(play_mode.int_value() == 0);
+                decoder_->set_speed(speed.value);
+                decoder_->play();
+            } else {
+                std::fprintf(stderr, "[movie_file_in] Failed to open video: %s\n",
+                             last_path_.c_str());
+                decoder_.reset();
+            }
+#else
+            std::fprintf(stderr, "[movie_file_in] Video playback not supported on this platform\n");
+#endif
+        } else {
+            // Try loading as image
+            load_image(gpu);
+        }
+    }
+
+    void load_image(VividGpuState* gpu) {
+        int w, h, channels;
+        uint8_t* data = stbi_load(last_path_.c_str(), &w, &h, &channels, 4);  // force RGBA
+        if (!data) {
+            std::fprintf(stderr, "[movie_file_in] Failed to load image: %s\n",
+                         last_path_.c_str());
+            return;
+        }
+
+        std::fprintf(stderr, "[movie_file_in] Loaded image: %s (%dx%d)\n",
+                     last_path_.c_str(), w, h);
+
+        // Convert RGBA -> BGRA (Dawn uses BGRA8Unorm)
+        for (int i = 0; i < w * h; ++i) {
+            std::swap(data[i * 4 + 0], data[i * 4 + 2]);
+        }
+
+        recreate_staging(gpu, static_cast<uint32_t>(w), static_cast<uint32_t>(h));
+        upload_pixels(gpu, data, static_cast<uint32_t>(w), static_cast<uint32_t>(h));
+        stbi_image_free(data);
+    }
+
+    void recreate_staging(VividGpuState* gpu, uint32_t w, uint32_t h) {
+        vivid::gpu::release(staging_tex_);
+        vivid::gpu::release(staging_view_);
+        vivid::gpu::release(bind_group_);
+
+        staging_width_  = w;
+        staging_height_ = h;
+        cached_device_  = gpu->device;
+
+        // Use BGRA8Unorm for the staging texture — matches our CPU pixel data.
+        // The blit shader samples as float regardless of source format.
+        static constexpr WGPUTextureFormat kStagingFormat = WGPUTextureFormat_BGRA8Unorm;
+
+        WGPUTextureDescriptor td{};
+        td.label = vivid_sv("MovieFileIn Staging");
+        td.size = { w, h, 1 };
+        td.mipLevelCount = 1;
+        td.sampleCount = 1;
+        td.dimension = WGPUTextureDimension_2D;
+        td.format = kStagingFormat;
+        td.usage = WGPUTextureUsage_CopyDst | WGPUTextureUsage_TextureBinding;
+        staging_tex_ = wgpuDeviceCreateTexture(gpu->device, &td);
+
+        WGPUTextureViewDescriptor vd{};
+        vd.format = kStagingFormat;
+        vd.dimension = WGPUTextureViewDimension_2D;
+        vd.mipLevelCount = 1;
+        vd.arrayLayerCount = 1;
+        vd.aspect = WGPUTextureAspect_All;
+        staging_view_ = wgpuTextureCreateView(staging_tex_, &vd);
+
+        // Recreate bind group with new texture view
+        WGPUBindGroupEntry entries[2]{};
+        entries[0].binding = 0;
+        entries[0].sampler = sampler_;
+        entries[1].binding = 1;
+        entries[1].textureView = staging_view_;
+
+        WGPUBindGroupDescriptor bg_desc{};
+        bg_desc.label = vivid_sv("MovieFileIn BG");
+        bg_desc.layout = bind_layout_;
+        bg_desc.entryCount = 2;
+        bg_desc.entries = entries;
+        bind_group_ = wgpuDeviceCreateBindGroup(gpu->device, &bg_desc);
+    }
+
+    void upload_pixels(VividGpuState* gpu, const uint8_t* pixels, uint32_t w, uint32_t h) {
+        if (!staging_tex_) return;
+
+        uint32_t src_row_bytes = w * 4;
+        // WebGPU requires bytesPerRow to be a multiple of 256
+        uint32_t aligned_bpr = (src_row_bytes + 255) & ~255u;
+
+        WGPUTexelCopyTextureInfo dest{};
+        dest.texture = staging_tex_;
+        dest.mipLevel = 0;
+        dest.origin = {0, 0, 0};
+        dest.aspect = WGPUTextureAspect_All;
+
+        WGPUTexelCopyBufferLayout layout{};
+        layout.bytesPerRow = aligned_bpr;
+        layout.rowsPerImage = h;
+
+        WGPUExtent3D extent = { w, h, 1 };
+
+        if (aligned_bpr == src_row_bytes) {
+            // No padding needed — upload directly
+            wgpuQueueWriteTexture(gpu->queue, &dest, pixels,
+                                  static_cast<size_t>(src_row_bytes) * h, &layout, &extent);
+        } else {
+            // Pad each row to meet alignment
+            std::vector<uint8_t> padded(static_cast<size_t>(aligned_bpr) * h, 0);
+            for (uint32_t row = 0; row < h; ++row) {
+                std::memcpy(padded.data() + row * aligned_bpr,
+                           pixels + row * src_row_bytes,
+                           src_row_bytes);
+            }
+            wgpuQueueWriteTexture(gpu->queue, &dest, padded.data(),
+                                  padded.size(), &layout, &extent);
+        }
+    }
+
+    void blit(VividGpuState* gpu) {
+        WGPURenderPassColorAttachment color_att{};
+        color_att.view = gpu->output_texture_view;
+        color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        color_att.resolveTarget = nullptr;
+        color_att.loadOp  = WGPULoadOp_Clear;
+        color_att.storeOp = WGPUStoreOp_Store;
+        color_att.clearValue = { 0.0, 0.0, 0.0, 1.0 };
+
+        WGPURenderPassDescriptor rp_desc{};
+        rp_desc.label = vivid_sv("MovieFileIn Blit");
+        rp_desc.colorAttachmentCount = 1;
+        rp_desc.colorAttachments = &color_att;
+
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(
+            gpu->command_encoder, &rp_desc);
+        wgpuRenderPassEncoderSetPipeline(pass, pipeline_);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group_, 0, nullptr);
+        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
+
+    void clear_output(VividGpuState* gpu) {
+        WGPURenderPassColorAttachment color_att{};
+        color_att.view = gpu->output_texture_view;
+        color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        color_att.resolveTarget = nullptr;
+        color_att.loadOp  = WGPULoadOp_Clear;
+        color_att.storeOp = WGPUStoreOp_Store;
+        color_att.clearValue = { 0.0, 0.0, 0.0, 1.0 };
+
+        WGPURenderPassDescriptor rp_desc{};
+        rp_desc.label = vivid_sv("MovieFileIn Clear");
+        rp_desc.colorAttachmentCount = 1;
+        rp_desc.colorAttachments = &color_att;
+
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(
+            gpu->command_encoder, &rp_desc);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
+
+    bool lazy_init(VividGpuState* gpu) {
+        // Shader module
+        std::string shader_src = std::string(vivid::gpu::FULLSCREEN_VERTEX_WGSL) + kBlitFragment;
+        WGPUShaderSourceWGSL wgsl_src{};
+        wgsl_src.chain.sType = WGPUSType_ShaderSourceWGSL;
+        wgsl_src.code = vivid_sv(shader_src.c_str());
+
+        WGPUShaderModuleDescriptor shader_desc{};
+        shader_desc.nextInChain = &wgsl_src.chain;
+        shader_desc.label = vivid_sv("MovieFileIn Shader");
+        shader_ = wgpuDeviceCreateShaderModule(gpu->device, &shader_desc);
+        if (!shader_) return false;
+
+        // Sampler
+        WGPUSamplerDescriptor sampler_desc{};
+        sampler_desc.label = vivid_sv("MovieFileIn Sampler");
+        sampler_desc.addressModeU = WGPUAddressMode_ClampToEdge;
+        sampler_desc.addressModeV = WGPUAddressMode_ClampToEdge;
+        sampler_desc.addressModeW = WGPUAddressMode_ClampToEdge;
+        sampler_desc.magFilter = WGPUFilterMode_Linear;
+        sampler_desc.minFilter = WGPUFilterMode_Linear;
+        sampler_desc.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+        sampler_desc.maxAnisotropy = 1;
+        sampler_ = wgpuDeviceCreateSampler(gpu->device, &sampler_desc);
+
+        // Bind group layout: sampler(0) + texture(1)
+        WGPUBindGroupLayoutEntry entries[2]{};
+        entries[0].binding = 0;
+        entries[0].visibility = WGPUShaderStage_Fragment;
+        entries[0].sampler.type = WGPUSamplerBindingType_Filtering;
+
+        entries[1].binding = 1;
+        entries[1].visibility = WGPUShaderStage_Fragment;
+        entries[1].texture.sampleType = WGPUTextureSampleType_Float;
+        entries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+        entries[1].texture.multisampled = false;
+
+        WGPUBindGroupLayoutDescriptor bgl_desc{};
+        bgl_desc.label = vivid_sv("MovieFileIn BGL");
+        bgl_desc.entryCount = 2;
+        bgl_desc.entries = entries;
+        bind_layout_ = wgpuDeviceCreateBindGroupLayout(gpu->device, &bgl_desc);
+
+        // Pipeline layout
+        WGPUPipelineLayoutDescriptor pl_desc{};
+        pl_desc.label = vivid_sv("MovieFileIn Pipeline Layout");
+        pl_desc.bindGroupLayoutCount = 1;
+        pl_desc.bindGroupLayouts = &bind_layout_;
+        pipe_layout_ = wgpuDeviceCreatePipelineLayout(gpu->device, &pl_desc);
+
+        // Render pipeline
+        WGPUColorTargetState color_target{};
+        color_target.format = gpu->output_format;
+        color_target.writeMask = WGPUColorWriteMask_All;
+
+        WGPUFragmentState fragment{};
+        fragment.module = shader_;
+        fragment.entryPoint = vivid_sv("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color_target;
+
+        WGPURenderPipelineDescriptor rp_desc{};
+        rp_desc.label = vivid_sv("MovieFileIn Pipeline");
+        rp_desc.layout = pipe_layout_;
+        rp_desc.vertex.module = shader_;
+        rp_desc.vertex.entryPoint = vivid_sv("vs_main");
+        rp_desc.vertex.bufferCount = 0;
+        rp_desc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        rp_desc.primitive.frontFace = WGPUFrontFace_CCW;
+        rp_desc.primitive.cullMode = WGPUCullMode_None;
+        rp_desc.multisample.count = 1;
+        rp_desc.multisample.mask = 0xFFFFFFFF;
+        rp_desc.fragment = &fragment;
+
+        pipeline_ = wgpuDeviceCreateRenderPipeline(gpu->device, &rp_desc);
+        if (!pipeline_) return false;
+
+        cached_device_ = gpu->device;
+        return true;
+    }
+};
+
+VIVID_REGISTER(MovieFileIn)

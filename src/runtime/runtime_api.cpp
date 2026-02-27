@@ -45,6 +45,27 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
     return {true, oss.str()};
 }
 
+CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std::string& param,
+                                           const std::string& value) {
+    NodeState* ns = scheduler_.find_node_mut(node_id);
+    if (!ns) return {false, "unknown node '" + node_id + "'"};
+
+    auto fi = ns->file_param_indices.find(param);
+    if (fi == ns->file_param_indices.end()) {
+        return {false, "unknown string param '" + param + "' on " + node_id};
+    }
+
+    ns->file_param_storage[fi->second] = value;
+    ns->file_param_ptrs[fi->second] = ns->file_param_storage[fi->second].c_str();
+    ns->generation++;
+
+    // Also update graph's NodeDef so save reflects the change
+    NodeDef* ndef = graph_.find_node(node_id);
+    if (ndef) ndef->string_params[param] = value;
+
+    return {true, node_id + "/" + param + " = " + value};
+}
+
 CommandResult RuntimeAPI::get_param(const std::string& node_id, const std::string& param) {
     const auto& nodes = scheduler_.nodes();
     for (const auto& ns : nodes) {
@@ -157,10 +178,15 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
 
     // 1. Save current param values by node_id + param_name
     std::unordered_map<std::string, std::unordered_map<std::string, float>> saved_params;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> saved_string_params;
     for (const auto& ns : scheduler_.nodes()) {
         auto& sp = saved_params[ns.node_id];
         for (const auto& [name, idx] : ns.param_indices) {
             sp[name] = ns.param_values[idx];
+        }
+        auto& ssp = saved_string_params[ns.node_id];
+        for (const auto& [name, idx] : ns.file_param_indices) {
+            ssp[name] = ns.file_param_storage[idx];
         }
     }
 
@@ -185,11 +211,22 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     // 5. Restore saved params
     for (auto& ns : scheduler_.nodes_mut()) {
         auto sit = saved_params.find(ns.node_id);
-        if (sit == saved_params.end()) continue;
-        for (const auto& [pname, pval] : sit->second) {
-            auto pi = ns.param_indices.find(pname);
-            if (pi != ns.param_indices.end()) {
-                ns.param_values[pi->second] = pval;
+        if (sit != saved_params.end()) {
+            for (const auto& [pname, pval] : sit->second) {
+                auto pi = ns.param_indices.find(pname);
+                if (pi != ns.param_indices.end()) {
+                    ns.param_values[pi->second] = pval;
+                }
+            }
+        }
+        auto ssit = saved_string_params.find(ns.node_id);
+        if (ssit != saved_string_params.end()) {
+            for (const auto& [pname, pval] : ssit->second) {
+                auto fi = ns.file_param_indices.find(pname);
+                if (fi != ns.file_param_indices.end()) {
+                    ns.file_param_storage[fi->second] = pval;
+                    ns.file_param_ptrs[fi->second] = ns.file_param_storage[fi->second].c_str();
+                }
             }
         }
     }

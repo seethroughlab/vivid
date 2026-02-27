@@ -1,0 +1,20 @@
+{
+  "nodes": {
+    "vid":      { "type": "MovieFileIn",      "params": { "file": "media/sword.mp4", "play_mode": 0, "speed": 1.0 } },
+    "audio":    { "type": "MovieFileAudioIn", "params": { "file": "media/sword.mp4" } },
+    "noise":    { "type": "Noise",            "params": { "scale": 3.0, "speed": 0.5, "octaves": 2 } },
+    "displace": { "type": "Displace",         "params": { "amount": 0.05 } },
+    "lfo1":     { "type": "LFO",              "params": { "frequency": 0.1, "amplitude": 0.08, "offset": 0.04 } },
+    "vout":     { "type": "video_out" },
+    "aout":     { "type": "audio_out" }
+  },
+  "connections": [
+    { "from": "vid/texture",       "to": "displace/source" },
+    { "from": "noise/texture",     "to": "displace/map" },
+    { "from": "lfo1/value",        "to": "displace/amount" },
+    { "from": "displace/texture",  "to": "vout/input" },
+    { "from": "vid/time",          "to": "audio/video_time" },
+    { "from": "audio/left",        "to": "aout/left" },
+    { "from": "audio/right",       "to": "aout/right" }
+  ]
+}

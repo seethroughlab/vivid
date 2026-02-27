@@ -45,6 +45,11 @@ struct NodeState {
     std::vector<uint32_t> texture_input_port_indices;   // which input ports are GPU_TEXTURE
     std::vector<WGPUTextureView> resolved_tex_inputs;   // filled before process()
     bool is_gpu_sink = false;  // GPU domain + texture inputs + no texture outputs
+
+    // File (string) params — separate from float param_values
+    std::vector<std::string> file_param_storage;     // owned strings
+    std::vector<const char*> file_param_ptrs;        // pointers into storage
+    std::unordered_map<std::string, uint32_t> file_param_indices;
 };
 
 struct Wire {
@@ -91,7 +96,8 @@ public:
 
 private:
     void init_node_state(NodeState& ns, const VividOperatorDescriptor* desc,
-                         const std::unordered_map<std::string, float>* param_overrides);
+                         const std::unordered_map<std::string, float>* param_overrides,
+                         const std::unordered_map<std::string, std::string>* string_overrides = nullptr);
 
     std::vector<NodeState> nodes_;
     std::vector<Wire> wires_;

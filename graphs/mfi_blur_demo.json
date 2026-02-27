@@ -1,0 +1,13 @@
+{
+  "nodes": {
+    "img":  { "type": "MovieFileIn", "params": { "file": "media/nature.jpg" } },
+    "blur": { "type": "Blur",        "params": { "radius": 15.0, "quality": 8.0 } },
+    "lfo1": { "type": "LFO",         "params": { "frequency": 0.2, "amplitude": 20.0, "offset": 5.0 } },
+    "vout": { "type": "video_out" }
+  },
+  "connections": [
+    { "from": "img/texture",  "to": "blur/input" },
+    { "from": "lfo1/value",   "to": "blur/radius" },
+    { "from": "blur/texture", "to": "vout/input" }
+  ]
+}

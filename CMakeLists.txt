@@ -132,6 +132,26 @@ add_library(displace MODULE operators/gpu/displace/displace.cpp)
 set_target_properties(displace PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_link_libraries(displace PRIVATE vivid_operator_api webgpu)
 
+# --- Movie File In (image + video loader) ---
+if(APPLE)
+    add_library(movie_file_in MODULE
+        operators/gpu/movie_file_in/movie_file_in.cpp
+        operators/gpu/movie_file_in/avf_decoder.mm
+    )
+    target_link_libraries(movie_file_in PRIVATE
+        vivid_operator_api webgpu
+        "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+        "-framework Foundation"
+    )
+    set_source_files_properties(operators/gpu/movie_file_in/avf_decoder.mm
+        PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    add_library(movie_file_in MODULE operators/gpu/movie_file_in/movie_file_in.cpp)
+    target_link_libraries(movie_file_in PRIVATE vivid_operator_api webgpu)
+endif()
+set_target_properties(movie_file_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_include_directories(movie_file_in PRIVATE ${CMAKE_SOURCE_DIR}/deps/stb)
+
 # --- Audio operator plugins ---
 add_library(oscillator MODULE operators/audio/oscillator/oscillator.cpp)
 set_target_properties(oscillator PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
@@ -227,6 +247,14 @@ configure_file(graphs/wavetable_demo.json ${CMAKE_BINARY_DIR}/wavetable_demo.jso
 configure_file(graphs/external_adsr_demo.json ${CMAKE_BINARY_DIR}/external_adsr_demo.json COPYONLY)
 configure_file(graphs/chord_progression_demo.json ${CMAKE_BINARY_DIR}/chord_progression_demo.json COPYONLY)
 configure_file(graphs/displace_demo.json ${CMAKE_BINARY_DIR}/displace_demo.json COPYONLY)
+configure_file(graphs/movie_file_in_demo.json ${CMAKE_BINARY_DIR}/movie_file_in_demo.json COPYONLY)
+configure_file(graphs/mfi_halftone_demo.json ${CMAKE_BINARY_DIR}/mfi_halftone_demo.json COPYONLY)
+configure_file(graphs/mfi_posterize_demo.json ${CMAKE_BINARY_DIR}/mfi_posterize_demo.json COPYONLY)
+configure_file(graphs/mfi_blur_demo.json ${CMAKE_BINARY_DIR}/mfi_blur_demo.json COPYONLY)
+configure_file(graphs/mfi_displace_demo.json ${CMAKE_BINARY_DIR}/mfi_displace_demo.json COPYONLY)
+configure_file(graphs/mfi_composite_demo.json ${CMAKE_BINARY_DIR}/mfi_composite_demo.json COPYONLY)
+configure_file(graphs/mfi_kitchen_sink_demo.json ${CMAKE_BINARY_DIR}/mfi_kitchen_sink_demo.json COPYONLY)
+configure_file(graphs/mfi_av_sync_demo.json ${CMAKE_BINARY_DIR}/mfi_av_sync_demo.json COPYONLY)
 
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)

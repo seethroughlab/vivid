@@ -9,7 +9,8 @@
 namespace vivid {
 
 void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* desc,
-                                const std::unordered_map<std::string, float>* param_overrides) {
+                                const std::unordered_map<std::string, float>* param_overrides,
+                                const std::unordered_map<std::string, std::string>* string_overrides) {
     // Count and index ports by direction
     ns.input_port_count = 0;
     ns.output_port_count = 0;
@@ -61,6 +62,31 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
         ns.output_spreads.resize(ns.output_port_count);
     }
 
+    // Init file params from descriptor
+    ns.file_param_storage.clear();
+    ns.file_param_ptrs.clear();
+    ns.file_param_indices.clear();
+    for (uint32_t i = 0; i < desc->param_count; ++i) {
+        if (desc->params[i].type == VIVID_PARAM_FILE) {
+            uint32_t fidx = static_cast<uint32_t>(ns.file_param_storage.size());
+            ns.file_param_indices[desc->params[i].name] = fidx;
+            const char* def = desc->params[i].default_string;
+            ns.file_param_storage.push_back(def ? def : "");
+        }
+    }
+    if (string_overrides) {
+        for (const auto& [pname, pval] : *string_overrides) {
+            auto fi = ns.file_param_indices.find(pname);
+            if (fi != ns.file_param_indices.end()) {
+                ns.file_param_storage[fi->second] = pval;
+            }
+        }
+    }
+    ns.file_param_ptrs.resize(ns.file_param_storage.size());
+    for (size_t i = 0; i < ns.file_param_storage.size(); ++i) {
+        ns.file_param_ptrs[i] = ns.file_param_storage[i].c_str();
+    }
+
     // Identify GPU_TEXTURE input ports and detect GPU sinks
     ns.texture_input_port_indices.clear();
     ns.is_gpu_sink = false;
@@ -108,7 +134,8 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         ns.loader = loader;
         ns.instance = loader->create_instance();
         ns.generation = 0;
-        init_node_state(ns, desc, &ndef.params);
+        init_node_state(ns, desc, &ndef.params,
+                        ndef.string_params.empty() ? nullptr : &ndef.string_params);
 
         // Per-node GPU texture resolution from graph definition
         if (ns.is_gpu) {
@@ -346,6 +373,9 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         ctx.output_values = ns.output_values.data();
         ctx.input_spreads  = in_spreads.data();
         ctx.output_spreads = out_spreads.data();
+        ctx.file_param_values = ns.file_param_ptrs.empty()
+                                    ? nullptr : ns.file_param_ptrs.data();
+        ctx.file_param_count  = static_cast<uint32_t>(ns.file_param_ptrs.size());
 
         // GPU state: build per-node VividGpuState with this node's texture
         VividGpuState per_node_gpu{};
@@ -525,6 +555,7 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
     struct SavedParams {
         uint32_t node_idx;
         std::unordered_map<std::string, float> values;
+        std::unordered_map<std::string, std::string> string_values;
     };
     std::vector<SavedParams> saved;
 
@@ -538,6 +569,9 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
         // Save param values by name
         for (const auto& [name, idx] : ns.param_indices) {
             sp.values[name] = ns.param_values[idx];
+        }
+        for (const auto& [name, idx] : ns.file_param_indices) {
+            sp.string_values[name] = ns.file_param_storage[idx];
         }
         saved.push_back(std::move(sp));
     }
@@ -569,7 +603,8 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
         auto& ns = nodes_[sp.node_idx];
         ns.loader = new_loader;
         ns.instance = new_loader->create_instance();
-        init_node_state(ns, new_desc, &sp.values);
+        init_node_state(ns, new_desc, &sp.values,
+                        sp.string_values.empty() ? nullptr : &sp.string_values);
 
         // Bump generation to force downstream recompute
         ns.generation++;

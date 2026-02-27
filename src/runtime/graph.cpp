@@ -105,6 +105,8 @@ bool Graph::load(const char* path) {
                     yyjson_val* pval = yyjson_obj_iter_get_val(pkey);
                     if (yyjson_is_num(pval)) {
                         node.params[yyjson_get_str(pkey)] = static_cast<float>(yyjson_get_num(pval));
+                    } else if (yyjson_is_str(pval)) {
+                        node.string_params[yyjson_get_str(pkey)] = yyjson_get_str(pval);
                     }
                 }
             }
@@ -182,6 +184,19 @@ bool Graph::load(const char* path) {
         }
     }
 
+    // Parse viewport
+    yyjson_val* vp_obj = yyjson_obj_get(root, "viewport");
+    if (vp_obj && yyjson_is_obj(vp_obj)) {
+        yyjson_val* vpx = yyjson_obj_get(vp_obj, "pan_x");
+        yyjson_val* vpy = yyjson_obj_get(vp_obj, "pan_y");
+        yyjson_val* vpz = yyjson_obj_get(vp_obj, "zoom");
+        if (vpx && yyjson_is_num(vpx) && vpy && yyjson_is_num(vpy) && vpz && yyjson_is_num(vpz)) {
+            viewport_pan_x = static_cast<float>(yyjson_get_num(vpx));
+            viewport_pan_y = static_cast<float>(yyjson_get_num(vpy));
+            viewport_zoom  = static_cast<float>(yyjson_get_num(vpz));
+        }
+    }
+
     yyjson_doc_free(doc);
 
     std::fprintf(stderr, "[vivid] Loaded graph: %s (%zu nodes, %zu connections)\n",
@@ -192,12 +207,14 @@ bool Graph::load(const char* path) {
 // --- Mutation ---
 
 bool Graph::add_node(const std::string& id, const std::string& type,
-                     const std::unordered_map<std::string, float>& params) {
+                     const std::unordered_map<std::string, float>& params,
+                     const std::unordered_map<std::string, std::string>& string_params) {
     if (find_node(id)) return false;  // duplicate id
     NodeDef node;
     node.id = id;
     node.type = type;
     node.params = params;
+    node.string_params = string_params;
     nodes_.push_back(std::move(node));
     return true;
 }
@@ -392,10 +409,13 @@ bool Graph::save(const char* path) const {
         yyjson_mut_val* node_obj = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_str(doc, node_obj, "type", node.type.c_str());
 
-        if (!node.params.empty()) {
+        if (!node.params.empty() || !node.string_params.empty()) {
             yyjson_mut_val* params_obj = yyjson_mut_obj(doc);
             for (const auto& [pname, pval] : node.params) {
                 yyjson_mut_obj_add_real(doc, params_obj, pname.c_str(), static_cast<double>(pval));
+            }
+            for (const auto& [pname, pval] : node.string_params) {
+                yyjson_mut_obj_add_strcpy(doc, params_obj, pname.c_str(), pval.c_str());
             }
             yyjson_mut_obj_add_val(doc, node_obj, "params", params_obj);
         }
@@ -445,6 +465,15 @@ bool Graph::save(const char* path) const {
             yyjson_mut_arr_add_val(midi_arr, mm_obj);
         }
         yyjson_mut_obj_add_val(doc, root, "midi_mappings", midi_arr);
+    }
+
+    // Viewport
+    if (has_viewport()) {
+        yyjson_mut_val* vp_obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_real(doc, vp_obj, "pan_x", static_cast<double>(viewport_pan_x));
+        yyjson_mut_obj_add_real(doc, vp_obj, "pan_y", static_cast<double>(viewport_pan_y));
+        yyjson_mut_obj_add_real(doc, vp_obj, "zoom",  static_cast<double>(viewport_zoom));
+        yyjson_mut_obj_add_val(doc, root, "viewport", vp_obj);
     }
 
     // Write

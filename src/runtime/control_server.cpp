@@ -35,6 +35,7 @@ static const char* param_type_str(VividParamType t) {
         case VIVID_PARAM_FLOAT: return "float";
         case VIVID_PARAM_INT:   return "int";
         case VIVID_PARAM_BOOL:  return "bool";
+        case VIVID_PARAM_FILE:  return "file";
         default: return "unknown";
     }
 }
@@ -141,6 +142,13 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_obj_add_real(doc, p, "min", static_cast<double>(pd.min_value));
                 yyjson_mut_obj_add_real(doc, p, "max", static_cast<double>(pd.max_value));
                 yyjson_mut_obj_add_real(doc, p, "default", static_cast<double>(pd.default_value));
+                if (pd.type == VIVID_PARAM_FILE && ns) {
+                    auto fi = ns->file_param_indices.find(pd.name);
+                    if (fi != ns->file_param_indices.end()) {
+                        yyjson_mut_obj_add_strcpy(doc, p, "string_value",
+                            ns->file_param_storage[fi->second].c_str());
+                    }
+                }
                 yyjson_mut_arr_add_val(params_arr, p);
             }
         }
@@ -343,6 +351,20 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 result = command_result_to_json(
                     api.set_param(yyjson_get_str(nid), yyjson_get_str(param),
                                   static_cast<float>(yyjson_get_num(value))));
+        }
+    } else if (method == "set_string_param") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
+            yyjson_val* param = yyjson_obj_get(root, "param");
+            yyjson_val* value = yyjson_obj_get(root, "value");
+            if (!nid || !param || !value ||
+                !yyjson_is_str(nid) || !yyjson_is_str(param) || !yyjson_is_str(value))
+                result = json_err("missing 'node_id', 'param', or 'value' (string)");
+            else
+                result = command_result_to_json(
+                    api.set_string_param(yyjson_get_str(nid), yyjson_get_str(param),
+                                         yyjson_get_str(value)));
         }
     } else if (method == "get_param") {
         if (!root) { result = json_err("invalid JSON body"); }

@@ -1,0 +1,19 @@
+{
+    "nodes": {
+        "mfi1": {
+            "type": "MovieFileIn",
+            "params": {
+                "file": "/path/to/test.png"
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "mfi1/texture",
+            "to": "vout/input"
+        }
+    ]
+}
