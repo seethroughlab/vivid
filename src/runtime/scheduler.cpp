@@ -392,6 +392,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             per_node_gpu.queue           = base_gpu->queue;
             per_node_gpu.command_encoder = base_gpu->command_encoder;
             per_node_gpu.output_format   = base_gpu->output_format;
+            per_node_gpu.output_texture      = ns.gpu_texture;
             per_node_gpu.output_texture_view = ns.gpu_texture_view;
             per_node_gpu.output_width    = ns.gpu_tex_width;
             per_node_gpu.output_height   = ns.gpu_tex_height;
@@ -708,7 +709,8 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
         tex_desc.sampleCount = 1;
         tex_desc.dimension = WGPUTextureDimension_2D;
         tex_desc.format = format;
-        tex_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding | extra_usage;
+        tex_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding
+                       | WGPUTextureUsage_CopySrc | extra_usage;
         ns.gpu_texture = wgpuDeviceCreateTexture(device, &tex_desc);
 
         WGPUTextureViewDescriptor view_desc{};

@@ -7,6 +7,7 @@ struct VividGpuState {
     WGPUDevice         device;
     WGPUQueue          queue;
     WGPUCommandEncoder command_encoder;
+    WGPUTexture        output_texture;
     WGPUTextureView    output_texture_view;
     uint32_t           output_width;
     uint32_t           output_height;

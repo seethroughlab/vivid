@@ -127,6 +127,7 @@ add_vivid_operator(transform            operators/gpu/transform/transform.cpp   
 add_vivid_operator(crt_effect           operators/gpu/crt_effect/crt_effect.cpp                   EXTRA_LIBS webgpu)
 add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp                             EXTRA_LIBS webgpu)
 add_vivid_operator(switch_op            operators/gpu/switch_op/switch_op.cpp                     EXTRA_LIBS webgpu)
+add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp                       EXTRA_LIBS webgpu)
 
 # --- Movie File In (image + video loader) ---
 if(APPLE)
@@ -267,6 +268,7 @@ configure_file(graphs/dither_demo.json ${CMAKE_BINARY_DIR}/dither_demo.json COPY
 configure_file(graphs/transform_demo.json ${CMAKE_BINARY_DIR}/transform_demo.json COPYONLY)
 configure_file(graphs/crt_effect_demo.json ${CMAKE_BINARY_DIR}/crt_effect_demo.json COPYONLY)
 configure_file(graphs/switch_demo.json ${CMAKE_BINARY_DIR}/switch_demo.json COPYONLY)
+configure_file(graphs/feedback_demo.json ${CMAKE_BINARY_DIR}/feedback_demo.json COPYONLY)
 
 # Copy all demo graphs into graphs/ subdirectory (for test_demo_graphs)
 file(GLOB DEMO_GRAPHS graphs/*.json)
@@ -478,7 +480,7 @@ add_dependencies(test_demo_graphs
     noise shape bars composite posterize blur halftone levels
     displace solid_color pixelate tile chromatic_aberration
     gradient hsv mirror edge scanlines ramp dither transform
-    crt_effect bloom switch_op movie_file_in
+    crt_effect bloom switch_op feedback movie_file_in
     # audio
     oscillator gain drum_kick drum_snare drum_hihat drum_clap
     drum_tom drum_cymbal wavetable_synth spread_adsr spread_lfo
