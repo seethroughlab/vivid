@@ -1,0 +1,16 @@
+{
+  "nodes": {
+    "vid":  { "type": "MovieFileIn", "params": { "file": "media/camera.mp4", "play_mode": 0, "speed": 1.0 } },
+    "audio":{ "type": "MovieFileAudioIn", "params": { "file": "media/camera.mp4" } },
+    "crt":  { "type": "CRTEffect",  "params": { "curvature": 0.4, "vignette": 0.35, "scanline_intensity": 0.5, "bloom": 0.25, "chromatic": 0.008 } },
+    "vout": { "type": "video_out" },
+    "aout": { "type": "audio_out" }
+  },
+  "connections": [
+    { "from": "vid/texture",  "to": "crt/input" },
+    { "from": "crt/texture",  "to": "vout/input" },
+    { "from": "vid/time",     "to": "audio/video_time" },
+    { "from": "audio/left",   "to": "aout/left" },
+    { "from": "audio/right",  "to": "aout/right" }
+  ]
+}

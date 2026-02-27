@@ -107,6 +107,10 @@ add_vivid_operator(hsv                  operators/gpu/hsv/hsv.cpp               
 add_vivid_operator(mirror               operators/gpu/mirror/mirror.cpp                           EXTRA_LIBS webgpu)
 add_vivid_operator(edge                 operators/gpu/edge/edge.cpp                               EXTRA_LIBS webgpu)
 add_vivid_operator(scanlines            operators/gpu/scanlines/scanlines.cpp                     EXTRA_LIBS webgpu)
+add_vivid_operator(ramp                 operators/gpu/ramp/ramp.cpp                               EXTRA_LIBS webgpu)
+add_vivid_operator(dither               operators/gpu/dither/dither.cpp                           EXTRA_LIBS webgpu)
+add_vivid_operator(transform            operators/gpu/transform/transform.cpp                     EXTRA_LIBS webgpu)
+add_vivid_operator(crt_effect           operators/gpu/crt_effect/crt_effect.cpp                   EXTRA_LIBS webgpu)
 
 # --- Movie File In (image + video loader) ---
 if(APPLE)
@@ -182,6 +186,10 @@ add_library(vivid_ui STATIC
     src/ui/node_graph_input.cpp
     src/ui/ui_style.cpp
 )
+if(APPLE)
+    target_sources(vivid_ui PRIVATE src/ui/file_dialog.mm)
+    set_source_files_properties(src/ui/file_dialog.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+endif()
 target_include_directories(vivid_ui PRIVATE src)
 target_link_libraries(vivid_ui PUBLIC vivid_operator_api webgpu)
 target_link_libraries(vivid_ui PRIVATE stb_truetype glfw)
@@ -238,6 +246,10 @@ configure_file(graphs/hsv_demo.json ${CMAKE_BINARY_DIR}/hsv_demo.json COPYONLY)
 configure_file(graphs/mirror_demo.json ${CMAKE_BINARY_DIR}/mirror_demo.json COPYONLY)
 configure_file(graphs/edge_demo.json ${CMAKE_BINARY_DIR}/edge_demo.json COPYONLY)
 configure_file(graphs/scanlines_demo.json ${CMAKE_BINARY_DIR}/scanlines_demo.json COPYONLY)
+configure_file(graphs/ramp_demo.json ${CMAKE_BINARY_DIR}/ramp_demo.json COPYONLY)
+configure_file(graphs/dither_demo.json ${CMAKE_BINARY_DIR}/dither_demo.json COPYONLY)
+configure_file(graphs/transform_demo.json ${CMAKE_BINARY_DIR}/transform_demo.json COPYONLY)
+configure_file(graphs/crt_effect_demo.json ${CMAKE_BINARY_DIR}/crt_effect_demo.json COPYONLY)
 
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)
