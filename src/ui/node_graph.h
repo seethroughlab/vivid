@@ -113,6 +113,9 @@ private:
     void draw_inspector_scrollbar(Renderer2D& tr);
     void draw_midi_map_banner(Renderer2D& tr);
 
+    // --- Grid ---
+    void draw_grid(Renderer2D& tr);
+
     // --- Performance bar ---
     void draw_perf_bar(Renderer2D& tr);
     void draw_perf_sparkline(Renderer2D& tr, const float* buf, uint32_t buf_len,

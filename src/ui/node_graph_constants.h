@@ -183,11 +183,6 @@ static constexpr float kMidiMapBannerH = 24.0f;
 static constexpr float kMidiBadgeH = 14.0f;
 static constexpr float kMidiRangeH = 18.0f;
 
-// Transport bar layout
-static constexpr float kTransportBarH = 28.0f;
-static constexpr float kTransportDotSize = 8.0f;
-static constexpr float kTransportDotSpacing = 16.0f;
-
 // Performance bar layout
 static constexpr float kPerfBarH = 28.0f;
 static constexpr float kPerfBarPadX = 10.0f;

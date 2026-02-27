@@ -76,8 +76,7 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         vivid::AudioEngine* audio_engine,
         vivid::OperatorRegistry& registry,
         OperatorInfoCache& op_cache,
-        vivid::SystemMidiListener* system_midi = nullptr,
-        double elapsed_time = 0.0) {
+        vivid::SystemMidiListener* system_midi = nullptr) {
     vivid::ui::GraphSnapshot snap;
 
     const auto& sched_nodes = scheduler.nodes();
@@ -178,24 +177,6 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         snap.pending_cc_events.resize(events.size());
         for (size_t i = 0; i < events.size(); ++i) {
             snap.pending_cc_events[i] = {events[i].channel, events[i].cc_number, events[i].value};
-        }
-    }
-
-    // Transport bar: scan for Clock operator
-    for (const auto& sn : snap.nodes) {
-        if (sn.type_name == "Clock") {
-            snap.transport_has_clock = true;
-            auto bpm_it = sn.param_indices.find("bpm");
-            if (bpm_it != sn.param_indices.end() && bpm_it->second < sn.param_values.size())
-                snap.transport_bpm = sn.param_values[bpm_it->second];
-            auto phase_it = sn.output_port_indices.find("beat_phase");
-            if (phase_it != sn.output_port_indices.end() && phase_it->second < sn.output_values.size())
-                snap.transport_beat_phase = sn.output_values[phase_it->second];
-            if (snap.transport_bpm > 0.0f)
-                snap.transport_beat_index = static_cast<int>(std::fmod(
-                    elapsed_time * snap.transport_bpm / 60.0, 4.0));
-            snap.transport_elapsed = elapsed_time;
-            break;
         }
     }
 
@@ -923,7 +904,7 @@ int main(int argc, char* argv[]) {
         if (text_renderer_ok && graph_ui.visible()) {
             auto snapshot = build_graph_snapshot(
                 graph, scheduler, has_audio ? &audio_engine : nullptr,
-                registry, op_info_cache, &system_midi, now);
+                registry, op_info_cache, &system_midi);
             graph_ui.update(snapshot);
             graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
             // Pass 1: text/rects

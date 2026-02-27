@@ -1234,57 +1234,6 @@ void NodeGraphUI::draw_grid(Renderer2D& tr) {
 }
 
 // -----------------------------------------------------------------------
-// Transport bar
-// -----------------------------------------------------------------------
-void NodeGraphUI::draw_transport_bar(Renderer2D& tr) {
-    if (!snap_.transport_has_clock) return;
-
-    float wf = static_cast<float>(win_w_);
-    float hf = static_cast<float>(win_h_);
-    float bar_y = hf - kTransportBarH;
-
-    // Dark background strip
-    tr.draw_rect(0.0f, bar_y, wf, kTransportBarH,
-                 kPerfBarBg[0], kPerfBarBg[1], kPerfBarBg[2], kPerfBarBg[3]);
-
-    float cx = 12.0f;  // cursor x
-
-    // 4 beat dots
-    for (int i = 0; i < 4; ++i) {
-        float dot_x = cx + i * kTransportDotSpacing;
-        float dot_y = bar_y + (kTransportBarH - kTransportDotSize) * 0.5f;
-        if (i == snap_.transport_beat_index) {
-            // Filled dot for current beat
-            tr.draw_rect(dot_x, dot_y, kTransportDotSize, kTransportDotSize,
-                         kControlAccent[0], kControlAccent[1], kControlAccent[2], 1.0f);
-        } else {
-            // Outline dot (draw border then dark interior)
-            tr.draw_rect(dot_x, dot_y, kTransportDotSize, kTransportDotSize,
-                         kControlAccent[0], kControlAccent[1], kControlAccent[2], 0.4f);
-            tr.draw_rect(dot_x + 1.5f, dot_y + 1.5f,
-                         kTransportDotSize - 3.0f, kTransportDotSize - 3.0f,
-                         kPerfBarBg[0], kPerfBarBg[1], kPerfBarBg[2], 1.0f);
-        }
-    }
-    cx += 4 * kTransportDotSpacing + 8.0f;
-
-    // BPM text
-    char bpm_buf[32];
-    std::snprintf(bpm_buf, sizeof(bpm_buf), "%.0f BPM", snap_.transport_bpm);
-    tr.draw_text(cx, bar_y + 7.0f, bpm_buf, kControlAccent[0], kControlAccent[1], kControlAccent[2]);
-    cx += tr.text_width(bpm_buf) + 16.0f;
-
-    // Elapsed time (m:ss)
-    int total_sec = static_cast<int>(snap_.transport_elapsed);
-    int mins = total_sec / 60;
-    int secs = total_sec % 60;
-    char time_buf[32];
-    std::snprintf(time_buf, sizeof(time_buf), "%d:%02d", mins, secs);
-    tr.draw_text(cx, bar_y + 7.0f, time_buf,
-                 kDimText[0], kDimText[1], kDimText[2]);
-}
-
-// -----------------------------------------------------------------------
 // Draw (top-level)
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
@@ -1312,9 +1261,6 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_wire_tooltip(tr);
 
     draw_inspector(tr, w, h);
-
-    draw_transport_bar(tr);
-
 }
 
 // -----------------------------------------------------------------------

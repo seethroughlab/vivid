@@ -114,13 +114,6 @@ struct GraphSnapshot {
     std::unordered_map<std::string, size_t> midi_mapping_index; // "node_id\tparam" -> index
     std::vector<MidiCCEventSnapshot> pending_cc_events;
 
-    // Transport bar (from Clock operator, if present)
-    float transport_bpm = 120.0f;
-    float transport_beat_phase = 0.0f;   // 0..1 within current beat
-    int   transport_beat_index = 0;      // 0-3 in 4/4 bar
-    double transport_elapsed = 0.0;
-    bool  transport_has_clock = false;
-
     // Operator catalog for chooser popup
     std::vector<std::string> operator_types;  // sorted list
     std::unordered_map<std::string, std::shared_ptr<const OperatorInfo>> operator_catalog;
