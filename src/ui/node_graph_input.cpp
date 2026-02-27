@@ -98,6 +98,11 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
         return;
     }
 
+    if (clone_confirm_open_) {
+        if (key == GLFW_KEY_ESCAPE) clone_confirm_open_ = false;
+        return;
+    }
+
     if (context_menu_open_) {
         if (key == GLFW_KEY_ESCAPE) context_menu_open_ = false;
         return;
@@ -127,14 +132,14 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
     if (!chooser_open_) {
         // Tab opens the chooser (only if cursor is in graph area)
         if (key == GLFW_KEY_TAB && action == GLFW_PRESS &&
-            snap_ && !snap_->operator_types.empty()) {
+            snap_valid_ && !snap_.operator_types.empty()) {
             if (mouse_.x < graph_right()) {
                 chooser_cursor_gx_ = sx_to_gx(mouse_.x);
                 chooser_cursor_gy_ = sy_to_gy(mouse_.y);
                 chooser_filter_.clear();
                 chooser_sel_ = 0;
                 chooser_scroll_ = 0;
-                chooser_items_ = snap_->operator_types;
+                chooser_items_ = snap_.operator_types;
                 chooser_open_ = true;
             }
         }
@@ -173,7 +178,7 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
                 std::string id;
                 for (int n = 1; ; ++n) {
                     id = type + std::to_string(n);
-                    if (!snap_->has_node(id)) break;
+                    if (!snap_.has_node(id)) break;
                 }
                 commands_.add_node(type, id);
                 commands_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
@@ -238,11 +243,50 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
 }
 
 // -----------------------------------------------------------------------
+// Clone confirmation dialog interaction (called from update())
+// -----------------------------------------------------------------------
+void NodeGraphUI::update_clone_confirm() {
+    if (!clone_confirm_open_ || !mouse_.left_clicked) return;
+
+    // Dialog geometry (centered on screen)
+    float dw = 280.0f, dh = 70.0f;
+    float dx = (static_cast<float>(win_w_) - dw) * 0.5f;
+    float dy = (static_cast<float>(win_h_) - dh) * 0.5f;
+
+    float btn_w = 70.0f, btn_h = 22.0f;
+    float btn_y = dy + dh - btn_h - 8.0f;
+    float clone_x = dx + dw * 0.5f - btn_w - 6.0f;
+    float cancel_x = dx + dw * 0.5f + 6.0f;
+
+    if (mouse_.x >= clone_x && mouse_.x <= clone_x + btn_w &&
+        mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
+        // Clone button clicked
+        commands_.clone_and_edit(clone_confirm_type_);
+        clone_confirm_open_ = false;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+    } else if (mouse_.x >= cancel_x && mouse_.x <= cancel_x + btn_w &&
+               mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
+        // Cancel button clicked
+        clone_confirm_open_ = false;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+    } else if (mouse_.x < dx || mouse_.x > dx + dw ||
+               mouse_.y < dy || mouse_.y > dy + dh) {
+        // Clicked outside dialog
+        clone_confirm_open_ = false;
+    }
+    // Click inside dialog but not on buttons — consume but do nothing
+    mouse_.left_clicked = false;
+    mouse_.left_released = false;
+}
+
+// -----------------------------------------------------------------------
 // Context menu interaction (called from update())
 // -----------------------------------------------------------------------
 void NodeGraphUI::update_context_menu() {
-    size_t cur_nodes = snap_->nodes.size();
-    size_t cur_conns = snap_->connections.size();
+    size_t cur_nodes = snap_.nodes.size();
+    size_t cur_conns = snap_.connections.size();
 
     // Close context menu on topology change
     if (context_menu_open_ &&
@@ -252,15 +296,30 @@ void NodeGraphUI::update_context_menu() {
 
     // Context menu click
     if (context_menu_open_ && mouse_.left_clicked) {
-        float menu_h = kCtxMenuPadTop + kCtxMenuItemH + 2.0f;
+        int item_count = 1;  // "Delete Node" or "Delete Wire"
+        if (!context_node_id_.empty() && context_node_has_shader_)
+            item_count = 2;  // + "Duplicate Filter"
+
+        float menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
         if (mouse_.x >= context_menu_x_ && mouse_.x <= context_menu_x_ + kCtxMenuW &&
             mouse_.y >= context_menu_y_ && mouse_.y <= context_menu_y_ + menu_h) {
-            // Clicked inside menu — execute action
+            // Which item was clicked?
+            float rel_y = mouse_.y - context_menu_y_ - kCtxMenuPadTop;
+            int clicked_item = static_cast<int>(rel_y / kCtxMenuItemH);
+            if (clicked_item < 0) clicked_item = 0;
+            if (clicked_item >= item_count) clicked_item = item_count - 1;
+
             if (!context_node_id_.empty()) {
-                commands_.remove_node(context_node_id_);
-                if (selected_node_id_ == context_node_id_) selected_node_id_.clear();
+                if (clicked_item == 0) {
+                    // "Delete Node"
+                    commands_.remove_node(context_node_id_);
+                    if (selected_node_id_ == context_node_id_) selected_node_id_.clear();
+                } else if (clicked_item == 1 && context_node_has_shader_) {
+                    // "Clone & Edit"
+                    commands_.clone_and_edit(context_node_type_);
+                }
             } else if (context_wire_idx_ >= 0) {
-                const auto& conns = snap_->connections;
+                const auto& conns = snap_.connections;
                 if (context_wire_idx_ < static_cast<int>(conns.size())) {
                     const auto& c = conns[context_wire_idx_];
                     commands_.disconnect(c.from_node + "/" + c.from_port,
@@ -285,13 +344,20 @@ void NodeGraphUI::handle_right_click() {
     if (!mouse_.right_clicked) return;
 
     context_menu_open_ = false;
+    context_node_has_shader_ = false;
+    context_node_type_.clear();
     int ni = hit_test_node(mouse_.x, mouse_.y);
     if (ni >= 0) {
         context_menu_open_ = true;
         context_node_id_ = node_rects_[ni].node_id;
+        context_node_type_ = node_rects_[ni].type_name;
         context_wire_idx_ = -1;
         context_menu_x_ = mouse_.x;
         context_menu_y_ = mouse_.y;
+        // Check if this node type has a shader (for "Duplicate Filter" option)
+        auto cat_it = snap_.operator_catalog.find(context_node_type_);
+        if (cat_it != snap_.operator_catalog.end() && cat_it->second)
+            context_node_has_shader_ = cat_it->second->has_shader;
     } else {
         int wi = hit_test_wire(mouse_.x, mouse_.y);
         if (wi >= 0) {
@@ -331,7 +397,7 @@ bool NodeGraphUI::handle_chooser_click() {
             std::string id;
             for (int n = 1; ; ++n) {
                 id = type + std::to_string(n);
-                if (!snap_->has_node(id)) break;
+                if (!snap_.has_node(id)) break;
             }
             commands_.add_node(type, id);
             commands_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
@@ -394,7 +460,7 @@ bool NodeGraphUI::handle_inspector_click() {
             midi_range_param_name_ = mr.param_name;
             midi_range_editing_min_ = mr.is_min;
             // Pre-fill with current value
-            const auto* mm = snap_->find_midi_mapping(mr.node_id, mr.param_name);
+            const auto* mm = snap_.find_midi_mapping(mr.node_id, mr.param_name);
             if (mm) {
                 edit_buffer_ = format_float(mr.is_min ? mm->range_min : mm->range_max, 2);
             } else {
@@ -454,7 +520,7 @@ bool NodeGraphUI::handle_inspector_click() {
         editing_resolution_ = true;
         edit_res_node_id_ = rr.node_id;
         edit_res_is_width_ = rr.is_width;
-        const auto* ns = snap_->find_node(rr.node_id);
+        const auto* ns = snap_.find_node(rr.node_id);
         if (ns) {
             edit_buffer_ = format_uint(rr.is_width ? ns->gpu_tex_width : ns->gpu_tex_height);
         }
@@ -467,7 +533,7 @@ bool NodeGraphUI::handle_inspector_click() {
         editing_param_ = true;
         edit_node_id_ = value_text_rects_[vt].node_id;
         edit_param_name_ = value_text_rects_[vt].param_name;
-        const auto* ns = snap_->find_node(edit_node_id_);
+        const auto* ns = snap_.find_node(edit_node_id_);
         if (ns && ns->op_info) {
             auto it = ns->param_indices.find(edit_param_name_);
             if (it != ns->param_indices.end()) {
@@ -495,7 +561,7 @@ bool NodeGraphUI::handle_inspector_click() {
         dropdown_y_ = dr.y + dr.h;
         dropdown_w_ = dr.w;
         dropdown_labels_.clear();
-        const auto* ns = snap_->find_node(dr.node_id);
+        const auto* ns = snap_.find_node(dr.node_id);
         if (ns && ns->op_info) {
             for (const auto& pd : ns->op_info->params) {
                 if (pd.name != dr.param_name) continue;
@@ -524,7 +590,7 @@ bool NodeGraphUI::handle_inspector_click() {
     int bi = hit_test_rect(bool_rects_, mouse_.x, mouse_.y);
     if (bi >= 0) {
         const auto& br = bool_rects_[bi];
-        const auto* ns = snap_->find_node(br.node_id);
+        const auto* ns = snap_.find_node(br.node_id);
         if (ns) {
             auto it = ns->param_indices.find(br.param_name);
             if (it != ns->param_indices.end()) {
@@ -560,7 +626,7 @@ void NodeGraphUI::handle_graph_click() {
         } else {
             // Click on input port — disconnect existing wires to this input
             std::string to_node = node_rects_[ph.node_idx].node_id;
-            const auto& conns = snap_->connections;
+            const auto& conns = snap_.connections;
             for (const auto& c : conns) {
                 if (c.to_node == to_node && c.to_port == ph.port_name) {
                     commands_.disconnect(c.from_node + "/" + c.from_port,
@@ -571,7 +637,27 @@ void NodeGraphUI::handle_graph_click() {
     } else {
         int ni = hit_test_node(mouse_.x, mouse_.y);
         if (ni >= 0) {
-            selected_node_id_ = node_rects_[ni].node_id;
+            // Double-click detection: open/clone operator
+            double now = glfwGetTime();
+            std::string node_id = node_rects_[ni].node_id;
+            if (node_id == last_click_node_id_ && (now - last_click_time_) < 0.3) {
+                const std::string& type_name = node_rects_[ni].type_name;
+                auto cat_it = snap_.operator_catalog.find(type_name);
+                bool is_user = cat_it != snap_.operator_catalog.end() &&
+                               cat_it->second && cat_it->second->is_user;
+                if (is_user) {
+                    commands_.open_shader(type_name);
+                } else {
+                    clone_confirm_type_ = type_name;
+                    clone_confirm_open_ = true;
+                }
+                last_click_node_id_.clear();
+            } else {
+                last_click_node_id_ = node_id;
+                last_click_time_ = now;
+            }
+
+            selected_node_id_ = node_id;
             dragging_node_idx_ = ni;
             drag_offset_x_ = sx_to_gx(mouse_.x) - node_rects_[ni].x;
             drag_offset_y_ = sy_to_gy(mouse_.y) - node_rects_[ni].y;

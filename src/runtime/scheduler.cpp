@@ -375,6 +375,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             per_node_gpu.input_texture_views = ns.resolved_tex_inputs.empty()
                                                 ? nullptr : ns.resolved_tex_inputs.data();
             per_node_gpu.input_texture_count = static_cast<uint32_t>(ns.resolved_tex_inputs.size());
+            per_node_gpu.operators_src_dir = operators_src_dir_.empty()
+                                                ? nullptr : operators_src_dir_.c_str();
 
             ctx.gpu = &per_node_gpu;
         } else {

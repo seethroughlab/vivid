@@ -25,6 +25,8 @@ struct ParamInfo {
 struct OperatorInfo {
     std::string name;
     VividDomain domain = VIVID_DOMAIN_CONTROL;
+    bool has_shader = false;
+    bool is_user = false;
     std::vector<ParamInfo> params;
 };
 

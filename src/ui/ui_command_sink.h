@@ -21,6 +21,9 @@ public:
     virtual void remove_midi_mapping(const std::string& node_id, const std::string& param) = 0;
     virtual void update_midi_mapping(const std::string& node_id, const std::string& param,
                                      float range_min, float range_max) = 0;
+    virtual void open_shader(const std::string& type_name) {}
+    virtual void duplicate_as_user_filter(const std::string& type_name) {}
+    virtual void clone_and_edit(const std::string& type_name) {}
 };
 
 } // namespace vivid::ui

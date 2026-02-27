@@ -47,7 +47,7 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_; }
+    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_; }
     bool has_selection() const { return !selected_node_id_.empty(); }
 
     void toggle_visible() { visible_ = !visible_; }
@@ -59,6 +59,7 @@ public:
     // Per-frame
     void update(const GraphSnapshot& snapshot);
     void draw(Renderer2D& tr, uint32_t w, uint32_t h);
+    void draw_overlays(Renderer2D& tr);
 
     // GPU thumbnail overlay (separate render pass after text)
     void draw_thumbnails(ThumbnailRenderer& tr, const ThumbnailCache& cache,
@@ -135,6 +136,10 @@ private:
     static std::vector<std::pair<uint32_t, std::string>> sorted_ports(
         const std::unordered_map<std::string, uint32_t>& port_indices);
 
+    // --- Clone confirmation dialog ---
+    void update_clone_confirm();
+    void draw_clone_confirm(Renderer2D& tr);
+
     // --- Decomposed update() sub-methods ---
     void check_relayout();
     void update_pan();
@@ -170,7 +175,8 @@ private:
     float chooser_x() const { return (graph_right() - kChooserW) * 0.5f; }
 
     UICommandSink& commands_;
-    const GraphSnapshot* snap_ = nullptr;
+    GraphSnapshot snap_;
+    bool snap_valid_ = false;
     MouseState mouse_;
     std::string selected_node_id_;
     std::vector<NodeRect> node_rects_;
@@ -270,6 +276,8 @@ private:
     bool context_menu_open_ = false;
     float context_menu_x_ = 0, context_menu_y_ = 0;  // screen space
     std::string context_node_id_;   // non-empty if node menu
+    std::string context_node_type_; // type of context node (for duplicate filter)
+    bool context_node_has_shader_ = false;  // true if node is a shader-based filter
     int context_wire_idx_ = -1;     // >= 0 if wire menu
     int hovered_wire_idx_ = -1;
 
@@ -283,6 +291,14 @@ private:
 
     // Cached window dimensions (updated each frame in draw())
     uint32_t win_w_ = 1280, win_h_ = 720;
+
+    // Double-click detection for shader editing
+    double last_click_time_ = 0.0;
+    std::string last_click_node_id_;
+
+    // Clone confirmation dialog state
+    bool clone_confirm_open_ = false;
+    std::string clone_confirm_type_;
 
     // Wire rendering style toggle (B key)
     bool bezier_wires_ = false;

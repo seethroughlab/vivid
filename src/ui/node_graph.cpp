@@ -95,8 +95,8 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
 // -----------------------------------------------------------------------
 void NodeGraphUI::layout_nodes() {
     node_rects_.clear();
-    const auto& nodes = snap_->nodes;
-    const auto& conns = snap_->connections;
+    const auto& nodes = snap_.nodes;
+    const auto& conns = snap_.connections;
     if (nodes.empty()) return;
 
     // Build node_id -> index map
@@ -287,7 +287,7 @@ NodeGraphUI::PortHit NodeGraphUI::hit_test_port(float mx, float my) const {
 }
 
 int NodeGraphUI::hit_test_wire(float sx, float sy) const {
-    const auto& conns = snap_->connections;
+    const auto& conns = snap_.connections;
 
     // Build fast lookup: node_id -> index in node_rects_
     std::unordered_map<std::string, size_t> id_to_rect;
@@ -335,7 +335,7 @@ void NodeGraphUI::confirm_param_edit() {
     if (!editing_param_) return;
     try {
         float val = std::stof(edit_buffer_);
-        const auto* ns = snap_->find_node(edit_node_id_);
+        const auto* ns = snap_.find_node(edit_node_id_);
         if (ns && ns->op_info) {
             for (const auto& pd : ns->op_info->params) {
                 if (pd.name != edit_param_name_) continue;
@@ -364,7 +364,7 @@ void NodeGraphUI::confirm_resolution_edit() {
         if (val < 1) val = 1;
         if (val > 8192) val = 8192;
 
-        const auto* ns = snap_->find_node(edit_res_node_id_);
+        const auto* ns = snap_.find_node(edit_res_node_id_);
         if (ns) {
             uint32_t new_w = edit_res_is_width_ ? static_cast<uint32_t>(val) : ns->gpu_tex_width;
             uint32_t new_h = edit_res_is_width_ ? ns->gpu_tex_height : static_cast<uint32_t>(val);
@@ -386,7 +386,7 @@ void NodeGraphUI::confirm_midi_range_edit() {
     if (!editing_midi_range_) return;
     try {
         float val = std::stof(edit_buffer_);
-        const auto* mm = snap_->find_midi_mapping(midi_range_node_id_, midi_range_param_name_);
+        const auto* mm = snap_.find_midi_mapping(midi_range_node_id_, midi_range_param_name_);
         if (mm) {
             float new_min = midi_range_editing_min_ ? val : mm->range_min;
             float new_max = midi_range_editing_min_ ? mm->range_max : val;
@@ -408,8 +408,8 @@ void NodeGraphUI::cancel_midi_range_edit() {
 // Chooser filter
 // -----------------------------------------------------------------------
 void NodeGraphUI::rebuild_chooser_items() {
-    if (!snap_) return;
-    const auto& all = snap_->operator_types;
+    if (!snap_valid_) return;
+    const auto& all = snap_.operator_types;
     chooser_items_.clear();
 
     // Case-insensitive substring match
@@ -431,14 +431,15 @@ void NodeGraphUI::rebuild_chooser_items() {
 // Update — thin dispatcher calling decomposed sub-methods
 // -----------------------------------------------------------------------
 void NodeGraphUI::update(const GraphSnapshot& snapshot) {
-    snap_ = &snapshot;
+    snap_ = snapshot;
+    snap_valid_ = true;
 
     // MIDI map mode: capture CC event when waiting for knob wiggle
-    if (midi_map_waiting_ && !snap_->pending_cc_events.empty()) {
-        const auto& ev = snap_->pending_cc_events[0];
+    if (midi_map_waiting_ && !snap_.pending_cc_events.empty()) {
+        const auto& ev = snap_.pending_cc_events[0];
         // Look up param descriptor for default range
         float range_min = 0.0f, range_max = 1.0f;
-        const auto* ns = snap_->find_node(midi_map_node_id_);
+        const auto* ns = snap_.find_node(midi_map_node_id_);
         if (ns && ns->op_info) {
             for (const auto& pd : ns->op_info->params) {
                 if (pd.name == midi_map_param_name_) {
@@ -460,6 +461,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_scrollbar_drag();
     update_slider_drag();
     update_chooser_hover();
+    update_clone_confirm();  // may consume left_clicked
     update_context_menu();   // may consume left_clicked
     handle_right_click();
     handle_left_click();     // dispatches to sub-handlers
@@ -470,8 +472,8 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
 }
 
 void NodeGraphUI::check_relayout() {
-    size_t cur_nodes = snap_->nodes.size();
-    size_t cur_conns = snap_->connections.size();
+    size_t cur_nodes = snap_.nodes.size();
+    size_t cur_conns = snap_.connections.size();
     if (cur_nodes > last_node_count_) {
         if (dragging_node_idx_ < 0 && !dragging_wire_) {
             layout_nodes();
@@ -495,7 +497,7 @@ void NodeGraphUI::update_node_drag() {
         auto& rect = node_rects_[dragging_node_idx_];
         rect.x = sx_to_gx(mouse_.x) - drag_offset_x_;
         rect.y = sy_to_gy(mouse_.y) - drag_offset_y_;
-        const auto* ns = snap_->find_node(rect.node_id);
+        const auto* ns = snap_.find_node(rect.node_id);
         if (ns) recompute_ports(rect, *ns);
     }
     if (mouse_.left_released) {
@@ -521,7 +523,7 @@ void NodeGraphUI::update_slider_drag() {
     if (active_slider_idx_ < 0 || dragging_node_idx_ >= 0) return;
     if (mouse_.left_down) {
         const auto& s = slider_rects_[active_slider_idx_];
-        const auto* ns = snap_->find_node(active_slider_node_id_);
+        const auto* ns = snap_.find_node(active_slider_node_id_);
         if (ns && ns->op_info) {
             for (const auto& pd : ns->op_info->params) {
                 if (pd.name != active_slider_param_name_) continue;
@@ -576,7 +578,7 @@ void NodeGraphUI::update_wire_hover() {
 }
 
 void NodeGraphUI::update_sparklines() {
-    for (const auto& ns : snap_->nodes) {
+    for (const auto& ns : snap_.nodes) {
         if (ns.is_gpu || ns.is_audio) continue;
 
         auto sorted_outs = sorted_ports(ns.output_port_indices);

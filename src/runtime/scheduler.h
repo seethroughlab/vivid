@@ -87,12 +87,15 @@ public:
     bool gpu_sink_source_size(int sink_idx, uint32_t& w, uint32_t& h) const;
     bool is_audio_type(const std::string& type_name) const;
 
+    void set_operators_src_dir(const std::string& dir) { operators_src_dir_ = dir; }
+
 private:
     void init_node_state(NodeState& ns, const VividOperatorDescriptor* desc,
                          const std::unordered_map<std::string, float>* param_overrides);
 
     std::vector<NodeState> nodes_;
     std::vector<Wire> wires_;
+    std::string operators_src_dir_;
 };
 
 } // namespace vivid

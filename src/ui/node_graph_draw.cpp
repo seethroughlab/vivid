@@ -51,8 +51,8 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
 
             // Find sparkline data for this node's first output
             std::string spark_key;
-            if (i < snap_->nodes.size()) {
-                const auto& ns = snap_->nodes[i];
+            if (i < snap_.nodes.size()) {
+                const auto& ns = snap_.nodes[i];
                 auto sorted_outs = sorted_ports(ns.output_port_indices);
                 if (!sorted_outs.empty())
                     spark_key = ns.node_id + "/" + sorted_outs[0].second;
@@ -106,11 +106,11 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                          sw - g_to_s(4), s_body_h - g_to_s(4),
                          kDarkBg[0], kDarkBg[1], kDarkBg[2], 0.9f);
 
-            auto ae_it = snap_->audio_index.find(r.node_id);
-            if (ae_it != snap_->audio_index.end() && ae_it->second >= 0) {
+            auto ae_it = snap_.audio_index.find(r.node_id);
+            if (ae_it != snap_.audio_index.end() && ae_it->second >= 0) {
                 int ae_idx = ae_it->second;
-                if (ae_idx < static_cast<int>(snap_->audio_analysis.size())) {
-                    const auto& analysis = snap_->audio_analysis[ae_idx];
+                if (ae_idx < static_cast<int>(snap_.audio_analysis.size())) {
+                    const auto& analysis = snap_.audio_analysis[ae_idx];
                     float wave_x = sx + g_to_s(4);
                     float wave_w = sw - g_to_s(8);
                     float wave_y = s_body_y + g_to_s(4);
@@ -190,7 +190,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
 }
 
 void NodeGraphUI::draw_connections(Renderer2D& tr) {
-    const auto& conns = snap_->connections;
+    const auto& conns = snap_.connections;
 
     // Build fast lookup: node_id -> index in node_rects_
     std::unordered_map<std::string, size_t> id_to_rect;
@@ -245,12 +245,12 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
 void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
     if (hovered_wire_idx_ < 0) return;
 
-    const auto& conns = snap_->connections;
+    const auto& conns = snap_.connections;
     if (hovered_wire_idx_ >= static_cast<int>(conns.size())) return;
     const auto& c = conns[hovered_wire_idx_];
 
     // Find source node in snapshot to read current value
-    const auto* src_ns = snap_->find_node(c.from_node);
+    const auto* src_ns = snap_.find_node(c.from_node);
 
     // Build label line
     std::string label = c.from_node + "/" + c.from_port + " -> " + c.to_node + "/" + c.to_port;
@@ -331,7 +331,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     tr.draw_rect(insp_x, 0, 2, static_cast<float>(h), 0.25f, 0.27f, 0.30f);
 
     // Find the selected node in snapshot
-    const auto* sel_node = snap_->find_node(selected_node_id_);
+    const auto* sel_node = snap_.find_node(selected_node_id_);
     if (!sel_node || !sel_node->op_info) {
         tr.draw_text(insp_x + kInspPadX, 20, "Node not found", kDimText[0], kDimText[1], kDimText[2]);
         return;
@@ -439,7 +439,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                            edit_param_name_ == pd.name;
 
     // CC badge (if this param has a MIDI mapping)
-    const auto* midi_mm = snap_->find_midi_mapping(selected_node_id_, pd.name);
+    const auto* midi_mm = snap_.find_midi_mapping(selected_node_id_, pd.name);
 
     // Label
     tr.draw_text(px, py, pd.name.c_str(), 0.8f, 0.82f, 0.85f);
@@ -1043,8 +1043,8 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
         // Domain color dot
         const std::string& name = chooser_items_[idx];
         const float* dcol = kControlAccent.data(); // default
-        auto cat_it = snap_->operator_catalog.find(name);
-        if (cat_it != snap_->operator_catalog.end()) {
+        auto cat_it = snap_.operator_catalog.find(name);
+        if (cat_it != snap_.operator_catalog.end()) {
             dcol = domain_color(cat_it->second->domain);
         }
         float dot_x = px + 10;
@@ -1070,7 +1070,7 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     win_w_ = w;
     win_h_ = h;
 
-    if (node_rects_.empty() && !snap_->nodes.empty()) {
+    if (node_rects_.empty() && !snap_.nodes.empty()) {
         layout_nodes();
     } else if (size_changed && !node_rects_.empty()) {
         layout_nodes();
@@ -1090,7 +1090,14 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_inspector(tr, w, h);
     draw_chooser(tr);
 
-    // Dropdown popup (drawn last, on top of everything)
+}
+
+// -----------------------------------------------------------------------
+// Overlays — rendered in a separate pass after GPU thumbnails so that
+// popups (context menu, dropdown) appear on top of everything.
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_overlays(Renderer2D& tr) {
+    // Dropdown popup
     if (dropdown_open_ && !dropdown_labels_.empty()) {
         float item_h = kDropdownItemH;
         float popup_h = dropdown_labels_.size() * item_h + 4;
@@ -1111,9 +1118,13 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
         }
     }
 
-    // Right-click context menu (drawn last, on top of everything)
+    // Right-click context menu
     if (context_menu_open_) {
-        float menu_h = kCtxMenuPadTop + kCtxMenuItemH + 2.0f;
+        int item_count = 1;
+        if (!context_node_id_.empty() && context_node_has_shader_)
+            item_count = 2;
+
+        float menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
         float mx = context_menu_x_, my = context_menu_y_;
 
         // Background
@@ -1121,17 +1132,77 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
         // Accent bar
         tr.draw_rect(mx, my, kCtxMenuW, 1, kAccent[0], kAccent[1], kAccent[2]);
 
-        // Hover highlight
-        float item_y = my + kCtxMenuPadTop;
-        if (mouse_.x >= mx && mouse_.x <= mx + kCtxMenuW &&
-            mouse_.y >= item_y && mouse_.y <= item_y + kCtxMenuItemH) {
-            tr.draw_rect(mx + 2, item_y, kCtxMenuW - 4, kCtxMenuItemH,
-                         kNodeSelBg[0], kNodeSelBg[1], kNodeSelBg[2], 0.9f);
+        // Item labels
+        const char* labels[2];
+        if (!context_node_id_.empty()) {
+            labels[0] = "Delete Node";
+            labels[1] = "Clone & Edit";
+        } else {
+            labels[0] = "Delete Wire";
         }
 
-        const char* label = !context_node_id_.empty() ? "Delete Node" : "Delete Wire";
-        tr.draw_text(mx + 8, item_y + 3, label, 0.9f, 0.92f, 0.95f);
+        for (int i = 0; i < item_count; ++i) {
+            float item_y = my + kCtxMenuPadTop + i * kCtxMenuItemH;
+            // Per-item hover highlight
+            if (mouse_.x >= mx && mouse_.x <= mx + kCtxMenuW &&
+                mouse_.y >= item_y && mouse_.y <= item_y + kCtxMenuItemH) {
+                tr.draw_rect(mx + 2, item_y, kCtxMenuW - 4, kCtxMenuItemH,
+                             kNodeSelBg[0], kNodeSelBg[1], kNodeSelBg[2], 0.9f);
+            }
+            tr.draw_text(mx + 8, item_y + 3, labels[i], 0.9f, 0.92f, 0.95f);
+        }
     }
+
+    draw_clone_confirm(tr);
+}
+
+// -----------------------------------------------------------------------
+// Clone confirmation dialog
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
+    if (!clone_confirm_open_) return;
+
+    // Scrim over entire window
+    tr.draw_rect(0, 0, static_cast<float>(win_w_), static_cast<float>(win_h_),
+                 0.0f, 0.0f, 0.0f, 0.45f);
+
+    // Dialog panel (centered)
+    float dw = 280.0f, dh = 70.0f;
+    float dx = (static_cast<float>(win_w_) - dw) * 0.5f;
+    float dy = (static_cast<float>(win_h_) - dh) * 0.5f;
+
+    // Background
+    tr.draw_rect(dx, dy, dw, dh, 0.14f, 0.15f, 0.18f, 0.97f);
+    // Accent bar at top
+    tr.draw_rect(dx, dy, dw, 2, kAccent[0], kAccent[1], kAccent[2]);
+
+    // Label text
+    std::string label = "Clone " + clone_confirm_type_ + " for editing?";
+    tr.draw_text(dx + 12, dy + 10, label.c_str(), 0.9f, 0.92f, 0.95f);
+
+    // Buttons
+    float btn_w = 70.0f, btn_h = 22.0f;
+    float btn_y = dy + dh - btn_h - 8.0f;
+    float clone_x = dx + dw * 0.5f - btn_w - 6.0f;
+    float cancel_x = dx + dw * 0.5f + 6.0f;
+
+    // Clone button
+    bool clone_hover = mouse_.x >= clone_x && mouse_.x <= clone_x + btn_w &&
+                       mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h;
+    if (clone_hover)
+        tr.draw_rect(clone_x, btn_y, btn_w, btn_h, kAccent[0], kAccent[1], kAccent[2], 0.9f);
+    else
+        tr.draw_rect(clone_x, btn_y, btn_w, btn_h, 0.22f, 0.24f, 0.28f, 0.9f);
+    tr.draw_text(clone_x + 16, btn_y + 3, "Clone", 0.95f, 0.96f, 0.98f);
+
+    // Cancel button
+    bool cancel_hover = mouse_.x >= cancel_x && mouse_.x <= cancel_x + btn_w &&
+                        mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h;
+    if (cancel_hover)
+        tr.draw_rect(cancel_x, btn_y, btn_w, btn_h, 0.28f, 0.30f, 0.35f, 0.9f);
+    else
+        tr.draw_rect(cancel_x, btn_y, btn_w, btn_h, 0.18f, 0.19f, 0.22f, 0.9f);
+    tr.draw_text(cancel_x + 13, btn_y + 3, "Cancel", 0.7f, 0.72f, 0.75f);
 }
 
 // -----------------------------------------------------------------------

@@ -69,7 +69,7 @@ static constexpr float kChooserItemH = 22.0f;
 static constexpr float kChooserY = 80.0f;
 
 // Context menu
-static constexpr float kCtxMenuW = 120.0f;
+static constexpr float kCtxMenuW = 155.0f;
 static constexpr float kCtxMenuItemH = 22.0f;
 static constexpr float kCtxMenuPadTop = 3.0f;
 
