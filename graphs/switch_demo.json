@@ -1,0 +1,21 @@
+{
+  "nodes": {
+    "src0":    { "type": "Shape",      "params": { "sides": 4, "radius": 0.3, "softness": 0.01, "r": 1.0, "g": 0.2, "b": 0.2 } },
+    "src1":    { "type": "Noise",      "params": { "scale": 5.0, "speed": 0.8, "octaves": 3 } },
+    "src2":    { "type": "Shape",      "params": { "sides": 6, "radius": 0.35, "star": 0.5, "softness": 0.01, "r": 0.2, "g": 1.0, "b": 0.4 } },
+    "src3":    { "type": "Gradient",   "params": {} },
+    "lfo_idx": { "type": "LFO",       "params": { "frequency": 0.25, "amplitude": 3.0, "offset": 0.0, "waveform": 1 } },
+    "lfo_mix": { "type": "LFO",       "params": { "frequency": 0.8, "amplitude": 0.5, "offset": 0.5, "waveform": 0 } },
+    "switch":  { "type": "Switch",    "params": {} },
+    "vout":    { "type": "video_out", "params": {} }
+  },
+  "connections": [
+    { "from": "src0/texture",    "to": "switch/in0" },
+    { "from": "src1/texture",    "to": "switch/in1" },
+    { "from": "src2/texture",    "to": "switch/in2" },
+    { "from": "src3/texture",    "to": "switch/in3" },
+    { "from": "lfo_idx/value",   "to": "switch/index" },
+    { "from": "lfo_mix/value",   "to": "switch/blend" },
+    { "from": "switch/texture",  "to": "vout/input" }
+  ]
+}
