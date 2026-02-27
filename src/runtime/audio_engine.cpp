@@ -348,7 +348,7 @@ bool AudioEngine::start(bool use_null_device) {
 
     ma_device_config config = ma_device_config_init(ma_device_type_playback);
     config.playback.format = ma_format_f32;
-    config.playback.channels = 1;
+    config.playback.channels = 2;
     config.sampleRate = kSampleRate;
     config.periodSizeInFrames = kBufferSize;
     config.dataCallback = &AudioEngine::ma_data_callback;
@@ -671,22 +671,38 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             }
         }
 
-        // Copy sink node's audio to device buffer
+        // Copy sink node's audio to interleaved stereo device buffer
+        float* dst = output + frames_written * 2;
         if (sink_node_idx_ >= 0) {
             auto& sink = nodes_[sink_node_idx_];
             if (sink.output_port_count > 0) {
-                // Traditional sink (last node with outputs)
+                // Traditional sink (last node with outputs) — mono to both channels
                 const float* src = sink.output_buffers[0].data();
-                std::memcpy(output + frames_written, src, chunk * sizeof(float));
+                for (uint32_t s = 0; s < chunk; ++s) {
+                    dst[s * 2]     = src[s];
+                    dst[s * 2 + 1] = src[s];
+                }
+            } else if (sink.input_port_count >= 3) {
+                // audio_out node with stereo: input(0) + left(1) + right(2)
+                const float* input_buf = sink.input_buffers[0].data();
+                const float* left_buf  = sink.input_buffers[1].data();
+                const float* right_buf = sink.input_buffers[2].data();
+                for (uint32_t s = 0; s < chunk; ++s) {
+                    dst[s * 2]     = input_buf[s] + left_buf[s];
+                    dst[s * 2 + 1] = input_buf[s] + right_buf[s];
+                }
             } else if (sink.input_port_count > 0) {
-                // audio_out node: read from its input buffer (passthrough)
+                // Fallback: mono input only
                 const float* src = sink.input_buffers[0].data();
-                std::memcpy(output + frames_written, src, chunk * sizeof(float));
+                for (uint32_t s = 0; s < chunk; ++s) {
+                    dst[s * 2]     = src[s];
+                    dst[s * 2 + 1] = src[s];
+                }
             } else {
-                std::memset(output + frames_written, 0, chunk * sizeof(float));
+                std::memset(dst, 0, chunk * 2 * sizeof(float));
             }
         } else {
-            std::memset(output + frames_written, 0, chunk * sizeof(float));
+            std::memset(dst, 0, chunk * 2 * sizeof(float));
         }
 
         frames_written += chunk;

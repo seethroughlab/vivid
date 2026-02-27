@@ -28,6 +28,7 @@ struct Polysynth : vivid::OperatorBase {
     vivid::Param<float> filter_cutoff    {"filter_cutoff",    20000.0f, 20.0f,  20000.0f};
     vivid::Param<float> filter_env_depth {"filter_env_depth", 0.0f,     0.0f,   8.0f};
     vivid::Param<bool>  env_bypass       {"env_bypass",       false};
+    vivid::Param<float> stereo_spread    {"stereo_spread",    0.5f,     0.0f,   1.0f};
 
     static constexpr int kMaxVoices = 16;
 
@@ -63,6 +64,7 @@ struct Polysynth : vivid::OperatorBase {
         out.push_back(&filter_cutoff);
         out.push_back(&filter_env_depth);
         out.push_back(&env_bypass);
+        out.push_back(&stereo_spread);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -72,8 +74,9 @@ struct Polysynth : vivid::OperatorBase {
         out.push_back({"filter_env", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 3
         out.push_back({"pitch_mod",  VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 4
         out.push_back({"amp_mod",    VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // 5
-        out.push_back({"output",     VIVID_PORT_AUDIO_FLOAT,    VIVID_PORT_OUTPUT});  // out 0
-        out.push_back({"envelopes",  VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT}); // out 1
+        out.push_back({"output_left",  VIVID_PORT_AUDIO_FLOAT,    VIVID_PORT_OUTPUT}); // out 0
+        out.push_back({"output_right", VIVID_PORT_AUDIO_FLOAT,    VIVID_PORT_OUTPUT}); // out 1
+        out.push_back({"envelopes",    VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT}); // out 2
     }
 
     // --- DSP helpers ---
@@ -183,10 +186,13 @@ struct Polysynth : vivid::OperatorBase {
             bool retrigger = (cur_gate > 0.5f) && (prev_gate > 0.5f) &&
                              (std::abs(cur_note - prev_note) > 0.5f);
 
-            if (on || retrigger)
+            if (on || retrigger) {
+                if (retrigger)
+                    trigger_note_off(prev_note);
                 trigger_note_on(cur_note, cur_vel, static_cast<int>(i));
-            else if (off)
+            } else if (off) {
                 trigger_note_off(prev_note);
+            }
 
             prev_gates_[i] = cur_gate;
             prev_notes_[i] = cur_note;
@@ -207,7 +213,8 @@ struct Polysynth : vivid::OperatorBase {
         auto* audio = vivid_audio(ctx);
         if (!audio) return;
 
-        float* out = audio->output_buffers[0];
+        float* out_l = audio->output_buffers[0];
+        float* out_r = audio->output_buffers[1];
         uint32_t frames = audio->buffer_size;
         double sample_rate = static_cast<double>(audio->sample_rate);
         float dt = 1.0f / static_cast<float>(audio->sample_rate);
@@ -221,6 +228,7 @@ struct Polysynth : vivid::OperatorBase {
         float det_cents      = detune.value;
         float filt_cutoff    = filter_cutoff.value;
         float filt_env_depth = filter_env_depth.value;
+        float spread         = stereo_spread.value;
 
         // Read modulation spread inputs
         const VividSpreadPort* filter_env_sp = ctx->input_spreads ? &ctx->input_spreads[3] : nullptr;
@@ -235,7 +243,12 @@ struct Polysynth : vivid::OperatorBase {
         float norm = 1.0f / std::sqrt(static_cast<float>(kMaxVoices));
         float detune_ratio = cents_to_ratio(det_cents);
 
-        // Cache per-voice frequency (avoid std::pow per sample)
+        // Count active voices and determine spread length for panning
+        uint32_t spread_len = prev_spread_len_;
+
+        // Cache per-voice frequency and stereo pan gains
+        float voice_gain_l[kMaxVoices] = {};
+        float voice_gain_r[kMaxVoices] = {};
         for (int vi = 0; vi < kMaxVoices; ++vi) {
             Voice& v = voices_[vi];
             if (!v.is_active()) continue;
@@ -243,12 +256,23 @@ struct Polysynth : vivid::OperatorBase {
             double note_val = static_cast<double>(v.note + pitch_offset);
             v.cached_freq = 440.0 * std::pow(2.0, (note_val - 69.0) / 12.0)
                             * static_cast<double>(detune_ratio);
+
+            // Constant-power pan based on gate slot position
+            float pan = 0.0f; // center
+            if (spread_len > 1 && v.gate_slot >= 0) {
+                pan = (static_cast<float>(v.gate_slot) / static_cast<float>(spread_len - 1) * 2.0f - 1.0f) * spread;
+            }
+            float theta = (pan + 1.0f) * static_cast<float>(M_PI) * 0.25f;
+            voice_gain_l[vi] = std::cos(theta);
+            voice_gain_r[vi] = std::sin(theta);
         }
 
-        std::memset(out, 0, frames * sizeof(float));
+        std::memset(out_l, 0, frames * sizeof(float));
+        std::memset(out_r, 0, frames * sizeof(float));
 
         for (uint32_t s = 0; s < frames; ++s) {
-            float mix = 0.0f;
+            float left_mix = 0.0f;
+            float right_mix = 0.0f;
 
             for (int vi = 0; vi < kMaxVoices; ++vi) {
                 Voice& v = voices_[vi];
@@ -275,18 +299,20 @@ struct Polysynth : vivid::OperatorBase {
                     sig = v.filter_state;
                 }
 
-                mix += sig;
+                left_mix  += sig * voice_gain_l[vi];
+                right_mix += sig * voice_gain_r[vi];
 
                 v.phase += v.cached_freq * TWO_PI / sample_rate;
                 if (v.phase >= TWO_PI) v.phase -= TWO_PI;
             }
 
-            out[s] = mix * amp * norm;
+            out_l[s] = left_mix * amp * norm;
+            out_r[s] = right_mix * amp * norm;
         }
 
         // Write per-voice envelope values to output spread
         if (ctx->output_spreads) {
-            auto& env_sp = ctx->output_spreads[1]; // envelopes is output port 1
+            auto& env_sp = ctx->output_spreads[2]; // envelopes is output port 2
             uint32_t active_count = 0;
             for (int vi = 0; vi < kMaxVoices; ++vi) {
                 if (voices_[vi].is_active()) {
