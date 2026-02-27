@@ -7,7 +7,34 @@ from mcp.server.fastmcp import FastMCP
 
 VIVID_URL = os.environ.get("VIVID_URL", "http://127.0.0.1:9876")
 
-mcp = FastMCP("vivid")
+mcp = FastMCP("vivid", instructions="""Vivid is a real-time audio-visual graph engine. You build node graphs that generate and process visuals, audio, and control signals, all running live.
+
+## Three Domains
+
+- **GPU** — texture-based visual operators (noise, shape, blur, composite, etc.). Ports use type `gpu_texture`. Every visual graph needs a `video_out` node to display output.
+- **Audio** — sample-based audio operators (oscillator, gain, reverb, etc.). Ports use type `audio_float`. Every audio graph needs an `audio_out` node to hear output.
+- **Control** — scalar/spread signals for modulation (lfo, clock, math, sequencer, etc.). Ports use type `control_float`. Control outputs can also drive any numeric parameter directly.
+
+## Port Compatibility
+
+Connections must match types: `gpu_texture` → `gpu_texture`, `audio_float` → `audio_float`, `control_float` → `control_float` or any numeric parameter. Address format for ports: `"node_id/port_name"`.
+
+## Workflow
+
+1. `list_types` — discover available operators, their params, and ports
+2. `add_node` — add nodes by type and unique ID
+3. `connect` — wire outputs to inputs using `"node_id/port_name"` addresses
+4. `set_param` — adjust parameters (takes effect immediately)
+5. `inspect_graph` — verify the graph state, check live output values
+
+## Common Patterns
+
+- Connect an `lfo` output → a GPU node's parameter for animation
+- Connect `clock` → `sequencer` for rhythmic patterns
+- Audio chains: oscillator → effects → `audio_out`
+- Visual chains: generators → filters → `video_out`
+- Control signals modulate both GPU and audio params
+""")
 
 
 async def _post(method: str, body: dict | None = None) -> str:
