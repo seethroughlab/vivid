@@ -134,7 +134,7 @@ All paths are relative to the legacy branch root. Core engine files live under `
 | 12: Thumbnails | `src/gui/scratch_texture.cpp`, `include/vivid/operator_viz.h` |
 | 13: Spreads | `include/vivid/dsp_utils.h`, `src/effects/gpu_particles.cpp` |
 | 14: Polyphonic Audio | `modules/vivid-audio/src/poly_synth.cpp`, `modules/vivid-audio/src/envelope.cpp`, `modules/vivid-audio/src/sequencer.cpp` |
-| 15: Audio-Reactive Rects | `src/effects/gpu_particles.cpp` (instanced rendering pattern) |
+| 15: Instance Operator | `src/effects/gpu_particles.cpp` (instanced rendering pattern) |
 | 16: MCP Server | `src/cli/mcp_server.cpp`, `docs/MCP-TOOLS.md` |
 | 17: Chat Panel | `modules/vivid-imgui/`, `src/cli/runtime_api.cpp` |
 | 20: Patterns | `modules/vivid-audio/src/sequencer.cpp`, `modules/vivid-audio/src/euclidean.cpp`, `modules/vivid-audio/src/arpeggiator.cpp` |

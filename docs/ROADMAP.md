@@ -386,21 +386,26 @@ Upgrade the entire audio pipeline to stereo:
 
 *North Star progress: Clock → chord progression → Polysynth works. MIDI knobs control timbre. Envelope Spread is produced. Per-voice modulation shapes timbre. 6 of 8 pieces.*
 
-### Phase 15: The North Star Demo — Audio-Reactive Rectangles
+### Phase 15: The North Star Demo — Instance Operator (Hardware Instancing) — DONE
 
-Build the Rects GPU operator: takes a Spread of positions/sizes and a Spread of colors, draws filled rectangles via instanced rendering. Connect the Polysynth's envelope Spread to the color input. Add a layout function (grid, circle, random) as a parameter.
+General-purpose **Instance** GPU operator that uses hardware instancing (instanced draw calls) to stamp any upstream GPU texture N times, driven by Spread data. Shape renders a polygon to texture with premultiplied alpha; Instance stamps it across the screen. Replaces the old fragment-loop Rects operator with a scalable architecture.
+
+**Architecture:** No vertex buffer — quad vertices generated from `@builtin(vertex_index)`, per-instance data (position, value) read from a storage buffer via `@builtin(instance_index)`. Alpha blending (premultiplied: src=One, dst=OneMinusSrcAlpha). Fragment shader only runs on pixels covered by each quad — scales to hundreds of instances.
+
+**Params:** `layout` (grid/circle/random), `size` (instance size), `hue_spread` (per-instance hue variation). **Ports:** `input` (GPU_TEXTURE), `values` (CONTROL_SPREAD — determines instance count + brightness), `positions` (CONTROL_SPREAD — optional custom placement), `texture` (GPU_TEXTURE output).
 
 **Verify:** The full North Star scenario works end-to-end:
 
-1. Clock → NotePattern → Polysynth → audio output (you hear chords)
-2. Polysynth envelope Spread → Rects color input (rectangles change color with each note)
-3. MIDI controller CC → Polysynth parameters (physical knobs change timbre)
-4. LFO → Polysynth filter cutoff (automatic parameter modulation)
-5. Standalone Envelope → Polysynth amplitude (per-note shaping)
+1. Clock → ChordProgression → Arpeggiator → WavetableSynth → audio output (you hear chords)
+2. SpreadADSR envelope Spread → Instance/values (shapes light up per-note in sync)
+3. Shape/texture → Instance/input (any shape works — squares, stars, circles)
 
-You hear a chord progression. You see rectangles lighting up in sync. You turn a physical knob and the timbre shifts. The LFO sweeps a filter. The envelopes shape each note's attack. Audio and visuals are peers in the same graph.
+**Why it matters:** This is the proof. Every architectural decision (three domains, Spreads, cross-domain bridges, JSON graph, operator contract) is validated in a single session. The Instance operator is general-purpose — it works with any texture source, not just shapes. Later extensible with rotation, scale, and additional Spread inputs per instance.
 
-**Why it matters:** This is the proof. Not a tech demo — a creative workflow. Every architectural decision (three domains, Spreads, cross-domain bridges, JSON graph, operator contract) is validated in a single session. If you can sit in front of this and make something that sounds and looks good by tweaking parameters and connections, Vivid works. If you can't, something fundamental needs to change. Building this before the LLM integration means the pipeline is solid when the chat panel wraps it.
+**Implementation notes:**
+- Shape alpha fix: `vec4f(color * alpha, alpha)` for premultiplied alpha output
+- Instance operator: custom pipeline (not gpu_common helpers), 2 bind groups, storage buffer for per-instance data
+- Demo graph: `graphs/shape_instance_demo.json` (Shape → Instance ← SpreadADSR ← Arpeggiator)
 
 ### Phase 16: MCP Server & Operator Scaffolding
 
@@ -414,13 +419,9 @@ Two halves, sharing the same `OperatorCreator` module:
 
 **Why it matters:** MCP is the bridge between Vivid and external LLM tools. Once this works, Claude Code can inspect and modify a running Vivid instance — which means you can develop operators and iterate on patches from your terminal. It also validates the Runtime API design under real external use: if the tool interface is awkward for Claude Code, it needs revision before the built-in chat wraps the same API. The in-app scaffolding UI makes the same creation flow available without leaving the app — the user hits Tab, realizes the operator they want doesn't exist, and creates it on the spot.
 
-### Phase 17: Built-in Chat Panel
+### ~~Phase 17: Built-in Chat Panel~~ — SKIPPED
 
-Collapsible chat panel in the UI. HTTP client for Anthropic API (libcurl or curl subprocess). LLM receives graph JSON as context, Runtime API as tool definitions. Streaming response rendering in a scrollable text widget.
-
-**Verify:** The North Star scenario, LLM-assisted: Type "make me a chord progression in C minor" → LLM creates a NotePattern node with the right parameters and connects it to the Clock. Type "add a polysynth" → LLM adds and wires it. Type "now make some rectangles that light up with the music" → LLM adds Rects, connects envelope Spread to color. The entire demo, built conversationally.
-
-**Why it matters:** This is the primary creative workflow: the user stays in Vivid, describes intent in natural language, and the LLM modifies the graph. The North Star Demo built by hand in Phase 15 can now be built by conversation in Phase 17. The delta between those two experiences — manual wiring vs. "make me a chord progression" — is what makes Vivid's LLM integration meaningful rather than a novelty.
+**Decision:** The MCP server (Phase 16) already provides full LLM integration. Users connect Claude Code, Cursor, or any MCP-compatible client and get the complete tool surface — inspect, add, connect, set_param — with streaming, multi-turn context, and tool use UIs that would take weeks to replicate. Building a built-in chat panel would mean significant complexity (HTTP client, TLS/curl subprocess, threading, tool execution loop, text wrapping, scroll) to produce a worse version of what external clients already provide. The MCP server *is* the LLM integration — Tier 4 is complete without this phase.
 
 ---
 
