@@ -356,6 +356,9 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     dropdown_rects_.clear();
     file_button_rects_.clear();
     drum_grid_rects_.clear();
+    drum_mod_a_rects_.clear();
+    drum_mod_b_rects_.clear();
+    drum_tab_rects_.clear();
     resolution_rects_.clear();
     midi_remove_rects_.clear();
     midi_range_rects_.clear();
@@ -771,15 +774,18 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
         if (ds_swing_it != node.param_indices.end())
             draw_one_inspector_param(tr, node, px, py, ds_swing_it->second);
 
-        // Build skip set for the 96 grid params
+        // Build skip set for the 96 grid params + 192 mod params
         std::unordered_set<uint32_t> grid_params;
         static const char* kDrumPrefixes[] = {"kick_", "snare_", "hat_", "oh_", "clap_", "tom_"};
+        static const char* kModSuffixes[] = {"", "ma_", "mb_"};
         for (const char* prefix : kDrumPrefixes) {
-            for (int s = 0; s < 16; ++s) {
-                std::string name = std::string(prefix) + std::to_string(s);
-                auto it = node.param_indices.find(name);
-                if (it != node.param_indices.end())
-                    grid_params.insert(it->second);
+            for (const char* mod : kModSuffixes) {
+                for (int s = 0; s < 16; ++s) {
+                    std::string name = std::string(prefix) + mod + std::to_string(s);
+                    auto it = node.param_indices.find(name);
+                    if (it != node.param_indices.end())
+                        grid_params.insert(it->second);
+                }
             }
         }
         if (ds_steps_it != node.param_indices.end())
@@ -1146,11 +1152,44 @@ void NodeGraphUI::draw_inspector_drum_grid(Renderer2D& tr, const NodeSnapshot& n
     float cell_h = 14.0f;
     float cell_pad = 2.0f;
     float grid_h = 6.0f * cell_h;
-    float total_h = grid_h + 8.0f;  // padding
 
     py += 4;
 
-    // Dark background
+    // --- Tab bar ---
+    static const char* kTabLabels[] = {"Pattern", "Mod A", "Mod B"};
+    float tab_w = 80.0f;
+    float tab_h = 18.0f;
+    float tab_y = py;
+
+    for (int t = 0; t < 3; ++t) {
+        float tx = px + t * tab_w;
+        bool active = (drum_grid_tab_ == t);
+
+        // Tab background
+        if (active) {
+            tr.draw_rect(tx, tab_y, tab_w, tab_h,
+                         style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
+            // Accent underline
+            tr.draw_rect(tx, tab_y + tab_h - 2, tab_w, 2,
+                         style_.accent[0], style_.accent[1], style_.accent[2], 1.0f);
+        }
+
+        float text_alpha = active ? 1.0f : 0.5f;
+        tr.draw_text(tx + 8, tab_y + 3, kTabLabels[t],
+                     style_.dim_text[0] * (active ? 1.5f : 1.0f),
+                     style_.dim_text[1] * (active ? 1.5f : 1.0f),
+                     style_.dim_text[2] * (active ? 1.5f : 1.0f),
+                     text_alpha);
+
+        drum_tab_rects_.push_back({tx, tab_y, tab_w, tab_h,
+                                   single_selected_id(), std::to_string(t)});
+    }
+
+    py += tab_h + 2;
+
+    float total_h = grid_h + 8.0f;
+
+    // Dark background for grid area
     tr.draw_rect(px, py, panel_w, total_h, style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
 
     float grid_x = px + label_w;
@@ -1170,6 +1209,10 @@ void NodeGraphUI::draw_inspector_drum_grid(Renderer2D& tr, const NodeSnapshot& n
                      style_.separator[0], style_.separator[1], style_.separator[2], 0.6f);
     }
 
+    // Mod param prefixes for Mod A / Mod B
+    static const char* kModAPrefix[] = {"kick_ma_", "snare_ma_", "hat_ma_", "oh_ma_", "clap_ma_", "tom_ma_"};
+    static const char* kModBPrefix[] = {"kick_mb_", "snare_mb_", "hat_mb_", "oh_mb_", "clap_mb_", "tom_mb_"};
+
     for (int drum = 0; drum < 6; ++drum) {
         float row_y = grid_y + drum * cell_h;
 
@@ -1179,24 +1222,54 @@ void NodeGraphUI::draw_inspector_drum_grid(Renderer2D& tr, const NodeSnapshot& n
 
         for (int s = 0; s < 16; ++s) {
             float cx = grid_x + s * cell_w;
-            std::string param_name = std::string(kDrumPrefix[drum]) + std::to_string(s);
-            auto pit = node.param_indices.find(param_name);
-            bool active = false;
-            if (pit != node.param_indices.end())
-                active = node.param_values[pit->second] > 0.5f;
-
             bool beyond_steps = (s >= num_steps);
 
-            if (active) {
-                float alpha = beyond_steps ? 0.25f : 0.9f;
+            // Check trigger state (used by all tabs)
+            std::string trig_name = std::string(kDrumPrefix[drum]) + std::to_string(s);
+            auto trig_it = node.param_indices.find(trig_name);
+            bool trigger_active = false;
+            if (trig_it != node.param_indices.end())
+                trigger_active = node.param_values[trig_it->second] > 0.5f;
+
+            if (drum_grid_tab_ == 0) {
+                // --- Pattern tab: boolean toggle grid ---
+                if (trigger_active) {
+                    float alpha = beyond_steps ? 0.25f : 0.9f;
+                    tr.draw_rect(cx + cell_pad, row_y + cell_pad,
+                                 cell_w - 2 * cell_pad, cell_h - 2 * cell_pad,
+                                 kDrumColors[drum][0], kDrumColors[drum][1], kDrumColors[drum][2], alpha);
+                }
+
+                drum_grid_rects_.push_back({cx, row_y, cell_w, cell_h,
+                                            single_selected_id(), trig_name});
+            } else {
+                // --- Mod A or Mod B tab: vertical fill bar grid ---
+                const char** mod_prefix = (drum_grid_tab_ == 1) ? kModAPrefix : kModBPrefix;
+                auto& mod_rects = (drum_grid_tab_ == 1) ? drum_mod_a_rects_ : drum_mod_b_rects_;
+
+                std::string mod_name = std::string(mod_prefix[drum]) + std::to_string(s);
+                auto mod_it = node.param_indices.find(mod_name);
+                float mod_val = 0.5f;
+                if (mod_it != node.param_indices.end())
+                    mod_val = node.param_values[mod_it->second];
+
+                float base_alpha = beyond_steps ? 0.25f : (trigger_active ? 0.8f : 0.3f);
+
+                // Dark track background
                 tr.draw_rect(cx + cell_pad, row_y + cell_pad,
                              cell_w - 2 * cell_pad, cell_h - 2 * cell_pad,
-                             kDrumColors[drum][0], kDrumColors[drum][1], kDrumColors[drum][2], alpha);
-            }
+                             0.1f, 0.1f, 0.12f, base_alpha);
 
-            // Push hit rect for click handling
-            drum_grid_rects_.push_back({cx, row_y, cell_w, cell_h,
-                                        single_selected_id(), param_name});
+                // Fill bar from bottom
+                float inner_h = cell_h - 2 * cell_pad;
+                float fill_h = mod_val * inner_h;
+                tr.draw_rect(cx + cell_pad, row_y + cell_pad + inner_h - fill_h,
+                             cell_w - 2 * cell_pad, fill_h,
+                             kDrumColors[drum][0], kDrumColors[drum][1], kDrumColors[drum][2], base_alpha);
+
+                mod_rects.push_back({cx, row_y, cell_w, cell_h,
+                                     single_selected_id(), mod_name});
+            }
         }
     }
 

@@ -703,6 +703,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_wire_drag();
     update_scrollbar_drag();
     update_slider_drag();
+    update_drum_mod_drag();
     update_chooser_hover();
     update_preferences();    // may consume left_clicked
     update_clone_confirm();  // may consume left_clicked
@@ -869,6 +870,34 @@ void NodeGraphUI::update_slider_drag() {
     }
     if (mouse_.left_released) {
         active_slider_idx_ = -1;
+    }
+}
+
+void NodeGraphUI::update_drum_mod_drag() {
+    if (active_drum_mod_idx_ < 0 || dragging_node_idx_ >= 0) return;
+    if (mouse_.left_down) {
+        // Find the rect in whichever mod vector was clicked
+        const auto& rects_a = drum_mod_a_rects_;
+        const auto& rects_b = drum_mod_b_rects_;
+        const InspectorRect* rect = nullptr;
+        if (active_drum_mod_idx_ < static_cast<int>(rects_a.size()) &&
+            rects_a[active_drum_mod_idx_].param_name == active_drum_mod_param_name_) {
+            rect = &rects_a[active_drum_mod_idx_];
+        } else if (active_drum_mod_idx_ < static_cast<int>(rects_b.size()) &&
+                   rects_b[active_drum_mod_idx_].param_name == active_drum_mod_param_name_) {
+            rect = &rects_b[active_drum_mod_idx_];
+        }
+        if (rect) {
+            float cell_pad = 2.0f;
+            float inner_y = rect->y + cell_pad;
+            float inner_h = rect->h - 2 * cell_pad;
+            float t = 1.0f - (mouse_.y - inner_y) / inner_h;
+            t = std::max(0.0f, std::min(1.0f, t));
+            commands_.set_param(active_drum_mod_node_id_, active_drum_mod_param_name_, t);
+        }
+    }
+    if (mouse_.left_released) {
+        active_drum_mod_idx_ = -1;
     }
 }
 

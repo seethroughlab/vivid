@@ -12,11 +12,15 @@ struct DrumSequencer : vivid::OperatorBase {
     // [0]=steps  [1]=swing
     // [2..17]=kick_0..15  [18..33]=snare_0..15  [34..49]=hat_0..15
     // [50..65]=oh_0..15   [66..81]=clap_0..15   [82..97]=tom_0..15
+    // Mod A: [98..113]=kick_ma_0..15  [114..129]=snare_ma_0..15  [130..145]=hat_ma_0..15
+    //        [146..161]=oh_ma_0..15   [162..177]=clap_ma_0..15   [178..193]=tom_ma_0..15
+    // Mod B: [194..209]=kick_mb_0..15 [210..225]=snare_mb_0..15  [226..241]=hat_mb_0..15
+    //        [242..257]=oh_mb_0..15   [258..273]=clap_mb_0..15   [274..289]=tom_mb_0..15
 
     vivid::Param<int>   steps {"steps",  16, 1, 16};
     vivid::Param<float> swing {"swing",  0.0f, 0.0f, 0.5f};
 
-    // 6 drums × 16 steps = 96 bool params
+    // 6 drums x 16 steps = 96 bool params
     vivid::Param<float> kick_0 {"kick_0", 0.0f, 0.0f, 1.0f};
     vivid::Param<float> kick_1 {"kick_1", 0.0f, 0.0f, 1.0f};
     vivid::Param<float> kick_2 {"kick_2", 0.0f, 0.0f, 1.0f};
@@ -119,6 +123,212 @@ struct DrumSequencer : vivid::OperatorBase {
     vivid::Param<float> tom_14{"tom_14",0.0f, 0.0f, 1.0f};
     vivid::Param<float> tom_15{"tom_15",0.0f, 0.0f, 1.0f};
 
+    // Mod A: 6 drums x 16 steps = 96 params (indices 98..193), default 0.5
+    vivid::Param<float> kick_ma_0 {"kick_ma_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_1 {"kick_ma_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_2 {"kick_ma_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_3 {"kick_ma_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_4 {"kick_ma_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_5 {"kick_ma_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_6 {"kick_ma_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_7 {"kick_ma_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_8 {"kick_ma_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_9 {"kick_ma_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_10{"kick_ma_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_11{"kick_ma_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_12{"kick_ma_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_13{"kick_ma_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_14{"kick_ma_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_ma_15{"kick_ma_15",0.5f, 0.0f, 1.0f};
+
+    vivid::Param<float> snare_ma_0 {"snare_ma_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_1 {"snare_ma_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_2 {"snare_ma_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_3 {"snare_ma_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_4 {"snare_ma_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_5 {"snare_ma_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_6 {"snare_ma_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_7 {"snare_ma_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_8 {"snare_ma_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_9 {"snare_ma_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_10{"snare_ma_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_11{"snare_ma_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_12{"snare_ma_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_13{"snare_ma_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_14{"snare_ma_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_ma_15{"snare_ma_15",0.5f, 0.0f, 1.0f};
+
+    vivid::Param<float> hat_ma_0 {"hat_ma_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_1 {"hat_ma_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_2 {"hat_ma_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_3 {"hat_ma_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_4 {"hat_ma_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_5 {"hat_ma_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_6 {"hat_ma_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_7 {"hat_ma_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_8 {"hat_ma_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_9 {"hat_ma_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_10{"hat_ma_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_11{"hat_ma_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_12{"hat_ma_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_13{"hat_ma_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_14{"hat_ma_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_ma_15{"hat_ma_15",0.5f, 0.0f, 1.0f};
+
+    vivid::Param<float> oh_ma_0 {"oh_ma_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_1 {"oh_ma_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_2 {"oh_ma_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_3 {"oh_ma_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_4 {"oh_ma_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_5 {"oh_ma_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_6 {"oh_ma_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_7 {"oh_ma_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_8 {"oh_ma_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_9 {"oh_ma_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_10{"oh_ma_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_11{"oh_ma_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_12{"oh_ma_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_13{"oh_ma_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_14{"oh_ma_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_ma_15{"oh_ma_15",0.5f, 0.0f, 1.0f};
+
+    vivid::Param<float> clap_ma_0 {"clap_ma_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_1 {"clap_ma_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_2 {"clap_ma_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_3 {"clap_ma_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_4 {"clap_ma_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_5 {"clap_ma_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_6 {"clap_ma_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_7 {"clap_ma_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_8 {"clap_ma_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_9 {"clap_ma_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_10{"clap_ma_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_11{"clap_ma_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_12{"clap_ma_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_13{"clap_ma_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_14{"clap_ma_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_ma_15{"clap_ma_15",0.5f, 0.0f, 1.0f};
+
+    vivid::Param<float> tom_ma_0 {"tom_ma_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_1 {"tom_ma_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_2 {"tom_ma_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_3 {"tom_ma_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_4 {"tom_ma_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_5 {"tom_ma_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_6 {"tom_ma_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_7 {"tom_ma_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_8 {"tom_ma_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_9 {"tom_ma_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_10{"tom_ma_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_11{"tom_ma_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_12{"tom_ma_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_13{"tom_ma_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_14{"tom_ma_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_ma_15{"tom_ma_15",0.5f, 0.0f, 1.0f};
+
+    // Mod B: 6 drums x 16 steps = 96 params (indices 194..289), default 0.5
+    vivid::Param<float> kick_mb_0 {"kick_mb_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_1 {"kick_mb_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_2 {"kick_mb_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_3 {"kick_mb_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_4 {"kick_mb_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_5 {"kick_mb_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_6 {"kick_mb_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_7 {"kick_mb_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_8 {"kick_mb_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_9 {"kick_mb_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_10{"kick_mb_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_11{"kick_mb_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_12{"kick_mb_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_13{"kick_mb_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_14{"kick_mb_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> kick_mb_15{"kick_mb_15",0.5f, 0.0f, 1.0f};
+
+    vivid::Param<float> snare_mb_0 {"snare_mb_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_1 {"snare_mb_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_2 {"snare_mb_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_3 {"snare_mb_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_4 {"snare_mb_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_5 {"snare_mb_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_6 {"snare_mb_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_7 {"snare_mb_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_8 {"snare_mb_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_9 {"snare_mb_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_10{"snare_mb_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_11{"snare_mb_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_12{"snare_mb_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_13{"snare_mb_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_14{"snare_mb_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> snare_mb_15{"snare_mb_15",0.5f, 0.0f, 1.0f};
+
+    vivid::Param<float> hat_mb_0 {"hat_mb_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_1 {"hat_mb_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_2 {"hat_mb_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_3 {"hat_mb_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_4 {"hat_mb_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_5 {"hat_mb_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_6 {"hat_mb_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_7 {"hat_mb_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_8 {"hat_mb_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_9 {"hat_mb_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_10{"hat_mb_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_11{"hat_mb_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_12{"hat_mb_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_13{"hat_mb_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_14{"hat_mb_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> hat_mb_15{"hat_mb_15",0.5f, 0.0f, 1.0f};
+
+    vivid::Param<float> oh_mb_0 {"oh_mb_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_1 {"oh_mb_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_2 {"oh_mb_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_3 {"oh_mb_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_4 {"oh_mb_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_5 {"oh_mb_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_6 {"oh_mb_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_7 {"oh_mb_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_8 {"oh_mb_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_9 {"oh_mb_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_10{"oh_mb_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_11{"oh_mb_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_12{"oh_mb_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_13{"oh_mb_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_14{"oh_mb_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> oh_mb_15{"oh_mb_15",0.5f, 0.0f, 1.0f};
+
+    vivid::Param<float> clap_mb_0 {"clap_mb_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_1 {"clap_mb_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_2 {"clap_mb_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_3 {"clap_mb_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_4 {"clap_mb_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_5 {"clap_mb_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_6 {"clap_mb_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_7 {"clap_mb_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_8 {"clap_mb_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_9 {"clap_mb_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_10{"clap_mb_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_11{"clap_mb_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_12{"clap_mb_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_13{"clap_mb_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_14{"clap_mb_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> clap_mb_15{"clap_mb_15",0.5f, 0.0f, 1.0f};
+
+    vivid::Param<float> tom_mb_0 {"tom_mb_0", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_1 {"tom_mb_1", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_2 {"tom_mb_2", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_3 {"tom_mb_3", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_4 {"tom_mb_4", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_5 {"tom_mb_5", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_6 {"tom_mb_6", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_7 {"tom_mb_7", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_8 {"tom_mb_8", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_9 {"tom_mb_9", 0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_10{"tom_mb_10",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_11{"tom_mb_11",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_12{"tom_mb_12",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_13{"tom_mb_13",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_14{"tom_mb_14",0.5f, 0.0f, 1.0f};
+    vivid::Param<float> tom_mb_15{"tom_mb_15",0.5f, 0.0f, 1.0f};
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&steps);   // 0
         out.push_back(&swing);   // 1
@@ -182,6 +392,126 @@ struct DrumSequencer : vivid::OperatorBase {
         out.push_back(&tom_10); out.push_back(&tom_11);
         out.push_back(&tom_12); out.push_back(&tom_13);
         out.push_back(&tom_14); out.push_back(&tom_15);
+
+        // Mod A kick: 98..113
+        out.push_back(&kick_ma_0);  out.push_back(&kick_ma_1);
+        out.push_back(&kick_ma_2);  out.push_back(&kick_ma_3);
+        out.push_back(&kick_ma_4);  out.push_back(&kick_ma_5);
+        out.push_back(&kick_ma_6);  out.push_back(&kick_ma_7);
+        out.push_back(&kick_ma_8);  out.push_back(&kick_ma_9);
+        out.push_back(&kick_ma_10); out.push_back(&kick_ma_11);
+        out.push_back(&kick_ma_12); out.push_back(&kick_ma_13);
+        out.push_back(&kick_ma_14); out.push_back(&kick_ma_15);
+
+        // Mod A snare: 114..129
+        out.push_back(&snare_ma_0);  out.push_back(&snare_ma_1);
+        out.push_back(&snare_ma_2);  out.push_back(&snare_ma_3);
+        out.push_back(&snare_ma_4);  out.push_back(&snare_ma_5);
+        out.push_back(&snare_ma_6);  out.push_back(&snare_ma_7);
+        out.push_back(&snare_ma_8);  out.push_back(&snare_ma_9);
+        out.push_back(&snare_ma_10); out.push_back(&snare_ma_11);
+        out.push_back(&snare_ma_12); out.push_back(&snare_ma_13);
+        out.push_back(&snare_ma_14); out.push_back(&snare_ma_15);
+
+        // Mod A hat: 130..145
+        out.push_back(&hat_ma_0);  out.push_back(&hat_ma_1);
+        out.push_back(&hat_ma_2);  out.push_back(&hat_ma_3);
+        out.push_back(&hat_ma_4);  out.push_back(&hat_ma_5);
+        out.push_back(&hat_ma_6);  out.push_back(&hat_ma_7);
+        out.push_back(&hat_ma_8);  out.push_back(&hat_ma_9);
+        out.push_back(&hat_ma_10); out.push_back(&hat_ma_11);
+        out.push_back(&hat_ma_12); out.push_back(&hat_ma_13);
+        out.push_back(&hat_ma_14); out.push_back(&hat_ma_15);
+
+        // Mod A oh: 146..161
+        out.push_back(&oh_ma_0);  out.push_back(&oh_ma_1);
+        out.push_back(&oh_ma_2);  out.push_back(&oh_ma_3);
+        out.push_back(&oh_ma_4);  out.push_back(&oh_ma_5);
+        out.push_back(&oh_ma_6);  out.push_back(&oh_ma_7);
+        out.push_back(&oh_ma_8);  out.push_back(&oh_ma_9);
+        out.push_back(&oh_ma_10); out.push_back(&oh_ma_11);
+        out.push_back(&oh_ma_12); out.push_back(&oh_ma_13);
+        out.push_back(&oh_ma_14); out.push_back(&oh_ma_15);
+
+        // Mod A clap: 162..177
+        out.push_back(&clap_ma_0);  out.push_back(&clap_ma_1);
+        out.push_back(&clap_ma_2);  out.push_back(&clap_ma_3);
+        out.push_back(&clap_ma_4);  out.push_back(&clap_ma_5);
+        out.push_back(&clap_ma_6);  out.push_back(&clap_ma_7);
+        out.push_back(&clap_ma_8);  out.push_back(&clap_ma_9);
+        out.push_back(&clap_ma_10); out.push_back(&clap_ma_11);
+        out.push_back(&clap_ma_12); out.push_back(&clap_ma_13);
+        out.push_back(&clap_ma_14); out.push_back(&clap_ma_15);
+
+        // Mod A tom: 178..193
+        out.push_back(&tom_ma_0);  out.push_back(&tom_ma_1);
+        out.push_back(&tom_ma_2);  out.push_back(&tom_ma_3);
+        out.push_back(&tom_ma_4);  out.push_back(&tom_ma_5);
+        out.push_back(&tom_ma_6);  out.push_back(&tom_ma_7);
+        out.push_back(&tom_ma_8);  out.push_back(&tom_ma_9);
+        out.push_back(&tom_ma_10); out.push_back(&tom_ma_11);
+        out.push_back(&tom_ma_12); out.push_back(&tom_ma_13);
+        out.push_back(&tom_ma_14); out.push_back(&tom_ma_15);
+
+        // Mod B kick: 194..209
+        out.push_back(&kick_mb_0);  out.push_back(&kick_mb_1);
+        out.push_back(&kick_mb_2);  out.push_back(&kick_mb_3);
+        out.push_back(&kick_mb_4);  out.push_back(&kick_mb_5);
+        out.push_back(&kick_mb_6);  out.push_back(&kick_mb_7);
+        out.push_back(&kick_mb_8);  out.push_back(&kick_mb_9);
+        out.push_back(&kick_mb_10); out.push_back(&kick_mb_11);
+        out.push_back(&kick_mb_12); out.push_back(&kick_mb_13);
+        out.push_back(&kick_mb_14); out.push_back(&kick_mb_15);
+
+        // Mod B snare: 210..225
+        out.push_back(&snare_mb_0);  out.push_back(&snare_mb_1);
+        out.push_back(&snare_mb_2);  out.push_back(&snare_mb_3);
+        out.push_back(&snare_mb_4);  out.push_back(&snare_mb_5);
+        out.push_back(&snare_mb_6);  out.push_back(&snare_mb_7);
+        out.push_back(&snare_mb_8);  out.push_back(&snare_mb_9);
+        out.push_back(&snare_mb_10); out.push_back(&snare_mb_11);
+        out.push_back(&snare_mb_12); out.push_back(&snare_mb_13);
+        out.push_back(&snare_mb_14); out.push_back(&snare_mb_15);
+
+        // Mod B hat: 226..241
+        out.push_back(&hat_mb_0);  out.push_back(&hat_mb_1);
+        out.push_back(&hat_mb_2);  out.push_back(&hat_mb_3);
+        out.push_back(&hat_mb_4);  out.push_back(&hat_mb_5);
+        out.push_back(&hat_mb_6);  out.push_back(&hat_mb_7);
+        out.push_back(&hat_mb_8);  out.push_back(&hat_mb_9);
+        out.push_back(&hat_mb_10); out.push_back(&hat_mb_11);
+        out.push_back(&hat_mb_12); out.push_back(&hat_mb_13);
+        out.push_back(&hat_mb_14); out.push_back(&hat_mb_15);
+
+        // Mod B oh: 242..257
+        out.push_back(&oh_mb_0);  out.push_back(&oh_mb_1);
+        out.push_back(&oh_mb_2);  out.push_back(&oh_mb_3);
+        out.push_back(&oh_mb_4);  out.push_back(&oh_mb_5);
+        out.push_back(&oh_mb_6);  out.push_back(&oh_mb_7);
+        out.push_back(&oh_mb_8);  out.push_back(&oh_mb_9);
+        out.push_back(&oh_mb_10); out.push_back(&oh_mb_11);
+        out.push_back(&oh_mb_12); out.push_back(&oh_mb_13);
+        out.push_back(&oh_mb_14); out.push_back(&oh_mb_15);
+
+        // Mod B clap: 258..273
+        out.push_back(&clap_mb_0);  out.push_back(&clap_mb_1);
+        out.push_back(&clap_mb_2);  out.push_back(&clap_mb_3);
+        out.push_back(&clap_mb_4);  out.push_back(&clap_mb_5);
+        out.push_back(&clap_mb_6);  out.push_back(&clap_mb_7);
+        out.push_back(&clap_mb_8);  out.push_back(&clap_mb_9);
+        out.push_back(&clap_mb_10); out.push_back(&clap_mb_11);
+        out.push_back(&clap_mb_12); out.push_back(&clap_mb_13);
+        out.push_back(&clap_mb_14); out.push_back(&clap_mb_15);
+
+        // Mod B tom: 274..289
+        out.push_back(&tom_mb_0);  out.push_back(&tom_mb_1);
+        out.push_back(&tom_mb_2);  out.push_back(&tom_mb_3);
+        out.push_back(&tom_mb_4);  out.push_back(&tom_mb_5);
+        out.push_back(&tom_mb_6);  out.push_back(&tom_mb_7);
+        out.push_back(&tom_mb_8);  out.push_back(&tom_mb_9);
+        out.push_back(&tom_mb_10); out.push_back(&tom_mb_11);
+        out.push_back(&tom_mb_12); out.push_back(&tom_mb_13);
+        out.push_back(&tom_mb_14); out.push_back(&tom_mb_15);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -194,6 +524,20 @@ struct DrumSequencer : vivid::OperatorBase {
         out.push_back({"clap",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"tom",     VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"step",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        // Mod A outputs (ports 7..12 after 2 inputs)
+        out.push_back({"kick_mod_a",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"snare_mod_a", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"hat_mod_a",   VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"oh_mod_a",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"clap_mod_a",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"tom_mod_a",   VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        // Mod B outputs (ports 13..18)
+        out.push_back({"kick_mod_b",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"snare_mod_b", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"hat_mod_b",   VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"oh_mod_b",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"clap_mod_b",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"tom_mod_b",   VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {
@@ -221,6 +565,15 @@ struct DrumSequencer : vivid::OperatorBase {
             ctx->output_values[d] = active ? 1.0f : 0.0f;
         }
         ctx->output_values[6] = static_cast<float>(step);
+
+        // Per-step modulation outputs (continuous — emitted every frame)
+        static constexpr int kModABase[6] = { 98, 114, 130, 146, 162, 178 };
+        static constexpr int kModBBase[6] = { 194, 210, 226, 242, 258, 274 };
+
+        for (int d = 0; d < 6; ++d) {
+            ctx->output_values[7 + d]  = ctx->param_values[kModABase[d] + step];
+            ctx->output_values[13 + d] = ctx->param_values[kModBBase[d] + step];
+        }
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {

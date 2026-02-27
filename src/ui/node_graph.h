@@ -177,6 +177,7 @@ private:
     void update_node_drag();
     void update_wire_drag();
     void update_slider_drag();
+    void update_drum_mod_drag();
     void update_chooser_hover();
     void update_context_menu();
     void update_pan_release();
@@ -252,6 +253,11 @@ private:
     struct InspectorRect { float x, y, w, h; std::string node_id; std::string param_name; };
     std::vector<InspectorRect> slider_rects_;
 
+    // Drum mod cell drag state
+    int active_drum_mod_idx_ = -1;
+    std::string active_drum_mod_node_id_;
+    std::string active_drum_mod_param_name_;
+
     // Slider text-edit state (click value text to type a value)
     bool editing_param_ = false;
     std::string edit_node_id_;
@@ -263,6 +269,10 @@ private:
     std::vector<InspectorRect> dropdown_rects_;
     std::vector<InspectorRect> file_button_rects_;
     std::vector<InspectorRect> drum_grid_rects_;
+    std::vector<InspectorRect> drum_mod_a_rects_;
+    std::vector<InspectorRect> drum_mod_b_rects_;
+    std::vector<InspectorRect> drum_tab_rects_;
+    int drum_grid_tab_ = 0;   // 0=Pattern, 1=ModA, 2=ModB
 
     struct ResolutionRect { float x, y, w, h; std::string node_id; bool is_width; };
     std::vector<ResolutionRect> resolution_rects_;

@@ -571,6 +571,8 @@ bool NodeGraphUI::handle_inspector_click() {
         if (check_param_rect(bool_rects_)) return true;
         if (check_param_rect(dropdown_rects_)) return true;
         if (check_param_rect(drum_grid_rects_)) return true;
+        if (check_param_rect(drum_mod_a_rects_)) return true;
+        if (check_param_rect(drum_mod_b_rects_)) return true;
 
         return true; // Consume all inspector clicks in MIDI map mode
     }
@@ -700,7 +702,30 @@ bool NodeGraphUI::handle_inspector_click() {
         return true;
     }
 
-    // Check drum grid cell toggle
+    // Check drum tab click
+    int dti = hit_test_rect(drum_tab_rects_, mouse_.x, mouse_.y);
+    if (dti >= 0) {
+        drum_grid_tab_ = dti;
+        return true;
+    }
+
+    // Check drum mod cell drag start (Mod A / Mod B tabs)
+    int dma = hit_test_rect(drum_mod_a_rects_, mouse_.x, mouse_.y);
+    if (dma >= 0) {
+        active_drum_mod_idx_ = dma;
+        active_drum_mod_node_id_ = drum_mod_a_rects_[dma].node_id;
+        active_drum_mod_param_name_ = drum_mod_a_rects_[dma].param_name;
+        return true;
+    }
+    int dmb = hit_test_rect(drum_mod_b_rects_, mouse_.x, mouse_.y);
+    if (dmb >= 0) {
+        active_drum_mod_idx_ = dmb;
+        active_drum_mod_node_id_ = drum_mod_b_rects_[dmb].node_id;
+        active_drum_mod_param_name_ = drum_mod_b_rects_[dmb].param_name;
+        return true;
+    }
+
+    // Check drum grid cell toggle (Pattern tab)
     int dgi = hit_test_rect(drum_grid_rects_, mouse_.x, mouse_.y);
     if (dgi >= 0) {
         const auto& dr = drum_grid_rects_[dgi];
