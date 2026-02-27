@@ -1,0 +1,29 @@
+{
+  "nodes": {
+    "clock_beat": { "type": "Clock", "params": { "bpm": 140.0 } },
+    "clock_half": { "type": "Clock", "params": { "bpm": 70.0 } },
+    "clock_8th":  { "type": "Clock", "params": { "bpm": 280.0 } },
+
+    "kick":  { "type": "DrumKick",  "params": { "pitch": 50.0, "pitch_env": 160.0, "decay": 0.3, "click": 0.3, "volume": 0.8 } },
+    "snare": { "type": "DrumSnare", "params": { "pitch": 200.0, "tone": 0.5, "noise": 0.5, "noise_decay": 0.15, "volume": 0.6 } },
+    "hat":   { "type": "DrumHiHat", "params": { "decay": 0.05, "tone": 0.6, "volume": 0.3 } },
+
+    "mix":   { "type": "Gain",   "params": { "gain": 0.85 } },
+    "glitch":{ "type": "Glitch", "params": { "repeat_chance": 0.2, "reverse_chance": 0.15, "stutter_chance": 0.15, "scratch_chance": 0.1, "tape_chance": 0.1, "shift_chance": 0.1, "mix": 1.0 } },
+
+    "out1":  { "type": "audio_out", "params": {} }
+  },
+  "connections": [
+    { "from": "clock_beat/beat_phase", "to": "kick/phase" },
+    { "from": "clock_half/beat_phase", "to": "snare/phase" },
+    { "from": "clock_8th/beat_phase",  "to": "hat/phase" },
+
+    { "from": "kick/output",           "to": "mix/input" },
+    { "from": "snare/output",          "to": "mix/input" },
+    { "from": "hat/output",            "to": "mix/input" },
+
+    { "from": "clock_beat/beat_phase", "to": "glitch/phase" },
+    { "from": "mix/output",            "to": "glitch/input" },
+    { "from": "glitch/output",         "to": "out1/input" }
+  ]
+}
