@@ -1,5 +1,4 @@
-#ifndef VIVID_RUNTIME_HOT_RELOAD_H
-#define VIVID_RUNTIME_HOT_RELOAD_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -58,5 +57,3 @@ private:
 };
 
 } // namespace vivid
-
-#endif // VIVID_RUNTIME_HOT_RELOAD_H

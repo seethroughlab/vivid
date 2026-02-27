@@ -1,5 +1,4 @@
-#ifndef VIVID_RUNTIME_FILE_WATCHER_H
-#define VIVID_RUNTIME_FILE_WATCHER_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -53,5 +52,3 @@ private:
 };
 
 } // namespace vivid
-
-#endif // VIVID_RUNTIME_FILE_WATCHER_H

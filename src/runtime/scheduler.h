@@ -1,5 +1,4 @@
-#ifndef VIVID_RUNTIME_SCHEDULER_H
-#define VIVID_RUNTIME_SCHEDULER_H
+#pragma once
 
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
@@ -105,5 +104,3 @@ private:
 };
 
 } // namespace vivid
-
-#endif // VIVID_RUNTIME_SCHEDULER_H

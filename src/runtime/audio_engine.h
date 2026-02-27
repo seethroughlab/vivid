@@ -1,5 +1,4 @@
-#ifndef VIVID_RUNTIME_AUDIO_ENGINE_H
-#define VIVID_RUNTIME_AUDIO_ENGINE_H
+#pragma once
 
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
@@ -179,5 +178,3 @@ private:
 };
 
 } // namespace vivid
-
-#endif // VIVID_RUNTIME_AUDIO_ENGINE_H

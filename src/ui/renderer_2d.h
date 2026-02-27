@@ -1,5 +1,4 @@
-#ifndef VIVID_UI_RENDERER_2D_H
-#define VIVID_UI_RENDERER_2D_H
+#pragma once
 
 #include <webgpu/webgpu.h>
 #include <cstdint>
@@ -90,5 +89,3 @@ private:
 };
 
 } // namespace vivid::ui
-
-#endif // VIVID_UI_RENDERER_2D_H

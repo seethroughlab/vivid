@@ -1,5 +1,4 @@
-#ifndef VIVID_OPERATOR_API_TYPES_H
-#define VIVID_OPERATOR_API_TYPES_H
+#pragma once
 
 #include <stdint.h>
 
@@ -134,5 +133,3 @@ typedef void (*VividMainThreadUpdateFn)(void* instance, double time,
 #ifdef __cplusplus
 }
 #endif
-
-#endif // VIVID_OPERATOR_API_TYPES_H

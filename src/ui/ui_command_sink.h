@@ -1,5 +1,4 @@
-#ifndef VIVID_UI_COMMAND_SINK_H
-#define VIVID_UI_COMMAND_SINK_H
+#pragma once
 
 #include <string>
 #include <cstdint>
@@ -30,5 +29,3 @@ public:
 };
 
 } // namespace vivid::ui
-
-#endif // VIVID_UI_COMMAND_SINK_H

@@ -1,5 +1,4 @@
-#ifndef VIVID_RUNTIME_RUNTIME_API_H
-#define VIVID_RUNTIME_RUNTIME_API_H
+#pragma once
 
 #include <string>
 #include <unordered_map>
@@ -82,5 +81,3 @@ private:
 };
 
 } // namespace vivid
-
-#endif // VIVID_RUNTIME_RUNTIME_API_H

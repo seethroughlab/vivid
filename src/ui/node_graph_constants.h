@@ -1,5 +1,4 @@
-#ifndef VIVID_UI_NODE_GRAPH_CONSTANTS_H
-#define VIVID_UI_NODE_GRAPH_CONSTANTS_H
+#pragma once
 
 #include "operator_api/types.h"
 #include <array>
@@ -205,5 +204,3 @@ static constexpr float kPrefsBtnW = 70.0f;
 static constexpr float kPrefsBtnH = 24.0f;
 
 } // namespace vivid::ui
-
-#endif // VIVID_UI_NODE_GRAPH_CONSTANTS_H

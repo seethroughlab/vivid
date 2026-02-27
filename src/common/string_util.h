@@ -1,5 +1,4 @@
-#ifndef VIVID_COMMON_STRING_UTIL_H
-#define VIVID_COMMON_STRING_UTIL_H
+#pragma once
 
 #include <string>
 #include <cstdio>
@@ -21,5 +20,3 @@ inline std::string format_int(int v) {
 }
 
 } // namespace vivid
-
-#endif // VIVID_COMMON_STRING_UTIL_H

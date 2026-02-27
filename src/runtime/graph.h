@@ -1,5 +1,4 @@
-#ifndef VIVID_RUNTIME_GRAPH_H
-#define VIVID_RUNTIME_GRAPH_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -109,5 +108,3 @@ private:
 };
 
 } // namespace vivid
-
-#endif // VIVID_RUNTIME_GRAPH_H

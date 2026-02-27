@@ -69,68 +69,34 @@ else()
     set(VIVID_PLUGIN_SUFFIX ".so")
 endif()
 
-# --- Operator plugins (dynamically loaded) ---
-add_library(lfo MODULE operators/control/lfo/lfo.cpp)
-set_target_properties(lfo PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(lfo PRIVATE vivid_operator_api)
+# --- Operator plugin helper ---
+function(add_vivid_operator name source)
+    cmake_parse_arguments(ARG "" "" "EXTRA_LIBS" ${ARGN})
+    add_library(${name} MODULE ${source})
+    set_target_properties(${name} PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+    target_link_libraries(${name} PRIVATE vivid_operator_api ${ARG_EXTRA_LIBS})
+endfunction()
 
-add_library(clock MODULE operators/control/clock/clock.cpp)
-set_target_properties(clock PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(clock PRIVATE vivid_operator_api)
-
-add_library(math MODULE operators/control/math/math.cpp)
-set_target_properties(math PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(math PRIVATE vivid_operator_api)
-
-add_library(envelope MODULE operators/control/envelope/envelope.cpp)
-set_target_properties(envelope PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(envelope PRIVATE vivid_operator_api)
-
-add_library(midi_input MODULE operators/control/midi_input/midi_input.cpp)
-set_target_properties(midi_input PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(midi_input PRIVATE vivid_operator_api rtmidi)
-
-add_library(fft_analysis MODULE operators/control/fft_analysis/fft_analysis.cpp)
-set_target_properties(fft_analysis PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(fft_analysis PRIVATE vivid_operator_api)
+# --- Control operator plugins ---
+add_vivid_operator(lfo            operators/control/lfo/lfo.cpp)
+add_vivid_operator(clock          operators/control/clock/clock.cpp)
+add_vivid_operator(math           operators/control/math/math.cpp)
+add_vivid_operator(envelope       operators/control/envelope/envelope.cpp)
+add_vivid_operator(midi_input     operators/control/midi_input/midi_input.cpp     EXTRA_LIBS rtmidi)
+add_vivid_operator(fft_analysis   operators/control/fft_analysis/fft_analysis.cpp)
+add_vivid_operator(note_pattern   operators/control/note_pattern/note_pattern.cpp)
+add_vivid_operator(chord_progression operators/control/chord_progression/chord_progression.cpp)
 
 # --- GPU operator plugins ---
-add_library(noise MODULE operators/gpu/noise/noise.cpp)
-set_target_properties(noise PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(noise PRIVATE vivid_operator_api webgpu)
-
-add_library(shape MODULE operators/gpu/shape/shape.cpp)
-set_target_properties(shape PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(shape PRIVATE vivid_operator_api webgpu)
-
-add_library(bars MODULE operators/gpu/bars/bars.cpp)
-set_target_properties(bars PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(bars PRIVATE vivid_operator_api webgpu)
-
-add_library(composite MODULE operators/gpu/composite/composite.cpp)
-set_target_properties(composite PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(composite PRIVATE vivid_operator_api webgpu)
-
-# --- WGSL filter operator plugins ---
-add_library(posterize MODULE operators/gpu/posterize/posterize.cpp)
-set_target_properties(posterize PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(posterize PRIVATE vivid_operator_api webgpu)
-
-add_library(blur MODULE operators/gpu/blur/blur.cpp)
-set_target_properties(blur PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(blur PRIVATE vivid_operator_api webgpu)
-
-add_library(halftone MODULE operators/gpu/halftone/halftone.cpp)
-set_target_properties(halftone PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(halftone PRIVATE vivid_operator_api webgpu)
-
-add_library(levels MODULE operators/gpu/levels/levels.cpp)
-set_target_properties(levels PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(levels PRIVATE vivid_operator_api webgpu)
-
-add_library(displace MODULE operators/gpu/displace/displace.cpp)
-set_target_properties(displace PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(displace PRIVATE vivid_operator_api webgpu)
+add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu)
+add_vivid_operator(shape          operators/gpu/shape/shape.cpp          EXTRA_LIBS webgpu)
+add_vivid_operator(bars           operators/gpu/bars/bars.cpp            EXTRA_LIBS webgpu)
+add_vivid_operator(composite      operators/gpu/composite/composite.cpp  EXTRA_LIBS webgpu)
+add_vivid_operator(posterize      operators/gpu/posterize/posterize.cpp  EXTRA_LIBS webgpu)
+add_vivid_operator(blur           operators/gpu/blur/blur.cpp            EXTRA_LIBS webgpu)
+add_vivid_operator(halftone       operators/gpu/halftone/halftone.cpp    EXTRA_LIBS webgpu)
+add_vivid_operator(levels         operators/gpu/levels/levels.cpp        EXTRA_LIBS webgpu)
+add_vivid_operator(displace       operators/gpu/displace/displace.cpp    EXTRA_LIBS webgpu)
 
 # --- Movie File In (image + video loader) ---
 if(APPLE)
@@ -153,53 +119,16 @@ set_target_properties(movie_file_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_
 target_include_directories(movie_file_in PRIVATE ${CMAKE_SOURCE_DIR}/deps/stb)
 
 # --- Audio operator plugins ---
-add_library(oscillator MODULE operators/audio/oscillator/oscillator.cpp)
-set_target_properties(oscillator PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(oscillator PRIVATE vivid_operator_api)
-
-add_library(gain MODULE operators/audio/gain/gain.cpp)
-set_target_properties(gain PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(gain PRIVATE vivid_operator_api)
-
-add_library(drum MODULE operators/audio/drum/drum.cpp)
-set_target_properties(drum PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(drum PRIVATE vivid_operator_api)
-
-add_library(note_pattern MODULE operators/control/note_pattern/note_pattern.cpp)
-set_target_properties(note_pattern PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(note_pattern PRIVATE vivid_operator_api)
-
-add_library(chord_progression MODULE operators/control/chord_progression/chord_progression.cpp)
-set_target_properties(chord_progression PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(chord_progression PRIVATE vivid_operator_api)
-
-add_library(wavetable_synth MODULE operators/audio/wavetable_synth/wavetable_synth.cpp)
-set_target_properties(wavetable_synth PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(wavetable_synth PRIVATE vivid_operator_api)
-
-add_library(spread_adsr MODULE operators/audio/spread_adsr/spread_adsr.cpp)
-set_target_properties(spread_adsr PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(spread_adsr PRIVATE vivid_operator_api)
-
-add_library(spread_lfo MODULE operators/audio/spread_lfo/spread_lfo.cpp)
-set_target_properties(spread_lfo PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(spread_lfo PRIVATE vivid_operator_api)
-
-add_library(reverb MODULE operators/audio/reverb/reverb.cpp)
-set_target_properties(reverb PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(reverb PRIVATE vivid_operator_api)
-
-add_library(delay MODULE operators/audio/delay/delay.cpp)
-set_target_properties(delay PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(delay PRIVATE vivid_operator_api)
-
-add_library(bitcrush MODULE operators/audio/bitcrush/bitcrush.cpp)
-set_target_properties(bitcrush PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(bitcrush PRIVATE vivid_operator_api)
-
-add_library(distortion MODULE operators/audio/distortion/distortion.cpp)
-set_target_properties(distortion PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(distortion PRIVATE vivid_operator_api)
+add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp)
+add_vivid_operator(gain           operators/audio/gain/gain.cpp)
+add_vivid_operator(drum           operators/audio/drum/drum.cpp)
+add_vivid_operator(wavetable_synth operators/audio/wavetable_synth/wavetable_synth.cpp)
+add_vivid_operator(spread_adsr    operators/audio/spread_adsr/spread_adsr.cpp)
+add_vivid_operator(spread_lfo     operators/audio/spread_lfo/spread_lfo.cpp)
+add_vivid_operator(reverb         operators/audio/reverb/reverb.cpp)
+add_vivid_operator(delay          operators/audio/delay/delay.cpp)
+add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp)
+add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp)
 
 # --- Movie File Audio In (audio extraction from video files) ---
 if(APPLE)
@@ -297,13 +226,8 @@ enable_testing()
 
 # --- Tests ---
 # Test operator plugins (two versions of the same operator)
-add_library(test_op_v1 MODULE tests/operators/test_op_v1.cpp)
-set_target_properties(test_op_v1 PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(test_op_v1 PRIVATE vivid_operator_api)
-
-add_library(test_op_v2 MODULE tests/operators/test_op_v2.cpp)
-set_target_properties(test_op_v2 PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(test_op_v2 PRIVATE vivid_operator_api)
+add_vivid_operator(test_op_v1     tests/operators/test_op_v1.cpp)
+add_vivid_operator(test_op_v2     tests/operators/test_op_v2.cpp)
 
 # Hot-reload integration test (no GPU, no audio, no window)
 add_executable(test_hot_reload
@@ -352,22 +276,11 @@ target_link_libraries(test_control_server PRIVATE
 add_dependencies(test_control_server test_op_v1)
 add_test(NAME test_control_server COMMAND test_control_server WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# Audio test operator plugin
-add_library(audio_test_op MODULE tests/operators/audio_test_op.cpp)
-set_target_properties(audio_test_op PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(audio_test_op PRIVATE vivid_operator_api)
-
-add_library(control_pass_op MODULE tests/operators/control_pass_op.cpp)
-set_target_properties(control_pass_op PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(control_pass_op PRIVATE vivid_operator_api)
-
-add_library(spread_source_op MODULE tests/operators/spread_source_op.cpp)
-set_target_properties(spread_source_op PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(spread_source_op PRIVATE vivid_operator_api)
-
-add_library(audio_spread_op MODULE tests/operators/audio_spread_op.cpp)
-set_target_properties(audio_spread_op PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(audio_spread_op PRIVATE vivid_operator_api)
+# Test operator plugins
+add_vivid_operator(audio_test_op    tests/operators/audio_test_op.cpp)
+add_vivid_operator(control_pass_op  tests/operators/control_pass_op.cpp)
+add_vivid_operator(spread_source_op tests/operators/spread_source_op.cpp)
+add_vivid_operator(audio_spread_op  tests/operators/audio_spread_op.cpp)
 
 # AudioEngine integration test (null audio backend, no GPU, no window)
 add_executable(test_audio_engine
@@ -420,9 +333,7 @@ add_dependencies(test_operator_loader test_op_v1 test_op_v2 control_pass_op)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # GPU operator plugin for testing (solid color fill)
-add_library(gpu_fill_op MODULE tests/operators/gpu_fill_op.cpp)
-set_target_properties(gpu_fill_op PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-target_link_libraries(gpu_fill_op PRIVATE vivid_operator_api webgpu)
+add_vivid_operator(gpu_fill_op      tests/operators/gpu_fill_op.cpp      EXTRA_LIBS webgpu)
 
 # GPU operator integration tests (headless WebGPU, no window)
 add_executable(test_gpu_operators

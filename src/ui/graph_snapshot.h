@@ -1,5 +1,4 @@
-#ifndef VIVID_UI_GRAPH_SNAPSHOT_H
-#define VIVID_UI_GRAPH_SNAPSHOT_H
+#pragma once
 
 #include "operator_api/types.h"
 #include <string>
@@ -129,5 +128,3 @@ struct GraphSnapshot {
 };
 
 } // namespace vivid::ui
-
-#endif // VIVID_UI_GRAPH_SNAPSHOT_H

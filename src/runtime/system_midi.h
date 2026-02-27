@@ -1,5 +1,4 @@
-#ifndef VIVID_RUNTIME_SYSTEM_MIDI_H
-#define VIVID_RUNTIME_SYSTEM_MIDI_H
+#pragma once
 
 #include <array>
 #include <mutex>
@@ -60,5 +59,3 @@ private:
 };
 
 } // namespace vivid
-
-#endif // VIVID_RUNTIME_SYSTEM_MIDI_H

@@ -1,5 +1,4 @@
-#ifndef VIVID_UI_STYLE_H
-#define VIVID_UI_STYLE_H
+#pragma once
 
 #include <array>
 #include <string>
@@ -49,5 +48,3 @@ std::vector<UIStyle> builtin_styles();
 const UIStyle* find_style(const std::vector<UIStyle>& styles, const std::string& id);
 
 } // namespace vivid::ui
-
-#endif // VIVID_UI_STYLE_H

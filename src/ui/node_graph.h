@@ -1,5 +1,4 @@
-#ifndef VIVID_UI_NODE_GRAPH_H
-#define VIVID_UI_NODE_GRAPH_H
+#pragma once
 
 #include "ui/node_graph_constants.h"
 #include "ui/graph_snapshot.h"
@@ -375,5 +374,3 @@ private:
 };
 
 } // namespace vivid::ui
-
-#endif // VIVID_UI_NODE_GRAPH_H

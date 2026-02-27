@@ -1,5 +1,4 @@
-#ifndef VIVID_RUNTIME_OPERATOR_LOADER_H
-#define VIVID_RUNTIME_OPERATOR_LOADER_H
+#pragma once
 
 #include "operator_api/types.h"
 #include <memory>
@@ -61,5 +60,3 @@ private:
 };
 
 } // namespace vivid
-
-#endif // VIVID_RUNTIME_OPERATOR_LOADER_H

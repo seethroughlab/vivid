@@ -1,5 +1,4 @@
-#ifndef VIVID_RUNTIME_OPERATOR_REGISTRY_H
-#define VIVID_RUNTIME_OPERATOR_REGISTRY_H
+#pragma once
 
 #include "runtime/operator_loader.h"
 #include <string>
@@ -70,5 +69,3 @@ private:
 };
 
 } // namespace vivid
-
-#endif // VIVID_RUNTIME_OPERATOR_REGISTRY_H

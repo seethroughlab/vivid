@@ -1,5 +1,4 @@
-#ifndef VIVID_RUNTIME_CONTROL_SERVER_H
-#define VIVID_RUNTIME_CONTROL_SERVER_H
+#pragma once
 
 #include <memory>
 
@@ -36,5 +35,3 @@ private:
 };
 
 } // namespace vivid
-
-#endif // VIVID_RUNTIME_CONTROL_SERVER_H

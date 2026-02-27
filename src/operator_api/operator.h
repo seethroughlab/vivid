@@ -1,5 +1,4 @@
-#ifndef VIVID_OPERATOR_API_OPERATOR_H
-#define VIVID_OPERATOR_API_OPERATOR_H
+#pragma once
 
 #include "operator_api/types.h"
 #include <vector>
@@ -250,5 +249,3 @@ extern "C" void vivid_draw_thumbnail(void* instance,                           \
                                      const VividThumbnailContext* ctx) {        \
     static_cast<ClassName*>(instance)->draw_thumbnail(ctx);                     \
 }
-
-#endif // VIVID_OPERATOR_API_OPERATOR_H

@@ -1,5 +1,4 @@
-#ifndef VIVID_COMMON_SYSTEM_INFO_H
-#define VIVID_COMMON_SYSTEM_INFO_H
+#pragma once
 
 #include <cstdint>
 #include <cstdio>
@@ -57,5 +56,3 @@ inline const char* format_memory(char* buf, size_t buf_size, uint64_t bytes) {
 }
 
 } // namespace vivid
-
-#endif // VIVID_COMMON_SYSTEM_INFO_H
