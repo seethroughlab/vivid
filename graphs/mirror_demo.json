@@ -1,0 +1,18 @@
+{
+  "nodes": {
+    "vid":       { "type": "MovieFileIn",      "params": { "file": "media/lake.mp4", "play_mode": 0, "speed": 1.0 } },
+    "audio":     { "type": "MovieFileAudioIn", "params": { "file": "media/lake.mp4" } },
+    "mirror":    { "type": "Mirror",           "params": { "mode": 3, "segments": 8.0, "angle": 0.0 } },
+    "lfo_angle": { "type": "LFO",             "params": { "frequency": 0.05, "amplitude": 180.0, "offset": 0.0 } },
+    "vout":      { "type": "video_out" },
+    "aout":      { "type": "audio_out" }
+  },
+  "connections": [
+    { "from": "vid/texture",      "to": "mirror/input" },
+    { "from": "lfo_angle/value",  "to": "mirror/angle" },
+    { "from": "mirror/texture",   "to": "vout/input" },
+    { "from": "vid/time",         "to": "audio/video_time" },
+    { "from": "audio/left",       "to": "aout/left" },
+    { "from": "audio/right",      "to": "aout/right" }
+  ]
+}

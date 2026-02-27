@@ -1,0 +1,18 @@
+{
+  "nodes": {
+    "vid":     { "type": "MovieFileIn",      "params": { "file": "media/camera.mp4", "play_mode": 0, "speed": 1.0 } },
+    "audio":   { "type": "MovieFileAudioIn", "params": { "file": "media/camera.mp4" } },
+    "hsv":     { "type": "HSV",              "params": { "hue_shift": 0.0, "saturation": 0.2, "value": 0.0 } },
+    "lfo_hue": { "type": "LFO",             "params": { "frequency": 0.1, "amplitude": 180.0, "offset": 180.0 } },
+    "vout":    { "type": "video_out" },
+    "aout":    { "type": "audio_out" }
+  },
+  "connections": [
+    { "from": "vid/texture",    "to": "hsv/input" },
+    { "from": "lfo_hue/value",  "to": "hsv/hue_shift" },
+    { "from": "hsv/texture",    "to": "vout/input" },
+    { "from": "vid/time",       "to": "audio/video_time" },
+    { "from": "audio/left",     "to": "aout/left" },
+    { "from": "audio/right",    "to": "aout/right" }
+  ]
+}
