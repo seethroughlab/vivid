@@ -8,6 +8,7 @@ struct Clock : vivid::OperatorBase {
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> bpm{"bpm", 120.0f, 1.0f, 300.0f};
+    double phase_ = 0.0;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&bpm);
@@ -19,8 +20,9 @@ struct Clock : vivid::OperatorBase {
 
     void process(const VividProcessContext* ctx) override {
         double beats_per_sec = static_cast<double>(bpm.value) / 60.0;
-        double beat_phase = std::fmod(ctx->time * beats_per_sec, 1.0);
-        ctx->output_values[0] = static_cast<float>(beat_phase);
+        phase_ += ctx->delta_time * beats_per_sec;
+        phase_ -= std::floor(phase_);
+        ctx->output_values[0] = static_cast<float>(phase_);
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {

@@ -14,6 +14,7 @@ struct LFO : vivid::OperatorBase {
     vivid::Param<float> amplitude{"amplitude", 1.0f, 0.0f, 10000.0f};
     vivid::Param<float> offset   {"offset",    0.0f, -20000.0f, 20000.0f};
     vivid::Param<int>   waveform {"waveform",  0, {"sine", "saw", "square", "triangle"}};
+    double free_phase_ = 0.0;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&frequency);
@@ -34,8 +35,10 @@ struct LFO : vivid::OperatorBase {
             // Driven by external source (e.g. Clock beat_phase)
             phase = std::fmod(static_cast<double>(phase_in), 1.0);
         } else {
-            // Free-running from wall time
-            phase = std::fmod(ctx->time * static_cast<double>(frequency.value), 1.0);
+            // Free-running: accumulate incrementally for smooth frequency changes
+            free_phase_ += ctx->delta_time * static_cast<double>(frequency.value);
+            free_phase_ -= std::floor(free_phase_);
+            phase = free_phase_;
         }
 
         double raw = 0.0;
