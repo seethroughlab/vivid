@@ -796,16 +796,6 @@ int main(int argc, char* argv[]) {
         CFStringRef mode = CFRunLoopCopyCurrentMode(CFRunLoopGetMain());
         bool in_default_mode = !mode || CFEqual(mode, kCFRunLoopDefaultMode);
 
-        // DEBUG: log run loop mode to diagnose tracking-mode timer behavior
-        if (frame_count % 60 == 0 || !in_default_mode) {
-            char mode_buf[128] = "NULL";
-            if (mode) {
-                CFStringGetCString(mode, mode_buf, sizeof(mode_buf), kCFStringEncodingUTF8);
-            }
-            std::fprintf(stderr, "[vivid-dbg] frame=%llu mode=%s default=%d\n",
-                static_cast<unsigned long long>(frame_count), mode_buf, in_default_mode);
-        }
-
         if (mode) CFRelease(mode);
 #endif
 
@@ -831,7 +821,15 @@ int main(int argc, char* argv[]) {
                 fb_width = fb_w;
                 fb_height = fb_h;
                 gpu.resize(static_cast<uint32_t>(fb_width), static_cast<uint32_t>(fb_height));
-                std::fprintf(stderr, "[vivid-dbg] resize to %dx%d\n", fb_w, fb_h);
+            }
+            if (defer_resize && (fb_w != fb_width || fb_h != fb_height)) {
+                // Surface wasn't resized — clamp rendering dimensions to match
+                // so scissor rects don't exceed the render target.
+                float dpi = (win_w > 0) ? static_cast<float>(fb_w) / win_w : 1.0f;
+                fb_w = fb_width;
+                fb_h = fb_height;
+                win_w = static_cast<int>(fb_width / dpi);
+                win_h = static_cast<int>(fb_height / dpi);
             }
         }
 
@@ -880,12 +878,6 @@ int main(int argc, char* argv[]) {
             WGPUCommandEncoderDescriptor enc_desc{};
             enc_desc.label = to_sv("Offscreen Tick Encoder");
             tick_encoder = wgpuDeviceCreateCommandEncoder(gpu.device(), &enc_desc);
-#ifdef __APPLE__
-            if (!in_default_mode) {
-                std::fprintf(stderr, "[vivid-dbg] begin_frame FAILED in tracking mode, frame=%llu\n",
-                    static_cast<unsigned long long>(frame_count));
-            }
-#endif
         }
 
         // --- Tick graph (always runs, even without a surface) ---

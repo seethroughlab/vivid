@@ -4,7 +4,8 @@
 
 namespace vivid {
 
-void macos_run_frame_loop(std::function<bool()> tick) {
+void macos_run_frame_loop(std::function<bool()> poll_events,
+                          std::function<bool()> tick) {
     struct Context {
         std::function<bool()> tick;
         CFRunLoopTimerRef timer = nullptr;
@@ -32,15 +33,26 @@ void macos_run_frame_loop(std::function<bool()> tick) {
         &timer_ctx
     );
 
-    // Timer in kCFRunLoopCommonModes fires in both default mode and
-    // NSEventTrackingRunLoopMode (active during window drag/resize).
-    CFRunLoopAddTimer(CFRunLoopGetMain(), ctx.timer, kCFRunLoopCommonModes);
+    // Register timer for all modes we need it to fire in.
+    // kCFRunLoopCommonModes does NOT include tracking/modal on macOS (unlike iOS).
+    CFRunLoopRef rl = CFRunLoopGetMain();
+    CFRunLoopAddTimer(rl, ctx.timer, kCFRunLoopDefaultMode);
+    CFRunLoopAddTimer(rl, ctx.timer, CFSTR("NSEventTrackingRunLoopMode"));
+    CFRunLoopAddTimer(rl, ctx.timer, CFSTR("NSModalPanelRunLoopMode"));
 
-    // Use a loop around CFRunLoopRunInMode instead of CFRunLoopRun() because
-    // GLFW's Cocoa backend posts a deferred [NSApp stop:] during initialization
-    // that can cause a single CFRunLoopRun() to exit immediately.
+    // Outer loop: poll events (may block during tracking), then let the timer fire.
+    // During tracking, glfwPollEvents() blocks inside [NSApp sendEvent:], and
+    // AppKit runs CFRunLoopRunInMode(NSEventTrackingRunLoopMode, ...) internally.
+    // Our timer fires in that nested run loop, rendering frames continuously.
+    // When tracking ends, glfwPollEvents() returns, and we resume the outer loop.
     while (!ctx.should_stop) {
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1e10, true);
+        if (!poll_events()) {
+            ctx.should_stop = true;
+            break;
+        }
+        // Let the timer fire once in default mode, then loop back to poll.
+        // timeout=1.0s is a ceiling — the timer fires at 1/240s, waking the loop.
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
     }
 
     CFRunLoopTimerInvalidate(ctx.timer);
