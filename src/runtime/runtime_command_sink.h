@@ -50,6 +50,11 @@ public:
         api_.update_midi_mapping(node_id, param, range_min, range_max);
     }
 
+    void set_string_param(const std::string& node_id, const std::string& param,
+                          const std::string& value) override {
+        api_.set_string_param(node_id, param, value);
+    }
+
     void open_shader(const std::string& type_name) override {
         // User C++ operator → open its source .cpp
         if (registry_ && registry_->is_user_operator(type_name)) {

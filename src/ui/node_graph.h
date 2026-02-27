@@ -239,6 +239,7 @@ private:
     std::vector<InspectorRect> bool_rects_;
     std::vector<InspectorRect> value_text_rects_;
     std::vector<InspectorRect> dropdown_rects_;
+    std::vector<InspectorRect> file_button_rects_;
 
     struct ResolutionRect { float x, y, w, h; std::string node_id; bool is_width; };
     std::vector<ResolutionRect> resolution_rects_;

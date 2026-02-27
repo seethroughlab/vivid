@@ -26,6 +26,8 @@ public:
     virtual void set_editor_preference(const std::string& editor_id,
                                        const std::string& custom_command) {}
     virtual void set_style_preference(const std::string& style_id) {}
+    virtual void set_string_param(const std::string& node_id, const std::string& param,
+                                  const std::string& value) = 0;
 };
 
 } // namespace vivid::ui

@@ -1,5 +1,6 @@
 #include "ui/node_graph.h"
 #include "ui/node_graph_constants.h"
+#include "ui/file_dialog.h"
 #include "common/string_util.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -620,6 +621,17 @@ bool NodeGraphUI::handle_inspector_click() {
                 commands_.set_param(br.node_id, br.param_name,
                                cur > 0.5f ? 0.0f : 1.0f);
             }
+        }
+        return true;
+    }
+
+    // Check file button click
+    int fi = hit_test_rect(file_button_rects_, mouse_.x, mouse_.y);
+    if (fi >= 0) {
+        const auto& fr = file_button_rects_[fi];
+        std::string path = vivid::ui::open_file_dialog();
+        if (!path.empty()) {
+            commands_.set_string_param(fr.node_id, fr.param_name, path);
         }
         return true;
     }
