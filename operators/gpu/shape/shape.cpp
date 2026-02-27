@@ -87,7 +87,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     let alpha = 1.0 - smoothstep(-uniforms.softness, uniforms.softness, d);
 
     let color = vec3f(uniforms.color_r, uniforms.color_g, uniforms.color_b);
-    return vec4f(color * alpha, 1.0);
+    return vec4f(color * alpha, alpha);
 }
 )";
 

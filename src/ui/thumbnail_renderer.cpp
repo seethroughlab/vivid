@@ -146,8 +146,17 @@ bool ThumbnailRenderer::init(WGPUDevice device, WGPUQueue queue,
     pipe_layout_ = wgpuDeviceCreatePipelineLayout(device_, &pl_desc);
 
     // Render pipeline
+    WGPUBlendState blend{};
+    blend.color.srcFactor = WGPUBlendFactor_One;
+    blend.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+    blend.color.operation = WGPUBlendOperation_Add;
+    blend.alpha.srcFactor = WGPUBlendFactor_One;
+    blend.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+    blend.alpha.operation = WGPUBlendOperation_Add;
+
     WGPUColorTargetState color_target{};
     color_target.format = surface_format;
+    color_target.blend = &blend;
     color_target.writeMask = WGPUColorWriteMask_All;
 
     WGPUFragmentState fragment{};
