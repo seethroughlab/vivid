@@ -5,7 +5,7 @@ struct Switch : vivid::WgslFilterBase {
     static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = false;
 
-    vivid::Param<int>   index {"index", 0, 0, 3};
+    vivid::Param<int>   index {"index", 0, 0, 7};
     vivid::Param<float> blend {"blend", 0.0f, 0.0f, 1.0f};
 
     Switch() : WgslFilterBase("switch_op.wgsl") {}
@@ -15,6 +15,10 @@ struct Switch : vivid::WgslFilterBase {
         out.push_back({"in1", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
         out.push_back({"in2", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
         out.push_back({"in3", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
+        out.push_back({"in4", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
+        out.push_back({"in5", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
+        out.push_back({"in6", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
+        out.push_back({"in7", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
