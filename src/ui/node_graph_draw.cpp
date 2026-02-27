@@ -181,21 +181,27 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float s_line_h = tr.line_height() * zoom_;
         for (const auto& p : r.inputs) {
             float spx = gx_to_sx(p.x), spy = gy_to_sy(p.y);
-            tr.draw_rect(spx - s_dot, spy - s_dot * 0.5f,
-                         s_dot, s_dot,
-                         dcol[0], dcol[1], dcol[2]);
+            float dot_scale = p.is_param ? 0.7f : 1.0f;
+            float dot_alpha = p.is_param ? 0.6f : 1.0f;
+            float sd = s_dot * dot_scale;
+            tr.draw_rect(spx - sd, spy - sd * 0.5f,
+                         sd, sd,
+                         dcol[0], dcol[1], dcol[2], dot_alpha);
             tr.draw_text(spx + g_to_s(4), spy - s_line_h * 0.5f, p.name.c_str(),
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, zoom_);
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], dot_alpha, zoom_);
         }
         // Output port dots and labels (use domain color)
         for (const auto& p : r.outputs) {
             float spx = gx_to_sx(p.x), spy = gy_to_sy(p.y);
-            tr.draw_rect(spx, spy - s_dot * 0.5f,
-                         s_dot, s_dot,
-                         dcol[0], dcol[1], dcol[2]);
+            float dot_scale = p.is_param ? 0.7f : 1.0f;
+            float dot_alpha = p.is_param ? 0.6f : 1.0f;
+            float sd = s_dot * dot_scale;
+            tr.draw_rect(spx, spy - sd * 0.5f,
+                         sd, sd,
+                         dcol[0], dcol[1], dcol[2], dot_alpha);
             float lw = tr.text_width(p.name.c_str(), zoom_);
             tr.draw_text(spx - lw - g_to_s(4), spy - s_line_h * 0.5f, p.name.c_str(),
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, zoom_);
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], dot_alpha, zoom_);
         }
     }
 }
@@ -362,6 +368,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     resolution_rects_.clear();
     midi_remove_rects_.clear();
     midi_range_rects_.clear();
+    matrix_cell_rects_.clear();
 
     if (selected_node_ids_.empty()) return;
 
@@ -370,15 +377,75 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     tr.draw_rect(insp_x, 0, kInspectorW, static_cast<float>(h), style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.95f);
     tr.draw_rect(insp_x, 0, 2, static_cast<float>(h), style_.separator[0], style_.separator[1], style_.separator[2]);
 
-    // Multi-selection summary panel
+    // Multi-selection panel
     if (selected_node_ids_.size() > 1) {
-        float px = insp_x + kInspPadX;
-        float py = kPerfBarH + 8;
-        std::string label = std::to_string(selected_node_ids_.size()) + " nodes selected";
-        tr.draw_text(px, py, label.c_str(), 1.0f, 1.0f, 1.0f);
-        py += kLineH + 4;
-        tr.draw_text(px, py, "Delete / Backspace to remove", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-        insp_content_h_ = 0;
+        if (selected_node_ids_.size() == 2) {
+            // 2-node selection: show connection matrix between the pair
+            auto it = selected_node_ids_.begin();
+            const std::string& id_a = *it++;
+            const std::string& id_b = *it;
+            const auto* node_a = snap_.find_node(id_a);
+            const auto* node_b = snap_.find_node(id_b);
+            if (!node_a || !node_b || !node_a->op_info || !node_b->op_info) {
+                float px = insp_x + kInspPadX;
+                float py = kPerfBarH + 8;
+                tr.draw_text(px, py, "Node not found", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+                insp_content_h_ = 0;
+                return;
+            }
+
+            // Reset scroll when the selected pair changes
+            std::string scroll_key = id_a + "+" + id_b;
+            if (scroll_key != insp_scroll_node_id_) {
+                insp_scroll_y_ = 0.0f;
+                insp_scroll_node_id_ = scroll_key;
+            }
+
+            float viewport_top = kPerfBarH;
+            float viewport_h = static_cast<float>(h) - viewport_top;
+            float max_scroll = std::max(0.0f, insp_content_h_ - viewport_h);
+            insp_scroll_y_ = std::max(0.0f, std::min(insp_scroll_y_, max_scroll));
+
+            tr.push_clip_rect(insp_x, viewport_top, kInspectorW, viewport_h);
+
+            float px = insp_x + kInspPadX;
+            float py = viewport_top + 8 - insp_scroll_y_;
+
+            // Header: both node names with domain colors
+            const float* clr_a = domain_color(node_a->domain);
+            const float* clr_b = domain_color(node_b->domain);
+            tr.draw_text(px, py, node_a->op_info->name.c_str(), clr_a[0], clr_a[1], clr_a[2]);
+            float name_w = tr.text_width(node_a->op_info->name.c_str());
+            tr.draw_text(px + name_w + 4, py, " + ", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            float plus_w = tr.text_width(" + ");
+            tr.draw_text(px + name_w + 4 + plus_w, py, node_b->op_info->name.c_str(), clr_b[0], clr_b[1], clr_b[2]);
+            py += kLineH;
+
+            tr.draw_text(px, py, "Delete / Backspace to remove", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            py += kLineH + 8;
+
+            tr.draw_rect(px, py, kInspContentW, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
+            py += 8;
+
+            // A → B matrix section
+            draw_matrix_section(tr, *node_a, *node_b, px, py);
+            // B → A matrix section
+            draw_matrix_section(tr, *node_b, *node_a, px, py);
+
+            tr.pop_clip_rect();
+
+            insp_content_h_ = (py + insp_scroll_y_) - viewport_top;
+            draw_inspector_scrollbar(tr);
+        } else {
+            // 3+ nodes: summary
+            float px = insp_x + kInspPadX;
+            float py = kPerfBarH + 8;
+            std::string label = std::to_string(selected_node_ids_.size()) + " nodes selected";
+            tr.draw_text(px, py, label.c_str(), 1.0f, 1.0f, 1.0f);
+            py += kLineH + 4;
+            tr.draw_text(px, py, "Delete / Backspace to remove", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            insp_content_h_ = 0;
+        }
         return;
     }
 
@@ -525,11 +592,22 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
     // CC badge (if this param has a MIDI mapping)
     const auto* midi_mm = snap_.find_midi_mapping(single_selected_id(), pd.name);
 
+    // Domain-colored dot indicating this param is driven by a connection
+    float label_x = px;
+    if (is_connected) {
+        const auto* src_ns = snap_.find_node(conn_from_node);
+        const float* dot_clr = src_ns ? domain_color(src_ns->domain) : style_.accent.data();
+        float dot_sz = 5.0f;
+        float dot_x = px - dot_sz - 2.0f;
+        float dot_y = py + (kLineH - dot_sz) * 0.5f;
+        tr.draw_rect(dot_x, dot_y, dot_sz, dot_sz, dot_clr[0], dot_clr[1], dot_clr[2], 0.9f);
+    }
+
     // Label (dimmed if driven by connection)
     if (is_connected)
-        tr.draw_text(px, py, pd.name.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+        tr.draw_text(label_x, py, pd.name.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
     else
-        tr.draw_text(px, py, pd.name.c_str(), 0.8f, 0.82f, 0.85f);
+        tr.draw_text(label_x, py, pd.name.c_str(), 0.8f, 0.82f, 0.85f);
 
     // CC badge inline with label
     if (midi_mm) {
@@ -1362,6 +1440,153 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
     }
 }
 
+// -----------------------------------------------------------------------
+// Connection Matrix
+// -----------------------------------------------------------------------
+static constexpr float kMatrixCellSize = 18.0f;
+static constexpr float kMatrixCellPad = 2.0f;
+static constexpr float kMatrixHeaderH = 60.0f;  // space for rotated column labels
+static constexpr float kMatrixRowLabelW = 100.0f;
+
+void NodeGraphUI::draw_matrix_section(Renderer2D& tr, const NodeSnapshot& src_node,
+                                       const NodeSnapshot& dst_node, float px, float& py) {
+    if (!src_node.op_info || !dst_node.op_info) return;
+
+    // Rows: source node's output ports
+    struct RowInfo { std::string port_name; };
+    std::vector<RowInfo> rows;
+    auto sorted_outs = sorted_ports(src_node.output_port_indices);
+    for (const auto& [idx, name] : sorted_outs)
+        rows.push_back({name});
+    if (rows.empty()) return;  // skip section entirely if src has no outputs
+
+    // Columns: destination node's params (non-FILE) + signal input ports
+    struct ColInfo { std::string name; };
+    std::vector<ColInfo> columns;
+    for (const auto& pd : dst_node.op_info->params) {
+        if (pd.type == VIVID_PARAM_FILE) continue;
+        columns.push_back({pd.name});
+    }
+    for (const auto& pi : dst_node.op_info->ports) {
+        if (pi.direction != VIVID_PORT_INPUT) continue;
+        bool is_param = false;
+        for (const auto& pd : dst_node.op_info->params) {
+            if (pd.name == pi.name) { is_param = true; break; }
+        }
+        if (!is_param) columns.push_back({pi.name});
+    }
+    if (columns.empty()) return;
+
+    // Build lookup for existing connections from src -> dst
+    struct ConnKey { std::string from_port, to_port; float scale; };
+    std::vector<ConnKey> active_conns;
+    for (const auto& c : snap_.connections) {
+        if (c.from_node == src_node.node_id && c.to_node == dst_node.node_id)
+            active_conns.push_back({c.from_port, c.to_port, c.scale});
+    }
+    auto find_conn = [&](const std::string& fp, const std::string& tp) -> const ConnKey* {
+        for (const auto& c : active_conns) {
+            if (c.from_port == fp && c.to_port == tp) return &c;
+        }
+        return nullptr;
+    };
+
+    // --- Section header: "src_name → dst_name" with domain colors ---
+    float panel_w = kInspContentW;
+    const float* src_clr = domain_color(src_node.domain);
+    const float* dst_clr = domain_color(dst_node.domain);
+    tr.draw_text(px, py, src_node.op_info->name.c_str(), src_clr[0], src_clr[1], src_clr[2]);
+    float src_w = tr.text_width(src_node.op_info->name.c_str());
+    tr.draw_text(px + src_w + 2, py, " \xE2\x86\x92 ", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);  // " → "
+    float arrow_w = tr.text_width(" \xE2\x86\x92 ");
+    tr.draw_text(px + src_w + 2 + arrow_w, py, dst_node.op_info->name.c_str(), dst_clr[0], dst_clr[1], dst_clr[2]);
+    py += kLineH + 4;
+
+    // Compute layout geometry
+    float matrix_x = px + kMatrixRowLabelW;
+    float matrix_y = py + kMatrixHeaderH;
+    float cell_step = kMatrixCellSize + kMatrixCellPad;
+
+    // Limit visible columns/rows to fit inspector width
+    float avail_w = panel_w - kMatrixRowLabelW;
+    int max_cols = static_cast<int>(avail_w / cell_step);
+    if (max_cols < 1) max_cols = 1;
+    int vis_cols = std::min(static_cast<int>(columns.size()), max_cols);
+
+    // --- Draw column headers (abbreviated, drawn vertically) ---
+    for (int ci = 0; ci < vis_cols; ++ci) {
+        float cx = matrix_x + ci * cell_step + cell_step * 0.5f;
+        const auto& name = columns[ci].name;
+        std::string abbr = name.length() > 5 ? name.substr(0, 5) : name;
+        for (size_t chi = 0; chi < abbr.size(); ++chi) {
+            char buf[2] = { abbr[chi], '\0' };
+            float cy = py + chi * 10.0f;
+            tr.draw_text(cx - 3, cy, buf, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f, 0.8f);
+        }
+    }
+
+    // --- Draw rows ---
+    int vis_rows = std::min(static_cast<int>(rows.size()), 30);
+
+    for (int ri = 0; ri < vis_rows; ++ri) {
+        const auto& row = rows[ri];
+        float row_y = matrix_y + ri * cell_step;
+
+        // Row label: output port name (truncated)
+        std::string label = row.port_name;
+        if (label.size() > 14) label = label.substr(0, 13) + "~";
+        tr.draw_text(px, row_y + 2, label.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f, 0.8f);
+
+        for (int ci = 0; ci < vis_cols; ++ci) {
+            float cx = matrix_x + ci * cell_step;
+            float cy = row_y;
+
+            // Cell background
+            tr.draw_rect(cx, cy, kMatrixCellSize, kMatrixCellSize,
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.5f);
+
+            const auto* conn = find_conn(row.port_name, columns[ci].name);
+            bool is_connected = (conn != nullptr);
+            float scale = is_connected ? conn->scale : 0.0f;
+
+            if (is_connected) {
+                float fill_h = kMatrixCellSize * scale;
+                float fill_y = cy + kMatrixCellSize - fill_h;
+                tr.draw_rect(cx, fill_y, kMatrixCellSize, fill_h,
+                             style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
+            }
+
+            // Store cell rect for hit testing (with both from_node and to_node)
+            matrix_cell_rects_.push_back({
+                cx, cy, kMatrixCellSize, kMatrixCellSize,
+                src_node.node_id, row.port_name,
+                dst_node.node_id, columns[ci].name,
+                is_connected, scale
+            });
+        }
+    }
+
+    // Draw hover tooltip
+    if (!matrix_scale_dragging_) {
+        int hi = hit_test_rect(matrix_cell_rects_, mouse_.x, mouse_.y);
+        if (hi >= 0) {
+            const auto& cell = matrix_cell_rects_[hi];
+            std::string tip = cell.from_node + "/" + cell.from_port + " -> " + cell.to_node + "/" + cell.to_port;
+            if (cell.connected) {
+                tip += " (scale: " + format_float(cell.scale, 2) + ")";
+            }
+            float tw = tr.text_width(tip.c_str(), 0.8f);
+            float tx = mouse_.x + 12;
+            float ty = mouse_.y - 6;
+            tr.draw_rect(tx - 3, ty - 2, tw + 6, kLineH, 0.0f, 0.0f, 0.0f, 0.85f);
+            tr.draw_text(tx, ty, tip.c_str(), 1.0f, 1.0f, 1.0f, 0.9f, 0.8f);
+        }
+    }
+
+    py = matrix_y + vis_rows * cell_step + 8;
+}
+
 void NodeGraphUI::draw_preview_wire(Renderer2D& tr) {
     if (!dragging_wire_) return;
     float ssx = gx_to_sx(wire_from_gx_), ssy = gy_to_sy(wire_from_gy_);
@@ -1372,6 +1597,19 @@ void NodeGraphUI::draw_preview_wire(Renderer2D& tr) {
         [&](float x0, float y0, float x1, float y1) {
             tr.draw_line(x0, y0, x1, y1, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
         });
+
+    // Highlight target node body when cursor is over a different node (drop target)
+    int ni = hit_test_node(mouse_.x, mouse_.y);
+    if (ni >= 0 && node_rects_[ni].node_id != wire_from_node_id_) {
+        const auto& r = node_rects_[ni];
+        float sx = gx_to_sx(r.x), sy = gy_to_sy(r.y);
+        float sw = g_to_s(r.w), sh = g_to_s(r.h);
+        float bw = 2.0f;
+        tr.draw_rect(sx, sy, sw, bw, style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
+        tr.draw_rect(sx, sy + sh - bw, sw, bw, style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
+        tr.draw_rect(sx, sy, bw, sh, style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
+        tr.draw_rect(sx + sw - bw, sy, bw, sh, style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
+    }
 }
 
 void NodeGraphUI::draw_box_select(Renderer2D& tr) {
@@ -1544,6 +1782,9 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
 
     // Operator chooser — drawn here (overlay pass) so it appears above GPU thumbnails
     draw_chooser(tr);
+
+    // Parameter picker popup
+    draw_param_picker(tr);
 
     // Dropdown popup
     if (dropdown_open_ && !dropdown_labels_.empty()) {
@@ -2064,6 +2305,48 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
         renderer.draw(thumb_view, tx, ty, tw, th, sc_x, sc_y, sc_w, sc_h);
     }
     renderer.end();
+}
+
+// -----------------------------------------------------------------------
+// Parameter picker popup
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_param_picker(Renderer2D& tr) {
+    if (!param_picker_open_ || param_picker_items_.empty()) return;
+
+    static constexpr float kPickerItemH = 22.0f;
+    static constexpr float kPickerW = 220.0f;
+    static constexpr int kPickerMaxVisible = 12;
+
+    int visible = std::min(static_cast<int>(param_picker_items_.size()), kPickerMaxVisible);
+    float popup_h = visible * kPickerItemH + 4;
+
+    float px = param_picker_x_;
+    float py = param_picker_y_;
+
+    // Clamp to window bounds
+    if (px + kPickerW > static_cast<float>(win_w_)) px = static_cast<float>(win_w_) - kPickerW;
+    if (py + popup_h > static_cast<float>(win_h_)) py = static_cast<float>(win_h_) - popup_h;
+
+    // Background
+    tr.draw_rect(px, py, kPickerW, popup_h,
+                 style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    // Accent bar
+    tr.draw_rect(px, py, kPickerW, 1,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    // Items
+    for (int i = 0; i < visible; ++i) {
+        int idx = param_picker_scroll_ + i;
+        if (idx < 0 || idx >= static_cast<int>(param_picker_items_.size())) break;
+
+        float iy = py + 2 + i * kPickerItemH;
+        if (idx == param_picker_sel_) {
+            tr.draw_rect(px + 2, iy, kPickerW - 4, kPickerItemH,
+                         style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
+        }
+        tr.draw_text(px + 8, iy + 3, param_picker_items_[idx].c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
 }
 
 } // namespace vivid::ui

@@ -13,22 +13,7 @@ using vivid::format_float;
 using vivid::format_int;
 using vivid::format_uint;
 
-// Resolve the VividPortType for a given port on a node
-static VividPortType resolve_port_type(const GraphSnapshot& snap,
-                                       const std::string& node_id,
-                                       const std::string& port_name,
-                                       bool is_output) {
-    const auto* ns = snap.find_node(node_id);
-    if (!ns || !ns->op_info) return VIVID_PORT_CONTROL_FLOAT;
-    for (const auto& p : ns->op_info->ports) {
-        if (p.name == port_name &&
-            ((is_output && p.direction == VIVID_PORT_OUTPUT) ||
-             (!is_output && p.direction == VIVID_PORT_INPUT)))
-            return p.type;
-    }
-    // If not found in ports, it's a param input — control float
-    return VIVID_PORT_CONTROL_FLOAT;
-}
+// Use the shared resolve_port_type on NodeGraphUI
 
 // -----------------------------------------------------------------------
 // GLFW callbacks
@@ -66,6 +51,14 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
 }
 
 void NodeGraphUI::on_scroll(float /*x_offset*/, float y_offset) {
+    // Param picker scroll
+    if (param_picker_open_ && !param_picker_items_.empty()) {
+        param_picker_scroll_ -= static_cast<int>(y_offset);
+        int max_scroll = std::max(0, static_cast<int>(param_picker_items_.size()) - 12);
+        param_picker_scroll_ = std::max(0, std::min(param_picker_scroll_, max_scroll));
+        return;
+    }
+
     // Chooser scroll when cursor is over the chooser panel
     if (chooser_open_) {
         float px = chooser_x();
@@ -151,6 +144,59 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
 
     if (clone_confirm_open_) {
         if (key == GLFW_KEY_ESCAPE) clone_confirm_open_ = false;
+        return;
+    }
+
+    if (param_picker_open_) {
+        switch (key) {
+            case GLFW_KEY_ESCAPE:
+                param_picker_open_ = false;
+                break;
+            case GLFW_KEY_UP:
+                if (param_picker_sel_ > 0) {
+                    param_picker_sel_--;
+                    if (param_picker_sel_ < param_picker_scroll_)
+                        param_picker_scroll_ = param_picker_sel_;
+                }
+                break;
+            case GLFW_KEY_DOWN:
+                if (param_picker_sel_ < static_cast<int>(param_picker_items_.size()) - 1) {
+                    param_picker_sel_++;
+                    if (param_picker_sel_ >= param_picker_scroll_ + 12)
+                        param_picker_scroll_ = param_picker_sel_ - 12 + 1;
+                }
+                break;
+            case GLFW_KEY_ENTER:
+                if (!param_picker_items_.empty() && param_picker_sel_ >= 0 &&
+                    param_picker_sel_ < static_cast<int>(param_picker_items_.size())) {
+                    const std::string& selected = param_picker_items_[param_picker_sel_];
+                    if (param_picker_is_output_) {
+                        dragging_wire_ = true;
+                        wire_from_node_id_ = param_picker_node_id_;
+                        wire_from_port_ = selected;
+                        wire_from_is_output_ = true;
+                        for (const auto& r : node_rects_) {
+                            if (r.node_id == param_picker_node_id_) {
+                                wire_from_gx_ = r.x + r.w;
+                                wire_from_gy_ = r.y + r.h * 0.5f;
+                                for (const auto& p : r.outputs) {
+                                    if (p.name == selected) {
+                                        wire_from_gx_ = p.x;
+                                        wire_from_gy_ = p.y;
+                                        break;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    } else {
+                        commands_.connect(param_picker_wire_from_node_ + "/" + param_picker_wire_from_port_,
+                                     param_picker_node_id_ + "/" + selected);
+                    }
+                }
+                param_picker_open_ = false;
+                break;
+        }
         return;
     }
 
@@ -741,6 +787,9 @@ bool NodeGraphUI::handle_inspector_click() {
         return true;
     }
 
+    // Check matrix cell click (connect/disconnect or start scale drag)
+    if (handle_matrix_click()) return true;
+
     return true;  // Click was in inspector area, consume it
 }
 
@@ -777,6 +826,29 @@ void NodeGraphUI::handle_graph_click() {
         int ni = hit_test_node(mouse_.x, mouse_.y);
         if (ni >= 0) {
             std::string node_id = node_rects_[ni].node_id;
+
+            // If node has hidden output ports and click is on the right edge,
+            // open output picker to start a wire drag
+            const auto* ns = snap_.find_node(node_id);
+            if (ns && ns->output_port_indices.size() > 3) {
+                float gx = sx_to_gx(mouse_.x);
+                float right_zone = node_rects_[ni].x + node_rects_[ni].w - 15.0f;
+                if (gx >= right_zone) {
+                    param_picker_node_id_ = node_id;
+                    param_picker_wire_from_node_.clear();
+                    param_picker_wire_from_port_.clear();
+                    param_picker_is_output_ = true;
+                    param_picker_x_ = mouse_.x;
+                    param_picker_y_ = mouse_.y;
+                    param_picker_sel_ = 0;
+                    param_picker_scroll_ = 0;
+                    rebuild_param_picker_items();
+                    if (!param_picker_items_.empty()) {
+                        param_picker_open_ = true;
+                        return;
+                    }
+                }
+            }
 
             // Double-click detection: open/clone operator
             double now = glfwGetTime();
@@ -1008,6 +1080,30 @@ void NodeGraphUI::update_preferences() {
     prefs_editing_custom_ = false;
     mouse_.left_clicked = false;
     mouse_.left_released = false;
+}
+
+// -----------------------------------------------------------------------
+// Matrix cell click — toggle connection or start scale drag
+// -----------------------------------------------------------------------
+bool NodeGraphUI::handle_matrix_click() {
+    int ci = hit_test_rect(matrix_cell_rects_, mouse_.x, mouse_.y);
+    if (ci < 0) return false;
+
+    const auto& cell = matrix_cell_rects_[ci];
+
+    if (cell.connected) {
+        // Start scale drag on connected cells
+        matrix_scale_dragging_ = true;
+        matrix_drag_cell_idx_ = ci;
+        matrix_drag_start_y_ = mouse_.y;
+        matrix_drag_start_scale_ = cell.scale;
+    } else {
+        // Connect: from_node/from_port -> to_node/to_port
+        std::string from_addr = cell.from_node + "/" + cell.from_port;
+        std::string to_addr = cell.to_node + "/" + cell.to_port;
+        commands_.connect(from_addr, to_addr);
+    }
+    return true;
 }
 
 } // namespace vivid::ui

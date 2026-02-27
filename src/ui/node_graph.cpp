@@ -57,6 +57,49 @@ template int NodeGraphUI::hit_test_rect(const std::vector<InspectorRect>& rects,
 template int NodeGraphUI::hit_test_rect(const std::vector<ResolutionRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<MidiRemoveRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<MidiRangeRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<MatrixCell>& rects, float mx, float my);
+
+// -----------------------------------------------------------------------
+// Port visibility helpers
+// -----------------------------------------------------------------------
+
+// Check if a port has an active wire connection
+static bool port_has_connection(const std::vector<ConnectionSnapshot>& conns,
+                                const std::string& node_id,
+                                const std::string& port_name,
+                                bool is_output) {
+    for (const auto& c : conns) {
+        if (is_output) {
+            if (c.from_node == node_id && c.from_port == port_name) return true;
+        } else {
+            if (c.to_node == node_id && c.to_port == port_name) return true;
+        }
+    }
+    return false;
+}
+
+uint32_t NodeGraphUI::count_visible_input_ports(const NodeSnapshot& ns) const {
+    // Signal input ports are always visible
+    uint32_t count = static_cast<uint32_t>(ns.input_port_indices.size());
+    // Param inputs only visible if connected
+    for (const auto& [name, idx] : ns.param_indices) {
+        if (ns.input_port_indices.count(name)) continue; // already counted as signal port
+        if (port_has_connection(snap_.connections, ns.node_id, name, false))
+            count++;
+    }
+    return count;
+}
+
+uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns) const {
+    uint32_t count = 0;
+    for (const auto& [name, idx] : ns.output_port_indices) {
+        // Always show if connected, or if there are few outputs (<=3)
+        if (ns.output_port_indices.size() <= 3 ||
+            port_has_connection(snap_.connections, ns.node_id, name, true))
+            count++;
+    }
+    return count;
+}
 
 // -----------------------------------------------------------------------
 // Port position helper
@@ -70,28 +113,40 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
 
     auto sorted_inputs = sorted_ports(ns.input_port_indices);
     auto sorted_outputs_vec = sorted_ports(ns.output_port_indices);
+    bool few_outputs = ns.output_port_indices.size() <= 3;
 
     float port_start_y = rect.y + kAccentBarH + body_h + kNodePadY + kLineH * 2;
+
+    // Input signal ports — always visible
     size_t pi = 0;
     for (; pi < sorted_inputs.size(); ++pi) {
         float py = port_start_y + pi * kLineH + kLineH * 0.5f;
-        rect.inputs.push_back({sorted_inputs[pi].second, rect.x, py});
+        rect.inputs.push_back({sorted_inputs[pi].second, rect.x, py, false});
     }
 
-    // Add parameters as input ports (sorted by index for stable ordering)
+    // Parameter inputs — only visible if connected
     std::vector<std::pair<uint32_t, std::string>> sorted_params;
     for (const auto& [name, idx] : ns.param_indices)
         if (!ns.input_port_indices.count(name)) sorted_params.push_back({idx, name});
     std::sort(sorted_params.begin(), sorted_params.end());
     for (const auto& [idx, name] : sorted_params) {
+        if (!port_has_connection(snap_.connections, ns.node_id, name, false))
+            continue;
         float py = port_start_y + pi * kLineH + kLineH * 0.5f;
-        rect.inputs.push_back({name, rect.x, py});
+        rect.inputs.push_back({name, rect.x, py, true});
         ++pi;
     }
 
-    for (size_t oi = 0; oi < sorted_outputs_vec.size(); ++oi) {
+    // Output ports — always visible if <=3, otherwise only if connected
+    size_t oi = 0;
+    for (const auto& [idx, name] : sorted_outputs_vec) {
+        if (!few_outputs &&
+            !port_has_connection(snap_.connections, ns.node_id, name, true))
+            continue;
         float py = port_start_y + oi * kLineH + kLineH * 0.5f;
-        rect.outputs.push_back({sorted_outputs_vec[oi].second, rect.x + rect.w, py});
+        rect.outputs.push_back({name, rect.x + rect.w, py,
+                                !few_outputs}); // is_param=true for hidden-by-default outputs
+        ++oi;
     }
 }
 
@@ -201,11 +256,8 @@ void NodeGraphUI::layout_nodes(bool force) {
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
             float body_h = domain_body_height(ns.domain, has_ct);
 
-            uint32_t n_param_inputs = 0;
-            for (const auto& [name, _] : ns.param_indices)
-                if (!ns.input_port_indices.count(name)) n_param_inputs++;
-            uint32_t n_inputs = static_cast<uint32_t>(ns.input_port_indices.size()) + n_param_inputs;
-            uint32_t n_outputs = static_cast<uint32_t>(ns.output_port_indices.size());
+            uint32_t n_inputs = count_visible_input_ports(ns);
+            uint32_t n_outputs = count_visible_output_ports(ns);
             uint32_t port_rows = std::max(n_inputs, n_outputs);
             float h = kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
             heights[r] = h;
@@ -282,11 +334,8 @@ void NodeGraphUI::place_new_nodes() {
         const auto& ns = nodes[ni];
         bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
         float body_h = domain_body_height(ns.domain, has_ct);
-        uint32_t n_param_inputs = 0;
-        for (const auto& [name, _] : ns.param_indices)
-            if (!ns.input_port_indices.count(name)) n_param_inputs++;
-        uint32_t n_inputs = static_cast<uint32_t>(ns.input_port_indices.size()) + n_param_inputs;
-        uint32_t n_outputs = static_cast<uint32_t>(ns.output_port_indices.size());
+        uint32_t n_inputs = count_visible_input_ports(ns);
+        uint32_t n_outputs = count_visible_output_ports(ns);
         uint32_t port_rows = std::max(n_inputs, n_outputs);
         return kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
     };
@@ -704,7 +753,9 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_scrollbar_drag();
     update_slider_drag();
     update_drum_mod_drag();
+    update_matrix_drag();
     update_chooser_hover();
+    update_param_picker();   // may consume left_clicked
     update_preferences();    // may consume left_clicked
     update_clone_confirm();  // may consume left_clicked
     update_context_menu();   // may consume left_clicked
@@ -729,6 +780,19 @@ void NodeGraphUI::check_relayout() {
     } else if (cur_nodes < last_node_count_) {
         prune_node_rects();
     } else if (cur_conns != last_conn_count_) {
+        // Connection changed — recompute ports and heights for all nodes
+        // (connected params/outputs may have appeared or disappeared)
+        for (size_t i = 0; i < node_rects_.size() && i < snap_.nodes.size(); ++i) {
+            auto& rect = node_rects_[i];
+            const auto& ns = snap_.nodes[i];
+            bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
+            float body_h = domain_body_height(ns.domain, has_ct);
+            uint32_t n_inputs = count_visible_input_ports(ns);
+            uint32_t n_outputs = count_visible_output_ports(ns);
+            uint32_t port_rows = std::max(n_inputs, n_outputs);
+            rect.h = kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
+            recompute_ports(rect, ns);
+        }
         last_node_count_ = cur_nodes;
         last_conn_count_ = cur_conns;
     }
@@ -841,9 +905,27 @@ void NodeGraphUI::update_wire_drag() {
     if (mouse_.left_released && dragging_wire_) {
         PortHit ph = hit_test_port(mouse_.x, mouse_.y);
         if (ph.node_idx >= 0 && !ph.is_output) {
+            // Dropped on an input port — connect directly
             std::string to_node = node_rects_[ph.node_idx].node_id;
             commands_.connect(wire_from_node_id_ + "/" + wire_from_port_,
                          to_node + "/" + ph.port_name);
+        } else {
+            // Check if dropped on a node body (not a port, not the source node)
+            int ni = hit_test_node(mouse_.x, mouse_.y);
+            if (ni >= 0 && node_rects_[ni].node_id != wire_from_node_id_) {
+                // Open parameter picker for the target node's input params
+                param_picker_node_id_ = node_rects_[ni].node_id;
+                param_picker_wire_from_node_ = wire_from_node_id_;
+                param_picker_wire_from_port_ = wire_from_port_;
+                param_picker_is_output_ = false; // picking a destination param
+                param_picker_x_ = mouse_.x;
+                param_picker_y_ = mouse_.y;
+                param_picker_sel_ = 0;
+                param_picker_scroll_ = 0;
+                rebuild_param_picker_items();
+                if (!param_picker_items_.empty())
+                    param_picker_open_ = true;
+            }
         }
         dragging_wire_ = false;
     }
@@ -985,6 +1067,206 @@ void NodeGraphUI::set_style_options(std::vector<UIStyle> styles, int current_idx
     if (current_idx >= 0 && current_idx < static_cast<int>(prefs_styles_.size())) {
         style_ = prefs_styles_[current_idx];
     }
+}
+
+// -----------------------------------------------------------------------
+// resolve_port_type — shared utility (was file-local static in input.cpp)
+// -----------------------------------------------------------------------
+VividPortType NodeGraphUI::resolve_port_type(const GraphSnapshot& snap,
+                                              const std::string& node_id,
+                                              const std::string& port_name,
+                                              bool is_output) {
+    const auto* ns = snap.find_node(node_id);
+    if (!ns || !ns->op_info) return VIVID_PORT_CONTROL_FLOAT;
+    for (const auto& p : ns->op_info->ports) {
+        if (p.name == port_name &&
+            ((is_output && p.direction == VIVID_PORT_OUTPUT) ||
+             (!is_output && p.direction == VIVID_PORT_INPUT)))
+            return p.type;
+    }
+    return VIVID_PORT_CONTROL_FLOAT;
+}
+
+// -----------------------------------------------------------------------
+// Parameter picker popup
+// -----------------------------------------------------------------------
+void NodeGraphUI::rebuild_param_picker_items() {
+    param_picker_items_.clear();
+    const auto* ns = snap_.find_node(param_picker_node_id_);
+    if (!ns || !ns->op_info) return;
+
+    if (param_picker_is_output_) {
+        // Picking an output port on this node (source side)
+        auto sorted_outs = sorted_ports(ns->output_port_indices);
+        for (const auto& [idx, name] : sorted_outs) {
+            param_picker_items_.push_back(name);
+        }
+    } else {
+        // Picking an input param on this node (destination side)
+        // Determine source port type for compatibility filtering
+        VividPortType src_type = resolve_port_type(snap_, param_picker_wire_from_node_,
+                                                    param_picker_wire_from_port_, true);
+
+        // Add signal input ports first
+        auto sorted_ins = sorted_ports(ns->input_port_indices);
+        for (const auto& [idx, name] : sorted_ins) {
+            // Check not already connected from this source
+            bool already_connected = false;
+            for (const auto& c : snap_.connections) {
+                if (c.to_node == param_picker_node_id_ && c.to_port == name) {
+                    already_connected = true;
+                    break;
+                }
+            }
+            if (already_connected) continue;
+
+            // Check type compatibility
+            VividPortType dest_type = VIVID_PORT_CONTROL_FLOAT;
+            for (const auto& p : ns->op_info->ports) {
+                if (p.name == name && p.direction == VIVID_PORT_INPUT) {
+                    dest_type = p.type;
+                    break;
+                }
+            }
+            if (!port_type_compatible(src_type, dest_type)) continue;
+            param_picker_items_.push_back(name);
+        }
+
+        // Add params (not already signal ports, not FILE type, not already connected)
+        std::vector<std::pair<uint32_t, std::string>> sorted_params;
+        for (const auto& [name, idx] : ns->param_indices)
+            if (!ns->input_port_indices.count(name)) sorted_params.push_back({idx, name});
+        std::sort(sorted_params.begin(), sorted_params.end());
+
+        for (const auto& [idx, name] : sorted_params) {
+            // Skip FILE params (can't wire to them)
+            bool is_file = false;
+            for (const auto& pd : ns->op_info->params) {
+                if (pd.name == name && pd.type == VIVID_PARAM_FILE) {
+                    is_file = true;
+                    break;
+                }
+            }
+            if (is_file) continue;
+
+            // Skip if already connected
+            bool already_connected = false;
+            for (const auto& c : snap_.connections) {
+                if (c.to_node == param_picker_node_id_ && c.to_port == name) {
+                    already_connected = true;
+                    break;
+                }
+            }
+            if (already_connected) continue;
+
+            param_picker_items_.push_back(name);
+        }
+    }
+}
+
+void NodeGraphUI::update_param_picker() {
+    if (!param_picker_open_) return;
+
+    // Hover tracking
+    static constexpr float kPickerItemH = 22.0f;
+    static constexpr float kPickerW = 220.0f;
+    int visible = std::min(static_cast<int>(param_picker_items_.size()), 12);
+    float items_y = param_picker_y_;
+    float items_h = visible * kPickerItemH;
+
+    if (mouse_.x >= param_picker_x_ && mouse_.x <= param_picker_x_ + kPickerW &&
+        mouse_.y >= items_y && mouse_.y < items_y + items_h) {
+        int idx = param_picker_scroll_ + static_cast<int>((mouse_.y - items_y) / kPickerItemH);
+        if (idx >= 0 && idx < static_cast<int>(param_picker_items_.size()))
+            param_picker_sel_ = idx;
+    }
+
+    // Click handling
+    if (mouse_.left_clicked) {
+        if (mouse_.x >= param_picker_x_ && mouse_.x <= param_picker_x_ + kPickerW &&
+            mouse_.y >= items_y && mouse_.y < items_y + items_h &&
+            !param_picker_items_.empty()) {
+            int idx = param_picker_scroll_ + static_cast<int>((mouse_.y - items_y) / kPickerItemH);
+            if (idx >= 0 && idx < static_cast<int>(param_picker_items_.size())) {
+                const std::string& selected = param_picker_items_[idx];
+                if (param_picker_is_output_) {
+                    // Selected an output port — now start a wire drag from it
+                    const auto* ns = snap_.find_node(param_picker_node_id_);
+                    if (ns) {
+                        dragging_wire_ = true;
+                        wire_from_node_id_ = param_picker_node_id_;
+                        wire_from_port_ = selected;
+                        wire_from_is_output_ = true;
+                        // Find port position or use node center
+                        for (const auto& r : node_rects_) {
+                            if (r.node_id == param_picker_node_id_) {
+                                wire_from_gx_ = r.x + r.w;
+                                wire_from_gy_ = r.y + r.h * 0.5f;
+                                for (const auto& p : r.outputs) {
+                                    if (p.name == selected) {
+                                        wire_from_gx_ = p.x;
+                                        wire_from_gy_ = p.y;
+                                        break;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // Selected a destination param — create connection
+                    commands_.connect(param_picker_wire_from_node_ + "/" + param_picker_wire_from_port_,
+                                 param_picker_node_id_ + "/" + selected);
+                }
+                param_picker_open_ = false;
+            }
+        } else {
+            // Clicked outside — close
+            param_picker_open_ = false;
+        }
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+    }
+}
+
+// -----------------------------------------------------------------------
+// Matrix scale drag — adjust connection scale by vertical drag
+// -----------------------------------------------------------------------
+void NodeGraphUI::update_matrix_drag() {
+    if (!matrix_scale_dragging_) return;
+
+    if (matrix_drag_cell_idx_ < 0 ||
+        matrix_drag_cell_idx_ >= static_cast<int>(matrix_cell_rects_.size())) {
+        matrix_scale_dragging_ = false;
+        return;
+    }
+
+    const auto& cell = matrix_cell_rects_[matrix_drag_cell_idx_];
+
+    if (!mouse_.left_down) {
+        // Release — if barely moved, treat as click-to-disconnect
+        float dy = std::fabs(matrix_drag_start_y_ - mouse_.y);
+        if (dy < 3.0f) {
+            std::string from_addr = cell.from_node + "/" + cell.from_port;
+            std::string to_addr = cell.to_node + "/" + cell.to_port;
+            commands_.disconnect(from_addr, to_addr);
+        }
+        matrix_scale_dragging_ = false;
+        matrix_drag_cell_idx_ = -1;
+        return;
+    }
+
+    // Drag up = increase scale, drag down = decrease
+    float dy = matrix_drag_start_y_ - mouse_.y;  // positive = up
+    if (std::fabs(dy) < 3.0f) return;  // dead zone before engaging
+
+    float sensitivity = 0.01f;  // scale change per pixel
+    float new_scale = matrix_drag_start_scale_ + dy * sensitivity;
+    new_scale = std::max(0.0f, std::min(1.0f, new_scale));
+
+    std::string from_addr = cell.from_node + "/" + cell.from_port;
+    std::string to_addr = cell.to_node + "/" + cell.to_port;
+    commands_.set_connection_scale(from_addr, to_addr, new_scale);
 }
 
 } // namespace vivid::ui

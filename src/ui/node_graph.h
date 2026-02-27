@@ -32,7 +32,7 @@ struct NodeRect {
     std::string type_name;
     VividDomain domain = VIVID_DOMAIN_CONTROL;
     float x = 0, y = 0, w = 0, h = 0;
-    struct PortPos { std::string name; float x, y; };
+    struct PortPos { std::string name; float x, y; bool is_param = false; };
     std::vector<PortPos> inputs, outputs;
 };
 
@@ -48,7 +48,7 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_; }
+    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_; }
     bool has_selection() const { return !selected_node_ids_.empty(); }
     bool has_single_selection() const { return selected_node_ids_.size() == 1; }
     const std::string& single_selected_id() const { return *selected_node_ids_.begin(); }
@@ -99,6 +99,10 @@ private:
     void place_new_nodes();
     void prune_node_rects();
     void recompute_ports(NodeRect& rect, const NodeSnapshot& ns);
+
+    // Count visible input/output ports for a node (signal ports + connected params/outputs)
+    uint32_t count_visible_input_ports(const NodeSnapshot& ns) const;
+    uint32_t count_visible_output_ports(const NodeSnapshot& ns) const;
 
     // --- Drawing (node_graph_draw.cpp) ---
     void draw_graph(Renderer2D& tr);
@@ -171,6 +175,23 @@ private:
     void update_preferences();
     void draw_preferences(Renderer2D& tr);
 
+    // --- Parameter picker popup ---
+    void rebuild_param_picker_items();
+    void update_param_picker();
+    void draw_param_picker(Renderer2D& tr);
+
+    // --- Connection matrix ---
+    void draw_matrix_section(Renderer2D& tr, const NodeSnapshot& src_node,
+                             const NodeSnapshot& dst_node, float px, float& py);
+    bool handle_matrix_click();
+    void update_matrix_drag();
+
+    // Resolve port type for a node+port (moved from file-local static)
+    static VividPortType resolve_port_type(const GraphSnapshot& snap,
+                                           const std::string& node_id,
+                                           const std::string& port_name,
+                                           bool is_output);
+
     // --- Decomposed update() sub-methods ---
     void check_relayout();
     void update_pan();
@@ -234,9 +255,21 @@ private:
 
     // Wire drag state
     bool dragging_wire_ = false;
+    bool wire_from_is_output_ = true;  // true = dragging from output, false = from body (pick output)
     std::string wire_from_node_id_;
     std::string wire_from_port_;
     float wire_from_gx_ = 0, wire_from_gy_ = 0;
+
+    // Parameter picker popup state
+    bool param_picker_open_ = false;
+    bool param_picker_is_output_ = false;  // true = picking output port on source node
+    float param_picker_x_ = 0, param_picker_y_ = 0;
+    std::string param_picker_node_id_;     // node being picked on
+    std::string param_picker_wire_from_node_;
+    std::string param_picker_wire_from_port_;
+    std::vector<std::string> param_picker_items_;
+    int param_picker_sel_ = 0;
+    int param_picker_scroll_ = 0;
 
     // Zoom/pan state
     float zoom_ = 1.0f;
@@ -303,6 +336,20 @@ private:
     int dropdown_sel_ = 0;
     float dropdown_x_ = 0, dropdown_y_ = 0, dropdown_w_ = 0;
     std::vector<std::string> dropdown_labels_;
+
+    // Connection matrix state
+    struct MatrixCell {
+        float x, y, w, h;
+        std::string from_node, from_port;
+        std::string to_node, to_port;
+        bool connected;
+        float scale;
+    };
+    std::vector<MatrixCell> matrix_cell_rects_;
+    bool matrix_scale_dragging_ = false;
+    int matrix_drag_cell_idx_ = -1;
+    float matrix_drag_start_y_ = 0.0f;
+    float matrix_drag_start_scale_ = 0.0f;
 
     // Sparkline ring buffers for control nodes
     static constexpr uint32_t kSparklineLen = 64;
