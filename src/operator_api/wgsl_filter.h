@@ -461,6 +461,11 @@ private:
         }
         pipeline_.reset(rp);
 
+        // Generators have 0 input textures, so the "changed" check in
+        // process() would never trigger — create the bind group now.
+        if (tex_input_count_ == 0)
+            bind_group_.reset(create_bind_group(gpu, cached_input_texs_));
+
         cached_device_ = gpu->device;
         cached_format_ = gpu->output_format;
         initialized_ = true;
