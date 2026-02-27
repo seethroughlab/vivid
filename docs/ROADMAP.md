@@ -8,7 +8,7 @@ The phases are grouped into tiers. Each tier represents a qualitative shift in w
 
 Every architectural decision in Vivid is evaluated against this scenario:
 
-> You open Vivid and add a Clock operator. You ask the LLM to generate a chord progression — it scaffolds a MIDI pattern node. You connect the Clock to the pattern, add a Polysynth, and immediately hear chords playing. You plug in a MIDI controller, map knobs to synth parameters, and experiment with different timbres. You add an LFO to automate one parameter, and an Envelope operator for per-note amplitude shaping. Then you create a Spread of rectangles on screen and connect the Polysynth's per-voice envelope output to the rectangle colors. The result: you hear chords and see rectangles changing color in sync with the music.
+> You open Vivid and add a Clock operator. You ask the LLM to generate a chord progression — it scaffolds a MIDI pattern node. You connect the Clock to the pattern, add a WavetableSynth, and immediately hear chords playing. You plug in a MIDI controller, map knobs to synth parameters, and experiment with different timbres. You add an LFO to automate one parameter, and an Envelope operator for per-note amplitude shaping. Then you create a Spread of rectangles on screen and connect the WavetableSynth's per-voice envelope output to the rectangle colors. The result: you hear chords and see rectangles changing color in sync with the music.
 
 This scenario exercises every layer of Vivid's architecture: three-domain data flow, Spreads, cross-domain bridges, MIDI input, polyphonic audio, LLM-assisted operator creation, and audio-driven visuals. The roadmap builds toward it piece by piece. By the end of Tier 4, every component is in place.
 
@@ -338,53 +338,62 @@ Build the Spread type (contiguous array + length, broadcasting logic). FFT Analy
 > - **Fullscreen blit fit modes** — Fit/Fill/Stretch for video_out display
 > - **Code quality refactoring** — split `node_graph.cpp` into draw/input/core files, deduplicated shared utilities, replaced magic numbers with named constants, added utility headers
 
-### Phase 14a: Cross-Domain Spreads + Polyphonic Synthesis
+### Phase 14a: Cross-Domain Spreads + Polyphonic Synthesis — DONE
 
 The core infrastructure and operators that make Vivid a musical instrument:
 
-- **Cross-domain Spread bridge** — extend `AudioEngine`'s double-buffered bridges to carry Spread data between Control and Audio threads (currently only scalars). Fixed-size `SpreadSnapshot` buffers avoid audio-thread allocations. Pre-allocate pointer arrays to eliminate existing audio-thread `std::vector` allocations.
-- **NotePattern** — a Control operator that emits chord progressions as Spreads (notes/velocities/gates). Takes root note, chord type, and timing parameters per step. Driven by Clock's `beat_phase`.
-- **Polysynth** — an Audio operator with voice allocation, ADSR envelopes, and waveform generation. Receives note Spreads from Control domain via the new cross-domain bridge. Manages up to 16 voices. Exposes per-voice envelope values back to Control domain as a Spread. DSP algorithms ported from the legacy branch's `PolySynth` implementation.
+- **Cross-domain Spread bridge** — `SpreadSnapshot` double-buffered bridge carries Spread data between Control and Audio threads. Lock-free, fixed-size buffers avoid audio-thread allocations.
+- **NotePattern** — Control operator emitting chord progressions as Spreads (notes/velocities/gates), driven by Clock's `beat_phase`.
+- **WavetableSynth** — Audio operator with 16-voice polyphony, wavetable playback, ADSR envelopes, and voice stealing. Supersedes the originally-planned Polysynth with a more capable architecture. Receives note Spreads from Control domain via the cross-domain bridge and exposes per-voice envelope values back as a Spread.
+- **ChordProgression + Arpeggiator** — bonus Control operators built alongside: ChordProgression emits chord Spreads, Arpeggiator sequences them into note patterns.
 
-**Verify:** Clock → NotePattern → Polysynth plays an audible chord progression through speakers. `set ps1/attack 1.0` → slow attack ramp audible. `set np1/root_0 2` → progression starts on D instead of C.
+**Implementation notes:**
+- `SpreadSnapshot` in `audio_engine.h` — double-buffered, lock-free spread bridge
+- `operators/control/note_pattern/` — NotePattern operator
+- `operators/audio/wavetable_synth/` — WavetableSynth (16 voices, wavetable playback, ADSR, voice stealing)
+- `operators/control/chord_progression/` — ChordProgression operator
+- `operators/control/arpeggiator/` — Arpeggiator operator
 
-**Why it matters:** This is where Vivid stops being a demo and becomes a creative audio tool. The cross-domain Spread bridge is the critical infrastructure — without it, Spread data (note events, envelope values) cannot flow between the control thread and the audio thread. Voice allocation, per-voice state, and dynamic-length Spreads are the hardest test of the architecture. If a polysynth with 8 voices can produce a Spread of 8 envelope values that flow cleanly through the Control domain at audio rate without glitches, the Spread system works for real musical use.
+### Phase 14b: Envelope ADSR + Inspect + Tests — DONE
 
-### Phase 14b: Envelope ADSR + Inspect + Tests
+- **Envelope ADSR** — full ADSR with `sustain`, `release` params and `gate` input port. Backward-compatible: without a gate connection, falls back to phase-wrap trigger (existing AD behavior).
+- **inspect() Spread display** — `inspect_graph` shows Spread data for CONTROL_SPREAD output ports.
+- **Cross-domain Spread tests** — `test_cross_domain_spread.cpp` covers the Spread bridge path end-to-end.
 
-Polish and testing that builds on 14a's infrastructure:
+**Implementation notes:**
+- `operators/control/envelope/envelope.cpp` — full ADSR with gate input
+- `inspect_graph` MCP tool displays spread port values
+- `tests/test_cross_domain_spread.cpp` — integration tests for spread bridge
 
-- **Envelope ADSR upgrade** — extend the existing AD envelope operator (`operators/control/envelope/envelope.cpp`) to full ADSR with `sustain`, `release` params and a `gate` input port. Backward-compatible: without a gate connection, falls back to phase-wrap trigger (existing AD behavior).
-- **inspect() Spread display** — extend `RuntimeAPI::inspect()` and MCP `inspect_graph` to show Spread data for CONTROL_SPREAD output ports (e.g., `inspect ps1` shows `envelopes: [0.8, 0.3, 0.0, 0.7]`).
-- **Cross-domain Spread tests** — integration tests for the Spread bridge path: control Spread → audio input, audio Spread → control output, with a minimal test operator pair.
+### Phase 14c: Per-Voice Modulation System — DONE
 
-**Verify:** `inspect ps1` shows `envelopes` spread with per-voice values. Envelope ADSR works with gate input. `ctest --test-dir build` — all new and existing tests pass. Existing graphs still work (backward compatible).
+Spread-based audio-domain modulator operators, replacing the legacy `ModulatorHost` with visible graph wires:
 
-### Phase 14c: Per-Voice Modulation System
+- **SpreadADSR** — Audio operator: takes `gates` (CONTROL_SPREAD input), produces per-slot ADSR envelopes (CONTROL_SPREAD output). Each spread slot maintains independent envelope state, sample-accurate on the audio thread.
+- **SpreadLFO** — Audio operator: produces a Spread of LFO values. Per-voice mode (independent phase per slot, retrigger on gate) and free-running mode.
+- **WavetableSynth modulation inputs** — CONTROL_SPREAD input ports: `filter_env`, `pitch_mod`, `amp_mod`, `position_mod`. Per-sample voice loop reads per-voice modulation values.
+- **AudioSpreadWire** — routes CONTROL_SPREAD data between audio-domain operators.
 
-Bring the legacy `ModulatorHost` capability to the dylib architecture via Spread-based audio-domain modulator operators:
+**Implementation notes:**
+- `operators/audio/spread_adsr/` — SpreadADSR operator
+- `operators/audio/spread_lfo/` — SpreadLFO operator
+- WavetableSynth spread inputs in `operators/audio/wavetable_synth/`
+- `AudioSpreadWire` in `audio_engine.h/cpp`
 
-- **SpreadADSR** — an Audio operator that takes `gates` (CONTROL_SPREAD input) and produces per-slot ADSR envelopes (CONTROL_SPREAD output). Each spread slot maintains independent envelope state. Runs on the audio thread for sample-accurate modulation.
-- **SpreadLFO** — an Audio operator that produces a Spread of LFO values. Supports per-voice mode (independent phase per slot, retrigger on gate) and free-running mode (all slots share phase).
-- **Polysynth modulation inputs** — add CONTROL_SPREAD input ports to the Polysynth: `filter_env`, `pitch_mod`, `amp_mod`. The per-sample voice loop reads per-voice modulation values from these inputs.
-- **Audio→audio spread wires** — extend `AudioWire` in the AudioEngine to pass CONTROL_SPREAD data between audio-domain operators (currently only AUDIO_FLOAT buffers are passed).
+### Phase 14d: Stereo Output — DONE
 
-**Verify:** Wire `NotePattern/gates → SpreadADSR/gates → Polysynth/filter_env`. Each voice's filter cutoff follows its own independent ADSR envelope. Wire `SpreadLFO/output → Polysynth/pitch_mod` for vibrato. Modulation routing is visible in the graph view.
+Stereo throughout the audio pipeline:
 
-**Why it matters:** This is the dylib equivalent of the legacy `ModulatorHost` — per-voice modulation that made the legacy PolySynth musically expressive. The key architectural difference: modulation routing is done through graph wires (visible, inspectable, hot-reloadable) rather than internal `synth.modulate()` calls.
-
-### Phase 14d: Stereo Output
-
-Upgrade the entire audio pipeline to stereo:
-
+- **WavetableSynth** — dual outputs (`output_left`/`output_right`), unison stereo spread via `unisonDetune`, per-voice panning
 - **AudioEngine** — `config.playback.channels = 2`, stereo buffer layout in `VividAudioState`
 - **audio_out** — stereo passthrough
-- **Polysynth** — L/R phases with `unisonDetune` for stereo spread (ported from legacy `phaseL`/`phaseR`)
-- **Existing audio operators** — update Oscillator, Gain, Drum for stereo output
+- **Existing audio operators** — Oscillator, Gain, Drum updated for stereo output
 
-**Verify:** Polysynth with `unisonDetune = 8.0` produces audible stereo spread. Panning between L/R is perceptible on headphones.
+**Implementation notes:**
+- WavetableSynth stereo in `operators/audio/wavetable_synth/`
+- `audio_out` stereo passthrough in `src/audio_engine.cpp`
 
-*North Star progress: Clock → chord progression → Polysynth works. MIDI knobs control timbre. Envelope Spread is produced. Per-voice modulation shapes timbre. 6 of 8 pieces.*
+*North Star progress: Clock → chord progression → WavetableSynth works. MIDI knobs control timbre. Envelope Spread is produced. Per-voice modulation shapes timbre. 6 of 8 pieces.*
 
 ### Phase 15: The North Star Demo — Instance Operator (Hardware Instancing) — DONE
 
@@ -407,17 +416,26 @@ General-purpose **Instance** GPU operator that uses hardware instancing (instanc
 - Instance operator: custom pipeline (not gpu_common helpers), 2 bind groups, storage buffer for per-instance data
 - Demo graph: `graphs/shape_instance_demo.json` (Shape → Instance ← SpreadADSR ← Arpeggiator)
 
-### Phase 16: MCP Server & Operator Scaffolding
+### Phase 16: MCP Server & Operator Scaffolding — DONE
 
 Two halves, sharing the same `OperatorCreator` module:
 
-**MCP Server** — stdio JSON-RPC server (`vivid mcp` subcommand), exposing the Runtime API as MCP tools: `inspect_graph`, `set_param`, `add_node`, `remove_node`, `connect`, `disconnect`, `scaffold_operator`, `save_graph`, `load_graph`.
+**MCP Server** — Python FastMCP wrapper (`mcp/vivid_mcp.py`) bridging MCP stdio to the Vivid HTTP control server. 22 tools total: `inspect_graph`, `list_types`, `add_node`, `remove_node`, `connect`, `disconnect`, `set_param`, `get_param`, `set_string_param`, `set_resolution`, `set_node_layout`, `inspect_node`, `list_nodes`, `add_midi_mapping`, `remove_midi_mapping`, `update_midi_mapping`, `get_graph_errors`, `scaffold_operator`, `save_graph`, `load_graph`.
 
 **Operator Scaffolding** — `scaffold_operator` MCP tool + in-app `+ New Operator...` UI (at the top of the Tab chooser). Both backed by `OperatorCreator`: validates the name, writes a domain-appropriate template (control/audio/GPU), patches CMakeLists.txt, and hands off to `HotReloader` for compilation. New operators load into the registry and appear in the chooser without restarting. See [phase-16-design.md](phase-16-design.md) for the full design.
 
 **Verify:** Claude Code connects via MCP. `inspect_graph` returns the full graph JSON. `set_param lfo1/frequency 8.0` changes the live output. `scaffold_operator gpu MyShader` creates the directory with boilerplate and opens it in the editor. In-app: press Tab, select `+ New Operator...`, pick a domain and name — operator compiles, loads, and appears in the chooser.
 
 **Why it matters:** MCP is the bridge between Vivid and external LLM tools. Once this works, Claude Code can inspect and modify a running Vivid instance — which means you can develop operators and iterate on patches from your terminal. It also validates the Runtime API design under real external use: if the tool interface is awkward for Claude Code, it needs revision before the built-in chat wraps the same API. The in-app scaffolding UI makes the same creation flow available without leaving the app — the user hits Tab, realizes the operator they want doesn't exist, and creates it on the spot.
+
+**Implementation notes:**
+- `mcp/vivid_mcp.py` — 22 MCP tools wrapping HTTP POST to ControlServer
+- `src/runtime/control_server.cpp` — 12 new dispatch handlers (set_resolution, set_node_layout, inspect, list_nodes, 3× MIDI mapping, get_graph_errors, scaffold_operator)
+- `src/runtime/operator_creator.h/cpp` — name validation (lowercase_with_underscores, collision check), three templates (control/audio/GPU with WgslFilterBase), CMakeLists.txt patching via domain-specific insertion markers, editor launch ($VISUAL → $EDITOR → open)
+- GPU template generates both .cpp (WgslFilterBase subclass) and .wgsl (fragment shader)
+- `ControlServer::set_src_dir()` / `set_hot_reloader()` — context needed for scaffold_operator
+- `poll_hot_reload()` handles unknown targets: loads new dylib via `register_loaded_operator()`, registers file watch for the new source
+- `FileWatcher::add_watch()` made public for new operator registration
 
 ### ~~Phase 17: Built-in Chat Panel~~ — SKIPPED
 
