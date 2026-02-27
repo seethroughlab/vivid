@@ -1,7 +1,6 @@
 #ifdef __APPLE__
 #include "runtime/macos_frame_timer.h"
 #include <CoreFoundation/CoreFoundation.h>
-#include <cstdio>
 
 namespace vivid {
 

@@ -43,6 +43,7 @@
 
 #ifdef __APPLE__
 #include "runtime/macos_frame_timer.h"
+#include <CoreFoundation/CoreFoundation.h>
 #endif
 
 // #16191D in sRGB → linear: pow(x/255, 2.2)
@@ -765,8 +766,24 @@ int main(int argc, char* argv[]) {
 
     // --- Main loop ---
     auto tick_frame = [&]() -> bool {
+        // On macOS, this callback fires in both kCFRunLoopDefaultMode (normal)
+        // and NSEventTrackingRunLoopMode (during window drag/resize/menus).
+        // In tracking mode, Cocoa owns event dispatch — calling glfwPollEvents()
+        // would re-enter GLFW's event processing and steal tracking events.
+        // We skip event polling in that case but still render + push audio.
+#ifdef __APPLE__
+        CFStringRef mode = CFRunLoopCopyCurrentMode(CFRunLoopGetMain());
+        bool in_default_mode = !mode || CFEqual(mode, kCFRunLoopDefaultMode);
+        if (mode) CFRelease(mode);
+
+        if (in_default_mode) {
+            glfwPollEvents();
+            if (glfwWindowShouldClose(window)) return false;
+        }
+#else
         glfwPollEvents();
         if (glfwWindowShouldClose(window)) return false;
+#endif
 
         int win_w, win_h;
         glfwGetWindowSize(window, &win_w, &win_h);
