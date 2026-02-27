@@ -87,6 +87,11 @@ add_vivid_operator(fft_analysis   operators/control/fft_analysis/fft_analysis.cp
 add_vivid_operator(note_pattern   operators/control/note_pattern/note_pattern.cpp)
 add_vivid_operator(chord_progression operators/control/chord_progression/chord_progression.cpp)
 add_vivid_operator(arpeggiator      operators/control/arpeggiator/arpeggiator.cpp)
+add_vivid_operator(logic             operators/control/logic/logic.cpp)
+add_vivid_operator(gate              operators/control/gate/gate.cpp)
+add_vivid_operator(random            operators/control/random/random.cpp)
+add_vivid_operator(smooth            operators/control/smooth/smooth.cpp)
+add_vivid_operator(sequencer         operators/control/sequencer/sequencer.cpp)
 
 # --- GPU operator plugins ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu)
@@ -111,6 +116,7 @@ add_vivid_operator(ramp                 operators/gpu/ramp/ramp.cpp             
 add_vivid_operator(dither               operators/gpu/dither/dither.cpp                           EXTRA_LIBS webgpu)
 add_vivid_operator(transform            operators/gpu/transform/transform.cpp                     EXTRA_LIBS webgpu)
 add_vivid_operator(crt_effect           operators/gpu/crt_effect/crt_effect.cpp                   EXTRA_LIBS webgpu)
+add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp                             EXTRA_LIBS webgpu)
 
 # --- Movie File In (image + video loader) ---
 if(APPLE)
@@ -250,6 +256,13 @@ configure_file(graphs/ramp_demo.json ${CMAKE_BINARY_DIR}/ramp_demo.json COPYONLY
 configure_file(graphs/dither_demo.json ${CMAKE_BINARY_DIR}/dither_demo.json COPYONLY)
 configure_file(graphs/transform_demo.json ${CMAKE_BINARY_DIR}/transform_demo.json COPYONLY)
 configure_file(graphs/crt_effect_demo.json ${CMAKE_BINARY_DIR}/crt_effect_demo.json COPYONLY)
+
+# Copy all demo graphs into graphs/ subdirectory (for test_demo_graphs)
+file(GLOB DEMO_GRAPHS graphs/*.json)
+foreach(g ${DEMO_GRAPHS})
+    get_filename_component(name ${g} NAME)
+    configure_file(${g} ${CMAKE_BINARY_DIR}/graphs/${name} COPYONLY)
+endforeach()
 
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)
@@ -431,3 +444,37 @@ configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runti
 configure_file(tests/graphs/test_audio_engine.json ${CMAKE_BINARY_DIR}/test_audio_engine.json COPYONLY)
 configure_file(tests/graphs/test_cross_domain_spread.json ${CMAKE_BINARY_DIR}/test_cross_domain_spread.json COPYONLY)
 configure_file(tests/graphs/test_audio_spread_wire.json ${CMAKE_BINARY_DIR}/test_audio_spread_wire.json COPYONLY)
+
+# Demo graph smoke test (loads every demo graph, builds scheduler, ticks 5 frames)
+add_executable(test_demo_graphs
+    tests/test_demo_graphs.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/builtin_operators.cpp
+)
+target_include_directories(test_demo_graphs PRIVATE src)
+target_link_libraries(test_demo_graphs PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu rtmidi)
+add_dependencies(test_demo_graphs
+    # control
+    lfo clock math envelope midi_input fft_analysis
+    note_pattern chord_progression arpeggiator
+    logic gate random smooth sequencer
+    # gpu
+    noise shape bars composite posterize blur halftone levels
+    displace solid_color pixelate tile chromatic_aberration
+    gradient hsv mirror edge scanlines ramp dither transform
+    crt_effect bloom movie_file_in
+    # audio
+    oscillator gain drum_kick drum_snare drum_hihat drum_clap
+    drum_tom drum_cymbal wavetable_synth spread_adsr spread_lfo
+    reverb delay bitcrush distortion stutter tape_stop
+    beat_repeat reverse scratch stretch freq_shift glitch
+    movie_file_audio_in
+)
+add_test(NAME test_demo_graphs
+    COMMAND test_demo_graphs ${CMAKE_BINARY_DIR}/graphs
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
