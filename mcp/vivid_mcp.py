@@ -104,6 +104,20 @@ async def disconnect(from_addr: str, to_addr: str) -> str:
 
 
 @mcp.tool()
+async def set_connection_scale(from_addr: str, to_addr: str, scale: float) -> str:
+    """Set the scale factor on a connection. Values are multiplied by scale when propagated.
+
+    Args:
+        from_addr: Source port (e.g. "lfo1/value")
+        to_addr: Destination port (e.g. "blur1/radius")
+        scale: Scale factor (default 1.0, range 0.0-1.0 typical)
+    """
+    return await _post("set_connection_scale", {
+        "from_addr": from_addr, "to_addr": to_addr, "scale": scale
+    })
+
+
+@mcp.tool()
 async def set_param(node_id: str, param: str, value: float) -> str:
     """Set a parameter value on a node. Takes effect immediately.
 
