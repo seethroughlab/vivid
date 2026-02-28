@@ -87,7 +87,7 @@ bool AVExporter::start(const std::string& path, uint32_t width, uint32_t height,
         impl_->video_input = [[AVAssetWriterInput alloc]
             initWithMediaType:AVMediaTypeVideo
                outputSettings:video_settings];
-        impl_->video_input.expectsMediaDataInRealTime = NO;
+        impl_->video_input.expectsMediaDataInRealTime = YES;
 
         // Pixel buffer adaptor for efficient frame submission
         NSDictionary* pb_attrs = @{
@@ -106,28 +106,31 @@ bool AVExporter::start(const std::string& path, uint32_t width, uint32_t height,
             return false;
         }
 
-        // Audio input — AAC
-        AudioChannelLayout layout = {};
-        layout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
+        // Audio input — AAC (only if sample_rate > 0)
+        if (sample_rate > 0) {
+            AudioChannelLayout layout = {};
+            layout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo;
 
-        NSDictionary* audio_settings = @{
-            AVFormatIDKey: @(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: @(sample_rate),
-            AVNumberOfChannelsKey: @(2),
-            AVChannelLayoutKey: [NSData dataWithBytes:&layout length:sizeof(layout)],
-            AVEncoderBitRateKey: @(192000),
-        };
+            NSDictionary* audio_settings = @{
+                AVFormatIDKey: @(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: @(sample_rate),
+                AVNumberOfChannelsKey: @(2),
+                AVChannelLayoutKey: [NSData dataWithBytes:&layout length:sizeof(layout)],
+                AVEncoderBitRateKey: @(192000),
+            };
 
-        impl_->audio_input = [[AVAssetWriterInput alloc]
-            initWithMediaType:AVMediaTypeAudio
-               outputSettings:audio_settings];
-        impl_->audio_input.expectsMediaDataInRealTime = NO;
+            impl_->audio_input = [[AVAssetWriterInput alloc]
+                initWithMediaType:AVMediaTypeAudio
+                   outputSettings:audio_settings];
+            impl_->audio_input.expectsMediaDataInRealTime = YES;
 
-        if ([impl_->writer canAddInput:impl_->audio_input])
-            [impl_->writer addInput:impl_->audio_input];
-        else {
-            std::fprintf(stderr, "[vivid] AVExporter: cannot add audio input\n");
-            return false;
+            if ([impl_->writer canAddInput:impl_->audio_input])
+                [impl_->writer addInput:impl_->audio_input];
+            else {
+                std::fprintf(stderr, "[vivid] AVExporter: cannot add audio input\n");
+                // Continue without audio
+                impl_->audio_input = nil;
+            }
         }
 
         if (![impl_->writer startWriting]) {
@@ -192,21 +195,16 @@ bool AVExporter::write_audio_samples(const float* pcm_interleaved, uint64_t samp
                                       uint32_t channels) {
     if (!impl_ || !impl_->recording) return false;
     if (sample_count == 0) return true;
+    if (!impl_->audio_input) return false;
 
     @autoreleasepool {
         if (![impl_->audio_input isReadyForMoreMediaData])
             return false;
 
         uint64_t frame_count = sample_count / channels;
+        size_t data_size = sample_count * sizeof(float);
 
-        // Create audio buffer list
-        AudioBufferList abl = {};
-        abl.mNumberBuffers = 1;
-        abl.mBuffers[0].mNumberChannels = channels;
-        abl.mBuffers[0].mDataByteSize = static_cast<UInt32>(sample_count * sizeof(float));
-        abl.mBuffers[0].mData = const_cast<float*>(pcm_interleaved);
-
-        // Create format description for float32 interleaved PCM
+        // Format description for float32 interleaved PCM
         AudioStreamBasicDescription asbd = {};
         asbd.mSampleRate = impl_->sample_rate;
         asbd.mFormatID = kAudioFormatLinearPCM;
@@ -219,44 +217,45 @@ bool AVExporter::write_audio_samples(const float* pcm_interleaved, uint64_t samp
 
         CMAudioFormatDescriptionRef format_desc = nullptr;
         OSStatus status = CMAudioFormatDescriptionCreate(
-            kCFAllocatorDefault, &asbd, sizeof(AudioChannelLayout),
-            nullptr, 0, nullptr, nullptr, &format_desc);
+            kCFAllocatorDefault, &asbd, 0, nullptr,
+            0, nullptr, nullptr, &format_desc);
         if (status != noErr) return false;
 
-        CMTime pts = CMTimeMake(impl_->audio_samples_written,
-                                static_cast<int32_t>(impl_->sample_rate));
-        CMTime dur = CMTimeMake(frame_count, static_cast<int32_t>(impl_->sample_rate));
-        CMSampleTimingInfo timing = { dur, pts, kCMTimeInvalid };
-
-        CMSampleBufferRef sample_buffer = nullptr;
-        status = CMSampleBufferCreate(
-            kCFAllocatorDefault,
-            nullptr, false, nullptr, nullptr,
-            format_desc, static_cast<CMItemCount>(frame_count),
-            1, &timing, 0, nullptr, &sample_buffer);
-        CFRelease(format_desc);
-        if (status != noErr || !sample_buffer) return false;
-
-        // Set data buffer
+        // Block buffer with owned copy of PCM data
         CMBlockBufferRef block = nullptr;
         status = CMBlockBufferCreateWithMemoryBlock(
             kCFAllocatorDefault,
-            const_cast<float*>(pcm_interleaved),
-            sample_count * sizeof(float),
-            kCFAllocatorNull, // no deallocation
-            nullptr, 0, sample_count * sizeof(float),
-            0, &block);
+            nullptr, data_size, kCFAllocatorDefault,
+            nullptr, 0, data_size, 0, &block);
         if (status != noErr) {
-            CFRelease(sample_buffer);
+            CFRelease(format_desc);
+            return false;
+        }
+        status = CMBlockBufferReplaceDataBytes(
+            pcm_interleaved, block, 0, data_size);
+        if (status != noErr) {
+            CFRelease(block);
+            CFRelease(format_desc);
             return false;
         }
 
-        status = CMSampleBufferSetDataBuffer(sample_buffer, block);
+        // Use wall-clock PTS to keep audio in sync with video
+        double elapsed = CFAbsoluteTimeGetCurrent() - impl_->start_time;
+        CMTime pts = CMTimeMakeWithSeconds(elapsed, 90000);
+
+        // Create ready audio sample buffer in one call
+        CMSampleBufferRef sample_buffer = nullptr;
+        status = CMAudioSampleBufferCreateReadyWithPacketDescriptions(
+            kCFAllocatorDefault,
+            block,
+            format_desc,
+            static_cast<CMItemCount>(frame_count),
+            pts,
+            nullptr,  // no packet descriptions for PCM
+            &sample_buffer);
         CFRelease(block);
-        if (status != noErr) {
-            CFRelease(sample_buffer);
-            return false;
-        }
+        CFRelease(format_desc);
+        if (status != noErr || !sample_buffer) return false;
 
         bool ok = [impl_->audio_input appendSampleBuffer:sample_buffer];
         CFRelease(sample_buffer);
@@ -272,13 +271,20 @@ bool AVExporter::finish() {
 
     @autoreleasepool {
         [impl_->video_input markAsFinished];
-        [impl_->audio_input markAsFinished];
+        if (impl_->audio_input)
+            [impl_->audio_input markAsFinished];
 
-        dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+        __block bool finished = false;
         [impl_->writer finishWritingWithCompletionHandler:^{
-            dispatch_semaphore_signal(sem);
+            finished = true;
         }];
-        dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC));
+        // Pump the run loop while waiting — AVAssetWriter/VideoToolbox may
+        // dispatch work to the main thread during finalization.
+        NSDate* deadline = [NSDate dateWithTimeIntervalSinceNow:10.0];
+        while (!finished && [[NSDate date] compare:deadline] == NSOrderedAscending) {
+            [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
+                                     beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+        }
 
         bool ok = (impl_->writer.status == AVAssetWriterStatusCompleted);
         if (!ok) {
