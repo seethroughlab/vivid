@@ -160,10 +160,11 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "[demo_graphs] No GPU — GPU-only graphs will be skipped\n");
     }
 
-    // --- Operator registry (scan build dir for all .dylib) ---
+    // --- Operator registry (scan build dir for all .dylib + .wgsl presets) ---
     vivid::OperatorRegistry registry;
     registry.scan_deferred(".");
     register_builtin_operators(registry);
+    registry.scan_wgsl_presets("filters");
 
     // --- Collect graph files ---
     std::vector<std::string> graph_files;

@@ -103,33 +103,15 @@ add_vivid_operator(smooth            operators/control/smooth/smooth.cpp)
 add_vivid_operator(sequencer         operators/control/sequencer/sequencer.cpp)
 add_vivid_operator(drum_sequencer    operators/control/drum_sequencer/drum_sequencer.cpp)
 
-# --- GPU operator plugins ---
+# --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu)
 add_vivid_operator(shape          operators/gpu/shape/shape.cpp          EXTRA_LIBS webgpu)
 add_vivid_operator(bars           operators/gpu/bars/bars.cpp            EXTRA_LIBS webgpu)
 add_vivid_operator(composite      operators/gpu/composite/composite.cpp  EXTRA_LIBS webgpu)
-add_vivid_operator(posterize      operators/gpu/posterize/posterize.cpp  EXTRA_LIBS webgpu)
-add_vivid_operator(blur           operators/gpu/blur/blur.cpp            EXTRA_LIBS webgpu)
-add_vivid_operator(halftone       operators/gpu/halftone/halftone.cpp    EXTRA_LIBS webgpu)
-add_vivid_operator(levels         operators/gpu/levels/levels.cpp        EXTRA_LIBS webgpu)
-add_vivid_operator(displace       operators/gpu/displace/displace.cpp    EXTRA_LIBS webgpu)
-add_vivid_operator(solid_color          operators/gpu/solid_color/solid_color.cpp          EXTRA_LIBS webgpu)
-add_vivid_operator(pixelate             operators/gpu/pixelate/pixelate.cpp                 EXTRA_LIBS webgpu)
-add_vivid_operator(tile                 operators/gpu/tile/tile.cpp                         EXTRA_LIBS webgpu)
-add_vivid_operator(chromatic_aberration operators/gpu/chromatic_aberration/chromatic_aberration.cpp EXTRA_LIBS webgpu)
-add_vivid_operator(gradient             operators/gpu/gradient/gradient.cpp                       EXTRA_LIBS webgpu)
-add_vivid_operator(hsv                  operators/gpu/hsv/hsv.cpp                                 EXTRA_LIBS webgpu)
-add_vivid_operator(mirror               operators/gpu/mirror/mirror.cpp                           EXTRA_LIBS webgpu)
-add_vivid_operator(edge                 operators/gpu/edge/edge.cpp                               EXTRA_LIBS webgpu)
-add_vivid_operator(scanlines            operators/gpu/scanlines/scanlines.cpp                     EXTRA_LIBS webgpu)
-add_vivid_operator(ramp                 operators/gpu/ramp/ramp.cpp                               EXTRA_LIBS webgpu)
-add_vivid_operator(dither               operators/gpu/dither/dither.cpp                           EXTRA_LIBS webgpu)
-add_vivid_operator(transform            operators/gpu/transform/transform.cpp                     EXTRA_LIBS webgpu)
-add_vivid_operator(crt_effect           operators/gpu/crt_effect/crt_effect.cpp                   EXTRA_LIBS webgpu)
 add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp                             EXTRA_LIBS webgpu)
-add_vivid_operator(switch_op            operators/gpu/switch_op/switch_op.cpp                     EXTRA_LIBS webgpu)
 add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(instance             operators/gpu/instance/instance.cpp                       EXTRA_LIBS webgpu)
+# Simple WGSL filters are loaded from filters/*.wgsl (no C++ needed)
 
 # --- Movie File In (image + video loader) ---
 if(APPLE)
@@ -220,6 +202,7 @@ add_executable(vivid
     src/runtime/fullscreen_blit.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
@@ -274,6 +257,7 @@ configure_file(graphs/crt_effect_demo.json ${CMAKE_BINARY_DIR}/crt_effect_demo.j
 configure_file(graphs/switch_demo.json ${CMAKE_BINARY_DIR}/switch_demo.json COPYONLY)
 configure_file(graphs/feedback_demo.json ${CMAKE_BINARY_DIR}/feedback_demo.json COPYONLY)
 configure_file(graphs/shape_instance_demo.json ${CMAKE_BINARY_DIR}/shape_instance_demo.json COPYONLY)
+configure_file(graphs/wgsl_filters_demo.json ${CMAKE_BINARY_DIR}/wgsl_filters_demo.json COPYONLY)
 
 # Copy all demo graphs into graphs/ subdirectory (for test_demo_graphs)
 file(GLOB DEMO_GRAPHS graphs/*.json)
@@ -284,6 +268,14 @@ endforeach()
 
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)
+
+# Copy self-describing .wgsl filter presets to build directory
+file(GLOB WGSL_PRESETS filters/*.wgsl)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/filters)
+foreach(f ${WGSL_PRESETS})
+    get_filename_component(fname ${f} NAME)
+    configure_file(${f} ${CMAKE_BINARY_DIR}/filters/${fname} COPYONLY)
+endforeach()
 
 # Copy Dawn shared library next to the executable (if dynamically linked)
 target_copy_webgpu_binaries(vivid)
@@ -310,6 +302,7 @@ add_executable(test_hot_reload
     tests/test_hot_reload.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
 )
@@ -323,6 +316,7 @@ add_executable(test_runtime_api
     tests/test_runtime_api.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
@@ -339,6 +333,7 @@ add_executable(test_control_server
     tests/test_control_server.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
@@ -365,6 +360,7 @@ add_executable(test_audio_engine
     tests/test_audio_engine.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
@@ -382,6 +378,7 @@ add_executable(test_scheduler
     tests/test_scheduler.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
 )
@@ -409,6 +406,7 @@ add_executable(test_operator_creator
     tests/test_operator_creator.cpp
     src/runtime/operator_creator.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/operator_loader.cpp
     src/runtime/graph.cpp
 )
@@ -426,6 +424,15 @@ target_include_directories(test_settings PRIVATE src tests)
 target_link_libraries(test_settings PRIVATE yyjson)
 add_test(NAME test_settings COMMAND test_settings WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# WGSL header parser unit test
+add_executable(test_wgsl_header
+    tests/test_wgsl_header.cpp
+    src/runtime/wgsl_header_parser.cpp
+)
+target_include_directories(test_wgsl_header PRIVATE src)
+target_link_libraries(test_wgsl_header PRIVATE yyjson)
+add_test(NAME test_wgsl_header COMMAND test_wgsl_header WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # String utility unit test (header-only, no dependencies)
 add_executable(test_string_util tests/test_string_util.cpp)
 target_include_directories(test_string_util PRIVATE src tests)
@@ -436,9 +443,10 @@ add_executable(test_operator_loader
     tests/test_operator_loader.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
 )
 target_include_directories(test_operator_loader PRIVATE src)
-target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu)
+target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu yyjson)
 add_dependencies(test_operator_loader test_op_v1 test_op_v2 control_pass_op)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -450,6 +458,7 @@ add_executable(test_gpu_operators
     tests/test_gpu_operators.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
 )
@@ -463,6 +472,7 @@ add_executable(test_cross_domain_spread
     tests/test_cross_domain_spread.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
@@ -479,6 +489,7 @@ add_executable(test_audio_spread_wire
     tests/test_audio_spread_wire.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
@@ -495,6 +506,7 @@ add_executable(test_wavetable_position_env
     tests/test_wavetable_position_env.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
@@ -521,6 +533,7 @@ add_executable(test_demo_graphs
     tests/test_demo_graphs.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
@@ -534,11 +547,9 @@ add_dependencies(test_demo_graphs
     lfo clock math envelope midi_input fft_analysis
     note_pattern chord_progression arpeggiator
     logic gate random smooth sequencer
-    # gpu
-    noise shape bars composite posterize blur halftone levels
-    displace solid_color pixelate tile chromatic_aberration
-    gradient hsv mirror edge scanlines ramp dither transform
-    crt_effect bloom switch_op feedback instance movie_file_in
+    # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
+    noise shape bars composite
+    bloom feedback instance movie_file_in
     # audio
     oscillator gain drum_kick drum_snare drum_hihat drum_clap
     drum_tom drum_cymbal wavetable_synth spread_adsr spread_lfo
