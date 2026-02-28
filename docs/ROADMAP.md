@@ -443,6 +443,53 @@ Two halves, sharing the same `OperatorCreator` module:
 
 ---
 
+> **Interstitial work (after Phase 16):**
+> Significant development occurred outside the phased roadmap:
+>
+> - **Connection scale support** — wires carry a multiplier; `set_connection_scale` MCP tool
+> - **Smart port visibility** — ports auto-hide when not connected; param picker for wiring
+> - **DrumSequencer enhancements** — per-step modulation with tabbed grid UI
+> - **macOS frame timer refactor** — separated event polling from tick callback
+> - **Unit test expansion** — topo sort, operator creator, settings, string utils
+> - **Phase 21 state machine design doc written**
+
+### Phase 16a: Inspector Overhaul — DONE
+
+Major rewrite of the inspector panel with rich widget support and layout metadata.
+
+- Knob widgets, collapsible parameter groups, multi-column layouts
+- XY pad controls and color pickers with new display hints (`XY_PAD`, `COLOR`)
+- Inspector layout metadata in operator API (`group`, `layout_columns`, `layout_column_index`, `display_hint`)
+- All GPU operators annotated with rich layout metadata
+- Param-as-wire-source — parameters can be wired as sources, not just output ports
+- Deferred deselection for multi-selected nodes
+
+**Implementation notes:**
+- `VividParamDescriptor` extended with `group`, `layout_columns`, `layout_column_index`, `display_hint` fields
+- Inspector rendering rewritten to support grouped/columnar layout, knob drawing, XY pad hit-testing, color picker
+- All GPU operators updated with `VIVID_GROUP`, `VIVID_DISPLAY_HINT`, and column annotations in their `collect_params()`
+
+### Phase 16b: Data-Driven WGSL Filter Framework — DONE
+
+Replaced 19 C++ dylib GPU filters with self-describing `.wgsl` files. A single generic runtime loads any WGSL filter from its embedded JSON metadata — no per-filter C++ code needed.
+
+- WGSL header parser extracts JSON metadata (name, params, inputs, time_dependent) from `/* { ... } */` comment blocks
+- `DataDrivenFilterConfig` + `OperatorLoader::init_data_driven()` — generic runtime for any WGSL filter
+- 19 filters migrated: HSV, Levels, Blur, GaussianBlur, Edge, Mirror, Pixelate, Posterize, Gradient, Noise, ChromaticAberration, Scanlines, CRTEffect, Transform, Displace, ChannelMixer, Vignette, Dither, Halftone
+- Unified into single `WGSLFilter` operator type with per-instance loaders (`NodeState::owned_loader`)
+- Backward compatibility: old graphs with `"type": "HSV"` still work transparently via alias resolution
+- Clone & Edit workflow preserved — user filters remain individually registered
+- JSON theme system — 8 built-in themes, user-selectable via preferences
+
+**Implementation notes:**
+- `src/runtime/wgsl_header_parser.h/cpp` — parses `/* { ... } */` JSON blocks from `.wgsl` files
+- `src/runtime/operator_registry.cpp` — `init_data_driven()` scans preset directories, registers each `.wgsl` as a `WGSLFilter` with an `OperatorLoader` carrying the parsed config
+- `NodeState::owned_loader` — per-instance loader pointer so each `WGSLFilter` instance knows which `.wgsl` it represents
+- `src/runtime/scheduler.cpp` — alias map resolves legacy type names (e.g. `"HSV"` → `"WGSLFilter"`) and attaches the correct loader
+- `src/ui/theme.h/cpp` — JSON theme system with 8 built-in themes (Dark, Light, Monokai, Solarized Dark/Light, Nord, Dracula, Gruvbox)
+
+---
+
 ## Tier 5: Experimentation Interfaces
 
 The core tool is complete. Now build the interfaces that make Vivid's exploration model unique.
