@@ -1,0 +1,39 @@
+{
+  "nodes": {
+    "clock1": { "type": "Clock", "params": { "bpm": 120.0 } },
+    "seq1": { "type": "PatternSeq", "params": {
+      "steps": 4, "rate": 2, "gate_length": 0.8, "probability": 1.0,
+      "val_0": 0.3, "val_1": 0.8, "val_2": 0.5, "val_3": 1.0
+    }},
+    "euclid_a": { "type": "Euclidean", "params": {
+      "hits": 3, "steps": 8, "rotation": 0, "gate_length": 0.5, "rate": 2
+    }},
+    "euclid_b": { "type": "Euclidean", "params": {
+      "hits": 5, "steps": 8, "rotation": 0, "gate_length": 0.5, "rate": 2
+    }},
+    "euclid_c": { "type": "Euclidean", "params": {
+      "hits": 7, "steps": 16, "rotation": 0, "gate_length": 0.5, "rate": 3
+    }},
+    "stack1": { "type": "Stack", "params": { "mode": 0 } },
+    "xform1": { "type": "PatTransform", "params": {
+      "reverse": false, "rotate": 0, "scale": 2.0, "offset": 0.0, "probability": 1.0
+    }},
+    "shape1": { "type": "Shape", "params": {
+      "radius": 0.3, "sides": 4, "softness": 0.01
+    }},
+    "inst1": { "type": "Instance", "params": {} }
+  },
+  "connections": [
+    { "from": "clock1/beat_phase", "to": "seq1/beat_phase" },
+    { "from": "clock1/beat_phase", "to": "euclid_a/beat_phase" },
+    { "from": "clock1/beat_phase", "to": "euclid_b/beat_phase" },
+    { "from": "clock1/beat_phase", "to": "euclid_c/beat_phase" },
+    { "from": "seq1/value",        "to": "shape1/radius" },
+    { "from": "euclid_a/pattern",  "to": "stack1/a" },
+    { "from": "euclid_b/pattern",  "to": "stack1/b" },
+    { "from": "stack1/output",     "to": "xform1/pattern" },
+    { "from": "xform1/pattern",    "to": "inst1/values" },
+    { "from": "euclid_c/gate",     "to": "shape1/softness" },
+    { "from": "shape1/texture",    "to": "inst1/input" }
+  ]
+}

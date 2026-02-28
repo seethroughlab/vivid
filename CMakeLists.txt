@@ -102,6 +102,11 @@ add_vivid_operator(random            operators/control/random/random.cpp)
 add_vivid_operator(smooth            operators/control/smooth/smooth.cpp)
 add_vivid_operator(sequencer         operators/control/sequencer/sequencer.cpp)
 add_vivid_operator(drum_sequencer    operators/control/drum_sequencer/drum_sequencer.cpp)
+add_vivid_operator(euclidean         operators/control/euclidean/euclidean.cpp)
+add_vivid_operator(pattern_seq       operators/control/pattern_seq/pattern_seq.cpp)
+add_vivid_operator(stack             operators/control/stack/stack.cpp)
+add_vivid_operator(alternate         operators/control/alternate/alternate.cpp)
+add_vivid_operator(pat_transform     operators/control/pat_transform/pat_transform.cpp)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu)
@@ -259,6 +264,7 @@ configure_file(graphs/switch_demo.json ${CMAKE_BINARY_DIR}/switch_demo.json COPY
 configure_file(graphs/feedback_demo.json ${CMAKE_BINARY_DIR}/feedback_demo.json COPYONLY)
 configure_file(graphs/shape_instance_demo.json ${CMAKE_BINARY_DIR}/shape_instance_demo.json COPYONLY)
 configure_file(graphs/wgsl_filters_demo.json ${CMAKE_BINARY_DIR}/wgsl_filters_demo.json COPYONLY)
+configure_file(graphs/pattern_algebra_demo.json ${CMAKE_BINARY_DIR}/pattern_algebra_demo.json COPYONLY)
 
 # Copy all demo graphs into graphs/ subdirectory (for test_demo_graphs)
 file(GLOB DEMO_GRAPHS graphs/*.json)
@@ -532,6 +538,23 @@ add_test(NAME test_wavetable_position_env
     COMMAND test_wavetable_position_env ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Pattern algebra unit + integration test
+add_executable(test_pattern_algebra
+    tests/test_pattern_algebra.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_pattern_algebra PRIVATE src)
+target_link_libraries(test_pattern_algebra PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_pattern_algebra
+    euclidean pattern_seq stack alternate pat_transform
+    spread_source_op clock)
+add_test(NAME test_pattern_algebra COMMAND test_pattern_algebra
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Copy test graphs to build directory
 configure_file(tests/graphs/test_reload.json ${CMAKE_BINARY_DIR}/test_reload.json COPYONLY)
 configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runtime_api.json COPYONLY)
@@ -559,6 +582,7 @@ add_dependencies(test_demo_graphs
     lfo clock math envelope midi_input fft_analysis
     note_pattern chord_progression arpeggiator
     logic gate random smooth sequencer
+    euclidean pattern_seq stack alternate pat_transform
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
     noise shape bars composite
     bloom feedback instance movie_file_in
