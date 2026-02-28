@@ -52,6 +52,19 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
 }
 
 void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
+    // Patchbay scroll
+    if (patchbay_open_ &&
+        mouse_.x >= patchbay_panel_x_ && mouse_.x <= patchbay_panel_x_ + patchbay_panel_w_ &&
+        mouse_.y >= patchbay_panel_y_ && mouse_.y <= patchbay_panel_y_ + patchbay_panel_h_) {
+        patchbay_scroll_y_ -= y_offset * kPatchbayScrollSpeed;
+        if (mods & GLFW_MOD_SHIFT)
+            patchbay_scroll_x_ -= y_offset * kPatchbayScrollSpeed;
+        else
+            patchbay_scroll_x_ -= x_offset * kPatchbayScrollSpeed;
+        // Clamping happens in draw_patchbay()
+        return;
+    }
+
     // Param picker scroll
     if (param_picker_open_ && !param_picker_items_.empty()) {
         param_picker_scroll_ -= static_cast<int>(y_offset);
@@ -345,6 +358,42 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;
     }
 
+    if (patchbay_open_) {
+        if (key == GLFW_KEY_ESCAPE) patchbay_open_ = false;
+        return;  // swallow all other keys
+    }
+
+    if (create_popup_open_) {
+        switch (key) {
+            case GLFW_KEY_ESCAPE:
+                create_popup_open_ = false;
+                break;
+            case GLFW_KEY_LEFT:
+                if (create_domain_sel_ > 0) create_domain_sel_--;
+                break;
+            case GLFW_KEY_RIGHT:
+                if (create_domain_sel_ < 2) create_domain_sel_++;
+                break;
+            case GLFW_KEY_BACKSPACE:
+                if (!create_name_buf_.empty()) {
+                    create_name_buf_.pop_back();
+                    create_error_ = create_name_buf_.empty() ? "" :
+                        commands_.validate_operator_name(create_name_buf_);
+                }
+                break;
+            case GLFW_KEY_ENTER:
+                if (!create_name_buf_.empty() && create_error_.empty()) {
+                    if (commands_.create_operator(create_name_buf_, create_domain_sel_)) {
+                        create_popup_open_ = false;
+                    } else {
+                        create_error_ = "creation failed";
+                    }
+                }
+                break;
+        }
+        return;
+    }
+
     if (clone_confirm_open_) {
         if (key == GLFW_KEY_ESCAPE) clone_confirm_open_ = false;
         return;
@@ -447,12 +496,16 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         if (key == GLFW_KEY_B && action == GLFW_PRESS) {
             bezier_wires_ = !bezier_wires_;
         }
-        // M toggles MIDI map mode
+        // M: open patchbay if 3+ nodes selected, otherwise toggle MIDI map mode
         if (key == GLFW_KEY_M && action == GLFW_PRESS) {
-            midi_map_mode_ = !midi_map_mode_;
-            if (!midi_map_mode_) {
-                midi_map_waiting_ = false;
-                editing_midi_range_ = false;
+            if (selected_node_ids_.size() >= 3 && !patchbay_open_) {
+                open_patchbay();
+            } else {
+                midi_map_mode_ = !midi_map_mode_;
+                if (!midi_map_mode_) {
+                    midi_map_waiting_ = false;
+                    editing_midi_range_ = false;
+                }
             }
         }
         // Delete selected nodes (Delete or Backspace)
@@ -551,6 +604,18 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
             color_rgb_buffer_ += ch;
         return;
     }
+    if (create_popup_open_) {
+        char ch = static_cast<char>(codepoint);
+        // Accept lowercase, digits, underscores; auto-lowercase uppercase
+        if (std::isupper(static_cast<unsigned char>(ch)))
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (std::islower(static_cast<unsigned char>(ch)) ||
+            std::isdigit(static_cast<unsigned char>(ch)) || ch == '_') {
+            create_name_buf_ += ch;
+            create_error_ = commands_.validate_operator_name(create_name_buf_);
+        }
+        return;
+    }
     if (!chooser_open_) return;
     if (codepoint >= 32 && codepoint < 127) {
         chooser_filter_ += static_cast<char>(codepoint);
@@ -593,6 +658,47 @@ void NodeGraphUI::update_clone_confirm() {
         clone_confirm_open_ = false;
     }
     // Click inside dialog but not on buttons — consume but do nothing
+    mouse_.left_clicked = false;
+    mouse_.left_released = false;
+}
+
+// -----------------------------------------------------------------------
+// Create operator popup interaction (called from update())
+// -----------------------------------------------------------------------
+void NodeGraphUI::update_create_popup() {
+    if (!create_popup_open_ || !mouse_.left_clicked) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+    float pw = kCreatePopupW, ph = kCreatePopupH;
+    float px = (wf - pw) * 0.5f;
+    float py = (hf - ph) * 0.5f;
+
+    // Click outside popup → close
+    if (mouse_.x < px || mouse_.x > px + pw ||
+        mouse_.y < py || mouse_.y > py + ph) {
+        create_popup_open_ = false;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
+    // Check domain button clicks
+    float btn_gap = 8.0f;
+    float total_btn_w = 3 * kCreateDomainBtnW + 2 * btn_gap;
+    float bx = px + (pw - total_btn_w) * 0.5f;
+    float btn_cy = py + 36.0f;  // matches draw: 12 + 24
+
+    for (int i = 0; i < 3; ++i) {
+        float btn_x = bx + i * (kCreateDomainBtnW + btn_gap);
+        if (mouse_.x >= btn_x && mouse_.x <= btn_x + kCreateDomainBtnW &&
+            mouse_.y >= btn_cy && mouse_.y <= btn_cy + kCreateDomainBtnH) {
+            create_domain_sel_ = i;
+            break;
+        }
+    }
+
+    // Consume click inside popup
     mouse_.left_clicked = false;
     mouse_.left_released = false;
 }
@@ -888,6 +994,17 @@ bool NodeGraphUI::handle_inspector_click() {
 
     if (mouse_.x < graph_right() || mouse_.y >= static_cast<float>(win_h_))
         return false;
+
+    // --- Patchbay button click ---
+    if (selected_node_ids_.size() >= 3 && !patchbay_open_) {
+        const auto& br = patchbay_button_rect_;
+        if (br.w > 0 && mouse_.x >= br.x && mouse_.x <= br.x + br.w &&
+            mouse_.y >= br.y && mouse_.y <= br.y + br.h) {
+            open_patchbay();
+            mouse_.left_clicked = false;
+            return true;
+        }
+    }
 
     // --- MIDI map mode click guard ---
     if (midi_map_mode_) {
@@ -1497,6 +1614,36 @@ bool NodeGraphUI::handle_matrix_click() {
         commands_.connect(from_addr, to_addr);
     }
     return true;
+}
+
+// -----------------------------------------------------------------------
+// Patchbay update — click handling and auto-dismiss
+// -----------------------------------------------------------------------
+void NodeGraphUI::update_patchbay() {
+    if (!patchbay_open_) return;
+
+    // Auto-dismiss if selection changes or drops below 3
+    if (selected_node_ids_.size() < 3 || selected_node_ids_ != patchbay_node_ids_) {
+        patchbay_open_ = false;
+        return;
+    }
+
+    // Click handling
+    if (mouse_.left_clicked) {
+        // Hit-test against panel rect
+        if (mouse_.x < patchbay_panel_x_ || mouse_.x > patchbay_panel_x_ + patchbay_panel_w_ ||
+            mouse_.y < patchbay_panel_y_ || mouse_.y > patchbay_panel_y_ + patchbay_panel_h_) {
+            // Click outside panel — dismiss
+            patchbay_open_ = false;
+            mouse_.left_clicked = false;
+            return;
+        }
+
+        // Click inside panel — delegate to matrix cell click handling
+        if (handle_matrix_click()) {
+            mouse_.left_clicked = false;
+        }
+    }
 }
 
 } // namespace vivid::ui

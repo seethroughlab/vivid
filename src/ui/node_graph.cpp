@@ -695,6 +695,17 @@ void NodeGraphUI::rebuild_chooser_items() {
         chooser_items_.push_back(name);
     }
 
+    // Prepend "New Operator" sentinel when available
+    if (commands_.can_create_operator() && !chooser_insert_wire_) {
+        std::string sentinel = "+ New Operator...";
+        // Only show if it matches the current filter
+        std::string lower_sentinel = sentinel;
+        for (auto& c : lower_sentinel) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (lower_filter.empty() || lower_sentinel.find(lower_filter) != std::string::npos) {
+            chooser_items_.insert(chooser_items_.begin(), sentinel);
+        }
+    }
+
     chooser_sel_ = 0;
     chooser_scroll_ = 0;
 }
@@ -703,6 +714,17 @@ void NodeGraphUI::rebuild_chooser_items() {
 // Shared chooser confirm — creates node and optionally splices into wire
 // -----------------------------------------------------------------------
 void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
+    // Handle "New Operator" sentinel
+    if (type == "+ New Operator...") {
+        create_popup_open_ = true;
+        create_domain_sel_ = 0;
+        create_name_buf_.clear();
+        create_error_.clear();
+        chooser_open_ = false;
+        chooser_insert_wire_ = false;
+        return;
+    }
+
     // Generate unique node ID
     std::string id;
     for (int n = 1; ; ++n) {
@@ -775,10 +797,12 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_color_drag();
     update_drum_mod_drag();
     update_matrix_drag();
+    update_patchbay();       // patchbay click/dismiss logic
     update_chooser_hover();
     update_param_picker();   // may consume left_clicked
     update_preferences();    // may consume left_clicked
     update_clone_confirm();  // may consume left_clicked
+    update_create_popup();   // may consume left_clicked
     update_context_menu();   // may consume left_clicked
     handle_right_click();
     handle_left_click();     // dispatches to sub-handlers
@@ -1391,6 +1415,105 @@ void NodeGraphUI::update_matrix_drag() {
     std::string from_addr = cell.from_node + "/" + cell.from_port;
     std::string to_addr = cell.to_node + "/" + cell.to_port;
     commands_.set_connection_scale(from_addr, to_addr, new_scale);
+}
+
+// -----------------------------------------------------------------------
+// Patchbay (multi-node connection matrix overlay)
+// -----------------------------------------------------------------------
+void NodeGraphUI::open_patchbay() {
+    if (selected_node_ids_.size() < 3) return;
+    patchbay_open_ = true;
+    rebuild_patchbay_layout();
+}
+
+void NodeGraphUI::rebuild_patchbay_layout() {
+    patchbay_rows_.clear();
+    patchbay_cols_.clear();
+    patchbay_groups_.clear();
+    patchbay_compat_.clear();
+    patchbay_scroll_x_ = 0.0f;
+    patchbay_scroll_y_ = 0.0f;
+
+    // Gather selected nodes in deterministic order (sorted by node_id)
+    std::vector<std::string> sorted_ids(selected_node_ids_.begin(), selected_node_ids_.end());
+    std::sort(sorted_ids.begin(), sorted_ids.end());
+
+    // Cache node IDs for change detection
+    patchbay_node_ids_ = selected_node_ids_;
+
+    for (const auto& nid : sorted_ids) {
+        const auto* ns = snap_.find_node(nid);
+        if (!ns || !ns->op_info) continue;
+
+        PatchbayNodeGroup group;
+        group.node_id = nid;
+        group.display_name = ns->op_info->name;
+        group.domain = ns->domain;
+        group.row_start = static_cast<int>(patchbay_rows_.size());
+        group.col_start = static_cast<int>(patchbay_cols_.size());
+
+        // Rows: output ports (sorted by index)
+        auto sorted_outs = sorted_ports(ns->output_port_indices);
+        for (const auto& [idx, name] : sorted_outs) {
+            VividPortType pt = VIVID_PORT_CONTROL_FLOAT;
+            for (const auto& p : ns->op_info->ports) {
+                if (p.name == name && p.direction == VIVID_PORT_OUTPUT) { pt = p.type; break; }
+            }
+            patchbay_rows_.push_back({nid, name, false, pt});
+        }
+
+        // Rows: non-FILE params (sorted by index)
+        std::vector<std::pair<uint32_t, std::string>> sorted_params;
+        for (const auto& [name, idx] : ns->param_indices) {
+            if (ns->output_port_indices.count(name)) continue;
+            sorted_params.push_back({idx, name});
+        }
+        std::sort(sorted_params.begin(), sorted_params.end());
+        for (const auto& [idx, name] : sorted_params) {
+            const ParamInfo* pd = ns->find_param(name);
+            if (pd && pd->type == VIVID_PARAM_FILE) continue;
+            patchbay_rows_.push_back({nid, name, true, VIVID_PORT_CONTROL_FLOAT});
+        }
+
+        group.row_count = static_cast<int>(patchbay_rows_.size()) - group.row_start;
+
+        // Columns: signal input ports
+        for (const auto& pi : ns->op_info->ports) {
+            if (pi.direction != VIVID_PORT_INPUT) continue;
+            bool is_param = false;
+            for (const auto& pd : ns->op_info->params) {
+                if (pd.name == pi.name) { is_param = true; break; }
+            }
+            if (!is_param)
+                patchbay_cols_.push_back({nid, pi.name, false, pi.type});
+        }
+
+        // Columns: non-FILE params (sorted by index)
+        for (const auto& pd : ns->op_info->params) {
+            if (pd.type == VIVID_PARAM_FILE) continue;
+            patchbay_cols_.push_back({nid, pd.name, true, VIVID_PORT_CONTROL_FLOAT});
+        }
+
+        group.col_count = static_cast<int>(patchbay_cols_.size()) - group.col_start;
+        patchbay_groups_.push_back(group);
+    }
+
+    // Pre-compute compatibility grid
+    int nr = static_cast<int>(patchbay_rows_.size());
+    int nc = static_cast<int>(patchbay_cols_.size());
+    patchbay_compat_.assign(nr, std::vector<uint8_t>(nc, 0));
+    for (int r = 0; r < nr; ++r) {
+        for (int c = 0; c < nc; ++c) {
+            if (patchbay_rows_[r].node_id == patchbay_cols_[c].node_id) {
+                patchbay_compat_[r][c] = 0;  // same node — skip
+            } else if (port_type_compatible(patchbay_rows_[r].port_type,
+                                            patchbay_cols_[c].port_type)) {
+                patchbay_compat_[r][c] = 2;  // compatible
+            } else {
+                patchbay_compat_[r][c] = 1;  // incompatible
+            }
+        }
+    }
 }
 
 } // namespace vivid::ui

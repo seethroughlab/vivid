@@ -800,6 +800,7 @@ int main(int argc, char* argv[]) {
                 hot_reloader.start(build_dir);
                 hot_reload_enabled = true;
                 control_server.set_hot_reloader(&hot_reloader);
+                command_sink.set_hot_reloader(&hot_reloader);
                 std::fprintf(stderr, "[vivid] Hot-reload enabled (watching %s)\n", operators_dir.c_str());
             }
         } else {

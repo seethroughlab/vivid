@@ -3,6 +3,8 @@
 #include "ui/ui_command_sink.h"
 #include "runtime/runtime_api.h"
 #include "runtime/operator_registry.h"
+#include "runtime/operator_creator.h"
+#include "runtime/hot_reload.h"
 #include "runtime/wgsl_header_parser.h"
 #include "runtime/graph.h"
 #include "runtime/operator_info_cache.h"
@@ -292,6 +294,38 @@ public:
         vivid::save_settings(*settings_);
     }
 
+    bool can_create_operator() const override {
+        return !operators_dir_.empty() && !build_dir_.empty();
+    }
+
+    std::string validate_operator_name(const std::string& name) override {
+        if (!registry_) return "registry not available";
+        return vivid::OperatorCreator::validate_name(name, *registry_);
+    }
+
+    bool create_operator(const std::string& name, int domain) override {
+        if (operators_dir_.empty() || !registry_) return false;
+
+        VividDomain d;
+        switch (domain) {
+            case 0: d = VIVID_DOMAIN_CONTROL; break;
+            case 1: d = VIVID_DOMAIN_AUDIO;   break;
+            case 2: d = VIVID_DOMAIN_GPU;     break;
+            default: return false;
+        }
+
+        // src_dir is the parent of operators/
+        std::string src_dir = std::filesystem::path(operators_dir_).parent_path().string();
+        auto cr = vivid::OperatorCreator::create(name, d, src_dir);
+        if (!cr.success) return false;
+
+        if (hot_reloader_)
+            hot_reloader_->queue_rebuild(cr.target_name);
+
+        vivid::OperatorCreator::open_in_editor(cr.cpp_path);
+        return true;
+    }
+
     void set_operators_dir(const std::string& dir) { operators_dir_ = dir; }
     void set_filters_dir(const std::string& dir) { filters_dir_ = dir; }
     void set_registry(vivid::OperatorRegistry* r) { registry_ = r; }
@@ -300,6 +334,7 @@ public:
     void set_working_filters_dir(const std::string& dir) { working_filters_dir_ = dir; }
     void set_build_dir(const std::string& dir) { build_dir_ = dir; }
     void set_settings(vivid::Settings* s) { settings_ = s; }
+    void set_hot_reloader(vivid::HotReloader* hr) { hot_reloader_ = hr; }
 
 private:
     // Find the .wgsl preset file for a given type name in the filters/ directory
@@ -470,4 +505,5 @@ private:
     vivid::Graph* graph_ = nullptr;
     OperatorInfoCache* op_cache_ = nullptr;
     vivid::Settings* settings_ = nullptr;
+    vivid::HotReloader* hot_reloader_ = nullptr;
 };

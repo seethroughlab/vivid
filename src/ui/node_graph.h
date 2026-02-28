@@ -51,7 +51,7 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0; }
+    bool wants_keyboard() const { return create_popup_open_ || chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0 || patchbay_open_; }
     bool has_selection() const { return !selected_node_ids_.empty(); }
     bool has_single_selection() const { return selected_node_ids_.size() == 1; }
     const std::string& single_selected_id() const { return *selected_node_ids_.begin(); }
@@ -188,6 +188,10 @@ private:
     void update_clone_confirm();
     void draw_clone_confirm(Renderer2D& tr);
 
+    // --- Create operator popup ---
+    void update_create_popup();
+    void draw_create_popup(Renderer2D& tr);
+
     // --- Preferences panel ---
     void update_preferences();
     void draw_preferences(Renderer2D& tr);
@@ -202,6 +206,12 @@ private:
                              const NodeSnapshot& dst_node, float px, float& py);
     bool handle_matrix_click();
     void update_matrix_drag();
+
+    // --- Patchbay (multi-node connection matrix overlay) ---
+    void open_patchbay();
+    void rebuild_patchbay_layout();
+    void draw_patchbay(Renderer2D& tr);
+    void update_patchbay();
 
     // Resolve port type for a node+port (moved from file-local static)
     static VividPortType resolve_port_type(const GraphSnapshot& snap,
@@ -404,6 +414,40 @@ private:
     float matrix_drag_start_y_ = 0.0f;
     float matrix_drag_start_scale_ = 0.0f;
 
+    // Patchbay (multi-node connection matrix overlay) state
+    struct PatchbayRow {
+        std::string node_id;
+        std::string port_name;
+        bool is_param = false;
+        VividPortType port_type = VIVID_PORT_CONTROL_FLOAT;
+    };
+    struct PatchbayCol {
+        std::string node_id;
+        std::string port_name;
+        bool is_param = false;
+        VividPortType port_type = VIVID_PORT_CONTROL_FLOAT;
+    };
+    struct PatchbayNodeGroup {
+        std::string node_id;
+        std::string display_name;
+        VividDomain domain = VIVID_DOMAIN_CONTROL;
+        int row_start = 0, row_count = 0;
+        int col_start = 0, col_count = 0;
+    };
+
+    bool patchbay_open_ = false;
+    std::vector<PatchbayRow> patchbay_rows_;
+    std::vector<PatchbayCol> patchbay_cols_;
+    std::vector<PatchbayNodeGroup> patchbay_groups_;
+    std::vector<std::vector<uint8_t>> patchbay_compat_;  // 0=skip, 1=incompatible, 2=compatible
+    float patchbay_scroll_x_ = 0.0f, patchbay_scroll_y_ = 0.0f;
+    std::unordered_set<std::string> patchbay_node_ids_;  // detect selection change
+    float patchbay_panel_x_ = 0, patchbay_panel_y_ = 0;
+    float patchbay_panel_w_ = 0, patchbay_panel_h_ = 0;
+    // Inspector button rect for "Connection Matrix (M)"
+    struct SimpleRect { float x, y, w, h; };
+    SimpleRect patchbay_button_rect_ = {};
+
     // Sparkline ring buffers for control nodes
     static constexpr uint32_t kSparklineLen = 64;
     struct SparklineData {
@@ -472,6 +516,12 @@ private:
     // Clone confirmation dialog state
     bool clone_confirm_open_ = false;
     std::string clone_confirm_type_;
+
+    // Create operator popup state
+    bool create_popup_open_ = false;
+    int create_domain_sel_ = 0;       // 0=control, 1=audio, 2=gpu
+    std::string create_name_buf_;
+    std::string create_error_;
 
     // Preferences panel state
     bool prefs_open_ = false;

@@ -105,6 +105,12 @@ static constexpr float kChooserHeaderH = 28.0f;
 static constexpr float kChooserItemH = 22.0f;
 static constexpr float kChooserY = 80.0f;
 
+// Create operator popup
+static constexpr float kCreatePopupW = 340.0f;
+static constexpr float kCreatePopupH = 130.0f;
+static constexpr float kCreateDomainBtnW = 80.0f;
+static constexpr float kCreateDomainBtnH = 22.0f;
+
 // Context menu
 static constexpr float kCtxMenuW = 155.0f;
 static constexpr float kCtxMenuItemH = 22.0f;
@@ -231,6 +237,17 @@ static constexpr std::array<float, 4> kPerfBarBg    = { 0.06f, 0.07f, 0.08f, 0.8
 // Performance ring buffer
 static constexpr uint32_t kPerfHistoryLen = 128;
 static constexpr uint32_t kPerfMemSampleInterval = 30;
+
+// Patchbay (multi-node connection matrix overlay)
+static constexpr float kPatchbayCellSize = 16.0f;
+static constexpr float kPatchbayCellPad = 1.0f;
+static constexpr float kPatchbayRowLabelW = 120.0f;
+static constexpr float kPatchbayColHeaderH = 80.0f;
+static constexpr float kPatchbayGroupHeaderH = 20.0f;
+static constexpr float kPatchbayPad = 16.0f;
+static constexpr float kPatchbayMaxW = 900.0f;
+static constexpr float kPatchbayMaxH = 600.0f;
+static constexpr float kPatchbayScrollSpeed = 30.0f;
 
 // Preferences panel layout
 static constexpr float kPrefsW = 360.0f;

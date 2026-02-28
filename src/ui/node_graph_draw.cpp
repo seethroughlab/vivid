@@ -488,6 +488,23 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             tr.draw_text(px, py, label.c_str(), 1.0f, 1.0f, 1.0f);
             py += kLineH + 4;
             tr.draw_text(px, py, "Delete / Backspace to remove", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            py += kLineH + 8;
+
+            // "Connection Matrix (M)" button
+            float btn_w = kInspContentW;
+            float btn_h = 22.0f;
+            bool btn_hover = mouse_.x >= px && mouse_.x <= px + btn_w &&
+                             mouse_.y >= py && mouse_.y <= py + btn_h;
+            if (btn_hover)
+                tr.draw_rect(px, py, btn_w, btn_h,
+                             style_.accent[0], style_.accent[1], style_.accent[2], 0.3f);
+            else
+                tr.draw_rect(px, py, btn_w, btn_h,
+                             style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.6f);
+            tr.draw_text(px + 8, py + 3, "Connection Matrix (M)",
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            patchbay_button_rect_ = {px, py, btn_w, btn_h};
+
             insp_content_h_ = 0;
         }
         return;
@@ -2188,19 +2205,26 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
                          style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
         }
 
-        // Domain color dot
         const std::string& name = chooser_items_[idx];
-        const float* dcol = kControlAccent.data(); // default
-        auto cat_it = snap_.operator_catalog.find(name);
-        if (cat_it != snap_.operator_catalog.end()) {
-            dcol = domain_color(cat_it->second->domain);
-        }
-        float dot_x = px + 10;
-        float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
-        tr.draw_rect(dot_x, dot_y, 6, 6, dcol[0], dcol[1], dcol[2]);
 
-        // Type name
-        tr.draw_text(px + 22, item_y + 3, name.c_str(), 0.85f, 0.87f, 0.90f);
+        if (name == "+ New Operator...") {
+            // Sentinel: accent-colored text, no domain dot
+            tr.draw_text(px + 10, item_y + 3, name.c_str(),
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+        } else {
+            // Domain color dot
+            const float* dcol = kControlAccent.data(); // default
+            auto cat_it = snap_.operator_catalog.find(name);
+            if (cat_it != snap_.operator_catalog.end()) {
+                dcol = domain_color(cat_it->second->domain);
+            }
+            float dot_x = px + 10;
+            float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
+            tr.draw_rect(dot_x, dot_y, 6, 6, dcol[0], dcol[1], dcol[2]);
+
+            // Type name
+            tr.draw_text(px + 22, item_y + 3, name.c_str(), 0.85f, 0.87f, 0.90f);
+        }
     }
 
     // Show "no matches" if empty
@@ -2369,7 +2393,9 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
 
     draw_color_popup(tr);
     draw_clone_confirm(tr);
+    draw_create_popup(tr);
     draw_preferences(tr);
+    draw_patchbay(tr);
 }
 
 // -----------------------------------------------------------------------
@@ -2419,6 +2445,94 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
     else
         tr.draw_rect(cancel_x, btn_y, btn_w, btn_h, style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
     tr.draw_text(cancel_x + 13, btn_y + 3, "Cancel", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+}
+
+// -----------------------------------------------------------------------
+// Create operator popup
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
+    if (!create_popup_open_) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+
+    // Scrim overlay
+    tr.draw_rect(0, 0, wf, hf,
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+
+    // Centered panel
+    float pw = kCreatePopupW, ph = kCreatePopupH;
+    float px = (wf - pw) * 0.5f;
+    float py = (hf - ph) * 0.5f;
+
+    tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
+                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    // Accent bar at top
+    tr.draw_rect(px, py, pw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    float cx = px + 16.0f;
+    float cy = py + 12.0f;
+
+    // Title
+    tr.draw_text(cx, cy, "New Operator",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    cy += 24.0f;
+
+    // Domain selector buttons
+    const char* domain_labels[] = { "control", "audio", "gpu" };
+    const std::array<float, 3>* domain_colors[] = { &kControlAccent, &kAudioAccent, &kGpuAccent };
+    float btn_gap = 8.0f;
+    float total_btn_w = 3 * kCreateDomainBtnW + 2 * btn_gap;
+    float bx = px + (pw - total_btn_w) * 0.5f;
+
+    for (int i = 0; i < 3; ++i) {
+        float btn_x = bx + i * (kCreateDomainBtnW + btn_gap);
+        const auto& dc = *domain_colors[i];
+        if (i == create_domain_sel_) {
+            // Selected: filled with domain color
+            tr.draw_rect(btn_x, cy, kCreateDomainBtnW, kCreateDomainBtnH,
+                         dc[0], dc[1], dc[2], 0.9f);
+            tr.draw_text(btn_x + 8, cy + 3, domain_labels[i], 0.0f, 0.0f, 0.0f);
+        } else {
+            // Unselected: outline style
+            tr.draw_rect(btn_x, cy, kCreateDomainBtnW, kCreateDomainBtnH,
+                         style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
+            tr.draw_text(btn_x + 8, cy + 3, domain_labels[i],
+                         dc[0], dc[1], dc[2]);
+        }
+    }
+    cy += kCreateDomainBtnH + 10.0f;
+
+    // Name text field
+    float field_w = pw - 32.0f;
+    tr.draw_rect(cx, cy, field_w, 22.0f,
+                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+    // Active indicator
+    tr.draw_rect(cx, cy, field_w, 1,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    // Blinking cursor
+    std::string display = create_name_buf_;
+    if (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0)
+        display += "_";
+    else
+        display += " ";
+
+    if (display.size() <= 1 && create_name_buf_.empty()) {
+        // Placeholder
+        tr.draw_text(cx + 4, cy + 3, "operator_name",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+    } else {
+        tr.draw_text(cx + 4, cy + 3, display.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+    cy += 24.0f;
+
+    // Error text
+    if (!create_error_.empty()) {
+        tr.draw_text(cx, cy, create_error_.c_str(),
+                     kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -2879,6 +2993,285 @@ void NodeGraphUI::draw_param_picker(Renderer2D& tr) {
         } else {
             tr.draw_text(px + 8, iy + 3, param_picker_items_[idx].c_str(),
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
+    }
+}
+
+// -----------------------------------------------------------------------
+// Patchbay (multi-node connection matrix overlay)
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_patchbay(Renderer2D& tr) {
+    if (!patchbay_open_) return;
+    if (patchbay_rows_.empty() || patchbay_cols_.empty()) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+
+    // Scrim
+    tr.draw_rect(0, 0, wf, hf,
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+
+    // Compute content size
+    float cell_step = kPatchbayCellSize + kPatchbayCellPad;
+    int nr = static_cast<int>(patchbay_rows_.size());
+    int nc = static_cast<int>(patchbay_cols_.size());
+
+    // Group headers add height/width between groups
+    int n_row_groups = 0, n_col_groups = 0;
+    for (const auto& g : patchbay_groups_) {
+        if (g.row_count > 0) n_row_groups++;
+        if (g.col_count > 0) n_col_groups++;
+    }
+
+    float content_w = kPatchbayRowLabelW + nc * cell_step + std::max(0, n_col_groups - 1) * kPatchbayGroupHeaderH;
+    float content_h = kPatchbayColHeaderH + nr * cell_step + std::max(0, n_row_groups - 1) * kPatchbayGroupHeaderH;
+
+    // Panel size (capped)
+    float panel_w = std::min(kPatchbayMaxW, content_w + 2 * kPatchbayPad);
+    float panel_h = std::min(kPatchbayMaxH, content_h + 2 * kPatchbayPad);
+
+    // Center panel
+    float px = (wf - panel_w) * 0.5f;
+    float py = (hf - panel_h) * 0.5f;
+    patchbay_panel_x_ = px;
+    patchbay_panel_y_ = py;
+    patchbay_panel_w_ = panel_w;
+    patchbay_panel_h_ = panel_h;
+
+    // Panel background
+    tr.draw_rounded_rect(px, py, panel_w, panel_h, style_.corner_radius,
+                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    tr.draw_rect(px, py, panel_w, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    // Build connection lookup: "from_node/from_port->to_node/to_port" -> scale
+    std::unordered_map<std::string, float> conn_map;
+    for (const auto& c : snap_.connections) {
+        // Only index connections involving selected nodes
+        if (patchbay_node_ids_.count(c.from_node) && patchbay_node_ids_.count(c.to_node)) {
+            std::string key = c.from_node + "/" + c.from_port + "->" + c.to_node + "/" + c.to_port;
+            conn_map[key] = c.scale;
+        }
+    }
+
+    // Clear matrix cells (mutually exclusive with 2-node matrix)
+    matrix_cell_rects_.clear();
+
+    // Coordinate system within panel
+    float inner_x = px + kPatchbayPad;
+    float inner_y = py + kPatchbayPad;
+
+    // Clamp scroll
+    float viewport_w = panel_w - 2 * kPatchbayPad - kPatchbayRowLabelW;
+    float viewport_h = panel_h - 2 * kPatchbayPad - kPatchbayColHeaderH;
+    float total_cell_w = content_w - kPatchbayRowLabelW;
+    float total_cell_h = content_h - kPatchbayColHeaderH;
+    float max_scroll_x = std::max(0.0f, total_cell_w - viewport_w);
+    float max_scroll_y = std::max(0.0f, total_cell_h - viewport_h);
+    patchbay_scroll_x_ = std::max(0.0f, std::min(patchbay_scroll_x_, max_scroll_x));
+    patchbay_scroll_y_ = std::max(0.0f, std::min(patchbay_scroll_y_, max_scroll_y));
+
+    // Pre-compute row Y positions (accounting for group headers)
+    std::vector<float> row_y_offsets(nr);  // offset from cells origin
+    {
+        float y_off = 0;
+        for (const auto& g : patchbay_groups_) {
+            if (g.row_count <= 0) continue;
+            if (g.row_start > 0) y_off += kPatchbayGroupHeaderH;
+            for (int r = g.row_start; r < g.row_start + g.row_count; ++r) {
+                row_y_offsets[r] = y_off;
+                y_off += cell_step;
+            }
+        }
+    }
+
+    // Pre-compute column X positions
+    std::vector<float> col_x_offsets(nc);
+    {
+        float x_off = 0;
+        for (const auto& g : patchbay_groups_) {
+            if (g.col_count <= 0) continue;
+            if (g.col_start > 0) x_off += kPatchbayGroupHeaderH;
+            for (int c = g.col_start; c < g.col_start + g.col_count; ++c) {
+                col_x_offsets[c] = x_off;
+                x_off += cell_step;
+            }
+        }
+    }
+
+    // Region origins
+    float labels_x = inner_x;
+    float labels_y = inner_y + kPatchbayColHeaderH;
+    float headers_x = inner_x + kPatchbayRowLabelW;
+    float headers_y = inner_y;
+    float cells_x = inner_x + kPatchbayRowLabelW;
+    float cells_y = inner_y + kPatchbayColHeaderH;
+
+    // Viewport culling: determine visible row/col range
+    int first_vis_row = 0, last_vis_row = nr - 1;
+    int first_vis_col = 0, last_vis_col = nc - 1;
+    for (int r = 0; r < nr; ++r) {
+        float ry = row_y_offsets[r] - patchbay_scroll_y_;
+        if (ry + cell_step >= 0) { first_vis_row = r; break; }
+    }
+    for (int r = nr - 1; r >= 0; --r) {
+        float ry = row_y_offsets[r] - patchbay_scroll_y_;
+        if (ry <= viewport_h) { last_vis_row = r; break; }
+    }
+    for (int c = 0; c < nc; ++c) {
+        float cx = col_x_offsets[c] - patchbay_scroll_x_;
+        if (cx + cell_step >= 0) { first_vis_col = c; break; }
+    }
+    for (int c = nc - 1; c >= 0; --c) {
+        float cx = col_x_offsets[c] - patchbay_scroll_x_;
+        if (cx <= viewport_w) { last_vis_col = c; break; }
+    }
+
+    // --- Region A: Corner label (static) ---
+    tr.push_clip_rect(labels_x, headers_y, kPatchbayRowLabelW, kPatchbayColHeaderH);
+    tr.draw_text(labels_x + 4, headers_y + kPatchbayColHeaderH - kLineH,
+                 "src \\ dest", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f, 0.8f);
+    tr.pop_clip_rect();
+
+    // --- Region B: Column headers (scroll X only) ---
+    tr.push_clip_rect(headers_x, headers_y, viewport_w, kPatchbayColHeaderH);
+    for (const auto& g : patchbay_groups_) {
+        if (g.col_count <= 0) continue;
+        // Group header bar
+        float gx = headers_x + col_x_offsets[g.col_start] - patchbay_scroll_x_;
+        float gw = g.col_count * cell_step;
+        const float* dc = domain_color(g.domain);
+        tr.draw_rect(gx, headers_y, gw, 3, dc[0], dc[1], dc[2], 0.7f);
+
+        // Node name
+        std::string glabel = g.display_name;
+        if (glabel.size() > 12) glabel = glabel.substr(0, 11) + "~";
+        tr.draw_text(gx + 2, headers_y + 4, glabel.c_str(), dc[0], dc[1], dc[2], 0.8f, 0.8f);
+
+        // Column labels (vertical abbreviated text)
+        for (int ci = g.col_start; ci < g.col_start + g.col_count; ++ci) {
+            if (ci < first_vis_col || ci > last_vis_col) continue;
+            float cx = headers_x + col_x_offsets[ci] - patchbay_scroll_x_ + cell_step * 0.5f;
+            const auto& name = patchbay_cols_[ci].port_name;
+            std::string abbr = name.length() > 5 ? name.substr(0, 5) : name;
+            for (size_t chi = 0; chi < abbr.size(); ++chi) {
+                char buf[2] = { abbr[chi], '\0' };
+                float cy = headers_y + 18 + chi * 10.0f;
+                tr.draw_text(cx - 3, cy, buf,
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f, 0.8f);
+            }
+        }
+    }
+    tr.pop_clip_rect();
+
+    // --- Region C: Row labels (scroll Y only) ---
+    tr.push_clip_rect(labels_x, labels_y, kPatchbayRowLabelW, viewport_h);
+    for (const auto& g : patchbay_groups_) {
+        if (g.row_count <= 0) continue;
+        // Group header bar
+        float gy = labels_y + row_y_offsets[g.row_start] - patchbay_scroll_y_;
+        if (g.row_start > 0) gy -= kPatchbayGroupHeaderH;
+        if (g.row_start > 0) {
+            const float* dc = domain_color(g.domain);
+            tr.draw_rect(labels_x, gy, kPatchbayRowLabelW, kPatchbayGroupHeaderH,
+                         dc[0], dc[1], dc[2], 0.15f);
+            std::string glabel = g.display_name;
+            if (glabel.size() > 14) glabel = glabel.substr(0, 13) + "~";
+            tr.draw_text(labels_x + 4, gy + 3, glabel.c_str(), dc[0], dc[1], dc[2], 0.8f, 0.8f);
+        } else {
+            // First group: draw name at top
+            const float* dc = domain_color(g.domain);
+            float gy0 = labels_y - kPatchbayGroupHeaderH - patchbay_scroll_y_;
+            // Only draw if it would be above the first row
+            if (gy0 + kPatchbayGroupHeaderH > labels_y - kPatchbayGroupHeaderH) {
+                std::string glabel = g.display_name;
+                if (glabel.size() > 14) glabel = glabel.substr(0, 13) + "~";
+                tr.draw_text(labels_x + 4, labels_y + row_y_offsets[g.row_start] - patchbay_scroll_y_ - kLineH,
+                             glabel.c_str(), dc[0], dc[1], dc[2], 0.8f, 0.8f);
+            }
+        }
+
+        // Row labels
+        for (int ri = g.row_start; ri < g.row_start + g.row_count; ++ri) {
+            if (ri < first_vis_row || ri > last_vis_row) continue;
+            float ry = labels_y + row_y_offsets[ri] - patchbay_scroll_y_;
+            const auto& row = patchbay_rows_[ri];
+            std::string label = row.is_param ? ("\xC2\xB7 " + row.port_name) : row.port_name;
+            if (label.size() > 14) label = label.substr(0, 13) + "~";
+            float row_alpha = row.is_param ? 0.5f : 0.7f;
+            tr.draw_text(labels_x + 4, ry + 2, label.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], row_alpha, 0.8f);
+        }
+    }
+    tr.pop_clip_rect();
+
+    // --- Region D: Cells (scroll X+Y) ---
+    tr.push_clip_rect(cells_x, cells_y, viewport_w, viewport_h);
+    for (int ri = first_vis_row; ri <= last_vis_row && ri < nr; ++ri) {
+        float ry = cells_y + row_y_offsets[ri] - patchbay_scroll_y_;
+        if (ry > cells_y + viewport_h) break;
+        if (ry + cell_step < cells_y) continue;
+
+        for (int ci = first_vis_col; ci <= last_vis_col && ci < nc; ++ci) {
+            float cx = cells_x + col_x_offsets[ci] - patchbay_scroll_x_;
+            if (cx > cells_x + viewport_w) break;
+            if (cx + cell_step < cells_x) continue;
+
+            uint8_t compat = patchbay_compat_[ri][ci];
+            if (compat == 0) continue;  // same node — blank
+
+            if (compat == 1) {
+                // Incompatible: very dim rect
+                tr.draw_rect(cx, ry, kPatchbayCellSize, kPatchbayCellSize,
+                             style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.15f);
+                continue;
+            }
+
+            // Compatible cell — check if connected
+            std::string key = patchbay_rows_[ri].node_id + "/" + patchbay_rows_[ri].port_name +
+                              "->" + patchbay_cols_[ci].node_id + "/" + patchbay_cols_[ci].port_name;
+            auto conn_it = conn_map.find(key);
+            bool connected = (conn_it != conn_map.end());
+            float scale = connected ? conn_it->second : 0.0f;
+
+            // Background
+            tr.draw_rect(cx, ry, kPatchbayCellSize, kPatchbayCellSize,
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.5f);
+
+            if (connected) {
+                float fill_h = kPatchbayCellSize * scale;
+                float fill_y = ry + kPatchbayCellSize - fill_h;
+                tr.draw_rect(cx, fill_y, kPatchbayCellSize, fill_h,
+                             style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
+            }
+
+            // Store cell rect for hit testing (reuse MatrixCell)
+            matrix_cell_rects_.push_back({
+                cx, ry, kPatchbayCellSize, kPatchbayCellSize,
+                patchbay_rows_[ri].node_id, patchbay_rows_[ri].port_name,
+                patchbay_cols_[ci].node_id, patchbay_cols_[ci].port_name,
+                connected, scale
+            });
+        }
+    }
+    tr.pop_clip_rect();
+
+    // Hover tooltip (drawn outside clip rects)
+    if (!matrix_scale_dragging_) {
+        int hi = hit_test_rect(matrix_cell_rects_, mouse_.x, mouse_.y);
+        if (hi >= 0) {
+            const auto& cell = matrix_cell_rects_[hi];
+            std::string tip = cell.from_node + "/" + cell.from_port + " -> " + cell.to_node + "/" + cell.to_port;
+            if (cell.connected) {
+                tip += " (scale: " + format_float(cell.scale, 2) + ")";
+            }
+            float tw = tr.text_width(tip.c_str(), 0.8f);
+            float tx = mouse_.x + 12;
+            float ty = mouse_.y - 6;
+            // Clamp tooltip to screen
+            if (tx + tw + 6 > wf) tx = wf - tw - 6;
+            if (ty < 0) ty = mouse_.y + 16;
+            tr.draw_rect(tx - 3, ty - 2, tw + 6, kLineH, 0.0f, 0.0f, 0.0f, 0.85f);
+            tr.draw_text(tx, ty, tip.c_str(), 1.0f, 1.0f, 1.0f, 0.9f, 0.8f);
         }
     }
 }
