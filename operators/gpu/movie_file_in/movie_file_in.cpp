@@ -416,6 +416,7 @@ private:
     }
 
     void clear_output(VividGpuState* gpu) {
+        if (!gpu->output_texture_view) return;
         WGPURenderPassColorAttachment color_att{};
         color_att.view = gpu->output_texture_view;
         color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;

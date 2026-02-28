@@ -322,6 +322,7 @@ struct Instance : vivid::OperatorBase {
         }
 
         // Render pass with alpha blending
+        if (!gpu->output_texture_view) return;
         WGPURenderPassColorAttachment color_att{};
         color_att.view = gpu->output_texture_view;
         color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
@@ -397,14 +398,15 @@ private:
         fallback_view_ = wgpuTextureCreateView(fallback_tex_, &vd);
 
         // Initialize to white (so instances are visible even without input)
-        const uint8_t white[4] = {255, 255, 255, 255};
+        // Use 8 bytes for RGBA16Float (half-float: 0x3C00 = 1.0)
+        const uint8_t white[8] = {0x00,0x3C, 0x00,0x3C, 0x00,0x3C, 0x00,0x3C};
         WGPUTexelCopyTextureInfo dest_info{};
         dest_info.texture = fallback_tex_;
         dest_info.mipLevel = 0;
         dest_info.origin = {0, 0, 0};
         dest_info.aspect = WGPUTextureAspect_All;
         WGPUTexelCopyBufferLayout layout{};
-        layout.bytesPerRow = 4;
+        layout.bytesPerRow = 8;
         layout.rowsPerImage = 1;
         WGPUExtent3D extent = {1, 1, 1};
         wgpuQueueWriteTexture(gpu->queue, &dest_info, white, sizeof(white), &layout, &extent);

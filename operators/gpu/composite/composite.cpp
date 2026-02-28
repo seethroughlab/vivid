@@ -216,15 +216,15 @@ private:
         vd.aspect = WGPUTextureAspect_All;
         fallback_view_ = wgpuTextureCreateView(fallback_tex_, &vd);
 
-        // Initialize to transparent black
-        const uint8_t zero[4] = {0, 0, 0, 0};
+        // Initialize to transparent black (8 bytes for RGBA16Float)
+        const uint8_t zero[8] = {};
         WGPUTexelCopyTextureInfo dest_info{};
         dest_info.texture = fallback_tex_;
         dest_info.mipLevel = 0;
         dest_info.origin = {0, 0, 0};
         dest_info.aspect = WGPUTextureAspect_All;
         WGPUTexelCopyBufferLayout layout{};
-        layout.bytesPerRow = 4;
+        layout.bytesPerRow = 8;
         layout.rowsPerImage = 1;
         WGPUExtent3D extent = {1, 1, 1};
         wgpuQueueWriteTexture(gpu->queue, &dest_info, zero, sizeof(zero), &layout, &extent);

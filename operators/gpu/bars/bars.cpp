@@ -167,6 +167,7 @@ struct Bars : vivid::OperatorBase {
         wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
 
         // Render pass
+        if (!gpu->output_texture_view) return;
         WGPURenderPassColorAttachment color_att{};
         color_att.view = gpu->output_texture_view;
         color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;

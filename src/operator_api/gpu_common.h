@@ -99,6 +99,7 @@ inline void run_pass(WGPUCommandEncoder encoder, WGPURenderPipeline pipeline,
                      WGPUBindGroup bind_group, WGPUTextureView target,
                      const char* label,
                      WGPUColor clear = WGPUColor{0, 0, 0, 1}) {
+    if (!target) return;
     WGPURenderPassColorAttachment color_att{};
     color_att.view = target;
     color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
