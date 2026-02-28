@@ -527,6 +527,77 @@ static std::string dispatch(const std::string& method, const std::string& body,
         }
         yyjson_mut_obj_add_val(rdoc, res, "errors", errs);
         result = json_ok(rdoc, res);
+    } else if (method == "save_variation") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* name = yyjson_obj_get(root, "name");
+            if (!name || !yyjson_is_str(name))
+                result = json_err("missing 'name'");
+            else
+                result = command_result_to_json(api.save_variation(yyjson_get_str(name)));
+        }
+    } else if (method == "recall_variation") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* name = yyjson_obj_get(root, "name");
+            if (!name || !yyjson_is_str(name))
+                result = json_err("missing 'name'");
+            else
+                result = command_result_to_json(api.recall_variation(yyjson_get_str(name)));
+        }
+    } else if (method == "remove_variation") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* name = yyjson_obj_get(root, "name");
+            if (!name || !yyjson_is_str(name))
+                result = json_err("missing 'name'");
+            else
+                result = command_result_to_json(api.remove_variation(yyjson_get_str(name)));
+        }
+    } else if (method == "rename_variation") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* old_name = yyjson_obj_get(root, "old_name");
+            yyjson_val* new_name = yyjson_obj_get(root, "new_name");
+            if (!old_name || !new_name || !yyjson_is_str(old_name) || !yyjson_is_str(new_name))
+                result = json_err("missing 'old_name' or 'new_name'");
+            else
+                result = command_result_to_json(
+                    api.rename_variation(yyjson_get_str(old_name), yyjson_get_str(new_name)));
+        }
+    } else if (method == "update_variation") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* name = yyjson_obj_get(root, "name");
+            if (!name || !yyjson_is_str(name))
+                result = json_err("missing 'name'");
+            else
+                result = command_result_to_json(api.update_variation(yyjson_get_str(name)));
+        }
+    } else if (method == "list_variations") {
+        result = command_result_to_json(api.list_variations());
+    } else if (method == "queue_variation") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* name = yyjson_obj_get(root, "name");
+            yyjson_val* quantize = yyjson_obj_get(root, "quantize");
+            if (!name || !yyjson_is_str(name))
+                result = json_err("missing 'name'");
+            else {
+                std::string q = (quantize && yyjson_is_str(quantize))
+                    ? yyjson_get_str(quantize) : "instant";
+                result = command_result_to_json(api.queue_variation(yyjson_get_str(name), q));
+            }
+        }
+    } else if (method == "set_quantize_clock") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid = yyjson_obj_get(root, "node_id");
+            if (!nid || !yyjson_is_str(nid))
+                result = json_err("missing 'node_id'");
+            else
+                result = command_result_to_json(api.set_quantize_clock(yyjson_get_str(nid)));
+        }
     } else if (method == "scaffold_operator") {
         result = [&]() -> std::string {
             if (src_dir.empty())

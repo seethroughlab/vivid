@@ -117,6 +117,11 @@ struct AudioNodeAnalysis {
     std::array<float, kWaveformSamples> waveform{};
 };
 
+// Variation info for UI
+struct VariationInfo {
+    std::string name;
+};
+
 // Complete frame snapshot — everything the UI needs to render
 struct GraphSnapshot {
     std::vector<NodeSnapshot> nodes;
@@ -144,6 +149,13 @@ struct GraphSnapshot {
 
     // WGSL preset names for filter selector UI
     std::vector<std::string> wgsl_preset_names;
+
+    // Variation data
+    std::vector<VariationInfo> variations;
+    int active_variation = -1;
+    bool variation_dirty = false;
+    int queued_variation = -1;
+    std::string quantize_clock_node;
 
     const NodeSnapshot* find_node(const std::string& id) const {
         auto it = node_index.find(id);

@@ -2406,6 +2406,7 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_preview_wire(tr);
     draw_box_select(tr);
     draw_wire_tooltip(tr);
+    draw_session_grid(tr);
 }
 
 // -----------------------------------------------------------------------
@@ -3086,6 +3087,114 @@ void NodeGraphUI::draw_param_picker(Renderer2D& tr) {
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         }
     }
+}
+
+// -----------------------------------------------------------------------
+// Session grid (variation strip at bottom)
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
+    if (!session_grid_open_) return;
+
+    variation_cell_rects_.clear();
+    session_button_rects_.clear();
+
+    float strip_y = static_cast<float>(win_h_) - kSessionStripH;
+    float strip_w = static_cast<float>(win_w_);
+
+    // Background
+    tr.draw_rect(0, strip_y, strip_w, kSessionStripH,
+                 style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.95f);
+    // Top border
+    tr.draw_rect(0, strip_y, strip_w, 1,
+                 style_.accent[0], style_.accent[1], style_.accent[2], 0.5f);
+
+    // --- Header row ---
+    float hx = kSessionPadX;
+    float hy = strip_y + 3;
+
+    tr.draw_text(hx, hy + 2, "SESSION",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    hx += 70;
+
+    // Quantize buttons
+    static const char* quantize_labels[] = { "Off", "Beat", "Bar", "4Bar" };
+    tr.draw_text(hx, hy + 2, "Quantize:",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    hx += 72;
+    for (int i = 0; i < 4; ++i) {
+        float bw = 38.0f;
+        bool active = (session_quantize_mode_ == i);
+        float r = active ? style_.accent[0] : style_.slider_track[0];
+        float g = active ? style_.accent[1] : style_.slider_track[1];
+        float b = active ? style_.accent[2] : style_.slider_track[2];
+        tr.draw_rect(hx, hy, bw, 18, r, g, b, active ? 0.9f : 0.6f);
+        tr.draw_text(hx + 4, hy + 2, quantize_labels[i],
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        session_button_rects_.push_back({hx, hy, bw, 18.0f, 2 + i});
+        hx += bw + 3;
+    }
+
+    // Save button (overwrites active variation)
+    hx += 10;
+    if (snap_.active_variation >= 0 && snap_.variation_dirty) {
+        float save_w = 42.0f;
+        tr.draw_rect(hx, hy, save_w, 18,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
+        tr.draw_text(hx + 6, hy + 2, "Save",
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        session_button_rects_.push_back({hx, hy, save_w, 18.0f, 1});
+        hx += save_w + 6;
+    }
+
+    // --- Cell row ---
+    float cy = strip_y + kSessionHeaderH + 2;
+    float cx = kSessionPadX - session_scroll_x_;
+
+    for (int i = 0; i < static_cast<int>(snap_.variations.size()); ++i) {
+        bool active = (i == snap_.active_variation);
+        bool queued = (i == snap_.queued_variation);
+
+        float r, g, b, a;
+        if (active) {
+            r = style_.accent[0]; g = style_.accent[1]; b = style_.accent[2]; a = 0.85f;
+        } else if (queued) {
+            r = style_.accent[0] * 0.6f; g = style_.accent[1] * 0.6f; b = style_.accent[2] * 0.6f; a = 0.7f;
+        } else {
+            r = style_.slider_track[0]; g = style_.slider_track[1]; b = style_.slider_track[2]; a = 0.7f;
+        }
+
+        tr.draw_rect(cx, cy, kSessionCellW, kSessionCellH, r, g, b, a);
+
+        // Queued indicator: pulsing border
+        if (queued) {
+            draw_rect_border(tr, cx, cy, kSessionCellW, kSessionCellH,
+                             style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
+        }
+
+        // Variation name
+        if (session_editing_name_ && session_edit_idx_ == i) {
+            // Edit mode: draw text buffer with cursor
+            std::string display = session_edit_buffer_ + "|";
+            tr.draw_text(cx + 6, cy + 4, display.c_str(),
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        } else {
+            std::string label = snap_.variations[i].name;
+            if (active && snap_.variation_dirty) label += " *";
+            tr.draw_text(cx + 6, cy + 4, label.c_str(),
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
+
+        variation_cell_rects_.push_back({cx, cy, kSessionCellW, kSessionCellH, i});
+        cx += kSessionCellW + kSessionCellPad;
+    }
+
+    // [+ New] button
+    float new_btn_w = 60.0f;
+    tr.draw_rect(cx, cy, new_btn_w, kSessionCellH,
+                 style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.5f);
+    tr.draw_text(cx + 8, cy + 4, "+ New",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    session_button_rects_.push_back({cx, cy, new_btn_w, kSessionCellH, 0});
 }
 
 } // namespace vivid::ui

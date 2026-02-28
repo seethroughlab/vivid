@@ -18,6 +18,9 @@ bool Graph::load(const char* path) {
     connections_.clear();
     midi_mappings_.clear();
     filters_.clear();
+    variations_.clear();
+    active_variation_ = -1;
+    quantize_clock_node_.clear();
     source_path_ = path;
 
     yyjson_read_err err;
@@ -200,6 +203,51 @@ bool Graph::load(const char* path) {
         }
     }
 
+    // Parse variations
+    yyjson_val* var_arr = yyjson_obj_get(root, "variations");
+    if (var_arr && yyjson_is_arr(var_arr)) {
+        size_t vidx, vmax;
+        yyjson_val* vval;
+        yyjson_arr_foreach(var_arr, vidx, vmax, vval) {
+            VariationDef vd;
+            yyjson_val* vname = yyjson_obj_get(vval, "name");
+            if (vname && yyjson_is_str(vname))
+                vd.name = yyjson_get_str(vname);
+            yyjson_val* vparams = yyjson_obj_get(vval, "params");
+            if (vparams && yyjson_is_obj(vparams)) {
+                yyjson_obj_iter niter;
+                yyjson_obj_iter_init(vparams, &niter);
+                yyjson_val* nkey;
+                while ((nkey = yyjson_obj_iter_next(&niter)) != nullptr) {
+                    yyjson_val* nval = yyjson_obj_iter_get_val(nkey);
+                    std::string node_id = yyjson_get_str(nkey);
+                    if (nval && yyjson_is_obj(nval)) {
+                        auto& pm = vd.params[node_id];
+                        yyjson_obj_iter piter;
+                        yyjson_obj_iter_init(nval, &piter);
+                        yyjson_val* pkey;
+                        while ((pkey = yyjson_obj_iter_next(&piter)) != nullptr) {
+                            yyjson_val* pv = yyjson_obj_iter_get_val(pkey);
+                            if (pv && yyjson_is_num(pv))
+                                pm[yyjson_get_str(pkey)] = static_cast<float>(yyjson_get_num(pv));
+                        }
+                    }
+                }
+            }
+            variations_.push_back(std::move(vd));
+        }
+    }
+
+    // Parse active_variation
+    yyjson_val* av_val = yyjson_obj_get(root, "active_variation");
+    if (av_val && yyjson_is_int(av_val))
+        active_variation_ = static_cast<int>(yyjson_get_int(av_val));
+
+    // Parse quantize_clock
+    yyjson_val* qc_val = yyjson_obj_get(root, "quantize_clock");
+    if (qc_val && yyjson_is_str(qc_val))
+        quantize_clock_node_ = yyjson_get_str(qc_val);
+
     yyjson_doc_free(doc);
 
     std::fprintf(stderr, "[vivid] Loaded graph: %s (%zu nodes, %zu connections)\n",
@@ -380,6 +428,62 @@ const MidiMappingDef* Graph::find_midi_mapping(const std::string& node_id,
     return nullptr;
 }
 
+// --- Variation Mutation ---
+
+void Graph::add_variation(VariationDef v) {
+    // Replace if already exists
+    for (auto& existing : variations_) {
+        if (existing.name == v.name) {
+            existing = std::move(v);
+            return;
+        }
+    }
+    variations_.push_back(std::move(v));
+}
+
+bool Graph::remove_variation(const std::string& name) {
+    auto it = std::find_if(variations_.begin(), variations_.end(),
+        [&](const VariationDef& v) { return v.name == name; });
+    if (it == variations_.end()) return false;
+    int idx = static_cast<int>(it - variations_.begin());
+    variations_.erase(it);
+    // Adjust active_variation index
+    if (active_variation_ == idx)
+        active_variation_ = -1;
+    else if (active_variation_ > idx)
+        active_variation_--;
+    return true;
+}
+
+bool Graph::rename_variation(const std::string& old_name, const std::string& new_name) {
+    auto* v = find_variation(old_name);
+    if (!v) return false;
+    if (find_variation(new_name)) return false; // name conflict
+    v->name = new_name;
+    return true;
+}
+
+const VariationDef* Graph::find_variation(const std::string& name) const {
+    for (const auto& v : variations_) {
+        if (v.name == name) return &v;
+    }
+    return nullptr;
+}
+
+VariationDef* Graph::find_variation(const std::string& name) {
+    for (auto& v : variations_) {
+        if (v.name == name) return &v;
+    }
+    return nullptr;
+}
+
+int Graph::find_variation_index(const std::string& name) const {
+    for (int i = 0; i < static_cast<int>(variations_.size()); ++i) {
+        if (variations_[i].name == name) return i;
+    }
+    return -1;
+}
+
 // --- Serialization ---
 
 bool Graph::save(const char* path) const {
@@ -483,6 +587,31 @@ bool Graph::save(const char* path) const {
         }
         yyjson_mut_obj_add_val(doc, root, "midi_mappings", midi_arr);
     }
+
+    // Variations
+    if (!variations_.empty()) {
+        yyjson_mut_val* var_arr = yyjson_mut_arr(doc);
+        for (const auto& vd : variations_) {
+            yyjson_mut_val* v_obj = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_strcpy(doc, v_obj, "name", vd.name.c_str());
+            yyjson_mut_val* params_obj = yyjson_mut_obj(doc);
+            for (const auto& [node_id, pm] : vd.params) {
+                yyjson_mut_val* node_obj = yyjson_mut_obj(doc);
+                for (const auto& [pname, pval] : pm) {
+                    yyjson_mut_obj_add_real(doc, node_obj, pname.c_str(),
+                                            static_cast<double>(pval));
+                }
+                yyjson_mut_obj_add_val(doc, params_obj, node_id.c_str(), node_obj);
+            }
+            yyjson_mut_obj_add_val(doc, v_obj, "params", params_obj);
+            yyjson_mut_arr_add_val(var_arr, v_obj);
+        }
+        yyjson_mut_obj_add_val(doc, root, "variations", var_arr);
+    }
+    if (active_variation_ >= 0)
+        yyjson_mut_obj_add_int(doc, root, "active_variation", active_variation_);
+    if (!quantize_clock_node_.empty())
+        yyjson_mut_obj_add_strcpy(doc, root, "quantize_clock", quantize_clock_node_.c_str());
 
     // Viewport
     if (has_viewport()) {

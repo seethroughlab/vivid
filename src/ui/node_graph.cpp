@@ -31,6 +31,12 @@ float NodeGraphUI::graph_right() const {
     return has_selection() ? inspector_x() : static_cast<float>(win_w_);
 }
 
+float NodeGraphUI::graph_bottom() const {
+    float h = static_cast<float>(win_h_);
+    if (session_grid_open_) h -= kSessionStripH;
+    return h;
+}
+
 // -----------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------

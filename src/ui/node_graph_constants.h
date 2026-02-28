@@ -247,6 +247,14 @@ static constexpr float kPrefsSectionGap = 12.0f;
 static constexpr float kPrefsBtnW = 70.0f;
 static constexpr float kPrefsBtnH = 24.0f;
 
+// Session grid (variation strip)
+static constexpr float kSessionStripH = 52.0f;
+static constexpr float kSessionHeaderH = 24.0f;
+static constexpr float kSessionCellW = 110.0f;
+static constexpr float kSessionCellH = 24.0f;
+static constexpr float kSessionCellPad = 4.0f;
+static constexpr float kSessionPadX = 8.0f;
+
 // Patch panel (2-node connection view)
 static constexpr float kPatchJackHitRadius = 8.0f;
 

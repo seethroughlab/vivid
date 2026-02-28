@@ -51,7 +51,7 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return create_popup_open_ || chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0 || patch_ctx_open_; }
+    bool wants_keyboard() const { return create_popup_open_ || chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0 || patch_ctx_open_ || session_editing_name_; }
     bool has_selection() const { return !selected_node_ids_.empty(); }
     bool has_single_selection() const { return selected_node_ids_.size() == 1; }
     const std::string& single_selected_id() const { return *selected_node_ids_.begin(); }
@@ -140,6 +140,9 @@ private:
     void draw_wire_tooltip(Renderer2D& tr);
     void draw_inspector_scrollbar(Renderer2D& tr);
     void draw_midi_map_banner(Renderer2D& tr);
+
+    // --- Session grid ---
+    void draw_session_grid(Renderer2D& tr);
 
     // --- Grid ---
     void draw_grid(Renderer2D& tr);
@@ -249,6 +252,8 @@ private:
 
     // Right edge of interactive graph area (shrinks when inspector is visible)
     float graph_right() const;
+    // Bottom edge of interactive graph area (shrinks when session grid is open)
+    float graph_bottom() const;
     float inspector_x() const { return static_cast<float>(win_w_) - kInspectorW; }
     float chooser_x() const { return (graph_right() - kChooserW) * 0.5f; }
 
@@ -508,6 +513,22 @@ private:
     std::vector<UIStyle> prefs_styles_;
     std::vector<ThemeInfo> prefs_themes_;
     int prefs_saved_style_sel_ = 0;   // to revert on cancel
+
+    // --- Session grid (variation strip) ---
+    bool session_grid_open_ = false;
+    float session_scroll_x_ = 0.0f;
+    int session_hovered_col_ = -1;
+    // Rename editing
+    bool session_editing_name_ = false;
+    int session_edit_idx_ = -1;
+    std::string session_edit_buffer_;
+    // Quantize mode (persisted as UI state, synced via commands)
+    int session_quantize_mode_ = 0;  // 0=Off, 1=Beat, 2=Bar, 3=4Bar
+    // Hit-test rects
+    struct VariationCellRect { float x, y, w, h; int idx; };
+    std::vector<VariationCellRect> variation_cell_rects_;
+    struct SessionButtonRect { float x, y, w, h; int action; }; // action: 0=+New, 1=Save, 2-5=quantize buttons
+    std::vector<SessionButtonRect> session_button_rects_;
 
     // Active UI style
     UIStyle style_;

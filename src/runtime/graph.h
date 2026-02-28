@@ -51,6 +51,12 @@ struct MidiMappingDef {
     float range_max = 1.0f;
 };
 
+struct VariationDef {
+    std::string name;
+    // node_id -> { param_name -> value }
+    std::unordered_map<std::string, std::unordered_map<std::string, float>> params;
+};
+
 class Graph {
 public:
     bool load(const char* path);
@@ -58,6 +64,7 @@ public:
     const std::vector<ConnectionDef>& connections() const { return connections_; }
     const std::vector<MidiMappingDef>& midi_mappings() const { return midi_mappings_; }
     const std::vector<FilterDef>& filters() const { return filters_; }
+    const std::vector<VariationDef>& variations() const { return variations_; }
     const std::string& source_path() const { return source_path_; }
 
     // Mutation
@@ -88,6 +95,19 @@ public:
     const MidiMappingDef* find_midi_mapping(const std::string& node_id,
                                             const std::string& param) const;
 
+    // Variation mutation
+    void add_variation(VariationDef v);
+    bool remove_variation(const std::string& name);
+    bool rename_variation(const std::string& old_name, const std::string& new_name);
+    const VariationDef* find_variation(const std::string& name) const;
+    VariationDef* find_variation(const std::string& name);
+    int find_variation_index(const std::string& name) const;
+
+    int active_variation() const { return active_variation_; }
+    void set_active_variation(int idx) { active_variation_ = idx; }
+    const std::string& quantize_clock_node() const { return quantize_clock_node_; }
+    void set_quantize_clock_node(const std::string& node_id) { quantize_clock_node_ = node_id; }
+
     // Lookup
     const NodeDef* find_node(const std::string& id) const;
     NodeDef* find_node(const std::string& id);
@@ -107,6 +127,9 @@ private:
     std::vector<ConnectionDef> connections_;
     std::vector<MidiMappingDef> midi_mappings_;
     std::vector<FilterDef> filters_;
+    std::vector<VariationDef> variations_;
+    int active_variation_ = -1;
+    std::string quantize_clock_node_;
     std::string source_path_;
 };
 

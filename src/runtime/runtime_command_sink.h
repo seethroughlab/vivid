@@ -61,6 +61,19 @@ public:
         api_.set_string_param(node_id, param, value);
     }
 
+    void save_variation(const std::string& name) override { api_.save_variation(name); }
+    void recall_variation(const std::string& name) override { api_.recall_variation(name); }
+    void recall_variation_idx(int idx) override { api_.recall_variation_idx(idx); }
+    void remove_variation(const std::string& name) override { api_.remove_variation(name); }
+    void rename_variation(const std::string& old_name, const std::string& new_name) override {
+        api_.rename_variation(old_name, new_name);
+    }
+    void update_variation(const std::string& name) override { api_.update_variation(name); }
+    void queue_variation(const std::string& name, const std::string& quantize) override {
+        api_.queue_variation(name, quantize);
+    }
+    void set_quantize_clock(const std::string& node_id) override { api_.set_quantize_clock(node_id); }
+
     void open_shader(const std::string& type_name) override {
         // User C++ operator → open its source .cpp
         if (registry_ && registry_->is_user_operator(type_name)) {

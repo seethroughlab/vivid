@@ -40,6 +40,10 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
     NodeDef* ndef = graph_.find_node(node_id);
     if (ndef) ndef->params[param] = value;
 
+    // Mark variation dirty if we have an active variation
+    if (graph_.active_variation() >= 0)
+        variation_dirty_ = true;
+
     std::ostringstream oss;
     oss << node_id << "/" << param << " = " << value;
     return {true, oss.str()};
@@ -378,6 +382,167 @@ void RuntimeAPI::apply_midi_mappings() {
         // Remap [0,1] -> [range_min, range_max]
         float mapped = mm.range_min + raw * (mm.range_max - mm.range_min);
         set_param(mm.node_id, mm.param_name, mapped);
+    }
+}
+
+// --- Variations ---
+
+CommandResult RuntimeAPI::save_variation(const std::string& name) {
+    VariationDef vd;
+    vd.name = name;
+    for (const auto& ns : scheduler_.nodes()) {
+        auto& pm = vd.params[ns.node_id];
+        for (const auto& [pname, idx] : ns.param_indices) {
+            pm[pname] = ns.param_values[idx];
+        }
+    }
+    graph_.add_variation(std::move(vd));
+    int idx = graph_.find_variation_index(name);
+    graph_.set_active_variation(idx);
+    variation_dirty_ = false;
+    return {true, "saved variation '" + name + "'"};
+}
+
+CommandResult RuntimeAPI::recall_variation(const std::string& name) {
+    int idx = graph_.find_variation_index(name);
+    if (idx < 0) return {false, "unknown variation '" + name + "'"};
+    return recall_variation_idx(idx);
+}
+
+CommandResult RuntimeAPI::recall_variation_idx(int idx) {
+    const auto& vars = graph_.variations();
+    if (idx < 0 || idx >= static_cast<int>(vars.size()))
+        return {false, "variation index out of range"};
+    apply_variation(idx);
+    return {true, "recalled variation '" + vars[idx].name + "'"};
+}
+
+void RuntimeAPI::apply_variation(int idx) {
+    const auto& vd = graph_.variations()[idx];
+    for (const auto& [node_id, pm] : vd.params) {
+        NodeState* ns = scheduler_.find_node_mut(node_id);
+        if (!ns) continue;
+        for (const auto& [pname, pval] : pm) {
+            auto pi = ns->param_indices.find(pname);
+            if (pi != ns->param_indices.end()) {
+                ns->param_values[pi->second] = pval;
+                // Also update graph's NodeDef
+                NodeDef* ndef = graph_.find_node(node_id);
+                if (ndef) ndef->params[pname] = pval;
+            }
+        }
+        ns->generation++;
+    }
+    graph_.set_active_variation(idx);
+    variation_dirty_ = false;
+    pending_variation_.armed = false;
+}
+
+CommandResult RuntimeAPI::remove_variation(const std::string& name) {
+    if (!graph_.remove_variation(name))
+        return {false, "unknown variation '" + name + "'"};
+    return {true, "removed variation '" + name + "'"};
+}
+
+CommandResult RuntimeAPI::rename_variation(const std::string& old_name, const std::string& new_name) {
+    if (!graph_.rename_variation(old_name, new_name))
+        return {false, "rename failed (not found or name conflict)"};
+    return {true, "renamed '" + old_name + "' to '" + new_name + "'"};
+}
+
+CommandResult RuntimeAPI::update_variation(const std::string& name) {
+    auto* vd = graph_.find_variation(name);
+    if (!vd) return {false, "unknown variation '" + name + "'"};
+    vd->params.clear();
+    for (const auto& ns : scheduler_.nodes()) {
+        auto& pm = vd->params[ns.node_id];
+        for (const auto& [pname, idx] : ns.param_indices) {
+            pm[pname] = ns.param_values[idx];
+        }
+    }
+    variation_dirty_ = false;
+    return {true, "updated variation '" + name + "'"};
+}
+
+CommandResult RuntimeAPI::list_variations() {
+    const auto& vars = graph_.variations();
+    if (vars.empty()) return {true, "(no variations)"};
+    std::ostringstream oss;
+    for (size_t i = 0; i < vars.size(); ++i) {
+        if (i > 0) oss << ", ";
+        oss << vars[i].name;
+        if (static_cast<int>(i) == graph_.active_variation()) oss << " *";
+    }
+    return {true, oss.str()};
+}
+
+CommandResult RuntimeAPI::queue_variation(const std::string& name, const std::string& quantize) {
+    int idx = graph_.find_variation_index(name);
+    if (idx < 0) return {false, "unknown variation '" + name + "'"};
+
+    PendingVariation::Quantize q = PendingVariation::Instant;
+    if (quantize == "beat") q = PendingVariation::Beat;
+    else if (quantize == "bar") q = PendingVariation::Bar;
+    else if (quantize == "4bar") q = PendingVariation::FourBar;
+
+    if (q == PendingVariation::Instant) {
+        apply_variation(idx);
+        return {true, "recalled variation '" + name + "' (instant)"};
+    }
+
+    pending_variation_.variation_idx = idx;
+    pending_variation_.quantize = q;
+    pending_variation_.armed = true;
+    pending_variation_.beats_remaining =
+        (q == PendingVariation::Bar) ? 4 :
+        (q == PendingVariation::FourBar) ? 16 : 1;
+
+    return {true, "queued variation '" + name + "' (" + quantize + ")"};
+}
+
+CommandResult RuntimeAPI::set_quantize_clock(const std::string& node_id) {
+    graph_.set_quantize_clock_node(node_id);
+    return {true, "quantize clock set to '" + node_id + "'"};
+}
+
+void RuntimeAPI::tick_quantized_switch() {
+    if (!pending_variation_.armed) return;
+
+    const auto& clock_id = graph_.quantize_clock_node();
+    if (clock_id.empty()) {
+        // No clock — instant fallback
+        apply_variation(pending_variation_.variation_idx);
+        return;
+    }
+
+    const NodeState* clock_ns = nullptr;
+    for (const auto& ns : scheduler_.nodes()) {
+        if (ns.node_id == clock_id) { clock_ns = &ns; break; }
+    }
+    if (!clock_ns) {
+        // Clock node missing — instant fallback
+        apply_variation(pending_variation_.variation_idx);
+        return;
+    }
+
+    // Read beat_phase output
+    auto bp_it = clock_ns->output_port_indices.find("beat_phase");
+    if (bp_it == clock_ns->output_port_indices.end() ||
+        bp_it->second >= clock_ns->output_values.size()) {
+        // No beat_phase output — instant fallback
+        apply_variation(pending_variation_.variation_idx);
+        return;
+    }
+
+    float beat_phase = clock_ns->output_values[bp_it->second];
+    bool zero_crossing = (beat_phase < prev_beat_phase_) && (prev_beat_phase_ > 0.5f);
+    prev_beat_phase_ = beat_phase;
+
+    if (!zero_crossing) return;
+
+    pending_variation_.beats_remaining--;
+    if (pending_variation_.beats_remaining <= 0) {
+        apply_variation(pending_variation_.variation_idx);
     }
 }
 

@@ -60,6 +60,24 @@ public:
     // Per-frame: apply MIDI CC values to mapped params
     void apply_midi_mappings();
 
+    // --- Variations ---
+    CommandResult save_variation(const std::string& name);
+    CommandResult recall_variation(const std::string& name);
+    CommandResult recall_variation_idx(int idx);
+    CommandResult remove_variation(const std::string& name);
+    CommandResult rename_variation(const std::string& old_name, const std::string& new_name);
+    CommandResult update_variation(const std::string& name);
+    CommandResult list_variations();
+    CommandResult queue_variation(const std::string& name, const std::string& quantize);
+    CommandResult set_quantize_clock(const std::string& node_id);
+
+    // Per-frame: check pending quantized variation switch
+    void tick_quantized_switch();
+
+    // Variation state accessors for snapshot
+    int pending_variation_idx() const { return pending_variation_.armed ? pending_variation_.variation_idx : -1; }
+    bool variation_dirty() const { return variation_dirty_; }
+
     // Persistence
     CommandResult save();
     CommandResult save_as(const std::string& path);
@@ -79,6 +97,20 @@ private:
     SystemMidiListener* system_midi_ = nullptr;
     bool pending_topology_change_ = false;
     bool needs_gpu_realloc_ = false;
+
+    // Quantized variation switching state
+    struct PendingVariation {
+        int variation_idx = -1;
+        enum Quantize { Instant, Beat, Bar, FourBar } quantize = Instant;
+        int beats_remaining = 0;
+        bool armed = false;
+    };
+    PendingVariation pending_variation_;
+    float prev_beat_phase_ = 0.0f;
+    bool variation_dirty_ = false;
+
+    // Internal helper to apply a variation's params to live nodes
+    void apply_variation(int idx);
 };
 
 } // namespace vivid

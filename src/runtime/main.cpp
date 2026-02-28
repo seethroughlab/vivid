@@ -82,7 +82,8 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         vivid::AudioEngine* audio_engine,
         vivid::OperatorRegistry& registry,
         OperatorInfoCache& op_cache,
-        vivid::SystemMidiListener* system_midi = nullptr) {
+        vivid::SystemMidiListener* system_midi = nullptr,
+        const vivid::RuntimeAPI* runtime_api = nullptr) {
     vivid::ui::GraphSnapshot snap;
 
     const auto& sched_nodes = scheduler.nodes();
@@ -195,6 +196,19 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         for (size_t i = 0; i < events.size(); ++i) {
             snap.pending_cc_events[i] = {events[i].channel, events[i].cc_number, events[i].value};
         }
+    }
+
+    // Variations
+    const auto& vars = graph.variations();
+    snap.variations.resize(vars.size());
+    for (size_t i = 0; i < vars.size(); ++i) {
+        snap.variations[i].name = vars[i].name;
+    }
+    snap.active_variation = graph.active_variation();
+    snap.quantize_clock_node = graph.quantize_clock_node();
+    if (runtime_api) {
+        snap.variation_dirty = runtime_api->variation_dirty();
+        snap.queued_variation = runtime_api->pending_variation_idx();
     }
 
     return snap;
@@ -890,6 +904,9 @@ int main(int argc, char* argv[]) {
         // --- Apply MIDI mappings (before tick so wire wins on conflict) ---
         runtime_api.apply_midi_mappings();
 
+        // --- Tick quantized variation switching ---
+        runtime_api.tick_quantized_switch();
+
         // --- Try to acquire surface texture for presentation ---
         vivid::FrameState frame;
         bool have_surface = gpu.begin_frame(frame);
@@ -998,7 +1015,7 @@ int main(int argc, char* argv[]) {
             if (text_renderer_ok && graph_ui.visible()) {
                 auto snapshot = build_graph_snapshot(
                     graph, scheduler, has_audio ? &audio_engine : nullptr,
-                    registry, op_info_cache, &system_midi);
+                    registry, op_info_cache, &system_midi, &runtime_api);
                 graph_ui.update(snapshot);
                 graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
                 // Pass 1: text/rects

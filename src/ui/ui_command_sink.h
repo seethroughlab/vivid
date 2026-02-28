@@ -32,6 +32,16 @@ public:
     virtual bool create_operator(const std::string& name, int domain) { return false; }
     virtual void set_string_param(const std::string& node_id, const std::string& param,
                                   const std::string& value) = 0;
+
+    // Variation operations (defaults are no-ops for headless/test sinks)
+    virtual void save_variation(const std::string& name) {}
+    virtual void recall_variation(const std::string& name) {}
+    virtual void recall_variation_idx(int idx) {}
+    virtual void remove_variation(const std::string& name) {}
+    virtual void rename_variation(const std::string& old_name, const std::string& new_name) {}
+    virtual void update_variation(const std::string& name) {}
+    virtual void queue_variation(const std::string& name, const std::string& quantize) {}
+    virtual void set_quantize_clock(const std::string& node_id) {}
 };
 
 } // namespace vivid::ui
