@@ -26,6 +26,8 @@ typedef enum VividParamType {
 typedef enum VividDisplayHint {
     VIVID_DISPLAY_DEFAULT = 0,   // full-width slider (current behavior)
     VIVID_DISPLAY_KNOB    = 1,   // circular knob widget
+    VIVID_DISPLAY_XY_PAD  = 2,   // 2D axis pad (pair consecutive x/y params)
+    VIVID_DISPLAY_COLOR   = 3,   // color swatch + popup (triple consecutive r/g/b params)
 } VividDisplayHint;
 
 typedef enum VividPortType {
