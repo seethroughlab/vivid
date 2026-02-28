@@ -328,6 +328,9 @@ struct Noise : vivid::OperatorBase {
     vivid::Param<int>   octaves    {"octaves",     4,     1,    8};
     vivid::Param<float> lacunarity {"lacunarity",  2.0f,  1.0f, 4.0f};
     vivid::Param<float> persistence{"persistence", 0.5f,  0.0f, 1.0f};
+    vivid::Param<int>   noise_type  {"noise_type", 0, {"Perlin", "Simplex", "Worley", "Value"}};
+    vivid::Param<int>   color_noise {"color_noise", 0, {"Off", "On"}};
+    vivid::Param<int>   center_origin{"center_origin", 0, {"Off", "On"}};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&scale);
@@ -335,6 +338,9 @@ struct Noise : vivid::OperatorBase {
         out.push_back(&octaves);
         out.push_back(&lacunarity);
         out.push_back(&persistence);
+        out.push_back(&noise_type);
+        out.push_back(&color_noise);
+        out.push_back(&center_origin);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -369,9 +375,9 @@ struct Noise : vivid::OperatorBase {
         u.offsetX       = 0.0f;
         u.offsetY       = 0.0f;
         u.octaves       = octaves.int_value();
-        u.noiseType     = 0; // Perlin default
-        u.colorNoise    = 0;
-        u.centerOrigin  = 0;
+        u.noiseType     = noise_type.int_value();
+        u.colorNoise    = color_noise.int_value();
+        u.centerOrigin  = center_origin.int_value();
 
         wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
 
