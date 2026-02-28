@@ -133,6 +133,13 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         snap.connections[i] = {conns[i].from_node, conns[i].from_port,
                                conns[i].to_node, conns[i].to_port,
                                conns[i].scale};
+        // Determine if source is a param (not an output port)
+        auto ni_it = snap.node_index.find(conns[i].from_node);
+        if (ni_it != snap.node_index.end()) {
+            const auto& src = snap.nodes[ni_it->second];
+            snap.connections[i].from_is_param =
+                (src.output_port_indices.count(conns[i].from_port) == 0);
+        }
     }
 
     // Audio analysis

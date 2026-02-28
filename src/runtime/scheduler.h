@@ -58,6 +58,7 @@ struct NodeState {
 struct Wire {
     uint32_t from_node_idx, from_port_idx;
     uint32_t to_node_idx, to_port_idx;
+    bool sources_param = false;   // true → from_port_idx indexes into param_values
     bool targets_param = false;   // true → to_port_idx indexes into param_values
     bool is_texture_wire = false; // true → carries GPU_TEXTURE data
     float scale = 1.0f;          // multiplied into propagated values

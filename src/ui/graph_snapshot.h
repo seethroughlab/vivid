@@ -77,6 +77,14 @@ struct NodeSnapshot {
 
     // Operator metadata (shared across nodes of same type, cached across frames)
     std::shared_ptr<const OperatorInfo> op_info;
+
+    // O(1) param descriptor lookup by name
+    const ParamInfo* find_param(const std::string& name) const {
+        if (!op_info) return nullptr;
+        auto it = param_indices.find(name);
+        if (it == param_indices.end()) return nullptr;
+        return &op_info->params[it->second];
+    }
 };
 
 // Per-connection snapshot
@@ -86,6 +94,7 @@ struct ConnectionSnapshot {
     std::string to_node;
     std::string to_port;
     float scale = 1.0f;
+    bool from_is_param = false;  // true if source is a param (not an output port)
 };
 
 // MIDI mapping snapshot for UI

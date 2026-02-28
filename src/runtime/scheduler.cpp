@@ -171,16 +171,14 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         auto& from_ns = nodes_[fi];
         auto& to_ns   = nodes_[ti];
 
-        auto fp_it = from_ns.output_port_indices.find(conn.from_port);
-        if (fp_it == from_ns.output_port_indices.end()) {
-            std::fprintf(stderr, "[vivid] Scheduler: node '%s' has no output port '%s'\n",
-                conn.from_node.c_str(), conn.from_port.c_str());
-            return false;
-        }
-
-        // Determine source port type
         VividPortType from_port_type = VIVID_PORT_CONTROL_FLOAT;
-        {
+        bool source_is_param = false;
+        uint32_t from_port_idx = 0;
+
+        auto fp_it = from_ns.output_port_indices.find(conn.from_port);
+        if (fp_it != from_ns.output_port_indices.end()) {
+            from_port_idx = fp_it->second;
+            // Determine source port type from descriptor
             const auto* from_desc = from_ns.loader->descriptor();
             uint32_t out_idx = 0;
             for (uint32_t pi = 0; pi < from_desc->port_count; ++pi) {
@@ -192,11 +190,23 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                     out_idx++;
                 }
             }
+        } else {
+            // Fallback: try param
+            auto pp_it = from_ns.param_indices.find(conn.from_port);
+            if (pp_it == from_ns.param_indices.end()) {
+                std::fprintf(stderr, "[vivid] Scheduler: node '%s' has no output port or parameter '%s'\n",
+                    conn.from_node.c_str(), conn.from_port.c_str());
+                return false;
+            }
+            from_port_idx = pp_it->second;
+            source_is_param = true;
+            from_port_type = VIVID_PORT_CONTROL_FLOAT;  // all params are float
         }
 
         Wire w;
         w.from_node_idx = fi;
-        w.from_port_idx = fp_it->second;
+        w.from_port_idx = from_port_idx;
+        w.sources_param = source_is_param;
         w.to_node_idx   = ti;
 
         auto tp_it = to_ns.input_port_indices.find(conn.to_port);
@@ -320,12 +330,17 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         for (const auto& w : wires_) {
             if (w.to_node_idx == ni) {
                 if (w.is_texture_wire) continue;
-                float val = nodes_[w.from_node_idx].output_values[w.from_port_idx] * w.scale;
+                float val;
+                if (w.sources_param)
+                    val = nodes_[w.from_node_idx].param_values[w.from_port_idx] * w.scale;
+                else
+                    val = nodes_[w.from_node_idx].output_values[w.from_port_idx] * w.scale;
                 if (w.targets_param) {
                     ns.param_values[w.to_port_idx] = val;
                 } else {
                     ns.input_values[w.to_port_idx] = val;
-                    // Spread propagation
+                    // Spread propagation (params have no spreads)
+                    if (w.sources_param) continue;
                     const auto& src_spread = nodes_[w.from_node_idx].output_spreads[w.from_port_idx];
                     if (!src_spread.empty()) {
                         ns.input_spreads[w.to_port_idx].resize(src_spread.size());
@@ -506,8 +521,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         if (!w.targets_param) continue;
         auto& to_ns = nodes_[w.to_node_idx];
         if (!to_ns.is_audio) continue;
-        to_ns.param_values[w.to_port_idx] =
-            nodes_[w.from_node_idx].output_values[w.from_port_idx];
+        float val = w.sources_param
+            ? nodes_[w.from_node_idx].param_values[w.from_port_idx]
+            : nodes_[w.from_node_idx].output_values[w.from_port_idx];
+        to_ns.param_values[w.to_port_idx] = val;
     }
 }
 
