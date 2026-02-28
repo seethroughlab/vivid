@@ -1,0 +1,322 @@
+#include "operator_api/operator.h"
+#include "operator_api/gpu_operator.h"
+#include "operator_api/gpu_common.h"
+#include "capture_source.h"
+#include <cstdio>
+#include <cstring>
+#include <memory>
+#include <vector>
+
+// =============================================================================
+// Blit WGSL — identical to MovieFileIn's (samples staging texture → output)
+// =============================================================================
+
+static const char* kBlitFragment = R"(
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) uv: vec2f,
+}
+
+@group(0) @binding(0) var texSampler: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    let fs = fullscreenTriangle(vertexIndex, true);
+    var out: VertexOutput;
+    out.position = fs.position;
+    out.uv = fs.uv;
+    return out;
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    return textureSample(tex, texSampler, input.uv);
+}
+)";
+
+// =============================================================================
+// Platform-specific capture factory
+// =============================================================================
+
+#ifdef __APPLE__
+std::unique_ptr<CaptureSource> create_avf_capture();
+#endif
+
+// =============================================================================
+// Resolution presets
+// =============================================================================
+
+static void resolution_for_preset(int preset, int& w, int& h) {
+    switch (preset) {
+        case 0: w = 640;  h = 480;  break;  // 480p
+        case 1: w = 1280; h = 720;  break;  // 720p
+        default:
+        case 2: w = 1920; h = 1080; break;  // 1080p
+    }
+}
+
+// =============================================================================
+// WebcamIn Operator
+// =============================================================================
+
+struct WebcamIn : vivid::OperatorBase {
+    static constexpr const char* kName   = "WebcamIn";
+    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
+    static constexpr bool kTimeDependent = true;
+
+    vivid::Param<int> device     {"device", 0, 0, 9};
+    vivid::Param<int> resolution {"resolution", 1, {"480p", "720p", "1080p"}};
+
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out.push_back(&device);
+        out.push_back(&resolution);
+    }
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
+    }
+
+    void process(const VividProcessContext* ctx) override {
+        VividGpuState* gpu = vivid_gpu(ctx);
+        if (!gpu) return;
+
+        // One-time GPU pipeline setup
+        if (!pipeline_) {
+            if (!lazy_init(gpu)) {
+                std::fprintf(stderr, "[webcam_in] lazy_init FAILED\n");
+                return;
+            }
+        }
+
+        // Reopen capture if device or resolution changed
+        int cur_device = device.int_value();
+        int cur_res    = resolution.int_value();
+        if (cur_device != last_device_ || cur_res != last_resolution_) {
+            last_device_     = cur_device;
+            last_resolution_ = cur_res;
+            if (capture_) capture_->close();
+            capture_.reset();
+        }
+
+        // Open capture if needed
+        if (!capture_ || !capture_->is_open()) {
+            open_capture();
+        }
+
+        // Pull a new frame from the capture source
+        if (capture_ && capture_->is_open() && capture_->update()) {
+            const uint8_t* pixels = capture_->pixel_data();
+            uint32_t w = capture_->width();
+            uint32_t h = capture_->height();
+            if (pixels && w > 0 && h > 0) {
+                if (w != staging_width_ || h != staging_height_) {
+                    recreate_staging(gpu, w, h);
+                }
+                upload_pixels(gpu, pixels, w, h);
+                has_frame_ = true;
+            }
+        }
+
+        // Tell runtime our preferred output size
+        if (staging_width_ > 0 && staging_height_ > 0) {
+            auto* mutable_ctx = const_cast<VividProcessContext*>(ctx);
+            mutable_ctx->preferred_tex_width  = staging_width_;
+            mutable_ctx->preferred_tex_height = staging_height_;
+        }
+
+        // Blit staging → output (or clear to black)
+        if (has_frame_ && staging_view_ && bind_group_) {
+            blit(gpu);
+        } else {
+            clear_output(gpu);
+        }
+    }
+
+    ~WebcamIn() override {
+        capture_.reset();
+        vivid::gpu::release(pipeline_);
+        vivid::gpu::release(bind_layout_);
+        vivid::gpu::release(pipe_layout_);
+        vivid::gpu::release(shader_);
+        vivid::gpu::release(sampler_);
+        vivid::gpu::release(staging_tex_);
+        vivid::gpu::release(staging_view_);
+        vivid::gpu::release(bind_group_);
+    }
+
+private:
+    // GPU resources
+    WGPURenderPipeline  pipeline_    = nullptr;
+    WGPUBindGroupLayout bind_layout_ = nullptr;
+    WGPUPipelineLayout  pipe_layout_ = nullptr;
+    WGPUShaderModule    shader_      = nullptr;
+    WGPUSampler         sampler_     = nullptr;
+    WGPUTexture         staging_tex_ = nullptr;
+    WGPUTextureView     staging_view_= nullptr;
+    WGPUBindGroup       bind_group_  = nullptr;
+    uint32_t            staging_width_  = 0;
+    uint32_t            staging_height_ = 0;
+
+    // Capture state
+    std::unique_ptr<CaptureSource> capture_;
+    int  last_device_     = -1;
+    int  last_resolution_ = -1;
+    bool has_frame_       = false;
+
+    void open_capture() {
+#ifdef __APPLE__
+        capture_ = create_avf_capture();
+#endif
+        if (!capture_) return;
+
+        int w, h;
+        resolution_for_preset(last_resolution_, w, h);
+        if (!capture_->open(last_device_, w, h, 30.0f)) {
+            std::fprintf(stderr, "[webcam_in] Failed to open camera %d\n", last_device_);
+            capture_.reset();
+        }
+    }
+
+    // --- GPU helpers (same pattern as MovieFileIn) ---
+
+    void recreate_staging(VividGpuState* gpu, uint32_t w, uint32_t h) {
+        vivid::gpu::release(staging_tex_);
+        vivid::gpu::release(staging_view_);
+        vivid::gpu::release(bind_group_);
+
+        staging_width_  = w;
+        staging_height_ = h;
+
+        static constexpr WGPUTextureFormat kFmt = WGPUTextureFormat_BGRA8Unorm;
+
+        WGPUTextureDescriptor td{};
+        td.label = vivid_sv("WebcamIn Staging");
+        td.size = { w, h, 1 };
+        td.mipLevelCount = 1;
+        td.sampleCount = 1;
+        td.dimension = WGPUTextureDimension_2D;
+        td.format = kFmt;
+        td.usage = WGPUTextureUsage_CopyDst | WGPUTextureUsage_TextureBinding;
+        staging_tex_ = wgpuDeviceCreateTexture(gpu->device, &td);
+
+        WGPUTextureViewDescriptor vd{};
+        vd.format = kFmt;
+        vd.dimension = WGPUTextureViewDimension_2D;
+        vd.mipLevelCount = 1;
+        vd.arrayLayerCount = 1;
+        vd.aspect = WGPUTextureAspect_All;
+        staging_view_ = wgpuTextureCreateView(staging_tex_, &vd);
+
+        WGPUBindGroupEntry entries[2]{};
+        entries[0].binding = 0;
+        entries[0].sampler = sampler_;
+        entries[1].binding = 1;
+        entries[1].textureView = staging_view_;
+
+        WGPUBindGroupDescriptor bg_desc{};
+        bg_desc.label = vivid_sv("WebcamIn BG");
+        bg_desc.layout = bind_layout_;
+        bg_desc.entryCount = 2;
+        bg_desc.entries = entries;
+        bind_group_ = wgpuDeviceCreateBindGroup(gpu->device, &bg_desc);
+    }
+
+    void upload_pixels(VividGpuState* gpu, const uint8_t* pixels, uint32_t w, uint32_t h) {
+        if (!staging_tex_) return;
+
+        uint32_t src_row_bytes = w * 4;
+        uint32_t aligned_bpr = (src_row_bytes + 255) & ~255u;
+
+        WGPUTexelCopyTextureInfo dest{};
+        dest.texture = staging_tex_;
+        dest.mipLevel = 0;
+        dest.origin = {0, 0, 0};
+        dest.aspect = WGPUTextureAspect_All;
+
+        WGPUTexelCopyBufferLayout layout{};
+        layout.bytesPerRow = aligned_bpr;
+        layout.rowsPerImage = h;
+
+        WGPUExtent3D extent = { w, h, 1 };
+
+        if (aligned_bpr == src_row_bytes) {
+            wgpuQueueWriteTexture(gpu->queue, &dest, pixels,
+                                  static_cast<size_t>(src_row_bytes) * h, &layout, &extent);
+        } else {
+            std::vector<uint8_t> padded(static_cast<size_t>(aligned_bpr) * h, 0);
+            for (uint32_t row = 0; row < h; ++row) {
+                std::memcpy(padded.data() + row * aligned_bpr,
+                            pixels + row * src_row_bytes,
+                            src_row_bytes);
+            }
+            wgpuQueueWriteTexture(gpu->queue, &dest, padded.data(),
+                                  padded.size(), &layout, &extent);
+        }
+    }
+
+    void blit(VividGpuState* gpu) {
+        vivid::gpu::run_pass(gpu->command_encoder, pipeline_, bind_group_,
+                             gpu->output_texture_view, "WebcamIn Blit");
+    }
+
+    void clear_output(VividGpuState* gpu) {
+        if (!gpu->output_texture_view) return;
+        WGPURenderPassColorAttachment color_att{};
+        color_att.view = gpu->output_texture_view;
+        color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        color_att.resolveTarget = nullptr;
+        color_att.loadOp  = WGPULoadOp_Clear;
+        color_att.storeOp = WGPUStoreOp_Store;
+        color_att.clearValue = { 0.0, 0.0, 0.0, 1.0 };
+
+        WGPURenderPassDescriptor rp_desc{};
+        rp_desc.label = vivid_sv("WebcamIn Clear");
+        rp_desc.colorAttachmentCount = 1;
+        rp_desc.colorAttachments = &color_att;
+
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(
+            gpu->command_encoder, &rp_desc);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
+
+    bool lazy_init(VividGpuState* gpu) {
+        shader_ = vivid::gpu::create_shader(gpu->device, kBlitFragment, "WebcamIn Shader");
+        if (!shader_) return false;
+
+        sampler_ = vivid::gpu::create_linear_sampler(gpu->device, "WebcamIn Sampler");
+
+        WGPUBindGroupLayoutEntry entries[2]{};
+        entries[0].binding = 0;
+        entries[0].visibility = WGPUShaderStage_Fragment;
+        entries[0].sampler.type = WGPUSamplerBindingType_Filtering;
+
+        entries[1].binding = 1;
+        entries[1].visibility = WGPUShaderStage_Fragment;
+        entries[1].texture.sampleType = WGPUTextureSampleType_Float;
+        entries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+        entries[1].texture.multisampled = false;
+
+        WGPUBindGroupLayoutDescriptor bgl_desc{};
+        bgl_desc.label = vivid_sv("WebcamIn BGL");
+        bgl_desc.entryCount = 2;
+        bgl_desc.entries = entries;
+        bind_layout_ = wgpuDeviceCreateBindGroupLayout(gpu->device, &bgl_desc);
+
+        WGPUPipelineLayoutDescriptor pl_desc{};
+        pl_desc.label = vivid_sv("WebcamIn Pipeline Layout");
+        pl_desc.bindGroupLayoutCount = 1;
+        pl_desc.bindGroupLayouts = &bind_layout_;
+        pipe_layout_ = wgpuDeviceCreatePipelineLayout(gpu->device, &pl_desc);
+
+        pipeline_ = vivid::gpu::create_pipeline(gpu->device, shader_, pipe_layout_,
+                                                 gpu->output_format, "WebcamIn Pipeline");
+        if (!pipeline_) return false;
+
+        return true;
+    }
+};
+
+VIVID_REGISTER(WebcamIn)
