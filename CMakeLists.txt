@@ -399,6 +399,38 @@ target_include_directories(test_graph PRIVATE src)
 target_link_libraries(test_graph PRIVATE yyjson)
 add_test(NAME test_graph COMMAND test_graph WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Topological sort unit test (header-only, no dependencies)
+add_executable(test_topo_sort tests/test_topo_sort.cpp)
+target_include_directories(test_topo_sort PRIVATE src tests)
+add_test(NAME test_topo_sort COMMAND test_topo_sort WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# OperatorCreator unit test
+add_executable(test_operator_creator
+    tests/test_operator_creator.cpp
+    src/runtime/operator_creator.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/graph.cpp
+)
+target_include_directories(test_operator_creator PRIVATE src tests)
+target_link_libraries(test_operator_creator PRIVATE vivid_operator_api yyjson webgpu)
+add_test(NAME test_operator_creator COMMAND test_operator_creator WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Settings round-trip unit test
+add_executable(test_settings
+    tests/test_settings.cpp
+    src/runtime/settings.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_settings PRIVATE src tests)
+target_link_libraries(test_settings PRIVATE yyjson)
+add_test(NAME test_settings COMMAND test_settings WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# String utility unit test (header-only, no dependencies)
+add_executable(test_string_util tests/test_string_util.cpp)
+target_include_directories(test_string_util PRIVATE src tests)
+add_test(NAME test_string_util COMMAND test_string_util WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # OperatorLoader + OperatorRegistry unit tests (no GPU, no scheduler, no graph)
 add_executable(test_operator_loader
     tests/test_operator_loader.cpp
