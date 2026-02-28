@@ -238,17 +238,6 @@ static constexpr std::array<float, 4> kPerfBarBg    = { 0.06f, 0.07f, 0.08f, 0.8
 static constexpr uint32_t kPerfHistoryLen = 128;
 static constexpr uint32_t kPerfMemSampleInterval = 30;
 
-// Patchbay (multi-node connection matrix overlay)
-static constexpr float kPatchbayCellSize = 16.0f;
-static constexpr float kPatchbayCellPad = 1.0f;
-static constexpr float kPatchbayRowLabelW = 120.0f;
-static constexpr float kPatchbayColHeaderH = 80.0f;
-static constexpr float kPatchbayGroupHeaderH = 20.0f;
-static constexpr float kPatchbayPad = 16.0f;
-static constexpr float kPatchbayMaxW = 900.0f;
-static constexpr float kPatchbayMaxH = 600.0f;
-static constexpr float kPatchbayScrollSpeed = 30.0f;
-
 // Preferences panel layout
 static constexpr float kPrefsW = 360.0f;
 static constexpr float kPrefsPadX = 20.0f;
@@ -257,5 +246,8 @@ static constexpr float kPrefsRowH = 22.0f;
 static constexpr float kPrefsSectionGap = 12.0f;
 static constexpr float kPrefsBtnW = 70.0f;
 static constexpr float kPrefsBtnH = 24.0f;
+
+// Patch panel (2-node connection view)
+static constexpr float kPatchJackHitRadius = 8.0f;
 
 } // namespace vivid::ui

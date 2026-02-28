@@ -2,6 +2,7 @@
 
 #include "ui/renderer_2d.h"
 #include "ui/ui_style.h"
+#include "operator_api/types.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -68,6 +69,19 @@ inline void draw_popup_bg(Renderer2D& tr, const UIStyle& style,
                  style.popup_bg[0], style.popup_bg[1], style.popup_bg[2], style.popup_bg[3]);
     tr.draw_rect(x, y, w, 1,
                  style.accent[0], style.accent[1], style.accent[2]);
+}
+
+// --- Port type compatibility ---
+
+inline bool is_control_type(VividPortType t) {
+    return t == VIVID_PORT_CONTROL_FLOAT || t == VIVID_PORT_CONTROL_INT ||
+           t == VIVID_PORT_CONTROL_BOOL  || t == VIVID_PORT_CONTROL_SPREAD;
+}
+
+inline bool port_type_compatible(VividPortType a, VividPortType b) {
+    if (a == VIVID_PORT_GPU_TEXTURE)   return b == VIVID_PORT_GPU_TEXTURE;
+    if (a == VIVID_PORT_AUDIO_FLOAT)   return b == VIVID_PORT_AUDIO_FLOAT;
+    return is_control_type(a) && is_control_type(b);
 }
 
 } // namespace vivid::ui

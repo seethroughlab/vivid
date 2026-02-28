@@ -411,7 +411,8 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     resolution_rects_.clear();
     midi_remove_rects_.clear();
     midi_range_rects_.clear();
-    matrix_cell_rects_.clear();
+    patch_jacks_.clear();
+    patch_wires_.clear();
     group_header_rects_.clear();
 
     if (selected_node_ids_.empty()) return;
@@ -471,10 +472,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             tr.draw_rect(px, py, kInspContentW, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
             py += 8;
 
-            // A → B matrix section
-            draw_matrix_section(tr, *node_a, *node_b, px, py);
-            // B → A matrix section
-            draw_matrix_section(tr, *node_b, *node_a, px, py);
+            draw_patch_panel(tr, *node_a, *node_b, px, py);
 
             tr.pop_clip_rect();
 
@@ -488,22 +486,6 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             tr.draw_text(px, py, label.c_str(), 1.0f, 1.0f, 1.0f);
             py += kLineH + 4;
             tr.draw_text(px, py, "Delete / Backspace to remove", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-            py += kLineH + 8;
-
-            // "Connection Matrix (M)" button
-            float btn_w = kInspContentW;
-            float btn_h = 22.0f;
-            bool btn_hover = mouse_.x >= px && mouse_.x <= px + btn_w &&
-                             mouse_.y >= py && mouse_.y <= py + btn_h;
-            if (btn_hover)
-                tr.draw_rect(px, py, btn_w, btn_h,
-                             style_.accent[0], style_.accent[1], style_.accent[2], 0.3f);
-            else
-                tr.draw_rect(px, py, btn_w, btn_h,
-                             style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.6f);
-            tr.draw_text(px + 8, py + 3, "Connection Matrix (M)",
-                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-            patchbay_button_rect_ = {px, py, btn_w, btn_h};
 
             insp_content_h_ = 0;
         }
@@ -1937,161 +1919,271 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
 }
 
 // -----------------------------------------------------------------------
-// Connection Matrix
+// Patch Panel (2-node connection view)
 // -----------------------------------------------------------------------
-static constexpr float kMatrixCellSize = 18.0f;
-static constexpr float kMatrixCellPad = 2.0f;
-static constexpr float kMatrixHeaderH = 60.0f;  // space for rotated column labels
-static constexpr float kMatrixRowLabelW = 100.0f;
+static constexpr float kPatchJackRadius = 4.0f;
+static constexpr float kPatchRowH = 20.0f;
+static constexpr float kPatchColW = 100.0f;
+static constexpr float kPatchWireThickness = 2.0f;
+static constexpr float kPatchHeaderH = 20.0f;
 
-void NodeGraphUI::draw_matrix_section(Renderer2D& tr, const NodeSnapshot& src_node,
-                                       const NodeSnapshot& dst_node, float px, float& py) {
-    if (!src_node.op_info || !dst_node.op_info) return;
+void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
+                                    const NodeSnapshot& node_b, float px, float& py) {
+    if (!node_a.op_info || !node_b.op_info) return;
 
-    // Rows: source node's output ports + params
-    struct RowInfo { std::string port_name; bool is_param = false; };
-    std::vector<RowInfo> rows;
-    auto sorted_outs = sorted_ports(src_node.output_port_indices);
-    for (const auto& [idx, name] : sorted_outs)
-        rows.push_back({name, false});
-    // Param rows
-    std::vector<std::pair<uint32_t, std::string>> sorted_params;
-    for (const auto& [name, idx] : src_node.param_indices)
-        if (!src_node.output_port_indices.count(name)) sorted_params.push_back({idx, name});
-    std::sort(sorted_params.begin(), sorted_params.end());
-    for (const auto& [idx, name] : sorted_params) {
-        const ParamInfo* pd = src_node.find_param(name);
-        if (pd && pd->type == VIVID_PARAM_FILE) continue;
-        rows.push_back({name, true});
-    }
-    if (rows.empty()) return;
+    const float panel_w = kInspContentW;
+    const float center_gap = panel_w - 2 * kPatchColW;  // gap between columns
 
-    // Columns: destination node's params (non-FILE) + signal input ports
-    struct ColInfo { std::string name; };
-    std::vector<ColInfo> columns;
-    for (const auto& pd : dst_node.op_info->params) {
-        if (pd.type == VIVID_PARAM_FILE) continue;
-        columns.push_back({pd.name});
-    }
-    for (const auto& pi : dst_node.op_info->ports) {
-        if (pi.direction != VIVID_PORT_INPUT) continue;
-        bool is_param = false;
-        for (const auto& pd : dst_node.op_info->params) {
-            if (pd.name == pi.name) { is_param = true; break; }
-        }
-        if (!is_param) columns.push_back({pi.name});
-    }
-    if (columns.empty()) return;
-
-    // Build lookup for existing connections from src -> dst
-    struct ConnKey { std::string from_port, to_port; float scale; };
-    std::vector<ConnKey> active_conns;
-    for (const auto& c : snap_.connections) {
-        if (c.from_node == src_node.node_id && c.to_node == dst_node.node_id)
-            active_conns.push_back({c.from_port, c.to_port, c.scale});
-    }
-    auto find_conn = [&](const std::string& fp, const std::string& tp) -> const ConnKey* {
-        for (const auto& c : active_conns) {
-            if (c.from_port == fp && c.to_port == tp) return &c;
-        }
-        return nullptr;
+    // --- Build port lists ---
+    struct PortEntry {
+        std::string name;
+        VividPortType port_type;
+        bool can_source;   // outputs + params
+        bool can_dest;     // inputs + params
+        bool is_param;
     };
 
-    // --- Section header: "src_name → dst_name" with domain colors ---
-    float panel_w = kInspContentW;
-    const float* src_clr = domain_color(src_node.domain);
-    const float* dst_clr = domain_color(dst_node.domain);
-    tr.draw_text(px, py, src_node.op_info->name.c_str(), src_clr[0], src_clr[1], src_clr[2]);
-    float src_w = tr.text_width(src_node.op_info->name.c_str());
-    tr.draw_text(px + src_w + 2, py, " \xE2\x86\x92 ", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);  // " → "
-    float arrow_w = tr.text_width(" \xE2\x86\x92 ");
-    tr.draw_text(px + src_w + 2 + arrow_w, py, dst_node.op_info->name.c_str(), dst_clr[0], dst_clr[1], dst_clr[2]);
-    py += kLineH + 4;
+    auto build_ports = [](const NodeSnapshot& ns) {
+        std::vector<PortEntry> ports;
+        if (!ns.op_info) return ports;
 
-    // Compute layout geometry
-    float matrix_x = px + kMatrixRowLabelW;
-    float matrix_y = py + kMatrixHeaderH;
-    float cell_step = kMatrixCellSize + kMatrixCellPad;
-
-    // Limit visible columns/rows to fit inspector width
-    float avail_w = panel_w - kMatrixRowLabelW;
-    int max_cols = static_cast<int>(avail_w / cell_step);
-    if (max_cols < 1) max_cols = 1;
-    int vis_cols = std::min(static_cast<int>(columns.size()), max_cols);
-
-    // --- Draw column headers (abbreviated, drawn vertically) ---
-    for (int ci = 0; ci < vis_cols; ++ci) {
-        float cx = matrix_x + ci * cell_step + cell_step * 0.5f;
-        const auto& name = columns[ci].name;
-        std::string abbr = name.length() > 5 ? name.substr(0, 5) : name;
-        for (size_t chi = 0; chi < abbr.size(); ++chi) {
-            char buf[2] = { abbr[chi], '\0' };
-            float cy = py + chi * 10.0f;
-            tr.draw_text(cx - 3, cy, buf, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f, 0.8f);
+        // Outputs first (signal output ports)
+        auto sorted_outs = sorted_ports(ns.output_port_indices);
+        for (const auto& [idx, name] : sorted_outs) {
+            VividPortType pt = VIVID_PORT_CONTROL_FLOAT;
+            for (const auto& p : ns.op_info->ports)
+                if (p.name == name && p.direction == VIVID_PORT_OUTPUT) { pt = p.type; break; }
+            ports.push_back({name, pt, true, false, false});
         }
+
+        // Inputs (signal input ports that aren't params)
+        for (const auto& pi : ns.op_info->ports) {
+            if (pi.direction != VIVID_PORT_INPUT) continue;
+            bool is_param = ns.param_indices.count(pi.name) > 0;
+            if (!is_param)
+                ports.push_back({pi.name, pi.type, false, true, false});
+        }
+
+        // Params (non-FILE, excluding output port names)
+        std::vector<std::pair<uint32_t, std::string>> sorted_params;
+        for (const auto& [name, idx] : ns.param_indices)
+            if (!ns.output_port_indices.count(name)) sorted_params.push_back({idx, name});
+        std::sort(sorted_params.begin(), sorted_params.end());
+        for (const auto& [idx, name] : sorted_params) {
+            const ParamInfo* pd = ns.find_param(name);
+            if (pd && pd->type == VIVID_PARAM_FILE) continue;
+            ports.push_back({name, VIVID_PORT_CONTROL_FLOAT, true, true, true});
+        }
+        return ports;
+    };
+
+    auto left_ports = build_ports(node_a);
+    auto right_ports = build_ports(node_b);
+
+    // --- Column headers ---
+    const float* clr_a = domain_color(node_a.domain);
+    const float* clr_b = domain_color(node_b.domain);
+
+    // Left header: node A name, left-aligned
+    tr.draw_text(px, py, node_a.op_info->name.c_str(), clr_a[0], clr_a[1], clr_a[2]);
+    // Accent underline
+    float name_a_w = tr.text_width(node_a.op_info->name.c_str());
+    tr.draw_rect(px, py + kLineH - 2, name_a_w, 1, clr_a[0], clr_a[1], clr_a[2], 0.6f);
+
+    // Right header: node B name, right-aligned
+    float name_b_w = tr.text_width(node_b.op_info->name.c_str());
+    float right_col_x = px + panel_w - kPatchColW;
+    tr.draw_text(px + panel_w - name_b_w, py, node_b.op_info->name.c_str(), clr_b[0], clr_b[1], clr_b[2]);
+    tr.draw_rect(px + panel_w - name_b_w, py + kLineH - 2, name_b_w, 1, clr_b[0], clr_b[1], clr_b[2], 0.6f);
+
+    py += kPatchHeaderH + 4;
+
+    // --- Draw left ports (node A) ---
+    float left_jack_x = px + kPatchColW;  // jack at right edge of left column
+    float start_y = py;
+    int max_rows = std::max(static_cast<int>(left_ports.size()), static_cast<int>(right_ports.size()));
+
+    for (int i = 0; i < static_cast<int>(left_ports.size()); ++i) {
+        const auto& port = left_ports[i];
+        float row_y = start_y + i * kPatchRowH;
+        float jack_cy = row_y + kPatchRowH * 0.5f;
+
+        // Label (right-aligned, with param prefix)
+        std::string label = port.is_param ? ("\xC2\xB7" + port.name) : port.name;
+        if (label.size() > 12) label = label.substr(0, 11) + "~";
+        float label_w = tr.text_width(label.c_str(), 0.85f);
+        float label_alpha = port.is_param ? 0.5f : 0.8f;
+        tr.draw_text(left_jack_x - kPatchJackRadius * 2 - 2 - label_w, row_y + 2,
+                     label.c_str(), clr_a[0], clr_a[1], clr_a[2], label_alpha, 0.85f);
+
+        // Jack circle
+        float jack_alpha = 1.0f;
+        // During drag: dim incompatible jacks
+        if (patch_dragging_ && patch_drag_from_idx_ >= 0 &&
+            patch_drag_from_idx_ < static_cast<int>(patch_jacks_.size())) {
+            const auto& src = patch_jacks_[patch_drag_from_idx_];
+            // This jack must be on the other node and be dest-capable
+            bool compatible = (src.node_id != node_a.node_id) && port.can_dest &&
+                              port_type_compatible(src.port_type, port.port_type);
+            jack_alpha = compatible ? 1.0f : 0.2f;
+        }
+
+        if (port.is_param) {
+            // Half-filled: filled circle at reduced alpha
+            tr.draw_rect(left_jack_x - kPatchJackRadius, jack_cy - kPatchJackRadius,
+                         kPatchJackRadius * 2, kPatchJackRadius * 2,
+                         clr_a[0], clr_a[1], clr_a[2], 0.6f * jack_alpha);
+        } else if (port.can_source) {
+            // Output: filled circle
+            tr.draw_rect(left_jack_x - kPatchJackRadius, jack_cy - kPatchJackRadius,
+                         kPatchJackRadius * 2, kPatchJackRadius * 2,
+                         clr_a[0], clr_a[1], clr_a[2], jack_alpha);
+        } else {
+            // Input: hollow ring
+            tr.draw_arc(left_jack_x, jack_cy, kPatchJackRadius, 0.0f, 6.283f,
+                        1.5f, 12, clr_a[0], clr_a[1], clr_a[2], jack_alpha);
+        }
+
+        // Store jack for hit testing
+        patch_jacks_.push_back({
+            left_jack_x, jack_cy, node_a.node_id, port.name,
+            port.port_type, port.can_source, port.can_dest, port.is_param
+        });
     }
 
-    // --- Draw rows ---
-    int vis_rows = std::min(static_cast<int>(rows.size()), 30);
+    // --- Draw right ports (node B) ---
+    float right_jack_x = right_col_x;  // jack at left edge of right column
 
-    for (int ri = 0; ri < vis_rows; ++ri) {
-        const auto& row = rows[ri];
-        float row_y = matrix_y + ri * cell_step;
+    for (int i = 0; i < static_cast<int>(right_ports.size()); ++i) {
+        const auto& port = right_ports[i];
+        float row_y = start_y + i * kPatchRowH;
+        float jack_cy = row_y + kPatchRowH * 0.5f;
 
-        // Row label: output port or param name (truncated)
-        std::string label = row.is_param ? ("\xC2\xB7 " + row.port_name) : row.port_name;
-        if (label.size() > 14) label = label.substr(0, 13) + "~";
-        float row_alpha = row.is_param ? 0.5f : 0.7f;
-        tr.draw_text(px, row_y + 2, label.c_str(),
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], row_alpha, 0.8f);
+        // Label (left-aligned, after jack)
+        std::string label = port.is_param ? ("\xC2\xB7" + port.name) : port.name;
+        if (label.size() > 12) label = label.substr(0, 11) + "~";
+        float label_alpha = port.is_param ? 0.5f : 0.8f;
+        tr.draw_text(right_jack_x + kPatchJackRadius * 2 + 2, row_y + 2,
+                     label.c_str(), clr_b[0], clr_b[1], clr_b[2], label_alpha, 0.85f);
 
-        for (int ci = 0; ci < vis_cols; ++ci) {
-            float cx = matrix_x + ci * cell_step;
-            float cy = row_y;
+        // Jack circle
+        float jack_alpha = 1.0f;
+        if (patch_dragging_ && patch_drag_from_idx_ >= 0 &&
+            patch_drag_from_idx_ < static_cast<int>(patch_jacks_.size())) {
+            const auto& src = patch_jacks_[patch_drag_from_idx_];
+            bool compatible = (src.node_id != node_b.node_id) && port.can_dest &&
+                              port_type_compatible(src.port_type, port.port_type);
+            jack_alpha = compatible ? 1.0f : 0.2f;
+        }
 
-            // Cell background
-            tr.draw_rect(cx, cy, kMatrixCellSize, kMatrixCellSize,
-                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.5f);
+        if (port.is_param) {
+            tr.draw_rect(right_jack_x - kPatchJackRadius, jack_cy - kPatchJackRadius,
+                         kPatchJackRadius * 2, kPatchJackRadius * 2,
+                         clr_b[0], clr_b[1], clr_b[2], 0.6f * jack_alpha);
+        } else if (port.can_source) {
+            tr.draw_rect(right_jack_x - kPatchJackRadius, jack_cy - kPatchJackRadius,
+                         kPatchJackRadius * 2, kPatchJackRadius * 2,
+                         clr_b[0], clr_b[1], clr_b[2], jack_alpha);
+        } else {
+            tr.draw_arc(right_jack_x, jack_cy, kPatchJackRadius, 0.0f, 6.283f,
+                        1.5f, 12, clr_b[0], clr_b[1], clr_b[2], jack_alpha);
+        }
 
-            const auto* conn = find_conn(row.port_name, columns[ci].name);
-            bool is_connected = (conn != nullptr);
-            float scale = is_connected ? conn->scale : 0.0f;
+        patch_jacks_.push_back({
+            right_jack_x, jack_cy, node_b.node_id, port.name,
+            port.port_type, port.can_source, port.can_dest, port.is_param
+        });
+    }
 
-            if (is_connected) {
-                float fill_h = kMatrixCellSize * scale;
-                float fill_y = cy + kMatrixCellSize - fill_h;
-                tr.draw_rect(cx, fill_y, kMatrixCellSize, fill_h,
-                             style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
+    // --- Draw connection wires ---
+    for (const auto& c : snap_.connections) {
+        // Find wires between these two nodes (either direction)
+        bool ab = (c.from_node == node_a.node_id && c.to_node == node_b.node_id);
+        bool ba = (c.from_node == node_b.node_id && c.to_node == node_a.node_id);
+        if (!ab && !ba) continue;
+
+        // Find source and dest jack positions
+        float src_x = 0, src_y = 0, dst_x = 0, dst_y = 0;
+        bool found_src = false, found_dst = false;
+        for (const auto& j : patch_jacks_) {
+            if (j.node_id == c.from_node && j.port_name == c.from_port) {
+                src_x = j.x; src_y = j.y; found_src = true;
             }
-
-            // Store cell rect for hit testing (with both from_node and to_node)
-            matrix_cell_rects_.push_back({
-                cx, cy, kMatrixCellSize, kMatrixCellSize,
-                src_node.node_id, row.port_name,
-                dst_node.node_id, columns[ci].name,
-                is_connected, scale
-            });
-        }
-    }
-
-    // Draw hover tooltip
-    if (!matrix_scale_dragging_) {
-        int hi = hit_test_rect(matrix_cell_rects_, mouse_.x, mouse_.y);
-        if (hi >= 0) {
-            const auto& cell = matrix_cell_rects_[hi];
-            std::string tip = cell.from_node + "/" + cell.from_port + " -> " + cell.to_node + "/" + cell.to_port;
-            if (cell.connected) {
-                tip += " (scale: " + format_float(cell.scale, 2) + ")";
+            if (j.node_id == c.to_node && j.port_name == c.to_port) {
+                dst_x = j.x; dst_y = j.y; found_dst = true;
             }
-            float tw = tr.text_width(tip.c_str(), 0.8f);
-            float tx = mouse_.x + 12;
-            float ty = mouse_.y - 6;
-            tr.draw_rect(tx - 3, ty - 2, tw + 6, kLineH, 0.0f, 0.0f, 0.0f, 0.85f);
-            tr.draw_text(tx, ty, tip.c_str(), 1.0f, 1.0f, 1.0f, 0.9f, 0.8f);
+            if (found_src && found_dst) break;
         }
+        if (!found_src || !found_dst) continue;
+
+        // Always draw left-to-right for clean beziers
+        float wx0, wy0, wx1, wy1;
+        if (src_x <= dst_x) {
+            wx0 = src_x; wy0 = src_y; wx1 = dst_x; wy1 = dst_y;
+        } else {
+            wx0 = dst_x; wy0 = dst_y; wx1 = src_x; wy1 = src_y;
+        }
+
+        // Wire color from source node's domain
+        const float* wire_clr = ab ? clr_a : clr_b;
+        float wire_alpha = 0.4f + 0.6f * c.scale;
+
+        traverse_wire(wx0, wy0, wx1, wy1, true, [&](float x0, float y0, float x1, float y1) {
+            tr.draw_line(x0, y0, x1, y1, kPatchWireThickness,
+                         wire_clr[0], wire_clr[1], wire_clr[2], wire_alpha);
+        });
+
+        patch_wires_.push_back({
+            src_x, src_y, dst_x, dst_y,
+            c.from_node, c.from_port, c.to_node, c.to_port, c.scale
+        });
     }
 
-    py = matrix_y + vis_rows * cell_step + 8;
+    // --- Preview wire during drag ---
+    if (patch_dragging_ && patch_drag_from_idx_ >= 0 &&
+        patch_drag_from_idx_ < static_cast<int>(patch_jacks_.size())) {
+        const auto& src_jack = patch_jacks_[patch_drag_from_idx_];
+        float wx0, wy0, wx1, wy1;
+        if (src_jack.x <= mouse_.x) {
+            wx0 = src_jack.x; wy0 = src_jack.y; wx1 = mouse_.x; wy1 = mouse_.y;
+        } else {
+            wx0 = mouse_.x; wy0 = mouse_.y; wx1 = src_jack.x; wy1 = src_jack.y;
+        }
+        traverse_wire(wx0, wy0, wx1, wy1, true, [&](float x0, float y0, float x1, float y1) {
+            tr.draw_line(x0, y0, x1, y1, kPatchWireThickness,
+                         style_.accent[0], style_.accent[1], style_.accent[2], 0.5f);
+        });
+    }
+
+    // --- Context menu popup ---
+    if (patch_ctx_open_ && patch_ctx_wire_idx_ >= 0 &&
+        patch_ctx_wire_idx_ < static_cast<int>(patch_wires_.size())) {
+        const auto& w = patch_wires_[patch_ctx_wire_idx_];
+        float menu_w = 160.0f;
+        float menu_h = kCtxMenuItemH * 2 + kCtxMenuPadTop * 2;
+        float mx = patch_ctx_x_;
+        float my = patch_ctx_y_;
+
+        draw_popup_bg(tr, style_, mx, my, menu_w, menu_h);
+
+        // Connection label
+        std::string label = w.from_port + " \xE2\x86\x92 " + w.to_port;
+        if (w.scale < 1.0f)
+            label += " (" + format_float(w.scale, 2) + ")";
+        tr.draw_text(mx + 6, my + kCtxMenuPadTop + 2, label.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f, 0.8f);
+
+        // "Disconnect" item
+        float item_y = my + kCtxMenuPadTop + kCtxMenuItemH;
+        bool hovered = (mouse_.x >= mx && mouse_.x <= mx + menu_w &&
+                        mouse_.y >= item_y && mouse_.y <= item_y + kCtxMenuItemH);
+        if (hovered)
+            tr.draw_rect(mx + 1, item_y, menu_w - 2, kCtxMenuItemH,
+                         style_.accent[0], style_.accent[1], style_.accent[2], 0.3f);
+        tr.draw_text(mx + 6, item_y + 2, "Disconnect", 1.0f, 1.0f, 1.0f, 0.9f);
+    }
+
+    py = start_y + max_rows * kPatchRowH + 8;
 }
 
 void NodeGraphUI::draw_preview_wire(Renderer2D& tr) {
@@ -2395,7 +2487,6 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     draw_clone_confirm(tr);
     draw_create_popup(tr);
     draw_preferences(tr);
-    draw_patchbay(tr);
 }
 
 // -----------------------------------------------------------------------
@@ -2993,285 +3084,6 @@ void NodeGraphUI::draw_param_picker(Renderer2D& tr) {
         } else {
             tr.draw_text(px + 8, iy + 3, param_picker_items_[idx].c_str(),
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        }
-    }
-}
-
-// -----------------------------------------------------------------------
-// Patchbay (multi-node connection matrix overlay)
-// -----------------------------------------------------------------------
-void NodeGraphUI::draw_patchbay(Renderer2D& tr) {
-    if (!patchbay_open_) return;
-    if (patchbay_rows_.empty() || patchbay_cols_.empty()) return;
-
-    float wf = static_cast<float>(win_w_);
-    float hf = static_cast<float>(win_h_);
-
-    // Scrim
-    tr.draw_rect(0, 0, wf, hf,
-                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
-
-    // Compute content size
-    float cell_step = kPatchbayCellSize + kPatchbayCellPad;
-    int nr = static_cast<int>(patchbay_rows_.size());
-    int nc = static_cast<int>(patchbay_cols_.size());
-
-    // Group headers add height/width between groups
-    int n_row_groups = 0, n_col_groups = 0;
-    for (const auto& g : patchbay_groups_) {
-        if (g.row_count > 0) n_row_groups++;
-        if (g.col_count > 0) n_col_groups++;
-    }
-
-    float content_w = kPatchbayRowLabelW + nc * cell_step + std::max(0, n_col_groups - 1) * kPatchbayGroupHeaderH;
-    float content_h = kPatchbayColHeaderH + nr * cell_step + std::max(0, n_row_groups - 1) * kPatchbayGroupHeaderH;
-
-    // Panel size (capped)
-    float panel_w = std::min(kPatchbayMaxW, content_w + 2 * kPatchbayPad);
-    float panel_h = std::min(kPatchbayMaxH, content_h + 2 * kPatchbayPad);
-
-    // Center panel
-    float px = (wf - panel_w) * 0.5f;
-    float py = (hf - panel_h) * 0.5f;
-    patchbay_panel_x_ = px;
-    patchbay_panel_y_ = py;
-    patchbay_panel_w_ = panel_w;
-    patchbay_panel_h_ = panel_h;
-
-    // Panel background
-    tr.draw_rounded_rect(px, py, panel_w, panel_h, style_.corner_radius,
-                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
-    tr.draw_rect(px, py, panel_w, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
-
-    // Build connection lookup: "from_node/from_port->to_node/to_port" -> scale
-    std::unordered_map<std::string, float> conn_map;
-    for (const auto& c : snap_.connections) {
-        // Only index connections involving selected nodes
-        if (patchbay_node_ids_.count(c.from_node) && patchbay_node_ids_.count(c.to_node)) {
-            std::string key = c.from_node + "/" + c.from_port + "->" + c.to_node + "/" + c.to_port;
-            conn_map[key] = c.scale;
-        }
-    }
-
-    // Clear matrix cells (mutually exclusive with 2-node matrix)
-    matrix_cell_rects_.clear();
-
-    // Coordinate system within panel
-    float inner_x = px + kPatchbayPad;
-    float inner_y = py + kPatchbayPad;
-
-    // Clamp scroll
-    float viewport_w = panel_w - 2 * kPatchbayPad - kPatchbayRowLabelW;
-    float viewport_h = panel_h - 2 * kPatchbayPad - kPatchbayColHeaderH;
-    float total_cell_w = content_w - kPatchbayRowLabelW;
-    float total_cell_h = content_h - kPatchbayColHeaderH;
-    float max_scroll_x = std::max(0.0f, total_cell_w - viewport_w);
-    float max_scroll_y = std::max(0.0f, total_cell_h - viewport_h);
-    patchbay_scroll_x_ = std::max(0.0f, std::min(patchbay_scroll_x_, max_scroll_x));
-    patchbay_scroll_y_ = std::max(0.0f, std::min(patchbay_scroll_y_, max_scroll_y));
-
-    // Pre-compute row Y positions (accounting for group headers)
-    std::vector<float> row_y_offsets(nr);  // offset from cells origin
-    {
-        float y_off = 0;
-        for (const auto& g : patchbay_groups_) {
-            if (g.row_count <= 0) continue;
-            if (g.row_start > 0) y_off += kPatchbayGroupHeaderH;
-            for (int r = g.row_start; r < g.row_start + g.row_count; ++r) {
-                row_y_offsets[r] = y_off;
-                y_off += cell_step;
-            }
-        }
-    }
-
-    // Pre-compute column X positions
-    std::vector<float> col_x_offsets(nc);
-    {
-        float x_off = 0;
-        for (const auto& g : patchbay_groups_) {
-            if (g.col_count <= 0) continue;
-            if (g.col_start > 0) x_off += kPatchbayGroupHeaderH;
-            for (int c = g.col_start; c < g.col_start + g.col_count; ++c) {
-                col_x_offsets[c] = x_off;
-                x_off += cell_step;
-            }
-        }
-    }
-
-    // Region origins
-    float labels_x = inner_x;
-    float labels_y = inner_y + kPatchbayColHeaderH;
-    float headers_x = inner_x + kPatchbayRowLabelW;
-    float headers_y = inner_y;
-    float cells_x = inner_x + kPatchbayRowLabelW;
-    float cells_y = inner_y + kPatchbayColHeaderH;
-
-    // Viewport culling: determine visible row/col range
-    int first_vis_row = 0, last_vis_row = nr - 1;
-    int first_vis_col = 0, last_vis_col = nc - 1;
-    for (int r = 0; r < nr; ++r) {
-        float ry = row_y_offsets[r] - patchbay_scroll_y_;
-        if (ry + cell_step >= 0) { first_vis_row = r; break; }
-    }
-    for (int r = nr - 1; r >= 0; --r) {
-        float ry = row_y_offsets[r] - patchbay_scroll_y_;
-        if (ry <= viewport_h) { last_vis_row = r; break; }
-    }
-    for (int c = 0; c < nc; ++c) {
-        float cx = col_x_offsets[c] - patchbay_scroll_x_;
-        if (cx + cell_step >= 0) { first_vis_col = c; break; }
-    }
-    for (int c = nc - 1; c >= 0; --c) {
-        float cx = col_x_offsets[c] - patchbay_scroll_x_;
-        if (cx <= viewport_w) { last_vis_col = c; break; }
-    }
-
-    // --- Region A: Corner label (static) ---
-    tr.push_clip_rect(labels_x, headers_y, kPatchbayRowLabelW, kPatchbayColHeaderH);
-    tr.draw_text(labels_x + 4, headers_y + kPatchbayColHeaderH - kLineH,
-                 "src \\ dest", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f, 0.8f);
-    tr.pop_clip_rect();
-
-    // --- Region B: Column headers (scroll X only) ---
-    tr.push_clip_rect(headers_x, headers_y, viewport_w, kPatchbayColHeaderH);
-    for (const auto& g : patchbay_groups_) {
-        if (g.col_count <= 0) continue;
-        // Group header bar
-        float gx = headers_x + col_x_offsets[g.col_start] - patchbay_scroll_x_;
-        float gw = g.col_count * cell_step;
-        const float* dc = domain_color(g.domain);
-        tr.draw_rect(gx, headers_y, gw, 3, dc[0], dc[1], dc[2], 0.7f);
-
-        // Node name
-        std::string glabel = g.display_name;
-        if (glabel.size() > 12) glabel = glabel.substr(0, 11) + "~";
-        tr.draw_text(gx + 2, headers_y + 4, glabel.c_str(), dc[0], dc[1], dc[2], 0.8f, 0.8f);
-
-        // Column labels (vertical abbreviated text)
-        for (int ci = g.col_start; ci < g.col_start + g.col_count; ++ci) {
-            if (ci < first_vis_col || ci > last_vis_col) continue;
-            float cx = headers_x + col_x_offsets[ci] - patchbay_scroll_x_ + cell_step * 0.5f;
-            const auto& name = patchbay_cols_[ci].port_name;
-            std::string abbr = name.length() > 5 ? name.substr(0, 5) : name;
-            for (size_t chi = 0; chi < abbr.size(); ++chi) {
-                char buf[2] = { abbr[chi], '\0' };
-                float cy = headers_y + 18 + chi * 10.0f;
-                tr.draw_text(cx - 3, cy, buf,
-                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f, 0.8f);
-            }
-        }
-    }
-    tr.pop_clip_rect();
-
-    // --- Region C: Row labels (scroll Y only) ---
-    tr.push_clip_rect(labels_x, labels_y, kPatchbayRowLabelW, viewport_h);
-    for (const auto& g : patchbay_groups_) {
-        if (g.row_count <= 0) continue;
-        // Group header bar
-        float gy = labels_y + row_y_offsets[g.row_start] - patchbay_scroll_y_;
-        if (g.row_start > 0) gy -= kPatchbayGroupHeaderH;
-        if (g.row_start > 0) {
-            const float* dc = domain_color(g.domain);
-            tr.draw_rect(labels_x, gy, kPatchbayRowLabelW, kPatchbayGroupHeaderH,
-                         dc[0], dc[1], dc[2], 0.15f);
-            std::string glabel = g.display_name;
-            if (glabel.size() > 14) glabel = glabel.substr(0, 13) + "~";
-            tr.draw_text(labels_x + 4, gy + 3, glabel.c_str(), dc[0], dc[1], dc[2], 0.8f, 0.8f);
-        } else {
-            // First group: draw name at top
-            const float* dc = domain_color(g.domain);
-            float gy0 = labels_y - kPatchbayGroupHeaderH - patchbay_scroll_y_;
-            // Only draw if it would be above the first row
-            if (gy0 + kPatchbayGroupHeaderH > labels_y - kPatchbayGroupHeaderH) {
-                std::string glabel = g.display_name;
-                if (glabel.size() > 14) glabel = glabel.substr(0, 13) + "~";
-                tr.draw_text(labels_x + 4, labels_y + row_y_offsets[g.row_start] - patchbay_scroll_y_ - kLineH,
-                             glabel.c_str(), dc[0], dc[1], dc[2], 0.8f, 0.8f);
-            }
-        }
-
-        // Row labels
-        for (int ri = g.row_start; ri < g.row_start + g.row_count; ++ri) {
-            if (ri < first_vis_row || ri > last_vis_row) continue;
-            float ry = labels_y + row_y_offsets[ri] - patchbay_scroll_y_;
-            const auto& row = patchbay_rows_[ri];
-            std::string label = row.is_param ? ("\xC2\xB7 " + row.port_name) : row.port_name;
-            if (label.size() > 14) label = label.substr(0, 13) + "~";
-            float row_alpha = row.is_param ? 0.5f : 0.7f;
-            tr.draw_text(labels_x + 4, ry + 2, label.c_str(),
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], row_alpha, 0.8f);
-        }
-    }
-    tr.pop_clip_rect();
-
-    // --- Region D: Cells (scroll X+Y) ---
-    tr.push_clip_rect(cells_x, cells_y, viewport_w, viewport_h);
-    for (int ri = first_vis_row; ri <= last_vis_row && ri < nr; ++ri) {
-        float ry = cells_y + row_y_offsets[ri] - patchbay_scroll_y_;
-        if (ry > cells_y + viewport_h) break;
-        if (ry + cell_step < cells_y) continue;
-
-        for (int ci = first_vis_col; ci <= last_vis_col && ci < nc; ++ci) {
-            float cx = cells_x + col_x_offsets[ci] - patchbay_scroll_x_;
-            if (cx > cells_x + viewport_w) break;
-            if (cx + cell_step < cells_x) continue;
-
-            uint8_t compat = patchbay_compat_[ri][ci];
-            if (compat == 0) continue;  // same node — blank
-
-            if (compat == 1) {
-                // Incompatible: very dim rect
-                tr.draw_rect(cx, ry, kPatchbayCellSize, kPatchbayCellSize,
-                             style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.15f);
-                continue;
-            }
-
-            // Compatible cell — check if connected
-            std::string key = patchbay_rows_[ri].node_id + "/" + patchbay_rows_[ri].port_name +
-                              "->" + patchbay_cols_[ci].node_id + "/" + patchbay_cols_[ci].port_name;
-            auto conn_it = conn_map.find(key);
-            bool connected = (conn_it != conn_map.end());
-            float scale = connected ? conn_it->second : 0.0f;
-
-            // Background
-            tr.draw_rect(cx, ry, kPatchbayCellSize, kPatchbayCellSize,
-                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.5f);
-
-            if (connected) {
-                float fill_h = kPatchbayCellSize * scale;
-                float fill_y = ry + kPatchbayCellSize - fill_h;
-                tr.draw_rect(cx, fill_y, kPatchbayCellSize, fill_h,
-                             style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
-            }
-
-            // Store cell rect for hit testing (reuse MatrixCell)
-            matrix_cell_rects_.push_back({
-                cx, ry, kPatchbayCellSize, kPatchbayCellSize,
-                patchbay_rows_[ri].node_id, patchbay_rows_[ri].port_name,
-                patchbay_cols_[ci].node_id, patchbay_cols_[ci].port_name,
-                connected, scale
-            });
-        }
-    }
-    tr.pop_clip_rect();
-
-    // Hover tooltip (drawn outside clip rects)
-    if (!matrix_scale_dragging_) {
-        int hi = hit_test_rect(matrix_cell_rects_, mouse_.x, mouse_.y);
-        if (hi >= 0) {
-            const auto& cell = matrix_cell_rects_[hi];
-            std::string tip = cell.from_node + "/" + cell.from_port + " -> " + cell.to_node + "/" + cell.to_port;
-            if (cell.connected) {
-                tip += " (scale: " + format_float(cell.scale, 2) + ")";
-            }
-            float tw = tr.text_width(tip.c_str(), 0.8f);
-            float tx = mouse_.x + 12;
-            float ty = mouse_.y - 6;
-            // Clamp tooltip to screen
-            if (tx + tw + 6 > wf) tx = wf - tw - 6;
-            if (ty < 0) ty = mouse_.y + 16;
-            tr.draw_rect(tx - 3, ty - 2, tw + 6, kLineH, 0.0f, 0.0f, 0.0f, 0.85f);
-            tr.draw_text(tx, ty, tip.c_str(), 1.0f, 1.0f, 1.0f, 0.9f, 0.8f);
         }
     }
 }

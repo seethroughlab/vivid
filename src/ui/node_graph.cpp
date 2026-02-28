@@ -58,7 +58,6 @@ template int NodeGraphUI::hit_test_rect(const std::vector<InspectorRect>& rects,
 template int NodeGraphUI::hit_test_rect(const std::vector<ResolutionRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<MidiRemoveRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<MidiRangeRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<MatrixCell>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<XYPadRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<ColorSwatchRect>& rects, float mx, float my);
 
@@ -637,17 +636,7 @@ void NodeGraphUI::cancel_midi_range_edit() {
 // -----------------------------------------------------------------------
 // Port type compatibility helpers (for insert-on-wire)
 // -----------------------------------------------------------------------
-static bool is_control_type(VividPortType t) {
-    return t == VIVID_PORT_CONTROL_FLOAT || t == VIVID_PORT_CONTROL_INT ||
-           t == VIVID_PORT_CONTROL_BOOL  || t == VIVID_PORT_CONTROL_SPREAD;
-}
-
-static bool port_type_compatible(VividPortType wire_type, VividPortType port_type) {
-    if (wire_type == VIVID_PORT_GPU_TEXTURE)   return port_type == VIVID_PORT_GPU_TEXTURE;
-    if (wire_type == VIVID_PORT_AUDIO_FLOAT)   return port_type == VIVID_PORT_AUDIO_FLOAT;
-    // Any control type matches any control type
-    return is_control_type(wire_type) && is_control_type(port_type);
-}
+// is_control_type() and port_type_compatible() are in node_graph_util.h
 
 static bool can_insert_on_wire(const OperatorInfo& op, VividPortType src, VividPortType dst) {
     bool has_input = false, has_output = false;
@@ -796,8 +785,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_xy_pad_drag();
     update_color_drag();
     update_drum_mod_drag();
-    update_matrix_drag();
-    update_patchbay();       // patchbay click/dismiss logic
+    update_patch_drag();
     update_chooser_hover();
     update_param_picker();   // may consume left_clicked
     update_preferences();    // may consume left_clicked
@@ -1374,145 +1362,6 @@ void NodeGraphUI::update_param_picker() {
         }
         mouse_.left_clicked = false;
         mouse_.left_released = false;
-    }
-}
-
-// -----------------------------------------------------------------------
-// Matrix scale drag — adjust connection scale by vertical drag
-// -----------------------------------------------------------------------
-void NodeGraphUI::update_matrix_drag() {
-    if (!matrix_scale_dragging_) return;
-
-    if (matrix_drag_cell_idx_ < 0 ||
-        matrix_drag_cell_idx_ >= static_cast<int>(matrix_cell_rects_.size())) {
-        matrix_scale_dragging_ = false;
-        return;
-    }
-
-    const auto& cell = matrix_cell_rects_[matrix_drag_cell_idx_];
-
-    if (!mouse_.left_down) {
-        // Release — if barely moved, treat as click-to-disconnect
-        float dy = std::fabs(matrix_drag_start_y_ - mouse_.y);
-        if (dy < 3.0f) {
-            std::string from_addr = cell.from_node + "/" + cell.from_port;
-            std::string to_addr = cell.to_node + "/" + cell.to_port;
-            commands_.disconnect(from_addr, to_addr);
-        }
-        matrix_scale_dragging_ = false;
-        matrix_drag_cell_idx_ = -1;
-        return;
-    }
-
-    // Drag up = increase scale, drag down = decrease
-    float dy = matrix_drag_start_y_ - mouse_.y;  // positive = up
-    if (std::fabs(dy) < 3.0f) return;  // dead zone before engaging
-
-    float sensitivity = 0.01f;  // scale change per pixel
-    float new_scale = matrix_drag_start_scale_ + dy * sensitivity;
-    new_scale = std::max(0.0f, std::min(1.0f, new_scale));
-
-    std::string from_addr = cell.from_node + "/" + cell.from_port;
-    std::string to_addr = cell.to_node + "/" + cell.to_port;
-    commands_.set_connection_scale(from_addr, to_addr, new_scale);
-}
-
-// -----------------------------------------------------------------------
-// Patchbay (multi-node connection matrix overlay)
-// -----------------------------------------------------------------------
-void NodeGraphUI::open_patchbay() {
-    if (selected_node_ids_.size() < 3) return;
-    patchbay_open_ = true;
-    rebuild_patchbay_layout();
-}
-
-void NodeGraphUI::rebuild_patchbay_layout() {
-    patchbay_rows_.clear();
-    patchbay_cols_.clear();
-    patchbay_groups_.clear();
-    patchbay_compat_.clear();
-    patchbay_scroll_x_ = 0.0f;
-    patchbay_scroll_y_ = 0.0f;
-
-    // Gather selected nodes in deterministic order (sorted by node_id)
-    std::vector<std::string> sorted_ids(selected_node_ids_.begin(), selected_node_ids_.end());
-    std::sort(sorted_ids.begin(), sorted_ids.end());
-
-    // Cache node IDs for change detection
-    patchbay_node_ids_ = selected_node_ids_;
-
-    for (const auto& nid : sorted_ids) {
-        const auto* ns = snap_.find_node(nid);
-        if (!ns || !ns->op_info) continue;
-
-        PatchbayNodeGroup group;
-        group.node_id = nid;
-        group.display_name = ns->op_info->name;
-        group.domain = ns->domain;
-        group.row_start = static_cast<int>(patchbay_rows_.size());
-        group.col_start = static_cast<int>(patchbay_cols_.size());
-
-        // Rows: output ports (sorted by index)
-        auto sorted_outs = sorted_ports(ns->output_port_indices);
-        for (const auto& [idx, name] : sorted_outs) {
-            VividPortType pt = VIVID_PORT_CONTROL_FLOAT;
-            for (const auto& p : ns->op_info->ports) {
-                if (p.name == name && p.direction == VIVID_PORT_OUTPUT) { pt = p.type; break; }
-            }
-            patchbay_rows_.push_back({nid, name, false, pt});
-        }
-
-        // Rows: non-FILE params (sorted by index)
-        std::vector<std::pair<uint32_t, std::string>> sorted_params;
-        for (const auto& [name, idx] : ns->param_indices) {
-            if (ns->output_port_indices.count(name)) continue;
-            sorted_params.push_back({idx, name});
-        }
-        std::sort(sorted_params.begin(), sorted_params.end());
-        for (const auto& [idx, name] : sorted_params) {
-            const ParamInfo* pd = ns->find_param(name);
-            if (pd && pd->type == VIVID_PARAM_FILE) continue;
-            patchbay_rows_.push_back({nid, name, true, VIVID_PORT_CONTROL_FLOAT});
-        }
-
-        group.row_count = static_cast<int>(patchbay_rows_.size()) - group.row_start;
-
-        // Columns: signal input ports
-        for (const auto& pi : ns->op_info->ports) {
-            if (pi.direction != VIVID_PORT_INPUT) continue;
-            bool is_param = false;
-            for (const auto& pd : ns->op_info->params) {
-                if (pd.name == pi.name) { is_param = true; break; }
-            }
-            if (!is_param)
-                patchbay_cols_.push_back({nid, pi.name, false, pi.type});
-        }
-
-        // Columns: non-FILE params (sorted by index)
-        for (const auto& pd : ns->op_info->params) {
-            if (pd.type == VIVID_PARAM_FILE) continue;
-            patchbay_cols_.push_back({nid, pd.name, true, VIVID_PORT_CONTROL_FLOAT});
-        }
-
-        group.col_count = static_cast<int>(patchbay_cols_.size()) - group.col_start;
-        patchbay_groups_.push_back(group);
-    }
-
-    // Pre-compute compatibility grid
-    int nr = static_cast<int>(patchbay_rows_.size());
-    int nc = static_cast<int>(patchbay_cols_.size());
-    patchbay_compat_.assign(nr, std::vector<uint8_t>(nc, 0));
-    for (int r = 0; r < nr; ++r) {
-        for (int c = 0; c < nc; ++c) {
-            if (patchbay_rows_[r].node_id == patchbay_cols_[c].node_id) {
-                patchbay_compat_[r][c] = 0;  // same node — skip
-            } else if (port_type_compatible(patchbay_rows_[r].port_type,
-                                            patchbay_cols_[c].port_type)) {
-                patchbay_compat_[r][c] = 2;  // compatible
-            } else {
-                patchbay_compat_[r][c] = 1;  // incompatible
-            }
-        }
     }
 }
 

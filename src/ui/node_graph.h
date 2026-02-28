@@ -51,7 +51,7 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return create_popup_open_ || chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0 || patchbay_open_; }
+    bool wants_keyboard() const { return create_popup_open_ || chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0 || patch_ctx_open_; }
     bool has_selection() const { return !selected_node_ids_.empty(); }
     bool has_single_selection() const { return selected_node_ids_.size() == 1; }
     const std::string& single_selected_id() const { return *selected_node_ids_.begin(); }
@@ -201,17 +201,12 @@ private:
     void update_param_picker();
     void draw_param_picker(Renderer2D& tr);
 
-    // --- Connection matrix ---
-    void draw_matrix_section(Renderer2D& tr, const NodeSnapshot& src_node,
-                             const NodeSnapshot& dst_node, float px, float& py);
-    bool handle_matrix_click();
-    void update_matrix_drag();
-
-    // --- Patchbay (multi-node connection matrix overlay) ---
-    void open_patchbay();
-    void rebuild_patchbay_layout();
-    void draw_patchbay(Renderer2D& tr);
-    void update_patchbay();
+    // --- Patch panel (2-node connection view) ---
+    void draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
+                          const NodeSnapshot& node_b, float px, float& py);
+    bool handle_patch_click();
+    void handle_patch_right_click();
+    void update_patch_drag();
 
     // Resolve port type for a node+port (moved from file-local static)
     static VividPortType resolve_port_type(const GraphSnapshot& snap,
@@ -400,53 +395,32 @@ private:
     float dropdown_x_ = 0, dropdown_y_ = 0, dropdown_w_ = 0;
     std::vector<std::string> dropdown_labels_;
 
-    // Connection matrix state
-    struct MatrixCell {
-        float x, y, w, h;
+    // Patch panel state
+    struct PatchJack {
+        float x, y;
+        std::string node_id;
+        std::string port_name;
+        VividPortType port_type;
+        bool can_source;
+        bool can_dest;
+        bool is_param;
+    };
+    std::vector<PatchJack> patch_jacks_;
+
+    struct PatchWire {
+        float sx, sy, ex, ey;
         std::string from_node, from_port;
         std::string to_node, to_port;
-        bool connected;
         float scale;
     };
-    std::vector<MatrixCell> matrix_cell_rects_;
-    bool matrix_scale_dragging_ = false;
-    int matrix_drag_cell_idx_ = -1;
-    float matrix_drag_start_y_ = 0.0f;
-    float matrix_drag_start_scale_ = 0.0f;
+    std::vector<PatchWire> patch_wires_;
 
-    // Patchbay (multi-node connection matrix overlay) state
-    struct PatchbayRow {
-        std::string node_id;
-        std::string port_name;
-        bool is_param = false;
-        VividPortType port_type = VIVID_PORT_CONTROL_FLOAT;
-    };
-    struct PatchbayCol {
-        std::string node_id;
-        std::string port_name;
-        bool is_param = false;
-        VividPortType port_type = VIVID_PORT_CONTROL_FLOAT;
-    };
-    struct PatchbayNodeGroup {
-        std::string node_id;
-        std::string display_name;
-        VividDomain domain = VIVID_DOMAIN_CONTROL;
-        int row_start = 0, row_count = 0;
-        int col_start = 0, col_count = 0;
-    };
+    bool patch_dragging_ = false;
+    int patch_drag_from_idx_ = -1;
 
-    bool patchbay_open_ = false;
-    std::vector<PatchbayRow> patchbay_rows_;
-    std::vector<PatchbayCol> patchbay_cols_;
-    std::vector<PatchbayNodeGroup> patchbay_groups_;
-    std::vector<std::vector<uint8_t>> patchbay_compat_;  // 0=skip, 1=incompatible, 2=compatible
-    float patchbay_scroll_x_ = 0.0f, patchbay_scroll_y_ = 0.0f;
-    std::unordered_set<std::string> patchbay_node_ids_;  // detect selection change
-    float patchbay_panel_x_ = 0, patchbay_panel_y_ = 0;
-    float patchbay_panel_w_ = 0, patchbay_panel_h_ = 0;
-    // Inspector button rect for "Connection Matrix (M)"
-    struct SimpleRect { float x, y, w, h; };
-    SimpleRect patchbay_button_rect_ = {};
+    bool patch_ctx_open_ = false;
+    float patch_ctx_x_ = 0, patch_ctx_y_ = 0;
+    int patch_ctx_wire_idx_ = -1;
 
     // Sparkline ring buffers for control nodes
     static constexpr uint32_t kSparklineLen = 64;

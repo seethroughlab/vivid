@@ -52,19 +52,6 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
 }
 
 void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
-    // Patchbay scroll
-    if (patchbay_open_ &&
-        mouse_.x >= patchbay_panel_x_ && mouse_.x <= patchbay_panel_x_ + patchbay_panel_w_ &&
-        mouse_.y >= patchbay_panel_y_ && mouse_.y <= patchbay_panel_y_ + patchbay_panel_h_) {
-        patchbay_scroll_y_ -= y_offset * kPatchbayScrollSpeed;
-        if (mods & GLFW_MOD_SHIFT)
-            patchbay_scroll_x_ -= y_offset * kPatchbayScrollSpeed;
-        else
-            patchbay_scroll_x_ -= x_offset * kPatchbayScrollSpeed;
-        // Clamping happens in draw_patchbay()
-        return;
-    }
-
     // Param picker scroll
     if (param_picker_open_ && !param_picker_items_.empty()) {
         param_picker_scroll_ -= static_cast<int>(y_offset);
@@ -358,11 +345,6 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;
     }
 
-    if (patchbay_open_) {
-        if (key == GLFW_KEY_ESCAPE) patchbay_open_ = false;
-        return;  // swallow all other keys
-    }
-
     if (create_popup_open_) {
         switch (key) {
             case GLFW_KEY_ESCAPE:
@@ -496,16 +478,12 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         if (key == GLFW_KEY_B && action == GLFW_PRESS) {
             bezier_wires_ = !bezier_wires_;
         }
-        // M: open patchbay if 3+ nodes selected, otherwise toggle MIDI map mode
+        // M: toggle MIDI map mode
         if (key == GLFW_KEY_M && action == GLFW_PRESS) {
-            if (selected_node_ids_.size() >= 3 && !patchbay_open_) {
-                open_patchbay();
-            } else {
-                midi_map_mode_ = !midi_map_mode_;
-                if (!midi_map_mode_) {
-                    midi_map_waiting_ = false;
-                    editing_midi_range_ = false;
-                }
+            midi_map_mode_ = !midi_map_mode_;
+            if (!midi_map_mode_) {
+                midi_map_waiting_ = false;
+                editing_midi_range_ = false;
             }
         }
         // Delete selected nodes (Delete or Backspace)
@@ -827,6 +805,10 @@ void NodeGraphUI::handle_right_click() {
             context_menu_y_ = mouse_.y;
         }
     }
+
+    // Check patch panel right-click (inspector area)
+    if (!context_menu_open_ && mouse_.x >= graph_right())
+        handle_patch_right_click();
 }
 
 // -----------------------------------------------------------------------
@@ -994,17 +976,6 @@ bool NodeGraphUI::handle_inspector_click() {
 
     if (mouse_.x < graph_right() || mouse_.y >= static_cast<float>(win_h_))
         return false;
-
-    // --- Patchbay button click ---
-    if (selected_node_ids_.size() >= 3 && !patchbay_open_) {
-        const auto& br = patchbay_button_rect_;
-        if (br.w > 0 && mouse_.x >= br.x && mouse_.x <= br.x + br.w &&
-            mouse_.y >= br.y && mouse_.y <= br.y + br.h) {
-            open_patchbay();
-            mouse_.left_clicked = false;
-            return true;
-        }
-    }
 
     // --- MIDI map mode click guard ---
     if (midi_map_mode_) {
@@ -1280,8 +1251,8 @@ bool NodeGraphUI::handle_inspector_click() {
         return true;
     }
 
-    // Check matrix cell click (connect/disconnect or start scale drag)
-    if (handle_matrix_click()) return true;
+    // Check patch panel jack click (start wire drag)
+    if (handle_patch_click()) return true;
 
     return true;  // Click was in inspector area, consume it
 }
@@ -1593,56 +1564,121 @@ void NodeGraphUI::update_preferences() {
 }
 
 // -----------------------------------------------------------------------
-// Matrix cell click — toggle connection or start scale drag
+// Patch panel — jack click (start wire drag)
 // -----------------------------------------------------------------------
-bool NodeGraphUI::handle_matrix_click() {
-    int ci = hit_test_rect(matrix_cell_rects_, mouse_.x, mouse_.y);
-    if (ci < 0) return false;
-
-    const auto& cell = matrix_cell_rects_[ci];
-
-    if (cell.connected) {
-        // Start scale drag on connected cells
-        matrix_scale_dragging_ = true;
-        matrix_drag_cell_idx_ = ci;
-        matrix_drag_start_y_ = mouse_.y;
-        matrix_drag_start_scale_ = cell.scale;
-    } else {
-        // Connect: from_node/from_port -> to_node/to_port
-        std::string from_addr = cell.from_node + "/" + cell.from_port;
-        std::string to_addr = cell.to_node + "/" + cell.to_port;
-        commands_.connect(from_addr, to_addr);
+bool NodeGraphUI::handle_patch_click() {
+    for (int i = 0; i < static_cast<int>(patch_jacks_.size()); ++i) {
+        const auto& j = patch_jacks_[i];
+        float dx = mouse_.x - j.x;
+        float dy = mouse_.y - j.y;
+        if (dx * dx + dy * dy > kPatchJackHitRadius * kPatchJackHitRadius) continue;
+        if (!j.can_source) continue;
+        patch_dragging_ = true;
+        patch_drag_from_idx_ = i;
+        return true;
     }
-    return true;
+    return false;
 }
 
 // -----------------------------------------------------------------------
-// Patchbay update — click handling and auto-dismiss
+// Patch panel — right-click on wire or jack
 // -----------------------------------------------------------------------
-void NodeGraphUI::update_patchbay() {
-    if (!patchbay_open_) return;
+void NodeGraphUI::handle_patch_right_click() {
+    if (!mouse_.right_clicked) return;
 
-    // Auto-dismiss if selection changes or drops below 3
-    if (selected_node_ids_.size() < 3 || selected_node_ids_ != patchbay_node_ids_) {
-        patchbay_open_ = false;
+    // Hit-test wires (point-to-bezier distance)
+    for (int i = 0; i < static_cast<int>(patch_wires_.size()); ++i) {
+        const auto& w = patch_wires_[i];
+        // Draw left-to-right like in draw_patch_panel
+        float wx0, wy0, wx1, wy1;
+        if (w.sx <= w.ex) { wx0 = w.sx; wy0 = w.sy; wx1 = w.ex; wy1 = w.ey; }
+        else              { wx0 = w.ex; wy0 = w.ey; wx1 = w.sx; wy1 = w.sy; }
+
+        float min_dist2 = 1e9f;
+        traverse_wire(wx0, wy0, wx1, wy1, true, [&](float x0, float y0, float x1, float y1) {
+            float d2 = point_seg_dist2(mouse_.x, mouse_.y, x0, y0, x1, y1);
+            if (d2 < min_dist2) min_dist2 = d2;
+        });
+        if (min_dist2 < 6.0f * 6.0f) {
+            patch_ctx_open_ = true;
+            patch_ctx_x_ = mouse_.x;
+            patch_ctx_y_ = mouse_.y;
+            patch_ctx_wire_idx_ = i;
+            return;
+        }
+    }
+
+    // Hit-test jacks — find a wire connected to this jack
+    for (int ji = 0; ji < static_cast<int>(patch_jacks_.size()); ++ji) {
+        const auto& j = patch_jacks_[ji];
+        float dx = mouse_.x - j.x;
+        float dy = mouse_.y - j.y;
+        if (dx * dx + dy * dy > kPatchJackHitRadius * kPatchJackHitRadius) continue;
+
+        // Find first wire connected to this jack
+        for (int wi = 0; wi < static_cast<int>(patch_wires_.size()); ++wi) {
+            const auto& w = patch_wires_[wi];
+            if ((w.from_node == j.node_id && w.from_port == j.port_name) ||
+                (w.to_node == j.node_id && w.to_port == j.port_name)) {
+                patch_ctx_open_ = true;
+                patch_ctx_x_ = mouse_.x;
+                patch_ctx_y_ = mouse_.y;
+                patch_ctx_wire_idx_ = wi;
+                return;
+            }
+        }
+        break;  // Found a jack but no wire on it
+    }
+}
+
+// -----------------------------------------------------------------------
+// Patch panel — drag update (connect on release)
+// -----------------------------------------------------------------------
+void NodeGraphUI::update_patch_drag() {
+    if (!patch_dragging_) return;
+
+    // Handle context menu click
+    if (patch_ctx_open_ && mouse_.left_clicked) {
+        if (patch_ctx_wire_idx_ >= 0 &&
+            patch_ctx_wire_idx_ < static_cast<int>(patch_wires_.size())) {
+            const auto& w = patch_wires_[patch_ctx_wire_idx_];
+            // Check if "Disconnect" item was clicked
+            float menu_w = 160.0f;
+            float item_y = patch_ctx_y_ + kCtxMenuPadTop + kCtxMenuItemH;
+            if (mouse_.x >= patch_ctx_x_ && mouse_.x <= patch_ctx_x_ + menu_w &&
+                mouse_.y >= item_y && mouse_.y <= item_y + kCtxMenuItemH) {
+                std::string from_addr = w.from_node + "/" + w.from_port;
+                std::string to_addr = w.to_node + "/" + w.to_port;
+                commands_.disconnect(from_addr, to_addr);
+            }
+        }
+        patch_ctx_open_ = false;
+        patch_ctx_wire_idx_ = -1;
+        mouse_.left_clicked = false;
         return;
     }
 
-    // Click handling
-    if (mouse_.left_clicked) {
-        // Hit-test against panel rect
-        if (mouse_.x < patchbay_panel_x_ || mouse_.x > patchbay_panel_x_ + patchbay_panel_w_ ||
-            mouse_.y < patchbay_panel_y_ || mouse_.y > patchbay_panel_y_ + patchbay_panel_h_) {
-            // Click outside panel — dismiss
-            patchbay_open_ = false;
-            mouse_.left_clicked = false;
-            return;
-        }
+    if (!mouse_.left_down) {
+        // Released — check if we hit a compatible jack on the other node
+        if (patch_drag_from_idx_ >= 0 &&
+            patch_drag_from_idx_ < static_cast<int>(patch_jacks_.size())) {
+            const auto& src = patch_jacks_[patch_drag_from_idx_];
+            for (const auto& j : patch_jacks_) {
+                if (j.node_id == src.node_id) continue;  // must be on other node
+                if (!j.can_dest) continue;
+                float dx = mouse_.x - j.x;
+                float dy = mouse_.y - j.y;
+                if (dx * dx + dy * dy > kPatchJackHitRadius * kPatchJackHitRadius) continue;
+                if (!port_type_compatible(src.port_type, j.port_type)) continue;
 
-        // Click inside panel — delegate to matrix cell click handling
-        if (handle_matrix_click()) {
-            mouse_.left_clicked = false;
+                std::string from_addr = src.node_id + "/" + src.port_name;
+                std::string to_addr = j.node_id + "/" + j.port_name;
+                commands_.connect(from_addr, to_addr);
+                break;
+            }
         }
+        patch_dragging_ = false;
+        patch_drag_from_idx_ = -1;
     }
 }
 
