@@ -34,6 +34,7 @@ std::vector<UIStyle> builtin_styles() {
 
         s.slider_track  = { 0.18f, 0.19f, 0.22f };
         s.dark_bg       = { 0.07f, 0.08f, 0.09f };
+        s.group_header_bg = { 0.14f, 0.15f, 0.17f };
 
         styles.push_back(std::move(s));
     }
@@ -67,6 +68,7 @@ std::vector<UIStyle> builtin_styles() {
 
         s.slider_track  = { 0.14f, 0.15f, 0.24f };
         s.dark_bg       = { 0.05f, 0.06f, 0.10f };
+        s.group_header_bg = { 0.10f, 0.11f, 0.18f };
 
         styles.push_back(std::move(s));
     }
@@ -100,6 +102,7 @@ std::vector<UIStyle> builtin_styles() {
 
         s.slider_track  = { 0.20f, 0.19f, 0.17f };
         s.dark_bg       = { 0.08f, 0.07f, 0.06f };
+        s.group_header_bg = { 0.16f, 0.15f, 0.14f };
 
         styles.push_back(std::move(s));
     }

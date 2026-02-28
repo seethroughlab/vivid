@@ -39,6 +39,7 @@ struct UIStyle {
     // Slider
     std::array<float,3> slider_track;
     std::array<float,3> dark_bg;
+    std::array<float,3> group_header_bg;
 };
 
 // Returns the 3 built-in style presets

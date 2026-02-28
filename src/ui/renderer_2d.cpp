@@ -331,6 +331,28 @@ void Renderer2D::push_tri(float x0, float y0, float x1, float y1, float x2, floa
     vertices_.push_back({x2, y2, solid_u_, solid_v_, r, g, b, a});
 }
 
+void Renderer2D::draw_tri(float x0, float y0, float x1, float y1, float x2, float y2,
+                           float r, float g, float b, float a) {
+    push_tri(x0, y0, x1, y1, x2, y2, r, g, b, a);
+}
+
+void Renderer2D::draw_arc(float cx, float cy, float radius,
+                           float start_angle, float end_angle,
+                           float thickness, int segments,
+                           float r, float g, float b, float a) {
+    if (segments < 1) return;
+    float angle_step = (end_angle - start_angle) / segments;
+    for (int i = 0; i < segments; ++i) {
+        float a0 = start_angle + angle_step * i;
+        float a1 = start_angle + angle_step * (i + 1);
+        float x0 = cx + std::cos(a0) * radius;
+        float y0 = cy + std::sin(a0) * radius;
+        float x1 = cx + std::cos(a1) * radius;
+        float y1 = cy + std::sin(a1) * radius;
+        draw_line(x0, y0, x1, y1, thickness, r, g, b, a);
+    }
+}
+
 void Renderer2D::draw_rounded_rect(float x, float y, float w, float h, float radius,
                                       float r, float g, float b, float a) {
     if (radius <= 0.0f) { draw_rect(x, y, w, h, r, g, b, a); return; }

@@ -31,6 +31,12 @@ public:
                            float r, float g, float b, float a = 1.0f);
     void draw_line(float x1, float y1, float x2, float y2, float thickness,
                    float r, float g, float b, float a = 1.0f);
+    void draw_tri(float x0, float y0, float x1, float y1, float x2, float y2,
+                  float r, float g, float b, float a = 1.0f);
+    void draw_arc(float cx, float cy, float radius,
+                  float start_angle, float end_angle,
+                  float thickness, int segments,
+                  float r, float g, float b, float a = 1.0f);
     float text_width(const char* text, float scale = 1.0f) const;
     float line_height() const { return line_height_; }
 

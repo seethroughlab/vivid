@@ -52,6 +52,20 @@ static constexpr float kDropdownItemH = 20.0f;
 static constexpr float kResInputW = 40.0f;
 static constexpr float kInspPadX = 16.0f;
 static constexpr float kInspContentW = kInspectorW - 2 * kInspPadX;
+static constexpr float kInspColGap = 8.0f;
+static constexpr float kGroupHeaderH = 22.0f;
+static constexpr float kGroupHeaderPadTop = 6.0f;
+static constexpr float kGroupChevronSize = 8.0f;
+
+// Knob widget
+static constexpr float kKnobDiameter = 40.0f;
+static constexpr float kKnobRadius = kKnobDiameter * 0.5f;
+static constexpr float kKnobArcThickness = 3.0f;
+static constexpr float kKnobArcAngleStart = 2.356f;   // 135° (7:30 position)
+static constexpr float kKnobArcAngleEnd = 7.069f;     // 405° (4:30 position, 270° sweep)
+static constexpr int   kKnobArcSegments = 24;
+static constexpr float kKnobLabelGap = 2.0f;
+static constexpr float kKnobValueGap = 1.0f;
 
 // Workspace grid
 static constexpr float kGridSpacing = 40.0f;
