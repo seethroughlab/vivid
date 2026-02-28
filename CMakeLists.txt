@@ -405,10 +405,12 @@ add_dependencies(test_control_server test_op_v1)
 add_test(NAME test_control_server COMMAND test_control_server WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Test operator plugins
-add_vivid_operator(audio_test_op    tests/operators/audio_test_op.cpp)
-add_vivid_operator(control_pass_op  tests/operators/control_pass_op.cpp)
-add_vivid_operator(spread_source_op tests/operators/spread_source_op.cpp)
-add_vivid_operator(audio_spread_op  tests/operators/audio_spread_op.cpp)
+add_vivid_operator(audio_test_op      tests/operators/audio_test_op.cpp)
+add_vivid_operator(audio_throwing_op  tests/operators/audio_throwing_op.cpp)
+add_vivid_operator(control_pass_op    tests/operators/control_pass_op.cpp)
+add_vivid_operator(spread_source_op   tests/operators/spread_source_op.cpp)
+add_vivid_operator(spread_sink_op     tests/operators/spread_sink_op.cpp)
+add_vivid_operator(audio_spread_op    tests/operators/audio_spread_op.cpp)
 
 # AudioEngine integration test (null audio backend, no GPU, no window)
 add_executable(test_audio_engine
@@ -427,6 +429,22 @@ target_link_libraries(test_audio_engine PRIVATE
     vivid_operator_api yyjson miniaudio webgpu rtmidi)
 add_dependencies(test_audio_engine test_op_v1 audio_test_op)
 add_test(NAME test_audio_engine COMMAND test_audio_engine WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Audio thread robustness test (exception handling in audio callback)
+add_executable(test_audio_robustness
+    tests/test_audio_robustness.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+)
+target_include_directories(test_audio_robustness PRIVATE src)
+target_link_libraries(test_audio_robustness PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu)
+add_dependencies(test_audio_robustness audio_test_op audio_throwing_op)
+add_test(NAME test_audio_robustness COMMAND test_audio_robustness WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Scheduler unit test (no GPU, no audio playback, no window)
 add_executable(test_scheduler
@@ -550,6 +568,21 @@ add_dependencies(test_cross_domain_spread spread_source_op audio_spread_op)
 add_test(NAME test_cross_domain_spread COMMAND test_cross_domain_spread
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Spread broadcast/wrap test
+add_executable(test_spread_broadcast
+    tests/test_spread_broadcast.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_spread_broadcast PRIVATE src)
+target_link_libraries(test_spread_broadcast PRIVATE
+    vivid_operator_api yyjson webgpu)
+add_dependencies(test_spread_broadcast spread_source_op spread_sink_op)
+add_test(NAME test_spread_broadcast COMMAND test_spread_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Audio spread wire integration test
 add_executable(test_audio_spread_wire
     tests/test_audio_spread_wire.cpp
@@ -613,6 +646,8 @@ add_test(NAME test_child_op COMMAND test_child_op WORKING_DIRECTORY ${CMAKE_BINA
 configure_file(tests/graphs/test_reload.json ${CMAKE_BINARY_DIR}/test_reload.json COPYONLY)
 configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runtime_api.json COPYONLY)
 configure_file(tests/graphs/test_audio_engine.json ${CMAKE_BINARY_DIR}/test_audio_engine.json COPYONLY)
+configure_file(tests/graphs/test_audio_robustness.json ${CMAKE_BINARY_DIR}/test_audio_robustness.json COPYONLY)
+configure_file(tests/graphs/test_spread_broadcast.json ${CMAKE_BINARY_DIR}/test_spread_broadcast.json COPYONLY)
 configure_file(tests/graphs/test_cross_domain_spread.json ${CMAKE_BINARY_DIR}/test_cross_domain_spread.json COPYONLY)
 configure_file(tests/graphs/test_audio_spread_wire.json ${CMAKE_BINARY_DIR}/test_audio_spread_wire.json COPYONLY)
 configure_file(tests/graphs/test_wavetable_position_env.json ${CMAKE_BINARY_DIR}/test_wavetable_position_env.json COPYONLY)

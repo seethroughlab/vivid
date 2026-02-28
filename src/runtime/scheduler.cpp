@@ -8,6 +8,8 @@
 
 namespace vivid {
 
+static constexpr uint32_t kMaxSpreadCapacity = 1024;
+
 void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* desc,
                                 const std::unordered_map<std::string, float>* param_overrides,
                                 const std::unordered_map<std::string, std::string>* string_overrides) {
@@ -368,14 +370,33 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                     ns.param_values[w.to_port_idx] = val;
                 } else {
                     ns.input_values[w.to_port_idx] = val;
-                    // Spread propagation (params have no spreads)
+                    // Spread propagation with broadcast/wrap semantics
+                    // (params have no spreads)
                     if (w.sources_param) continue;
                     const auto& src_spread = nodes_[w.from_node_idx].output_spreads[w.from_port_idx];
                     if (!src_spread.empty()) {
-                        ns.input_spreads[w.to_port_idx].resize(src_spread.size());
-                        for (size_t si = 0; si < src_spread.size(); ++si)
-                            ns.input_spreads[w.to_port_idx][si] = src_spread[si] * w.scale;
-                        ns.input_values[w.to_port_idx] = src_spread[0] * w.scale;
+                        auto& dst_spread = ns.input_spreads[w.to_port_idx];
+                        size_t src_len = std::min(src_spread.size(), (size_t)kMaxSpreadCapacity);
+                        if (dst_spread.empty()) {
+                            // First wire into this port: direct copy
+                            dst_spread.resize(src_len);
+                            for (size_t si = 0; si < src_len; ++si)
+                                dst_spread[si] = src_spread[si] * w.scale;
+                        } else {
+                            // Multiple wires: broadcast to longer length, wrap both
+                            size_t old_len = dst_spread.size();
+                            size_t new_len = std::max(old_len, src_len);
+                            new_len = std::min(new_len, (size_t)kMaxSpreadCapacity);
+                            if (new_len > old_len) {
+                                // Extend existing spread with wrapping
+                                dst_spread.resize(new_len);
+                                for (size_t si = old_len; si < new_len; ++si)
+                                    dst_spread[si] = dst_spread[si % old_len];
+                            }
+                            for (size_t si = 0; si < new_len; ++si)
+                                dst_spread[si] += src_spread[si % src_len] * w.scale;
+                        }
+                        ns.input_values[w.to_port_idx] = dst_spread[0];
                     }
                 }
             }
@@ -408,7 +429,6 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
 
         std::vector<VividSpreadPort> out_spreads(ns.output_port_count);
         // Pre-allocate output spread buffers
-        static constexpr uint32_t kMaxSpreadCapacity = 1024;
         std::vector<std::vector<float>> out_spread_storage(ns.output_port_count);
         for (uint32_t p = 0; p < ns.output_port_count; ++p) {
             out_spread_storage[p].resize(kMaxSpreadCapacity, 0.0f);

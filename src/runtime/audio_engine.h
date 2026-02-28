@@ -17,7 +17,7 @@ namespace vivid {
 class Scheduler;
 
 struct SpreadSnapshot {
-    static constexpr uint32_t kMaxLength = 16;
+    static constexpr uint32_t kMaxLength = 64;
     float data[kMaxLength] = {};
     uint32_t length = 0;
 };
@@ -54,6 +54,11 @@ struct AudioNodeState {
     // Pre-allocated pointer arrays (avoids audio-thread allocation)
     std::vector<float*> in_ptrs;
     std::vector<float*> out_ptrs;
+
+    // Error state — written and read on the audio thread only.
+    // Propagated to the main thread via AnalysisSnapshot double-buffer.
+    bool errored = false;
+    char error_message[256] = {};  // fixed-size, no allocation on audio thread
 };
 
 // Wire within the audio subgraph (audio output → audio input)
@@ -99,6 +104,10 @@ struct AnalysisSnapshot {
     std::vector<float> peak;  // [audio_node_idx]
     std::vector<std::array<float, kWaveformSamples>> waveform; // [audio_node_idx]
     std::vector<std::vector<SpreadSnapshot>> spread_outputs; // [audio_node_idx][output_port_idx]
+
+    // Error state propagation (audio thread → main thread)
+    std::vector<bool> errored;              // [audio_node_idx]
+    std::vector<std::string> error_msgs;    // [audio_node_idx]
 };
 
 struct AudioToControlMapping {

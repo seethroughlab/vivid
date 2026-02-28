@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <unordered_set>
 
 namespace vivid {
 
@@ -255,6 +256,8 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         snap.peak.resize(n, 0.0f);
         snap.waveform.resize(n);
         snap.spread_outputs.resize(n);
+        snap.errored.resize(n, false);
+        snap.error_msgs.resize(n);
         for (uint32_t i = 0; i < n; ++i) {
             snap.spread_outputs[i].resize(nodes_[i].output_port_count);
         }
@@ -425,7 +428,16 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
                 auto& dst = snap.spread_inputs[sw.audio_node_idx][sw.audio_port_idx];
                 if (sw.control_spread_port_idx < ctrl_ns.output_spreads.size()) {
                     const auto& src = ctrl_ns.output_spreads[sw.control_spread_port_idx];
-                    dst.length = std::min(static_cast<uint32_t>(src.size()), SpreadSnapshot::kMaxLength);
+                    uint32_t src_len = static_cast<uint32_t>(src.size());
+                    dst.length = std::min(src_len, SpreadSnapshot::kMaxLength);
+                    if (src_len > SpreadSnapshot::kMaxLength) {
+                        // Log truncation warning once per wire
+                        static std::unordered_set<const void*> warned;
+                        if (warned.insert(&dst).second) {
+                            std::fprintf(stderr, "[vivid] spread truncated from %u to %u "
+                                "crossing to audio domain\n", src_len, SpreadSnapshot::kMaxLength);
+                        }
+                    }
                     if (dst.length > 0) {
                         std::memcpy(dst.data, src.data(), dst.length * sizeof(float));
                     }
@@ -464,6 +476,20 @@ void AudioEngine::update_sources(double time, const Scheduler& scheduler) {
 void AudioEngine::inject_analysis(Scheduler& scheduler) {
     const auto& snap = analysis_snapshots_[analysis_active_.load(std::memory_order_acquire)];
     for (const auto& m : analysis_mappings_) {
+        // Propagate audio error state to scheduler node for UI display
+        if (m.audio_engine_idx < snap.errored.size() && snap.errored[m.audio_engine_idx]) {
+            auto& sched_ns = scheduler.nodes_mut()[m.scheduler_node_idx];
+            sched_ns.errored = true;
+            sched_ns.error_message = snap.error_msgs[m.audio_engine_idx];
+        } else {
+            auto& sched_ns = scheduler.nodes_mut()[m.scheduler_node_idx];
+            // Only clear if the scheduler itself didn't set the error
+            if (sched_ns.is_audio) {
+                sched_ns.errored = false;
+                sched_ns.error_message.clear();
+            }
+        }
+
         scheduler.inject_external_output(m.scheduler_node_idx, m.rms_port_idx,
                                          snap.rms[m.audio_engine_idx]);
         scheduler.inject_external_output(m.scheduler_node_idx, m.peak_port_idx,
@@ -548,6 +574,10 @@ bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry
         ns.loader = new_loader;
         ns.instance = new_loader->create_instance();
         init_audio_node_state(ns, new_desc, &saved_params);
+
+        // Clear error state on reload — give the new code a fresh start
+        ns.errored = false;
+        ns.error_message[0] = '\0';
     }
 
     // Update param snapshots to match new layout
@@ -677,7 +707,25 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             ctx.input_spreads = ns.has_spread_ports ? ns.spread_in_ports.data() : nullptr;
             ctx.output_spreads = ns.has_spread_ports ? ns.spread_out_ports.data() : nullptr;
 
-            ns.loader->process(ns.instance, &ctx);
+            if (!ns.errored) {
+                try {
+                    ns.loader->process(ns.instance, &ctx);
+                } catch (const std::exception& e) {
+                    ns.errored = true;
+                    std::snprintf(ns.error_message, sizeof(ns.error_message), "%s", e.what());
+                    for (auto& buf : ns.output_buffers)
+                        std::memset(buf.data(), 0, chunk * sizeof(float));
+                } catch (...) {
+                    ns.errored = true;
+                    std::snprintf(ns.error_message, sizeof(ns.error_message), "Unknown exception");
+                    for (auto& buf : ns.output_buffers)
+                        std::memset(buf.data(), 0, chunk * sizeof(float));
+                }
+            } else {
+                // Errored nodes produce silence
+                for (auto& buf : ns.output_buffers)
+                    std::memset(buf.data(), 0, chunk * sizeof(float));
+            }
 
             // Read back spread output lengths
             if (ns.has_spread_ports) {
@@ -799,6 +847,15 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             for (uint32_t p = 0; p < nodes_[ni].output_port_count; ++p) {
                 analysis.spread_outputs[ni][p] = nodes_[ni].spread_outputs[p];
             }
+        }
+
+        // Propagate error state to analysis snapshot
+        bool err = nodes_[ni].errored;
+        analysis.errored[ni] = err;
+        if (err) {
+            analysis.error_msgs[ni] = nodes_[ni].error_message;
+        } else {
+            analysis.error_msgs[ni].clear();
         }
     }
     analysis_active_.store(write_idx, std::memory_order_release);

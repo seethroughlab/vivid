@@ -1,0 +1,14 @@
+{
+    "nodes": {
+        "src3": { "type": "SpreadSourceOp", "params": { "base": 1.0, "count": 3 } },
+        "src5": { "type": "SpreadSourceOp", "params": { "base": 10.0, "count": 5 } },
+        "sink": { "type": "SpreadSinkOp" },
+        "single_src": { "type": "SpreadSourceOp", "params": { "base": 2.0, "count": 4 } },
+        "single_sink": { "type": "SpreadSinkOp" }
+    },
+    "connections": [
+        { "from": "src3/out", "to": "sink/in" },
+        { "from": "src5/out", "to": "sink/in" },
+        { "from": "single_src/out", "to": "single_sink/in" }
+    ]
+}
