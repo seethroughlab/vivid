@@ -47,6 +47,16 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
 
 CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std::string& param,
                                            const std::string& value) {
+    // WGSLFilter preset selection — triggers a full graph rebuild
+    if (param == "filter") {
+        NodeDef* ndef = graph_.find_node(node_id);
+        if (ndef && (ndef->type == "WGSLFilter" || registry_.is_wgsl_preset(ndef->type))) {
+            ndef->string_params["filter"] = value;
+            pending_topology_change_ = true;
+            return {true, node_id + "/filter = " + value};
+        }
+    }
+
     NodeState* ns = scheduler_.find_node_mut(node_id);
     if (!ns) return {false, "unknown node '" + node_id + "'"};
 
@@ -123,7 +133,7 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
 // --- Buffered topology changes ---
 
 CommandResult RuntimeAPI::add_node(const std::string& type, const std::string& id) {
-    if (!registry_.find(type)) {
+    if (!registry_.find(type) && !registry_.is_wgsl_preset(type)) {
         return {false, "unknown type '" + type + "'"};
     }
     if (!graph_.add_node(id, type)) {

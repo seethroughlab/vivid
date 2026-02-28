@@ -11,7 +11,8 @@
 class OperatorInfoCache {
 public:
     std::shared_ptr<const vivid::ui::OperatorInfo> get(
-            const std::string& type_name, vivid::OperatorRegistry& registry) {
+            const std::string& type_name, vivid::OperatorRegistry& registry,
+            vivid::OperatorLoader* fallback_loader = nullptr) {
         auto it = cache_.find(type_name);
         if (it != cache_.end()) return it->second;
 
@@ -22,6 +23,11 @@ public:
             desc = loader->descriptor();
         } else {
             desc = registry.probe_descriptor(type_name);  // deferred metadata
+        }
+        // Fall back to per-instance loader (e.g. WGSLFilter nodes)
+        if (!desc && fallback_loader) {
+            loader = fallback_loader;
+            desc = fallback_loader->descriptor();
         }
         if (!desc) return nullptr;
 

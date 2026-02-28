@@ -76,7 +76,12 @@ public:
                 return;
             }
         }
-        // Built-in WGSL preset in filters/ → tell user to use Clone & Edit
+        // Built-in WGSL preset → tell user to use Clone & Edit
+        if (registry_ && registry_->is_wgsl_preset(type_name)) {
+            std::fprintf(stderr, "[vivid] Built-in filter '%s': use Clone & Edit to modify\n",
+                         type_name.c_str());
+            return;
+        }
         if (!filters_dir_.empty()) {
             auto preset_path = find_preset_wgsl(type_name);
             if (!preset_path.empty()) {
@@ -101,12 +106,26 @@ public:
 
         // Look up source's descriptor for params
         auto* loader = registry_->find(type_name);
-        if (!loader) return;
-        const auto* desc = loader->descriptor();
+        const VividOperatorDescriptor* desc = nullptr;
+        std::unique_ptr<vivid::OperatorLoader> temp_loader;
+
+        if (loader) {
+            desc = loader->descriptor();
+        } else if (auto* cfg = registry_->wgsl_config(type_name)) {
+            // WGSL preset not in loaders_ — create temporary loader for descriptor
+            temp_loader = std::make_unique<vivid::OperatorLoader>();
+            temp_loader->init_data_driven(*cfg);
+            loader = temp_loader.get();
+            desc = loader->descriptor();
+        }
         if (!desc) return;
 
-        // Read the source .wgsl file — try filters/ preset first, then working dir
-        std::string wgsl_path = find_preset_wgsl(type_name);
+        // Read the source .wgsl file — try config path, then filters/ scan, then working dir
+        std::string wgsl_path;
+        if (auto* cfg = registry_->wgsl_config(type_name))
+            wgsl_path = (*cfg)->shader_path;
+        if (wgsl_path.empty())
+            wgsl_path = find_preset_wgsl(type_name);
         if (wgsl_path.empty() && !working_filters_dir_.empty()) {
             std::string try_path = working_filters_dir_ + "/" + type_name + ".wgsl";
             if (std::filesystem::exists(try_path))
@@ -235,11 +254,16 @@ public:
     void clone_and_edit(const std::string& type_name) override {
         if (!registry_ || !op_cache_) return;
 
-        auto* loader = registry_->find(type_name);
-        if (!loader) return;
+        // WGSL presets (no longer in loaders_) → duplicate as user filter
+        if (registry_->is_wgsl_preset(type_name)) {
+            duplicate_as_user_filter(type_name);
+            return;
+        }
 
-        // Data-driven filters (WGSL presets) → duplicate as user filter
-        if (loader->is_data_driven()) {
+        auto* loader = registry_->find(type_name);
+
+        // Data-driven filters (user filters) → duplicate as user filter
+        if (loader && loader->is_data_driven()) {
             duplicate_as_user_filter(type_name);
             return;
         }
@@ -250,7 +274,7 @@ public:
             return;
         }
 
-        if (operators_dir_.empty()) return;
+        if (!loader || operators_dir_.empty()) return;
         clone_cpp_operator(type_name);
     }
 

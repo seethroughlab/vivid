@@ -51,6 +51,11 @@ public:
     // Load a brand-new operator from a dylib (for cloned operators)
     bool register_loaded_operator(const std::string& dylib_path);
 
+    // WGSL preset accessors
+    const std::shared_ptr<DataDrivenFilterConfig>* wgsl_config(const std::string& name) const;
+    std::vector<std::string> wgsl_preset_names() const;
+    bool is_wgsl_preset(const std::string& name) const;
+
     // Introspection
     std::vector<std::string> type_names() const;
 
@@ -62,6 +67,7 @@ private:
     // Helper: extract target name from dylib path and register loader
     void register_target_mapping(const std::string& dylib_path, const std::string& type_name);
 
+    std::unordered_map<std::string, std::shared_ptr<DataDrivenFilterConfig>> wgsl_configs_;
     std::unordered_map<std::string, std::unique_ptr<OperatorLoader>> loaders_;
     std::unordered_map<std::string, DeferredEntry> deferred_;  // probed but not yet loaded
     std::unordered_map<std::string, std::string> target_to_type_;  // cmake target → descriptor name

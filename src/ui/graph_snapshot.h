@@ -142,6 +142,9 @@ struct GraphSnapshot {
     std::vector<std::string> operator_types;  // sorted list
     std::unordered_map<std::string, std::shared_ptr<const OperatorInfo>> operator_catalog;
 
+    // WGSL preset names for filter selector UI
+    std::vector<std::string> wgsl_preset_names;
+
     const NodeSnapshot* find_node(const std::string& id) const {
         auto it = node_index.find(id);
         if (it == node_index.end()) return nullptr;

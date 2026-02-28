@@ -231,14 +231,14 @@ bool OperatorRegistry::scan_wgsl_presets(const std::string& directory) {
             continue;
         }
 
-        // Skip if already fully loaded
+        // Skip if already fully loaded (e.g. user filter with same name)
         if (loaders_.count(header->name))
             continue;
         // .wgsl presets override stale deferred dylib entries
         if (deferred_.count(header->name))
             deferred_.erase(header->name);
 
-        // Build DataDrivenFilterConfig
+        // Build DataDrivenFilterConfig and store in wgsl_configs_
         auto config = std::make_shared<DataDrivenFilterConfig>();
         config->name = header->name;
         config->shader_path = path;
@@ -262,12 +262,25 @@ bool OperatorRegistry::scan_wgsl_presets(const std::string& directory) {
             config->params.push_back(std::move(pd));
         }
 
-        register_user_filter(header->name, config);
+        wgsl_configs_[header->name] = config;
         std::fprintf(stderr, "[vivid] Registry: loaded preset %s from %s\n",
                      header->name.c_str(), name);
     }
 
     closedir(dir);
+
+    // Register a single WGSLFilter type with a minimal factory descriptor.
+    // Actual instances get per-instance descriptors from the scheduler.
+    if (!wgsl_configs_.empty() && !loaders_.count("WGSLFilter")) {
+        auto factory = std::make_shared<DataDrivenFilterConfig>();
+        factory->name = "WGSLFilter";
+        auto loader = std::make_unique<OperatorLoader>();
+        loader->init_data_driven(std::move(factory));
+        loaders_["WGSLFilter"] = std::move(loader);
+        std::fprintf(stderr, "[vivid] Registry: registered WGSLFilter (%zu presets)\n",
+                     wgsl_configs_.size());
+    }
+
     return true;
 }
 
@@ -284,6 +297,7 @@ void OperatorRegistry::register_target_mapping(const std::string& dylib_path,
 bool OperatorRegistry::load_for_graph(const Graph& graph) {
     for (const auto& ndef : graph.nodes()) {
         if (loaders_.count(ndef.type)) continue;      // already loaded
+        if (wgsl_configs_.count(ndef.type)) continue;  // handled by scheduler
         auto dit = deferred_.find(ndef.type);
         if (dit == deferred_.end()) continue;          // builtin or unknown
 
@@ -401,6 +415,25 @@ const std::string* OperatorRegistry::type_name_for_target(const std::string& tar
     if (it == target_to_type_.end())
         return nullptr;
     return &it->second;
+}
+
+const std::shared_ptr<DataDrivenFilterConfig>* OperatorRegistry::wgsl_config(
+        const std::string& name) const {
+    auto it = wgsl_configs_.find(name);
+    if (it == wgsl_configs_.end()) return nullptr;
+    return &it->second;
+}
+
+std::vector<std::string> OperatorRegistry::wgsl_preset_names() const {
+    std::vector<std::string> names;
+    names.reserve(wgsl_configs_.size());
+    for (const auto& [name, _] : wgsl_configs_) names.push_back(name);
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
+bool OperatorRegistry::is_wgsl_preset(const std::string& name) const {
+    return wgsl_configs_.count(name) > 0;
 }
 
 bool OperatorRegistry::reload_operator(const std::string& type_name, const std::string& new_dylib_path) {

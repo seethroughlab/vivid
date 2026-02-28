@@ -122,6 +122,29 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
     // 1. Create NodeStates
     for (const auto& ndef : graph.nodes()) {
         OperatorLoader* loader = registry.find(ndef.type);
+        std::unique_ptr<OperatorLoader> owned;
+
+        if (!loader && registry.is_wgsl_preset(ndef.type)) {
+            // Backward compat: old graph with "type": "HSV" → per-instance loader
+            auto* cfg = registry.wgsl_config(ndef.type);
+            if (cfg) {
+                owned = std::make_unique<OperatorLoader>();
+                owned->init_data_driven(*cfg);
+                loader = owned.get();
+            }
+        } else if (loader && ndef.type == "WGSLFilter") {
+            // New format: read filter from string_params
+            auto it = ndef.string_params.find("filter");
+            if (it != ndef.string_params.end()) {
+                auto* cfg = registry.wgsl_config(it->second);
+                if (cfg) {
+                    owned = std::make_unique<OperatorLoader>();
+                    owned->init_data_driven(*cfg);
+                    loader = owned.get();
+                }
+            }
+        }
+
         if (!loader) {
             std::fprintf(stderr, "[vivid] Scheduler: unknown operator type '%s'\n", ndef.type.c_str());
             return false;
@@ -132,6 +155,7 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         NodeState ns;
         ns.node_id = ndef.id;
         ns.loader = loader;
+        ns.owned_loader = std::move(owned);
         ns.instance = loader->create_instance();
         ns.generation = 0;
         init_node_state(ns, desc, &ndef.params,
@@ -279,6 +303,11 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
     for (auto& w : wires_) {
         w.from_node_idx = old_to_new[w.from_node_idx];
         w.to_node_idx   = old_to_new[w.to_node_idx];
+    }
+
+    // Re-point loader for nodes with per-instance owned loaders after reorder
+    for (auto& ns : nodes_) {
+        if (ns.owned_loader) ns.loader = ns.owned_loader.get();
     }
 
     // Build per-node list of upstream node indices for generation tracking

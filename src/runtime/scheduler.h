@@ -53,6 +53,9 @@ struct NodeState {
     // Error state — set by try/catch in tick(), cleared on reload
     bool errored = false;
     std::string error_message;
+
+    // Per-instance loader for WGSLFilter nodes (owns the loader; ns.loader points here)
+    std::unique_ptr<OperatorLoader> owned_loader;
 };
 
 struct Wire {
