@@ -265,6 +265,11 @@ private:
     struct DragOffset { float dx, dy; };
     std::unordered_map<std::string, DragOffset> group_drag_offsets_;
 
+    // Deferred deselection: solo-select on mouse-up if no drag occurred
+    std::string pending_select_node_id_;
+    bool did_drag_ = false;
+    float drag_start_sx_ = 0, drag_start_sy_ = 0;
+
     // Box-select state
     bool box_selecting_ = false;
     float box_start_gx_ = 0, box_start_gy_ = 0;

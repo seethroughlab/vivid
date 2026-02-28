@@ -859,6 +859,14 @@ void NodeGraphUI::update_pan() {
 void NodeGraphUI::update_node_drag() {
     if (dragging_node_idx_ < 0) return;
     if (mouse_.left_down) {
+        // Detect real drag vs jittery click (2px threshold)
+        if (!did_drag_ && !pending_select_node_id_.empty()) {
+            float dx = mouse_.x - drag_start_sx_;
+            float dy = mouse_.y - drag_start_sy_;
+            if (dx * dx + dy * dy > 4.0f)
+                did_drag_ = true;
+        }
+
         float mgx = sx_to_gx(mouse_.x);
         float mgy = sy_to_gy(mouse_.y);
 
@@ -893,6 +901,12 @@ void NodeGraphUI::update_node_drag() {
             commands_.set_node_layout(rect.node_id, rect.x, rect.y);
         }
         dragging_node_idx_ = -1;
+
+        // Deferred deselection: narrow to clicked node if no drag occurred
+        if (!pending_select_node_id_.empty() && !did_drag_) {
+            selected_node_ids_ = { pending_select_node_id_ };
+        }
+        pending_select_node_id_.clear();
     }
 }
 

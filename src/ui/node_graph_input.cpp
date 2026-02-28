@@ -1242,6 +1242,7 @@ void NodeGraphUI::handle_graph_click() {
                     selected_node_ids_.erase(node_id);
                 else
                     selected_node_ids_.insert(node_id);
+                pending_select_node_id_.clear();
             } else if (selected_node_ids_.count(node_id)) {
                 // Already selected: keep selection, begin group drag
                 dragging_node_idx_ = ni;
@@ -1259,6 +1260,10 @@ void NodeGraphUI::handle_graph_click() {
                         }
                     }
                 }
+                pending_select_node_id_ = node_id;
+                did_drag_ = false;
+                drag_start_sx_ = mouse_.x;
+                drag_start_sy_ = mouse_.y;
             } else {
                 // Not selected: replace selection with this node, begin drag
                 selected_node_ids_ = { node_id };
@@ -1266,6 +1271,7 @@ void NodeGraphUI::handle_graph_click() {
                 drag_offset_x_ = sx_to_gx(mouse_.x) - node_rects_[ni].x;
                 drag_offset_y_ = sy_to_gy(mouse_.y) - node_rects_[ni].y;
                 group_drag_offsets_.clear();
+                pending_select_node_id_.clear();
             }
         } else {
             // Empty canvas: start box-select
