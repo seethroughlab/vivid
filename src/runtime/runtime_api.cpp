@@ -548,6 +548,12 @@ void RuntimeAPI::tick_quantized_switch() {
 
 // --- Per-Operator Presets ---
 
+const std::string& RuntimeAPI::active_preset(const std::string& node_id) const {
+    static const std::string empty;
+    auto it = active_presets_.find(node_id);
+    return (it != active_presets_.end()) ? it->second : empty;
+}
+
 CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::string& name) {
     NodeState* ns = scheduler_.find_node_mut(node_id);
     if (!ns) return {false, "unknown node '" + node_id + "'"};
@@ -558,6 +564,7 @@ CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::str
         preset.params[pname] = ns->param_values[idx];
     }
     graph_.save_preset(node_id, preset);
+    active_presets_[node_id] = name;
     return {true, "saved preset '" + name + "' on " + node_id};
 }
 
@@ -577,6 +584,7 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
         }
     }
     ns->generation++;
+    active_presets_[node_id] = name;
     return {true, "recalled preset '" + name + "' on " + node_id};
 }
 

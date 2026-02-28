@@ -94,6 +94,9 @@ public:
     // Per-frame: check for state machine transitions and recall mapped presets
     void tick_state_presets();
 
+    // Per-operator preset state accessor for snapshot
+    const std::string& active_preset(const std::string& node_id) const;
+
     // Variation state accessors for snapshot
     int pending_variation_idx() const { return pending_variation_.armed ? pending_variation_.variation_idx : -1; }
     bool variation_dirty() const { return variation_dirty_; }
@@ -134,6 +137,9 @@ private:
 
     // State-preset mapping: track previous state per mapped state machine
     std::unordered_map<std::string, float> prev_sm_state_;
+
+    // Active preset per node (node_id -> preset name)
+    std::unordered_map<std::string, std::string> active_presets_;
 };
 
 } // namespace vivid
