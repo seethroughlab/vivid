@@ -472,9 +472,14 @@ static void mouse_button_callback(GLFWwindow* w, int button, int action, int mod
 
 static void scroll_callback(GLFWwindow* w, double xoffset, double yoffset) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
-    if (ud && ud->graph_ui && ud->graph_ui->visible())
+    if (ud && ud->graph_ui && ud->graph_ui->visible()) {
+        int mods = 0;
+        if (glfwGetKey(w, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
+            glfwGetKey(w, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS)
+            mods |= GLFW_MOD_SUPER;
         ud->graph_ui->on_scroll(
-            static_cast<float>(xoffset), static_cast<float>(yoffset));
+            static_cast<float>(xoffset), static_cast<float>(yoffset), mods);
+    }
 }
 
 int main(int argc, char* argv[]) {

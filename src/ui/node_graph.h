@@ -46,7 +46,7 @@ public:
     // GLFW callbacks
     void on_mouse_move(float x, float y);
     void on_mouse_button(int button, int action, int mods);
-    void on_scroll(float x_offset, float y_offset);
+    void on_scroll(float x_offset, float y_offset, int mods);
     void on_key(int key, int action, int mods);
     void on_char(unsigned int codepoint);
 

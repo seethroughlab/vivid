@@ -51,7 +51,7 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
     }
 }
 
-void NodeGraphUI::on_scroll(float /*x_offset*/, float y_offset) {
+void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
     // Param picker scroll
     if (param_picker_open_ && !param_picker_items_.empty()) {
         param_picker_scroll_ -= static_cast<int>(y_offset);
@@ -84,16 +84,24 @@ void NodeGraphUI::on_scroll(float /*x_offset*/, float y_offset) {
         return;
     }
 
-    float factor = std::pow(1.12f, y_offset);
-    float new_zoom = zoom_ * factor;
-    new_zoom = std::max(0.4f, std::min(2.5f, new_zoom));
+    if (mods & GLFW_MOD_SUPER) {
+        // Cmd+scroll → pan
+        constexpr float kPanSpeed = 3.0f;
+        float speed = kPanSpeed / zoom_;
+        pan_x_ += x_offset * speed;
+        pan_y_ += y_offset * speed;
+    } else {
+        // Scroll → zoom (pivot around cursor)
+        float factor = std::pow(1.12f, y_offset);
+        float new_zoom = zoom_ * factor;
+        new_zoom = std::max(0.4f, std::min(2.5f, new_zoom));
 
-    // Pivot around mouse cursor
-    float gx = sx_to_gx(mouse_.x);
-    float gy = sy_to_gy(mouse_.y);
-    zoom_ = new_zoom;
-    pan_x_ = mouse_.x - gx * zoom_;
-    pan_y_ = mouse_.y - gy * zoom_;
+        float gx = sx_to_gx(mouse_.x);
+        float gy = sy_to_gy(mouse_.y);
+        zoom_ = new_zoom;
+        pan_x_ = mouse_.x - gx * zoom_;
+        pan_y_ = mouse_.y - gy * zoom_;
+    }
 }
 
 // -----------------------------------------------------------------------
