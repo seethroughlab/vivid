@@ -438,6 +438,139 @@ int main(int argc, char* argv[]) {
         std::filesystem::remove(tmp_path);
     }
 
+    // --- Test save_variation + recall round-trip ---
+    std::fprintf(stderr, "\n--- save_variation + recall ---\n");
+    float original_a_scale;
+    {
+        // Read current a/scale value
+        auto r0 = api.get_param("a", "scale");
+        check(r0.ok, "get a/scale before save");
+        original_a_scale = std::stof(r0.message);
+
+        auto r1 = api.save_variation("A");
+        check(r1.ok, "save_variation A");
+        check(!api.variation_dirty(), "not dirty after save");
+
+        // Modify a param
+        api.set_param("a", "scale", 99.0f);
+        check(api.variation_dirty(), "dirty after set_param");
+
+        auto r2 = api.save_variation("B");
+        check(r2.ok, "save_variation B");
+
+        // Recall A — should restore original value
+        auto r3 = api.recall_variation("A");
+        check(r3.ok, "recall_variation A");
+        auto r4 = api.get_param("a", "scale");
+        check(r4.ok, "get a/scale after recall A");
+        check_float(std::stof(r4.message), original_a_scale, "a/scale restored to original");
+
+        // Recall B — should have 99.0
+        auto r5 = api.recall_variation("B");
+        check(r5.ok, "recall_variation B");
+        auto r6 = api.get_param("a", "scale");
+        check(r6.ok, "get a/scale after recall B");
+        check_float(std::stof(r6.message), 99.0f, "a/scale = 99.0 from variation B");
+    }
+
+    // --- Test recall_variation_idx ---
+    std::fprintf(stderr, "\n--- recall_variation_idx ---\n");
+    {
+        auto r1 = api.recall_variation_idx(0);
+        check(r1.ok, "recall_variation_idx(0) ok");
+
+        auto r2 = api.recall_variation_idx(99);
+        check(!r2.ok, "recall_variation_idx(99) fails");
+    }
+
+    // --- Test list_variations ---
+    std::fprintf(stderr, "\n--- list_variations ---\n");
+    {
+        auto r = api.list_variations();
+        check(r.ok, "list_variations ok");
+        check(r.message.find("A") != std::string::npos, "list contains A");
+        check(r.message.find("B") != std::string::npos, "list contains B");
+    }
+
+    // --- Test update_variation ---
+    std::fprintf(stderr, "\n--- update_variation ---\n");
+    {
+        // Recall A, modify, update
+        api.recall_variation("A");
+        api.set_param("a", "scale", 55.0f);
+        auto r1 = api.update_variation("A");
+        check(r1.ok, "update_variation A ok");
+
+        // Recall B, then A — verify A has 55.0
+        api.recall_variation("B");
+        api.recall_variation("A");
+        auto r2 = api.get_param("a", "scale");
+        check(r2.ok, "get a/scale after update+recall A");
+        check_float(std::stof(r2.message), 55.0f, "a/scale = 55.0 after update");
+    }
+
+    // --- Test rename_variation ---
+    std::fprintf(stderr, "\n--- rename_variation ---\n");
+    {
+        auto r1 = api.rename_variation("A", "Intro");
+        check(r1.ok, "rename A -> Intro ok");
+
+        auto r2 = api.recall_variation("Intro");
+        check(r2.ok, "recall Intro (renamed from A) ok");
+
+        auto r3 = api.recall_variation("A");
+        check(!r3.ok, "recall A (old name) fails");
+
+        auto r4 = api.rename_variation("nope", "x");
+        check(!r4.ok, "rename non-existent fails");
+    }
+
+    // --- Test remove_variation ---
+    std::fprintf(stderr, "\n--- remove_variation ---\n");
+    {
+        auto r1 = api.remove_variation("B");
+        check(r1.ok, "remove_variation B ok");
+
+        auto r2 = api.remove_variation("B");
+        check(!r2.ok, "remove_variation B again fails");
+    }
+
+    // --- Test queue_variation (instant) ---
+    std::fprintf(stderr, "\n--- queue_variation ---\n");
+    {
+        auto r = api.queue_variation("Intro", "instant");
+        check(r.ok, "queue_variation Intro instant ok");
+    }
+
+    // --- Test set_quantize_clock ---
+    std::fprintf(stderr, "\n--- set_quantize_clock ---\n");
+    {
+        auto r = api.set_quantize_clock("a");
+        check(r.ok, "set_quantize_clock a ok");
+    }
+
+    // --- Test recall after node removal ---
+    std::fprintf(stderr, "\n--- recall after node removal ---\n");
+    {
+        // Save a variation capturing both nodes
+        api.save_variation("PreRemove");
+
+        // Add a temporary node, save variation with it, then remove it
+        api.add_node("TestOp", "tmp_var_node");
+        api.apply_pending(has_gpu_ops, has_audio);
+        api.save_variation("WithTmp");
+        api.remove_node("tmp_var_node");
+        api.apply_pending(has_gpu_ops, has_audio);
+
+        // Recall the variation that included the now-removed node — should not crash
+        auto r = api.recall_variation("WithTmp");
+        check(r.ok, "recall variation with missing node does not crash");
+
+        // Cleanup: remove test variations
+        api.remove_variation("PreRemove");
+        api.remove_variation("WithTmp");
+    }
+
     // --- Cleanup ---
     scheduler.shutdown();
     std::filesystem::remove_all(staging);
