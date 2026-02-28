@@ -43,6 +43,17 @@ public:
     virtual void queue_variation(const std::string& name, const std::string& quantize) {}
     virtual void set_quantize_clock(const std::string& node_id) {}
 
+    // Per-operator preset operations (defaults are no-ops for headless/test sinks)
+    virtual void recall_preset(const std::string& node_id, const std::string& name) {}
+    virtual void save_preset(const std::string& node_id, const std::string& name) {}
+
+    // State-preset mapping operations
+    virtual void set_state_preset(const std::string& sm_node, int state_idx,
+                                  const std::string& target_node,
+                                  const std::string& preset_name) {}
+    virtual void remove_state_preset(const std::string& sm_node, int state_idx,
+                                     const std::string& target_node) {}
+
     // Capture/recording operations (defaults are no-ops for headless/test sinks)
     virtual void capture_snapshot() {}
     virtual void start_recording(const std::string& path, const std::string& codec, double fps) {}

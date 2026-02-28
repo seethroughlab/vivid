@@ -51,7 +51,7 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return create_popup_open_ || chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0 || patch_ctx_open_ || session_editing_name_ || record_dropdown_open_; }
+    bool wants_keyboard() const { return create_popup_open_ || chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0 || patch_ctx_open_ || session_editing_name_ || record_dropdown_open_ || preset_name_popup_open_; }
     bool has_selection() const { return !selected_node_ids_.empty(); }
     bool has_single_selection() const { return selected_node_ids_.size() == 1; }
     const std::string& single_selected_id() const { return *selected_node_ids_.begin(); }
@@ -134,6 +134,7 @@ private:
     void draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_drum_grid(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_state_presets(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_chooser(Renderer2D& tr);
     void draw_preview_wire(Renderer2D& tr);
     void draw_box_select(Renderer2D& tr);
@@ -194,6 +195,9 @@ private:
     // --- Create operator popup ---
     void update_create_popup();
     void draw_create_popup(Renderer2D& tr);
+
+    // --- Preset name popup ---
+    void draw_preset_name_popup(Renderer2D& tr);
 
     // --- Preferences panel ---
     void update_preferences();
@@ -394,11 +398,34 @@ private:
 
     // Dropdown popup state
     bool dropdown_open_ = false;
+    bool dropdown_is_preset_ = false;  // true when showing preset choices (not param)
+    bool dropdown_is_state_preset_ = false;  // true when showing state-preset choices
     std::string dropdown_node_id_;
     std::string dropdown_param_name_;
     int dropdown_sel_ = 0;
     float dropdown_x_ = 0, dropdown_y_ = 0, dropdown_w_ = 0;
     std::vector<std::string> dropdown_labels_;
+
+    // State-preset dropdown context
+    int dropdown_state_idx_ = -1;
+    std::string dropdown_sm_node_;
+    std::string dropdown_target_node_;
+
+    // Preset row hit-test rects
+    std::vector<InspectorRect> preset_dropdown_rects_;
+    std::vector<InspectorRect> preset_save_rects_;
+
+    // State-preset hit-test rects
+    struct StatePresetRect { float x, y, w, h; std::string sm_node; int state_idx; std::string target_node; };
+    std::vector<StatePresetRect> state_preset_rects_;
+
+    struct StateHeaderRect { float x, y, w, h; int state_idx; };
+    std::vector<StateHeaderRect> state_header_rects_;
+
+    // Preset name popup state (shown on Save when no active preset)
+    bool preset_name_popup_open_ = false;
+    std::string preset_name_buffer_;
+    std::string preset_name_node_id_;
 
     // Patch panel state
     struct PatchJack {

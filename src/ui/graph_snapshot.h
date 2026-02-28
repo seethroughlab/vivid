@@ -75,6 +75,14 @@ struct NodeSnapshot {
     float layout_y = 0.0f;
     bool has_layout = false;
 
+    // Per-operator presets
+    std::vector<std::string> preset_names;  // ordered list of preset names
+    std::string active_preset;              // currently active preset (empty = none)
+
+    // State-preset mappings (populated only for StateMachine nodes)
+    // state_index → { target_node_id → preset_name }
+    std::vector<std::unordered_map<std::string, std::string>> state_preset_map;
+
     // Operator metadata (shared across nodes of same type, cached across frames)
     std::shared_ptr<const OperatorInfo> op_info;
 

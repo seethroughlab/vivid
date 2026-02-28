@@ -322,6 +322,27 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
                 });
         }
         }
+
+        // Spread cardinality badge: show "×N" at wire midpoint for spread wires
+        if (!c.from_is_param) {
+            auto src_it = snap_.node_index.find(c.from_node);
+            if (src_it != snap_.node_index.end()) {
+                const auto& src_node = snap_.nodes[src_it->second];
+                auto port_it = src_node.output_port_indices.find(c.from_port);
+                if (port_it != src_node.output_port_indices.end()) {
+                    uint32_t pidx = port_it->second;
+                    if (pidx < src_node.output_spreads.size() &&
+                        !src_node.output_spreads[pidx].empty()) {
+                        size_t spread_len = src_node.output_spreads[pidx].size();
+                        float mx = (ssx + sex) * 0.5f;
+                        float my = (ssy + sey) * 0.5f - 6.0f * zoom_;
+                        char badge[16];
+                        std::snprintf(badge, sizeof(badge), "\xc3\x97%zu", spread_len);
+                        tr.draw_text(mx, my, badge, cr, cg, cb, 0.6f);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -409,11 +430,15 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     drum_mod_b_rects_.clear();
     drum_tab_rects_.clear();
     resolution_rects_.clear();
+    preset_dropdown_rects_.clear();
+    preset_save_rects_.clear();
     midi_remove_rects_.clear();
     midi_range_rects_.clear();
     patch_jacks_.clear();
     patch_wires_.clear();
     group_header_rects_.clear();
+    state_preset_rects_.clear();
+    state_header_rects_.clear();
 
     if (selected_node_ids_.empty()) return;
 
@@ -534,6 +559,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_inspector_note_pattern(tr, *sel_node, px, py);
     draw_inspector_drum_grid(tr, *sel_node, px, py);
     draw_inspector_resolution(tr, *sel_node, px, py);
+    draw_inspector_state_presets(tr, *sel_node, px, py);
     draw_inspector_outputs(tr, *sel_node, px, py);
 
     tr.pop_clip_rect();
@@ -605,6 +631,41 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
     // Separator
     tr.draw_rect(px, py, kInspContentW, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
     py += 8;
+
+    // Preset row (only if node has presets)
+    if (!node.preset_names.empty()) {
+        float save_w = 46.0f;
+        float gap = 4.0f;
+        float dd_w = kInspContentW - save_w - gap;
+        float dd_h = 20.0f;
+
+        // Dropdown background
+        tr.draw_rect(px, py, dd_w, dd_h,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+
+        // Label: active preset name or "(none)"
+        const char* label = node.active_preset.empty()
+            ? "(none)" : node.active_preset.c_str();
+        tr.draw_text(px + 6, py + 3, label,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+        // Dropdown indicator
+        tr.draw_text(px + dd_w - 14, py + 3, "\xe2\x96\xbe",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+        // Hit-test rect for dropdown
+        preset_dropdown_rects_.push_back({px, py, dd_w, dd_h, node.node_id, ""});
+
+        // Save button
+        float save_x = px + dd_w + gap;
+        tr.draw_rect(save_x, py, save_w, dd_h,
+                     style_.button_bg[0], style_.button_bg[1], style_.button_bg[2]);
+        tr.draw_text(save_x + 8, py + 3, "Save",
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        preset_save_rects_.push_back({save_x, py, save_w, dd_h, node.node_id, ""});
+
+        py += dd_h + 6;
+    }
 }
 
 void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
@@ -1892,6 +1953,108 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
     py += kLineH;
 }
 
+void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapshot& node,
+                                               float px, float& py) {
+    // Only show for StateMachine nodes (have a "states" param and state_preset_map data or are SM type)
+    auto states_it = node.param_indices.find("states");
+    if (states_it == node.param_indices.end()) return;
+    if (node.state_preset_map.empty() && node.type_name != "StateMachine") return;
+
+    int state_count = static_cast<int>(node.param_values[states_it->second]);
+    if (state_count < 1) state_count = 1;
+    if (state_count > 8) state_count = 8;
+
+    float panel_w = kInspContentW;
+
+    // Collect all nodes in graph that have presets (excluding this SM node)
+    struct PresetNode { std::string node_id; const NodeSnapshot* ns; };
+    std::vector<PresetNode> preset_nodes;
+    for (const auto& sn : snap_.nodes) {
+        if (sn.node_id == node.node_id) continue;
+        if (sn.preset_names.empty()) continue;
+        preset_nodes.push_back({sn.node_id, &sn});
+    }
+    if (preset_nodes.empty()) return;
+
+    // Separator
+    py += 4;
+    tr.draw_rect(px, py, panel_w, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
+    py += 8;
+
+    tr.draw_text(px, py, "State Presets", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    py += kLineH;
+
+    float dd_h = 20.0f;
+    float label_w = panel_w * 0.35f;
+    float dd_w = panel_w - label_w - 4.0f;
+
+    for (int si = 0; si < state_count; ++si) {
+        auto collapse_key = "__state_preset\t" + std::to_string(si);
+        bool collapsed = false;
+        auto cit = group_collapsed_.find(collapse_key);
+        if (cit != group_collapsed_.end()) collapsed = cit->second;
+
+        // Draw collapsible header
+        float hy = py;
+        tr.draw_rect(px, hy, panel_w, kGroupHeaderH,
+                     style_.group_header_bg[0], style_.group_header_bg[1], style_.group_header_bg[2]);
+
+        float cx = px + 8.0f;
+        float cy = hy + kGroupHeaderH * 0.5f;
+        float cs = kGroupChevronSize * 0.5f;
+
+        if (collapsed) {
+            tr.draw_tri(cx, cy - cs, cx, cy + cs, cx + cs, cy,
+                        style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+        } else {
+            tr.draw_tri(cx - cs, cy - cs * 0.5f, cx + cs, cy - cs * 0.5f, cx, cy + cs * 0.5f,
+                        style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+        }
+
+        std::string header_label = "State " + std::to_string(si);
+        tr.draw_text(cx + cs + 6.0f, hy + 3.0f, header_label.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.9f);
+
+        state_header_rects_.push_back({px, hy, panel_w, kGroupHeaderH, si});
+        py = hy + kGroupHeaderH;
+
+        if (collapsed) continue;
+
+        // Draw rows for each preset-bearing node
+        for (const auto& pn : preset_nodes) {
+            // Find current mapping for this state+target
+            std::string current_preset;
+            if (si < static_cast<int>(node.state_preset_map.size())) {
+                auto mit = node.state_preset_map[si].find(pn.node_id);
+                if (mit != node.state_preset_map[si].end())
+                    current_preset = mit->second;
+            }
+
+            // Node label
+            tr.draw_text(px + 4, py + 3, pn.node_id.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+            // Dropdown
+            float dd_x = px + label_w;
+            tr.draw_rect(dd_x, py, dd_w, dd_h,
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+
+            const char* label = current_preset.empty() ? "(none)" : current_preset.c_str();
+            tr.draw_text(dd_x + 6, py + 3, label,
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+            // Dropdown indicator
+            tr.draw_text(dd_x + dd_w - 14, py + 3, "\xe2\x96\xbe",
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+            state_preset_rects_.push_back({dd_x, py, dd_w, dd_h, node.node_id, si, pn.node_id});
+
+            py += dd_h + 2;
+        }
+        py += 4;
+    }
+}
+
 void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node,
                                          float px, float& py) {
     float panel_w = kInspContentW;
@@ -2511,6 +2674,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     draw_color_popup(tr);
     draw_clone_confirm(tr);
     draw_create_popup(tr);
+    draw_preset_name_popup(tr);
     draw_preferences(tr);
 }
 
@@ -2648,6 +2812,57 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     if (!create_error_.empty()) {
         tr.draw_text(cx, cy, create_error_.c_str(),
                      kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
+    }
+}
+
+// -----------------------------------------------------------------------
+// Preset name popup (Save with no active preset)
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_preset_name_popup(Renderer2D& tr) {
+    if (!preset_name_popup_open_) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+
+    // Scrim
+    tr.draw_rect(0, 0, wf, hf,
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+
+    float pw = 280.0f, ph = 70.0f;
+    float px = (wf - pw) * 0.5f;
+    float py = (hf - ph) * 0.5f;
+
+    tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
+                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    tr.draw_rect(px, py, pw, 2,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    float cx = px + 16.0f;
+    float cy = py + 12.0f;
+
+    tr.draw_text(cx, cy, "Save Preset",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    cy += 20.0f;
+
+    // Text field
+    float field_w = pw - 32.0f;
+    tr.draw_rect(cx, cy, field_w, 22.0f,
+                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+    tr.draw_rect(cx, cy, field_w, 1,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    std::string display = preset_name_buffer_;
+    if (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0)
+        display += "_";
+    else
+        display += " ";
+
+    if (preset_name_buffer_.empty()) {
+        tr.draw_text(cx + 4, cy + 3, "preset_name",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+    } else {
+        tr.draw_text(cx + 4, cy + 3, display.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     }
 }
 

@@ -369,6 +369,20 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;
     }
 
+    if (preset_name_popup_open_) {
+        if (key == GLFW_KEY_ESCAPE) {
+            preset_name_popup_open_ = false;
+        } else if (key == GLFW_KEY_ENTER) {
+            if (!preset_name_buffer_.empty()) {
+                commands_.save_preset(preset_name_node_id_, preset_name_buffer_);
+                preset_name_popup_open_ = false;
+            }
+        } else if (key == GLFW_KEY_BACKSPACE && !preset_name_buffer_.empty()) {
+            preset_name_buffer_.pop_back();
+        }
+        return;
+    }
+
     if (create_popup_open_) {
         switch (key) {
             case GLFW_KEY_ESCAPE:
@@ -472,6 +486,8 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         switch (key) {
             case GLFW_KEY_ESCAPE:
                 dropdown_open_ = false;
+                dropdown_is_preset_ = false;
+                dropdown_is_state_preset_ = false;
                 break;
             case GLFW_KEY_UP:
                 if (dropdown_sel_ > 0) dropdown_sel_--;
@@ -481,9 +497,25 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                     dropdown_sel_++;
                 break;
             case GLFW_KEY_ENTER:
-                commands_.set_param(dropdown_node_id_, dropdown_param_name_,
-                               static_cast<float>(dropdown_sel_));
+                if (dropdown_is_state_preset_) {
+                    if (dropdown_sel_ == 0) {
+                        commands_.remove_state_preset(dropdown_sm_node_, dropdown_state_idx_,
+                                                      dropdown_target_node_);
+                    } else if (dropdown_sel_ > 0) {
+                        commands_.set_state_preset(dropdown_sm_node_, dropdown_state_idx_,
+                                                   dropdown_target_node_,
+                                                   dropdown_labels_[dropdown_sel_]);
+                    }
+                } else if (dropdown_is_preset_) {
+                    if (dropdown_sel_ >= 0)
+                        commands_.recall_preset(dropdown_node_id_, dropdown_labels_[dropdown_sel_]);
+                } else {
+                    commands_.set_param(dropdown_node_id_, dropdown_param_name_,
+                                   static_cast<float>(dropdown_sel_));
+                }
                 dropdown_open_ = false;
+                dropdown_is_preset_ = false;
+                dropdown_is_state_preset_ = false;
                 break;
         }
         return;
@@ -621,6 +653,16 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
         char ch = static_cast<char>(codepoint);
         if (std::isdigit(static_cast<unsigned char>(ch)) && color_rgb_buffer_.size() < 3)
             color_rgb_buffer_ += ch;
+        return;
+    }
+    if (preset_name_popup_open_) {
+        char ch = static_cast<char>(codepoint);
+        if (std::isupper(static_cast<unsigned char>(ch)))
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (std::islower(static_cast<unsigned char>(ch)) ||
+            std::isdigit(static_cast<unsigned char>(ch)) || ch == '_') {
+            preset_name_buffer_ += ch;
+        }
         return;
     }
     if (create_popup_open_) {
@@ -885,6 +927,20 @@ void NodeGraphUI::handle_left_click() {
         return;
     }
 
+    // Preset name popup — dismiss on click outside
+    if (preset_name_popup_open_) {
+        float pw = 280.0f, ph = 70.0f;
+        float px = (static_cast<float>(win_w_) - pw) * 0.5f;
+        float py = (static_cast<float>(win_h_) - ph) * 0.5f;
+        if (mouse_.x < px || mouse_.x > px + pw ||
+            mouse_.y < py || mouse_.y > py + ph) {
+            preset_name_popup_open_ = false;
+        }
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
     // Perf bar buttons (Record/Stop, Snapshot)
     for (const auto& btn : perf_button_rects_) {
         if (mouse_.x >= btn.x && mouse_.x <= btn.x + btn.w &&
@@ -1002,15 +1058,31 @@ bool NodeGraphUI::handle_dropdown_click() {
         mouse_.y >= dropdown_y_ && mouse_.y <= dropdown_y_ + popup_h) {
         int idx = static_cast<int>((mouse_.y - dropdown_y_ - 2) / item_h);
         if (idx >= 0 && idx < static_cast<int>(dropdown_labels_.size())) {
-            commands_.set_param(dropdown_node_id_, dropdown_param_name_,
-                           static_cast<float>(idx));
+            if (dropdown_is_state_preset_) {
+                if (idx == 0) { // "(none)"
+                    commands_.remove_state_preset(dropdown_sm_node_, dropdown_state_idx_,
+                                                  dropdown_target_node_);
+                } else {
+                    commands_.set_state_preset(dropdown_sm_node_, dropdown_state_idx_,
+                                              dropdown_target_node_, dropdown_labels_[idx]);
+                }
+            } else if (dropdown_is_preset_) {
+                commands_.recall_preset(dropdown_node_id_, dropdown_labels_[idx]);
+            } else {
+                commands_.set_param(dropdown_node_id_, dropdown_param_name_,
+                               static_cast<float>(idx));
+            }
         }
+        dropdown_is_preset_ = false;
+        dropdown_is_state_preset_ = false;
         dropdown_open_ = false;
         mouse_.left_clicked = false;
         mouse_.left_released = false;
         return true;
     } else {
         dropdown_open_ = false;
+        dropdown_is_preset_ = false;
+        dropdown_is_state_preset_ = false;
         return false;
     }
 }
@@ -1212,6 +1284,96 @@ bool NodeGraphUI::handle_inspector_click() {
     if (editing_param_) confirm_param_edit();
     if (editing_resolution_) confirm_resolution_edit();
 
+    // Check preset dropdown click
+    {
+        int pi = hit_test_rect(preset_dropdown_rects_, mouse_.x, mouse_.y);
+        if (pi >= 0) {
+            const auto& r = preset_dropdown_rects_[pi];
+            dropdown_node_id_ = r.node_id;
+            dropdown_param_name_.clear();
+            dropdown_x_ = r.x;
+            dropdown_y_ = r.y + r.h;
+            dropdown_w_ = r.w;
+            dropdown_labels_.clear();
+            const auto* ns = snap_.find_node(r.node_id);
+            if (ns) {
+                for (const auto& name : ns->preset_names)
+                    dropdown_labels_.push_back(name);
+                dropdown_sel_ = -1;
+                for (int i = 0; i < static_cast<int>(ns->preset_names.size()); i++) {
+                    if (ns->preset_names[i] == ns->active_preset) { dropdown_sel_ = i; break; }
+                }
+            }
+            dropdown_is_preset_ = true;
+            dropdown_is_state_preset_ = false;
+            dropdown_open_ = !dropdown_labels_.empty();
+            return true;
+        }
+    }
+
+    // Check preset Save button click
+    {
+        int si = hit_test_rect(preset_save_rects_, mouse_.x, mouse_.y);
+        if (si >= 0) {
+            const auto& r = preset_save_rects_[si];
+            const auto* ns = snap_.find_node(r.node_id);
+            if (ns && !ns->active_preset.empty()) {
+                commands_.save_preset(r.node_id, ns->active_preset);
+            } else if (ns) {
+                preset_name_popup_open_ = true;
+                preset_name_buffer_.clear();
+                preset_name_node_id_ = r.node_id;
+            }
+            return true;
+        }
+    }
+
+    // Check state-preset header click (collapse toggle)
+    {
+        int shi = hit_test_rect(state_header_rects_, mouse_.x, mouse_.y);
+        if (shi >= 0) {
+            auto key = "__state_preset\t" + std::to_string(state_header_rects_[shi].state_idx);
+            group_collapsed_[key] = !group_collapsed_[key];
+            return true;
+        }
+    }
+
+    // Check state-preset dropdown click
+    {
+        int spi = hit_test_rect(state_preset_rects_, mouse_.x, mouse_.y);
+        if (spi >= 0) {
+            const auto& r = state_preset_rects_[spi];
+            const auto* target = snap_.find_node(r.target_node);
+            if (target && !target->preset_names.empty()) {
+                dropdown_labels_.clear();
+                dropdown_labels_.push_back("(none)");
+                for (const auto& pn : target->preset_names)
+                    dropdown_labels_.push_back(pn);
+                // Find current mapping to set selection
+                dropdown_sel_ = 0;
+                const auto* sm_node = snap_.find_node(r.sm_node);
+                if (sm_node && r.state_idx < static_cast<int>(sm_node->state_preset_map.size())) {
+                    auto mit = sm_node->state_preset_map[r.state_idx].find(r.target_node);
+                    if (mit != sm_node->state_preset_map[r.state_idx].end()) {
+                        for (int i = 1; i < static_cast<int>(dropdown_labels_.size()); i++) {
+                            if (dropdown_labels_[i] == mit->second) { dropdown_sel_ = i; break; }
+                        }
+                    }
+                }
+                dropdown_x_ = r.x;
+                dropdown_y_ = r.y + r.h;
+                dropdown_w_ = r.w;
+                dropdown_open_ = true;
+                dropdown_is_preset_ = false;
+                dropdown_is_state_preset_ = true;
+                dropdown_sm_node_ = r.sm_node;
+                dropdown_state_idx_ = r.state_idx;
+                dropdown_target_node_ = r.target_node;
+            }
+            return true;
+        }
+    }
+
     // Check resolution rect click-to-edit
     int ri = hit_test_rect(resolution_rects_, mouse_.x, mouse_.y);
     if (ri >= 0) {
@@ -1272,6 +1434,8 @@ bool NodeGraphUI::handle_inspector_click() {
                 break;
             }
         }
+        dropdown_is_preset_ = false;
+        dropdown_is_state_preset_ = false;
         dropdown_open_ = !dropdown_labels_.empty();
         return true;
     }

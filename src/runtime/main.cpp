@@ -127,6 +127,16 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         // Operator info (cached; pass per-instance loader as fallback for WGSLFilter nodes)
         sn.op_info = op_cache.get(sn.type_name, registry, ns.loader);
 
+        // Per-operator presets
+        sn.preset_names = graph.list_presets(ns.node_id);
+        if (runtime_api)
+            sn.active_preset = runtime_api->active_preset(ns.node_id);
+
+        // State-preset mappings (for StateMachine nodes)
+        const auto* spm = graph.find_state_mapping(ns.node_id);
+        if (spm)
+            sn.state_preset_map = spm->state_presets;
+
         // Index
         snap.node_index[ns.node_id] = i;
     }

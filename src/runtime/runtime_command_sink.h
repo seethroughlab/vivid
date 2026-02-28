@@ -77,6 +77,23 @@ public:
     }
     void set_quantize_clock(const std::string& node_id) override { api_.set_quantize_clock(node_id); }
 
+    void recall_preset(const std::string& node_id, const std::string& name) override {
+        api_.recall_preset(node_id, name);
+    }
+    void save_preset(const std::string& node_id, const std::string& name) override {
+        api_.save_preset(node_id, name);
+    }
+
+    void set_state_preset(const std::string& sm_node, int state_idx,
+                          const std::string& target_node,
+                          const std::string& preset_name) override {
+        api_.set_state_preset(sm_node, state_idx, target_node, preset_name);
+    }
+    void remove_state_preset(const std::string& sm_node, int state_idx,
+                             const std::string& target_node) override {
+        api_.remove_state_preset(sm_node, state_idx, target_node);
+    }
+
     void open_shader(const std::string& type_name) override {
         // User C++ operator → open its source .cpp
         if (registry_ && registry_->is_user_operator(type_name)) {
