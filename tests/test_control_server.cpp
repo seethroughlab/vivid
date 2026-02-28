@@ -271,6 +271,47 @@ int main(int argc, char* argv[]) {
         // Cleanup temp file
         std::filesystem::remove(tmp_path);
 
+        // Phase 14: Variations
+        std::fprintf(stderr, "\n--- variations ---\n");
+        {
+            auto r1 = post(client, base_url, "save_variation", R"({"name":"V1"})");
+            check(r1.ok, "save_variation V1 ok");
+
+            auto r2 = post(client, base_url, "list_variations");
+            check(r2.ok, "list_variations ok");
+            if (r2.root) {
+                yyjson_val* msg = yyjson_obj_get(r2.root, "message");
+                check(msg && std::string(yyjson_get_str(msg)).find("V1") != std::string::npos,
+                      "list contains V1");
+            }
+
+            auto r3 = post(client, base_url, "save_variation", R"({"name":"V2"})");
+            check(r3.ok, "save_variation V2 ok");
+
+            auto r4 = post(client, base_url, "recall_variation", R"({"name":"V1"})");
+            check(r4.ok, "recall_variation V1 ok");
+
+            auto r5 = post(client, base_url, "update_variation", R"({"name":"V1"})");
+            check(r5.ok, "update_variation V1 ok");
+
+            auto r6 = post(client, base_url, "rename_variation",
+                R"({"old_name":"V1","new_name":"Intro"})");
+            check(r6.ok, "rename_variation V1 -> Intro ok");
+
+            auto r7 = post(client, base_url, "queue_variation",
+                R"({"name":"V2","quantize":"instant"})");
+            check(r7.ok, "queue_variation V2 instant ok");
+
+            auto r8 = post(client, base_url, "set_quantize_clock", R"({"node_id":"a"})");
+            check(r8.ok, "set_quantize_clock a ok");
+
+            auto r9 = post(client, base_url, "remove_variation", R"({"name":"V2"})");
+            check(r9.ok, "remove_variation V2 ok");
+
+            auto r10 = post(client, base_url, "remove_variation", R"({"name":"bogus"})");
+            check(!r10.ok, "remove_variation bogus fails");
+        }
+
         done.store(true);
     });
 
