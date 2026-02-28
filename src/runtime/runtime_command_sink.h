@@ -3,6 +3,7 @@
 #include "ui/ui_command_sink.h"
 #include "runtime/runtime_api.h"
 #include "runtime/operator_registry.h"
+#include "runtime/wgsl_header_parser.h"
 #include "runtime/graph.h"
 #include "runtime/operator_info_cache.h"
 #include "runtime/settings.h"
@@ -72,20 +73,22 @@ public:
             std::string path = working_filters_dir_ + "/" + type_name + ".wgsl";
             if (std::filesystem::exists(path)) {
                 vivid::open_in_editor(path, settings_ ? *settings_ : vivid::Settings{});
+                return;
             }
-            return;
         }
-        // Built-in filter with .wgsl → tell user to use Clone & Edit
-        if (!operators_dir_.empty()) {
-            std::string name = type_name;
-            for (auto& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            std::string wgsl_path = operators_dir_ + "/gpu/" + name + "/" + name + ".wgsl";
-            if (std::filesystem::exists(wgsl_path)) {
+        // Built-in WGSL preset in filters/ → tell user to use Clone & Edit
+        if (!filters_dir_.empty()) {
+            auto preset_path = find_preset_wgsl(type_name);
+            if (!preset_path.empty()) {
                 std::fprintf(stderr, "[vivid] Built-in filter '%s': use Clone & Edit to modify\n",
                              type_name.c_str());
                 return;
             }
-            // Non-filter operator → open .cpp if it exists
+        }
+        // Non-filter operator → open .cpp if it exists
+        if (!operators_dir_.empty()) {
+            std::string name = type_name;
+            for (auto& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             std::string cpp_path = operators_dir_ + "/gpu/" + name + "/" + name + ".cpp";
             if (std::filesystem::exists(cpp_path)) {
                 vivid::open_in_editor(cpp_path, settings_ ? *settings_ : vivid::Settings{});
@@ -94,29 +97,43 @@ public:
     }
 
     void duplicate_as_user_filter(const std::string& type_name) override {
-        if (!registry_ || !graph_ || !op_cache_ || operators_dir_.empty()) return;
+        if (!registry_ || !graph_ || !op_cache_) return;
 
-        // Look up built-in's descriptor for params
+        // Look up source's descriptor for params
         auto* loader = registry_->find(type_name);
         if (!loader) return;
         const auto* desc = loader->descriptor();
         if (!desc) return;
 
-        // Read built-in's .wgsl source
-        std::string stem = type_name;
-        for (auto& c : stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        std::string wgsl_path = operators_dir_ + "/gpu/" + stem + "/" + stem + ".wgsl";
-        std::string shader_source;
+        // Read the source .wgsl file — try filters/ preset first, then working dir
+        std::string wgsl_path = find_preset_wgsl(type_name);
+        if (wgsl_path.empty() && !working_filters_dir_.empty()) {
+            std::string try_path = working_filters_dir_ + "/" + type_name + ".wgsl";
+            if (std::filesystem::exists(try_path))
+                wgsl_path = try_path;
+        }
+        if (wgsl_path.empty()) {
+            std::fprintf(stderr, "[vivid] Cannot find .wgsl source for '%s'\n", type_name.c_str());
+            return;
+        }
+
+        std::string full_source;
         {
             std::ifstream ifs(wgsl_path);
             if (!ifs) {
-                std::fprintf(stderr, "[vivid] Cannot read shader for duplication: %s\n", wgsl_path.c_str());
+                std::fprintf(stderr, "[vivid] Cannot read shader: %s\n", wgsl_path.c_str());
                 return;
             }
             std::ostringstream ss;
             ss << ifs.rdbuf();
-            shader_source = ss.str();
+            full_source = ss.str();
         }
+
+        // Parse the source to get its header (for preserving metadata in the copy)
+        std::string parse_error;
+        auto header = vivid::parse_wgsl_header(full_source, parse_error);
+        // If parsing fails, use full_source as fragment and build from descriptor
+        std::string fragment_source = header ? header->fragment_source : full_source;
 
         // Generate unique name
         std::string base_name = type_name + "_copy";
@@ -125,12 +142,29 @@ public:
             unique_name = base_name + std::to_string(n);
         }
 
-        // Create FilterDef
+        // Build a self-describing .wgsl file with JSON header for the copy
+        // (so the copy is also a self-describing preset)
+        std::string new_source = full_source;
+        if (header) {
+            // Replace the name in the JSON header
+            // Simple approach: rebuild from parsed header with new name
+            size_t name_pos = new_source.find("\"name\"");
+            if (name_pos != std::string::npos) {
+                size_t colon = new_source.find(':', name_pos);
+                size_t quote1 = new_source.find('"', colon + 1);
+                size_t quote2 = new_source.find('"', quote1 + 1);
+                if (quote1 != std::string::npos && quote2 != std::string::npos) {
+                    new_source.replace(quote1 + 1, quote2 - quote1 - 1, unique_name);
+                }
+            }
+        }
+
+        // Create FilterDef for graph persistence
         vivid::FilterDef fd;
         fd.name = unique_name;
         fd.source = type_name;
         fd.time_dependent = desc->time_dependent != 0;
-        fd.shader = shader_source;
+        fd.shader = fragment_source;
         for (uint32_t i = 0; i < desc->param_count; ++i) {
             vivid::FilterDef::ParamDef pd;
             pd.name = desc->params[i].name;
@@ -141,13 +175,13 @@ public:
         }
         graph_->add_filter(fd);
 
-        // Write shader to working file
+        // Write self-describing .wgsl to working file
         if (!working_filters_dir_.empty()) {
             std::filesystem::create_directories(working_filters_dir_);
             std::string working_path = working_filters_dir_ + "/" + unique_name + ".wgsl";
             {
                 std::ofstream ofs(working_path);
-                ofs << shader_source;
+                ofs << new_source;
             }
 
             // Build config and register
@@ -156,13 +190,36 @@ public:
             config->shader_path = working_path;
             config->source_builtin = type_name;
             config->time_dependent = fd.time_dependent;
-            for (const auto& pd : fd.params) {
-                vivid::DataDrivenFilterConfig::ParamDef cpd;
-                cpd.name = pd.name;
-                cpd.default_value = pd.default_value;
-                cpd.min_value = pd.min_value;
-                cpd.max_value = pd.max_value;
-                config->params.push_back(std::move(cpd));
+
+            // If we parsed a header, use its rich metadata
+            if (header) {
+                config->inputs_specified = header->inputs_specified;
+                for (const auto& inp : header->inputs)
+                    config->inputs.push_back({inp.name});
+                for (const auto& hp : header->params) {
+                    vivid::DataDrivenFilterConfig::ParamDef cpd;
+                    cpd.name = hp.name;
+                    cpd.type = hp.type;
+                    cpd.default_value = hp.default_value;
+                    cpd.min_value = hp.min_value;
+                    cpd.max_value = hp.max_value;
+                    cpd.label = hp.label;
+                    cpd.choices = hp.choices;
+                    cpd.display_hint = hp.display_hint;
+                    cpd.group = hp.group;
+                    cpd.layout_columns = hp.layout_columns;
+                    cpd.layout_column_index = hp.layout_column_index;
+                    config->params.push_back(std::move(cpd));
+                }
+            } else {
+                for (const auto& pd : fd.params) {
+                    vivid::DataDrivenFilterConfig::ParamDef cpd;
+                    cpd.name = pd.name;
+                    cpd.default_value = pd.default_value;
+                    cpd.min_value = pd.min_value;
+                    cpd.max_value = pd.max_value;
+                    config->params.push_back(std::move(cpd));
+                }
             }
             registry_->register_user_filter(unique_name, config);
             op_cache_->invalidate_all();
@@ -176,24 +233,24 @@ public:
     }
 
     void clone_and_edit(const std::string& type_name) override {
-        if (!registry_ || !op_cache_ || operators_dir_.empty()) return;
+        if (!registry_ || !op_cache_) return;
 
         auto* loader = registry_->find(type_name);
         if (!loader) return;
-        const auto* desc = loader->descriptor();
-        if (!desc) return;
 
-        // WgslFilterBase operators: delegate to existing WGSL duplication flow
-        if (loader->is_data_driven() || desc->domain == VIVID_DOMAIN_GPU) {
-            std::string stem = type_name;
-            for (auto& c : stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            std::string wgsl_path = operators_dir_ + "/gpu/" + stem + "/" + stem + ".wgsl";
-            if (std::filesystem::exists(wgsl_path)) {
-                duplicate_as_user_filter(type_name);
-                return;
-            }
+        // Data-driven filters (WGSL presets) → duplicate as user filter
+        if (loader->is_data_driven()) {
+            duplicate_as_user_filter(type_name);
+            return;
         }
 
+        // Check if there's a WGSL preset in filters/ for this type
+        if (!find_preset_wgsl(type_name).empty()) {
+            duplicate_as_user_filter(type_name);
+            return;
+        }
+
+        if (operators_dir_.empty()) return;
         clone_cpp_operator(type_name);
     }
 
@@ -212,6 +269,7 @@ public:
     }
 
     void set_operators_dir(const std::string& dir) { operators_dir_ = dir; }
+    void set_filters_dir(const std::string& dir) { filters_dir_ = dir; }
     void set_registry(vivid::OperatorRegistry* r) { registry_ = r; }
     void set_graph(vivid::Graph* g) { graph_ = g; }
     void set_op_cache(OperatorInfoCache* c) { op_cache_ = c; }
@@ -220,6 +278,25 @@ public:
     void set_settings(vivid::Settings* s) { settings_ = s; }
 
 private:
+    // Find the .wgsl preset file for a given type name in the filters/ directory
+    std::string find_preset_wgsl(const std::string& type_name) {
+        if (filters_dir_.empty()) return {};
+        // Scan the filters directory for a file whose parsed name matches
+        for (auto& entry : std::filesystem::directory_iterator(filters_dir_)) {
+            if (entry.path().extension() != ".wgsl") continue;
+            // Quick check: read and parse the header
+            std::ifstream ifs(entry.path());
+            if (!ifs) continue;
+            std::ostringstream ss;
+            ss << ifs.rdbuf();
+            std::string error;
+            auto header = vivid::parse_wgsl_header(ss.str(), error);
+            if (header && header->name == type_name)
+                return entry.path().string();
+        }
+        return {};
+    }
+
     void clone_cpp_operator(const std::string& type_name) {
         if (build_dir_.empty()) {
             std::fprintf(stderr, "[vivid] Clone: no build directory configured\n");
@@ -362,6 +439,7 @@ private:
 
     vivid::RuntimeAPI& api_;
     std::string operators_dir_;
+    std::string filters_dir_;
     std::string working_filters_dir_;
     std::string build_dir_;
     vivid::OperatorRegistry* registry_ = nullptr;

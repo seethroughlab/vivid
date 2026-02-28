@@ -29,6 +29,7 @@ class OperatorRegistry {
 public:
     bool scan(const char* directory);
     bool scan_deferred(const char* directory);       // probe-only scan (no full load)
+    bool scan_wgsl_presets(const std::string& directory);  // self-describing .wgsl filters
     bool load_for_graph(const Graph& graph);         // load only operators the graph uses
     void register_builtin(const std::string& type_name,
                           VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFn);

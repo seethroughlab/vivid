@@ -21,7 +21,11 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , dd_config_(std::move(other.dd_config_))
     , dd_name_(std::move(other.dd_name_))
     , dd_param_names_(std::move(other.dd_param_names_))
+    , dd_group_strings_(std::move(other.dd_group_strings_))
+    , dd_choice_labels_(std::move(other.dd_choice_labels_))
+    , dd_choice_ptrs_(std::move(other.dd_choice_ptrs_))
     , dd_params_(std::move(other.dd_params_))
+    , dd_port_names_(std::move(other.dd_port_names_))
     , dd_ports_(std::move(other.dd_ports_))
     , dd_desc_(other.dd_desc_)
 {
@@ -35,9 +39,7 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     other.dd_desc_ = {};
     // Fixup descriptor pointers to our own storage
     if (dd_config_) {
-        dd_desc_.name = dd_name_.c_str();
-        dd_desc_.params = dd_params_.data();
-        dd_desc_.ports = dd_ports_.data();
+        fixup_dd_pointers();
     }
 }
 
@@ -54,7 +56,11 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         dd_config_     = std::move(other.dd_config_);
         dd_name_       = std::move(other.dd_name_);
         dd_param_names_ = std::move(other.dd_param_names_);
+        dd_group_strings_ = std::move(other.dd_group_strings_);
+        dd_choice_labels_ = std::move(other.dd_choice_labels_);
+        dd_choice_ptrs_ = std::move(other.dd_choice_ptrs_);
         dd_params_     = std::move(other.dd_params_);
+        dd_port_names_ = std::move(other.dd_port_names_);
         dd_ports_      = std::move(other.dd_ports_);
         dd_desc_       = other.dd_desc_;
         other.handle_        = nullptr;
@@ -67,9 +73,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         other.dd_desc_ = {};
         // Fixup descriptor pointers to our own storage
         if (dd_config_) {
-            dd_desc_.name = dd_name_.c_str();
-            dd_desc_.params = dd_params_.data();
-            dd_desc_.ports = dd_ports_.data();
+            fixup_dd_pointers();
         }
     }
     return *this;
@@ -125,36 +129,95 @@ void OperatorLoader::init_data_driven(std::shared_ptr<DataDrivenFilterConfig> co
     // Build owned descriptor with stable string storage
     dd_name_ = dd_config_->name;
     dd_param_names_.clear();
+    dd_group_strings_.clear();
+    dd_choice_labels_.clear();
+    dd_choice_ptrs_.clear();
     dd_params_.clear();
-    for (const auto& pd : dd_config_->params) {
-        dd_param_names_.push_back(pd.name);
-    }
-    dd_params_.resize(dd_config_->params.size());
-    for (size_t i = 0; i < dd_config_->params.size(); ++i) {
-        auto& dp = dd_params_[i];
+
+    const size_t param_count = dd_config_->params.size();
+    dd_param_names_.resize(param_count);
+    dd_group_strings_.resize(param_count);
+    dd_choice_labels_.resize(param_count);
+    dd_choice_ptrs_.resize(param_count);
+    dd_params_.resize(param_count);
+
+    for (size_t i = 0; i < param_count; ++i) {
         const auto& sp = dd_config_->params[i];
+        auto& dp = dd_params_[i];
+
+        // Use label as display name if provided, otherwise use param name
+        dd_param_names_[i] = sp.label.empty() ? sp.name : sp.label;
         dp.name = dd_param_names_[i].c_str();
         dp.type = sp.type;
         dp.default_value = sp.default_value;
         dp.min_value = sp.min_value;
         dp.max_value = sp.max_value;
-        dp.choice_labels = nullptr;
-        dp.choice_count = 0;
+        dp.default_string = nullptr;
+        dp.display_hint = sp.display_hint;
+        dp.layout_columns = sp.layout_columns;
+        dp.layout_column_index = sp.layout_column_index;
+
+        // Group
+        dd_group_strings_[i] = sp.group;
+        dp.group = sp.group.empty() ? nullptr : dd_group_strings_[i].c_str();
+
+        // Choices
+        if (!sp.choices.empty()) {
+            dd_choice_labels_[i] = sp.choices;
+            dd_choice_ptrs_[i].resize(sp.choices.size());
+            for (size_t j = 0; j < sp.choices.size(); ++j)
+                dd_choice_ptrs_[i][j] = dd_choice_labels_[i][j].c_str();
+            dp.choice_labels = dd_choice_ptrs_[i].data();
+            dp.choice_count = static_cast<uint32_t>(sp.choices.size());
+        } else {
+            dp.choice_labels = nullptr;
+            dp.choice_count = 0;
+        }
     }
 
-    // Standard GPU filter ports: 1 input texture + 1 output texture
-    dd_ports_ = {
-        {"input",   VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT},
-        {"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT},
-    };
+    // Build ports from config inputs (or default 1-in/1-out)
+    dd_port_names_.clear();
+    dd_ports_.clear();
+    if (dd_config_->inputs_specified) {
+        dd_port_names_.reserve(dd_config_->inputs.size());
+        for (const auto& inp : dd_config_->inputs) {
+            dd_port_names_.push_back(inp.name);
+            dd_ports_.push_back({dd_port_names_.back().c_str(),
+                                  VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
+        }
+    } else {
+        dd_port_names_.push_back("input");
+        dd_ports_.push_back({dd_port_names_.back().c_str(),
+                              VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
+    }
+    dd_port_names_.push_back("texture");
+    dd_ports_.push_back({dd_port_names_.back().c_str(),
+                          VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
 
-    dd_desc_.name = dd_name_.c_str();
     dd_desc_.domain = VIVID_DOMAIN_GPU;
     dd_desc_.param_count = static_cast<uint32_t>(dd_params_.size());
-    dd_desc_.params = dd_params_.data();
     dd_desc_.port_count = static_cast<uint32_t>(dd_ports_.size());
-    dd_desc_.ports = dd_ports_.data();
     dd_desc_.time_dependent = dd_config_->time_dependent ? 1 : 0;
+    // Re-point all const char* after vectors are final (push_back may have reallocated)
+    fixup_dd_pointers();
+}
+
+void OperatorLoader::fixup_dd_pointers() {
+    dd_desc_.name = dd_name_.c_str();
+    for (size_t i = 0; i < dd_params_.size(); ++i) {
+        dd_params_[i].name = dd_param_names_[i].c_str();
+        dd_params_[i].group = dd_group_strings_[i].empty()
+            ? nullptr : dd_group_strings_[i].c_str();
+        if (!dd_choice_ptrs_[i].empty()) {
+            for (size_t j = 0; j < dd_choice_labels_[i].size(); ++j)
+                dd_choice_ptrs_[i][j] = dd_choice_labels_[i][j].c_str();
+            dd_params_[i].choice_labels = dd_choice_ptrs_[i].data();
+        }
+    }
+    for (size_t i = 0; i < dd_ports_.size(); ++i)
+        dd_ports_[i].name = dd_port_names_[i].c_str();
+    dd_desc_.params = dd_params_.data();
+    dd_desc_.ports = dd_ports_.data();
 }
 
 void OperatorLoader::unload() {
@@ -172,7 +235,11 @@ void OperatorLoader::unload() {
         dd_config_.reset();
         dd_name_.clear();
         dd_param_names_.clear();
+        dd_group_strings_.clear();
+        dd_choice_labels_.clear();
+        dd_choice_ptrs_.clear();
         dd_params_.clear();
+        dd_port_names_.clear();
         dd_ports_.clear();
         dd_desc_ = {};
     }

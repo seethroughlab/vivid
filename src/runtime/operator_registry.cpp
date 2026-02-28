@@ -1,11 +1,14 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
+#include "runtime/wgsl_header_parser.h"
 #include "operator_api/data_driven_filter.h"
 #include <dlfcn.h>
 #include <dirent.h>
 #include <cstring>
 #include <cstdio>
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 
 namespace vivid {
 
@@ -191,6 +194,77 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         it->second.desc.name = it->first.c_str();
 
         std::fprintf(stderr, "[vivid] Registry: probed %s from %s\n", type_name.c_str(), name);
+    }
+
+    closedir(dir);
+    return true;
+}
+
+bool OperatorRegistry::scan_wgsl_presets(const std::string& directory) {
+    DIR* dir = opendir(directory.c_str());
+    if (!dir) {
+        // Not an error — filters/ directory is optional
+        return false;
+    }
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        const char* name = entry->d_name;
+        size_t len = std::strlen(name);
+        if (len < 6 || std::strcmp(name + len - 5, ".wgsl") != 0)
+            continue;
+
+        std::string path = directory + "/" + name;
+
+        // Read file
+        std::ifstream ifs(path);
+        if (!ifs) continue;
+        std::ostringstream ss;
+        ss << ifs.rdbuf();
+        std::string contents = ss.str();
+
+        // Parse header
+        std::string error;
+        auto header = parse_wgsl_header(contents, error);
+        if (!header) {
+            std::fprintf(stderr, "[vivid] Skipping %s: %s\n", name, error.c_str());
+            continue;
+        }
+
+        // Skip if already fully loaded
+        if (loaders_.count(header->name))
+            continue;
+        // .wgsl presets override stale deferred dylib entries
+        if (deferred_.count(header->name))
+            deferred_.erase(header->name);
+
+        // Build DataDrivenFilterConfig
+        auto config = std::make_shared<DataDrivenFilterConfig>();
+        config->name = header->name;
+        config->shader_path = path;
+        config->time_dependent = header->time_dependent;
+        config->inputs_specified = header->inputs_specified;
+        for (const auto& inp : header->inputs)
+            config->inputs.push_back({inp.name});
+        for (const auto& hp : header->params) {
+            DataDrivenFilterConfig::ParamDef pd;
+            pd.name = hp.name;
+            pd.type = hp.type;
+            pd.default_value = hp.default_value;
+            pd.min_value = hp.min_value;
+            pd.max_value = hp.max_value;
+            pd.label = hp.label;
+            pd.choices = hp.choices;
+            pd.display_hint = hp.display_hint;
+            pd.group = hp.group;
+            pd.layout_columns = hp.layout_columns;
+            pd.layout_column_index = hp.layout_column_index;
+            config->params.push_back(std::move(pd));
+        }
+
+        register_user_filter(header->name, config);
+        std::fprintf(stderr, "[vivid] Registry: loaded preset %s from %s\n",
+                     header->name.c_str(), name);
     }
 
     closedir(dir);

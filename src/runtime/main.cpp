@@ -596,6 +596,10 @@ int main(int argc, char* argv[]) {
     registry.scan_deferred(exe_dir.string().c_str());  // probe only — no full loads
     register_builtin_operators(registry);
 
+    // --- Load self-describing .wgsl filter presets ---
+    std::string filters_dir = (exe_dir / "filters").string();
+    registry.scan_wgsl_presets(filters_dir);
+
     // --- Load graph ---
     vivid::Graph graph;
     vivid::Scheduler scheduler;
@@ -772,6 +776,7 @@ int main(int argc, char* argv[]) {
             std::string build_dir = exe_dir.string();
             scheduler.set_operators_src_dir(operators_dir);
             command_sink.set_operators_dir(operators_dir);
+            command_sink.set_filters_dir(filters_dir);
             command_sink.set_build_dir(build_dir);
             op_info_cache.set_operators_dir(operators_dir);
             // Set working filters dir if not already determined from graph
