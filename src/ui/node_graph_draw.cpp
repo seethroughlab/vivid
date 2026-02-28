@@ -1,5 +1,6 @@
 #include "ui/node_graph.h"
 #include "ui/node_graph_constants.h"
+#include "ui/node_graph_util.h"
 #include "ui/renderer_2d.h"
 #include "ui/thumbnail_cache.h"
 #include "ui/thumbnail_renderer.h"
@@ -250,8 +251,42 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         float cb = std::min(1.0f, dcol[2] * brightness);
         float a = (hov || sel) ? 0.95f : 0.8f;
 
-        float wire_th = std::max(1.0f, (hov ? kWireHoverThickness : kWireThickness) * zoom_);
+        bool is_param_wire = c.from_is_param;
+        float wire_th;
+        if (is_param_wire)
+            wire_th = std::max(1.0f, 1.5f * zoom_);
+        else
+            wire_th = std::max(1.0f, (hov ? kWireHoverThickness : kWireThickness) * zoom_);
 
+        if (is_param_wire) {
+            // Thin dashed dimmed wire for param-to-param connections
+            float a_param = (hov || sel) ? 0.6f : 0.35f;
+            float cumulative = 0.0f;
+            float dash_cycle = kDashOn + kDashOff;
+            traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
+                [&](float x0, float y0, float x1, float y1) {
+                    float dx = x1 - x0, dy = y1 - y0;
+                    float seg_len = std::sqrt(dx * dx + dy * dy);
+                    if (seg_len < 0.001f) { cumulative += seg_len; return; }
+                    float nx = dx / seg_len, ny = dy / seg_len;
+                    float consumed = 0.0f;
+                    while (consumed < seg_len) {
+                        float phase = std::fmod(cumulative + consumed, dash_cycle);
+                        bool on = (phase < kDashOn);
+                        float remain_in_state = on ? (kDashOn - phase) : (dash_cycle - phase);
+                        float chunk = std::min(remain_in_state, seg_len - consumed);
+                        if (on) {
+                            float cx0 = x0 + nx * consumed;
+                            float cy0 = y0 + ny * consumed;
+                            float cx1 = x0 + nx * (consumed + chunk);
+                            float cy1 = y0 + ny * (consumed + chunk);
+                            tr.draw_line(cx0, cy0, cx1, cy1, wire_th, cr, cg, cb, a_param);
+                        }
+                        consumed += chunk;
+                    }
+                    cumulative += seg_len;
+                });
+        } else {
         bool cross_domain = from_rect.domain != to_rect.domain;
         if (cross_domain) {
             // Dashed wire: traverse and subdivide segments at dash boundaries
@@ -286,6 +321,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
                     tr.draw_line(x0, y0, x1, y1, wire_th, cr, cg, cb, a);
                 });
         }
+        }
     }
 }
 
@@ -318,6 +354,11 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
                     value_str = format_float(val);
                 }
             }
+        } else {
+            // Fallback: param source
+            auto pit = src_ns->param_indices.find(c.from_port);
+            if (pit != src_ns->param_indices.end() && pit->second < src_ns->param_values.size())
+                value_str = format_float(src_ns->param_values[pit->second]);
         }
     }
 
@@ -357,6 +398,8 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
 
 void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     slider_rects_.clear();
+    xy_pad_rects_.clear();
+    color_swatch_rects_.clear();
     bool_rects_.clear();
     value_text_rects_.clear();
     dropdown_rects_.clear();
@@ -637,6 +680,261 @@ void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
     float total_h = kKnobDiameter + kKnobLabelGap + tr.line_height() * 0.85f +
                     kKnobValueGap + tr.line_height() * 0.8f + 4.0f;
     layout.end_param(total_h);
+}
+
+// -----------------------------------------------------------------------
+// XY Pad widget
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node,
+                                         InspectorLayout& layout,
+                                         uint32_t pi_x, uint32_t pi_y) {
+    const auto& op = *node.op_info;
+    const auto& pd_x = op.params[pi_x];
+    const auto& pd_y = op.params[pi_y];
+    float val_x = node.param_values[pi_x];
+    float val_y = node.param_values[pi_y];
+    float py = layout.y;
+
+    float pad_size = kXYPadSize;
+    float content_w = layout.full_w;
+    float pad_x = layout.base_x + (content_w - pad_size) * 0.5f;
+    float pad_y = py;
+
+    // Dark background rect
+    tr.draw_rect(pad_x, pad_y, pad_size, pad_size,
+                 style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+
+    // Faint center crosshair lines
+    float center_x = pad_x + pad_size * 0.5f;
+    float center_y = pad_y + pad_size * 0.5f;
+    tr.draw_rect(center_x, pad_y, 1, pad_size,
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.15f);
+    tr.draw_rect(pad_x, center_y, pad_size, 1,
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.15f);
+
+    // Map param values to pad coords
+    float range_x = pd_x.max_value - pd_x.min_value;
+    float range_y = pd_y.max_value - pd_y.min_value;
+    float tx = (range_x > 0) ? (val_x - pd_x.min_value) / range_x : 0.5f;
+    float ty = (range_y > 0) ? 1.0f - (val_y - pd_y.min_value) / range_y : 0.5f;
+    tx = std::max(0.0f, std::min(1.0f, tx));
+    ty = std::max(0.0f, std::min(1.0f, ty));
+
+    float dot_sx = pad_x + tx * pad_size;
+    float dot_sy = pad_y + ty * pad_size;
+
+    // Bright crosshair lines at current position
+    tr.draw_rect(dot_sx, pad_y, 1, pad_size,
+                 style_.accent[0], style_.accent[1], style_.accent[2], 0.5f);
+    tr.draw_rect(pad_x, dot_sy, pad_size, 1,
+                 style_.accent[0], style_.accent[1], style_.accent[2], 0.5f);
+
+    // Filled dot at intersection
+    float dot_r = kXYPadDotSize * 0.5f;
+    tr.draw_rect(dot_sx - dot_r, dot_sy - dot_r, kXYPadDotSize, kXYPadDotSize,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    // Labels below pad
+    float label_y = pad_y + pad_size + kXYPadLabelGap;
+    std::string label = std::string(pd_x.name) + ": " + format_float(val_x, 2) +
+                        "  " + pd_y.name + ": " + format_float(val_y, 2);
+    float label_w = tr.text_width(label.c_str(), 0.85f);
+    float label_lx = layout.base_x + (content_w - label_w) * 0.5f;
+    tr.draw_text(label_lx, label_y, label.c_str(),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+
+    // Hit-test rect for XY pad drag
+    xy_pad_rects_.push_back({pad_x, pad_y, pad_size, pad_size,
+                             single_selected_id(), pd_x.name, pd_y.name});
+
+    // Value text rects for click-to-edit on each param
+    float val_x_str_w = tr.text_width(format_float(val_x, 2).c_str(), 0.85f);
+    float val_y_str_w = tr.text_width(format_float(val_y, 2).c_str(), 0.85f);
+    float name_x_w = tr.text_width((std::string(pd_x.name) + ": ").c_str(), 0.85f);
+    float name_y_w = tr.text_width(("  " + std::string(pd_y.name) + ": ").c_str(), 0.85f);
+    float lh = tr.line_height() * 0.85f;
+    value_text_rects_.push_back({label_lx + name_x_w, label_y, val_x_str_w, lh,
+                                 single_selected_id(), pd_x.name});
+    value_text_rects_.push_back({label_lx + name_x_w + val_x_str_w + name_y_w, label_y,
+                                 val_y_str_w, lh, single_selected_id(), pd_y.name});
+
+    float total_h = pad_size + kXYPadLabelGap + lh + 8.0f;
+    layout.end_param(total_h);
+}
+
+// -----------------------------------------------------------------------
+// Color swatch widget (inline in inspector)
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_inspector_color_swatch(Renderer2D& tr, const NodeSnapshot& node,
+                                               InspectorLayout& layout,
+                                               uint32_t pi_r, uint32_t pi_g, uint32_t pi_b) {
+    const auto& op = *node.op_info;
+    float r = node.param_values[pi_r];
+    float g = node.param_values[pi_g];
+    float b = node.param_values[pi_b];
+    float py = layout.y;
+    float px = layout.base_x;
+    float sw = layout.full_w;
+
+    // Color label
+    tr.draw_text(px, py, "color", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    py += kLineH;
+
+    // Filled swatch rect
+    tr.draw_rect(px, py, sw, kColorSwatchH, r, g, b);
+
+    // 1px border
+    draw_rect_border(tr, px, py, sw, kColorSwatchH,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f);
+
+    // Hex text overlay (right-aligned)
+    char hex[8];
+    rgb_to_hex(r, g, b, hex, sizeof(hex));
+    float hex_w = tr.text_width(hex);
+    // Choose text color based on luminance for readability
+    float lum = 0.299f * r + 0.587f * g + 0.114f * b;
+    float tc = lum > 0.5f ? 0.0f : 1.0f;
+    tr.draw_text(px + sw - hex_w - 4, py + 3, hex, tc, tc, tc, 0.9f);
+
+    color_swatch_rects_.push_back({px, py, sw, kColorSwatchH,
+                                   single_selected_id(),
+                                   op.params[pi_r].name, op.params[pi_g].name, op.params[pi_b].name});
+
+    float total_h = kLineH + kColorSwatchH + 8.0f;
+    layout.end_param(total_h);
+}
+
+// -----------------------------------------------------------------------
+// Color picker popup (drawn over everything in overlay pass)
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
+    if (!color_popup_open_) return;
+
+    float pad = kColorPopupPad;
+    float sv_size = kColorPopupSVSize;
+    float hue_w = kColorHueBarW;
+    float gap = kColorPopupGap;
+    float hex_h = kColorHexFieldH;
+
+    float rgb_gap = kColorRGBGap;
+    float rgb_h = kColorRGBFieldH;
+    float popup_w = pad + sv_size + gap + hue_w + pad;
+    float popup_h = pad + sv_size + gap + hex_h + rgb_gap + rgb_h + pad;
+    float px = color_popup_x_;
+    float py = color_popup_y_;
+
+    // Clamp to window bounds
+    if (px + popup_w > static_cast<float>(win_w_)) px = static_cast<float>(win_w_) - popup_w;
+    if (py + popup_h > static_cast<float>(win_h_)) py = static_cast<float>(win_h_) - popup_h;
+    if (px < 0) px = 0;
+    if (py < 0) py = 0;
+    color_popup_x_ = px;
+    color_popup_y_ = py;
+
+    // Background
+    draw_popup_bg(tr, style_, px, py, popup_w, popup_h);
+
+    float sv_x = px + pad;
+    float sv_y = py + pad;
+
+    // SV square: render as grid of colored rects
+    constexpr int kGridN = 32;
+    float cell_w = sv_size / kGridN;
+    float cell_h = sv_size / kGridN;
+    for (int yi = 0; yi < kGridN; ++yi) {
+        for (int xi = 0; xi < kGridN; ++xi) {
+            float s = (xi + 0.5f) / kGridN;
+            float v = 1.0f - (yi + 0.5f) / kGridN;
+            float cr, cg, cb;
+            hsv_to_rgb(color_popup_h_, s, v, cr, cg, cb);
+            tr.draw_rect(sv_x + xi * cell_w, sv_y + yi * cell_h,
+                         cell_w + 0.5f, cell_h + 0.5f, cr, cg, cb);
+        }
+    }
+
+    // SV crosshair indicator
+    float sv_ix = sv_x + color_popup_s_ * sv_size;
+    float sv_iy = sv_y + (1.0f - color_popup_v_) * sv_size;
+    tr.draw_rect(sv_ix - 5, sv_iy, 11, 1, 1.0f, 1.0f, 1.0f, 0.8f);
+    tr.draw_rect(sv_ix, sv_iy - 5, 1, 11, 1.0f, 1.0f, 1.0f, 0.8f);
+    // Dark outline for visibility on bright backgrounds
+    tr.draw_rect(sv_ix - 6, sv_iy - 1, 13, 1, 0.0f, 0.0f, 0.0f, 0.4f);
+    tr.draw_rect(sv_ix - 6, sv_iy + 1, 13, 1, 0.0f, 0.0f, 0.0f, 0.4f);
+    tr.draw_rect(sv_ix - 1, sv_iy - 6, 1, 13, 0.0f, 0.0f, 0.0f, 0.4f);
+    tr.draw_rect(sv_ix + 1, sv_iy - 6, 1, 13, 0.0f, 0.0f, 0.0f, 0.4f);
+
+    // Hue bar
+    float hue_x = sv_x + sv_size + gap;
+    float hue_y = sv_y;
+    float hue_cell_h = sv_size / kGridN;
+    for (int i = 0; i < kGridN; ++i) {
+        float h = (i + 0.5f) / kGridN * 360.0f;
+        float cr, cg, cb;
+        hsv_to_rgb(h, 1.0f, 1.0f, cr, cg, cb);
+        tr.draw_rect(hue_x, hue_y + i * hue_cell_h,
+                     hue_w, hue_cell_h + 0.5f, cr, cg, cb);
+    }
+
+    // Hue bar indicator
+    float hue_iy = hue_y + (color_popup_h_ / 360.0f) * sv_size;
+    tr.draw_rect(hue_x - 1, hue_iy - 1, hue_w + 2, 3, 1.0f, 1.0f, 1.0f, 0.9f);
+    tr.draw_rect(hue_x - 2, hue_iy - 2, hue_w + 4, 1, 0.0f, 0.0f, 0.0f, 0.5f);
+    tr.draw_rect(hue_x - 2, hue_iy + 2, hue_w + 4, 1, 0.0f, 0.0f, 0.0f, 0.5f);
+
+    // Hex input field
+    float hex_y = sv_y + sv_size + gap;
+    float hex_w_full = sv_size + gap + hue_w;
+    tr.draw_rect(sv_x, hex_y, hex_w_full, hex_h,
+                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+    // Border
+    if (color_editing_hex_) {
+        tr.draw_rect(sv_x - 1, hex_y - 1, hex_w_full + 2, hex_h + 2,
+                     style_.accent[0], style_.accent[1], style_.accent[2]);
+    }
+
+    // Hex text
+    float cr, cg, cb;
+    hsv_to_rgb(color_popup_h_, color_popup_s_, color_popup_v_, cr, cg, cb);
+    char hex[8];
+    rgb_to_hex(cr, cg, cb, hex, sizeof(hex));
+
+    if (color_editing_hex_) {
+        std::string display = color_hex_buffer_ + "_";
+        tr.draw_text(sv_x + 4, hex_y + 2, display.c_str(), 0.95f, 0.95f, 0.95f);
+    } else {
+        tr.draw_text(sv_x + 4, hex_y + 2, hex,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+
+    // RGB channel fields
+    float rgb_y = hex_y + hex_h + rgb_gap;
+    float field_gap = 4.0f;
+    float total_gap = field_gap * 2.0f;
+    float field_w = (hex_w_full - total_gap) / 3.0f;
+    int rgb_values[3] = {
+        static_cast<int>(cr * 255.0f + 0.5f),
+        static_cast<int>(cg * 255.0f + 0.5f),
+        static_cast<int>(cb * 255.0f + 0.5f)
+    };
+    const char* rgb_labels[3] = { "R", "G", "B" };
+    for (int ch = 0; ch < 3; ++ch) {
+        float fx = sv_x + ch * (field_w + field_gap);
+        // Background
+        tr.draw_rect(fx, rgb_y, field_w, rgb_h,
+                     style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+        // Accent border if editing this channel
+        if (color_editing_rgb_ == ch) {
+            tr.draw_rect(fx - 1, rgb_y - 1, field_w + 2, rgb_h + 2,
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+            std::string display = std::string(rgb_labels[ch]) + " " + color_rgb_buffer_ + "_";
+            tr.draw_text(fx + 3, rgb_y + 2, display.c_str(), 0.95f, 0.95f, 0.95f);
+        } else {
+            char label[16];
+            snprintf(label, sizeof(label), "%s %d", rgb_labels[ch], rgb_values[ch]);
+            tr.draw_text(fx + 3, rgb_y + 2, label,
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
+    }
 }
 
 void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& node,
@@ -1083,7 +1381,8 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
 
         std::string current_group;
 
-        for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
+        uint32_t param_count = static_cast<uint32_t>(op.params.size());
+        for (uint32_t pi = 0; pi < param_count; ) {
             const auto& pd = op.params[pi];
 
             if (pd.group != current_group) {
@@ -1094,16 +1393,41 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                     bool collapsed = is_group_collapsed(node.type_name, current_group);
                     draw_inspector_group_header(tr, layout, node.type_name, current_group, collapsed);
                     if (collapsed) {
-                        while (pi + 1 < static_cast<uint32_t>(op.params.size()) &&
+                        while (pi + 1 < param_count &&
                                op.params[pi + 1].group == current_group)
                             ++pi;
+                        ++pi;
                         continue;
                     }
                 }
             }
 
+            // Compound widget: XY pad (two consecutive XY_PAD params)
+            if (pd.display_hint == VIVID_DISPLAY_XY_PAD &&
+                pi + 1 < param_count &&
+                op.params[pi + 1].display_hint == VIVID_DISPLAY_XY_PAD) {
+                layout.flush_row();
+                layout.begin_param(0, 0);
+                draw_inspector_xy_pad(tr, node, layout, pi, pi + 1);
+                pi += 2;
+                continue;
+            }
+
+            // Compound widget: Color swatch (three consecutive COLOR params)
+            if (pd.display_hint == VIVID_DISPLAY_COLOR &&
+                pi + 2 < param_count &&
+                op.params[pi + 1].display_hint == VIVID_DISPLAY_COLOR &&
+                op.params[pi + 2].display_hint == VIVID_DISPLAY_COLOR) {
+                layout.flush_row();
+                layout.begin_param(0, 0);
+                draw_inspector_color_swatch(tr, node, layout, pi, pi + 1, pi + 2);
+                pi += 3;
+                continue;
+            }
+
             layout.begin_param(pd.layout_columns, pd.layout_column_index);
             draw_one_inspector_param(tr, node, layout, pi);
+            ++pi;
         }
         layout.flush_row();
         py = layout.y;
@@ -1607,13 +1931,23 @@ void NodeGraphUI::draw_matrix_section(Renderer2D& tr, const NodeSnapshot& src_no
                                        const NodeSnapshot& dst_node, float px, float& py) {
     if (!src_node.op_info || !dst_node.op_info) return;
 
-    // Rows: source node's output ports
-    struct RowInfo { std::string port_name; };
+    // Rows: source node's output ports + params
+    struct RowInfo { std::string port_name; bool is_param = false; };
     std::vector<RowInfo> rows;
     auto sorted_outs = sorted_ports(src_node.output_port_indices);
     for (const auto& [idx, name] : sorted_outs)
-        rows.push_back({name});
-    if (rows.empty()) return;  // skip section entirely if src has no outputs
+        rows.push_back({name, false});
+    // Param rows
+    std::vector<std::pair<uint32_t, std::string>> sorted_params;
+    for (const auto& [name, idx] : src_node.param_indices)
+        if (!src_node.output_port_indices.count(name)) sorted_params.push_back({idx, name});
+    std::sort(sorted_params.begin(), sorted_params.end());
+    for (const auto& [idx, name] : sorted_params) {
+        const ParamInfo* pd = src_node.find_param(name);
+        if (pd && pd->type == VIVID_PARAM_FILE) continue;
+        rows.push_back({name, true});
+    }
+    if (rows.empty()) return;
 
     // Columns: destination node's params (non-FILE) + signal input ports
     struct ColInfo { std::string name; };
@@ -1687,11 +2021,12 @@ void NodeGraphUI::draw_matrix_section(Renderer2D& tr, const NodeSnapshot& src_no
         const auto& row = rows[ri];
         float row_y = matrix_y + ri * cell_step;
 
-        // Row label: output port name (truncated)
-        std::string label = row.port_name;
+        // Row label: output port or param name (truncated)
+        std::string label = row.is_param ? ("\xC2\xB7 " + row.port_name) : row.port_name;
         if (label.size() > 14) label = label.substr(0, 13) + "~";
+        float row_alpha = row.is_param ? 0.5f : 0.7f;
         tr.draw_text(px, row_y + 2, label.c_str(),
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f, 0.8f);
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], row_alpha, 0.8f);
 
         for (int ci = 0; ci < vis_cols; ++ci) {
             float cx = matrix_x + ci * cell_step;
@@ -1746,12 +2081,42 @@ void NodeGraphUI::draw_preview_wire(Renderer2D& tr) {
     if (!dragging_wire_) return;
     float ssx = gx_to_sx(wire_from_gx_), ssy = gy_to_sy(wire_from_gy_);
     float sex = mouse_.x, sey = mouse_.y;
-    float wire_th = std::max(1.0f, kWireThickness * zoom_);
 
-    traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
-        [&](float x0, float y0, float x1, float y1) {
-            tr.draw_line(x0, y0, x1, y1, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
-        });
+    if (!wire_from_is_output_) {
+        // Param source: thin dashed preview
+        float wire_th = std::max(1.0f, 1.5f * zoom_);
+        float cumulative = 0.0f;
+        float dash_cycle = kDashOn + kDashOff;
+        traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
+            [&](float x0, float y0, float x1, float y1) {
+                float dx = x1 - x0, dy = y1 - y0;
+                float seg_len = std::sqrt(dx * dx + dy * dy);
+                if (seg_len < 0.001f) { cumulative += seg_len; return; }
+                float nx = dx / seg_len, ny = dy / seg_len;
+                float consumed = 0.0f;
+                while (consumed < seg_len) {
+                    float phase = std::fmod(cumulative + consumed, dash_cycle);
+                    bool on = (phase < kDashOn);
+                    float remain_in_state = on ? (kDashOn - phase) : (dash_cycle - phase);
+                    float chunk = std::min(remain_in_state, seg_len - consumed);
+                    if (on) {
+                        float cx0 = x0 + nx * consumed;
+                        float cy0 = y0 + ny * consumed;
+                        float cx1 = x0 + nx * (consumed + chunk);
+                        float cy1 = y0 + ny * (consumed + chunk);
+                        tr.draw_line(cx0, cy0, cx1, cy1, wire_th, 1.0f, 1.0f, 1.0f, 0.3f);
+                    }
+                    consumed += chunk;
+                }
+                cumulative += seg_len;
+            });
+    } else {
+        float wire_th = std::max(1.0f, kWireThickness * zoom_);
+        traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
+            [&](float x0, float y0, float x1, float y1) {
+                tr.draw_line(x0, y0, x1, y1, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
+            });
+    }
 
     // Highlight target node body when cursor is over a different node (drop target)
     int ni = hit_test_node(mouse_.x, mouse_.y);
@@ -1946,11 +2311,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
         float item_h = kDropdownItemH;
         float popup_h = dropdown_labels_.size() * item_h + 4;
         // Background
-        tr.draw_rect(dropdown_x_, dropdown_y_, dropdown_w_, popup_h,
-                     style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
-        // Border
-        tr.draw_rect(dropdown_x_, dropdown_y_, dropdown_w_, 1,
-                     style_.accent[0], style_.accent[1], style_.accent[2]);
+        draw_popup_bg(tr, style_, dropdown_x_, dropdown_y_, dropdown_w_, popup_h);
         for (int i = 0; i < static_cast<int>(dropdown_labels_.size()); ++i) {
             float iy = dropdown_y_ + 2 + i * item_h;
             if (i == dropdown_sel_) {
@@ -1974,9 +2335,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
         float mx = context_menu_x_, my = context_menu_y_;
 
         // Background
-        tr.draw_rect(mx, my, kCtxMenuW, menu_h, style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
-        // Accent bar
-        tr.draw_rect(mx, my, kCtxMenuW, 1, style_.accent[0], style_.accent[1], style_.accent[2]);
+        draw_popup_bg(tr, style_, mx, my, kCtxMenuW, menu_h);
 
         // Item labels
         std::string delete_label;
@@ -2008,6 +2367,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
         }
     }
 
+    draw_color_popup(tr);
     draw_clone_confirm(tr);
     draw_preferences(tr);
 }
@@ -2483,11 +2843,7 @@ void NodeGraphUI::draw_param_picker(Renderer2D& tr) {
     if (py + popup_h > static_cast<float>(win_h_)) py = static_cast<float>(win_h_) - popup_h;
 
     // Background
-    tr.draw_rect(px, py, kPickerW, popup_h,
-                 style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
-    // Accent bar
-    tr.draw_rect(px, py, kPickerW, 1,
-                 style_.accent[0], style_.accent[1], style_.accent[2]);
+    draw_popup_bg(tr, style_, px, py, kPickerW, popup_h);
 
     // Items
     for (int i = 0; i < visible; ++i) {
@@ -2499,8 +2855,18 @@ void NodeGraphUI::draw_param_picker(Renderer2D& tr) {
             tr.draw_rect(px + 2, iy, kPickerW - 4, kPickerItemH,
                          style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
         }
-        tr.draw_text(px + 8, iy + 3, param_picker_items_[idx].c_str(),
-                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+        bool is_param = (!param_picker_item_is_param_.empty() &&
+                         idx < static_cast<int>(param_picker_item_is_param_.size()) &&
+                         param_picker_item_is_param_[idx]);
+        if (is_param) {
+            std::string display = "\xC2\xB7 " + param_picker_items_[idx];  // "· name"
+            tr.draw_text(px + 8, iy + 3, display.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f);
+        } else {
+            tr.draw_text(px + 8, iy + 3, param_picker_items_[idx].c_str(),
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
     }
 }
 

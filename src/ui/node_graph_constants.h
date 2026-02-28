@@ -57,6 +57,21 @@ static constexpr float kGroupHeaderH = 22.0f;
 static constexpr float kGroupHeaderPadTop = 6.0f;
 static constexpr float kGroupChevronSize = 8.0f;
 
+// XY pad widget
+static constexpr float kXYPadSize     = 120.0f;   // square side length
+static constexpr float kXYPadDotSize  =   6.0f;   // indicator dot diameter
+static constexpr float kXYPadLabelGap =   4.0f;   // gap between pad and labels below
+
+// Color picker widget
+static constexpr float kColorSwatchH     =  24.0f;   // inline swatch height
+static constexpr float kColorPopupSVSize = 160.0f;   // SV square side
+static constexpr float kColorHueBarW     =  16.0f;   // hue bar width
+static constexpr float kColorPopupGap    =   8.0f;   // gap between SV square and hue bar
+static constexpr float kColorHexFieldH   =  20.0f;   // hex input field height
+static constexpr float kColorRGBFieldH   =  20.0f;   // per-channel field height
+static constexpr float kColorRGBGap      =   4.0f;   // gap between hex row and RGB row
+static constexpr float kColorPopupPad    =  10.0f;   // popup internal padding
+
 // Knob widget
 static constexpr float kKnobDiameter = 40.0f;
 static constexpr float kKnobRadius = kKnobDiameter * 0.5f;

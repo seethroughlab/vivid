@@ -50,7 +50,7 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_; }
+    bool wants_keyboard() const { return chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0; }
     bool has_selection() const { return !selected_node_ids_.empty(); }
     bool has_single_selection() const { return selected_node_ids_.size() == 1; }
     const std::string& single_selected_id() const { return *selected_node_ids_.begin(); }
@@ -116,6 +116,12 @@ private:
                                   InspectorLayout& layout, uint32_t pi);
     void draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
                               InspectorLayout& layout, uint32_t pi);
+    void draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node,
+                                InspectorLayout& layout, uint32_t pi_x, uint32_t pi_y);
+    void draw_inspector_color_swatch(Renderer2D& tr, const NodeSnapshot& node,
+                                      InspectorLayout& layout,
+                                      uint32_t pi_r, uint32_t pi_g, uint32_t pi_b);
+    void draw_color_popup(Renderer2D& tr);
     void draw_inspector_group_header(Renderer2D& tr, InspectorLayout& layout,
                                       const std::string& type_name,
                                       const std::string& group_name, bool collapsed);
@@ -207,6 +213,8 @@ private:
     void update_node_drag();
     void update_wire_drag();
     void update_slider_drag();
+    void update_xy_pad_drag();
+    void update_color_drag();
     void update_drum_mod_drag();
     void update_chooser_hover();
     void update_context_menu();
@@ -277,6 +285,7 @@ private:
     std::string param_picker_wire_from_node_;
     std::string param_picker_wire_from_port_;
     std::vector<std::string> param_picker_items_;
+    std::vector<bool> param_picker_item_is_param_;  // parallel to param_picker_items_
     int param_picker_sel_ = 0;
     int param_picker_scroll_ = 0;
 
@@ -294,6 +303,31 @@ private:
 
     struct InspectorRect { float x, y, w, h; std::string node_id; std::string param_name; };
     std::vector<InspectorRect> slider_rects_;
+
+    // XY pad state
+    struct XYPadRect { float x, y, w, h; std::string node_id; std::string param_x, param_y; };
+    std::vector<XYPadRect> xy_pad_rects_;
+    int active_xy_pad_idx_ = -1;
+    std::string active_xy_node_id_;
+    std::string active_xy_param_x_, active_xy_param_y_;
+
+    // Color swatch state
+    struct ColorSwatchRect { float x, y, w, h; std::string node_id;
+                             std::string param_r, param_g, param_b; };
+    std::vector<ColorSwatchRect> color_swatch_rects_;
+
+    // Color popup state
+    bool color_popup_open_ = false;
+    std::string color_popup_node_id_;
+    std::string color_popup_param_r_, color_popup_param_g_, color_popup_param_b_;
+    float color_popup_x_ = 0, color_popup_y_ = 0;
+    float color_popup_h_ = 0, color_popup_s_ = 0, color_popup_v_ = 0;
+    bool color_dragging_sv_ = false;
+    bool color_dragging_hue_ = false;
+    bool color_editing_hex_ = false;
+    std::string color_hex_buffer_;
+    int  color_editing_rgb_ = -1;      // -1 = none, 0 = R, 1 = G, 2 = B
+    std::string color_rgb_buffer_;     // text buffer for active channel edit
 
     struct GroupHeaderRect { float x, y, w, h; std::string type_name; std::string group_name; };
     std::vector<GroupHeaderRect> group_header_rects_;

@@ -1,5 +1,6 @@
 #include "ui/node_graph.h"
 #include "ui/node_graph_constants.h"
+#include "ui/node_graph_util.h"
 #include "ui/ui_style.h"
 #include "common/topo_sort.h"
 #include "common/string_util.h"
@@ -58,6 +59,8 @@ template int NodeGraphUI::hit_test_rect(const std::vector<ResolutionRect>& rects
 template int NodeGraphUI::hit_test_rect(const std::vector<MidiRemoveRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<MidiRangeRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<MatrixCell>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<XYPadRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<ColorSwatchRect>& rects, float mx, float my);
 
 // -----------------------------------------------------------------------
 // Port visibility helpers
@@ -96,6 +99,12 @@ uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns) const {
         // Always show if connected, or if there are few outputs (<=3)
         if (ns.output_port_indices.size() <= 3 ||
             port_has_connection(snap_.connections, ns.node_id, name, true))
+            count++;
+    }
+    // Param sources — visible only if connected as source
+    for (const auto& [name, idx] : ns.param_indices) {
+        if (ns.output_port_indices.count(name)) continue;
+        if (port_has_connection(snap_.connections, ns.node_id, name, true))
             count++;
     }
     return count;
@@ -146,6 +155,19 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
         float py = port_start_y + oi * kLineH + kLineH * 0.5f;
         rect.outputs.push_back({name, rect.x + rect.w, py,
                                 !few_outputs}); // is_param=true for hidden-by-default outputs
+        ++oi;
+    }
+
+    // Param sources — visible only if connected as a source
+    std::vector<std::pair<uint32_t, std::string>> src_params;
+    for (const auto& [name, idx] : ns.param_indices)
+        if (!ns.output_port_indices.count(name)) src_params.push_back({idx, name});
+    std::sort(src_params.begin(), src_params.end());
+    for (const auto& [idx, name] : src_params) {
+        if (!port_has_connection(snap_.connections, ns.node_id, name, true))
+            continue;
+        float py = port_start_y + oi * kLineH + kLineH * 0.5f;
+        rect.outputs.push_back({name, rect.x + rect.w, py, true});
         ++oi;
     }
 }
@@ -545,13 +567,12 @@ void NodeGraphUI::confirm_param_edit() {
     try {
         float val = std::stof(edit_buffer_);
         const auto* ns = snap_.find_node(edit_node_id_);
-        if (ns && ns->op_info) {
-            for (const auto& pd : ns->op_info->params) {
-                if (pd.name != edit_param_name_) continue;
-                val = std::max(pd.min_value, std::min(pd.max_value, val));
-                if (pd.type == VIVID_PARAM_INT) val = std::round(val);
+        if (ns) {
+            const ParamInfo* pd = ns->find_param(edit_param_name_);
+            if (pd) {
+                val = std::max(pd->min_value, std::min(pd->max_value, val));
+                if (pd->type == VIVID_PARAM_INT) val = std::round(val);
                 commands_.set_param(edit_node_id_, edit_param_name_, val);
-                break;
             }
         }
     } catch (...) {
@@ -731,13 +752,11 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
         // Look up param descriptor for default range
         float range_min = 0.0f, range_max = 1.0f;
         const auto* ns = snap_.find_node(midi_map_node_id_);
-        if (ns && ns->op_info) {
-            for (const auto& pd : ns->op_info->params) {
-                if (pd.name == midi_map_param_name_) {
-                    range_min = pd.min_value;
-                    range_max = pd.max_value;
-                    break;
-                }
+        if (ns) {
+            const ParamInfo* pd = ns->find_param(midi_map_param_name_);
+            if (pd) {
+                range_min = pd->min_value;
+                range_max = pd->max_value;
             }
         }
         commands_.add_midi_mapping(midi_map_node_id_, midi_map_param_name_,
@@ -752,6 +771,8 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_wire_drag();
     update_scrollbar_drag();
     update_slider_drag();
+    update_xy_pad_drag();
+    update_color_drag();
     update_drum_mod_drag();
     update_matrix_drag();
     update_chooser_hover();
@@ -936,35 +957,92 @@ void NodeGraphUI::update_slider_drag() {
     if (mouse_.left_down) {
         const auto& s = slider_rects_[active_slider_idx_];
         const auto* ns = snap_.find_node(active_slider_node_id_);
-        if (ns && ns->op_info) {
-            for (const auto& pd : ns->op_info->params) {
-                if (pd.name != active_slider_param_name_) continue;
+        if (ns) {
+            const ParamInfo* pd = ns->find_param(active_slider_param_name_);
+            if (pd) {
                 float val;
-                if (pd.display_hint == VIVID_DISPLAY_KNOB) {
+                if (pd->display_hint == VIVID_DISPLAY_KNOB) {
                     // Vertical drag: up = increase
                     float dy = mouse_.prev_y - mouse_.y;
-                    float range = pd.max_value - pd.min_value;
+                    float range = pd->max_value - pd->min_value;
                     float sensitivity = range / 200.0f;
-                    auto pi_it = ns->param_indices.find(pd.name);
+                    auto pi_it = ns->param_indices.find(pd->name);
                     float cur = (pi_it != ns->param_indices.end())
-                        ? ns->param_values[pi_it->second] : pd.min_value;
+                        ? ns->param_values[pi_it->second] : pd->min_value;
                     val = cur + dy * sensitivity;
-                    val = std::max(pd.min_value, std::min(pd.max_value, val));
+                    val = std::max(pd->min_value, std::min(pd->max_value, val));
                 } else {
                     float t = (mouse_.x - s.x) / s.w;
                     t = std::max(0.0f, std::min(1.0f, t));
-                    val = pd.min_value + t * (pd.max_value - pd.min_value);
+                    val = pd->min_value + t * (pd->max_value - pd->min_value);
                 }
-                if (pd.type == VIVID_PARAM_INT) {
+                if (pd->type == VIVID_PARAM_INT) {
                     val = std::round(val);
                 }
                 commands_.set_param(active_slider_node_id_, active_slider_param_name_, val);
-                break;
             }
         }
     }
     if (mouse_.left_released) {
         active_slider_idx_ = -1;
+    }
+}
+
+void NodeGraphUI::update_xy_pad_drag() {
+    if (active_xy_pad_idx_ < 0 || dragging_node_idx_ >= 0) return;
+    if (mouse_.left_down && active_xy_pad_idx_ < static_cast<int>(xy_pad_rects_.size())) {
+        const auto& pad = xy_pad_rects_[active_xy_pad_idx_];
+        const auto* ns = snap_.find_node(active_xy_node_id_);
+        if (ns) {
+            const ParamInfo* pdx = ns->find_param(active_xy_param_x_);
+            const ParamInfo* pdy = ns->find_param(active_xy_param_y_);
+            if (pdx && pdy) {
+                float tx = (mouse_.x - pad.x) / pad.w;
+                float ty = (mouse_.y - pad.y) / pad.h;
+                tx = std::max(0.0f, std::min(1.0f, tx));
+                ty = std::max(0.0f, std::min(1.0f, ty));
+                float val_x = pdx->min_value + tx * (pdx->max_value - pdx->min_value);
+                float val_y = pdy->min_value + (1.0f - ty) * (pdy->max_value - pdy->min_value);
+                commands_.set_param(active_xy_node_id_, active_xy_param_x_, val_x);
+                commands_.set_param(active_xy_node_id_, active_xy_param_y_, val_y);
+            }
+        }
+    }
+    if (mouse_.left_released) {
+        active_xy_pad_idx_ = -1;
+    }
+}
+
+void NodeGraphUI::update_color_drag() {
+    if (!color_popup_open_) return;
+    if (!color_dragging_sv_ && !color_dragging_hue_) return;
+    if (mouse_.left_down) {
+        float pad = kColorPopupPad;
+        float sv_size = kColorPopupSVSize;
+        float hue_bar_w = kColorHueBarW;
+        float gap = kColorPopupGap;
+        float sv_x = color_popup_x_ + pad;
+        float sv_y = color_popup_y_ + pad;
+        float hue_x = sv_x + sv_size + gap;
+        float hue_y = sv_y;
+
+        if (color_dragging_sv_) {
+            color_popup_s_ = std::max(0.0f, std::min(1.0f, (mouse_.x - sv_x) / sv_size));
+            color_popup_v_ = std::max(0.0f, std::min(1.0f, 1.0f - (mouse_.y - sv_y) / sv_size));
+        }
+        if (color_dragging_hue_) {
+            color_popup_h_ = std::max(0.0f, std::min(360.0f,
+                (mouse_.y - hue_y) / sv_size * 360.0f));
+        }
+        float r, g, b;
+        hsv_to_rgb(color_popup_h_, color_popup_s_, color_popup_v_, r, g, b);
+        commands_.set_param(color_popup_node_id_, color_popup_param_r_, r);
+        commands_.set_param(color_popup_node_id_, color_popup_param_g_, g);
+        commands_.set_param(color_popup_node_id_, color_popup_param_b_, b);
+    }
+    if (mouse_.left_released) {
+        color_dragging_sv_ = false;
+        color_dragging_hue_ = false;
     }
 }
 
@@ -1105,20 +1183,38 @@ VividPortType NodeGraphUI::resolve_port_type(const GraphSnapshot& snap,
 // -----------------------------------------------------------------------
 void NodeGraphUI::rebuild_param_picker_items() {
     param_picker_items_.clear();
+    param_picker_item_is_param_.clear();
     const auto* ns = snap_.find_node(param_picker_node_id_);
     if (!ns || !ns->op_info) return;
 
     if (param_picker_is_output_) {
         // Picking an output port on this node (source side)
+        // Output ports first
         auto sorted_outs = sorted_ports(ns->output_port_indices);
         for (const auto& [idx, name] : sorted_outs) {
             param_picker_items_.push_back(name);
+            param_picker_item_is_param_.push_back(false);
+        }
+        // Params (non-FILE, not already an output port name)
+        std::vector<std::pair<uint32_t, std::string>> sorted_params;
+        for (const auto& [name, idx] : ns->param_indices)
+            if (!ns->output_port_indices.count(name)) sorted_params.push_back({idx, name});
+        std::sort(sorted_params.begin(), sorted_params.end());
+        for (const auto& [idx, name] : sorted_params) {
+            const ParamInfo* pd = ns->find_param(name);
+            if (pd && pd->type == VIVID_PARAM_FILE) continue;
+            param_picker_items_.push_back(name);
+            param_picker_item_is_param_.push_back(true);
         }
     } else {
         // Picking an input param on this node (destination side)
         // Determine source port type for compatibility filtering
-        VividPortType src_type = resolve_port_type(snap_, param_picker_wire_from_node_,
-                                                    param_picker_wire_from_port_, true);
+        VividPortType src_type;
+        if (!wire_from_is_output_)
+            src_type = VIVID_PORT_CONTROL_FLOAT;  // param sources are always float
+        else
+            src_type = resolve_port_type(snap_, param_picker_wire_from_node_,
+                                          param_picker_wire_from_port_, true);
 
         // Add signal input ports first
         auto sorted_ins = sorted_ports(ns->input_port_indices);
@@ -1153,14 +1249,8 @@ void NodeGraphUI::rebuild_param_picker_items() {
 
         for (const auto& [idx, name] : sorted_params) {
             // Skip FILE params (can't wire to them)
-            bool is_file = false;
-            for (const auto& pd : ns->op_info->params) {
-                if (pd.name == name && pd.type == VIVID_PARAM_FILE) {
-                    is_file = true;
-                    break;
-                }
-            }
-            if (is_file) continue;
+            const ParamInfo* pd = ns->find_param(name);
+            if (pd && pd->type == VIVID_PARAM_FILE) continue;
 
             // Skip if already connected
             bool already_connected = false;
@@ -1203,23 +1293,28 @@ void NodeGraphUI::update_param_picker() {
             if (idx >= 0 && idx < static_cast<int>(param_picker_items_.size())) {
                 const std::string& selected = param_picker_items_[idx];
                 if (param_picker_is_output_) {
-                    // Selected an output port — now start a wire drag from it
+                    // Selected an output port or param — now start a wire drag from it
                     const auto* ns = snap_.find_node(param_picker_node_id_);
                     if (ns) {
+                        bool is_param = (!param_picker_item_is_param_.empty() &&
+                                         idx < static_cast<int>(param_picker_item_is_param_.size()) &&
+                                         param_picker_item_is_param_[idx]);
                         dragging_wire_ = true;
                         wire_from_node_id_ = param_picker_node_id_;
                         wire_from_port_ = selected;
-                        wire_from_is_output_ = true;
+                        wire_from_is_output_ = !is_param;
                         // Find port position or use node center
                         for (const auto& r : node_rects_) {
                             if (r.node_id == param_picker_node_id_) {
                                 wire_from_gx_ = r.x + r.w;
                                 wire_from_gy_ = r.y + r.h * 0.5f;
-                                for (const auto& p : r.outputs) {
-                                    if (p.name == selected) {
-                                        wire_from_gx_ = p.x;
-                                        wire_from_gy_ = p.y;
-                                        break;
+                                if (!is_param) {
+                                    for (const auto& p : r.outputs) {
+                                        if (p.name == selected) {
+                                            wire_from_gx_ = p.x;
+                                            wire_from_gy_ = p.y;
+                                            break;
+                                        }
                                     }
                                 }
                                 break;

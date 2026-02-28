@@ -1,5 +1,6 @@
 #include "ui/node_graph.h"
 #include "ui/node_graph_constants.h"
+#include "ui/node_graph_util.h"
 #include "ui/file_dialog.h"
 #include "common/string_util.h"
 #include <GLFW/glfw3.h>
@@ -12,8 +13,6 @@ namespace vivid::ui {
 using vivid::format_float;
 using vivid::format_int;
 using vivid::format_uint;
-
-// Use the shared resolve_port_type on NodeGraphUI
 
 // -----------------------------------------------------------------------
 // GLFW callbacks
@@ -100,7 +99,7 @@ void NodeGraphUI::on_scroll(float /*x_offset*/, float y_offset) {
 // -----------------------------------------------------------------------
 // Keyboard input
 // -----------------------------------------------------------------------
-void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
+void NodeGraphUI::on_key(int key, int action, int mods) {
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
 
     if (prefs_open_) {
@@ -123,6 +122,20 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
     if (editing_midi_range_) {
         if (key == GLFW_KEY_ENTER)       confirm_midi_range_edit();
         else if (key == GLFW_KEY_ESCAPE) cancel_midi_range_edit();
+        else if (key == GLFW_KEY_TAB) {
+            bool was_min = midi_range_editing_min_;
+            std::string node_id = midi_range_node_id_;
+            std::string param_name = midi_range_param_name_;
+            confirm_midi_range_edit();
+            if (was_min) {
+                editing_midi_range_ = true;
+                midi_range_node_id_ = node_id;
+                midi_range_param_name_ = param_name;
+                midi_range_editing_min_ = false;
+                const auto* mm = snap_.find_midi_mapping(node_id, param_name);
+                if (mm) edit_buffer_ = format_float(mm->range_max, 2);
+            }
+        }
         else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
             edit_buffer_.pop_back();
         return;
@@ -131,6 +144,35 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
     if (editing_param_) {
         if (key == GLFW_KEY_ENTER)       confirm_param_edit();
         else if (key == GLFW_KEY_ESCAPE) cancel_param_edit();
+        else if (key == GLFW_KEY_TAB) {
+            std::string node_id = edit_node_id_;
+            std::string param_name = edit_param_name_;
+            confirm_param_edit();
+            // Check for XY pad sibling
+            const auto* ns = snap_.find_node(node_id);
+            if (ns && ns->op_info) {
+                const ParamInfo* pd = ns->find_param(param_name);
+                if (pd && pd->display_hint == VIVID_DISPLAY_XY_PAD) {
+                    auto pi_it = ns->param_indices.find(param_name);
+                    if (pi_it != ns->param_indices.end()) {
+                        uint32_t pi = pi_it->second;
+                        // X is first of pair → advance to Y (pi+1)
+                        // Y is second of pair → close
+                        if (pi + 1 < ns->op_info->params.size() &&
+                            ns->op_info->params[pi + 1].display_hint == VIVID_DISPLAY_XY_PAD) {
+                            const auto& pd_y = ns->op_info->params[pi + 1];
+                            editing_param_ = true;
+                            edit_node_id_ = node_id;
+                            edit_param_name_ = pd_y.name;
+                            if (pd_y.type == VIVID_PARAM_INT)
+                                edit_buffer_ = format_int(static_cast<int>(ns->param_values[pi + 1]));
+                            else
+                                edit_buffer_ = format_float(ns->param_values[pi + 1], 2);
+                        }
+                    }
+                }
+            }
+        }
         else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
             edit_buffer_.pop_back();
         return;
@@ -139,8 +181,159 @@ void NodeGraphUI::on_key(int key, int action, int /*mods*/) {
     if (editing_resolution_) {
         if (key == GLFW_KEY_ENTER)       confirm_resolution_edit();
         else if (key == GLFW_KEY_ESCAPE) cancel_resolution_edit();
+        else if (key == GLFW_KEY_TAB) {
+            bool was_width = edit_res_is_width_;
+            std::string node_id = edit_res_node_id_;
+            confirm_resolution_edit();
+            if (was_width) {
+                editing_resolution_ = true;
+                edit_res_node_id_ = node_id;
+                edit_res_is_width_ = false;
+                const auto* ns = snap_.find_node(node_id);
+                if (ns) edit_buffer_ = format_uint(ns->gpu_tex_height);
+            }
+        }
         else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
             edit_buffer_.pop_back();
+        return;
+    }
+
+    if (color_editing_hex_) {
+        bool mod_key = (mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER)) != 0;
+        if (key == GLFW_KEY_ENTER) {
+            // Parse hex string -> RGB floats -> set params + update cached HSV
+            std::string hex = color_hex_buffer_;
+            if (!hex.empty() && hex[0] == '#') hex = hex.substr(1);
+            if (hex.size() == 6) {
+                unsigned int val = 0;
+                bool valid = true;
+                for (char c : hex) {
+                    val <<= 4;
+                    if (c >= '0' && c <= '9') val |= (c - '0');
+                    else if (c >= 'a' && c <= 'f') val |= (c - 'a' + 10);
+                    else if (c >= 'A' && c <= 'F') val |= (c - 'A' + 10);
+                    else { valid = false; break; }
+                }
+                if (valid) {
+                    float r = ((val >> 16) & 0xFF) / 255.0f;
+                    float g = ((val >> 8) & 0xFF) / 255.0f;
+                    float b = (val & 0xFF) / 255.0f;
+                    commands_.set_param(color_popup_node_id_, color_popup_param_r_, r);
+                    commands_.set_param(color_popup_node_id_, color_popup_param_g_, g);
+                    commands_.set_param(color_popup_node_id_, color_popup_param_b_, b);
+                    rgb_to_hsv(r, g, b, color_popup_h_, color_popup_s_, color_popup_v_);
+                }
+            }
+            color_editing_hex_ = false;
+        } else if (key == GLFW_KEY_ESCAPE) {
+            color_editing_hex_ = false;
+        } else if (key == GLFW_KEY_BACKSPACE && !color_hex_buffer_.empty()) {
+            color_hex_buffer_.pop_back();
+        } else if (key == GLFW_KEY_C && mod_key) {
+            // Copy current hex to clipboard
+            glfwSetClipboardString(nullptr, color_hex_buffer_.c_str());
+        } else if (key == GLFW_KEY_V && mod_key) {
+            // Paste from clipboard
+            const char* clip = glfwGetClipboardString(nullptr);
+            if (clip) {
+                std::string pasted = clip;
+                // Validate and accept hex content
+                color_hex_buffer_.clear();
+                for (char c : pasted) {
+                    if (c == '#' || std::isxdigit(static_cast<unsigned char>(c))) {
+                        if (color_hex_buffer_.size() < 7)
+                            color_hex_buffer_ += c;
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    if (color_editing_rgb_ >= 0) {
+        if (key == GLFW_KEY_ENTER) {
+            // Parse buffer -> clamp 0-255 -> set param for active channel
+            int val = color_rgb_buffer_.empty() ? 0 : std::atoi(color_rgb_buffer_.c_str());
+            if (val < 0) val = 0;
+            if (val > 255) val = 255;
+            float fval = val / 255.0f;
+            const std::string* param_names[3] = {
+                &color_popup_param_r_, &color_popup_param_g_, &color_popup_param_b_
+            };
+            commands_.set_param(color_popup_node_id_, *param_names[color_editing_rgb_], fval);
+            // Re-read all three channels and update HSV
+            const auto* ns = snap_.find_node(color_popup_node_id_);
+            if (ns) {
+                auto ri = ns->param_indices.find(color_popup_param_r_);
+                auto gi = ns->param_indices.find(color_popup_param_g_);
+                auto bi = ns->param_indices.find(color_popup_param_b_);
+                if (ri != ns->param_indices.end() && gi != ns->param_indices.end() &&
+                    bi != ns->param_indices.end()) {
+                    float r = (color_editing_rgb_ == 0) ? fval : ns->param_values[ri->second];
+                    float g = (color_editing_rgb_ == 1) ? fval : ns->param_values[gi->second];
+                    float b = (color_editing_rgb_ == 2) ? fval : ns->param_values[bi->second];
+                    rgb_to_hsv(r, g, b, color_popup_h_, color_popup_s_, color_popup_v_);
+                }
+            }
+            color_editing_rgb_ = -1;
+        } else if (key == GLFW_KEY_ESCAPE) {
+            color_editing_rgb_ = -1;
+        } else if (key == GLFW_KEY_BACKSPACE && !color_rgb_buffer_.empty()) {
+            color_rgb_buffer_.pop_back();
+        } else if (key == GLFW_KEY_TAB) {
+            // Confirm current channel, advance to next
+            int val = color_rgb_buffer_.empty() ? 0 : std::atoi(color_rgb_buffer_.c_str());
+            if (val < 0) val = 0;
+            if (val > 255) val = 255;
+            float fval = val / 255.0f;
+            const std::string* param_names[3] = {
+                &color_popup_param_r_, &color_popup_param_g_, &color_popup_param_b_
+            };
+            commands_.set_param(color_popup_node_id_, *param_names[color_editing_rgb_], fval);
+            int next = color_editing_rgb_ + 1;
+            if (next > 2) {
+                // Update HSV and close
+                const auto* ns = snap_.find_node(color_popup_node_id_);
+                if (ns) {
+                    auto ri = ns->param_indices.find(color_popup_param_r_);
+                    auto gi = ns->param_indices.find(color_popup_param_g_);
+                    auto bi = ns->param_indices.find(color_popup_param_b_);
+                    if (ri != ns->param_indices.end() && gi != ns->param_indices.end() &&
+                        bi != ns->param_indices.end()) {
+                        float r = (color_editing_rgb_ == 0) ? fval : ns->param_values[ri->second];
+                        float g = (color_editing_rgb_ == 1) ? fval : ns->param_values[gi->second];
+                        float b = (color_editing_rgb_ == 2) ? fval : ns->param_values[bi->second];
+                        rgb_to_hsv(r, g, b, color_popup_h_, color_popup_s_, color_popup_v_);
+                    }
+                }
+                color_editing_rgb_ = -1;
+            } else {
+                // Update HSV for current channel, advance to next
+                const auto* ns = snap_.find_node(color_popup_node_id_);
+                if (ns) {
+                    auto ri = ns->param_indices.find(color_popup_param_r_);
+                    auto gi = ns->param_indices.find(color_popup_param_g_);
+                    auto bi = ns->param_indices.find(color_popup_param_b_);
+                    if (ri != ns->param_indices.end() && gi != ns->param_indices.end() &&
+                        bi != ns->param_indices.end()) {
+                        float r = (color_editing_rgb_ == 0) ? fval : ns->param_values[ri->second];
+                        float g = (color_editing_rgb_ == 1) ? fval : ns->param_values[gi->second];
+                        float b = (color_editing_rgb_ == 2) ? fval : ns->param_values[bi->second];
+                        rgb_to_hsv(r, g, b, color_popup_h_, color_popup_s_, color_popup_v_);
+                    }
+                }
+                color_editing_rgb_ = next;
+                // Pre-fill buffer with current channel value
+                const auto* ns2 = snap_.find_node(color_popup_node_id_);
+                if (ns2) {
+                    auto it = ns2->param_indices.find(*param_names[next]);
+                    if (it != ns2->param_indices.end()) {
+                        int v = static_cast<int>(ns2->param_values[it->second] * 255.0f + 0.5f);
+                        color_rgb_buffer_ = std::to_string(v);
+                    }
+                }
+            }
+        }
         return;
     }
 
@@ -334,6 +527,20 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
         char ch = static_cast<char>(codepoint);
         if (std::isdigit(static_cast<unsigned char>(ch)))
             edit_buffer_ += ch;
+        return;
+    }
+    if (color_editing_hex_) {
+        char ch = static_cast<char>(codepoint);
+        if (std::isxdigit(static_cast<unsigned char>(ch)) || ch == '#') {
+            if (color_hex_buffer_.size() < 7)
+                color_hex_buffer_ += ch;
+        }
+        return;
+    }
+    if (color_editing_rgb_ >= 0) {
+        char ch = static_cast<char>(codepoint);
+        if (std::isdigit(static_cast<unsigned char>(ch)) && color_rgb_buffer_.size() < 3)
+            color_rgb_buffer_ += ch;
         return;
     }
     if (!chooser_open_) return;
@@ -567,6 +774,110 @@ bool NodeGraphUI::handle_dropdown_click() {
 }
 
 bool NodeGraphUI::handle_inspector_click() {
+    // --- Color popup click handling (overlays everything) ---
+    if (color_popup_open_) {
+        float pad = kColorPopupPad;
+        float sv_size = kColorPopupSVSize;
+        float hue_bar_w = kColorHueBarW;
+        float gap = kColorPopupGap;
+        float hex_h = kColorHexFieldH;
+        float rgb_gap = kColorRGBGap;
+        float rgb_h = kColorRGBFieldH;
+        float popup_w = pad + sv_size + gap + hue_bar_w + pad;
+        float popup_h = pad + sv_size + gap + hex_h + rgb_gap + rgb_h + pad;
+        float px = color_popup_x_, py = color_popup_y_;
+        float sv_x = px + pad, sv_y = py + pad;
+        float hue_x = sv_x + sv_size + gap, hue_y = sv_y;
+        float hex_field_y = sv_y + sv_size + gap;
+        float hex_field_w = sv_size + gap + hue_bar_w;
+
+        // Dismiss any active text edits when clicking elsewhere
+        if (color_editing_hex_) color_editing_hex_ = false;
+        if (color_editing_rgb_ >= 0) color_editing_rgb_ = -1;
+
+        // Click in SV square
+        if (mouse_.x >= sv_x && mouse_.x < sv_x + sv_size &&
+            mouse_.y >= sv_y && mouse_.y < sv_y + sv_size) {
+            color_dragging_sv_ = true;
+            color_popup_s_ = std::max(0.0f, std::min(1.0f, (mouse_.x - sv_x) / sv_size));
+            color_popup_v_ = std::max(0.0f, std::min(1.0f, 1.0f - (mouse_.y - sv_y) / sv_size));
+            float r, g, b;
+            hsv_to_rgb(color_popup_h_, color_popup_s_, color_popup_v_, r, g, b);
+            commands_.set_param(color_popup_node_id_, color_popup_param_r_, r);
+            commands_.set_param(color_popup_node_id_, color_popup_param_g_, g);
+            commands_.set_param(color_popup_node_id_, color_popup_param_b_, b);
+            return true;
+        }
+
+        // Click in hue bar
+        if (mouse_.x >= hue_x && mouse_.x < hue_x + hue_bar_w &&
+            mouse_.y >= hue_y && mouse_.y < hue_y + sv_size) {
+            color_dragging_hue_ = true;
+            color_popup_h_ = std::max(0.0f, std::min(360.0f,
+                (mouse_.y - hue_y) / sv_size * 360.0f));
+            float r, g, b;
+            hsv_to_rgb(color_popup_h_, color_popup_s_, color_popup_v_, r, g, b);
+            commands_.set_param(color_popup_node_id_, color_popup_param_r_, r);
+            commands_.set_param(color_popup_node_id_, color_popup_param_g_, g);
+            commands_.set_param(color_popup_node_id_, color_popup_param_b_, b);
+            return true;
+        }
+
+        // Click in hex field
+        if (mouse_.x >= sv_x && mouse_.x < sv_x + hex_field_w &&
+            mouse_.y >= hex_field_y && mouse_.y < hex_field_y + hex_h) {
+            color_editing_hex_ = true;
+            // Pre-fill with current hex value
+            float cr, cg, cb;
+            hsv_to_rgb(color_popup_h_, color_popup_s_, color_popup_v_, cr, cg, cb);
+            char hex[8];
+            rgb_to_hex(cr, cg, cb, hex, sizeof(hex));
+            color_hex_buffer_ = hex;
+            return true;
+        }
+
+        // Click in RGB channel fields
+        {
+            float rgb_field_y = hex_field_y + hex_h + rgb_gap;
+            float field_gap = 4.0f;
+            float field_w = (hex_field_w - field_gap * 2.0f) / 3.0f;
+            for (int ch = 0; ch < 3; ++ch) {
+                float fx = sv_x + ch * (field_w + field_gap);
+                if (mouse_.x >= fx && mouse_.x < fx + field_w &&
+                    mouse_.y >= rgb_field_y && mouse_.y < rgb_field_y + rgb_h) {
+                    color_editing_rgb_ = ch;
+                    // Pre-fill with current channel value
+                    const std::string* param_names[3] = {
+                        &color_popup_param_r_, &color_popup_param_g_, &color_popup_param_b_
+                    };
+                    const auto* ns = snap_.find_node(color_popup_node_id_);
+                    if (ns) {
+                        auto it = ns->param_indices.find(*param_names[ch]);
+                        if (it != ns->param_indices.end()) {
+                            int v = static_cast<int>(ns->param_values[it->second] * 255.0f + 0.5f);
+                            color_rgb_buffer_ = std::to_string(v);
+                        }
+                    }
+                    return true;
+                }
+            }
+        }
+
+        // Click inside popup but not on a control — consume
+        if (mouse_.x >= px && mouse_.x < px + popup_w &&
+            mouse_.y >= py && mouse_.y < py + popup_h) {
+            return true;
+        }
+
+        // Click outside popup — close it
+        color_popup_open_ = false;
+        color_dragging_sv_ = false;
+        color_dragging_hue_ = false;
+        color_editing_hex_ = false;
+        color_editing_rgb_ = -1;
+        return true;
+    }
+
     if (mouse_.x < graph_right() || mouse_.y >= static_cast<float>(win_h_))
         return false;
 
@@ -723,6 +1034,52 @@ bool NodeGraphUI::handle_inspector_click() {
         return true;
     }
 
+    // Check XY pad
+    int xyi = hit_test_rect(xy_pad_rects_, mouse_.x, mouse_.y);
+    if (xyi >= 0) {
+        active_xy_pad_idx_ = xyi;
+        active_xy_node_id_ = xy_pad_rects_[xyi].node_id;
+        active_xy_param_x_ = xy_pad_rects_[xyi].param_x;
+        active_xy_param_y_ = xy_pad_rects_[xyi].param_y;
+        return true;
+    }
+
+    // Check color swatch
+    int ci = hit_test_rect(color_swatch_rects_, mouse_.x, mouse_.y);
+    if (ci >= 0) {
+        const auto& cs = color_swatch_rects_[ci];
+        // Toggle popup
+        if (color_popup_open_ && color_popup_node_id_ == cs.node_id &&
+            color_popup_param_r_ == cs.param_r) {
+            color_popup_open_ = false;
+            color_editing_rgb_ = -1;
+        } else {
+            color_popup_open_ = true;
+            color_popup_node_id_ = cs.node_id;
+            color_popup_param_r_ = cs.param_r;
+            color_popup_param_g_ = cs.param_g;
+            color_popup_param_b_ = cs.param_b;
+            // Position popup adjacent to swatch
+            color_popup_x_ = cs.x;
+            color_popup_y_ = cs.y + cs.h + 4;
+            // Convert current RGB to HSV
+            const auto* ns = snap_.find_node(cs.node_id);
+            if (ns) {
+                auto r_it = ns->param_indices.find(cs.param_r);
+                auto g_it = ns->param_indices.find(cs.param_g);
+                auto b_it = ns->param_indices.find(cs.param_b);
+                if (r_it != ns->param_indices.end() && g_it != ns->param_indices.end() &&
+                    b_it != ns->param_indices.end()) {
+                    float r = ns->param_values[r_it->second];
+                    float g = ns->param_values[g_it->second];
+                    float b = ns->param_values[b_it->second];
+                    rgb_to_hsv(r, g, b, color_popup_h_, color_popup_s_, color_popup_v_);
+                }
+            }
+        }
+        return true;
+    }
+
     // Check slider
     int si = hit_test_rect(slider_rects_, mouse_.x, mouse_.y);
     if (si >= 0) {
@@ -838,10 +1195,9 @@ void NodeGraphUI::handle_graph_click() {
         if (ni >= 0) {
             std::string node_id = node_rects_[ni].node_id;
 
-            // If node has hidden output ports and click is on the right edge,
-            // open output picker to start a wire drag
+            // If click is on the right edge, open output/param picker to start a wire drag
             const auto* ns = snap_.find_node(node_id);
-            if (ns && ns->output_port_indices.size() > 3) {
+            if (ns) {
                 float gx = sx_to_gx(mouse_.x);
                 float right_zone = node_rects_[ni].x + node_rects_[ni].w - 15.0f;
                 if (gx >= right_zone) {
