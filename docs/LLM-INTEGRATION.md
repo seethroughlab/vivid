@@ -26,11 +26,11 @@ This is the most LLM-friendly design: the LLM reads JSON, writes JSON. No code g
 
 ### 4.4 The Four LLM Roles
 
+**Operator layer — LLM as author (primary role).** The user describes intent, the LLM writes a self-contained C++ operator, hot-reload compiles it in under a second. "Write a GPU operator that makes particles orbit a central point with velocity proportional to their FFT bin value." This is the core workflow. Because operator authoring is cheap and fast, Vivid doesn't need to ship a comprehensive operator library — the LLM generates what the project needs, and the operator contract is designed to make that generation reliable.
+
+**Routing layer — LLM as architect.** "Build me a patch with 3 audio analysis bands driving 3 visual layers with independent particle systems." The LLM generates graph structure as JSON that the user then explores. This is the scaffolding role — often combined with operator authoring when the scaffold requires new operators that don't yet exist.
+
 **Experimentation layer — LLM as variation generator.** "Generate 8 different connection matrix configurations." "Fill this session column with particle behavior variations." The user evaluates and selects. The LLM produces breadth; the user provides taste.
-
-**Routing layer — LLM as architect.** "Build me a patch with 3 audio analysis bands driving 3 visual layers with independent particle systems." The LLM generates graph structure as JSON that the user then explores. This is the scaffolding role.
-
-**Operator layer — LLM as programmer.** When the user creates a new operator via the IDE scaffolding workflow, the LLM in their IDE assists with writing the C++ implementation. "Write a GPU operator that makes particles orbit a central point with velocity proportional to their FFT bin value."
 
 **Reflective layer — LLM as critic and analyst.** "What's happening harmonically in the audio right now?" "The visual rhythm isn't syncing with the beat — what's wrong?" The LLM observes the current state and helps the user understand and refine.
 
@@ -40,11 +40,9 @@ The LLM connects to Vivid through two complementary paths, both built on a share
 
 **The Runtime API** is an internal interface exposing all LLM-relevant operations: inspect graph structure, read and write parameters, capture frames and audio, run analysis tools, evaluate assertions, scaffold operators, and modify graph topology. This is the single source of truth for what the LLM can do. Both integration paths below call into the same API.
 
-**Path 1: Built-in chat.** A collapsible chat panel inside Vivid's interface (§6.4) calls the Anthropic API directly and invokes the Runtime API in-process. This is the primary workflow for creative exploration: "make the particles react more to the bass," "generate 5 variations of this feedback loop," "why is the output so dark?" Zero latency between the LLM's intent and its effect on the graph. The user stays in Vivid.
+**Path 1: MCP server.** Vivid runs an MCP (Model Context Protocol) server that exposes the Runtime API as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to it externally. This is the primary LLM integration path — it provides the complete tool surface (inspect, add, connect, set_param, scaffold_operator) with streaming, multi-turn context, and tool use UIs that external clients already provide. It also enables non-interactive use cases: CI pipelines running assertions, scripts generating patch variations, installation monitors watching for drift.
 
-**Path 2: MCP server.** Vivid runs an MCP (Model Context Protocol) server that exposes the same Runtime API as MCP tools. Claude Code, Claude.ai, or any MCP-capable LLM connects to it externally. This is the power-user workflow for operator development: scaffolding C++ operators, debugging compilation errors, running test assertions from the terminal, and automating batch operations. It also enables non-interactive use cases: CI pipelines running assertions, scripts generating patch variations, installation monitors watching for drift.
-
-Both paths are Phase 1. The built-in chat handles creative workflows where immediacy matters. MCP handles development workflows where the user is already in their IDE or terminal. The underlying Runtime API is implemented once; the chat panel and MCP server are thin layers on top.
+**Path 2: Built-in chat (deferred).** Originally planned as a collapsible chat panel inside Vivid's interface calling the Anthropic API directly. Deferred because the MCP server already provides full LLM integration through external clients, and building a built-in chat would mean significant complexity to produce a worse version of what Claude Code and Cursor already offer. May be revisited if in-app chat proves essential for creative workflows where context-switching to an external client is too slow.
 
 **Future path: WebSocket API** (Phase 3) exposes the same Runtime API over WebSocket for non-LLM external processes — Python scripts, Max/MSP, show control systems. The MCP server and WebSocket API may share transport infrastructure but serve different audiences.
 

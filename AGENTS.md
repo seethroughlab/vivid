@@ -4,6 +4,18 @@
 
 Vivid is a real-time audiovisual creative coding framework where audio and visuals are equal peers — authored in the same graph, driven by the same data. Read `docs/PRD.md` for the full vision.
 
+## Design Philosophy
+
+**Vivid's value is the environment, not the operators.**
+
+In the age of LLM-assisted development, writing an operator that does exactly what you want is cheap. What's expensive is making experimentation and discovery possible and productive. This has concrete implications for how you work on Vivid:
+
+- **Operator authoring is the primary LLM workflow.** When a user needs a new operator, the LLM writes it as a self-contained C++ file, hot-reload compiles it in under a second, and the user sees the result immediately. Don't assume operators already exist — generate them.
+- **Vivid ships seed operators, not a library.** The built-in operators exist to validate each domain and serve as examples. Most operators in a real project are LLM-generated during the session, authored for specific creative intent, and kept in the project directory.
+- **The operator contract is the most important API surface.** Every friction point in writing an operator — unclear types, boilerplate, implicit conventions — is a direct tax on the core workflow. When improving Vivid, prioritize making operator authoring simpler and more reliable.
+- **Exploration > construction.** Since writing operators is cheap, the bottleneck is the experimentation loop: how fast can the user try an idea, hear it, see it, and try the next one? Optimize for this loop in every design decision.
+- **When scaffolding operators:** use the existing seed operators as templates. Match the patterns in `operators/gpu/`, `operators/audio/`, `operators/control/` — same file structure, same macro conventions, same parameter style. This is what makes LLM-generated operators reliable.
+
 ## Architecture Overview
 
 - **Language:** C++ throughout (runtime, interface, and operators)
@@ -56,7 +68,7 @@ vivid/
 │       ├── operator.h
 │       ├── spread.h
 │       └── types.h
-├── operators/                # Built-in operators (each a directory)
+├── operators/                # Seed operators (each a directory)
 │   ├── gpu/                  # noise/, blur/, particles/, composite/
 │   ├── audio/                # oscillator/, delay/, fft_analysis/, beat_detect/
 │   └── control/              # lfo/, clock/, midi_cc/, math/, envelope/
