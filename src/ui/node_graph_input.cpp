@@ -75,6 +75,13 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
         }
     }
 
+    // Session grid horizontal scroll
+    if (session_grid_open_ && mouse_.y >= graph_bottom()) {
+        session_scroll_x_ -= y_offset * 30.0f;
+        session_scroll_x_ = std::max(0.0f, session_scroll_x_);
+        return;
+    }
+
     // Inspector scroll when cursor is in inspector area
     if (mouse_.x >= graph_right() && has_selection()) {
         insp_scroll_y_ -= y_offset * kInspScrollSpeed;
@@ -123,6 +130,23 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         } else if (prefs_editing_custom_) {
             if (key == GLFW_KEY_BACKSPACE && !prefs_custom_command_.empty())
                 prefs_custom_command_.pop_back();
+        }
+        return;
+    }
+
+    // Session grid name editing
+    if (session_editing_name_) {
+        if (key == GLFW_KEY_ENTER) {
+            if (!session_edit_buffer_.empty() && session_edit_idx_ >= 0 &&
+                session_edit_idx_ < static_cast<int>(snap_.variations.size())) {
+                commands_.rename_variation(snap_.variations[session_edit_idx_].name,
+                                           session_edit_buffer_);
+            }
+            session_editing_name_ = false;
+        } else if (key == GLFW_KEY_ESCAPE) {
+            session_editing_name_ = false;
+        } else if (key == GLFW_KEY_BACKSPACE && !session_edit_buffer_.empty()) {
+            session_edit_buffer_.pop_back();
         }
         return;
     }
@@ -470,13 +494,20 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 chooser_filter_.clear();
                 chooser_sel_ = 0;
                 chooser_scroll_ = 0;
-                chooser_items_ = snap_.operator_types;
+                rebuild_chooser_items();
                 chooser_open_ = true;
             }
         }
         // B toggles bezier wire rendering
         if (key == GLFW_KEY_B && action == GLFW_PRESS) {
             bezier_wires_ = !bezier_wires_;
+        }
+        // V: toggle session grid
+        if (key == GLFW_KEY_V && action == GLFW_PRESS) {
+            session_grid_open_ = !session_grid_open_;
+            if (!session_grid_open_) {
+                session_editing_name_ = false;
+            }
         }
         // M: toggle MIDI map mode
         if (key == GLFW_KEY_M && action == GLFW_PRESS) {
@@ -545,6 +576,11 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
 }
 
 void NodeGraphUI::on_char(unsigned int codepoint) {
+    if (session_editing_name_) {
+        if (codepoint >= 32 && codepoint < 127)
+            session_edit_buffer_ += static_cast<char>(codepoint);
+        return;
+    }
     if (prefs_open_ && prefs_editing_custom_) {
         if (codepoint >= 32 && codepoint < 127)
             prefs_custom_command_ += static_cast<char>(codepoint);
@@ -818,6 +854,66 @@ void NodeGraphUI::handle_left_click() {
     if (!mouse_.left_clicked) return;
     if (handle_chooser_click()) return;
     if (handle_dropdown_click()) return;
+
+    // Session grid click handling
+    if (session_grid_open_ && mouse_.y >= graph_bottom()) {
+        // Check variation cells
+        for (const auto& cr : variation_cell_rects_) {
+            if (mouse_.x >= cr.x && mouse_.x <= cr.x + cr.w &&
+                mouse_.y >= cr.y && mouse_.y <= cr.y + cr.h) {
+                // Double-click to rename
+                static double last_cell_click_time = 0;
+                static int last_cell_click_idx = -1;
+                double now = 0;
+                // Use simple frame counter as proxy
+                if (last_cell_click_idx == cr.idx && dt_ > 0) {
+                    // Already clicked this cell recently — enter rename mode
+                    session_editing_name_ = true;
+                    session_edit_idx_ = cr.idx;
+                    session_edit_buffer_ = snap_.variations[cr.idx].name;
+                } else {
+                    // Single click — recall or queue
+                    if (session_quantize_mode_ > 0) {
+                        static const char* q_modes[] = { "instant", "beat", "bar", "4bar" };
+                        commands_.queue_variation(snap_.variations[cr.idx].name,
+                                                  q_modes[session_quantize_mode_]);
+                    } else {
+                        commands_.recall_variation_idx(cr.idx);
+                    }
+                }
+                last_cell_click_idx = cr.idx;
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+        // Check buttons
+        for (const auto& br : session_button_rects_) {
+            if (mouse_.x >= br.x && mouse_.x <= br.x + br.w &&
+                mouse_.y >= br.y && mouse_.y <= br.y + br.h) {
+                if (br.action == 0) {
+                    // + New
+                    std::string name = "Var " + std::to_string(snap_.variations.size() + 1);
+                    commands_.save_variation(name);
+                } else if (br.action == 1) {
+                    // Save (update active variation)
+                    if (snap_.active_variation >= 0 &&
+                        snap_.active_variation < static_cast<int>(snap_.variations.size())) {
+                        commands_.update_variation(
+                            snap_.variations[snap_.active_variation].name);
+                    }
+                } else if (br.action >= 2 && br.action <= 5) {
+                    // Quantize mode buttons
+                    session_quantize_mode_ = br.action - 2;
+                }
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+        // Clicked in session strip but not on a cell/button — consume click
+        mouse_.left_clicked = false;
+        return;
+    }
+
     if (handle_inspector_click()) return;
     handle_graph_click();
 }
