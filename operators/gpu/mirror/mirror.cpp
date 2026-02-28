@@ -14,6 +14,9 @@ struct Mirror : vivid::WgslFilterBase {
     Mirror() : WgslFilterBase("mirror.wgsl") {}
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        display_hint(center_x, VIVID_DISPLAY_XY_PAD);
+        display_hint(center_y, VIVID_DISPLAY_XY_PAD);
+
         out.push_back(&mode);
         out.push_back(&segments);
         out.push_back(&angle);

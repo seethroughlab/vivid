@@ -105,6 +105,10 @@ struct Bars : vivid::OperatorBase {
     vivid::Param<float> b     {"b",     0.77f, 0.0f, 1.0f};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        display_hint(r, VIVID_DISPLAY_COLOR);
+        display_hint(g, VIVID_DISPLAY_COLOR);
+        display_hint(b, VIVID_DISPLAY_COLOR);
+
         out.push_back(&scale);
         out.push_back(&gap);
         out.push_back(&r);

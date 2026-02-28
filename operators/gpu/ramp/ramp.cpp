@@ -23,6 +23,9 @@ struct Ramp : vivid::WgslFilterBase {
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        display_hint(offset_x, VIVID_DISPLAY_XY_PAD);
+        display_hint(offset_y, VIVID_DISPLAY_XY_PAD);
+
         out.push_back(&mode);
         out.push_back(&angle);
         out.push_back(&offset_x);

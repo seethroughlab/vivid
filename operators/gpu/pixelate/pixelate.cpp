@@ -11,6 +11,9 @@ struct Pixelate : vivid::WgslFilterBase {
     Pixelate() : WgslFilterBase("pixelate.wgsl") {}
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        display_hint(size_x, VIVID_DISPLAY_XY_PAD);
+        display_hint(size_y, VIVID_DISPLAY_XY_PAD);
+
         out.push_back(&size_x);
         out.push_back(&size_y);
     }

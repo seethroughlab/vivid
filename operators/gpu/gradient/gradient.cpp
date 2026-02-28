@@ -19,6 +19,9 @@ struct Gradient : vivid::WgslFilterBase {
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        display_hint(center_x, VIVID_DISPLAY_XY_PAD);
+        display_hint(center_y, VIVID_DISPLAY_XY_PAD);
+
         out.push_back(&mode);
         out.push_back(&angle);
         out.push_back(&center_x);

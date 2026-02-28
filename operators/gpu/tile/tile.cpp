@@ -14,10 +14,10 @@ struct Tile : vivid::WgslFilterBase {
     Tile() : WgslFilterBase("tile.wgsl") {}
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        layout_row(repeat_x, 2, 0);
-        layout_row(repeat_y, 2, 1);
-        layout_row(offset_x, 2, 0);
-        layout_row(offset_y, 2, 1);
+        display_hint(repeat_x, VIVID_DISPLAY_XY_PAD);
+        display_hint(repeat_y, VIVID_DISPLAY_XY_PAD);
+        display_hint(offset_x, VIVID_DISPLAY_XY_PAD);
+        display_hint(offset_y, VIVID_DISPLAY_XY_PAD);
 
         out.push_back(&repeat_x);
         out.push_back(&repeat_y);

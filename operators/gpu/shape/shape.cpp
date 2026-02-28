@@ -126,6 +126,10 @@ struct Shape : vivid::OperatorBase {
     vivid::Param<float> b        {"b",        1.0f,  0.0f,  1.0f};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        display_hint(r, VIVID_DISPLAY_COLOR);
+        display_hint(g, VIVID_DISPLAY_COLOR);
+        display_hint(b, VIVID_DISPLAY_COLOR);
+
         out.push_back(&radius);
         out.push_back(&sides);
         out.push_back(&star);

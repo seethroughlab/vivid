@@ -94,8 +94,8 @@ struct Feedback : vivid::OperatorBase {
     vivid::Param<float> rotate   {"rotate",   0.0f,  0.0f, 360.0f};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        layout_row(offset_x, 2, 0);
-        layout_row(offset_y, 2, 1);
+        display_hint(offset_x, VIVID_DISPLAY_XY_PAD);
+        display_hint(offset_y, VIVID_DISPLAY_XY_PAD);
 
         out.push_back(&decay);
         out.push_back(&mix);
