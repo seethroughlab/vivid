@@ -42,6 +42,11 @@ public:
     virtual void update_variation(const std::string& name) {}
     virtual void queue_variation(const std::string& name, const std::string& quantize) {}
     virtual void set_quantize_clock(const std::string& node_id) {}
+
+    // Capture/recording operations (defaults are no-ops for headless/test sinks)
+    virtual void capture_snapshot() {}
+    virtual void start_recording(const std::string& path, const std::string& codec, double fps) {}
+    virtual void stop_recording() {}
 };
 
 } // namespace vivid::ui

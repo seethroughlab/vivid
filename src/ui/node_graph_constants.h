@@ -234,6 +234,13 @@ static constexpr std::array<float, 3> kPerfMsColor  = { 0.45f, 0.65f, 0.95f };  
 static constexpr std::array<float, 3> kPerfMemColor = { 0.95f, 0.65f, 0.25f };   // orange
 static constexpr std::array<float, 4> kPerfBarBg    = { 0.06f, 0.07f, 0.08f, 0.85f };
 
+// Perf bar button layout
+static constexpr float kPerfBtnH = 20.0f;
+static constexpr float kPerfBtnPadX = 8.0f;
+static constexpr float kPerfBtnMargin = 6.0f;
+static constexpr float kPerfRecDotR = 4.0f;
+static constexpr float kPerfCodecDropW = 120.0f;
+
 // Performance ring buffer
 static constexpr uint32_t kPerfHistoryLen = 128;
 static constexpr uint32_t kPerfMemSampleInterval = 30;

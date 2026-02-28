@@ -24,6 +24,9 @@ public:
     bool finish();
     bool is_recording() const;
     const std::string& output_path() const;
+    uint64_t frame_count() const;
+    double fps() const;
+    double elapsed_sec() const;
 
 private:
     struct Impl;

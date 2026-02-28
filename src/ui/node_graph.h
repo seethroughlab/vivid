@@ -51,7 +51,7 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return create_popup_open_ || chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0 || patch_ctx_open_ || session_editing_name_; }
+    bool wants_keyboard() const { return create_popup_open_ || chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0 || patch_ctx_open_ || session_editing_name_ || record_dropdown_open_; }
     bool has_selection() const { return !selected_node_ids_.empty(); }
     bool has_single_selection() const { return selected_node_ids_.size() == 1; }
     const std::string& single_selected_id() const { return *selected_node_ids_.begin(); }
@@ -570,6 +570,15 @@ private:
     bool perf_mem_hovered_ = false;
     float perf_mem_graph_x_ = 0.0f;
     float perf_mem_graph_y_ = 0.0f;
+
+    // --- Record/Snapshot buttons in perf bar ---
+    bool record_dropdown_open_ = false;
+    float record_dropdown_x_ = 0.0f, record_dropdown_y_ = 0.0f;
+    int record_codec_sel_ = 0;  // 0=H.264, 1=H.265, 2=ProRes 4444
+
+    struct PerfButtonRect { float x, y, w, h; int action; };
+    // action: 0=Record/Stop, 1=Snapshot
+    std::vector<PerfButtonRect> perf_button_rects_;
 };
 
 } // namespace vivid::ui

@@ -2440,6 +2440,30 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
         }
     }
 
+    // Record codec dropdown
+    if (record_dropdown_open_) {
+        static const char* codec_labels[] = { "H.264", "H.265", "ProRes 4444" };
+        constexpr int codec_count = 3;
+        float item_h = kDropdownItemH;
+        float popup_h = codec_count * item_h + 4;
+        float popup_w = kPerfCodecDropW;
+        float dx = record_dropdown_x_;
+        float dy = record_dropdown_y_;
+        draw_popup_bg(tr, style_, dx, dy, popup_w, popup_h);
+        for (int i = 0; i < codec_count; ++i) {
+            float iy = dy + 2 + i * item_h;
+            bool hovered = mouse_.x >= dx && mouse_.x <= dx + popup_w &&
+                           mouse_.y >= iy && mouse_.y <= iy + item_h;
+            if (i == record_codec_sel_ || hovered) {
+                tr.draw_rect(dx + 2, iy, popup_w - 4, item_h,
+                             style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2],
+                             hovered ? 0.9f : 0.5f);
+            }
+            tr.draw_text(dx + 8, iy + 2, codec_labels[i],
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
+    }
+
     // Right-click context menu
     if (context_menu_open_) {
         int item_count = 1;
@@ -2892,6 +2916,123 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
         if (snap_.audio_underrun_active) { xr = 1.0f; xg = 0.4f; xb = 0.4f; }
         tr.draw_text(x, text_y, buf, xr, xg, xb);
         x += tr.text_width(buf) + kPerfSepMargin;
+    }
+
+    // --- Right-aligned Record / Snapshot buttons ---
+    perf_button_rects_.clear();
+    {
+        float btn_y = (kPerfBarH - kPerfBtnH) * 0.5f;
+        float rx = fw - kPerfBarPadX;  // right edge cursor
+
+        // Snapshot button
+        {
+            const char* snap_label = "Snap";
+            float tw = tr.text_width(snap_label);
+            float btn_w = tw + kPerfBtnPadX * 2;
+            rx -= btn_w;
+            // Button background
+            bool snap_hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
+                                mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+            float bg_a = snap_hovered ? 0.35f : 0.20f;
+            tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f,
+                                 0.30f, 0.32f, 0.35f, bg_a);
+            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                         snap_label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 1});
+            rx -= kPerfBtnMargin;
+        }
+
+        // Record / Stop button
+        if (snap_.is_recording) {
+            // --- Recording active: [● REC  MM:SS  NNNf  Stop] ---
+
+            // Stop button
+            {
+                const char* stop_label = "Stop";
+                float tw = tr.text_width(stop_label);
+                float btn_w = tw + kPerfBtnPadX * 2;
+                rx -= btn_w;
+                bool stop_hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
+                                    mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+                float bg_a = stop_hovered ? 0.50f : 0.35f;
+                tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f,
+                                     0.60f, 0.20f, 0.20f, bg_a);
+                tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                             stop_label, 1.0f, 0.85f, 0.85f);
+                perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 0});
+                rx -= kPerfBtnMargin;
+            }
+
+            // Frame count
+            {
+                char fc[32];
+                std::snprintf(fc, sizeof(fc), "%lluf",
+                              static_cast<unsigned long long>(snap_.recording_frame_count));
+                float tw = tr.text_width(fc);
+                rx -= tw;
+                tr.draw_text(rx, text_y, fc, kDimText[0], kDimText[1], kDimText[2]);
+                rx -= kPerfBtnMargin;
+            }
+
+            // Duration MM:SS
+            {
+                int total_sec = static_cast<int>(snap_.recording_duration_sec);
+                int mm = total_sec / 60;
+                int ss = total_sec % 60;
+                char dur[16];
+                std::snprintf(dur, sizeof(dur), "%02d:%02d", mm, ss);
+                float tw = tr.text_width(dur);
+                rx -= tw;
+                tr.draw_text(rx, text_y, dur, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+                rx -= kPerfBtnMargin;
+            }
+
+            // Animated red dot + REC label
+            {
+                float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(perf_frame_counter_) * 0.12f);
+                const char* rec_label = "REC";
+                float tw = tr.text_width(rec_label);
+                float dot_space = kPerfRecDotR * 2 + 4.0f;
+                rx -= tw + dot_space;
+                float dot_cx = rx + kPerfRecDotR;
+                float dot_cy = kPerfBarH * 0.5f;
+                tr.draw_rounded_rect(dot_cx - kPerfRecDotR, dot_cy - kPerfRecDotR,
+                                     kPerfRecDotR * 2, kPerfRecDotR * 2, kPerfRecDotR,
+                                     0.95f, 0.15f, 0.15f, 0.5f + 0.5f * pulse);
+                tr.draw_text(rx + dot_space, text_y, rec_label, 0.95f, 0.30f, 0.30f);
+            }
+        } else {
+            // --- Not recording: [● REC ▾] button ---
+            const char* rec_label = "REC";
+            float tw = tr.text_width(rec_label);
+            float arrow_w = tr.text_width("\xe2\x96\xbe"); // ▾
+            float dot_space = kPerfRecDotR * 2 + 4.0f;
+            float btn_w = kPerfBtnPadX + dot_space + tw + 4.0f + arrow_w + kPerfBtnPadX;
+            rx -= btn_w;
+
+            bool rec_hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
+                               mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+            float bg_a = rec_hovered ? 0.35f : 0.20f;
+            tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f,
+                                 0.30f, 0.32f, 0.35f, bg_a);
+
+            float ix = rx + kPerfBtnPadX;
+            // Red dot
+            float dot_cx = ix + kPerfRecDotR;
+            float dot_cy = kPerfBarH * 0.5f;
+            tr.draw_rounded_rect(dot_cx - kPerfRecDotR, dot_cy - kPerfRecDotR,
+                                 kPerfRecDotR * 2, kPerfRecDotR * 2, kPerfRecDotR,
+                                 0.85f, 0.20f, 0.20f, 0.9f);
+            ix += dot_space;
+            // REC text
+            float label_y = btn_y + (kPerfBtnH - tr.line_height()) * 0.5f;
+            tr.draw_text(ix, label_y, rec_label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            ix += tw + 4.0f;
+            // Dropdown arrow
+            tr.draw_text(ix, label_y, "\xe2\x96\xbe", kDimText[0], kDimText[1], kDimText[2]);
+
+            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 0});
+        }
     }
 
     // Check hover over mini graph

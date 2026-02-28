@@ -157,6 +157,11 @@ struct GraphSnapshot {
     int queued_variation = -1;
     std::string quantize_clock_node;
 
+    // Recording state (from CaptureCoordinator)
+    bool is_recording = false;
+    uint64_t recording_frame_count = 0;
+    double recording_duration_sec = 0.0;
+
     const NodeSnapshot* find_node(const std::string& id) const {
         auto it = node_index.find(id);
         if (it == node_index.end()) return nullptr;

@@ -84,7 +84,8 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         vivid::OperatorRegistry& registry,
         OperatorInfoCache& op_cache,
         vivid::SystemMidiListener* system_midi = nullptr,
-        const vivid::RuntimeAPI* runtime_api = nullptr) {
+        const vivid::RuntimeAPI* runtime_api = nullptr,
+        vivid::CaptureCoordinator* capture_coordinator = nullptr) {
     vivid::ui::GraphSnapshot snap;
 
     const auto& sched_nodes = scheduler.nodes();
@@ -210,6 +211,15 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
     if (runtime_api) {
         snap.variation_dirty = runtime_api->variation_dirty();
         snap.queued_variation = runtime_api->pending_variation_idx();
+    }
+
+    // Recording state
+    if (capture_coordinator) {
+        snap.is_recording = capture_coordinator->is_recording();
+        if (snap.is_recording) {
+            snap.recording_frame_count = capture_coordinator->recording_frame_count();
+            snap.recording_duration_sec = capture_coordinator->recording_duration_sec();
+        }
     }
 
     return snap;
@@ -737,6 +747,7 @@ int main(int argc, char* argv[]) {
     command_sink.set_op_cache(&op_info_cache);
     command_sink.set_working_filters_dir(working_filters_dir);
     command_sink.set_settings(&settings);
+    command_sink.set_capture_coordinator(&capture_coordinator);
     vivid::ui::NodeGraphUI graph_ui(command_sink);
     graph_ui.set_dpi_scale(dpi_scale);
     graph_ui.set_bezier_wires(settings.bezier_wires);
@@ -1037,7 +1048,8 @@ int main(int argc, char* argv[]) {
             if (text_renderer_ok && graph_ui.visible()) {
                 auto snapshot = build_graph_snapshot(
                     graph, scheduler, has_audio ? &audio_engine : nullptr,
-                    registry, op_info_cache, &system_midi, &runtime_api);
+                    registry, op_info_cache, &system_midi, &runtime_api,
+                    &capture_coordinator);
                 graph_ui.update(snapshot);
                 graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
                 // Pass 1: text/rects

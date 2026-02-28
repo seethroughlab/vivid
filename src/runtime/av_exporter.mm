@@ -24,6 +24,7 @@ struct AVExporter::Impl {
 
     uint64_t video_frame_count = 0;
     uint64_t audio_samples_written = 0;
+    double start_time = 0.0; // CFAbsoluteTimeGetCurrent() at recording start
     bool recording = false;
 };
 
@@ -136,6 +137,7 @@ bool AVExporter::start(const std::string& path, uint32_t width, uint32_t height,
         }
 
         [impl_->writer startSessionAtSourceTime:kCMTimeZero];
+        impl_->start_time = CFAbsoluteTimeGetCurrent();
         impl_->recording = true;
         std::fprintf(stderr, "[vivid] AVExporter: recording to %s (%ux%u @ %.0ffps)\n",
                      path.c_str(), width, height, fps);
@@ -175,7 +177,8 @@ bool AVExporter::write_video_frame(const uint8_t* rgba, uint32_t width, uint32_t
         }
         CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
 
-        CMTime pts = CMTimeMake(impl_->video_frame_count, static_cast<int32_t>(impl_->fps));
+        double elapsed = CFAbsoluteTimeGetCurrent() - impl_->start_time;
+        CMTime pts = CMTimeMakeWithSeconds(elapsed, 90000); // 90kHz timescale (standard)
         bool ok = [impl_->pixel_adaptor appendPixelBuffer:pixel_buffer
                                      withPresentationTime:pts];
         CVPixelBufferRelease(pixel_buffer);
@@ -306,6 +309,19 @@ bool AVExporter::is_recording() const {
 const std::string& AVExporter::output_path() const {
     static const std::string empty;
     return impl_ ? impl_->path : empty;
+}
+
+uint64_t AVExporter::frame_count() const {
+    return impl_ ? impl_->video_frame_count : 0;
+}
+
+double AVExporter::fps() const {
+    return impl_ ? impl_->fps : 60.0;
+}
+
+double AVExporter::elapsed_sec() const {
+    if (!impl_ || !impl_->recording) return 0.0;
+    return CFAbsoluteTimeGetCurrent() - impl_->start_time;
 }
 
 } // namespace vivid

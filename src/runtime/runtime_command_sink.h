@@ -8,6 +8,7 @@
 #include "runtime/wgsl_header_parser.h"
 #include "runtime/graph.h"
 #include "runtime/operator_info_cache.h"
+#include "runtime/capture_coordinator.h"
 #include "runtime/settings.h"
 #include "runtime/editor_detect.h"
 #include "operator_api/data_driven_filter.h"
@@ -15,6 +16,8 @@
 #include <fstream>
 #include <sstream>
 #include <cstdio>
+#include <cstdlib>
+#include <ctime>
 #include <string>
 
 class RuntimeCommandSink : public vivid::ui::UICommandSink {
@@ -339,6 +342,36 @@ public:
         return true;
     }
 
+    void capture_snapshot() override {
+        if (!capture_coordinator_) return;
+        // Fire-and-forget — PNG is saved to disk
+        capture_coordinator_->request_snapshot_to_file("");
+    }
+
+    void start_recording(const std::string& path, const std::string& codec, double fps) override {
+        if (!capture_coordinator_) return;
+        std::string out_path = path;
+        if (out_path.empty()) {
+            const char* home = std::getenv("HOME");
+            std::string desktop = home ? std::string(home) + "/Desktop" : ".";
+            std::time_t t = std::time(nullptr);
+            std::tm tm{};
+            localtime_r(&t, &tm);
+            char ts[32];
+            std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tm);
+            out_path = desktop + "/vivid_recording_" + ts + ".mov";
+        }
+        // TODO: pass codec selection to AVExporter when multiple codecs are supported
+        (void)codec;
+        capture_coordinator_->request_start_recording(out_path, fps);
+    }
+
+    void stop_recording() override {
+        if (!capture_coordinator_) return;
+        capture_coordinator_->request_stop_recording();
+    }
+
+    void set_capture_coordinator(vivid::CaptureCoordinator* cc) { capture_coordinator_ = cc; }
     void set_operators_dir(const std::string& dir) { operators_dir_ = dir; }
     void set_filters_dir(const std::string& dir) { filters_dir_ = dir; }
     void set_registry(vivid::OperatorRegistry* r) { registry_ = r; }
@@ -510,6 +543,7 @@ private:
     }
 
     vivid::RuntimeAPI& api_;
+    vivid::CaptureCoordinator* capture_coordinator_ = nullptr;
     std::string operators_dir_;
     std::string filters_dir_;
     std::string working_filters_dir_;

@@ -458,6 +458,11 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;
     }
 
+    if (record_dropdown_open_) {
+        if (key == GLFW_KEY_ESCAPE) record_dropdown_open_ = false;
+        return;
+    }
+
     if (context_menu_open_) {
         if (key == GLFW_KEY_ESCAPE) context_menu_open_ = false;
         return;
@@ -854,6 +859,51 @@ void NodeGraphUI::handle_left_click() {
     if (!mouse_.left_clicked) return;
     if (handle_chooser_click()) return;
     if (handle_dropdown_click()) return;
+
+    // Record codec dropdown click handling
+    if (record_dropdown_open_) {
+        static const char* codec_ids[] = { "h264", "h265", "prores4444" };
+        constexpr int codec_count = 3;
+        float item_h = kDropdownItemH;
+        float dx = record_dropdown_x_;
+        float dy = record_dropdown_y_;
+        float popup_w = kPerfCodecDropW;
+        for (int i = 0; i < codec_count; ++i) {
+            float iy = dy + 2 + i * item_h;
+            if (mouse_.x >= dx && mouse_.x <= dx + popup_w &&
+                mouse_.y >= iy && mouse_.y <= iy + item_h) {
+                record_codec_sel_ = i;
+                record_dropdown_open_ = false;
+                commands_.start_recording("", codec_ids[i], 60.0);
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+        // Clicked outside dropdown — close it
+        record_dropdown_open_ = false;
+        mouse_.left_clicked = false;
+        return;
+    }
+
+    // Perf bar buttons (Record/Stop, Snapshot)
+    for (const auto& btn : perf_button_rects_) {
+        if (mouse_.x >= btn.x && mouse_.x <= btn.x + btn.w &&
+            mouse_.y >= btn.y && mouse_.y <= btn.y + btn.h) {
+            if (btn.action == 0) {  // Record/Stop
+                if (snap_.is_recording) {
+                    commands_.stop_recording();
+                } else {
+                    record_dropdown_open_ = !record_dropdown_open_;
+                    record_dropdown_x_ = btn.x;
+                    record_dropdown_y_ = btn.y + btn.h;
+                }
+            } else if (btn.action == 1) {  // Snapshot
+                commands_.capture_snapshot();
+            }
+            mouse_.left_clicked = false;
+            return;
+        }
+    }
 
     // Session grid click handling
     if (session_grid_open_ && mouse_.y >= graph_bottom()) {

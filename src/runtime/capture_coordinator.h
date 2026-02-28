@@ -13,7 +13,7 @@ namespace vivid {
 class AudioEngine;
 class AVExporter;
 
-enum class CaptureType { Frame, Audio, AV, StartRecording, StopRecording };
+enum class CaptureType { Frame, Audio, AV, StartRecording, StopRecording, SnapshotToFile };
 
 struct CaptureRequest {
     CaptureType type;
@@ -50,6 +50,11 @@ public:
                         WGPUTexture capture_tex,
                         uint32_t tex_width, uint32_t tex_height);
     bool is_recording() const;
+    uint64_t recording_frame_count() const;
+    double recording_duration_sec() const;
+
+    // Snapshot-to-file: writes PNG directly to disk, returns path
+    std::future<std::string> request_snapshot_to_file(const std::string& path);
 
 private:
     std::string capture_frame(WGPUDevice device, WGPUQueue queue,

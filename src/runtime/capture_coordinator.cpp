@@ -7,6 +7,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
+#include <cstdlib>
 
 namespace vivid {
 
@@ -377,6 +379,37 @@ void CaptureCoordinator::process_pending(WGPUDevice device, WGPUQueue queue,
             }
             break;
         }
+        case CaptureType::SnapshotToFile: {
+            if (!capture_tex || tex_width == 0 || tex_height == 0) {
+                response = capture_json_err("no video output available");
+                break;
+            }
+            std::vector<uint8_t> pixels;
+            if (!gpu_readback_rgba8(device, queue, capture_tex, tex_width, tex_height, pixels)) {
+                response = capture_json_err("GPU readback failed");
+                break;
+            }
+            std::string out_path = req.recording_path;
+            if (out_path.empty()) {
+                // Generate default path: ~/Desktop/vivid_snapshot_YYYYMMDD_HHMMSS.png
+                const char* home = std::getenv("HOME");
+                std::string desktop = home ? std::string(home) + "/Desktop" : ".";
+                std::time_t t = std::time(nullptr);
+                std::tm tm{};
+                localtime_r(&t, &tm);
+                char ts[32];
+                std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tm);
+                out_path = desktop + "/vivid_snapshot_" + ts + ".png";
+            }
+            if (stbi_write_png(out_path.c_str(), tex_width, tex_height, 4,
+                               pixels.data(), tex_width * 4)) {
+                response = R"({"ok":true,"path":")" + json_escape(out_path) + "\"}";
+                std::fprintf(stderr, "[vivid] Snapshot saved: %s\n", out_path.c_str());
+            } else {
+                response = capture_json_err("failed to write PNG");
+            }
+            break;
+        }
         }
         req.promise.set_value(std::move(response));
     }
@@ -388,6 +421,28 @@ void CaptureCoordinator::process_pending(WGPUDevice device, WGPUQueue queue,
 
 bool CaptureCoordinator::is_recording() const {
     return exporter_ && exporter_->is_recording();
+}
+
+uint64_t CaptureCoordinator::recording_frame_count() const {
+    if (!exporter_ || !exporter_->is_recording()) return 0;
+    return exporter_->frame_count();
+}
+
+double CaptureCoordinator::recording_duration_sec() const {
+    if (!exporter_ || !exporter_->is_recording()) return 0.0;
+    return exporter_->elapsed_sec();
+}
+
+std::future<std::string> CaptureCoordinator::request_snapshot_to_file(const std::string& path) {
+    CaptureRequest req;
+    req.type = CaptureType::SnapshotToFile;
+    req.recording_path = path;
+    auto future = req.promise.get_future();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending_.push_back(std::move(req));
+    }
+    return future;
 }
 
 void CaptureCoordinator::tick_recording(WGPUDevice device, WGPUQueue queue,
