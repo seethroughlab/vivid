@@ -282,13 +282,20 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
     let p = vec3f(xy, z);
 
-    if (uniforms.colorNoise != 0) {
+    if (uniforms.colorNoise == 1) {
+        // 2 Channel: R and G only
+        let r = fbm3D(p, uniforms.octaves, uniforms.lacunarity, uniforms.persistence, uniforms.noiseType);
+        let g = fbm3D(p + vec3f(100.0, 0.0, 0.0), uniforms.octaves, uniforms.lacunarity, uniforms.persistence, uniforms.noiseType);
+        return vec4f(r, g, 0.0, 1.0);
+    } else if (uniforms.colorNoise == 2) {
+        // RGB: 3 independent channels
         let r = fbm3D(p, uniforms.octaves, uniforms.lacunarity, uniforms.persistence, uniforms.noiseType);
         let g = fbm3D(p + vec3f(100.0, 0.0, 0.0), uniforms.octaves, uniforms.lacunarity, uniforms.persistence, uniforms.noiseType);
         let b = fbm3D(p + vec3f(0.0, 100.0, 0.0), uniforms.octaves, uniforms.lacunarity, uniforms.persistence, uniforms.noiseType);
         return vec4f(r, g, b, 1.0);
     }
 
+    // Mono: single channel → grayscale
     let n = fbm3D(p, uniforms.octaves, uniforms.lacunarity, uniforms.persistence, uniforms.noiseType);
     return vec4f(n, n, n, 1.0);
 }
@@ -329,7 +336,7 @@ struct Noise : vivid::OperatorBase {
     vivid::Param<float> lacunarity {"lacunarity",  2.0f,  1.0f, 4.0f};
     vivid::Param<float> persistence{"persistence", 0.5f,  0.0f, 1.0f};
     vivid::Param<int>   noise_type  {"noise_type", 0, {"Perlin", "Simplex", "Worley", "Value"}};
-    vivid::Param<int>   color_noise {"color_noise", 0, {"Off", "On"}};
+    vivid::Param<int>   channels    {"channels", 0, {"Mono", "2 Channel", "RGB"}};
     vivid::Param<int>   center_origin{"center_origin", 0, {"Off", "On"}};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
@@ -339,7 +346,7 @@ struct Noise : vivid::OperatorBase {
         out.push_back(&lacunarity);
         out.push_back(&persistence);
         out.push_back(&noise_type);
-        out.push_back(&color_noise);
+        out.push_back(&channels);
         out.push_back(&center_origin);
     }
 
@@ -376,7 +383,7 @@ struct Noise : vivid::OperatorBase {
         u.offsetY       = 0.0f;
         u.octaves       = octaves.int_value();
         u.noiseType     = noise_type.int_value();
-        u.colorNoise    = color_noise.int_value();
+        u.colorNoise    = channels.int_value();
         u.centerOrigin  = center_origin.int_value();
 
         wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
