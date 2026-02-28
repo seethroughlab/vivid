@@ -420,7 +420,7 @@ General-purpose **Instance** GPU operator that uses hardware instancing (instanc
 
 Two halves, sharing the same `OperatorCreator` module:
 
-**MCP Server** — Python FastMCP wrapper (`mcp/vivid_mcp.py`) bridging MCP stdio to the Vivid HTTP control server. 22 tools total: `inspect_graph`, `list_types`, `add_node`, `remove_node`, `connect`, `disconnect`, `set_param`, `get_param`, `set_string_param`, `set_resolution`, `set_node_layout`, `inspect_node`, `list_nodes`, `add_midi_mapping`, `remove_midi_mapping`, `update_midi_mapping`, `get_graph_errors`, `scaffold_operator`, `save_graph`, `load_graph`.
+**MCP Server** — Python FastMCP wrapper (`mcp/vivid_mcp.py`) bridging MCP stdio to the Vivid HTTP control server. 30 tools total: `inspect_graph`, `list_types`, `add_node`, `remove_node`, `connect`, `disconnect`, `set_param`, `get_param`, `set_string_param`, `set_resolution`, `set_node_layout`, `inspect_node`, `list_nodes`, `add_midi_mapping`, `remove_midi_mapping`, `update_midi_mapping`, `get_graph_errors`, `scaffold_operator`, `save_graph`, `load_graph`, `save_variation`, `recall_variation`, `remove_variation`, `rename_variation`, `update_variation`, `list_variations`, `queue_variation`, `set_quantize_clock`.
 
 **Operator Scaffolding** — `scaffold_operator` MCP tool + in-app `+ New Operator...` UI (at the top of the Tab chooser). Both backed by `OperatorCreator`: validates the name, writes a domain-appropriate template (control/audio/GPU), patches CMakeLists.txt, and hands off to `HotReloader` for compilation. New operators load into the registry and appear in the chooser without restarting. See [phase-16-design.md](phase-16-design.md) for the full design.
 
@@ -451,7 +451,6 @@ Two halves, sharing the same `OperatorCreator` module:
 > - **DrumSequencer enhancements** — per-step modulation with tabbed grid UI
 > - **macOS frame timer refactor** — separated event polling from tick callback
 > - **Unit test expansion** — topo sort, operator creator, settings, string utils
-> - **Phase 21 state machine design doc written**
 
 ### Phase 16a: Inspector Overhaul — DONE
 
@@ -494,29 +493,53 @@ Replaced 19 C++ dylib GPU filters with self-describing `.wgsl` files. A single g
 
 The core tool is complete. Now build the interfaces that make Vivid's exploration model unique.
 
-### Phase 18: Patchbay / Connection Matrix
+### Phase 18: Patch Panel — DONE
 
-Matrix view where rows are outputs and columns are inputs. Click an intersection to create/remove a connection. Each intersection can hold a scaling factor. LLM generates matrix configurations ("8 variations from subtle to aggressive").
+Two-node connection viewer replacing the original N×M matrix concept. When two nodes are selected, the inspector switches to a patch panel showing both nodes' ports as interactive jacks — filled circles for outputs, hollow rings for inputs, half-filled for parameters. Drag between compatible jacks to create a connection. Right-click a wire to disconnect. Incompatible jacks dim during drag for immediate visual feedback. Bezier wire preview follows the cursor during drag.
 
-**Verify:** Switch to patchbay view. Audio analysis outputs on rows, visual parameters on columns. Click intersections to route. See visual changes in real time. Ask LLM to "fill the matrix with an interesting configuration."
+**Verify:** Select two nodes. Patch panel appears showing all ports for both nodes. Drag from an output jack to an input jack — wire created. Right-click a wire — disconnects. Incompatible ports dim during drag.
 
-**Why it matters:** The patchbay is the highest-discovery interface — N×M possible connections explored spatially rather than by dragging wires one at a time. It's the first interface that's genuinely unique to Vivid (no other tool has a cross-domain connection matrix). It also validates the "multiple views of the same graph" architecture — patchbay and node graph must stay synchronized.
+**Why it matters:** The original plan was an N×M connection matrix, but a contextual two-node panel turned out to be a better fit. It integrates naturally with the existing selection model (select two nodes → see their connection points), provides immediate compatibility feedback via dimming, and avoids the overwhelming grid of an N×M matrix where most intersections are irrelevant. The patch panel is the "zoom in on two nodes" complement to the graph view's "zoom out on everything."
 
-### Phase 19: Session / Variation Grid
+**Implementation notes:**
+- `src/ui/node_graph_draw.cpp` — `draw_patch_panel()` renders jacks, wires, and labels
+- `src/ui/node_graph_input.cpp` — `handle_patch_click()` for drag-to-connect, `handle_patch_right_click()` for disconnect
+- `src/ui/node_graph.h` — `PatchJack` / `PatchWire` state structs
+- `src/ui/node_graph_constants.h` — `kPatch*` layout constants
 
-Grid where columns are parameter snapshots (complete graph configurations). Click a column to switch. LLM populates rows with variations. Drag to reorder. A/B comparison between columns.
+### Phase 19: Session / Variation Grid — DONE
 
-**Verify:** Save current state as column A. Ask LLM to "generate 4 variations." Click through columns — output changes instantly. Reorder. The creative workflow of "explore a space of possibilities" is now real.
+Variation system with named parameter snapshots and a session grid UI strip at the bottom of the node graph. A `VariationDef` captures `node_id → { param → value }` for all nodes — a complete parameter configuration. The runtime API provides full CRUD: `save_variation`, `recall_variation`, `recall_variation_idx`, `remove_variation`, `rename_variation`, `update_variation`, `list_variations`, `queue_variation`, `set_quantize_clock`. Beat-quantized switching reads `beat_phase` from a designated Clock node and supports Instant, Beat, Bar, and 4Bar quantize modes. The session grid UI shows clickable cells (double-click to rename), a dirty indicator when parameters change while a variation is active, quantize mode buttons, and horizontal scroll. A `UICommandSink` / `RuntimeCommandSink` abstraction layer decouples the UI from the runtime for testability. 8 MCP tools and 8 HTTP endpoints provide full LLM access to the variation system.
 
-**Why it matters:** The session grid is what makes LLM-generated variation useful. Without it, the LLM generates one thing at a time and the user evaluates sequentially. With it, the user sees a field of options and navigates spatially — the core innovation described in the vision statement.
+**Verify:** Save a variation, modify parameters, save another. Click cells to switch — parameters restore instantly. Set quantize to Beat with a Clock node — switching aligns to beats. MCP `list_variations` returns all variations with their parameter data.
 
-### Phase 20: Pattern Algebra
+**Why it matters:** The session grid is what makes LLM-generated variation useful. Without it, the LLM generates one thing at a time and the user evaluates sequentially. With it, the user sees a field of options and navigates spatially — the core innovation described in the vision statement. Beat-quantized switching adds a live performance dimension: transitions snap to musical boundaries rather than happening at arbitrary moments.
 
-Composable pattern operators in the control domain (not a DSL — patterns are Control operators that emit time-varying sequences). Pattern combinators: sequence, stack, alternate, euclidean, transform. Patterns bindable to any parameter.
+**Implementation notes:**
+- `src/runtime/graph.h/cpp` — `VariationDef` data model + CRUD methods
+- `src/runtime/runtime_api.h/cpp` — 9 variation methods + `tick_quantized_switch()`
+- `src/runtime/control_server.cpp` — 8 dispatch handlers for variation HTTP endpoints
+- `src/ui/node_graph_draw.cpp` — `draw_session_grid()` renders the bottom strip
+- `src/runtime/graph_snapshot.h` — `VariationInfo` for external consumption
+- `src/ui/ui_command_sink.h` / `src/runtime/runtime_command_sink.h` — command abstraction layer
+- `mcp/vivid_mcp.py` — 8 variation tools
 
-**Verify:** Create a pattern that alternates two values on the beat. Apply it to particle size. Combine two patterns (polyrhythm). The output has rhythmic, musical structure driven by pattern composition.
+### Phase 20: Pattern Algebra — DONE
+
+Five composable pattern operators in the control domain — not a DSL, but standard Control operators that emit time-varying sequences through the existing graph wiring model. Pattern combinators: **Euclidean** (Bjorklund rhythm generator), **PatternSeq** (16-step beat-driven value sequencer), **Stack** (spread combiner with concat/interleave modes), **Alternate** (beat-driven input cycler), **PatTransform** (reverse/rotate/scale/offset/probability chain). All operators use Spread ports for pattern data, making them composable with each other and with any existing spread-consuming operator.
+
+**Verify:** Clock → PatternSeq (steps=4, vals: 0.3, 0.8, 0.5, 1.0) → Shape/radius produces beat-driven size changes. Two Euclidean generators (E(3,8) + E(5,8)) → Stack → PatTransform(scale=2) → Instance/values creates a polyrhythm. `ctest -R test_pattern_algebra` passes all algorithm and integration tests. `pattern_algebra_demo.json` loads and runs.
 
 **Why it matters:** Patterns are what make Vivid temporal — not just reactive to live input, but generative of its own rhythmic behavior. They're extremely LLM-friendly (short, composable, text-representable) and connect directly to the TidalCycles and Strudel communities' insight that pattern composition is a creative medium.
+
+**Implementation notes:**
+- `operators/control/euclidean/` — Bjorklund algorithm with rate multipliers, beat tracking, trigger/gate/step/pattern outputs
+- `operators/control/pattern_seq/` — 16-step sequencer with rate, gate_length, probability, spread output
+- `operators/control/stack/` — Concat/Interleave modes for combining up to 4 spread inputs
+- `operators/control/alternate/` — Cycles between connected spread inputs at Beat/2 Beats/Bar/2 Bars/4 Bars rates
+- `operators/control/pat_transform/` — Transform chain: reverse → rotate → scale → offset → probability (deterministic Knuth hash)
+- `tests/test_pattern_algebra.cpp` — 60+ assertions covering algorithm correctness, edge cases, and integration
+- `graphs/pattern_algebra_demo.json` — Clock driving Euclidean + PatternSeq → Stack → PatTransform → Instance
 
 ### Phase 21: State Machines
 
