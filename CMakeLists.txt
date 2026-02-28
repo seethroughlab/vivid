@@ -69,6 +69,11 @@ target_link_libraries(rtmidi PUBLIC
 add_library(vivid_operator_api INTERFACE)
 target_include_directories(vivid_operator_api INTERFACE src)
 
+# --- Composable operator headers (for ChildOp<T> consumers) ---
+add_library(vivid_composable_ops INTERFACE)
+target_include_directories(vivid_composable_ops INTERFACE ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(vivid_composable_ops INTERFACE vivid_operator_api)
+
 # --- Operator plugin suffix (platform-aware) ---
 if(APPLE)
     set(VIVID_PLUGIN_SUFFIX ".dylib")
@@ -107,6 +112,8 @@ add_vivid_operator(pattern_seq       operators/control/pattern_seq/pattern_seq.c
 add_vivid_operator(stack             operators/control/stack/stack.cpp)
 add_vivid_operator(alternate         operators/control/alternate/alternate.cpp)
 add_vivid_operator(pat_transform     operators/control/pat_transform/pat_transform.cpp)
+add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_gain.cpp
+                                    EXTRA_LIBS vivid_composable_ops)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu)
@@ -116,6 +123,7 @@ add_vivid_operator(composite      operators/gpu/composite/composite.cpp  EXTRA_L
 add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp                             EXTRA_LIBS webgpu)
 add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(instance             operators/gpu/instance/instance.cpp                       EXTRA_LIBS webgpu)
+add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 # Simple WGSL filters are loaded from filters/*.wgsl (no C++ needed)
 
 # --- Movie File In (image + video loader) ---
@@ -137,6 +145,25 @@ else()
 endif()
 set_target_properties(movie_file_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_include_directories(movie_file_in PRIVATE ${CMAKE_SOURCE_DIR}/deps/stb)
+
+# --- Webcam In (live camera capture) ---
+if(APPLE)
+    add_library(webcam_in MODULE
+        operators/gpu/webcam_in/webcam_in.cpp
+        operators/gpu/webcam_in/avf_capture.mm
+    )
+    target_link_libraries(webcam_in PRIVATE
+        vivid_operator_api webgpu
+        "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+        "-framework Foundation"
+    )
+    set_source_files_properties(operators/gpu/webcam_in/avf_capture.mm
+        PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    add_library(webcam_in MODULE operators/gpu/webcam_in/webcam_in.cpp)
+    target_link_libraries(webcam_in PRIVATE vivid_operator_api webgpu)
+endif()
+set_target_properties(webcam_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 
 # --- Audio operator plugins ---
 add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp)
@@ -218,6 +245,8 @@ add_executable(vivid
     src/runtime/screenshot.cpp
     src/runtime/builtin_operators.cpp
     src/runtime/control_server.cpp
+    src/runtime/capture_coordinator.cpp
+    src/runtime/av_exporter.mm
     src/runtime/operator_creator.cpp
     src/runtime/system_midi.cpp
     src/runtime/platform.cpp
@@ -228,6 +257,9 @@ add_executable(vivid
 
 target_include_directories(vivid PRIVATE src)
 target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11)
+
+# ObjC ARC for AVExporter
+set_source_files_properties(src/runtime/av_exporter.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 
 # Copy demo graphs to build directory
 configure_file(graphs/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
@@ -265,6 +297,7 @@ configure_file(graphs/feedback_demo.json ${CMAKE_BINARY_DIR}/feedback_demo.json 
 configure_file(graphs/shape_instance_demo.json ${CMAKE_BINARY_DIR}/shape_instance_demo.json COPYONLY)
 configure_file(graphs/wgsl_filters_demo.json ${CMAKE_BINARY_DIR}/wgsl_filters_demo.json COPYONLY)
 configure_file(graphs/pattern_algebra_demo.json ${CMAKE_BINARY_DIR}/pattern_algebra_demo.json COPYONLY)
+configure_file(graphs/webcam_timemachine_demo.json ${CMAKE_BINARY_DIR}/webcam_timemachine_demo.json COPYONLY)
 
 # Copy all demo graphs into graphs/ subdirectory (for test_demo_graphs)
 file(GLOB DEMO_GRAPHS graphs/*.json)
@@ -294,6 +327,9 @@ if(APPLE)
         "-framework CoreVideo"
         "-framework IOKit"
         "-framework QuartzCore"
+        "-framework AVFoundation"
+        "-framework CoreMedia"
+        "-framework VideoToolbox"
     )
 endif()
 
@@ -346,13 +382,18 @@ add_executable(test_control_server
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/control_server.cpp
+    src/runtime/capture_coordinator.cpp
+    src/runtime/screenshot.cpp
+    src/runtime/av_exporter.mm
     src/runtime/operator_creator.cpp
     src/runtime/hot_reload.cpp
     src/runtime/system_midi.cpp
 )
 target_include_directories(test_control_server PRIVATE src)
 target_link_libraries(test_control_server PRIVATE
-    vivid_operator_api yyjson miniaudio ixwebsocket webgpu rtmidi)
+    vivid_operator_api yyjson miniaudio ixwebsocket webgpu rtmidi stb_truetype
+    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+    "-framework VideoToolbox" "-framework Foundation")
 add_dependencies(test_control_server test_op_v1)
 add_test(NAME test_control_server COMMAND test_control_server WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -555,6 +596,12 @@ add_dependencies(test_pattern_algebra
 add_test(NAME test_pattern_algebra COMMAND test_pattern_algebra
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# ChildOp<T> composition unit test (no plugins, no scheduler, header-only)
+add_executable(test_child_op tests/test_child_op.cpp)
+target_include_directories(test_child_op PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_child_op PRIVATE vivid_operator_api)
+add_test(NAME test_child_op COMMAND test_child_op WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Copy test graphs to build directory
 configure_file(tests/graphs/test_reload.json ${CMAKE_BINARY_DIR}/test_reload.json COPYONLY)
 configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runtime_api.json COPYONLY)
@@ -583,6 +630,7 @@ add_dependencies(test_demo_graphs
     note_pattern chord_progression arpeggiator
     logic gate random smooth sequencer
     euclidean pattern_seq stack alternate pat_transform
+    modulated_gain
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
     noise shape bars composite
     bloom feedback instance movie_file_in
@@ -592,6 +640,7 @@ add_dependencies(test_demo_graphs
     reverb delay bitcrush distortion stutter tape_stop
     beat_repeat reverse scratch stretch freq_shift glitch
     movie_file_audio_in
+    webcam_in time_machine
 )
 add_test(NAME test_demo_graphs
     COMMAND test_demo_graphs ${CMAKE_BINARY_DIR}/graphs
