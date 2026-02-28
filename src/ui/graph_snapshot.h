@@ -18,6 +18,12 @@ struct ParamInfo {
     float max_value = 1.0f;
     std::vector<std::string> choice_labels;
     uint32_t choice_count = 0;
+
+    // Inspector layout metadata
+    std::string group;
+    VividDisplayHint display_hint = VIVID_DISPLAY_DEFAULT;
+    uint8_t layout_columns = 0;
+    uint8_t layout_column_index = 0;
 };
 
 // Owned copy of port metadata

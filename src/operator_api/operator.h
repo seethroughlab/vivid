@@ -25,6 +25,12 @@ struct ParamBase {
 
     const char**   choice_labels = nullptr;
     uint32_t       choice_count  = 0;
+
+    // Inspector layout metadata
+    const char*      group               = nullptr;
+    VividDisplayHint display_hint        = VIVID_DISPLAY_DEFAULT;
+    uint8_t          layout_columns      = 0;
+    uint8_t          layout_column_index = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -107,6 +113,29 @@ struct Param<FilePath> : ParamBase {
 };
 
 // ---------------------------------------------------------------------------
+// Helper functions for setting inspector layout metadata on params
+// ---------------------------------------------------------------------------
+
+template<typename T>
+Param<T>& display_hint(Param<T>& p, VividDisplayHint hint) {
+    p.display_hint = hint;
+    return p;
+}
+
+template<typename T>
+Param<T>& param_group(Param<T>& p, const char* group_name) {
+    p.group = group_name;
+    return p;
+}
+
+template<typename T>
+Param<T>& layout_row(Param<T>& p, uint8_t columns, uint8_t col) {
+    p.layout_columns = columns;
+    p.layout_column_index = col;
+    return p;
+}
+
+// ---------------------------------------------------------------------------
 // OperatorBase — abstract base class for operators
 // ---------------------------------------------------------------------------
 
@@ -148,6 +177,10 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             s_params[i].default_value = pbases[i]->default_value;             \
             s_params[i].min_value     = pbases[i]->min_value;                 \
             s_params[i].max_value     = pbases[i]->max_value;                 \
+            s_params[i].group               = pbases[i]->group;                \
+            s_params[i].display_hint        = pbases[i]->display_hint;         \
+            s_params[i].layout_columns      = pbases[i]->layout_columns;       \
+            s_params[i].layout_column_index = pbases[i]->layout_column_index;  \
             if (pbases[i]->choice_count > 0) {                                \
                 s_label_storage[i].assign(                                    \
                     pbases[i]->choice_labels,                                 \

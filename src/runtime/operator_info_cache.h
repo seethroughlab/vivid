@@ -38,6 +38,10 @@ public:
             pi.min_value = pd.min_value;
             pi.max_value = pd.max_value;
             pi.choice_count = pd.choice_count;
+            pi.group               = pd.group ? pd.group : "";
+            pi.display_hint        = pd.display_hint;
+            pi.layout_columns      = pd.layout_columns;
+            pi.layout_column_index = pd.layout_column_index;
             if (pd.choice_labels && pd.choice_count > 0) {
                 pi.choice_labels.reserve(pd.choice_count);
                 for (uint32_t ci = 0; ci < pd.choice_count; ++ci)

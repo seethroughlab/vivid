@@ -23,6 +23,11 @@ typedef enum VividParamType {
     VIVID_PARAM_FILE  = 3,
 } VividParamType;
 
+typedef enum VividDisplayHint {
+    VIVID_DISPLAY_DEFAULT = 0,   // full-width slider (current behavior)
+    VIVID_DISPLAY_KNOB    = 1,   // circular knob widget
+} VividDisplayHint;
+
 typedef enum VividPortType {
     VIVID_PORT_CONTROL_FLOAT  = 0,
     VIVID_PORT_CONTROL_INT    = 1,
@@ -50,6 +55,12 @@ typedef struct VividParamDescriptor {
     const char**   choice_labels;   /* NULL if not an enum, else array of choice_count strings */
     uint32_t       choice_count;    /* 0 for regular params */
     const char*    default_string;  /* default value for VIVID_PARAM_FILE, NULL otherwise */
+
+    /* inspector layout metadata */
+    const char*       group;              /* NULL = ungrouped */
+    VividDisplayHint  display_hint;       /* VIVID_DISPLAY_DEFAULT if unset */
+    uint8_t           layout_columns;     /* 0 = full-width (1 column), 2 = half-width, etc. */
+    uint8_t           layout_column_index;/* 0-based column position within a multi-column row */
 } VividParamDescriptor;
 
 typedef struct VividPortDescriptor {
