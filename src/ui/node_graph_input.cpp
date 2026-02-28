@@ -1330,6 +1330,7 @@ void NodeGraphUI::update_preferences() {
         + (show_custom ? kPrefsRowH + 4 : 0)
         + kPrefsSectionGap
         + kPrefsRowH + style_count * kPrefsRowH
+        + kPrefsRowH + 4                          // "Open Themes Folder" link
         + kPrefsSectionGap + kPrefsBtnH + kPrefsPadY;
 
     float pw = kPrefsW;
@@ -1406,6 +1407,17 @@ void NodeGraphUI::update_preferences() {
         }
         cy += kPrefsRowH;
     }
+
+    // "Open Themes Folder" link
+    cy += 4;
+    if (mouse_.x >= cx + 18 && mouse_.x <= cx + inner_w &&
+        mouse_.y >= cy && mouse_.y <= cy + kPrefsRowH) {
+        open_themes_folder();
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+    cy += kPrefsRowH;
 
     cy += kPrefsSectionGap;
 

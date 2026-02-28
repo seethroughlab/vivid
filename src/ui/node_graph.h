@@ -5,6 +5,7 @@
 #include "ui/graph_snapshot.h"
 #include "ui/ui_command_sink.h"
 #include "ui/ui_style.h"
+#include "ui/theme_loader.h"
 #include "operator_api/types.h"
 #include <webgpu/webgpu.h>
 #include <string>
@@ -93,7 +94,8 @@ public:
     void toggle_preferences();
     void set_editor_options(std::vector<std::string> names, std::vector<std::string> ids,
                             int current_idx = 0, const std::string& custom_command = "");
-    void set_style_options(std::vector<UIStyle> styles, int current_idx);
+    void set_style_options(std::vector<UIStyle> styles, int current_idx,
+                            std::vector<ThemeInfo> themes = {});
 
 private:
     // --- Layout ---
@@ -480,6 +482,7 @@ private:
     bool prefs_editing_custom_ = false;
     int prefs_style_sel_ = 0;
     std::vector<UIStyle> prefs_styles_;
+    std::vector<ThemeInfo> prefs_themes_;
     int prefs_saved_style_sel_ = 0;   // to revert on cancel
 
     // Active UI style

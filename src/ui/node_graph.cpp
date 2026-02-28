@@ -1165,8 +1165,10 @@ void NodeGraphUI::set_editor_options(std::vector<std::string> names,
     prefs_custom_command_ = custom_command;
 }
 
-void NodeGraphUI::set_style_options(std::vector<UIStyle> styles, int current_idx) {
+void NodeGraphUI::set_style_options(std::vector<UIStyle> styles, int current_idx,
+                                     std::vector<ThemeInfo> themes) {
     prefs_styles_ = std::move(styles);
+    prefs_themes_ = std::move(themes);
     prefs_style_sel_ = current_idx;
     prefs_saved_style_sel_ = current_idx;
     if (current_idx >= 0 && current_idx < static_cast<int>(prefs_styles_.size())) {

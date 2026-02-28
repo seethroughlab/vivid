@@ -21,6 +21,7 @@
 #include "runtime/operator_info_cache.h"
 #include "runtime/runtime_command_sink.h"
 #include "ui/ui_style.h"
+#include "ui/theme_loader.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/data_driven_filter.h"
 #include "operator_api/types.h"
@@ -736,13 +737,15 @@ int main(int argc, char* argv[]) {
         graph_ui.set_editor_options(std::move(editor_names), std::move(editor_ids),
                                     editor_sel, settings.editor_command);
 
-        auto styles = vivid::ui::builtin_styles();
+        vivid::ui::ensure_default_themes();
+        auto themes = vivid::ui::discover_themes();
+        auto styles = vivid::ui::load_all_themes(themes);
         int style_sel = 0;
         for (size_t i = 0; i < styles.size(); ++i) {
             if (styles[i].id == settings.style_id)
                 style_sel = static_cast<int>(i);
         }
-        graph_ui.set_style_options(std::move(styles), style_sel);
+        graph_ui.set_style_options(std::move(styles), style_sel, std::move(themes));
     }
 
     // Set up GLFW input callbacks

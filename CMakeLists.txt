@@ -186,6 +186,7 @@ add_library(vivid_ui STATIC
     src/ui/node_graph_draw.cpp
     src/ui/node_graph_input.cpp
     src/ui/ui_style.cpp
+    src/ui/theme_loader.cpp
 )
 if(APPLE)
     target_sources(vivid_ui PRIVATE src/ui/file_dialog.mm)
@@ -193,7 +194,7 @@ if(APPLE)
 endif()
 target_include_directories(vivid_ui PRIVATE src)
 target_link_libraries(vivid_ui PUBLIC vivid_operator_api webgpu)
-target_link_libraries(vivid_ui PRIVATE stb_truetype glfw)
+target_link_libraries(vivid_ui PRIVATE stb_truetype glfw yyjson)
 
 # --- Vivid executable ---
 add_executable(vivid
@@ -423,6 +424,17 @@ add_executable(test_settings
 target_include_directories(test_settings PRIVATE src tests)
 target_link_libraries(test_settings PRIVATE yyjson)
 add_test(NAME test_settings COMMAND test_settings WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Theme loader unit test
+add_executable(test_theme_loader
+    tests/test_theme_loader.cpp
+    src/ui/theme_loader.cpp
+    src/ui/ui_style.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_theme_loader PRIVATE src tests)
+target_link_libraries(test_theme_loader PRIVATE yyjson)
+add_test(NAME test_theme_loader COMMAND test_theme_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # WGSL header parser unit test
 add_executable(test_wgsl_header

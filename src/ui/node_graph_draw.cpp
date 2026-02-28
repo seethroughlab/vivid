@@ -2450,6 +2450,7 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
         + kPrefsSectionGap
         + kPrefsRowH                              // "STYLE" section header
         + style_count * kPrefsRowH                // radio items
+        + kPrefsRowH + 4                          // "Open Themes Folder" button
         + kPrefsSectionGap
         + kPrefsBtnH                              // buttons
         + kPrefsPadY;
@@ -2535,6 +2536,18 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         cy += kPrefsRowH;
     }
+
+    // "Open Themes Folder" link
+    cy += 4;
+    {
+        const char* label = "Open Themes Folder...";
+        bool link_hover = mouse_.x >= cx + 18 && mouse_.x <= cx + 18 + tr.text_width(label) &&
+                          mouse_.y >= cy && mouse_.y <= cy + kPrefsRowH;
+        float alpha = link_hover ? 1.0f : 0.7f;
+        tr.draw_text(cx + 18, cy + 1, label,
+                     style_.accent[0], style_.accent[1], style_.accent[2], alpha);
+    }
+    cy += kPrefsRowH;
 
     cy += kPrefsSectionGap;
 
