@@ -24,6 +24,16 @@ struct Envelope : vivid::OperatorBase {
     bool  gate_ever_on_ = false;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        display_hint(attack,  VIVID_DISPLAY_KNOB);
+        display_hint(decay,   VIVID_DISPLAY_KNOB);
+        display_hint(sustain, VIVID_DISPLAY_KNOB);
+        display_hint(release, VIVID_DISPLAY_KNOB);
+
+        layout_row(attack,  4, 0);
+        layout_row(decay,   4, 1);
+        layout_row(sustain, 4, 2);
+        layout_row(release, 4, 3);
+
         out.push_back(&attack);
         out.push_back(&decay);
         out.push_back(&sustain);

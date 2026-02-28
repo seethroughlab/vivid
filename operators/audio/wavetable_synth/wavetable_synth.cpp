@@ -386,6 +386,104 @@ struct WavetableSynth : vivid::OperatorBase {
     // --- Param / port registration ---
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        // -- Groups --
+        param_group(wavetable,  "Core");
+        param_group(position,   "Core");
+        param_group(amplitude,  "Core");
+
+        param_group(warp_mode,   "Warp");
+        param_group(warp_amount, "Warp");
+
+        param_group(unison_voices, "Unison");
+        param_group(unison_spread, "Unison");
+        param_group(unison_stereo, "Unison");
+
+        param_group(sub_level,  "Sub");
+        param_group(sub_octave, "Sub");
+
+        param_group(portamento, "Portamento");
+
+        param_group(attack,  "Amp Envelope");
+        param_group(decay,   "Amp Envelope");
+        param_group(sustain, "Amp Envelope");
+        param_group(release, "Amp Envelope");
+
+        param_group(filter_type,      "Filter");
+        param_group(filter_cutoff,    "Filter");
+        param_group(filter_resonance, "Filter");
+        param_group(filter_keytrack,  "Filter");
+
+        param_group(filter_attack,     "Filter Envelope");
+        param_group(filter_decay,      "Filter Envelope");
+        param_group(filter_sustain,    "Filter Envelope");
+        param_group(filter_release,    "Filter Envelope");
+        param_group(filter_env_amount, "Filter Envelope");
+
+        param_group(position_attack,     "Position Envelope");
+        param_group(position_decay,      "Position Envelope");
+        param_group(position_sustain,    "Position Envelope");
+        param_group(position_release,    "Position Envelope");
+        param_group(position_env_amount, "Position Envelope");
+
+        param_group(vel_to_volume, "Velocity");
+        param_group(vel_to_attack, "Velocity");
+
+        param_group(stereo_spread, "Output");
+        param_group(detune,        "Output");
+        param_group(env_bypass,    "Output");
+
+        // -- Display hints --
+        display_hint(attack,  VIVID_DISPLAY_KNOB);
+        display_hint(decay,   VIVID_DISPLAY_KNOB);
+        display_hint(sustain, VIVID_DISPLAY_KNOB);
+        display_hint(release, VIVID_DISPLAY_KNOB);
+
+        display_hint(filter_cutoff,    VIVID_DISPLAY_KNOB);
+        display_hint(filter_resonance, VIVID_DISPLAY_KNOB);
+        display_hint(filter_keytrack,  VIVID_DISPLAY_KNOB);
+
+        display_hint(filter_attack,  VIVID_DISPLAY_KNOB);
+        display_hint(filter_decay,   VIVID_DISPLAY_KNOB);
+        display_hint(filter_sustain, VIVID_DISPLAY_KNOB);
+        display_hint(filter_release, VIVID_DISPLAY_KNOB);
+
+        display_hint(position_attack,  VIVID_DISPLAY_KNOB);
+        display_hint(position_decay,   VIVID_DISPLAY_KNOB);
+        display_hint(position_sustain, VIVID_DISPLAY_KNOB);
+        display_hint(position_release, VIVID_DISPLAY_KNOB);
+
+        // -- Multi-column layouts --
+        // Amp ADSR: 4 columns
+        layout_row(attack,  4, 0);
+        layout_row(decay,   4, 1);
+        layout_row(sustain, 4, 2);
+        layout_row(release, 4, 3);
+
+        // Filter knobs: 3 columns
+        layout_row(filter_cutoff,    3, 0);
+        layout_row(filter_resonance, 3, 1);
+        layout_row(filter_keytrack,  3, 2);
+
+        // Filter Envelope ADSR: 4 columns
+        layout_row(filter_attack,  4, 0);
+        layout_row(filter_decay,   4, 1);
+        layout_row(filter_sustain, 4, 2);
+        layout_row(filter_release, 4, 3);
+
+        // Position Envelope ADSR: 4 columns
+        layout_row(position_attack,  4, 0);
+        layout_row(position_decay,   4, 1);
+        layout_row(position_sustain, 4, 2);
+        layout_row(position_release, 4, 3);
+
+        // Velocity: 2 columns
+        layout_row(vel_to_volume, 2, 0);
+        layout_row(vel_to_attack, 2, 1);
+
+        // Output: 2 columns for spread/detune, env_bypass full-width
+        layout_row(stereo_spread, 2, 0);
+        layout_row(detune,        2, 1);
+
         out.push_back(&wavetable);
         out.push_back(&position);
         out.push_back(&amplitude);

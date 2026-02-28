@@ -16,6 +16,13 @@ struct Transform : vivid::WgslFilterBase {
     Transform() : WgslFilterBase("transform.wgsl") {}
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        layout_row(scale_x,     2, 0);
+        layout_row(scale_y,     2, 1);
+        layout_row(translate_x, 2, 0);
+        layout_row(translate_y, 2, 1);
+        layout_row(pivot_x,     2, 0);
+        layout_row(pivot_y,     2, 1);
+
         out.push_back(&scale_x);
         out.push_back(&scale_y);
         out.push_back(&rotation);
