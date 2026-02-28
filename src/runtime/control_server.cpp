@@ -1,4 +1,5 @@
 #include "runtime/control_server.h"
+#include "runtime/capture_coordinator.h"
 #include "runtime/runtime_api.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
@@ -672,6 +673,7 @@ ControlServer::~ControlServer() { stop(); }
 
 void ControlServer::set_src_dir(const std::string& src_dir) { src_dir_ = src_dir; }
 void ControlServer::set_hot_reloader(HotReloader* hr) { hot_reloader_ = hr; }
+void ControlServer::set_capture_coordinator(CaptureCoordinator* cc) { capture_coordinator_ = cc; }
 
 bool ControlServer::start(int port) {
     impl_ = std::make_unique<Impl>(port);
@@ -700,6 +702,92 @@ bool ControlServer::start(int port) {
             std::string method = request->uri;
             if (!method.empty() && method[0] == '/')
                 method = method.substr(1);
+
+            // Recording tap start/stop (immediate, no main-thread dispatch needed)
+            if (capture_coordinator_ &&
+                (method == "start_recording_tap" || method == "stop_recording_tap")) {
+                std::string response_body = (method == "start_recording_tap")
+                    ? capture_coordinator_->handle_start_recording_tap()
+                    : capture_coordinator_->handle_stop_recording_tap();
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    response_body);
+            }
+
+            // Recording start/stop — routed through coordinator's pending queue (needs main thread)
+            if (capture_coordinator_ &&
+                (method == "start_recording" || method == "stop_recording")) {
+                std::future<std::string> future;
+                if (method == "start_recording") {
+                    std::string path = "/tmp/vivid_recording.mov";
+                    double fps = 60.0;
+                    yyjson_doc* doc = yyjson_read(request->body.c_str(), request->body.size(), 0);
+                    if (doc) {
+                        yyjson_val* root = yyjson_doc_get_root(doc);
+                        yyjson_val* path_v = root ? yyjson_obj_get(root, "path") : nullptr;
+                        yyjson_val* fps_v  = root ? yyjson_obj_get(root, "fps")  : nullptr;
+                        if (path_v && yyjson_is_str(path_v))
+                            path = yyjson_get_str(path_v);
+                        if (fps_v && yyjson_is_real(fps_v))
+                            fps = yyjson_get_real(fps_v);
+                        else if (fps_v && yyjson_is_int(fps_v))
+                            fps = static_cast<double>(yyjson_get_int(fps_v));
+                        yyjson_doc_free(doc);
+                    }
+                    future = capture_coordinator_->request_start_recording(path, fps);
+                } else {
+                    future = capture_coordinator_->request_stop_recording();
+                }
+
+                auto status = future.wait_for(std::chrono::seconds(10));
+                std::string response_body;
+                if (status == std::future_status::ready)
+                    response_body = future.get();
+                else
+                    response_body = R"({"ok":false,"error":"timeout"})";
+
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    response_body);
+            }
+
+            // Capture methods bypass normal dispatch — route to CaptureCoordinator
+            if (capture_coordinator_ &&
+                (method == "capture_frame" || method == "capture_audio" || method == "capture_av")) {
+                CaptureType ctype = CaptureType::Frame;
+                float audio_dur = 1.0f;
+                if (method == "capture_audio") ctype = CaptureType::Audio;
+                else if (method == "capture_av") ctype = CaptureType::AV;
+
+                // Parse optional duration from body
+                if (ctype == CaptureType::Audio || ctype == CaptureType::AV) {
+                    yyjson_doc* doc = yyjson_read(request->body.c_str(), request->body.size(), 0);
+                    if (doc) {
+                        yyjson_val* root = yyjson_doc_get_root(doc);
+                        yyjson_val* dur_v = root ? yyjson_obj_get(root, "duration") : nullptr;
+                        if (dur_v && yyjson_is_real(dur_v))
+                            audio_dur = static_cast<float>(yyjson_get_real(dur_v));
+                        else if (dur_v && yyjson_is_int(dur_v))
+                            audio_dur = static_cast<float>(yyjson_get_int(dur_v));
+                        yyjson_doc_free(doc);
+                    }
+                }
+
+                auto future = capture_coordinator_->request_capture(ctype, audio_dur);
+                auto status = future.wait_for(std::chrono::seconds(5));
+                std::string response_body;
+                if (status == std::future_status::ready)
+                    response_body = future.get();
+                else
+                    response_body = R"({"ok":false,"error":"timeout"})";
+
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    response_body);
+            }
 
             // Push request to queue, block until main thread processes it
             Impl::PendingRequest req;

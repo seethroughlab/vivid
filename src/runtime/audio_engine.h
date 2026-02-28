@@ -5,6 +5,7 @@
 #include "operator_api/audio_operator.h"
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -115,6 +116,16 @@ struct AudioToControlMapping {
     std::vector<SpreadOutputMapping> spread_output_mappings;
 };
 
+// Lock-free SPSC ring buffer for recording the final stereo mix.
+// Audio thread writes, main thread reads. Pre-allocated, zero overhead when inactive.
+struct RecordingTap {
+    static constexpr uint32_t kRingSize = 960000; // 10 sec @ 48kHz stereo interleaved
+    float ring[kRingSize];
+    std::atomic<uint64_t> write_pos{0}; // monotonic, audio thread writes
+    std::atomic<uint64_t> read_pos{0};  // monotonic, main thread writes
+    std::atomic<bool> active{false};    // main thread toggles
+};
+
 class AudioEngine {
 public:
     AudioEngine();
@@ -136,6 +147,12 @@ public:
     void pause();
     void resume();
     bool reload_operator(const std::string& type_name, OperatorRegistry& registry);
+
+    // Recording tap — capture the final stereo mix (call from main thread)
+    void start_recording_tap();
+    void stop_recording_tap();
+    uint64_t available_recorded_samples() const;
+    uint64_t pop_recorded_samples(float* dst, uint64_t max_samples);
 
     uint32_t underrun_count() const { return underrun_count_.load(std::memory_order_relaxed); }
     bool last_buffer_underrun() const { return last_buffer_underrun_.load(std::memory_order_relaxed); }
@@ -186,6 +203,9 @@ private:
     // Underrun detection
     std::atomic<uint32_t> underrun_count_{0};
     std::atomic<bool> last_buffer_underrun_{false};
+
+    // Recording tap (stereo mix capture)
+    RecordingTap recording_tap_;
 };
 
 } // namespace vivid

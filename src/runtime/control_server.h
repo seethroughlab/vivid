@@ -10,6 +10,7 @@ class Graph;
 class Scheduler;
 class OperatorRegistry;
 class HotReloader;
+class CaptureCoordinator;
 
 class ControlServer {
 public:
@@ -26,6 +27,7 @@ public:
     // Set context needed by scaffold_operator (call before main loop)
     void set_src_dir(const std::string& src_dir);
     void set_hot_reloader(HotReloader* hr);
+    void set_capture_coordinator(CaptureCoordinator* cc);
 
     // Call from main loop each frame. Drains pending HTTP requests,
     // dispatches commands against the runtime, and signals responses.
@@ -40,6 +42,7 @@ private:
     std::unique_ptr<Impl> impl_;
     std::string src_dir_;
     HotReloader* hot_reloader_ = nullptr;
+    CaptureCoordinator* capture_coordinator_ = nullptr;
 };
 
 } // namespace vivid

@@ -733,6 +733,20 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             std::memset(dst, 0, chunk * 2 * sizeof(float));
         }
 
+        // Recording tap: copy interleaved stereo output to ring buffer
+        if (recording_tap_.active.load(std::memory_order_relaxed)) {
+            uint64_t wp = recording_tap_.write_pos.load(std::memory_order_relaxed);
+            uint64_t rp = recording_tap_.read_pos.load(std::memory_order_acquire);
+            uint64_t available = RecordingTap::kRingSize - (wp - rp);
+            uint64_t samples_to_copy = chunk * 2; // stereo interleaved
+            if (samples_to_copy > available)
+                samples_to_copy = available; // drop oldest on overflow
+            for (uint64_t i = 0; i < samples_to_copy; ++i) {
+                recording_tap_.ring[(wp + i) % RecordingTap::kRingSize] = dst[i];
+            }
+            recording_tap_.write_pos.store(wp + samples_to_copy, std::memory_order_release);
+        }
+
         frames_written += chunk;
     }
 
@@ -790,6 +804,38 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
     analysis_active_.store(write_idx, std::memory_order_release);
 
     audio_frame_ += frame_count;
+}
+
+// ---------------------------------------------------------------------------
+// Recording tap — main thread API
+// ---------------------------------------------------------------------------
+
+void AudioEngine::start_recording_tap() {
+    recording_tap_.read_pos.store(0, std::memory_order_relaxed);
+    recording_tap_.write_pos.store(0, std::memory_order_relaxed);
+    recording_tap_.active.store(true, std::memory_order_release);
+}
+
+void AudioEngine::stop_recording_tap() {
+    recording_tap_.active.store(false, std::memory_order_release);
+}
+
+uint64_t AudioEngine::available_recorded_samples() const {
+    uint64_t wp = recording_tap_.write_pos.load(std::memory_order_acquire);
+    uint64_t rp = recording_tap_.read_pos.load(std::memory_order_relaxed);
+    return wp - rp;
+}
+
+uint64_t AudioEngine::pop_recorded_samples(float* dst, uint64_t max_samples) {
+    uint64_t wp = recording_tap_.write_pos.load(std::memory_order_acquire);
+    uint64_t rp = recording_tap_.read_pos.load(std::memory_order_relaxed);
+    uint64_t avail = wp - rp;
+    uint64_t to_read = avail < max_samples ? avail : max_samples;
+    for (uint64_t i = 0; i < to_read; ++i) {
+        dst[i] = recording_tap_.ring[(rp + i) % RecordingTap::kRingSize];
+    }
+    recording_tap_.read_pos.store(rp + to_read, std::memory_order_release);
+    return to_read;
 }
 
 } // namespace vivid

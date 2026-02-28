@@ -589,6 +589,16 @@ bool Scheduler::gpu_sink_source_size(int sink_idx, uint32_t& w, uint32_t& h) con
     return false;
 }
 
+WGPUTexture Scheduler::gpu_sink_source_texture(int sink_idx) const {
+    for (const auto& wire : wires_) {
+        if (wire.to_node_idx == static_cast<uint32_t>(sink_idx) &&
+            wire.is_texture_wire && !wire.targets_param) {
+            return nodes_[wire.from_node_idx].gpu_texture;
+        }
+    }
+    return nullptr;
+}
+
 bool Scheduler::is_audio_type(const std::string& type_name) const {
     for (const auto& ns : nodes_) {
         const VividOperatorDescriptor* desc = ns.loader->descriptor();

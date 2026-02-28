@@ -15,6 +15,7 @@
 #include "ui/ui_command_sink.h"
 #include "runtime/builtin_operators.h"
 #include "runtime/control_server.h"
+#include "runtime/capture_coordinator.h"
 #include "runtime/system_midi.h"
 #include "runtime/settings.h"
 #include "runtime/editor_detect.h"
@@ -705,7 +706,10 @@ int main(int argc, char* argv[]) {
     vivid::RuntimeAPI runtime_api(graph, scheduler, audio_engine, registry, &system_midi);
 
     // --- Control server (MCP HTTP bridge) ---
+    vivid::CaptureCoordinator capture_coordinator;
+    if (has_audio) capture_coordinator.set_audio_engine(&audio_engine);
     vivid::ControlServer control_server;
+    control_server.set_capture_coordinator(&capture_coordinator);
     control_server.start(9876);
     if (!src_dir.empty())
         control_server.set_src_dir(src_dir);
@@ -883,6 +887,7 @@ int main(int argc, char* argv[]) {
                 scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
             }
             video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
+            capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
         }
         // Handle GPU realloc after reload command or operator-requested resize
         if (runtime_api.needs_gpu_realloc() || scheduler.needs_gpu_realloc()) {
@@ -964,6 +969,23 @@ int main(int argc, char* argv[]) {
 
             if (has_audio) {
                 audio_engine.push_params(scheduler);
+            }
+
+            // Process capture/recording requests (after tick, textures are fresh)
+            if (capture_coordinator.has_pending() || capture_coordinator.is_recording()) {
+                WGPUTexture cap_tex = nullptr;
+                uint32_t cap_w = 0, cap_h = 0;
+                if (has_gpu_ops && video_out_idx >= 0) {
+                    // Find the source node's texture (upstream of video_out)
+                    cap_tex = scheduler.gpu_sink_source_texture(video_out_idx);
+                    scheduler.gpu_sink_source_size(video_out_idx, cap_w, cap_h);
+                }
+                if (capture_coordinator.has_pending())
+                    capture_coordinator.process_pending(
+                        gpu.device(), gpu.queue(), cap_tex, cap_w, cap_h);
+                if (capture_coordinator.is_recording())
+                    capture_coordinator.tick_recording(
+                        gpu.device(), gpu.queue(), cap_tex, cap_w, cap_h);
             }
 
             if (frame_count % 60 == 0) {
