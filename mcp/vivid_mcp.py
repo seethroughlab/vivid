@@ -362,5 +362,121 @@ async def set_quantize_clock(node_id: str) -> str:
     return await _post("set_quantize_clock", {"node_id": node_id})
 
 
+@mcp.tool()
+async def save_preset(node_id: str, name: str) -> str:
+    """Save a named preset of the current parameter values for a single operator instance.
+
+    Args:
+        node_id: The node to snapshot
+        name: Name for the preset (e.g. "intro_chords")
+    """
+    return await _post("save_preset", {"node_id": node_id, "name": name})
+
+
+@mcp.tool()
+async def recall_preset(node_id: str, name: str) -> str:
+    """Recall a saved preset, restoring that operator's parameter values.
+
+    Args:
+        node_id: The node to restore
+        name: Name of the preset to recall
+    """
+    return await _post("recall_preset", {"node_id": node_id, "name": name})
+
+
+@mcp.tool()
+async def update_preset(node_id: str, name: str) -> str:
+    """Overwrite an existing preset with the operator's current parameter values.
+
+    Args:
+        node_id: The node whose current params to save
+        name: Name of the preset to update
+    """
+    return await _post("update_preset", {"node_id": node_id, "name": name})
+
+
+@mcp.tool()
+async def remove_preset(node_id: str, name: str) -> str:
+    """Delete a saved preset from an operator.
+
+    Args:
+        node_id: The node owning the preset
+        name: Name of the preset to remove
+    """
+    return await _post("remove_preset", {"node_id": node_id, "name": name})
+
+
+@mcp.tool()
+async def rename_preset(node_id: str, old_name: str, new_name: str) -> str:
+    """Rename a saved preset on an operator.
+
+    Args:
+        node_id: The node owning the preset
+        old_name: Current preset name
+        new_name: New preset name
+    """
+    return await _post("rename_preset", {"node_id": node_id, "old_name": old_name, "new_name": new_name})
+
+
+@mcp.tool()
+async def list_presets(node_id: str) -> str:
+    """List all saved presets for an operator instance.
+
+    Args:
+        node_id: The node to list presets for
+    """
+    return await _post("list_presets", {"node_id": node_id})
+
+
+@mcp.tool()
+async def set_state_preset(sm_node: str, state_idx: int, target_node: str, preset_name: str) -> str:
+    """Bind a preset to a state machine state. When the state machine enters this state, the preset is recalled on the target node.
+
+    Args:
+        sm_node: ID of the StateMachine node
+        state_idx: State index (0-7)
+        target_node: ID of the node whose preset to recall
+        preset_name: Name of the preset to recall
+    """
+    return await _post("set_state_preset", {
+        "sm_node": sm_node, "state_idx": state_idx,
+        "target_node": target_node, "preset_name": preset_name
+    })
+
+
+@mcp.tool()
+async def remove_state_preset(sm_node: str, state_idx: int, target_node: str) -> str:
+    """Remove a preset binding from a state machine state.
+
+    Args:
+        sm_node: ID of the StateMachine node
+        state_idx: State index (0-7)
+        target_node: ID of the target node to unbind
+    """
+    return await _post("remove_state_preset", {
+        "sm_node": sm_node, "state_idx": state_idx, "target_node": target_node
+    })
+
+
+@mcp.tool()
+async def clear_state_presets(sm_node: str) -> str:
+    """Remove all preset bindings from a state machine.
+
+    Args:
+        sm_node: ID of the StateMachine node
+    """
+    return await _post("clear_state_presets", {"sm_node": sm_node})
+
+
+@mcp.tool()
+async def inspect_state_presets(sm_node: str) -> str:
+    """Show all preset bindings for a state machine, organized by state index.
+
+    Args:
+        sm_node: ID of the StateMachine node
+    """
+    return await _post("inspect_state_presets", {"sm_node": sm_node})
+
+
 if __name__ == "__main__":
     mcp.run()

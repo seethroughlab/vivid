@@ -546,6 +546,151 @@ void RuntimeAPI::tick_quantized_switch() {
     }
 }
 
+// --- Per-Operator Presets ---
+
+CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::string& name) {
+    NodeState* ns = scheduler_.find_node_mut(node_id);
+    if (!ns) return {false, "unknown node '" + node_id + "'"};
+
+    OperatorPreset preset;
+    preset.name = name;
+    for (const auto& [pname, idx] : ns->param_indices) {
+        preset.params[pname] = ns->param_values[idx];
+    }
+    graph_.save_preset(node_id, preset);
+    return {true, "saved preset '" + name + "' on " + node_id};
+}
+
+CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::string& name) {
+    const auto* preset = graph_.find_preset(node_id, name);
+    if (!preset) return {false, "preset '" + name + "' not found on " + node_id};
+
+    NodeState* ns = scheduler_.find_node_mut(node_id);
+    if (!ns) return {false, "unknown node '" + node_id + "'"};
+
+    for (const auto& [pname, pval] : preset->params) {
+        auto pi = ns->param_indices.find(pname);
+        if (pi != ns->param_indices.end()) {
+            ns->param_values[pi->second] = pval;
+            NodeDef* ndef = graph_.find_node(node_id);
+            if (ndef) ndef->params[pname] = pval;
+        }
+    }
+    ns->generation++;
+    return {true, "recalled preset '" + name + "' on " + node_id};
+}
+
+CommandResult RuntimeAPI::update_preset(const std::string& node_id, const std::string& name) {
+    auto* preset = graph_.find_preset(node_id, name);
+    if (!preset) return {false, "preset '" + name + "' not found on " + node_id};
+
+    NodeState* ns = scheduler_.find_node_mut(node_id);
+    if (!ns) return {false, "unknown node '" + node_id + "'"};
+
+    preset->params.clear();
+    for (const auto& [pname, idx] : ns->param_indices) {
+        preset->params[pname] = ns->param_values[idx];
+    }
+    return {true, "updated preset '" + name + "' on " + node_id};
+}
+
+CommandResult RuntimeAPI::remove_preset(const std::string& node_id, const std::string& name) {
+    if (!graph_.remove_preset(node_id, name))
+        return {false, "preset '" + name + "' not found on " + node_id};
+    return {true, "removed preset '" + name + "' from " + node_id};
+}
+
+CommandResult RuntimeAPI::rename_preset(const std::string& node_id, const std::string& old_name,
+                                         const std::string& new_name) {
+    if (!graph_.rename_preset(node_id, old_name, new_name))
+        return {false, "rename failed (not found or name conflict)"};
+    return {true, "renamed preset '" + old_name + "' to '" + new_name + "' on " + node_id};
+}
+
+CommandResult RuntimeAPI::list_presets(const std::string& node_id) {
+    auto names = graph_.list_presets(node_id);
+    if (names.empty()) return {true, "(no presets on " + node_id + ")"};
+    std::ostringstream oss;
+    for (size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) oss << ", ";
+        oss << names[i];
+    }
+    return {true, oss.str()};
+}
+
+// --- State-Preset Mapping ---
+
+CommandResult RuntimeAPI::set_state_preset(const std::string& sm_node, int state_idx,
+                                            const std::string& target_node,
+                                            const std::string& preset_name) {
+    if (state_idx < 0 || state_idx > 7)
+        return {false, "state index must be 0-7"};
+    graph_.set_state_preset(sm_node, state_idx, target_node, preset_name);
+    return {true, "bound " + sm_node + " state " + std::to_string(state_idx)
+                  + " -> " + target_node + "/" + preset_name};
+}
+
+CommandResult RuntimeAPI::remove_state_preset(const std::string& sm_node, int state_idx,
+                                               const std::string& target_node) {
+    if (!graph_.remove_state_preset(sm_node, state_idx, target_node))
+        return {false, "binding not found"};
+    return {true, "removed binding"};
+}
+
+CommandResult RuntimeAPI::clear_state_presets(const std::string& sm_node) {
+    graph_.clear_state_presets(sm_node);
+    prev_sm_state_.erase(sm_node);
+    return {true, "cleared all state-preset mappings for " + sm_node};
+}
+
+CommandResult RuntimeAPI::inspect_state_presets(const std::string& sm_node) {
+    const auto* spm = graph_.find_state_mapping(sm_node);
+    if (!spm) return {true, "(no state-preset mappings for " + sm_node + ")"};
+    std::ostringstream oss;
+    for (size_t i = 0; i < spm->state_presets.size(); ++i) {
+        oss << "state " << i << ":";
+        if (spm->state_presets[i].empty()) {
+            oss << " (none)";
+        } else {
+            for (const auto& [target, preset] : spm->state_presets[i]) {
+                oss << " " << target << "=" << preset;
+            }
+        }
+        oss << "\n";
+    }
+    std::string result = oss.str();
+    if (!result.empty() && result.back() == '\n') result.pop_back();
+    return {true, result};
+}
+
+void RuntimeAPI::tick_state_presets() {
+    for (const auto& spm : graph_.state_preset_mappings()) {
+        const NodeState* sm_ns = nullptr;
+        for (const auto& ns : scheduler_.nodes()) {
+            if (ns.node_id == spm.state_machine_node) { sm_ns = &ns; break; }
+        }
+        if (!sm_ns) continue;
+
+        // Read the "state" output
+        auto oi = sm_ns->output_port_indices.find("state");
+        if (oi == sm_ns->output_port_indices.end()) continue;
+        float current_state = sm_ns->output_values[oi->second];
+
+        // Check for state change
+        auto& prev = prev_sm_state_[spm.state_machine_node];
+        if (current_state == prev) continue;
+        prev = current_state;
+
+        int state_idx = static_cast<int>(current_state);
+        if (state_idx < 0 || state_idx >= static_cast<int>(spm.state_presets.size())) continue;
+
+        // Recall all bound presets for this state
+        for (const auto& [target_node, preset_name] : spm.state_presets[state_idx]) {
+            recall_preset(target_node, preset_name);
+        }
+    }
+}
+
 // --- Persistence ---
 
 CommandResult RuntimeAPI::save() {

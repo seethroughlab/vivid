@@ -599,6 +599,125 @@ static std::string dispatch(const std::string& method, const std::string& body,
             else
                 result = command_result_to_json(api.set_quantize_clock(yyjson_get_str(nid)));
         }
+    } else if (method == "save_preset") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid  = yyjson_obj_get(root, "node_id");
+            yyjson_val* name = yyjson_obj_get(root, "name");
+            if (!nid || !name || !yyjson_is_str(nid) || !yyjson_is_str(name))
+                result = json_err("missing 'node_id' or 'name'");
+            else
+                result = command_result_to_json(
+                    api.save_preset(yyjson_get_str(nid), yyjson_get_str(name)));
+        }
+    } else if (method == "recall_preset") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid  = yyjson_obj_get(root, "node_id");
+            yyjson_val* name = yyjson_obj_get(root, "name");
+            if (!nid || !name || !yyjson_is_str(nid) || !yyjson_is_str(name))
+                result = json_err("missing 'node_id' or 'name'");
+            else
+                result = command_result_to_json(
+                    api.recall_preset(yyjson_get_str(nid), yyjson_get_str(name)));
+        }
+    } else if (method == "update_preset") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid  = yyjson_obj_get(root, "node_id");
+            yyjson_val* name = yyjson_obj_get(root, "name");
+            if (!nid || !name || !yyjson_is_str(nid) || !yyjson_is_str(name))
+                result = json_err("missing 'node_id' or 'name'");
+            else
+                result = command_result_to_json(
+                    api.update_preset(yyjson_get_str(nid), yyjson_get_str(name)));
+        }
+    } else if (method == "remove_preset") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid  = yyjson_obj_get(root, "node_id");
+            yyjson_val* name = yyjson_obj_get(root, "name");
+            if (!nid || !name || !yyjson_is_str(nid) || !yyjson_is_str(name))
+                result = json_err("missing 'node_id' or 'name'");
+            else
+                result = command_result_to_json(
+                    api.remove_preset(yyjson_get_str(nid), yyjson_get_str(name)));
+        }
+    } else if (method == "rename_preset") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid      = yyjson_obj_get(root, "node_id");
+            yyjson_val* old_name = yyjson_obj_get(root, "old_name");
+            yyjson_val* new_name = yyjson_obj_get(root, "new_name");
+            if (!nid || !old_name || !new_name ||
+                !yyjson_is_str(nid) || !yyjson_is_str(old_name) || !yyjson_is_str(new_name))
+                result = json_err("missing 'node_id', 'old_name', or 'new_name'");
+            else
+                result = command_result_to_json(
+                    api.rename_preset(yyjson_get_str(nid), yyjson_get_str(old_name),
+                                      yyjson_get_str(new_name)));
+        }
+    } else if (method == "list_presets") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid = yyjson_obj_get(root, "node_id");
+            if (!nid || !yyjson_is_str(nid))
+                result = json_err("missing 'node_id'");
+            else
+                result = command_result_to_json(api.list_presets(yyjson_get_str(nid)));
+        }
+    } else if (method == "set_state_preset") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* sm    = yyjson_obj_get(root, "sm_node");
+            yyjson_val* sidx  = yyjson_obj_get(root, "state_idx");
+            yyjson_val* tgt   = yyjson_obj_get(root, "target_node");
+            yyjson_val* pname = yyjson_obj_get(root, "preset_name");
+            if (!sm || !sidx || !tgt || !pname ||
+                !yyjson_is_str(sm) || !yyjson_is_num(sidx) ||
+                !yyjson_is_str(tgt) || !yyjson_is_str(pname))
+                result = json_err("missing 'sm_node', 'state_idx', 'target_node', or 'preset_name'");
+            else
+                result = command_result_to_json(
+                    api.set_state_preset(yyjson_get_str(sm),
+                                         static_cast<int>(yyjson_get_int(sidx)),
+                                         yyjson_get_str(tgt), yyjson_get_str(pname)));
+        }
+    } else if (method == "remove_state_preset") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* sm   = yyjson_obj_get(root, "sm_node");
+            yyjson_val* sidx = yyjson_obj_get(root, "state_idx");
+            yyjson_val* tgt  = yyjson_obj_get(root, "target_node");
+            if (!sm || !sidx || !tgt ||
+                !yyjson_is_str(sm) || !yyjson_is_num(sidx) || !yyjson_is_str(tgt))
+                result = json_err("missing 'sm_node', 'state_idx', or 'target_node'");
+            else
+                result = command_result_to_json(
+                    api.remove_state_preset(yyjson_get_str(sm),
+                                            static_cast<int>(yyjson_get_int(sidx)),
+                                            yyjson_get_str(tgt)));
+        }
+    } else if (method == "clear_state_presets") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* sm = yyjson_obj_get(root, "sm_node");
+            if (!sm || !yyjson_is_str(sm))
+                result = json_err("missing 'sm_node'");
+            else
+                result = command_result_to_json(
+                    api.clear_state_presets(yyjson_get_str(sm)));
+        }
+    } else if (method == "inspect_state_presets") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* sm = yyjson_obj_get(root, "sm_node");
+            if (!sm || !yyjson_is_str(sm))
+                result = json_err("missing 'sm_node'");
+            else
+                result = command_result_to_json(
+                    api.inspect_state_presets(yyjson_get_str(sm)));
+        }
     } else if (method == "scaffold_operator") {
         result = [&]() -> std::string {
             if (src_dir.empty())

@@ -114,6 +114,7 @@ add_vivid_operator(alternate         operators/control/alternate/alternate.cpp)
 add_vivid_operator(pat_transform     operators/control/pat_transform/pat_transform.cpp)
 add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_gain.cpp
                                     EXTRA_LIBS vivid_composable_ops)
+add_vivid_operator(state_machine    operators/control/state_machine/state_machine.cpp)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu)
@@ -370,6 +371,12 @@ target_include_directories(test_runtime_api PRIVATE src)
 target_link_libraries(test_runtime_api PRIVATE vivid_operator_api yyjson miniaudio webgpu rtmidi)
 add_dependencies(test_runtime_api test_op_v1)
 add_test(NAME test_runtime_api COMMAND test_runtime_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# StateMachine operator unit test (includes operator source directly, no plugin loading)
+add_executable(test_state_machine tests/test_state_machine.cpp)
+target_include_directories(test_state_machine PRIVATE src)
+target_link_libraries(test_state_machine PRIVATE vivid_operator_api)
+add_test(NAME test_state_machine COMMAND test_state_machine WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # ControlServer integration test (HTTP endpoints, no GPU, no audio, no window)
 add_executable(test_control_server

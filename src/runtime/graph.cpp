@@ -19,6 +19,8 @@ bool Graph::load(const char* path) {
     midi_mappings_.clear();
     filters_.clear();
     variations_.clear();
+    node_presets_.clear();
+    state_preset_mappings_.clear();
     active_variation_ = -1;
     quantize_clock_node_.clear();
     source_path_ = path;
@@ -247,6 +249,74 @@ bool Graph::load(const char* path) {
     yyjson_val* qc_val = yyjson_obj_get(root, "quantize_clock");
     if (qc_val && yyjson_is_str(qc_val))
         quantize_clock_node_ = yyjson_get_str(qc_val);
+
+    // Parse per-operator presets
+    yyjson_val* presets_obj = yyjson_obj_get(root, "presets");
+    if (presets_obj && yyjson_is_obj(presets_obj)) {
+        yyjson_obj_iter priter;
+        yyjson_obj_iter_init(presets_obj, &priter);
+        yyjson_val* prkey;
+        while ((prkey = yyjson_obj_iter_next(&priter)) != nullptr) {
+            yyjson_val* prval = yyjson_obj_iter_get_val(prkey);
+            std::string node_id = yyjson_get_str(prkey);
+            if (prval && yyjson_is_arr(prval)) {
+                auto& presets = node_presets_[node_id];
+                size_t pidx2, pmax2;
+                yyjson_val* pentry;
+                yyjson_arr_foreach(prval, pidx2, pmax2, pentry) {
+                    OperatorPreset op;
+                    yyjson_val* pn = yyjson_obj_get(pentry, "name");
+                    if (pn && yyjson_is_str(pn))
+                        op.name = yyjson_get_str(pn);
+                    yyjson_val* pp = yyjson_obj_get(pentry, "params");
+                    if (pp && yyjson_is_obj(pp)) {
+                        yyjson_obj_iter ppiter;
+                        yyjson_obj_iter_init(pp, &ppiter);
+                        yyjson_val* ppkey;
+                        while ((ppkey = yyjson_obj_iter_next(&ppiter)) != nullptr) {
+                            yyjson_val* ppv = yyjson_obj_iter_get_val(ppkey);
+                            if (ppv && yyjson_is_num(ppv))
+                                op.params[yyjson_get_str(ppkey)] = static_cast<float>(yyjson_get_num(ppv));
+                        }
+                    }
+                    presets.push_back(std::move(op));
+                }
+            }
+        }
+    }
+
+    // Parse state_preset_mappings
+    yyjson_val* spm_arr = yyjson_obj_get(root, "state_preset_mappings");
+    if (spm_arr && yyjson_is_arr(spm_arr)) {
+        size_t sidx2, smax2;
+        yyjson_val* sentry;
+        yyjson_arr_foreach(spm_arr, sidx2, smax2, sentry) {
+            StatePresetMapping spm;
+            yyjson_val* sn = yyjson_obj_get(sentry, "node");
+            if (sn && yyjson_is_str(sn))
+                spm.state_machine_node = yyjson_get_str(sn);
+            yyjson_val* states_arr = yyjson_obj_get(sentry, "states");
+            if (states_arr && yyjson_is_arr(states_arr)) {
+                size_t si, sm;
+                yyjson_val* state_obj;
+                yyjson_arr_foreach(states_arr, si, sm, state_obj) {
+                    std::unordered_map<std::string, std::string> bindings;
+                    if (state_obj && yyjson_is_obj(state_obj)) {
+                        yyjson_obj_iter biter;
+                        yyjson_obj_iter_init(state_obj, &biter);
+                        yyjson_val* bkey;
+                        while ((bkey = yyjson_obj_iter_next(&biter)) != nullptr) {
+                            yyjson_val* bval = yyjson_obj_iter_get_val(bkey);
+                            if (bval && yyjson_is_str(bval))
+                                bindings[yyjson_get_str(bkey)] = yyjson_get_str(bval);
+                        }
+                    }
+                    spm.state_presets.push_back(std::move(bindings));
+                }
+            }
+            state_preset_mappings_.push_back(std::move(spm));
+        }
+    }
 
     yyjson_doc_free(doc);
 
@@ -484,6 +554,114 @@ int Graph::find_variation_index(const std::string& name) const {
     return -1;
 }
 
+// --- Per-Operator Preset CRUD ---
+
+void Graph::save_preset(const std::string& node_id, const OperatorPreset& preset) {
+    auto& presets = node_presets_[node_id];
+    for (auto& p : presets) {
+        if (p.name == preset.name) {
+            p = preset;
+            return;
+        }
+    }
+    presets.push_back(preset);
+}
+
+bool Graph::remove_preset(const std::string& node_id, const std::string& name) {
+    auto it = node_presets_.find(node_id);
+    if (it == node_presets_.end()) return false;
+    auto& presets = it->second;
+    auto pit = std::find_if(presets.begin(), presets.end(),
+        [&](const OperatorPreset& p) { return p.name == name; });
+    if (pit == presets.end()) return false;
+    presets.erase(pit);
+    if (presets.empty()) node_presets_.erase(it);
+    return true;
+}
+
+bool Graph::rename_preset(const std::string& node_id, const std::string& old_name,
+                           const std::string& new_name) {
+    auto* p = find_preset(node_id, old_name);
+    if (!p) return false;
+    if (find_preset(node_id, new_name)) return false;  // name conflict
+    p->name = new_name;
+    return true;
+}
+
+const OperatorPreset* Graph::find_preset(const std::string& node_id, const std::string& name) const {
+    auto it = node_presets_.find(node_id);
+    if (it == node_presets_.end()) return nullptr;
+    for (const auto& p : it->second) {
+        if (p.name == name) return &p;
+    }
+    return nullptr;
+}
+
+OperatorPreset* Graph::find_preset(const std::string& node_id, const std::string& name) {
+    auto it = node_presets_.find(node_id);
+    if (it == node_presets_.end()) return nullptr;
+    for (auto& p : it->second) {
+        if (p.name == name) return &p;
+    }
+    return nullptr;
+}
+
+std::vector<std::string> Graph::list_presets(const std::string& node_id) const {
+    std::vector<std::string> names;
+    auto it = node_presets_.find(node_id);
+    if (it != node_presets_.end()) {
+        for (const auto& p : it->second) names.push_back(p.name);
+    }
+    return names;
+}
+
+// --- State-Preset Mapping CRUD ---
+
+void Graph::set_state_preset(const std::string& sm_node, int state_idx,
+                              const std::string& target_node, const std::string& preset_name) {
+    // Find or create mapping for this state machine
+    StatePresetMapping* spm = nullptr;
+    for (auto& m : state_preset_mappings_) {
+        if (m.state_machine_node == sm_node) { spm = &m; break; }
+    }
+    if (!spm) {
+        state_preset_mappings_.push_back({sm_node, {}});
+        spm = &state_preset_mappings_.back();
+    }
+    // Grow state_presets vector if needed
+    if (state_idx >= static_cast<int>(spm->state_presets.size())) {
+        spm->state_presets.resize(state_idx + 1);
+    }
+    spm->state_presets[state_idx][target_node] = preset_name;
+}
+
+bool Graph::remove_state_preset(const std::string& sm_node, int state_idx,
+                                 const std::string& target_node) {
+    for (auto& m : state_preset_mappings_) {
+        if (m.state_machine_node != sm_node) continue;
+        if (state_idx >= static_cast<int>(m.state_presets.size())) return false;
+        auto it = m.state_presets[state_idx].find(target_node);
+        if (it == m.state_presets[state_idx].end()) return false;
+        m.state_presets[state_idx].erase(it);
+        return true;
+    }
+    return false;
+}
+
+void Graph::clear_state_presets(const std::string& sm_node) {
+    state_preset_mappings_.erase(
+        std::remove_if(state_preset_mappings_.begin(), state_preset_mappings_.end(),
+            [&](const StatePresetMapping& m) { return m.state_machine_node == sm_node; }),
+        state_preset_mappings_.end());
+}
+
+const StatePresetMapping* Graph::find_state_mapping(const std::string& sm_node) const {
+    for (const auto& m : state_preset_mappings_) {
+        if (m.state_machine_node == sm_node) return &m;
+    }
+    return nullptr;
+}
+
 // --- Serialization ---
 
 bool Graph::save(const char* path) const {
@@ -612,6 +790,48 @@ bool Graph::save(const char* path) const {
         yyjson_mut_obj_add_int(doc, root, "active_variation", active_variation_);
     if (!quantize_clock_node_.empty())
         yyjson_mut_obj_add_strcpy(doc, root, "quantize_clock", quantize_clock_node_.c_str());
+
+    // Per-operator presets
+    if (!node_presets_.empty()) {
+        yyjson_mut_val* presets_obj = yyjson_mut_obj(doc);
+        for (const auto& [node_id, presets] : node_presets_) {
+            yyjson_mut_val* pr_arr = yyjson_mut_arr(doc);
+            for (const auto& p : presets) {
+                yyjson_mut_val* pr_obj = yyjson_mut_obj(doc);
+                yyjson_mut_obj_add_strcpy(doc, pr_obj, "name", p.name.c_str());
+                yyjson_mut_val* pp_obj = yyjson_mut_obj(doc);
+                for (const auto& [pname, pval] : p.params) {
+                    yyjson_mut_obj_add_real(doc, pp_obj, pname.c_str(),
+                                            static_cast<double>(pval));
+                }
+                yyjson_mut_obj_add_val(doc, pr_obj, "params", pp_obj);
+                yyjson_mut_arr_add_val(pr_arr, pr_obj);
+            }
+            yyjson_mut_obj_add_val(doc, presets_obj, node_id.c_str(), pr_arr);
+        }
+        yyjson_mut_obj_add_val(doc, root, "presets", presets_obj);
+    }
+
+    // State-preset mappings
+    if (!state_preset_mappings_.empty()) {
+        yyjson_mut_val* spm_arr = yyjson_mut_arr(doc);
+        for (const auto& spm : state_preset_mappings_) {
+            yyjson_mut_val* spm_obj = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_strcpy(doc, spm_obj, "node", spm.state_machine_node.c_str());
+            yyjson_mut_val* states_arr = yyjson_mut_arr(doc);
+            for (const auto& bindings : spm.state_presets) {
+                yyjson_mut_val* b_obj = yyjson_mut_obj(doc);
+                for (const auto& [target_node, preset_name] : bindings) {
+                    yyjson_mut_obj_add_strcpy(doc, b_obj, target_node.c_str(),
+                                              preset_name.c_str());
+                }
+                yyjson_mut_arr_add_val(states_arr, b_obj);
+            }
+            yyjson_mut_obj_add_val(doc, spm_obj, "states", states_arr);
+            yyjson_mut_arr_add_val(spm_arr, spm_obj);
+        }
+        yyjson_mut_obj_add_val(doc, root, "state_preset_mappings", spm_arr);
+    }
 
     // Viewport
     if (has_viewport()) {

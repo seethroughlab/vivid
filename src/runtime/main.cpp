@@ -978,6 +978,9 @@ int main(int argc, char* argv[]) {
 
             draw_custom_thumbnails(scheduler, thumb_cache, graph_ui, now, kThumbW, kThumbH);
 
+            // --- Tick state-preset mappings (after scheduler tick, state outputs are fresh) ---
+            runtime_api.tick_state_presets();
+
             if (has_audio) {
                 audio_engine.push_params(scheduler);
             }

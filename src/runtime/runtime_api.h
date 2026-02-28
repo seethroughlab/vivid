@@ -74,6 +74,26 @@ public:
     // Per-frame: check pending quantized variation switch
     void tick_quantized_switch();
 
+    // --- Per-Operator Presets ---
+    CommandResult save_preset(const std::string& node_id, const std::string& name);
+    CommandResult recall_preset(const std::string& node_id, const std::string& name);
+    CommandResult update_preset(const std::string& node_id, const std::string& name);
+    CommandResult remove_preset(const std::string& node_id, const std::string& name);
+    CommandResult rename_preset(const std::string& node_id, const std::string& old_name,
+                                const std::string& new_name);
+    CommandResult list_presets(const std::string& node_id);
+
+    // --- State-Preset Mapping ---
+    CommandResult set_state_preset(const std::string& sm_node, int state_idx,
+                                   const std::string& target_node, const std::string& preset_name);
+    CommandResult remove_state_preset(const std::string& sm_node, int state_idx,
+                                      const std::string& target_node);
+    CommandResult clear_state_presets(const std::string& sm_node);
+    CommandResult inspect_state_presets(const std::string& sm_node);
+
+    // Per-frame: check for state machine transitions and recall mapped presets
+    void tick_state_presets();
+
     // Variation state accessors for snapshot
     int pending_variation_idx() const { return pending_variation_.armed ? pending_variation_.variation_idx : -1; }
     bool variation_dirty() const { return variation_dirty_; }
@@ -111,6 +131,9 @@ private:
 
     // Internal helper to apply a variation's params to live nodes
     void apply_variation(int idx);
+
+    // State-preset mapping: track previous state per mapped state machine
+    std::unordered_map<std::string, float> prev_sm_state_;
 };
 
 } // namespace vivid

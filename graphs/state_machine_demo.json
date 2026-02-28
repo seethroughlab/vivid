@@ -1,0 +1,42 @@
+{
+  "nodes": {
+    "clock1": { "type": "Clock", "params": { "bpm": 120.0 } },
+    "sm1": { "type": "StateMachine", "params": {
+      "states": 3, "transition": 0, "quantize": 0,
+      "loop": 1, "bars_per_beat": 4,
+      "dur_0": 4, "dur_1": 4, "dur_2": 4
+    }},
+    "seq1": { "type": "Sequencer", "params": {
+      "steps": 4,
+      "val_0": 60, "val_1": 64, "val_2": 67, "val_3": 72
+    }},
+    "lfo1": { "type": "LFO", "params": {
+      "frequency": 0.5, "amplitude": 0.5, "offset": 0.5
+    }}
+  },
+  "connections": [
+    { "from": "clock1/beat_phase", "to": "sm1/beat_phase" },
+    { "from": "clock1/beat_phase", "to": "seq1/phase" },
+    { "from": "sm1/progress",      "to": "lfo1/frequency" }
+  ],
+  "presets": {
+    "seq1": [
+      { "name": "intro", "params": { "val_0": 60, "val_1": 64, "val_2": 67, "val_3": 72 } },
+      { "name": "verse", "params": { "val_0": 65, "val_1": 69, "val_2": 72, "val_3": 77 } },
+      { "name": "chorus", "params": { "val_0": 67, "val_1": 71, "val_2": 74, "val_3": 79 } }
+    ],
+    "lfo1": [
+      { "name": "slow", "params": { "frequency": 0.25, "amplitude": 0.3 } },
+      { "name": "medium", "params": { "frequency": 1.0, "amplitude": 0.5 } },
+      { "name": "fast", "params": { "frequency": 4.0, "amplitude": 0.8 } }
+    ]
+  },
+  "state_preset_mappings": [{
+    "node": "sm1",
+    "states": [
+      { "seq1": "intro", "lfo1": "slow" },
+      { "seq1": "verse", "lfo1": "medium" },
+      { "seq1": "chorus", "lfo1": "fast" }
+    ]
+  }]
+}

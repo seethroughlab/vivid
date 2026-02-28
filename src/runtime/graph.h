@@ -57,6 +57,17 @@ struct VariationDef {
     std::unordered_map<std::string, std::unordered_map<std::string, float>> params;
 };
 
+struct OperatorPreset {
+    std::string name;
+    std::unordered_map<std::string, float> params;  // param_name -> value
+};
+
+struct StatePresetMapping {
+    std::string state_machine_node;  // node_id of StateMachine operator
+    // Per state index: map of node_id -> preset_name
+    std::vector<std::unordered_map<std::string, std::string>> state_presets;
+};
+
 class Graph {
 public:
     bool load(const char* path);
@@ -108,6 +119,27 @@ public:
     const std::string& quantize_clock_node() const { return quantize_clock_node_; }
     void set_quantize_clock_node(const std::string& node_id) { quantize_clock_node_ = node_id; }
 
+    // Per-operator preset CRUD
+    void save_preset(const std::string& node_id, const OperatorPreset& preset);
+    bool remove_preset(const std::string& node_id, const std::string& name);
+    bool rename_preset(const std::string& node_id, const std::string& old_name,
+                       const std::string& new_name);
+    const OperatorPreset* find_preset(const std::string& node_id, const std::string& name) const;
+    OperatorPreset* find_preset(const std::string& node_id, const std::string& name);
+    std::vector<std::string> list_presets(const std::string& node_id) const;
+    const std::unordered_map<std::string, std::vector<OperatorPreset>>& node_presets() const {
+        return node_presets_;
+    }
+
+    // State-preset mapping CRUD
+    void set_state_preset(const std::string& sm_node, int state_idx,
+                          const std::string& target_node, const std::string& preset_name);
+    bool remove_state_preset(const std::string& sm_node, int state_idx,
+                             const std::string& target_node);
+    void clear_state_presets(const std::string& sm_node);
+    const StatePresetMapping* find_state_mapping(const std::string& sm_node) const;
+    const std::vector<StatePresetMapping>& state_preset_mappings() const { return state_preset_mappings_; }
+
     // Lookup
     const NodeDef* find_node(const std::string& id) const;
     NodeDef* find_node(const std::string& id);
@@ -131,6 +163,8 @@ private:
     int active_variation_ = -1;
     std::string quantize_clock_node_;
     std::string source_path_;
+    std::unordered_map<std::string, std::vector<OperatorPreset>> node_presets_;
+    std::vector<StatePresetMapping> state_preset_mappings_;
 };
 
 } // namespace vivid
