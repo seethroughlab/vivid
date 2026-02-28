@@ -132,6 +132,50 @@ static std::string gpu_template(const std::string& name, const std::string& stru
     return s.str();
 }
 
+static std::string composite_control_template(const std::string& name, const std::string& struct_name) {
+    std::ostringstream s;
+    s << "#include \"operator_api/child_op.h\"\n";
+    s << "#include \"control/lfo/lfo.h\"\n";
+    s << "#include \"control/smooth/smooth.h\"\n\n";
+    s << "struct " << struct_name << " : vivid::OperatorBase {\n";
+    s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
+    s << "    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;\n";
+    s << "    static constexpr bool kTimeDependent = true;\n\n";
+    s << "    vivid::Param<float> amount   {\"amount\",    1.0f, 0.0f, 10.0f};\n";
+    s << "    vivid::Param<float> lfo_rate {\"lfo_rate\",  2.0f, 0.01f, 20.0f};\n";
+    s << "    vivid::Param<float> lfo_depth{\"lfo_depth\", 0.5f, 0.0f, 1.0f};\n";
+    s << "    vivid::Param<float> smooth_time{\"smooth_time\", 0.05f, 0.0f, 2.0f};\n\n";
+    s << "    vivid::ChildOp<LFO>    lfo_;\n";
+    s << "    vivid::ChildOp<Smooth> smoother_;\n\n";
+    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
+    s << "        out.push_back(&amount);\n";
+    s << "        out.push_back(&lfo_rate);\n";
+    s << "        out.push_back(&lfo_depth);\n";
+    s << "        out.push_back(&smooth_time);\n";
+    s << "    }\n\n";
+    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
+    s << "        out.push_back({\"input\",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT});\n";
+    s << "        out.push_back({\"output\", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});\n";
+    s << "    }\n\n";
+    s << "    void process(const VividProcessContext* ctx) override {\n";
+    s << "        float input = ctx->input_values[0];\n\n";
+    s << "        // Drive internal LFO\n";
+    s << "        lfo_.set_param(\"frequency\", lfo_rate.value);\n";
+    s << "        lfo_.set_param(\"amplitude\", 1.0f);\n";
+    s << "        lfo_.process(ctx);\n\n";
+    s << "        // Smooth the LFO output\n";
+    s << "        smoother_.set_param(\"rise_time\", smooth_time.value);\n";
+    s << "        smoother_.set_param(\"fall_time\", smooth_time.value);\n";
+    s << "        smoother_.set_input(\"input\", lfo_.output(\"value\"));\n";
+    s << "        smoother_.process(ctx);\n\n";
+    s << "        float mod = smoother_.output(\"value\");\n";
+    s << "        ctx->output_values[0] = input * (amount.value + lfo_depth.value * mod);\n";
+    s << "    }\n";
+    s << "};\n\n";
+    s << "VIVID_REGISTER(" << struct_name << ")\n";
+    return s.str();
+}
+
 static std::string gpu_shader_template() {
     return "@fragment\n"
            "fn fs_main(input: VertexOutput) -> @location(0) vec4f {\n"
@@ -162,7 +206,8 @@ static std::string cmake_insertion_marker(VividDomain domain) {
 }
 
 static bool patch_cmake(const std::string& src_dir, const std::string& name,
-                         VividDomain domain, std::string& error) {
+                         VividDomain domain, const std::string& extra_libs,
+                         std::string& error) {
     std::string cmake_path = src_dir + "/CMakeLists.txt";
     std::ifstream ifs(cmake_path);
     if (!ifs) {
@@ -187,6 +232,8 @@ static bool patch_cmake(const std::string& src_dir, const std::string& name,
           << " operators/" << dsub << "/" << name << "/" << name << ".cpp";
     if (domain == VIVID_DOMAIN_GPU)
         block << "  EXTRA_LIBS webgpu";
+    else if (!extra_libs.empty())
+        block << "  EXTRA_LIBS " << extra_libs;
     block << ")\n";
 
     content.insert(pos, block.str() + "\n");
@@ -221,11 +268,22 @@ std::string OperatorCreator::validate_name(const std::string& name, const Operat
 }
 
 CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomain domain,
-                                              const std::string& src_dir) {
+                                              const std::string& src_dir,
+                                              const std::string& variant) {
     CreateOperatorResult result{};
     const char* dsub = domain_subdir(domain);
     if (!dsub) {
         result.error = "invalid domain";
+        return result;
+    }
+
+    // Validate variant
+    if (!variant.empty() && variant != "composite") {
+        result.error = "unknown variant '" + variant + "' (supported: composite)";
+        return result;
+    }
+    if (variant == "composite" && domain != VIVID_DOMAIN_CONTROL) {
+        result.error = "composite variant is only supported for control domain";
         return result;
     }
 
@@ -249,11 +307,15 @@ CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomai
 
     // Generate source from template
     std::string source;
-    switch (domain) {
-        case VIVID_DOMAIN_CONTROL: source = control_template(name, struct_name); break;
-        case VIVID_DOMAIN_AUDIO:   source = audio_template(name, struct_name);   break;
-        case VIVID_DOMAIN_GPU:     source = gpu_template(name, struct_name);     break;
-        default: break;
+    if (variant == "composite") {
+        source = composite_control_template(name, struct_name);
+    } else {
+        switch (domain) {
+            case VIVID_DOMAIN_CONTROL: source = control_template(name, struct_name); break;
+            case VIVID_DOMAIN_AUDIO:   source = audio_template(name, struct_name);   break;
+            case VIVID_DOMAIN_GPU:     source = gpu_template(name, struct_name);     break;
+            default: break;
+        }
     }
 
     {
@@ -277,8 +339,12 @@ CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomai
     }
 
     // Patch CMakeLists.txt
+    std::string extra_libs;
+    if (variant == "composite")
+        extra_libs = "vivid_composable_ops";
+
     std::string cmake_err;
-    if (!patch_cmake(src_dir, name, domain, cmake_err)) {
+    if (!patch_cmake(src_dir, name, domain, extra_libs, cmake_err)) {
         result.error = cmake_err;
         return result;
     }

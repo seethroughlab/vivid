@@ -82,6 +82,45 @@ For statically linked export builds (§5.16), the `extern "C"` boundary is unnec
 
 The simpler this contract, the better everything downstream works: auto-generated UI knobs, confident LLM generation, and fast compilation of small self-contained units.
 
+### 5.7.1 Composite Operators (ChildOp)
+
+Control operators can embed other operators as persistent member variables using `ChildOp<T>` (defined in `src/operator_api/child_op.h`). This enables internal modulation chains — e.g. an LFO driving a gain stage — without exposing child operators as separate graph nodes.
+
+**Embeddable operators** must have a header-only struct (the `.h` file next to their `.cpp`). Currently available: `LFO` (`control/lfo/lfo.h`), `Smooth` (`control/smooth/smooth.h`), `Clock` (`control/clock/clock.h`), `Envelope` (`control/envelope/envelope.h`).
+
+**Usage pattern:**
+
+```cpp
+#include "operator_api/child_op.h"
+#include "control/lfo/lfo.h"
+#include "control/smooth/smooth.h"
+
+struct MyOp : vivid::OperatorBase {
+    vivid::ChildOp<LFO>    lfo_;
+    vivid::ChildOp<Smooth> smoother_;
+
+    void process(const VividProcessContext* ctx) override {
+        lfo_.set_param("frequency", 2.0f);
+        lfo_.process(ctx);                       // inherits time/frame from parent
+
+        smoother_.set_input("input", lfo_.output("value"));
+        smoother_.process(ctx);
+
+        float mod = smoother_.output("value");   // use in parent logic
+    }
+};
+```
+
+**Key properties:**
+- Each `ChildOp<T>` owns its own param, input, and output arrays — fully isolated from the parent.
+- `process()` builds a child `VividProcessContext` inheriting `time`, `delta_time`, and `frame` from the parent context.
+- Children maintain persistent state across frames (e.g. LFO phase), just like top-level operators.
+- The parent's `collect_params` / `collect_ports` only expose the parent's params — child params are internal.
+
+**Domain restriction:** ChildOp is for control-domain composition only. Audio operators need per-sample buffer processing on the audio thread, and GPU operators run as shader pipelines — neither maps to the `ChildOp` call-and-read pattern.
+
+**Canonical example:** `operators/control/modulated_gain/modulated_gain.cpp` — LFO → Smooth → gain modulation.
+
 ## 5.8 Hot-Reload Behavior
 
 **Decision: Parameters survive, internal state resets.** Since parameters live outside the operator in the graph's Control-layer parameter store, they are untouched by a reload. The operator's private internal state reinitializes fresh. This avoids serialize/deserialize complexity and matches creative workflows where the user is iterating on behavior.

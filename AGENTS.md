@@ -84,6 +84,11 @@ vivid/
 - The dlopen boundary uses `extern "C"` functions produced by `VIVID_REGISTER` macro
 - During development: compiled to `.dylib`, loaded via `dlopen`, hot-reloaded on save
 - For export: same source compiled and statically linked into a single binary
+- **Composite operators (ChildOp):** Control operators can embed other operators as persistent members
+  via `ChildOp<T>` (`src/operator_api/child_op.h`). The child must be header-only (e.g. `control/lfo/lfo.h`).
+  Parent sets child params, calls `child.process(ctx)`, reads child outputs. See
+  `operators/control/modulated_gain/modulated_gain.cpp`. Control-domain only — audio needs per-sample
+  processing, GPU uses shader pipelines.
 
 ### The JSON Graph
 - The graph JSON is the single source of truth for a patch

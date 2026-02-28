@@ -620,10 +620,16 @@ static std::string dispatch(const std::string& method, const std::string& body,
             else if (domain_str_val == "gpu")      domain = VIVID_DOMAIN_GPU;
             else return json_err("domain must be 'control', 'audio', or 'gpu'");
 
+            // Optional variant (e.g. "composite")
+            std::string variant;
+            yyjson_val* variant_v = yyjson_obj_get(root, "variant");
+            if (variant_v && yyjson_is_str(variant_v))
+                variant = yyjson_get_str(variant_v);
+
             std::string err = OperatorCreator::validate_name(name, registry);
             if (!err.empty()) return json_err(err);
 
-            auto cr = OperatorCreator::create(name, domain, src_dir);
+            auto cr = OperatorCreator::create(name, domain, src_dir, variant);
             if (!cr.success) return json_err(cr.error);
 
             if (hot_reloader)

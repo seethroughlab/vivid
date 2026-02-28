@@ -34,6 +34,12 @@ Connections must match types: `gpu_texture` → `gpu_texture`, `audio_float` →
 - Audio chains: oscillator → effects → `audio_out`
 - Visual chains: generators → filters → `video_out`
 - Control signals modulate both GPU and audio params
+
+## Composite Operators
+
+Control operators can embed other operators internally using ChildOp<T>. Use `scaffold_operator`
+with `variant="composite"` to generate a template. Useful for internal modulation (e.g. LFO driving
+a gain stage) without exposing child operators as graph nodes. Control domain only.
 """)
 
 
@@ -264,14 +270,18 @@ async def get_graph_errors() -> str:
 
 
 @mcp.tool()
-async def scaffold_operator(name: str, domain: str) -> str:
+async def scaffold_operator(name: str, domain: str, variant: str = "") -> str:
     """Create a new operator from a template. Writes source, patches CMakeLists, triggers build.
 
     Args:
         name: Operator name in lowercase_with_underscores (e.g. "tone_gen")
         domain: One of "control", "audio", "gpu"
+        variant: Template variant. Use "composite" for a ChildOp-based control operator with internal LFO + Smooth.
     """
-    return await _post("scaffold_operator", {"name": name, "domain": domain})
+    body: dict = {"name": name, "domain": domain}
+    if variant:
+        body["variant"] = variant
+    return await _post("scaffold_operator", body)
 
 
 @mcp.tool()

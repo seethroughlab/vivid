@@ -22,8 +22,10 @@ public:
 
     // Create directory, write .cpp from template, patch CMakeLists.txt.
     // src_dir is the project root (parent of operators/).
+    // variant: optional template variant (e.g. "composite" for ChildOp-based control operators).
     static CreateOperatorResult create(const std::string& name, VividDomain domain,
-                                       const std::string& src_dir);
+                                       const std::string& src_dir,
+                                       const std::string& variant = "");
 
     // Open file in $VISUAL/$EDITOR/open (async, non-blocking).
     static void open_in_editor(const std::string& path);

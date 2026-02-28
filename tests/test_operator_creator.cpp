@@ -236,6 +236,69 @@ int main() {
         fs::remove_all(tmp);
     }
 
+    // =================================================================
+    // Test 9: create() composite variant — verify ChildOp template
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 9: create() composite variant ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_composite";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+
+        {
+            std::ofstream ofs(tmp + "/CMakeLists.txt");
+            ofs << "# --- Control operators ---\n"
+                << "\n"
+                << "# --- GPU operator plugins ---\n";
+        }
+
+        auto result = vivid::OperatorCreator::create("mod_filter", VIVID_DOMAIN_CONTROL, tmp, "composite");
+        check(result.success, "create composite op succeeds");
+        check(result.error.empty(), "no error");
+
+        std::string cpp_path = tmp + "/operators/control/mod_filter/mod_filter.cpp";
+        check(fs::exists(cpp_path), "composite cpp file exists");
+
+        std::string src = read_file(cpp_path);
+        check(src.find("child_op.h") != std::string::npos, "includes child_op.h");
+        check(src.find("ChildOp<LFO>") != std::string::npos, "has ChildOp<LFO>");
+        check(src.find("ChildOp<Smooth>") != std::string::npos, "has ChildOp<Smooth>");
+        check(src.find("lfo_.process(ctx)") != std::string::npos, "calls lfo_.process(ctx)");
+        check(src.find("smoother_.process(ctx)") != std::string::npos, "calls smoother_.process(ctx)");
+        check(src.find("struct ModFilter") != std::string::npos, "struct name is ModFilter");
+
+        // Verify CMakeLists.txt includes EXTRA_LIBS vivid_composable_ops
+        std::string cmake = read_file(tmp + "/CMakeLists.txt");
+        check(cmake.find("EXTRA_LIBS vivid_composable_ops") != std::string::npos,
+              "cmake includes EXTRA_LIBS vivid_composable_ops");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 10: composite variant rejected for GPU domain
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 10: Reject composite for GPU domain ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_composite_gpu";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+
+        {
+            std::ofstream ofs(tmp + "/CMakeLists.txt");
+            ofs << "# --- GPU operator plugins ---\n"
+                << "\n"
+                << "# --- Movie File In\n";
+        }
+
+        auto result = vivid::OperatorCreator::create("bad_comp", VIVID_DOMAIN_GPU, tmp, "composite");
+        check(!result.success, "composite GPU rejected");
+        check(result.error.find("control domain") != std::string::npos,
+              "error mentions 'control domain'");
+
+        fs::remove_all(tmp);
+    }
+
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
         failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);
     return failures == 0 ? 0 : 1;
