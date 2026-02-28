@@ -19,6 +19,8 @@ using vivid::format_uint;
 // GLFW callbacks
 // -----------------------------------------------------------------------
 void NodeGraphUI::on_mouse_move(float x, float y) {
+    mouse_.prev_x = mouse_.x;
+    mouse_.prev_y = mouse_.y;
     mouse_.x = x;
     mouse_.y = y;
 }
@@ -637,6 +639,15 @@ bool NodeGraphUI::handle_inspector_click() {
             insp_scrollbar_dragging_ = true;
             insp_sb_drag_start_y_ = mouse_.y;
             insp_sb_drag_start_scroll_ = insp_scroll_y_;
+            return true;
+        }
+    }
+
+    // Group header collapse/expand
+    for (const auto& gh : group_header_rects_) {
+        if (mouse_.x >= gh.x && mouse_.x < gh.x + gh.w &&
+            mouse_.y >= gh.y && mouse_.y < gh.y + gh.h) {
+            toggle_group_collapsed(gh.type_name, gh.group_name);
             return true;
         }
     }

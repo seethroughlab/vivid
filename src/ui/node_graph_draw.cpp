@@ -369,6 +369,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     midi_remove_rects_.clear();
     midi_range_rects_.clear();
     matrix_cell_rects_.clear();
+    group_header_rects_.clear();
 
     if (selected_node_ids_.empty()) return;
 
@@ -564,12 +565,94 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
     py += 8;
 }
 
+void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
+                                       InspectorLayout& layout, uint32_t pi) {
+    const auto& pd = node.op_info->params[pi];
+    float val = node.param_values[pi];
+    float px = layout.x;
+    float py = layout.y;
+    float panel_w = layout.col_w;
+
+    // Knob center
+    float cx = px + panel_w * 0.5f;
+    float cy = py + kKnobRadius;
+
+    // Normalized value
+    float range = pd.max_value - pd.min_value;
+    float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
+    t = std::max(0.0f, std::min(1.0f, t));
+
+    // Track arc (full 270° sweep)
+    tr.draw_arc(cx, cy, kKnobRadius, kKnobArcAngleStart, kKnobArcAngleEnd,
+                kKnobArcThickness, kKnobArcSegments,
+                style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+
+    // Fill arc (partial sweep based on value)
+    float fill_end = kKnobArcAngleStart + t * (kKnobArcAngleEnd - kKnobArcAngleStart);
+    if (t > 0.001f) {
+        int fill_segs = std::max(1, static_cast<int>(kKnobArcSegments * t));
+        tr.draw_arc(cx, cy, kKnobRadius, kKnobArcAngleStart, fill_end,
+                    kKnobArcThickness, fill_segs,
+                    style_.slider_fill[0], style_.slider_fill[1], style_.slider_fill[2]);
+    }
+
+    // Indicator dot at current value angle
+    float dot_angle = fill_end;
+    float dot_x = cx + std::cos(dot_angle) * kKnobRadius;
+    float dot_y = cy + std::sin(dot_angle) * kKnobRadius;
+    float dot_sz = 4.0f;
+    tr.draw_rect(dot_x - dot_sz * 0.5f, dot_y - dot_sz * 0.5f, dot_sz, dot_sz,
+                 1.0f, 1.0f, 1.0f);
+
+    // Param name label centered below knob
+    float label_y = cy + kKnobRadius + kKnobLabelGap;
+    float label_w = tr.text_width(pd.name.c_str(), 0.85f);
+    float label_x = cx - label_w * 0.5f;
+    tr.draw_text(label_x, label_y, pd.name.c_str(),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+
+    // Value text centered below label
+    std::string val_str = (pd.type == VIVID_PARAM_INT)
+        ? format_int(static_cast<int>(val))
+        : format_float(val, 2);
+    float val_w = tr.text_width(val_str.c_str(), 0.8f);
+    float val_text_y = label_y + tr.line_height() * 0.85f + kKnobValueGap;
+    float val_text_x = cx - val_w * 0.5f;
+    tr.draw_text(val_text_x, val_text_y, val_str.c_str(),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f, 0.8f);
+
+    // Hit-test rect for slider drag (covers the knob area)
+    float knob_rect_x = cx - kKnobRadius - 2;
+    float knob_rect_y = py - 2;
+    float knob_rect_w = kKnobDiameter + 4;
+    float knob_rect_h = kKnobDiameter + 4;
+    slider_rects_.push_back({knob_rect_x, knob_rect_y, knob_rect_w, knob_rect_h,
+                             single_selected_id(), pd.name});
+
+    // Value text rect for click-to-edit
+    value_text_rects_.push_back({val_text_x, val_text_y, val_w, tr.line_height() * 0.8f,
+                                 single_selected_id(), pd.name});
+
+    // Total height: knob diameter + label gap + label line + value gap + value line
+    float total_h = kKnobDiameter + kKnobLabelGap + tr.line_height() * 0.85f +
+                    kKnobValueGap + tr.line_height() * 0.8f + 4.0f;
+    layout.end_param(total_h);
+}
+
 void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& node,
-                                           float px, float& py, uint32_t pi) {
+                                           InspectorLayout& layout, uint32_t pi) {
     const auto& op = *node.op_info;
-    float panel_w = kInspContentW;
+    float start_y = layout.y;
+    float py = layout.y;
+    float px = layout.x;
+    float panel_w = layout.col_w;
     const auto& pd = op.params[pi];
     float val = node.param_values[pi];
+
+    if (pd.display_hint == VIVID_DISPLAY_KNOB && pd.type == VIVID_PARAM_FLOAT) {
+        draw_inspector_knob(tr, node, layout, pi);
+        return;
+    }
 
     // Check if this param is driven by a wire connection
     std::string conn_source_label;
@@ -829,6 +912,51 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
 
         py += kMidiRangeH + 4;
     }
+
+    layout.end_param(py - start_y);
+}
+
+void NodeGraphUI::draw_one_inspector_param_simple(Renderer2D& tr, const NodeSnapshot& node,
+                                                  float px, float& py, uint32_t pi) {
+    InspectorLayout layout;
+    layout.x = px; layout.y = py;
+    layout.col_w = kInspContentW; layout.full_w = kInspContentW; layout.base_x = px;
+    layout.begin_param(0, 0);
+    draw_one_inspector_param(tr, node, layout, pi);
+    py = layout.y;
+}
+
+void NodeGraphUI::draw_inspector_group_header(Renderer2D& tr, InspectorLayout& layout,
+                                               const std::string& type_name,
+                                               const std::string& group_name,
+                                               bool collapsed) {
+    float hx = layout.base_x;
+    float hy = layout.y + kGroupHeaderPadTop;
+    float hw = layout.full_w;
+
+    tr.draw_rect(hx, hy, hw, kGroupHeaderH,
+                 style_.group_header_bg[0], style_.group_header_bg[1], style_.group_header_bg[2]);
+
+    float cx = hx + 8.0f;
+    float cy = hy + kGroupHeaderH * 0.5f;
+    float cs = kGroupChevronSize * 0.5f;
+
+    if (collapsed) {
+        // Right-pointing triangle
+        tr.draw_tri(cx, cy - cs, cx, cy + cs, cx + cs, cy,
+                    style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+    } else {
+        // Down-pointing triangle
+        tr.draw_tri(cx - cs, cy - cs * 0.5f, cx + cs, cy - cs * 0.5f, cx, cy + cs * 0.5f,
+                    style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+    }
+
+    float tx = cx + cs + 6.0f;
+    tr.draw_text(tx, hy + 3.0f, group_name.c_str(),
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.9f);
+
+    group_header_rects_.push_back({hx, hy, hw, kGroupHeaderH, type_name, group_name});
+    layout.y = hy + kGroupHeaderH;
 }
 
 void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node,
@@ -848,9 +976,9 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
         auto ds_steps_it = node.param_indices.find("steps");
         auto ds_swing_it = node.param_indices.find("swing");
         if (ds_steps_it != node.param_indices.end())
-            draw_one_inspector_param(tr, node, px, py, ds_steps_it->second);
+            draw_one_inspector_param_simple(tr, node, px, py, ds_steps_it->second);
         if (ds_swing_it != node.param_indices.end())
-            draw_one_inspector_param(tr, node, px, py, ds_swing_it->second);
+            draw_one_inspector_param_simple(tr, node, px, py, ds_swing_it->second);
 
         // Build skip set for the 96 grid params + 192 mod params
         std::unordered_set<uint32_t> grid_params;
@@ -874,7 +1002,7 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
         // Draw remaining params, skipping grid params
         for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
             if (grid_params.count(pi)) continue;
-            draw_one_inspector_param(tr, node, px, py, pi);
+            draw_one_inspector_param_simple(tr, node, px, py, pi);
         }
         return;
     }
@@ -902,7 +1030,7 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
         }
 
         // Draw "steps" slider first
-        draw_one_inspector_param(tr, node, px, py, steps_it->second);
+        draw_one_inspector_param_simple(tr, node, px, py, steps_it->second);
 
         // Draw grouped steps: "Step N" header + root_N dropdown + type_N dropdown
         for (int s = 0; s < num_steps; ++s) {
@@ -945,13 +1073,40 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
         step_params.insert(steps_it->second);
         for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
             if (step_params.count(pi)) continue;
-            draw_one_inspector_param(tr, node, px, py, pi);
+            draw_one_inspector_param_simple(tr, node, px, py, pi);
         }
     } else {
-        // Default: sequential rendering
+        // Default: layout-aware rendering with group headers
+        InspectorLayout layout;
+        layout.base_x = px; layout.x = px; layout.y = py;
+        layout.full_w = kInspContentW; layout.col_w = kInspContentW;
+
+        std::string current_group;
+
         for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
-            draw_one_inspector_param(tr, node, px, py, pi);
+            const auto& pd = op.params[pi];
+
+            if (pd.group != current_group) {
+                layout.flush_row();
+                current_group = pd.group;
+
+                if (!current_group.empty()) {
+                    bool collapsed = is_group_collapsed(node.type_name, current_group);
+                    draw_inspector_group_header(tr, layout, node.type_name, current_group, collapsed);
+                    if (collapsed) {
+                        while (pi + 1 < static_cast<uint32_t>(op.params.size()) &&
+                               op.params[pi + 1].group == current_group)
+                            ++pi;
+                        continue;
+                    }
+                }
+            }
+
+            layout.begin_param(pd.layout_columns, pd.layout_column_index);
+            draw_one_inspector_param(tr, node, layout, pi);
         }
+        layout.flush_row();
+        py = layout.y;
     }
 }
 

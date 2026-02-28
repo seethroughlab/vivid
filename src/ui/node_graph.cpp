@@ -939,9 +939,22 @@ void NodeGraphUI::update_slider_drag() {
         if (ns && ns->op_info) {
             for (const auto& pd : ns->op_info->params) {
                 if (pd.name != active_slider_param_name_) continue;
-                float t = (mouse_.x - s.x) / s.w;
-                t = std::max(0.0f, std::min(1.0f, t));
-                float val = pd.min_value + t * (pd.max_value - pd.min_value);
+                float val;
+                if (pd.display_hint == VIVID_DISPLAY_KNOB) {
+                    // Vertical drag: up = increase
+                    float dy = mouse_.prev_y - mouse_.y;
+                    float range = pd.max_value - pd.min_value;
+                    float sensitivity = range / 200.0f;
+                    auto pi_it = ns->param_indices.find(pd.name);
+                    float cur = (pi_it != ns->param_indices.end())
+                        ? ns->param_values[pi_it->second] : pd.min_value;
+                    val = cur + dy * sensitivity;
+                    val = std::max(pd.min_value, std::min(pd.max_value, val));
+                } else {
+                    float t = (mouse_.x - s.x) / s.w;
+                    t = std::max(0.0f, std::min(1.0f, t));
+                    val = pd.min_value + t * (pd.max_value - pd.min_value);
+                }
                 if (pd.type == VIVID_PARAM_INT) {
                     val = std::round(val);
                 }

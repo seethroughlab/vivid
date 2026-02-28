@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/node_graph_constants.h"
+#include "ui/inspector_layout.h"
 #include "ui/graph_snapshot.h"
 #include "ui/ui_command_sink.h"
 #include "ui/ui_style.h"
@@ -20,6 +21,7 @@ class ThumbnailCache;
 
 struct MouseState {
     float x = 0, y = 0;
+    float prev_x = 0, prev_y = 0;
     bool left_down = false;
     bool left_clicked = false;   // true on the frame the button went down
     bool left_released = false;  // true on the frame the button went up
@@ -111,7 +113,14 @@ private:
     void draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& node,
-                                  float px, float& py, uint32_t pi);
+                                  InspectorLayout& layout, uint32_t pi);
+    void draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
+                              InspectorLayout& layout, uint32_t pi);
+    void draw_inspector_group_header(Renderer2D& tr, InspectorLayout& layout,
+                                      const std::string& type_name,
+                                      const std::string& group_name, bool collapsed);
+    void draw_one_inspector_param_simple(Renderer2D& tr, const NodeSnapshot& node,
+                                         float px, float& py, uint32_t pi);
     void draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_adsr_preview(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
@@ -286,6 +295,9 @@ private:
     struct InspectorRect { float x, y, w, h; std::string node_id; std::string param_name; };
     std::vector<InspectorRect> slider_rects_;
 
+    struct GroupHeaderRect { float x, y, w, h; std::string type_name; std::string group_name; };
+    std::vector<GroupHeaderRect> group_header_rects_;
+
     // Drum mod cell drag state
     int active_drum_mod_idx_ = -1;
     std::string active_drum_mod_node_id_;
@@ -388,6 +400,18 @@ private:
     int context_wire_idx_ = -1;     // >= 0 if wire menu
     bool context_bg_menu_ = false;  // true if background menu (no node/wire)
     int hovered_wire_idx_ = -1;
+
+    // Group collapse state
+    std::unordered_map<std::string, bool> group_collapsed_;
+
+    bool is_group_collapsed(const std::string& type_name, const std::string& group) const {
+        auto it = group_collapsed_.find(type_name + "\t" + group);
+        return it != group_collapsed_.end() && it->second;
+    }
+    void toggle_group_collapsed(const std::string& type_name, const std::string& group) {
+        auto key = type_name + "\t" + group;
+        group_collapsed_[key] = !group_collapsed_[key];
+    }
 
     // Inspector scroll state
     float insp_scroll_y_ = 0.0f;
