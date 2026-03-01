@@ -34,6 +34,10 @@ public:
     CommandResult set_resolution(const std::string& node_id, uint32_t width, uint32_t height);
     CommandResult get_param(const std::string& node_id, const std::string& param);
 
+    // Per-parameter lock flags
+    CommandResult set_param_lock(const std::string& node_id, const std::string& param, uint8_t flags);
+    CommandResult get_param_lock(const std::string& node_id, const std::string& param);
+
     // Buffered topology changes (require apply_pending)
     CommandResult add_node(const std::string& type, const std::string& id);
     CommandResult remove_node(const std::string& id);

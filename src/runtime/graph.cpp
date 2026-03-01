@@ -138,6 +138,21 @@ bool Graph::load(const char* path) {
                 }
             }
 
+            // Optional per-parameter lock flags
+            yyjson_val* locks_obj = yyjson_obj_get(val, "locks");
+            if (locks_obj && yyjson_is_obj(locks_obj)) {
+                yyjson_obj_iter liter;
+                yyjson_obj_iter_init(locks_obj, &liter);
+                yyjson_val* lkey;
+                while ((lkey = yyjson_obj_iter_next(&liter)) != nullptr) {
+                    yyjson_val* lval = yyjson_obj_iter_get_val(lkey);
+                    if (lval && yyjson_is_int(lval)) {
+                        node.param_lock_flags[yyjson_get_str(lkey)] =
+                            static_cast<uint8_t>(yyjson_get_int(lval));
+                    }
+                }
+            }
+
             nodes_.push_back(std::move(node));
         }
     }
@@ -729,6 +744,15 @@ bool Graph::save(const char* path) const {
             yyjson_mut_arr_add_int(doc, res_arr, static_cast<int64_t>(node.tex_width));
             yyjson_mut_arr_add_int(doc, res_arr, static_cast<int64_t>(node.tex_height));
             yyjson_mut_obj_add_val(doc, node_obj, "resolution", res_arr);
+        }
+
+        if (!node.param_lock_flags.empty()) {
+            yyjson_mut_val* locks_obj = yyjson_mut_obj(doc);
+            for (const auto& [pname, flags] : node.param_lock_flags) {
+                yyjson_mut_obj_add_int(doc, locks_obj, pname.c_str(),
+                                       static_cast<int64_t>(flags));
+            }
+            yyjson_mut_obj_add_val(doc, node_obj, "locks", locks_obj);
         }
 
         yyjson_mut_obj_add_val(doc, nodes_obj, node.id.c_str(), node_obj);

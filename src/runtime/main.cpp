@@ -21,6 +21,7 @@
 #include "runtime/editor_detect.h"
 #include "runtime/operator_info_cache.h"
 #include "runtime/runtime_command_sink.h"
+#include "runtime/crash_guard.h"
 #include "ui/ui_style.h"
 #include "ui/theme_loader.h"
 #include "operator_api/gpu_operator.h"
@@ -107,6 +108,7 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.output_port_indices = ns.output_port_indices;
         sn.param_indices = ns.param_indices;
         sn.param_values = ns.param_values;
+        sn.param_lock_flags = ns.param_lock_flags;
         sn.output_values = ns.output_values;
         sn.output_spreads = ns.output_spreads;
         for (const auto& [name, idx] : ns.file_param_indices)
@@ -521,6 +523,8 @@ static void scroll_callback(GLFWwindow* w, double xoffset, double yoffset) {
 }
 
 int main(int argc, char* argv[]) {
+    vivid::install_crash_handlers();
+
     // Derive exe directory so resource lookup works from any CWD
     auto exe_path = std::filesystem::canonical(std::filesystem::path(argv[0]));
     auto exe_dir = exe_path.parent_path();

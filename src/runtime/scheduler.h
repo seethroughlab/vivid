@@ -10,6 +10,13 @@
 
 namespace vivid {
 
+enum ParamLockFlags : uint8_t {
+    PARAM_LOCK_NONE    = 0,
+    PARAM_LOCK_WIRES   = 1,
+    PARAM_LOCK_PRESETS = 2,
+    PARAM_LOCK_ALL     = 3,
+};
+
 struct NodeState {
     std::string node_id;
     OperatorLoader* loader;
@@ -17,6 +24,7 @@ struct NodeState {
     uint32_t input_port_count;
     uint32_t output_port_count;
     std::vector<float> param_values;
+    std::vector<uint8_t> param_lock_flags;  // parallel to param_values
     std::vector<float> input_values;
     std::vector<float> output_values;
     std::unordered_map<std::string, uint32_t> input_port_indices;
@@ -43,6 +51,9 @@ struct NodeState {
     uint32_t         gpu_tex_height   = 0;
     std::vector<uint32_t> texture_input_port_indices;   // which input ports are GPU_TEXTURE
     std::vector<WGPUTextureView> resolved_tex_inputs;   // filled before process()
+    std::vector<WGPUTexture>     resolved_tex_raw;       // raw texture handles (parallel)
+    std::vector<uint32_t>        resolved_tex_widths;    // input texture widths
+    std::vector<uint32_t>        resolved_tex_heights;   // input texture heights
     bool is_gpu_sink = false;  // GPU domain + texture inputs + no texture outputs
 
     // File (string) params — separate from float param_values

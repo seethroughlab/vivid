@@ -666,6 +666,31 @@ static std::string dispatch(const std::string& method, const std::string& body,
             else
                 result = command_result_to_json(api.list_presets(yyjson_get_str(nid)));
         }
+    } else if (method == "set_param_lock") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
+            yyjson_val* param = yyjson_obj_get(root, "param");
+            yyjson_val* flags = yyjson_obj_get(root, "flags");
+            if (!nid || !param || !flags ||
+                !yyjson_is_str(nid) || !yyjson_is_str(param) || !yyjson_is_num(flags))
+                result = json_err("missing 'node_id', 'param', or 'flags'");
+            else
+                result = command_result_to_json(
+                    api.set_param_lock(yyjson_get_str(nid), yyjson_get_str(param),
+                                       static_cast<uint8_t>(yyjson_get_int(flags))));
+        }
+    } else if (method == "get_param_lock") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
+            yyjson_val* param = yyjson_obj_get(root, "param");
+            if (!nid || !param || !yyjson_is_str(nid) || !yyjson_is_str(param))
+                result = json_err("missing 'node_id' or 'param'");
+            else
+                result = command_result_to_json(
+                    api.get_param_lock(yyjson_get_str(nid), yyjson_get_str(param)));
+        }
     } else if (method == "set_state_preset") {
         if (!root) { result = json_err("invalid JSON body"); }
         else {

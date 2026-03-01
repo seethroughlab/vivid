@@ -6,8 +6,14 @@
 #include <array>
 #include <unordered_map>
 #include <memory>
+#include <cstdint>
 
 namespace vivid::ui {
+
+// Per-parameter lock flag constants (mirrored from scheduler.h for UI use)
+static constexpr uint8_t kParamLockNone    = 0;
+static constexpr uint8_t kParamLockWires   = 1;
+static constexpr uint8_t kParamLockPresets = 2;
 
 // Owned copy of VividParamDescriptor (no C string pointers)
 struct ParamInfo {
@@ -59,6 +65,7 @@ struct NodeSnapshot {
     std::unordered_map<std::string, uint32_t> param_indices;
 
     std::vector<float> param_values;
+    std::vector<uint8_t> param_lock_flags;  // parallel to param_values
     std::vector<float> output_values;
     std::vector<std::vector<float>> output_spreads;
     std::unordered_map<std::string, std::string> file_param_values;  // param_name -> path

@@ -325,6 +325,9 @@ private:
     struct InspectorRect { float x, y, w, h; std::string node_id; std::string param_name; };
     std::vector<InspectorRect> slider_rects_;
 
+    // Lock badge hit rects
+    std::vector<InspectorRect> lock_badge_rects_;
+
     // XY pad state
     struct XYPadRect { float x, y, w, h; std::string node_id; std::string param_x, param_y; };
     std::vector<XYPadRect> xy_pad_rects_;

@@ -439,6 +439,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     group_header_rects_.clear();
     state_preset_rects_.clear();
     state_header_rects_.clear();
+    lock_badge_rects_.clear();
 
     if (selected_node_ids_.empty()) return;
 
@@ -714,6 +715,26 @@ void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
     tr.draw_text(label_x, label_y, pd.name.c_str(),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
 
+    // Lock badge next to knob label
+    {
+        uint8_t lock = (pi < node.param_lock_flags.size()) ? node.param_lock_flags[pi] : 0;
+        float badge_anchor_x = label_x + label_w + 3;
+        if (lock != kParamLockNone) {
+            const char* lock_text =
+                (lock == (kParamLockWires | kParamLockPresets)) ? "WP" :
+                (lock & kParamLockWires) ? "W" : "P";
+            float badge_w = tr.text_width(lock_text, 0.75f) + 6;
+            tr.draw_rect(badge_anchor_x, label_y, badge_w, kMidiBadgeH,
+                         0.6f, 0.45f, 0.15f, 0.85f);
+            tr.draw_text(badge_anchor_x + 3, label_y, lock_text, 1.0f, 0.85f, 0.4f, 1.0f, 0.75f);
+            lock_badge_rects_.push_back({badge_anchor_x, label_y, badge_w, kMidiBadgeH,
+                                         node.node_id, pd.name});
+        } else {
+            lock_badge_rects_.push_back({badge_anchor_x, label_y, 14.0f, kMidiBadgeH,
+                                         node.node_id, pd.name});
+        }
+    }
+
     // Value text centered below label
     std::string val_str = (pd.type == VIVID_PARAM_INT)
         ? format_int(static_cast<int>(val))
@@ -802,6 +823,28 @@ void NodeGraphUI::draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node
     float label_lx = layout.base_x + (content_w - label_w) * 0.5f;
     tr.draw_text(label_lx, label_y, label.c_str(),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
+
+    // Lock badges for XY params (shown after label)
+    {
+        float badge_x = label_lx + label_w + 4;
+        for (uint32_t pi : {pi_x, pi_y}) {
+            uint8_t lock = (pi < node.param_lock_flags.size()) ? node.param_lock_flags[pi] : 0;
+            const auto& pd_name = op.params[pi].name;
+            if (lock != kParamLockNone) {
+                const char* lock_text =
+                    (lock == (kParamLockWires | kParamLockPresets)) ? "WP" :
+                    (lock & kParamLockWires) ? "W" : "P";
+                std::string badge_label = std::string(pd_name) + ":" + lock_text;
+                float bw = tr.text_width(badge_label.c_str(), 0.75f) + 6;
+                tr.draw_rect(badge_x, label_y, bw, kMidiBadgeH,
+                             0.6f, 0.45f, 0.15f, 0.85f);
+                tr.draw_text(badge_x + 3, label_y, badge_label.c_str(), 1.0f, 0.85f, 0.4f, 1.0f, 0.75f);
+                lock_badge_rects_.push_back({badge_x, label_y, bw, kMidiBadgeH,
+                                             node.node_id, pd_name});
+                badge_x += bw + 3;
+            }
+        }
+    }
 
     // Hit-test rect for XY pad drag
     xy_pad_rects_.push_back({pad_x, pad_y, pad_size, pad_size,
@@ -1051,14 +1094,37 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         tr.draw_text(label_x, py, pd.name.c_str(), 0.8f, 0.82f, 0.85f);
 
     // CC badge inline with label
+    float after_label_x = px + tr.text_width(pd.name.c_str()) + 6;
     if (midi_mm) {
         std::string badge = "CC " + std::to_string(midi_mm->cc_number);
-        float label_w = tr.text_width(pd.name.c_str());
-        float badge_x = px + label_w + 6;
+        float badge_x = after_label_x;
         float badge_w = tr.text_width(badge.c_str()) + 8;
         tr.draw_rect(badge_x, py, badge_w, kMidiBadgeH,
                      kMidiMapBadge[0], kMidiMapBadge[1], kMidiMapBadge[2], kMidiMapBadge[3]);
         tr.draw_text(badge_x + 4, py, badge.c_str(), 0.85f, 0.90f, 1.0f);
+        after_label_x = badge_x + badge_w + 4;
+    }
+
+    // Lock badge (W / P / WP)
+    {
+        uint8_t lock = (pi < node.param_lock_flags.size()) ? node.param_lock_flags[pi] : 0;
+        if (lock != kParamLockNone) {
+            const char* lock_text =
+                (lock == (kParamLockWires | kParamLockPresets)) ? "WP" :
+                (lock & kParamLockWires)   ? "W" : "P";
+            float badge_w = tr.text_width(lock_text) + 8;
+            float badge_x = after_label_x;
+            tr.draw_rect(badge_x, py, badge_w, kMidiBadgeH,
+                         0.6f, 0.45f, 0.15f, 0.85f);
+            tr.draw_text(badge_x + 4, py, lock_text, 1.0f, 0.85f, 0.4f);
+            lock_badge_rects_.push_back({badge_x, py, badge_w, kMidiBadgeH,
+                                         node.node_id, pd.name});
+        } else {
+            // Invisible hit-test zone for unlocked params (small area after label)
+            float zone_w = 18.0f;
+            lock_badge_rects_.push_back({after_label_x, py, zone_w, kMidiBadgeH,
+                                         node.node_id, pd.name});
+        }
     }
 
     // "Waiting" highlight (pulsing blue outline)

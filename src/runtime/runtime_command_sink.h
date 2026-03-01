@@ -77,6 +77,10 @@ public:
     }
     void set_quantize_clock(const std::string& node_id) override { api_.set_quantize_clock(node_id); }
 
+    void set_param_lock(const std::string& node_id, const std::string& param, uint8_t flags) override {
+        api_.set_param_lock(node_id, param, flags);
+    }
+
     void recall_preset(const std::string& node_id, const std::string& name) override {
         api_.recall_preset(node_id, name);
     }

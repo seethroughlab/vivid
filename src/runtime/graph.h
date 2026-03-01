@@ -20,6 +20,9 @@ struct NodeDef {
     // Per-node GPU texture resolution (0 = inherit or default 800x600)
     uint32_t tex_width  = 0;
     uint32_t tex_height = 0;
+
+    // Per-parameter lock flags (sparse — only non-zero entries stored)
+    std::unordered_map<std::string, uint8_t> param_lock_flags;
 };
 
 struct ConnectionDef {

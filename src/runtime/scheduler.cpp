@@ -1,4 +1,5 @@
 #include "runtime/scheduler.h"
+#include "runtime/crash_guard.h"
 #include "common/gpu_util.h"
 #include "common/topo_sort.h"
 #include "operator_api/gpu_operator.h"
@@ -35,6 +36,7 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
 
     // Init param_values from descriptor defaults, then apply overrides
     ns.param_values.resize(desc->param_count);
+    ns.param_lock_flags.assign(desc->param_count, PARAM_LOCK_NONE);
     for (uint32_t i = 0; i < desc->param_count; ++i) {
         ns.param_values[i] = desc->params[i].default_value;
         ns.param_indices[desc->params[i].name] = i;
@@ -162,6 +164,13 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         ns.generation = 0;
         init_node_state(ns, desc, &ndef.params,
                         ndef.string_params.empty() ? nullptr : &ndef.string_params);
+
+        // Apply per-parameter lock flags from graph definition
+        for (const auto& [pname, flags] : ndef.param_lock_flags) {
+            auto pi = ns.param_indices.find(pname);
+            if (pi != ns.param_indices.end())
+                ns.param_lock_flags[pi->second] = flags;
+        }
 
         // Per-node GPU texture resolution from graph definition
         if (ns.is_gpu) {
@@ -367,7 +376,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                 else
                     val = nodes_[w.from_node_idx].output_values[w.from_port_idx] * w.scale;
                 if (w.targets_param) {
-                    ns.param_values[w.to_port_idx] = val;
+                    if (!(ns.param_lock_flags[w.to_port_idx] & PARAM_LOCK_WIRES))
+                        ns.param_values[w.to_port_idx] = val;
                 } else {
                     ns.input_values[w.to_port_idx] = val;
                     // Spread propagation with broadcast/wrap semantics
@@ -465,21 +475,38 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             per_node_gpu.output_height   = ns.gpu_tex_height;
 
             // Resolve texture inputs from upstream nodes
+            size_t tex_count = ns.texture_input_port_indices.size();
             ns.resolved_tex_inputs.clear();
-            ns.resolved_tex_inputs.resize(ns.texture_input_port_indices.size(), nullptr);
-            for (size_t ti = 0; ti < ns.texture_input_port_indices.size(); ++ti) {
+            ns.resolved_tex_inputs.resize(tex_count, nullptr);
+            ns.resolved_tex_raw.clear();
+            ns.resolved_tex_raw.resize(tex_count, nullptr);
+            ns.resolved_tex_widths.clear();
+            ns.resolved_tex_widths.resize(tex_count, 0);
+            ns.resolved_tex_heights.clear();
+            ns.resolved_tex_heights.resize(tex_count, 0);
+            for (size_t ti = 0; ti < tex_count; ++ti) {
                 uint32_t port_idx = ns.texture_input_port_indices[ti];
                 for (const auto& w : wires_) {
                     if (w.to_node_idx == ni && !w.targets_param &&
                         w.to_port_idx == port_idx && w.is_texture_wire) {
-                        ns.resolved_tex_inputs[ti] = nodes_[w.from_node_idx].gpu_texture_view;
+                        auto& upstream = nodes_[w.from_node_idx];
+                        ns.resolved_tex_inputs[ti] = upstream.gpu_texture_view;
+                        ns.resolved_tex_raw[ti]    = upstream.gpu_texture;
+                        ns.resolved_tex_widths[ti] = upstream.gpu_tex_width;
+                        ns.resolved_tex_heights[ti] = upstream.gpu_tex_height;
                         break;
                     }
                 }
             }
             per_node_gpu.input_texture_views = ns.resolved_tex_inputs.empty()
                                                 ? nullptr : ns.resolved_tex_inputs.data();
-            per_node_gpu.input_texture_count = static_cast<uint32_t>(ns.resolved_tex_inputs.size());
+            per_node_gpu.input_texture_count = static_cast<uint32_t>(tex_count);
+            per_node_gpu.input_textures        = ns.resolved_tex_raw.empty()
+                                                    ? nullptr : ns.resolved_tex_raw.data();
+            per_node_gpu.input_texture_widths   = ns.resolved_tex_widths.empty()
+                                                    ? nullptr : ns.resolved_tex_widths.data();
+            per_node_gpu.input_texture_heights  = ns.resolved_tex_heights.empty()
+                                                    ? nullptr : ns.resolved_tex_heights.data();
             per_node_gpu.operators_src_dir = operators_src_dir_.empty()
                                                 ? nullptr : operators_src_dir_.c_str();
 
@@ -489,6 +516,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         }
 
         try {
+            CrashGuard guard(ns.node_id.c_str());
             ns.loader->process(ns.instance, &ctx);
         } catch (const std::exception& e) {
             ns.errored = true;
@@ -573,7 +601,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         float val = w.sources_param
             ? nodes_[w.from_node_idx].param_values[w.from_port_idx]
             : nodes_[w.from_node_idx].output_values[w.from_port_idx];
-        to_ns.param_values[w.to_port_idx] = val;
+        if (!(to_ns.param_lock_flags[w.to_port_idx] & PARAM_LOCK_WIRES))
+            to_ns.param_values[w.to_port_idx] = val;
     }
 }
 
@@ -669,6 +698,7 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
         uint32_t node_idx;
         std::unordered_map<std::string, float> values;
         std::unordered_map<std::string, std::string> string_values;
+        std::unordered_map<std::string, uint8_t> lock_flags;
     };
     std::vector<SavedParams> saved;
 
@@ -679,9 +709,11 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
 
         SavedParams sp;
         sp.node_idx = i;
-        // Save param values by name
+        // Save param values and lock flags by name
         for (const auto& [name, idx] : ns.param_indices) {
             sp.values[name] = ns.param_values[idx];
+            if (ns.param_lock_flags[idx] != PARAM_LOCK_NONE)
+                sp.lock_flags[name] = ns.param_lock_flags[idx];
         }
         for (const auto& [name, idx] : ns.file_param_indices) {
             sp.string_values[name] = ns.file_param_storage[idx];
@@ -718,6 +750,13 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
         ns.instance = new_loader->create_instance();
         init_node_state(ns, new_desc, &sp.values,
                         sp.string_values.empty() ? nullptr : &sp.string_values);
+
+        // Restore lock flags
+        for (const auto& [pname, flags] : sp.lock_flags) {
+            auto pi = ns.param_indices.find(pname);
+            if (pi != ns.param_indices.end())
+                ns.param_lock_flags[pi->second] = flags;
+        }
 
         // Clear error state on successful reload
         ns.errored = false;

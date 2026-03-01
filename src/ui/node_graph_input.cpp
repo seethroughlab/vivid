@@ -1280,6 +1280,25 @@ bool NodeGraphUI::handle_inspector_click() {
     // Reject clicks above perf bar (clipped-off content)
     if (mouse_.y < kPerfBarH) return true;
 
+    // Lock badge click: cycle (none) → W → P → WP → (none)
+    {
+        int li = hit_test_rect(lock_badge_rects_, mouse_.x, mouse_.y);
+        if (li >= 0) {
+            const auto& lr = lock_badge_rects_[li];
+            const auto* ns = snap_.find_node(lr.node_id);
+            if (ns) {
+                auto pi_it = ns->param_indices.find(lr.param_name);
+                if (pi_it != ns->param_indices.end()) {
+                    uint8_t cur = (pi_it->second < ns->param_lock_flags.size())
+                                  ? ns->param_lock_flags[pi_it->second] : 0;
+                    uint8_t next = (cur + 1) & 0x03;  // cycle 0→1→2→3→0
+                    commands_.set_param_lock(lr.node_id, lr.param_name, next);
+                }
+            }
+            return true;
+        }
+    }
+
     // Confirm any active text edit when clicking in inspector
     if (editing_param_) confirm_param_edit();
     if (editing_resolution_) confirm_resolution_edit();
