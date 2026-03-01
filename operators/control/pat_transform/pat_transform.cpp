@@ -65,7 +65,7 @@ struct PatTransform : vivid::OperatorBase {
         if (rot != 0) {
             int shift = ((rot % static_cast<int>(n)) + static_cast<int>(n)) % static_cast<int>(n);
             if (shift != 0) {
-                float tmp[64];
+                float tmp[1024];
                 for (uint32_t i = 0; i < n; ++i)
                     tmp[i] = out.data[(i + shift) % n];
                 for (uint32_t i = 0; i < n; ++i)

@@ -157,9 +157,9 @@ struct MidiInput : vivid::OperatorBase {
 
         // Write spread outputs: all currently held notes
         if (ctx->output_spreads) {
-            auto& notes_sp = ctx->output_spreads[0];
-            auto& vel_sp   = ctx->output_spreads[1];
-            auto& gates_sp = ctx->output_spreads[2];
+            auto& notes_sp = ctx->output_spreads[7];
+            auto& vel_sp   = ctx->output_spreads[8];
+            auto& gates_sp = ctx->output_spreads[9];
 
             uint32_t len = static_cast<uint32_t>(held_count_);
             if (notes_sp.capacity >= len) {
