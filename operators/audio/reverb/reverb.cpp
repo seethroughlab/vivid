@@ -22,7 +22,11 @@ struct CombFilter {
         size = len;
         idx  = 0;
         filterstore = 0.0f;
-        buffer.assign(size, 0.0f);
+        if (static_cast<int>(buffer.size()) < size) {
+            buffer.assign(size, 0.0f);
+        } else {
+            std::fill_n(buffer.data(), size, 0.0f);
+        }
     }
 
     float process(float input, float feedback, float damp1, float damp2) {
@@ -42,7 +46,11 @@ struct AllPassDelay {
     void init(int len) {
         size = len;
         idx  = 0;
-        buffer.assign(size, 0.0f);
+        if (static_cast<int>(buffer.size()) < size) {
+            buffer.assign(size, 0.0f);
+        } else {
+            std::fill_n(buffer.data(), size, 0.0f);
+        }
     }
 
     float process(float input) {

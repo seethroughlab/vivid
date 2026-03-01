@@ -28,7 +28,12 @@ struct Wavetable {
 
     void allocate(uint32_t frames) {
         frame_count = std::min(frames, MAX_FRAMES);
-        data.assign(frame_count * SAMPLES_PER_FRAME, 0.0f);
+        uint32_t needed = frame_count * SAMPLES_PER_FRAME;
+        if (data.size() < needed) {
+            data.assign(needed, 0.0f);
+        } else {
+            std::fill_n(data.data(), needed, 0.0f);
+        }
     }
 
     float* frame_ptr(uint32_t f) {
@@ -382,6 +387,12 @@ struct WavetableSynth : vivid::OperatorBase {
     Wavetable wt_;
     int       loaded_table_ = -1;
     bool      initialized_  = false;
+
+    WavetableSynth() {
+        // Pre-generate default wavetable on main thread to avoid
+        // audio-thread heap allocation on first process() call.
+        ensure_wavetable(0);
+    }
 
     // --- Param / port registration ---
 

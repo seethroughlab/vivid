@@ -41,7 +41,11 @@ struct CircularBuffer {
     void init(uint32_t sample_rate, float seconds = 4.0f) {
         if (ready && init_rate == sample_rate) return;
         size = static_cast<uint32_t>(sample_rate * seconds) + 1;
-        buffer.assign(size, 0.0f);
+        if (buffer.size() < size) {
+            buffer.assign(size, 0.0f);  // first init or upward rate change
+        } else {
+            std::fill_n(buffer.data(), size, 0.0f);  // reuse existing capacity
+        }
         write_pos = 0;
         ready     = true;
         init_rate = sample_rate;

@@ -17,7 +17,11 @@ struct DelayLine {
     void init(int max_samples) {
         size  = max_samples;
         write = 0;
-        buffer.assign(size, 0.0f);
+        if (static_cast<int>(buffer.size()) < size) {
+            buffer.assign(size, 0.0f);
+        } else {
+            std::fill_n(buffer.data(), size, 0.0f);
+        }
     }
 
     void push(float v) {
