@@ -17,6 +17,12 @@ struct VividGpuState {
     WGPUTextureView*   input_texture_views;
     uint32_t           input_texture_count;
 
+    // Raw texture handles for inputs (parallel to input_texture_views).
+    // Needed for copy/readback operations. May be nullptr if not resolved.
+    WGPUTexture*       input_textures;
+    uint32_t*          input_texture_widths;
+    uint32_t*          input_texture_heights;
+
     // Path to operators/ source tree (for WGSL filter hot-reload)
     const char*        operators_src_dir;
 };
