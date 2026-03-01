@@ -58,11 +58,13 @@ struct VariationDef {
     std::string name;
     // node_id -> { param_name -> value }
     std::unordered_map<std::string, std::unordered_map<std::string, float>> params;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params;
 };
 
 struct OperatorPreset {
     std::string name;
     std::unordered_map<std::string, float> params;  // param_name -> value
+    std::unordered_map<std::string, std::string> string_params;  // file/string params
 };
 
 struct StatePresetMapping {

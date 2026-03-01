@@ -239,14 +239,15 @@ bool Graph::load(const char* path) {
                     yyjson_val* nval = yyjson_obj_iter_get_val(nkey);
                     std::string node_id = yyjson_get_str(nkey);
                     if (nval && yyjson_is_obj(nval)) {
-                        auto& pm = vd.params[node_id];
                         yyjson_obj_iter piter;
                         yyjson_obj_iter_init(nval, &piter);
                         yyjson_val* pkey;
                         while ((pkey = yyjson_obj_iter_next(&piter)) != nullptr) {
                             yyjson_val* pv = yyjson_obj_iter_get_val(pkey);
                             if (pv && yyjson_is_num(pv))
-                                pm[yyjson_get_str(pkey)] = static_cast<float>(yyjson_get_num(pv));
+                                vd.params[node_id][yyjson_get_str(pkey)] = static_cast<float>(yyjson_get_num(pv));
+                            else if (pv && yyjson_is_str(pv))
+                                vd.string_params[node_id][yyjson_get_str(pkey)] = yyjson_get_str(pv);
                         }
                     }
                 }
@@ -292,6 +293,8 @@ bool Graph::load(const char* path) {
                             yyjson_val* ppv = yyjson_obj_iter_get_val(ppkey);
                             if (ppv && yyjson_is_num(ppv))
                                 op.params[yyjson_get_str(ppkey)] = static_cast<float>(yyjson_get_num(ppv));
+                            else if (ppv && yyjson_is_str(ppv))
+                                op.string_params[yyjson_get_str(ppkey)] = yyjson_get_str(ppv);
                         }
                     }
                     presets.push_back(std::move(op));
@@ -797,11 +800,28 @@ bool Graph::save(const char* path) const {
             yyjson_mut_val* v_obj = yyjson_mut_obj(doc);
             yyjson_mut_obj_add_strcpy(doc, v_obj, "name", vd.name.c_str());
             yyjson_mut_val* params_obj = yyjson_mut_obj(doc);
+            // Write float params (node_id refs stable in vd.params)
             for (const auto& [node_id, pm] : vd.params) {
                 yyjson_mut_val* node_obj = yyjson_mut_obj(doc);
                 for (const auto& [pname, pval] : pm) {
                     yyjson_mut_obj_add_real(doc, node_obj, pname.c_str(),
                                             static_cast<double>(pval));
+                }
+                // Also add string params for this node if present
+                auto sit = vd.string_params.find(node_id);
+                if (sit != vd.string_params.end()) {
+                    for (const auto& [pname, pval] : sit->second) {
+                        yyjson_mut_obj_add_strcpy(doc, node_obj, pname.c_str(), pval.c_str());
+                    }
+                }
+                yyjson_mut_obj_add_val(doc, params_obj, node_id.c_str(), node_obj);
+            }
+            // Write nodes that only have string params (not in vd.params)
+            for (const auto& [node_id, spm] : vd.string_params) {
+                if (vd.params.count(node_id)) continue;  // already handled above
+                yyjson_mut_val* node_obj = yyjson_mut_obj(doc);
+                for (const auto& [pname, pval] : spm) {
+                    yyjson_mut_obj_add_strcpy(doc, node_obj, pname.c_str(), pval.c_str());
                 }
                 yyjson_mut_obj_add_val(doc, params_obj, node_id.c_str(), node_obj);
             }
@@ -827,6 +847,9 @@ bool Graph::save(const char* path) const {
                 for (const auto& [pname, pval] : p.params) {
                     yyjson_mut_obj_add_real(doc, pp_obj, pname.c_str(),
                                             static_cast<double>(pval));
+                }
+                for (const auto& [pname, pval] : p.string_params) {
+                    yyjson_mut_obj_add_strcpy(doc, pp_obj, pname.c_str(), pval.c_str());
                 }
                 yyjson_mut_obj_add_val(doc, pr_obj, "params", pp_obj);
                 yyjson_mut_arr_add_val(pr_arr, pr_obj);
