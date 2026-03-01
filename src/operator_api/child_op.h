@@ -130,22 +130,20 @@ public:
             }
         }
 
-        // Build spread port arrays for the C context
-        std::vector<VividSpreadPort> c_input_spreads(input_spreads_.size());
+        // Rewrite spread port arrays for the C context
         for (size_t i = 0; i < input_spreads_.size(); ++i) {
-            c_input_spreads[i].data     = input_spreads_[i].empty() ? nullptr : input_spreads_[i].data();
-            c_input_spreads[i].length   = static_cast<uint32_t>(input_spreads_[i].size());
-            c_input_spreads[i].capacity = c_input_spreads[i].length;
+            c_input_spreads_[i].data     = input_spreads_[i].empty() ? nullptr : input_spreads_[i].data();
+            c_input_spreads_[i].length   = static_cast<uint32_t>(input_spreads_[i].size());
+            c_input_spreads_[i].capacity = c_input_spreads_[i].length;
         }
 
-        std::vector<VividSpreadPort> c_output_spreads(output_spreads_.size());
         for (size_t i = 0; i < output_spreads_.size(); ++i) {
             // Pre-allocate output spread capacity
             if (output_spreads_[i].capacity() < 256)
                 output_spreads_[i].reserve(256);
-            c_output_spreads[i].data     = output_spreads_[i].data();
-            c_output_spreads[i].length   = static_cast<uint32_t>(output_spreads_[i].size());
-            c_output_spreads[i].capacity = static_cast<uint32_t>(output_spreads_[i].capacity());
+            c_output_spreads_[i].data     = output_spreads_[i].data();
+            c_output_spreads_[i].length   = static_cast<uint32_t>(output_spreads_[i].size());
+            c_output_spreads_[i].capacity = static_cast<uint32_t>(output_spreads_[i].capacity());
         }
 
         // Build child process context, inheriting time/frame from parent
@@ -158,8 +156,10 @@ public:
         child_ctx.output_values = output_values_.empty() ? nullptr : output_values_.data();
         child_ctx.gpu          = parent_ctx->gpu;
         child_ctx.audio        = parent_ctx->audio;
-        child_ctx.input_spreads  = c_input_spreads.empty() ? nullptr : c_input_spreads.data();
-        child_ctx.output_spreads = c_output_spreads.empty() ? nullptr : c_output_spreads.data();
+        child_ctx.input_spreads  = c_input_spreads_.empty() ? nullptr : c_input_spreads_.data();
+        child_ctx.output_spreads = c_output_spreads_.empty() ? nullptr : c_output_spreads_.data();
+        // File params are not supported for child operators — they are set via
+        // main_thread_update, which ChildOp does not call.
         child_ctx.file_param_values = nullptr;
         child_ctx.file_param_count  = 0;
         child_ctx.preferred_tex_width  = 0;
@@ -169,7 +169,7 @@ public:
 
         // Copy output spread lengths back (operator may have resized via length field)
         for (size_t i = 0; i < output_spreads_.size(); ++i) {
-            output_spreads_[i].resize(c_output_spreads[i].length);
+            output_spreads_[i].resize(c_output_spreads_[i].length);
         }
     }
 
@@ -220,6 +220,8 @@ private:
         output_values_.resize(out_idx, 0.0f);
         input_spreads_.resize(in_idx);
         output_spreads_.resize(out_idx);
+        c_input_spreads_.resize(in_idx);
+        c_output_spreads_.resize(out_idx);
     }
 
     T op_;
@@ -238,6 +240,8 @@ private:
     // Spread storage
     std::vector<std::vector<float>> input_spreads_;
     std::vector<std::vector<float>> output_spreads_;
+    std::vector<VividSpreadPort> c_input_spreads_;
+    std::vector<VividSpreadPort> c_output_spreads_;
     std::vector<uint32_t> input_spread_indices_;
     std::vector<uint32_t> output_spread_indices_;
 };

@@ -156,6 +156,11 @@ struct OperatorBase {
 
 #define VIVID_REGISTER(ClassName)                                             \
                                                                               \
+struct _VividInstance {                                                        \
+    ClassName op;                                                              \
+    std::vector<vivid::ParamBase*> param_ptrs;                                \
+};                                                                            \
+                                                                              \
 static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     static VividOperatorDescriptor desc{};                                    \
     static std::vector<VividParamDescriptor> s_params;                        \
@@ -212,29 +217,24 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     return &desc;                                                             \
 }                                                                             \
                                                                               \
-static std::vector<vivid::ParamBase*> _vivid_collect_param_ptrs(              \
-        ClassName* op) {                                                      \
-    std::vector<vivid::ParamBase*> ptrs;                                      \
-    op->collect_params(ptrs);                                                 \
-    return ptrs;                                                              \
-}                                                                             \
-                                                                              \
 extern "C" const VividOperatorDescriptor* vivid_descriptor() {                \
     return _vivid_get_descriptor();                                           \
 }                                                                             \
                                                                               \
 extern "C" void* vivid_create() {                                             \
-    return new ClassName();                                                    \
+    auto* inst = new _VividInstance();                                         \
+    inst->op.collect_params(inst->param_ptrs);                                \
+    return inst;                                                              \
 }                                                                             \
                                                                               \
 extern "C" void vivid_destroy(void* instance) {                               \
-    delete static_cast<ClassName*>(instance);                                  \
+    delete static_cast<_VividInstance*>(instance);                             \
 }                                                                             \
                                                                               \
 extern "C" void vivid_process(void* instance,                                 \
                               const VividProcessContext* ctx) {                \
-    auto* op = static_cast<ClassName*>(instance);                              \
-    std::vector<vivid::ParamBase*> param_ptrs = _vivid_collect_param_ptrs(op); \
+    auto* inst = static_cast<_VividInstance*>(instance);                       \
+    auto& param_ptrs = inst->param_ptrs;                                      \
     uint32_t file_idx = 0;                                                    \
     for (size_t i = 0; i < param_ptrs.size(); ++i) {                          \
         if (param_ptrs[i]->type == VIVID_PARAM_FILE) {                        \
@@ -249,14 +249,14 @@ extern "C" void vivid_process(void* instance,                                 \
             param_ptrs[i]->value = ctx->param_values[i];                      \
         }                                                                     \
     }                                                                         \
-    op->process(ctx);                                                         \
+    inst->op.process(ctx);                                                    \
 }                                                                             \
                                                                               \
 extern "C" void vivid_main_thread_update(void* instance, double time,         \
                                          const char** file_param_values,       \
                                          uint32_t file_param_count) {          \
-    auto* op = static_cast<ClassName*>(instance);                              \
-    std::vector<vivid::ParamBase*> param_ptrs = _vivid_collect_param_ptrs(op); \
+    auto* inst = static_cast<_VividInstance*>(instance);                       \
+    auto& param_ptrs = inst->param_ptrs;                                      \
     uint32_t file_idx = 0;                                                    \
     for (size_t i = 0; i < param_ptrs.size(); ++i) {                          \
         if (param_ptrs[i]->type == VIVID_PARAM_FILE) {                        \
@@ -269,7 +269,7 @@ extern "C" void vivid_main_thread_update(void* instance, double time,         \
             file_idx++;                                                       \
         }                                                                     \
     }                                                                         \
-    op->main_thread_update(time);                                             \
+    inst->op.main_thread_update(time);                                        \
 }
 
 // ---------------------------------------------------------------------------
@@ -280,5 +280,5 @@ extern "C" void vivid_main_thread_update(void* instance, double time,         \
 #define VIVID_THUMBNAIL(ClassName)                                             \
 extern "C" void vivid_draw_thumbnail(void* instance,                           \
                                      const VividThumbnailContext* ctx) {        \
-    static_cast<ClassName*>(instance)->draw_thumbnail(ctx);                     \
+    static_cast<_VividInstance*>(instance)->op.draw_thumbnail(ctx);             \
 }
