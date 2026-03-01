@@ -106,8 +106,9 @@ struct AnalysisSnapshot {
     std::vector<std::vector<SpreadSnapshot>> spread_outputs; // [audio_node_idx][output_port_idx]
 
     // Error state propagation (audio thread → main thread)
-    std::vector<bool> errored;              // [audio_node_idx]
-    std::vector<std::string> error_msgs;    // [audio_node_idx]
+    // Fixed-size char arrays avoid heap allocation on the audio thread.
+    std::vector<bool> errored;                          // [audio_node_idx]
+    std::vector<std::array<char, 256>> error_msgs;      // [audio_node_idx]
 };
 
 struct AudioToControlMapping {

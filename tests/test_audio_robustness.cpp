@@ -75,9 +75,9 @@ int main(int argc, char* argv[]) {
     const auto& analysis = audio_engine.analysis_read();
     if (bad_idx >= 0) {
         check(analysis.errored[bad_idx], "throwing node error flag set in analysis");
-        check(!analysis.error_msgs[bad_idx].empty(), "throwing node has error message");
+        check(analysis.error_msgs[bad_idx][0] != '\0', "throwing node has error message");
         std::fprintf(stderr, "  INFO: error message = \"%s\"\n",
-                     analysis.error_msgs[bad_idx].c_str());
+                     analysis.error_msgs[bad_idx].data());
     }
 
     // Check that the good node is NOT errored

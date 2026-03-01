@@ -324,7 +324,6 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
 
     // Find audio_out sink node, or fall back to last node with output ports
     sink_node_idx_ = -1;
-    int audio_out_count = 0;
     for (uint32_t i = 0; i < n; ++i) {
         const auto* desc = nodes_[i].loader->descriptor();
         if (desc && std::string(desc->name) == "audio_out") {
@@ -333,7 +332,6 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
             } else {
                 std::fprintf(stderr, "[vivid] AudioEngine: warning: multiple audio_out nodes, using first\n");
             }
-            audio_out_count++;
         }
     }
     if (sink_node_idx_ == -1) {
@@ -481,7 +479,7 @@ void AudioEngine::inject_analysis(Scheduler& scheduler) {
         if (m.audio_engine_idx < snap.errored.size() && snap.errored[m.audio_engine_idx]) {
             auto& sched_ns = scheduler.nodes_mut()[m.scheduler_node_idx];
             sched_ns.errored = true;
-            sched_ns.error_message = snap.error_msgs[m.audio_engine_idx];
+            sched_ns.error_message = snap.error_msgs[m.audio_engine_idx].data();
         } else {
             auto& sched_ns = scheduler.nodes_mut()[m.scheduler_node_idx];
             // Only clear if the scheduler itself didn't set the error
@@ -851,13 +849,13 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             }
         }
 
-        // Propagate error state to analysis snapshot
+        // Propagate error state to analysis snapshot (no heap allocation)
         bool err = nodes_[ni].errored;
         analysis.errored[ni] = err;
         if (err) {
-            analysis.error_msgs[ni] = nodes_[ni].error_message;
+            std::memcpy(analysis.error_msgs[ni].data(), nodes_[ni].error_message, 256);
         } else {
-            analysis.error_msgs[ni].clear();
+            analysis.error_msgs[ni][0] = '\0';
         }
     }
     analysis_active_.store(write_idx, std::memory_order_release);
