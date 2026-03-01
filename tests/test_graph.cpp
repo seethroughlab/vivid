@@ -633,6 +633,70 @@ int main() {
         std::remove(path2.c_str());
     }
 
+    // =====================================================================
+    // Test 20: remove_node cascading cleanup (presets, variations, state mappings)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 20: remove_node cascading cleanup ===\n");
+        vivid::Graph g;
+        g.add_node("sm1", "StateMachine");
+        g.add_node("osc", "Osc");
+        g.add_node("filt", "Filter");
+
+        // Add presets for osc and filt
+        g.save_preset("osc", {"Bright", {{"freq", 880.0f}}, {}});
+        g.save_preset("filt", {"Open", {{"cutoff", 5000.0f}}, {}});
+        check(g.list_presets("osc").size() == 1, "osc has 1 preset");
+        check(g.list_presets("filt").size() == 1, "filt has 1 preset");
+
+        // Add a variation referencing both nodes
+        vivid::VariationDef v;
+        v.name = "Main";
+        v.params["osc"] = {{"freq", 440.0f}};
+        v.params["filt"] = {{"cutoff", 1000.0f}};
+        v.string_params["osc"] = {{"waveform", "saw"}};
+        g.add_variation(std::move(v));
+        check(g.variations()[0].params.size() == 2, "variation has 2 node entries");
+
+        // Add state-preset mappings: sm1 controls presets on osc and filt
+        g.set_state_preset("sm1", 0, "osc", "Bright");
+        g.set_state_preset("sm1", 0, "filt", "Open");
+        check(g.find_state_mapping("sm1") != nullptr, "state mapping exists for sm1");
+
+        // Also add a mapping where osc is a target in another SM's mapping
+        g.add_node("sm2", "StateMachine");
+        g.set_state_preset("sm2", 0, "osc", "Bright");
+
+        // Remove osc — should cascade to presets, variations, and state mappings
+        g.remove_node("osc");
+        check(g.list_presets("osc").empty(), "osc presets cleaned up");
+        check(g.list_presets("filt").size() == 1, "filt presets untouched");
+        check(g.variations()[0].params.size() == 1, "variation has 1 node entry after removal");
+        check(g.variations()[0].params.count("filt") == 1, "variation still has filt");
+        check(g.variations()[0].params.count("osc") == 0, "variation no longer has osc");
+        check(g.variations()[0].string_params.count("osc") == 0, "variation string_params no longer has osc");
+
+        // sm1 mapping should still exist but osc removed from targets
+        const auto* sm1_map = g.find_state_mapping("sm1");
+        check(sm1_map != nullptr, "sm1 mapping still exists");
+        if (sm1_map) {
+            check(sm1_map->state_presets[0].count("osc") == 0, "osc removed from sm1 targets");
+            check(sm1_map->state_presets[0].count("filt") == 1, "filt still in sm1 targets");
+        }
+
+        // sm2 mapping should have osc removed from targets
+        const auto* sm2_map = g.find_state_mapping("sm2");
+        check(sm2_map != nullptr, "sm2 mapping still exists");
+        if (sm2_map) {
+            check(sm2_map->state_presets[0].count("osc") == 0, "osc removed from sm2 targets");
+        }
+
+        // Remove the state machine node — its mapping should be removed entirely
+        g.remove_node("sm1");
+        check(g.find_state_mapping("sm1") == nullptr, "sm1 mapping removed when sm1 node deleted");
+        check(g.find_state_mapping("sm2") != nullptr, "sm2 mapping unaffected");
+    }
+
     // --- Cleanup temp files ---
     std::remove("/tmp/vivid_test_valid.json");
     std::remove("/tmp/vivid_test_layout.json");

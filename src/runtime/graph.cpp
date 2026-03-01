@@ -375,6 +375,25 @@ bool Graph::remove_node(const std::string& id) {
         std::remove_if(midi_mappings_.begin(), midi_mappings_.end(),
             [&](const MidiMappingDef& m) { return m.node_id == id; }),
         midi_mappings_.end());
+    // Remove per-operator presets for this node
+    node_presets_.erase(id);
+    // Strip this node from each variation's param maps
+    for (auto& v : variations_) {
+        v.params.erase(id);
+        v.string_params.erase(id);
+    }
+    // Clean up state-preset mappings referencing this node
+    // Remove mappings where this node IS the state machine
+    state_preset_mappings_.erase(
+        std::remove_if(state_preset_mappings_.begin(), state_preset_mappings_.end(),
+            [&](const StatePresetMapping& m) { return m.state_machine_node == id; }),
+        state_preset_mappings_.end());
+    // For remaining mappings, erase this node from each state's target map
+    for (auto& m : state_preset_mappings_) {
+        for (auto& bindings : m.state_presets) {
+            bindings.erase(id);
+        }
+    }
     return true;
 }
 
