@@ -831,7 +831,7 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
         tex_desc.dimension = WGPUTextureDimension_2D;
         tex_desc.format = format;
         tex_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding
-                       | WGPUTextureUsage_CopySrc | extra_usage;
+                       | WGPUTextureUsage_CopySrc | WGPUTextureUsage_CopyDst | extra_usage;
         ns.gpu_texture = wgpuDeviceCreateTexture(device, &tex_desc);
 
         WGPUTextureViewDescriptor view_desc{};

@@ -7,10 +7,10 @@
 // Strategy:
 //   - Passthrough: copy input texture → output texture (so it can be inserted
 //     into any GPU chain without breaking it).
-//   - Readback: use a separate command encoder to copy a small center crop from
-//     the input texture (which has LAST frame's data) to a staging buffer,
-//     synchronously wait, map, and compute metrics. For a 16×16 crop this is
-//     ~2KB and completes in <1ms.
+//   - Readback: record a copy-to-staging command on the shared tick encoder.
+//     On the NEXT frame, map the staging buffer and compute metrics. This
+//     avoids creating a separate encoder/submit (which would invalidate the
+//     active tick encoder) while keeping readback under ~2KB / <1ms.
 //   - 1-frame latency on analysis is acceptable and matches the architecture
 //     doc ("GPU→Control: 1–2 frames").
 
@@ -76,6 +76,12 @@ struct TextureAnalysis : vivid::OperatorBase {
         VividGpuState* gpu = vivid_gpu(ctx);
         if (!gpu) return;
 
+        // --- Deferred readback: consume staging buffer from previous frame ---
+        if (readback_pending_) {
+            consume_staging(gpu);
+            readback_pending_ = false;
+        }
+
         // Resolve input texture from the gpu state
         WGPUTexture input_tex = nullptr;
         uint32_t input_w = 0, input_h = 0;
@@ -110,7 +116,7 @@ struct TextureAnalysis : vivid::OperatorBase {
             }
         }
 
-        // --- Analysis: readback center crop from input texture ---
+        // --- Analysis: record copy-to-staging on shared encoder ---
         // Skip frames based on parameter to reduce GPU stalls
         uint32_t skip = 1u << skip_frames.int_value();
         frame_counter_++;
@@ -130,7 +136,7 @@ struct TextureAnalysis : vivid::OperatorBase {
         uint32_t crop_x = (input_w - crop_w) / 2;
         uint32_t crop_y = (input_h - crop_h) / 2;
 
-        readback_center_crop(gpu, input_tex, crop_x, crop_y, crop_w, crop_h);
+        enqueue_readback(gpu, input_tex, crop_x, crop_y, crop_w, crop_h);
         write_outputs(ctx);
     }
 
@@ -151,6 +157,9 @@ private:
     WGPUBuffer staging_buf_ = nullptr;
     uint64_t staging_buf_size_ = 0;
     uint32_t frame_counter_ = 0;
+    bool readback_pending_ = false;
+    uint32_t readback_crop_w_ = 0;
+    uint32_t readback_crop_h_ = 0;
 
     void write_outputs(const VividProcessContext* ctx) {
         // Output port indices (CONTROL_FLOAT only, texture ports don't use output_values):
@@ -163,9 +172,11 @@ private:
         ctx->output_values[5] = edge_density_;
     }
 
-    void readback_center_crop(VividGpuState* gpu, WGPUTexture input_tex,
-                               uint32_t crop_x, uint32_t crop_y,
-                               uint32_t crop_w, uint32_t crop_h) {
+    // Record the texture→staging copy on the shared tick encoder.
+    // The actual readback happens next frame in consume_staging().
+    void enqueue_readback(VividGpuState* gpu, WGPUTexture input_tex,
+                          uint32_t crop_x, uint32_t crop_y,
+                          uint32_t crop_w, uint32_t crop_h) {
         // RGBA16Float = 8 bytes per pixel
         static constexpr uint32_t kBpp = 8;
         static constexpr uint32_t kGpuRowAlign = 256;
@@ -186,11 +197,7 @@ private:
             if (!staging_buf_) return;
         }
 
-        // Create a separate encoder for the copy (reads last frame's data)
-        WGPUCommandEncoderDescriptor enc_desc{};
-        enc_desc.label = vivid_sv("TextureAnalysis Encoder");
-        WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(gpu->device, &enc_desc);
-
+        // Record copy on the shared tick encoder (no separate submit)
         WGPUTexelCopyTextureInfo src{};
         src.texture = input_tex;
         src.mipLevel = 0;
@@ -204,30 +211,25 @@ private:
         dst.layout.rowsPerImage = crop_h;
 
         WGPUExtent3D copy_size = { crop_w, crop_h, 1 };
-        wgpuCommandEncoderCopyTextureToBuffer(encoder, &src, &dst, &copy_size);
+        wgpuCommandEncoderCopyTextureToBuffer(gpu->command_encoder, &src, &dst, &copy_size);
 
-        WGPUCommandBufferDescriptor cmd_desc{};
-        cmd_desc.label = vivid_sv("TextureAnalysis Commands");
-        WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(encoder, &cmd_desc);
-        wgpuQueueSubmit(gpu->queue, 1, &cmd);
-        wgpuCommandBufferRelease(cmd);
-        wgpuCommandEncoderRelease(encoder);
+        readback_crop_w_ = crop_w;
+        readback_crop_h_ = crop_h;
+        readback_pending_ = true;
+    }
 
-        // Wait for GPU work
-        {
-            bool work_done = false;
-            WGPUQueueWorkDoneCallbackInfo work_cb{};
-            work_cb.mode = WGPUCallbackMode_AllowSpontaneous;
-            work_cb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
-                *static_cast<bool*>(ud1) = true;
-            };
-            work_cb.userdata1 = &work_done;
-            wgpuQueueOnSubmittedWorkDone(gpu->queue, work_cb);
-            while (!work_done)
-                wgpuDevicePoll(gpu->device, true, nullptr);
-        }
+    // Map the staging buffer (written by the previous frame's tick encoder),
+    // decode pixels, and compute analysis metrics.
+    void consume_staging(VividGpuState* gpu) {
+        static constexpr uint32_t kBpp = 8;
+        static constexpr uint32_t kGpuRowAlign = 256;
+        uint32_t crop_w = readback_crop_w_;
+        uint32_t crop_h = readback_crop_h_;
+        uint32_t unpadded_row = crop_w * kBpp;
+        uint32_t aligned_row = (unpadded_row + kGpuRowAlign - 1) & ~(kGpuRowAlign - 1);
+        uint64_t buf_size = static_cast<uint64_t>(aligned_row) * crop_h;
 
-        // Map staging buffer
+        // Map staging buffer (blocks until the previous tick's copy completes)
         bool map_done = false;
         WGPUBufferMapCallbackInfo map_cb{};
         map_cb.mode = WGPUCallbackMode_AllowSpontaneous;
