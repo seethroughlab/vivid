@@ -3,7 +3,10 @@
 #include <yyjson.h>
 #include <filesystem>
 #include <cstdio>
+#include <spawn.h>
 #include <string>
+
+extern "C" char** environ;
 
 namespace vivid {
 
@@ -85,24 +88,35 @@ void save_settings(const Settings& s) {
     yyjson_mut_doc_free(doc);
 }
 
+// Fire-and-forget process launch via posix_spawn (no shell interpolation).
+static void spawn_detached(const char* const argv[]) {
+    pid_t pid;
+    posix_spawn(&pid, argv[0], nullptr, nullptr,
+                const_cast<char* const*>(argv), environ);
+    // Fire-and-forget: don't waitpid — child is short-lived (open/sh).
+}
+
 void open_in_editor(const std::string& file_path, const Settings& settings) {
-    std::string cmd;
     if (settings.editor == "custom" && !settings.editor_command.empty()) {
-        // Substitute {file} placeholder
-        cmd = settings.editor_command;
+        // User-provided shell command template — must use shell for expansion.
+        std::string cmd = settings.editor_command;
         std::string placeholder = "{file}";
         size_t pos = cmd.find(placeholder);
         if (pos != std::string::npos) {
-            cmd.replace(pos, placeholder.size(), "\"" + file_path + "\"");
+            cmd.replace(pos, placeholder.size(), file_path);
         } else {
-            cmd += " \"" + file_path + "\"";
+            cmd += " " + file_path;
         }
+        const char* argv[] = { "/bin/sh", "-c", cmd.c_str(), nullptr };
+        spawn_detached(argv);
     } else if (!settings.editor.empty()) {
-        cmd = "open -a \"" + settings.editor + "\" \"" + file_path + "\"";
+        const char* argv[] = { "/usr/bin/open", "-a", settings.editor.c_str(),
+                               file_path.c_str(), nullptr };
+        spawn_detached(argv);
     } else {
-        cmd = "open -t \"" + file_path + "\"";
+        const char* argv[] = { "/usr/bin/open", "-t", file_path.c_str(), nullptr };
+        spawn_detached(argv);
     }
-    std::system(cmd.c_str());
 }
 
 } // namespace vivid

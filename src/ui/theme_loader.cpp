@@ -6,6 +6,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <spawn.h>
+
+extern "C" char** environ;
 #include <set>
 
 namespace vivid::ui {
@@ -234,7 +237,7 @@ static const EmbeddedTheme kEmbeddedThemes[] = {
     {"carbon",     "Carbon",     kCarbonJson,    sizeof(kCarbonJson) - 1},
     {"monokai",    "Monokai",    kMonokaiJson,   sizeof(kMonokaiJson) - 1},
 };
-static constexpr int kNumEmbedded = 8;
+static constexpr int kNumEmbedded = static_cast<int>(std::size(kEmbeddedThemes));
 
 static bool is_builtin_id(const std::string& id) {
     for (int i = 0; i < kNumEmbedded; i++) {
@@ -593,13 +596,20 @@ void open_themes_folder() {
     fs::create_directories(dir, ec);
 
 #if defined(__APPLE__)
-    std::string cmd = "open \"" + dir + "\"";
+    pid_t pid;
+    const char* argv[] = { "/usr/bin/open", dir.c_str(), nullptr };
+    posix_spawn(&pid, argv[0], nullptr, nullptr,
+                const_cast<char* const*>(argv), environ);
 #elif defined(_WIN32)
+    // No posix_spawn on Windows — but no shell interpolation either
     std::string cmd = "explorer \"" + dir + "\"";
-#else
-    std::string cmd = "xdg-open \"" + dir + "\"";
-#endif
     std::system(cmd.c_str());
+#else
+    pid_t pid;
+    const char* argv[] = { "xdg-open", dir.c_str(), nullptr };
+    posix_spawn(&pid, argv[0], nullptr, nullptr,
+                const_cast<char* const*>(argv), environ);
+#endif
 }
 
 } // namespace vivid::ui
