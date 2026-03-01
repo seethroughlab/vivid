@@ -6,6 +6,6 @@
     },
     "connections": [
         { "from": "noise/texture", "to": "analyze/texture" },
-        { "from": "analyze/texture", "to": "display/texture" }
+        { "from": "analyze/texture", "to": "display/input" }
     ]
 }
