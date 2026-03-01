@@ -121,10 +121,12 @@ add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_L
 add_vivid_operator(shape          operators/gpu/shape/shape.cpp          EXTRA_LIBS webgpu)
 add_vivid_operator(bars           operators/gpu/bars/bars.cpp            EXTRA_LIBS webgpu)
 add_vivid_operator(composite      operators/gpu/composite/composite.cpp  EXTRA_LIBS webgpu)
+add_vivid_operator(texture_analysis operators/gpu/texture_analysis/texture_analysis.cpp EXTRA_LIBS webgpu)
 add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp                             EXTRA_LIBS webgpu)
 add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(instance             operators/gpu/instance/instance.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
+add_vivid_operator(plexus                operators/gpu/plexus/plexus.cpp                           EXTRA_LIBS webgpu)
 # Simple WGSL filters are loaded from filters/*.wgsl (no C++ needed)
 
 # --- Movie File In (image + video loader) ---
@@ -182,6 +184,7 @@ add_vivid_operator(reverb         operators/audio/reverb/reverb.cpp)
 add_vivid_operator(delay          operators/audio/delay/delay.cpp)
 add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp)
 add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp)
+add_vivid_operator(plexus_synth   operators/audio/plexus_synth/plexus_synth.cpp)
 
 # --- Glitch operator plugins ---
 add_vivid_operator(stutter        operators/audio/stutter/stutter.cpp)
@@ -299,6 +302,7 @@ configure_file(graphs/shape_instance_demo.json ${CMAKE_BINARY_DIR}/shape_instanc
 configure_file(graphs/wgsl_filters_demo.json ${CMAKE_BINARY_DIR}/wgsl_filters_demo.json COPYONLY)
 configure_file(graphs/pattern_algebra_demo.json ${CMAKE_BINARY_DIR}/pattern_algebra_demo.json COPYONLY)
 configure_file(graphs/webcam_timemachine_demo.json ${CMAKE_BINARY_DIR}/webcam_timemachine_demo.json COPYONLY)
+configure_file(graphs/plexus_demo.json ${CMAKE_BINARY_DIR}/plexus_demo.json COPYONLY)
 
 # Copy all demo graphs into graphs/ subdirectory (for test_demo_graphs)
 file(GLOB DEMO_GRAPHS graphs/*.json)
@@ -675,11 +679,11 @@ add_dependencies(test_demo_graphs
     modulated_gain
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
     noise shape bars composite
-    bloom feedback instance movie_file_in
+    bloom feedback instance plexus movie_file_in
     # audio
     oscillator gain drum_kick drum_snare drum_hihat drum_clap
     drum_tom drum_cymbal wavetable_synth spread_adsr spread_lfo
-    reverb delay bitcrush distortion stutter tape_stop
+    reverb delay bitcrush distortion plexus_synth stutter tape_stop
     beat_repeat reverse scratch stretch freq_shift glitch
     movie_file_audio_in
     webcam_in time_machine

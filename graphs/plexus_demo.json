@@ -1,0 +1,24 @@
+{
+  "nodes": {
+    "plexus":    { "type": "Plexus", "params": { "particle_count": 80, "speed": 0.25,
+                   "connection_distance": 0.2, "point_size": 0.006, "line_thickness": 0.0015,
+                   "color_r": 0.4, "color_g": 0.7, "color_b": 1.0 }, "resolution": [1280, 720] },
+    "lfo_speed": { "type": "LFO", "params": { "frequency": 0.05, "amplitude": 0.15, "offset": 0.3 } },
+    "lfo_dist":  { "type": "LFO", "params": { "frequency": 0.03, "amplitude": 0.08, "offset": 0.22 } },
+    "bloom":     { "type": "Bloom", "params": { "threshold": 0.3, "intensity": 0.6 } },
+    "vout":      { "type": "video_out" },
+    "synth":     { "type": "PlexusSynth", "params": { "volume": 0.3, "base_note": 48, "note_range": 36 } },
+    "reverb":    { "type": "Reverb", "params": { "decay": 0.6, "mix": 0.5 } },
+    "aout":      { "type": "audio_out" }
+  },
+  "connections": [
+    { "from": "lfo_speed/value", "to": "plexus/speed" },
+    { "from": "lfo_dist/value",  "to": "plexus/connection_distance" },
+    { "from": "plexus/texture",  "to": "bloom/input" },
+    { "from": "bloom/texture",   "to": "vout/input" },
+    { "from": "plexus/positions",   "to": "synth/positions" },
+    { "from": "plexus/connections", "to": "synth/connections" },
+    { "from": "synth/output",      "to": "reverb/input" },
+    { "from": "reverb/output",     "to": "aout/input" }
+  ]
+}
