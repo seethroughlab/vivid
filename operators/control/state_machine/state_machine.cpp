@@ -7,13 +7,15 @@ struct StateMachine : vivid::OperatorBase {
     static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
-    // Parameters (14 total)
+    // Parameters (16 total)
     vivid::Param<int>   states       {"states",        4, 1, 8};
     vivid::Param<int>   transition   {"transition",    0, {"sequential", "manual", "threshold"}};
     vivid::Param<bool>  quantize     {"quantize",      true};
     vivid::Param<bool>  loop         {"loop",          true};
     vivid::Param<int>   bars_per_beat{"bars_per_beat", 4, 1, 32};
     vivid::Param<float> threshold    {"threshold",     0.5f, 0.0f, 1.0f};
+    vivid::Param<int>   xfade_mode   {"xfade_mode",   0, {"cut", "crossfade", "morph"}};
+    vivid::Param<float> xfade_bars   {"xfade_bars",   0.0f, 0.0f, 32.0f};
     vivid::Param<float> dur_0       {"dur_0", 4.0f, 0.0f, 256.0f};
     vivid::Param<float> dur_1       {"dur_1", 4.0f, 0.0f, 256.0f};
     vivid::Param<float> dur_2       {"dur_2", 4.0f, 0.0f, 256.0f};
@@ -34,6 +36,10 @@ struct StateMachine : vivid::OperatorBase {
     bool   pending_advance_ = false;
     bool   finished_        = false;
 
+    // Crossfade state
+    bool   xfade_active_    = false;
+    float  xfade_start_bar_ = 0.0f;  // bar position when crossfade started
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&states);         // 0
         out.push_back(&transition);     // 1
@@ -41,14 +47,16 @@ struct StateMachine : vivid::OperatorBase {
         out.push_back(&loop);           // 3
         out.push_back(&bars_per_beat);  // 4
         out.push_back(&threshold);      // 5
-        out.push_back(&dur_0);          // 6
-        out.push_back(&dur_1);          // 7
-        out.push_back(&dur_2);          // 8
-        out.push_back(&dur_3);          // 9
-        out.push_back(&dur_4);          // 10
-        out.push_back(&dur_5);          // 11
-        out.push_back(&dur_6);          // 12
-        out.push_back(&dur_7);          // 13
+        out.push_back(&xfade_mode);     // 6
+        out.push_back(&xfade_bars);     // 7
+        out.push_back(&dur_0);          // 8
+        out.push_back(&dur_1);          // 9
+        out.push_back(&dur_2);          // 10
+        out.push_back(&dur_3);          // 11
+        out.push_back(&dur_4);          // 12
+        out.push_back(&dur_5);          // 13
+        out.push_back(&dur_6);          // 14
+        out.push_back(&dur_7);          // 15
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -57,12 +65,13 @@ struct StateMachine : vivid::OperatorBase {
         out.push_back({"trigger",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT});
         out.push_back({"reset",      VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT});
         out.push_back({"signal",     VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT});
-        // Outputs (indexed 0-4)
+        // Outputs (indexed 0-5)
         out.push_back({"state",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"progress", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"trigger",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"bar",      VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"beat",     VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"xfade",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {
@@ -79,14 +88,16 @@ struct StateMachine : vivid::OperatorBase {
         bool  do_loop        = ctx->param_values[3] > 0.5f;
         int   bpb            = static_cast<int>(ctx->param_values[4]);
         float thresh         = ctx->param_values[5];
-        // dur_0..dur_7 at param indices 6..13
+        int   xf_mode        = static_cast<int>(ctx->param_values[6]);
+        float xf_bars        = ctx->param_values[7];
+        // dur_0..dur_7 at param indices 8..15
 
         num_states = std::max(1, std::min(8, num_states));
         bpb = std::max(1, bpb);
 
         // Duration for current state
         auto get_dur = [&](int s) -> float {
-            return ctx->param_values[6 + std::max(0, std::min(7, s))];
+            return ctx->param_values[8 + std::max(0, std::min(7, s))];
         };
 
         // Edge detection helpers
@@ -193,7 +204,33 @@ struct StateMachine : vivid::OperatorBase {
             }
         }
 
-        // 8. Compute outputs
+        // 8. Crossfade logic
+        if (transition_fired && xf_mode > 0 && xf_bars > 0.0f) {
+            xfade_active_ = true;
+            xfade_start_bar_ = static_cast<float>(bar_count_)
+                             + static_cast<float>(beat_count_) / static_cast<float>(bpb)
+                             + beat_phase / static_cast<float>(bpb);
+        }
+
+        float xfade_out = 0.0f;
+        if (xfade_active_) {
+            float current_bar_pos = static_cast<float>(bar_count_)
+                                  + static_cast<float>(beat_count_) / static_cast<float>(bpb)
+                                  + beat_phase / static_cast<float>(bpb);
+            float elapsed = current_bar_pos - xfade_start_bar_;
+            float t = (xf_bars > 0.0f) ? (elapsed / xf_bars) : 1.0f;
+            t = std::max(0.0f, std::min(1.0f, t));
+            if (xf_mode == 2) {
+                // Morph: smoothstep (3t^2 - 2t^3)
+                t = t * t * (3.0f - 2.0f * t);
+            }
+            xfade_out = t;
+            if (t >= 1.0f) {
+                xfade_active_ = false;
+            }
+        }
+
+        // 9. Compute outputs
         float state_out = static_cast<float>(current_state_);
         float bar_out   = static_cast<float>(bar_count_);
 
@@ -209,12 +246,13 @@ struct StateMachine : vivid::OperatorBase {
         float beat_out = beat_phase;
         float trigger_out = transition_fired ? 1.0f : 0.0f;
 
-        // 9. Write outputs
+        // 10. Write outputs
         ctx->output_values[0] = state_out;
         ctx->output_values[1] = progress_out;
         ctx->output_values[2] = trigger_out;
         ctx->output_values[3] = bar_out;
         ctx->output_values[4] = beat_out;
+        ctx->output_values[5] = xfade_out;
     }
 };
 

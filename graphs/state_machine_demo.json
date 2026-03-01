@@ -4,6 +4,7 @@
     "sm1":       { "type": "StateMachine",   "params": {
       "states": 3, "transition": 0, "quantize": 1,
       "loop": 1, "bars_per_beat": 4,
+      "xfade_mode": 1, "xfade_bars": 2,
       "dur_0": 4, "dur_1": 4, "dur_2": 4
     }},
     "lfo1":      { "type": "LFO",            "params": {

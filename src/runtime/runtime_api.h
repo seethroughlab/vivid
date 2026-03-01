@@ -17,6 +17,17 @@ struct CommandResult {
     std::string message;
 };
 
+struct CrossfadeState {
+    std::unordered_map<std::string, float> start_params;   // snapshot at fade start
+    std::unordered_map<std::string, float> target_params;  // from target preset
+    std::string target_preset_name;
+};
+
+struct ActiveCrossfade {
+    std::string sm_node_id;
+    std::unordered_map<std::string, CrossfadeState> targets;  // target_node -> fade state
+};
+
 class RuntimeAPI {
 public:
     RuntimeAPI(Graph& graph, Scheduler& scheduler, AudioEngine& audio_engine,
@@ -141,6 +152,9 @@ private:
 
     // State-preset mapping: track previous state per mapped state machine
     std::unordered_map<std::string, float> prev_sm_state_;
+
+    // Active crossfades (sm_node_id -> crossfade data)
+    std::unordered_map<std::string, ActiveCrossfade> active_crossfades_;
 
     // Active preset per node (node_id -> preset name)
     std::unordered_map<std::string, std::string> active_presets_;

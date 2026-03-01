@@ -242,6 +242,7 @@ CommandResult RuntimeAPI::set_connection_scale(const std::string& from_addr,
 bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     if (!pending_topology_change_) return false;
     pending_topology_change_ = false;
+    active_crossfades_.clear();
 
     // 1. Save current param values and lock flags by node_id + param_name
     std::unordered_map<std::string, std::unordered_map<std::string, float>> saved_params;
@@ -446,9 +447,29 @@ CommandResult RuntimeAPI::save_variation(const std::string& name) {
     VariationDef vd;
     vd.name = name;
     for (const auto& ns : scheduler_.nodes()) {
+        const auto* desc = ns.loader->descriptor();
         auto& pm = vd.params[ns.node_id];
         for (const auto& [pname, idx] : ns.param_indices) {
-            pm[pname] = ns.param_values[idx];
+            // Delta encoding: only store non-default values
+            if (idx < desc->param_count &&
+                desc->params[idx].type != VIVID_PARAM_FILE &&
+                ns.param_values[idx] != desc->params[idx].default_value) {
+                pm[pname] = ns.param_values[idx];
+            }
+        }
+        // Remove empty node entries
+        if (pm.empty()) vd.params.erase(ns.node_id);
+
+        // String params: only store non-default
+        for (const auto& [pname, fidx] : ns.file_param_indices) {
+            const char* def_str = nullptr;
+            auto pi = ns.param_indices.find(pname);
+            if (pi != ns.param_indices.end() && pi->second < desc->param_count)
+                def_str = desc->params[pi->second].default_string;
+            const auto& val = ns.file_param_storage[fidx];
+            if (!val.empty() && (def_str == nullptr || val != def_str)) {
+                vd.string_params[ns.node_id][pname] = val;
+            }
         }
     }
     graph_.add_variation(std::move(vd));
@@ -474,6 +495,41 @@ CommandResult RuntimeAPI::recall_variation_idx(int idx) {
 
 void RuntimeAPI::apply_variation(int idx) {
     const auto& vd = graph_.variations()[idx];
+
+    // Phase 1: Reset all unlocked params to defaults
+    for (auto& ns : scheduler_.nodes_mut()) {
+        const auto* desc = ns.loader->descriptor();
+        NodeDef* ndef = graph_.find_node(ns.node_id);
+        for (const auto& [pname, pidx] : ns.param_indices) {
+            if (ns.param_lock_flags[pidx] & PARAM_LOCK_PRESETS) continue;
+            if (pidx < desc->param_count && desc->params[pidx].type != VIVID_PARAM_FILE) {
+                ns.param_values[pidx] = desc->params[pidx].default_value;
+                if (ndef) ndef->params[pname] = desc->params[pidx].default_value;
+            }
+        }
+        // Reset string params to defaults
+        for (const auto& [pname, fidx] : ns.file_param_indices) {
+            auto pi = ns.param_indices.find(pname);
+            if (pi != ns.param_indices.end() &&
+                (ns.param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
+                continue;
+            if (pi != ns.param_indices.end() && pi->second < desc->param_count) {
+                const char* def_str = desc->params[pi->second].default_string;
+                std::string def_val = def_str ? def_str : "";
+                ns.file_param_storage[fidx] = def_val;
+                ns.file_param_ptrs[fidx] = ns.file_param_storage[fidx].c_str();
+                if (ndef) {
+                    if (def_val.empty())
+                        ndef->string_params.erase(pname);
+                    else
+                        ndef->string_params[pname] = def_val;
+                }
+            }
+        }
+        ns.generation++;
+    }
+
+    // Phase 2: Apply stored delta values
     for (const auto& [node_id, pm] : vd.params) {
         NodeState* ns = scheduler_.find_node_mut(node_id);
         if (!ns) continue;
@@ -482,7 +538,6 @@ void RuntimeAPI::apply_variation(int idx) {
             if (pi != ns->param_indices.end()) {
                 if (!(ns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS)) {
                     ns->param_values[pi->second] = pval;
-                    // Also update graph's NodeDef
                     NodeDef* ndef = graph_.find_node(node_id);
                     if (ndef) ndef->params[pname] = pval;
                 }
@@ -490,6 +545,26 @@ void RuntimeAPI::apply_variation(int idx) {
         }
         ns->generation++;
     }
+
+    // Apply stored string param deltas
+    for (const auto& [node_id, spm] : vd.string_params) {
+        NodeState* ns = scheduler_.find_node_mut(node_id);
+        if (!ns) continue;
+        for (const auto& [pname, pval] : spm) {
+            auto fi = ns->file_param_indices.find(pname);
+            if (fi == ns->file_param_indices.end()) continue;
+            auto pi = ns->param_indices.find(pname);
+            if (pi != ns->param_indices.end() &&
+                (ns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
+                continue;
+            ns->file_param_storage[fi->second] = pval;
+            ns->file_param_ptrs[fi->second] = ns->file_param_storage[fi->second].c_str();
+            NodeDef* ndef = graph_.find_node(node_id);
+            if (ndef) ndef->string_params[pname] = pval;
+        }
+        ns->generation++;
+    }
+
     graph_.set_active_variation(idx);
     variation_dirty_ = false;
     pending_variation_.armed = false;
@@ -511,10 +586,28 @@ CommandResult RuntimeAPI::update_variation(const std::string& name) {
     auto* vd = graph_.find_variation(name);
     if (!vd) return {false, "unknown variation '" + name + "'"};
     vd->params.clear();
+    vd->string_params.clear();
     for (const auto& ns : scheduler_.nodes()) {
+        const auto* desc = ns.loader->descriptor();
         auto& pm = vd->params[ns.node_id];
         for (const auto& [pname, idx] : ns.param_indices) {
-            pm[pname] = ns.param_values[idx];
+            if (idx < desc->param_count &&
+                desc->params[idx].type != VIVID_PARAM_FILE &&
+                ns.param_values[idx] != desc->params[idx].default_value) {
+                pm[pname] = ns.param_values[idx];
+            }
+        }
+        if (pm.empty()) vd->params.erase(ns.node_id);
+
+        for (const auto& [pname, fidx] : ns.file_param_indices) {
+            const char* def_str = nullptr;
+            auto pi = ns.param_indices.find(pname);
+            if (pi != ns.param_indices.end() && pi->second < desc->param_count)
+                def_str = desc->params[pi->second].default_string;
+            const auto& val = ns.file_param_storage[fidx];
+            if (!val.empty() && (def_str == nullptr || val != def_str)) {
+                vd->string_params[ns.node_id][pname] = val;
+            }
         }
     }
     variation_dirty_ = false;
@@ -620,6 +713,9 @@ CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::str
     for (const auto& [pname, idx] : ns->param_indices) {
         preset.params[pname] = ns->param_values[idx];
     }
+    for (const auto& [pname, idx] : ns->file_param_indices) {
+        preset.string_params[pname] = ns->file_param_storage[idx];
+    }
     graph_.save_preset(node_id, preset);
     active_presets_[node_id] = name;
     return {true, "saved preset '" + name + "' on " + node_id};
@@ -642,6 +738,20 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
             }
         }
     }
+    for (const auto& [pname, pval] : preset->string_params) {
+        auto fi = ns->file_param_indices.find(pname);
+        if (fi != ns->file_param_indices.end()) {
+            // Check lock via param_indices (file params share the lock namespace)
+            auto pi = ns->param_indices.find(pname);
+            if (pi != ns->param_indices.end() &&
+                (ns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
+                continue;
+            ns->file_param_storage[fi->second] = pval;
+            ns->file_param_ptrs[fi->second] = ns->file_param_storage[fi->second].c_str();
+            NodeDef* ndef = graph_.find_node(node_id);
+            if (ndef) ndef->string_params[pname] = pval;
+        }
+    }
     ns->generation++;
     active_presets_[node_id] = name;
     return {true, "recalled preset '" + name + "' on " + node_id};
@@ -657,6 +767,10 @@ CommandResult RuntimeAPI::update_preset(const std::string& node_id, const std::s
     preset->params.clear();
     for (const auto& [pname, idx] : ns->param_indices) {
         preset->params[pname] = ns->param_values[idx];
+    }
+    preset->string_params.clear();
+    for (const auto& [pname, idx] : ns->file_param_indices) {
+        preset->string_params[pname] = ns->file_param_storage[idx];
     }
     return {true, "updated preset '" + name + "' on " + node_id};
 }
@@ -731,6 +845,18 @@ CommandResult RuntimeAPI::inspect_state_presets(const std::string& sm_node) {
 }
 
 void RuntimeAPI::tick_state_presets() {
+    // Clean up orphaned crossfades for removed state machines
+    for (auto it = active_crossfades_.begin(); it != active_crossfades_.end(); ) {
+        bool found = false;
+        for (const auto& spm : graph_.state_preset_mappings()) {
+            if (spm.state_machine_node == it->first) { found = true; break; }
+        }
+        if (!found)
+            it = active_crossfades_.erase(it);
+        else
+            ++it;
+    }
+
     for (const auto& spm : graph_.state_preset_mappings()) {
         const NodeState* sm_ns = nullptr;
         for (const auto& ns : scheduler_.nodes()) {
@@ -743,17 +869,100 @@ void RuntimeAPI::tick_state_presets() {
         if (oi == sm_ns->output_port_indices.end()) continue;
         float current_state = sm_ns->output_values[oi->second];
 
-        // Check for state change
+        // Phase 1: detect state change
         auto& prev = prev_sm_state_[spm.state_machine_node];
-        if (current_state == prev) continue;
-        prev = current_state;
+        if (current_state != prev) {
+            prev = current_state;
 
-        int state_idx = static_cast<int>(current_state);
-        if (state_idx < 0 || state_idx >= static_cast<int>(spm.state_presets.size())) continue;
+            int state_idx = static_cast<int>(current_state);
+            if (state_idx < 0 || state_idx >= static_cast<int>(spm.state_presets.size()))
+                continue;
 
-        // Recall all bound presets for this state
-        for (const auto& [target_node, preset_name] : spm.state_presets[state_idx]) {
-            recall_preset(target_node, preset_name);
+            // Read xfade_mode and xfade_bars from the SM's params
+            int xf_mode = 0;
+            float xf_bars = 0.0f;
+            auto xm_it = sm_ns->param_indices.find("xfade_mode");
+            if (xm_it != sm_ns->param_indices.end())
+                xf_mode = static_cast<int>(sm_ns->param_values[xm_it->second]);
+            auto xb_it = sm_ns->param_indices.find("xfade_bars");
+            if (xb_it != sm_ns->param_indices.end())
+                xf_bars = sm_ns->param_values[xb_it->second];
+
+            if (xf_mode == 0 || xf_bars <= 0.0f) {
+                // Hard cut — existing behavior
+                active_crossfades_.erase(spm.state_machine_node);
+                for (const auto& [target_node, preset_name] : spm.state_presets[state_idx]) {
+                    recall_preset(target_node, preset_name);
+                }
+            } else {
+                // Initiate crossfade: snapshot current values, look up targets
+                ActiveCrossfade ac;
+                ac.sm_node_id = spm.state_machine_node;
+                for (const auto& [target_node, preset_name] : spm.state_presets[state_idx]) {
+                    const auto* preset = graph_.find_preset(target_node, preset_name);
+                    if (!preset) continue;
+                    NodeState* tns = scheduler_.find_node_mut(target_node);
+                    if (!tns) continue;
+
+                    CrossfadeState cs;
+                    cs.target_preset_name = preset_name;
+                    for (const auto& [pname, pval] : preset->params) {
+                        auto pi = tns->param_indices.find(pname);
+                        if (pi == tns->param_indices.end()) continue;
+                        if (tns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS) continue;
+                        // Snapshot current value (may be mid-lerp if interrupted)
+                        cs.start_params[pname] = tns->param_values[pi->second];
+                        cs.target_params[pname] = pval;
+                    }
+                    // String params: switch immediately (not interpolatable)
+                    for (const auto& [pname, pval] : preset->string_params) {
+                        auto fi = tns->file_param_indices.find(pname);
+                        if (fi == tns->file_param_indices.end()) continue;
+                        auto pi = tns->param_indices.find(pname);
+                        if (pi != tns->param_indices.end() &&
+                            (tns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
+                            continue;
+                        tns->file_param_storage[fi->second] = pval;
+                        tns->file_param_ptrs[fi->second] = tns->file_param_storage[fi->second].c_str();
+                        NodeDef* ndef = graph_.find_node(target_node);
+                        if (ndef) ndef->string_params[pname] = pval;
+                    }
+                    ac.targets[target_node] = std::move(cs);
+                }
+                active_crossfades_[spm.state_machine_node] = std::move(ac);
+            }
+        }
+
+        // Phase 2: interpolate active crossfades
+        auto acit = active_crossfades_.find(spm.state_machine_node);
+        if (acit == active_crossfades_.end()) continue;
+
+        // Read SM's xfade output (0->1 progress)
+        auto xf_oi = sm_ns->output_port_indices.find("xfade");
+        if (xf_oi == sm_ns->output_port_indices.end()) continue;
+        float xfade_t = sm_ns->output_values[xf_oi->second];
+
+        for (auto& [target_node, cs] : acit->second.targets) {
+            NodeState* tns = scheduler_.find_node_mut(target_node);
+            if (!tns) continue;
+            NodeDef* ndef = graph_.find_node(target_node);
+            for (const auto& [pname, start_val] : cs.start_params) {
+                auto pi = tns->param_indices.find(pname);
+                if (pi == tns->param_indices.end()) continue;
+                float target_val = cs.target_params[pname];
+                float interp = start_val + (target_val - start_val) * xfade_t;
+                tns->param_values[pi->second] = interp;
+                if (ndef) ndef->params[pname] = interp;
+            }
+            tns->generation++;
+        }
+
+        // Finalize when crossfade completes
+        if (xfade_t >= 1.0f) {
+            for (auto& [target_node, cs] : acit->second.targets) {
+                active_presets_[target_node] = cs.target_preset_name;
+            }
+            active_crossfades_.erase(acit);
         }
     }
 }

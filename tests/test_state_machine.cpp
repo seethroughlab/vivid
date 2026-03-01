@@ -35,7 +35,7 @@ struct SMDriver {
     std::vector<vivid::ParamBase*> param_ptrs;
     std::vector<float> param_values;
     float input_values[4] = {};   // beat_phase, trigger, reset, signal
-    float output_values[5] = {};  // state, progress, trigger, bar, beat
+    float output_values[6] = {};  // state, progress, trigger, bar, beat, xfade
     uint64_t frame = 0;
 
     SMDriver() {
@@ -71,6 +71,7 @@ struct SMDriver {
     float trigger()  const { return output_values[2]; }
     float bar()      const { return output_values[3]; }
     float beat()     const { return output_values[4]; }
+    float xfade()    const { return output_values[5]; }
 
     // Simulate N complete beat wraps (phase goes from near 1 to near 0)
     void simulate_beats(int num_beats) {
@@ -387,6 +388,93 @@ int main() {
         d.input_values[0] = 0.42f;
         d.tick();
         check_float(d.beat(), 0.42f, "beat output = beat_phase passthrough");
+    }
+
+    // ---------------------------------------------------------------
+    // Test 12: Crossfade output — cut mode (xfade stays 0)
+    // ---------------------------------------------------------------
+    std::fprintf(stderr, "\n--- Crossfade: cut mode ---\n");
+    {
+        SMDriver d;
+        d.set_param("states", 2);
+        d.set_param("transition", 1);  // manual
+        d.set_param("quantize", 0);
+        d.set_param("loop", 1);
+        d.set_param("xfade_mode", 0);  // cut
+
+        d.input_values[0] = 0.0f;
+        d.tick();
+        check_float(d.xfade(), 0.0f, "cut: xfade = 0 initially");
+
+        d.input_values[1] = 1.0f;
+        d.tick();
+        check_float(d.xfade(), 0.0f, "cut: xfade stays 0 on transition");
+    }
+
+    // ---------------------------------------------------------------
+    // Test 13: Crossfade output — crossfade mode
+    // ---------------------------------------------------------------
+    std::fprintf(stderr, "\n--- Crossfade: crossfade mode ---\n");
+    {
+        SMDriver d;
+        d.set_param("states", 2);
+        d.set_param("transition", 1);  // manual
+        d.set_param("quantize", 0);
+        d.set_param("loop", 1);
+        d.set_param("bars_per_beat", 2);  // 2 beats per bar
+        d.set_param("xfade_mode", 1);    // crossfade (linear)
+        d.set_param("xfade_bars", 2);    // 2 bars fade
+
+        d.input_values[0] = 0.0f;
+        d.tick();
+        check_float(d.xfade(), 0.0f, "xfade: 0 initially");
+
+        // Trigger transition
+        d.input_values[1] = 1.0f;
+        d.tick();
+        // xfade_active_ just started at bar_count_=0, so progress should be ~0
+        check(d.xfade() >= 0.0f && d.xfade() < 0.1f, "xfade: starts near 0 after trigger");
+
+        d.input_values[1] = 0.0f;
+
+        // After 1 bar (2 beats) of 2-bar fade: should be ~0.5
+        d.simulate_beats(2);
+        check(d.xfade() > 0.3f && d.xfade() < 0.7f, "xfade: ~0.5 after half fade");
+
+        // After another 1 bar: fade completes (output = 1.0 on completion frame)
+        d.simulate_beats(2);
+        check(d.xfade() >= 0.99f, "xfade: reaches 1.0 on completion frame");
+
+        // Next tick after completion: xfade_active_ cleared, output returns to 0
+        d.tick();
+        check_float(d.xfade(), 0.0f, "xfade: clears to 0 after completion");
+    }
+
+    // ---------------------------------------------------------------
+    // Test 14: Crossfade output — morph mode (smoothstep)
+    // ---------------------------------------------------------------
+    std::fprintf(stderr, "\n--- Crossfade: morph mode ---\n");
+    {
+        SMDriver d;
+        d.set_param("states", 2);
+        d.set_param("transition", 1);  // manual
+        d.set_param("quantize", 0);
+        d.set_param("loop", 1);
+        d.set_param("bars_per_beat", 4);
+        d.set_param("xfade_mode", 2);    // morph
+        d.set_param("xfade_bars", 2);
+
+        d.input_values[0] = 0.0f;
+        d.tick();
+
+        // Trigger transition
+        d.input_values[1] = 1.0f;
+        d.tick();
+        d.input_values[1] = 0.0f;
+
+        // At midpoint (1 bar = 4 beats), smoothstep(0.5) = 0.5
+        d.simulate_beats(4);
+        check(d.xfade() > 0.3f && d.xfade() < 0.7f, "morph: ~0.5 at midpoint");
     }
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
