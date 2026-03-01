@@ -115,10 +115,25 @@ static float half_to_float(uint16_t h) {
 static std::string json_escape(const std::string& s) {
     std::string out;
     out.reserve(s.size());
-    for (char c : s) {
-        if (c == '"') out += "\\\"";
-        else if (c == '\\') out += "\\\\";
-        else out += c;
+    for (unsigned char c : s) {
+        switch (c) {
+        case '"':  out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\n': out += "\\n";  break;
+        case '\r': out += "\\r";  break;
+        case '\t': out += "\\t";  break;
+        case '\b': out += "\\b";  break;
+        case '\f': out += "\\f";  break;
+        default:
+            if (c < 0x20) {
+                char buf[8];
+                std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                out += buf;
+            } else {
+                out += static_cast<char>(c);
+            }
+            break;
+        }
     }
     return out;
 }
@@ -297,121 +312,127 @@ void CaptureCoordinator::process_pending(WGPUDevice device, WGPUQueue queue,
     }
 
     for (auto& req : requests) {
-        std::string response;
-        switch (req.type) {
-        case CaptureType::Frame:
-            response = capture_frame(device, queue, capture_tex, tex_width, tex_height);
-            break;
-        case CaptureType::Audio:
-            response = capture_audio(req.audio_duration);
-            break;
-        case CaptureType::AV: {
-            // Both in one response
-            std::string json = R"({"ok":true)";
-            bool have_any = false;
+        try {
+            std::string response;
+            switch (req.type) {
+            case CaptureType::Frame:
+                response = capture_frame(device, queue, capture_tex, tex_width, tex_height);
+                break;
+            case CaptureType::Audio:
+                response = capture_audio(req.audio_duration);
+                break;
+            case CaptureType::AV: {
+                // Both in one response
+                std::string json = R"({"ok":true)";
+                bool have_any = false;
 
-            if (capture_tex && tex_width > 0 && tex_height > 0) {
-                std::vector<uint8_t> pixels;
-                if (gpu_readback_rgba8(device, queue, capture_tex, tex_width, tex_height, pixels)) {
-                    std::vector<uint8_t> png_data;
-                    png_data.reserve(tex_width * tex_height);
-                    stbi_write_png_to_func(stbi_write_to_vec, &png_data,
-                                           tex_width, tex_height, 4, pixels.data(), tex_width * 4);
-                    if (!png_data.empty()) {
-                        std::string b64 = base64_encode(png_data.data(), png_data.size());
-                        json += R"(,"width":)" + std::to_string(tex_width);
-                        json += R"(,"height":)" + std::to_string(tex_height);
-                        json += R"(,"png_base64":")" + b64 + "\"";
+                if (capture_tex && tex_width > 0 && tex_height > 0) {
+                    std::vector<uint8_t> pixels;
+                    if (gpu_readback_rgba8(device, queue, capture_tex, tex_width, tex_height, pixels)) {
+                        std::vector<uint8_t> png_data;
+                        png_data.reserve(tex_width * tex_height);
+                        stbi_write_png_to_func(stbi_write_to_vec, &png_data,
+                                               tex_width, tex_height, 4, pixels.data(), tex_width * 4);
+                        if (!png_data.empty()) {
+                            std::string b64 = base64_encode(png_data.data(), png_data.size());
+                            json += R"(,"width":)" + std::to_string(tex_width);
+                            json += R"(,"height":)" + std::to_string(tex_height);
+                            json += R"(,"png_base64":")" + b64 + "\"";
+                            have_any = true;
+                        }
+                    }
+                }
+
+                if (audio_) {
+                    uint64_t sample_count = static_cast<uint64_t>(req.audio_duration * AudioEngine::kSampleRate) * 2;
+                    uint64_t avail = audio_->available_recorded_samples();
+                    if (sample_count > avail) sample_count = avail;
+                    if (sample_count > 0) {
+                        std::vector<float> samples(sample_count);
+                        uint64_t popped = audio_->pop_recorded_samples(samples.data(), sample_count);
+                        samples.resize(popped);
+                        auto wav = encode_wav_float32(samples.data(), popped, AudioEngine::kSampleRate, 2);
+                        std::string b64 = base64_encode(wav.data(), wav.size());
+                        json += R"(,"sample_rate":)" + std::to_string(AudioEngine::kSampleRate);
+                        json += R"(,"channels":2)";
+                        json += R"(,"samples":)" + std::to_string(popped / 2);
+                        json += R"(,"wav_base64":")" + b64 + "\"";
                         have_any = true;
                     }
                 }
+
+                json += "}";
+                response = have_any ? json : capture_json_err("no video or audio output available");
+                break;
             }
-
-            if (audio_) {
-                uint64_t sample_count = static_cast<uint64_t>(req.audio_duration * AudioEngine::kSampleRate) * 2;
-                uint64_t avail = audio_->available_recorded_samples();
-                if (sample_count > avail) sample_count = avail;
-                if (sample_count > 0) {
-                    std::vector<float> samples(sample_count);
-                    uint64_t popped = audio_->pop_recorded_samples(samples.data(), sample_count);
-                    samples.resize(popped);
-                    auto wav = encode_wav_float32(samples.data(), popped, AudioEngine::kSampleRate, 2);
-                    std::string b64 = base64_encode(wav.data(), wav.size());
-                    json += R"(,"sample_rate":)" + std::to_string(AudioEngine::kSampleRate);
-                    json += R"(,"channels":2)";
-                    json += R"(,"samples":)" + std::to_string(popped / 2);
-                    json += R"(,"wav_base64":")" + b64 + "\"";
-                    have_any = true;
-                }
-            }
-
-            json += "}";
-            response = have_any ? json : capture_json_err("no video or audio output available");
-            break;
-        }
-        case CaptureType::StartRecording: {
-            if (exporter_->is_recording()) {
-                response = capture_json_err("already recording");
-            } else if (!capture_tex || tex_width == 0 || tex_height == 0) {
-                response = capture_json_err("no video output available for recording");
-            } else {
-                // Auto-start recording tap for audio
-                if (audio_) audio_->start_recording_tap();
-
-                if (exporter_->start(req.recording_path, tex_width, tex_height,
-                                     req.recording_fps, AudioEngine::kSampleRate)) {
-                    response = R"({"ok":true,"message":"recording started"})";
+            case CaptureType::StartRecording: {
+                if (exporter_->is_recording()) {
+                    response = capture_json_err("already recording");
+                } else if (!capture_tex || tex_width == 0 || tex_height == 0) {
+                    response = capture_json_err("no video output available for recording");
                 } else {
-                    if (audio_) audio_->stop_recording_tap();
-                    response = capture_json_err("failed to start recording");
+                    // Auto-start recording tap for audio
+                    if (audio_) audio_->start_recording_tap();
+
+                    if (exporter_->start(req.recording_path, tex_width, tex_height,
+                                         req.recording_fps, AudioEngine::kSampleRate)) {
+                        response = R"({"ok":true,"message":"recording started"})";
+                    } else {
+                        if (audio_) audio_->stop_recording_tap();
+                        response = capture_json_err("failed to start recording");
+                    }
                 }
-            }
-            break;
-        }
-        case CaptureType::StopRecording: {
-            if (!exporter_->is_recording()) {
-                response = capture_json_err("not recording");
-            } else {
-                std::string path = exporter_->output_path();
-                exporter_->finish();
-                if (audio_) audio_->stop_recording_tap();
-                response = R"({"ok":true,"path":")" + json_escape(path) + "\"}";
-            }
-            break;
-        }
-        case CaptureType::SnapshotToFile: {
-            if (!capture_tex || tex_width == 0 || tex_height == 0) {
-                response = capture_json_err("no video output available");
                 break;
             }
-            std::vector<uint8_t> pixels;
-            if (!gpu_readback_rgba8(device, queue, capture_tex, tex_width, tex_height, pixels)) {
-                response = capture_json_err("GPU readback failed");
+            case CaptureType::StopRecording: {
+                if (!exporter_->is_recording()) {
+                    response = capture_json_err("not recording");
+                } else {
+                    std::string path = exporter_->output_path();
+                    exporter_->finish();
+                    if (audio_) audio_->stop_recording_tap();
+                    response = R"({"ok":true,"path":")" + json_escape(path) + "\"}";
+                }
                 break;
             }
-            std::string out_path = req.recording_path;
-            if (out_path.empty()) {
-                // Generate default path: ~/Desktop/vivid_snapshot_YYYYMMDD_HHMMSS.png
-                const char* home = std::getenv("HOME");
-                std::string desktop = home ? std::string(home) + "/Desktop" : ".";
-                std::time_t t = std::time(nullptr);
-                std::tm tm{};
-                localtime_r(&t, &tm);
-                char ts[32];
-                std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tm);
-                out_path = desktop + "/vivid_snapshot_" + ts + ".png";
+            case CaptureType::SnapshotToFile: {
+                if (!capture_tex || tex_width == 0 || tex_height == 0) {
+                    response = capture_json_err("no video output available");
+                    break;
+                }
+                std::vector<uint8_t> pixels;
+                if (!gpu_readback_rgba8(device, queue, capture_tex, tex_width, tex_height, pixels)) {
+                    response = capture_json_err("GPU readback failed");
+                    break;
+                }
+                std::string out_path = req.recording_path;
+                if (out_path.empty()) {
+                    // Generate default path: ~/Desktop/vivid_snapshot_YYYYMMDD_HHMMSS.png
+                    const char* home = std::getenv("HOME");
+                    std::string desktop = home ? std::string(home) + "/Desktop" : ".";
+                    std::time_t t = std::time(nullptr);
+                    std::tm tm{};
+                    localtime_r(&t, &tm);
+                    char ts[32];
+                    std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tm);
+                    out_path = desktop + "/vivid_snapshot_" + ts + ".png";
+                }
+                if (stbi_write_png(out_path.c_str(), tex_width, tex_height, 4,
+                                   pixels.data(), tex_width * 4)) {
+                    response = R"({"ok":true,"path":")" + json_escape(out_path) + "\"}";
+                    std::fprintf(stderr, "[vivid] Snapshot saved: %s\n", out_path.c_str());
+                } else {
+                    response = capture_json_err("failed to write PNG");
+                }
+                break;
             }
-            if (stbi_write_png(out_path.c_str(), tex_width, tex_height, 4,
-                               pixels.data(), tex_width * 4)) {
-                response = R"({"ok":true,"path":")" + json_escape(out_path) + "\"}";
-                std::fprintf(stderr, "[vivid] Snapshot saved: %s\n", out_path.c_str());
-            } else {
-                response = capture_json_err("failed to write PNG");
             }
-            break;
+            req.promise.set_value(std::move(response));
+        } catch (const std::exception& e) {
+            req.promise.set_value(capture_json_err(e.what()));
+        } catch (...) {
+            req.promise.set_value(capture_json_err("unknown internal error"));
         }
-        }
-        req.promise.set_value(std::move(response));
     }
 }
 
