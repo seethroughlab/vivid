@@ -26,7 +26,7 @@ public:
     // Called from main thread each frame; drains pending events
     std::vector<FileChangeEvent> poll_changes();
 
-    // Register a single file for watching (thread-safe for kqueue registration)
+    // Register a single file for watching. Thread-safe (locks watch_mutex_).
     bool add_watch(const std::string& path, const std::string& target_name);
 
 private:
@@ -37,11 +37,12 @@ private:
     std::atomic<bool> running_{false};
     std::thread thread_;
 
-    // fd → (file_path, target_name)
+    // fd → (file_path, target_name). Protected by watch_mutex_.
     struct WatchEntry {
         std::string path;
         std::string target_name;
     };
+    std::mutex watch_mutex_;
     std::unordered_map<int, WatchEntry> watched_fds_;
 
     // Debounce: target → last event time (steady_clock ms)

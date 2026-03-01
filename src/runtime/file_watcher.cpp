@@ -20,6 +20,8 @@ FileWatcher::~FileWatcher() {
 }
 
 bool FileWatcher::start(const std::string& operators_dir) {
+    if (thread_.joinable()) return false;
+
     operators_dir_ = operators_dir;
 
     kq_ = kqueue();
@@ -125,7 +127,10 @@ bool FileWatcher::add_watch(const std::string& path, const std::string& target_n
         return false;
     }
 
-    watched_fds_[fd] = {path, target_name};
+    {
+        std::lock_guard<std::mutex> lock(watch_mutex_);
+        watched_fds_[fd] = {path, target_name};
+    }
     return true;
 }
 
@@ -142,6 +147,7 @@ void FileWatcher::reopen_file(const std::string& path, const std::string& target
                    NOTE_WRITE | NOTE_RENAME | NOTE_DELETE,
                    0, nullptr);
             if (kevent(kq_, &ev, 1, nullptr, 0, nullptr) >= 0) {
+                std::lock_guard<std::mutex> lock(watch_mutex_);
                 watched_fds_[fd] = {path, target_name};
                 return;
             }
@@ -161,40 +167,49 @@ void FileWatcher::watch_thread() {
         if (nev == 0) continue;  // timeout
 
         int fd = static_cast<int>(ev.ident);
-        auto it = watched_fds_.find(fd);
-        if (it == watched_fds_.end()) continue;
 
-        const auto& entry = it->second;
-
-        // Debounce: ignore events within 100ms of last event for same target
-        auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now().time_since_epoch()).count();
-        auto& last = last_event_time_[entry.target_name];
-        if (now - last < kDebounceMs) {
-            // Handle rename/delete even when debounced, to keep watch alive
-            if (ev.fflags & (NOTE_RENAME | NOTE_DELETE)) {
-                close(fd);
-                watched_fds_.erase(it);
-                reopen_file(entry.path, entry.target_name);
-            }
-            continue;
-        }
-        last = now;
-
-        std::fprintf(stderr, "[vivid] File changed: %s (operator: %s)\n",
-            entry.path.c_str(), entry.target_name.c_str());
-
+        // Copy strings under lock so we can release before reopen_file()
+        std::string path, target;
+        bool need_reopen = false;
         {
-            std::lock_guard<std::mutex> lock(queue_mutex_);
-            pending_.push_back({entry.path, entry.target_name});
+            std::lock_guard<std::mutex> lock(watch_mutex_);
+            auto it = watched_fds_.find(fd);
+            if (it == watched_fds_.end()) continue;
+
+            path = it->second.path;
+            target = it->second.target_name;
+
+            // Debounce: ignore events within 100ms of last event for same target
+            auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            auto& last = last_event_time_[target];
+            if (now - last < kDebounceMs) {
+                if (ev.fflags & (NOTE_RENAME | NOTE_DELETE)) {
+                    close(fd);
+                    watched_fds_.erase(it);
+                    need_reopen = true;
+                }
+                if (!need_reopen) continue;
+            } else {
+                last = now;
+
+                std::fprintf(stderr, "[vivid] File changed: %s (operator: %s)\n",
+                    path.c_str(), target.c_str());
+
+                {
+                    std::lock_guard<std::mutex> qlock(queue_mutex_);
+                    pending_.push_back({path, target});
+                }
+
+                if (ev.fflags & (NOTE_RENAME | NOTE_DELETE)) {
+                    close(fd);
+                    watched_fds_.erase(it);
+                    need_reopen = true;
+                }
+            }
         }
 
-        // Handle editor rename-on-save: file was renamed/deleted, reopen at same path
-        if (ev.fflags & (NOTE_RENAME | NOTE_DELETE)) {
-            std::string path = entry.path;
-            std::string target = entry.target_name;
-            close(fd);
-            watched_fds_.erase(it);
+        if (need_reopen) {
             reopen_file(path, target);
         }
     }
