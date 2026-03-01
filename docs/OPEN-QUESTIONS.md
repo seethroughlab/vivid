@@ -14,18 +14,6 @@ When a user drags a wire between nodes in different domains, should the system b
 
 How many semantic tags to define initially, and whether to formalize a standard set or let it grow organically as operators are built.
 
-### GPU Operator Model
-
-Whether GPU operators are primarily C++ host code dispatching compute shaders / WGSL, or C++ all the way down. Affects the operator API and what the build system compiles.
-
-### Graph Serialization Format
-
-The declarative graph representation enabling LLM-driven patching. Needs to capture node types, connections, parameter values, and semantic tags. This is the single source of truth for the entire system.
-
-### Control Operator Sufficiency
-
-The decision to handle all automation and logic as visible Control operators (no scripting layer) requires a rich enough set of built-in control operators. What is the minimum viable set? LFO, Clock, Sequencer, Pattern, Envelope, Math, Logic, Gate, Random, Smooth/Lerp. Are there common automation patterns that are awkward to express as node graphs?
-
 ### WebSocket API Scope
 
 What mutations should the WebSocket API support? Parameter changes only, or full graph topology changes (adding/removing nodes, connections)? How to handle conflicts between WebSocket mutations and direct UI manipulation?
@@ -73,3 +61,11 @@ Output preview undocking to a separate window for projector/LED wall output. Mul
 ### Library Version Pinning
 
 Should the project record which library versions were used? A lockfile (vivid-lock.json) that pins awesome-particles@0.2.0 would ensure reproducibility, especially for installations that need to rebuild months later. Alternatively, the project could simply vendor library source into its own directory. The tradeoff is reproducibility vs. simplicity.
+
+### Bundled Compiler
+
+Optionally shipping a C++ compiler (e.g., Zig's `zig c++`) so users don't need Xcode Command Line Tools installed. This is a packaging/distribution problem, not an architecture problem — the hot-reload system already invokes the system compiler as a subprocess. The question is whether the onboarding friction of `xcode-select --install` justifies bundling a ~40MB compiler binary.
+
+### OSC Input Operator
+
+An OSC (Open Sound Control) input operator following the same pattern as MIDI Input — a control-domain operator that listens on a configurable UDP port and maps incoming OSC addresses to output ports. Deferred because MIDI is more immediately useful for the target creative workflow, but the architecture is identical.

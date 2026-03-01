@@ -35,8 +35,8 @@ Control is push-based — events propagate forward immediately. Audio and GPU ar
 **Decision: Control sits at the center of a star topology.** Audio and GPU never communicate directly — everything routes through Control. This simplifies the architecture from six specialized bridges to two bidirectional mechanisms:
 
 ### Control ↔ Audio
-- **Control → Audio:** lock-free ring buffer or atomic. Audio callback reads at next block boundary. Latency: ~5ms at 256 samples / 48kHz.
-- **Audio → Control:** audio analysis operators write results into a lock-free queue. Control nodes poll at whatever rate they like.
+- **Control → Audio:** lock-free ring buffer or atomic. Audio callback reads at next block boundary. Latency: ~5ms at 256 samples / 48kHz. (Implemented: `ParamSnapshot` double-buffer with atomic index swap. Spread data uses `SpreadSnapshot` — a fixed-size 64-element struct copied alongside scalar params, avoiding audio-thread heap allocation.)
+- **Audio → Control:** audio analysis operators write results into a lock-free queue. Control nodes poll at whatever rate they like. (Implemented: `AnalysisSnapshot` double-buffer carries RMS, peak, waveform, and per-port `SpreadSnapshot` data back to the control domain.)
 
 ### Control ↔ GPU
 - **Control → GPU:** atomics or double-buffered parameter store. GPU render loop picks up changes next frame. Latency: ~16ms at 60fps.
@@ -141,6 +141,7 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **Cross-domain:** a Spread of Control values (e.g., 512 FFT bins) can connect directly to a GPU operator's parameter, producing 512 visual elements driven by audio. No explicit bridging required — the existing Control→GPU bridge handles the data; Spreads handle the cardinality.
 - **LLM-friendly:** describing Spread-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on Spreads.
 - **Port types:** Spread\<Control::Float\>, Spread\<GPU::Texture2D\>, Spread\<Audio::Mono\> are all valid. The Spread is orthogonal to the domain type system.
+- **Cross-domain bridge implementation:** Control↔Audio uses `SpreadSnapshot` (fixed 64-element struct) inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. Control→GPU uses WebGPU storage buffers: the operator uploads Spread data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
 
 ## 5.10 Simulation Zones: Frame-to-Frame State
 
@@ -341,3 +342,117 @@ The manifest is minimal:
 **For export:** the build system follows the same search path to find operator source files. If a graph uses fluid_sim from an installed library, the export compiles that library's source directly into the standalone binary.
 
 **Constraints:** libraries may only depend on the Vivid operator API and standard C/C++. External library dependencies (OpenCV, FFTW) are not managed by the library system — users who need them are responsible for making them available to the build. This keeps the package manager from becoming a general-purpose build system.
+
+## 5.18 Data-Driven WGSL Filter Framework
+
+**Decision: GPU image filters are self-describing `.wgsl` files with embedded JSON metadata, loaded by a generic runtime. No per-filter C++ code is required.**
+
+A filter is a single `.wgsl` file in the `filters/` directory. A JSON comment block at the top declares its name, parameters, and input ports:
+
+```wgsl
+/*{
+  "name": "Blur",
+  "params": [
+    {"name": "radius",  "default": 5.0, "min": 0.0, "max": 50.0},
+    {"name": "quality", "default": 4.0, "min": 1.0, "max": 16.0}
+  ]
+}*/
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    // shader uses u.radius, u.quality from auto-generated uniform struct
+}
+```
+
+**Runtime architecture:**
+
+1. **`WgslHeaderParser`** (`src/runtime/wgsl_header_parser.cpp`) extracts the `/*{...}*/` block, parses it with yyjson, and returns a `WgslHeader` struct plus the clean fragment source with the comment stripped.
+
+2. **`WgslFilterBase`** (`src/operator_api/wgsl_filter.h`) is the generic GPU operator base class. On first process, it reads the `.wgsl` file, generates a WGSL preamble containing a fullscreen-triangle vertex shader, a `Uniforms` struct built from the parsed params, bind group layouts, and a sampler — then compiles the preamble + fragment source into a single WebGPU shader module and pipeline. It hot-reloads on file change (checked every 30 frames by mtime).
+
+3. **`DataDrivenFilter`** (`src/operator_api/data_driven_filter.h`) wraps `WgslFilterBase` with dynamic param and port collection driven by a `DataDrivenFilterConfig` struct. A single C++ class serves all WGSL filter presets.
+
+4. **`OperatorRegistry::scan_wgsl_presets()`** (`src/runtime/operator_registry.cpp`) scans the `filters/` directory at startup, parses each `.wgsl` header, and registers a `DataDrivenFilterConfig` per file. The registry maps filter names to configs; instantiation creates a `DataDrivenFilter` initialized with the appropriate config.
+
+**Param metadata** supports type (float/int/bool), min/max/default, enum choices, display hints (`"knob"`, `"xy_pad"`, `"color"`), groups, and column layout — all declared in JSON, all consumed by the inspector UI without per-filter code.
+
+**Why this matters:** Adding a new GPU filter means writing one `.wgsl` file. No C++ boilerplate, no CMake changes, no registration macro. The file is auto-discovered, hot-reloadable, and its parameters appear in the inspector automatically. This is the path for both built-in filters and user-authored ones.
+
+## 5.19 State Machines & Subgraphs
+
+### StateMachine Operator
+
+The `StateMachine` is a control-domain metadata emitter that drives macro-level structure — song sections, installation modes, live performance cues. It counts bars by detecting `beat_phase` wraps (the same technique used by NotePattern, ChordProgression, and Arpeggiator), tracks the current state index, and outputs control signals. It is not a state owner — it emits metadata that downstream operators consume.
+
+**Outputs:** `state` (current index 0–7), `progress` (0–1 through current state), `trigger` (fires on transition frame), `bar` (bar count within state), `beat` (phase within current bar).
+
+**Transition modes:** sequential (bar-duration-based auto-advance), manual (rising-edge trigger input), threshold (signal crossing). All modes support beat-quantized transitions — a pending advance defers to the next bar boundary. A per-state duration of 0 means "hold until manually triggered," allowing mixed timed and manual states.
+
+**Integration patterns (without subgraphs):**
+
+- **State → Sequencer:** state index scaled to phase drives a Sequencer, selecting per-state parameter values.
+- **Progress → crossfade:** progress output drives Gain levels for fade-in/fade-out or dual-source crossfades.
+- **Trigger → Envelope:** transition trigger gates one-shot envelopes for percussive hits at section boundaries.
+- **Threshold mode:** sensor input drives state changes for installation scenarios; Logic operators can combine multiple conditions.
+
+### Subgraph Vision
+
+The long-term goal is that each state owns a subgraph — a self-contained patch fragment that activates on entry and deactivates on exit. A song's "chorus" state would contain its own NotePattern, DrumSequencer, and GPU operators, all wired independently from the "verse" subgraph.
+
+**Infrastructure needed:**
+
+1. **Subgraph container** — embedding a group of nodes inside a parent node, with parent-controlled lifecycle.
+2. **Activation/deactivation** — active subgraphs process; inactive subgraphs stop (and optionally reset).
+3. **Cross-graph routing** — parent inputs flow into the active subgraph; subgraph outputs flow out. Inactive subgraphs produce silence/zero/last-value.
+4. **Crossfade transitions** — during a transition window, both outgoing and incoming subgraphs process simultaneously with blended outputs.
+5. **Session serialization** — subgraph contents must save/load with the session.
+
+**How the current operator accommodates subgraphs:** The state index output, progress output, and trigger output are designed so that no changes to the StateMachine operator itself will be needed when subgraphs are implemented — only the runtime infrastructure around it. State index drives activation, progress drives the blend factor, trigger fires activation/deactivation, and bar-based durations map directly to "run this subgraph for N bars."
+
+## 5.20 Variation & Session System
+
+**Decision: Variations are complete parameter snapshots with beat-quantized recall.** A `VariationDef` captures the delta between current parameter values and their defaults across every node in the graph. Recalling a variation restores that state — subject to parameter lock flags that protect individual parameters from being overwritten.
+
+**Core data structure:**
+
+```cpp
+struct VariationDef {
+    std::string name;
+    std::unordered_map<std::string,
+        std::unordered_map<std::string, float>> params;        // node_id → param → value
+    std::unordered_map<std::string,
+        std::unordered_map<std::string, std::string>> string_params;
+};
+```
+
+Only non-default values are stored (delta encoding), keeping snapshots compact.
+
+**Beat-quantized switching:** A designated Clock node's `beat_phase` output drives quantized recall. When a variation is queued with a quantize mode (instant, beat, bar, four-bar), a `PendingVariation` struct counts beat-phase zero-crossings until the target boundary, then applies. This ensures variation switches are always musically aligned.
+
+**Parameter lock flags:** Each parameter carries a `ParamLockFlags` bitmask. `PARAM_LOCK_PRESETS` protects a parameter from variation recall — useful for keeping a specific knob position while switching everything else. `PARAM_LOCK_WIRES` protects from wire-driven changes.
+
+**Apply process (two-phase):** First, all unlocked parameters reset to defaults. Then, the variation's stored deltas are applied. This ensures clean transitions — parameters not captured in the variation return to their defaults rather than retaining stale values from a previous variation.
+
+**Dirty tracking:** A `variation_dirty_` flag indicates when live parameter edits have diverged from the active variation, allowing the UI to show which variation is "out of sync."
+
+This system is the core experimentation mechanism: save what works, explore freely, recall instantly on the beat.
+
+## 5.21 Pattern Algebra
+
+**Decision: Patterns are standard control-domain operators with Spread ports, not a DSL.** Composition happens through normal graph wiring. The Spread type system (§5.9) provides implicit vectorization — a pattern transformer operates on all elements transparently.
+
+**Three operator roles:**
+
+- **Generators** produce Spread outputs from parameters or time inputs: `Euclidean` (Bjorklund rhythm patterns), `PatternSeq` (16-step sequences), `NotePattern` (per-step chord specifications), `ChordProgression` (diatonic chords from scale degrees).
+- **Transformers** take a Spread input and produce a transformed Spread output: `PatTransform` applies reverse, rotate, scale, offset, and probabilistic element nulling in a fixed chain. Each step is a parameter — no control flow.
+- **Combinators** merge multiple Spread inputs: `Stack` (concatenate or interleave up to 4 Spread inputs), `Alternate` (time-driven selection between Spread inputs on beat/bar boundaries).
+
+**Composable chains:**
+
+```
+Euclidean → PatTransform → Stack → Arpeggiator
+(generate)   (rotate+scale)  (combine w/ melody)  (consume as note sequence)
+```
+
+Every intermediate result is a Spread visible on a wire. Every step is a discrete operator with inspectable parameters. The LLM can reason about pattern composition using the same vocabulary it uses for any other graph operation.
+
+**Why not a DSL:** A pattern language would require its own parser, type system, and error reporting — and would be opaque to the graph editor and LLM. By making patterns ordinary operators, they inherit Spread broadcasting, cross-domain bridging, serialization, hot-reload, ChildOp embedding, and inspector UI for free. The cost is verbosity (a chain of 4 operators vs. a one-line expression), but the graph editor makes this visual, not textual.
