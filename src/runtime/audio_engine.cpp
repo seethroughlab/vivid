@@ -2,6 +2,7 @@
 #include <miniaudio.h>
 
 #include "runtime/audio_engine.h"
+#include "runtime/crash_guard.h"
 #include "runtime/scheduler.h"
 #include "common/topo_sort.h"
 #include <algorithm>
@@ -709,6 +710,7 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
 
             if (!ns.errored) {
                 try {
+                    CrashGuard guard(ns.node_id.c_str());
                     ns.loader->process(ns.instance, &ctx);
                 } catch (const std::exception& e) {
                     ns.errored = true;
