@@ -404,7 +404,7 @@ target_include_directories(test_control_server PRIVATE src)
 target_link_libraries(test_control_server PRIVATE
     vivid_operator_api yyjson miniaudio ixwebsocket webgpu rtmidi stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
-    "-framework VideoToolbox" "-framework Foundation")
+    "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
 add_dependencies(test_control_server test_op_v1)
 add_test(NAME test_control_server COMMAND test_control_server WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 

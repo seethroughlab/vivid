@@ -4,9 +4,12 @@
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
 #import <Foundation/Foundation.h>
+#import <QuartzCore/CABase.h>
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 
 namespace vivid {
 
@@ -24,7 +27,7 @@ struct AVExporter::Impl {
 
     uint64_t video_frame_count = 0;
     uint64_t audio_samples_written = 0;
-    double start_time = 0.0; // CFAbsoluteTimeGetCurrent() at recording start
+    double start_time = 0.0; // CACurrentMediaTime() at recording start
     bool recording = false;
 };
 
@@ -140,7 +143,7 @@ bool AVExporter::start(const std::string& path, uint32_t width, uint32_t height,
         }
 
         [impl_->writer startSessionAtSourceTime:kCMTimeZero];
-        impl_->start_time = CFAbsoluteTimeGetCurrent();
+        impl_->start_time = CACurrentMediaTime();
         impl_->recording = true;
         std::fprintf(stderr, "[vivid] AVExporter: recording to %s (%ux%u @ %.0ffps)\n",
                      path.c_str(), width, height, fps);
@@ -180,7 +183,7 @@ bool AVExporter::write_video_frame(const uint8_t* rgba, uint32_t width, uint32_t
         }
         CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
 
-        double elapsed = CFAbsoluteTimeGetCurrent() - impl_->start_time;
+        double elapsed = CACurrentMediaTime() - impl_->start_time;
         CMTime pts = CMTimeMakeWithSeconds(elapsed, 90000); // 90kHz timescale (standard)
         bool ok = [impl_->pixel_adaptor appendPixelBuffer:pixel_buffer
                                      withPresentationTime:pts];
@@ -239,8 +242,8 @@ bool AVExporter::write_audio_samples(const float* pcm_interleaved, uint64_t samp
             return false;
         }
 
-        // Use wall-clock PTS to keep audio in sync with video
-        double elapsed = CFAbsoluteTimeGetCurrent() - impl_->start_time;
+        // Use monotonic PTS to keep audio in sync with video
+        double elapsed = CACurrentMediaTime() - impl_->start_time;
         CMTime pts = CMTimeMakeWithSeconds(elapsed, 90000);
 
         // Create ready audio sample buffer in one call
@@ -274,21 +277,27 @@ bool AVExporter::finish() {
         if (impl_->audio_input)
             [impl_->audio_input markAsFinished];
 
-        __block bool finished = false;
+        auto finished = std::make_shared<std::atomic<bool>>(false);
         [impl_->writer finishWritingWithCompletionHandler:^{
-            finished = true;
+            finished->store(true, std::memory_order_release);
         }];
         // Pump the run loop while waiting — AVAssetWriter/VideoToolbox may
         // dispatch work to the main thread during finalization.
         NSDate* deadline = [NSDate dateWithTimeIntervalSinceNow:10.0];
-        while (!finished && [[NSDate date] compare:deadline] == NSOrderedAscending) {
+        while (!finished->load(std::memory_order_acquire) &&
+               [[NSDate date] compare:deadline] == NSOrderedAscending) {
             [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
                                      beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
         }
 
+        if (!finished->load(std::memory_order_acquire)) {
+            std::fprintf(stderr, "[vivid] AVExporter: finishWriting timed out after 10s\n");
+        }
+
         bool ok = (impl_->writer.status == AVAssetWriterStatusCompleted);
         if (!ok) {
-            std::fprintf(stderr, "[vivid] AVExporter: finishWriting failed: %s\n",
+            std::fprintf(stderr, "[vivid] AVExporter: finishWriting failed (status=%ld): %s\n",
+                         (long)impl_->writer.status,
                          impl_->writer.error ?
                          impl_->writer.error.localizedDescription.UTF8String : "unknown");
         } else {
@@ -327,7 +336,7 @@ double AVExporter::fps() const {
 
 double AVExporter::elapsed_sec() const {
     if (!impl_ || !impl_->recording) return 0.0;
-    return CFAbsoluteTimeGetCurrent() - impl_->start_time;
+    return CACurrentMediaTime() - impl_->start_time;
 }
 
 } // namespace vivid
