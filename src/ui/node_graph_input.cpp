@@ -968,15 +968,14 @@ void NodeGraphUI::handle_left_click() {
             if (mouse_.x >= cr.x && mouse_.x <= cr.x + cr.w &&
                 mouse_.y >= cr.y && mouse_.y <= cr.y + cr.h) {
                 // Double-click to rename
-                static double last_cell_click_time = 0;
-                static int last_cell_click_idx = -1;
-                double now = 0;
-                // Use simple frame counter as proxy
-                if (last_cell_click_idx == cr.idx && dt_ > 0) {
-                    // Already clicked this cell recently — enter rename mode
+                double now = glfwGetTime();
+                if (last_variation_click_idx_ == cr.idx &&
+                    (now - last_variation_click_time_) < 0.4) {
+                    // Double-click — enter rename mode
                     session_editing_name_ = true;
                     session_edit_idx_ = cr.idx;
                     session_edit_buffer_ = snap_.variations[cr.idx].name;
+                    last_variation_click_idx_ = -1;
                 } else {
                     // Single click — recall or queue
                     if (session_quantize_mode_ > 0) {
@@ -986,8 +985,9 @@ void NodeGraphUI::handle_left_click() {
                     } else {
                         commands_.recall_variation_idx(cr.idx);
                     }
+                    last_variation_click_idx_ = cr.idx;
+                    last_variation_click_time_ = now;
                 }
-                last_cell_click_idx = cr.idx;
                 mouse_.left_clicked = false;
                 return;
             }

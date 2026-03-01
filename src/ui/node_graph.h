@@ -13,6 +13,7 @@
 #include <array>
 #include <unordered_map>
 #include <unordered_set>
+#include <cassert>
 
 namespace vivid::ui {
 
@@ -51,10 +52,27 @@ public:
     void on_char(unsigned int codepoint);
 
     // Returns true when a popup is open and wants keyboard focus
-    bool wants_keyboard() const { return create_popup_open_ || chooser_open_ || editing_param_ || editing_resolution_ || dropdown_open_ || context_menu_open_ || editing_midi_range_ || clone_confirm_open_ || prefs_open_ || param_picker_open_ || color_editing_hex_ || color_editing_rgb_ >= 0 || patch_ctx_open_ || session_editing_name_ || record_dropdown_open_ || preset_name_popup_open_; }
+    bool wants_keyboard() const {
+        return create_popup_open_
+            || chooser_open_
+            || editing_param_
+            || editing_resolution_
+            || dropdown_open_
+            || context_menu_open_
+            || editing_midi_range_
+            || clone_confirm_open_
+            || prefs_open_
+            || param_picker_open_
+            || color_editing_hex_
+            || color_editing_rgb_ >= 0
+            || patch_ctx_open_
+            || session_editing_name_
+            || record_dropdown_open_
+            || preset_name_popup_open_;
+    }
     bool has_selection() const { return !selected_node_ids_.empty(); }
     bool has_single_selection() const { return selected_node_ids_.size() == 1; }
-    const std::string& single_selected_id() const { return *selected_node_ids_.begin(); }
+    const std::string& single_selected_id() const { assert(!selected_node_ids_.empty()); return *selected_node_ids_.begin(); }
 
     void toggle_visible() { visible_ = !visible_; }
     bool visible() const { return visible_; }
@@ -552,6 +570,9 @@ private:
     bool session_editing_name_ = false;
     int session_edit_idx_ = -1;
     std::string session_edit_buffer_;
+    // Double-click detection for variation cell rename
+    double last_variation_click_time_ = 0.0;
+    int last_variation_click_idx_ = -1;
     // Quantize mode (persisted as UI state, synced via commands)
     int session_quantize_mode_ = 0;  // 0=Off, 1=Beat, 2=Bar, 3=4Bar
     // Hit-test rects

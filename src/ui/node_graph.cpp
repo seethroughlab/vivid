@@ -779,7 +779,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
             }
         }
         commands_.add_midi_mapping(midi_map_node_id_, midi_map_param_name_,
-                                   ev.cc_number, 0, range_min, range_max);
+                                   ev.cc_number, ev.channel, range_min, range_max);
         midi_map_waiting_ = false;
     }
 
@@ -1148,6 +1148,7 @@ void NodeGraphUI::update_sparklines() {
 
         auto sorted_outs = sorted_ports(ns.output_port_indices);
         if (sorted_outs.empty()) continue;
+        if (sorted_outs[0].first >= ns.output_values.size()) continue;
 
         std::string key = ns.node_id + "/" + sorted_outs[0].second;
         float val = ns.output_values[sorted_outs[0].first];

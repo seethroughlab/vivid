@@ -17,6 +17,38 @@ using vivid::format_float;
 using vivid::format_int;
 using vivid::format_uint;
 
+// Shared dashed-wire drawing: traverse wire segments and draw dash-on/off pattern
+static void draw_dashed_wire(Renderer2D& tr,
+                             float ssx, float ssy, float sex, float sey,
+                             bool bezier, float thickness,
+                             float r, float g, float b, float a) {
+    float cumulative = 0.0f;
+    float dash_cycle = kDashOn + kDashOff;
+    traverse_wire(ssx, ssy, sex, sey, bezier,
+        [&](float x0, float y0, float x1, float y1) {
+            float dx = x1 - x0, dy = y1 - y0;
+            float seg_len = std::sqrt(dx * dx + dy * dy);
+            if (seg_len < 0.001f) { cumulative += seg_len; return; }
+            float nx = dx / seg_len, ny = dy / seg_len;
+            float consumed = 0.0f;
+            while (consumed < seg_len) {
+                float phase = std::fmod(cumulative + consumed, dash_cycle);
+                bool on = (phase < kDashOn);
+                float remain_in_state = on ? (kDashOn - phase) : (dash_cycle - phase);
+                float chunk = std::min(remain_in_state, seg_len - consumed);
+                if (on) {
+                    float cx0 = x0 + nx * consumed;
+                    float cy0 = y0 + ny * consumed;
+                    float cx1 = x0 + nx * (consumed + chunk);
+                    float cy1 = y0 + ny * (consumed + chunk);
+                    tr.draw_line(cx0, cy0, cx1, cy1, thickness, r, g, b, a);
+                }
+                consumed += chunk;
+            }
+            cumulative += seg_len;
+        });
+}
+
 // -----------------------------------------------------------------------
 // Drawing
 // -----------------------------------------------------------------------
@@ -89,7 +121,8 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                     float spark_h = s_body_h - g_to_s(8);
 
                     // Find min/max
-                    float vmin = sd.values[0], vmax = sd.values[0];
+                    uint32_t first_idx = sd.filled ? sd.write_idx % kSparklineLen : 0;
+                    float vmin = sd.values[first_idx], vmax = sd.values[first_idx];
                     for (uint32_t si = 0; si < count; ++si) {
                         uint32_t idx = sd.filled ? (sd.write_idx + si) % kSparklineLen : si;
                         float v = sd.values[idx];
@@ -259,62 +292,12 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
             wire_th = std::max(1.0f, (hov ? kWireHoverThickness : kWireThickness) * zoom_);
 
         if (is_param_wire) {
-            // Thin dashed dimmed wire for param-to-param connections
             float a_param = (hov || sel) ? 0.6f : 0.35f;
-            float cumulative = 0.0f;
-            float dash_cycle = kDashOn + kDashOff;
-            traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
-                [&](float x0, float y0, float x1, float y1) {
-                    float dx = x1 - x0, dy = y1 - y0;
-                    float seg_len = std::sqrt(dx * dx + dy * dy);
-                    if (seg_len < 0.001f) { cumulative += seg_len; return; }
-                    float nx = dx / seg_len, ny = dy / seg_len;
-                    float consumed = 0.0f;
-                    while (consumed < seg_len) {
-                        float phase = std::fmod(cumulative + consumed, dash_cycle);
-                        bool on = (phase < kDashOn);
-                        float remain_in_state = on ? (kDashOn - phase) : (dash_cycle - phase);
-                        float chunk = std::min(remain_in_state, seg_len - consumed);
-                        if (on) {
-                            float cx0 = x0 + nx * consumed;
-                            float cy0 = y0 + ny * consumed;
-                            float cx1 = x0 + nx * (consumed + chunk);
-                            float cy1 = y0 + ny * (consumed + chunk);
-                            tr.draw_line(cx0, cy0, cx1, cy1, wire_th, cr, cg, cb, a_param);
-                        }
-                        consumed += chunk;
-                    }
-                    cumulative += seg_len;
-                });
+            draw_dashed_wire(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th, cr, cg, cb, a_param);
         } else {
         bool cross_domain = from_rect.domain != to_rect.domain;
         if (cross_domain) {
-            // Dashed wire: traverse and subdivide segments at dash boundaries
-            float cumulative = 0.0f;
-            float dash_cycle = kDashOn + kDashOff;
-            traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
-                [&](float x0, float y0, float x1, float y1) {
-                    float dx = x1 - x0, dy = y1 - y0;
-                    float seg_len = std::sqrt(dx * dx + dy * dy);
-                    if (seg_len < 0.001f) { cumulative += seg_len; return; }
-                    float nx = dx / seg_len, ny = dy / seg_len;
-                    float consumed = 0.0f;
-                    while (consumed < seg_len) {
-                        float phase = std::fmod(cumulative + consumed, dash_cycle);
-                        bool on = (phase < kDashOn);
-                        float remain_in_state = on ? (kDashOn - phase) : (dash_cycle - phase);
-                        float chunk = std::min(remain_in_state, seg_len - consumed);
-                        if (on) {
-                            float cx0 = x0 + nx * consumed;
-                            float cy0 = y0 + ny * consumed;
-                            float cx1 = x0 + nx * (consumed + chunk);
-                            float cy1 = y0 + ny * (consumed + chunk);
-                            tr.draw_line(cx0, cy0, cx1, cy1, wire_th, cr, cg, cb, a);
-                        }
-                        consumed += chunk;
-                    }
-                    cumulative += seg_len;
-                });
+            draw_dashed_wire(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th, cr, cg, cb, a);
         } else {
             traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
                 [&](float x0, float y0, float x1, float y1) {
@@ -338,7 +321,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
                         float my = (ssy + sey) * 0.5f - 6.0f * zoom_;
                         char badge[16];
                         std::snprintf(badge, sizeof(badge), "\xc3\x97%zu", spread_len);
-                        tr.draw_text(mx, my, badge, cr, cg, cb, 0.6f);
+                        tr.draw_text(mx, my, badge, cr, cg, cb, 0.6f, zoom_);
                     }
                 }
             }
@@ -1443,14 +1426,20 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
         int num_steps = static_cast<int>(node.param_values[steps_it->second]);
         num_steps = std::max(1, std::min(8, num_steps));
 
-        uint32_t root_base = root0_it->second;
-        uint32_t type_base = type0_it->second;
+        // Look up per-step param indices by name (don't assume contiguous)
+        uint32_t root_idx[8]{}, type_idx[8]{};
+        for (int s = 0; s < 8; ++s) {
+            auto ri = node.param_indices.find("root_" + std::to_string(s));
+            auto ti = node.param_indices.find("type_" + std::to_string(s));
+            root_idx[s] = (ri != node.param_indices.end()) ? ri->second : 0;
+            type_idx[s] = (ti != node.param_indices.end()) ? ti->second : 0;
+        }
 
         // Build set of step-indexed param indices to skip in the tail
         std::unordered_set<uint32_t> step_params;
         for (int s = 0; s < 8; ++s) {
-            step_params.insert(root_base + s);
-            step_params.insert(type_base + s);
+            step_params.insert(root_idx[s]);
+            step_params.insert(type_idx[s]);
         }
 
         // Draw "steps" slider first
@@ -1486,8 +1475,8 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                                                single_selected_id(), pd.name});
                 };
 
-                draw_half_dropdown(root_base + s, px, half_w);
-                draw_half_dropdown(type_base + s, px + half_w + gap, half_w);
+                draw_half_dropdown(root_idx[s], px, half_w);
+                draw_half_dropdown(type_idx[s], px + half_w + gap, half_w);
                 py += kDropdownH + 6;
             }
         }
@@ -1694,8 +1683,14 @@ void NodeGraphUI::draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot
     int num_steps = static_cast<int>(node.param_values[steps_it->second]);
     num_steps = std::max(1, std::min(8, num_steps));
 
-    uint32_t root_base = root0_it->second;
-    uint32_t type_base = type0_it->second;
+    // Look up per-step param indices by name (don't assume contiguous)
+    uint32_t root_idx[8]{}, type_idx[8]{};
+    for (int s = 0; s < 8; ++s) {
+        auto ri = node.param_indices.find("root_" + std::to_string(s));
+        auto ti = node.param_indices.find("type_" + std::to_string(s));
+        root_idx[s] = (ri != node.param_indices.end()) ? ri->second : 0;
+        type_idx[s] = (ti != node.param_indices.end()) ? ti->second : 0;
+    }
 
     // Note names and chord abbreviations
     static const char* kNoteNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
@@ -1727,7 +1722,7 @@ void NodeGraphUI::draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot
         int oct = (oct_it != node.param_indices.end()) ? static_cast<int>(node.param_values[oct_it->second]) : 4;
 
         for (int s = 0; s < num_steps; ++s) {
-            int root = static_cast<int>(node.param_values[root_base + s]);
+            int root = static_cast<int>(node.param_values[root_idx[s]]);
             float expected = static_cast<float>(root + oct * 12);
             if (std::fabs(out_note - expected) < 0.5f) {
                 current_step = s;
@@ -1746,8 +1741,8 @@ void NodeGraphUI::draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot
     tr.draw_rect(px, py, w, h, style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
 
     for (int s = 0; s < num_steps; ++s) {
-        int root = static_cast<int>(node.param_values[root_base + s]);
-        int chord_type = static_cast<int>(node.param_values[type_base + s]);
+        int root = static_cast<int>(node.param_values[root_idx[s]]);
+        int chord_type = static_cast<int>(node.param_values[type_idx[s]]);
         root = std::max(0, std::min(11, root));
         chord_type = std::max(0, std::min(6, chord_type));
 
@@ -2139,8 +2134,10 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
         std::string line;
         if (idx < node.output_spreads.size() && !node.output_spreads[idx].empty()) {
             line = name + " = [" + std::to_string(node.output_spreads[idx].size()) + " bins]";
-        } else {
+        } else if (idx < node.output_values.size()) {
             line = name + " = " + format_float(node.output_values[idx]);
+        } else {
+            line = name + " = ?";
         }
         tr.draw_text(px, py, line.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         py += kLineH;
@@ -2423,31 +2420,7 @@ void NodeGraphUI::draw_preview_wire(Renderer2D& tr) {
     if (!wire_from_is_output_) {
         // Param source: thin dashed preview
         float wire_th = std::max(1.0f, 1.5f * zoom_);
-        float cumulative = 0.0f;
-        float dash_cycle = kDashOn + kDashOff;
-        traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
-            [&](float x0, float y0, float x1, float y1) {
-                float dx = x1 - x0, dy = y1 - y0;
-                float seg_len = std::sqrt(dx * dx + dy * dy);
-                if (seg_len < 0.001f) { cumulative += seg_len; return; }
-                float nx = dx / seg_len, ny = dy / seg_len;
-                float consumed = 0.0f;
-                while (consumed < seg_len) {
-                    float phase = std::fmod(cumulative + consumed, dash_cycle);
-                    bool on = (phase < kDashOn);
-                    float remain_in_state = on ? (kDashOn - phase) : (dash_cycle - phase);
-                    float chunk = std::min(remain_in_state, seg_len - consumed);
-                    if (on) {
-                        float cx0 = x0 + nx * consumed;
-                        float cy0 = y0 + ny * consumed;
-                        float cx1 = x0 + nx * (consumed + chunk);
-                        float cy1 = y0 + ny * (consumed + chunk);
-                        tr.draw_line(cx0, cy0, cx1, cy1, wire_th, 1.0f, 1.0f, 1.0f, 0.3f);
-                    }
-                    consumed += chunk;
-                }
-                cumulative += seg_len;
-            });
+        draw_dashed_wire(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th, 1.0f, 1.0f, 1.0f, 0.3f);
     } else {
         float wire_th = std::max(1.0f, kWireThickness * zoom_);
         traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
@@ -3343,7 +3316,8 @@ void NodeGraphUI::draw_perf_sparkline(Renderer2D& tr, const float* buf, uint32_t
     if (count == 0) return;
 
     // Find min/max for auto-scaling
-    float vmin = buf[0], vmax = buf[0];
+    uint32_t first_idx = filled ? write_idx % buf_len : 0;
+    float vmin = buf[first_idx], vmax = buf[first_idx];
     for (uint32_t i = 0; i < count; ++i) {
         uint32_t idx = filled ? (write_idx + i) % buf_len : i;
         float v = buf[idx];
