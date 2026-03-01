@@ -565,6 +565,17 @@ int main(int argc, char* argv[]) {
 
     vivid::Settings settings = vivid::load_settings();
 
+    // Clamp saved window size to fit the primary monitor's work area
+    {
+        GLFWmonitor* primary = glfwGetPrimaryMonitor();
+        if (primary) {
+            int mx, my, mw, mh;
+            glfwGetMonitorWorkarea(primary, &mx, &my, &mw, &mh);
+            if (settings.window_width > mw) settings.window_width = mw;
+            if (settings.window_height > mh) settings.window_height = mh;
+        }
+    }
+
     GLFWwindow* window = glfwCreateWindow(settings.window_width, settings.window_height,
                                            "Vivid", nullptr, nullptr);
     if (!window) {
