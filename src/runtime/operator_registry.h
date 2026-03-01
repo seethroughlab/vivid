@@ -33,8 +33,10 @@ public:
     bool load_for_graph(const Graph& graph);         // load only operators the graph uses
     void register_builtin(const std::string& type_name,
                           VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFn);
-    OperatorLoader* find(const std::string& type_name);       // lazy-loads deferred if needed
-    OperatorLoader* find_loaded(const std::string& type_name); // no lazy loading
+    // Find operator by type name. May lazy-load from deferred plugins.
+    // Use find_loaded() for a lookup that never triggers loading.
+    OperatorLoader* find(const std::string& type_name);
+    OperatorLoader* find_loaded(const std::string& type_name);
     const VividOperatorDescriptor* probe_descriptor(const std::string& type_name) const;
 
     // User-defined filter management

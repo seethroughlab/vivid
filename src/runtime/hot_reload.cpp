@@ -1,4 +1,5 @@
 #include "runtime/hot_reload.h"
+#include "runtime/platform.h"
 #include <cstdio>
 #include <cstdlib>
 #include <sys/stat.h>
@@ -8,30 +9,30 @@
 
 namespace vivid {
 
-// Platform-specific shared library suffix
-#if defined(__APPLE__)
-static constexpr const char* kPluginSuffix = ".dylib";
-#elif defined(_WIN32)
-static constexpr const char* kPluginSuffix = ".dll";
-#else
-static constexpr const char* kPluginSuffix = ".so";
-#endif
-
 HotReloader::HotReloader() = default;
 
 HotReloader::~HotReloader() {
     stop();
 }
 
-void HotReloader::start(const std::string& build_dir) {
+bool HotReloader::start(const std::string& build_dir) {
+    if (thread_.joinable()) return false;
+
     build_dir_ = build_dir;
     staging_dir_ = build_dir + "/.hot_reload";
 
     // Create staging directory
-    std::filesystem::create_directories(staging_dir_);
+    std::error_code ec;
+    std::filesystem::create_directories(staging_dir_, ec);
+    if (ec) {
+        std::fprintf(stderr, "[vivid] HotReloader: cannot create staging dir %s: %s\n",
+                     staging_dir_.c_str(), ec.message().c_str());
+        return false;
+    }
 
     running_ = true;
     thread_ = std::thread(&HotReloader::compile_thread, this);
+    return true;
 }
 
 void HotReloader::stop() {

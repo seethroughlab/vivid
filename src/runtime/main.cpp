@@ -849,8 +849,7 @@ int main(int argc, char* argv[]) {
                 working_filters_dir = (gp.parent_path() / (gp.stem().string() + "_filters")).string();
                 command_sink.set_working_filters_dir(working_filters_dir);
             }
-            if (file_watcher.start(operators_dir)) {
-                hot_reloader.start(build_dir);
+            if (file_watcher.start(operators_dir) && hot_reloader.start(build_dir)) {
                 hot_reload_enabled = true;
                 control_server.set_hot_reloader(&hot_reloader);
                 command_sink.set_hot_reloader(&hot_reloader);

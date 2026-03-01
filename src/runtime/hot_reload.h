@@ -24,7 +24,8 @@ public:
     ~HotReloader();
 
     // build_dir: where cmake was invoked (for cmake --build and staging)
-    void start(const std::string& build_dir);
+    // Returns false if already running or staging dir creation fails.
+    bool start(const std::string& build_dir);
     void stop();
 
     // Queue a rebuild for a cmake target (called from main thread)

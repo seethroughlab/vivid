@@ -1,5 +1,6 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
+#include "runtime/platform.h"
 #include "runtime/wgsl_header_parser.h"
 #include "operator_api/data_driven_filter.h"
 #include <dlfcn.h>
@@ -12,16 +13,10 @@
 
 namespace vivid {
 
-// Platform-specific shared library suffix
-#if defined(__APPLE__)
-static constexpr const char* kPluginSuffix = ".dylib";
-#elif defined(_WIN32)
-static constexpr const char* kPluginSuffix = ".dll";
-#else
-static constexpr const char* kPluginSuffix = ".so";
-#endif
-
-bool OperatorRegistry::scan(const char* directory) {
+// Iterate plugin files in a directory, calling fn(path, filename, stem_len) for each
+// matching file (correct suffix, not lib*-prefixed).
+template<typename Fn>
+static bool scan_plugin_dir(const char* directory, Fn&& fn) {
     DIR* dir = opendir(directory);
     if (!dir) {
         std::fprintf(stderr, "[vivid] Registry: failed to open directory: %s\n", directory);
@@ -41,23 +36,31 @@ bool OperatorRegistry::scan(const char* directory) {
             continue;
 
         std::string path = std::string(directory) + "/" + name;
-        auto loader = std::make_unique<OperatorLoader>();
-        if (!loader->load(path.c_str()))
-            continue;
-
-        const VividOperatorDescriptor* desc = loader->descriptor();
-        std::string type_name = desc->name;
-        std::fprintf(stderr, "[vivid] Registry: loaded %s from %s\n", type_name.c_str(), name);
-
-        // Map cmake target name (filename stem) → descriptor type name
-        std::string target_name(name, len - suffix_len);
-        target_to_type_[target_name] = type_name;
-
-        loaders_[type_name] = std::move(loader);
+        fn(path, name, len - suffix_len);
     }
 
     closedir(dir);
     return true;
+}
+
+bool OperatorRegistry::scan(const char* directory) {
+    return scan_plugin_dir(directory, [&](const std::string& path, const char* name, size_t stem_len) {
+        auto loader = std::make_unique<OperatorLoader>();
+        if (!loader->load(path.c_str()))
+            return;
+
+        const VividOperatorDescriptor* desc = loader->descriptor();
+        if (!desc || !desc->name) return;
+
+        std::string type_name = desc->name;
+        std::fprintf(stderr, "[vivid] Registry: loaded %s from %s\n", type_name.c_str(), name);
+
+        // Map cmake target name (filename stem) → descriptor type name
+        std::string target_name(name, stem_len);
+        target_to_type_[target_name] = type_name;
+
+        loaders_[type_name] = std::move(loader);
+    });
 }
 
 // Deep-copy a VividOperatorDescriptor into a DeferredEntry with fully owned storage
@@ -131,43 +134,25 @@ static DeferredEntry deep_copy_descriptor(const VividOperatorDescriptor* src,
 }
 
 bool OperatorRegistry::scan_deferred(const char* directory) {
-    DIR* dir = opendir(directory);
-    if (!dir) {
-        std::fprintf(stderr, "[vivid] Registry: failed to open directory: %s\n", directory);
-        return false;
-    }
-
-    size_t suffix_len = std::strlen(kPluginSuffix);
-
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        const char* name = entry->d_name;
-        size_t len = std::strlen(name);
-        if (len < suffix_len + 1 || std::strcmp(name + len - suffix_len, kPluginSuffix) != 0)
-            continue;
-        if (std::strncmp(name, "lib", 3) == 0)
-            continue;
-
-        std::string path = std::string(directory) + "/" + name;
-
+    return scan_plugin_dir(directory, [&](const std::string& path, const char* name, size_t /*stem_len*/) {
         // Probe only: open, read descriptor, close
         void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (!handle) {
             std::fprintf(stderr, "[vivid] probe dlopen failed: %s\n", dlerror());
-            continue;
+            return;
         }
 
         auto desc_fn = reinterpret_cast<VividDescriptorFn>(dlsym(handle, "vivid_descriptor"));
         if (!desc_fn) {
             std::fprintf(stderr, "[vivid] probe: missing vivid_descriptor in %s\n", name);
             dlclose(handle);
-            continue;
+            return;
         }
 
         const VividOperatorDescriptor* desc = desc_fn();
         if (!desc || !desc->name) {
             dlclose(handle);
-            continue;
+            return;
         }
 
         std::string type_name = desc->name;
@@ -175,7 +160,7 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         // Skip if already fully loaded (e.g. registered as builtin)
         if (loaders_.count(type_name)) {
             dlclose(handle);
-            continue;
+            return;
         }
 
         // Deep-copy descriptor into owned storage
@@ -183,21 +168,12 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
 
         dlclose(handle);
 
-        // Store the type name in the entry (desc.name needs to point to owned storage)
-        // We'll use a small trick: store the name string as the first port_name slot won't work.
-        // Instead, add a dedicated name field. Actually, let's just store it in param_names
-        // by convention. No — cleaner: the DeferredEntry is keyed by type_name in the map,
-        // and we need desc.name to point at stable storage. Use the map key.
-
         auto [it, inserted] = deferred_.emplace(type_name, std::move(de));
         // Point desc.name at the map key (stable after emplace)
         it->second.desc.name = it->first.c_str();
 
         std::fprintf(stderr, "[vivid] Registry: probed %s from %s\n", type_name.c_str(), name);
-    }
-
-    closedir(dir);
-    return true;
+    });
 }
 
 bool OperatorRegistry::scan_wgsl_presets(const std::string& directory) {
@@ -392,6 +368,11 @@ bool OperatorRegistry::register_loaded_operator(const std::string& dylib_path) {
         return false;
 
     const VividOperatorDescriptor* desc = loader->descriptor();
+    if (!desc || !desc->name) {
+        std::fprintf(stderr, "[vivid] Registry: null descriptor from %s\n", dylib_path.c_str());
+        return false;
+    }
+
     std::string type_name = desc->name;
     std::fprintf(stderr, "[vivid] Registry: loaded new operator %s from %s\n",
                  type_name.c_str(), dylib_path.c_str());
