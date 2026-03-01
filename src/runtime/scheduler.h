@@ -44,6 +44,11 @@ struct NodeState {
     std::vector<std::vector<float>> output_spreads;   // [port_idx] → spread data
     std::vector<std::vector<float>> input_spreads;    // [port_idx] → spread data
 
+    // Pre-allocated spread port arrays for process context (avoids per-frame heap allocs)
+    std::vector<VividSpreadPort> c_in_spreads;
+    std::vector<VividSpreadPort> c_out_spreads;
+    std::vector<std::vector<float>> out_spread_buf;
+
     // Per-node GPU texture
     WGPUTexture      gpu_texture      = nullptr;
     WGPUTextureView  gpu_texture_view = nullptr;

@@ -66,6 +66,14 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
         ns.output_spreads.resize(ns.output_port_count);
     }
 
+    // Pre-allocate spread port arrays (avoids per-frame heap allocations in tick)
+    ns.c_in_spreads.resize(ns.input_port_count);
+    ns.c_out_spreads.resize(ns.output_port_count);
+    ns.out_spread_buf.resize(ns.output_port_count);
+    for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+        ns.out_spread_buf[p].resize(kMaxSpreadCapacity, 0.0f);
+    }
+
     // Init file params from descriptor
     ns.file_param_storage.clear();
     ns.file_param_ptrs.clear();
@@ -428,23 +436,18 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             }
         }
 
-        // Build spread port arrays for process context
-        std::vector<VividSpreadPort> in_spreads(ns.input_port_count);
+        // Set up spread port arrays using pre-allocated buffers
         for (uint32_t p = 0; p < ns.input_port_count; ++p) {
             auto& isp = ns.input_spreads[p];
-            in_spreads[p].data     = isp.empty() ? nullptr : isp.data();
-            in_spreads[p].length   = static_cast<uint32_t>(isp.size());
-            in_spreads[p].capacity = static_cast<uint32_t>(isp.size());
+            ns.c_in_spreads[p].data     = isp.empty() ? nullptr : isp.data();
+            ns.c_in_spreads[p].length   = static_cast<uint32_t>(isp.size());
+            ns.c_in_spreads[p].capacity = static_cast<uint32_t>(isp.size());
         }
 
-        std::vector<VividSpreadPort> out_spreads(ns.output_port_count);
-        // Pre-allocate output spread buffers
-        std::vector<std::vector<float>> out_spread_storage(ns.output_port_count);
         for (uint32_t p = 0; p < ns.output_port_count; ++p) {
-            out_spread_storage[p].resize(kMaxSpreadCapacity, 0.0f);
-            out_spreads[p].data     = out_spread_storage[p].data();
-            out_spreads[p].length   = 0;
-            out_spreads[p].capacity = kMaxSpreadCapacity;
+            ns.c_out_spreads[p].data     = ns.out_spread_buf[p].data();
+            ns.c_out_spreads[p].length   = 0;
+            ns.c_out_spreads[p].capacity = kMaxSpreadCapacity;
         }
 
         // Build process context and tick
@@ -455,8 +458,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         ctx.param_values  = ns.param_values.data();
         ctx.input_values  = ns.input_values.data();
         ctx.output_values = ns.output_values.data();
-        ctx.input_spreads  = in_spreads.data();
-        ctx.output_spreads = out_spreads.data();
+        ctx.input_spreads  = ns.c_in_spreads.data();
+        ctx.output_spreads = ns.c_out_spreads.data();
         ctx.file_param_values = ns.file_param_ptrs.empty()
                                     ? nullptr : ns.file_param_ptrs.data();
         ctx.file_param_count  = static_cast<uint32_t>(ns.file_param_ptrs.size());
@@ -546,10 +549,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
 
         // Read back output spreads
         for (uint32_t p = 0; p < ns.output_port_count; ++p) {
-            if (out_spreads[p].length > 0) {
+            if (ns.c_out_spreads[p].length > 0) {
                 ns.output_spreads[p].assign(
-                    out_spreads[p].data,
-                    out_spreads[p].data + out_spreads[p].length);
+                    ns.c_out_spreads[p].data,
+                    ns.c_out_spreads[p].data + ns.c_out_spreads[p].length);
             } else {
                 ns.output_spreads[p].clear();
             }
@@ -599,8 +602,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         auto& to_ns = nodes_[w.to_node_idx];
         if (!to_ns.is_audio) continue;
         float val = w.sources_param
-            ? nodes_[w.from_node_idx].param_values[w.from_port_idx]
-            : nodes_[w.from_node_idx].output_values[w.from_port_idx];
+            ? nodes_[w.from_node_idx].param_values[w.from_port_idx] * w.scale
+            : nodes_[w.from_node_idx].output_values[w.from_port_idx] * w.scale;
         if (!(to_ns.param_lock_flags[w.to_port_idx] & PARAM_LOCK_WIRES))
             to_ns.param_values[w.to_port_idx] = val;
     }
