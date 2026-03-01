@@ -2,7 +2,6 @@
 
 #include <signal.h>
 #include <unistd.h>
-#include <cstring>
 
 namespace vivid {
 
@@ -10,30 +9,46 @@ namespace vivid {
 // Set before each process() call, cleared after. Used by the signal handler
 // to identify which operator caused a crash.
 inline thread_local const char* g_current_operator = nullptr;
+inline thread_local size_t g_current_operator_len = 0;
 
 // RAII guard that sets g_current_operator for the duration of a scope.
 struct CrashGuard {
-    explicit CrashGuard(const char* name) { g_current_operator = name; }
-    ~CrashGuard() { g_current_operator = nullptr; }
+    explicit CrashGuard(const char* name) {
+        g_current_operator = name;
+        // Pre-compute length so the signal handler doesn't need strlen().
+        size_t len = 0;
+        if (name) { while (name[len]) ++len; }
+        g_current_operator_len = len;
+    }
+    ~CrashGuard() { g_current_operator = nullptr; g_current_operator_len = 0; }
     CrashGuard(const CrashGuard&) = delete;
     CrashGuard& operator=(const CrashGuard&) = delete;
 };
 
 // Signal handler that prints which operator was active when the crash occurred.
-// Uses only async-signal-safe functions (write, strlen).
+// Uses only async-signal-safe functions (write, raise, signal).
 inline void crash_signal_handler(int sig) {
-    const char* sig_name = (sig == SIGSEGV) ? "SIGSEGV" :
-                           (sig == SIGBUS)  ? "SIGBUS"  :
-                           (sig == SIGABRT) ? "SIGABRT" :
-                           (sig == SIGFPE)  ? "SIGFPE"  : "UNKNOWN";
+    // Signal names and their lengths are compile-time constants.
+    struct SigEntry { int sig; const char* name; size_t len; };
+    static constexpr SigEntry entries[] = {
+        { SIGSEGV, "SIGSEGV", 7 },
+        { SIGBUS,  "SIGBUS",  6 },
+        { SIGABRT, "SIGABRT", 7 },
+        { SIGFPE,  "SIGFPE",  6 },
+    };
+    const char* sig_name = "UNKNOWN";
+    size_t sig_len = 7;
+    for (const auto& e : entries) {
+        if (e.sig == sig) { sig_name = e.name; sig_len = e.len; break; }
+    }
 
     write(STDERR_FILENO, "\n[vivid] Fatal signal: ", 22);
-    write(STDERR_FILENO, sig_name, strlen(sig_name));
+    write(STDERR_FILENO, sig_name, sig_len);
 
     const char* name = g_current_operator;
     if (name) {
         write(STDERR_FILENO, " in operator: ", 14);
-        write(STDERR_FILENO, name, strlen(name));
+        write(STDERR_FILENO, name, g_current_operator_len);
     } else {
         write(STDERR_FILENO, " (not in operator process())", 28);
     }
