@@ -69,10 +69,19 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
     }
     std::fseek(f, 0, SEEK_END);
     long file_size = std::ftell(f);
+    if (file_size <= 0) {
+        std::fprintf(stderr, "[vivid] Renderer2D: invalid font file size\n");
+        std::fclose(f);
+        return false;
+    }
     std::fseek(f, 0, SEEK_SET);
     std::vector<unsigned char> font_data(file_size);
-    std::fread(font_data.data(), 1, file_size, f);
+    size_t read = std::fread(font_data.data(), 1, file_size, f);
     std::fclose(f);
+    if (static_cast<long>(read) != file_size) {
+        std::fprintf(stderr, "[vivid] Renderer2D: short read on font file\n");
+        return false;
+    }
 
     // --- Bake glyph atlas using stb_truetype ---
     stbtt_fontinfo font;
@@ -233,6 +242,32 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
     bgl_desc.entryCount = 3;
     bgl_desc.entries = entries;
     bind_layout_ = wgpuDeviceCreateBindGroupLayout(device, &bgl_desc);
+
+    // --- Pre-allocate uniform buffer (8 bytes: vec2f screen_size) ---
+    {
+        WGPUBufferDescriptor ub_desc{};
+        ub_desc.label = to_sv("Text Uniforms");
+        ub_desc.size = 8;
+        ub_desc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        uniform_buf_ = wgpuDeviceCreateBuffer(device, &ub_desc);
+
+        WGPUBindGroupEntry bg_entries[3]{};
+        bg_entries[0].binding = 0;
+        bg_entries[0].buffer = uniform_buf_;
+        bg_entries[0].offset = 0;
+        bg_entries[0].size = 8;
+        bg_entries[1].binding = 1;
+        bg_entries[1].sampler = sampler_;
+        bg_entries[2].binding = 2;
+        bg_entries[2].textureView = atlas_view_;
+
+        WGPUBindGroupDescriptor bg_desc{};
+        bg_desc.label = to_sv("Text Bind Group");
+        bg_desc.layout = bind_layout_;
+        bg_desc.entryCount = 3;
+        bg_desc.entries = bg_entries;
+        bind_group_ = wgpuDeviceCreateBindGroup(device, &bg_desc);
+    }
 
     // --- Pipeline layout ---
     WGPUPipelineLayoutDescriptor pl_desc{};
@@ -506,34 +541,9 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
     buf_idx_ ^= 1;
     wgpuQueueWriteBuffer(queue, vb, 0, vertices_.data(), data_size);
 
-    // Create uniform buffer with screen size
+    // Update persistent uniform buffer with current screen size
     float uniforms[2] = { (float)surface_width, (float)surface_height };
-    WGPUBufferDescriptor ub_desc{};
-    ub_desc.label = to_sv("Text Uniforms");
-    ub_desc.size = 8;
-    ub_desc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
-    WGPUBuffer uniform_buf = wgpuDeviceCreateBuffer(device_, &ub_desc);
-    wgpuQueueWriteBuffer(queue, uniform_buf, 0, uniforms, 8);
-
-    // Create bind group
-    WGPUBindGroupEntry bg_entries[3]{};
-    bg_entries[0].binding = 0;
-    bg_entries[0].buffer = uniform_buf;
-    bg_entries[0].offset = 0;
-    bg_entries[0].size = 8;
-
-    bg_entries[1].binding = 1;
-    bg_entries[1].sampler = sampler_;
-
-    bg_entries[2].binding = 2;
-    bg_entries[2].textureView = atlas_view_;
-
-    WGPUBindGroupDescriptor bg_desc{};
-    bg_desc.label = to_sv("Text Bind Group");
-    bg_desc.layout = bind_layout_;
-    bg_desc.entryCount = 3;
-    bg_desc.entries = bg_entries;
-    WGPUBindGroup bind_group = wgpuDeviceCreateBindGroup(device_, &bg_desc);
+    wgpuQueueWriteBuffer(queue, uniform_buf_, 0, uniforms, 8);
 
     // Render pass with loadOp=Load to composite on top of existing content
     WGPURenderPassColorAttachment color_att{};
@@ -550,7 +560,7 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rp_desc);
     wgpuRenderPassEncoderSetPipeline(pass, pipeline_);
-    wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group, 0, nullptr);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group_, 0, nullptr);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, 0, data_size);
 
     // SetScissorRect requires physical pixels; surface_width/height are logical.
@@ -579,9 +589,6 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
-    wgpuBindGroupRelease(bind_group);
-    wgpuBufferRelease(uniform_buf);
-
     if (overflow_count_ > 0) {
         std::fprintf(stderr, "[vivid] Renderer2D: dropped %u quads (vertex buffer full, %u/%u verts used)\n",
                      overflow_count_, static_cast<uint32_t>(vertices_.size()), kMaxVertices);
@@ -598,6 +605,8 @@ void Renderer2D::shutdown() {
     for (auto& vb : vertex_bufs_) {
         if (vb) { wgpuBufferRelease(vb); vb = nullptr; }
     }
+    if (bind_group_)  { wgpuBindGroupRelease(bind_group_);        bind_group_  = nullptr; }
+    if (uniform_buf_) { wgpuBufferRelease(uniform_buf_);         uniform_buf_ = nullptr; }
     if (pipeline_)    { wgpuRenderPipelineRelease(pipeline_);     pipeline_    = nullptr; }
     if (bind_layout_) { wgpuBindGroupLayoutRelease(bind_layout_); bind_layout_ = nullptr; }
     if (sampler_)     { wgpuSamplerRelease(sampler_);             sampler_     = nullptr; }

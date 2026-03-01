@@ -61,7 +61,8 @@ private:
     WGPUDevice device_ = nullptr;
     WGPURenderPipeline pipeline_ = nullptr;
     WGPUBindGroupLayout bind_layout_ = nullptr;
-    WGPUBindGroup bind_group_ = nullptr;
+    WGPUBuffer uniform_buf_ = nullptr;     // persistent 8-byte uniform (screen_size)
+    WGPUBindGroup bind_group_ = nullptr;   // persistent bind group (uniforms + sampler + atlas)
     WGPUPipelineLayout pipe_layout_ = nullptr;
     WGPUShaderModule shader_ = nullptr;
     WGPUTexture atlas_tex_ = nullptr;
