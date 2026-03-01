@@ -83,6 +83,7 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     surface_ = glfwCreateWindowWGPUSurface(instance_, window);
     if (!surface_) {
         std::fprintf(stderr, "[vivid] Failed to create surface\n");
+        shutdown();
         return false;
     }
 
@@ -94,6 +95,7 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     adapter_ = request_adapter_sync(instance_, &adapter_opts);
     if (!adapter_) {
         std::fprintf(stderr, "[vivid] Failed to get adapter\n");
+        shutdown();
         return false;
     }
 
@@ -127,6 +129,7 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     device_ = request_device_sync(adapter_, &device_desc);
     if (!device_) {
         std::fprintf(stderr, "[vivid] Failed to get device\n");
+        shutdown();
         return false;
     }
 

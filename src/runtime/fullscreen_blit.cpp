@@ -125,6 +125,7 @@ bool FullscreenBlit::init(WGPUDevice device, WGPUTextureFormat target_format) {
     pipeline_ = wgpuDeviceCreateRenderPipeline(device_, &rp_desc);
     if (!pipeline_) {
         std::fprintf(stderr, "[vivid] FullscreenBlit: failed to create render pipeline\n");
+        shutdown();
         return false;
     }
 
@@ -232,7 +233,6 @@ struct FitUniforms {
 
 bool FullscreenBlit::init_fit_pipeline() {
     if (fit_inited_) return fit_pipeline_ != nullptr;
-    fit_inited_ = true;
 
     std::string shader_src = make_fit_blit_shader();
     WGPUShaderSourceWGSL wgsl_src{};
@@ -243,7 +243,10 @@ bool FullscreenBlit::init_fit_pipeline() {
     shader_desc.nextInChain = &wgsl_src.chain;
     shader_desc.label = to_sv("Fit Blit Shader");
     fit_shader_ = wgpuDeviceCreateShaderModule(device_, &shader_desc);
-    if (!fit_shader_) return false;
+    if (!fit_shader_) {
+        fit_inited_ = true; // prevent retry — shader compilation is deterministic
+        return false;
+    }
 
     // Uniform buffer
     WGPUBufferDescriptor buf_desc{};
@@ -307,8 +310,15 @@ bool FullscreenBlit::init_fit_pipeline() {
     fit_pipeline_ = wgpuDeviceCreateRenderPipeline(device_, &rp_desc);
     if (!fit_pipeline_) {
         std::fprintf(stderr, "[vivid] FullscreenBlit: failed to create fit pipeline\n");
+        // Clean up fit-specific resources allocated above
+        if (fit_shader_)      { wgpuShaderModuleRelease(fit_shader_);          fit_shader_      = nullptr; }
+        if (fit_uniform_buf_) { wgpuBufferRelease(fit_uniform_buf_);           fit_uniform_buf_ = nullptr; }
+        if (fit_bind_layout_) { wgpuBindGroupLayoutRelease(fit_bind_layout_);  fit_bind_layout_ = nullptr; }
+        if (fit_pipe_layout_) { wgpuPipelineLayoutRelease(fit_pipe_layout_);   fit_pipe_layout_ = nullptr; }
+        fit_inited_ = true; // prevent retry — pipeline creation is deterministic
         return false;
     }
+    fit_inited_ = true;
     return true;
 }
 
@@ -319,6 +329,12 @@ void FullscreenBlit::blit_fit(WGPUCommandEncoder encoder,
                                FitMode fit_mode, bool ui_visible) {
     if (!init_fit_pipeline()) {
         // Fall back to regular stretch blit
+        blit(encoder, source, dest);
+        return;
+    }
+
+    // Guard against zero-size dimensions (would produce inf/NaN aspect ratios)
+    if (src_h == 0 || dst_h == 0) {
         blit(encoder, source, dest);
         return;
     }
