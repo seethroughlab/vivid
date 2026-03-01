@@ -46,7 +46,6 @@
 
 #ifdef __APPLE__
 #include "runtime/macos_frame_timer.h"
-#include <CoreFoundation/CoreFoundation.h>
 #endif
 
 // #16191D in sRGB → linear: pow(x/255, 2.2)
@@ -859,14 +858,6 @@ int main(int argc, char* argv[]) {
         // Close button may fire during macOS tracking (resize/menus).
         if (glfwWindowShouldClose(window)) return false;
 
-        // Detect macOS tracking mode for deferred resize logic.
-#ifdef __APPLE__
-        CFStringRef mode = CFRunLoopCopyCurrentMode(CFRunLoopGetMain());
-        bool in_default_mode = !mode || CFEqual(mode, kCFRunLoopDefaultMode);
-
-        if (mode) CFRelease(mode);
-#endif
-
         int win_w, win_h;
         glfwGetWindowSize(window, &win_w, &win_h);
         int fb_w, fb_h;
@@ -876,29 +867,10 @@ int main(int argc, char* argv[]) {
         if (fb_w == 0 || fb_h == 0) return true;
 
         // Reconfigure GPU surface if framebuffer size changed.
-        // During macOS tracking mode (drag/resize), defer the resize to avoid
-        // unconfigure/reconfigure thrashing that causes begin_frame failures.
-        // The compositor stretches the old-sized surface to fit; we resize
-        // properly once tracking ends and we return to default mode.
-        {
-            bool defer_resize = false;
-#ifdef __APPLE__
-            defer_resize = !in_default_mode;
-#endif
-            if (!defer_resize && (fb_w != fb_width || fb_h != fb_height)) {
-                fb_width = fb_w;
-                fb_height = fb_h;
-                gpu.resize(static_cast<uint32_t>(fb_width), static_cast<uint32_t>(fb_height));
-            }
-            if (defer_resize && (fb_w != fb_width || fb_h != fb_height)) {
-                // Surface wasn't resized — clamp rendering dimensions to match
-                // so scissor rects don't exceed the render target.
-                float dpi = (win_w > 0) ? static_cast<float>(fb_w) / win_w : 1.0f;
-                fb_w = fb_width;
-                fb_h = fb_height;
-                win_w = static_cast<int>(fb_width / dpi);
-                win_h = static_cast<int>(fb_height / dpi);
-            }
+        if (fb_w != fb_width || fb_h != fb_height) {
+            fb_width = fb_w;
+            fb_height = fb_h;
+            gpu.resize(static_cast<uint32_t>(fb_width), static_cast<uint32_t>(fb_height));
         }
 
         // Drain control server requests (may set pending topology changes)
