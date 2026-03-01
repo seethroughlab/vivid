@@ -1,4 +1,5 @@
 #include "runtime/platform.h"
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 
@@ -37,6 +38,10 @@ std::string get_config_dir() {
 
     std::error_code ec;
     fs::create_directories(dir, ec);
+    if (ec) {
+        std::fprintf(stderr, "[vivid] Warning: failed to create config directory '%s': %s\n",
+                     dir.string().c_str(), ec.message().c_str());
+    }
     return dir.string();
 }
 

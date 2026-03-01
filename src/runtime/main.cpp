@@ -744,7 +744,9 @@ int main(int argc, char* argv[]) {
     if (has_audio) capture_coordinator.set_audio_engine(&audio_engine);
     vivid::ControlServer control_server;
     control_server.set_capture_coordinator(&capture_coordinator);
-    control_server.start(9876);
+    if (!control_server.start(9876)) {
+        std::fprintf(stderr, "[vivid] Control server unavailable (port 9876 in use?)\n");
+    }
     if (!src_dir.empty())
         control_server.set_src_dir(src_dir);
 

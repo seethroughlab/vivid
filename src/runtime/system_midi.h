@@ -34,7 +34,8 @@ public:
     // channel: 1-16. Returns 0.0 if never received.
     float cc_value(int channel, int cc) const;
 
-    // Returns copy of most recent drain (for snapshot relay to UI).
+    // Returns most recent drain (for snapshot relay to UI).
+    // Main-thread only. Reference valid until next drain_cc_events() call.
     const std::vector<MidiCCEvent>& last_drained_events() const { return last_drained_; }
 
     // Enumerate available MIDI input ports.
