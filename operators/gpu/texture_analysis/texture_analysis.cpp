@@ -162,14 +162,14 @@ private:
     uint32_t readback_crop_h_ = 0;
 
     void write_outputs(const VividProcessContext* ctx) {
-        // Output port indices (CONTROL_FLOAT only, texture ports don't use output_values):
-        // brightness(0), contrast(1), red(2), green(3), blue(4), edge_density(5)
-        ctx->output_values[0] = brightness_;
-        ctx->output_values[1] = contrast_;
-        ctx->output_values[2] = red_;
-        ctx->output_values[3] = green_;
-        ctx->output_values[4] = blue_;
-        ctx->output_values[5] = edge_density_;
+        // Output port indices match collect_ports() order:
+        // texture(0), brightness(1), contrast(2), red(3), green(4), blue(5), edge_density(6)
+        ctx->output_values[1] = brightness_;
+        ctx->output_values[2] = contrast_;
+        ctx->output_values[3] = red_;
+        ctx->output_values[4] = green_;
+        ctx->output_values[5] = blue_;
+        ctx->output_values[6] = edge_density_;
     }
 
     // Record the texture→staging copy on the shared tick encoder.
