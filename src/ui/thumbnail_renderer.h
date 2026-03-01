@@ -12,6 +12,11 @@ namespace vivid::ui {
 // with deferred draw batching. loadOp=Load to composite over existing UI.
 class ThumbnailRenderer {
 public:
+    ~ThumbnailRenderer() { shutdown(); }
+    ThumbnailRenderer() = default;
+    ThumbnailRenderer(const ThumbnailRenderer&) = delete;
+    ThumbnailRenderer& operator=(const ThumbnailRenderer&) = delete;
+
     bool init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat surface_format);
     void shutdown();
 

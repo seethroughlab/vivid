@@ -190,6 +190,11 @@ bool ThumbnailRenderer::init(WGPUDevice device, WGPUQueue queue,
 
 void ThumbnailRenderer::begin(WGPUCommandEncoder encoder, WGPUTextureView surface,
                                uint32_t surface_w, uint32_t surface_h) {
+    // Evict bind cache — cheap to recreate, prevents stale-view use-after-free
+    for (auto& [view, bg] : bind_cache_)
+        wgpuBindGroupRelease(bg);
+    bind_cache_.clear();
+
     pending_encoder_ = encoder;
     pending_surface_ = surface;
     surface_w_ = surface_w;

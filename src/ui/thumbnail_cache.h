@@ -8,6 +8,11 @@ namespace vivid::ui {
 
 class ThumbnailCache {
 public:
+    ~ThumbnailCache() { shutdown(); }
+    ThumbnailCache() = default;
+    ThumbnailCache(const ThumbnailCache&) = delete;
+    ThumbnailCache& operator=(const ThumbnailCache&) = delete;
+
     bool init(WGPUDevice device, WGPUQueue queue, uint32_t thumb_w, uint32_t thumb_h);
     void shutdown();
 

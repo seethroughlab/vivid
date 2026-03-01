@@ -65,6 +65,13 @@ WGPUTextureView ThumbnailCache::get_or_create(const std::string& node_id) {
 
 void ThumbnailCache::upload_cpu(const std::string& node_id, const uint8_t* pixels) {
     auto it = entries_.find(node_id);
+    if (it != entries_.end() && !it->second.is_cpu) {
+        // Existing GPU-format entry — destroy before recreating as CPU format
+        if (it->second.view) wgpuTextureViewRelease(it->second.view);
+        if (it->second.texture) wgpuTextureRelease(it->second.texture);
+        entries_.erase(it);
+        it = entries_.end();
+    }
     if (it == entries_.end()) {
         // Create RGBA8Unorm texture for CPU-uploaded thumbnails
         std::string label = "ThumbCPU:" + node_id;
