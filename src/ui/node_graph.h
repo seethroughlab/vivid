@@ -15,6 +15,8 @@
 #include <unordered_set>
 #include <cassert>
 
+namespace vivid { class PackageCatalog; struct CatalogEntry; }
+
 namespace vivid::ui {
 
 class Renderer2D;
@@ -68,7 +70,8 @@ public:
             || patch_ctx_open_
             || session_editing_name_
             || record_dropdown_open_
-            || preset_name_popup_open_;
+            || preset_name_popup_open_
+            || pkg_browser_open_;
     }
     bool has_selection() const { return !selected_node_ids_.empty(); }
     bool has_single_selection() const { return selected_node_ids_.size() == 1; }
@@ -110,6 +113,8 @@ public:
     void set_style(const UIStyle& s) { style_ = s; }
 
     void toggle_preferences();
+    void toggle_package_browser();
+    void set_package_catalog(PackageCatalog* catalog);
     void set_editor_options(std::vector<std::string> names, std::vector<std::string> ids,
                             int current_idx = 0, const std::string& custom_command = "");
     void set_style_options(std::vector<UIStyle> styles, int current_idx,
@@ -220,6 +225,11 @@ private:
     // --- Preferences panel ---
     void update_preferences();
     void draw_preferences(Renderer2D& tr);
+
+    // --- Package browser ---
+    void update_package_browser();
+    void draw_package_browser(Renderer2D& tr);
+    void rebuild_pkg_browser_items();
 
     // --- Parameter picker popup ---
     void rebuild_param_picker_items();
@@ -561,6 +571,18 @@ private:
     std::vector<UIStyle> prefs_styles_;
     std::vector<ThemeInfo> prefs_themes_;
     int prefs_saved_style_sel_ = 0;   // to revert on cancel
+
+    // --- Package browser ---
+    bool pkg_browser_open_ = false;
+    std::string pkg_browser_filter_;
+    int pkg_browser_sel_ = 0;
+    int pkg_browser_scroll_ = 0;
+    int pkg_browser_category_ = 0;   // 0=All, 1=Audio, 2=GPU, 3=Control, 4=Utility, 5=Installed
+    std::vector<CatalogEntry> pkg_browser_entries_;   // filtered snapshot
+    std::vector<CatalogEntry> pkg_browser_all_;       // full snapshot
+    PackageCatalog* pkg_catalog_ = nullptr;
+    bool pkg_action_pending_ = false;
+    std::string pkg_action_error_;
 
     // --- Session grid (variation strip) ---
     bool session_grid_open_ = false;

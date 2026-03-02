@@ -2,6 +2,7 @@
 #include "ui/node_graph_constants.h"
 #include "ui/node_graph_util.h"
 #include "ui/ui_style.h"
+#include "runtime/package_catalog.h"
 #include "common/topo_sort.h"
 #include "common/string_util.h"
 #include <algorithm>
@@ -796,6 +797,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_patch_drag();
     update_chooser_hover();
     update_param_picker();   // may consume left_clicked
+    update_package_browser(); // may consume left_clicked
     update_preferences();    // may consume left_clicked
     update_clone_confirm();  // may consume left_clicked
     update_create_popup();   // may consume left_clicked
@@ -1174,6 +1176,75 @@ void NodeGraphUI::toggle_preferences() {
         prefs_editing_custom_ = false;
         prefs_saved_style_sel_ = prefs_style_sel_;
     }
+}
+
+void NodeGraphUI::toggle_package_browser() {
+    pkg_browser_open_ = !pkg_browser_open_;
+    if (pkg_browser_open_ && pkg_catalog_) {
+        // Refresh catalog and load entries
+        auto state = pkg_catalog_->fetch_state();
+        if (state == vivid::CatalogFetchState::Idle ||
+            state == vivid::CatalogFetchState::Error) {
+            pkg_catalog_->refresh();
+        }
+        pkg_browser_all_ = pkg_catalog_->entries();
+        rebuild_pkg_browser_items();
+        pkg_browser_sel_ = 0;
+        pkg_browser_scroll_ = 0;
+        pkg_action_error_.clear();
+    }
+}
+
+void NodeGraphUI::set_package_catalog(PackageCatalog* catalog) {
+    pkg_catalog_ = catalog;
+}
+
+void NodeGraphUI::rebuild_pkg_browser_items() {
+    pkg_browser_entries_.clear();
+
+    // Category names for filtering
+    static const char* cat_names[] = { "", "audio", "gpu", "control", "utility" };
+    bool filter_installed = (pkg_browser_category_ == 5);
+    const char* cat_filter = (pkg_browser_category_ >= 1 && pkg_browser_category_ <= 4)
+                             ? cat_names[pkg_browser_category_] : nullptr;
+
+    for (const auto& e : pkg_browser_all_) {
+        // Category filter
+        if (filter_installed && !e.installed) continue;
+        if (cat_filter && e.category != cat_filter) continue;
+
+        // Text search filter
+        if (!pkg_browser_filter_.empty()) {
+            // Case-insensitive search in name, description, tags
+            auto contains = [](const std::string& haystack, const std::string& needle) {
+                if (needle.empty()) return true;
+                auto it = std::search(haystack.begin(), haystack.end(),
+                                      needle.begin(), needle.end(),
+                                      [](char a, char b) {
+                                          return std::tolower(static_cast<unsigned char>(a)) ==
+                                                 std::tolower(static_cast<unsigned char>(b));
+                                      });
+                return it != haystack.end();
+            };
+
+            bool match = contains(e.name, pkg_browser_filter_) ||
+                         contains(e.description, pkg_browser_filter_);
+            if (!match) {
+                for (const auto& tag : e.tags) {
+                    if (contains(tag, pkg_browser_filter_)) { match = true; break; }
+                }
+            }
+            if (!match) continue;
+        }
+
+        pkg_browser_entries_.push_back(e);
+    }
+
+    // Clamp selection
+    if (pkg_browser_sel_ >= static_cast<int>(pkg_browser_entries_.size()))
+        pkg_browser_sel_ = std::max(0, static_cast<int>(pkg_browser_entries_.size()) - 1);
+    if (pkg_browser_scroll_ > static_cast<int>(pkg_browser_entries_.size()) - kPkgBrowserMaxVisible)
+        pkg_browser_scroll_ = std::max(0, static_cast<int>(pkg_browser_entries_.size()) - kPkgBrowserMaxVisible);
 }
 
 void NodeGraphUI::set_editor_options(std::vector<std::string> names,

@@ -4,6 +4,7 @@
 #include "ui/renderer_2d.h"
 #include "ui/thumbnail_cache.h"
 #include "ui/thumbnail_renderer.h"
+#include "runtime/package_catalog.h"
 #include "common/string_util.h"
 #include "common/system_info.h"
 #include <algorithm>
@@ -2715,6 +2716,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     draw_create_popup(tr);
     draw_preset_name_popup(tr);
     draw_preferences(tr);
+    draw_package_browser(tr);
 }
 
 // -----------------------------------------------------------------------
@@ -3591,6 +3593,235 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     tr.draw_text(cx + 8, cy + 4, "+ New",
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     session_button_rects_.push_back({cx, cy, new_btn_w, kSessionCellH, 0});
+}
+
+// -----------------------------------------------------------------------
+// Package browser panel
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
+    if (!pkg_browser_open_) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+
+    // Poll for catalog updates each frame while open
+    if (pkg_catalog_) {
+        auto state = pkg_catalog_->fetch_state();
+        if (state == CatalogFetchState::Ready || state == CatalogFetchState::Error) {
+            auto fresh = pkg_catalog_->entries();
+            if (fresh.size() != pkg_browser_all_.size()) {
+                pkg_browser_all_ = std::move(fresh);
+                rebuild_pkg_browser_items();
+            }
+        }
+    }
+
+    // Scrim
+    tr.draw_rect(0, 0, wf, hf,
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+
+    // Panel dimensions
+    int visible_count = std::min(static_cast<int>(pkg_browser_entries_.size()), kPkgBrowserMaxVisible);
+    float list_h = visible_count * kPkgBrowserItemH;
+    float content_h = kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6
+                    + kPkgBrowserTabH + 8 + list_h + 8 + 18 + kPkgBrowserPadY;
+    float ph = std::min(kPkgBrowserMaxH, std::min(content_h, hf - 40.0f));
+    float pw = kPkgBrowserW;
+    float px = (wf - pw) * 0.5f;
+    float py = (hf - ph) * 0.5f;
+
+    // Panel background
+    tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
+                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    // Accent bar at top
+    tr.draw_rect(px, py, pw, 2,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    float cx = px + kPkgBrowserPadX;
+    float inner_w = pw - 2 * kPkgBrowserPadX;
+    float cy = py + kPkgBrowserPadY;
+
+    // Title
+    tr.draw_text(cx, cy + 6, "Packages",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    cy += kPkgBrowserHeaderH;
+
+    // Search bar
+    tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
+                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+    tr.draw_rect(cx, cy, inner_w, 1,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    std::string search_display = pkg_browser_filter_;
+    if (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0)
+        search_display += "_";
+    else
+        search_display += " ";
+
+    if (pkg_browser_filter_.empty() && search_display.size() <= 1) {
+        tr.draw_text(cx + 4, cy + 5, "Search packages...",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+    } else {
+        tr.draw_text(cx + 4, cy + 5, search_display.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+    cy += kPkgBrowserSearchH + 6;
+
+    // Category tabs
+    static const char* tab_labels[] = { "All", "Audio", "GPU", "Control", "Utility", "Installed" };
+    static const int tab_count = 6;
+    float tab_x = cx;
+    float tab_gap = 4.0f;
+    for (int i = 0; i < tab_count; ++i) {
+        float tw = tr.text_width(tab_labels[i]) + 16;
+        bool selected = (i == pkg_browser_category_);
+        bool hovered = mouse_.x >= tab_x && mouse_.x <= tab_x + tw &&
+                       mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH;
+
+        if (selected) {
+            tr.draw_rect(tab_x, cy, tw, kPkgBrowserTabH,
+                         style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+            tr.draw_text(tab_x + 8, cy + 3, tab_labels[i], 0.0f, 0.0f, 0.0f);
+        } else {
+            if (hovered)
+                tr.draw_rect(tab_x, cy, tw, kPkgBrowserTabH,
+                             style_.button_hover[0], style_.button_hover[1], style_.button_hover[2], 0.6f);
+            else
+                tr.draw_rect(tab_x, cy, tw, kPkgBrowserTabH,
+                             style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.6f);
+            tr.draw_text(tab_x + 8, cy + 3, tab_labels[i],
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        }
+        tab_x += tw + tab_gap;
+    }
+    cy += kPkgBrowserTabH + 8;
+
+    // Scrollable list
+    float list_top = cy;
+    float list_bottom = list_top + visible_count * kPkgBrowserItemH;
+
+    int total = static_cast<int>(pkg_browser_entries_.size());
+    int end = std::min(total, pkg_browser_scroll_ + kPkgBrowserMaxVisible);
+
+    for (int i = pkg_browser_scroll_; i < end; ++i) {
+        const auto& entry = pkg_browser_entries_[i];
+        float iy = list_top + (i - pkg_browser_scroll_) * kPkgBrowserItemH;
+
+        // Hover highlight
+        bool hovered = mouse_.x >= cx && mouse_.x <= cx + inner_w &&
+                       mouse_.y >= iy && mouse_.y <= iy + kPkgBrowserItemH;
+        if (hovered || i == pkg_browser_sel_) {
+            tr.draw_rect(cx, iy, inner_w, kPkgBrowserItemH,
+                         style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2],
+                         hovered ? 0.5f : 0.3f);
+        }
+
+        // Separator line
+        if (i > pkg_browser_scroll_) {
+            tr.draw_rect(cx + 4, iy, inner_w - 8, 1,
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.3f);
+        }
+
+        // Package name (bright)
+        tr.draw_text(cx + 8, iy + 6, entry.name.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+        // Version (dim, to the right of name)
+        float name_w = tr.text_width(entry.name.c_str());
+        std::string ver_str = "v" + entry.version;
+        tr.draw_text(cx + 8 + name_w + 8, iy + 6, ver_str.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+
+        // Description (dim, second line, truncated)
+        std::string desc = entry.description;
+        if (desc.size() > 60) desc = desc.substr(0, 57) + "...";
+        tr.draw_text(cx + 8, iy + 22, desc.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+        // Category + author (third line, subtle)
+        std::string meta;
+        if (!entry.category.empty()) meta = entry.category;
+        if (!entry.author.empty()) {
+            if (!meta.empty()) meta += " · ";
+            meta += entry.author;
+        }
+        if (!meta.empty()) {
+            tr.draw_text(cx + 8, iy + 37, meta.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+        }
+
+        // Action button (right side)
+        float btn_x = cx + inner_w - kPkgBrowserBtnW - 8;
+        float btn_y = iy + (kPkgBrowserItemH - kPkgBrowserBtnH) * 0.5f;
+
+        const char* btn_label;
+        bool is_remove = false;
+        if (entry.installed) {
+            btn_label = "Remove";
+            is_remove = true;
+        } else {
+            btn_label = "Install";
+        }
+
+        bool btn_hover = mouse_.x >= btn_x && mouse_.x <= btn_x + kPkgBrowserBtnW &&
+                         mouse_.y >= btn_y && mouse_.y <= btn_y + kPkgBrowserBtnH;
+
+        if (is_remove) {
+            if (btn_hover)
+                tr.draw_rect(btn_x, btn_y, kPkgBrowserBtnW, kPkgBrowserBtnH,
+                             kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.8f);
+            else
+                tr.draw_rect(btn_x, btn_y, kPkgBrowserBtnW, kPkgBrowserBtnH,
+                             style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.8f);
+        } else {
+            if (btn_hover)
+                tr.draw_rect(btn_x, btn_y, kPkgBrowserBtnW, kPkgBrowserBtnH,
+                             style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+            else
+                tr.draw_rect(btn_x, btn_y, kPkgBrowserBtnW, kPkgBrowserBtnH,
+                             style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.8f);
+        }
+
+        float label_x = btn_x + (kPkgBrowserBtnW - tr.text_width(btn_label)) * 0.5f;
+        tr.draw_text(label_x, btn_y + 3, btn_label,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+
+    cy = list_bottom + 8;
+
+    // Scrollbar (if needed)
+    if (total > kPkgBrowserMaxVisible) {
+        float sb_x = cx + inner_w - 4;
+        float sb_h = visible_count * kPkgBrowserItemH;
+        float thumb_h = std::max(20.0f, sb_h * kPkgBrowserMaxVisible / static_cast<float>(total));
+        float thumb_y = list_top + (sb_h - thumb_h) * pkg_browser_scroll_ /
+                        static_cast<float>(total - kPkgBrowserMaxVisible);
+        tr.draw_rect(sb_x, list_top, 4, sb_h,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.3f);
+        tr.draw_rect(sb_x, thumb_y, 4, thumb_h,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+    }
+
+    // Status bar
+    std::string status;
+    if (pkg_catalog_) {
+        auto state = pkg_catalog_->fetch_state();
+        if (state == CatalogFetchState::Fetching) {
+            status = "Fetching catalog...";
+        } else if (state == CatalogFetchState::Error) {
+            status = pkg_catalog_->fetch_error();
+        } else {
+            status = std::to_string(pkg_browser_entries_.size()) + " package" +
+                     (pkg_browser_entries_.size() != 1 ? "s" : "");
+        }
+    }
+    if (!pkg_action_error_.empty()) {
+        tr.draw_text(cx, cy, pkg_action_error_.c_str(),
+                     kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
+    } else if (!status.empty()) {
+        tr.draw_text(cx, cy, status.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+    }
 }
 
 } // namespace vivid::ui

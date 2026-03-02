@@ -8,6 +8,7 @@ enum MenuTag : NSInteger {
     kMenuTagSave,
     kMenuTagPreferences,
     kMenuTagExport,
+    kMenuTagBrowsePackages,
 };
 
 @interface VividMenuDelegate : NSObject
@@ -23,6 +24,7 @@ enum MenuTag : NSInteger {
         case kMenuTagSave:        if (_callbacks.on_save)        _callbacks.on_save();        break;
         case kMenuTagPreferences: if (_callbacks.on_preferences) _callbacks.on_preferences(); break;
         case kMenuTagExport:      if (_callbacks.on_export)      _callbacks.on_export();      break;
+        case kMenuTagBrowsePackages: if (_callbacks.on_browse_packages) _callbacks.on_browse_packages(); break;
     }
 }
 
@@ -99,6 +101,16 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         exportItem.target = sDelegate;
         exportItem.tag = kMenuTagExport;
         [fileMenu addItem:exportItem];
+
+        [fileMenu addItem:[NSMenuItem separatorItem]];
+
+        NSMenuItem* browseItem = [[NSMenuItem alloc]
+            initWithTitle:@"Browse Packages..."
+                   action:@selector(menuAction:)
+            keyEquivalent:@""];
+        browseItem.target = sDelegate;
+        browseItem.tag = kMenuTagBrowsePackages;
+        [fileMenu addItem:browseItem];
 
         NSMenuItem* fileMenuItem = [[NSMenuItem alloc] initWithTitle:@"File"
                                                              action:nil

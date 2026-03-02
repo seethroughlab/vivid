@@ -262,6 +262,19 @@ static constexpr float kSessionCellH = 24.0f;
 static constexpr float kSessionCellPad = 4.0f;
 static constexpr float kSessionPadX = 8.0f;
 
+// Package browser panel
+static constexpr float kPkgBrowserW = 520.0f;
+static constexpr float kPkgBrowserMaxH = 560.0f;
+static constexpr float kPkgBrowserPadX = 20.0f;
+static constexpr float kPkgBrowserPadY = 16.0f;
+static constexpr float kPkgBrowserHeaderH = 36.0f;
+static constexpr float kPkgBrowserSearchH = 26.0f;
+static constexpr float kPkgBrowserItemH = 56.0f;
+static constexpr int   kPkgBrowserMaxVisible = 8;
+static constexpr float kPkgBrowserBtnW = 70.0f;
+static constexpr float kPkgBrowserBtnH = 22.0f;
+static constexpr float kPkgBrowserTabH = 22.0f;
+
 // Patch panel (2-node connection view)
 static constexpr float kPatchJackHitRadius = 8.0f;
 

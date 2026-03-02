@@ -31,6 +31,7 @@
 #include "export/export_pipeline.h"
 #include "runtime/package_compiler.h"
 #include "runtime/package_manager.h"
+#include "runtime/package_catalog.h"
 #include <fstream>
 #include <sstream>
 #include <webgpu/webgpu.h>
@@ -787,25 +788,25 @@ int main(int argc, char* argv[]) {
     std::string filters_dir = (exe_dir / "filters").string();
     registry.scan_wgsl_presets(filters_dir);
 
-    // --- Scan installed packages ---
+    // --- Package management (needs to outlive main loop for catalog/install) ---
+    std::string pkg_source_dir;
     {
-        std::string source_dir;
-        std::string build_dir = exe_dir.string();
         auto cand = exe_dir.parent_path();
         for (int i = 0; i < 3; ++i) {
             if (std::filesystem::exists(cand / "CMakeLists.txt") &&
                 std::filesystem::exists(cand / "src" / "runtime")) {
-                source_dir = cand.string();
+                pkg_source_dir = cand.string();
                 break;
             }
             cand = cand.parent_path();
         }
-        if (source_dir.empty() && !src_dir.empty())
-            source_dir = src_dir;
-        vivid::PackageCompiler pkg_compiler(source_dir, build_dir);
-        vivid::PackageManager pm(pkg_compiler, registry);
-        pm.scan_installed();
+        if (pkg_source_dir.empty() && !src_dir.empty())
+            pkg_source_dir = src_dir;
     }
+    vivid::PackageCompiler pkg_compiler(pkg_source_dir, exe_dir.string());
+    vivid::PackageManager pkg_manager(pkg_compiler, registry);
+    pkg_manager.scan_installed();
+    vivid::PackageCatalog pkg_catalog(pkg_manager);
 
     // --- Load graph ---
     vivid::Graph graph;
@@ -893,6 +894,8 @@ int main(int argc, char* argv[]) {
     if (has_audio) capture_coordinator.set_audio_engine(&audio_engine);
     vivid::ControlServer control_server;
     control_server.set_capture_coordinator(&capture_coordinator);
+    control_server.set_package_manager(&pkg_manager);
+    control_server.set_package_catalog(&pkg_catalog);
     if (!control_server.start(9876)) {
         std::fprintf(stderr, "[vivid] Control server unavailable (port 9876 in use?)\n");
     }
@@ -926,6 +929,7 @@ int main(int argc, char* argv[]) {
     vivid::ui::NodeGraphUI graph_ui(command_sink);
     graph_ui.set_dpi_scale(dpi_scale);
     graph_ui.set_bezier_wires(settings.bezier_wires);
+    graph_ui.set_package_catalog(&pkg_catalog);
     if (graph.has_viewport())
         graph_ui.set_viewport(graph.viewport_pan_x, graph.viewport_pan_y, graph.viewport_zoom);
 
@@ -1153,6 +1157,10 @@ int main(int argc, char* argv[]) {
             } else {
                 std::fprintf(stderr, "[vivid] Export failed\n");
             }
+        };
+
+        menu_cbs.on_browse_packages = [&]() {
+            graph_ui.toggle_package_browser();
         };
 
         vivid::macos_setup_menu(menu_cbs);

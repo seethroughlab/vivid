@@ -2,6 +2,7 @@
 #include "ui/node_graph_constants.h"
 #include "ui/node_graph_util.h"
 #include "ui/file_dialog.h"
+#include "runtime/package_catalog.h"
 #include "common/string_util.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -52,6 +53,14 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
 }
 
 void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
+    // Package browser scroll
+    if (pkg_browser_open_ && !pkg_browser_entries_.empty()) {
+        pkg_browser_scroll_ -= static_cast<int>(y_offset);
+        int max_scroll = std::max(0, static_cast<int>(pkg_browser_entries_.size()) - kPkgBrowserMaxVisible);
+        pkg_browser_scroll_ = std::max(0, std::min(pkg_browser_scroll_, max_scroll));
+        return;
+    }
+
     // Param picker scroll
     if (param_picker_open_ && !param_picker_items_.empty()) {
         param_picker_scroll_ -= static_cast<int>(y_offset);
@@ -116,6 +125,45 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
 // -----------------------------------------------------------------------
 void NodeGraphUI::on_key(int key, int action, int mods) {
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
+
+    if (pkg_browser_open_) {
+        if (key == GLFW_KEY_ESCAPE) {
+            pkg_browser_open_ = false;
+            pkg_browser_filter_.clear();
+        } else if (key == GLFW_KEY_UP) {
+            pkg_browser_sel_ = std::max(0, pkg_browser_sel_ - 1);
+            if (pkg_browser_sel_ < pkg_browser_scroll_)
+                pkg_browser_scroll_ = pkg_browser_sel_;
+        } else if (key == GLFW_KEY_DOWN) {
+            int max_sel = static_cast<int>(pkg_browser_entries_.size()) - 1;
+            pkg_browser_sel_ = std::min(max_sel, pkg_browser_sel_ + 1);
+            if (pkg_browser_sel_ >= pkg_browser_scroll_ + kPkgBrowserMaxVisible)
+                pkg_browser_scroll_ = pkg_browser_sel_ - kPkgBrowserMaxVisible + 1;
+        } else if (key == GLFW_KEY_ENTER) {
+            // Trigger install/remove on selected entry
+            if (pkg_catalog_ && pkg_browser_sel_ >= 0 &&
+                pkg_browser_sel_ < static_cast<int>(pkg_browser_entries_.size())) {
+                const auto& entry = pkg_browser_entries_[pkg_browser_sel_];
+                pkg_action_error_.clear();
+                if (entry.installed) {
+                    if (!pkg_catalog_->uninstall(entry.name))
+                        pkg_action_error_ = "Failed to uninstall " + entry.name;
+                } else {
+                    auto result = pkg_catalog_->install(entry.name);
+                    if (!result.success)
+                        pkg_action_error_ = result.error;
+                }
+                pkg_browser_all_ = pkg_catalog_->entries();
+                rebuild_pkg_browser_items();
+            }
+        } else if (key == GLFW_KEY_BACKSPACE && !pkg_browser_filter_.empty()) {
+            pkg_browser_filter_.pop_back();
+            pkg_browser_scroll_ = 0;
+            pkg_browser_sel_ = 0;
+            rebuild_pkg_browser_items();
+        }
+        return;
+    }
 
     if (prefs_open_) {
         if (key == GLFW_KEY_ESCAPE) {
@@ -613,6 +661,15 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
 }
 
 void NodeGraphUI::on_char(unsigned int codepoint) {
+    if (pkg_browser_open_) {
+        if (codepoint >= 32 && codepoint < 127) {
+            pkg_browser_filter_ += static_cast<char>(codepoint);
+            pkg_browser_scroll_ = 0;
+            pkg_browser_sel_ = 0;
+            rebuild_pkg_browser_items();
+        }
+        return;
+    }
     if (session_editing_name_) {
         if (codepoint >= 32 && codepoint < 127)
             session_edit_buffer_ += static_cast<char>(codepoint);
@@ -1888,6 +1945,112 @@ void NodeGraphUI::update_preferences() {
 
     // Consume click inside panel
     prefs_editing_custom_ = false;
+    mouse_.left_clicked = false;
+    mouse_.left_released = false;
+}
+
+// -----------------------------------------------------------------------
+// Package browser interaction
+// -----------------------------------------------------------------------
+void NodeGraphUI::update_package_browser() {
+    if (!pkg_browser_open_) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+
+    int visible_count = std::min(static_cast<int>(pkg_browser_entries_.size()), kPkgBrowserMaxVisible);
+    float list_h = visible_count * kPkgBrowserItemH;
+    float content_h = kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6
+                    + kPkgBrowserTabH + 8 + list_h + 8 + 18 + kPkgBrowserPadY;
+    float ph = std::min(kPkgBrowserMaxH, std::min(content_h, hf - 40.0f));
+    float pw = kPkgBrowserW;
+    float px = (wf - pw) * 0.5f;
+    float py = (hf - ph) * 0.5f;
+
+    float cx = px + kPkgBrowserPadX;
+    float inner_w = pw - 2 * kPkgBrowserPadX;
+
+    if (!mouse_.left_clicked) return;
+
+    // Click outside panel → close
+    if (mouse_.x < px || mouse_.x > px + pw ||
+        mouse_.y < py || mouse_.y > py + ph) {
+        pkg_browser_open_ = false;
+        pkg_browser_filter_.clear();
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
+    float cy = py + kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6;
+
+    // Category tab clicks
+    static const char* tab_labels[] = { "All", "Audio", "GPU", "Control", "Utility", "Installed" };
+    // We need to estimate tab widths; use approximate char width (8px per char + 16px padding)
+    float tab_x = cx;
+    float tab_gap = 4.0f;
+    for (int i = 0; i < 6; ++i) {
+        float tw = static_cast<float>(std::strlen(tab_labels[i])) * 8.0f + 16.0f;
+        if (mouse_.x >= tab_x && mouse_.x <= tab_x + tw &&
+            mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH) {
+            pkg_browser_category_ = i;
+            pkg_browser_scroll_ = 0;
+            pkg_browser_sel_ = 0;
+            rebuild_pkg_browser_items();
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+        tab_x += tw + tab_gap;
+    }
+
+    cy += kPkgBrowserTabH + 8;
+
+    // List item clicks
+    float list_top = cy;
+    int total = static_cast<int>(pkg_browser_entries_.size());
+    int end = std::min(total, pkg_browser_scroll_ + kPkgBrowserMaxVisible);
+
+    for (int i = pkg_browser_scroll_; i < end; ++i) {
+        float iy = list_top + (i - pkg_browser_scroll_) * kPkgBrowserItemH;
+        if (mouse_.y < iy || mouse_.y > iy + kPkgBrowserItemH) continue;
+        if (mouse_.x < cx || mouse_.x > cx + inner_w) continue;
+
+        // Check if action button was clicked
+        float btn_x = cx + inner_w - kPkgBrowserBtnW - 8;
+        float btn_y = iy + (kPkgBrowserItemH - kPkgBrowserBtnH) * 0.5f;
+
+        if (mouse_.x >= btn_x && mouse_.x <= btn_x + kPkgBrowserBtnW &&
+            mouse_.y >= btn_y && mouse_.y <= btn_y + kPkgBrowserBtnH) {
+            // Action button clicked
+            if (pkg_catalog_) {
+                const auto& entry = pkg_browser_entries_[i];
+                pkg_action_error_.clear();
+                if (entry.installed) {
+                    if (!pkg_catalog_->uninstall(entry.name))
+                        pkg_action_error_ = "Failed to uninstall " + entry.name;
+                } else {
+                    auto result = pkg_catalog_->install(entry.name);
+                    if (!result.success)
+                        pkg_action_error_ = result.error;
+                }
+                // Refresh entries
+                pkg_browser_all_ = pkg_catalog_->entries();
+                rebuild_pkg_browser_items();
+            }
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+
+        // Select row
+        pkg_browser_sel_ = i;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
+    // Consume click inside panel
     mouse_.left_clicked = false;
     mouse_.left_released = false;
 }
