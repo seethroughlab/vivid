@@ -19,7 +19,7 @@ In the age of LLM-assisted development, writing an operator that does exactly wh
 ## Architecture Overview
 
 - **Language:** C++ throughout (runtime, interface, and operators)
-- **GPU:** Dawn (Google's WebGPU implementation, C++ used directly)
+- **GPU:** Dawn (Google's WebGPU implementation, fetched via FetchContent at build time)
 - **Audio:** miniaudio (device I/O only; DSP lives in audio operators)
 - **Window:** GLFW 3.4
 - **Build:** CMake
@@ -41,37 +41,83 @@ Read the relevant doc for your task:
 
 ```
 vivid/
-├── CMakeLists.txt            # Top-level build
-├── deps/                     # Third-party (git submodules or FetchContent)
-│   ├── dawn/  ├── glfw/  ├── miniaudio/  ├── stb/  └── yyjson/
+├── CMakeLists.txt
+├── AGENTS.md
+├── deps/                     # Third-party (git submodules + FetchContent)
+│   ├── glfw/  ├── glfw3webgpu/  ├── miniaudio/  ├── rtmidi/  ├── stb/  └── yyjson/
 ├── src/
-│   ├── runtime/              # Core engine
-│   │   ├── main.cpp
-│   │   ├── graph.cpp/.h
-│   │   ├── scheduler.cpp/.h
-│   │   ├── spreads.cpp/.h
-│   │   ├── bridges.cpp/.h
-│   │   ├── params.cpp/.h
+│   ├── runtime/              # Core engine (~30 modules)
+│   │   ├── main.cpp          # Entry point, GLFW loop, input dispatch
+│   │   ├── graph.cpp/.h      # JSON graph data model
+│   │   ├── scheduler.cpp/.h  # Topological tick, domain dispatch
 │   │   ├── gpu_context.cpp/.h
-│   │   ├── audio_context.cpp/.h
+│   │   ├── audio_engine.cpp/.h
 │   │   ├── hot_reload.cpp/.h
-│   │   └── runtime_api.cpp/.h
-│   ├── interface/            # UI layer
-│   │   ├── widgets/
-│   │   ├── layout.cpp/.h
-│   │   ├── input.cpp/.h
-│   │   ├── renderer.cpp/.h
-│   │   ├── theme.cpp/.h
-│   │   └── text.cpp/.h
-│   └── operator_api/        # Shared headers for operator contract
-│       ├── operator.h
-│       ├── spread.h
-│       └── types.h
-├── operators/                # Seed operators (each a directory)
-│   ├── gpu/                  # noise/, blur/, particles/, composite/
-│   ├── audio/                # oscillator/, delay/, fft_analysis/, beat_detect/
-│   └── control/              # lfo/, clock/, midi_cc/, math/, envelope/
-├── projects/                 # Example projects
+│   │   ├── runtime_api.cpp/.h
+│   │   ├── operator_loader.cpp/.h    # dlopen/dlsym plugin loading
+│   │   ├── operator_registry.cpp/.h  # Type→plugin resolution
+│   │   ├── operator_creator.cpp/.h   # LLM-assisted scaffolding
+│   │   ├── control_server.cpp/.h     # HTTP API (port 9876)
+│   │   ├── package_manager.cpp/.h    # Install/uninstall/list packages
+│   │   ├── package_compiler.cpp/.h   # CMake-based package builds
+│   │   ├── package_catalog.cpp/.h    # Remote catalog fetch + cache
+│   │   ├── package_test_runner.cpp/.h
+│   │   ├── settings.cpp/.h
+│   │   ├── system_midi.cpp/.h
+│   │   ├── macos_menu.h/.mm         # Native macOS menu bar
+│   │   └── ...                       # file_watcher, fullscreen_blit, etc.
+│   ├── ui/                   # Retained-mode node graph UI
+│   │   ├── node_graph.cpp/.h         # Core graph editor
+│   │   ├── node_graph_draw.cpp       # Rendering (wires, nodes, thumbnails)
+│   │   ├── node_graph_input.cpp      # Mouse/key event handling
+│   │   ├── renderer_2d.cpp/.h        # GPU-accelerated 2D primitives
+│   │   ├── thumbnail_cache.cpp/.h
+│   │   ├── thumbnail_renderer.cpp/.h
+│   │   ├── theme_loader.cpp/.h       # JSON theme loading
+│   │   ├── ui_style.cpp/.h           # Style constants
+│   │   └── file_dialog.h/.mm         # Native file dialogs (macOS)
+│   ├── common/               # Shared utilities
+│   │   ├── gpu_util.h  ├── string_util.h  ├── topo_sort.h  └── system_info.h
+│   ├── export/               # Standalone binary export
+│   │   ├── export_pipeline.cpp/.h
+│   │   ├── standalone_main.cpp
+│   │   └── standalone.cmake.in
+│   └── operator_api/         # Public operator contract headers
+│       ├── operator.h                # Base operator + VIVID_REGISTER macro
+│       ├── types.h                   # VividParam, VividOutput, enums
+│       ├── gpu_operator.h            # GPU operator base (WebGPU helpers)
+│       ├── audio_operator.h          # Audio operator base
+│       ├── audio_dsp.h               # DSP utilities (filters, envelopes)
+│       ├── adsr.h                    # ADSR envelope helper
+│       ├── child_op.h                # ChildOp<T> for composite operators
+│       ├── data_driven_filter.h      # WGSL filter base class
+│       ├── gpu_common.h              # Shared GPU types
+│       ├── input_state.h             # Interactive input events/state
+│       └── wgsl_filter.h             # Self-describing WGSL filter support
+├── operators/                # Seed operators (each a single-file directory)
+│   ├── gpu/                  # 13 operators: noise, shape, bars, composite, bloom,
+│   │                         #   feedback, instance, plexus, time_machine, text,
+│   │                         #   texture_analysis, movie_file_in, webcam_in
+│   ├── audio/                # 18 operators: oscillator, gain, delay, reverb,
+│   │                         #   bitcrush, distortion, drum_kick/snare/hihat/clap/tom/cymbal,
+│   │                         #   drum_common, wavetable_synth, spread_adsr, spread_lfo,
+│   │                         #   plexus_synth, movie_file_audio_in
+│   └── control/              # 23 operators: lfo, clock, math, envelope, midi_input,
+│                             #   fft_analysis, note_pattern, chord_progression,
+│                             #   arpeggiator, sequencer, drum_sequencer, euclidean,
+│                             #   pattern_seq, stack, alternate, pat_transform,
+│                             #   note_duration, gate, logic, random, smooth,
+│                             #   modulated_gain, state_machine
+├── filters/                  # 19 self-describing WGSL shader presets
+├── graphs/                   # 48 demo/example graph JSON files
+├── mcp/                      # MCP server (Python bridge to control server)
+│   ├── vivid_mcp.py
+│   └── requirements.txt
+├── platform/                 # Platform-specific resources
+│   └── macos/                # Info.plist.in, Vivid.icns
+├── fonts/                    # JetBrainsMono-Regular.ttf
+├── tests/                    # 27 integration/unit tests
+├── media/                    # Sample audio/video/image assets
 └── docs/                     # Design documents
 ```
 
@@ -113,6 +159,26 @@ cmake --build build --target noise    # Build single operator (hot-reload)
 
 ### Visual Style
 Dark steel background, monospace type, sharp corners. Domain identity through accent colors and preview content, not container shapes. See `docs/INTERFACE.md` §Visual Style for details.
+
+### Package System
+- Operators can be distributed as packages (git repos with `vivid-package.json`)
+- `PackageManager` handles install/uninstall/link/rebuild/dependency resolution
+- `PackageCompiler` does CMake-based builds of package operators
+- Installed packages live in `~/.vivid/packages/`
+- For development: `vivid link <path>` symlinks a local package, `vivid rebuild <name>` recompiles in-place
+
+### Control Server
+- HTTP API on port 9876 for runtime manipulation
+- Endpoints for graph CRUD, parameter control, capture, package management
+- MCP bridge (`mcp/vivid_mcp.py`) exposes control server to LLM tools
+
+### Export Pipeline
+- `src/export/` compiles a graph + its operators into a standalone binary
+- Uses `standalone.cmake.in` template, generates self-contained CMakeLists
+
+### Interactive Input
+- When the graph UI is hidden, keyboard/mouse events are forwarded to operators via `VividInputState`
+- Coordinates are normalized to [0,1] texture UV space accounting for fit mode
 
 ## What NOT to Do
 
