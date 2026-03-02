@@ -302,6 +302,7 @@ add_executable(vivid
     src/export/export_pipeline.cpp
     src/runtime/package_compiler.cpp
     src/runtime/package_manager.cpp
+    src/runtime/package_test_runner.cpp
     src/runtime/package_catalog.cpp
 )
 
@@ -508,6 +509,7 @@ add_executable(test_control_server
     src/runtime/system_midi.cpp
     src/runtime/package_manager.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/package_test_runner.cpp
     src/runtime/package_catalog.cpp
     src/runtime/platform.cpp
 )
@@ -848,4 +850,26 @@ target_include_directories(test_package_manager PRIVATE src)
 target_link_libraries(test_package_manager PRIVATE vivid_operator_api yyjson webgpu)
 add_test(NAME test_package_manager
     COMMAND test_package_manager ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# PackageTestRunner test (graph + C++ test execution for packages)
+add_executable(test_package_test_runner
+    tests/test_package_test_runner.cpp
+    src/runtime/package_test_runner.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/builtin_operators.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_package_test_runner PRIVATE src)
+target_link_libraries(test_package_test_runner PRIVATE
+    vivid_operator_api yyjson webgpu)
+add_dependencies(test_package_test_runner control_pass_op)
+add_test(NAME test_package_test_runner
+    COMMAND test_package_test_runner ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
