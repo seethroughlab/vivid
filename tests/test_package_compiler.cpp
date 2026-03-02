@@ -140,6 +140,67 @@ VIVID_REGISTER(TestPkgOp)
     check(!bad_result.success, "compile_operator fails for missing source");
     check(!bad_result.error_output.empty(), "error_output is set");
 
+    // --- Test 5: Compile with vendor include dirs ---
+    std::fprintf(stderr, "\n--- Compile with vendor include dirs ---\n");
+    {
+        // Create a vendored header
+        fs::create_directories(pkg_dir + "/deps/testlib");
+        {
+            std::ofstream ofs(pkg_dir + "/deps/testlib/testlib.h");
+            ofs << "#pragma once\n"
+                   "static constexpr float TESTLIB_MAGIC = 123.456f;\n";
+        }
+
+        // Write an operator that uses the vendored header
+        fs::create_directories(pkg_dir + "/operators/control/test_vendor_op");
+        {
+            std::ofstream ofs(pkg_dir + "/operators/control/test_vendor_op/test_vendor_op.cpp");
+            ofs << R"cpp(
+#include "operator_api/operator.h"
+#include "testlib.h"
+
+struct TestVendorOp : vivid::OperatorBase {
+    static constexpr const char* kName   = "TestVendorOp";
+    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
+    static constexpr bool kTimeDependent = false;
+
+    vivid::Param<float> value{"value", TESTLIB_MAGIC, 0.0f, 200.0f};
+
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out.push_back(&value);
+    }
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+    }
+
+    void process(const VividProcessContext* ctx) override {
+        ctx->output_values[0] = ctx->param_values[0];
+    }
+};
+
+VIVID_REGISTER(TestVendorOp)
+)cpp";
+        }
+
+        // Compile with vendor include dir — should succeed
+        auto vendor_result = compiler.compile_operator(
+            pkg_dir, "control/test_vendor_op", false,
+            {pkg_dir + "/deps/testlib"});
+        check(vendor_result.success, "compile with vendor include succeeds");
+        if (vendor_result.success) {
+            check(fs::exists(vendor_result.dylib_path), "vendor op dylib exists");
+        } else {
+            std::fprintf(stderr, "  Error: %s\n", vendor_result.error_output.c_str());
+        }
+
+        // Compile WITHOUT vendor include dir — should fail
+        fs::remove_all(pkg_dir + "/build");
+        auto no_vendor_result = compiler.compile_operator(
+            pkg_dir, "control/test_vendor_op", false);
+        check(!no_vendor_result.success, "compile without vendor include fails");
+    }
+
     // Cleanup
     fs::remove_all(pkg_dir);
 

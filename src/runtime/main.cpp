@@ -887,6 +887,11 @@ int main(int argc, char* argv[]) {
     vivid::PackageManager pkg_manager(pkg_compiler, registry);
     pkg_manager.scan_installed();
     vivid::PackageCatalog pkg_catalog(pkg_manager);
+    pkg_manager.set_resolver([&pkg_catalog](const std::string& name) -> std::string {
+        for (const auto& e : pkg_catalog.entries())
+            if (e.name == name) return e.url;
+        return "";
+    });
 
     // --- Load graph ---
     vivid::Graph graph;

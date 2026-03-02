@@ -22,7 +22,8 @@ PackageCompiler::PackageCompiler(const std::string& vivid_src_dir,
 
 CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
                                                  const std::string& operator_rel_path,
-                                                 bool needs_gpu) {
+                                                 bool needs_gpu,
+                                                 const std::vector<std::string>& extra_include_dirs) {
     CompileResult result;
 
     // operator_rel_path is e.g. "audio/drum_kick"
@@ -64,10 +65,15 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
         " -I " + quote(vivid_src_dir_ + "/src") +
         " -I " + quote(domain_include);
 
-    // GPU operators need Dawn/WebGPU includes
+    // Vendor / extra include directories (e.g. bundled third-party headers)
+    for (const auto& dir : extra_include_dirs)
+        cmd += " -I " + quote(dir);
+
+    // GPU operators need Dawn/WebGPU includes and library
     if (needs_gpu) {
-        // Find the wgpu include directory in the build tree
+        // Find the wgpu directory in the build tree
         std::string wgpu_include;
+        std::string wgpu_lib_dir;
         for (auto& entry : std::filesystem::directory_iterator(
                 vivid_build_dir_ + "/_deps")) {
             std::string entry_name = entry.path().filename().string();
@@ -76,12 +82,19 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
                 std::string candidate = entry.path().string() + "/include";
                 if (std::filesystem::exists(candidate + "/webgpu/webgpu.h")) {
                     wgpu_include = candidate;
+                    // Library is in the sibling lib/ directory
+                    std::string lib_candidate = entry.path().string() + "/lib";
+                    if (std::filesystem::exists(lib_candidate))
+                        wgpu_lib_dir = lib_candidate;
                     break;
                 }
             }
         }
         if (!wgpu_include.empty()) {
             cmd += " -I " + quote(wgpu_include);
+        }
+        if (!wgpu_lib_dir.empty()) {
+            cmd += " -L " + quote(wgpu_lib_dir) + " -lwgpu_native";
         }
     }
 
@@ -117,18 +130,93 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
     return result;
 }
 
-std::vector<CompileResult> PackageCompiler::compile_all(const std::string& package_dir) {
+TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
+                                                const std::string& test_rel_path,
+                                                const std::vector<std::string>& extra_include_dirs) {
+    TestCompileResult result;
+
+    std::string source_path = package_dir + "/" + test_rel_path;
+
+    // Derive test name from filename stem
+    auto stem = std::filesystem::path(test_rel_path).stem().string();
+    result.test_name = stem;
+
+    if (!std::filesystem::exists(source_path)) {
+        result.success = false;
+        result.error_output = "Test source not found: " + source_path;
+        return result;
+    }
+
+    // Ensure build output directory exists
+    std::string build_dir = package_dir + "/build";
+    std::filesystem::create_directories(build_dir);
+
+    std::string output_path = build_dir + "/" + stem;
+    result.executable_path = output_path;
+
+    // Build compiler command — executable, not shared library
+    std::string cmd = "clang++ -std=c++17 -O0 -g"
+        " -I " + quote(vivid_src_dir_ + "/src") +
+        " -I " + quote(package_dir + "/operators");
+
+    for (const auto& dir : extra_include_dirs)
+        cmd += " -I " + quote(dir);
+
+    cmd += " -o " + quote(output_path) + " " + quote(source_path) + " 2>&1";
+
+    std::fprintf(stderr, "[vivid] PackageCompiler::compile_test: %s\n", cmd.c_str());
+
+    std::string output;
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) {
+        result.success = false;
+        result.error_output = "Failed to execute compiler";
+        return result;
+    }
+
+    std::array<char, 256> buf;
+    while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
+        output += buf.data();
+    }
+    int status = pclose(pipe);
+
+    if (status != 0) {
+        result.success = false;
+        result.error_output = output;
+        std::fprintf(stderr, "[vivid] PackageCompiler::compile_test: FAILED %s:\n%s",
+                     stem.c_str(), output.c_str());
+    } else {
+        result.success = true;
+        std::fprintf(stderr, "[vivid] PackageCompiler::compile_test: compiled %s\n", stem.c_str());
+    }
+
+    return result;
+}
+
+std::vector<CompileResult> PackageCompiler::compile_all(
+        const std::string& package_dir,
+        const std::vector<std::string>& operators,
+        const std::vector<std::string>& gpu_operators,
+        const std::vector<std::string>& vendor_include_dirs) {
     std::vector<CompileResult> results;
 
-    // Read vivid-package.json
+    for (const auto& op : operators)
+        results.push_back(compile_operator(package_dir, op, false, vendor_include_dirs));
+    for (const auto& op : gpu_operators)
+        results.push_back(compile_operator(package_dir, op, true, vendor_include_dirs));
+
+    return results;
+}
+
+std::vector<CompileResult> PackageCompiler::compile_all(const std::string& package_dir) {
+    // Read vivid-package.json to extract operator lists, then delegate.
     std::string manifest_path = package_dir + "/vivid-package.json";
     std::ifstream ifs(manifest_path);
     if (!ifs) {
         CompileResult err;
         err.success = false;
         err.error_output = "Cannot read manifest: " + manifest_path;
-        results.push_back(std::move(err));
-        return results;
+        return {std::move(err)};
     }
 
     std::ostringstream ss;
@@ -140,40 +228,35 @@ std::vector<CompileResult> PackageCompiler::compile_all(const std::string& packa
         CompileResult err;
         err.success = false;
         err.error_output = "Invalid JSON in manifest: " + manifest_path;
-        results.push_back(std::move(err));
-        return results;
+        return {std::move(err)};
     }
 
     yyjson_val* root = yyjson_doc_get_root(doc);
 
-    // Compile regular operators
+    std::vector<std::string> operators;
     yyjson_val* ops = yyjson_obj_get(root, "operators");
     if (ops && yyjson_is_arr(ops)) {
         size_t idx, max;
         yyjson_val* val;
         yyjson_arr_foreach(ops, idx, max, val) {
-            if (yyjson_is_str(val)) {
-                results.push_back(
-                    compile_operator(package_dir, yyjson_get_str(val), false));
-            }
+            if (yyjson_is_str(val))
+                operators.push_back(yyjson_get_str(val));
         }
     }
 
-    // Compile GPU operators
+    std::vector<std::string> gpu_ops_list;
     yyjson_val* gpu_ops = yyjson_obj_get(root, "gpu_operators");
     if (gpu_ops && yyjson_is_arr(gpu_ops)) {
         size_t idx, max;
         yyjson_val* val;
         yyjson_arr_foreach(gpu_ops, idx, max, val) {
-            if (yyjson_is_str(val)) {
-                results.push_back(
-                    compile_operator(package_dir, yyjson_get_str(val), true));
-            }
+            if (yyjson_is_str(val))
+                gpu_ops_list.push_back(yyjson_get_str(val));
         }
     }
 
     yyjson_doc_free(doc);
-    return results;
+    return compile_all(package_dir, operators, gpu_ops_list);
 }
 
 } // namespace vivid
