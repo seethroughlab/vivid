@@ -101,6 +101,16 @@ The ROADMAP (Phases 1–30) is complete. The codebase has grown from ~33K to ~51
 
 **Focus**: main.cpp is 1,755 LOC — is it doing too much? Separation of concerns. Control server input validation on new endpoints. macOS menu lifecycle and thread safety. Startup/shutdown ordering with new subsystems.
 
+**Status**: Complete. 2 moderate, 2 minor findings — all fixed. 11 unchanged utility files verified clean.
+
+**Findings fixed**:
+- M1: `control_server.cpp` — `impl_->running` was a plain `bool` read from HTTP threads, written from main. Changed to `std::atomic<bool>`.
+- M2: `control_server.cpp` — `directory_iterator` in `list_package_examples` could throw on inaccessible dir. Switched to `std::error_code` overloads.
+- m1: `control_server.cpp` — Added `is_safe_package_name()` traversal check on `name` in 3 package doc endpoints (defense-in-depth alongside `is_installed()` gate).
+- m2: `macos_menu.h` — Documented main-thread threading contract for `MenuCallbacks`.
+
+**False positives dismissed**: Control server start failure path (safe null check), raw pointer UAF (stack lifetimes outlive server), path traversal via symlinks (outside threat model), shell injection via target_name (validated by `is_valid_identifier()`), SSRF via install URL (localhost-only, PM's responsibility), rebuild timeout (acceptable).
+
 ---
 
 ### Phase 5: UI Subsystem (delta)
