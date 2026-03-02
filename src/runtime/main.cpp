@@ -980,6 +980,7 @@ int main(int argc, char* argv[]) {
     vivid::ControlServer control_server;
     control_server.set_capture_coordinator(&capture_coordinator);
     control_server.set_package_manager(&pkg_manager);
+    control_server.set_package_compiler(&pkg_compiler);
     control_server.set_package_catalog(&pkg_catalog);
     if (!control_server.start(9876)) {
         std::fprintf(stderr, "[vivid] Control server unavailable (port 9876 in use?)\n");

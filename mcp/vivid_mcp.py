@@ -510,5 +510,38 @@ async def list_packages() -> str:
     return await _post("list_packages")
 
 
+@mcp.tool()
+async def read_package_docs(name: str) -> str:
+    """Read the README documentation for an installed package."""
+    return await _post("read_package_docs", {"name": name})
+
+
+@mcp.tool()
+async def list_package_examples(name: str) -> str:
+    """List example graphs included with an installed package."""
+    return await _post("list_package_examples", {"name": name})
+
+
+@mcp.tool()
+async def read_package_example(name: str, filename: str) -> str:
+    """Read the content of an example graph from an installed package."""
+    return await _post("read_package_example", {"name": name, "filename": filename})
+
+
+@mcp.tool()
+async def package_operator_docs(name: str) -> str:
+    """Get detailed operator documentation for an installed package: params with types/ranges/defaults/choices, input/output ports, and domain."""
+    return await _post("package_operator_docs", {"name": name})
+
+
+@mcp.tool()
+async def test_package(name: str) -> str:
+    """Run tests for an installed package (graph + C++ tests). Returns per-test pass/fail/skip."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(f"{VIVID_URL}/test_package",
+                                  json={"name": name}, timeout=90.0)
+        return resp.text
+
+
 if __name__ == "__main__":
     mcp.run()

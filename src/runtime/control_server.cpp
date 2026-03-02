@@ -8,6 +8,8 @@
 #include "runtime/operator_creator.h"
 #include "runtime/hot_reload.h"
 #include "runtime/package_manager.h"
+#include "runtime/package_compiler.h"
+#include "runtime/package_test_runner.h"
 #include "runtime/package_catalog.h"
 #include "operator_api/types.h"
 #include "yyjson.h"
@@ -19,6 +21,9 @@
 #include <unordered_map>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 namespace vivid {
 
@@ -294,7 +299,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             Scheduler& scheduler, OperatorRegistry& registry,
                             bool& has_gpu_ops, bool& has_audio,
                             const std::string& src_dir, HotReloader* hot_reloader,
-                            PackageManager* package_manager) {
+                            PackageManager* package_manager,
+                            PackageCompiler* package_compiler) {
     // Read-only queries (no body needed)
     if (method == "inspect_graph") return handle_inspect_graph(graph, scheduler);
     if (method == "list_types")    return handle_list_types(registry);
@@ -843,6 +849,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 yyjson_mut_obj_add_strcpy(rdoc, p, "name", pkg.name.c_str());
                 yyjson_mut_obj_add_strcpy(rdoc, p, "version", pkg.version.c_str());
                 yyjson_mut_obj_add_strcpy(rdoc, p, "description", pkg.description.c_str());
+                yyjson_mut_obj_add_strcpy(rdoc, p, "author", pkg.author.c_str());
                 yyjson_mut_val* ops = yyjson_mut_arr(rdoc);
                 for (const auto& op : pkg.operators)
                     yyjson_mut_arr_add_strcpy(rdoc, ops, op.c_str());
@@ -853,6 +860,244 @@ static std::string dispatch(const std::string& method, const std::string& body,
             }
             yyjson_mut_obj_add_val(rdoc, res, "packages", arr);
             result = json_ok(rdoc, res);
+        }
+    } else if (method == "read_package_docs") {
+        if (!package_manager) {
+            result = json_err("package manager not available");
+        } else if (!root) {
+            result = json_err("invalid JSON body");
+        } else {
+            yyjson_val* name_v = yyjson_obj_get(root, "name");
+            if (!name_v || !yyjson_is_str(name_v))
+                result = json_err("missing 'name'");
+            else {
+                std::string name = yyjson_get_str(name_v);
+                if (!package_manager->is_installed(name)) {
+                    result = json_err("package not installed: " + name);
+                } else {
+                    auto readme_path = std::filesystem::path(PackageManager::packages_dir()) / name / "README.md";
+                    std::ifstream f(readme_path);
+                    if (!f.is_open()) {
+                        result = json_ok_msg("No README.md found for package '" + name + "'");
+                    } else {
+                        std::ostringstream ss;
+                        ss << f.rdbuf();
+                        yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                        yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+                        yyjson_mut_obj_add_strcpy(rdoc, res, "name", name.c_str());
+                        yyjson_mut_obj_add_strcpy(rdoc, res, "content", ss.str().c_str());
+                        result = json_ok(rdoc, res);
+                    }
+                }
+            }
+        }
+    } else if (method == "list_package_examples") {
+        if (!package_manager) {
+            result = json_err("package manager not available");
+        } else if (!root) {
+            result = json_err("invalid JSON body");
+        } else {
+            yyjson_val* name_v = yyjson_obj_get(root, "name");
+            if (!name_v || !yyjson_is_str(name_v))
+                result = json_err("missing 'name'");
+            else {
+                std::string name = yyjson_get_str(name_v);
+                if (!package_manager->is_installed(name)) {
+                    result = json_err("package not installed: " + name);
+                } else {
+                    auto graphs_dir = std::filesystem::path(PackageManager::packages_dir()) / name / "graphs";
+                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+                    yyjson_mut_obj_add_strcpy(rdoc, res, "name", name.c_str());
+                    yyjson_mut_val* arr = yyjson_mut_arr(rdoc);
+                    if (std::filesystem::is_directory(graphs_dir)) {
+                        for (const auto& entry : std::filesystem::directory_iterator(graphs_dir)) {
+                            if (!entry.is_regular_file()) continue;
+                            if (entry.path().extension() != ".json") continue;
+                            yyjson_mut_val* ex = yyjson_mut_obj(rdoc);
+                            yyjson_mut_obj_add_strcpy(rdoc, ex, "filename", entry.path().filename().c_str());
+                            // Try to extract a top-level "description" from the graph JSON
+                            std::string desc_str;
+                            std::ifstream f(entry.path());
+                            if (f.is_open()) {
+                                std::ostringstream ss;
+                                ss << f.rdbuf();
+                                auto content = ss.str();
+                                yyjson_doc* gdoc = yyjson_read(content.c_str(), content.size(), 0);
+                                if (gdoc) {
+                                    yyjson_val* groot = yyjson_doc_get_root(gdoc);
+                                    yyjson_val* dval = groot ? yyjson_obj_get(groot, "description") : nullptr;
+                                    if (dval && yyjson_is_str(dval))
+                                        desc_str = yyjson_get_str(dval);
+                                    yyjson_doc_free(gdoc);
+                                }
+                            }
+                            yyjson_mut_obj_add_strcpy(rdoc, ex, "description", desc_str.c_str());
+                            yyjson_mut_arr_add_val(arr, ex);
+                        }
+                    }
+                    yyjson_mut_obj_add_val(rdoc, res, "examples", arr);
+                    result = json_ok(rdoc, res);
+                }
+            }
+        }
+    } else if (method == "read_package_example") {
+        if (!package_manager) {
+            result = json_err("package manager not available");
+        } else if (!root) {
+            result = json_err("invalid JSON body");
+        } else {
+            yyjson_val* name_v = yyjson_obj_get(root, "name");
+            yyjson_val* file_v = yyjson_obj_get(root, "filename");
+            if (!name_v || !yyjson_is_str(name_v) || !file_v || !yyjson_is_str(file_v))
+                result = json_err("missing 'name' or 'filename'");
+            else {
+                std::string name = yyjson_get_str(name_v);
+                std::string filename = yyjson_get_str(file_v);
+                // Path traversal prevention
+                if (filename.find('/') != std::string::npos ||
+                    filename.find('\\') != std::string::npos ||
+                    filename.find("..") != std::string::npos) {
+                    result = json_err("invalid filename");
+                } else if (!package_manager->is_installed(name)) {
+                    result = json_err("package not installed: " + name);
+                } else {
+                    auto file_path = std::filesystem::path(PackageManager::packages_dir()) / name / "graphs" / filename;
+                    std::ifstream f(file_path);
+                    if (!f.is_open()) {
+                        result = json_err("example not found: " + filename);
+                    } else {
+                        std::ostringstream ss;
+                        ss << f.rdbuf();
+                        yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                        yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+                        yyjson_mut_obj_add_strcpy(rdoc, res, "name", name.c_str());
+                        yyjson_mut_obj_add_strcpy(rdoc, res, "filename", filename.c_str());
+                        yyjson_mut_obj_add_strcpy(rdoc, res, "content", ss.str().c_str());
+                        result = json_ok(rdoc, res);
+                    }
+                }
+            }
+        }
+    } else if (method == "package_operator_docs") {
+        if (!package_manager) {
+            result = json_err("package manager not available");
+        } else if (!root) {
+            result = json_err("invalid JSON body");
+        } else {
+            yyjson_val* name_v = yyjson_obj_get(root, "name");
+            if (!name_v || !yyjson_is_str(name_v))
+                result = json_err("missing 'name'");
+            else {
+                std::string name = yyjson_get_str(name_v);
+                if (!package_manager->is_installed(name)) {
+                    result = json_err("package not installed: " + name);
+                } else {
+                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+                    yyjson_mut_obj_add_strcpy(rdoc, res, "package", name.c_str());
+                    yyjson_mut_val* ops_arr = yyjson_mut_arr(rdoc);
+                    for (const auto& type_name : registry.type_names()) {
+                        const auto* pkg = registry.package_for_type(type_name);
+                        if (!pkg || *pkg != name) continue;
+                        const auto* desc = registry.probe_descriptor(type_name);
+                        if (!desc) continue;
+
+                        yyjson_mut_val* op = yyjson_mut_obj(rdoc);
+                        yyjson_mut_obj_add_strcpy(rdoc, op, "name", desc->name);
+                        yyjson_mut_obj_add_str(rdoc, op, "domain", domain_str(desc->domain));
+                        yyjson_mut_obj_add_bool(rdoc, op, "time_dependent", desc->time_dependent != 0);
+
+                        // Params — richer than list_types
+                        yyjson_mut_val* params_arr = yyjson_mut_arr(rdoc);
+                        for (uint32_t i = 0; i < desc->param_count; ++i) {
+                            const auto& pd = desc->params[i];
+                            yyjson_mut_val* p = yyjson_mut_obj(rdoc);
+                            yyjson_mut_obj_add_strcpy(rdoc, p, "name", pd.name);
+                            yyjson_mut_obj_add_str(rdoc, p, "type", param_type_str(pd.type));
+                            yyjson_mut_obj_add_real(rdoc, p, "default", static_cast<double>(pd.default_value));
+                            yyjson_mut_obj_add_real(rdoc, p, "min", static_cast<double>(pd.min_value));
+                            yyjson_mut_obj_add_real(rdoc, p, "max", static_cast<double>(pd.max_value));
+                            if (pd.default_string)
+                                yyjson_mut_obj_add_strcpy(rdoc, p, "default_string", pd.default_string);
+                            if (pd.group)
+                                yyjson_mut_obj_add_strcpy(rdoc, p, "group", pd.group);
+                            if (pd.choice_count > 0 && pd.choice_labels) {
+                                yyjson_mut_val* choices = yyjson_mut_arr(rdoc);
+                                for (uint32_t c = 0; c < pd.choice_count; ++c)
+                                    yyjson_mut_arr_add_strcpy(rdoc, choices, pd.choice_labels[c]);
+                                yyjson_mut_obj_add_val(rdoc, p, "choices", choices);
+                            }
+                            yyjson_mut_arr_add_val(params_arr, p);
+                        }
+                        yyjson_mut_obj_add_val(rdoc, op, "params", params_arr);
+
+                        // Ports — same split as list_types
+                        yyjson_mut_val* inputs_arr = yyjson_mut_arr(rdoc);
+                        yyjson_mut_val* outputs_arr = yyjson_mut_arr(rdoc);
+                        for (uint32_t i = 0; i < desc->port_count; ++i) {
+                            const auto& portd = desc->ports[i];
+                            yyjson_mut_val* p = yyjson_mut_obj(rdoc);
+                            yyjson_mut_obj_add_strcpy(rdoc, p, "name", portd.name);
+                            yyjson_mut_obj_add_str(rdoc, p, "type", port_type_str(portd.type));
+                            if (portd.direction == VIVID_PORT_INPUT)
+                                yyjson_mut_arr_add_val(inputs_arr, p);
+                            else
+                                yyjson_mut_arr_add_val(outputs_arr, p);
+                        }
+                        yyjson_mut_obj_add_val(rdoc, op, "inputs", inputs_arr);
+                        yyjson_mut_obj_add_val(rdoc, op, "outputs", outputs_arr);
+
+                        yyjson_mut_arr_add_val(ops_arr, op);
+                    }
+                    yyjson_mut_obj_add_val(rdoc, res, "operators", ops_arr);
+                    result = json_ok(rdoc, res);
+                }
+            }
+        }
+    } else if (method == "test_package") {
+        if (!package_manager || !package_compiler) {
+            result = json_err("package manager/compiler not available");
+        } else if (!root) {
+            result = json_err("invalid JSON body");
+        } else {
+            yyjson_val* name_v = yyjson_obj_get(root, "name");
+            if (!name_v || !yyjson_is_str(name_v))
+                result = json_err("missing 'name'");
+            else {
+                std::string name = yyjson_get_str(name_v);
+                auto tr = run_package_tests(name, *package_manager,
+                                             *package_compiler, registry);
+                if (!tr.error.empty()) {
+                    result = json_err(tr.error);
+                } else {
+                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+                    yyjson_mut_obj_add_strcpy(rdoc, res, "package", tr.package_name.c_str());
+
+                    yyjson_mut_val* summary = yyjson_mut_obj(rdoc);
+                    yyjson_mut_obj_add_int(rdoc, summary, "total", tr.total);
+                    yyjson_mut_obj_add_int(rdoc, summary, "passed", tr.passed);
+                    yyjson_mut_obj_add_int(rdoc, summary, "failed", tr.failed);
+                    yyjson_mut_obj_add_int(rdoc, summary, "skipped", tr.skipped);
+                    yyjson_mut_obj_add_val(rdoc, res, "summary", summary);
+
+                    yyjson_mut_val* tests_arr = yyjson_mut_arr(rdoc);
+                    for (const auto& t : tr.tests) {
+                        yyjson_mut_val* obj = yyjson_mut_obj(rdoc);
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "name", t.name.c_str());
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "type", t.type.c_str());
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "status", t.status.c_str());
+                        if (!t.reason.empty())
+                            yyjson_mut_obj_add_strcpy(rdoc, obj, "reason", t.reason.c_str());
+                        if (!t.output.empty())
+                            yyjson_mut_obj_add_strcpy(rdoc, obj, "output", t.output.c_str());
+                        yyjson_mut_arr_add_val(tests_arr, obj);
+                    }
+                    yyjson_mut_obj_add_val(rdoc, res, "tests", tests_arr);
+                    result = json_ok(rdoc, res);
+                }
+            }
         }
     } else {
         result = json_err("unknown method '" + method + "'");
@@ -892,7 +1137,8 @@ void ControlServer::set_src_dir(const std::string& src_dir) { src_dir_ = src_dir
 void ControlServer::set_hot_reloader(HotReloader* hr) { hot_reloader_ = hr; }
 void ControlServer::set_capture_coordinator(CaptureCoordinator* cc) { capture_coordinator_ = cc; }
 void ControlServer::set_package_manager(PackageManager* pm) { package_manager_ = pm; }
-void ControlServer::set_package_catalog(PackageCatalog* pc) { package_catalog_ = pc; }
+void ControlServer::set_package_compiler(PackageCompiler* pc) { package_compiler_ = pc; }
+void ControlServer::set_package_catalog(PackageCatalog* cat) { package_catalog_ = cat; }
 
 bool ControlServer::start(int port) {
     impl_ = std::make_unique<Impl>(port);
@@ -1044,6 +1290,28 @@ bool ControlServer::start(int port) {
                     response_body);
             }
 
+            // test_package needs longer timeout (compiles + runs tests)
+            if (method == "test_package") {
+                Impl::PendingRequest req;
+                req.method = std::move(method);
+                req.body = request->body;
+                auto future = req.promise.get_future();
+                {
+                    std::lock_guard<std::mutex> lock(impl_->queue_mutex);
+                    impl_->queue.push_back(std::move(req));
+                }
+                auto status = future.wait_for(std::chrono::seconds(60));
+                std::string response_body;
+                if (status == std::future_status::ready)
+                    response_body = future.get();
+                else
+                    response_body = R"({"ok":false,"error":"timeout"})";
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    response_body);
+            }
+
             // Push request to queue, block until main thread processes it
             Impl::PendingRequest req;
             req.method = std::move(method);
@@ -1121,7 +1389,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
                                         api, graph, scheduler, registry,
                                         has_gpu_ops, has_audio,
                                         src_dir_, hot_reloader_,
-                                        package_manager_);
+                                        package_manager_,
+                                        package_compiler_);
         req.promise.set_value(std::move(response));
     }
 }
