@@ -5,6 +5,8 @@
 
 namespace vivid {
 
+// All callbacks are invoked on the main thread by Cocoa's NSMenu dispatch.
+// Bound functions may freely access main-thread-only state (graph, scheduler, UI).
 struct MenuCallbacks {
     std::function<void()> on_open;
     std::function<void()> on_save;
