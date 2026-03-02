@@ -125,6 +125,7 @@ endfunction()
 # --- Control operator plugins ---
 add_vivid_operator(lfo            operators/control/lfo/lfo.cpp)
 add_vivid_operator(clock          operators/control/clock/clock.cpp)
+add_vivid_operator(note_duration  operators/control/note_duration/note_duration.cpp)
 add_vivid_operator(math           operators/control/math/math.cpp)
 add_vivid_operator(envelope       operators/control/envelope/envelope.cpp)
 add_vivid_operator(midi_input     operators/control/midi_input/midi_input.cpp     EXTRA_LIBS rtmidi)
@@ -158,6 +159,7 @@ add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp     
 add_vivid_operator(instance             operators/gpu/instance/instance.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 add_vivid_operator(plexus                operators/gpu/plexus/plexus.cpp                           EXTRA_LIBS webgpu)
+add_vivid_operator(text                  operators/gpu/text/text.cpp                               EXTRA_LIBS webgpu stb_truetype)
 # Simple WGSL filters are loaded from filters/*.wgsl (no C++ needed)
 
 # --- Movie File In (image + video loader) ---
