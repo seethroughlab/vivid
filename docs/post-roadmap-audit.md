@@ -172,6 +172,34 @@ Includes `text` operator (440 LOC), `movie_file_in`, `movie_file_audio_in`.
 
 ---
 
+### Phase 7: Gap Sweep — Unaudited Production Code
+**Scope**: ~4,360 LOC across three domains
+**Depth**: Full audit — production code never explicitly assigned to prior phases
+
+#### 7a: Runtime API & Command Infrastructure (~1,900 LOC)
+**Files**: `runtime_api.cpp/h`, `runtime_command_sink.h`, `operator_info_cache.h`, `av_exporter.h`
+
+#### 7b: Operator API Infrastructure Headers (~850 LOC)
+**Files**: `wgsl_filter.h`, `child_op.h`, `data_driven_filter.h`
+
+#### 7c: UI Support Files (~1,610 LOC)
+**Files**: `renderer_2d.cpp/h`, `thumbnail_renderer.cpp/h`, `thumbnail_cache.cpp/h`, `graph_snapshot.h`, `inspector_layout.h`, `ui_command_sink.h`
+
+**Status**: Complete. 3 high, 4 moderate findings — all fixed. 14+ low/info findings documented.
+
+**Findings fixed**:
+- H1: `runtime_command_sink.h` — Shell injection: `clone_cpp_operator` passed unquoted `new_stem` to `std::system()`. Added character validation (alphanumeric + underscore) and quoted the argument.
+- H2: `runtime_api.cpp` — `reload()` collected saved params/locks/string-params before rebuild but never restored them after. Added restoration loop matching `apply_pending()`'s pattern.
+- H3: `renderer_2d.h` — No destructor or copy/move guards; GPU resources leaked if `shutdown()` not called. Added `~Renderer2D() { shutdown(); }`, deleted copy/move, and added `shutdown()` call on partial init failure.
+- M1: `runtime_api.cpp` — `prev_sm_state_` default-initialized to `0.0f`, so state-machine transitions to initial state 0 were never detected. Changed to sentinel value `-1.0f` via `emplace()`.
+- M2: `runtime_api.cpp` — Crossfade finalization only updated `active_presets_` but didn't snap params to exact target values. Added explicit param assignment on crossfade completion.
+- M3: `child_op.h` — Output spread overflow: if a child operator reported `length > capacity`, the host would `resize()` without data, creating a phantom buffer. Added clamp-and-warn after `process()`.
+- M4: `thumbnail_cache.cpp/h` + `main.cpp` — No eviction for removed nodes, causing unbounded GPU memory growth. Added `remove()` and `retain_only()` methods, wired into `apply_pending()` to evict stale entries.
+
+**False positives dismissed**: `reload()` degraded state on failure (callers display error, intentional), WGSL uniform layout fragility (correct today, comment-worthy not fix-worthy), hot-reload param count change (theoretical — params are fixed at construction), fallback texture size for RGBA32Float (format never used), `wgpuDeviceGetQueue` per-frame (borrowed ref semantics correct for wgpu-native), non-ASCII text handling (known limitation of minimal renderer), `localtime_r` POSIX-only (macOS-only target), inspector layout col_index validation (callers provide correct metadata), `DataDrivenFilter` `.back()` vs indexed access (equivalent with current reserve pattern), OperatorInfoCache staleness (invalidation correct at call sites), `AVExporter` dimension mismatch (callers always match), `apply_variation` generation bump on unchanged nodes (benign extra work), float `!=` for delta encoding (cosmetic precision, not safety), `active_preset()` static local ref (single-threaded context).
+
+---
+
 ## Process for Each Phase
 1. Read all files in scope
 2. Produce a findings report organized by severity (critical / moderate / minor / style)
