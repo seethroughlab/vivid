@@ -82,6 +82,38 @@ typedef struct VividOperatorDescriptor {
 } VividOperatorDescriptor;
 
 // ---------------------------------------------------------------------------
+// Input events — mouse, keyboard, scroll for interactive operators
+// ---------------------------------------------------------------------------
+
+typedef enum VividInputEventType {
+    VIVID_INPUT_MOUSE_MOVE   = 0,
+    VIVID_INPUT_MOUSE_BUTTON = 1,
+    VIVID_INPUT_MOUSE_SCROLL = 2,
+    VIVID_INPUT_KEY          = 3,
+    VIVID_INPUT_CHAR         = 4,
+} VividInputEventType;
+
+typedef struct VividInputEvent {
+    VividInputEventType type;
+    float    mouse_x, mouse_y;     /* normalized [0,1] texture coords */
+    int      button;               /* 0=left, 1=right, 2=middle */
+    int      action;               /* 0=release, 1=press, 2=repeat */
+    float    scroll_dx, scroll_dy;
+    int      key;                  /* GLFW key code */
+    int      scancode;
+    uint32_t codepoint;            /* Unicode (CHAR events) */
+    int      modifiers;            /* bitmask: 1=shift, 2=ctrl, 4=alt, 8=super */
+} VividInputEvent;
+
+typedef struct VividInputState {
+    const VividInputEvent* events;
+    uint32_t event_count;
+    float mouse_x, mouse_y;    /* current position (normalized [0,1]) */
+    int   buttons_held;        /* bitmask: bit 0=left, 1=right, 2=middle */
+    int   modifiers;
+} VividInputState;
+
+// ---------------------------------------------------------------------------
 // Spread port — variable-length float array
 // ---------------------------------------------------------------------------
 
@@ -110,6 +142,7 @@ typedef struct VividProcessContext {
     uint32_t     file_param_count;
     uint32_t  preferred_tex_width;   // operator writes non-zero to request resize
     uint32_t  preferred_tex_height;  // 0 = no preference (keep current)
+    void*     input;          // VividInputState* for GPU operators when UI hidden, NULL otherwise
 } VividProcessContext;
 
 // ---------------------------------------------------------------------------

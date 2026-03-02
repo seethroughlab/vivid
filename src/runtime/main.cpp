@@ -27,6 +27,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/data_driven_filter.h"
 #include "operator_api/types.h"
+#include "operator_api/input_state.h"
 #include "common/gpu_util.h"
 #include "export/export_pipeline.h"
 #include "runtime/package_compiler.h"
@@ -448,18 +449,36 @@ struct WindowUserData {
     vivid::Graph* graph = nullptr;
     std::string working_filters_dir;
     vivid::Settings* settings = nullptr;
+
+    // Input forwarding to operators (when UI hidden)
+    std::vector<VividInputEvent> pending_events;
+    double raw_mouse_x = 0.0, raw_mouse_y = 0.0;  // window coords
+    int buttons_held = 0;   // bitmask: bit 0=left, 1=right, 2=middle
+    int current_mods = 0;
 };
 
 static void char_callback(GLFWwindow* w, unsigned int codepoint) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
     if (!ud) return;
-    if (ud->graph_ui && ud->graph_ui->visible() && ud->graph_ui->wants_keyboard())
-        ud->graph_ui->on_char(codepoint);
+    if (ud->graph_ui && ud->graph_ui->visible()) {
+        if (ud->graph_ui->wants_keyboard())
+            ud->graph_ui->on_char(codepoint);
+    } else {
+        VividInputEvent ev{};
+        ev.type = VIVID_INPUT_CHAR;
+        ev.codepoint = codepoint;
+        ev.mouse_x = static_cast<float>(ud->raw_mouse_x);
+        ev.mouse_y = static_cast<float>(ud->raw_mouse_y);
+        ev.modifiers = ud->current_mods;
+        ud->pending_events.push_back(ev);
+    }
 }
 
-static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, int mods) {
+static void key_callback(GLFWwindow* w, int key, int scancode, int action, int mods) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
     if (!ud) return;
+
+    ud->current_mods = mods;
 
     // Tilde toggles graph UI visibility (intercept before any dispatch)
     if (key == GLFW_KEY_GRAVE_ACCENT && action == GLFW_PRESS && mods == 0) {
@@ -470,31 +489,83 @@ static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, i
     // Cmd+S and Cmd+, are handled by the native macOS menu bar (macos_menu.mm).
     // On non-Apple platforms, fall through to the graph UI key handler.
 
-    if (ud->graph_ui && ud->graph_ui->visible())
+    if (ud->graph_ui && ud->graph_ui->visible()) {
         ud->graph_ui->on_key(key, action, mods);
+    } else {
+        VividInputEvent ev{};
+        ev.type = VIVID_INPUT_KEY;
+        ev.key = key;
+        ev.scancode = scancode;
+        ev.action = action;
+        ev.modifiers = mods;
+        ev.mouse_x = static_cast<float>(ud->raw_mouse_x);
+        ev.mouse_y = static_cast<float>(ud->raw_mouse_y);
+        ud->pending_events.push_back(ev);
+    }
 }
 
 static void cursor_pos_callback(GLFWwindow* w, double xpos, double ypos) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
-    if (ud && ud->graph_ui && ud->graph_ui->visible())
+    if (!ud) return;
+    ud->raw_mouse_x = xpos;
+    ud->raw_mouse_y = ypos;
+    if (ud->graph_ui && ud->graph_ui->visible()) {
         ud->graph_ui->on_mouse_move(static_cast<float>(xpos), static_cast<float>(ypos));
+    } else {
+        VividInputEvent ev{};
+        ev.type = VIVID_INPUT_MOUSE_MOVE;
+        ev.mouse_x = static_cast<float>(xpos);  // will be normalized later
+        ev.mouse_y = static_cast<float>(ypos);
+        ev.modifiers = ud->current_mods;
+        ev.button = -1;
+        ud->pending_events.push_back(ev);
+    }
 }
 
 static void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
-    if (ud && ud->graph_ui && ud->graph_ui->visible())
+    if (!ud) return;
+    ud->current_mods = mods;
+    // Track button state
+    if (button >= 0 && button <= 2) {
+        if (action == GLFW_PRESS)
+            ud->buttons_held |= (1 << button);
+        else if (action == GLFW_RELEASE)
+            ud->buttons_held &= ~(1 << button);
+    }
+    if (ud->graph_ui && ud->graph_ui->visible()) {
         ud->graph_ui->on_mouse_button(button, action, mods);
+    } else {
+        VividInputEvent ev{};
+        ev.type = VIVID_INPUT_MOUSE_BUTTON;
+        ev.button = button;
+        ev.action = action;
+        ev.modifiers = mods;
+        ev.mouse_x = static_cast<float>(ud->raw_mouse_x);
+        ev.mouse_y = static_cast<float>(ud->raw_mouse_y);
+        ud->pending_events.push_back(ev);
+    }
 }
 
 static void scroll_callback(GLFWwindow* w, double xoffset, double yoffset) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
-    if (ud && ud->graph_ui && ud->graph_ui->visible()) {
+    if (!ud) return;
+    if (ud->graph_ui && ud->graph_ui->visible()) {
         int mods = 0;
         if (glfwGetKey(w, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
             glfwGetKey(w, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS)
             mods |= GLFW_MOD_SUPER;
         ud->graph_ui->on_scroll(
             static_cast<float>(xoffset), static_cast<float>(yoffset), mods);
+    } else {
+        VividInputEvent ev{};
+        ev.type = VIVID_INPUT_MOUSE_SCROLL;
+        ev.scroll_dx = static_cast<float>(xoffset);
+        ev.scroll_dy = static_cast<float>(yoffset);
+        ev.mouse_x = static_cast<float>(ud->raw_mouse_x);
+        ev.mouse_y = static_cast<float>(ud->raw_mouse_y);
+        ev.modifiers = ud->current_mods;
+        ud->pending_events.push_back(ev);
     }
 }
 
@@ -1277,6 +1348,74 @@ int main(int argc, char* argv[]) {
                 audio_engine.update_sources(now, scheduler);
             }
 
+            // --- Build input state for operators (when UI hidden) ---
+            const VividInputState* input_ptr = nullptr;
+            VividInputState input_state{};
+            if (!window_user_data.pending_events.empty() ||
+                (window_user_data.buttons_held && !(graph_ui.visible()))) {
+                // Compute inverse blit_fit transform: window coords → [0,1] texture UV
+                float scale_x = 1.0f, scale_y = 1.0f;
+                float offset_x = 0.0f, offset_y = 0.0f;
+                if (has_gpu_ops && video_out_idx >= 0 && fb_width > 0 && fb_height > 0) {
+                    uint32_t src_w = 0, src_h = 0;
+                    scheduler.gpu_sink_source_size(video_out_idx, src_w, src_h);
+                    if (src_w > 0 && src_h > 0) {
+                        const auto& vo_ns = scheduler.nodes()[video_out_idx];
+                        auto fit_mode = vivid::FitMode::Fit;
+                        auto fm_it = vo_ns.param_indices.find("fit_mode");
+                        if (fm_it != vo_ns.param_indices.end() && fm_it->second < vo_ns.param_values.size())
+                            fit_mode = static_cast<vivid::FitMode>(
+                                static_cast<int>(vo_ns.param_values[fm_it->second]));
+
+                        float src_aspect = static_cast<float>(src_w) / static_cast<float>(src_h);
+                        float dst_aspect = static_cast<float>(fb_width) / static_cast<float>(fb_height);
+
+                        if (fit_mode == vivid::FitMode::Stretch) {
+                            scale_x = 1.0f; scale_y = 1.0f;
+                        } else if (fit_mode == vivid::FitMode::Fit) {
+                            if (src_aspect > dst_aspect) {
+                                scale_x = 1.0f; scale_y = dst_aspect / src_aspect;
+                            } else {
+                                scale_x = src_aspect / dst_aspect; scale_y = 1.0f;
+                            }
+                        } else { // Fill
+                            if (src_aspect > dst_aspect) {
+                                scale_x = src_aspect / dst_aspect; scale_y = 1.0f;
+                            } else {
+                                scale_x = 1.0f; scale_y = dst_aspect / src_aspect;
+                            }
+                        }
+                        offset_x = (1.0f - scale_x) * 0.5f;
+                        offset_y = (1.0f - scale_y) * 0.5f;
+                    }
+                }
+
+                // Normalize mouse coords in all pending events: window px → [0,1] texture UV
+                // ndc = cursor_pos / win_size;  tex_uv = (ndc - offset) / scale
+                float inv_w = (win_w > 0) ? 1.0f / static_cast<float>(win_w) : 0.0f;
+                float inv_h = (win_h > 0) ? 1.0f / static_cast<float>(win_h) : 0.0f;
+                float inv_sx = (scale_x > 0.0f) ? 1.0f / scale_x : 0.0f;
+                float inv_sy = (scale_y > 0.0f) ? 1.0f / scale_y : 0.0f;
+
+                for (auto& ev : window_user_data.pending_events) {
+                    float ndc_x = ev.mouse_x * inv_w;
+                    float ndc_y = ev.mouse_y * inv_h;
+                    ev.mouse_x = (ndc_x - offset_x) * inv_sx;
+                    ev.mouse_y = (ndc_y - offset_y) * inv_sy;
+                }
+
+                float cur_ndc_x = static_cast<float>(window_user_data.raw_mouse_x) * inv_w;
+                float cur_ndc_y = static_cast<float>(window_user_data.raw_mouse_y) * inv_h;
+
+                input_state.events = window_user_data.pending_events.data();
+                input_state.event_count = static_cast<uint32_t>(window_user_data.pending_events.size());
+                input_state.mouse_x = (cur_ndc_x - offset_x) * inv_sx;
+                input_state.mouse_y = (cur_ndc_y - offset_y) * inv_sy;
+                input_state.buttons_held = window_user_data.buttons_held;
+                input_state.modifiers = window_user_data.current_mods;
+                input_ptr = &input_state;
+            }
+
             // Tick with thumbnail capture callback for GPU nodes
             scheduler.tick(now, dt, frame_count, &gpu_state,
                 [&](uint32_t, const std::string& node_id, WGPUTextureView node_tex_view) {
@@ -1286,7 +1425,11 @@ int main(int argc, char* argv[]) {
                     if (thumb_view) {
                         thumb_blit.blit(tick_encoder, node_tex_view, thumb_view);
                     }
-                });
+                },
+                input_ptr);
+
+            // Clear consumed input events
+            window_user_data.pending_events.clear();
 
             draw_custom_thumbnails(scheduler, thumb_cache, graph_ui, now, kThumbW, kThumbH);
 

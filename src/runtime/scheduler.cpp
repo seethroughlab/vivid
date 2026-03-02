@@ -355,7 +355,7 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
 }
 
 void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_state,
-                     PostNodeFn on_gpu_node) {
+                     PostNodeFn on_gpu_node, const VividInputState* input) {
     for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
         auto& ns = nodes_[ni];
 
@@ -517,6 +517,9 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         } else {
             ctx.gpu = nullptr;
         }
+
+        // Forward input state to GPU operators (they ignore it if they don't care)
+        ctx.input = (ns.is_gpu && input) ? const_cast<void*>(static_cast<const void*>(input)) : nullptr;
 
         try {
             CrashGuard guard(ns.node_id.c_str());

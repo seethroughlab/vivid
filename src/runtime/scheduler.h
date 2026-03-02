@@ -92,7 +92,8 @@ class Scheduler {
 public:
     bool build(const Graph& graph, OperatorRegistry& registry);
     void tick(double time, double delta_time, uint64_t frame, void* gpu_state = nullptr,
-              PostNodeFn on_gpu_node = nullptr);
+              PostNodeFn on_gpu_node = nullptr,
+              const VividInputState* input = nullptr);
     void shutdown();
     const std::vector<NodeState>& nodes() const { return nodes_; }
     std::vector<NodeState>& nodes_mut() { return nodes_; }
