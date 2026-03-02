@@ -27,7 +27,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     let dist = length(rotated - cell);
 
     // Dot radius proportional to brightness
-    let radius = size * 0.5 * sqrt(1.0 - luma);
+    let radius = size * 0.5 * sqrt(max(1.0 - luma, 0.0));
     let dot = select(1.0, 0.0, dist < radius);
 
     return vec4f(vec3f(dot), color.a);

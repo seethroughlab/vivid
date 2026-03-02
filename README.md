@@ -103,6 +103,12 @@ Control outputs can drive both GPU and Audio parameters. GPU and Audio operators
 
 Active development. Core engine, node graph UI, 50+ operators, WGSL filter framework, and MCP server are complete.
 
+## License
+
+Vivid is source-available under the [Vivid Source Available License](LICENSE). You can use it freely for personal projects, artistic work, and education. Operator Packages you create in separate repositories are yours to license however you choose. See [LICENSING.md](LICENSING.md) for full details.
+
+Contributions to this repository are subject to the [Contributor License Agreement](CLA.md).
+
 ---
 
-*Jeff Crouse / [See-through Lab](https://see-through.studio)*
+*Jeff Crouse / [See-Through Lab](https://see-through.studio)*

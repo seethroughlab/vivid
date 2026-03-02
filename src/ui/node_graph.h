@@ -588,6 +588,7 @@ private:
     int pkg_browser_sel_ = 0;
     int pkg_browser_scroll_ = 0;
     int pkg_browser_category_ = 0;   // 0=All, 1=Audio, 2=GPU, 3=Control, 4=Utility, 5=Installed
+    std::array<float, 6> pkg_browser_tab_widths_{};
     std::vector<CatalogEntry> pkg_browser_entries_;   // filtered snapshot
     std::vector<CatalogEntry> pkg_browser_all_;       // full snapshot
     PackageCatalog* pkg_catalog_ = nullptr;

@@ -3684,6 +3684,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
     float tab_gap = 4.0f;
     for (int i = 0; i < tab_count; ++i) {
         float tw = tr.text_width(tab_labels[i]) + 16;
+        pkg_browser_tab_widths_[i] = tw;
         bool selected = (i == pkg_browser_category_);
         bool hovered = mouse_.x >= tab_x && mouse_.x <= tab_x + tw &&
                        mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH;

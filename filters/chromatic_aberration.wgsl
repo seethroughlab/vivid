@@ -8,7 +8,7 @@
 }*/
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let rad = u.angle * 3.14159265 / 180.0;
+    let rad = u.angle * PI / 180.0;
     var dir = vec2f(cos(rad), sin(rad));
 
     if (u.radial > 0.5) {
@@ -20,9 +20,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     let offset = dir * u.amount;
 
     let r = textureSample(inputTex, texSampler, input.uv + offset).r;
-    let g = textureSample(inputTex, texSampler, input.uv).g;
+    let center_sample = textureSample(inputTex, texSampler, input.uv);
     let b = textureSample(inputTex, texSampler, input.uv - offset).b;
-    let a = textureSample(inputTex, texSampler, input.uv).a;
 
-    return vec4f(r, g, b, a);
+    return vec4f(r, center_sample.g, b, center_sample.a);
 }

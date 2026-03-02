@@ -22,7 +22,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
         var a = atan2(p.y, p.x) + rot;
         let r = length(p);
 
-        let slice = TAU / u.segments;
+        let segs = max(u.segments, 2.0);
+        let slice = TAU / segs;
         a = a % slice;
         if (a < 0.0) { a += slice; }
 

@@ -1978,7 +1978,8 @@ void NodeGraphUI::update_package_browser() {
     float tab_x = cx;
     float tab_gap = 4.0f;
     for (int i = 0; i < 6; ++i) {
-        float tw = static_cast<float>(std::strlen(tab_labels[i])) * 8.0f + 16.0f;
+        float tw = pkg_browser_tab_widths_[i] > 0 ? pkg_browser_tab_widths_[i]
+                 : static_cast<float>(std::strlen(tab_labels[i])) * 8.0f + 16.0f;
         if (mouse_.x >= tab_x && mouse_.x <= tab_x + tw &&
             mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH) {
             pkg_browser_category_ = i;

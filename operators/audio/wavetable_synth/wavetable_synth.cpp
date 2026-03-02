@@ -383,15 +383,16 @@ struct WavetableSynth : vivid::OperatorBase {
     float    prev_notes_[kMaxVoices] = {};
     uint32_t prev_spread_len_        = 0;
 
-    // Wavetable (lazy-inited)
-    Wavetable wt_;
-    int       loaded_table_ = -1;
-    bool      initialized_  = false;
+    // All wavetables pre-computed in constructor so process() never generates.
+    Wavetable all_tables_[6];
 
     WavetableSynth() {
-        // Pre-generate default wavetable on main thread to avoid
-        // audio-thread heap allocation on first process() call.
-        ensure_wavetable(0);
+        generate_basic(all_tables_[0]);
+        generate_analog(all_tables_[1]);
+        generate_digital(all_tables_[2]);
+        generate_vocal(all_tables_[3]);
+        generate_texture(all_tables_[4]);
+        generate_pwm(all_tables_[5]);
     }
 
     // --- Param / port registration ---
@@ -558,22 +559,6 @@ struct WavetableSynth : vivid::OperatorBase {
 
     static float midi_to_freq(float note) {
         return 440.0f * std::pow(2.0f, (note - 69.0f) / 12.0f);
-    }
-
-    // --- Wavetable loading ---
-
-    void ensure_wavetable(int table_idx) {
-        if (loaded_table_ == table_idx && !wt_.data.empty()) return;
-        switch (table_idx) {
-            case 0: generate_basic(wt_);   break;
-            case 1: generate_analog(wt_);  break;
-            case 2: generate_digital(wt_); break;
-            case 3: generate_vocal(wt_);   break;
-            case 4: generate_texture(wt_); break;
-            case 5: generate_pwm(wt_);     break;
-            default: generate_basic(wt_);  break;
-        }
-        loaded_table_ = table_idx;
     }
 
     // --- Voice management ---
@@ -813,9 +798,6 @@ struct WavetableSynth : vivid::OperatorBase {
         auto* audio = vivid_audio(ctx);
         if (!audio) return;
 
-        // Lazy-init wavetable
-        ensure_wavetable(wavetable.int_value());
-
         float* out_l = audio->output_buffers[0];
         float* out_r = audio->output_buffers[1];
         uint32_t frames = audio->buffer_size;
@@ -823,7 +805,7 @@ struct WavetableSynth : vivid::OperatorBase {
         float dt  = 1.0f / sr;
 
         // Read params
-        int   wt_idx       = wavetable.int_value();
+        int   wt_idx       = std::clamp(wavetable.int_value(), 0, 5);
         float pos          = position.value;
         float amp          = amplitude.value;
         int   warp_m       = warp_mode.int_value();
@@ -856,8 +838,7 @@ struct WavetableSynth : vivid::OperatorBase {
         float det_cents    = detune.value;
         bool  bypass       = env_bypass.value > 0.5f;
 
-        // Reload wavetable if changed
-        ensure_wavetable(wt_idx);
+        const Wavetable& wt = all_tables_[wt_idx];
 
         // Modulation spread inputs
         const VividSpreadPort* filter_env_sp = ctx->input_spreads ? &ctx->input_spreads[3] : nullptr;
@@ -959,7 +940,7 @@ struct WavetableSynth : vivid::OperatorBase {
                 effective_pos += ext_pos;
                 effective_pos = std::clamp(effective_pos, 0.0f, 1.0f);
 
-                float sig = wt_.sample(warped, effective_pos);
+                float sig = wt.sample(warped, effective_pos);
                 v.last_sample = sig;
 
                 // Sub oscillator

@@ -128,28 +128,47 @@ The ROADMAP (Phases 1–30) is complete. The codebase has grown from ~33K to ~51
 
 **Focus**: Input handling edge cases (drag-and-drop validation, file path safety), state consistency with new action methods, rendering correctness of new wire styles, package browser UI state management.
 
+**Status**: Complete. 0 moderate, 1 minor finding — fixed. 7 unchanged support files verified clean.
+
+**Finding fixed**:
+- m1: `node_graph_input.cpp` — Tab hit-test widths used `strlen * 8 + 16` approximation, diverging from draw code's `tr.text_width() + 16` at non-unit zoom. Added `pkg_browser_tab_widths_` cache populated during draw, with fallback to approximation before first frame.
+
+**False positives dismissed**: Spread badge `snprintf` truncation (bounded, cosmetic), `domain_color()` null return (exhaustive switch with default), package browser entry bounds race (single-threaded by design, clamps on rebuild), `file_dialog.mm` null URL after `NSModalResponseOK` (Cocoa guarantees non-null), description `substr` mid-codepoint split (cosmetic, ASCII in practice), drag-and-drop graph loading (in `main.cpp`, audited in Phase 4).
+
 ---
 
-### Phase 6: Operator Implementations (full audit — never done)
-**Scope**: ~13,500 LOC across 45+ operators + 17 WGSL filters
+### Phase 6: Operator Implementations (full audit)
+**Scope**: ~12,500 LOC across 55 operators + 19 WGSL filters
 **Depth**: Full audit — this phase was never completed in the previous audit
 
-#### 6a: Control Operators (~3,800 LOC, ~22 operators)
+#### 6a: Control Operators (~3,400 LOC, 23 operators)
 **Files**: `operators/control/*/`
 **Focus**: Parameter validation, edge cases with empty/zero inputs, adherence to operator API contract, state management.
 
-#### 6b: Audio Operators (~3,200 LOC, ~20 operators)
-**Files**: `operators/audio/*/`
+#### 6b: Audio Operators (~2,750 LOC, 17 operators + shared DSP headers)
+**Files**: `operators/audio/*/`, `src/operator_api/audio_dsp.h`
 **Focus**: **Real-time safety** (no allocations, no locks, no syscalls in process()), buffer handling, sample-accurate timing, edge cases (zero-length buffers, extreme parameter values).
 
-#### 6c: GPU Operators (~6,500 LOC, ~13 operators)
+#### 6c: GPU Operators (~5,760 LOC, 13 operators)
 **Files**: `operators/gpu/*/`
-Includes new `text` operator (439 LOC), modified `movie_file_in` and `movie_file_audio_in`.
+Includes `text` operator (440 LOC), `movie_file_in`, `movie_file_audio_in`.
 **Focus**: GPU buffer management, texture lifecycle, WebGPU API usage correctness, error handling on GPU failures.
 
-#### 6d: WGSL Filters (~660 LOC, ~17 filters)
+#### 6d: WGSL Filters (~660 LOC, 19 filters)
 **Files**: `filters/*.wgsl`
 **Focus**: Shader correctness, out-of-bounds access, numerical stability, consistency with data-driven filter API.
+
+**Status**: Complete. 2 moderate, 4 minor findings — all fixed. 20+ false positives dismissed.
+
+**Findings fixed**:
+- M1: `wavetable_synth.cpp` — `ensure_wavetable()` ran expensive trig computation (100K-400K sin/cos/tanh calls) on the audio thread when the wavetable param changed, causing audio dropout. Pre-computed all 6 wavetables in the constructor (~384KB total); `process()` now selects by index with zero generation cost.
+- M2: `movie_file_audio_in.cpp` — TOCTOU race: main thread stored nullptr then immediately deleted the old extractor, while the audio thread could still hold the old pointer from a concurrent load. Added deferred deletion — old pointer is held for one frame before deletion, ensuring the audio thread has observed the new value.
+- m1: `wavetable_synth.cpp` — Removed redundant `ensure_wavetable()` call (subsumed by M1 fix).
+- m2: `mirror.wgsl` — Added `max(u.segments, 2.0)` guard before `TAU / segments` division (defense-in-depth against zero if param constraints are bypassed).
+- m3: `halftone.wgsl` — Guarded `sqrt(1.0 - luma)` with `max(0.0)` to prevent NaN from HDR overbrights.
+- m4: `chromatic_aberration.wgsl` — Replaced hardcoded `3.14159265` with `PI` constant for consistency; combined two redundant `textureSample` calls into one.
+
+**False positives dismissed**: Control: FFT resize (control domain = main thread, allocation acceptable), PatTransform tmp[1024] (matches kMaxSpreadCapacity), NoteDuration enum bounds (framework clamps enum params), Clock BPM division (min 1.0), Euclidean seqs bounds (algorithm invariant), MidiInput param write-back (system-wide single-writer design), spread capacity=0 (runtime guarantees non-zero). Audio: distortion 1/tanh(drive) (drive min 1.0, tanh never zero), NaN/Inf propagation (standard float behavior), plexus synth precision (bounded params), drum SVF stability (guard handles all ranges), phase accumulation drift (params prevent phase_inc >= 1.0), delay/reverb lazy_init (one-shot allocation, acceptable), biquad denormals (Apple Silicon handles efficiently). GPU: texture_analysis output_values null (framework guarantees non-null), plexus output_spreads indexing (confirmed correct — indexes match port declaration order), bloom dimension division (output dimensions always > 0), text font path (design choice, not a bug), const_cast on VividProcessContext (intended API pattern for preferred_tex_width/height), movie_file_in detached thread (shared_ptr protects result struct). WGSL: all ClampToEdge out-of-bounds sampling (intentional behavior), transform scale division (graceful degradation via bounds check returning transparent black).
 
 ---
 

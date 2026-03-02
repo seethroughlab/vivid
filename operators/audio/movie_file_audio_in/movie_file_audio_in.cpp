@@ -50,6 +50,11 @@ struct MovieFileAudioIn : vivid::OperatorBase {
 
     // Main thread: called via update_sources hook each frame
     void main_thread_update(double /*time*/) override {
+        // Deferred delete: by now the audio thread has observed the new pointer
+        // (at least one full audio buffer has elapsed since the previous frame).
+        delete deferred_delete_;
+        deferred_delete_ = nullptr;
+
         // Check if file path changed
         if (file.str_value != last_path_) {
             last_path_ = file.str_value;
@@ -60,7 +65,7 @@ struct MovieFileAudioIn : vivid::OperatorBase {
             // Clear current extractor immediately (audio thread gets silence)
             auto* old = extractor_.load(std::memory_order_relaxed);
             extractor_.store(nullptr, std::memory_order_release);
-            delete old;
+            deferred_delete_ = old;
 
             if (!last_path_.empty()) {
                 // Launch async load on background thread
@@ -89,7 +94,7 @@ struct MovieFileAudioIn : vivid::OperatorBase {
                 auto* fresh = pending_load_->extractor;
                 pending_load_->extractor = nullptr;
                 extractor_.store(fresh, std::memory_order_release);
-                delete old;
+                deferred_delete_ = old;
             }
             pending_load_.reset();
         }
@@ -142,6 +147,7 @@ struct MovieFileAudioIn : vivid::OperatorBase {
     }
 
     ~MovieFileAudioIn() override {
+        delete deferred_delete_;
         auto* ext = extractor_.load(std::memory_order_relaxed);
         delete ext;
     }
@@ -155,6 +161,7 @@ private:
     };
 
     std::atomic<AVFAudioExtractor*> extractor_{nullptr};
+    AVFAudioExtractor* deferred_delete_ = nullptr;  // held for one frame before deletion
     std::shared_ptr<AsyncAudioLoad> pending_load_;
     std::string last_path_;
 };
