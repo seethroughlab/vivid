@@ -3,6 +3,7 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include <webgpu/webgpu.h>
+#include <filesystem>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -132,6 +133,7 @@ private:
     std::vector<NodeState> nodes_;
     std::vector<Wire> wires_;
     std::string operators_src_dir_;
+    std::filesystem::path graph_base_dir_;
     bool needs_gpu_realloc_ = false;
 };
 

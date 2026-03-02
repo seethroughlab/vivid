@@ -811,6 +811,20 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
 }
 
 void NodeGraphUI::check_relayout() {
+    // Detect full graph replacement (e.g. drag-and-drop new file).
+    // Normal edits reuse existing node IDs; a new graph introduces unknown IDs.
+    if (first_layout_done_ && !node_rects_.empty()) {
+        std::unordered_set<std::string> rect_ids;
+        rect_ids.reserve(node_rects_.size());
+        for (const auto& r : node_rects_) rect_ids.insert(r.node_id);
+        for (const auto& n : snap_.nodes) {
+            if (!rect_ids.count(n.node_id)) {
+                layout_nodes();
+                return;
+            }
+        }
+    }
+
     size_t cur_nodes = snap_.nodes.size();
     size_t cur_conns = snap_.connections.size();
     if (cur_nodes > last_node_count_) {

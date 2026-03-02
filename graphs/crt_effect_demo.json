@@ -1,16 +1,69 @@
 {
-  "nodes": {
-    "vid":  { "type": "MovieFileIn", "params": { "file": "media/camera.mp4", "play_mode": 0, "speed": 1.0 } },
-    "audio":{ "type": "MovieFileAudioIn", "params": { "file": "media/camera.mp4" } },
-    "crt":  { "type": "CRTEffect",  "params": { "curvature": 0.4, "vignette": 0.35, "scanline_intensity": 0.5, "bloom": 0.25, "chromatic": 0.008 } },
-    "vout": { "type": "video_out" },
-    "aout": { "type": "audio_out" }
-  },
-  "connections": [
-    { "from": "vid/texture",  "to": "crt/input" },
-    { "from": "crt/texture",  "to": "vout/input" },
-    { "from": "vid/time",     "to": "audio/video_time" },
-    { "from": "audio/left",   "to": "aout/left" },
-    { "from": "audio/right",  "to": "aout/right" }
-  ]
+    "nodes": {
+        "vid": {
+            "type": "MovieFileIn",
+            "params": {
+                "speed": 1.0,
+                "play_mode": 0.0,
+                "file": "../media/camera.mp4"
+            },
+            "layout": {
+                "x": 30.0,
+                "y": 534.0
+            }
+        },
+        "audio": {
+            "type": "MovieFileAudioIn",
+            "params": {
+                "file": "../media/camera.mp4"
+            }
+        },
+        "crt": {
+            "type": "CRTEffect",
+            "params": {
+                "chromatic": 0.00800000037997961,
+                "scanline_intensity": 0.5,
+                "vignette": 0.3499999940395355,
+                "bloom": 0.25,
+                "curvature": 0.4000000059604645
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": {
+                "x": 649.69921875,
+                "y": 336.33203125
+            }
+        },
+        "aout": {
+            "type": "audio_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "vid/texture",
+            "to": "crt/input"
+        },
+        {
+            "from": "crt/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "vid/time",
+            "to": "audio/video_time"
+        },
+        {
+            "from": "audio/left",
+            "to": "aout/left"
+        },
+        {
+            "from": "audio/right",
+            "to": "aout/right"
+        }
+    ],
+    "viewport": {
+        "pan_x": 0.0,
+        "pan_y": 0.0,
+        "zoom": 1.0
+    }
 }

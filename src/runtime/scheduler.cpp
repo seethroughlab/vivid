@@ -94,6 +94,16 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
             }
         }
     }
+    // Resolve relative file paths against the graph's directory
+    if (!graph_base_dir_.empty()) {
+        for (auto& val : ns.file_param_storage) {
+            if (!val.empty() && std::filesystem::path(val).is_relative()) {
+                auto resolved = graph_base_dir_ / val;
+                if (std::filesystem::exists(resolved))
+                    val = std::filesystem::canonical(resolved).string();
+            }
+        }
+    }
     ns.file_param_ptrs.resize(ns.file_param_storage.size());
     for (size_t i = 0; i < ns.file_param_storage.size(); ++i) {
         ns.file_param_ptrs[i] = ns.file_param_storage[i].c_str();
@@ -127,6 +137,9 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
 bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
     nodes_.clear();
     wires_.clear();
+
+    // Extract graph base directory for resolving relative file paths
+    graph_base_dir_ = std::filesystem::path(graph.source_path()).parent_path();
 
     // Map node id -> index for lookup
     std::unordered_map<std::string, uint32_t> node_index;
