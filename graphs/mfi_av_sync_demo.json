@@ -9,6 +9,7 @@
   "connections": [
     { "from": "vid/texture",  "to": "vout/input" },
     { "from": "vid/time",     "to": "audio/video_time" },
+    { "from": "vid/speed",    "to": "audio/video_speed" },
     { "from": "audio/left",   "to": "rev/input" },
     { "from": "rev/output",   "to": "aout/input" }
   ]

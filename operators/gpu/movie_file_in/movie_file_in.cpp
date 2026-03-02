@@ -119,6 +119,7 @@ struct MovieFileIn : vivid::OperatorBase {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
         out.push_back({"time", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"speed", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {
@@ -191,9 +192,10 @@ struct MovieFileIn : vivid::OperatorBase {
             clear_output(gpu);
         }
 
-        // Write current playback time to control output port
+        // Write current playback time and speed to control output ports
         if (ctx->output_values) {
             ctx->output_values[1] = decoder_ ? decoder_->current_time() : 0.0f;
+            ctx->output_values[2] = speed.value;
         }
     }
 

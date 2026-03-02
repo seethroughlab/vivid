@@ -32,13 +32,15 @@ struct MovieFileAudioIn : vivid::OperatorBase {
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<vivid::FilePath> file {"file"};
-    vivid::Param<float> volume     {"volume", 1.0f, 0.0f, 2.0f};
-    vivid::Param<float> video_time {"video_time", 0.0f, 0.0f, 86400.0f};
+    vivid::Param<float> volume      {"volume", 1.0f, 0.0f, 2.0f};
+    vivid::Param<float> video_time  {"video_time", 0.0f, 0.0f, 86400.0f};
+    vivid::Param<float> video_speed {"video_speed", 1.0f, 0.0f, 4.0f};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&file);
         out.push_back(&volume);
         out.push_back(&video_time);
+        out.push_back(&video_speed);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -100,9 +102,13 @@ struct MovieFileAudioIn : vivid::OperatorBase {
         // logic outputs silence or resyncs in a loop until video catches up.
         if (video_time.value <= 0.0f) return;
 
+        // Update playback speed for pitch-preserving time stretch
+        ext->set_speed(video_speed.value);
+
         // Check sync drift (coarse correction: resync AVAssetReader)
         double drift = video_time.value - ext->read_head_pts();
-        if (std::abs(drift) > 0.5) {
+        double drift_threshold = 0.5 * std::max(1.0, static_cast<double>(video_speed.value));
+        if (std::abs(drift) > drift_threshold) {
             ext->resync(video_time.value);
         }
 
@@ -122,24 +128,6 @@ struct MovieFileAudioIn : vivid::OperatorBase {
         auto* ext = extractor_.load(std::memory_order_acquire);
         if (ext && ext->is_open() && ext->has_audio()) {
             ext->read_samples(L, R, n);
-
-            // Fine sync correction
-            double drift = video_time.value - ext->read_head_pts();
-            if (drift > 0.1) {
-                // Audio is behind video — skip a few samples to catch up
-                uint32_t skip = std::min(static_cast<uint32_t>(drift * audio->sample_rate * 0.5),
-                                         n / 2);
-                float tmp_l[256], tmp_r[256];
-                while (skip > 0) {
-                    uint32_t chunk = std::min(skip, 256u);
-                    ext->read_samples(tmp_l, tmp_r, chunk);
-                    skip -= chunk;
-                }
-            } else if (drift < -0.1) {
-                // Audio is ahead of video — output silence this buffer, let video catch up
-                std::memset(L, 0, n * sizeof(float));
-                std::memset(R, 0, n * sizeof(float));
-            }
         } else {
             std::memset(L, 0, n * sizeof(float));
             std::memset(R, 0, n * sizeof(float));

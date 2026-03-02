@@ -20,6 +20,9 @@ public:
     bool has_audio() const;
     float duration() const;
 
+    // Main thread: set playback speed for pitch-preserving time stretch
+    void set_speed(float speed);
+
     // Main thread: decode into ring buffer (call each frame)
     void fill_buffer();
 

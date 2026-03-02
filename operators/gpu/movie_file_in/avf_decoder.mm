@@ -15,6 +15,8 @@
 @interface LoopObserver : NSObject
 @property (nonatomic, assign) BOOL shouldLoop;
 @property (nonatomic, weak) AVPlayer* player;
+@property (nonatomic, assign) float desiredRate;
+@property (atomic, assign) BOOL loopFired;
 @end
 
 @implementation LoopObserver
@@ -24,6 +26,8 @@
     if (self) {
         _player = player;
         _shouldLoop = YES;
+        _desiredRate = 1.0f;
+        _loopFired = NO;
         [[NSNotificationCenter defaultCenter]
             addObserver:self
             selector:@selector(playerDidFinish:)
@@ -41,7 +45,8 @@
     if (!_shouldLoop || !_player) return;
     [_player seekToTime:kCMTimeZero completionHandler:^(BOOL finished) {
         if (finished && self->_shouldLoop) {
-            [self->_player play];
+            self->_player.rate = self->_desiredRate;
+            self.loopFired = YES;
         }
     }];
 }
@@ -229,10 +234,14 @@ struct AVFDecoder::Impl {
 
     void set_speed(float speed) {
         @autoreleasepool {
-            if (player && opened && speed != current_speed_) {
+            if (!player || !opened) return;
+            bool force = loop_observer && loop_observer.loopFired;
+            if (force) loop_observer.loopFired = NO;
+            if (speed != current_speed_ || force) {
                 current_speed_ = speed;
                 player.rate = speed;
             }
+            if (loop_observer) loop_observer.desiredRate = speed;
         }
     }
 
