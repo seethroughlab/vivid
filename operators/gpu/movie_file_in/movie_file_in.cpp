@@ -8,6 +8,7 @@
 #include <vector>
 #include <algorithm>
 #include <memory>
+#include <thread>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -134,7 +135,25 @@ struct MovieFileIn : vivid::OperatorBase {
         // Check if file path changed
         if (file.str_value != last_path_) {
             last_path_ = file.str_value;
+            pending_load_.reset();
             load_media(gpu);
+        }
+
+        // Check if async video load completed
+        if (pending_load_ && pending_load_->done.load(std::memory_order_acquire)) {
+            if (pending_load_->success) {
+                decoder_ = std::move(pending_load_->decoder);
+                decoder_->set_loop(play_mode.int_value() == 0);
+                decoder_->set_speed(speed.value);
+                std::fprintf(stderr, "[movie_file_in] Async video load complete: %s (%ux%u, %.1fs)\n",
+                             last_path_.c_str(), decoder_->width(), decoder_->height(),
+                             decoder_->duration());
+            } else {
+                std::fprintf(stderr, "[movie_file_in] Async video load failed: %s\n",
+                             last_path_.c_str());
+                show_placeholder(gpu);
+            }
+            pending_load_.reset();
         }
 
         // For video sources, decode the next frame
@@ -203,6 +222,14 @@ private:
     uint32_t            staging_width_  = 0;
     uint32_t            staging_height_ = 0;
 
+    // Async video loading
+    struct AsyncVideoLoad {
+        std::atomic<bool> done{false};
+        bool success = false;
+        std::unique_ptr<VideoDecoder> decoder;
+    };
+    std::shared_ptr<AsyncVideoLoad> pending_load_;
+
     // Media state
     std::string last_path_;
     std::unique_ptr<VideoDecoder> decoder_;
@@ -224,20 +251,19 @@ private:
 
         if (is_video_extension(last_path_)) {
 #ifdef __APPLE__
-            decoder_ = create_avf_decoder();
-            if (decoder_ && decoder_->open(last_path_)) {
-                std::fprintf(stderr, "[movie_file_in] Opened video: %s (%ux%u, %.1fs)\n",
-                             last_path_.c_str(), decoder_->width(), decoder_->height(),
-                             decoder_->duration());
-                decoder_->set_loop(play_mode.int_value() == 0);
-                decoder_->set_speed(speed.value);
-                decoder_->play();
-            } else {
-                std::fprintf(stderr, "[movie_file_in] Failed to open video: %s\n",
-                             last_path_.c_str());
-                decoder_.reset();
-                show_placeholder(gpu);
-            }
+            // Launch async load — process() will pick up the result
+            auto result = std::make_shared<AsyncVideoLoad>();
+            pending_load_ = result;
+            std::string path = last_path_;
+            std::thread([result, path]{
+                auto decoder = create_avf_decoder();
+                if (decoder && decoder->open(path)) {
+                    decoder->play();
+                    result->decoder = std::move(decoder);
+                    result->success = true;
+                }
+                result->done.store(true, std::memory_order_release);
+            }).detach();
 #else
             std::fprintf(stderr, "[movie_file_in] Video playback not supported on this platform\n");
             show_placeholder(gpu);

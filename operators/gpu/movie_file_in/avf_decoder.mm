@@ -6,6 +6,7 @@
 #include <vector>
 #include <cstdio>
 #include <cstring>
+#include <thread>
 
 // =============================================================================
 // LoopObserver — restarts playback when the item reaches end
@@ -138,11 +139,13 @@ struct AVFDecoder::Impl {
             loop_observer = [[LoopObserver alloc] initWithPlayer:player];
             loop_observer.shouldLoop = is_looping;
 
-            // Wait for player item to be ready to play
-            // Must pump the run loop so AVFoundation can update status
+            // Wait for player item to be ready to play.
+            // AVFoundation updates status via internal GCD queues.
+            // On the main thread we'd pump the run loop, but a simple
+            // sleep works on any thread (including background loaders).
             for (int i = 0; i < 300; ++i) {
                 if (player_item.status != AVPlayerItemStatusUnknown) break;
-                CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, true);
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
 
             if (player_item.status != AVPlayerItemStatusReadyToPlay) {

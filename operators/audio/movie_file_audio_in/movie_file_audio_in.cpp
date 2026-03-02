@@ -7,6 +7,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <thread>
 
 // =============================================================================
 // MovieFileAudioIn — extracts audio from a movie file and outputs L/R channels.
@@ -51,25 +52,53 @@ struct MovieFileAudioIn : vivid::OperatorBase {
         if (file.str_value != last_path_) {
             last_path_ = file.str_value;
 
-            // Replace extractor (audio thread will pick up via atomic)
+            // Cancel any in-flight async load
+            pending_load_.reset();
+
+            // Clear current extractor immediately (audio thread gets silence)
             auto* old = extractor_.load(std::memory_order_relaxed);
-            if (last_path_.empty()) {
-                extractor_.store(nullptr, std::memory_order_release);
-            } else {
-                auto* fresh = new AVFAudioExtractor();
-                if (fresh->open(last_path_)) {
-                    extractor_.store(fresh, std::memory_order_release);
-                } else {
-                    delete fresh;
-                    extractor_.store(nullptr, std::memory_order_release);
-                }
-            }
+            extractor_.store(nullptr, std::memory_order_release);
             delete old;
+
+            if (!last_path_.empty()) {
+                // Launch async load on background thread
+                auto result = std::make_shared<AsyncAudioLoad>();
+                pending_load_ = result;
+                std::string path = last_path_;
+                std::thread([result, path]{
+                    auto* ext = new AVFAudioExtractor();
+                    if (ext->open(path)) {
+                        result->extractor = ext;
+                        result->success = true;
+                    } else {
+                        delete ext;
+                    }
+                    result->done.store(true, std::memory_order_release);
+                }).detach();
+            }
             return;  // Skip sync check on file change
+        }
+
+        // Check if async load completed
+        if (pending_load_ && pending_load_->done.load(std::memory_order_acquire)) {
+            if (pending_load_->success) {
+                auto* old = extractor_.load(std::memory_order_relaxed);
+                // Take ownership — null it so AsyncAudioLoad destructor won't delete
+                auto* fresh = pending_load_->extractor;
+                pending_load_->extractor = nullptr;
+                extractor_.store(fresh, std::memory_order_release);
+                delete old;
+            }
+            pending_load_.reset();
         }
 
         auto* ext = extractor_.load(std::memory_order_acquire);
         if (!ext || !ext->is_open() || !ext->has_audio()) return;
+
+        // Don't start audio until video is providing a time signal.
+        // Without this, the audio loads faster than video and the sync
+        // logic outputs silence or resyncs in a loop until video catches up.
+        if (video_time.value <= 0.0f) return;
 
         // Check sync drift (coarse correction: resync AVAssetReader)
         double drift = video_time.value - ext->read_head_pts();
@@ -130,7 +159,15 @@ struct MovieFileAudioIn : vivid::OperatorBase {
     }
 
 private:
+    struct AsyncAudioLoad {
+        std::atomic<bool> done{false};
+        bool success = false;
+        AVFAudioExtractor* extractor = nullptr;
+        ~AsyncAudioLoad() { delete extractor; }
+    };
+
     std::atomic<AVFAudioExtractor*> extractor_{nullptr};
+    std::shared_ptr<AsyncAudioLoad> pending_load_;
     std::string last_path_;
 };
 

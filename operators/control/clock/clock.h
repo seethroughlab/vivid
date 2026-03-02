@@ -18,6 +18,7 @@ struct Clock : vivid::OperatorBase {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"beat_phase", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"beat_ms",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {
@@ -25,6 +26,7 @@ struct Clock : vivid::OperatorBase {
         phase_ += ctx->delta_time * beats_per_sec;
         phase_ -= std::floor(phase_);
         ctx->output_values[0] = static_cast<float>(phase_);
+        ctx->output_values[1] = 60000.0f / bpm.value;
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
