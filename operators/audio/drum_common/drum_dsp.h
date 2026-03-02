@@ -3,7 +3,7 @@
 
 #include <cmath>
 #include <cstdint>
-#include "../audio_dsp.h"
+#include "operator_api/audio_dsp.h"
 
 namespace drum {
 

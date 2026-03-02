@@ -4,6 +4,7 @@
 #include <vector>
 #include <deque>
 #include <unordered_map>
+#include <functional>
 #include <mutex>
 #include <thread>
 #include <atomic>
@@ -31,6 +32,12 @@ public:
     // Queue a rebuild for a cmake target (called from main thread)
     void queue_rebuild(const std::string& target_name);
 
+    // Register a package target → compile function mapping.
+    // When a target matching "pkg:<name>:<op>" is queued, the callback is invoked
+    // instead of cmake --build.
+    using PackageCompileFn = std::function<ReloadResult(const std::string& target_name)>;
+    void set_package_compiler(PackageCompileFn fn);
+
     // Poll for completed rebuild results (called from main thread each frame)
     std::vector<ReloadResult> poll_ready();
 
@@ -52,6 +59,8 @@ private:
     // Per-target reload counter for unique staging paths
     std::mutex counter_mutex_;
     std::unordered_map<std::string, uint32_t> reload_counters_;
+
+    PackageCompileFn package_compile_fn_;
 
     std::thread thread_;
     std::atomic<bool> running_{false};

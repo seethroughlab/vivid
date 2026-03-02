@@ -7,6 +7,7 @@
 #include "runtime/operator_loader.h"
 #include "runtime/operator_creator.h"
 #include "runtime/hot_reload.h"
+#include "runtime/package_manager.h"
 #include "operator_api/types.h"
 #include "yyjson.h"
 #include <ixwebsocket/IXHttpServer.h>
@@ -291,7 +292,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             RuntimeAPI& api, Graph& graph,
                             Scheduler& scheduler, OperatorRegistry& registry,
                             bool& has_gpu_ops, bool& has_audio,
-                            const std::string& src_dir, HotReloader* hot_reloader) {
+                            const std::string& src_dir, HotReloader* hot_reloader,
+                            PackageManager* package_manager) {
     // Read-only queries (no body needed)
     if (method == "inspect_graph") return handle_inspect_graph(graph, scheduler);
     if (method == "list_types")    return handle_list_types(registry);
@@ -787,6 +789,70 @@ static std::string dispatch(const std::string& method, const std::string& body,
             yyjson_mut_obj_add_strcpy(rdoc, res, "target_name", cr.target_name.c_str());
             return json_ok(rdoc, res);
         }();
+    } else if (method == "install_package") {
+        if (!package_manager) {
+            result = json_err("package manager not available");
+        } else if (!root) {
+            result = json_err("invalid JSON body");
+        } else {
+            yyjson_val* url_v = yyjson_obj_get(root, "url");
+            if (!url_v || !yyjson_is_str(url_v))
+                result = json_err("missing 'url'");
+            else {
+                auto ir = package_manager->install(yyjson_get_str(url_v));
+                if (ir.success) {
+                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+                    yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());
+                    yyjson_mut_obj_add_strcpy(rdoc, res, "version", ir.info.version.c_str());
+                    yyjson_mut_obj_add_int(rdoc, res, "operator_count",
+                        static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
+                    result = json_ok(rdoc, res);
+                } else {
+                    result = json_err(ir.error);
+                }
+            }
+        }
+    } else if (method == "uninstall_package") {
+        if (!package_manager) {
+            result = json_err("package manager not available");
+        } else if (!root) {
+            result = json_err("invalid JSON body");
+        } else {
+            yyjson_val* name_v = yyjson_obj_get(root, "name");
+            if (!name_v || !yyjson_is_str(name_v))
+                result = json_err("missing 'name'");
+            else {
+                if (package_manager->uninstall(yyjson_get_str(name_v)))
+                    result = json_ok_msg("uninstalled");
+                else
+                    result = json_err("failed to uninstall package");
+            }
+        }
+    } else if (method == "list_packages") {
+        if (!package_manager) {
+            result = json_err("package manager not available");
+        } else {
+            auto packages = package_manager->list();
+            yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+            yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+            yyjson_mut_val* arr = yyjson_mut_arr(rdoc);
+            for (const auto& pkg : packages) {
+                yyjson_mut_val* p = yyjson_mut_obj(rdoc);
+                yyjson_mut_obj_add_strcpy(rdoc, p, "name", pkg.name.c_str());
+                yyjson_mut_obj_add_strcpy(rdoc, p, "version", pkg.version.c_str());
+                yyjson_mut_obj_add_strcpy(rdoc, p, "description", pkg.description.c_str());
+                yyjson_mut_val* ops = yyjson_mut_arr(rdoc);
+                for (const auto& op : pkg.operators)
+                    yyjson_mut_arr_add_strcpy(rdoc, ops, op.c_str());
+                for (const auto& op : pkg.gpu_operators)
+                    yyjson_mut_arr_add_strcpy(rdoc, ops, op.c_str());
+                yyjson_mut_obj_add_val(rdoc, p, "operators", ops);
+                yyjson_mut_arr_add_val(arr, p);
+            }
+            yyjson_mut_obj_add_val(rdoc, res, "packages", arr);
+            result = json_ok(rdoc, res);
+        }
     } else {
         result = json_err("unknown method '" + method + "'");
     }
@@ -824,6 +890,7 @@ ControlServer::~ControlServer() { stop(); }
 void ControlServer::set_src_dir(const std::string& src_dir) { src_dir_ = src_dir; }
 void ControlServer::set_hot_reloader(HotReloader* hr) { hot_reloader_ = hr; }
 void ControlServer::set_capture_coordinator(CaptureCoordinator* cc) { capture_coordinator_ = cc; }
+void ControlServer::set_package_manager(PackageManager* pm) { package_manager_ = pm; }
 
 bool ControlServer::start(int port) {
     impl_ = std::make_unique<Impl>(port);
@@ -1015,7 +1082,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
         std::string response = dispatch(req.method, req.body,
                                         api, graph, scheduler, registry,
                                         has_gpu_ops, has_audio,
-                                        src_dir_, hot_reloader_);
+                                        src_dir_, hot_reloader_,
+                                        package_manager_);
         req.promise.set_value(std::move(response));
     }
 }

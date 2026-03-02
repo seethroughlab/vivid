@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
-#include "../audio_dsp.h"
+#include "operator_api/audio_dsp.h"
 
 namespace glitch {
 

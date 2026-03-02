@@ -1,4 +1,5 @@
 #include "runtime/file_watcher.h"
+#include <filesystem>
 #include <sys/event.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -220,6 +221,49 @@ std::vector<FileChangeEvent> FileWatcher::poll_changes() {
     std::vector<FileChangeEvent> result;
     result.swap(pending_);
     return result;
+}
+
+int FileWatcher::add_package_watches(const std::string& packages_dir) {
+    namespace fs = std::filesystem;
+    if (!fs::exists(packages_dir)) return 0;
+
+    int count = 0;
+    // Walk ~/.vivid/packages/*/operators/<domain>/<name>/*.cpp
+    for (auto& pkg_entry : fs::directory_iterator(packages_dir)) {
+        if (!pkg_entry.is_directory()) continue;
+
+        std::string ops_dir = pkg_entry.path().string() + "/operators";
+        if (!fs::exists(ops_dir)) continue;
+
+        // Use package-prefixed target name: "pkg:<package_name>:<operator_name>"
+        std::string pkg_name = pkg_entry.path().filename().string();
+
+        for (auto& domain_entry : fs::directory_iterator(ops_dir)) {
+            if (!domain_entry.is_directory()) continue;
+
+            for (auto& op_entry : fs::directory_iterator(domain_entry.path())) {
+                if (!op_entry.is_directory()) continue;
+
+                std::string op_name = op_entry.path().filename().string();
+                std::string target = "pkg:" + pkg_name + ":" + op_name;
+
+                for (auto& file_entry : fs::directory_iterator(op_entry.path())) {
+                    if (!file_entry.is_regular_file()) continue;
+                    std::string fname = file_entry.path().filename().string();
+                    size_t len = fname.size();
+                    if (len < 5 || fname.substr(len - 4) != ".cpp") continue;
+
+                    if (add_watch(file_entry.path().string(), target))
+                        count++;
+                }
+            }
+        }
+    }
+
+    if (count > 0) {
+        std::fprintf(stderr, "[vivid] FileWatcher: watching %d package files\n", count);
+    }
+    return count;
 }
 
 } // namespace vivid

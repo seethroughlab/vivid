@@ -57,6 +57,10 @@ void HotReloader::queue_rebuild(const std::string& target_name) {
     queue_cv_.notify_one();
 }
 
+void HotReloader::set_package_compiler(PackageCompileFn fn) {
+    package_compile_fn_ = std::move(fn);
+}
+
 std::vector<ReloadResult> HotReloader::poll_ready() {
     std::lock_guard<std::mutex> lock(result_mutex_);
     std::vector<ReloadResult> out;
@@ -77,6 +81,16 @@ void HotReloader::compile_thread() {
         }
 
         std::fprintf(stderr, "[vivid] Hot-reload: compiling %s...\n", target.c_str());
+
+        // Package targets use format "pkg:<package>:<operator>" — route to PackageCompiler
+        if (target.substr(0, 4) == "pkg:" && package_compile_fn_) {
+            ReloadResult result = package_compile_fn_(target);
+            {
+                std::lock_guard<std::mutex> lock(result_mutex_);
+                results_.push_back(std::move(result));
+            }
+            continue;
+        }
 
         // Run cmake --build and capture output
         std::string cmd = "cmake --build " + build_dir_ + " --target " + target + " 2>&1";

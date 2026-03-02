@@ -172,6 +172,9 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         // Point desc.name at the map key (stable after emplace)
         it->second.desc.name = it->first.c_str();
 
+        // Map cmake target name → descriptor type name
+        register_target_mapping(path, type_name);
+
         std::fprintf(stderr, "[vivid] Registry: probed %s from %s\n", type_name.c_str(), name);
     });
 }
@@ -398,6 +401,13 @@ const std::string* OperatorRegistry::type_name_for_target(const std::string& tar
     return &it->second;
 }
 
+std::string OperatorRegistry::type_to_target(const std::string& type_name) const {
+    for (const auto& [target, type] : target_to_type_) {
+        if (type == type_name) return target;
+    }
+    return {};
+}
+
 const std::shared_ptr<DataDrivenFilterConfig>* OperatorRegistry::wgsl_config(
         const std::string& name) const {
     auto it = wgsl_configs_.find(name);
@@ -432,6 +442,43 @@ bool OperatorRegistry::reload_operator(const std::string& type_name, const std::
     }
 
     return true;
+}
+
+void OperatorRegistry::register_package(const std::string& package_name,
+                                         const std::string& build_dir) {
+    // Walk the build directory and associate each operator type with this package
+    scan_plugin_dir(build_dir.c_str(), [&](const std::string& path, const char* name, size_t stem_len) {
+        // The target name (filename stem) maps to a type via target_to_type_
+        std::string target(name, stem_len);
+        auto it = target_to_type_.find(target);
+        if (it != target_to_type_.end()) {
+            type_to_package_[it->second] = package_name;
+        } else {
+            // Also check deferred entries directly
+            for (const auto& [type, entry] : deferred_) {
+                if (entry.dylib_path == path) {
+                    type_to_package_[type] = package_name;
+                    break;
+                }
+            }
+        }
+    });
+}
+
+void OperatorRegistry::unregister_package_operator(const std::string& type_name) {
+    loaders_.erase(type_name);
+    deferred_.erase(type_name);
+    type_to_package_.erase(type_name);
+}
+
+const std::string* OperatorRegistry::package_for_type(const std::string& type_name) const {
+    auto it = type_to_package_.find(type_name);
+    if (it == type_to_package_.end()) return nullptr;
+    return &it->second;
+}
+
+bool OperatorRegistry::is_package_operator(const std::string& type_name) const {
+    return type_to_package_.count(type_name) > 0;
 }
 
 } // namespace vivid

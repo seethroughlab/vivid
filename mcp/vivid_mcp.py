@@ -478,5 +478,31 @@ async def inspect_state_presets(sm_node: str) -> str:
     return await _post("inspect_state_presets", {"sm_node": sm_node})
 
 
+@mcp.tool()
+async def install_package(url: str) -> str:
+    """Install an operator package from a git URL or local path.
+
+    Args:
+        url: Git URL (e.g. "https://github.com/user/vivid-drums") or local directory path
+    """
+    return await _post("install_package", {"url": url})
+
+
+@mcp.tool()
+async def uninstall_package(name: str) -> str:
+    """Uninstall an operator package by name.
+
+    Args:
+        name: Package name (e.g. "vivid-drums")
+    """
+    return await _post("uninstall_package", {"name": name})
+
+
+@mcp.tool()
+async def list_packages() -> str:
+    """List installed operator packages with their operators."""
+    return await _post("list_packages")
+
+
 if __name__ == "__main__":
     mcp.run()

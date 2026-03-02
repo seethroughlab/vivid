@@ -29,6 +29,10 @@ public:
     // Register a single file for watching. Thread-safe (locks watch_mutex_).
     bool add_watch(const std::string& path, const std::string& target_name);
 
+    // Scan package operator directories and register them for watching.
+    // Returns the number of files registered.
+    int add_package_watches(const std::string& packages_dir);
+
 private:
     void watch_thread();
     void reopen_file(const std::string& path, const std::string& target_name);

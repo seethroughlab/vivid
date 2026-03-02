@@ -61,9 +61,18 @@ public:
     // Introspection
     std::vector<std::string> type_names() const;
 
-    // Hot-reload support
+    // Target ↔ type mapping
     const std::string* type_name_for_target(const std::string& target) const;
+    std::string type_to_target(const std::string& type_name) const;
+
+    // Hot-reload support
     bool reload_operator(const std::string& type_name, const std::string& new_dylib_path);
+
+    // Package provenance tracking
+    void register_package(const std::string& package_name, const std::string& build_dir);
+    void unregister_package_operator(const std::string& type_name);
+    const std::string* package_for_type(const std::string& type_name) const;
+    bool is_package_operator(const std::string& type_name) const;
 
 private:
     // Helper: extract target name from dylib path and register loader
@@ -75,6 +84,7 @@ private:
     std::unordered_map<std::string, std::string> target_to_type_;  // cmake target → descriptor name
     std::unordered_set<std::string> user_filter_types_;
     std::unordered_map<std::string, std::string> user_operator_sources_;
+    std::unordered_map<std::string, std::string> type_to_package_;  // type_name → package_name
 };
 
 } // namespace vivid

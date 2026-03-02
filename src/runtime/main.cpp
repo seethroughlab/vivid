@@ -28,6 +28,9 @@
 #include "operator_api/data_driven_filter.h"
 #include "operator_api/types.h"
 #include "common/gpu_util.h"
+#include "export/export_pipeline.h"
+#include "runtime/package_compiler.h"
+#include "runtime/package_manager.h"
 #include <fstream>
 #include <sstream>
 #include <webgpu/webgpu.h>
@@ -46,6 +49,8 @@
 
 #ifdef __APPLE__
 #include "runtime/macos_frame_timer.h"
+#include "runtime/macos_menu.h"
+#include "ui/file_dialog.h"
 #endif
 
 // #16191D in sRGB → linear: pow(x/255, 2.2)
@@ -461,37 +466,8 @@ static void key_callback(GLFWwindow* w, int key, int /*scancode*/, int action, i
         return;
     }
 
-    // Cmd+S / Ctrl+S saves the graph (intercept before any dispatch)
-    if (key == GLFW_KEY_S && action == GLFW_PRESS &&
-        (mods & (GLFW_MOD_SUPER | GLFW_MOD_CONTROL))) {
-        if (ud->runtime_api) {
-            // Capture viewport before saving
-            if (ud->graph && ud->graph_ui)
-                ud->graph->set_viewport(ud->graph_ui->pan_x(), ud->graph_ui->pan_y(), ud->graph_ui->zoom());
-            // Read back working filter shaders before saving
-            if (ud->graph && !ud->working_filters_dir.empty()) {
-                for (const auto& fd : ud->graph->filters()) {
-                    std::string wpath = ud->working_filters_dir + "/" + fd.name + ".wgsl";
-                    std::ifstream ifs(wpath);
-                    if (ifs) {
-                        std::ostringstream ss;
-                        ss << ifs.rdbuf();
-                        ud->graph->update_filter_shader(fd.name, ss.str());
-                    }
-                }
-            }
-            auto result = ud->runtime_api->save();
-            std::fprintf(stderr, "[vivid] Save: %s\n", result.message.c_str());
-        }
-        return;
-    }
-
-    // Cmd+, / Ctrl+, opens preferences
-    if (key == GLFW_KEY_COMMA && action == GLFW_PRESS &&
-        (mods & (GLFW_MOD_SUPER | GLFW_MOD_CONTROL))) {
-        if (ud->graph_ui) ud->graph_ui->toggle_preferences();
-        return;
-    }
+    // Cmd+S and Cmd+, are handled by the native macOS menu bar (macos_menu.mm).
+    // On non-Apple platforms, fall through to the graph UI key handler.
 
     if (ud->graph_ui && ud->graph_ui->visible())
         ud->graph_ui->on_key(key, action, mods);
@@ -545,10 +521,163 @@ int main(int argc, char* argv[]) {
     app.add_flag("--headless", headless, "Run without displaying a window");
     app.add_option("--src-dir", src_dir, "Source directory for operator hot-reload")->type_name("PATH");
 
+    // --- Export subcommand ---
+    std::string export_graph_path;
+    std::string export_output;
+    std::string export_output_dir;
+    bool export_headless = false;
+    bool export_control_server = false;
+    std::vector<std::string> export_extra_ops;
+
+    auto* export_cmd = app.add_subcommand("export", "Export graph as a standalone binary");
+    export_cmd->add_option("--graph", export_graph_path, "Graph file to export")
+        ->required()->type_name("FILE");
+    export_cmd->add_option("--output", export_output, "Output binary name")
+        ->required()->type_name("NAME");
+    export_cmd->add_option("--output-dir", export_output_dir, "Export build directory")->type_name("PATH");
+    export_cmd->add_flag("--headless", export_headless, "Build headless (no window)");
+    export_cmd->add_flag("--control-server", export_control_server, "Include HTTP control server");
+    export_cmd->add_option("--extra-operators", export_extra_ops,
+        "Additional operator types to include (comma-separated)")->delimiter(',');
+
+    // --- Package management subcommands ---
+    std::string install_url;
+    std::string uninstall_name;
+
+    auto* install_cmd = app.add_subcommand("install", "Install an operator package");
+    install_cmd->add_option("url", install_url, "Git URL or local path")->required();
+
+    auto* uninstall_cmd = app.add_subcommand("uninstall", "Uninstall an operator package");
+    uninstall_cmd->add_option("name", uninstall_name, "Package name")->required();
+
+    auto* list_pkg_cmd = app.add_subcommand("list-packages", "List installed operator packages");
+
+    app.require_subcommand(0, 1);
+
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError& e) {
         return app.exit(e);
+    }
+
+    // --- Handle export subcommand (early exit, no GLFW) ---
+    if (export_cmd->parsed()) {
+        // Determine source dir (parent of exe_dir if exe is in build/)
+        std::string source_dir;
+        std::string build_dir = exe_dir.string();
+
+        // Look for CMakeLists.txt in parent to find source root
+        auto candidate = exe_dir.parent_path();
+        for (int i = 0; i < 3; ++i) {
+            if (std::filesystem::exists(candidate / "CMakeLists.txt") &&
+                std::filesystem::exists(candidate / "src" / "runtime")) {
+                source_dir = candidate.string();
+                break;
+            }
+            candidate = candidate.parent_path();
+        }
+        if (source_dir.empty()) {
+            // Fallback: use --src-dir if provided
+            if (!src_dir.empty()) {
+                source_dir = src_dir;
+            } else {
+                std::fprintf(stderr, "[vivid] Cannot determine source directory. "
+                             "Use --src-dir or run from a build directory.\n");
+                return 1;
+            }
+        }
+
+        // Build registry to get type→target mappings
+        vivid::OperatorRegistry registry;
+        registry.scan_deferred(exe_dir.string().c_str());
+        register_builtin_operators(registry);
+        std::string filters_dir = (exe_dir / "filters").string();
+        registry.scan_wgsl_presets(filters_dir);
+
+        vivid::ExportOptions opts;
+        opts.graph_path = export_graph_path;
+        opts.output_name = export_output;
+        opts.output_dir = export_output_dir;
+        opts.headless = export_headless;
+        opts.control_server = export_control_server;
+        opts.extra_operators = export_extra_ops;
+
+        vivid::ExportPipeline pipeline(source_dir, build_dir);
+        if (!pipeline.run(opts, registry)) {
+            std::fprintf(stderr, "[vivid] Export failed\n");
+            return 1;
+        }
+        return 0;
+    }
+
+    // --- Handle package management subcommands (early exit, no GLFW) ---
+    if (install_cmd->parsed() || uninstall_cmd->parsed() || list_pkg_cmd->parsed()) {
+        // Determine source dir (for PackageCompiler)
+        std::string source_dir;
+        std::string build_dir = exe_dir.string();
+
+        auto candidate = exe_dir.parent_path();
+        for (int i = 0; i < 3; ++i) {
+            if (std::filesystem::exists(candidate / "CMakeLists.txt") &&
+                std::filesystem::exists(candidate / "src" / "runtime")) {
+                source_dir = candidate.string();
+                break;
+            }
+            candidate = candidate.parent_path();
+        }
+        if (source_dir.empty() && !src_dir.empty())
+            source_dir = src_dir;
+
+        vivid::OperatorRegistry registry;
+        registry.scan_deferred(exe_dir.string().c_str());
+        register_builtin_operators(registry);
+
+        vivid::PackageCompiler compiler(source_dir, build_dir);
+        vivid::PackageManager pm(compiler, registry);
+
+        if (install_cmd->parsed()) {
+            auto result = pm.install(install_url);
+            if (result.success) {
+                std::fprintf(stderr, "Installed %s v%s (%zu operators)\n",
+                             result.info.name.c_str(), result.info.version.c_str(),
+                             result.info.operators.size() + result.info.gpu_operators.size());
+                return 0;
+            } else {
+                std::fprintf(stderr, "Install failed: %s\n", result.error.c_str());
+                for (const auto& cr : result.compile_results) {
+                    if (!cr.success)
+                        std::fprintf(stderr, "  %s: %s\n", cr.operator_name.c_str(),
+                                     cr.error_output.c_str());
+                }
+                return 1;
+            }
+        } else if (uninstall_cmd->parsed()) {
+            if (pm.uninstall(uninstall_name)) {
+                std::fprintf(stderr, "Uninstalled %s\n", uninstall_name.c_str());
+                return 0;
+            } else {
+                std::fprintf(stderr, "Failed to uninstall %s\n", uninstall_name.c_str());
+                return 1;
+            }
+        } else if (list_pkg_cmd->parsed()) {
+            auto packages = pm.list();
+            if (packages.empty()) {
+                std::printf("No packages installed.\n");
+            } else {
+                for (const auto& pkg : packages) {
+                    std::printf("%s v%s  (%zu operators)\n",
+                                pkg.name.c_str(), pkg.version.c_str(),
+                                pkg.operators.size() + pkg.gpu_operators.size());
+                    if (!pkg.description.empty())
+                        std::printf("  %s\n", pkg.description.c_str());
+                    for (const auto& op : pkg.operators)
+                        std::printf("    %s\n", op.c_str());
+                    for (const auto& op : pkg.gpu_operators)
+                        std::printf("    %s (gpu)\n", op.c_str());
+                }
+            }
+            return 0;
+        }
     }
 
     // --- GLFW ---
@@ -657,6 +786,26 @@ int main(int argc, char* argv[]) {
     // --- Load self-describing .wgsl filter presets ---
     std::string filters_dir = (exe_dir / "filters").string();
     registry.scan_wgsl_presets(filters_dir);
+
+    // --- Scan installed packages ---
+    {
+        std::string source_dir;
+        std::string build_dir = exe_dir.string();
+        auto cand = exe_dir.parent_path();
+        for (int i = 0; i < 3; ++i) {
+            if (std::filesystem::exists(cand / "CMakeLists.txt") &&
+                std::filesystem::exists(cand / "src" / "runtime")) {
+                source_dir = cand.string();
+                break;
+            }
+            cand = cand.parent_path();
+        }
+        if (source_dir.empty() && !src_dir.empty())
+            source_dir = src_dir;
+        vivid::PackageCompiler pkg_compiler(source_dir, build_dir);
+        vivid::PackageManager pm(pkg_compiler, registry);
+        pm.scan_installed();
+    }
 
     // --- Load graph ---
     vivid::Graph graph;
@@ -856,11 +1005,159 @@ int main(int argc, char* argv[]) {
                 control_server.set_hot_reloader(&hot_reloader);
                 command_sink.set_hot_reloader(&hot_reloader);
                 std::fprintf(stderr, "[vivid] Hot-reload enabled (watching %s)\n", operators_dir.c_str());
+
+                // Also watch installed package operator directories
+                std::string pkgs_dir = vivid::PackageManager::packages_dir();
+                file_watcher.add_package_watches(pkgs_dir);
+
+                // Set up package compile callback for hot-reloader
+                std::string pkg_src_dir = src_dir;
+                std::string pkg_build_dir = build_dir;
+                hot_reloader.set_package_compiler(
+                    [pkgs_dir, pkg_src_dir, pkg_build_dir](const std::string& target) -> vivid::ReloadResult {
+                        // Parse "pkg:<package_name>:<operator_name>"
+                        vivid::ReloadResult result;
+                        result.target_name = target;
+
+                        auto first_colon = target.find(':');
+                        auto second_colon = target.find(':', first_colon + 1);
+                        if (first_colon == std::string::npos || second_colon == std::string::npos) {
+                            result.success = false;
+                            result.error_output = "Invalid package target: " + target;
+                            return result;
+                        }
+
+                        std::string pkg_name = target.substr(first_colon + 1, second_colon - first_colon - 1);
+                        std::string op_name = target.substr(second_colon + 1);
+                        std::string pkg_dir = pkgs_dir + "/" + pkg_name;
+
+                        vivid::PackageCompiler compiler(pkg_src_dir, pkg_build_dir);
+
+                        // Find the operator's relative path from the manifest
+                        // or try common pattern: look for it under operators/
+                        std::string op_rel;
+                        for (const auto& domain : {"audio", "control", "gpu"}) {
+                            std::string candidate = pkg_dir + "/operators/" +
+                                domain + "/" + op_name + "/" + op_name + ".cpp";
+                            if (std::filesystem::exists(candidate)) {
+                                op_rel = std::string(domain) + "/" + op_name;
+                                break;
+                            }
+                        }
+                        if (op_rel.empty()) {
+                            result.success = false;
+                            result.error_output = "Cannot find operator source for " + op_name + " in " + pkg_dir;
+                            return result;
+                        }
+
+                        auto cr = compiler.compile_operator(pkg_dir, op_rel, false);
+                        result.success = cr.success;
+                        result.staged_dylib_path = cr.dylib_path;
+                        result.error_output = cr.error_output;
+                        return result;
+                    });
             }
         } else {
             std::fprintf(stderr, "[vivid] Hot-reload disabled (operators/ not found; use --src-dir)\n");
         }
     }
+
+    // --- macOS native menu bar ---
+#ifdef __APPLE__
+    {
+        vivid::MenuCallbacks menu_cbs;
+
+        menu_cbs.on_preferences = [&]() {
+            graph_ui.toggle_preferences();
+        };
+
+        menu_cbs.on_save = [&]() {
+            // Capture viewport before saving
+            if (graph_ui.visible())
+                graph.set_viewport(graph_ui.pan_x(), graph_ui.pan_y(), graph_ui.zoom());
+            // Read back working filter shaders before saving
+            if (!working_filters_dir.empty()) {
+                for (const auto& fd : graph.filters()) {
+                    std::string wpath = working_filters_dir + "/" + fd.name + ".wgsl";
+                    std::ifstream ifs(wpath);
+                    if (ifs) {
+                        std::ostringstream ss;
+                        ss << ifs.rdbuf();
+                        graph.update_filter_shader(fd.name, ss.str());
+                    }
+                }
+            }
+            auto result = runtime_api.save();
+            std::fprintf(stderr, "[vivid] Save: %s\n", result.message.c_str());
+        };
+
+        menu_cbs.on_open = [&]() {
+            std::string path = vivid::ui::open_file_dialog();
+            if (path.empty()) return;
+
+            // Load the graph file (sets source_path internally)
+            if (!graph.load(path.c_str())) {
+                std::fprintf(stderr, "[vivid] Failed to load %s\n", path.c_str());
+                return;
+            }
+
+            // Ensure operators used by this graph are fully loaded
+            registry.load_for_graph(graph);
+
+            // Rebuild via reload (re-reads from graph.source_path())
+            auto result = runtime_api.reload(has_gpu_ops, has_audio);
+            if (result.ok) graph_loaded = true;
+            std::fprintf(stderr, "[vivid] Open: %s\n", result.message.c_str());
+        };
+
+        menu_cbs.on_export = [&]() {
+            if (graph.source_path().empty()) {
+                std::fprintf(stderr, "[vivid] Export: no graph loaded\n");
+                return;
+            }
+
+            std::string output_path = vivid::ui::save_file_dialog("my_app");
+            if (output_path.empty()) return;
+
+            auto out = std::filesystem::path(output_path);
+            std::string output_name = out.stem().string();
+            std::string output_dir = (out.parent_path() / (output_name + "_export")).string();
+
+            // Determine source directory (same logic as CLI export path)
+            std::string source_dir;
+            auto candidate = exe_dir.parent_path();
+            for (int i = 0; i < 3; ++i) {
+                if (std::filesystem::exists(candidate / "CMakeLists.txt") &&
+                    std::filesystem::exists(candidate / "src" / "runtime")) {
+                    source_dir = candidate.string();
+                    break;
+                }
+                candidate = candidate.parent_path();
+            }
+            if (source_dir.empty() && !src_dir.empty())
+                source_dir = src_dir;
+            if (source_dir.empty()) {
+                std::fprintf(stderr, "[vivid] Export: cannot determine source directory\n");
+                return;
+            }
+
+            vivid::ExportOptions opts;
+            opts.graph_path = graph.source_path();
+            opts.output_name = output_name;
+            opts.output_dir = output_dir;
+
+            std::string build_dir = exe_dir.string();
+            vivid::ExportPipeline pipeline(source_dir, build_dir);
+            if (pipeline.run(opts, registry)) {
+                std::fprintf(stderr, "[vivid] Export succeeded: %s\n", output_name.c_str());
+            } else {
+                std::fprintf(stderr, "[vivid] Export failed\n");
+            }
+        };
+
+        vivid::macos_setup_menu(menu_cbs);
+    }
+#endif
 
     double prev_time = glfwGetTime();
     uint64_t frame_count = 0;

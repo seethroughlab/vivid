@@ -83,12 +83,34 @@ else()
     set(VIVID_PLUGIN_SUFFIX ".so")
 endif()
 
+# --- Operator manifest (for standalone export builds) ---
+define_property(GLOBAL PROPERTY VIVID_OPERATOR_MANIFEST
+    BRIEF_DOCS "JSON fragments for operator_manifest.json"
+    FULL_DOCS  "Accumulated per-operator metadata for standalone export builds")
+set_property(GLOBAL PROPERTY VIVID_OPERATOR_MANIFEST "")
+
 # --- Operator plugin helper ---
 function(add_vivid_operator name source)
     cmake_parse_arguments(ARG "" "" "EXTRA_LIBS" ${ARGN})
     add_library(${name} MODULE ${source})
     set_target_properties(${name} PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
     target_link_libraries(${name} PRIVATE vivid_operator_api ${ARG_EXTRA_LIBS})
+
+    # Accumulate manifest entry
+    # Filter out non-library targets from EXTRA_LIBS (keep only webgpu, rtmidi, etc.)
+    set(_extra_libs "")
+    foreach(_lib ${ARG_EXTRA_LIBS})
+        # Skip interface/header-only targets that aren't real link deps
+        if(NOT "${_lib}" STREQUAL "vivid_composable_ops")
+            list(APPEND _extra_libs "${_lib}")
+        endif()
+    endforeach()
+    string(REPLACE ";" "\", \"" _extra_json "${_extra_libs}")
+    if(_extra_libs)
+        set(_extra_json "\"${_extra_json}\"")
+    endif()
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"${name}\": { \"sources\": [\"${source}\"], \"extra_libs\": [${_extra_json}] }")
 endfunction()
 
 # --- Control operator plugins ---
@@ -148,6 +170,13 @@ else()
 endif()
 set_target_properties(movie_file_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
 target_include_directories(movie_file_in PRIVATE ${CMAKE_SOURCE_DIR}/deps/stb)
+if(APPLE)
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"movie_file_in\": { \"sources\": [\"operators/gpu/movie_file_in/movie_file_in.cpp\", \"operators/gpu/movie_file_in/avf_decoder.mm\"], \"extra_libs\": [\"webgpu\"], \"frameworks\": [\"AVFoundation\", \"CoreMedia\", \"CoreVideo\", \"Foundation\"], \"objc_arc\": [\"operators/gpu/movie_file_in/avf_decoder.mm\"], \"include_dirs\": [\"deps/stb\"] }")
+else()
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"movie_file_in\": { \"sources\": [\"operators/gpu/movie_file_in/movie_file_in.cpp\"], \"extra_libs\": [\"webgpu\"], \"include_dirs\": [\"deps/stb\"] }")
+endif()
 
 # --- Webcam In (live camera capture) ---
 if(APPLE)
@@ -167,6 +196,13 @@ else()
     target_link_libraries(webcam_in PRIVATE vivid_operator_api webgpu)
 endif()
 set_target_properties(webcam_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+if(APPLE)
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"webcam_in\": { \"sources\": [\"operators/gpu/webcam_in/webcam_in.cpp\", \"operators/gpu/webcam_in/avf_capture.mm\"], \"extra_libs\": [\"webgpu\"], \"frameworks\": [\"AVFoundation\", \"CoreMedia\", \"CoreVideo\", \"Foundation\"], \"objc_arc\": [\"operators/gpu/webcam_in/avf_capture.mm\"] }")
+else()
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"webcam_in\": { \"sources\": [\"operators/gpu/webcam_in/webcam_in.cpp\"], \"extra_libs\": [\"webgpu\"] }")
+endif()
 
 # --- Audio operator plugins ---
 add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp)
@@ -211,6 +247,8 @@ if(APPLE)
         PROPERTIES COMPILE_FLAGS "-fobjc-arc")
     set_target_properties(movie_file_audio_in PROPERTIES
         PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"movie_file_audio_in\": { \"sources\": [\"operators/audio/movie_file_audio_in/movie_file_audio_in.cpp\", \"operators/audio/movie_file_audio_in/avf_audio_extractor.mm\"], \"extra_libs\": [], \"frameworks\": [\"AVFoundation\", \"CoreMedia\", \"Foundation\"], \"objc_arc\": [\"operators/audio/movie_file_audio_in/avf_audio_extractor.mm\"] }")
 endif()
 
 # --- UI library ---
@@ -257,10 +295,19 @@ add_executable(vivid
     src/runtime/settings.cpp
     src/runtime/editor_detect.cpp
     src/runtime/macos_frame_timer.cpp
+    src/export/export_pipeline.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/package_manager.cpp
 )
 
 target_include_directories(vivid PRIVATE src)
 target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11)
+
+# macOS native menu bar
+if(APPLE)
+    target_sources(vivid PRIVATE src/runtime/macos_menu.mm)
+    set_source_files_properties(src/runtime/macos_menu.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+endif()
 
 # ObjC ARC for AVExporter
 set_source_files_properties(src/runtime/av_exporter.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
@@ -338,6 +385,11 @@ if(APPLE)
     )
 endif()
 
+# --- Generate operator manifest for standalone export ---
+get_property(_manifest_entries GLOBAL PROPERTY VIVID_OPERATOR_MANIFEST)
+list(JOIN _manifest_entries ",\n" _manifest_body)
+file(WRITE "${CMAKE_BINARY_DIR}/operator_manifest.json" "{\n${_manifest_body}\n}\n")
+
 enable_testing()
 
 # --- Tests ---
@@ -399,6 +451,9 @@ add_executable(test_control_server
     src/runtime/operator_creator.cpp
     src/runtime/hot_reload.cpp
     src/runtime/system_midi.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/platform.cpp
 )
 target_include_directories(test_control_server PRIVATE src)
 target_link_libraries(test_control_server PRIVATE
@@ -690,4 +745,35 @@ add_dependencies(test_demo_graphs
 )
 add_test(NAME test_demo_graphs
     COMMAND test_demo_graphs ${CMAKE_BINARY_DIR}/graphs
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# PackageCompiler unit test (compiles a mock package operator)
+add_executable(test_package_compiler
+    tests/test_package_compiler.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_package_compiler PRIVATE src)
+target_link_libraries(test_package_compiler PRIVATE vivid_operator_api yyjson webgpu)
+add_test(NAME test_package_compiler
+    COMMAND test_package_compiler ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# PackageManager lifecycle test (install/list/uninstall with local path)
+add_executable(test_package_manager
+    tests/test_package_manager.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_package_manager PRIVATE src)
+target_link_libraries(test_package_manager PRIVATE vivid_operator_api yyjson webgpu)
+add_test(NAME test_package_manager
+    COMMAND test_package_manager ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

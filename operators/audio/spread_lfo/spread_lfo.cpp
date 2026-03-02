@@ -1,6 +1,6 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
-#include "../audio_dsp.h"
+#include "operator_api/audio_dsp.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
