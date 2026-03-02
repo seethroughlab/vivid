@@ -34,6 +34,7 @@ struct PackageInfo {
     std::vector<std::string> gpu_operators;  // operators needing Dawn
     std::string path;                        // absolute path on disk
     std::string build_type;                  // "" = clang++ (default), "cmake" = cmake build
+    bool linked = false;                     // true if symlinked (vivid link)
     PackageDependencies dependencies;
     PackageTests tests;
 };
@@ -58,6 +59,15 @@ public:
     // Remove package directory and unregister operators
     bool uninstall(const std::string& name);
 
+    // Symlink a local package for development (npm link-style)
+    InstallResult link(const std::string& path);
+
+    // Remove a linked package symlink (never touches source)
+    bool unlink(const std::string& name);
+
+    // Recompile operators for an installed or linked package
+    InstallResult rebuild(const std::string& name);
+
     // List installed packages
     std::vector<PackageInfo> list();
 
@@ -81,6 +91,9 @@ private:
     InstallResult install_with_chain(const std::string& url,
                                      std::set<std::string>& installing_chain,
                                      std::vector<std::string>& installed_deps);
+
+    // Compile operators in a package directory (shared by install, link, rebuild)
+    bool compile_package(const std::string& pkg_dir, InstallResult& result);
 
     PackageCompiler& compiler_;
     OperatorRegistry& registry_;

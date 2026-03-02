@@ -74,22 +74,36 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
         // Find the wgpu directory in the build tree
         std::string wgpu_include;
         std::string wgpu_lib_dir;
-        for (auto& entry : std::filesystem::directory_iterator(
-                vivid_build_dir_ + "/_deps")) {
-            std::string entry_name = entry.path().filename().string();
-            if (entry_name.find("wgpu") != std::string::npos &&
-                entry_name.find("-src") != std::string::npos) {
-                std::string candidate = entry.path().string() + "/include";
-                if (std::filesystem::exists(candidate + "/webgpu/webgpu.h")) {
-                    wgpu_include = candidate;
-                    // Library is in the sibling lib/ directory
-                    std::string lib_candidate = entry.path().string() + "/lib";
-                    if (std::filesystem::exists(lib_candidate))
-                        wgpu_lib_dir = lib_candidate;
-                    break;
+        std::string deps_dir = vivid_build_dir_ + "/_deps";
+        if (std::filesystem::is_directory(deps_dir)) {
+            for (auto& entry : std::filesystem::directory_iterator(deps_dir)) {
+                std::string entry_name = entry.path().filename().string();
+                if (entry_name.find("wgpu") != std::string::npos &&
+                    entry_name.find("-src") != std::string::npos) {
+                    std::string candidate = entry.path().string() + "/include";
+                    if (std::filesystem::exists(candidate + "/webgpu/webgpu.h")) {
+                        wgpu_include = candidate;
+                        // Library is in the sibling lib/ directory
+                        std::string lib_candidate = entry.path().string() + "/lib";
+                        if (std::filesystem::exists(lib_candidate))
+                            wgpu_lib_dir = lib_candidate;
+                        break;
+                    }
                 }
             }
         }
+        // Fallback: check sdk/include in vivid_src_dir (bundle SDK)
+        if (wgpu_include.empty()) {
+            std::string sdk_candidate = vivid_src_dir_ + "/include";
+            if (std::filesystem::exists(sdk_candidate + "/webgpu/webgpu.h"))
+                wgpu_include = sdk_candidate;
+        }
+        // Fallback: libwgpu_native lives next to the executable in the bundle
+        if (wgpu_lib_dir.empty()) {
+            if (std::filesystem::exists(vivid_build_dir_ + "/libwgpu_native.dylib"))
+                wgpu_lib_dir = vivid_build_dir_;
+        }
+
         if (!wgpu_include.empty()) {
             cmd += " -I " + quote(wgpu_include);
         }

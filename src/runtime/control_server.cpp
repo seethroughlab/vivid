@@ -836,6 +836,71 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     result = json_err("failed to uninstall package");
             }
         }
+    } else if (method == "link_package") {
+        if (!package_manager) {
+            result = json_err("package manager not available");
+        } else if (!root) {
+            result = json_err("invalid JSON body");
+        } else {
+            yyjson_val* path_v = yyjson_obj_get(root, "path");
+            if (!path_v || !yyjson_is_str(path_v))
+                result = json_err("missing 'path'");
+            else {
+                auto ir = package_manager->link(yyjson_get_str(path_v));
+                if (ir.success) {
+                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+                    yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());
+                    yyjson_mut_obj_add_strcpy(rdoc, res, "version", ir.info.version.c_str());
+                    yyjson_mut_obj_add_int(rdoc, res, "operator_count",
+                        static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
+                    yyjson_mut_obj_add_bool(rdoc, res, "linked", true);
+                    result = json_ok(rdoc, res);
+                } else {
+                    result = json_err(ir.error);
+                }
+            }
+        }
+    } else if (method == "unlink_package") {
+        if (!package_manager) {
+            result = json_err("package manager not available");
+        } else if (!root) {
+            result = json_err("invalid JSON body");
+        } else {
+            yyjson_val* name_v = yyjson_obj_get(root, "name");
+            if (!name_v || !yyjson_is_str(name_v))
+                result = json_err("missing 'name'");
+            else {
+                if (package_manager->unlink(yyjson_get_str(name_v)))
+                    result = json_ok_msg("unlinked");
+                else
+                    result = json_err("failed to unlink package");
+            }
+        }
+    } else if (method == "rebuild_package") {
+        if (!package_manager) {
+            result = json_err("package manager not available");
+        } else if (!root) {
+            result = json_err("invalid JSON body");
+        } else {
+            yyjson_val* name_v = yyjson_obj_get(root, "name");
+            if (!name_v || !yyjson_is_str(name_v))
+                result = json_err("missing 'name'");
+            else {
+                auto ir = package_manager->rebuild(yyjson_get_str(name_v));
+                if (ir.success) {
+                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+                    yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());
+                    yyjson_mut_obj_add_int(rdoc, res, "operator_count",
+                        static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
+                    yyjson_mut_obj_add_bool(rdoc, res, "linked", ir.info.linked);
+                    result = json_ok(rdoc, res);
+                } else {
+                    result = json_err(ir.error);
+                }
+            }
+        }
     } else if (method == "list_packages") {
         if (!package_manager) {
             result = json_err("package manager not available");
@@ -856,6 +921,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 for (const auto& op : pkg.gpu_operators)
                     yyjson_mut_arr_add_strcpy(rdoc, ops, op.c_str());
                 yyjson_mut_obj_add_val(rdoc, p, "operators", ops);
+                yyjson_mut_obj_add_bool(rdoc, p, "linked", pkg.linked);
                 yyjson_mut_arr_add_val(arr, p);
             }
             yyjson_mut_obj_add_val(rdoc, res, "packages", arr);

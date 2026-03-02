@@ -584,6 +584,51 @@ static void drop_callback(GLFWwindow* w, int count, const char** paths) {
     }
 }
 
+// --- Build/source directory discovery (shared by export, packages, hot-reload) ---
+namespace fs = std::filesystem;
+
+struct BuildPaths { std::string source_dir, build_dir; };
+
+static BuildPaths discover_build_paths(const fs::path& exe_dir,
+                                       const fs::path& resources_dir,
+                                       const std::string& user_src_dir) {
+    BuildPaths p;
+    // Prefer compile-time build dir (set by CMake on Apple)
+#ifdef VIVID_BUILD_DIR
+    p.build_dir = VIVID_BUILD_DIR;
+    if (!fs::is_directory(p.build_dir))
+#endif
+    {
+#ifdef __APPLE__
+        // In a bundle: exe_dir is Contents/MacOS/, build dir is 3 levels up
+        p.build_dir = exe_dir.parent_path().parent_path().parent_path().string();
+#else
+        p.build_dir = exe_dir.string();
+#endif
+    }
+
+    // Walk up from build_dir looking for source root
+    auto c = fs::path(p.build_dir);
+    for (int i = 0; i < 3; ++i) {
+        if (fs::exists(c / "CMakeLists.txt") && fs::exists(c / "src" / "runtime")) {
+            p.source_dir = c.string();
+            break;
+        }
+        c = c.parent_path();
+    }
+    // Fallback: bundle SDK (Contents/Resources/sdk/)
+#ifdef __APPLE__
+    if (p.source_dir.empty()) {
+        auto sdk_dir = resources_dir / "sdk";
+        if (fs::is_directory(sdk_dir / "src" / "operator_api"))
+            p.source_dir = sdk_dir.string();
+    }
+#endif
+    if (p.source_dir.empty())
+        p.source_dir = user_src_dir;
+    return p;
+}
+
 int main(int argc, char* argv[]) {
     vivid::install_crash_handlers();
 
@@ -594,8 +639,7 @@ int main(int argc, char* argv[]) {
     // Resources dir: Contents/Resources/ in a macOS bundle, else same as exe_dir
 #ifdef __APPLE__
     auto resources_dir = exe_dir.parent_path() / "Resources";
-    if (!std::filesystem::is_directory(resources_dir))
-        resources_dir = exe_dir;  // flat dev layout
+    auto plugins_dir = exe_dir.parent_path() / "PlugIns";
 #else
     auto resources_dir = exe_dir;
 #endif
@@ -648,6 +692,18 @@ int main(int argc, char* argv[]) {
 
     auto* list_pkg_cmd = app.add_subcommand("list-packages", "List installed operator packages");
 
+    std::string link_path;
+    auto* link_cmd = app.add_subcommand("link", "Link a local package for development");
+    link_cmd->add_option("path", link_path, "Path to package directory")->required();
+
+    std::string unlink_name;
+    auto* unlink_cmd = app.add_subcommand("unlink", "Unlink a linked package");
+    unlink_cmd->add_option("name", unlink_name, "Package name")->required();
+
+    std::string rebuild_name;
+    auto* rebuild_cmd = app.add_subcommand("rebuild", "Recompile operators for a package");
+    rebuild_cmd->add_option("name", rebuild_name, "Package name")->required();
+
     app.require_subcommand(0, 1);
 
     try {
@@ -656,36 +712,24 @@ int main(int argc, char* argv[]) {
         return app.exit(e);
     }
 
+    // Resolve build/source directories once (used by export, packages, hot-reload)
+    auto build_paths = discover_build_paths(exe_dir, resources_dir, src_dir);
+
     // --- Handle export subcommand (early exit, no GLFW) ---
     if (export_cmd->parsed()) {
-        // Determine source dir (parent of exe_dir if exe is in build/)
-        std::string source_dir;
-        std::string build_dir = exe_dir.string();
-
-        // Look for CMakeLists.txt in parent to find source root
-        auto candidate = exe_dir.parent_path();
-        for (int i = 0; i < 3; ++i) {
-            if (std::filesystem::exists(candidate / "CMakeLists.txt") &&
-                std::filesystem::exists(candidate / "src" / "runtime")) {
-                source_dir = candidate.string();
-                break;
-            }
-            candidate = candidate.parent_path();
-        }
-        if (source_dir.empty()) {
-            // Fallback: use --src-dir if provided
-            if (!src_dir.empty()) {
-                source_dir = src_dir;
-            } else {
-                std::fprintf(stderr, "[vivid] Cannot determine source directory. "
-                             "Use --src-dir or run from a build directory.\n");
-                return 1;
-            }
+        if (build_paths.source_dir.empty()) {
+            std::fprintf(stderr, "[vivid] Cannot determine source directory. "
+                         "Use --src-dir or run from a build directory.\n");
+            return 1;
         }
 
         // Build registry to get type→target mappings
         vivid::OperatorRegistry registry;
+#ifdef __APPLE__
+        registry.scan_deferred(plugins_dir.string().c_str());
+#else
         registry.scan_deferred(exe_dir.string().c_str());
+#endif
         register_builtin_operators(registry);
         std::string filters_dir = (resources_dir / "filters").string();
         registry.scan_wgsl_presets(filters_dir);
@@ -698,7 +742,7 @@ int main(int argc, char* argv[]) {
         opts.control_server = export_control_server;
         opts.extra_operators = export_extra_ops;
 
-        vivid::ExportPipeline pipeline(source_dir, build_dir);
+        vivid::ExportPipeline pipeline(build_paths.source_dir, build_paths.build_dir);
         if (!pipeline.run(opts, registry)) {
             std::fprintf(stderr, "[vivid] Export failed\n");
             return 1;
@@ -707,28 +751,17 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Handle package management subcommands (early exit, no GLFW) ---
-    if (install_cmd->parsed() || uninstall_cmd->parsed() || list_pkg_cmd->parsed()) {
-        // Determine source dir (for PackageCompiler)
-        std::string source_dir;
-        std::string build_dir = exe_dir.string();
-
-        auto candidate = exe_dir.parent_path();
-        for (int i = 0; i < 3; ++i) {
-            if (std::filesystem::exists(candidate / "CMakeLists.txt") &&
-                std::filesystem::exists(candidate / "src" / "runtime")) {
-                source_dir = candidate.string();
-                break;
-            }
-            candidate = candidate.parent_path();
-        }
-        if (source_dir.empty() && !src_dir.empty())
-            source_dir = src_dir;
-
+    if (install_cmd->parsed() || uninstall_cmd->parsed() || list_pkg_cmd->parsed() ||
+        link_cmd->parsed() || unlink_cmd->parsed() || rebuild_cmd->parsed()) {
         vivid::OperatorRegistry registry;
+#ifdef __APPLE__
+        registry.scan_deferred(plugins_dir.string().c_str());
+#else
         registry.scan_deferred(exe_dir.string().c_str());
+#endif
         register_builtin_operators(registry);
 
-        vivid::PackageCompiler compiler(source_dir, build_dir);
+        vivid::PackageCompiler compiler(build_paths.source_dir, build_paths.build_dir);
         vivid::PackageManager pm(compiler, registry);
 
         if (install_cmd->parsed()) {
@@ -761,9 +794,10 @@ int main(int argc, char* argv[]) {
                 std::printf("No packages installed.\n");
             } else {
                 for (const auto& pkg : packages) {
-                    std::printf("%s v%s  (%zu operators)\n",
+                    std::printf("%s v%s  (%zu operators)%s\n",
                                 pkg.name.c_str(), pkg.version.c_str(),
-                                pkg.operators.size() + pkg.gpu_operators.size());
+                                pkg.operators.size() + pkg.gpu_operators.size(),
+                                pkg.linked ? "  [linked]" : "");
                     if (!pkg.description.empty())
                         std::printf("  %s\n", pkg.description.c_str());
                     for (const auto& op : pkg.operators)
@@ -773,6 +807,46 @@ int main(int argc, char* argv[]) {
                 }
             }
             return 0;
+        } else if (link_cmd->parsed()) {
+            auto result = pm.link(link_path);
+            if (result.success) {
+                std::fprintf(stderr, "Linked %s v%s (%zu operators)\n",
+                             result.info.name.c_str(), result.info.version.c_str(),
+                             result.info.operators.size() + result.info.gpu_operators.size());
+                return 0;
+            } else {
+                std::fprintf(stderr, "Link failed: %s\n", result.error.c_str());
+                for (const auto& cr : result.compile_results) {
+                    if (!cr.success)
+                        std::fprintf(stderr, "  %s: %s\n", cr.operator_name.c_str(),
+                                     cr.error_output.c_str());
+                }
+                return 1;
+            }
+        } else if (unlink_cmd->parsed()) {
+            if (pm.unlink(unlink_name)) {
+                std::fprintf(stderr, "Unlinked %s\n", unlink_name.c_str());
+                return 0;
+            } else {
+                std::fprintf(stderr, "Failed to unlink %s\n", unlink_name.c_str());
+                return 1;
+            }
+        } else if (rebuild_cmd->parsed()) {
+            auto result = pm.rebuild(rebuild_name);
+            if (result.success) {
+                std::fprintf(stderr, "Rebuilt %s (%zu operators)\n",
+                             result.info.name.c_str(),
+                             result.info.operators.size() + result.info.gpu_operators.size());
+                return 0;
+            } else {
+                std::fprintf(stderr, "Rebuild failed: %s\n", result.error.c_str());
+                for (const auto& cr : result.compile_results) {
+                    if (!cr.success)
+                        std::fprintf(stderr, "  %s: %s\n", cr.operator_name.c_str(),
+                                     cr.error_output.c_str());
+                }
+                return 1;
+            }
         }
     }
 
@@ -876,7 +950,11 @@ int main(int argc, char* argv[]) {
 
     // --- Load operator plugins ---
     vivid::OperatorRegistry registry;
-    registry.scan_deferred(exe_dir.string().c_str());  // probe only — no full loads
+#ifdef __APPLE__
+    registry.scan_deferred(plugins_dir.string().c_str());
+#else
+    registry.scan_deferred(exe_dir.string().c_str());
+#endif
     register_builtin_operators(registry);
 
     // --- Load self-describing .wgsl filter presets ---
@@ -884,21 +962,7 @@ int main(int argc, char* argv[]) {
     registry.scan_wgsl_presets(filters_dir);
 
     // --- Package management (needs to outlive main loop for catalog/install) ---
-    std::string pkg_source_dir;
-    {
-        auto cand = exe_dir.parent_path();
-        for (int i = 0; i < 3; ++i) {
-            if (std::filesystem::exists(cand / "CMakeLists.txt") &&
-                std::filesystem::exists(cand / "src" / "runtime")) {
-                pkg_source_dir = cand.string();
-                break;
-            }
-            cand = cand.parent_path();
-        }
-        if (pkg_source_dir.empty() && !src_dir.empty())
-            pkg_source_dir = src_dir;
-    }
-    vivid::PackageCompiler pkg_compiler(pkg_source_dir, exe_dir.string());
+    vivid::PackageCompiler pkg_compiler(build_paths.source_dir, build_paths.build_dir);
     vivid::PackageManager pkg_manager(pkg_compiler, registry);
     pkg_manager.scan_installed();
     vivid::PackageCatalog pkg_catalog(pkg_manager);
@@ -1086,19 +1150,22 @@ int main(int argc, char* argv[]) {
     bool hot_reload_enabled = false;
     {
         if (src_dir.empty()) {
-            auto parent = exe_dir.parent_path();
-            if (std::filesystem::exists(parent / "operators")) {
-                src_dir = parent.string();
+            auto probe = exe_dir;
+            for (int i = 0; i < 5 && probe.has_parent_path(); ++i) {
+                probe = probe.parent_path();
+                if (std::filesystem::exists(probe / "operators")) {
+                    src_dir = probe.string();
+                    break;
+                }
             }
         }
 
         if (!src_dir.empty()) {
             std::string operators_dir = src_dir + "/operators";
-            std::string build_dir = exe_dir.string();
             scheduler.set_operators_src_dir(operators_dir);
             command_sink.set_operators_dir(operators_dir);
             command_sink.set_filters_dir(filters_dir);
-            command_sink.set_build_dir(build_dir);
+            command_sink.set_build_dir(build_paths.build_dir);
             op_info_cache.set_operators_dir(operators_dir);
             // Set working filters dir if not already determined from graph
             if (working_filters_dir.empty() && !graph.source_path().empty()) {
@@ -1106,7 +1173,7 @@ int main(int argc, char* argv[]) {
                 working_filters_dir = (gp.parent_path() / (gp.stem().string() + "_filters")).string();
                 command_sink.set_working_filters_dir(working_filters_dir);
             }
-            if (file_watcher.start(operators_dir) && hot_reloader.start(build_dir)) {
+            if (file_watcher.start(operators_dir) && hot_reloader.start(build_paths.build_dir)) {
                 hot_reload_enabled = true;
                 control_server.set_hot_reloader(&hot_reloader);
                 command_sink.set_hot_reloader(&hot_reloader);
@@ -1118,7 +1185,7 @@ int main(int argc, char* argv[]) {
 
                 // Set up package compile callback for hot-reloader
                 std::string pkg_src_dir = src_dir;
-                std::string pkg_build_dir = build_dir;
+                std::string pkg_build_dir = build_paths.build_dir;
                 hot_reloader.set_package_compiler(
                     [pkgs_dir, pkg_src_dir, pkg_build_dir](const std::string& target) -> vivid::ReloadResult {
                         // Parse "pkg:<package_name>:<operator_name>"
@@ -1229,20 +1296,7 @@ int main(int argc, char* argv[]) {
             std::string output_name = out.stem().string();
             std::string output_dir = (out.parent_path() / (output_name + "_export")).string();
 
-            // Determine source directory (same logic as CLI export path)
-            std::string source_dir;
-            auto candidate = exe_dir.parent_path();
-            for (int i = 0; i < 3; ++i) {
-                if (std::filesystem::exists(candidate / "CMakeLists.txt") &&
-                    std::filesystem::exists(candidate / "src" / "runtime")) {
-                    source_dir = candidate.string();
-                    break;
-                }
-                candidate = candidate.parent_path();
-            }
-            if (source_dir.empty() && !src_dir.empty())
-                source_dir = src_dir;
-            if (source_dir.empty()) {
+            if (build_paths.source_dir.empty()) {
                 std::fprintf(stderr, "[vivid] Export: cannot determine source directory\n");
                 return;
             }
@@ -1252,8 +1306,7 @@ int main(int argc, char* argv[]) {
             opts.output_name = output_name;
             opts.output_dir = output_dir;
 
-            std::string build_dir = exe_dir.string();
-            vivid::ExportPipeline pipeline(source_dir, build_dir);
+            vivid::ExportPipeline pipeline(build_paths.source_dir, build_paths.build_dir);
             if (pipeline.run(opts, registry)) {
                 std::fprintf(stderr, "[vivid] Export succeeded: %s\n", output_name.c_str());
             } else {

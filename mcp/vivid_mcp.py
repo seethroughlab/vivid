@@ -505,6 +505,38 @@ async def uninstall_package(name: str) -> str:
 
 
 @mcp.tool()
+async def link_package(path: str) -> str:
+    """Link a local package directory for development. Creates a symlink instead
+    of copying, so edits to the source are picked up on rebuild without reinstalling.
+
+    Args:
+        path: Absolute or relative path to the package directory (must contain vivid-package.json)
+    """
+    return await _post("link_package", {"path": path})
+
+
+@mcp.tool()
+async def unlink_package(name: str) -> str:
+    """Unlink a development package. Removes the symlink but does not touch the source directory.
+
+    Args:
+        name: Package name (e.g. "vivid-glitch")
+    """
+    return await _post("unlink_package", {"name": name})
+
+
+@mcp.tool()
+async def rebuild_package(name: str) -> str:
+    """Recompile operators for an installed or linked package. Use after editing
+    source files in a linked package.
+
+    Args:
+        name: Package name (e.g. "vivid-glitch")
+    """
+    return await _post("rebuild_package", {"name": name})
+
+
+@mcp.tool()
 async def list_packages() -> str:
     """List installed operator packages with their operators."""
     return await _post("list_packages")

@@ -226,6 +226,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
     }
 
     // --- Resolve & install dependencies ---
+    installing_chain.insert(result.info.name);
     for (const auto& dep_name : result.info.dependencies.packages) {
         if (is_installed(dep_name)) continue;
 
@@ -250,7 +251,6 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
             return result;
         }
 
-        installing_chain.insert(result.info.name);
         auto dep_result = install_with_chain(dep_url, installing_chain, installed_deps);
         if (!dep_result.success) {
             result.error = "Failed to install dependency '" + dep_name + "': " + dep_result.error;
@@ -264,7 +264,17 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
     std::filesystem::rename(staging_dir, pkg_dir);
     result.info.path = pkg_dir;
 
-    // Build operators — cmake or clang++ depending on manifest
+    if (!compile_package(pkg_dir, result))
+        return result;
+
+    result.success = true;
+    std::fprintf(stderr, "[vivid] PackageManager: installed %s (%zu operators)\n",
+                 result.info.name.c_str(),
+                 result.info.operators.size() + result.info.gpu_operators.size());
+    return result;
+}
+
+bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& result) {
     std::string build_dir = pkg_dir + "/build";
 
     if (result.info.build_type == "cmake") {
@@ -289,7 +299,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
         FILE* pipe = popen(cmake_cmd.c_str(), "r");
         if (!pipe) {
             result.error = "Failed to execute cmake configure";
-            return result;
+            return false;
         }
         std::array<char, 256> buf;
         while (fgets(buf.data(), buf.size(), pipe) != nullptr)
@@ -298,7 +308,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
 
         if (status != 0) {
             result.error = "cmake configure failed:\n" + output;
-            return result;
+            return false;
         }
 
         // Build
@@ -309,7 +319,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
         pipe = popen(build_cmd.c_str(), "r");
         if (!pipe) {
             result.error = "Failed to execute cmake build";
-            return result;
+            return false;
         }
         while (fgets(buf.data(), buf.size(), pipe) != nullptr)
             output += buf.data();
@@ -317,7 +327,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
 
         if (status != 0) {
             result.error = "cmake build failed:\n" + output;
-            return result;
+            return false;
         }
 
         // Synthesize compile results by scanning for dylibs in build dir
@@ -333,7 +343,6 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
         }
     } else {
         // Default: clang++ compilation via PackageCompiler
-        // Resolve vendor dependency include paths relative to package dir
         std::vector<std::string> vendor_includes;
         for (const auto& vd : result.info.dependencies.vendor)
             vendor_includes.push_back(pkg_dir + "/" + vd.include);
@@ -341,7 +350,6 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
         result.compile_results = compiler_.compile_all(pkg_dir,
             result.info.operators, result.info.gpu_operators, vendor_includes);
 
-        // Check if any compilations failed
         bool all_ok = true;
         for (const auto& cr : result.compile_results) {
             if (!cr.success) {
@@ -352,8 +360,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
 
         if (!all_ok) {
             result.error = "Some operators failed to compile";
-            // Don't clean up — leave package for user to inspect
-            return result;
+            return false;
         }
     }
 
@@ -363,8 +370,152 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
     // Track provenance
     registry_.register_package(result.info.name, build_dir);
 
+    return true;
+}
+
+InstallResult PackageManager::link(const std::string& path) {
+    InstallResult result;
+
+    // Resolve to absolute path
+    std::error_code ec;
+    auto canonical = std::filesystem::canonical(path, ec);
+    if (ec) {
+        result.error = "Path does not exist: " + path;
+        return result;
+    }
+
+    // Validate it's a directory with a manifest
+    if (!std::filesystem::is_directory(canonical)) {
+        result.error = "Not a directory: " + canonical.string();
+        return result;
+    }
+
+    if (!std::filesystem::exists(canonical / "vivid-package.json")) {
+        result.error = "No vivid-package.json found in " + canonical.string();
+        return result;
+    }
+
+    // Parse manifest to get canonical package name
+    if (!parse_manifest(canonical.string(), result.info)) {
+        result.error = "Invalid vivid-package.json in " + canonical.string();
+        return result;
+    }
+
+    // Create packages directory
+    std::filesystem::create_directories(packages_dir());
+
+    // Check no existing package with same name
+    std::string pkg_dir = packages_dir() + "/" + result.info.name;
+    if (std::filesystem::exists(pkg_dir)) {
+        result.error = "Package already exists: " + result.info.name +
+                       " (uninstall or unlink first)";
+        return result;
+    }
+
+    // Create symlink
+    std::filesystem::create_directory_symlink(canonical, pkg_dir, ec);
+    if (ec) {
+        result.error = "Failed to create symlink: " + ec.message();
+        return result;
+    }
+
+    result.info.path = pkg_dir;
+    result.info.linked = true;
+
+    // Compile (build/ dir ends up in the original source tree through the symlink)
+    if (!compile_package(pkg_dir, result))
+        return result;
+
     result.success = true;
-    std::fprintf(stderr, "[vivid] PackageManager: installed %s (%zu operators)\n",
+    std::fprintf(stderr, "[vivid] PackageManager: linked %s -> %s (%zu operators)\n",
+                 result.info.name.c_str(), canonical.string().c_str(),
+                 result.info.operators.size() + result.info.gpu_operators.size());
+    return result;
+}
+
+bool PackageManager::unlink(const std::string& name) {
+    std::string pkg_dir = packages_dir() + "/" + name;
+
+    if (!std::filesystem::exists(pkg_dir)) {
+        std::fprintf(stderr, "[vivid] PackageManager: package not found: %s\n", name.c_str());
+        return false;
+    }
+
+    if (!std::filesystem::is_symlink(pkg_dir)) {
+        std::fprintf(stderr, "[vivid] PackageManager: '%s' is not a linked package (use uninstall instead)\n",
+                     name.c_str());
+        return false;
+    }
+
+    // Unregister operators from registry
+    PackageInfo info;
+    if (parse_manifest(pkg_dir, info)) {
+        auto unregister_op = [&](const std::string& op_path) {
+            auto slash = op_path.rfind('/');
+            std::string target = (slash != std::string::npos) ? op_path.substr(slash + 1) : op_path;
+            const std::string* type_name = registry_.type_name_for_target(target);
+            if (type_name) {
+                registry_.unregister_package_operator(*type_name);
+            } else {
+                registry_.unregister_package_operator(target);
+            }
+        };
+        for (const auto& op : info.operators)
+            unregister_op(op);
+        for (const auto& op : info.gpu_operators)
+            unregister_op(op);
+    }
+
+    // Remove symlink only — never follows into source tree
+    std::error_code ec;
+    std::filesystem::remove(pkg_dir, ec);
+    if (ec) {
+        std::fprintf(stderr, "[vivid] PackageManager: failed to remove symlink %s: %s\n",
+                     pkg_dir.c_str(), ec.message().c_str());
+        return false;
+    }
+
+    std::fprintf(stderr, "[vivid] PackageManager: unlinked %s\n", name.c_str());
+    return true;
+}
+
+InstallResult PackageManager::rebuild(const std::string& name) {
+    InstallResult result;
+
+    std::string pkg_dir = packages_dir() + "/" + name;
+    if (!std::filesystem::exists(pkg_dir)) {
+        result.error = "Package not found: " + name;
+        return result;
+    }
+
+    if (!parse_manifest(pkg_dir, result.info)) {
+        result.error = "Invalid vivid-package.json in " + name;
+        return result;
+    }
+
+    result.info.linked = std::filesystem::is_symlink(pkg_dir);
+
+    // Unregister existing operators before recompile
+    auto unregister_op = [&](const std::string& op_path) {
+        auto slash = op_path.rfind('/');
+        std::string target = (slash != std::string::npos) ? op_path.substr(slash + 1) : op_path;
+        const std::string* type_name = registry_.type_name_for_target(target);
+        if (type_name) {
+            registry_.unregister_package_operator(*type_name);
+        } else {
+            registry_.unregister_package_operator(target);
+        }
+    };
+    for (const auto& op : result.info.operators)
+        unregister_op(op);
+    for (const auto& op : result.info.gpu_operators)
+        unregister_op(op);
+
+    if (!compile_package(pkg_dir, result))
+        return result;
+
+    result.success = true;
+    std::fprintf(stderr, "[vivid] PackageManager: rebuilt %s (%zu operators)\n",
                  result.info.name.c_str(),
                  result.info.operators.size() + result.info.gpu_operators.size());
     return result;
@@ -415,9 +566,12 @@ bool PackageManager::uninstall(const std::string& name) {
             unregister_op(op);
     }
 
-    // Remove directory
+    // Remove directory (symlink-safe: remove link only, never follow into source)
     std::error_code ec;
-    std::filesystem::remove_all(pkg_dir, ec);
+    if (std::filesystem::is_symlink(pkg_dir))
+        std::filesystem::remove(pkg_dir, ec);
+    else
+        std::filesystem::remove_all(pkg_dir, ec);
     if (ec) {
         std::fprintf(stderr, "[vivid] PackageManager: failed to remove %s: %s\n",
                      pkg_dir.c_str(), ec.message().c_str());
@@ -440,6 +594,7 @@ std::vector<PackageInfo> PackageManager::list() {
 
         PackageInfo info;
         if (parse_manifest(entry.path().string(), info)) {
+            info.linked = entry.is_symlink();
             packages.push_back(std::move(info));
         }
     }
