@@ -371,6 +371,9 @@ static UIStyle default_style() {
 
     s.wire_color    = { 0.5f, 0.6f, 0.65f, 0.7f };
     s.wire_sel_color = { 0.6f, 0.75f, 0.85f, 0.9f };
+    s.wire_thickness       = 1.0f;
+    s.wire_hover_thickness = 3.0f;
+    s.wire_param_thickness = 1.5f;
 
     s.slider_track  = { 0.18f, 0.19f, 0.22f };
     s.dark_bg       = { 0.07f, 0.08f, 0.09f };
@@ -414,6 +417,12 @@ static std::optional<UIStyle> parse_theme_root(yyjson_val* root) {
 
     read_color4(root, "wire_color", s.wire_color);
     read_color4(root, "wire_sel_color", s.wire_sel_color);
+    if ((v = yyjson_obj_get(root, "wire_thickness")) && yyjson_is_num(v))
+        s.wire_thickness = static_cast<float>(yyjson_get_num(v));
+    if ((v = yyjson_obj_get(root, "wire_hover_thickness")) && yyjson_is_num(v))
+        s.wire_hover_thickness = static_cast<float>(yyjson_get_num(v));
+    if ((v = yyjson_obj_get(root, "wire_param_thickness")) && yyjson_is_num(v))
+        s.wire_param_thickness = static_cast<float>(yyjson_get_num(v));
 
     read_color3(root, "slider_track", s.slider_track);
     read_color3(root, "dark_bg", s.dark_bg);

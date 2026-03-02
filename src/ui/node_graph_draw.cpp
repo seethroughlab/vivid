@@ -288,9 +288,9 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         bool is_param_wire = c.from_is_param;
         float wire_th;
         if (is_param_wire)
-            wire_th = std::max(1.0f, 1.5f * zoom_);
+            wire_th = std::max(1.0f, style_.wire_param_thickness * zoom_);
         else
-            wire_th = std::max(1.0f, (hov ? kWireHoverThickness : kWireThickness) * zoom_);
+            wire_th = std::max(1.0f, (hov ? style_.wire_hover_thickness : style_.wire_thickness) * zoom_);
 
         if (is_param_wire) {
             float a_param = (hov || sel) ? 0.6f : 0.35f;
@@ -1150,6 +1150,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         file_button_rects_.push_back({px, py, panel_w, btn_h,
                                       single_selected_id(), pd.name});
         py += btn_h + 6;
+        layout.end_param(py - start_y);
         return;
     }
 
@@ -2420,10 +2421,10 @@ void NodeGraphUI::draw_preview_wire(Renderer2D& tr) {
 
     if (!wire_from_is_output_) {
         // Param source: thin dashed preview
-        float wire_th = std::max(1.0f, 1.5f * zoom_);
+        float wire_th = std::max(1.0f, style_.wire_param_thickness * zoom_);
         draw_dashed_wire(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th, 1.0f, 1.0f, 1.0f, 0.3f);
     } else {
-        float wire_th = std::max(1.0f, kWireThickness * zoom_);
+        float wire_th = std::max(1.0f, style_.wire_thickness * zoom_);
         traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
             [&](float x0, float y0, float x1, float y1) {
                 tr.draw_line(x0, y0, x1, y1, wire_th, 1.0f, 1.0f, 1.0f, 0.5f);
@@ -3095,6 +3096,11 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
         smoothed_mem_mb_ = mem_mb;
         memory_history_.push(mem_mb);
     }
+    constexpr int kPerfDisplayInterval = 30;  // update display text ~2x/sec at 60fps
+    if (perf_frame_counter_ == 0 || perf_frame_counter_ % kPerfDisplayInterval == 0) {
+        display_fps_ = smoothed_fps_;
+        display_ms_ = smoothed_ms_;
+    }
     perf_frame_counter_++;
 
     float fw = static_cast<float>(win_w_);
@@ -3112,27 +3118,31 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
     // --- FPS ---
     // Color-code: green >= 55, yellow >= 30, red < 30
     float fr, fg, fb;
-    if (smoothed_fps_ >= 55.0f) {
+    if (display_fps_ >= 55.0f) {
         fr = kPerfFpsColor[0]; fg = kPerfFpsColor[1]; fb = kPerfFpsColor[2];
-    } else if (smoothed_fps_ >= 30.0f) {
+    } else if (display_fps_ >= 30.0f) {
         fr = 0.95f; fg = 0.85f; fb = 0.30f; // yellow
     } else {
         fr = 0.95f; fg = 0.35f; fb = 0.30f; // red
     }
 
     char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.0f FPS", smoothed_fps_);
-    tr.draw_text(x, text_y, buf, fr, fg, fb);
-    x += tr.text_width(buf) + kPerfSepMargin;
+    std::snprintf(buf, sizeof(buf), "%.0f FPS", display_fps_);
+    float fps_field_w = tr.text_width("000 FPS");
+    float fps_text_w = tr.text_width(buf);
+    tr.draw_text(x + (fps_field_w - fps_text_w), text_y, buf, fr, fg, fb);
+    x += fps_field_w + kPerfSepMargin;
 
     // Separator
     tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
     x += kPerfSepW + kPerfSepMargin;
 
     // --- Frame time ---
-    std::snprintf(buf, sizeof(buf), "%.1f ms", smoothed_ms_);
-    tr.draw_text(x, text_y, buf, kPerfMsColor[0], kPerfMsColor[1], kPerfMsColor[2]);
-    x += tr.text_width(buf) + kPerfSepMargin;
+    std::snprintf(buf, sizeof(buf), "%.1f ms", display_ms_);
+    float ms_field_w = tr.text_width("000.0 ms");
+    float ms_text_w = tr.text_width(buf);
+    tr.draw_text(x + (ms_field_w - ms_text_w), text_y, buf, kPerfMsColor[0], kPerfMsColor[1], kPerfMsColor[2]);
+    x += ms_field_w + kPerfSepMargin;
 
     // Separator
     tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);

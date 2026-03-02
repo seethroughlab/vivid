@@ -35,6 +35,9 @@ struct UIStyle {
     // Wires
     std::array<float,4> wire_color;
     std::array<float,4> wire_sel_color;
+    float wire_thickness       = 1.0f;
+    float wire_hover_thickness = 3.0f;
+    float wire_param_thickness = 1.5f;
 
     // Slider
     std::array<float,3> slider_track;

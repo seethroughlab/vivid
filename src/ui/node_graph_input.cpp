@@ -589,27 +589,15 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         }
         // V: toggle session grid
         if (key == GLFW_KEY_V && action == GLFW_PRESS) {
-            session_grid_open_ = !session_grid_open_;
-            if (!session_grid_open_) {
-                session_editing_name_ = false;
-            }
+            toggle_session_grid();
         }
         // M: toggle MIDI map mode
         if (key == GLFW_KEY_M && action == GLFW_PRESS) {
-            midi_map_mode_ = !midi_map_mode_;
-            if (!midi_map_mode_) {
-                midi_map_waiting_ = false;
-                editing_midi_range_ = false;
-            }
+            toggle_midi_map_mode();
         }
         // Delete selected nodes (Delete or Backspace)
         if ((key == GLFW_KEY_DELETE || key == GLFW_KEY_BACKSPACE) && action == GLFW_PRESS) {
-            if (!selected_node_ids_.empty()) {
-                auto ids_copy = selected_node_ids_;
-                for (const auto& id : ids_copy)
-                    commands_.remove_node(id);
-                selected_node_ids_.clear();
-            }
+            delete_selected();
         }
         return;
     }
@@ -2172,6 +2160,45 @@ void NodeGraphUI::update_patch_drag() {
         patch_dragging_ = false;
         patch_drag_from_idx_ = -1;
     }
+}
+
+// -----------------------------------------------------------------------
+// Public action methods (used by menu bar callbacks and bare-key shortcuts)
+// -----------------------------------------------------------------------
+void NodeGraphUI::toggle_session_grid() {
+    session_grid_open_ = !session_grid_open_;
+    if (!session_grid_open_)
+        session_editing_name_ = false;
+}
+
+void NodeGraphUI::toggle_midi_map_mode() {
+    midi_map_mode_ = !midi_map_mode_;
+    if (!midi_map_mode_) {
+        midi_map_waiting_ = false;
+        editing_midi_range_ = false;
+    }
+}
+
+void NodeGraphUI::delete_selected() {
+    if (selected_node_ids_.empty()) return;
+    auto ids_copy = selected_node_ids_;
+    for (const auto& id : ids_copy)
+        commands_.remove_node(id);
+    selected_node_ids_.clear();
+}
+
+void NodeGraphUI::open_chooser() {
+    if (!snap_valid_ || snap_.operator_types.empty()) return;
+    // Center chooser in visible graph area
+    float center_sx = graph_right() * 0.5f;
+    float center_sy = static_cast<float>(win_h_) * 0.5f;
+    chooser_cursor_gx_ = sx_to_gx(center_sx);
+    chooser_cursor_gy_ = sy_to_gy(center_sy);
+    chooser_filter_.clear();
+    chooser_sel_ = 0;
+    chooser_scroll_ = 0;
+    rebuild_chooser_items();
+    chooser_open_ = true;
 }
 
 } // namespace vivid::ui

@@ -80,6 +80,16 @@ public:
     void toggle_visible() { visible_ = !visible_; }
     bool visible() const { return visible_; }
 
+    // Graph actions (used by menu bar and bare-key shortcuts)
+    void toggle_session_grid();
+    void toggle_midi_map_mode();
+    void delete_selected();
+    void open_chooser();  // centers chooser in visible graph area
+
+    // State queries (used by menu bar for checkmarks)
+    bool session_grid_open() const { return session_grid_open_; }
+    bool midi_map_mode() const { return midi_map_mode_; }
+
     // Called by main loop each frame with delta time
     void set_dt(float dt) { dt_ = dt; }
 
@@ -637,6 +647,8 @@ private:
     float dt_ = 0.0f;
     float smoothed_fps_ = 0.0f;
     float smoothed_ms_ = 0.0f;
+    float display_fps_ = 0.0f;
+    float display_ms_ = 0.0f;
     float smoothed_mem_mb_ = 0.0f;
     uint64_t perf_frame_counter_ = 0;
 

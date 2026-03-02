@@ -88,8 +88,6 @@ static constexpr float kGridLineAlpha = 0.06f;
 
 // Wire rendering
 static constexpr float kWireHoverBright = 1.3f;
-static constexpr float kWireThickness = 3.0f;
-static constexpr float kWireHoverThickness = 5.0f;
 
 // Cross-domain wire dashing
 static constexpr float kDashOn = 8.0f;
