@@ -190,17 +190,14 @@ static std::string gpu_shader_template() {
 
 // Insertion markers: each domain's operators are added before the next section's comment.
 // Control → before "# --- GPU operator plugins ---"
-// GPU     → before "# --- Audio operator plugins ---"
-//   (but movie_file_in is a special case after normal GPU operators,
-//    so GPU inserts before "# --- Movie File In")
-// Audio   → before "# --- Glitch operator plugins ---"
-//   (glitch operators are a subsection of audio, so new audio operators go before glitch)
+// GPU     → before "# --- Movie File In"
+// Audio   → before "# --- Movie File Audio In"
 
 static std::string cmake_insertion_marker(VividDomain domain) {
     switch (domain) {
         case VIVID_DOMAIN_CONTROL: return "# --- GPU operator plugins ---";
         case VIVID_DOMAIN_GPU:     return "# --- Movie File In";
-        case VIVID_DOMAIN_AUDIO:   return "# --- Glitch operator plugins ---";
+        case VIVID_DOMAIN_AUDIO:   return "# --- Movie File Audio In";
         default: return "";
     }
 }

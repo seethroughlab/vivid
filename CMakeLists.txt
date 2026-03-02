@@ -222,16 +222,6 @@ add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp)
 add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp)
 add_vivid_operator(plexus_synth   operators/audio/plexus_synth/plexus_synth.cpp)
 
-# --- Glitch operator plugins ---
-add_vivid_operator(stutter        operators/audio/stutter/stutter.cpp)
-add_vivid_operator(tape_stop      operators/audio/tape_stop/tape_stop.cpp)
-add_vivid_operator(beat_repeat    operators/audio/beat_repeat/beat_repeat.cpp)
-add_vivid_operator(reverse        operators/audio/reverse/reverse.cpp)
-add_vivid_operator(scratch        operators/audio/scratch/scratch.cpp)
-add_vivid_operator(stretch        operators/audio/stretch/stretch.cpp)
-add_vivid_operator(freq_shift     operators/audio/freq_shift/freq_shift.cpp)
-add_vivid_operator(glitch         operators/audio/glitch/glitch.cpp)
-
 # --- Movie File Audio In (audio extraction from video files) ---
 if(APPLE)
     add_library(movie_file_audio_in MODULE
@@ -332,8 +322,6 @@ configure_file(graphs/mfi_displace_demo.json ${CMAKE_BINARY_DIR}/mfi_displace_de
 configure_file(graphs/mfi_composite_demo.json ${CMAKE_BINARY_DIR}/mfi_composite_demo.json COPYONLY)
 configure_file(graphs/mfi_kitchen_sink_demo.json ${CMAKE_BINARY_DIR}/mfi_kitchen_sink_demo.json COPYONLY)
 configure_file(graphs/mfi_av_sync_demo.json ${CMAKE_BINARY_DIR}/mfi_av_sync_demo.json COPYONLY)
-configure_file(graphs/breakbeat_demo.json ${CMAKE_BINARY_DIR}/breakbeat_demo.json COPYONLY)
-configure_file(graphs/glitch_demo.json ${CMAKE_BINARY_DIR}/glitch_demo.json COPYONLY)
 configure_file(graphs/arpeggiator_demo.json ${CMAKE_BINARY_DIR}/arpeggiator_demo.json COPYONLY)
 configure_file(graphs/gradient_demo.json ${CMAKE_BINARY_DIR}/gradient_demo.json COPYONLY)
 configure_file(graphs/hsv_demo.json ${CMAKE_BINARY_DIR}/hsv_demo.json COPYONLY)
@@ -454,6 +442,7 @@ add_executable(test_control_server
     src/runtime/system_midi.cpp
     src/runtime/package_manager.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/package_catalog.cpp
     src/runtime/platform.cpp
 )
 target_include_directories(test_control_server PRIVATE src)
@@ -739,8 +728,7 @@ add_dependencies(test_demo_graphs
     # audio
     oscillator gain drum_kick drum_snare drum_hihat drum_clap
     drum_tom drum_cymbal wavetable_synth spread_adsr spread_lfo
-    reverb delay bitcrush distortion plexus_synth stutter tape_stop
-    beat_repeat reverse scratch stretch freq_shift glitch
+    reverb delay bitcrush distortion plexus_synth
     movie_file_audio_in
     webcam_in time_machine
 )

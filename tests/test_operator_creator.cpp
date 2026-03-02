@@ -68,7 +68,7 @@ int main() {
                 << "# --- Audio operator plugins ---\n"
                 << "add_vivid_operator(gain operators/audio/gain/gain.cpp)\n"
                 << "\n"
-                << "# --- Glitch operator plugins ---\n";
+                << "# --- Movie File Audio In\n";
         }
 
         auto result = vivid::OperatorCreator::create("my_op", VIVID_DOMAIN_CONTROL, tmp);
@@ -111,7 +111,7 @@ int main() {
             std::ofstream ofs(tmp + "/CMakeLists.txt");
             ofs << "# --- Audio operator plugins ---\n"
                 << "\n"
-                << "# --- Glitch operator plugins ---\n";
+                << "# --- Movie File Audio In\n";
         }
 
         auto result = vivid::OperatorCreator::create("my_synth", VIVID_DOMAIN_AUDIO, tmp);

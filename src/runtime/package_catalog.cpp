@@ -12,7 +12,7 @@
 namespace vivid {
 
 static constexpr const char* kCatalogURL =
-    "https://raw.githubusercontent.com/vivid-project/package-index/main/packages.json";
+    "https://raw.githubusercontent.com/seethroughlab/package-index/main/packages.json";
 
 static constexpr int kCacheTTLSeconds = 3600;  // 1 hour
 
