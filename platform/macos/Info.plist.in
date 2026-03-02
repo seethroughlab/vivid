@@ -21,5 +21,7 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Vivid uses the microphone for audio input.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Vivid uses the camera for video input.</string>
 </dict>
 </plist>
