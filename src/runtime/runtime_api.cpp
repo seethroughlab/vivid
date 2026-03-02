@@ -869,10 +869,10 @@ void RuntimeAPI::tick_state_presets() {
         if (oi == sm_ns->output_port_indices.end()) continue;
         float current_state = sm_ns->output_values[oi->second];
 
-        // Phase 1: detect state change
-        auto& prev = prev_sm_state_[spm.state_machine_node];
-        if (current_state != prev) {
-            prev = current_state;
+        // Phase 1: detect state change (use -1 sentinel so initial state 0 is detected)
+        auto [prev_it, first_seen] = prev_sm_state_.emplace(spm.state_machine_node, -1.0f);
+        if (current_state != prev_it->second) {
+            prev_it->second = current_state;
 
             int state_idx = static_cast<int>(current_state);
             if (state_idx < 0 || state_idx >= static_cast<int>(spm.state_presets.size()))
@@ -957,9 +957,21 @@ void RuntimeAPI::tick_state_presets() {
             tns->generation++;
         }
 
-        // Finalize when crossfade completes
+        // Finalize when crossfade completes: snap params to exact target values
         if (xfade_t >= 1.0f) {
             for (auto& [target_node, cs] : acit->second.targets) {
+                NodeState* tns = scheduler_.find_node_mut(target_node);
+                if (tns) {
+                    NodeDef* ndef = graph_.find_node(target_node);
+                    for (const auto& [pname, target_val] : cs.target_params) {
+                        auto pi = tns->param_indices.find(pname);
+                        if (pi != tns->param_indices.end()) {
+                            tns->param_values[pi->second] = target_val;
+                            if (ndef) ndef->params[pname] = target_val;
+                        }
+                    }
+                    tns->generation++;
+                }
                 active_presets_[target_node] = cs.target_preset_name;
             }
             active_crossfades_.erase(acit);
@@ -986,12 +998,20 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
     const auto& path = graph_.source_path();
     if (path.empty()) return {false, "no source path to reload from"};
 
-    // Save params before reload
+    // Save params, string params, and lock flags before reload
     std::unordered_map<std::string, std::unordered_map<std::string, float>> saved_params;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> saved_string_params;
+    std::unordered_map<std::string, std::unordered_map<std::string, uint8_t>> saved_locks;
     for (const auto& ns : scheduler_.nodes()) {
         auto& sp = saved_params[ns.node_id];
         for (const auto& [name, idx] : ns.param_indices) {
             sp[name] = ns.param_values[idx];
+            if (ns.param_lock_flags[idx] != PARAM_LOCK_NONE)
+                saved_locks[ns.node_id][name] = ns.param_lock_flags[idx];
+        }
+        auto& ssp = saved_string_params[ns.node_id];
+        for (const auto& [name, idx] : ns.file_param_indices) {
+            ssp[name] = ns.file_param_storage[idx];
         }
     }
 
@@ -1012,6 +1032,36 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
         has_gpu_ops = false;
         has_audio = false;
         return {false, "rebuild failed after reload"};
+    }
+
+    // Restore saved params to rebuilt nodes
+    for (auto& ns : scheduler_.nodes_mut()) {
+        auto sit = saved_params.find(ns.node_id);
+        if (sit != saved_params.end()) {
+            for (const auto& [pname, pval] : sit->second) {
+                auto pi = ns.param_indices.find(pname);
+                if (pi != ns.param_indices.end())
+                    ns.param_values[pi->second] = pval;
+            }
+        }
+        auto ssit = saved_string_params.find(ns.node_id);
+        if (ssit != saved_string_params.end()) {
+            for (const auto& [pname, pval] : ssit->second) {
+                auto fi = ns.file_param_indices.find(pname);
+                if (fi != ns.file_param_indices.end()) {
+                    ns.file_param_storage[fi->second] = pval;
+                    ns.file_param_ptrs[fi->second] = ns.file_param_storage[fi->second].c_str();
+                }
+            }
+        }
+        auto lit = saved_locks.find(ns.node_id);
+        if (lit != saved_locks.end()) {
+            for (const auto& [pname, flags] : lit->second) {
+                auto pi = ns.param_indices.find(pname);
+                if (pi != ns.param_indices.end())
+                    ns.param_lock_flags[pi->second] = flags;
+            }
+        }
     }
 
     has_gpu_ops = scheduler_.has_gpu_operators();
