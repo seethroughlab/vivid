@@ -16,6 +16,7 @@
 #include <ixwebsocket/IXHttpServer.h>
 #include <deque>
 #include <future>
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -110,6 +111,12 @@ static std::string json_err(const std::string& msg) {
 
 static std::string command_result_to_json(const CommandResult& r) {
     return r.ok ? json_ok_msg(r.message) : json_err(r.message);
+}
+
+static bool is_safe_package_name(const std::string& name) {
+    return name.find('/') == std::string::npos &&
+           name.find('\\') == std::string::npos &&
+           name.find("..") == std::string::npos;
 }
 
 // ---------------------------------------------------------------------------
@@ -938,7 +945,9 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 result = json_err("missing 'name'");
             else {
                 std::string name = yyjson_get_str(name_v);
-                if (!package_manager->is_installed(name)) {
+                if (!is_safe_package_name(name)) {
+                    result = json_err("invalid package name");
+                } else if (!package_manager->is_installed(name)) {
                     result = json_err("package not installed: " + name);
                 } else {
                     auto readme_path = std::filesystem::path(PackageManager::packages_dir()) / name / "README.md";
@@ -968,7 +977,9 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 result = json_err("missing 'name'");
             else {
                 std::string name = yyjson_get_str(name_v);
-                if (!package_manager->is_installed(name)) {
+                if (!is_safe_package_name(name)) {
+                    result = json_err("invalid package name");
+                } else if (!package_manager->is_installed(name)) {
                     result = json_err("package not installed: " + name);
                 } else {
                     auto graphs_dir = std::filesystem::path(PackageManager::packages_dir()) / name / "graphs";
@@ -976,8 +987,9 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     yyjson_mut_val* res = yyjson_mut_obj(rdoc);
                     yyjson_mut_obj_add_strcpy(rdoc, res, "name", name.c_str());
                     yyjson_mut_val* arr = yyjson_mut_arr(rdoc);
-                    if (std::filesystem::is_directory(graphs_dir)) {
-                        for (const auto& entry : std::filesystem::directory_iterator(graphs_dir)) {
+                    std::error_code ec;
+                    if (std::filesystem::is_directory(graphs_dir, ec)) {
+                        for (const auto& entry : std::filesystem::directory_iterator(graphs_dir, ec)) {
                             if (!entry.is_regular_file()) continue;
                             if (entry.path().extension() != ".json") continue;
                             yyjson_mut_val* ex = yyjson_mut_obj(rdoc);
@@ -1021,7 +1033,9 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 std::string name = yyjson_get_str(name_v);
                 std::string filename = yyjson_get_str(file_v);
                 // Path traversal prevention
-                if (filename.find('/') != std::string::npos ||
+                if (!is_safe_package_name(name)) {
+                    result = json_err("invalid package name");
+                } else if (filename.find('/') != std::string::npos ||
                     filename.find('\\') != std::string::npos ||
                     filename.find("..") != std::string::npos) {
                     result = json_err("invalid filename");
@@ -1187,7 +1201,7 @@ struct ControlServer::Impl {
     ix::HttpServer server;
     std::mutex queue_mutex;
     std::deque<PendingRequest> queue;
-    bool running = false;
+    std::atomic<bool> running{false};
 
     Impl(int port) : server(port, "127.0.0.1") {}
 };
