@@ -1,6 +1,7 @@
 #include "runtime/graph.h"
 #include "yyjson.h"
 #include <cstdio>
+#include <cstring>
 #include <algorithm>
 
 namespace vivid {
@@ -14,6 +15,48 @@ static bool split_address(const char* addr, std::string& node, std::string& port
 }
 
 bool Graph::load(const char* path) {
+    source_path_ = path;
+
+    yyjson_read_err err;
+    yyjson_doc* doc = yyjson_read_file(path, 0, nullptr, &err);
+    if (!doc) {
+        std::fprintf(stderr, "[vivid] Graph: failed to read %s: %s\n", path, err.msg);
+        return false;
+    }
+
+    bool ok = parse_doc(doc);
+    yyjson_doc_free(doc);
+
+    if (ok) {
+        std::fprintf(stderr, "[vivid] Loaded graph: %s (%zu nodes, %zu connections)\n",
+            path, nodes_.size(), connections_.size());
+    }
+    return ok;
+}
+
+bool Graph::load_from_string(const char* json, size_t len) {
+    source_path_.clear();
+
+    if (len == 0) len = std::strlen(json);
+
+    yyjson_read_err err;
+    yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(json), len, 0, nullptr, &err);
+    if (!doc) {
+        std::fprintf(stderr, "[vivid] Graph: failed to parse JSON string: %s\n", err.msg);
+        return false;
+    }
+
+    bool ok = parse_doc(doc);
+    yyjson_doc_free(doc);
+
+    if (ok) {
+        std::fprintf(stderr, "[vivid] Loaded graph from string (%zu nodes, %zu connections)\n",
+            nodes_.size(), connections_.size());
+    }
+    return ok;
+}
+
+bool Graph::parse_doc(yyjson_doc* doc) {
     nodes_.clear();
     connections_.clear();
     midi_mappings_.clear();
@@ -23,14 +66,6 @@ bool Graph::load(const char* path) {
     state_preset_mappings_.clear();
     active_variation_ = -1;
     quantize_clock_node_.clear();
-    source_path_ = path;
-
-    yyjson_read_err err;
-    yyjson_doc* doc = yyjson_read_file(path, 0, nullptr, &err);
-    if (!doc) {
-        std::fprintf(stderr, "[vivid] Graph: failed to read %s: %s\n", path, err.msg);
-        return false;
-    }
 
     yyjson_val* root = yyjson_doc_get_root(doc);
 
@@ -96,7 +131,6 @@ bool Graph::load(const char* path) {
             yyjson_val* type_val = yyjson_obj_get(val, "type");
             if (!type_val || !yyjson_is_str(type_val)) {
                 std::fprintf(stderr, "[vivid] Graph: node '%s' missing type\n", node.id.c_str());
-                yyjson_doc_free(doc);
                 return false;
             }
             node.type = yyjson_get_str(type_val);
@@ -336,10 +370,6 @@ bool Graph::load(const char* path) {
         }
     }
 
-    yyjson_doc_free(doc);
-
-    std::fprintf(stderr, "[vivid] Loaded graph: %s (%zu nodes, %zu connections)\n",
-        path, nodes_.size(), connections_.size());
     return true;
 }
 

@@ -697,6 +697,54 @@ int main() {
         check(g.find_state_mapping("sm2") != nullptr, "sm2 mapping unaffected");
     }
 
+    // =====================================================================
+    // Test 21: load_from_string
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 21: load_from_string ===\n");
+
+        const char* json = R"({
+            "nodes": {
+                "osc": { "type": "Oscillator", "params": { "frequency": 440.0 } },
+                "gain": { "type": "Gain", "params": { "level": 0.8 } }
+            },
+            "connections": [
+                { "from": "osc/output", "to": "gain/input", "scale": 0.5 }
+            ]
+        })";
+
+        vivid::Graph g;
+        check(g.load_from_string(json), "load_from_string succeeds");
+        check(g.nodes().size() == 2, "2 nodes loaded from string");
+        check(g.connections().size() == 1, "1 connection loaded from string");
+        check(g.source_path().empty(), "source_path is empty for string load");
+
+        const auto* osc = g.find_node("osc");
+        check(osc != nullptr, "osc node found");
+        if (osc) {
+            check(osc->type == "Oscillator", "osc type = Oscillator");
+            auto it = osc->params.find("frequency");
+            check(it != osc->params.end(), "frequency param exists");
+            if (it != osc->params.end())
+                check_float(it->second, 440.0f, "frequency = 440.0");
+        }
+
+        const auto& conn = g.connections()[0];
+        check(conn.from_node == "osc" && conn.from_port == "output", "connection from osc/output");
+        check(conn.to_node == "gain" && conn.to_port == "input", "connection to gain/input");
+        check_float(conn.scale, 0.5f, "connection scale = 0.5");
+
+        // Also test with explicit length
+        vivid::Graph g2;
+        std::string json_str = json;
+        check(g2.load_from_string(json_str.c_str(), json_str.size()), "load_from_string with explicit len");
+        check(g2.nodes().size() == 2, "2 nodes with explicit len");
+
+        // Test failure case
+        vivid::Graph g3;
+        check(!g3.load_from_string("{ bad json !!!"), "load_from_string fails on bad JSON");
+    }
+
     // --- Cleanup temp files ---
     std::remove("/tmp/vivid_test_valid.json");
     std::remove("/tmp/vivid_test_layout.json");

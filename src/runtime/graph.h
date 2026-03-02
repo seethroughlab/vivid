@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <cmath>
 
+struct yyjson_doc;
+
 namespace vivid {
 
 struct NodeDef {
@@ -76,6 +78,7 @@ struct StatePresetMapping {
 class Graph {
 public:
     bool load(const char* path);
+    bool load_from_string(const char* json, size_t len = 0);
     const std::vector<NodeDef>& nodes() const { return nodes_; }
     const std::vector<ConnectionDef>& connections() const { return connections_; }
     const std::vector<MidiMappingDef>& midi_mappings() const { return midi_mappings_; }
@@ -160,6 +163,8 @@ public:
     bool save(const char* path) const;
 
 private:
+    bool parse_doc(yyjson_doc* doc);
+
     std::vector<NodeDef> nodes_;
     std::vector<ConnectionDef> connections_;
     std::vector<MidiMappingDef> midi_mappings_;
