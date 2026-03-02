@@ -1,0 +1,15 @@
+{
+  "nodes": {
+    "browser1": {
+      "type": "Browser",
+      "params": {},
+      "string_params": {
+        "url": "file:///Users/jeff/Developer/vivid-cef/examples/interactive.html"
+      }
+    },
+    "vout": { "type": "video_out", "params": {} }
+  },
+  "connections": [
+    { "from": "browser1/texture", "to": "vout/input" }
+  ]
+}

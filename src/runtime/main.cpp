@@ -455,6 +455,9 @@ struct WindowUserData {
     double raw_mouse_x = 0.0, raw_mouse_y = 0.0;  // window coords
     int buttons_held = 0;   // bitmask: bit 0=left, 1=right, 2=middle
     int current_mods = 0;
+
+    // Drag-and-drop graph loading
+    std::string pending_drop_path;
 };
 
 static void char_callback(GLFWwindow* w, unsigned int codepoint) {
@@ -566,6 +569,18 @@ static void scroll_callback(GLFWwindow* w, double xoffset, double yoffset) {
         ev.mouse_y = static_cast<float>(ud->raw_mouse_y);
         ev.modifiers = ud->current_mods;
         ud->pending_events.push_back(ev);
+    }
+}
+
+static void drop_callback(GLFWwindow* w, int count, const char** paths) {
+    auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
+    if (!ud || count < 1) return;
+    for (int i = 0; i < count; ++i) {
+        std::string_view p(paths[i]);
+        if (p.size() > 5 && p.substr(p.size() - 5) == ".json") {
+            ud->pending_drop_path = paths[i];
+            return;
+        }
     }
 }
 
@@ -1063,6 +1078,7 @@ int main(int argc, char* argv[]) {
     glfwSetCursorPosCallback(window, cursor_pos_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
     glfwSetScrollCallback(window, scroll_callback);
+    glfwSetDropCallback(window, drop_callback);
 
     // --- Hot-reload ---
     vivid::FileWatcher file_watcher;
@@ -1287,6 +1303,20 @@ int main(int argc, char* argv[]) {
 
         // Skip frame if minimized
         if (fb_w == 0 || fb_h == 0) return true;
+
+        // Handle drag-and-drop graph loading
+        if (!window_user_data.pending_drop_path.empty()) {
+            std::string path = std::move(window_user_data.pending_drop_path);
+            window_user_data.pending_drop_path.clear();
+            if (graph.load(path.c_str())) {
+                registry.load_for_graph(graph);
+                auto result = runtime_api.reload(has_gpu_ops, has_audio);
+                if (result.ok) graph_loaded = true;
+                std::fprintf(stderr, "[vivid] Drop: %s\n", result.message.c_str());
+            } else {
+                std::fprintf(stderr, "[vivid] Drop: failed to load %s\n", path.c_str());
+            }
+        }
 
         // Reconfigure GPU surface if framebuffer size changed.
         if (fb_w != fb_width || fb_h != fb_height) {
