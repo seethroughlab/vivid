@@ -1,6 +1,7 @@
 #ifdef __APPLE__
 #include "runtime/macos_frame_timer.h"
 #include <CoreFoundation/CoreFoundation.h>
+#include <cstdio>
 
 namespace vivid {
 
@@ -32,6 +33,11 @@ void macos_run_frame_loop(std::function<bool()> poll_events,
         },
         &timer_ctx
     );
+
+    if (!ctx.timer) {
+        std::fprintf(stderr, "[vivid] CFRunLoopTimerCreate failed\n");
+        return;
+    }
 
     // Register timer for all modes we need it to fire in.
     // kCFRunLoopCommonModes does NOT include tracking/modal on macOS (unlike iOS).

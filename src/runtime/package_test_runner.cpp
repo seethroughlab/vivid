@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdio>
 #include <filesystem>
+#include <sys/wait.h>
 
 namespace vivid {
 

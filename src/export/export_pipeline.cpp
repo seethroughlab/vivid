@@ -13,6 +13,10 @@
 
 namespace vivid {
 
+static std::string quote(const std::string& s) {
+    return "'" + s + "'";
+}
+
 static bool str_ends_with(const std::string& s, const std::string& suffix) {
     return s.size() >= suffix.size() &&
            s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
@@ -91,7 +95,8 @@ bool ExportPipeline::load_manifest() {
             size_t idx, max;
             yyjson_val* s;
             yyjson_arr_foreach(sources, idx, max, s) {
-                entry.sources.push_back(yyjson_get_str(s));
+                if (yyjson_is_str(s))
+                    entry.sources.push_back(yyjson_get_str(s));
             }
         }
 
@@ -100,7 +105,8 @@ bool ExportPipeline::load_manifest() {
             size_t idx, max;
             yyjson_val* l;
             yyjson_arr_foreach(libs, idx, max, l) {
-                entry.extra_libs.push_back(yyjson_get_str(l));
+                if (yyjson_is_str(l))
+                    entry.extra_libs.push_back(yyjson_get_str(l));
             }
         }
 
@@ -109,7 +115,8 @@ bool ExportPipeline::load_manifest() {
             size_t idx, max;
             yyjson_val* f;
             yyjson_arr_foreach(fws, idx, max, f) {
-                entry.frameworks.push_back(yyjson_get_str(f));
+                if (yyjson_is_str(f))
+                    entry.frameworks.push_back(yyjson_get_str(f));
             }
         }
 
@@ -118,7 +125,8 @@ bool ExportPipeline::load_manifest() {
             size_t idx, max;
             yyjson_val* a;
             yyjson_arr_foreach(arcs, idx, max, a) {
-                entry.objc_arc.push_back(yyjson_get_str(a));
+                if (yyjson_is_str(a))
+                    entry.objc_arc.push_back(yyjson_get_str(a));
             }
         }
 
@@ -127,7 +135,8 @@ bool ExportPipeline::load_manifest() {
             size_t idx, max;
             yyjson_val* d;
             yyjson_arr_foreach(incs, idx, max, d) {
-                entry.include_dirs.push_back(yyjson_get_str(d));
+                if (yyjson_is_str(d))
+                    entry.include_dirs.push_back(yyjson_get_str(d));
             }
         }
 
@@ -507,7 +516,7 @@ bool ExportPipeline::build() {
     std::string build_path = export_dir_ + "/build";
 
     // Configure
-    std::string configure_cmd = "cmake -S " + export_dir_ + " -B " + build_path +
+    std::string configure_cmd = "cmake -S " + quote(export_dir_) + " -B " + quote(build_path) +
                                 " -DCMAKE_BUILD_TYPE=Release 2>&1";
     std::fprintf(stderr, "[export] Configuring: %s\n", configure_cmd.c_str());
     int rc = std::system(configure_cmd.c_str());
@@ -517,7 +526,7 @@ bool ExportPipeline::build() {
     }
 
     // Build
-    std::string build_cmd = "cmake --build " + build_path + " --config Release 2>&1";
+    std::string build_cmd = "cmake --build " + quote(build_path) + " --config Release 2>&1";
     std::fprintf(stderr, "[export] Building: %s\n", build_cmd.c_str());
     rc = std::system(build_cmd.c_str());
     if (rc != 0) {
@@ -541,15 +550,24 @@ bool ExportPipeline::copy_output(const std::string& output_name) {
     }
 
     // Copy binary
+    std::error_code ec;
     std::filesystem::copy(src_binary, output_name,
-                          std::filesystem::copy_options::overwrite_existing);
+                          std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec) {
+        std::fprintf(stderr, "[export] Failed to copy binary: %s\n", ec.message().c_str());
+        return false;
+    }
 
     // Make executable
     std::filesystem::permissions(output_name,
                                 std::filesystem::perms::owner_exec |
                                 std::filesystem::perms::group_exec |
                                 std::filesystem::perms::others_exec,
-                                std::filesystem::perm_options::add);
+                                std::filesystem::perm_options::add, ec);
+    if (ec) {
+        std::fprintf(stderr, "[export] Failed to set permissions: %s\n", ec.message().c_str());
+        return false;
+    }
 
     // Copy Dawn dylib if present
     for (const auto& entry : std::filesystem::directory_iterator(build_path)) {
@@ -558,7 +576,11 @@ bool ExportPipeline::copy_output(const std::string& output_name) {
             (str_ends_with(fname, ".dylib") || str_ends_with(fname, ".so") || str_ends_with(fname, ".dll"))) {
             auto dst = std::filesystem::path(output_name).parent_path() / fname;
             std::filesystem::copy(entry.path(), dst,
-                                  std::filesystem::copy_options::overwrite_existing);
+                                  std::filesystem::copy_options::overwrite_existing, ec);
+            if (ec) {
+                std::fprintf(stderr, "[export] Failed to copy %s: %s\n", fname.c_str(), ec.message().c_str());
+                return false;
+            }
             std::fprintf(stderr, "[export] Copied %s\n", fname.c_str());
         }
     }

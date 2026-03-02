@@ -41,7 +41,7 @@ private:
     std::atomic<bool> running_{false};
     std::thread thread_;
 
-    // fd → (file_path, target_name). Protected by watch_mutex_.
+    // fd → (file_path, target_name) and last_event_time_. Protected by watch_mutex_.
     struct WatchEntry {
         std::string path;
         std::string target_name;

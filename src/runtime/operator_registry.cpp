@@ -122,7 +122,7 @@ static DeferredEntry deep_copy_descriptor(const VividOperatorDescriptor* src,
 
     // Build the owned descriptor
     std::string name_str = src->name ? src->name : "";
-    entry.desc.name = nullptr;  // will be set via param_names trick — actually store in a dedicated field
+    entry.desc.name = nullptr;  // set after emplace (points to stable map key)
     entry.desc.domain = src->domain;
     entry.desc.param_count = src->param_count;
     entry.desc.params = entry.params.data();

@@ -16,7 +16,7 @@ struct ReloadResult {
     std::string target_name;
     std::string staged_dylib_path;  // empty on failure
     std::string error_output;       // compiler errors on failure
-    bool success;
+    bool success = false;
 };
 
 class HotReloader {

@@ -30,6 +30,8 @@ void PackageCatalog::refresh() {
         error_.clear();
     }
 
+    // NOTE: PackageCatalog must outlive the detached thread (safe in practice —
+    // the catalog lives for the process lifetime).
     std::thread(&PackageCatalog::fetch_thread_fn, this).detach();
 }
 
@@ -238,10 +240,6 @@ bool PackageCatalog::load_cache(std::vector<CatalogEntry>& out) {
     std::string path = cache_path();
     if (!std::filesystem::exists(path)) return false;
 
-    // Check age
-    auto last_write = std::filesystem::last_write_time(path);
-    auto age = std::filesystem::file_time_type::clock::now() - last_write;
-    auto age_sec = std::chrono::duration_cast<std::chrono::seconds>(age).count();
     // Even if stale, still load as initial data (refresh will update)
 
     std::ifstream ifs(path);

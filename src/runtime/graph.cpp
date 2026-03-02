@@ -40,6 +40,7 @@ bool Graph::load_from_string(const char* json, size_t len) {
     if (len == 0) len = std::strlen(json);
 
     yyjson_read_err err;
+    // yyjson_read_opts takes char* but does not mutate without YYJSON_READ_INSITU
     yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(json), len, 0, nullptr, &err);
     if (!doc) {
         std::fprintf(stderr, "[vivid] Graph: failed to parse JSON string: %s\n", err.msg);

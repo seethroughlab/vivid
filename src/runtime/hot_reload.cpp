@@ -9,6 +9,10 @@
 
 namespace vivid {
 
+static std::string quote(const std::string& s) {
+    return "'" + s + "'";
+}
+
 HotReloader::HotReloader() = default;
 
 HotReloader::~HotReloader() {
@@ -93,7 +97,7 @@ void HotReloader::compile_thread() {
         }
 
         // Run cmake --build and capture output
-        std::string cmd = "cmake --build " + build_dir_ + " --target " + target + " 2>&1";
+        std::string cmd = "cmake --build " + quote(build_dir_) + " --target " + quote(target) + " 2>&1";
         std::string output;
         bool compile_ok = false;
 

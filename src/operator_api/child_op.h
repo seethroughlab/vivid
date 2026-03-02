@@ -202,16 +202,9 @@ private:
         for (auto& port : ports) {
             if (port.direction == VIVID_PORT_INPUT) {
                 input_name_to_index_[port.name] = in_idx;
-                if (port.type == VIVID_PORT_CONTROL_SPREAD) {
-                    // Track which input indices are spreads
-                    input_spread_indices_.push_back(in_idx);
-                }
                 in_idx++;
             } else {
                 output_name_to_index_[port.name] = out_idx;
-                if (port.type == VIVID_PORT_CONTROL_SPREAD) {
-                    output_spread_indices_.push_back(out_idx);
-                }
                 out_idx++;
             }
         }
@@ -242,8 +235,6 @@ private:
     std::vector<std::vector<float>> output_spreads_;
     std::vector<VividSpreadPort> c_input_spreads_;
     std::vector<VividSpreadPort> c_output_spreads_;
-    std::vector<uint32_t> input_spread_indices_;
-    std::vector<uint32_t> output_spread_indices_;
 };
 
 } // namespace vivid

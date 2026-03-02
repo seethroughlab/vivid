@@ -69,6 +69,7 @@ inline double harmonics_3(double phase, float amount) {
 // ---------------------------------------------------------------------------
 inline float ring_osc_bank(double* phases, const float* freqs, int count,
                            float pitch_mult, double inv_sr) {
+    if (count <= 0) return 0.0f;
     float sum = 0.0f;
     for (int r = 0; r < count; r++) {
         sum += phases[r] < 0.5 ? 1.0f : -1.0f;
