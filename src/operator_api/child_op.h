@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <string>
 #include <cassert>
+#include <cstdio>
 
 namespace vivid {
 
@@ -169,7 +170,14 @@ public:
 
         // Copy output spread lengths back (operator may have resized via length field)
         for (size_t i = 0; i < output_spreads_.size(); ++i) {
-            output_spreads_[i].resize(c_output_spreads_[i].length);
+            uint32_t len = c_output_spreads_[i].length;
+            uint32_t cap = c_output_spreads_[i].capacity;
+            if (len > cap) {
+                std::fprintf(stderr, "[vivid] ChildOp: output spread %zu wrote %u elements "
+                             "but capacity was %u, clamping\n", i, len, cap);
+                len = cap;
+            }
+            output_spreads_[i].resize(len);
         }
     }
 
