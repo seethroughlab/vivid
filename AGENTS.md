@@ -35,7 +35,6 @@ Read the relevant doc for your task:
 | Runtime, graph, operators, build | `docs/ARCHITECTURE.md` |
 | UI, widgets, layout, visual style | `docs/INTERFACE.md` |
 | LLM chat, MCP server, perception | `docs/LLM-INTEGRATION.md` |
-| Priorities, open questions | `docs/ROADMAP.md` |
 | Implementing a roadmap phase | §Legacy Reference below |
 
 ## Project Structure

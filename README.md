@@ -96,13 +96,12 @@ Control outputs can drive both GPU and Audio parameters. GPU and Audio operators
 
 - **[Product Requirements](docs/PRD.md)** — Vision, core principles, system architecture
 - **[Architecture](docs/ARCHITECTURE.md)** — Language choice, build system, operator contract, directory structure
-- **[Roadmap](docs/ROADMAP.md)** — Development phases across 6 tiers
 - **[Interface Design](docs/INTERFACE.md)** — UI architecture, visual style, node graph rendering
 - **[LLM Integration](docs/LLM-INTEGRATION.md)** — MCP server, the four LLM roles
 
 ## Status
 
-Active development. Core engine, node graph UI, 50+ operators, WGSL filter framework, and MCP server are complete. See the [Roadmap](docs/ROADMAP.md) for what's next.
+Active development. Core engine, node graph UI, 50+ operators, WGSL filter framework, and MCP server are complete.
 
 ---
 
