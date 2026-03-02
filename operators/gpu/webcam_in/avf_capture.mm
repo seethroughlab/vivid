@@ -97,6 +97,30 @@ bool AVFCapture::open(int device_index, int width, int height, float fps) {
     close();
 
     @autoreleasepool {
+        @try {
+
+        // Check camera authorization (inside @try — an improperly signed bundle
+        // can cause macOS TCC to throw an NSException here)
+        AVAuthorizationStatus auth = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+        if (auth == AVAuthorizationStatusDenied || auth == AVAuthorizationStatusRestricted) {
+            std::fprintf(stderr, "[webcam_in] Camera access denied. Grant camera permission in System Settings > Privacy & Security > Camera.\n");
+            return false;
+        }
+        if (auth == AVAuthorizationStatusNotDetermined) {
+            // Request access synchronously via semaphore
+            __block BOOL granted = NO;
+            dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+            [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL g) {
+                granted = g;
+                dispatch_semaphore_signal(sem);
+            }];
+            dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+            if (!granted) {
+                std::fprintf(stderr, "[webcam_in] Camera access not granted.\n");
+                return false;
+            }
+        }
+
         // Enumerate cameras
         AVCaptureDeviceDiscoverySession* discovery = [AVCaptureDeviceDiscoverySession
             discoverySessionWithDeviceTypes:@[
@@ -149,10 +173,15 @@ bool AVFCapture::open(int device_index, int width, int height, float fps) {
 
             if (best_format) {
                 device.activeFormat = best_format;
-                // Set frame rate
+                // Set frame rate only if within a supported range
                 CMTime duration = CMTimeMake(1, (int32_t)fps);
-                device.activeVideoMinFrameDuration = duration;
-                device.activeVideoMaxFrameDuration = duration;
+                for (AVFrameRateRange* range in best_format.videoSupportedFrameRateRanges) {
+                    if (fps >= range.minFrameRate && fps <= range.maxFrameRate) {
+                        device.activeVideoMinFrameDuration = duration;
+                        device.activeVideoMaxFrameDuration = duration;
+                        break;
+                    }
+                }
             }
             [device unlockForConfiguration];
         }
@@ -219,6 +248,13 @@ bool AVFCapture::open(int device_index, int width, int height, float fps) {
         std::fprintf(stderr, "[webcam_in] Opened: %s (%ux%u)\n",
                      impl_->dev_name.c_str(), impl_->frame_w, impl_->frame_h);
         return true;
+
+        } @catch (NSException* e) {
+            std::fprintf(stderr, "[webcam_in] ObjC exception: %s — %s\n",
+                         [[e name] UTF8String], [[e reason] UTF8String]);
+            impl_->cleanup();
+            return false;
+        }
     }
 }
 
@@ -232,6 +268,16 @@ void AVFCapture::close() {
 
 bool AVFCapture::is_open() const {
     return impl_->session != nil;
+}
+
+void AVFCapture::stop() {
+    if (impl_->session && impl_->session.isRunning)
+        [impl_->session stopRunning];
+}
+
+void AVFCapture::start() {
+    if (impl_->session && !impl_->session.isRunning)
+        [impl_->session startRunning];
 }
 
 bool AVFCapture::update() {
@@ -287,4 +333,32 @@ std::string AVFCapture::device_name() const { return impl_->dev_name; }
 // Factory
 std::unique_ptr<CaptureSource> create_avf_capture() {
     return std::make_unique<AVFCapture>();
+}
+
+// Camera enumeration
+std::vector<CameraInfo> enumerate_cameras() {
+    std::vector<CameraInfo> result;
+    @autoreleasepool {
+        @try {
+            AVCaptureDeviceDiscoverySession* discovery = [AVCaptureDeviceDiscoverySession
+                discoverySessionWithDeviceTypes:@[
+                    AVCaptureDeviceTypeBuiltInWideAngleCamera,
+                    AVCaptureDeviceTypeExternal]
+                mediaType:AVMediaTypeVideo
+                position:AVCaptureDevicePositionUnspecified];
+
+            AVCaptureDevice* defaultDev = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+            for (AVCaptureDevice* dev in discovery.devices) {
+                CameraInfo info;
+                info.device_id = std::string([dev.uniqueID UTF8String]);
+                info.name = std::string([dev.localizedName UTF8String]);
+                info.is_default = defaultDev && [dev.uniqueID isEqualToString:defaultDev.uniqueID];
+                result.push_back(std::move(info));
+            }
+        } @catch (NSException* e) {
+            std::fprintf(stderr, "[webcam_in] ObjC exception enumerating cameras: %s — %s\n",
+                         [[e name] UTF8String], [[e reason] UTF8String]);
+        }
+    }
+    return result;
 }

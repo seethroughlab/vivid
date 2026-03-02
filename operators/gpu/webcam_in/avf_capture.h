@@ -11,6 +11,8 @@ public:
     bool open(int device_index, int width, int height, float fps) override;
     void close() override;
     bool is_open() const override;
+    void stop() override;
+    void start() override;
     bool update() override;
     const uint8_t* pixel_data() const override;
     uint32_t width() const override;

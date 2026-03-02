@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 // =============================================================================
@@ -57,6 +58,16 @@ static void resolution_for_preset(int preset, int& w, int& h) {
     }
 }
 
+static float fps_for_preset(int preset) {
+    switch (preset) {
+        case 0:  return 15.0f;
+        case 1:  return 24.0f;
+        default:
+        case 2:  return 30.0f;
+        case 3:  return 60.0f;
+    }
+}
+
 // =============================================================================
 // WebcamIn Operator
 // =============================================================================
@@ -66,12 +77,49 @@ struct WebcamIn : vivid::OperatorBase {
     static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = true;
 
-    vivid::Param<int> device     {"device", 0, 0, 9};
+    vivid::Param<bool> active    {"active", true};
+    vivid::Param<int> device     {"device", 0, 0, 0};
     vivid::Param<int> resolution {"resolution", 1, {"480p", "720p", "1080p"}};
+    vivid::Param<int> fps        {"fps", 2, {"15", "24", "30", "60"}};
+
+    // Dynamic device name storage
+    std::vector<std::string>  device_names_;
+    std::vector<const char*>  device_name_ptrs_;
+
+    WebcamIn() {
+        auto cameras = enumerate_cameras();
+        if (cameras.empty()) {
+            device_names_.push_back("No camera");
+        } else {
+            int default_idx = 0;
+            for (size_t i = 0; i < cameras.size(); ++i) {
+                device_names_.push_back(cameras[i].name);
+                if (cameras[i].is_default) default_idx = static_cast<int>(i);
+            }
+            device.default_value = static_cast<float>(default_idx);
+            device.value = device.default_value;
+        }
+        device_name_ptrs_.reserve(device_names_.size());
+        for (auto& n : device_names_)
+            device_name_ptrs_.push_back(n.c_str());
+        device.choice_labels = device_name_ptrs_.data();
+        device.choice_count  = static_cast<uint32_t>(device_name_ptrs_.size());
+        device.max_value     = static_cast<float>(device_name_ptrs_.size() - 1);
+    }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        param_group(active,     "Capture");
+        param_group(device,     "Capture");
+        param_group(resolution, "Capture");
+        param_group(fps,        "Capture");
+
+        layout_row(resolution, 2, 0);
+        layout_row(fps,        2, 1);
+
+        out.push_back(&active);
         out.push_back(&device);
         out.push_back(&resolution);
+        out.push_back(&fps);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -90,32 +138,64 @@ struct WebcamIn : vivid::OperatorBase {
             }
         }
 
-        // Reopen capture if device or resolution changed
-        int cur_device = device.int_value();
-        int cur_res    = resolution.int_value();
-        if (cur_device != last_device_ || cur_res != last_resolution_) {
-            last_device_     = cur_device;
-            last_resolution_ = cur_res;
-            if (capture_) capture_->close();
-            capture_.reset();
+        bool is_active = active.bool_value();
+
+        // Handle active toggle
+        if (!is_active && was_active_) {
+            // Just toggled off — pause capture
+            if (capture_ && capture_->is_open())
+                capture_->stop();
+            was_active_ = false;
+        } else if (is_active && !was_active_) {
+            // Just toggled on — check if settings changed while inactive
+            int cur_device = device.int_value();
+            int cur_res    = resolution.int_value();
+            int cur_fps    = fps.int_value();
+            if (capture_ && (cur_device != last_device_ ||
+                             cur_res != last_resolution_ ||
+                             cur_fps != last_fps_)) {
+                capture_->close();
+                capture_.reset();
+                last_device_     = cur_device;
+                last_resolution_ = cur_res;
+                last_fps_        = cur_fps;
+            } else if (capture_ && capture_->is_open()) {
+                capture_->start();
+            }
+            was_active_ = true;
         }
 
-        // Open capture if needed
-        if (!capture_ || !capture_->is_open()) {
-            open_capture();
-        }
+        if (is_active) {
+            // Reopen capture if device, resolution, or fps changed
+            int cur_device = device.int_value();
+            int cur_res    = resolution.int_value();
+            int cur_fps    = fps.int_value();
+            if (cur_device != last_device_ || cur_res != last_resolution_ ||
+                cur_fps != last_fps_) {
+                last_device_     = cur_device;
+                last_resolution_ = cur_res;
+                last_fps_        = cur_fps;
+                if (capture_) capture_->close();
+                capture_.reset();
+            }
 
-        // Pull a new frame from the capture source
-        if (capture_ && capture_->is_open() && capture_->update()) {
-            const uint8_t* pixels = capture_->pixel_data();
-            uint32_t w = capture_->width();
-            uint32_t h = capture_->height();
-            if (pixels && w > 0 && h > 0) {
-                if (w != staging_width_ || h != staging_height_) {
-                    recreate_staging(gpu, w, h);
+            // Open capture if needed
+            if (!capture_ || !capture_->is_open()) {
+                open_capture();
+            }
+
+            // Pull a new frame from the capture source
+            if (capture_ && capture_->is_open() && capture_->update()) {
+                const uint8_t* pixels = capture_->pixel_data();
+                uint32_t w = capture_->width();
+                uint32_t h = capture_->height();
+                if (pixels && w > 0 && h > 0) {
+                    if (w != staging_width_ || h != staging_height_) {
+                        recreate_staging(gpu, w, h);
+                    }
+                    upload_pixels(gpu, pixels, w, h);
+                    has_frame_ = true;
                 }
-                upload_pixels(gpu, pixels, w, h);
-                has_frame_ = true;
             }
         }
 
@@ -163,7 +243,9 @@ private:
     std::unique_ptr<CaptureSource> capture_;
     int  last_device_     = -1;
     int  last_resolution_ = -1;
+    int  last_fps_        = -1;
     bool has_frame_       = false;
+    bool was_active_      = true;
 
     void open_capture() {
 #ifdef __APPLE__
@@ -173,7 +255,8 @@ private:
 
         int w, h;
         resolution_for_preset(last_resolution_, w, h);
-        if (!capture_->open(last_device_, w, h, 30.0f)) {
+        float target_fps = fps_for_preset(last_fps_);
+        if (!capture_->open(last_device_, w, h, target_fps)) {
             std::fprintf(stderr, "[webcam_in] Failed to open camera %d\n", last_device_);
             capture_.reset();
         }
