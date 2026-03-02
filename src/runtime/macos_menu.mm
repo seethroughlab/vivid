@@ -9,22 +9,64 @@ enum MenuTag : NSInteger {
     kMenuTagPreferences,
     kMenuTagExport,
     kMenuTagBrowsePackages,
+    // Edit
+    kMenuTagDeleteSelected,
+    // View
+    kMenuTagToggleUI,
+    kMenuTagToggleBezierWires,
+    kMenuTagToggleSessionGrid,
+    kMenuTagToggleMidiMap,
+    // Insert
+    kMenuTagAddNode,
 };
 
 @interface VividMenuDelegate : NSObject
 @property (nonatomic, assign) vivid::MenuCallbacks callbacks;
 - (void)menuAction:(NSMenuItem*)sender;
+- (BOOL)validateMenuItem:(NSMenuItem*)item;
 @end
 
 @implementation VividMenuDelegate
 
 - (void)menuAction:(NSMenuItem*)sender {
     switch (sender.tag) {
-        case kMenuTagOpen:        if (_callbacks.on_open)        _callbacks.on_open();        break;
-        case kMenuTagSave:        if (_callbacks.on_save)        _callbacks.on_save();        break;
-        case kMenuTagPreferences: if (_callbacks.on_preferences) _callbacks.on_preferences(); break;
-        case kMenuTagExport:      if (_callbacks.on_export)      _callbacks.on_export();      break;
-        case kMenuTagBrowsePackages: if (_callbacks.on_browse_packages) _callbacks.on_browse_packages(); break;
+        case kMenuTagOpen:              if (_callbacks.on_open) _callbacks.on_open(); break;
+        case kMenuTagSave:              if (_callbacks.on_save) _callbacks.on_save(); break;
+        case kMenuTagPreferences:       if (_callbacks.on_preferences) _callbacks.on_preferences(); break;
+        case kMenuTagExport:            if (_callbacks.on_export) _callbacks.on_export(); break;
+        case kMenuTagBrowsePackages:    if (_callbacks.on_browse_packages) _callbacks.on_browse_packages(); break;
+        case kMenuTagDeleteSelected:    if (_callbacks.on_delete_selected) _callbacks.on_delete_selected(); break;
+        case kMenuTagToggleUI:          if (_callbacks.on_toggle_ui) _callbacks.on_toggle_ui(); break;
+        case kMenuTagToggleBezierWires: if (_callbacks.on_toggle_bezier_wires) _callbacks.on_toggle_bezier_wires(); break;
+        case kMenuTagToggleSessionGrid: if (_callbacks.on_toggle_session_grid) _callbacks.on_toggle_session_grid(); break;
+        case kMenuTagToggleMidiMap:     if (_callbacks.on_toggle_midi_map) _callbacks.on_toggle_midi_map(); break;
+        case kMenuTagAddNode:           if (_callbacks.on_add_node) _callbacks.on_add_node(); break;
+    }
+}
+
+- (BOOL)validateMenuItem:(NSMenuItem*)item {
+    switch (item.tag) {
+        case kMenuTagDeleteSelected:
+            return _callbacks.has_selection ? _callbacks.has_selection() : NO;
+
+        case kMenuTagToggleUI:
+            item.state = (_callbacks.is_ui_visible && _callbacks.is_ui_visible()) ? NSControlStateValueOn : NSControlStateValueOff;
+            return YES;
+
+        case kMenuTagToggleBezierWires:
+            item.state = (_callbacks.is_bezier_wires && _callbacks.is_bezier_wires()) ? NSControlStateValueOn : NSControlStateValueOff;
+            return YES;
+
+        case kMenuTagToggleSessionGrid:
+            item.state = (_callbacks.is_session_grid_open && _callbacks.is_session_grid_open()) ? NSControlStateValueOn : NSControlStateValueOff;
+            return YES;
+
+        case kMenuTagToggleMidiMap:
+            item.state = (_callbacks.is_midi_map_mode && _callbacks.is_midi_map_mode()) ? NSControlStateValueOn : NSControlStateValueOff;
+            return YES;
+
+        default:
+            return YES;
     }
 }
 
@@ -117,6 +159,87 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
                                                       keyEquivalent:@""];
         [fileMenuItem setSubmenu:fileMenu];
         [mainMenu insertItem:fileMenuItem atIndex:1];
+
+        // --- Create "Edit" menu and insert at index 2 ---
+        NSMenu* editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+
+        NSMenuItem* deleteItem = [[NSMenuItem alloc]
+            initWithTitle:@"Delete Selected"
+                   action:@selector(menuAction:)
+            keyEquivalent:[NSString stringWithFormat:@"%C", (unichar)NSBackspaceCharacter]];
+        deleteItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+        deleteItem.target = sDelegate;
+        deleteItem.tag = kMenuTagDeleteSelected;
+        [editMenu addItem:deleteItem];
+
+        NSMenuItem* editMenuItem = [[NSMenuItem alloc] initWithTitle:@"Edit"
+                                                              action:nil
+                                                       keyEquivalent:@""];
+        [editMenuItem setSubmenu:editMenu];
+        [mainMenu insertItem:editMenuItem atIndex:2];
+
+        // --- Create "View" menu and insert at index 3 ---
+        NSMenu* viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+
+        NSMenuItem* toggleUIItem = [[NSMenuItem alloc]
+            initWithTitle:@"Toggle Graph UI"
+                   action:@selector(menuAction:)
+            keyEquivalent:@"`"];
+        toggleUIItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+        toggleUIItem.target = sDelegate;
+        toggleUIItem.tag = kMenuTagToggleUI;
+        [viewMenu addItem:toggleUIItem];
+
+        NSMenuItem* toggleBezierItem = [[NSMenuItem alloc]
+            initWithTitle:@"Toggle Bezier Wires"
+                   action:@selector(menuAction:)
+            keyEquivalent:@"b"];
+        toggleBezierItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+        toggleBezierItem.target = sDelegate;
+        toggleBezierItem.tag = kMenuTagToggleBezierWires;
+        [viewMenu addItem:toggleBezierItem];
+
+        NSMenuItem* toggleGridItem = [[NSMenuItem alloc]
+            initWithTitle:@"Toggle Session Grid"
+                   action:@selector(menuAction:)
+            keyEquivalent:@"g"];
+        toggleGridItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+        toggleGridItem.target = sDelegate;
+        toggleGridItem.tag = kMenuTagToggleSessionGrid;
+        [viewMenu addItem:toggleGridItem];
+
+        NSMenuItem* toggleMidiItem = [[NSMenuItem alloc]
+            initWithTitle:@"Toggle MIDI Map"
+                   action:@selector(menuAction:)
+            keyEquivalent:@"m"];
+        toggleMidiItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+        toggleMidiItem.target = sDelegate;
+        toggleMidiItem.tag = kMenuTagToggleMidiMap;
+        [viewMenu addItem:toggleMidiItem];
+
+        NSMenuItem* viewMenuItem = [[NSMenuItem alloc] initWithTitle:@"View"
+                                                              action:nil
+                                                       keyEquivalent:@""];
+        [viewMenuItem setSubmenu:viewMenu];
+        [mainMenu insertItem:viewMenuItem atIndex:3];
+
+        // --- Create "Insert" menu and insert at index 4 ---
+        NSMenu* insertMenu = [[NSMenu alloc] initWithTitle:@"Insert"];
+
+        NSMenuItem* addNodeItem = [[NSMenuItem alloc]
+            initWithTitle:@"Add Node..."
+                   action:@selector(menuAction:)
+            keyEquivalent:@"t"];
+        addNodeItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+        addNodeItem.target = sDelegate;
+        addNodeItem.tag = kMenuTagAddNode;
+        [insertMenu addItem:addNodeItem];
+
+        NSMenuItem* insertMenuItem = [[NSMenuItem alloc] initWithTitle:@"Insert"
+                                                                action:nil
+                                                         keyEquivalent:@""];
+        [insertMenuItem setSubmenu:insertMenu];
+        [mainMenu insertItem:insertMenuItem atIndex:4];
     }
 }
 

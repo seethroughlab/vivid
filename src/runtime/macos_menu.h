@@ -11,6 +11,25 @@ struct MenuCallbacks {
     std::function<void()> on_preferences;
     std::function<void()> on_export;
     std::function<void()> on_browse_packages;
+
+    // Edit menu
+    std::function<void()> on_delete_selected;
+
+    // View menu
+    std::function<void()> on_toggle_ui;
+    std::function<void()> on_toggle_bezier_wires;
+    std::function<void()> on_toggle_session_grid;
+    std::function<void()> on_toggle_midi_map;
+
+    // Insert menu
+    std::function<void()> on_add_node;
+
+    // State queries for checkmarks / enable states
+    std::function<bool()> is_ui_visible;
+    std::function<bool()> is_bezier_wires;
+    std::function<bool()> is_session_grid_open;
+    std::function<bool()> is_midi_map_mode;
+    std::function<bool()> has_selection;
 };
 
 void macos_setup_menu(const MenuCallbacks& callbacks);

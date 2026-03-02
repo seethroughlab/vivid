@@ -1243,6 +1243,25 @@ int main(int argc, char* argv[]) {
             graph_ui.toggle_package_browser();
         };
 
+        // Edit menu
+        menu_cbs.on_delete_selected = [&]() { graph_ui.delete_selected(); };
+
+        // View menu
+        menu_cbs.on_toggle_ui = [&]() { graph_ui.toggle_visible(); };
+        menu_cbs.on_toggle_bezier_wires = [&]() { graph_ui.set_bezier_wires(!graph_ui.bezier_wires()); };
+        menu_cbs.on_toggle_session_grid = [&]() { graph_ui.toggle_session_grid(); };
+        menu_cbs.on_toggle_midi_map = [&]() { graph_ui.toggle_midi_map_mode(); };
+
+        // Insert menu
+        menu_cbs.on_add_node = [&]() { graph_ui.open_chooser(); };
+
+        // State queries for checkmarks / enable states
+        menu_cbs.is_ui_visible = [&]() { return graph_ui.visible(); };
+        menu_cbs.is_bezier_wires = [&]() { return graph_ui.bezier_wires(); };
+        menu_cbs.is_session_grid_open = [&]() { return graph_ui.session_grid_open(); };
+        menu_cbs.is_midi_map_mode = [&]() { return graph_ui.midi_map_mode(); };
+        menu_cbs.has_selection = [&]() { return graph_ui.has_selection(); };
+
         vivid::macos_setup_menu(menu_cbs);
     }
 #endif
