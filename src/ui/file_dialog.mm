@@ -16,4 +16,19 @@ std::string open_file_dialog() {
     }
 }
 
+std::string save_file_dialog(const std::string& default_name) {
+    @autoreleasepool {
+        NSSavePanel* panel = [NSSavePanel savePanel];
+        [panel setCanCreateDirectories:YES];
+        if (!default_name.empty()) {
+            [panel setNameFieldStringValue:
+                [NSString stringWithUTF8String:default_name.c_str()]];
+        }
+        if ([panel runModal] == NSModalResponseOK) {
+            return std::string([[[panel URL] path] UTF8String]);
+        }
+        return {};
+    }
+}
+
 } // namespace vivid::ui
