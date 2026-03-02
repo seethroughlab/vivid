@@ -128,4 +128,12 @@ WGPUTextureView ThumbnailCache::get_view(const std::string& node_id) const {
     return (it != entries_.end()) ? it->second.view : nullptr;
 }
 
+void ThumbnailCache::remove(const std::string& node_id) {
+    auto it = entries_.find(node_id);
+    if (it == entries_.end()) return;
+    if (it->second.view) wgpuTextureViewRelease(it->second.view);
+    if (it->second.texture) wgpuTextureRelease(it->second.texture);
+    entries_.erase(it);
+}
+
 } // namespace vivid::ui

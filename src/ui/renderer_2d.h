@@ -21,6 +21,11 @@ struct GlyphInfo {
 
 class Renderer2D {
 public:
+    ~Renderer2D() { shutdown(); }
+    Renderer2D() = default;
+    Renderer2D(const Renderer2D&) = delete;
+    Renderer2D& operator=(const Renderer2D&) = delete;
+
     bool init(WGPUDevice device, WGPUTextureFormat surface_format,
               const char* font_path, float font_size, float dpi_scale = 1.0f);
     void shutdown();

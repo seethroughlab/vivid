@@ -1390,6 +1390,13 @@ int main(int argc, char* argv[]) {
             }
             video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
             capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
+            // Evict thumbnail cache entries for removed nodes
+            {
+                std::unordered_set<std::string> active_ids;
+                for (const auto& ns : scheduler.nodes())
+                    active_ids.insert(ns.node_id);
+                thumb_cache.retain_only(active_ids);
+            }
         }
         // Handle GPU realloc after reload command or operator-requested resize
         if (runtime_api.needs_gpu_realloc() || scheduler.needs_gpu_realloc()) {

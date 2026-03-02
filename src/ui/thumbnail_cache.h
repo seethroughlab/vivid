@@ -22,6 +22,21 @@ public:
     void upload_cpu(const std::string& node_id, const uint8_t* pixels);
     // Returns the existing view for reading (nullptr if not created yet)
     WGPUTextureView get_view(const std::string& node_id) const;
+    // Remove a thumbnail entry (call when a node is deleted from the graph)
+    void remove(const std::string& node_id);
+    // Evict entries for nodes not in the active set (call after topology changes)
+    template<typename Container>
+    void retain_only(const Container& active_ids) {
+        for (auto it = entries_.begin(); it != entries_.end(); ) {
+            if (active_ids.count(it->first) == 0) {
+                if (it->second.view) wgpuTextureViewRelease(it->second.view);
+                if (it->second.texture) wgpuTextureRelease(it->second.texture);
+                it = entries_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
 
 private:
     struct Entry {

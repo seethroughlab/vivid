@@ -333,6 +333,7 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
     pipeline_ = wgpuDeviceCreateRenderPipeline(device, &rp_desc);
     if (!pipeline_) {
         std::fprintf(stderr, "[vivid] Renderer2D: failed to create pipeline\n");
+        shutdown();
         return false;
     }
 
