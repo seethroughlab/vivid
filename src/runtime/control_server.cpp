@@ -8,6 +8,7 @@
 #include "runtime/operator_creator.h"
 #include "runtime/hot_reload.h"
 #include "runtime/package_manager.h"
+#include "runtime/package_catalog.h"
 #include "operator_api/types.h"
 #include "yyjson.h"
 #include <ixwebsocket/IXHttpServer.h>
@@ -891,6 +892,7 @@ void ControlServer::set_src_dir(const std::string& src_dir) { src_dir_ = src_dir
 void ControlServer::set_hot_reloader(HotReloader* hr) { hot_reloader_ = hr; }
 void ControlServer::set_capture_coordinator(CaptureCoordinator* cc) { capture_coordinator_ = cc; }
 void ControlServer::set_package_manager(PackageManager* pm) { package_manager_ = pm; }
+void ControlServer::set_package_catalog(PackageCatalog* pc) { package_catalog_ = pc; }
 
 bool ControlServer::start(int port) {
     impl_ = std::make_unique<Impl>(port);
@@ -1000,6 +1002,42 @@ bool ControlServer::start(int port) {
                 else
                     response_body = R"({"ok":false,"error":"timeout"})";
 
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    response_body);
+            }
+
+            // Package catalog — thread-safe, no main-thread dispatch needed
+            if (method == "package_catalog" && package_catalog_) {
+                auto entries = package_catalog_->entries();
+                yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                yyjson_mut_val* rroot = yyjson_mut_obj(rdoc);
+                yyjson_mut_doc_set_root(rdoc, rroot);
+                yyjson_mut_obj_add_true(rdoc, rroot, "ok");
+                yyjson_mut_val* arr = yyjson_mut_arr(rdoc);
+                for (const auto& e : entries) {
+                    yyjson_mut_val* obj = yyjson_mut_obj(rdoc);
+                    yyjson_mut_obj_add_strcpy(rdoc, obj, "name", e.name.c_str());
+                    yyjson_mut_obj_add_strcpy(rdoc, obj, "description", e.description.c_str());
+                    yyjson_mut_obj_add_strcpy(rdoc, obj, "version", e.version.c_str());
+                    yyjson_mut_obj_add_strcpy(rdoc, obj, "author", e.author.c_str());
+                    yyjson_mut_obj_add_strcpy(rdoc, obj, "url", e.url.c_str());
+                    yyjson_mut_obj_add_strcpy(rdoc, obj, "category", e.category.c_str());
+                    yyjson_mut_obj_add_bool(rdoc, obj, "installed", e.installed);
+                    if (e.installed)
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "installed_version", e.installed_version.c_str());
+                    yyjson_mut_val* tags = yyjson_mut_arr(rdoc);
+                    for (const auto& tag : e.tags)
+                        yyjson_mut_arr_add_strcpy(rdoc, tags, tag.c_str());
+                    yyjson_mut_obj_add_val(rdoc, obj, "tags", tags);
+                    yyjson_mut_arr_add_val(arr, obj);
+                }
+                yyjson_mut_obj_add_val(rdoc, rroot, "packages", arr);
+                char* json_str = yyjson_mut_write(rdoc, 0, nullptr);
+                std::string response_body = json_str ? json_str : R"({"ok":false,"error":"json write failed"})";
+                if (json_str) free(json_str);
+                yyjson_mut_doc_free(rdoc);
                 return std::make_shared<ix::HttpResponse>(
                     200, "OK", ix::HttpErrorCode::Ok,
                     ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},

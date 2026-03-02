@@ -479,6 +479,12 @@ async def inspect_state_presets(sm_node: str) -> str:
 
 
 @mcp.tool()
+async def browse_packages() -> str:
+    """Browse the package catalog. Returns available packages with install status, category, and tags."""
+    return await _post("package_catalog")
+
+
+@mcp.tool()
 async def install_package(url: str) -> str:
     """Install an operator package from a git URL or local path.
 

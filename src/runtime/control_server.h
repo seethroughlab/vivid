@@ -12,6 +12,7 @@ class OperatorRegistry;
 class HotReloader;
 class CaptureCoordinator;
 class PackageManager;
+class PackageCatalog;
 
 class ControlServer {
 public:
@@ -30,6 +31,7 @@ public:
     void set_hot_reloader(HotReloader* hr);
     void set_capture_coordinator(CaptureCoordinator* cc);
     void set_package_manager(PackageManager* pm);
+    void set_package_catalog(PackageCatalog* pc);
 
     // Call from main loop each frame. Drains pending HTTP requests,
     // dispatches commands against the runtime, and signals responses.
@@ -46,6 +48,7 @@ private:
     HotReloader* hot_reloader_ = nullptr;
     CaptureCoordinator* capture_coordinator_ = nullptr;
     PackageManager* package_manager_ = nullptr;
+    PackageCatalog* package_catalog_ = nullptr;
 };
 
 } // namespace vivid

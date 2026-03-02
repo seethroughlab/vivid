@@ -298,6 +298,7 @@ add_executable(vivid
     src/export/export_pipeline.cpp
     src/runtime/package_compiler.cpp
     src/runtime/package_manager.cpp
+    src/runtime/package_catalog.cpp
 )
 
 target_include_directories(vivid PRIVATE src)
@@ -760,6 +761,23 @@ target_include_directories(test_package_compiler PRIVATE src)
 target_link_libraries(test_package_compiler PRIVATE vivid_operator_api yyjson webgpu)
 add_test(NAME test_package_compiler
     COMMAND test_package_compiler ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# PackageCatalog unit test (JSON parsing, cache, merge)
+add_executable(test_package_catalog
+    tests/test_package_catalog.cpp
+    src/runtime/package_catalog.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_package_catalog PRIVATE src)
+target_link_libraries(test_package_catalog PRIVATE vivid_operator_api yyjson webgpu)
+add_test(NAME test_package_catalog
+    COMMAND test_package_catalog
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # PackageManager lifecycle test (install/list/uninstall with local path)
