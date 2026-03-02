@@ -505,6 +505,15 @@ int main(int argc, char* argv[]) {
     auto exe_path = std::filesystem::canonical(std::filesystem::path(argv[0]));
     auto exe_dir = exe_path.parent_path();
 
+    // Resources dir: Contents/Resources/ in a macOS bundle, else same as exe_dir
+#ifdef __APPLE__
+    auto resources_dir = exe_dir.parent_path() / "Resources";
+    if (!std::filesystem::is_directory(resources_dir))
+        resources_dir = exe_dir;  // flat dev layout
+#else
+    auto resources_dir = exe_dir;
+#endif
+
     // --- CLI argument parsing ---
     std::string graph_file = "graph.json";
     std::string screenshot_path;
@@ -592,7 +601,7 @@ int main(int argc, char* argv[]) {
         vivid::OperatorRegistry registry;
         registry.scan_deferred(exe_dir.string().c_str());
         register_builtin_operators(registry);
-        std::string filters_dir = (exe_dir / "filters").string();
+        std::string filters_dir = (resources_dir / "filters").string();
         registry.scan_wgsl_presets(filters_dir);
 
         vivid::ExportOptions opts;
@@ -785,7 +794,7 @@ int main(int argc, char* argv[]) {
     register_builtin_operators(registry);
 
     // --- Load self-describing .wgsl filter presets ---
-    std::string filters_dir = (exe_dir / "filters").string();
+    std::string filters_dir = (resources_dir / "filters").string();
     registry.scan_wgsl_presets(filters_dir);
 
     // --- Package management (needs to outlive main loop for catalog/install) ---
@@ -906,7 +915,7 @@ int main(int argc, char* argv[]) {
     bool text_renderer_ok = false;
     {
         // Look for font next to executable, or in source tree
-        std::string font_path = (exe_dir / "JetBrainsMono-Regular.ttf").string();
+        std::string font_path = (resources_dir / "JetBrainsMono-Regular.ttf").string();
         if (!std::filesystem::exists(font_path)) {
             auto alt = exe_dir.parent_path() / "fonts" / "JetBrainsMono-Regular.ttf";
             if (std::filesystem::exists(alt)) font_path = alt.string();

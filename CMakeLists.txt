@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
-project(vivid LANGUAGES C CXX)
+project(vivid VERSION 0.1.0 LANGUAGES C CXX)
+
+option(VIVID_BUNDLE "Build as macOS .app bundle" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -89,12 +91,19 @@ define_property(GLOBAL PROPERTY VIVID_OPERATOR_MANIFEST
     FULL_DOCS  "Accumulated per-operator metadata for standalone export builds")
 set_property(GLOBAL PROPERTY VIVID_OPERATOR_MANIFEST "")
 
+# --- Operator target list (for bundle plugin copying) ---
+define_property(GLOBAL PROPERTY VIVID_OPERATOR_TARGETS
+    BRIEF_DOCS "All operator plugin targets"
+    FULL_DOCS  "Accumulated operator target names for bundle plugin copying")
+set_property(GLOBAL PROPERTY VIVID_OPERATOR_TARGETS "")
+
 # --- Operator plugin helper ---
 function(add_vivid_operator name source)
     cmake_parse_arguments(ARG "" "" "EXTRA_LIBS" ${ARGN})
     add_library(${name} MODULE ${source})
     set_target_properties(${name} PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
     target_link_libraries(${name} PRIVATE vivid_operator_api ${ARG_EXTRA_LIBS})
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS ${name})
 
     # Accumulate manifest entry
     # Filter out non-library targets from EXTRA_LIBS (keep only webgpu, rtmidi, etc.)
@@ -177,6 +186,7 @@ else()
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
         "  \"movie_file_in\": { \"sources\": [\"operators/gpu/movie_file_in/movie_file_in.cpp\"], \"extra_libs\": [\"webgpu\"], \"include_dirs\": [\"deps/stb\"] }")
 endif()
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS movie_file_in)
 
 # --- Webcam In (live camera capture) ---
 if(APPLE)
@@ -203,6 +213,7 @@ else()
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
         "  \"webcam_in\": { \"sources\": [\"operators/gpu/webcam_in/webcam_in.cpp\"], \"extra_libs\": [\"webgpu\"] }")
 endif()
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS webcam_in)
 
 # --- Audio operator plugins ---
 add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp)
@@ -239,6 +250,7 @@ if(APPLE)
         PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
         "  \"movie_file_audio_in\": { \"sources\": [\"operators/audio/movie_file_audio_in/movie_file_audio_in.cpp\", \"operators/audio/movie_file_audio_in/avf_audio_extractor.mm\"], \"extra_libs\": [], \"frameworks\": [\"AVFoundation\", \"CoreMedia\", \"Foundation\"], \"objc_arc\": [\"operators/audio/movie_file_audio_in/avf_audio_extractor.mm\"] }")
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS movie_file_audio_in)
 endif()
 
 # --- UI library ---
@@ -290,6 +302,17 @@ add_executable(vivid
     src/runtime/package_manager.cpp
     src/runtime/package_catalog.cpp
 )
+
+if(VIVID_BUNDLE AND APPLE)
+    set_target_properties(vivid PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "Vivid"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.app"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/platform/macos/Info.plist.in"
+    )
+endif()
 
 target_include_directories(vivid PRIVATE src)
 target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11)
@@ -358,6 +381,35 @@ foreach(f ${WGSL_PRESETS})
     configure_file(${f} ${CMAKE_BINARY_DIR}/filters/${fname} COPYONLY)
 endforeach()
 
+# --- Bundle resources (font, graphs, WGSL filters → Resources/) ---
+if(VIVID_BUNDLE AND APPLE)
+    # Font → Resources/
+    target_sources(vivid PRIVATE fonts/JetBrainsMono-Regular.ttf)
+    set_source_files_properties(fonts/JetBrainsMono-Regular.ttf
+        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
+    # Demo graphs → Resources/
+    file(GLOB _BUNDLE_GRAPHS graphs/*.json)
+    target_sources(vivid PRIVATE ${_BUNDLE_GRAPHS})
+    set_source_files_properties(${_BUNDLE_GRAPHS}
+        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
+    # Icon → Resources/
+    target_sources(vivid PRIVATE platform/macos/Vivid.icns)
+    set_source_files_properties(platform/macos/Vivid.icns
+        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    set_target_properties(vivid PROPERTIES
+        MACOSX_BUNDLE_ICON_FILE Vivid.icns)
+
+    # WGSL filter presets → Resources/filters/
+    file(GLOB _BUNDLE_FILTERS filters/*.wgsl)
+    foreach(f ${_BUNDLE_FILTERS})
+        target_sources(vivid PRIVATE ${f})
+        set_source_files_properties(${f}
+            PROPERTIES MACOSX_PACKAGE_LOCATION Resources/filters)
+    endforeach()
+endif()
+
 # Copy Dawn shared library next to the executable (if dynamically linked)
 target_copy_webgpu_binaries(vivid)
 
@@ -378,6 +430,18 @@ endif()
 get_property(_manifest_entries GLOBAL PROPERTY VIVID_OPERATOR_MANIFEST)
 list(JOIN _manifest_entries ",\n" _manifest_body)
 file(WRITE "${CMAKE_BINARY_DIR}/operator_manifest.json" "{\n${_manifest_body}\n}\n")
+
+# --- Copy operator plugins into bundle ---
+if(VIVID_BUNDLE AND APPLE)
+    get_property(_op_targets GLOBAL PROPERTY VIVID_OPERATOR_TARGETS)
+    foreach(op_target IN LISTS _op_targets)
+        add_custom_command(TARGET vivid POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:${op_target}>
+                $<TARGET_BUNDLE_CONTENT_DIR:vivid>/MacOS/
+        )
+    endforeach()
+endif()
 
 enable_testing()
 
