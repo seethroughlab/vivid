@@ -530,8 +530,16 @@ private:
                 ofs << "target_link_libraries(" << new_stem << " PRIVATE vivid_operator_api)\n";
         }
 
+        // Validate stem contains only safe characters (alphanumeric + underscore)
+        for (char c : new_stem) {
+            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+                std::fprintf(stderr, "[vivid] Clone: invalid character '%c' in operator name\n", c);
+                return;
+            }
+        }
+
         // Build synchronously
-        std::string build_cmd = "cmake --build \"" + build_dir_ + "\" --target " + new_stem + " 2>&1";
+        std::string build_cmd = "cmake --build \"" + build_dir_ + "\" --target \"" + new_stem + "\" 2>&1";
         std::fprintf(stderr, "[vivid] Clone: building %s...\n", new_stem.c_str());
         int rc = std::system(build_cmd.c_str());
         if (rc != 0) {
