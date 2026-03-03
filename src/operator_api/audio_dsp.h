@@ -27,6 +27,28 @@ struct WhiteNoise {
 };
 
 // ---------------------------------------------------------------------------
+// Pink noise: Voss-McCartney algorithm (8 octave bands)
+// ---------------------------------------------------------------------------
+struct PinkNoise {
+    WhiteNoise white;
+    float octave[8] = {};
+    uint32_t count = 0;
+
+    float next() {
+        float sum = 0.0f;
+        uint32_t last = count;
+        count++;
+        uint32_t changed = last ^ count;
+        for (int i = 0; i < 8; i++) {
+            if (changed & (1u << i))
+                octave[i] = white.next();
+            sum += octave[i];
+        }
+        return sum * 0.125f;
+    }
+};
+
+// ---------------------------------------------------------------------------
 // Phase-wrap trigger detection (delta < -0.5)
 // ---------------------------------------------------------------------------
 inline bool detect_trigger(float phase, float prev_phase) {

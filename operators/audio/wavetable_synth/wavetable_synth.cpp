@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
 #include "operator_api/adsr.h"
+#include "operator_api/audio_dsp.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -176,10 +177,10 @@ struct Wavetable {
 // =============================================================================
 
 static void generate_basic(Wavetable& wt) {
-    wt.allocate(8);
+    wt.allocate(32);
     for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
         float* d = wt.frame_ptr(fr);
-        float t = static_cast<float>(fr) / 7.0f;
+        float t = static_cast<float>(fr) / 31.0f;
         for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
             float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
             float sine     = std::sin(p * TWO_PI_F);
@@ -203,10 +204,10 @@ static void generate_basic(Wavetable& wt) {
 }
 
 static void generate_analog(Wavetable& wt) {
-    wt.allocate(8);
+    wt.allocate(32);
     for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
         float* d = wt.frame_ptr(fr);
-        float t = static_cast<float>(fr) / 7.0f;
+        float t = static_cast<float>(fr) / 31.0f;
         for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
             float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
             float sample = 0.0f;
@@ -223,10 +224,10 @@ static void generate_analog(Wavetable& wt) {
 }
 
 static void generate_digital(Wavetable& wt) {
-    wt.allocate(8);
+    wt.allocate(32);
     for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
         float* d = wt.frame_ptr(fr);
-        float t = static_cast<float>(fr) / 7.0f;
+        float t = static_cast<float>(fr) / 31.0f;
         float mod_index = t * 8.0f;
         float ratio = 1.0f + std::floor(t * 4.0f);
         for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
@@ -238,7 +239,7 @@ static void generate_digital(Wavetable& wt) {
 }
 
 static void generate_vocal(Wavetable& wt) {
-    wt.allocate(5);
+    wt.allocate(32);
     const float formants[5][3] = {
         {800.0f, 1150.0f, 2800.0f},
         {400.0f, 2000.0f, 2550.0f},
@@ -255,6 +256,20 @@ static void generate_vocal(Wavetable& wt) {
     };
     for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
         float* d = wt.frame_ptr(fr);
+        float t = static_cast<float>(fr) / 31.0f;
+        float vowel_pos = t * 4.0f;
+        int v0 = static_cast<int>(vowel_pos);
+        int v1 = std::min(v0 + 1, 4);
+        float blend = vowel_pos - static_cast<float>(v0);
+        v0 = std::min(v0, 4);
+
+        float blended_formants[3];
+        float blended_amps[3];
+        for (int f = 0; f < 3; ++f) {
+            blended_formants[f] = formants[v0][f] * (1.0f - blend) + formants[v1][f] * blend;
+            blended_amps[f]     = amps[v0][f]     * (1.0f - blend) + amps[v1][f]     * blend;
+        }
+
         for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
             float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
             float sample = 0.0f;
@@ -264,8 +279,8 @@ static void generate_vocal(Wavetable& wt) {
                 float amp = 0.0f;
                 for (int f = 0; f < 3; ++f) {
                     float bw = 80.0f + static_cast<float>(f) * 40.0f;
-                    float dist = (freq - formants[fr][f]) / bw;
-                    amp += amps[fr][f] * std::exp(-dist * dist * 0.5f);
+                    float dist = (freq - blended_formants[f]) / bw;
+                    amp += blended_amps[f] * std::exp(-dist * dist * 0.5f);
                 }
                 sample += amp * std::sin(p * TWO_PI_F * static_cast<float>(h));
             }
@@ -275,7 +290,7 @@ static void generate_vocal(Wavetable& wt) {
 }
 
 static void generate_texture(Wavetable& wt) {
-    wt.allocate(8);
+    wt.allocate(32);
     uint32_t seed = 12345;
     auto rand_f = [&seed]() -> float {
         seed = seed * 1103515245 + 12345;
@@ -284,7 +299,7 @@ static void generate_texture(Wavetable& wt) {
     };
     for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
         float* d = wt.frame_ptr(fr);
-        float t = static_cast<float>(fr) / 7.0f;
+        float t = static_cast<float>(fr) / 31.0f;
         for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
             float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
             float harm = std::sin(p * TWO_PI_F)
@@ -301,10 +316,10 @@ static void generate_texture(Wavetable& wt) {
 }
 
 static void generate_pwm(Wavetable& wt) {
-    wt.allocate(8);
+    wt.allocate(32);
     for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
         float* d = wt.frame_ptr(fr);
-        float t = static_cast<float>(fr) / 7.0f;
+        float t = static_cast<float>(fr) / 31.0f;
         float pw = 0.1f + t * 0.8f;
         for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
             float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
@@ -318,6 +333,184 @@ static void generate_pwm(Wavetable& wt) {
                 prev = d[i];
                 d[i] = smoothed;
             }
+        }
+    }
+}
+
+static void generate_formant(Wavetable& wt) {
+    wt.allocate(64);
+    // 8 vowel anchor points: A, E, I, O, U, Ae, Oe, Nasal
+    const float formants[8][4] = {
+        { 730.0f, 1090.0f, 2440.0f, 3400.0f},  // A
+        { 660.0f, 1720.0f, 2410.0f, 3400.0f},  // E
+        { 270.0f, 2290.0f, 3010.0f, 3400.0f},  // I
+        { 570.0f,  840.0f, 2410.0f, 3400.0f},  // O
+        { 300.0f,  870.0f, 2240.0f, 3400.0f},  // U
+        { 860.0f, 1550.0f, 2500.0f, 3400.0f},  // Ae
+        { 450.0f, 1500.0f, 2500.0f, 3400.0f},  // Oe
+        { 480.0f, 1270.0f, 2130.0f, 3320.0f}   // Nasal
+    };
+    const float form_amps[8][4] = {
+        {1.0f, 0.6f, 0.2f, 0.1f},
+        {1.0f, 0.4f, 0.3f, 0.1f},
+        {1.0f, 0.2f, 0.3f, 0.1f},
+        {1.0f, 0.8f, 0.1f, 0.05f},
+        {1.0f, 0.8f, 0.1f, 0.05f},
+        {1.0f, 0.5f, 0.25f, 0.1f},
+        {1.0f, 0.6f, 0.2f, 0.08f},
+        {1.0f, 0.5f, 0.3f, 0.12f}
+    };
+    for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
+        float* d = wt.frame_ptr(fr);
+        float t = static_cast<float>(fr) / 63.0f;
+        float vowel_pos = t * 8.0f;
+        int v0 = static_cast<int>(vowel_pos) % 8;
+        int v1 = (v0 + 1) % 8;
+        float blend = vowel_pos - std::floor(vowel_pos);
+
+        float bf[4], ba[4];
+        for (int f = 0; f < 4; ++f) {
+            bf[f] = formants[v0][f] * (1.0f - blend) + formants[v1][f] * blend;
+            ba[f] = form_amps[v0][f] * (1.0f - blend) + form_amps[v1][f] * blend;
+        }
+
+        for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
+            float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
+            float sample = 0.0f;
+            float fundamental = 120.0f;
+            for (int h = 1; h <= 64; ++h) {
+                float freq = fundamental * static_cast<float>(h);
+                float amp = 0.0f;
+                for (int f = 0; f < 4; ++f) {
+                    float bw = 80.0f + static_cast<float>(f) * 40.0f;
+                    float dist = (freq - bf[f]) / bw;
+                    amp += ba[f] * std::exp(-dist * dist * 0.5f);
+                }
+                sample += amp * std::sin(p * TWO_PI_F * static_cast<float>(h));
+            }
+            d[i] = std::tanh(sample * 0.3f);
+        }
+    }
+}
+
+static void generate_harmonic(Wavetable& wt) {
+    wt.allocate(64);
+    for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
+        float* d = wt.frame_ptr(fr);
+        for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
+            float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
+            float sample = 0.0f;
+
+            if (fr < 16) {
+                // Region 1: Linear rolloff, increasing partial count
+                float t_local = static_cast<float>(fr) / 15.0f;
+                int num_partials = 1 + static_cast<int>(t_local * 63.0f);
+                for (int h = 1; h <= num_partials; ++h) {
+                    float amp = 1.0f / static_cast<float>(h);
+                    sample += amp * std::sin(p * TWO_PI_F * static_cast<float>(h));
+                }
+            } else if (fr < 32) {
+                // Region 2: Odd-harmonic emphasis
+                float t_local = static_cast<float>(fr - 16) / 15.0f;
+                float even_weight = 1.0f - t_local;
+                for (int h = 1; h <= 64; ++h) {
+                    float amp = 1.0f / static_cast<float>(h);
+                    if (h % 2 == 0) amp *= even_weight;
+                    sample += amp * std::sin(p * TWO_PI_F * static_cast<float>(h));
+                }
+            } else if (fr < 48) {
+                // Region 3: Even-harmonic emphasis
+                float t_local = static_cast<float>(fr - 32) / 15.0f;
+                float even_weight = t_local;
+                float odd_weight  = 1.0f - 0.5f * t_local;
+                for (int h = 1; h <= 64; ++h) {
+                    float amp = 1.0f / static_cast<float>(h);
+                    if (h % 2 == 0)
+                        amp *= even_weight;
+                    else
+                        amp *= odd_weight;
+                    sample += amp * std::sin(p * TWO_PI_F * static_cast<float>(h));
+                }
+            } else {
+                // Region 4: Spectral tilt
+                float t_local = static_cast<float>(fr - 48) / 15.0f;
+                float tilt = 2.0f - t_local * 1.7f; // 2.0 → 0.3
+                for (int h = 1; h <= 64; ++h) {
+                    float amp = 1.0f / std::pow(static_cast<float>(h), tilt);
+                    sample += amp * std::sin(p * TWO_PI_F * static_cast<float>(h));
+                }
+            }
+
+            d[i] = sample;
+        }
+
+        // Normalize peak to ±1
+        float peak = 0.0f;
+        for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i)
+            peak = std::max(peak, std::abs(d[i]));
+        if (peak > 0.0f) {
+            float inv = 1.0f / peak;
+            for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i)
+                d[i] *= inv;
+        }
+    }
+}
+
+static void generate_metallic(Wavetable& wt) {
+    wt.allocate(32);
+
+    // 4 regions with different inharmonic partial sets
+    const int region_counts[4] = {5, 6, 7, 8};
+    const float region_ratios[4][8] = {
+        {1.0f, 2.0f,  3.0f,  4.2f,  5.4f,  0.0f,  0.0f,  0.0f},
+        {1.0f, 1.5f,  2.3f,  3.1f,  4.7f,  6.2f,  0.0f,  0.0f},
+        {1.0f, 1.19f, 1.56f, 2.0f,  2.44f, 2.83f, 3.15f, 0.0f},
+        {1.0f, 1.34f, 1.87f, 2.15f, 2.58f, 3.24f, 3.81f, 4.53f}
+    };
+    const float region_amps[4][8] = {
+        {1.0f, 0.5f,  0.3f,  0.25f, 0.2f,  0.0f,  0.0f,  0.0f},
+        {1.0f, 0.6f,  0.4f,  0.3f,  0.2f,  0.15f, 0.0f,  0.0f},
+        {1.0f, 0.7f,  0.5f,  0.4f,  0.3f,  0.2f,  0.15f, 0.0f},
+        {1.0f, 0.8f,  0.6f,  0.5f,  0.4f,  0.3f,  0.25f, 0.2f}
+    };
+
+    for (uint32_t fr = 0; fr < wt.frame_count; ++fr) {
+        float* d = wt.frame_ptr(fr);
+
+        // Determine region and local t for interpolation
+        int region = static_cast<int>(fr / 8);
+        if (region > 3) region = 3;
+        int next_region = std::min(region + 1, 3);
+        float t_local = static_cast<float>(fr % 8) / 7.0f;
+
+        // Interpolate between current and next region
+        int max_partials = std::max(region_counts[region], region_counts[next_region]);
+
+        for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i) {
+            float p = static_cast<float>(i) / static_cast<float>(SAMPLES_PER_FRAME);
+            float sample = 0.0f;
+            for (int h = 0; h < max_partials; ++h) {
+                float r0 = (h < region_counts[region])      ? region_ratios[region][h]      : 0.0f;
+                float r1 = (h < region_counts[next_region])  ? region_ratios[next_region][h] : 0.0f;
+                float a0 = (h < region_counts[region])       ? region_amps[region][h]        : 0.0f;
+                float a1 = (h < region_counts[next_region])  ? region_amps[next_region][h]   : 0.0f;
+
+                float ratio = r0 * (1.0f - t_local) + r1 * t_local;
+                float amp   = a0 * (1.0f - t_local) + a1 * t_local;
+                if (amp > 0.0f && ratio > 0.0f)
+                    sample += amp * std::sin(p * TWO_PI_F * ratio);
+            }
+            d[i] = sample;
+        }
+
+        // Normalize peak to ±1
+        float peak = 0.0f;
+        for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i)
+            peak = std::max(peak, std::abs(d[i]));
+        if (peak > 0.0f) {
+            float inv = 1.0f / peak;
+            for (uint32_t i = 0; i < SAMPLES_PER_FRAME; ++i)
+                d[i] *= inv;
         }
     }
 }
@@ -379,7 +572,130 @@ static float warp_phase(float phase, int mode, float amount, float last_sample) 
 // =============================================================================
 
 enum FilterType {
-    FILTER_LP12, FILTER_LP24, FILTER_HP12, FILTER_BP, FILTER_NOTCH
+    FILTER_LP12, FILTER_LP24, FILTER_HP12, FILTER_BP, FILTER_NOTCH,
+    FILTER_COMB, FILTER_LADDER, FILTER_FORMANT
+};
+
+// =============================================================================
+// Additional filter states
+// =============================================================================
+
+struct CombFilterState {
+    static constexpr int MAX_DELAY = 2048;
+    float buffer[MAX_DELAY] = {};
+    int   write_pos = 0;
+
+    void reset() {
+        std::memset(buffer, 0, sizeof(buffer));
+        write_pos = 0;
+    }
+
+    float process(float input, float delay_samples, float feedback) {
+        delay_samples = std::clamp(delay_samples, 1.0f, static_cast<float>(MAX_DELAY - 1));
+        feedback = std::clamp(feedback, -0.98f, 0.98f);
+
+        // Linear-interpolated fractional delay read
+        int   d_int  = static_cast<int>(delay_samples);
+        float d_frac = delay_samples - static_cast<float>(d_int);
+
+        int read0 = (write_pos - d_int + MAX_DELAY) % MAX_DELAY;
+        int read1 = (read0 - 1 + MAX_DELAY) % MAX_DELAY;
+
+        float delayed = buffer[read0] * (1.0f - d_frac) + buffer[read1] * d_frac;
+
+        float out = input + delayed * feedback;
+        buffer[write_pos] = out;
+        write_pos = (write_pos + 1) % MAX_DELAY;
+        return out;
+    }
+};
+
+struct LadderFilterState {
+    float stage[4] = {};
+
+    void reset() {
+        stage[0] = stage[1] = stage[2] = stage[3] = 0.0f;
+    }
+
+    float process(float input, float cutoff_hz, float reso, float sr) {
+        cutoff_hz = std::clamp(cutoff_hz, 20.0f, sr * 0.45f);
+        float g  = std::tan(PI_F * cutoff_hz / sr);
+        float fb = reso * 4.0f;
+
+        // Nonlinear input with feedback
+        float x = std::tanh(input - fb * stage[3]);
+
+        // 4 cascaded one-pole filters (trapezoidal integration)
+        for (int i = 0; i < 4; ++i) {
+            float v = (x - stage[i]) * g / (1.0f + g);
+            float y = v + stage[i];
+            stage[i] = y + v;
+            x = y;
+        }
+        return x;
+    }
+};
+
+struct FormantFilterState {
+    // 3 parallel biquad bandpasses, each with transposed direct form II state
+    float z1[3] = {};
+    float z2[3] = {};
+
+    // Vowel formant frequencies: A, E, I, O, U — 3 formants each
+    static constexpr float FORMANTS[5][3] = {
+        { 800.0f, 1150.0f, 2900.0f},  // A
+        { 350.0f, 2000.0f, 2800.0f},  // E
+        { 270.0f, 2300.0f, 3000.0f},  // I
+        { 450.0f,  800.0f, 2830.0f},  // O
+        { 325.0f,  700.0f, 2530.0f},  // U
+    };
+    static constexpr float GAINS[3] = {1.0f, 0.5f, 0.25f};
+
+    void reset() {
+        std::memset(z1, 0, sizeof(z1));
+        std::memset(z2, 0, sizeof(z2));
+    }
+
+    float process(float input, float morph, float reso, float sr) {
+        // morph 0..1 selects between 5 vowels (0=A, 0.25=E, 0.5=I, 0.75=O, 1=U)
+        float pos = morph * 4.0f;
+        int   idx = std::min(static_cast<int>(pos), 3);
+        float frac = pos - static_cast<float>(idx);
+
+        float Q = 1.0f + reso * 19.0f;
+        float out = 0.0f;
+
+        for (int b = 0; b < 3; ++b) {
+            // Interpolate formant frequency between adjacent vowels
+            float freq = FORMANTS[idx][b] * (1.0f - frac) + FORMANTS[idx + 1][b] * frac;
+            freq = std::min(freq, sr * 0.45f);
+
+            // Bandpass biquad coefficients
+            float omega = TWO_PI_F * freq / sr;
+            float sin_w = std::sin(omega);
+            float cos_w = std::cos(omega);
+            float alpha = sin_w / (2.0f * Q);
+
+            float b0 =  sin_w * 0.5f;
+            float b1 =  0.0f;
+            float b2 = -sin_w * 0.5f;
+            float a0 =  1.0f + alpha;
+            float a1 = -2.0f * cos_w;
+            float a2 =  1.0f - alpha;
+
+            float inv_a0 = 1.0f / a0;
+            b0 *= inv_a0; b1 *= inv_a0; b2 *= inv_a0;
+            a1 *= inv_a0; a2 *= inv_a0;
+
+            // Transposed direct form II
+            float y = b0 * input + z1[b];
+            z1[b] = b1 * input - a1 * y + z2[b];
+            z2[b] = b2 * input - a2 * y;
+
+            out += y * GAINS[b];
+        }
+        return out;
+    }
 };
 
 // =============================================================================
@@ -394,7 +710,7 @@ struct WavetableSynth : vivid::OperatorBase {
     // --- Parameters ---
 
     // Core
-    vivid::Param<int>   wavetable        {"wavetable",        0,        {"Basic", "Analog", "Digital", "Vocal", "Texture", "PWM"}};
+    vivid::Param<int>   wavetable        {"wavetable",        0,        {"Basic", "Analog", "Digital", "Vocal", "Texture", "PWM", "Formant", "Harmonic", "Metallic"}};
     vivid::Param<float> position         {"position",         0.0f,     0.0f, 1.0f};
     vivid::Param<float> amplitude        {"amplitude",        0.3f,     0.0f, 1.0f};
 
@@ -403,13 +719,19 @@ struct WavetableSynth : vivid::OperatorBase {
     vivid::Param<float> warp_amount      {"warp_amount",      0.0f,     0.0f, 1.0f};
 
     // Unison
-    vivid::Param<int>   unison_voices    {"unison_voices",    1,        1, 8};
+    vivid::Param<int>   unison_voices    {"unison_voices",    1,        1, 16};
     vivid::Param<float> unison_spread    {"unison_spread",    20.0f,    0.0f, 100.0f};
     vivid::Param<float> unison_stereo    {"unison_stereo",    1.0f,     0.0f, 1.0f};
+    vivid::Param<int>   unison_spread_mode {"unison_spread_mode", 0, {"Linear", "Exponential", "Random"}};
 
     // Sub oscillator
     vivid::Param<float> sub_level        {"sub_level",        0.0f,     0.0f, 1.0f};
     vivid::Param<int>   sub_octave       {"sub_octave",       0,        {"-1", "-2"}};
+    vivid::Param<int>   sub_waveform     {"sub_waveform",     0,        {"Sine", "Triangle", "Saw", "Square", "Noise"}};
+
+    // Noise oscillator
+    vivid::Param<float> noise_level      {"noise_level",      0.0f,     0.0f, 1.0f};
+    vivid::Param<int>   noise_type       {"noise_type",       0,        {"White", "Pink"}};
 
     // Portamento
     vivid::Param<float> portamento       {"portamento",       0.0f,     0.0f, 2000.0f};
@@ -421,7 +743,7 @@ struct WavetableSynth : vivid::OperatorBase {
     vivid::Param<float> release          {"release",          0.3f,     0.001f, 10.0f};
 
     // Filter
-    vivid::Param<int>   filter_type      {"filter_type",      1,        {"LP12", "LP24", "HP12", "BP", "Notch"}};
+    vivid::Param<int>   filter_type      {"filter_type",      1,        {"LP12", "LP24", "HP12", "BP", "Notch", "Comb", "Ladder", "Formant"}};
     vivid::Param<float> filter_cutoff    {"filter_cutoff",    20000.0f, 20.0f,  20000.0f};
     vivid::Param<float> filter_resonance {"filter_resonance", 0.0f,     0.0f,   1.0f};
     vivid::Param<float> filter_keytrack  {"filter_keytrack",  0.0f,     0.0f,   1.0f};
@@ -464,6 +786,8 @@ struct WavetableSynth : vivid::OperatorBase {
         float  detune_offset  = 0;  // cents offset for unison
         float  pan            = 0;  // -1..1 for unison stereo
         float  last_sample    = 0;  // FM warp feedback
+        audio_dsp::WhiteNoise white_noise;
+        audio_dsp::PinkNoise  pink_noise;
         uint64_t note_id      = 0;
         int    gate_slot      = -1;
 
@@ -475,11 +799,19 @@ struct WavetableSynth : vivid::OperatorBase {
         float fz1[2] = {};
         float fz2[2] = {};
 
+        // Additional filter states
+        CombFilterState    comb;
+        LadderFilterState  ladder;
+        FormantFilterState formant;
+
         bool is_active() const { return amp_env.is_active(); }
 
         void reset_filter() {
             fz1[0] = fz1[1] = 0.0f;
             fz2[0] = fz2[1] = 0.0f;
+            comb.reset();
+            ladder.reset();
+            formant.reset();
         }
     };
 
@@ -492,7 +824,7 @@ struct WavetableSynth : vivid::OperatorBase {
     uint32_t prev_spread_len_        = 0;
 
     // All wavetables pre-computed in constructor so process() never generates.
-    Wavetable all_tables_[6];
+    Wavetable all_tables_[9];
 
     WavetableSynth() {
         generate_basic(all_tables_[0]);
@@ -501,6 +833,9 @@ struct WavetableSynth : vivid::OperatorBase {
         generate_vocal(all_tables_[3]);
         generate_texture(all_tables_[4]);
         generate_pwm(all_tables_[5]);
+        generate_formant(all_tables_[6]);
+        generate_harmonic(all_tables_[7]);
+        generate_metallic(all_tables_[8]);
         for (auto& t : all_tables_) t.build_mipmaps();
     }
 
@@ -518,9 +853,14 @@ struct WavetableSynth : vivid::OperatorBase {
         param_group(unison_voices, "Unison");
         param_group(unison_spread, "Unison");
         param_group(unison_stereo, "Unison");
+        param_group(unison_spread_mode, "Unison");
 
-        param_group(sub_level,  "Sub");
-        param_group(sub_octave, "Sub");
+        param_group(sub_level,    "Sub");
+        param_group(sub_octave,   "Sub");
+        param_group(sub_waveform, "Sub");
+
+        param_group(noise_level, "Noise");
+        param_group(noise_type,  "Noise");
 
         param_group(portamento, "Portamento");
 
@@ -565,6 +905,8 @@ struct WavetableSynth : vivid::OperatorBase {
         display_hint(filter_keytrack,  VIVID_DISPLAY_KNOB);
         display_hint(filter_drive,     VIVID_DISPLAY_KNOB);
 
+        display_hint(noise_level, VIVID_DISPLAY_KNOB);
+
         display_hint(filter_attack,  VIVID_DISPLAY_KNOB);
         display_hint(filter_decay,   VIVID_DISPLAY_KNOB);
         display_hint(filter_sustain, VIVID_DISPLAY_KNOB);
@@ -587,6 +929,10 @@ struct WavetableSynth : vivid::OperatorBase {
         layout_row(filter_resonance, 4, 1);
         layout_row(filter_keytrack,  4, 2);
         layout_row(filter_drive,     4, 3);
+
+        // Noise: 2 columns
+        layout_row(noise_level, 2, 0);
+        layout_row(noise_type,  2, 1);
 
         // Filter Envelope ADSR: 4 columns
         layout_row(filter_attack,  4, 0);
@@ -616,8 +962,12 @@ struct WavetableSynth : vivid::OperatorBase {
         out.push_back(&unison_voices);
         out.push_back(&unison_spread);
         out.push_back(&unison_stereo);
+        out.push_back(&unison_spread_mode);
         out.push_back(&sub_level);
         out.push_back(&sub_octave);
+        out.push_back(&sub_waveform);
+        out.push_back(&noise_level);
+        out.push_back(&noise_type);
         out.push_back(&portamento);
         out.push_back(&attack);
         out.push_back(&decay);
@@ -749,7 +1099,22 @@ struct WavetableSynth : vivid::OperatorBase {
             // Unison detune & pan
             if (num_uni > 1) {
                 float t = static_cast<float>(u) / static_cast<float>(num_uni - 1);
-                v.detune_offset = (t - 0.5f) * uni_spr;
+                float centered = t - 0.5f;
+
+                int mode = unison_spread_mode.int_value();
+                if (mode == 1) {
+                    // Exponential: wider spacing at extremes
+                    float sign = (centered >= 0.0f) ? 1.0f : -1.0f;
+                    centered = sign * std::pow(std::abs(centered) * 2.0f, 1.5f) * 0.5f;
+                } else if (mode == 2) {
+                    // Random: deterministic hash from voice index + note
+                    uint32_t seed = static_cast<uint32_t>(vi) * 1664525u
+                                  + static_cast<uint32_t>(note * 100.0f);
+                    seed ^= seed >> 16; seed *= 0x45d9f3bu; seed ^= seed >> 16;
+                    centered = (static_cast<float>(seed & 0xFFFFu) / 65535.0f - 0.5f);
+                }
+
+                v.detune_offset = centered * uni_spr;
                 v.pan = (t - 0.5f) * 2.0f * uni_st;
             } else {
                 v.detune_offset = 0.0f;
@@ -762,6 +1127,9 @@ struct WavetableSynth : vivid::OperatorBase {
             v.phase = 0.0;
             v.sub_phase = 0.0;
             v.last_sample = 0.0f;
+            v.white_noise.state = 12345u + static_cast<uint32_t>(vi) * 1664525u;
+            v.pink_noise = {};
+            v.pink_noise.white.state = 67890u + static_cast<uint32_t>(vi) * 1664525u;
 
             adsr::gate_on(v.amp_env);
             adsr::gate_on(v.filt_env);
@@ -856,6 +1224,32 @@ struct WavetableSynth : vivid::OperatorBase {
         return out;
     }
 
+    // --- Filter dispatch ---
+
+    float apply_filter(Voice& v, float input, float cutoff_hz, float reso,
+                       int ftype, float sr) {
+        switch (ftype) {
+            case FILTER_LP12: case FILTER_LP24: case FILTER_HP12:
+            case FILTER_BP:   case FILTER_NOTCH:
+                return apply_biquad(v, input, cutoff_hz, reso, ftype, sr);
+            case FILTER_COMB: {
+                float delay_samples = sr / std::max(cutoff_hz, 20.0f);
+                float feedback = reso * 0.98f;
+                return v.comb.process(input, delay_samples, feedback);
+            }
+            case FILTER_LADDER:
+                return v.ladder.process(input, cutoff_hz, reso, sr);
+            case FILTER_FORMANT: {
+                float morph = std::log2(cutoff_hz / 20.0f)
+                            / std::log2(20000.0f / 20.0f);
+                morph = std::clamp(morph, 0.0f, 1.0f);
+                return v.formant.process(input, morph, reso, sr);
+            }
+            default:
+                return input;
+        }
+    }
+
     // --- Gate processing ---
 
     void update_gates(const VividProcessContext* ctx) {
@@ -918,7 +1312,7 @@ struct WavetableSynth : vivid::OperatorBase {
         float dt  = 1.0f / sr;
 
         // Read params
-        int   wt_idx       = std::clamp(wavetable.int_value(), 0, 5);
+        int   wt_idx       = std::clamp(wavetable.int_value(), 0, 8);
         float pos          = position.value;
         float amp          = amplitude.value;
         int   warp_m       = warp_mode.int_value();
@@ -926,6 +1320,9 @@ struct WavetableSynth : vivid::OperatorBase {
         int   num_uni      = unison_voices.int_value();
         float sub_lvl      = sub_level.value;
         int   sub_oct      = sub_octave.int_value();
+        int   sub_wave     = sub_waveform.int_value();
+        float noise_lvl    = noise_level.value;
+        int   noise_tp     = noise_type.int_value();
         float porta_ms     = portamento.value;
         float att          = attack.value;
         float dec          = decay.value;
@@ -973,7 +1370,8 @@ struct WavetableSynth : vivid::OperatorBase {
         float sub_div = (sub_oct == 1) ? 4.0f : 2.0f; // choice 0="-1"(÷2), 1="-2"(÷4)
 
         // Filter active check
-        bool filter_active = (f_cutoff < 19999.0f) || (f_reso > 0.01f) ||
+        bool filter_active = (ftype >= FILTER_COMB) ||
+                             (f_cutoff < 19999.0f) || (f_reso > 0.01f) ||
                              (std::abs(f_env_amt) > 0.001f) || (f_drive > 0.001f);
         bool pos_env_active = p_env_amt != 0.0f;
 
@@ -1061,10 +1459,25 @@ struct WavetableSynth : vivid::OperatorBase {
                 if (sub_lvl > 0.0f) {
                     float sub_freq = v.current_freq / sub_div;
                     float sub_inc  = sub_freq / sr;
-                    float sub_sig  = std::sin(static_cast<float>(v.sub_phase) * TWO_PI_F);
+                    float sub_sig;
+                    if (sub_wave == 4) {
+                        sub_sig = v.white_noise.next();
+                    } else {
+                        // Map param order (Sine=0, Tri=1, Saw=2, Sq=3)
+                        // to audio_dsp::waveform order (sine=0, saw=1, sq=2, tri=3)
+                        static constexpr int wf_map[] = {0, 3, 1, 2};
+                        sub_sig = static_cast<float>(audio_dsp::waveform(v.sub_phase, wf_map[sub_wave]));
+                    }
                     sig = sig * (1.0f - sub_lvl) + sub_sig * sub_lvl;
                     v.sub_phase += static_cast<double>(sub_inc);
                     if (v.sub_phase >= 1.0) v.sub_phase -= 1.0;
+                }
+
+                // Noise oscillator
+                if (noise_lvl > 0.001f) {
+                    float n = (noise_tp == 0) ? v.white_noise.next()
+                                              : v.pink_noise.next();
+                    sig += n * noise_lvl;
                 }
 
                 // Per-voice biquad filter
@@ -1092,8 +1505,7 @@ struct WavetableSynth : vivid::OperatorBase {
                         sig = std::tanh(sig * d) / std::tanh(d);
                     }
 
-                    if (cutoff < sr * 0.45f)
-                        sig = apply_biquad(v, sig, cutoff, f_reso, ftype, sr);
+                    sig = apply_filter(v, sig, cutoff, f_reso, ftype, sr);
                 }
 
                 // Envelope & velocity
