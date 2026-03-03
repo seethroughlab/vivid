@@ -3,6 +3,7 @@
 #include "runtime/platform.h"
 #include "runtime/wgsl_header_parser.h"
 #include "operator_api/data_driven_filter.h"
+#include <yyjson.h>
 #include <dlfcn.h>
 #include <dirent.h>
 #include <cstring>
@@ -479,6 +480,123 @@ const std::string* OperatorRegistry::package_for_type(const std::string& type_na
 
 bool OperatorRegistry::is_package_operator(const std::string& type_name) const {
     return type_to_package_.count(type_name) > 0;
+}
+
+// --- Factory presets ---
+
+bool OperatorRegistry::scan_factory_presets(const std::string& directory) {
+    DIR* dir = opendir(directory.c_str());
+    if (!dir) {
+        // Not an error — factory_presets/ may not exist yet
+        return false;
+    }
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        const char* name = entry->d_name;
+        size_t len = std::strlen(name);
+        if (len < 6 || std::strcmp(name + len - 5, ".json") != 0)
+            continue;
+
+        // Stem = cmake target name
+        std::string target(name, len - 5);
+
+        // Resolve target → operator type name
+        auto tit = target_to_type_.find(target);
+        if (tit == target_to_type_.end()) {
+            std::fprintf(stderr, "[vivid] Factory presets: unknown target '%s', skipping\n",
+                         target.c_str());
+            continue;
+        }
+        const std::string& type_name = tit->second;
+
+        // Read file
+        std::string path = directory + "/" + name;
+        std::ifstream ifs(path);
+        if (!ifs) continue;
+        std::ostringstream ss;
+        ss << ifs.rdbuf();
+        std::string contents = ss.str();
+
+        // Parse JSON
+        yyjson_doc* doc = yyjson_read(contents.c_str(), contents.size(), 0);
+        if (!doc) {
+            std::fprintf(stderr, "[vivid] Factory presets: failed to parse %s\n", name);
+            continue;
+        }
+
+        yyjson_val* root = yyjson_doc_get_root(doc);
+        yyjson_val* presets_arr = yyjson_obj_get(root, "presets");
+        if (!presets_arr || !yyjson_is_arr(presets_arr)) {
+            yyjson_doc_free(doc);
+            std::fprintf(stderr, "[vivid] Factory presets: missing 'presets' array in %s\n", name);
+            continue;
+        }
+
+        std::vector<OperatorPreset> presets;
+        size_t idx, max;
+        yyjson_val* preset_val;
+        yyjson_arr_foreach(presets_arr, idx, max, preset_val) {
+            yyjson_val* pname = yyjson_obj_get(preset_val, "name");
+            if (!pname || !yyjson_is_str(pname)) continue;
+
+            OperatorPreset op;
+            op.name = yyjson_get_str(pname);
+
+            // Float params
+            yyjson_val* params_obj = yyjson_obj_get(preset_val, "params");
+            if (params_obj && yyjson_is_obj(params_obj)) {
+                size_t pi, pmax;
+                yyjson_val *pk, *pv;
+                yyjson_obj_foreach(params_obj, pi, pmax, pk, pv) {
+                    if (yyjson_is_num(pv))
+                        op.params[yyjson_get_str(pk)] = static_cast<float>(yyjson_get_num(pv));
+                }
+            }
+
+            // String params (optional)
+            yyjson_val* sparams_obj = yyjson_obj_get(preset_val, "string_params");
+            if (sparams_obj && yyjson_is_obj(sparams_obj)) {
+                size_t si, smax;
+                yyjson_val *sk, *sv;
+                yyjson_obj_foreach(sparams_obj, si, smax, sk, sv) {
+                    if (yyjson_is_str(sv))
+                        op.string_params[yyjson_get_str(sk)] = yyjson_get_str(sv);
+                }
+            }
+
+            presets.push_back(std::move(op));
+        }
+
+        yyjson_doc_free(doc);
+
+        if (!presets.empty()) {
+            factory_presets_[type_name] = std::move(presets);
+            std::fprintf(stderr, "[vivid] Registry: loaded %zu factory presets for %s\n",
+                         factory_presets_[type_name].size(), type_name.c_str());
+        }
+    }
+
+    closedir(dir);
+    return true;
+}
+
+const std::vector<OperatorPreset>* OperatorRegistry::factory_presets(
+        const std::string& type_name) const {
+    auto it = factory_presets_.find(type_name);
+    if (it == factory_presets_.end()) return nullptr;
+    return &it->second;
+}
+
+std::vector<std::string> OperatorRegistry::factory_preset_names(
+        const std::string& type_name) const {
+    auto it = factory_presets_.find(type_name);
+    if (it == factory_presets_.end()) return {};
+    std::vector<std::string> names;
+    names.reserve(it->second.size());
+    for (const auto& p : it->second)
+        names.push_back(p.name);
+    return names;
 }
 
 } // namespace vivid

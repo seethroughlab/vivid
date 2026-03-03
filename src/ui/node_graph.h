@@ -446,6 +446,7 @@ private:
     int dropdown_sel_ = 0;
     float dropdown_x_ = 0, dropdown_y_ = 0, dropdown_w_ = 0;
     std::vector<std::string> dropdown_labels_;
+    int dropdown_factory_count_ = 0;  // number of factory preset entries at start of labels
 
     // State-preset dropdown context
     int dropdown_state_idx_ = -1;

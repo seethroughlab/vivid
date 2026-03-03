@@ -617,8 +617,8 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
     tr.draw_rect(px, py, kInspContentW, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
     py += 8;
 
-    // Preset row (only if node has presets)
-    if (!node.preset_names.empty()) {
+    // Preset row (if node has user or factory presets)
+    if (!node.preset_names.empty() || !node.factory_preset_names.empty()) {
         float save_w = 46.0f;
         float gap = 4.0f;
         float dd_w = kInspContentW - save_w - gap;
@@ -2034,7 +2034,7 @@ void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapsho
     std::vector<PresetNode> preset_nodes;
     for (const auto& sn : snap_.nodes) {
         if (sn.node_id == node.node_id) continue;
-        if (sn.preset_names.empty()) continue;
+        if (sn.preset_names.empty() && sn.factory_preset_names.empty()) continue;
         preset_nodes.push_back({sn.node_id, &sn});
     }
     if (preset_nodes.empty()) return;
@@ -2639,8 +2639,21 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
                 tr.draw_rect(dropdown_x_ + 2, iy, dropdown_w_ - 4, item_h,
                              style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
             }
-            tr.draw_text(dropdown_x_ + 8, iy + 2, dropdown_labels_[i].c_str(),
-                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+            // Separator entry between factory and user presets
+            if (dropdown_is_preset_ && dropdown_factory_count_ > 0 &&
+                i == dropdown_factory_count_) {
+                // Draw separator line at top of this item
+                tr.draw_rect(dropdown_x_ + 6, iy, dropdown_w_ - 12, 1,
+                             style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
+            }
+
+            // Factory presets use dim text, user presets use bright text
+            bool is_factory = dropdown_is_preset_ && i < dropdown_factory_count_;
+            float r = is_factory ? style_.dim_text[0] : style_.bright_text[0];
+            float g = is_factory ? style_.dim_text[1] : style_.bright_text[1];
+            float b = is_factory ? style_.dim_text[2] : style_.bright_text[2];
+            tr.draw_text(dropdown_x_ + 8, iy + 2, dropdown_labels_[i].c_str(), r, g, b);
         }
     }
 

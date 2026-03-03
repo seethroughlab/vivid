@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/operator_loader.h"
+#include "runtime/graph.h"  // OperatorPreset
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -68,6 +69,11 @@ public:
     // Hot-reload support
     bool reload_operator(const std::string& type_name, const std::string& new_dylib_path);
 
+    // Factory presets (per-operator-type, read-only)
+    bool scan_factory_presets(const std::string& directory);
+    const std::vector<OperatorPreset>* factory_presets(const std::string& type_name) const;
+    std::vector<std::string> factory_preset_names(const std::string& type_name) const;
+
     // Package provenance tracking
     void register_package(const std::string& package_name, const std::string& build_dir);
     void unregister_package_operator(const std::string& type_name);
@@ -85,6 +91,7 @@ private:
     std::unordered_set<std::string> user_filter_types_;
     std::unordered_map<std::string, std::string> user_operator_sources_;
     std::unordered_map<std::string, std::string> type_to_package_;  // type_name → package_name
+    std::unordered_map<std::string, std::vector<OperatorPreset>> factory_presets_;  // type_name → presets
 };
 
 } // namespace vivid

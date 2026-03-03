@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "Circle",
+      "params": { "radius": 0.25, "sides": 64, "softness": 0.01 }
+    },
+    {
+      "name": "Neon Triangle",
+      "params": { "sides": 3, "radius": 0.35, "softness": 0.02, "r": 0, "g": 1, "b": 0.8 }
+    },
+    {
+      "name": "Star Burst",
+      "params": { "sides": 5, "star": 0.5, "radius": 0.35, "r": 1, "g": 0.9, "b": 0.2 }
+    },
+    {
+      "name": "Diamond",
+      "params": { "sides": 4, "rotation": 0.785, "softness": 0.003 }
+    },
+    {
+      "name": "Hex Grid Mask",
+      "params": { "sides": 6, "radius": 0.4, "softness": 0.0, "r": 1, "g": 0.3, "b": 0.1 }
+    }
+  ]
+}

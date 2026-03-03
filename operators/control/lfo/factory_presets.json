@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "Slow Drift",
+      "params": { "frequency": 0.1, "amplitude": 0.5 }
+    },
+    {
+      "name": "Vibrato",
+      "params": { "frequency": 5, "amplitude": 0.02 }
+    },
+    {
+      "name": "Tremolo",
+      "params": { "frequency": 4, "amplitude": 0.5, "offset": 0.5 }
+    },
+    {
+      "name": "Sample & Hold",
+      "params": { "frequency": 8, "waveform": 2 }
+    },
+    {
+      "name": "Ramp Up",
+      "params": { "frequency": 0.5, "waveform": 1 }
+    }
+  ]
+}

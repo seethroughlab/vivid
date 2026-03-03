@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "Floor Tom",
+      "params": { "pitch": 80, "bend": 0.4, "bend_time": 0.1, "color": 0.2, "tone": 0.4, "decay": 0.5 }
+    },
+    {
+      "name": "High Rack",
+      "params": { "pitch": 200, "bend": 0.25, "bend_time": 0.06, "color": 0.4, "tone": 0.6, "decay": 0.2 }
+    },
+    {
+      "name": "808 Tom",
+      "params": { "pitch": 100, "bend": 0.6, "bend_time": 0.15, "color": 0.1, "tone": 0.3, "decay": 0.6 }
+    },
+    {
+      "name": "Bongo",
+      "params": { "pitch": 300, "bend": 0.15, "bend_time": 0.03, "color": 0.5, "tone": 0.7, "decay": 0.15, "volume": 0.7 }
+    },
+    {
+      "name": "Timpani Roll",
+      "params": { "pitch": 65, "bend": 0.5, "bend_time": 0.2, "color": 0.15, "tone": 0.35, "decay": 1.5 }
+    }
+  ]
+}

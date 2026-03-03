@@ -1359,13 +1359,22 @@ bool NodeGraphUI::handle_inspector_click() {
             dropdown_y_ = r.y + r.h;
             dropdown_w_ = r.w;
             dropdown_labels_.clear();
+            dropdown_factory_count_ = 0;
             const auto* ns = snap_.find_node(r.node_id);
             if (ns) {
+                // Factory presets first (read-only)
+                for (const auto& name : ns->factory_preset_names)
+                    dropdown_labels_.push_back(name);
+                dropdown_factory_count_ = static_cast<int>(ns->factory_preset_names.size());
+
+                // Then user presets
                 for (const auto& name : ns->preset_names)
                     dropdown_labels_.push_back(name);
+
+                // Find active preset selection
                 dropdown_sel_ = -1;
-                for (int i = 0; i < static_cast<int>(ns->preset_names.size()); i++) {
-                    if (ns->preset_names[i] == ns->active_preset) { dropdown_sel_ = i; break; }
+                for (int i = 0; i < static_cast<int>(dropdown_labels_.size()); i++) {
+                    if (dropdown_labels_[i] == ns->active_preset) { dropdown_sel_ = i; break; }
                 }
             }
             dropdown_is_preset_ = true;
@@ -1408,9 +1417,15 @@ bool NodeGraphUI::handle_inspector_click() {
         if (spi >= 0) {
             const auto& r = state_preset_rects_[spi];
             const auto* target = snap_.find_node(r.target_node);
-            if (target && !target->preset_names.empty()) {
+            if (target && (!target->preset_names.empty() || !target->factory_preset_names.empty())) {
                 dropdown_labels_.clear();
+                dropdown_factory_count_ = 0;
                 dropdown_labels_.push_back("(none)");
+                // Factory presets first
+                for (const auto& pn : target->factory_preset_names)
+                    dropdown_labels_.push_back(pn);
+                dropdown_factory_count_ = static_cast<int>(target->factory_preset_names.size());
+                // Then user presets
                 for (const auto& pn : target->preset_names)
                     dropdown_labels_.push_back(pn);
                 // Find current mapping to set selection
@@ -1486,6 +1501,7 @@ bool NodeGraphUI::handle_inspector_click() {
         dropdown_y_ = dr.y + dr.h;
         dropdown_w_ = dr.w;
         dropdown_labels_.clear();
+        dropdown_factory_count_ = 0;
         const auto* ns = snap_.find_node(dr.node_id);
         if (ns && ns->op_info) {
             for (const auto& pd : ns->op_info->params) {

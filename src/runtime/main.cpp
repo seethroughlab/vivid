@@ -137,6 +137,7 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
 
         // Per-operator presets
         sn.preset_names = graph.list_presets(ns.node_id);
+        sn.factory_preset_names = registry.factory_preset_names(sn.type_name);
         if (runtime_api)
             sn.active_preset = runtime_api->active_preset(ns.node_id);
 
@@ -960,6 +961,10 @@ int main(int argc, char* argv[]) {
     // --- Load self-describing .wgsl filter presets ---
     std::string filters_dir = (resources_dir / "filters").string();
     registry.scan_wgsl_presets(filters_dir);
+
+    // --- Load factory presets for operators ---
+    std::string factory_presets_dir = (resources_dir / "factory_presets").string();
+    registry.scan_factory_presets(factory_presets_dir);
 
     // --- Package management (needs to outlive main loop for catalog/install) ---
     vivid::PackageCompiler pkg_compiler(build_paths.source_dir, build_paths.build_dir);

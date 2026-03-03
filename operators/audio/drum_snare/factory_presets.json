@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "808 Snare",
+      "params": { "tone": 0.7, "noise": 0.4, "pitch": 180, "tone_decay": 0.15, "noise_decay": 0.3, "snappy": 0.3, "color": 0.3 }
+    },
+    {
+      "name": "909 Crack",
+      "params": { "tone": 0.4, "noise": 0.7, "pitch": 250, "tone_decay": 0.06, "noise_decay": 0.15, "snappy": 0.8, "color": 0.6 }
+    },
+    {
+      "name": "Fat Backbeat",
+      "params": { "tone": 0.8, "noise": 0.6, "pitch": 160, "tone_decay": 0.2, "noise_decay": 0.35, "snappy": 0.4, "color": 0.4 }
+    },
+    {
+      "name": "Tight Rimshot",
+      "params": { "tone": 0.6, "noise": 0.2, "pitch": 350, "tone_decay": 0.03, "noise_decay": 0.05, "snappy": 0.9, "color": 0.8 }
+    },
+    {
+      "name": "Brush Swipe",
+      "params": { "tone": 0.2, "noise": 0.8, "pitch": 150, "tone_decay": 0.05, "noise_decay": 0.4, "snappy": 0.2, "color": 0.2, "volume": 0.6 }
+    }
+  ]
+}

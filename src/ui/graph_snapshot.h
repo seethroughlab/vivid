@@ -83,7 +83,8 @@ struct NodeSnapshot {
     bool has_layout = false;
 
     // Per-operator presets
-    std::vector<std::string> preset_names;  // ordered list of preset names
+    std::vector<std::string> preset_names;          // ordered list of user preset names
+    std::vector<std::string> factory_preset_names;   // ordered list of factory preset names
     std::string active_preset;              // currently active preset (empty = none)
 
     // State-preset mappings (populated only for StateMachine nodes)

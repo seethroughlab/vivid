@@ -97,11 +97,18 @@ set_property(GLOBAL PROPERTY VIVID_OPERATOR_TARGETS "")
 
 # --- Operator plugin helper ---
 function(add_vivid_operator name source)
-    cmake_parse_arguments(ARG "" "" "EXTRA_LIBS" ${ARGN})
+    cmake_parse_arguments(ARG "" "FACTORY_PRESETS" "EXTRA_LIBS" ${ARGN})
     add_library(${name} MODULE ${source})
     set_target_properties(${name} PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
     target_link_libraries(${name} PRIVATE vivid_operator_api ${ARG_EXTRA_LIBS})
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS ${name})
+
+    # Copy factory presets JSON to build directory
+    if(ARG_FACTORY_PRESETS)
+        file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/factory_presets)
+        configure_file(${ARG_FACTORY_PRESETS}
+            ${CMAKE_BINARY_DIR}/factory_presets/${name}.json COPYONLY)
+    endif()
 
     # Accumulate manifest entry
     # Filter out non-library targets from EXTRA_LIBS (keep only webgpu, rtmidi, etc.)
@@ -121,11 +128,13 @@ function(add_vivid_operator name source)
 endfunction()
 
 # --- Control operator plugins ---
-add_vivid_operator(lfo            operators/control/lfo/lfo.cpp)
+add_vivid_operator(lfo            operators/control/lfo/lfo.cpp
+                   FACTORY_PRESETS operators/control/lfo/factory_presets.json)
 add_vivid_operator(clock          operators/control/clock/clock.cpp)
 add_vivid_operator(note_duration  operators/control/note_duration/note_duration.cpp)
 add_vivid_operator(math           operators/control/math/math.cpp)
-add_vivid_operator(envelope       operators/control/envelope/envelope.cpp)
+add_vivid_operator(envelope       operators/control/envelope/envelope.cpp
+                   FACTORY_PRESETS operators/control/envelope/factory_presets.json)
 add_vivid_operator(midi_input     operators/control/midi_input/midi_input.cpp     EXTRA_LIBS rtmidi)
 add_vivid_operator(fft_analysis   operators/control/fft_analysis/fft_analysis.cpp)
 add_vivid_operator(note_pattern   operators/control/note_pattern/note_pattern.cpp)
@@ -147,13 +156,17 @@ add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_g
 add_vivid_operator(state_machine    operators/control/state_machine/state_machine.cpp)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
-add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu)
-add_vivid_operator(shape          operators/gpu/shape/shape.cpp          EXTRA_LIBS webgpu)
+add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu
+                   FACTORY_PRESETS operators/gpu/noise/factory_presets.json)
+add_vivid_operator(shape          operators/gpu/shape/shape.cpp          EXTRA_LIBS webgpu
+                   FACTORY_PRESETS operators/gpu/shape/factory_presets.json)
 add_vivid_operator(bars           operators/gpu/bars/bars.cpp            EXTRA_LIBS webgpu)
 add_vivid_operator(composite      operators/gpu/composite/composite.cpp  EXTRA_LIBS webgpu)
 add_vivid_operator(texture_analysis operators/gpu/texture_analysis/texture_analysis.cpp EXTRA_LIBS webgpu)
-add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp                             EXTRA_LIBS webgpu)
-add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp                       EXTRA_LIBS webgpu)
+add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp                             EXTRA_LIBS webgpu
+                   FACTORY_PRESETS operators/gpu/bloom/factory_presets.json)
+add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp                       EXTRA_LIBS webgpu
+                   FACTORY_PRESETS operators/gpu/feedback/factory_presets.json)
 add_vivid_operator(instance             operators/gpu/instance/instance.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 add_vivid_operator(plexus                operators/gpu/plexus/plexus.cpp                           EXTRA_LIBS webgpu)
@@ -218,19 +231,30 @@ set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS webcam_in)
 # --- Audio operator plugins ---
 add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp)
 add_vivid_operator(gain           operators/audio/gain/gain.cpp)
-add_vivid_operator(drum_kick      operators/audio/drum_kick/drum_kick.cpp)
-add_vivid_operator(drum_snare     operators/audio/drum_snare/drum_snare.cpp)
-add_vivid_operator(drum_hihat     operators/audio/drum_hihat/drum_hihat.cpp)
-add_vivid_operator(drum_clap      operators/audio/drum_clap/drum_clap.cpp)
-add_vivid_operator(drum_tom       operators/audio/drum_tom/drum_tom.cpp)
-add_vivid_operator(drum_cymbal    operators/audio/drum_cymbal/drum_cymbal.cpp)
-add_vivid_operator(wavetable_synth operators/audio/wavetable_synth/wavetable_synth.cpp)
+add_vivid_operator(drum_kick      operators/audio/drum_kick/drum_kick.cpp
+                   FACTORY_PRESETS operators/audio/drum_kick/factory_presets.json)
+add_vivid_operator(drum_snare     operators/audio/drum_snare/drum_snare.cpp
+                   FACTORY_PRESETS operators/audio/drum_snare/factory_presets.json)
+add_vivid_operator(drum_hihat     operators/audio/drum_hihat/drum_hihat.cpp
+                   FACTORY_PRESETS operators/audio/drum_hihat/factory_presets.json)
+add_vivid_operator(drum_clap      operators/audio/drum_clap/drum_clap.cpp
+                   FACTORY_PRESETS operators/audio/drum_clap/factory_presets.json)
+add_vivid_operator(drum_tom       operators/audio/drum_tom/drum_tom.cpp
+                   FACTORY_PRESETS operators/audio/drum_tom/factory_presets.json)
+add_vivid_operator(drum_cymbal    operators/audio/drum_cymbal/drum_cymbal.cpp
+                   FACTORY_PRESETS operators/audio/drum_cymbal/factory_presets.json)
+add_vivid_operator(wavetable_synth operators/audio/wavetable_synth/wavetable_synth.cpp
+                   FACTORY_PRESETS operators/audio/wavetable_synth/factory_presets.json)
 add_vivid_operator(spread_adsr    operators/audio/spread_adsr/spread_adsr.cpp)
 add_vivid_operator(spread_lfo     operators/audio/spread_lfo/spread_lfo.cpp)
-add_vivid_operator(reverb         operators/audio/reverb/reverb.cpp)
-add_vivid_operator(delay          operators/audio/delay/delay.cpp)
-add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp)
-add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp)
+add_vivid_operator(reverb         operators/audio/reverb/reverb.cpp
+                   FACTORY_PRESETS operators/audio/reverb/factory_presets.json)
+add_vivid_operator(delay          operators/audio/delay/delay.cpp
+                   FACTORY_PRESETS operators/audio/delay/factory_presets.json)
+add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp
+                   FACTORY_PRESETS operators/audio/bitcrush/factory_presets.json)
+add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp
+                   FACTORY_PRESETS operators/audio/distortion/factory_presets.json)
 add_vivid_operator(plexus_synth   operators/audio/plexus_synth/plexus_synth.cpp)
 
 # --- Movie File Audio In (audio extraction from video files) ---
@@ -414,6 +438,14 @@ if(APPLE)
         target_sources(vivid PRIVATE ${f})
         set_source_files_properties(${f}
             PROPERTIES MACOSX_PACKAGE_LOCATION Resources/filters)
+    endforeach()
+
+    # Factory presets → Resources/factory_presets/
+    file(GLOB _BUNDLE_FACTORY_PRESETS ${CMAKE_BINARY_DIR}/factory_presets/*.json)
+    foreach(f ${_BUNDLE_FACTORY_PRESETS})
+        target_sources(vivid PRIVATE ${f})
+        set_source_files_properties(${f}
+            PROPERTIES MACOSX_PACKAGE_LOCATION Resources/factory_presets)
     endforeach()
 
     # operator_api headers → Resources/sdk/src/operator_api/

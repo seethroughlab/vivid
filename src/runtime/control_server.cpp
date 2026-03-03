@@ -682,6 +682,15 @@ static std::string dispatch(const std::string& method, const std::string& body,
             else
                 result = command_result_to_json(api.list_presets(yyjson_get_str(nid)));
         }
+    } else if (method == "list_factory_presets") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid = yyjson_obj_get(root, "node_id");
+            if (!nid || !yyjson_is_str(nid))
+                result = json_err("missing 'node_id'");
+            else
+                result = command_result_to_json(api.list_factory_presets(yyjson_get_str(nid)));
+        }
     } else if (method == "set_param_lock") {
         if (!root) { result = json_err("invalid JSON body"); }
         else {

@@ -22,8 +22,53 @@ namespace adsr = vivid::adsr;
 static constexpr uint32_t SAMPLES_PER_FRAME = 2048;
 static constexpr uint32_t MAX_FRAMES        = 256;
 
+// Radix-2 Cooley-Tukey FFT/IFFT, in-place, N must be power-of-2.
+// Used only at init time for mipmap generation.
+static void fft_inplace(float* real, float* imag, int N, bool inverse) {
+    // Bit-reversal permutation
+    for (int i = 1, j = 0; i < N; ++i) {
+        int bit = N >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) {
+            std::swap(real[i], real[j]);
+            std::swap(imag[i], imag[j]);
+        }
+    }
+    // Butterfly passes
+    for (int len = 2; len <= N; len <<= 1) {
+        float ang = TWO_PI_F / static_cast<float>(len) * (inverse ? -1.0f : 1.0f);
+        float w_re = std::cos(ang), w_im = std::sin(ang);
+        for (int i = 0; i < N; i += len) {
+            float cur_re = 1.0f, cur_im = 0.0f;
+            for (int j = 0; j < len / 2; ++j) {
+                int u = i + j, v = u + len / 2;
+                float t_re = cur_re * real[v] - cur_im * imag[v];
+                float t_im = cur_re * imag[v] + cur_im * real[v];
+                real[v] = real[u] - t_re;
+                imag[v] = imag[u] - t_im;
+                real[u] += t_re;
+                imag[u] += t_im;
+                float next_re = cur_re * w_re - cur_im * w_im;
+                cur_im = cur_re * w_im + cur_im * w_re;
+                cur_re = next_re;
+            }
+        }
+    }
+    if (inverse) {
+        float inv_n = 1.0f / static_cast<float>(N);
+        for (int i = 0; i < N; ++i) {
+            real[i] *= inv_n;
+            imag[i] *= inv_n;
+        }
+    }
+}
+
+static constexpr int NUM_MIP_LEVELS = 11; // log2(2048) - log2(2) + 1; level 0 = full, level 10 = fundamental only
+
 struct Wavetable {
-    std::vector<float> data;   // frames * SAMPLES_PER_FRAME
+    std::vector<float> data;   // frames * SAMPLES_PER_FRAME (level 0 — full bandwidth)
+    std::vector<float> mip[NUM_MIP_LEVELS - 1]; // levels 1..10
     uint32_t frame_count = 0;
 
     void allocate(uint32_t frames) {
@@ -34,14 +79,57 @@ struct Wavetable {
         } else {
             std::fill_n(data.data(), needed, 0.0f);
         }
+        for (int l = 0; l < NUM_MIP_LEVELS - 1; ++l) {
+            if (mip[l].size() < needed)
+                mip[l].assign(needed, 0.0f);
+            else
+                std::fill_n(mip[l].data(), needed, 0.0f);
+        }
     }
 
     float* frame_ptr(uint32_t f) {
         return data.data() + f * SAMPLES_PER_FRAME;
     }
 
-    float sample(float phase, float position) const {
-        if (data.empty() || frame_count == 0) return 0.0f;
+    void build_mipmaps() {
+        const int N = static_cast<int>(SAMPLES_PER_FRAME);
+        std::vector<float> tmp_re(N), tmp_im(N);
+        std::vector<float> freq_re(N), freq_im(N);
+
+        for (uint32_t fr = 0; fr < frame_count; ++fr) {
+            const float* src = data.data() + fr * SAMPLES_PER_FRAME;
+
+            // Forward FFT of this frame
+            std::copy(src, src + N, freq_re.data());
+            std::fill(freq_im.begin(), freq_im.end(), 0.0f);
+            fft_inplace(freq_re.data(), freq_im.data(), N, false);
+
+            for (int L = 1; L < NUM_MIP_LEVELS; ++L) {
+                int max_bin = N / 2 >> L; // number of harmonics to keep (1024 >> L)
+
+                // Copy spectrum and zero bins above max_bin
+                std::copy(freq_re.begin(), freq_re.end(), tmp_re.data());
+                std::copy(freq_im.begin(), freq_im.end(), tmp_im.data());
+
+                for (int bin = max_bin + 1; bin <= N / 2; ++bin) {
+                    tmp_re[bin] = tmp_im[bin] = 0.0f;
+                    if (bin < N) {
+                        tmp_re[N - bin] = tmp_im[N - bin] = 0.0f;
+                    }
+                }
+
+                // Inverse FFT
+                fft_inplace(tmp_re.data(), tmp_im.data(), N, true);
+
+                float* dst = mip[L - 1].data() + fr * SAMPLES_PER_FRAME;
+                std::copy(tmp_re.data(), tmp_re.data() + N, dst);
+            }
+        }
+    }
+
+    // Bilinear interpolation (frame blend + sample interp) from a specific mip level
+    float sample_level(float phase, float position, int level) const {
+        const float* buf = (level == 0) ? data.data() : mip[level - 1].data();
 
         position = std::clamp(position, 0.0f, 1.0f);
         float frame_pos = position * static_cast<float>(frame_count - 1);
@@ -55,12 +143,31 @@ struct Wavetable {
         uint32_t s1 = (s0 + 1) % SAMPLES_PER_FRAME;
         float sf = sp - std::floor(sp);
 
-        const float* d0 = data.data() + f0 * SAMPLES_PER_FRAME;
-        const float* d1 = data.data() + f1 * SAMPLES_PER_FRAME;
+        const float* d0 = buf + f0 * SAMPLES_PER_FRAME;
+        const float* d1 = buf + f1 * SAMPLES_PER_FRAME;
 
         float a = d0[s0] + (d0[s1] - d0[s0]) * sf;
         float b = d1[s0] + (d1[s1] - d1[s0]) * sf;
         return a + (b - a) * ff;
+    }
+
+    float sample(float phase, float position, float freq_hz, float sample_rate) const {
+        if (data.empty() || frame_count == 0) return 0.0f;
+
+        // Compute mip level from playback frequency
+        float max_h = sample_rate / (2.0f * std::max(freq_hz, 1.0f));
+        float level_f = std::log2(static_cast<float>(SAMPLES_PER_FRAME / 2) / std::max(max_h, 1.0f));
+        level_f = std::clamp(level_f, 0.0f, static_cast<float>(NUM_MIP_LEVELS - 1));
+
+        int lo = static_cast<int>(level_f);
+        int hi = std::min(lo + 1, NUM_MIP_LEVELS - 1);
+        float frac = level_f - static_cast<float>(lo);
+
+        float s_lo = sample_level(phase, position, lo);
+        if (frac < 0.001f) return s_lo;
+
+        float s_hi = sample_level(phase, position, hi);
+        return s_lo + (s_hi - s_lo) * frac;
     }
 };
 
@@ -318,6 +425,7 @@ struct WavetableSynth : vivid::OperatorBase {
     vivid::Param<float> filter_cutoff    {"filter_cutoff",    20000.0f, 20.0f,  20000.0f};
     vivid::Param<float> filter_resonance {"filter_resonance", 0.0f,     0.0f,   1.0f};
     vivid::Param<float> filter_keytrack  {"filter_keytrack",  0.0f,     0.0f,   1.0f};
+    vivid::Param<float> filter_drive     {"filter_drive",     0.0f,     0.0f,   1.0f};
 
     // Filter envelope
     vivid::Param<float> filter_attack    {"filter_attack",    0.01f,    0.001f, 10.0f};
@@ -393,6 +501,7 @@ struct WavetableSynth : vivid::OperatorBase {
         generate_vocal(all_tables_[3]);
         generate_texture(all_tables_[4]);
         generate_pwm(all_tables_[5]);
+        for (auto& t : all_tables_) t.build_mipmaps();
     }
 
     // --- Param / port registration ---
@@ -424,6 +533,7 @@ struct WavetableSynth : vivid::OperatorBase {
         param_group(filter_cutoff,    "Filter");
         param_group(filter_resonance, "Filter");
         param_group(filter_keytrack,  "Filter");
+        param_group(filter_drive,     "Filter");
 
         param_group(filter_attack,     "Filter Envelope");
         param_group(filter_decay,      "Filter Envelope");
@@ -453,6 +563,7 @@ struct WavetableSynth : vivid::OperatorBase {
         display_hint(filter_cutoff,    VIVID_DISPLAY_KNOB);
         display_hint(filter_resonance, VIVID_DISPLAY_KNOB);
         display_hint(filter_keytrack,  VIVID_DISPLAY_KNOB);
+        display_hint(filter_drive,     VIVID_DISPLAY_KNOB);
 
         display_hint(filter_attack,  VIVID_DISPLAY_KNOB);
         display_hint(filter_decay,   VIVID_DISPLAY_KNOB);
@@ -471,10 +582,11 @@ struct WavetableSynth : vivid::OperatorBase {
         layout_row(sustain, 4, 2);
         layout_row(release, 4, 3);
 
-        // Filter knobs: 3 columns
-        layout_row(filter_cutoff,    3, 0);
-        layout_row(filter_resonance, 3, 1);
-        layout_row(filter_keytrack,  3, 2);
+        // Filter knobs: 4 columns
+        layout_row(filter_cutoff,    4, 0);
+        layout_row(filter_resonance, 4, 1);
+        layout_row(filter_keytrack,  4, 2);
+        layout_row(filter_drive,     4, 3);
 
         // Filter Envelope ADSR: 4 columns
         layout_row(filter_attack,  4, 0);
@@ -515,6 +627,7 @@ struct WavetableSynth : vivid::OperatorBase {
         out.push_back(&filter_cutoff);
         out.push_back(&filter_resonance);
         out.push_back(&filter_keytrack);
+        out.push_back(&filter_drive);
         out.push_back(&filter_attack);
         out.push_back(&filter_decay);
         out.push_back(&filter_sustain);
@@ -822,6 +935,7 @@ struct WavetableSynth : vivid::OperatorBase {
         float f_cutoff     = filter_cutoff.value;
         float f_reso       = filter_resonance.value;
         float f_keytrack   = filter_keytrack.value;
+        float f_drive      = filter_drive.value;
         float f_att        = filter_attack.value;
         float f_dec        = filter_decay.value;
         float f_sus        = filter_sustain.value;
@@ -860,7 +974,7 @@ struct WavetableSynth : vivid::OperatorBase {
 
         // Filter active check
         bool filter_active = (f_cutoff < 19999.0f) || (f_reso > 0.01f) ||
-                             (std::abs(f_env_amt) > 0.001f);
+                             (std::abs(f_env_amt) > 0.001f) || (f_drive > 0.001f);
         bool pos_env_active = p_env_amt != 0.0f;
 
         float norm = 1.0f / std::sqrt(static_cast<float>(kMaxVoices));
@@ -940,7 +1054,7 @@ struct WavetableSynth : vivid::OperatorBase {
                 effective_pos += ext_pos;
                 effective_pos = std::clamp(effective_pos, 0.0f, 1.0f);
 
-                float sig = wt.sample(warped, effective_pos);
+                float sig = wt.sample(warped, effective_pos, freq, sr);
                 v.last_sample = sig;
 
                 // Sub oscillator
@@ -970,6 +1084,12 @@ struct WavetableSynth : vivid::OperatorBase {
                     if (f_keytrack > 0.0f) {
                         float oct_from_c4 = std::log2(v.current_freq / 261.63f);
                         cutoff *= std::pow(2.0f, oct_from_c4 * f_keytrack);
+                    }
+
+                    // Filter drive (gain-compensated soft clip)
+                    if (f_drive > 0.001f) {
+                        float d = 1.0f + f_drive * 7.0f;
+                        sig = std::tanh(sig * d) / std::tanh(d);
                     }
 
                     if (cutoff < sr * 0.45f)

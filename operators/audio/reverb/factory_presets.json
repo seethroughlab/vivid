@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "Large Hall",
+      "params": { "room_size": 0.85, "damping": 0.3, "mix": 0.45 }
+    },
+    {
+      "name": "Small Room",
+      "params": { "room_size": 0.25, "damping": 0.7, "mix": 0.35 }
+    },
+    {
+      "name": "Plate",
+      "params": { "room_size": 0.6, "damping": 0.15, "mix": 0.5 }
+    },
+    {
+      "name": "Cathedral",
+      "params": { "room_size": 0.95, "damping": 0.1, "mix": 0.6 }
+    },
+    {
+      "name": "Tight Slap",
+      "params": { "room_size": 0.1, "damping": 0.9, "mix": 0.25 }
+    }
+  ]
+}

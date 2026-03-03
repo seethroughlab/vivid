@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "808 Closed",
+      "params": { "decay": 0.05, "tone": 0.4, "ring": 0.7, "pitch": 0.9 }
+    },
+    {
+      "name": "808 Open",
+      "params": { "decay": 0.5, "tone": 0.4, "ring": 0.7, "pitch": 0.9 }
+    },
+    {
+      "name": "909 Sizzle",
+      "params": { "decay": 0.12, "tone": 0.7, "ring": 0.6, "pitch": 1.1 }
+    },
+    {
+      "name": "Crisp Top",
+      "params": { "decay": 0.03, "tone": 0.9, "ring": 0.3 }
+    },
+    {
+      "name": "Trashy Ride",
+      "params": { "decay": 0.8, "tone": 0.3, "ring": 0.8, "pitch": 0.7, "volume": 0.5 }
+    }
+  ]
+}

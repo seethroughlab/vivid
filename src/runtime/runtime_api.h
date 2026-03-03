@@ -99,6 +99,7 @@ public:
     CommandResult rename_preset(const std::string& node_id, const std::string& old_name,
                                 const std::string& new_name);
     CommandResult list_presets(const std::string& node_id);
+    CommandResult list_factory_presets(const std::string& node_id);
 
     // --- State-Preset Mapping ---
     CommandResult set_state_preset(const std::string& sm_node, int state_idx,

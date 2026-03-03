@@ -721,7 +721,24 @@ CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::str
 }
 
 CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::string& name) {
+    // Check user presets first, then fall through to factory presets
     const auto* preset = graph_.find_preset(node_id, name);
+
+    // Factory preset fallback: look up by node type
+    const OperatorPreset* factory_hit = nullptr;
+    if (!preset) {
+        const auto* ndef = graph_.find_node(node_id);
+        if (ndef) {
+            const auto* fps = registry_.factory_presets(ndef->type);
+            if (fps) {
+                for (const auto& fp : *fps) {
+                    if (fp.name == name) { factory_hit = &fp; break; }
+                }
+            }
+        }
+        preset = factory_hit;
+    }
+
     if (!preset) return {false, "preset '" + name + "' not found on " + node_id};
 
     NodeState* ns = scheduler_.find_node_mut(node_id);
@@ -761,7 +778,20 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
 
 CommandResult RuntimeAPI::update_preset(const std::string& node_id, const std::string& name) {
     auto* preset = graph_.find_preset(node_id, name);
-    if (!preset) return {false, "preset '" + name + "' not found on " + node_id};
+    if (!preset) {
+        // Check if it's a factory preset (read-only)
+        const auto* ndef = graph_.find_node(node_id);
+        if (ndef) {
+            const auto* fps = registry_.factory_presets(ndef->type);
+            if (fps) {
+                for (const auto& fp : *fps) {
+                    if (fp.name == name)
+                        return {false, "cannot modify factory preset '" + name + "'"};
+                }
+            }
+        }
+        return {false, "preset '" + name + "' not found on " + node_id};
+    }
 
     NodeState* ns = scheduler_.find_node_mut(node_id);
     if (!ns) return {false, "unknown node '" + node_id + "'"};
@@ -781,21 +811,58 @@ CommandResult RuntimeAPI::update_preset(const std::string& node_id, const std::s
 }
 
 CommandResult RuntimeAPI::remove_preset(const std::string& node_id, const std::string& name) {
-    if (!graph_.remove_preset(node_id, name))
+    if (!graph_.remove_preset(node_id, name)) {
+        // Check if it's a factory preset (read-only)
+        const auto* ndef = graph_.find_node(node_id);
+        if (ndef) {
+            const auto* fps = registry_.factory_presets(ndef->type);
+            if (fps) {
+                for (const auto& fp : *fps) {
+                    if (fp.name == name)
+                        return {false, "cannot modify factory preset '" + name + "'"};
+                }
+            }
+        }
         return {false, "preset '" + name + "' not found on " + node_id};
+    }
     return {true, "removed preset '" + name + "' from " + node_id};
 }
 
 CommandResult RuntimeAPI::rename_preset(const std::string& node_id, const std::string& old_name,
                                          const std::string& new_name) {
-    if (!graph_.rename_preset(node_id, old_name, new_name))
+    if (!graph_.rename_preset(node_id, old_name, new_name)) {
+        // Check if it's a factory preset (read-only)
+        const auto* ndef = graph_.find_node(node_id);
+        if (ndef) {
+            const auto* fps = registry_.factory_presets(ndef->type);
+            if (fps) {
+                for (const auto& fp : *fps) {
+                    if (fp.name == old_name)
+                        return {false, "cannot modify factory preset '" + old_name + "'"};
+                }
+            }
+        }
         return {false, "rename failed (not found or name conflict)"};
+    }
     return {true, "renamed preset '" + old_name + "' to '" + new_name + "' on " + node_id};
 }
 
 CommandResult RuntimeAPI::list_presets(const std::string& node_id) {
     auto names = graph_.list_presets(node_id);
     if (names.empty()) return {true, "(no presets on " + node_id + ")"};
+    std::ostringstream oss;
+    for (size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) oss << ", ";
+        oss << names[i];
+    }
+    return {true, oss.str()};
+}
+
+CommandResult RuntimeAPI::list_factory_presets(const std::string& node_id) {
+    const auto* ndef = graph_.find_node(node_id);
+    if (!ndef) return {false, "unknown node '" + node_id + "'"};
+    auto names = registry_.factory_preset_names(ndef->type);
+    if (names.empty()) return {true, "(no factory presets for " + ndef->type + ")"};
     std::ostringstream oss;
     for (size_t i = 0; i < names.size(); ++i) {
         if (i > 0) oss << ", ";

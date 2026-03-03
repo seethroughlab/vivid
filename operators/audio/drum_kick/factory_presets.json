@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "808 Boom",
+      "params": { "pitch": 45, "pitch_env": 200, "decay": 0.8, "click": 0.1, "drive": 0.1, "overtones": 0.05 }
+    },
+    {
+      "name": "909 Punch",
+      "params": { "pitch": 80, "pitch_env": 180, "pitch_decay": 0.03, "decay": 0.15, "click": 0.6, "drive": 0.4, "overtones": 0.3 }
+    },
+    {
+      "name": "Trap Sub",
+      "params": { "pitch": 35, "pitch_env": 250, "pitch_decay": 0.08, "decay": 1.2, "click": 0.0, "drive": 0.05, "overtones": 0.0 }
+    },
+    {
+      "name": "Techno Thump",
+      "params": { "pitch": 55, "pitch_env": 300, "pitch_decay": 0.02, "decay": 0.2, "click": 0.5, "drive": 0.6, "overtones": 0.2 }
+    },
+    {
+      "name": "Acoustic Thud",
+      "params": { "pitch": 90, "pitch_env": 80, "pitch_decay": 0.04, "decay": 0.25, "click": 0.4, "drive": 0.15, "overtones": 0.4, "attack": 0.01 }
+    }
+  ]
+}

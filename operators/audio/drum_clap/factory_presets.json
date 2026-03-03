@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "808 Clap",
+      "params": { "decay": 0.3, "tone": 0.4, "sloppy": 0.4, "tail": 0.5, "tune": 1200 }
+    },
+    {
+      "name": "909 Clap",
+      "params": { "decay": 0.15, "tone": 0.7, "sloppy": 0.2, "tail": 0.2, "tune": 2000 }
+    },
+    {
+      "name": "Stadium",
+      "params": { "decay": 0.8, "tone": 0.3, "sloppy": 0.8, "tail": 0.7, "stereo_width": 0.9, "tune": 1000 }
+    },
+    {
+      "name": "Finger Snap",
+      "params": { "decay": 0.08, "tone": 0.8, "sloppy": 0.05, "tail": 0.0, "stereo_width": 0.1, "tune": 3000, "volume": 0.5 }
+    },
+    {
+      "name": "Tribal Slap",
+      "params": { "decay": 0.25, "tone": 0.6, "sloppy": 0.5, "tail": 0.4, "tune": 800, "volume": 0.8 }
+    }
+  ]
+}
