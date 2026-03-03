@@ -37,7 +37,9 @@
       "wavetable": 0, "position": 0.3, "amplitude": 0.25,
       "attack": 0.5, "decay": 0.3, "sustain": 0.8, "release": 1.0,
       "filter_type": 1, "filter_cutoff": 800.0, "filter_resonance": 0.1,
-      "unison_voices": 2, "unison_spread": 15.0
+      "unison_voices": 2, "unison_spread": 15.0,
+      "noise_level": 0.05, "noise_type": 1,
+      "unison_spread_mode": 1
     }},
     "noise1":    { "type": "Noise",          "params": {
       "noise_type": 0, "scale": 3.0, "speed": 0.3, "octaves": 2
@@ -124,19 +126,26 @@
         "wavetable": 0, "position": 0.3, "amplitude": 0.25,
         "attack": 0.5, "decay": 0.3, "sustain": 0.8, "release": 1.0,
         "filter_cutoff": 800.0, "filter_resonance": 0.1,
-        "unison_voices": 2, "unison_spread": 15.0
+        "unison_voices": 2, "unison_spread": 15.0,
+        "noise_level": 0.05, "noise_type": 1,
+        "unison_spread_mode": 1
       }},
       { "name": "build", "params": {
-        "wavetable": 2, "position": 0.5, "amplitude": 0.3,
+        "wavetable": 7, "position": 0.5, "amplitude": 0.3,
         "attack": 0.01, "decay": 0.2, "sustain": 0.6, "release": 0.3,
-        "filter_cutoff": 3000.0, "filter_resonance": 0.2,
-        "unison_voices": 3, "unison_spread": 25.0
+        "filter_type": 6, "filter_cutoff": 3000.0, "filter_resonance": 0.2,
+        "filter_drive": 0.2,
+        "unison_voices": 3, "unison_spread": 25.0,
+        "unison_spread_mode": 1
       }},
       { "name": "drop", "params": {
-        "wavetable": 3, "position": 0.7, "amplitude": 0.35,
+        "wavetable": 8, "position": 0.7, "amplitude": 0.35,
         "attack": 0.001, "decay": 0.15, "sustain": 0.5, "release": 0.2,
-        "filter_cutoff": 8000.0, "filter_resonance": 0.5,
-        "unison_voices": 4, "unison_spread": 30.0
+        "filter_type": 5, "filter_cutoff": 8000.0, "filter_resonance": 0.5,
+        "filter_drive": 0.4,
+        "unison_voices": 4, "unison_spread": 30.0,
+        "unison_spread_mode": 2,
+        "noise_level": 0.1, "noise_type": 0
       }}
     ],
 

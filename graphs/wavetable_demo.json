@@ -26,9 +26,12 @@
       "sustain": 0.6, "release": 1.0, "amplitude": 0.25,
       "filter_type": 1, "filter_cutoff": 3000.0,
       "filter_resonance": 0.4, "filter_keytrack": 0.5,
+      "filter_drive": 0.2,
       "filter_attack": 0.1, "filter_decay": 0.8,
       "filter_sustain": 0.2, "filter_release": 0.6,
-      "filter_env_amount": 0.6
+      "filter_env_amount": 0.6,
+      "noise_level": 0.06, "noise_type": 1,
+      "unison_spread_mode": 1
     }},
     "reverb1": { "type": "Reverb", "params": {
       "room_size": 0.8, "damping": 0.3, "mix": 0.4
