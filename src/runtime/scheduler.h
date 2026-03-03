@@ -38,7 +38,8 @@ struct NodeState {
     bool is_audio = false;
     uint64_t generation = 0;
     std::vector<uint32_t> upstream_nodes;       // indices of nodes feeding into this one
-    std::vector<uint64_t> upstream_gens_cached;  // generation of each upstream at last cook
+    bool processed_this_tick = false;
+    uint64_t last_processed_gen = 0;
     std::vector<float> prev_output_values;
 
     // Spread data

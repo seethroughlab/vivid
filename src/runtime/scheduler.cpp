@@ -356,8 +356,7 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         if (!found)
             ups.push_back(w.from_node_idx);
     }
-    for (auto& ns : nodes_)
-        ns.upstream_gens_cached.resize(ns.upstream_nodes.size(), 0);
+    // (upstream_nodes built above; no per-upstream cached state needed)
 
     // Print evaluation order
     std::fprintf(stderr, "[vivid] Evaluation order:");
@@ -371,6 +370,9 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
 
 void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_state,
                      PostNodeFn on_gpu_node, const VividInputState* input) {
+    // Reset per-tick flags
+    for (auto& ns : nodes_) ns.processed_this_tick = false;
+
     for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
         auto& ns = nodes_[ni];
 
@@ -435,20 +437,20 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             }
         }
 
-        // Generation-based skip: if not time-dependent and all upstream
-        // generations match what we saw last cook, skip processing.
+        // Generation-based skip: if not time-dependent, only process when
+        // an upstream node was processed this tick or our own generation changed
+        // (e.g. params were set externally via set_param).
         if (!ns.time_dependent && !ns.upstream_nodes.empty()) {
-            bool all_match = true;
+            bool should_process = false;
             for (size_t i = 0; i < ns.upstream_nodes.size(); ++i) {
-                if (nodes_[ns.upstream_nodes[i]].generation != ns.upstream_gens_cached[i]) {
-                    all_match = false;
+                if (nodes_[ns.upstream_nodes[i]].processed_this_tick) {
+                    should_process = true;
                     break;
                 }
             }
-            if (all_match) {
-                // Outputs unchanged — skip processing
-                continue;
-            }
+            if (!should_process && ns.generation != ns.last_processed_gen)
+                should_process = true;
+            if (!should_process) continue;
         }
 
         // Set up spread port arrays using pre-allocated buffers
@@ -605,10 +607,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ns.prev_output_values = ns.output_values;
         }
 
-        // Cache upstream generations for next tick's comparison
-        for (size_t i = 0; i < ns.upstream_nodes.size(); ++i) {
-            ns.upstream_gens_cached[i] = nodes_[ns.upstream_nodes[i]].generation;
-        }
+        ns.last_processed_gen = ns.generation;
+        ns.processed_this_tick = true;
     }
 
     // Propagate control→audio param wires for inspector display.
