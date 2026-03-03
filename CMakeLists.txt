@@ -424,6 +424,25 @@ configure_file(graphs/pattern_algebra_demo.json ${CMAKE_BINARY_DIR}/pattern_alge
 configure_file(graphs/webcam_timemachine_demo.json ${CMAKE_BINARY_DIR}/webcam_timemachine_demo.json COPYONLY)
 configure_file(graphs/plexus_demo.json ${CMAKE_BINARY_DIR}/plexus_demo.json COPYONLY)
 
+# 3D demo graphs
+configure_file(graphs/3d_hello_world_demo.json ${CMAKE_BINARY_DIR}/3d_hello_world_demo.json COPYONLY)
+configure_file(graphs/3d_shapes_demo.json ${CMAKE_BINARY_DIR}/3d_shapes_demo.json COPYONLY)
+configure_file(graphs/3d_materials_demo.json ${CMAKE_BINARY_DIR}/3d_materials_demo.json COPYONLY)
+configure_file(graphs/3d_transform_demo.json ${CMAKE_BINARY_DIR}/3d_transform_demo.json COPYONLY)
+configure_file(graphs/3d_instancer_demo.json ${CMAKE_BINARY_DIR}/3d_instancer_demo.json COPYONLY)
+configure_file(graphs/3d_sdf_demo.json ${CMAKE_BINARY_DIR}/3d_sdf_demo.json COPYONLY)
+configure_file(graphs/3d_boolean_demo.json ${CMAKE_BINARY_DIR}/3d_boolean_demo.json COPYONLY)
+configure_file(graphs/3d_particles_demo.json ${CMAKE_BINARY_DIR}/3d_particles_demo.json COPYONLY)
+configure_file(graphs/3d_postprocess_demo.json ${CMAKE_BINARY_DIR}/3d_postprocess_demo.json COPYONLY)
+configure_file(graphs/3d_mesh_import_demo.json ${CMAKE_BINARY_DIR}/3d_mesh_import_demo.json COPYONLY)
+configure_file(graphs/3d_environment_demo.json ${CMAKE_BINARY_DIR}/3d_environment_demo.json COPYONLY)
+configure_file(graphs/3d_curl_noise_demo.json ${CMAKE_BINARY_DIR}/3d_curl_noise_demo.json COPYONLY)
+
+# Copy assets to build directory
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/assets)
+configure_file(assets/suzanne.obj ${CMAKE_BINARY_DIR}/assets/suzanne.obj COPYONLY)
+configure_file(assets/env.png ${CMAKE_BINARY_DIR}/assets/env.png COPYONLY)
+
 # Copy all demo graphs into graphs/ subdirectory (for test_demo_graphs)
 file(GLOB DEMO_GRAPHS graphs/*.json)
 foreach(g ${DEMO_GRAPHS})

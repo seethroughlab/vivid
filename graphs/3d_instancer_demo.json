@@ -1,0 +1,17 @@
+{
+  "nodes": {
+    "cube":      { "type": "Shape3D", "params": { "shape": 0, "scale_x": 0.5, "scale_y": 0.5, "scale_z": 0.5, "r": 0.4, "g": 0.7, "b": 1.0 } },
+    "instancer": { "type": "Instancer3D", "params": { "count": 64, "layout": 0, "spacing": 1.5 } },
+    "light":     { "type": "Light3D", "params": { "type": 0, "intensity": 1.2 } },
+    "merge":     { "type": "SceneMerge" },
+    "render":    { "type": "Render3D", "params": { "cam_z": 15.0, "cam_y": 8.0 } },
+    "vout":      { "type": "video_out" }
+  },
+  "connections": [
+    { "from": "cube/scene",       "to": "instancer/scene" },
+    { "from": "instancer/scene",  "to": "merge/scene_a" },
+    { "from": "light/scene",      "to": "merge/scene_b" },
+    { "from": "merge/scene",      "to": "render/scene" },
+    { "from": "render/texture",   "to": "vout/input" }
+  ]
+}

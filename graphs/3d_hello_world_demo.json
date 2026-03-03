@@ -1,0 +1,15 @@
+{
+  "nodes": {
+    "sphere":  { "type": "Shape3D", "params": { "shape": 1, "r": 1.0, "g": 0.6, "b": 0.2 } },
+    "light":   { "type": "Light3D", "params": { "type": 0, "intensity": 1.0 } },
+    "merge":   { "type": "SceneMerge" },
+    "render":  { "type": "Render3D", "params": { "cam_y": 2.0, "cam_z": 5.0 } },
+    "vout":    { "type": "video_out" }
+  },
+  "connections": [
+    { "from": "sphere/scene", "to": "merge/scene_a" },
+    { "from": "light/scene",  "to": "merge/scene_b" },
+    { "from": "merge/scene",  "to": "render/scene" },
+    { "from": "render/texture", "to": "vout/input" }
+  ]
+}

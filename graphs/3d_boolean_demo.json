@@ -1,0 +1,19 @@
+{
+  "nodes": {
+    "cube":    { "type": "Shape3D", "params": { "shape": 0, "scale_x": 1.5, "scale_y": 1.5, "scale_z": 1.5, "r": 0.2, "g": 0.6, "b": 1.0 } },
+    "sphere":  { "type": "Shape3D", "params": { "shape": 1, "r": 1.0, "g": 0.3, "b": 0.3 } },
+    "boolean": { "type": "Boolean3D", "params": { "operation": 1 } },
+    "light":   { "type": "Light3D", "params": { "type": 0, "intensity": 1.2 } },
+    "merge":   { "type": "SceneMerge" },
+    "render":  { "type": "Render3D", "params": { "cam_y": 2.0, "cam_z": 5.0 } },
+    "vout":    { "type": "video_out" }
+  },
+  "connections": [
+    { "from": "cube/scene",     "to": "boolean/scene_a" },
+    { "from": "sphere/scene",   "to": "boolean/scene_b" },
+    { "from": "boolean/scene",  "to": "merge/scene_a" },
+    { "from": "light/scene",    "to": "merge/scene_b" },
+    { "from": "merge/scene",    "to": "render/scene" },
+    { "from": "render/texture", "to": "vout/input" }
+  ]
+}

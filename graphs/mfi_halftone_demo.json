@@ -1,7 +1,7 @@
 {
   "nodes": {
-    "vid":      { "type": "MovieFileIn",      "params": { "file": "media/camera.mp4", "play_mode": 0, "speed": 1.0 } },
-    "audio":    { "type": "MovieFileAudioIn", "params": { "file": "media/camera.mp4" } },
+    "vid":      { "type": "MovieFileIn",      "params": { "file": "../media/camera.mp4", "play_mode": 0, "speed": 1.0 } },
+    "audio":    { "type": "MovieFileAudioIn", "params": { "file": "../media/camera.mp4" } },
     "halftone": { "type": "Halftone",         "params": { "dot_size": 12.0, "angle": 0.4 } },
     "lfo1":     { "type": "LFO",              "params": { "frequency": 0.15, "amplitude": 20.0, "offset": 10.0 } },
     "vout":     { "type": "video_out" },

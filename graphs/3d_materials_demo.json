@@ -1,0 +1,25 @@
+{
+  "nodes": {
+    "sphere_metal":   { "type": "Shape3D", "params": { "shape": 1, "pos_x": -3.0 } },
+    "mat_metal":      { "type": "Material3D", "params": { "roughness": 0.1, "metallic": 1.0, "color_r": 0.9, "color_g": 0.9, "color_b": 0.95 } },
+    "sphere_plastic": { "type": "Shape3D", "params": { "shape": 1, "pos_x": 0.0 } },
+    "mat_plastic":    { "type": "Material3D", "params": { "roughness": 0.9, "metallic": 0.0, "color_r": 0.9, "color_g": 0.2, "color_b": 0.2 } },
+    "sphere_toon":    { "type": "Shape3D", "params": { "shape": 1, "pos_x": 3.0 } },
+    "mat_toon":       { "type": "Material3D", "params": { "shading": 1.0, "toon_levels": 4.0, "color_r": 0.3, "color_g": 0.7, "color_b": 1.0 } },
+    "light":          { "type": "Light3D", "params": { "type": 0, "intensity": 1.5 } },
+    "merge":          { "type": "SceneMerge" },
+    "render":         { "type": "Render3D", "params": { "cam_z": 8.0, "cam_y": 1.5 } },
+    "vout":           { "type": "video_out" }
+  },
+  "connections": [
+    { "from": "sphere_metal/scene",   "to": "mat_metal/scene" },
+    { "from": "sphere_plastic/scene", "to": "mat_plastic/scene" },
+    { "from": "sphere_toon/scene",    "to": "mat_toon/scene" },
+    { "from": "mat_metal/scene",      "to": "merge/scene_a" },
+    { "from": "mat_plastic/scene",    "to": "merge/scene_b" },
+    { "from": "mat_toon/scene",       "to": "merge/scene_c" },
+    { "from": "light/scene",          "to": "merge/scene_d" },
+    { "from": "merge/scene",          "to": "render/scene" },
+    { "from": "render/texture",       "to": "vout/input" }
+  ]
+}

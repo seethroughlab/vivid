@@ -1,0 +1,71 @@
+{
+    "nodes": {
+        "sphere": {
+            "type": "Shape3D",
+            "params": {
+                "b": 0.9700000286102295,
+                "shape": 1.0,
+                "r": 0.949999988079071,
+                "roughness": 0.10000000149011612,
+                "metallic": 1.0,
+                "g": 0.949999988079071
+            }
+        },
+        "env": {
+            "type": "Environment3D",
+            "params": {
+                "intensity": 1.0
+            }
+        },
+        "hdri": {
+            "type": "MovieFileIn",
+            "params": {
+                "file": "../assets/env.png"
+            },
+            "layout": {
+                "x": 30.0,
+                "y": 539.0
+            }
+        },
+        "merge": {
+            "type": "SceneMerge"
+        },
+        "render": {
+            "type": "Render3D",
+            "params": {
+                "cam_z": 4.0,
+                "cam_y": 1.0
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "hdri/texture",
+            "to": "env/hdri"
+        },
+        {
+            "from": "sphere/scene",
+            "to": "merge/scene_a"
+        },
+        {
+            "from": "env/scene",
+            "to": "merge/scene_b"
+        },
+        {
+            "from": "merge/scene",
+            "to": "render/scene"
+        },
+        {
+            "from": "render/texture",
+            "to": "vout/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 152.40647888183594,
+        "pan_y": -712.897216796875,
+        "zoom": 2.5
+    }
+}

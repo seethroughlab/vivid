@@ -33,9 +33,13 @@ struct Params {
     size: f32,
     color: vec4f,
     seed: u32,
-    _pad1: u32,
-    _pad2: u32,
-    _pad3: u32,
+    noise_octaves: u32,
+    noise_scale: f32,
+    noise_speed: f32,
+    curl_strength: f32,
+    drag: f32,
+    time: f32,
+    _pad: f32,
 }
 
 struct InstanceData {
@@ -49,6 +53,119 @@ struct InstanceData {
 @group(0) @binding(2) var<storage, read_write>  instances_out: array<InstanceData>;
 @group(0) @binding(3) var<uniform>              params: Params;
 @group(0) @binding(4) var<storage, read_write>  counter: atomic<u32>;
+
+// --- Noise functions for curl noise ---
+
+fn permute(x: vec4f) -> vec4f {
+    return (((x * 34.0) + 1.0) * x) % 289.0;
+}
+
+fn taylorInvSqrt(r: vec4f) -> vec4f {
+    return 1.79284291400159 - 0.85373472095314 * r;
+}
+
+fn simplex3D(v: vec3f) -> f32 {
+    let C = vec2f(1.0/6.0, 1.0/3.0);
+    let D = vec4f(0.0, 0.5, 1.0, 2.0);
+
+    var i = floor(v + dot(v, C.yyy));
+    let x0 = v - i + dot(i, C.xxx);
+
+    let g = step(x0.yzx, x0.xyz);
+    let l = 1.0 - g;
+    let i1 = min(g.xyz, l.zxy);
+    let i2 = max(g.xyz, l.zxy);
+
+    let x1 = x0 - i1 + C.xxx;
+    let x2 = x0 - i2 + C.yyy;
+    let x3 = x0 - D.yyy;
+
+    i = i % 289.0;
+    let p = permute(permute(permute(
+             i.z + vec4f(0.0, i1.z, i2.z, 1.0))
+           + i.y + vec4f(0.0, i1.y, i2.y, 1.0))
+           + i.x + vec4f(0.0, i1.x, i2.x, 1.0));
+
+    let n_ = 0.142857142857;
+    let ns = n_ * D.wyz - D.xzx;
+
+    let j = p - 49.0 * floor(p * ns.z * ns.z);
+
+    let x_ = floor(j * ns.z);
+    let y_ = floor(j - 7.0 * x_);
+
+    let x = x_ * ns.x + ns.yyyy;
+    let y = y_ * ns.x + ns.yyyy;
+    let h = 1.0 - abs(x) - abs(y);
+
+    let b0 = vec4f(x.xy, y.xy);
+    let b1 = vec4f(x.zw, y.zw);
+
+    let s0 = floor(b0) * 2.0 + 1.0;
+    let s1 = floor(b1) * 2.0 + 1.0;
+    let sh = -step(h, vec4f(0.0));
+
+    let a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+    let a1 = b1.xzyw + s1.xzyw * sh.zzww;
+
+    var p0 = vec3f(a0.xy, h.x);
+    var p1 = vec3f(a0.zw, h.y);
+    var p2 = vec3f(a1.xy, h.z);
+    var p3 = vec3f(a1.zw, h.w);
+
+    let norm = taylorInvSqrt(vec4f(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+    p0 = p0 * norm.x;
+    p1 = p1 * norm.y;
+    p2 = p2 * norm.z;
+    p3 = p3 * norm.w;
+
+    var m = max(vec4f(0.5) - vec4f(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), vec4f(0.0));
+    m = m * m;
+    return dot(m * m, vec4f(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3))) * 105.0;
+}
+
+fn fbm_simplex3D(p_in: vec3f, octaves: u32, lacunarity: f32, persistence: f32) -> f32 {
+    var value = 0.0;
+    var amplitude = 1.0;
+    var frequency = 1.0;
+    var max_value = 0.0;
+    var p = p_in;
+    for (var i = 0u; i < octaves; i++) {
+        value += amplitude * simplex3D(p * frequency);
+        max_value += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+    return value / max_value;
+}
+
+fn curl_noise(p: vec3f, octaves: u32) -> vec3f {
+    let e = 0.01;
+    // Finite differences for curl of a potential field
+    // curl(F) = (dFz/dy - dFy/dz, dFx/dz - dFz/dx, dFy/dx - dFx/dy)
+    // We use 3 independent noise fields offset by large constants
+    let fx_py = fbm_simplex3D(p + vec3f(0.0, e, 0.0), octaves, 2.0, 0.5);
+    let fx_ny = fbm_simplex3D(p - vec3f(0.0, e, 0.0), octaves, 2.0, 0.5);
+    let fx_pz = fbm_simplex3D(p + vec3f(0.0, 0.0, e), octaves, 2.0, 0.5);
+    let fx_nz = fbm_simplex3D(p - vec3f(0.0, 0.0, e), octaves, 2.0, 0.5);
+
+    let fy_px = fbm_simplex3D(p + vec3f(e, 0.0, 0.0) + vec3f(123.4, 0.0, 0.0), octaves, 2.0, 0.5);
+    let fy_nx = fbm_simplex3D(p - vec3f(e, 0.0, 0.0) + vec3f(123.4, 0.0, 0.0), octaves, 2.0, 0.5);
+    let fy_pz = fbm_simplex3D(p + vec3f(0.0, 0.0, e) + vec3f(123.4, 0.0, 0.0), octaves, 2.0, 0.5);
+    let fy_nz = fbm_simplex3D(p - vec3f(0.0, 0.0, e) + vec3f(123.4, 0.0, 0.0), octaves, 2.0, 0.5);
+
+    let fz_px = fbm_simplex3D(p + vec3f(e, 0.0, 0.0) + vec3f(0.0, 456.7, 0.0), octaves, 2.0, 0.5);
+    let fz_nx = fbm_simplex3D(p - vec3f(e, 0.0, 0.0) + vec3f(0.0, 456.7, 0.0), octaves, 2.0, 0.5);
+    let fz_py = fbm_simplex3D(p + vec3f(0.0, e, 0.0) + vec3f(0.0, 456.7, 0.0), octaves, 2.0, 0.5);
+    let fz_ny = fbm_simplex3D(p - vec3f(0.0, e, 0.0) + vec3f(0.0, 456.7, 0.0), octaves, 2.0, 0.5);
+
+    let inv2e = 1.0 / (2.0 * e);
+    return vec3f(
+        (fz_py - fz_ny) * inv2e - (fy_pz - fy_nz) * inv2e,
+        (fx_pz - fx_nz) * inv2e - (fz_px - fz_nx) * inv2e,
+        (fy_px - fy_nx) * inv2e - (fx_py - fx_ny) * inv2e
+    );
+}
 
 // PCG hash — fast deterministic PRNG
 fn pcg_hash(input: u32) -> u32 {
@@ -98,6 +215,19 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
     } else {
         // Integrate live particle
         p.velocity.y += params.gravity * params.dt;
+
+        // Curl noise force
+        if (params.curl_strength > 0.0) {
+            let noise_pos = p.position * params.noise_scale
+                          + vec3f(0.0, 0.0, params.time * params.noise_speed);
+            let curl_force = curl_noise(noise_pos, params.noise_octaves);
+            p.velocity += curl_force * params.curl_strength * params.dt;
+        }
+        // Drag
+        if (params.drag > 0.0) {
+            p.velocity *= 1.0 - params.drag * params.dt;
+        }
+
         p.position += p.velocity * params.dt;
         p.age += params.dt;
         if (p.age >= p.lifetime) {
@@ -131,21 +261,25 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
 // ---------------------------------------------------------------------------
 
 struct ParamsData {
-    uint32_t max_count;
-    uint32_t new_spawns;
-    float    dt;
-    float    gravity;
-    float    speed;
-    float    spread_rad;
-    float    lifetime;
-    float    size;
-    float    color[4];
-    uint32_t seed;
-    uint32_t _pad1;
-    uint32_t _pad2;
-    uint32_t _pad3;
+    uint32_t max_count;       // 0
+    uint32_t new_spawns;      // 4
+    float    dt;              // 8
+    float    gravity;         // 12
+    float    speed;           // 16
+    float    spread_rad;      // 20
+    float    lifetime;        // 24
+    float    size;            // 28
+    float    color[4];        // 32
+    uint32_t seed;            // 48
+    uint32_t noise_octaves;   // 52
+    float    noise_scale;     // 56
+    float    noise_speed;     // 60
+    float    curl_strength;   // 64
+    float    drag;            // 68
+    float    time;            // 72
+    float    _pad;            // 76
 };
-static_assert(sizeof(ParamsData) == 64, "ParamsData must be 64 bytes");
+static_assert(sizeof(ParamsData) == 80, "ParamsData must be 80 bytes");
 
 // =============================================================================
 // Particles3D Operator
@@ -165,6 +299,13 @@ struct Particles3D : vivid::OperatorBase {
     vivid::Param<float> speed   {"speed",   2.0f, 0.0f, 20.0f};
     vivid::Param<float> gravity {"gravity", -2.0f, -20.0f, 20.0f};
     vivid::Param<float> spread  {"spread",  45.0f, 0.0f, 360.0f};
+    vivid::Param<float> drag    {"drag",    0.0f, 0.0f, 10.0f};
+
+    // Curl Noise
+    vivid::Param<float> curl_strength  {"curl_strength",  0.0f, 0.0f, 20.0f};
+    vivid::Param<float> noise_scale    {"noise_scale",    1.0f, 0.01f, 10.0f};
+    vivid::Param<float> noise_speed    {"noise_speed",    0.5f, 0.0f, 5.0f};
+    vivid::Param<int>   noise_octaves  {"noise_octaves",  2, 1, 4};
 
     // Appearance
     vivid::Param<float> size {"size", 0.05f, 0.01f, 2.0f};
@@ -187,6 +328,12 @@ struct Particles3D : vivid::OperatorBase {
         vivid::param_group(speed, "Physics");
         vivid::param_group(gravity, "Physics");
         vivid::param_group(spread, "Physics");
+        vivid::param_group(drag, "Physics");
+
+        vivid::param_group(curl_strength, "Curl Noise");
+        vivid::param_group(noise_scale, "Curl Noise");
+        vivid::param_group(noise_speed, "Curl Noise");
+        vivid::param_group(noise_octaves, "Curl Noise");
 
         vivid::param_group(size, "Appearance");
 
@@ -207,6 +354,11 @@ struct Particles3D : vivid::OperatorBase {
         out.push_back(&speed);
         out.push_back(&gravity);
         out.push_back(&spread);
+        out.push_back(&drag);
+        out.push_back(&curl_strength);
+        out.push_back(&noise_scale);
+        out.push_back(&noise_speed);
+        out.push_back(&noise_octaves);
         out.push_back(&size);
         out.push_back(&r);
         out.push_back(&g);
@@ -255,7 +407,14 @@ struct Particles3D : vivid::OperatorBase {
         params.color[1]   = g.value;
         params.color[2]   = b.value;
         params.color[3]   = a.value;
-        params.seed       = frame_counter_++;
+        params.seed           = frame_counter_++;
+        params.noise_octaves  = static_cast<uint32_t>(noise_octaves.int_value());
+        params.noise_scale    = noise_scale.value;
+        params.noise_speed    = noise_speed.value;
+        params.curl_strength  = curl_strength.value;
+        params.drag           = drag.value;
+        elapsed_time_ += dt;
+        params.time           = elapsed_time_;
         wgpuQueueWriteBuffer(gpu->queue, params_ubo_, 0, &params, sizeof(params));
 
         // Reset atomic counter to 0
@@ -346,6 +505,7 @@ private:
     bool     ping_          = true;
     float    spawn_accumulator_ = 0.0f;
     uint32_t frame_counter_     = 0;
+    float    elapsed_time_      = 0.0f;
 
     void rebuild_gpu_resources(VividGpuState* gpu, uint32_t max_count) {
         // Release existing resources
@@ -392,7 +552,7 @@ private:
         wgpuQueueWriteBuffer(gpu->queue, particle_buf_b_, 0, zeros.data(), particle_buf_size);
 
         // Params uniform buffer
-        params_ubo_ = vivid::gpu::create_uniform_buffer(gpu->device, 64, "Particles3D Params");
+        params_ubo_ = vivid::gpu::create_uniform_buffer(gpu->device, sizeof(ParamsData), "Particles3D Params");
 
         // Counter buffer (atomic<u32>)
         counter_buf_ = make_storage_buf("Particles3D Counter", 4);

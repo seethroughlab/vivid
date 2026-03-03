@@ -1,0 +1,39 @@
+{
+  "nodes": {
+    "particles": {
+      "type": "Particles3D",
+      "params": {
+        "count": 10000,
+        "emission_rate": 2000,
+        "lifetime": 6.0,
+        "speed": 1.0,
+        "gravity": 0.0,
+        "spread": 360.0,
+        "size": 0.03,
+        "drag": 1.5,
+        "curl_strength": 3.0,
+        "noise_scale": 0.8,
+        "noise_speed": 0.3,
+        "noise_octaves": 2,
+        "unlit": 1,
+        "emission": 0.8,
+        "r": 1.0,
+        "g": 0.6,
+        "b": 0.2,
+        "a": 0.8
+      }
+    },
+    "light":  { "type": "Light3D", "params": { "type": 0, "intensity": 0.5 } },
+    "merge":  { "type": "SceneMerge" },
+    "render": { "type": "Render3D", "params": { "cam_y": 2.0, "cam_z": 8.0, "bg_r": 0.02, "bg_g": 0.02, "bg_b": 0.02 } },
+    "bloom":  { "type": "Bloom", "params": { "threshold": 0.2, "intensity": 1.2 } },
+    "vout":   { "type": "video_out" }
+  },
+  "connections": [
+    { "from": "particles/scene", "to": "merge/scene_a" },
+    { "from": "light/scene",     "to": "merge/scene_b" },
+    { "from": "merge/scene",     "to": "render/scene" },
+    { "from": "render/texture",  "to": "bloom/input" },
+    { "from": "bloom/texture",   "to": "vout/input" }
+  ]
+}

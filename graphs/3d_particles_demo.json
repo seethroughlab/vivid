@@ -1,0 +1,15 @@
+{
+  "nodes": {
+    "particles": { "type": "Particles3D", "params": { "count": 5000, "emission_rate": 500, "gravity": -3.0, "spread": 30.0, "speed": 5.0, "unlit": 1, "r": 1.0, "g": 0.6, "b": 0.2, "a": 0.8, "emission": 1.0 } },
+    "light":     { "type": "Light3D", "params": { "type": 0, "intensity": 1.0 } },
+    "merge":     { "type": "SceneMerge" },
+    "render":    { "type": "Render3D", "params": { "cam_y": 3.0, "cam_z": 8.0 } },
+    "vout":      { "type": "video_out" }
+  },
+  "connections": [
+    { "from": "particles/scene", "to": "merge/scene_a" },
+    { "from": "light/scene",     "to": "merge/scene_b" },
+    { "from": "merge/scene",     "to": "render/scene" },
+    { "from": "render/texture",  "to": "vout/input" }
+  ]
+}

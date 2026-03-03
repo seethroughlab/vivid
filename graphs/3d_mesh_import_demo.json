@@ -1,0 +1,71 @@
+{
+    "nodes": {
+        "mesh": {
+            "type": "MeshImport",
+            "params": {
+                "file": "../assets/DamagedHelmet.glb"
+            },
+            "layout": {
+                "x": 30.0,
+                "y": 380.0
+            }
+        },
+        "mat": {
+            "type": "Material3D",
+            "params": {
+                "color_b": 0.30000001192092896,
+                "color_g": 0.550000011920929,
+                "color_r": 0.8500000238418579,
+                "metallic": 0.0,
+                "roughness": 0.4000000059604645
+            }
+        },
+        "light": {
+            "type": "Light3D",
+            "params": {
+                "intensity": 1.5,
+                "type": 0.0
+            }
+        },
+        "merge": {
+            "type": "SceneMerge"
+        },
+        "render": {
+            "type": "Render3D",
+            "params": {
+                "cam_z": 4.0,
+                "cam_y": 1.0
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "mesh/scene",
+            "to": "mat/scene"
+        },
+        {
+            "from": "mat/scene",
+            "to": "merge/scene_a"
+        },
+        {
+            "from": "light/scene",
+            "to": "merge/scene_b"
+        },
+        {
+            "from": "merge/scene",
+            "to": "render/scene"
+        },
+        {
+            "from": "render/texture",
+            "to": "vout/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 98.6484375,
+        "pan_y": -10.51953125,
+        "zoom": 1.0
+    }
+}

@@ -1,0 +1,15 @@
+{
+  "nodes": {
+    "sdf":     { "type": "SDF3D", "params": { "shape": 0, "shape_b": 2, "operation": 2, "smooth_k": 0.3, "r": 0.9, "g": 0.4, "b": 0.1 } },
+    "light":   { "type": "Light3D", "params": { "type": 0, "intensity": 1.2 } },
+    "merge":   { "type": "SceneMerge" },
+    "render":  { "type": "Render3D", "params": { "cam_y": 2.0, "cam_z": 5.0 } },
+    "vout":    { "type": "video_out" }
+  },
+  "connections": [
+    { "from": "sdf/scene",     "to": "merge/scene_a" },
+    { "from": "light/scene",   "to": "merge/scene_b" },
+    { "from": "merge/scene",   "to": "render/scene" },
+    { "from": "render/texture", "to": "vout/input" }
+  ]
+}

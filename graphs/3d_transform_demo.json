@@ -1,0 +1,19 @@
+{
+  "nodes": {
+    "torus":     { "type": "Shape3D", "params": { "shape": 2, "r": 0.8, "g": 0.4, "b": 1.0 } },
+    "transform": { "type": "Transform3D" },
+    "lfo":       { "type": "LFO", "params": { "frequency": 0.2, "amplitude": 6.28, "offset": 0.0 } },
+    "light":     { "type": "Light3D", "params": { "type": 0, "intensity": 1.2 } },
+    "merge":     { "type": "SceneMerge" },
+    "render":    { "type": "Render3D", "params": { "cam_y": 2.0, "cam_z": 5.0 } },
+    "vout":      { "type": "video_out" }
+  },
+  "connections": [
+    { "from": "torus/scene",      "to": "transform/scene" },
+    { "from": "lfo/value",        "to": "transform/rot_y" },
+    { "from": "transform/scene",  "to": "merge/scene_a" },
+    { "from": "light/scene",      "to": "merge/scene_b" },
+    { "from": "merge/scene",      "to": "render/scene" },
+    { "from": "render/texture",   "to": "vout/input" }
+  ]
+}
