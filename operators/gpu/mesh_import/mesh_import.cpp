@@ -2,6 +2,8 @@
 #include "cgltf.h"
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
@@ -14,7 +16,7 @@
 #include <algorithm>
 
 // =============================================================================
-// MeshImport Operator — loads OBJ and glTF/GLB files
+// MeshImport Operator — loads OBJ and glTF/GLB files with PBR materials
 // =============================================================================
 
 struct MeshImport : vivid::OperatorBase {
@@ -89,10 +91,15 @@ struct MeshImport : vivid::OperatorBase {
         // Reload if file path changed
         if (file.str_value != cached_path_) {
             cached_path_ = file.str_value;
+            release_textures();
             load_mesh(gpu);
         }
 
         if (!vertex_buffer_ || !index_buffer_) return;
+
+        // Lazy-init GPU textures on first process() after load
+        if (has_gltf_material_ && !textures_inited_)
+            lazy_init_textures(gpu);
 
         // Build model matrix: T * Rz * Ry * Rx * S
         float sx = scale_x.value, sy = scale_y.value, sz = scale_z.value;
@@ -110,12 +117,6 @@ struct MeshImport : vivid::OperatorBase {
         mat4x4_translate(T, px, py, pz);
         mat4x4_mul(fragment_.model_matrix, T, tmp);
 
-        // Color (may be overridden by glTF material)
-        fragment_.color[0] = r.value;
-        fragment_.color[1] = g.value;
-        fragment_.color[2] = b.value;
-        fragment_.color[3] = a.value;
-
         fragment_.vertex_buffer   = vertex_buffer_;
         fragment_.vertex_buf_size = vertex_buf_size_;
         fragment_.index_buffer    = index_buffer_;
@@ -128,12 +129,42 @@ struct MeshImport : vivid::OperatorBase {
         fragment_.pipeline       = nullptr;
         fragment_.material_binds = nullptr;
 
+        if (has_gltf_material_ && textures_inited_) {
+            // Apply glTF PBR material
+            fragment_.color[0] = gltf_base_color_[0];
+            fragment_.color[1] = gltf_base_color_[1];
+            fragment_.color[2] = gltf_base_color_[2];
+            fragment_.color[3] = gltf_base_color_[3];
+            fragment_.roughness = gltf_roughness_;
+            // Shader uses additive metallic: material.metallic + rm_tex.g
+            // When R/M texture is present, metallic factor is baked into the texture
+            // during swizzle, so scalar must be 0 to avoid double-counting.
+            fragment_.metallic  = has_rm_texture_ ? 0.0f : gltf_metallic_;
+            fragment_.emission  = std::max({gltf_emissive_[0], gltf_emissive_[1], gltf_emissive_[2]});
+            fragment_.unlit     = gltf_unlit_;
+            fragment_.material_texture_binds = tex_bind_group_;
+            fragment_.pipeline_flags = vivid::gpu::kPipelineTextured;
+        } else {
+            // User-specified color (no glTF material)
+            fragment_.color[0] = r.value;
+            fragment_.color[1] = g.value;
+            fragment_.color[2] = b.value;
+            fragment_.color[3] = a.value;
+            fragment_.roughness = 0.5f;
+            fragment_.metallic  = 0.0f;
+            fragment_.emission  = 0.0f;
+            fragment_.unlit     = false;
+            fragment_.material_texture_binds = nullptr;
+            fragment_.pipeline_flags = 0;
+        }
+
         gpu->output_scene = &fragment_;
     }
 
     ~MeshImport() override {
         vivid::gpu::release(vertex_buffer_);
         vivid::gpu::release(index_buffer_);
+        release_textures();
     }
 
 private:
@@ -146,13 +177,169 @@ private:
     std::vector<vivid::gpu::Vertex3D> cpu_verts_;
     std::vector<uint32_t> cpu_indices_;
 
-    // Detect format from extension
+    // glTF PBR material scalars
+    bool  has_gltf_material_ = false;
+    float gltf_base_color_[4] = {1,1,1,1};
+    float gltf_roughness_ = 1.0f;
+    float gltf_metallic_  = 1.0f;
+    float gltf_emissive_[3] = {0,0,0};
+    bool  gltf_unlit_ = false;
+
+    // Decoded image data (CPU side, freed after GPU upload)
+    // Indices: 0=albedo, 1=normal, 2=roughnessMetallic, 3=emission
+    struct ImageData { std::vector<uint8_t> pixels; int w = 0, h = 0; };
+    ImageData loaded_images_[4];
+    bool has_rm_texture_ = false;
+
+    // GPU texture resources
+    bool textures_inited_ = false;
+    WGPUTexture     gpu_textures_[4]      = {};
+    WGPUTextureView gpu_views_[4]         = {};
+    WGPUTexture     fallback_textures_[4] = {};
+    WGPUTextureView fallback_views_[4]    = {};
+    WGPUSampler     sampler_              = nullptr;
+    WGPUBindGroupLayout tex_bind_layout_  = nullptr;
+    WGPUBindGroup   tex_bind_group_       = nullptr;
+
+    // =========================================================================
+    // Texture GPU upload + bind group creation
+    // =========================================================================
+
+    void lazy_init_textures(VividGpuState* gpu) {
+        sampler_ = vivid::gpu::create_repeat_sampler(gpu->device, "MeshImport Sampler");
+        tex_bind_layout_ = vivid::gpu::create_pbr_texture_bind_layout(gpu->device);
+        if (!sampler_ || !tex_bind_layout_) return;
+
+        // Create 1x1 fallback textures (same as Material3D)
+        struct FallbackSpec { const char* label; uint8_t rgba[4]; };
+        FallbackSpec specs[4] = {
+            {"MeshImport Fallback Albedo",   {255, 255, 255, 255}},
+            {"MeshImport Fallback Normal",   {128, 128, 255, 255}},
+            {"MeshImport Fallback R/M",      {255,   0,   0,   0}},
+            {"MeshImport Fallback Emission", {  0,   0,   0,   0}},
+        };
+        for (int i = 0; i < 4; ++i) {
+            WGPUTextureDescriptor td{};
+            td.label = vivid_sv(specs[i].label);
+            td.size = {1, 1, 1};
+            td.mipLevelCount = 1;
+            td.sampleCount = 1;
+            td.dimension = WGPUTextureDimension_2D;
+            td.format = WGPUTextureFormat_RGBA8Unorm;
+            td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+            fallback_textures_[i] = wgpuDeviceCreateTexture(gpu->device, &td);
+
+            WGPUTexelCopyTextureInfo dst{};
+            dst.texture = fallback_textures_[i];
+            dst.aspect = WGPUTextureAspect_All;
+            WGPUTexelCopyBufferLayout layout_info{};
+            layout_info.bytesPerRow = 4;
+            layout_info.rowsPerImage = 1;
+            WGPUExtent3D extent = {1, 1, 1};
+            wgpuQueueWriteTexture(gpu->queue, &dst, specs[i].rgba, 4, &layout_info, &extent);
+
+            WGPUTextureViewDescriptor vd{};
+            vd.label = vivid_sv(specs[i].label);
+            vd.format = WGPUTextureFormat_RGBA8Unorm;
+            vd.dimension = WGPUTextureViewDimension_2D;
+            vd.mipLevelCount = 1;
+            vd.arrayLayerCount = 1;
+            fallback_views_[i] = wgpuTextureCreateView(fallback_textures_[i], &vd);
+        }
+
+        // Upload decoded images to GPU
+        for (int i = 0; i < 4; ++i) {
+            if (loaded_images_[i].pixels.empty()) continue;
+
+            int w = loaded_images_[i].w;
+            int h = loaded_images_[i].h;
+
+            WGPUTextureDescriptor td{};
+            td.label = vivid_sv("MeshImport glTF Tex");
+            td.size = {static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1};
+            td.mipLevelCount = 1;
+            td.sampleCount = 1;
+            td.dimension = WGPUTextureDimension_2D;
+            td.format = WGPUTextureFormat_RGBA8Unorm;
+            td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+            gpu_textures_[i] = wgpuDeviceCreateTexture(gpu->device, &td);
+
+            WGPUTexelCopyTextureInfo dst{};
+            dst.texture = gpu_textures_[i];
+            dst.aspect = WGPUTextureAspect_All;
+            WGPUTexelCopyBufferLayout layout_info{};
+            layout_info.bytesPerRow = static_cast<uint32_t>(w * 4);
+            layout_info.rowsPerImage = static_cast<uint32_t>(h);
+            WGPUExtent3D extent = {static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1};
+            wgpuQueueWriteTexture(gpu->queue, &dst,
+                                  loaded_images_[i].pixels.data(),
+                                  loaded_images_[i].pixels.size(),
+                                  &layout_info, &extent);
+
+            WGPUTextureViewDescriptor vd{};
+            vd.label = vivid_sv("MeshImport glTF TexView");
+            vd.format = WGPUTextureFormat_RGBA8Unorm;
+            vd.dimension = WGPUTextureViewDimension_2D;
+            vd.mipLevelCount = 1;
+            vd.arrayLayerCount = 1;
+            gpu_views_[i] = wgpuTextureCreateView(gpu_textures_[i], &vd);
+
+            // Free CPU pixels
+            loaded_images_[i].pixels.clear();
+            loaded_images_[i].pixels.shrink_to_fit();
+        }
+
+        // Build bind group: sampler + 4 texture views (GPU or fallback)
+        WGPUBindGroupEntry entries[5]{};
+        entries[0].binding = 0;
+        entries[0].sampler = sampler_;
+        for (int i = 0; i < 4; ++i) {
+            entries[i + 1].binding = static_cast<uint32_t>(i + 1);
+            entries[i + 1].textureView = gpu_views_[i] ? gpu_views_[i] : fallback_views_[i];
+        }
+
+        WGPUBindGroupDescriptor bgd{};
+        bgd.label = vivid_sv("MeshImport Tex BG");
+        bgd.layout = tex_bind_layout_;
+        bgd.entryCount = 5;
+        bgd.entries = entries;
+        tex_bind_group_ = wgpuDeviceCreateBindGroup(gpu->device, &bgd);
+
+        textures_inited_ = true;
+    }
+
+    void release_textures() {
+        vivid::gpu::release(tex_bind_group_);
+        vivid::gpu::release(tex_bind_layout_);
+        vivid::gpu::release(sampler_);
+        for (int i = 0; i < 4; ++i) {
+            vivid::gpu::release(gpu_views_[i]);
+            vivid::gpu::release(gpu_textures_[i]);
+            vivid::gpu::release(fallback_views_[i]);
+            vivid::gpu::release(fallback_textures_[i]);
+            loaded_images_[i].pixels.clear();
+            loaded_images_[i].w = 0;
+            loaded_images_[i].h = 0;
+        }
+        textures_inited_ = false;
+        has_gltf_material_ = false;
+        has_rm_texture_ = false;
+        gltf_base_color_[0] = gltf_base_color_[1] = gltf_base_color_[2] = gltf_base_color_[3] = 1.0f;
+        gltf_roughness_ = 1.0f;
+        gltf_metallic_ = 1.0f;
+        gltf_emissive_[0] = gltf_emissive_[1] = gltf_emissive_[2] = 0.0f;
+        gltf_unlit_ = false;
+    }
+
+    // =========================================================================
+    // Format detection
+    // =========================================================================
+
     enum Format { FMT_OBJ, FMT_GLTF, FMT_UNKNOWN };
     static Format detect_format(const std::string& path) {
         auto dot = path.rfind('.');
         if (dot == std::string::npos) return FMT_UNKNOWN;
         std::string ext = path.substr(dot);
-        // lowercase
         for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         if (ext == ".obj") return FMT_OBJ;
         if (ext == ".gltf" || ext == ".glb") return FMT_GLTF;
@@ -327,12 +514,43 @@ private:
     }
 
     // =========================================================================
-    // glTF loading via cgltf
+    // glTF loading via cgltf — geometry + PBR material extraction
     // =========================================================================
 
-    static bool load_gltf(const std::string& path,
-                          std::vector<vivid::gpu::Vertex3D>& out_verts,
-                          std::vector<uint32_t>& out_indices) {
+    // Decode a glTF texture image via stb_image into RGBA pixels.
+    static bool decode_gltf_image(const cgltf_texture_view& tv, ImageData& out) {
+        if (!tv.texture || !tv.texture->image) return false;
+        cgltf_image* img = tv.texture->image;
+
+        const uint8_t* raw_data = nullptr;
+        size_t raw_size = 0;
+
+        if (img->buffer_view) {
+            // Embedded (GLB) or buffer-referenced image
+            raw_data = static_cast<const uint8_t*>(cgltf_buffer_view_data(img->buffer_view));
+            raw_size = img->buffer_view->size;
+        } else if (img->uri) {
+            // External URI — not supported in this path (would need file I/O relative to .gltf)
+            return false;
+        }
+
+        if (!raw_data || raw_size == 0) return false;
+
+        int w, h, channels;
+        uint8_t* pixels = stbi_load_from_memory(raw_data, static_cast<int>(raw_size),
+                                                 &w, &h, &channels, 4);
+        if (!pixels) return false;
+
+        out.w = w;
+        out.h = h;
+        out.pixels.assign(pixels, pixels + w * h * 4);
+        stbi_image_free(pixels);
+        return true;
+    }
+
+    bool load_gltf(const std::string& path,
+                   std::vector<vivid::gpu::Vertex3D>& out_verts,
+                   std::vector<uint32_t>& out_indices) {
         cgltf_options options{};
         cgltf_data* data = nullptr;
 
@@ -348,6 +566,8 @@ private:
             cgltf_free(data);
             return false;
         }
+
+        bool material_extracted = false;
 
         // Iterate all meshes/primitives
         for (cgltf_size mi = 0; mi < data->meshes_count; ++mi) {
@@ -404,16 +624,68 @@ private:
                         out_indices.push_back(vert_base + idx);
                     }
                 } else {
-                    // Non-indexed: generate sequential indices
                     for (cgltf_size vi = 0; vi < vert_count; ++vi) {
                         out_indices.push_back(vert_base + static_cast<uint32_t>(vi));
                     }
+                }
+
+                // Extract PBR material from the first primitive that has one
+                if (!material_extracted && prim.material) {
+                    extract_gltf_material(prim.material);
+                    material_extracted = true;
                 }
             }
         }
 
         cgltf_free(data);
         return !out_verts.empty();
+    }
+
+    void extract_gltf_material(const cgltf_material* mat) {
+        if (mat->has_pbr_metallic_roughness) {
+            auto& pbr = mat->pbr_metallic_roughness;
+            std::memcpy(gltf_base_color_, pbr.base_color_factor, sizeof(float) * 4);
+            gltf_roughness_ = pbr.roughness_factor;
+            gltf_metallic_  = pbr.metallic_factor;
+            has_gltf_material_ = true;
+
+            // Decode albedo (baseColorTexture)
+            decode_gltf_image(pbr.base_color_texture, loaded_images_[0]);
+
+            // Decode roughness/metallic texture
+            // glTF: G=roughness, B=metallic. Shader expects R=roughness, G=metallic.
+            if (decode_gltf_image(pbr.metallic_roughness_texture, loaded_images_[2])) {
+                swizzle_roughness_metallic(loaded_images_[2], gltf_metallic_);
+                has_rm_texture_ = true;
+            }
+        }
+
+        // Normal map
+        decode_gltf_image(mat->normal_texture, loaded_images_[1]);
+
+        // Emissive
+        std::memcpy(gltf_emissive_, mat->emissive_factor, sizeof(float) * 3);
+        decode_gltf_image(mat->emissive_texture, loaded_images_[3]);
+
+        gltf_unlit_ = mat->unlit;
+    }
+
+    // Remap glTF metallic-roughness channels:
+    // glTF: R=unused, G=roughness, B=metallic, A=unused
+    // Shader: R=roughness (multiplicative), G=metallic (additive), B=0, A=0
+    // Bake metallic_factor into the texture since the shader adds (not multiplies)
+    // the scalar metallic uniform.
+    static void swizzle_roughness_metallic(ImageData& img, float metallic_factor) {
+        size_t pixel_count = static_cast<size_t>(img.w) * img.h;
+        for (size_t i = 0; i < pixel_count; ++i) {
+            uint8_t* p = &img.pixels[i * 4];
+            uint8_t roughness = p[1];  // G channel
+            uint8_t metallic  = static_cast<uint8_t>(p[2] * metallic_factor);  // B channel * factor
+            p[0] = roughness;
+            p[1] = metallic;
+            p[2] = 0;
+            p[3] = 0;
+        }
     }
 };
 

@@ -3,21 +3,12 @@
         "mesh": {
             "type": "MeshImport",
             "params": {
+                "rot_x": -4.847577095031738,
                 "file": "../assets/DamagedHelmet.glb"
             },
             "layout": {
-                "x": 30.0,
-                "y": 380.0
-            }
-        },
-        "mat": {
-            "type": "Material3D",
-            "params": {
-                "color_b": 0.30000001192092896,
-                "color_g": 0.550000011920929,
-                "color_r": 0.8500000238418579,
-                "metallic": 0.0,
-                "roughness": 0.4000000059604645
+                "x": 144.84765625,
+                "y": 201.98828125
             }
         },
         "light": {
@@ -27,15 +18,43 @@
                 "type": 0.0
             }
         },
+        "hdri": {
+            "type": "MovieFileIn",
+            "params": {
+                "file": "../assets/env.png"
+            }
+        },
+        "env": {
+            "type": "Environment3D",
+            "params": {
+                "intensity": 0.800000011920929
+            },
+            "layout": {
+                "x": 235.3359375,
+                "y": 625.94921875
+            }
+        },
         "merge": {
-            "type": "SceneMerge"
+            "type": "SceneMerge",
+            "layout": {
+                "x": 430.0,
+                "y": 441.5
+            }
         },
         "render": {
             "type": "Render3D",
             "params": {
                 "cam_z": 4.0,
                 "cam_y": 1.0
-            }
+            },
+            "layout": {
+                "x": 630.0,
+                "y": 459.62109375
+            },
+            "resolution": [
+                1920,
+                1080
+            ]
         },
         "vout": {
             "type": "video_out"
@@ -44,15 +63,19 @@
     "connections": [
         {
             "from": "mesh/scene",
-            "to": "mat/scene"
-        },
-        {
-            "from": "mat/scene",
             "to": "merge/scene_a"
         },
         {
             "from": "light/scene",
             "to": "merge/scene_b"
+        },
+        {
+            "from": "hdri/texture",
+            "to": "env/hdri"
+        },
+        {
+            "from": "env/scene",
+            "to": "merge/scene_c"
         },
         {
             "from": "merge/scene",
@@ -64,8 +87,8 @@
         }
     ],
     "viewport": {
-        "pan_x": 98.6484375,
-        "pan_y": -10.51953125,
+        "pan_x": 0.0,
+        "pan_y": 0.0,
         "zoom": 1.0
     }
 }

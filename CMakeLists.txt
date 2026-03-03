@@ -103,6 +103,16 @@ function(add_vivid_operator name source)
     target_link_libraries(${name} PRIVATE vivid_operator_api ${ARG_EXTRA_LIBS})
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS ${name})
 
+    # Keep app bundle in sync when building individual operator targets
+    if(APPLE)
+        add_custom_command(TARGET ${name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:${name}>
+                $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
+            COMMENT "Updating ${name} in Vivid.app bundle"
+        )
+    endif()
+
     # Copy factory presets JSON to build directory
     if(ARG_FACTORY_PRESETS)
         file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/factory_presets)
@@ -177,7 +187,7 @@ add_vivid_operator(transform3d           operators/gpu/transform3d/transform3d.c
 add_vivid_operator(scene_merge           operators/gpu/scene_merge/scene_merge.cpp                 EXTRA_LIBS webgpu)
 add_vivid_operator(light3d               operators/gpu/light3d/light3d.cpp                         EXTRA_LIBS webgpu)
 add_vivid_operator(mesh_import           operators/gpu/mesh_import/mesh_import.cpp                 EXTRA_LIBS webgpu)
-target_include_directories(mesh_import PRIVATE ${CMAKE_SOURCE_DIR}/deps/cgltf ${CMAKE_SOURCE_DIR}/deps/tinyobjloader)
+target_include_directories(mesh_import PRIVATE ${CMAKE_SOURCE_DIR}/deps/cgltf ${CMAKE_SOURCE_DIR}/deps/tinyobjloader ${CMAKE_SOURCE_DIR}/deps/stb)
 add_vivid_operator(deformer              operators/gpu/deformer/deformer.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(instancer3d           operators/gpu/instancer3d/instancer3d.cpp                 EXTRA_LIBS webgpu)
 add_vivid_operator(particles3d           operators/gpu/particles3d/particles3d.cpp                 EXTRA_LIBS webgpu)
@@ -442,6 +452,7 @@ configure_file(graphs/3d_curl_noise_demo.json ${CMAKE_BINARY_DIR}/3d_curl_noise_
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/assets)
 configure_file(assets/suzanne.obj ${CMAKE_BINARY_DIR}/assets/suzanne.obj COPYONLY)
 configure_file(assets/env.png ${CMAKE_BINARY_DIR}/assets/env.png COPYONLY)
+configure_file(assets/DamagedHelmet.glb ${CMAKE_BINARY_DIR}/assets/DamagedHelmet.glb COPYONLY)
 
 # Copy all demo graphs into graphs/ subdirectory (for test_demo_graphs)
 file(GLOB DEMO_GRAPHS graphs/*.json)

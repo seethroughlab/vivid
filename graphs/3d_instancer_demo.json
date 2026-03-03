@@ -1,17 +1,106 @@
 {
-  "nodes": {
-    "cube":      { "type": "Shape3D", "params": { "shape": 0, "scale_x": 0.5, "scale_y": 0.5, "scale_z": 0.5, "r": 0.4, "g": 0.7, "b": 1.0 } },
-    "instancer": { "type": "Instancer3D", "params": { "count": 64, "layout": 0, "spacing": 1.5 } },
-    "light":     { "type": "Light3D", "params": { "type": 0, "intensity": 1.2 } },
-    "merge":     { "type": "SceneMerge" },
-    "render":    { "type": "Render3D", "params": { "cam_z": 15.0, "cam_y": 8.0 } },
-    "vout":      { "type": "video_out" }
-  },
-  "connections": [
-    { "from": "cube/scene",       "to": "instancer/scene" },
-    { "from": "instancer/scene",  "to": "merge/scene_a" },
-    { "from": "light/scene",      "to": "merge/scene_b" },
-    { "from": "merge/scene",      "to": "render/scene" },
-    { "from": "render/texture",   "to": "vout/input" }
-  ]
+    "nodes": {
+        "cube": {
+            "type": "Shape3D",
+            "params": {
+                "shading": 0.0,
+                "scale_x": 0.5,
+                "scale_z": 0.5,
+                "pos_x": 0.0,
+                "roughness": 0.0,
+                "scale_y": 0.7571921348571777,
+                "g": 0.699999988079071,
+                "shape": 0.0,
+                "r": 0.4000000059604645,
+                "b": 1.0,
+                "emission": 0.380927175283432,
+                "metallic": 0.5320773720741272
+            },
+            "layout": {
+                "x": 30.0,
+                "y": 380.0
+            }
+        },
+        "instancer": {
+            "type": "Instancer3D",
+            "params": {
+                "spacing": 1.5,
+                "layout": 0.0,
+                "count": 824.0
+            },
+            "layout": {
+                "x": 251.296875,
+                "y": 300.125
+            }
+        },
+        "light": {
+            "type": "Light3D",
+            "params": {
+                "radius": 35.00971984863281,
+                "intensity": 0.8627658486366272,
+                "r": 0.2568494975566864,
+                "type": 0.0
+            },
+            "layout": {
+                "x": 30.0,
+                "y": 557.0
+            }
+        },
+        "merge": {
+            "type": "SceneMerge",
+            "layout": {
+                "x": 464.9140625,
+                "y": 480.66015625
+            }
+        },
+        "render": {
+            "type": "Render3D",
+            "params": {
+                "cam_y": 8.0,
+                "cam_z": 15.0
+            },
+            "layout": {
+                "x": 667.96484375,
+                "y": 516.2109375
+            },
+            "resolution": [
+                2910,
+                1080
+            ]
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": {
+                "x": 1124.57421875,
+                "y": 553.44140625
+            }
+        }
+    },
+    "connections": [
+        {
+            "from": "cube/scene",
+            "to": "instancer/scene"
+        },
+        {
+            "from": "instancer/scene",
+            "to": "merge/scene_a"
+        },
+        {
+            "from": "light/scene",
+            "to": "merge/scene_b"
+        },
+        {
+            "from": "merge/scene",
+            "to": "render/scene"
+        },
+        {
+            "from": "render/texture",
+            "to": "vout/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 0.0,
+        "pan_y": 0.0,
+        "zoom": 1.0
+    }
 }
