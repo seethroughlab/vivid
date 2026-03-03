@@ -1,18 +1,83 @@
 {
-  "nodes": {
-    "vid":          { "type": "MovieFileIn",      "params": { "file": "media/sword.mp4", "play_mode": 0, "speed": 1.0 } },
-    "audio":        { "type": "MovieFileAudioIn", "params": { "file": "media/sword.mp4" } },
-    "edge":         { "type": "Edge",             "params": { "strength": 3.0, "threshold": 0.05, "invert": 0.0 } },
-    "lfo_strength": { "type": "LFO",             "params": { "frequency": 0.12, "amplitude": 4.0, "offset": 3.0 } },
-    "vout":         { "type": "video_out" },
-    "aout":         { "type": "audio_out" }
-  },
-  "connections": [
-    { "from": "vid/texture",         "to": "edge/input" },
-    { "from": "lfo_strength/value",  "to": "edge/strength" },
-    { "from": "edge/texture",        "to": "vout/input" },
-    { "from": "vid/time",            "to": "audio/video_time" },
-    { "from": "audio/left",          "to": "aout/left" },
-    { "from": "audio/right",         "to": "aout/right" }
-  ]
+    "nodes": {
+        "vid": {
+            "type": "MovieFileIn",
+            "params": {
+                "speed": 1.0,
+                "play_mode": 0.0,
+                "file": "/Users/jeff/Developer/vivid/media/sword.mp4"
+            },
+            "layout": {
+                "x": 30.0,
+                "y": 391.0
+            }
+        },
+        "audio": {
+            "type": "MovieFileAudioIn",
+            "params": {
+                "file": "/Users/jeff/Developer/vivid/media/sword.mp4"
+            },
+            "layout": {
+                "x": 230.0,
+                "y": 386.0
+            }
+        },
+        "edge": {
+            "type": "Edge",
+            "params": {
+                "invert": 0.0,
+                "threshold": 0.05000000074505806,
+                "strength": 3.0
+            }
+        },
+        "lfo_strength": {
+            "type": "LFO",
+            "params": {
+                "offset": 3.0,
+                "amplitude": 4.0,
+                "frequency": 0.11999999731779099
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": {
+                "x": 574.7734375,
+                "y": 641.4140625
+            }
+        },
+        "aout": {
+            "type": "audio_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "vid/texture",
+            "to": "edge/input"
+        },
+        {
+            "from": "lfo_strength/value",
+            "to": "edge/strength"
+        },
+        {
+            "from": "edge/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "vid/time",
+            "to": "audio/video_time"
+        },
+        {
+            "from": "audio/left",
+            "to": "aout/left"
+        },
+        {
+            "from": "audio/right",
+            "to": "aout/right"
+        }
+    ],
+    "viewport": {
+        "pan_x": 0.0,
+        "pan_y": 0.0,
+        "zoom": 1.0
+    }
 }

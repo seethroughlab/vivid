@@ -3,8 +3,8 @@
         "vid": {
             "type": "MovieFileIn",
             "params": {
-                "speed": 1.0,
                 "play_mode": 0.0,
+                "speed": 1.0,
                 "file": "../media/camera.mp4"
             },
             "layout": {
@@ -16,16 +16,24 @@
             "type": "MovieFileAudioIn",
             "params": {
                 "file": "../media/camera.mp4"
+            },
+            "layout": {
+                "x": 230.0,
+                "y": 572.0
             }
         },
         "crt": {
             "type": "CRTEffect",
             "params": {
-                "chromatic": 0.00800000037997961,
-                "scanline_intensity": 0.5,
-                "vignette": 0.3499999940395355,
+                "curvature": 0.4000000059604645,
                 "bloom": 0.25,
-                "curvature": 0.4000000059604645
+                "vignette": 0.3499999940395355,
+                "scanline_intensity": 0.5,
+                "chromatic": 0.00800000037997961
+            },
+            "layout": {
+                "x": 230.0,
+                "y": 395.0
             }
         },
         "vout": {

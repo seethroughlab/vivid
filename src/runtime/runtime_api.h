@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -11,6 +12,7 @@ class Scheduler;
 class AudioEngine;
 class OperatorRegistry;
 class SystemMidiListener;
+struct NodeState;
 
 struct CommandResult {
     bool ok;
@@ -158,6 +160,12 @@ private:
 
     // Active preset per node (node_id -> preset name)
     std::unordered_map<std::string, std::string> active_presets_;
+
+    // Graph base directory for resolving/relativizing file paths
+    std::filesystem::path graph_base_dir() const;
+
+    // Resolve+persist helper: stores absolute in NodeState, relative in NodeDef
+    void set_file_param_internal(NodeState& ns, const std::string& param, const std::string& value);
 };
 
 } // namespace vivid

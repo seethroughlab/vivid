@@ -101,6 +101,8 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
                 auto resolved = graph_base_dir_ / val;
                 if (std::filesystem::exists(resolved))
                     val = std::filesystem::canonical(resolved).string();
+                else
+                    val = resolved.lexically_normal().string();
             }
         }
     }
