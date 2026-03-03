@@ -67,7 +67,7 @@ target_link_libraries(rtmidi PUBLIC
 
 # --- Operator API (header-only interface library) ---
 add_library(vivid_operator_api INTERFACE)
-target_include_directories(vivid_operator_api INTERFACE src)
+target_include_directories(vivid_operator_api INTERFACE src deps/glfw/deps)
 
 # --- Composable operator headers (for ChildOp<T> consumers) ---
 add_library(vivid_composable_ops INTERFACE)
@@ -171,6 +171,36 @@ add_vivid_operator(instance             operators/gpu/instance/instance.cpp     
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 add_vivid_operator(plexus                operators/gpu/plexus/plexus.cpp                           EXTRA_LIBS webgpu)
 add_vivid_operator(text                  operators/gpu/text/text.cpp                               EXTRA_LIBS webgpu stb_truetype)
+add_vivid_operator(render_3d             operators/gpu/render_3d/render_3d.cpp                     EXTRA_LIBS webgpu)
+add_vivid_operator(shape3d               operators/gpu/shape3d/shape3d.cpp                         EXTRA_LIBS webgpu)
+add_vivid_operator(transform3d           operators/gpu/transform3d/transform3d.cpp                 EXTRA_LIBS webgpu)
+add_vivid_operator(scene_merge           operators/gpu/scene_merge/scene_merge.cpp                 EXTRA_LIBS webgpu)
+add_vivid_operator(light3d               operators/gpu/light3d/light3d.cpp                         EXTRA_LIBS webgpu)
+add_vivid_operator(mesh_import           operators/gpu/mesh_import/mesh_import.cpp                 EXTRA_LIBS webgpu)
+target_include_directories(mesh_import PRIVATE ${CMAKE_SOURCE_DIR}/deps/cgltf ${CMAKE_SOURCE_DIR}/deps/tinyobjloader)
+add_vivid_operator(deformer              operators/gpu/deformer/deformer.cpp                       EXTRA_LIBS webgpu)
+add_vivid_operator(instancer3d           operators/gpu/instancer3d/instancer3d.cpp                 EXTRA_LIBS webgpu)
+add_vivid_operator(particles3d           operators/gpu/particles3d/particles3d.cpp                 EXTRA_LIBS webgpu)
+add_vivid_operator(sdf3d                 operators/gpu/sdf3d/sdf3d.cpp                             EXTRA_LIBS webgpu)
+add_vivid_operator(material3d            operators/gpu/material3d/material3d.cpp                   EXTRA_LIBS webgpu)
+add_vivid_operator(ssao3d                operators/gpu/ssao3d/ssao3d.cpp                           EXTRA_LIBS webgpu)
+add_vivid_operator(dof3d                 operators/gpu/dof3d/dof3d.cpp                             EXTRA_LIBS webgpu)
+add_vivid_operator(environment3d         operators/gpu/environment3d/environment3d.cpp             EXTRA_LIBS webgpu)
+
+# --- Manifold (CSG Boolean library) ---
+FetchContent_Declare(
+    manifold
+    GIT_REPOSITORY https://github.com/elalish/manifold.git
+    GIT_TAG        v3.0.1
+    GIT_SHALLOW    TRUE
+)
+set(MANIFOLD_TEST OFF CACHE BOOL "" FORCE)
+set(MANIFOLD_CROSS_SECTION OFF CACHE BOOL "" FORCE)
+set(MANIFOLD_EXPORT OFF CACHE BOOL "" FORCE)
+set(MANIFOLD_PYBIND OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(manifold)
+
+add_vivid_operator(boolean3d             operators/gpu/boolean3d/boolean3d.cpp                     EXTRA_LIBS webgpu manifold)
 # Simple WGSL filters are loaded from filters/*.wgsl (no C++ needed)
 
 # --- Movie File In (image + video loader) ---
@@ -751,6 +781,217 @@ target_include_directories(test_gpu_operators PRIVATE src)
 target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api yyjson webgpu)
 add_dependencies(test_gpu_operators gpu_fill_op shape instance)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# 3D infrastructure unit + GPU smoke tests
+add_executable(test_gpu_3d tests/test_gpu_3d.cpp)
+target_include_directories(test_gpu_3d PRIVATE src)
+target_link_libraries(test_gpu_3d PRIVATE vivid_operator_api webgpu)
+add_test(NAME test_gpu_3d COMMAND test_gpu_3d)
+
+# Render3D operator + scene fragment integration tests
+add_executable(test_render_3d
+    tests/test_render_3d.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_render_3d PRIVATE src)
+target_link_libraries(test_render_3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_render_3d render_3d)
+add_test(NAME test_render_3d COMMAND test_render_3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Shape3D operator + geometry + integration tests
+add_executable(test_shape3d
+    tests/test_shape3d.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_shape3d PRIVATE src)
+target_link_libraries(test_shape3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_shape3d shape3d render_3d)
+add_test(NAME test_shape3d COMMAND test_shape3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Material3D PBR texture tests
+add_executable(test_material3d
+    tests/test_material3d.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_material3d PRIVATE src)
+target_link_libraries(test_material3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_material3d shape3d material3d render_3d)
+add_test(NAME test_material3d COMMAND test_material3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Scene composition tests (Transform3D, SceneMerge, Light3D)
+add_executable(test_scene3d
+    tests/test_scene3d.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_scene3d PRIVATE src)
+target_link_libraries(test_scene3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_scene3d shape3d render_3d transform3d scene_merge light3d)
+add_test(NAME test_scene3d COMMAND test_scene3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Shadow mapping tests (Phase 6d)
+add_executable(test_shadow3d
+    tests/test_shadow3d.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_shadow3d PRIVATE src)
+target_link_libraries(test_shadow3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_shadow3d shape3d render_3d transform3d scene_merge light3d)
+add_test(NAME test_shadow3d COMMAND test_shadow3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Depth output routing tests (Phase 6e)
+add_executable(test_depth_output
+    tests/test_depth_output.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_depth_output PRIVATE src)
+target_link_libraries(test_depth_output PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_depth_output shape3d render_3d transform3d scene_merge)
+add_test(NAME test_depth_output COMMAND test_depth_output WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# SSAO3D tests (Phase 6e)
+add_executable(test_ssao3d
+    tests/test_ssao3d.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_ssao3d PRIVATE src)
+target_link_libraries(test_ssao3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_ssao3d ssao3d shape3d render_3d transform3d scene_merge)
+add_test(NAME test_ssao3d COMMAND test_ssao3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# DepthOfField3D tests (Phase 6e)
+add_executable(test_dof3d
+    tests/test_dof3d.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_dof3d PRIVATE src)
+target_link_libraries(test_dof3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_dof3d dof3d shape3d render_3d transform3d scene_merge)
+add_test(NAME test_dof3d COMMAND test_dof3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Environment3D / IBL tests (Phase 6f)
+add_executable(test_environment3d
+    tests/test_environment3d.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_environment3d PRIVATE src)
+target_link_libraries(test_environment3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_environment3d environment3d shape3d material3d render_3d scene_merge light3d gpu_fill_op)
+add_test(NAME test_environment3d COMMAND test_environment3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# MeshImport tests
+add_executable(test_mesh_import
+    tests/test_mesh_import.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_mesh_import PRIVATE src ${CMAKE_SOURCE_DIR}/deps/tinyobjloader)
+target_link_libraries(test_mesh_import PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_mesh_import mesh_import render_3d)
+add_test(NAME test_mesh_import COMMAND test_mesh_import WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Deformer tests
+add_executable(test_deformer
+    tests/test_deformer.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_deformer PRIVATE src)
+target_link_libraries(test_deformer PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_deformer shape3d deformer render_3d)
+add_test(NAME test_deformer COMMAND test_deformer WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Instancer3D tests
+add_executable(test_instancer3d
+    tests/test_instancer3d.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_instancer3d PRIVATE src)
+target_link_libraries(test_instancer3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_instancer3d shape3d instancer3d render_3d)
+add_test(NAME test_instancer3d COMMAND test_instancer3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Boolean3D tests
+add_executable(test_boolean3d
+    tests/test_boolean3d.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_boolean3d PRIVATE src)
+target_link_libraries(test_boolean3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_boolean3d shape3d boolean3d render_3d)
+add_test(NAME test_boolean3d COMMAND test_boolean3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Particles3D tests
+add_executable(test_particles3d
+    tests/test_particles3d.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+)
+target_include_directories(test_particles3d PRIVATE src)
+target_link_libraries(test_particles3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_particles3d particles3d render_3d)
+add_test(NAME test_particles3d COMMAND test_particles3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_sdf3d
+    tests/test_sdf3d.cpp
+    src/runtime/operator_loader.cpp src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp src/runtime/graph.cpp src/runtime/scheduler.cpp)
+target_include_directories(test_sdf3d PRIVATE src)
+target_link_libraries(test_sdf3d PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_sdf3d sdf3d render_3d shape3d scene_merge)
+add_test(NAME test_sdf3d COMMAND test_sdf3d WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Cross-domain spread integration test
 add_executable(test_cross_domain_spread
