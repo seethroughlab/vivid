@@ -219,17 +219,19 @@ CommandResult RuntimeAPI::disconnect(const std::string& from_addr, const std::st
     return {true, "disconnected " + from_addr + " -> " + to_addr};
 }
 
-CommandResult RuntimeAPI::set_connection_scale(const std::string& from_addr,
-                                                const std::string& to_addr, float scale) {
+CommandResult RuntimeAPI::set_connection_remap(const std::string& from_addr,
+                                                const std::string& to_addr,
+                                                float from_min, float from_max,
+                                                float to_min, float to_max, bool clamp) {
     std::string fn, fp, tn, tp;
     if (!split_addr(from_addr, fn, fp) || !split_addr(to_addr, tn, tp)) {
         return {false, "invalid address (expected node/port)"};
     }
-    if (!graph_.set_connection_scale(fn, fp, tn, tp, scale)) {
+    if (!graph_.set_connection_remap(fn, fp, tn, tp, from_min, from_max, to_min, to_max, clamp)) {
         return {false, "connection not found"};
     }
     pending_topology_change_ = true;
-    return {true, "set scale " + std::to_string(scale) + " on " + from_addr + " -> " + to_addr};
+    return {true, "set remap on " + from_addr + " -> " + to_addr};
 }
 
 // --- apply_pending: full rebuild with param preservation ---

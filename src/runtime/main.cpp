@@ -153,9 +153,15 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
     // Connections
     snap.connections.resize(conns.size());
     for (size_t i = 0; i < conns.size(); ++i) {
-        snap.connections[i] = {conns[i].from_node, conns[i].from_port,
-                               conns[i].to_node, conns[i].to_port,
-                               conns[i].scale};
+        snap.connections[i].from_node = conns[i].from_node;
+        snap.connections[i].from_port = conns[i].from_port;
+        snap.connections[i].to_node   = conns[i].to_node;
+        snap.connections[i].to_port   = conns[i].to_port;
+        snap.connections[i].from_min  = conns[i].from_min;
+        snap.connections[i].from_max  = conns[i].from_max;
+        snap.connections[i].to_min    = conns[i].to_min;
+        snap.connections[i].to_max    = conns[i].to_max;
+        snap.connections[i].clamp     = conns[i].clamp;
         // Determine if source is a param (not an output port)
         auto ni_it = snap.node_index.find(conns[i].from_node);
         if (ni_it != snap.node_index.end()) {

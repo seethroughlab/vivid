@@ -56,7 +56,8 @@ public:
     CommandResult remove_node(const std::string& id);
     CommandResult connect(const std::string& from_addr, const std::string& to_addr);
     CommandResult disconnect(const std::string& from_addr, const std::string& to_addr);
-    CommandResult set_connection_scale(const std::string& from_addr, const std::string& to_addr, float scale);
+    CommandResult set_connection_remap(const std::string& from_addr, const std::string& to_addr,
+                                       float from_min, float from_max, float to_min, float to_max, bool clamp);
 
     // Apply buffered topology changes — call between frames
     // Updates has_gpu_ops and has_audio output flags after rebuild.

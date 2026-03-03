@@ -258,6 +258,42 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;
     }
 
+    if (editing_wire_remap_) {
+        if (key == GLFW_KEY_ENTER || key == GLFW_KEY_TAB) {
+            // Commit remap field edit
+            if (selected_wire_idx_ >= 0 &&
+                selected_wire_idx_ < static_cast<int>(snap_.connections.size())) {
+                const auto& c = snap_.connections[selected_wire_idx_];
+                float vals[4] = { c.from_min, c.from_max, c.to_min, c.to_max };
+                vals[edit_wire_remap_field_] = static_cast<float>(std::atof(edit_buffer_.c_str()));
+                std::string from_addr = c.from_node + "/" + c.from_port;
+                std::string to_addr   = c.to_node   + "/" + c.to_port;
+                commands_.set_connection_remap(from_addr, to_addr,
+                    vals[0], vals[1], vals[2], vals[3], c.clamp);
+            }
+            if (key == GLFW_KEY_TAB && edit_wire_remap_field_ < 3) {
+                // Tab to next field
+                int next_field = edit_wire_remap_field_ + 1;
+                editing_wire_remap_ = true;
+                edit_wire_remap_field_ = next_field;
+                if (selected_wire_idx_ >= 0 &&
+                    selected_wire_idx_ < static_cast<int>(snap_.connections.size())) {
+                    const auto& c = snap_.connections[selected_wire_idx_];
+                    float vals[4] = { c.from_min, c.from_max, c.to_min, c.to_max };
+                    char buf[32];
+                    std::snprintf(buf, sizeof(buf), "%.3g", vals[next_field]);
+                    edit_buffer_ = buf;
+                }
+            } else {
+                editing_wire_remap_ = false;
+            }
+        }
+        else if (key == GLFW_KEY_ESCAPE) editing_wire_remap_ = false;
+        else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
+            edit_buffer_.pop_back();
+        return;
+    }
+
     if (editing_resolution_) {
         if (key == GLFW_KEY_ENTER)       confirm_resolution_edit();
         else if (key == GLFW_KEY_ESCAPE) cancel_resolution_edit();
@@ -675,6 +711,12 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
         return;
     }
     if (editing_param_) {
+        char ch = static_cast<char>(codepoint);
+        if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-')
+            edit_buffer_ += ch;
+        return;
+    }
+    if (editing_wire_remap_) {
         char ch = static_cast<char>(codepoint);
         if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-')
             edit_buffer_ += ch;
@@ -1641,6 +1683,44 @@ bool NodeGraphUI::handle_inspector_click() {
         return true;
     }
 
+    // Check wire remap text field click
+    for (size_t i = 0; i < wire_remap_rects_.size(); ++i) {
+        const auto& wr = wire_remap_rects_[i];
+        if (mouse_.x >= wr.x && mouse_.x <= wr.x + wr.w &&
+            mouse_.y >= wr.y && mouse_.y <= wr.y + wr.h) {
+            editing_wire_remap_ = true;
+            edit_wire_remap_field_ = wr.field;
+            // Pre-fill buffer with current value
+            if (selected_wire_idx_ >= 0 &&
+                selected_wire_idx_ < static_cast<int>(snap_.connections.size())) {
+                const auto& c = snap_.connections[selected_wire_idx_];
+                float vals[4] = { c.from_min, c.from_max, c.to_min, c.to_max };
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "%.3g", vals[wr.field]);
+                edit_buffer_ = buf;
+            } else {
+                edit_buffer_ = "0";
+            }
+            return true;
+        }
+    }
+
+    // Check wire clamp checkbox click
+    for (const auto& cr : wire_clamp_rects_) {
+        if (mouse_.x >= cr.x && mouse_.x <= cr.x + cr.w &&
+            mouse_.y >= cr.y && mouse_.y <= cr.y + cr.h) {
+            if (selected_wire_idx_ >= 0 &&
+                selected_wire_idx_ < static_cast<int>(snap_.connections.size())) {
+                const auto& c = snap_.connections[selected_wire_idx_];
+                std::string from_addr = c.from_node + "/" + c.from_port;
+                std::string to_addr   = c.to_node   + "/" + c.to_port;
+                commands_.set_connection_remap(from_addr, to_addr,
+                    c.from_min, c.from_max, c.to_min, c.to_max, !c.clamp);
+            }
+            return true;
+        }
+    }
+
     // Check patch panel jack click (start wire drag)
     if (handle_patch_click()) return true;
 
@@ -1654,6 +1734,7 @@ void NodeGraphUI::handle_graph_click() {
     // Clicking in graph area confirms any active text edit
     if (editing_param_) confirm_param_edit();
     if (editing_resolution_) confirm_resolution_edit();
+    editing_wire_remap_ = false;
 
     // Port hit test first (ports are on node edges, inside node AABB)
     PortHit ph = hit_test_port(mouse_.x, mouse_.y);
@@ -1722,6 +1803,8 @@ void NodeGraphUI::handle_graph_click() {
                 last_click_time_ = now;
             }
 
+            selected_wire_idx_ = -1;  // clicking a node clears wire selection
+
             if (mouse_.shift_down) {
                 // Shift-click: toggle node in/out of selection, no drag
                 if (selected_node_ids_.count(node_id))
@@ -1760,13 +1843,21 @@ void NodeGraphUI::handle_graph_click() {
                 pending_select_node_id_.clear();
             }
         } else {
-            // Empty canvas: start box-select
-            if (!mouse_.shift_down)
+            // No node hit — try wire selection
+            int wi = hit_test_wire(mouse_.x, mouse_.y);
+            if (wi >= 0) {
+                selected_wire_idx_ = wi;
                 selected_node_ids_.clear();
-            box_selecting_ = true;
-            box_start_gx_ = sx_to_gx(mouse_.x);
-            box_start_gy_ = sy_to_gy(mouse_.y);
-            box_shift_held_ = mouse_.shift_down;
+            } else {
+                // Empty canvas: clear wire selection, start box-select
+                selected_wire_idx_ = -1;
+                if (!mouse_.shift_down)
+                    selected_node_ids_.clear();
+                box_selecting_ = true;
+                box_start_gx_ = sx_to_gx(mouse_.x);
+                box_start_gy_ = sy_to_gy(mouse_.y);
+                box_shift_held_ = mouse_.shift_down;
+            }
         }
     }
 }

@@ -109,8 +109,15 @@ struct ConnectionSnapshot {
     std::string from_port;
     std::string to_node;
     std::string to_port;
-    float scale = 1.0f;
+    float from_min = 0.0f, from_max = 1.0f;
+    float to_min   = 0.0f, to_max  = 1.0f;
+    bool  clamp    = false;
     bool from_is_param = false;  // true if source is a param (not an output port)
+
+    bool has_remap() const {
+        return from_min != 0.0f || from_max != 1.0f ||
+               to_min  != 0.0f || to_max  != 1.0f || clamp;
+    }
 };
 
 // MIDI mapping snapshot for UI

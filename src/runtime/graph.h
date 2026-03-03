@@ -30,7 +30,14 @@ struct NodeDef {
 struct ConnectionDef {
     std::string from_node, from_port;
     std::string to_node, to_port;
-    float scale = 1.0f;
+    float from_min = 0.0f, from_max = 1.0f;
+    float to_min   = 0.0f, to_max  = 1.0f;
+    bool  clamp    = false;
+
+    bool has_remap() const {
+        return from_min != 0.0f || from_max != 1.0f ||
+               to_min  != 0.0f || to_max  != 1.0f || clamp;
+    }
 };
 
 struct FilterDef {
@@ -95,8 +102,9 @@ public:
                         const std::string& to_node, const std::string& to_port);
     bool remove_connection(const std::string& from_node, const std::string& from_port,
                            const std::string& to_node, const std::string& to_port);
-    bool set_connection_scale(const std::string& from_node, const std::string& from_port,
-                              const std::string& to_node, const std::string& to_port, float scale);
+    bool set_connection_remap(const std::string& from_node, const std::string& from_port,
+                              const std::string& to_node, const std::string& to_port,
+                              float from_min, float from_max, float to_min, float to_max, bool clamp);
 
     // Filter mutation
     void add_filter(FilterDef filter);

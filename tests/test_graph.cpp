@@ -732,7 +732,7 @@ int main() {
         const auto& conn = g.connections()[0];
         check(conn.from_node == "osc" && conn.from_port == "output", "connection from osc/output");
         check(conn.to_node == "gain" && conn.to_port == "input", "connection to gain/input");
-        check_float(conn.scale, 0.5f, "connection scale = 0.5");
+        check_float(conn.to_max, 0.5f, "connection to_max = 0.5 (backward compat from scale)");
 
         // Also test with explicit length
         vivid::Graph g2;

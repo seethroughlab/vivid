@@ -96,7 +96,9 @@ struct Wire {
     bool targets_param = false;   // true → to_port_idx indexes into param_values
     bool is_texture_wire = false; // true → carries GPU_TEXTURE data
     bool is_scene_wire   = false; // true → carries GPU_SCENE data
-    float scale = 1.0f;          // multiplied into propagated values
+    float from_min = 0.0f, from_max = 1.0f;
+    float to_min   = 0.0f, to_max  = 1.0f;
+    bool  clamp    = false;
 };
 
 // Optional callback invoked after each GPU node's process()

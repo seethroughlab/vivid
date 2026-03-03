@@ -13,7 +13,9 @@ public:
     virtual void remove_node(const std::string& id) = 0;
     virtual void connect(const std::string& from, const std::string& to) = 0;
     virtual void disconnect(const std::string& from, const std::string& to) = 0;
-    virtual void set_connection_scale(const std::string& from, const std::string& to, float scale) = 0;
+    virtual void set_connection_remap(const std::string& from, const std::string& to,
+                                      float from_min, float from_max,
+                                      float to_min, float to_max, bool clamp) = 0;
     virtual void set_node_layout(const std::string& node_id, float x, float y) = 0;
     virtual void set_resolution(const std::string& node_id, uint32_t w, uint32_t h) = 0;
     virtual void add_midi_mapping(const std::string& node_id, const std::string& param,

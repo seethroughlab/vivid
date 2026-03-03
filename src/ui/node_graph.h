@@ -59,6 +59,7 @@ public:
             || chooser_open_
             || editing_param_
             || editing_resolution_
+            || editing_wire_remap_
             || dropdown_open_
             || context_menu_open_
             || editing_midi_range_
@@ -304,6 +305,7 @@ private:
     bool snap_valid_ = false;
     MouseState mouse_;
     std::unordered_set<std::string> selected_node_ids_;
+    int selected_wire_idx_ = -1;  // index into snap_.connections, or -1
     std::vector<NodeRect> node_rects_;
 
     // Track topology version to re-layout on changes
@@ -418,6 +420,16 @@ private:
     struct ResolutionRect { float x, y, w, h; std::string node_id; bool is_width; };
     std::vector<ResolutionRect> resolution_rects_;
 
+    // Wire remap inspector rects
+    struct WireRemapRect { float x, y, w, h; int field; }; // field: 0=from_min,1=from_max,2=to_min,3=to_max
+    std::vector<WireRemapRect> wire_remap_rects_;
+    struct WireClampRect { float x, y, w, h; };
+    std::vector<WireClampRect> wire_clamp_rects_;
+
+    // Wire remap text editing state
+    bool editing_wire_remap_ = false;
+    int  edit_wire_remap_field_ = 0;  // 0..3 for the four float fields
+
     // Resolution editing state
     bool editing_resolution_ = false;
     std::string edit_res_node_id_;
@@ -485,7 +497,7 @@ private:
         float sx, sy, ex, ey;
         std::string from_node, from_port;
         std::string to_node, to_port;
-        float scale;
+        bool has_remap;
     };
     std::vector<PatchWire> patch_wires_;
 

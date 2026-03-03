@@ -278,7 +278,8 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         // Domain-colored wires (source node's accent color)
         const float* dcol = domain_color(from_rect.domain);
         bool sel = selected_node_ids_.count(c.from_node) > 0 || selected_node_ids_.count(c.to_node) > 0;
-        bool hov = (ci == hovered_wire_idx_);
+        bool wire_sel = (ci == selected_wire_idx_);
+        bool hov = (ci == hovered_wire_idx_) || wire_sel;
         float brightness = (hov || sel) ? kWireHoverBright : 1.0f;
         float cr = std::min(1.0f, dcol[0] * brightness);
         float cg = std::min(1.0f, dcol[1] * brightness);
@@ -308,6 +309,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         }
 
         // Spread cardinality badge: show "×N" at wire midpoint for spread wires
+        float badge_offset = 0.0f;
         if (!c.from_is_param) {
             auto src_it = snap_.node_index.find(c.from_node);
             if (src_it != snap_.node_index.end()) {
@@ -323,9 +325,17 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
                         char badge[16];
                         std::snprintf(badge, sizeof(badge), "\xc3\x97%zu", spread_len);
                         tr.draw_text(mx, my, badge, cr, cg, cb, 0.6f, zoom_);
+                        badge_offset = 12.0f * zoom_;
                     }
                 }
             }
+        }
+
+        // Remap "R" badge at wire midpoint when remap is non-default
+        if (c.has_remap()) {
+            float mx = (ssx + sex) * 0.5f;
+            float my = (ssy + sey) * 0.5f - 6.0f * zoom_ - badge_offset;
+            tr.draw_text(mx, my, "R", cr, cg, cb, 0.7f, zoom_);
         }
     }
 }
@@ -424,6 +434,85 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     state_preset_rects_.clear();
     state_header_rects_.clear();
     lock_badge_rects_.clear();
+
+    wire_remap_rects_.clear();
+    wire_clamp_rects_.clear();
+
+    // Wire inspector (when a wire is selected and no nodes are)
+    if (selected_node_ids_.empty() && selected_wire_idx_ >= 0 &&
+        selected_wire_idx_ < static_cast<int>(snap_.connections.size())) {
+        const auto& c = snap_.connections[selected_wire_idx_];
+        float insp_x = inspector_x();
+        tr.draw_rect(insp_x, 0, kInspectorW, static_cast<float>(h),
+                     style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.95f);
+        tr.draw_rect(insp_x, 0, 2, static_cast<float>(h),
+                     style_.separator[0], style_.separator[1], style_.separator[2]);
+
+        float px = insp_x + kInspPadX;
+        float py = kPerfBarH + 8;
+
+        // Header
+        tr.draw_text(px, py, "Wire", style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 1.0f, 1.2f);
+        py += 22;
+        std::string label = c.from_node + "/" + c.from_port + " \xE2\x86\x92 " + c.to_node + "/" + c.to_port;
+        tr.draw_text(px, py, label.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
+        py += 20;
+
+        // Remap fields
+        static const char* field_labels[4] = { "From Min", "From Max", "To Min", "To Max" };
+        float vals[4] = { c.from_min, c.from_max, c.to_min, c.to_max };
+        float field_w = kInspectorW - kInspPadX * 2 - 80;
+
+        for (int f = 0; f < 4; ++f) {
+            py += 4;
+            tr.draw_text(px, py + 2, field_labels[f],
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
+
+            float fx = px + 80;
+            float fw = field_w;
+            float fh = 18;
+
+            // Background for text field
+            bool editing_this = editing_wire_remap_ && edit_wire_remap_field_ == f;
+            tr.draw_rect(fx, py, fw, fh,
+                         editing_this ? style_.accent[0] * 0.3f : style_.inspector_bg[0] * 0.7f,
+                         editing_this ? style_.accent[1] * 0.3f : style_.inspector_bg[1] * 0.7f,
+                         editing_this ? style_.accent[2] * 0.3f : style_.inspector_bg[2] * 0.7f, 0.8f);
+            tr.draw_rect(fx, py, fw, 1, style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
+            tr.draw_rect(fx, py + fh - 1, fw, 1, style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
+
+            if (editing_this) {
+                tr.draw_text(fx + 4, py + 2, edit_buffer_.c_str(),
+                             style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            } else {
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "%.3g", vals[f]);
+                tr.draw_text(fx + 4, py + 2, buf,
+                             style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            }
+
+            wire_remap_rects_.push_back({fx, py, fw, fh, f});
+            py += fh;
+        }
+
+        // Clamp checkbox
+        py += 8;
+        float cb_size = 14;
+        tr.draw_rect(px, py, cb_size, cb_size,
+                     style_.inspector_bg[0] * 0.7f, style_.inspector_bg[1] * 0.7f, style_.inspector_bg[2] * 0.7f, 0.8f);
+        tr.draw_rect(px, py, cb_size, 1, style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
+        tr.draw_rect(px, py + cb_size - 1, cb_size, 1, style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
+        if (c.clamp) {
+            tr.draw_rect(px + 3, py + 3, cb_size - 6, cb_size - 6,
+                         style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+        }
+        wire_clamp_rects_.push_back({px, py, cb_size, cb_size});
+        tr.draw_text(px + cb_size + 6, py + 1, "Clamp",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
+
+        insp_content_h_ = 0;
+        return;
+    }
 
     if (selected_node_ids_.empty()) return;
 
@@ -2354,7 +2443,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
 
         // Wire color from source node's domain
         const float* wire_clr = ab ? clr_a : clr_b;
-        float wire_alpha = 0.4f + 0.6f * c.scale;
+        float wire_alpha = c.has_remap() ? 0.7f : 1.0f;
 
         traverse_wire(wx0, wy0, wx1, wy1, true, [&](float x0, float y0, float x1, float y1) {
             tr.draw_line(x0, y0, x1, y1, kPatchWireThickness,
@@ -2363,7 +2452,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
 
         patch_wires_.push_back({
             src_x, src_y, dst_x, dst_y,
-            c.from_node, c.from_port, c.to_node, c.to_port, c.scale
+            c.from_node, c.from_port, c.to_node, c.to_port, c.has_remap()
         });
     }
 
@@ -2396,8 +2485,8 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
 
         // Connection label
         std::string label = w.from_port + " \xE2\x86\x92 " + w.to_port;
-        if (w.scale < 1.0f)
-            label += " (" + format_float(w.scale, 2) + ")";
+        if (w.has_remap)
+            label += " (R)";
         tr.draw_text(mx + 6, my + kCtxMenuPadTop + 2, label.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f, 0.8f);
 

@@ -11,6 +11,25 @@ namespace vivid {
 
 static constexpr uint32_t kMaxSpreadCapacity = 1024;
 
+// Check if a wire has non-default remap (any field differs from identity mapping)
+inline bool has_remap(const Wire& w) {
+    return w.from_min != 0.0f || w.from_max != 1.0f ||
+           w.to_min  != 0.0f || w.to_max  != 1.0f || w.clamp;
+}
+
+// Apply remap: maps val from [from_min, from_max] to [to_min, to_max]
+inline float apply_remap(float val, const Wire& w) {
+    float range = w.from_max - w.from_min;
+    float t = (range != 0.0f) ? (val - w.from_min) / range : 0.0f;
+    float out = w.to_min + t * (w.to_max - w.to_min);
+    if (w.clamp) {
+        float lo = std::min(w.to_min, w.to_max);
+        float hi = std::max(w.to_min, w.to_max);
+        out = std::max(lo, std::min(hi, out));
+    }
+    return out;
+}
+
 void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* desc,
                                 const std::unordered_map<std::string, float>* param_overrides,
                                 const std::unordered_map<std::string, std::string>* string_overrides) {
@@ -135,7 +154,17 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
                 break;
             }
         }
-        ns.is_gpu_sink = !ns.texture_input_port_indices.empty() && !ns.has_texture_output;
+        bool has_scene_output = false;
+        for (uint32_t i = 0; i < desc->port_count; ++i) {
+            if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
+                desc->ports[i].type == VIVID_PORT_GPU_SCENE) {
+                has_scene_output = true;
+                break;
+            }
+        }
+        ns.is_gpu_sink = !ns.texture_input_port_indices.empty()
+                      && !ns.has_texture_output
+                      && !has_scene_output;
 
         // Phase 6e: detect depth output port by name
         ns.depth_output_port_idx = -1;
@@ -337,7 +366,11 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             w.to_port_idx = pp_it->second;
             w.targets_param = true;
         }
-        w.scale = conn.scale;
+        w.from_min = conn.from_min;
+        w.from_max = conn.from_max;
+        w.to_min   = conn.to_min;
+        w.to_max   = conn.to_max;
+        w.clamp    = conn.clamp;
         wires_.push_back(w);
 
         adj[fi].push_back(ti);
@@ -424,11 +457,12 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         for (const auto& w : wires_) {
             if (w.to_node_idx == ni) {
                 if (w.is_texture_wire || w.is_scene_wire) continue;
-                float val;
+                float raw;
                 if (w.sources_param)
-                    val = nodes_[w.from_node_idx].param_values[w.from_port_idx] * w.scale;
+                    raw = nodes_[w.from_node_idx].param_values[w.from_port_idx];
                 else
-                    val = nodes_[w.from_node_idx].output_values[w.from_port_idx] * w.scale;
+                    raw = nodes_[w.from_node_idx].output_values[w.from_port_idx];
+                float val = has_remap(w) ? apply_remap(raw, w) : raw;
                 if (w.targets_param) {
                     if (!(ns.param_lock_flags[w.to_port_idx] & PARAM_LOCK_WIRES))
                         ns.param_values[w.to_port_idx] = val;
@@ -441,11 +475,12 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                     if (!src_spread.empty()) {
                         auto& dst_spread = ns.input_spreads[w.to_port_idx];
                         size_t src_len = std::min(src_spread.size(), (size_t)kMaxSpreadCapacity);
+                        bool remap = has_remap(w);
                         if (dst_spread.empty()) {
                             // First wire into this port: direct copy
                             dst_spread.resize(src_len);
                             for (size_t si = 0; si < src_len; ++si)
-                                dst_spread[si] = src_spread[si] * w.scale;
+                                dst_spread[si] = remap ? apply_remap(src_spread[si], w) : src_spread[si];
                         } else {
                             // Multiple wires: broadcast to longer length, wrap both
                             size_t old_len = dst_spread.size();
@@ -458,7 +493,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                                     dst_spread[si] = dst_spread[si % old_len];
                             }
                             for (size_t si = 0; si < new_len; ++si)
-                                dst_spread[si] += src_spread[si % src_len] * w.scale;
+                                dst_spread[si] += remap ? apply_remap(src_spread[si % src_len], w) : src_spread[si % src_len];
                         }
                         ns.input_values[w.to_port_idx] = dst_spread[0];
                     }
@@ -686,9 +721,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         if (!w.targets_param) continue;
         auto& to_ns = nodes_[w.to_node_idx];
         if (!to_ns.is_audio) continue;
-        float val = w.sources_param
-            ? nodes_[w.from_node_idx].param_values[w.from_port_idx] * w.scale
-            : nodes_[w.from_node_idx].output_values[w.from_port_idx] * w.scale;
+        float raw = w.sources_param
+            ? nodes_[w.from_node_idx].param_values[w.from_port_idx]
+            : nodes_[w.from_node_idx].output_values[w.from_port_idx];
+        float val = has_remap(w) ? apply_remap(raw, w) : raw;
         if (!(to_ns.param_lock_flags[w.to_port_idx] & PARAM_LOCK_WIRES))
             to_ns.param_values[w.to_port_idx] = val;
     }

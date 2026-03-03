@@ -14,6 +14,13 @@
 
 namespace vivid {
 
+// Compute a linear scale equivalent from ConnectionDef remap fields.
+// Audio engine wires use a simple float scale; this extracts the gain factor.
+static float remap_to_scale(const ConnectionDef& c) {
+    float range = c.from_max - c.from_min;
+    return (range != 0.0f) ? (c.to_max - c.to_min) / range : 1.0f;
+}
+
 AudioEngine::AudioEngine() = default;
 
 void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorDescriptor* desc,
@@ -151,7 +158,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     sw.from_port_idx = fp_it->second;
                     sw.to_node_idx = ti;
                     sw.to_port_idx = tp_it->second;
-                    sw.scale = conn.scale;
+                    sw.scale = remap_to_scale(conn);
                     audio_spread_wires_.push_back(sw);
                 } else {
                     AudioWire w;
@@ -159,7 +166,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     w.from_port_idx = fp_it->second;
                     w.to_node_idx = ti;
                     w.to_port_idx = tp_it->second;
-                    w.scale = conn.scale;
+                    w.scale = remap_to_scale(conn);
                     wires_.push_back(w);
                 }
 
@@ -187,7 +194,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                 cw.control_output_port_idx = cp_it->second;
                 cw.audio_node_idx = ti;
                 cw.audio_param_idx = pp_it->second;
-                cw.scale = conn.scale;
+                cw.scale = remap_to_scale(conn);
                 cross_wires_.push_back(cw);
             } else {
                 // Try input port mapping (for CONTROL_SPREAD cross-domain wires)
@@ -200,7 +207,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     sw.control_spread_port_idx = cp_it->second;
                     sw.audio_node_idx = ti;
                     sw.audio_port_idx = ip_it->second;
-                    sw.scale = conn.scale;
+                    sw.scale = remap_to_scale(conn);
                     cross_spread_wires_.push_back(sw);
                 }
             }

@@ -237,8 +237,14 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
         std::string to_addr = conn.to_node + "/" + conn.to_port;
         yyjson_mut_obj_add_strcpy(doc, c, "from", from_addr.c_str());
         yyjson_mut_obj_add_strcpy(doc, c, "to", to_addr.c_str());
-        if (conn.scale != 1.0f)
-            yyjson_mut_obj_add_real(doc, c, "scale", conn.scale);
+        if (conn.has_remap()) {
+            yyjson_mut_obj_add_real(doc, c, "from_min", conn.from_min);
+            yyjson_mut_obj_add_real(doc, c, "from_max", conn.from_max);
+            yyjson_mut_obj_add_real(doc, c, "to_min",   conn.to_min);
+            yyjson_mut_obj_add_real(doc, c, "to_max",   conn.to_max);
+            if (conn.clamp)
+                yyjson_mut_obj_add_bool(doc, c, "clamp", true);
+        }
         yyjson_mut_arr_add_val(conns_arr, c);
     }
     yyjson_mut_obj_add_val(doc, result, "connections", conns_arr);
@@ -361,19 +367,28 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 result = command_result_to_json(
                     api.disconnect(yyjson_get_str(from), yyjson_get_str(to)));
         }
-    } else if (method == "set_connection_scale") {
+    } else if (method == "set_connection_remap") {
         if (!root) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* from  = yyjson_obj_get(root, "from_addr");
-            yyjson_val* to    = yyjson_obj_get(root, "to_addr");
-            yyjson_val* scale = yyjson_obj_get(root, "scale");
-            if (!from || !to || !scale ||
-                !yyjson_is_str(from) || !yyjson_is_str(to) || !yyjson_is_num(scale))
-                result = json_err("missing 'from_addr', 'to_addr', or 'scale'");
-            else
+            yyjson_val* from      = yyjson_obj_get(root, "from_addr");
+            yyjson_val* to        = yyjson_obj_get(root, "to_addr");
+            yyjson_val* fmin_val  = yyjson_obj_get(root, "from_min");
+            yyjson_val* fmax_val  = yyjson_obj_get(root, "from_max");
+            yyjson_val* tmin_val  = yyjson_obj_get(root, "to_min");
+            yyjson_val* tmax_val  = yyjson_obj_get(root, "to_max");
+            yyjson_val* clamp_val = yyjson_obj_get(root, "clamp");
+            if (!from || !to || !yyjson_is_str(from) || !yyjson_is_str(to))
+                result = json_err("missing 'from_addr' or 'to_addr'");
+            else {
+                float fmin = fmin_val && yyjson_is_num(fmin_val) ? static_cast<float>(yyjson_get_num(fmin_val)) : 0.0f;
+                float fmax = fmax_val && yyjson_is_num(fmax_val) ? static_cast<float>(yyjson_get_num(fmax_val)) : 1.0f;
+                float tmin = tmin_val && yyjson_is_num(tmin_val) ? static_cast<float>(yyjson_get_num(tmin_val)) : 0.0f;
+                float tmax = tmax_val && yyjson_is_num(tmax_val) ? static_cast<float>(yyjson_get_num(tmax_val)) : 1.0f;
+                bool  cval = clamp_val && yyjson_is_bool(clamp_val) ? yyjson_get_bool(clamp_val) : false;
                 result = command_result_to_json(
-                    api.set_connection_scale(yyjson_get_str(from), yyjson_get_str(to),
-                                             static_cast<float>(yyjson_get_num(scale))));
+                    api.set_connection_remap(yyjson_get_str(from), yyjson_get_str(to),
+                                              fmin, fmax, tmin, tmax, cval));
+            }
         }
     } else if (method == "set_param") {
         if (!root) { result = json_err("invalid JSON body"); }

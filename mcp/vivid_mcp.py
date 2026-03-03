@@ -110,16 +110,27 @@ async def disconnect(from_addr: str, to_addr: str) -> str:
 
 
 @mcp.tool()
-async def set_connection_scale(from_addr: str, to_addr: str, scale: float) -> str:
-    """Set the scale factor on a connection. Values are multiplied by scale when propagated.
+async def set_connection_remap(
+    from_addr: str, to_addr: str,
+    from_min: float = 0.0, from_max: float = 1.0,
+    to_min: float = 0.0, to_max: float = 1.0,
+    clamp: bool = False,
+) -> str:
+    """Set the remap on a connection. Values are mapped from [from_min, from_max] to [to_min, to_max].
 
     Args:
         from_addr: Source port (e.g. "lfo1/value")
         to_addr: Destination port (e.g. "blur1/radius")
-        scale: Scale factor (default 1.0, range 0.0-1.0 typical)
+        from_min: Input range minimum (default 0.0)
+        from_max: Input range maximum (default 1.0)
+        to_min: Output range minimum (default 0.0)
+        to_max: Output range maximum (default 1.0)
+        clamp: Whether to clamp output to [min(to_min,to_max), max(to_min,to_max)]
     """
-    return await _post("set_connection_scale", {
-        "from_addr": from_addr, "to_addr": to_addr, "scale": scale
+    return await _post("set_connection_remap", {
+        "from_addr": from_addr, "to_addr": to_addr,
+        "from_min": from_min, "from_max": from_max,
+        "to_min": to_min, "to_max": to_max, "clamp": clamp,
     })
 
 

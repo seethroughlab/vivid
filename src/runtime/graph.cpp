@@ -208,9 +208,29 @@ bool Graph::parse_doc(yyjson_doc* doc) {
                 std::fprintf(stderr, "[vivid] Graph: invalid connection address\n");
                 continue;
             }
-            yyjson_val* scale_val = yyjson_obj_get(val, "scale");
-            if (scale_val && yyjson_is_num(scale_val))
-                conn.scale = static_cast<float>(yyjson_get_num(scale_val));
+            // Remap fields (new format)
+            yyjson_val* fmin_val = yyjson_obj_get(val, "from_min");
+            yyjson_val* fmax_val = yyjson_obj_get(val, "from_max");
+            yyjson_val* tmin_val = yyjson_obj_get(val, "to_min");
+            yyjson_val* tmax_val = yyjson_obj_get(val, "to_max");
+            yyjson_val* clamp_val = yyjson_obj_get(val, "clamp");
+            if (fmin_val || fmax_val || tmin_val || tmax_val) {
+                if (fmin_val && yyjson_is_num(fmin_val))
+                    conn.from_min = static_cast<float>(yyjson_get_num(fmin_val));
+                if (fmax_val && yyjson_is_num(fmax_val))
+                    conn.from_max = static_cast<float>(yyjson_get_num(fmax_val));
+                if (tmin_val && yyjson_is_num(tmin_val))
+                    conn.to_min = static_cast<float>(yyjson_get_num(tmin_val));
+                if (tmax_val && yyjson_is_num(tmax_val))
+                    conn.to_max = static_cast<float>(yyjson_get_num(tmax_val));
+                if (clamp_val && yyjson_is_bool(clamp_val))
+                    conn.clamp = yyjson_get_bool(clamp_val);
+            } else {
+                // Backward compat: legacy "scale" field -> remap {0, 1, 0, scale}
+                yyjson_val* scale_val = yyjson_obj_get(val, "scale");
+                if (scale_val && yyjson_is_num(scale_val))
+                    conn.to_max = static_cast<float>(yyjson_get_num(scale_val));
+            }
             connections_.push_back(std::move(conn));
         }
     }
@@ -452,12 +472,17 @@ bool Graph::remove_connection(const std::string& from_node, const std::string& f
     return true;
 }
 
-bool Graph::set_connection_scale(const std::string& from_node, const std::string& from_port,
-                                  const std::string& to_node, const std::string& to_port, float scale) {
+bool Graph::set_connection_remap(const std::string& from_node, const std::string& from_port,
+                                  const std::string& to_node, const std::string& to_port,
+                                  float from_min, float from_max, float to_min, float to_max, bool clamp) {
     for (auto& c : connections_) {
         if (c.from_node == from_node && c.from_port == from_port &&
             c.to_node == to_node && c.to_port == to_port) {
-            c.scale = scale;
+            c.from_min = from_min;
+            c.from_max = from_max;
+            c.to_min   = to_min;
+            c.to_max   = to_max;
+            c.clamp    = clamp;
             return true;
         }
     }
@@ -820,8 +845,14 @@ bool Graph::save(const char* path) const {
         std::string to_addr = conn.to_node + "/" + conn.to_port;
         yyjson_mut_obj_add_strcpy(doc, conn_obj, "from", from_addr.c_str());
         yyjson_mut_obj_add_strcpy(doc, conn_obj, "to", to_addr.c_str());
-        if (conn.scale != 1.0f)
-            yyjson_mut_obj_add_real(doc, conn_obj, "scale", static_cast<double>(conn.scale));
+        if (conn.has_remap()) {
+            yyjson_mut_obj_add_real(doc, conn_obj, "from_min", static_cast<double>(conn.from_min));
+            yyjson_mut_obj_add_real(doc, conn_obj, "from_max", static_cast<double>(conn.from_max));
+            yyjson_mut_obj_add_real(doc, conn_obj, "to_min",   static_cast<double>(conn.to_min));
+            yyjson_mut_obj_add_real(doc, conn_obj, "to_max",   static_cast<double>(conn.to_max));
+            if (conn.clamp)
+                yyjson_mut_obj_add_bool(doc, conn_obj, "clamp", true);
+        }
         yyjson_mut_arr_add_val(conns_arr, conn_obj);
     }
     yyjson_mut_obj_add_val(doc, root, "connections", conns_arr);
