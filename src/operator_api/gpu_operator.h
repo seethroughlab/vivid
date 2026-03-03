@@ -3,6 +3,8 @@
 #include <webgpu/webgpu.h>
 #include <cstring>
 
+namespace vivid::gpu { struct VividSceneFragment; }
+
 struct VividGpuState {
     WGPUDevice         device;
     WGPUQueue          queue;
@@ -12,6 +14,7 @@ struct VividGpuState {
     uint32_t           output_width;
     uint32_t           output_height;
     WGPUTextureFormat  output_format;
+    WGPUTextureView    output_depth_view = nullptr;  // Phase 6e: R32Float depth output
 
     // Texture inputs (one per GPU_TEXTURE input port, nullptr if disconnected)
     WGPUTextureView*   input_texture_views;
@@ -25,6 +28,11 @@ struct VividGpuState {
 
     // Path to operators/ source tree (for WGSL filter hot-reload)
     const char*        operators_src_dir;
+
+    // Scene fragment I/O (3D operators)
+    vivid::gpu::VividSceneFragment*  output_scene      = nullptr;  // operator sets during process()
+    vivid::gpu::VividSceneFragment** input_scenes       = nullptr;  // resolved from upstream
+    uint32_t                         input_scene_count  = 0;
 };
 
 static inline VividGpuState* vivid_gpu(const VividProcessContext* ctx) {
@@ -44,6 +52,7 @@ namespace vivid::gpu {
     inline void release(WGPUSampler& s) { if (s) { wgpuSamplerRelease(s); s = nullptr; } }
     inline void release(WGPUTexture& t) { if (t) { wgpuTextureRelease(t); t = nullptr; } }
     inline void release(WGPUTextureView& v) { if (v) { wgpuTextureViewRelease(v); v = nullptr; } }
+    inline void release(WGPUComputePipeline& p) { if (p) { wgpuComputePipelineRelease(p); p = nullptr; } }
     inline void release(WGPUPipelineLayout& l) { if (l) { wgpuPipelineLayoutRelease(l); l = nullptr; } }
 
     // -----------------------------------------------------------------------

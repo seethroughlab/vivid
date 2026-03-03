@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <functional>
 
+namespace vivid::gpu { struct VividSceneFragment; }
+
 namespace vivid {
 
 enum ParamLockFlags : uint8_t {
@@ -63,6 +65,17 @@ struct NodeState {
     std::vector<uint32_t>        resolved_tex_heights;   // input texture heights
     bool is_gpu_sink = false;  // GPU domain + texture inputs + no texture outputs
 
+    // Secondary depth texture output (Phase 6e)
+    WGPUTexture     gpu_depth_texture      = nullptr;
+    WGPUTextureView gpu_depth_texture_view = nullptr;
+    int32_t         depth_output_port_idx  = -1;  // -1 = no depth output
+
+    // Per-node scene fragment (3D)
+    vivid::gpu::VividSceneFragment* scene_fragment = nullptr;
+    std::vector<uint32_t> scene_input_port_indices;
+    std::vector<vivid::gpu::VividSceneFragment*> resolved_scene_inputs;
+    bool has_texture_output = false;
+
     // File (string) params — separate from float param_values
     std::vector<std::string> file_param_storage;     // owned strings
     std::vector<const char*> file_param_ptrs;        // pointers into storage
@@ -82,6 +95,7 @@ struct Wire {
     bool sources_param = false;   // true → from_port_idx indexes into param_values
     bool targets_param = false;   // true → to_port_idx indexes into param_values
     bool is_texture_wire = false; // true → carries GPU_TEXTURE data
+    bool is_scene_wire   = false; // true → carries GPU_SCENE data
     float scale = 1.0f;          // multiplied into propagated values
 };
 

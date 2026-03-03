@@ -37,6 +37,7 @@ typedef enum VividPortType {
     VIVID_PORT_AUDIO_FLOAT    = 3,
     VIVID_PORT_CONTROL_SPREAD = 4,
     VIVID_PORT_GPU_TEXTURE    = 5,
+    VIVID_PORT_GPU_SCENE      = 6,
 } VividPortType;
 
 typedef enum VividPortDirection {

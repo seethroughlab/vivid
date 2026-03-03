@@ -59,6 +59,7 @@ static const char* port_type_str(VividPortType t) {
         case VIVID_PORT_AUDIO_FLOAT:    return "audio_float";
         case VIVID_PORT_CONTROL_SPREAD: return "control_spread";
         case VIVID_PORT_GPU_TEXTURE:    return "gpu_texture";
+        case VIVID_PORT_GPU_SCENE:     return "gpu_scene";
         default: return "unknown";
     }
 }

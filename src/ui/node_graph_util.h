@@ -80,6 +80,7 @@ inline bool is_control_type(VividPortType t) {
 
 inline bool port_type_compatible(VividPortType a, VividPortType b) {
     if (a == VIVID_PORT_GPU_TEXTURE)   return b == VIVID_PORT_GPU_TEXTURE;
+    if (a == VIVID_PORT_GPU_SCENE)     return b == VIVID_PORT_GPU_SCENE;
     if (a == VIVID_PORT_AUDIO_FLOAT)   return b == VIVID_PORT_AUDIO_FLOAT;
     return is_control_type(a) && is_control_type(b);
 }
