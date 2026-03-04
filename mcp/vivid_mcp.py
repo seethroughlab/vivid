@@ -11,13 +11,13 @@ mcp = FastMCP("vivid", instructions="""Vivid is a real-time audio-visual graph e
 
 ## Three Domains
 
-- **GPU** — texture-based visual operators (noise, shape, blur, composite, etc.). Ports use type `gpu_texture` for 2D image data or `gpu_scene` for 3D scene fragments. `Shape3D` generates 3D geometry (cube, sphere, torus, plane, cylinder) as a scene source; `Transform3D` applies position/rotation/scale to a scene; `SceneMerge` combines up to 4 scene inputs into one; `Light3D` adds directional or point lights; `Render3D` converts scene fragments to textures with multi-draw and dynamic lighting. Every visual graph needs a `video_out` node to display output.
+- **GPU** — texture-based visual operators (noise, shape, blur, composite, etc.). Ports use type `gpu_texture` for 2D image data. Packages can define custom opaque-pointer port types using `data` with a `data_type` string (e.g. the vivid-3d package defines `"gpu_scene"` for 3D scene fragments). 3D operators (Shape3D, Transform3D, SceneMerge, Light3D, Render3D, etc.) are available via the vivid-3d package. Every visual graph needs a `video_out` node to display output.
 - **Audio** — sample-based audio operators (oscillator, gain, reverb, etc.). Ports use type `audio_float`. Every audio graph needs an `audio_out` node to hear output.
 - **Control** — scalar/spread signals for modulation (lfo, clock, math, sequencer, etc.). Ports use type `control_float`. Control outputs can also drive any numeric parameter directly.
 
 ## Port Compatibility
 
-Connections must match types: `gpu_texture` → `gpu_texture`, `gpu_scene` → `gpu_scene`, `audio_float` → `audio_float`, `control_float` → `control_float` or any numeric parameter. Address format for ports: `"node_id/port_name"`. Use `Render3D` to convert `gpu_scene` → `gpu_texture` (3D→2D bridge).
+Connections must match types: `gpu_texture` → `gpu_texture`, `data` → `data` (with matching `data_type`), `audio_float` → `audio_float`, `control_float` → `control_float` or any numeric parameter. Address format for ports: `"node_id/port_name"`. Packages can define custom `data` port types (e.g. vivid-3d uses `data_type: "gpu_scene"` for 3D scene wires).
 
 ## Workflow
 

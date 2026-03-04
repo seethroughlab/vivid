@@ -59,7 +59,7 @@ static const char* port_type_str(VividPortType t) {
         case VIVID_PORT_AUDIO_FLOAT:    return "audio_float";
         case VIVID_PORT_CONTROL_SPREAD: return "control_spread";
         case VIVID_PORT_GPU_TEXTURE:    return "gpu_texture";
-        case VIVID_PORT_GPU_SCENE:     return "gpu_scene";
+        case VIVID_PORT_DATA:          return "data";
         default: return "unknown";
     }
 }
@@ -181,6 +181,8 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_val* p = yyjson_mut_obj(doc);
                 yyjson_mut_obj_add_strcpy(doc, p, "name", pd.name);
                 yyjson_mut_obj_add_str(doc, p, "type", port_type_str(pd.type));
+                if (pd.type == VIVID_PORT_DATA && pd.data_type)
+                    yyjson_mut_obj_add_strcpy(doc, p, "data_type", pd.data_type);
 
                 if (pd.direction == VIVID_PORT_OUTPUT && ns) {
                     auto oi = ns->output_port_indices.find(pd.name);
@@ -289,6 +291,8 @@ static std::string handle_list_types(OperatorRegistry& registry) {
             yyjson_mut_val* p = yyjson_mut_obj(doc);
             yyjson_mut_obj_add_strcpy(doc, p, "name", pd.name);
             yyjson_mut_obj_add_str(doc, p, "type", port_type_str(pd.type));
+            if (pd.type == VIVID_PORT_DATA && pd.data_type)
+                yyjson_mut_obj_add_strcpy(doc, p, "data_type", pd.data_type);
             if (pd.direction == VIVID_PORT_INPUT)
                 yyjson_mut_arr_add_val(inputs_arr, p);
             else
@@ -1145,6 +1149,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             yyjson_mut_val* p = yyjson_mut_obj(rdoc);
                             yyjson_mut_obj_add_strcpy(rdoc, p, "name", portd.name);
                             yyjson_mut_obj_add_str(rdoc, p, "type", port_type_str(portd.type));
+                            if (portd.type == VIVID_PORT_DATA && portd.data_type)
+                                yyjson_mut_obj_add_strcpy(rdoc, p, "data_type", portd.data_type);
                             if (portd.direction == VIVID_PORT_INPUT)
                                 yyjson_mut_arr_add_val(inputs_arr, p);
                             else

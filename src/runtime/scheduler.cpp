@@ -130,9 +130,9 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
         ns.file_param_ptrs[i] = ns.file_param_storage[i].c_str();
     }
 
-    // Identify GPU_TEXTURE / GPU_SCENE input ports and detect GPU sinks
+    // Identify GPU_TEXTURE / DATA input ports and detect GPU sinks
     ns.texture_input_port_indices.clear();
-    ns.scene_input_port_indices.clear();
+    ns.data_input_port_indices.clear();
     ns.is_gpu_sink = false;
     ns.has_texture_output = false;
     if (ns.is_gpu) {
@@ -141,8 +141,8 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
             if (desc->ports[i].direction == VIVID_PORT_INPUT) {
                 if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
                     ns.texture_input_port_indices.push_back(input_idx);
-                } else if (desc->ports[i].type == VIVID_PORT_GPU_SCENE) {
-                    ns.scene_input_port_indices.push_back(input_idx);
+                } else if (desc->ports[i].type == VIVID_PORT_DATA) {
+                    ns.data_input_port_indices.push_back(input_idx);
                 }
                 input_idx++;
             }
@@ -154,17 +154,17 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
                 break;
             }
         }
-        bool has_scene_output = false;
+        bool has_data_output = false;
         for (uint32_t i = 0; i < desc->port_count; ++i) {
             if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
-                desc->ports[i].type == VIVID_PORT_GPU_SCENE) {
-                has_scene_output = true;
+                desc->ports[i].type == VIVID_PORT_DATA) {
+                has_data_output = true;
                 break;
             }
         }
         ns.is_gpu_sink = !ns.texture_input_port_indices.empty()
                       && !ns.has_texture_output
-                      && !has_scene_output;
+                      && !has_data_output;
 
         // Phase 6e: detect depth output port by name
         ns.depth_output_port_idx = -1;
@@ -344,14 +344,44 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                 continue;  // skip this wire
             }
 
-            // Validate scene wire: both ends must be GPU_SCENE
-            if (from_port_type == VIVID_PORT_GPU_SCENE &&
-                to_port_type == VIVID_PORT_GPU_SCENE) {
-                w.is_scene_wire = true;
-            } else if (from_port_type == VIVID_PORT_GPU_SCENE ||
-                       to_port_type == VIVID_PORT_GPU_SCENE) {
+            // Validate data wire: both ends must be VIVID_PORT_DATA with matching data_type
+            if (from_port_type == VIVID_PORT_DATA && to_port_type == VIVID_PORT_DATA) {
+                const VividPortDescriptor* from_pd = nullptr;
+                const VividPortDescriptor* to_pd = nullptr;
+                {
+                    const auto* from_op_desc = from_ns.loader->descriptor();
+                    uint32_t oi = 0;
+                    for (uint32_t pi2 = 0; pi2 < from_op_desc->port_count; ++pi2) {
+                        if (from_op_desc->ports[pi2].direction == VIVID_PORT_OUTPUT) {
+                            if (oi == fp_it->second) { from_pd = &from_op_desc->ports[pi2]; break; }
+                            oi++;
+                        }
+                    }
+                }
+                {
+                    uint32_t ii = 0;
+                    for (uint32_t pi2 = 0; pi2 < to_op_desc->port_count; ++pi2) {
+                        if (to_op_desc->ports[pi2].direction == VIVID_PORT_INPUT) {
+                            if (ii == tp_it->second) { to_pd = &to_op_desc->ports[pi2]; break; }
+                            ii++;
+                        }
+                    }
+                }
+                const char* from_dt = from_pd ? from_pd->data_type : nullptr;
+                const char* to_dt   = to_pd   ? to_pd->data_type   : nullptr;
+                if (from_dt && to_dt && std::strcmp(from_dt, to_dt) == 0) {
+                    w.is_data_wire = true;
+                } else {
+                    std::fprintf(stderr, "[vivid] Scheduler: data type mismatch on wire %s/%s -> %s/%s "
+                        "('%s' vs '%s')\n",
+                        conn.from_node.c_str(), conn.from_port.c_str(),
+                        conn.to_node.c_str(), conn.to_port.c_str(),
+                        from_dt ? from_dt : "null", to_dt ? to_dt : "null");
+                    continue;
+                }
+            } else if (from_port_type == VIVID_PORT_DATA || to_port_type == VIVID_PORT_DATA) {
                 std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
-                    "(GPU_SCENE on only one end)\n",
+                    "(DATA on only one end)\n",
                     conn.from_node.c_str(), conn.from_port.c_str(),
                     conn.to_node.c_str(), conn.to_port.c_str());
                 continue;  // skip this wire
@@ -456,7 +486,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         // (skip texture-type wires — those are resolved separately)
         for (const auto& w : wires_) {
             if (w.to_node_idx == ni) {
-                if (w.is_texture_wire || w.is_scene_wire) continue;
+                if (w.is_texture_wire || w.is_data_wire) continue;
                 float raw;
                 if (w.sources_param)
                     raw = nodes_[w.from_node_idx].param_values[w.from_port_idx];
@@ -602,25 +632,25 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                                                 ? nullptr : operators_src_dir_.c_str();
             per_node_gpu.output_depth_view = nullptr;  // Phase 6e: operator sets during process()
 
-            // Resolve scene inputs from upstream nodes
-            size_t scene_count = ns.scene_input_port_indices.size();
-            ns.resolved_scene_inputs.clear();
-            ns.resolved_scene_inputs.resize(scene_count, nullptr);
-            for (size_t si = 0; si < scene_count; ++si) {
-                uint32_t port_idx = ns.scene_input_port_indices[si];
+            // Resolve data inputs from upstream nodes
+            size_t data_count = ns.data_input_port_indices.size();
+            ns.resolved_data_inputs.clear();
+            ns.resolved_data_inputs.resize(data_count, nullptr);
+            for (size_t di = 0; di < data_count; ++di) {
+                uint32_t port_idx = ns.data_input_port_indices[di];
                 for (const auto& w : wires_) {
                     if (w.to_node_idx == ni && !w.targets_param &&
-                        w.to_port_idx == port_idx && w.is_scene_wire) {
+                        w.to_port_idx == port_idx && w.is_data_wire) {
                         auto& upstream = nodes_[w.from_node_idx];
-                        ns.resolved_scene_inputs[si] = upstream.scene_fragment;
+                        ns.resolved_data_inputs[di] = upstream.gpu_data;
                         break;
                     }
                 }
             }
-            per_node_gpu.input_scenes = ns.resolved_scene_inputs.empty()
-                                            ? nullptr : ns.resolved_scene_inputs.data();
-            per_node_gpu.input_scene_count = static_cast<uint32_t>(scene_count);
-            per_node_gpu.output_scene = nullptr;
+            per_node_gpu.input_data = ns.resolved_data_inputs.empty()
+                                          ? nullptr : ns.resolved_data_inputs.data();
+            per_node_gpu.input_data_count = static_cast<uint32_t>(data_count);
+            per_node_gpu.output_data = nullptr;
 
             ctx.gpu = &per_node_gpu;
         } else {
@@ -649,9 +679,9 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                          ns.node_id.c_str());
         }
 
-        // Capture scene fragment output from 3D operators
+        // Capture opaque data output from GPU operators (e.g. 3D scene fragments)
         if (ns.is_gpu && gpu_state) {
-            ns.scene_fragment = per_node_gpu.output_scene;
+            ns.gpu_data = per_node_gpu.output_data;
 
             // Phase 6e: capture depth texture output
             if (ns.depth_output_port_idx >= 0) {

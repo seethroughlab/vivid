@@ -3,8 +3,6 @@
 #include <webgpu/webgpu.h>
 #include <cstring>
 
-namespace vivid::gpu { struct VividSceneFragment; }
-
 struct VividGpuState {
     WGPUDevice         device;
     WGPUQueue          queue;
@@ -29,10 +27,10 @@ struct VividGpuState {
     // Path to operators/ source tree (for WGSL filter hot-reload)
     const char*        operators_src_dir;
 
-    // Scene fragment I/O (3D operators)
-    vivid::gpu::VividSceneFragment*  output_scene      = nullptr;  // operator sets during process()
-    vivid::gpu::VividSceneFragment** input_scenes       = nullptr;  // resolved from upstream
-    uint32_t                         input_scene_count  = 0;
+    // Opaque data I/O (package-defined types, e.g. 3D scene fragments)
+    void*     output_data       = nullptr;  // operator sets during process()
+    void**    input_data        = nullptr;  // resolved from upstream
+    uint32_t  input_data_count  = 0;
 };
 
 static inline VividGpuState* vivid_gpu(const VividProcessContext* ctx) {

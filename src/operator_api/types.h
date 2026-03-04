@@ -37,7 +37,7 @@ typedef enum VividPortType {
     VIVID_PORT_AUDIO_FLOAT    = 3,
     VIVID_PORT_CONTROL_SPREAD = 4,
     VIVID_PORT_GPU_TEXTURE    = 5,
-    VIVID_PORT_GPU_SCENE      = 6,
+    VIVID_PORT_DATA           = 6,  // package-defined opaque pointer type
 } VividPortType;
 
 typedef enum VividPortDirection {
@@ -67,9 +67,10 @@ typedef struct VividParamDescriptor {
 } VividParamDescriptor;
 
 typedef struct VividPortDescriptor {
-    const char*       name;
-    VividPortType     type;
+    const char*        name;
+    VividPortType      type;
     VividPortDirection direction;
+    const char*        data_type;  // non-NULL when type == VIVID_PORT_DATA (e.g. "gpu_scene")
 } VividPortDescriptor;
 
 typedef struct VividOperatorDescriptor {
