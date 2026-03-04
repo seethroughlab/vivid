@@ -1301,6 +1301,18 @@ VividPortType NodeGraphUI::resolve_port_type(const GraphSnapshot& snap,
 }
 
 // -----------------------------------------------------------------------
+// wire_inspector_visible — true when a wire with a numeric dest type is selected
+// -----------------------------------------------------------------------
+bool NodeGraphUI::wire_inspector_visible() const {
+    if (selected_wire_idx_ < 0 ||
+        selected_wire_idx_ >= static_cast<int>(snap_.connections.size()))
+        return false;
+    const auto& c = snap_.connections[selected_wire_idx_];
+    VividPortType t = resolve_port_type(snap_, c.to_node, c.to_port, false);
+    return is_numeric_type(t);
+}
+
+// -----------------------------------------------------------------------
 // Parameter picker popup
 // -----------------------------------------------------------------------
 void NodeGraphUI::rebuild_param_picker_items() {

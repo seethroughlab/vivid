@@ -74,7 +74,8 @@ public:
             || preset_name_popup_open_
             || pkg_browser_open_;
     }
-    bool has_selection() const { return !selected_node_ids_.empty(); }
+    bool wire_inspector_visible() const;
+    bool has_selection() const { return !selected_node_ids_.empty() || wire_inspector_visible(); }
     bool has_single_selection() const { return selected_node_ids_.size() == 1; }
     const std::string& single_selected_id() const { assert(!selected_node_ids_.empty()); return *selected_node_ids_.begin(); }
 

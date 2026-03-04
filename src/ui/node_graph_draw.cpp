@@ -439,8 +439,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     wire_clamp_rects_.clear();
 
     // Wire inspector (when a wire is selected and no nodes are)
-    if (selected_node_ids_.empty() && selected_wire_idx_ >= 0 &&
-        selected_wire_idx_ < static_cast<int>(snap_.connections.size())) {
+    if (selected_node_ids_.empty() && wire_inspector_visible()) {
         const auto& c = snap_.connections[selected_wire_idx_];
         float insp_x = inspector_x();
         tr.draw_rect(insp_x, 0, kInspectorW, static_cast<float>(h),
