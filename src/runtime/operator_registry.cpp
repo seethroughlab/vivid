@@ -7,12 +7,34 @@
 #include <dlfcn.h>
 #include <dirent.h>
 #include <cstring>
+#include <cstdlib>
 #include <cstdio>
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <unordered_set>
 
 namespace vivid {
+
+static std::unordered_set<std::string> parse_skip_plugins_env() {
+    std::unordered_set<std::string> out;
+    const char* env = std::getenv("VIVID_SKIP_PLUGINS");
+    if (!env || !*env) return out;
+
+    std::string s(env);
+    size_t pos = 0;
+    while (pos < s.size()) {
+        size_t next = s.find(',', pos);
+        std::string item = s.substr(pos, next == std::string::npos ? std::string::npos : next - pos);
+        // Trim simple surrounding spaces.
+        while (!item.empty() && item.front() == ' ') item.erase(item.begin());
+        while (!item.empty() && item.back() == ' ') item.pop_back();
+        if (!item.empty()) out.insert(std::move(item));
+        if (next == std::string::npos) break;
+        pos = next + 1;
+    }
+    return out;
+}
 
 // Iterate plugin files in a directory, calling fn(path, filename, stem_len) for each
 // matching file (correct suffix, not lib*-prefixed).
@@ -25,6 +47,7 @@ static bool scan_plugin_dir(const char* directory, Fn&& fn) {
     }
 
     size_t suffix_len = std::strlen(kPluginSuffix);
+    const auto skipped = parse_skip_plugins_env();
 
     struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr) {
@@ -35,6 +58,11 @@ static bool scan_plugin_dir(const char* directory, Fn&& fn) {
         // Skip system/library shared objects (lib*); operators are name.dylib/.so/.dll
         if (std::strncmp(name, "lib", 3) == 0)
             continue;
+        std::string stem(name, len - suffix_len);
+        if (skipped.count(name) || skipped.count(stem)) {
+            std::fprintf(stderr, "[vivid] Registry: skipping plugin %s (VIVID_SKIP_PLUGINS)\n", name);
+            continue;
+        }
 
         std::string path = std::string(directory) + "/" + name;
         fn(path, name, len - suffix_len);
@@ -135,8 +163,12 @@ static DeferredEntry deep_copy_descriptor(const VividOperatorDescriptor* src,
 }
 
 bool OperatorRegistry::scan_deferred(const char* directory) {
+    const bool trace_probe = std::getenv("VIVID_REGISTRY_TRACE") != nullptr;
     return scan_plugin_dir(directory, [&](const std::string& path, const char* name, size_t /*stem_len*/) {
         // Probe only: open, read descriptor, close
+        if (trace_probe) {
+            std::fprintf(stderr, "[vivid] Registry: probing %s\n", name);
+        }
         void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (!handle) {
             std::fprintf(stderr, "[vivid] probe dlopen failed: %s\n", dlerror());
@@ -146,13 +178,13 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         auto desc_fn = reinterpret_cast<VividDescriptorFn>(dlsym(handle, "vivid_descriptor"));
         if (!desc_fn) {
             std::fprintf(stderr, "[vivid] probe: missing vivid_descriptor in %s\n", name);
-            dlclose(handle);
+            deferred_probe_handles_.push_back(handle);
             return;
         }
 
         const VividOperatorDescriptor* desc = desc_fn();
         if (!desc || !desc->name) {
-            dlclose(handle);
+            deferred_probe_handles_.push_back(handle);
             return;
         }
 
@@ -160,14 +192,15 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
 
         // Skip if already fully loaded (e.g. registered as builtin)
         if (loaders_.count(type_name)) {
-            dlclose(handle);
+            deferred_probe_handles_.push_back(handle);
             return;
         }
 
         // Deep-copy descriptor into owned storage
         DeferredEntry de = deep_copy_descriptor(desc, path);
-
-        dlclose(handle);
+        // Keep probe handles alive for process lifetime. Some plugins execute
+        // problematic teardown paths during dlclose() and can stall startup.
+        deferred_probe_handles_.push_back(handle);
 
         auto [it, inserted] = deferred_.emplace(type_name, std::move(de));
         // Point desc.name at the map key (stable after emplace)

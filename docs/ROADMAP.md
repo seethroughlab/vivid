@@ -37,9 +37,9 @@ Windows and Linux support is deferred past 1.0.
 
 ### 3. Catalog application functionality for manual testing
 
-**Status:** No catalog exists. Manual testing is ad-hoc.
+**Status:** Complete. Manual test catalog exists at `docs/MANUAL-TEST-CATALOG.md` with functional-area coverage, pass/fail criteria, and macOS-specific notes.
 
-- [ ] Create `docs/MANUAL-TEST-CATALOG.md` organized by functional area:
+- [x] Create `docs/MANUAL-TEST-CATALOG.md` organized by functional area:
   - **Graph editing:** add/delete nodes, connect/disconnect wires, copy/paste, drag to reorder, group selection
   - **Parameter UI:** sliders, xy-pads, color pickers, typed input, dropdown menus, toggle buttons
   - **Audio:** audio operators produce sound, AudioOut routing, sample rate handling, buffer sizes
@@ -51,17 +51,17 @@ Windows and Linux support is deferred past 1.0.
   - **Capture:** screenshot, video capture start/stop, output file correctness
   - **Themes:** theme switching, custom theme loading
   - **Fullscreen:** enter/exit fullscreen, external display output
-- [ ] For each area, list the expected behavior and pass/fail criteria
-- [ ] Include platform-specific notes (macOS quirks, permissions, etc.)
+- [x] For each area, list the expected behavior and pass/fail criteria
+- [x] Include platform-specific notes (macOS quirks, permissions, etc.)
 
 ### 4. Test inner/outer loop
 
 #### Inner loop (parameter tweaking)
 
-**Status:** No structured test plan. Works in practice but untested systematically.
+**Status:** Test plan documented in `docs/INNER-OUTER-LOOP-TEST-PLAN.md`. Manual execution is still pending.
 
-- [ ] Document the expected inner-loop workflow: adjust slider → see visual/audio change in real time
-- [ ] Manual test checklist:
+- [x] Document the expected inner-loop workflow: adjust slider → see visual/audio change in real time
+- [x] Manual test checklist:
   - Slider drag updates output continuously (no stutter, no lag)
   - XY-pad drag updates two parameters simultaneously
   - Color picker changes propagate to downstream GPU nodes
@@ -70,9 +70,9 @@ Windows and Linux support is deferred past 1.0.
 
 #### Outer loop (operator editing + hot-reload)
 
-**Status:** `test_hot_reload.cpp` covers file-watcher → recompilation → reload. No end-to-end manual verification across all domains.
+**Status:** Workflow and manual checklist documented in `docs/INNER-OUTER-LOOP-TEST-PLAN.md`. End-to-end manual verification across domains is still pending.
 
-- [ ] Document the expected outer-loop workflow: edit .cpp → save → file watcher fires → hot-reload compiles → operator reloads in running graph
+- [x] Document the expected outer-loop workflow: edit .cpp → save → file watcher fires → hot-reload compiles → operator reloads in running graph
 - [ ] Verify hot-reload for each domain:
   - Control operators
   - Audio operators
@@ -85,7 +85,7 @@ Windows and Linux support is deferred past 1.0.
 
 ### 5. Test operator creation + MCP-assisted development
 
-**Status:** `test_operator_creator.cpp` covers scaffold. MCP `scaffold_operator` tool exists in `mcp_server.cpp`.
+**Status:** `test_operator_creator.cpp` covers scaffold. MCP `scaffold_operator` tool exists in `mcp_server.cpp`. Manual/E2E plan documented in `docs/OPERATOR-CREATION-MCP-TEST-PLAN.md`. Execution notes are in `docs/OPERATOR-CREATION-MCP-TEST-RESULTS.md` (OC-1 + OC-3 live bridge pass; startup mitigations were required due deferred-probe crashes in specific plugins).
 
 - [ ] End-to-end test: scaffold → edit implementation → hot-reload → use in a graph → verify output
 - [ ] Test all domain variants:
@@ -100,7 +100,7 @@ Windows and Linux support is deferred past 1.0.
 
 ### 6. Test package install/uninstall from GitHub
 
-**Status:** `test_package_manager.cpp` uses temp dirs with local paths. No tests against real remote repos.
+**Status:** Partial execution complete. Results documented in `docs/PACKAGE-INSTALL-E2E-RESULTS.md`: `vivid-glitch` GitHub install/uninstall/reinstall passes; `vivid-3d` GitHub install currently fails in package test target build (`yyjson.h` include issue) even though all 3D operator dylibs compile.
 
 - [ ] Test install from real GitHub repos:
   - `vivid-3d` (has dependencies, multiple operators)

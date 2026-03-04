@@ -106,6 +106,8 @@ function(add_vivid_operator name source)
     # Keep app bundle in sync when building individual operator targets
     if(APPLE)
         add_custom_command(TARGET ${name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 $<TARGET_FILE:${name}>
                 $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/

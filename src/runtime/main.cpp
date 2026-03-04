@@ -40,6 +40,7 @@
 #include <GLFW/glfw3.h>
 #include <stb_image_write.h>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -975,7 +976,11 @@ int main(int argc, char* argv[]) {
     // --- Package management (needs to outlive main loop for catalog/install) ---
     vivid::PackageCompiler pkg_compiler(build_paths.source_dir, build_paths.build_dir);
     vivid::PackageManager pkg_manager(pkg_compiler, registry);
-    pkg_manager.scan_installed();
+    if (std::getenv("VIVID_SKIP_PACKAGE_SCAN")) {
+        std::fprintf(stderr, "[vivid] Skipping installed package scan (VIVID_SKIP_PACKAGE_SCAN)\n");
+    } else {
+        pkg_manager.scan_installed();
+    }
     vivid::PackageCatalog pkg_catalog(pkg_manager);
     pkg_manager.set_resolver([&pkg_catalog](const std::string& name) -> std::string {
         for (const auto& e : pkg_catalog.entries())

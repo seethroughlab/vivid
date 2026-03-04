@@ -40,26 +40,10 @@ struct MidiInput : vivid::OperatorBase {
 
     MidiInput() {
         std::memset(cc_values_, 0, sizeof(cc_values_));
-
-        try {
-            midi_in_ = std::make_unique<RtMidiIn>();
-
-            // Log available ports
-            unsigned int port_count = midi_in_->getPortCount();
-            fprintf(stderr, "[MidiInput] Available MIDI ports (%u):\n", port_count);
-            for (unsigned int i = 0; i < port_count; i++) {
-                fprintf(stderr, "  [%u] %s\n", i, midi_in_->getPortName(i).c_str());
-            }
-
-            // Set callback
-            midi_in_->setCallback(&MidiInput::midi_callback, this);
-            midi_in_->ignoreTypes(true, true, true);  // ignore sysex, timing, active sensing
-        } catch (RtMidiError& e) {
-            fprintf(stderr, "[MidiInput] RtMidi error: %s\n", e.getMessage().c_str());
-        }
     }
 
     void process(const VividProcessContext* ctx) override {
+        ensure_midi_initialized();
         int desired_device = device.int_value();
 
         // Open/reopen port if device param changed
@@ -184,6 +168,7 @@ private:
     };
 
     std::unique_ptr<RtMidiIn> midi_in_;
+    bool midi_init_attempted_ = false;
     std::mutex event_mutex_;
     std::vector<std::vector<unsigned char>> event_buffer_;
     float cc_values_[128];
@@ -194,6 +179,31 @@ private:
 
     HeldNote held_buffer_[kMaxHeld] = {};
     int held_count_ = 0;
+
+    void ensure_midi_initialized() {
+        if (midi_init_attempted_) return;
+        midi_init_attempted_ = true;
+
+        try {
+            midi_in_ = std::make_unique<RtMidiIn>();
+
+            // Log available ports once on first real processing pass.
+            unsigned int port_count = midi_in_->getPortCount();
+            fprintf(stderr, "[MidiInput] Available MIDI ports (%u):\n", port_count);
+            for (unsigned int i = 0; i < port_count; i++) {
+                fprintf(stderr, "  [%u] %s\n", i, midi_in_->getPortName(i).c_str());
+            }
+
+            midi_in_->setCallback(&MidiInput::midi_callback, this);
+            midi_in_->ignoreTypes(true, true, true);  // ignore sysex, timing, active sensing
+        } catch (RtMidiError& e) {
+            fprintf(stderr, "[MidiInput] RtMidi init error: %s\n", e.getMessage().c_str());
+            midi_in_.reset();
+        } catch (...) {
+            fprintf(stderr, "[MidiInput] Unknown MIDI init error\n");
+            midi_in_.reset();
+        }
+    }
 
     void held_note_on(uint8_t note, float velocity) {
         // Update velocity if already held

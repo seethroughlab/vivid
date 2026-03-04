@@ -88,6 +88,9 @@ private:
     std::unordered_map<std::string, std::unique_ptr<OperatorLoader>> loaders_;
     std::unordered_map<std::string, DeferredEntry> deferred_;  // probed but not yet loaded
     std::unordered_map<std::string, std::string> target_to_type_;  // cmake target → descriptor name
+    // Keep probe handles alive to avoid dlclose-time destructor hangs in some plugins.
+    // These are process-lifetime handles; the OS reclaims them on exit.
+    std::vector<void*> deferred_probe_handles_;
     std::unordered_set<std::string> user_filter_types_;
     std::unordered_map<std::string, std::string> user_operator_sources_;
     std::unordered_map<std::string, std::string> type_to_package_;  // type_name → package_name
