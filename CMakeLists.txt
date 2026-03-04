@@ -164,6 +164,7 @@ add_vivid_operator(pat_transform     operators/control/pat_transform/pat_transfo
 add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_gain.cpp
                                     EXTRA_LIBS vivid_composable_ops)
 add_vivid_operator(state_machine    operators/control/state_machine/state_machine.cpp)
+add_vivid_operator(spread_noise    operators/control/spread_noise/spread_noise.cpp)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu
@@ -1144,7 +1145,7 @@ add_dependencies(test_demo_graphs
     note_pattern chord_progression arpeggiator
     logic gate random smooth sequencer
     euclidean pattern_seq stack alternate pat_transform
-    modulated_gain
+    modulated_gain spread_noise
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
     noise shape bars composite
     bloom feedback instance plexus movie_file_in
