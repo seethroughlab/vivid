@@ -16,25 +16,32 @@ struct Instancer3D : vivid::OperatorBase {
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int>   count   {"count",   16, 1, 4096};
-    vivid::Param<int>   layout  {"layout",  0, {"Grid", "Circle", "Line"}};
+    vivid::Param<int>   layout  {"layout",  0, {"Grid", "Circle", "Line", "Grid3D"}};
     vivid::Param<float> spacing {"spacing", 2.0f, 0.1f, 20.0f};
+    vivid::Param<int>   palette {"palette", 0, {"None", "Warm", "Cool", "Neon"}};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::param_group(count, "Instancer");
         vivid::param_group(layout, "Instancer");
         vivid::param_group(spacing, "Instancer");
+        vivid::param_group(palette, "Instancer");
 
         out.push_back(&count);
         out.push_back(&layout);
         out.push_back(&spacing);
+        out.push_back(&palette);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"scene",     VIVID_PORT_GPU_SCENE,     VIVID_PORT_INPUT});
-        out.push_back({"positions", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"scales",    VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"colors",    VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"scene",     VIVID_PORT_GPU_SCENE,     VIVID_PORT_OUTPUT});
+        out.push_back({"scene",     VIVID_PORT_GPU_SCENE,      VIVID_PORT_INPUT});   // 0
+        out.push_back({"positions", VIVID_PORT_CONTROL_SPREAD,  VIVID_PORT_INPUT});   // 1
+        out.push_back({"scales",    VIVID_PORT_CONTROL_SPREAD,  VIVID_PORT_INPUT});   // 2
+        out.push_back({"colors",    VIVID_PORT_CONTROL_SPREAD,  VIVID_PORT_INPUT});   // 3
+        out.push_back({"scale_x",   VIVID_PORT_CONTROL_SPREAD,  VIVID_PORT_INPUT});   // 4
+        out.push_back({"scale_y",   VIVID_PORT_CONTROL_SPREAD,  VIVID_PORT_INPUT});   // 5
+        out.push_back({"scale_z",   VIVID_PORT_CONTROL_SPREAD,  VIVID_PORT_INPUT});   // 6
+        out.push_back({"rotations", VIVID_PORT_CONTROL_SPREAD,  VIVID_PORT_INPUT});   // 7
+        out.push_back({"scene",     VIVID_PORT_GPU_SCENE,      VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {
@@ -46,13 +53,22 @@ struct Instancer3D : vivid::OperatorBase {
         const auto* input = gpu->input_scenes[0];
         if (!input->vertex_buffer || input->index_count == 0) return;
 
-        // Read spreads (input port indices: scene=0, positions=1, scales=2, colors=3)
+        // Read spreads (input port indices: scene=0, positions=1, scales=2, colors=3,
+        //   scale_x=4, scale_y=5, scale_z=6, rotations=7)
         const float* pos_data = nullptr;
         uint32_t pos_len = 0;
         const float* scale_data = nullptr;
         uint32_t scale_len = 0;
         const float* color_data = nullptr;
         uint32_t color_len = 0;
+        const float* sx_data = nullptr;
+        uint32_t sx_len = 0;
+        const float* sy_data = nullptr;
+        uint32_t sy_len = 0;
+        const float* sz_data = nullptr;
+        uint32_t sz_len = 0;
+        const float* rot_data = nullptr;
+        uint32_t rot_len = 0;
 
         if (ctx->input_spreads) {
             if (ctx->input_spreads[1].length > 0) {
@@ -66,6 +82,22 @@ struct Instancer3D : vivid::OperatorBase {
             if (ctx->input_spreads[3].length > 0) {
                 color_data = ctx->input_spreads[3].data;
                 color_len  = ctx->input_spreads[3].length;
+            }
+            if (ctx->input_spreads[4].length > 0) {
+                sx_data = ctx->input_spreads[4].data;
+                sx_len  = ctx->input_spreads[4].length;
+            }
+            if (ctx->input_spreads[5].length > 0) {
+                sy_data = ctx->input_spreads[5].data;
+                sy_len  = ctx->input_spreads[5].length;
+            }
+            if (ctx->input_spreads[6].length > 0) {
+                sz_data = ctx->input_spreads[6].data;
+                sz_len  = ctx->input_spreads[6].length;
+            }
+            if (ctx->input_spreads[7].length > 0) {
+                rot_data = ctx->input_spreads[7].data;
+                rot_len  = ctx->input_spreads[7].length;
             }
         }
 
@@ -112,7 +144,20 @@ struct Instancer3D : vivid::OperatorBase {
                     }
                     break;
                 }
-                default: { // Grid
+                case 3: { // Grid3D — cubic lattice
+                    uint32_t dim = static_cast<uint32_t>(std::ceil(std::cbrt(static_cast<float>(n))));
+                    float offset = -static_cast<float>(dim - 1) * sp * 0.5f;
+                    for (uint32_t i = 0; i < n; ++i) {
+                        uint32_t xi = i % dim;
+                        uint32_t yi = (i / dim) % dim;
+                        uint32_t zi = i / (dim * dim);
+                        instances_[i].position[0] = offset + static_cast<float>(xi) * sp;
+                        instances_[i].position[1] = offset + static_cast<float>(yi) * sp;
+                        instances_[i].position[2] = offset + static_cast<float>(zi) * sp;
+                    }
+                    break;
+                }
+                default: { // Grid (2D)
                     uint32_t cols = static_cast<uint32_t>(std::ceil(std::sqrt(static_cast<float>(n))));
                     uint32_t rows = (n + cols - 1) / cols;
                     float ox = -static_cast<float>(cols - 1) * sp * 0.5f;
@@ -129,20 +174,36 @@ struct Instancer3D : vivid::OperatorBase {
             }
         }
 
-        // Scales
+        // Scales: per-axis scale_x/y/z take priority, then uniform 'scales', then 1.0
+        bool use_sx = (sx_data && sx_len > 0);
+        bool use_sy = (sy_data && sy_len > 0);
+        bool use_sz = (sz_data && sz_len > 0);
         bool use_custom_scales = (scale_data && scale_len >= n);
         for (uint32_t i = 0; i < n; ++i) {
-            instances_[i].scale = use_custom_scales ? scale_data[i] : 1.0f;
+            float uniform_s = use_custom_scales ? scale_data[i] : 1.0f;
+            instances_[i].scale[0] = use_sx ? sx_data[i % sx_len] : uniform_s;
+            instances_[i].scale[1] = use_sy ? sy_data[i % sy_len] : uniform_s;
+            instances_[i].scale[2] = use_sz ? sz_data[i % sz_len] : uniform_s;
+            instances_[i].rotation_x = 0.0f;
         }
 
-        // Colors
+        // Rotations (Y-axis, radians)
+        bool use_rot = (rot_data && rot_len > 0);
+        for (uint32_t i = 0; i < n; ++i) {
+            instances_[i].rotation_y = use_rot ? rot_data[i % rot_len] : 0.0f;
+        }
+
+        // Colors: custom spread > palette > input material color
         bool use_custom_colors = (color_data && color_len >= n * 4);
+        int pal = palette.int_value();
         for (uint32_t i = 0; i < n; ++i) {
             if (use_custom_colors) {
                 instances_[i].color[0] = color_data[i * 4 + 0];
                 instances_[i].color[1] = color_data[i * 4 + 1];
                 instances_[i].color[2] = color_data[i * 4 + 2];
                 instances_[i].color[3] = color_data[i * 4 + 3];
+            } else if (pal > 0) {
+                apply_palette(instances_[i].color, i, pal);
             } else {
                 instances_[i].color[0] = input->color[0];
                 instances_[i].color[1] = input->color[1];
@@ -153,7 +214,7 @@ struct Instancer3D : vivid::OperatorBase {
 
         // Upload to storage buffer
         uint32_t buf_size = n * sizeof(vivid::gpu::InstanceData3D);
-        if (buf_size < 32) buf_size = 32;
+        if (buf_size < 48) buf_size = 48;
 
         if (n != current_count_) {
             rebuild_storage(gpu, n, buf_size);
@@ -180,6 +241,35 @@ private:
     std::vector<vivid::gpu::InstanceData3D> instances_;
     WGPUBuffer storage_buf_   = nullptr;
     uint32_t   current_count_ = 0;
+
+    static void apply_palette(float color[4], uint32_t index, int palette_id) {
+        // 3-color palettes, cycled by instance index
+        static constexpr float kWarm[3][3] = {
+            {1.0f, 0.35f, 0.25f},  // coral
+            {1.0f, 0.75f, 0.2f},   // gold
+            {0.95f, 0.5f, 0.6f},   // rose
+        };
+        static constexpr float kCool[3][3] = {
+            {0.2f, 0.6f, 1.0f},    // azure
+            {0.3f, 0.9f, 0.7f},    // teal
+            {0.55f, 0.35f, 1.0f},  // violet
+        };
+        static constexpr float kNeon[3][3] = {
+            {1.0f, 0.1f, 0.5f},    // hot pink
+            {0.1f, 1.0f, 0.6f},    // green
+            {0.2f, 0.5f, 1.0f},    // blue
+        };
+
+        const float (*pal)[3] = kWarm;
+        if (palette_id == 2) pal = kCool;
+        else if (palette_id == 3) pal = kNeon;
+
+        uint32_t ci = index % 3;
+        color[0] = pal[ci][0];
+        color[1] = pal[ci][1];
+        color[2] = pal[ci][2];
+        color[3] = 1.0f;
+    }
 
     void rebuild_storage(VividGpuState* gpu, uint32_t count, uint32_t buf_size) {
         vivid::gpu::release(storage_buf_);
