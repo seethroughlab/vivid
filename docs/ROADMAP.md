@@ -8,6 +8,8 @@ Windows and Linux support is deferred past 1.0.
 
 ## Milestone 1: Core Stability & Testing
 
+*Note: As operators are extracted (Milestone 2), the testing scope here shrinks — fewer core operators to cover means fewer test gaps to close.*
+
 ### 1. Expand automated test coverage
 
 **Status:** 45 tests. Settings persistence, WGSL filter loading, variation/preset round-trips, graph validation edge cases, operator loader unload-during-use, and MIDI state isolation are fully covered. Remaining gap: MIDI note on/off and hardware-level channel filtering require a virtual MIDI loopback and belong in a separate integration suite.
@@ -194,19 +196,65 @@ Clear the entire undo/redo history. Push the loaded graph as the initial (non-un
 
 ---
 
-## Milestone 2: Package Ecosystem
+## Milestone 2: Operator Extraction
+
+Every operator left in-core is scope that Milestones 1–5 must cover: test, document, stabilize, and ship. Extracting non-essential operators now directly shrinks what 1.0 has to be. The goal is to reach a minimal, defensible core — one where every remaining operator is a genuine environment primitive.
+
+### Target minimal core (~37 operators)
+
+| Domain | Keep in Core |
+|--------|-------------|
+| Control | Clock, LFO, Envelope, Smooth, Math, Random, Logic, Gate, Euclidean, PatTransform, Stack, Alternate, SpreadNoise, MidiInput |
+| Audio | Oscillator, Gain, Delay, Reverb, Distortion, Bitcrush, FFTAnalysis, MovieFileAudioIn, SpreadLFO, SpreadADSR, ModulatedGain |
+| GPU | Shape, Noise, Composite, Feedback, Bloom, Text, Instance, Bars, TimeMachine, MovieFileIn, WebcamIn, TextureAnalysis |
+
+That's ~37 operators, down from 62. The 25 extracted operators move to four external packages.
+
+### Extraction packages (in priority order)
+
+**vivid-wavetable** — 1 audio operator
+- `wavetable_synth` — FFT-based mipmap wavetable synthesizer
+- Highly specialized DSP; already named in roadmap
+
+**vivid-drums** — 5 audio operators
+- `drum_kick`, `drum_snare`, `drum_hihat`, `drum_cymbal`, `drum_clap`
+- Cohesive domain with shared `drum_dsp.h` (PinkNoise, DecayEnvelope, SVF filter)
+
+**vivid-plexus** — 1 GPU + 1 audio operator
+- `gpu/plexus` — complex node-graph visualization (696 lines)
+- `audio/plexus_synth` — pentatonic polysynth
+
+**vivid-sequencers** — 8 control operators
+- `sequencer`, `drum_sequencer`, `pattern_seq`, `note_pattern`, `note_duration`, `arpeggiator`, `chord_progression`, `state_machine`
+- Music-composition tools; Clock, Euclidean, PatTransform, Stack, and Alternate stay in core as timing/pattern-algebra primitives
+
+### Operator API work
+
+- [ ] Move `drum_dsp.h` to `src/operator_api/` so external packages (including vivid-drums itself) can use it
+- [ ] Evaluate whether `audio_dsp.h` utilities (WhiteNoise, PinkNoise, waveform, detect_trigger) should be documented and exposed in the operator API
+
+### Extraction tasks
+
+- [ ] Extract vivid-wavetable: move `wavetable_synth.cpp`, create package repo, add CI smoke test
+- [ ] Extract vivid-drums: move 5 drum operators + `drum_dsp.h` to operator API, create package repo, add CI smoke test
+- [ ] Extract vivid-plexus: move `plexus.cpp` + `plexus_synth.cpp`, create package repo, add CI smoke test
+- [ ] Extract vivid-sequencers: move 8 operators, create package repo, add CI smoke test
+- [ ] Add licenses to all extracted packages and existing external packages (vivid-3d, vivid-glitch)
+- [ ] Update README.md operator list to reflect minimal core after extraction
+- [ ] Verify `test_demo_graphs` passes with reduced core (no graphs in vivid-core should reference extracted operators)
+
+---
+
+## Milestone 3: Package Ecosystem
 
 Infrastructure exists (package manifest, search paths, `operators/packages/` directory), but the full vision is incomplete:
 
-- [ ] Extract vivid-wavetable as external package; evaluate other extraction candidates (drum kit, plexus)
-- [ ] Evaluate which operator internals should become shared helper methods (drum DSP, envelope, LFO, smooth)
-- [ ] Add licenses to all external packages (vivid-3d, vivid-glitch)
 - [ ] Package versioning system with update alerts
 - [ ] Template repos for publishing operator packages
 - [ ] Search path resolution across local, project, and system scopes
 - [ ] Evaluate: package browsing site (a la Ableton Packs)
 
-## Milestone 3: LLM Perception System
+## Milestone 4: LLM Perception System
 
 - [ ] Per-node introspection (structured output describing what each node produces)
 - [ ] Analysis tools (automated graph-level diagnostics)
@@ -214,7 +262,7 @@ Infrastructure exists (package manifest, search paths, `operators/packages/` dir
 - [ ] Explore legacy branch analysis work (visual analysis, audio analysis, analysis hints, DSP utilities, spectrogram rendering)
 - [ ] Ensure MCP server has comprehensive understanding of Vivid's structure
 
-## Milestone 4: Developer & User Experience
+## Milestone 5: Developer & User Experience
 
 - [ ] Getting Started guide with example graphs
 - [ ] Update README.md (fix stale operator list — glitch ops listed but extracted; reflect current state)
@@ -224,18 +272,18 @@ Infrastructure exists (package manifest, search paths, `operators/packages/` dir
 - [ ] OSC input for installations and external hardware
 - [ ] NDI/Syphon output for routing video to other apps
 
-## Milestone 5: Release Infrastructure
+## Milestone 6: Release Infrastructure
 
 - [ ] GitHub Actions to build macOS releases
 - [ ] Versioning system for Vivid itself (user alerts, auto-updates)
 - [ ] Redesign the application icon
 
-## Milestone 6: Legacy Branch Evaluation
+## Milestone 7: Legacy Branch Evaluation
 
 - [ ] Explore legacy branch for features worth bringing into master
 - [ ] Be selective — legacy goals differ from the minimal 1.0 (step sequencer, section-aware export, extended analysis are candidates)
 
-## Milestone 7: Launch
+## Milestone 8: Launch
 
 - [ ] YouTube video
 - [ ] Finalize and proof all documentation
