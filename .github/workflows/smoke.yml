@@ -17,6 +17,9 @@ jobs:
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
+      - name: Create app bundle skeleton
+        run: mkdir -p build/vivid.app/Contents/PlugIns
+
       - name: Build smoke test
         run: cmake --build build --target test_demo_graphs -j$(sysctl -n hw.logicalcpu)
 
