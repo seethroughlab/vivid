@@ -39,13 +39,17 @@ struct Params {
     curl_strength: f32,
     drag: f32,
     time: f32,
-    _pad: f32,
+    elongation: f32,
+    shape: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
 }
 
 struct InstanceData {
-    position: vec3f,
-    scale: f32,
-    color: vec4f,
+    pos_rot:   vec4f,   // xyz=position, w=rotation_y (yaw)
+    scale_pad: vec4f,   // xyz=scale, w=rotation_x (pitch)
+    color:     vec4f,
 }
 
 @group(0) @binding(0) var<storage, read>       particles_in:  array<Particle>;
@@ -243,13 +247,26 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
         let age_ratio = p.age / p.lifetime;
         let size_factor = 1.0 - age_ratio * age_ratio;  // shrink over lifetime
         let alpha_factor = 1.0 - age_ratio;              // fade over lifetime
-        inst.position = p.position;
-        inst.scale = params.size * size_factor;
+        let sz = params.size * size_factor;
+
+        if (params.shape == 1u) {
+            // Cuboid: orient along velocity vector
+            let vel_len = length(p.velocity);
+            let dir = select(vec3f(0.0, 1.0, 0.0), p.velocity / vel_len, vel_len > 0.001);
+            let yaw = atan2(dir.x, dir.z);
+            let pitch = -asin(clamp(dir.y, -1.0, 1.0));
+            inst.pos_rot = vec4f(p.position, yaw);
+            inst.scale_pad = vec4f(sz, sz, sz * params.elongation, pitch);
+        } else {
+            // Billboard: uniform scale, no rotation
+            inst.pos_rot = vec4f(p.position, 0.0);
+            inst.scale_pad = vec4f(sz, sz, sz, 0.0);
+        }
         inst.color = vec4f(params.color.rgb, params.color.a * alpha_factor);
     } else {
         // Dead: zero-scale far away
-        inst.position = vec3f(99999.0, 99999.0, 99999.0);
-        inst.scale = 0.0;
+        inst.pos_rot = vec4f(99999.0, 99999.0, 99999.0, 0.0);
+        inst.scale_pad = vec4f(0.0, 0.0, 0.0, 0.0);
         inst.color = vec4f(0.0, 0.0, 0.0, 0.0);
     }
     instances_out[idx] = inst;
@@ -277,9 +294,13 @@ struct ParamsData {
     float    curl_strength;   // 64
     float    drag;            // 68
     float    time;            // 72
-    float    _pad;            // 76
+    float    elongation;      // 76
+    uint32_t shape;           // 80
+    uint32_t _pad0;           // 84
+    uint32_t _pad1;           // 88
+    uint32_t _pad2;           // 92
 };
-static_assert(sizeof(ParamsData) == 80, "ParamsData must be 80 bytes");
+static_assert(sizeof(ParamsData) == 96, "ParamsData must be 96 bytes");
 
 // =============================================================================
 // Particles3D Operator
@@ -308,7 +329,9 @@ struct Particles3D : vivid::OperatorBase {
     vivid::Param<int>   noise_octaves  {"noise_octaves",  2, 1, 4};
 
     // Appearance
-    vivid::Param<float> size {"size", 0.05f, 0.01f, 2.0f};
+    vivid::Param<int>   shape      {"shape",      0, {"Billboard", "Cuboid"}};
+    vivid::Param<float> elongation {"elongation",  5.0f, 1.0f, 20.0f};
+    vivid::Param<float> size       {"size",        0.05f, 0.01f, 2.0f};
 
     // Color (warm orange default)
     vivid::Param<float> r {"r", 1.0f, 0.0f, 1.0f};
@@ -335,6 +358,8 @@ struct Particles3D : vivid::OperatorBase {
         vivid::param_group(noise_speed, "Curl Noise");
         vivid::param_group(noise_octaves, "Curl Noise");
 
+        vivid::param_group(shape, "Appearance");
+        vivid::param_group(elongation, "Appearance");
         vivid::param_group(size, "Appearance");
 
         vivid::param_group(r, "Color");
@@ -359,6 +384,8 @@ struct Particles3D : vivid::OperatorBase {
         out.push_back(&noise_scale);
         out.push_back(&noise_speed);
         out.push_back(&noise_octaves);
+        out.push_back(&shape);
+        out.push_back(&elongation);
         out.push_back(&size);
         out.push_back(&r);
         out.push_back(&g);
@@ -369,6 +396,7 @@ struct Particles3D : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"scene", VIVID_PORT_GPU_SCENE, VIVID_PORT_INPUT});
         out.push_back({"scene", VIVID_PORT_GPU_SCENE, VIVID_PORT_OUTPUT});
     }
 
@@ -415,6 +443,8 @@ struct Particles3D : vivid::OperatorBase {
         params.drag           = drag.value;
         elapsed_time_ += dt;
         params.time           = elapsed_time_;
+        params.elongation     = elongation.value;
+        params.shape          = static_cast<uint32_t>(shape.int_value());
         wgpuQueueWriteBuffer(gpu->queue, params_ubo_, 0, &params, sizeof(params));
 
         // Reset atomic counter to 0
@@ -439,15 +469,40 @@ struct Particles3D : vivid::OperatorBase {
 
         // Output scene fragment
         vivid::gpu::scene_fragment_identity(fragment_);
-        fragment_.vertex_buffer   = quad_vb_;
-        fragment_.vertex_buf_size = 4 * sizeof(vivid::gpu::Vertex3D);
-        fragment_.index_buffer    = quad_ib_;
-        fragment_.index_count     = 6;
         fragment_.instance_buffer = instance_buf_;
         fragment_.instance_count  = max_count;
-        fragment_.billboard       = true;
         fragment_.cast_shadow     = false;
-        fragment_.depth_write     = false;
+
+        // Use input scene geometry if connected, otherwise fall back to built-in shapes
+        if (gpu->input_scenes && gpu->input_scene_count > 0 && gpu->input_scenes[0]
+            && gpu->input_scenes[0]->vertex_buffer && gpu->input_scenes[0]->index_count > 0) {
+            const auto* input = gpu->input_scenes[0];
+            fragment_.vertex_buffer   = input->vertex_buffer;
+            fragment_.vertex_buf_size = input->vertex_buf_size;
+            fragment_.index_buffer    = input->index_buffer;
+            fragment_.index_count     = input->index_count;
+            fragment_.billboard       = false;
+            fragment_.depth_write     = true;
+        } else {
+            int shape_val = shape.int_value();
+            if (shape_val == 1) {
+                // Cuboid mesh
+                fragment_.vertex_buffer   = box_vb_;
+                fragment_.vertex_buf_size = 24 * sizeof(vivid::gpu::Vertex3D);
+                fragment_.index_buffer    = box_ib_;
+                fragment_.index_count     = 36;
+                fragment_.billboard       = false;
+                fragment_.depth_write     = true;
+            } else {
+                // Billboard quad
+                fragment_.vertex_buffer   = quad_vb_;
+                fragment_.vertex_buf_size = 4 * sizeof(vivid::gpu::Vertex3D);
+                fragment_.index_buffer    = quad_ib_;
+                fragment_.index_count     = 6;
+                fragment_.billboard       = true;
+                fragment_.depth_write     = false;
+            }
+        }
 
         fragment_.color[0]  = r.value;
         fragment_.color[1]  = g.value;
@@ -475,6 +530,8 @@ struct Particles3D : vivid::OperatorBase {
         vivid::gpu::release(counter_buf_);
         vivid::gpu::release(quad_vb_);
         vivid::gpu::release(quad_ib_);
+        vivid::gpu::release(box_vb_);
+        vivid::gpu::release(box_ib_);
     }
 
 private:
@@ -501,6 +558,10 @@ private:
     WGPUBuffer quad_vb_ = nullptr;
     WGPUBuffer quad_ib_ = nullptr;
 
+    // Cuboid mesh
+    WGPUBuffer box_vb_ = nullptr;
+    WGPUBuffer box_ib_ = nullptr;
+
     uint32_t current_count_ = 0;
     bool     ping_          = true;
     float    spawn_accumulator_ = 0.0f;
@@ -522,6 +583,8 @@ private:
         vivid::gpu::release(counter_buf_);
         vivid::gpu::release(quad_vb_);
         vivid::gpu::release(quad_ib_);
+        vivid::gpu::release(box_vb_);
+        vivid::gpu::release(box_ib_);
 
         current_count_ = max_count;
         ping_ = true;
@@ -541,9 +604,9 @@ private:
         particle_buf_a_ = make_storage_buf("Particles3D Buf A", particle_buf_size);
         particle_buf_b_ = make_storage_buf("Particles3D Buf B", particle_buf_size);
 
-        // Instance buffer (32 bytes per InstanceData3D)
-        uint64_t instance_buf_size = static_cast<uint64_t>(max_count) * 32;
-        if (instance_buf_size < 32) instance_buf_size = 32;
+        // Instance buffer (48 bytes per InstanceData3D)
+        uint64_t instance_buf_size = static_cast<uint64_t>(max_count) * sizeof(vivid::gpu::InstanceData3D);
+        if (instance_buf_size < 48) instance_buf_size = 48;
         instance_buf_ = make_storage_buf("Particles3D Instances", instance_buf_size);
 
         // Zero-fill particle buffers (all particles start dead)
@@ -559,6 +622,9 @@ private:
 
         // --- Billboard quad mesh ---
         create_billboard_quad(gpu);
+
+        // --- Cuboid mesh ---
+        create_box_mesh(gpu);
 
         // --- Compute shader ---
         compute_shader_ = vivid::gpu::create_wgsl_shader(
@@ -639,8 +705,8 @@ private:
                            WGPUBuffer read_buf, WGPUBuffer write_buf,
                            uint64_t particle_buf_size,
                            WGPUBindGroup* out_bg, const char* label) {
-        uint64_t instance_buf_size = static_cast<uint64_t>(current_count_) * 32;
-        if (instance_buf_size < 32) instance_buf_size = 32;
+        uint64_t instance_buf_size = static_cast<uint64_t>(current_count_) * sizeof(vivid::gpu::InstanceData3D);
+        if (instance_buf_size < 48) instance_buf_size = 48;
 
         WGPUBindGroupEntry entries[5]{};
         entries[0].binding = 0;
@@ -710,6 +776,68 @@ private:
         uint32_t indices[6] = { 0, 1, 2, 0, 2, 3 };
         quad_ib_ = vivid::gpu::create_index_buffer(
             gpu->device, gpu->queue, indices, 6, "Particles3D Quad IB");
+    }
+
+    void create_box_mesh(VividGpuState* gpu) {
+        using V = vivid::gpu::Vertex3D;
+
+        // Face data: normal, tangent, then 4 corner positions
+        struct Face {
+            float nx, ny, nz;
+            float tx, ty, tz;
+            float v[4][3];
+        };
+        static const Face faces[] = {
+            // +Z front   tangent: +X
+            { 0,0,1,  1,0,0, { {-0.5f,-0.5f, 0.5f}, { 0.5f,-0.5f, 0.5f}, { 0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f} } },
+            // -Z back    tangent: -X
+            { 0,0,-1, -1,0,0, { { 0.5f,-0.5f,-0.5f}, {-0.5f,-0.5f,-0.5f}, {-0.5f, 0.5f,-0.5f}, { 0.5f, 0.5f,-0.5f} } },
+            // +X right   tangent: -Z
+            { 1,0,0,  0,0,-1, { { 0.5f,-0.5f, 0.5f}, { 0.5f,-0.5f,-0.5f}, { 0.5f, 0.5f,-0.5f}, { 0.5f, 0.5f, 0.5f} } },
+            // -X left    tangent: +Z
+            {-1,0,0,  0,0,1, { {-0.5f,-0.5f,-0.5f}, {-0.5f,-0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f,-0.5f} } },
+            // +Y top     tangent: +X
+            { 0,1,0,  1,0,0, { {-0.5f, 0.5f, 0.5f}, { 0.5f, 0.5f, 0.5f}, { 0.5f, 0.5f,-0.5f}, {-0.5f, 0.5f,-0.5f} } },
+            // -Y bottom  tangent: +X
+            { 0,-1,0, 1,0,0, { {-0.5f,-0.5f,-0.5f}, { 0.5f,-0.5f,-0.5f}, { 0.5f,-0.5f, 0.5f}, {-0.5f,-0.5f, 0.5f} } },
+        };
+
+        static const float uvs[4][2] = { {0,0}, {1,0}, {1,1}, {0,1} };
+
+        V verts[24];
+        uint32_t indices[36];
+        int vi = 0, ii = 0;
+
+        for (int f = 0; f < 6; ++f) {
+            uint32_t base = static_cast<uint32_t>(vi);
+            for (int i = 0; i < 4; ++i) {
+                V& v = verts[vi++];
+                v = {};
+                v.position[0] = faces[f].v[i][0];
+                v.position[1] = faces[f].v[i][1];
+                v.position[2] = faces[f].v[i][2];
+                v.normal[0] = faces[f].nx;
+                v.normal[1] = faces[f].ny;
+                v.normal[2] = faces[f].nz;
+                v.tangent[0] = faces[f].tx;
+                v.tangent[1] = faces[f].ty;
+                v.tangent[2] = faces[f].tz;
+                v.tangent[3] = 1.0f;
+                v.uv[0] = uvs[i][0];
+                v.uv[1] = uvs[i][1];
+            }
+            indices[ii++] = base + 0;
+            indices[ii++] = base + 1;
+            indices[ii++] = base + 2;
+            indices[ii++] = base + 0;
+            indices[ii++] = base + 2;
+            indices[ii++] = base + 3;
+        }
+
+        box_vb_ = vivid::gpu::create_vertex_buffer(
+            gpu->device, gpu->queue, verts, sizeof(verts), "Particles3D Box VB");
+        box_ib_ = vivid::gpu::create_index_buffer(
+            gpu->device, gpu->queue, indices, 36, "Particles3D Box IB");
     }
 };
 
