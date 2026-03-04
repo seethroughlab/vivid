@@ -11,9 +11,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <unistd.h>
 
 // ============================================================================
 // Test infrastructure
@@ -47,6 +49,11 @@ struct HeadlessGpu {
     WGPUAdapter  adapter  = nullptr;
     WGPUDevice   device   = nullptr;
     WGPUQueue    queue    = nullptr;
+
+    bool has_gpu_error = false;
+    std::string gpu_error_msg;
+
+    void reset_errors() { has_gpu_error = false; gpu_error_msg.clear(); }
 
     bool init() {
         WGPUInstanceDescriptor inst_desc{};
@@ -87,7 +94,12 @@ struct HeadlessGpu {
         dev_desc.deviceLostCallbackInfo.callback =
             [](WGPUDevice const*, WGPUDeviceLostReason, WGPUStringView, void*, void*) {};
         dev_desc.uncapturedErrorCallbackInfo.callback =
-            [](WGPUDevice const*, WGPUErrorType, WGPUStringView, void*, void*) {};
+            [](WGPUDevice const*, WGPUErrorType type, WGPUStringView msg, void* ud1, void*) {
+                auto* g = static_cast<HeadlessGpu*>(ud1);
+                g->has_gpu_error = true;
+                g->gpu_error_msg = std::string(msg.data, msg.length);
+            };
+        dev_desc.uncapturedErrorCallbackInfo.userdata1 = this;
         wgpuAdapterRequestDevice(adapter, &dev_desc, dcb);
         if (!dd.done || !dd.device) return false;
         device = dd.device;
@@ -225,9 +237,17 @@ int main(int argc, char* argv[]) {
             audio->start(true);  // null device
         }
 
-        // Tick 5 frames
-        bool tick_ok = true;
-        for (uint64_t frame = 0; frame < 5; ++frame) {
+        // Reset GPU error state before ticking
+        if (use_gpu) gpu.reset_errors();
+
+        // Capture stderr during tick phase to catch operator-level warnings
+        int saved_stderr = dup(STDERR_FILENO);
+        FILE* warn_capture = tmpfile();
+        dup2(fileno(warn_capture), STDERR_FILENO);
+
+        // Tick — more frames for complex graphs to catch late-onset issues
+        int tick_count = (use_gpu && use_audio) ? 30 : 5;
+        for (uint64_t frame = 0; frame < (uint64_t)tick_count; ++frame) {
             double time = frame * 0.016;
             if (use_gpu) {
                 tick_gpu(sched, gpu, kFormat, time, frame);
@@ -239,6 +259,18 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Restore stderr and read captured output
+        fflush(stderr);
+        dup2(saved_stderr, STDERR_FILENO);
+        close(saved_stderr);
+
+        rewind(warn_capture);
+        std::string captured;
+        char buf[256];
+        while (fgets(buf, sizeof(buf), warn_capture))
+            captured += buf;
+        fclose(warn_capture);
+
         // Cleanup
         if (audio) {
             audio->shutdown();
@@ -246,7 +278,18 @@ int main(int argc, char* argv[]) {
         }
         sched.shutdown();
 
-        if (tick_ok) {
+        // Check for GPU validation errors
+        if (use_gpu && gpu.has_gpu_error) {
+            fail(filename.c_str(), ("GPU error: " + gpu.gpu_error_msg).c_str());
+            continue;
+        }
+
+        // Check captured stderr for warning/error patterns (case-insensitive)
+        std::string lower = captured;
+        for (auto& c : lower) c = (char)tolower((unsigned char)c);
+        if (lower.find("warn") != std::string::npos || lower.find("error") != std::string::npos) {
+            fail(filename.c_str(), ("unexpected stderr: " + captured).c_str());
+        } else {
             pass(filename.c_str());
         }
     }

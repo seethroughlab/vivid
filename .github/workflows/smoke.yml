@@ -1,0 +1,24 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  smoke:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build smoke test
+        run: cmake --build build --target test_demo_graphs -j$(sysctl -n hw.logicalcpu)
+
+      - name: Run smoke tests
+        run: cd build && ctest -L SMOKE --output-on-failure
