@@ -230,7 +230,7 @@ int main() {
     // CPU Test: InstanceData3D is 32 bytes
     // =====================================================================
     std::fprintf(stderr, "\n=== CPU Test: InstanceData3D size ===\n");
-    check(sizeof(InstanceData3D) == 32, "sizeof(InstanceData3D) == 32");
+    check(sizeof(InstanceData3D) == 48, "sizeof(InstanceData3D) == 48");
 
     // =====================================================================
     // CPU Test: Fallback grid layout produces reasonable positions
@@ -251,6 +251,11 @@ int main() {
             instances[i].position[0] = ox + static_cast<float>(col) * spacing;
             instances[i].position[1] = 0.0f;
             instances[i].position[2] = oz + static_cast<float>(row) * spacing;
+            instances[i].rotation_y = 0.0f;
+            instances[i].scale[0] = 1.0f;
+            instances[i].scale[1] = 1.0f;
+            instances[i].scale[2] = 1.0f;
+            instances[i].rotation_x = 0.0f;
         }
 
         // 4 instances in 2x2 grid, spacing=2: positions should be at (-1,0,-1), (1,0,-1), (-1,0,1), (1,0,1)

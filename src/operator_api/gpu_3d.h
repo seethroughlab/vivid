@@ -416,11 +416,13 @@ struct VividSceneFragment {
 };
 
 struct InstanceData3D {
-    float position[3];  // world-space offset
-    float scale;        // uniform scale
-    float color[4];     // per-instance RGBA
+    float position[3];    // 0-11: world-space offset
+    float rotation_y;     // 12-15: Y-axis rotation in radians
+    float scale[3];       // 16-27: non-uniform xyz scale
+    float rotation_x;     // 28-31: X-axis rotation (pitch) in radians
+    float color[4];       // 32-47: per-instance RGBA
 };
-static_assert(sizeof(InstanceData3D) == 32, "InstanceData3D must be 32 bytes");
+static_assert(sizeof(InstanceData3D) == 48, "InstanceData3D must be 48 bytes");
 
 struct CustomCamera3D {
     float inverse_vp[16];   // mat4x4: screen UV → world ray

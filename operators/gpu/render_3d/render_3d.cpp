@@ -132,9 +132,9 @@ struct Material {
 }
 
 struct InstanceData {
-    position: vec3f,
-    scale: f32,
-    color: vec4f,
+    pos_rot:   vec4f,   // xyz=position, w=rotation_y (yaw)
+    scale_pad: vec4f,   // xyz=scale, w=rotation_x (pitch)
+    color:     vec4f,
 }
 
 @group(0) @binding(0) var<uniform> camera: Camera3D;
@@ -161,14 +161,72 @@ fn vs_instanced(@location(0) pos: vec3f,
                 @location(3) uv: vec2f,
                 @builtin(instance_index) iid: u32) -> InstancedOutput {
     let inst = instances[iid];
-    let scaled_pos = pos * inst.scale + inst.position;
-    let world = camera.model * vec4f(scaled_pos, 1.0);
+    let inst_pos = inst.pos_rot.xyz;
+    let rot_y = inst.pos_rot.w;     // yaw
+    let rot_x = inst.scale_pad.w;   // pitch
+    let inst_scale = inst.scale_pad.xyz;
+
+    // Apply non-uniform scale
+    let scaled = pos * inst_scale;
+
+    // Apply pitch (X rotation) first
+    let cx = cos(rot_x);
+    let sx = sin(rot_x);
+    let pitched = vec3f(
+        scaled.x,
+        scaled.y * cx - scaled.z * sx,
+        scaled.y * sx + scaled.z * cx
+    );
+
+    // Then yaw (Y rotation)
+    let c = cos(rot_y);
+    let s = sin(rot_y);
+    let rotated = vec3f(
+        pitched.x * c + pitched.z * s,
+        pitched.y,
+        -pitched.x * s + pitched.z * c
+    );
+
+    let local_pos = rotated + inst_pos;
+    let world = camera.model * vec4f(local_pos, 1.0);
+
+    // Normal transform: Ry * Rx * (normal * inverse_scale), then normalize
+    let inv_scale = vec3f(1.0 / max(inst_scale.x, 0.0001),
+                          1.0 / max(inst_scale.y, 0.0001),
+                          1.0 / max(inst_scale.z, 0.0001));
+    let n_scaled = normal * inv_scale;
+    // Pitch
+    let n_pitched = vec3f(
+        n_scaled.x,
+        n_scaled.y * cx - n_scaled.z * sx,
+        n_scaled.y * sx + n_scaled.z * cx
+    );
+    // Yaw
+    let n_rotated = vec3f(
+        n_pitched.x * c + n_pitched.z * s,
+        n_pitched.y,
+        -n_pitched.x * s + n_pitched.z * c
+    );
+    let world_normal = normalize((camera.normal_matrix * vec4f(n_rotated, 0.0)).xyz);
+
+    // Tangent transform: Ry * Rx (rotation only, no inverse-scale)
+    let t_pitched = vec3f(
+        tangent.x,
+        tangent.y * cx - tangent.z * sx,
+        tangent.y * sx + tangent.z * cx
+    );
+    let t_rotated = vec3f(
+        t_pitched.x * c + t_pitched.z * s,
+        t_pitched.y,
+        -t_pitched.x * s + t_pitched.z * c
+    );
+    let world_tangent = normalize((camera.normal_matrix * vec4f(t_rotated, 0.0)).xyz);
 
     var out: InstancedOutput;
-    out.position  = camera.mvp * vec4f(scaled_pos, 1.0);
+    out.position  = camera.mvp * vec4f(local_pos, 1.0);
     out.world_pos = world.xyz;
-    out.normal    = normalize((camera.normal_matrix * vec4f(normal, 0.0)).xyz);
-    out.tangent   = vec4f(normalize((camera.normal_matrix * vec4f(tangent.xyz, 0.0)).xyz), tangent.w);
+    out.normal    = world_normal;
+    out.tangent   = vec4f(world_tangent, tangent.w);
     out.uv        = uv;
     out.instance_id = f32(iid);
     return out;
@@ -210,7 +268,8 @@ fn blinn_phong_i(N: vec3f, V: vec3f, light: Light, world_pos: vec3f) -> vec2f {
 
 @fragment
 fn fs_instanced(in: InstancedOutput) -> @location(0) vec4f {
-    let inst_color = instances[u32(floor(in.instance_id))].color;
+    let inst = instances[u32(floor(in.instance_id))];
+    let inst_color = inst.color;
     let base_color = inst_color.rgb;
     let alpha = inst_color.a;
 
@@ -266,9 +325,9 @@ struct Material {
 }
 
 struct InstanceData {
-    position: vec3f,
-    scale: f32,
-    color: vec4f,
+    pos_rot:   vec4f,   // xyz=position, w=rotation_y
+    scale_pad: vec4f,   // xyz=scale, w=unused
+    color:     vec4f,
 }
 
 @group(0) @binding(0) var<uniform> camera: Camera3D;
@@ -293,7 +352,9 @@ fn vs_billboard(@location(0) pos: vec3f,
                 @location(3) uv: vec2f,
                 @builtin(instance_index) iid: u32) -> BillboardOutput {
     let inst = instances[iid];
-    let inst_pos = (camera.model * vec4f(inst.position, 1.0)).xyz;
+    let inst_position = inst.pos_rot.xyz;
+    let billboard_size = inst.scale_pad.x;  // uniform size for billboards
+    let inst_pos = (camera.model * vec4f(inst_position, 1.0)).xyz;
 
     // Camera-facing basis vectors
     var to_camera = normalize(camera.camera_pos - inst_pos);
@@ -306,11 +367,11 @@ fn vs_billboard(@location(0) pos: vec3f,
     let up = cross(to_camera, right);
 
     // Offset from instance position along billboard axes
-    let offset = right * pos.x * inst.scale + up * pos.y * inst.scale;
+    let offset = right * pos.x * billboard_size + up * pos.y * billboard_size;
     let world = inst_pos + offset;
 
     var out: BillboardOutput;
-    out.position  = camera.mvp * vec4f(inst.position + (camera.normal_matrix * vec4f(offset, 0.0)).xyz, 1.0);
+    out.position  = camera.mvp * vec4f(inst_position + (camera.normal_matrix * vec4f(offset, 0.0)).xyz, 1.0);
     out.world_pos = world;
     out.color     = inst.color;
     out.uv        = uv;
