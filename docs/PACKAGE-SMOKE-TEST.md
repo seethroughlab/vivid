@@ -34,7 +34,7 @@ Graphs that require a GPU are automatically skipped if no GPU adapter is availab
 1. **Clone vivid-core** into a sibling directory (`../vivid` relative to the package)
 2. **Configure vivid-core** with CMake
 3. **Create the app bundle skeleton** — vivid expects `vivid.app/Contents/PlugIns/` to exist in the build dir (needed for operator loader initialization)
-4. **Build `test_demo_graphs`** — only this target is needed, not the full vivid app
+4. **Build `test_demo_graphs` and vivid core operators** — the `operators` meta-target builds all vivid operator plugins so graphs that use core operators (e.g. `Text`, `WavetableSynth`) can be loaded
 5. **Configure the package** — pass `VIVID_SRC_DIR` and `VIVID_BUILD_DIR` so the package CMakeLists finds headers and WebGPU
 6. **Build the package operators** — produces `.dylib` files in the package's `build/` directory
 7. **Copy `.dylib` files** into vivid's build directory (the CWD for `test_demo_graphs`)
@@ -72,8 +72,8 @@ jobs:
       - name: Create app bundle skeleton
         run: mkdir -p ${{ github.workspace }}/../vivid/build/vivid.app/Contents/PlugIns
 
-      - name: Build test_demo_graphs
-        run: cmake --build ${{ github.workspace }}/../vivid/build --target test_demo_graphs -j$(sysctl -n hw.logicalcpu)
+      - name: Build test_demo_graphs and vivid core operators
+        run: cmake --build ${{ github.workspace }}/../vivid/build --target test_demo_graphs operators -j$(sysctl -n hw.logicalcpu)
 
       - name: Configure package
         run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVIVID_SRC_DIR=${{ github.workspace }}/../vivid -DVIVID_BUILD_DIR=${{ github.workspace }}/../vivid/build

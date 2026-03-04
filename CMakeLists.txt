@@ -289,6 +289,10 @@ if(APPLE)
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS movie_file_audio_in)
 endif()
 
+# --- Operators meta-target (for package smoke CI: builds all operator dylibs without the app) ---
+get_property(_vivid_op_targets GLOBAL PROPERTY VIVID_OPERATOR_TARGETS)
+add_custom_target(operators DEPENDS ${_vivid_op_targets})
+
 # --- UI library ---
 add_library(vivid_ui STATIC
     src/ui/renderer_2d.cpp
