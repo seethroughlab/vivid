@@ -901,6 +901,7 @@ add_dependencies(test_demo_graphs
 add_test(NAME test_demo_graphs
     COMMAND test_demo_graphs ${CMAKE_BINARY_DIR}/graphs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_demo_graphs PROPERTIES LABELS "SMOKE")
 
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler
@@ -971,3 +972,80 @@ add_dependencies(test_package_test_runner control_pass_op)
 add_test(NAME test_package_test_runner
     COMMAND test_package_test_runner ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# CaptureCoordinator unit test (non-GPU paths only)
+add_executable(test_capture_coordinator
+    tests/test_capture_coordinator.cpp
+    src/runtime/capture_coordinator.cpp
+    src/runtime/av_exporter.mm
+    src/runtime/audio_engine.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/screenshot.cpp
+)
+target_include_directories(test_capture_coordinator PRIVATE src)
+target_link_libraries(test_capture_coordinator PRIVATE
+    vivid_operator_api yyjson webgpu miniaudio stb_truetype
+    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+    "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
+add_test(NAME test_capture_coordinator COMMAND test_capture_coordinator
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# SystemMidiListener unit test (no hardware needed)
+add_executable(test_midi
+    tests/test_midi.cpp
+    src/runtime/system_midi.cpp
+)
+target_include_directories(test_midi PRIVATE src)
+target_link_libraries(test_midi PRIVATE rtmidi)
+add_test(NAME test_midi COMMAND test_midi WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# FileWatcher unit tests (kqueue, no scheduler, no GPU)
+add_executable(test_file_watcher
+    tests/test_file_watcher.cpp
+    src/runtime/file_watcher.cpp
+)
+target_include_directories(test_file_watcher PRIVATE src tests)
+add_test(NAME test_file_watcher COMMAND test_file_watcher WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# path_util unit tests (header-only, no extra deps)
+add_executable(test_path_util
+    tests/test_path_util.cpp
+)
+target_include_directories(test_path_util PRIVATE src tests)
+add_test(NAME test_path_util COMMAND test_path_util WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# editor_detect unit tests (filesystem scan, no display)
+add_executable(test_editor_detect
+    tests/test_editor_detect.cpp
+    src/runtime/editor_detect.cpp
+)
+target_include_directories(test_editor_detect PRIVATE src tests)
+add_test(NAME test_editor_detect COMMAND test_editor_detect WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# builtin_operators unit tests (no dylib, no GPU)
+add_executable(test_builtin_operators
+    tests/test_builtin_operators.cpp
+    src/runtime/builtin_operators.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/wgsl_header_parser.cpp
+)
+target_include_directories(test_builtin_operators PRIVATE src tests)
+target_link_libraries(test_builtin_operators PRIVATE vivid_operator_api webgpu yyjson)
+add_test(NAME test_builtin_operators COMMAND test_builtin_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# OperatorInfoCache unit tests (uses builtin operators as fixtures, no dylib)
+add_executable(test_operator_info_cache
+    tests/test_operator_info_cache.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/builtin_operators.cpp
+    src/runtime/wgsl_header_parser.cpp
+)
+target_include_directories(test_operator_info_cache PRIVATE src tests)
+target_link_libraries(test_operator_info_cache PRIVATE vivid_operator_api webgpu yyjson)
+add_test(NAME test_operator_info_cache COMMAND test_operator_info_cache WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

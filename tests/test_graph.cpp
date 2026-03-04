@@ -745,6 +745,490 @@ int main() {
         check(!g3.load_from_string("{ bad json !!!"), "load_from_string fails on bad JSON");
     }
 
+    // =====================================================================
+    // Test 22: Connection remap round-trip
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 22: Connection remap round-trip ===\n");
+        vivid::Graph g;
+        g.add_node("a", "Foo");
+        g.add_node("b", "Bar");
+        g.add_connection("a", "out", "b", "in");
+
+        // Default connection has no remap
+        check(!g.connections()[0].has_remap(), "default connection has no remap");
+
+        // Set remap
+        check(g.set_connection_remap("a", "out", "b", "in",
+            0.0f, 10.0f, -1.0f, 1.0f, true), "set_connection_remap succeeds");
+
+        const auto& conn = g.connections()[0];
+        check(conn.has_remap(), "has_remap after set");
+        check_float(conn.from_min, 0.0f, "remap from_min = 0");
+        check_float(conn.from_max, 10.0f, "remap from_max = 10");
+        check_float(conn.to_min, -1.0f, "remap to_min = -1");
+        check_float(conn.to_max, 1.0f, "remap to_max = 1");
+        check(conn.clamp == true, "remap clamp = true");
+
+        // Round-trip
+        std::string path = "/tmp/vivid_test_remap_rt.json";
+        check(g.save(path.c_str()), "save with remap");
+        vivid::Graph g2;
+        check(g2.load(path.c_str()), "load with remap");
+        check(g2.connections().size() == 1, "1 connection after remap round-trip");
+
+        const auto& c2 = g2.connections()[0];
+        check(c2.has_remap(), "remap survives round-trip");
+        check_float(c2.from_min, 0.0f, "rt from_min");
+        check_float(c2.from_max, 10.0f, "rt from_max");
+        check_float(c2.to_min, -1.0f, "rt to_min");
+        check_float(c2.to_max, 1.0f, "rt to_max");
+        check(c2.clamp == true, "rt clamp");
+
+        // set_connection_remap on non-existent connection
+        check(!g.set_connection_remap("x", "y", "z", "w",
+            0.0f, 1.0f, 0.0f, 1.0f, false), "remap non-existent connection fails");
+
+        std::remove(path.c_str());
+    }
+
+    // =====================================================================
+    // Test 23: Filter CRUD + round-trip
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 23: Filter CRUD + round-trip ===\n");
+        vivid::Graph g;
+
+        // Add filter
+        vivid::FilterDef f;
+        f.name = "blur";
+        f.source = "GaussianBlur";
+        f.time_dependent = false;
+        f.params.push_back({"radius", 5.0f, 0.0f, 50.0f});
+        f.shader = "fn main() {}";
+        g.add_filter(std::move(f));
+
+        // find_filter — non-null
+        const vivid::FilterDef* found = g.find_filter("blur");
+        check(found != nullptr, "find_filter blur");
+        if (found) {
+            check(found->name == "blur", "filter name = blur");
+            check(found->source == "GaussianBlur", "filter source = GaussianBlur");
+            check(found->time_dependent == false, "filter not time_dependent");
+            check(found->params.size() == 1, "filter has 1 param");
+            if (!found->params.empty()) {
+                check(found->params[0].name == "radius", "param name = radius");
+                check_float(found->params[0].default_value, 5.0f, "param default = 5");
+                check_float(found->params[0].min_value, 0.0f, "param min = 0");
+                check_float(found->params[0].max_value, 50.0f, "param max = 50");
+            }
+            check(found->shader == "fn main() {}", "shader matches");
+        }
+
+        // find_filter — non-existent
+        check(g.find_filter("nonexistent") == nullptr, "find_filter nonexistent = null");
+
+        // Const overload
+        const vivid::Graph& cg = g;
+        check(cg.find_filter("blur") != nullptr, "find_filter const works");
+        check(cg.find_filter("nope") == nullptr, "find_filter const nope = null");
+
+        // Mutable overload
+        vivid::FilterDef* mfilt = g.find_filter("blur");
+        check(mfilt != nullptr, "find_filter mutable works");
+
+        // update_filter_shader
+        g.update_filter_shader("blur", "fn updated() {}");
+        check(g.find_filter("blur")->shader == "fn updated() {}", "shader updated");
+
+        // remove_filter
+        check(g.remove_filter("blur"), "remove_filter blur succeeds");
+        check(g.find_filter("blur") == nullptr, "blur gone after remove");
+        check(!g.remove_filter("nonexistent"), "remove_filter nonexistent fails");
+
+        // Round-trip with time_dependent filter
+        vivid::FilterDef f2;
+        f2.name = "glow";
+        f2.source = "Glow";
+        f2.time_dependent = true;
+        f2.params.push_back({"intensity", 0.8f, 0.0f, 2.0f});
+        f2.shader = "@fragment fn frag() -> vec4f { return vec4f(1.0); }";
+        g.add_filter(std::move(f2));
+
+        std::string path = "/tmp/vivid_test_filter_rt.json";
+        g.add_node("x", "X"); // need at least one node for valid graph
+        check(g.save(path.c_str()), "save with filter");
+        vivid::Graph g2;
+        check(g2.load(path.c_str()), "load with filter");
+        check(g2.filters().size() == 1, "1 filter after round-trip");
+
+        const vivid::FilterDef* rt = g2.find_filter("glow");
+        check(rt != nullptr, "glow found after round-trip");
+        if (rt) {
+            check(rt->source == "Glow", "rt source = Glow");
+            check(rt->time_dependent == true, "rt time_dependent = true");
+            check(rt->params.size() == 1, "rt 1 param");
+            if (!rt->params.empty()) {
+                check(rt->params[0].name == "intensity", "rt param name = intensity");
+                check_float(rt->params[0].default_value, 0.8f, "rt param default = 0.8");
+            }
+            check(rt->shader == "@fragment fn frag() -> vec4f { return vec4f(1.0); }", "rt shader preserved");
+        }
+
+        std::remove(path.c_str());
+    }
+
+    // =====================================================================
+    // Test 24: Per-node preset CRUD
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 24: Per-node preset CRUD ===\n");
+        vivid::Graph g;
+        g.add_node("osc", "Osc");
+
+        // save_preset
+        g.save_preset("osc", {"Bright", {{"freq", 880.0f}}, {}});
+        auto names = g.list_presets("osc");
+        check(names.size() == 1, "1 preset after save");
+        check(names[0] == "Bright", "preset name = Bright");
+
+        // Second preset
+        g.save_preset("osc", {"Dark", {{"freq", 220.0f}}, {}});
+        names = g.list_presets("osc");
+        check(names.size() == 2, "2 presets after second save");
+
+        // find_preset — const
+        const vivid::Graph& cg = g;
+        const vivid::OperatorPreset* cp = cg.find_preset("osc", "Bright");
+        check(cp != nullptr, "find_preset const Bright");
+        if (cp) {
+            auto it = cp->params.find("freq");
+            check(it != cp->params.end(), "preset has freq param");
+            if (it != cp->params.end())
+                check_float(it->second, 880.0f, "preset freq = 880");
+        }
+
+        // find_preset — mutable
+        vivid::OperatorPreset* mp = g.find_preset("osc", "Bright");
+        check(mp != nullptr, "find_preset mutable Bright");
+
+        // find_preset — non-existent
+        check(g.find_preset("osc", "nonexistent") == nullptr, "find_preset nonexistent = null");
+
+        // Overwrite existing preset
+        g.save_preset("osc", {"Bright", {{"freq", 999.0f}}, {}});
+        names = g.list_presets("osc");
+        check(names.size() == 2, "still 2 presets after overwrite");
+        const auto* ow = g.find_preset("osc", "Bright");
+        if (ow) {
+            auto it = ow->params.find("freq");
+            if (it != ow->params.end())
+                check_float(it->second, 999.0f, "overwritten freq = 999");
+        }
+
+        // rename_preset — success
+        check(g.rename_preset("osc", "Dark", "Mellow"), "rename Dark -> Mellow");
+        check(g.find_preset("osc", "Mellow") != nullptr, "Mellow found");
+        check(g.find_preset("osc", "Dark") == nullptr, "Dark gone");
+
+        // rename_preset — name conflict
+        check(!g.rename_preset("osc", "Mellow", "Bright"), "rename to existing name fails");
+
+        // rename_preset — not found
+        check(!g.rename_preset("osc", "nonexistent", "x"), "rename nonexistent fails");
+
+        // remove_preset — success
+        check(g.remove_preset("osc", "Mellow"), "remove Mellow succeeds");
+        check(g.list_presets("osc").size() == 1, "1 preset after remove");
+
+        // remove_preset — not found
+        check(!g.remove_preset("osc", "nonexistent"), "remove nonexistent fails");
+
+        // list_presets for unknown node
+        check(g.list_presets("unknown_node").empty(), "list_presets unknown = empty");
+
+        // Round-trip
+        g.save_preset("osc", {"Low", {{"freq", 110.0f}}, {{"waveform", "sine"}}});
+        std::string path = "/tmp/vivid_test_preset_rt.json";
+        check(g.save(path.c_str()), "save with presets");
+        vivid::Graph g2;
+        check(g2.load(path.c_str()), "load with presets");
+        auto rt_names = g2.list_presets("osc");
+        check(rt_names.size() == 2, "2 presets after round-trip");
+        const auto* rt_low = g2.find_preset("osc", "Low");
+        check(rt_low != nullptr, "Low found after round-trip");
+        if (rt_low) {
+            auto it = rt_low->params.find("freq");
+            if (it != rt_low->params.end())
+                check_float(it->second, 110.0f, "rt freq = 110");
+            auto sit = rt_low->string_params.find("waveform");
+            check(sit != rt_low->string_params.end(), "rt string_param waveform exists");
+            if (sit != rt_low->string_params.end())
+                check(sit->second == "sine", "rt waveform = sine");
+        }
+
+        std::remove(path.c_str());
+    }
+
+    // =====================================================================
+    // Test 25: State-preset mapping CRUD + round-trip
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 25: State-preset mapping CRUD + round-trip ===\n");
+        vivid::Graph g;
+        g.add_node("sm1", "StateMachine");
+        g.add_node("osc", "Osc");
+        g.add_node("filt", "Filter");
+
+        // set_state_preset — first target at state 0
+        g.set_state_preset("sm1", 0, "osc", "Bright");
+        const auto* sm = g.find_state_mapping("sm1");
+        check(sm != nullptr, "state mapping exists after set");
+        if (sm) {
+            check(sm->state_presets.size() >= 1, "state_presets has at least 1 entry");
+            check(sm->state_presets[0].count("osc") == 1, "osc in state 0");
+            check(sm->state_presets[0].at("osc") == "Bright", "osc preset = Bright");
+        }
+
+        // Second target at same state index
+        g.set_state_preset("sm1", 0, "filt", "Open");
+        sm = g.find_state_mapping("sm1");
+        if (sm) {
+            check(sm->state_presets[0].size() == 2, "2 targets at state 0");
+        }
+
+        // Second state index
+        g.set_state_preset("sm1", 1, "osc", "Dark");
+        sm = g.find_state_mapping("sm1");
+        if (sm) {
+            check(sm->state_presets.size() >= 2, "state_presets has 2 entries");
+            check(sm->state_presets[1].count("osc") == 1, "osc in state 1");
+            check(sm->state_presets[1].at("osc") == "Dark", "osc preset at state 1 = Dark");
+        }
+
+        // remove_state_preset — removes one target
+        check(g.remove_state_preset("sm1", 0, "osc"), "remove osc from state 0");
+        sm = g.find_state_mapping("sm1");
+        if (sm) {
+            check(sm->state_presets[0].count("osc") == 0, "osc removed from state 0");
+            check(sm->state_presets[0].count("filt") == 1, "filt still in state 0");
+        }
+
+        // remove_state_preset — non-existent target
+        check(!g.remove_state_preset("sm1", 0, "nonexistent"), "remove nonexistent target fails");
+
+        // clear_state_presets
+        g.clear_state_presets("sm1");
+        check(g.find_state_mapping("sm1") == nullptr, "mapping gone after clear");
+
+        // find_state_mapping on non-existent
+        check(g.find_state_mapping("nonexistent") == nullptr, "find nonexistent mapping = null");
+
+        // Round-trip
+        g.set_state_preset("sm1", 0, "osc", "Bright");
+        g.set_state_preset("sm1", 0, "filt", "Open");
+        g.set_state_preset("sm1", 1, "osc", "Dark");
+
+        std::string path = "/tmp/vivid_test_state_rt.json";
+        check(g.save(path.c_str()), "save with state mappings");
+        vivid::Graph g2;
+        check(g2.load(path.c_str()), "load with state mappings");
+
+        const auto* sm2 = g2.find_state_mapping("sm1");
+        check(sm2 != nullptr, "state mapping found after round-trip");
+        if (sm2) {
+            check(sm2->state_presets.size() >= 2, "rt: 2 state entries");
+            check(sm2->state_presets[0].count("osc") == 1, "rt: osc in state 0");
+            check(sm2->state_presets[0].at("osc") == "Bright", "rt: osc=Bright at state 0");
+            check(sm2->state_presets[0].count("filt") == 1, "rt: filt in state 0");
+            check(sm2->state_presets[0].at("filt") == "Open", "rt: filt=Open at state 0");
+            check(sm2->state_presets[1].count("osc") == 1, "rt: osc in state 1");
+            check(sm2->state_presets[1].at("osc") == "Dark", "rt: osc=Dark at state 1");
+        }
+
+        std::remove(path.c_str());
+    }
+
+    // =====================================================================
+    // Test 26: Viewport round-trip
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 26: Viewport round-trip ===\n");
+        vivid::Graph g;
+        g.add_node("a", "Foo");
+
+        // Fresh graph: no viewport
+        check(!g.has_viewport(), "fresh graph has no viewport");
+
+        // Set viewport
+        g.set_viewport(100.0f, 200.0f, 1.5f);
+        check(g.has_viewport(), "has_viewport after set");
+        check_float(g.viewport_pan_x, 100.0f, "viewport pan_x = 100");
+        check_float(g.viewport_pan_y, 200.0f, "viewport pan_y = 200");
+        check_float(g.viewport_zoom, 1.5f, "viewport zoom = 1.5");
+
+        // Round-trip
+        std::string path = "/tmp/vivid_test_viewport_rt.json";
+        check(g.save(path.c_str()), "save with viewport");
+        vivid::Graph g2;
+        check(g2.load(path.c_str()), "load with viewport");
+        check(g2.has_viewport(), "viewport preserved after round-trip");
+        check_float(g2.viewport_pan_x, 100.0f, "rt pan_x");
+        check_float(g2.viewport_pan_y, 200.0f, "rt pan_y");
+        check_float(g2.viewport_zoom, 1.5f, "rt zoom");
+
+        // Graph with no viewport round-trips cleanly
+        vivid::Graph g3;
+        g3.add_node("b", "Bar");
+        std::string path2 = "/tmp/vivid_test_viewport_none.json";
+        check(g3.save(path2.c_str()), "save without viewport");
+        vivid::Graph g4;
+        check(g4.load(path2.c_str()), "load without viewport");
+        check(!g4.has_viewport(), "no viewport after round-trip");
+
+        std::remove(path.c_str());
+        std::remove(path2.c_str());
+    }
+
+    // =====================================================================
+    // Test 27: Empty graph operations
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 27: Empty graph operations ===\n");
+
+        // Fresh graph has zero nodes and connections
+        vivid::Graph g;
+        check(g.nodes().empty(), "fresh graph: no nodes");
+        check(g.connections().empty(), "fresh graph: no connections");
+
+        // Remove from empty graph fails gracefully
+        check(!g.remove_node("nonexistent"), "remove_node on empty graph = false");
+        check(!g.remove_connection("a", "out", "b", "in"), "remove_connection on empty graph = false");
+        check(g.find_node("x") == nullptr, "find_node on empty graph = null");
+
+        // Load/save round-trip with zero nodes
+        std::string path = "/tmp/vivid_test_empty_graph.json";
+        check(g.save(path.c_str()), "save empty graph succeeds");
+
+        vivid::Graph g2;
+        check(g2.load(path.c_str()), "load empty graph succeeds");
+        check(g2.nodes().empty(), "0 nodes after empty round-trip");
+        check(g2.connections().empty(), "0 connections after empty round-trip");
+        std::remove(path.c_str());
+
+        // load_from_string with explicit empty node/connection arrays
+        vivid::Graph g3;
+        check(g3.load_from_string(R"({"nodes":{},"connections":[]})"),
+              "load_from_string empty graph succeeds");
+        check(g3.nodes().empty(), "0 nodes from empty string");
+        check(g3.connections().empty(), "0 connections from empty string");
+    }
+
+    // =====================================================================
+    // Test 28: Dangling wire (connections to non-existent nodes)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 28: Dangling wire ===\n");
+
+        // The Graph data model is permissive — it stores connections without
+        // validating that the referenced node IDs exist.  Cycle detection and
+        // port-type validation are the scheduler's responsibility, not the
+        // data model's.
+        vivid::Graph g;
+        // No nodes added — add_connection stores the wire anyway
+        check(g.add_connection("ghost_a", "out", "ghost_b", "in"),
+              "dangling connection accepted by data model");
+        check(g.connections().size() == 1, "1 dangling connection stored");
+        check(g.connections()[0].from_node == "ghost_a", "dangling from_node stored");
+        check(g.connections()[0].to_node   == "ghost_b", "dangling to_node stored");
+
+        // Round-trip: dangling connections survive save/load
+        std::string path = "/tmp/vivid_test_dangling.json";
+        check(g.save(path.c_str()), "save with dangling connection succeeds");
+        vivid::Graph g2;
+        check(g2.load(path.c_str()), "load with dangling connection succeeds");
+        check(g2.connections().size() == 1, "dangling connection survives round-trip");
+        std::remove(path.c_str());
+
+        // Removing the non-existent "from" node is a no-op but doesn't crash
+        check(!g.remove_node("ghost_a"), "remove non-existent node = false");
+        check(g.connections().size() == 1, "dangling connection still present");
+    }
+
+    // =====================================================================
+    // Test 29: Cycle in data model (Graph is cycle-permissive)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 29: Cycle in data model ===\n");
+
+        // The Graph data model allows cycles — they are detected and handled
+        // at the scheduler level (kahn_sort / topo_sort).
+        vivid::Graph g;
+        g.add_node("a", "Foo");
+        g.add_node("b", "Bar");
+        g.add_node("c", "Baz");
+
+        // Build A→B→C→A cycle
+        check(g.add_connection("a", "out", "b", "in"),  "A→B added");
+        check(g.add_connection("b", "out", "c", "in"),  "B→C added");
+        check(g.add_connection("c", "out", "a", "in"),  "C→A added (cycle)");
+        check(g.connections().size() == 3, "3 connections in cyclic graph");
+
+        // Self-loop
+        check(g.add_connection("a", "out2", "a", "in2"), "self-loop accepted");
+        check(g.connections().size() == 4, "4 connections after self-loop");
+
+        // Duplicate cycle connection is rejected
+        check(!g.add_connection("a", "out", "b", "in"), "duplicate cyclic edge rejected");
+        check(g.connections().size() == 4, "still 4 connections");
+
+        // Save/load round-trip for cyclic graph
+        std::string path = "/tmp/vivid_test_cycle.json";
+        check(g.save(path.c_str()), "save cyclic graph succeeds");
+        vivid::Graph g2;
+        check(g2.load(path.c_str()), "load cyclic graph succeeds");
+        check(g2.connections().size() == 4, "cycle connections survive round-trip");
+        std::remove(path.c_str());
+    }
+
+    // =====================================================================
+    // Test 30: Port-type agnostic (Graph stores any port name strings)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 30: Port-type agnostic connections ===\n");
+
+        // The Graph data model has no concept of port types — it stores
+        // arbitrary string identifiers.  Type compatibility is validated by
+        // the scheduler when it resolves operator descriptors.
+        vivid::Graph g;
+        g.add_node("audio_src", "AudioOsc");
+        g.add_node("vis_node", "ColorRamp");
+
+        // Semantically mismatched ports — accepted at data level
+        check(g.add_connection("audio_src", "audio_out", "vis_node", "control_in"),
+              "audio→control connection accepted by data model");
+        check(g.add_connection("audio_src", "spread_out", "vis_node", "gpu_in"),
+              "spread→gpu connection accepted by data model");
+
+        const auto& c0 = g.connections()[0];
+        check(c0.from_port == "audio_out",   "from_port stored verbatim");
+        check(c0.to_port   == "control_in",  "to_port stored verbatim");
+
+        // Port names with unusual characters are also stored verbatim
+        check(g.add_connection("audio_src", "out.0", "vis_node", "in.rgb"), "dot-separated port names accepted");
+        check(g.connections().size() == 3, "3 connections stored");
+
+        // Round-trip preserves all port names exactly
+        std::string path = "/tmp/vivid_test_port_types.json";
+        check(g.save(path.c_str()), "save port-agnostic graph");
+        vivid::Graph g2;
+        check(g2.load(path.c_str()), "load port-agnostic graph");
+        check(g2.connections().size() == 3, "all connections survive round-trip");
+        check(g2.connections()[0].from_port == "audio_out",  "rt from_port preserved");
+        check(g2.connections()[0].to_port   == "control_in", "rt to_port preserved");
+        std::remove(path.c_str());
+    }
+
     // --- Cleanup temp files ---
     std::remove("/tmp/vivid_test_valid.json");
     std::remove("/tmp/vivid_test_layout.json");

@@ -1,5 +1,6 @@
 #include "runtime/operator_loader.h"
 #include "runtime/operator_registry.h"
+#include "operator_api/data_driven_filter.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -332,6 +333,188 @@ int main() {
         if (loader) {
             check(!loader->is_loaded(), "reload bad: loader is unloaded");
         }
+    }
+
+    // Test 23: User filter register/unregister cycle
+    {
+        std::fprintf(stderr, "\n--- User filter register/unregister ---\n");
+        vivid::OperatorRegistry reg;
+
+        auto config = std::make_shared<vivid::DataDrivenFilterConfig>();
+        config->name = "MyFilter";
+        config->shader_path = "/tmp/my_filter.wgsl";
+
+        reg.register_user_filter("MyFilter", config);
+        check(reg.is_user_filter("MyFilter"), "is_user_filter after register");
+        check(reg.find("MyFilter") != nullptr, "find MyFilter after register");
+
+        auto names = reg.type_names();
+        bool found = false;
+        for (const auto& n : names) {
+            if (n == "MyFilter") { found = true; break; }
+        }
+        check(found, "type_names includes MyFilter");
+
+        reg.unregister_user_filter("MyFilter");
+        check(!reg.is_user_filter("MyFilter"), "not user_filter after unregister");
+
+        names = reg.type_names();
+        found = false;
+        for (const auto& n : names) {
+            if (n == "MyFilter") { found = true; break; }
+        }
+        check(!found, "type_names no longer includes MyFilter");
+
+        check(!reg.is_user_filter("nonexistent"), "is_user_filter nonexistent = false");
+    }
+
+    // Test 24: User operator register/query
+    {
+        std::fprintf(stderr, "\n--- User operator register/query ---\n");
+        vivid::OperatorRegistry reg;
+
+        reg.register_user_operator("CustomOp", "/path/to/source.cpp");
+        check(reg.is_user_operator("CustomOp"), "is_user_operator after register");
+
+        const std::string* src = reg.user_operator_source("CustomOp");
+        check(src != nullptr, "user_operator_source not null");
+        if (src) check(*src == "/path/to/source.cpp", "source path matches");
+
+        check(!reg.is_user_operator("nonexistent"), "is_user_operator nonexistent = false");
+        check(reg.user_operator_source("nonexistent") == nullptr, "source nonexistent = null");
+    }
+
+    // Test 25: Factory preset loading + accessors
+    {
+        std::fprintf(stderr, "\n--- Factory preset loading ---\n");
+        vivid::OperatorRegistry reg;
+        reg.scan(staging.c_str()); // loads TestOp, sets up target mapping
+
+        // Create factory preset directory with a JSON file
+        std::string fp_dir = build_dir + "/.test_factory_presets";
+        std::filesystem::create_directories(fp_dir);
+
+        // The file is named by cmake target, not by type name
+        // test_op_v1 → TestOp
+        {
+            std::ofstream f(fp_dir + "/test_op_v1.json");
+            f << R"({"presets":[
+                {"name":"Init","params":{"scale":1.0}},
+                {"name":"Bold","params":{"scale":5.0},"string_params":{"label":"bold"}}
+            ]})";
+        }
+
+        check(reg.scan_factory_presets(fp_dir), "scan_factory_presets succeeds");
+
+        const auto* presets = reg.factory_presets("TestOp");
+        check(presets != nullptr, "factory_presets TestOp not null");
+        if (presets) {
+            check(presets->size() == 2, "2 factory presets for TestOp");
+        }
+
+        auto fp_names = reg.factory_preset_names("TestOp");
+        check(fp_names.size() == 2, "factory_preset_names has 2");
+        if (fp_names.size() == 2) {
+            check(fp_names[0] == "Init", "fp name[0] = Init");
+            check(fp_names[1] == "Bold", "fp name[1] = Bold");
+        }
+
+        // Unknown type
+        check(reg.factory_presets("unknown_type") == nullptr, "factory_presets unknown = null");
+        check(reg.factory_preset_names("unknown_type").empty(), "factory_preset_names unknown = empty");
+
+        std::filesystem::remove_all(fp_dir);
+    }
+
+    // Test 26: Package provenance tracking
+    {
+        std::fprintf(stderr, "\n--- Package provenance tracking ---\n");
+        vivid::OperatorRegistry reg;
+        reg.scan(staging.c_str()); // loads TestOp from staging dir
+
+        // Register package — associates operators in staging with "my-package"
+        reg.register_package("my-package", staging);
+
+        check(reg.is_package_operator("TestOp"), "TestOp is package operator");
+        const std::string* pkg = reg.package_for_type("TestOp");
+        check(pkg != nullptr, "package_for_type TestOp not null");
+        if (pkg) check(*pkg == "my-package", "package = my-package");
+
+        // Unregister
+        reg.unregister_package_operator("TestOp");
+        check(!reg.is_package_operator("TestOp"), "TestOp no longer package operator");
+        check(reg.package_for_type("TestOp") == nullptr, "package_for_type = null after unregister");
+
+        // Non-existent
+        check(!reg.is_package_operator("nonexistent"), "is_package_operator nonexistent = false");
+        check(reg.package_for_type("nonexistent") == nullptr, "package_for_type nonexistent = null");
+    }
+
+    // Test 27: WGSL preset accessors (empty registry)
+    {
+        std::fprintf(stderr, "\n--- WGSL preset accessors ---\n");
+        vivid::OperatorRegistry reg;
+
+        check(!reg.is_wgsl_preset("nonexistent"), "is_wgsl_preset nonexistent = false");
+        check(reg.wgsl_config("nonexistent") == nullptr, "wgsl_config nonexistent = null");
+        check(reg.wgsl_preset_names().empty(), "wgsl_preset_names empty on fresh registry");
+    }
+
+    // Test 28: type_to_target reverse mapping
+    {
+        std::fprintf(stderr, "\n--- type_to_target reverse mapping ---\n");
+        vivid::OperatorRegistry reg;
+        reg.scan(staging.c_str()); // loads test_op_v1.dylib as TestOp
+
+        std::string target = reg.type_to_target("TestOp");
+        check(target == "test_op_v1", "type_to_target TestOp = test_op_v1");
+
+        std::string none = reg.type_to_target("nonexistent");
+        check(none.empty(), "type_to_target nonexistent = empty");
+    }
+
+    // Test 29: destroy_instance(nullptr) is a safe no-op
+    {
+        std::fprintf(stderr, "\n--- destroy_instance(nullptr) safety ---\n");
+        vivid::OperatorLoader loader;
+        std::string path = staging + "/test_op_v1.dylib";
+        loader.load(path.c_str());
+
+        // Calling destroy_instance with a null pointer must not crash.
+        loader.destroy_instance(nullptr);
+        check(true, "destroy_instance(nullptr) does not crash");
+
+        // Also safe on an unloaded loader (destroy_fn_ is nullptr)
+        vivid::OperatorLoader empty_loader;
+        empty_loader.destroy_instance(nullptr);
+        check(true, "destroy_instance(nullptr) on unloaded loader does not crash");
+    }
+
+    // Test 30: Unload while an instance is still live
+    {
+        std::fprintf(stderr, "\n--- Unload with active instance ---\n");
+        vivid::OperatorLoader loader;
+        std::string path = staging + "/test_op_v1.dylib";
+        loader.load(path.c_str());
+
+        void* instance = loader.create_instance();
+        check(instance != nullptr, "create_instance before unload succeeds");
+
+        // Unload the dylib while the instance is still live.  After unload(),
+        // destroy_fn_ is cleared to nullptr — so destroy_instance() becomes a
+        // no-op, leaking the instance.  This is intentional: the scheduler must
+        // destroy instances BEFORE reloading operators to avoid the leak.
+        loader.unload();
+        check(!loader.is_loaded(), "loader unloaded while instance lives");
+
+        // destroy_instance after unload is safe (destroy_fn_ == nullptr),
+        // but the operator's own teardown never runs — memory is leaked.
+        loader.destroy_instance(instance);
+        check(true, "destroy_instance after unload does not crash");
+
+        // Loader is cleanly unloaded; no new instances can be created
+        void* new_inst = loader.create_instance();
+        check(new_inst == nullptr, "create_instance returns null after unload");
     }
 
     // Cleanup
