@@ -23,14 +23,15 @@ Windows and Linux support is deferred past 1.0.
 
 ### 2. Smoke tests
 
-**Status:** `test_demo_graphs.cpp` loads all 47 demo graphs headlessly and ticks 5 frames. This catches crashes but not warnings or logic errors.
+**Status:** Complete. `test_demo_graphs` loads all demo graphs headlessly, validates no stderr warnings, and runs in CI. Package repos (vivid-3d, vivid-glitch) each have their own smoke test CI that clones vivid-core and runs `test_demo_graphs` against their graphs. Protocol documented in `docs/PACKAGE-SMOKE-TEST.md`.
 
 - [x] Extend demo graph smoke test to also validate no stderr warnings (not just no crashes)
 - [x] Add a dedicated CI smoke-test step that runs the full smoke suite (`.github/workflows/smoke.yml`)
 - [x] Increase tick count for selected complex graphs (e.g., audio + GPU combo graphs) to catch late-onset issues
 - ~~Add vivid-3d demo graphs to the smoke test suite (requires vivid-3d installed as package)~~ — **Architecture correction:** Package smoke tests are **owned by the package repo**, not by vivid-core. Each package's CI clones vivid-core, builds it, and runs `test_demo_graphs` against the package's own `graphs/` directory. Vivid-core's smoke test only covers graphs that ship with vivid itself.
 - ~~Add package-dependent graph smoke tests (vivid-glitch graphs, etc.)~~ — Same as above; this is a package-side responsibility.
-- [ ] Document the package smoke test protocol (how a package's CI should clone vivid-core and run `test_demo_graphs` against its own graphs)
+- [x] Document the package smoke test protocol (how a package's CI should clone vivid-core and run `test_demo_graphs` against its own graphs)
+- [x] Based on findings in previous task, implement smoke tests/CI in ../vivid-3d and ../vivid-glitch
 
 ### 3. Catalog application functionality for manual testing
 
