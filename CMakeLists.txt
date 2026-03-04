@@ -887,10 +887,10 @@ add_dependencies(test_demo_graphs
     note_pattern chord_progression arpeggiator
     logic gate random smooth sequencer
     euclidean pattern_seq stack alternate pat_transform
-    modulated_gain spread_noise
+    modulated_gain spread_noise drum_sequencer state_machine
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
     noise shape bars composite
-    bloom feedback instance plexus movie_file_in
+    bloom feedback instance plexus movie_file_in texture_analysis
     # audio
     oscillator gain drum_kick drum_snare drum_hihat drum_clap
     drum_tom drum_cymbal wavetable_synth spread_adsr spread_lfo
