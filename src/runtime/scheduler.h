@@ -20,6 +20,7 @@ enum ParamLockFlags : uint8_t {
 
 struct NodeState {
     std::string node_id;
+    std::string type_name;
     OperatorLoader* loader;
     void* instance;
     uint32_t input_port_count;
@@ -85,6 +86,9 @@ struct NodeState {
 
     // Per-instance loader for WGSLFilter nodes (owns the loader; ns.loader points here)
     std::unique_ptr<OperatorLoader> owned_loader;
+
+    // Placeholder state when a graph references an operator type that is not available.
+    bool missing_operator = false;
 };
 
 struct Wire {

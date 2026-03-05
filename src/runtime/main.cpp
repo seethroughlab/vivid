@@ -106,7 +106,9 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         auto& sn = snap.nodes[i];
         sn.node_id = ns.node_id;
         sn.type_name = scheduler.type_name(static_cast<uint32_t>(i));
-        sn.domain = ns.loader->descriptor()->domain;
+        if (ns.is_gpu) sn.domain = VIVID_DOMAIN_GPU;
+        else if (ns.is_audio) sn.domain = VIVID_DOMAIN_AUDIO;
+        else sn.domain = VIVID_DOMAIN_CONTROL;
         sn.is_gpu = ns.is_gpu;
         sn.is_audio = ns.is_audio;
         sn.is_gpu_sink = ns.is_gpu_sink;
@@ -1107,6 +1109,7 @@ int main(int argc, char* argv[]) {
     command_sink.set_working_filters_dir(working_filters_dir);
     command_sink.set_settings(&settings);
     command_sink.set_capture_coordinator(&capture_coordinator);
+    command_sink.set_runtime_flags(&has_gpu_ops, &has_audio);
     vivid::ui::NodeGraphUI graph_ui(command_sink);
     graph_ui.set_dpi_scale(dpi_scale);
     graph_ui.set_bezier_wires(settings.bezier_wires);
@@ -1295,7 +1298,10 @@ int main(int argc, char* argv[]) {
 
             // Rebuild via reload (re-reads from graph.source_path())
             auto result = runtime_api.reload(has_gpu_ops, has_audio);
-            if (result.ok) graph_loaded = true;
+            if (result.ok) {
+                graph_loaded = true;
+                command_sink.reset_undo_history();
+            }
             std::fprintf(stderr, "[vivid] Open: %s\n", result.message.c_str());
         };
 
@@ -1380,7 +1386,10 @@ int main(int argc, char* argv[]) {
             if (graph.load(path.c_str())) {
                 registry.load_for_graph(graph);
                 auto result = runtime_api.reload(has_gpu_ops, has_audio);
-                if (result.ok) graph_loaded = true;
+                if (result.ok) {
+                    graph_loaded = true;
+                    command_sink.reset_undo_history();
+                }
                 std::fprintf(stderr, "[vivid] Drop: %s\n", result.message.c_str());
             } else {
                 std::fprintf(stderr, "[vivid] Drop: failed to load %s\n", path.c_str());
@@ -1397,6 +1406,11 @@ int main(int argc, char* argv[]) {
         // Drain control server requests (may set pending topology changes)
         control_server.process_requests(runtime_api, graph, scheduler, registry,
                                         has_gpu_ops, has_audio);
+        static uint64_t last_reload_serial = 0;
+        if (runtime_api.reload_serial() != last_reload_serial) {
+            last_reload_serial = runtime_api.reload_serial();
+            command_sink.reset_undo_history();
+        }
 
         if (runtime_api.has_pending()) {
             runtime_api.apply_pending(has_gpu_ops, has_audio);

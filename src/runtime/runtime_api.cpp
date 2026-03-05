@@ -1150,7 +1150,77 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
         }
     }
 
+    reload_serial_++;
     return {true, "reloaded from " + path};
+}
+
+CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
+                                              bool& has_gpu_ops, bool& has_audio) {
+    std::string previous_graph_json;
+    if (!graph_.save_to_string(previous_graph_json)) {
+        return {false, "failed to serialize current graph before applying snapshot"};
+    }
+
+    bool had_audio = has_audio;
+    auto restore_previous_state = [&](const std::string& reason) -> CommandResult {
+        if (!graph_.load_from_string(previous_graph_json.c_str(), previous_graph_json.size(), true)) {
+            has_gpu_ops = false;
+            has_audio = false;
+            return {false, reason + " (and failed to restore previous graph)"};
+        }
+
+        if (!scheduler_.build(graph_, registry_)) {
+            has_gpu_ops = false;
+            has_audio = false;
+            return {false, reason + " (and failed to rebuild previous graph)"};
+        }
+
+        has_gpu_ops = scheduler_.has_gpu_operators();
+        if (has_gpu_ops) needs_gpu_realloc_ = true;
+
+        has_audio = false;
+        if (scheduler_.has_audio_operators()) {
+            if (audio_engine_.build(graph_, registry_, scheduler_)) {
+                if (audio_engine_.start()) {
+                    has_audio = true;
+                }
+            }
+        }
+
+        pending_topology_change_ = false;
+        active_crossfades_.clear();
+        return {false, reason};
+    };
+
+    if (had_audio) {
+        audio_engine_.shutdown();
+        has_audio = false;
+    }
+    scheduler_.shutdown();
+
+    // Preserve source_path so normal save/reload still target the same graph file.
+    if (!graph_.load_from_string(graph_json.c_str(), graph_json.size(), true)) {
+        return restore_previous_state("failed to load graph snapshot JSON");
+    }
+
+    if (!scheduler_.build(graph_, registry_)) {
+        return restore_previous_state("rebuild failed after snapshot load");
+    }
+
+    has_gpu_ops = scheduler_.has_gpu_operators();
+    if (has_gpu_ops) needs_gpu_realloc_ = true;
+
+    if (scheduler_.has_audio_operators()) {
+        if (audio_engine_.build(graph_, registry_, scheduler_)) {
+            if (audio_engine_.start()) {
+                has_audio = true;
+            }
+        }
+    }
+
+    pending_topology_change_ = false;
+    active_crossfades_.clear();
+    return {true, "applied graph snapshot"};
 }
 
 std::filesystem::path RuntimeAPI::graph_base_dir() const {

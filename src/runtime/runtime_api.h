@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -124,10 +125,13 @@ public:
     CommandResult save();
     CommandResult save_as(const std::string& path);
     CommandResult reload(bool& has_gpu_ops, bool& has_audio);
+    CommandResult apply_snapshot_json(const std::string& graph_json,
+                                      bool& has_gpu_ops, bool& has_audio);
 
     bool has_pending() const { return pending_topology_change_; }
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
+    uint64_t reload_serial() const { return reload_serial_; }
 
 private:
     static bool split_addr(const std::string& addr, std::string& node, std::string& port);
@@ -139,6 +143,7 @@ private:
     SystemMidiListener* system_midi_ = nullptr;
     bool pending_topology_change_ = false;
     bool needs_gpu_realloc_ = false;
+    uint64_t reload_serial_ = 0;
 
     // Quantized variation switching state
     struct PendingVariation {

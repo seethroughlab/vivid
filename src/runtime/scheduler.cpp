@@ -190,6 +190,16 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
 
     // Map node id -> index for lookup
     std::unordered_map<std::string, uint32_t> node_index;
+    std::unordered_map<std::string, std::vector<std::string>> incoming_ports;
+    std::unordered_map<std::string, std::vector<std::string>> outgoing_ports;
+
+    auto push_unique = [](std::vector<std::string>& v, const std::string& s) {
+        if (std::find(v.begin(), v.end(), s) == v.end()) v.push_back(s);
+    };
+    for (const auto& conn : graph.connections()) {
+        push_unique(outgoing_ports[conn.from_node], conn.from_port);
+        push_unique(incoming_ports[conn.to_node], conn.to_port);
+    }
 
     // 1. Create NodeStates
     for (const auto& ndef : graph.nodes()) {
@@ -217,33 +227,76 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             }
         }
 
-        if (!loader) {
-            std::fprintf(stderr, "[vivid] Scheduler: unknown operator type '%s'\n", ndef.type.c_str());
-            return false;
-        }
-
-        const VividOperatorDescriptor* desc = loader->descriptor();
+        const VividOperatorDescriptor* desc = loader ? loader->descriptor() : nullptr;
 
         NodeState ns;
         ns.node_id = ndef.id;
+        ns.type_name = ndef.type;
         ns.loader = loader;
         ns.owned_loader = std::move(owned);
-        ns.instance = loader->create_instance();
         ns.generation = 0;
-        init_node_state(ns, desc, &ndef.params,
-                        ndef.string_params.empty() ? nullptr : &ndef.string_params);
+        if (loader && desc) {
+            ns.instance = loader->create_instance();
+            init_node_state(ns, desc, &ndef.params,
+                            ndef.string_params.empty() ? nullptr : &ndef.string_params);
 
-        // Apply per-parameter lock flags from graph definition
-        for (const auto& [pname, flags] : ndef.param_lock_flags) {
-            auto pi = ns.param_indices.find(pname);
-            if (pi != ns.param_indices.end())
-                ns.param_lock_flags[pi->second] = flags;
-        }
+            // Apply per-parameter lock flags from graph definition
+            for (const auto& [pname, flags] : ndef.param_lock_flags) {
+                auto pi = ns.param_indices.find(pname);
+                if (pi != ns.param_indices.end())
+                    ns.param_lock_flags[pi->second] = flags;
+            }
 
-        // Per-node GPU texture resolution from graph definition
-        if (ns.is_gpu) {
-            ns.gpu_tex_width  = ndef.tex_width;
-            ns.gpu_tex_height = ndef.tex_height;
+            // Per-node GPU texture resolution from graph definition
+            if (ns.is_gpu) {
+                ns.gpu_tex_width  = ndef.tex_width;
+                ns.gpu_tex_height = ndef.tex_height;
+            }
+        } else {
+            // Missing operator placeholder (e.g. package uninstalled while graph still references it).
+            ns.missing_operator = true;
+            ns.instance = nullptr;
+            ns.time_dependent = false;
+            ns.is_gpu = false;
+            ns.is_audio = false;
+            ns.is_gpu_sink = false;
+            ns.has_texture_output = false;
+
+            const auto& in_names = incoming_ports[ndef.id];
+            const auto& out_names = outgoing_ports[ndef.id];
+            ns.input_port_count = static_cast<uint32_t>(in_names.size());
+            ns.output_port_count = static_cast<uint32_t>(out_names.size());
+            for (uint32_t i = 0; i < ns.input_port_count; ++i)
+                ns.input_port_indices[in_names[i]] = i;
+            for (uint32_t i = 0; i < ns.output_port_count; ++i)
+                ns.output_port_indices[out_names[i]] = i;
+
+            ns.input_values.assign(ns.input_port_count, 0.0f);
+            ns.output_values.assign(ns.output_port_count, 0.0f);
+            ns.prev_output_values.assign(ns.output_port_count, 0.0f);
+            ns.input_spreads.resize(ns.input_port_count);
+            ns.output_spreads.resize(ns.output_port_count);
+
+            uint32_t pidx = 0;
+            for (const auto& [pname, pval] : ndef.params) {
+                ns.param_indices[pname] = pidx++;
+                ns.param_values.push_back(pval);
+            }
+            ns.param_lock_flags.assign(ns.param_values.size(), PARAM_LOCK_NONE);
+            for (const auto& [pname, flags] : ndef.param_lock_flags) {
+                auto pi = ns.param_indices.find(pname);
+                if (pi != ns.param_indices.end())
+                    ns.param_lock_flags[pi->second] = flags;
+            }
+
+            ns.c_in_spreads.resize(ns.input_port_count);
+            ns.c_out_spreads.resize(ns.output_port_count);
+            ns.out_spread_buf.resize(ns.output_port_count);
+            for (uint32_t p = 0; p < ns.output_port_count; ++p)
+                ns.out_spread_buf[p].resize(kMaxSpreadCapacity, 0.0f);
+
+            std::fprintf(stderr, "[vivid] Scheduler: missing operator type '%s' (node '%s') — using placeholder\n",
+                         ndef.type.c_str(), ndef.id.c_str());
         }
 
         node_index[ndef.id] = static_cast<uint32_t>(nodes_.size());
@@ -282,15 +335,17 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         if (fp_it != from_ns.output_port_indices.end()) {
             from_port_idx = fp_it->second;
             // Determine source port type from descriptor
-            const auto* from_desc = from_ns.loader->descriptor();
-            uint32_t out_idx = 0;
-            for (uint32_t pi = 0; pi < from_desc->port_count; ++pi) {
-                if (from_desc->ports[pi].direction == VIVID_PORT_OUTPUT) {
-                    if (out_idx == fp_it->second) {
-                        from_port_type = from_desc->ports[pi].type;
-                        break;
+            if (from_ns.loader && from_ns.loader->descriptor()) {
+                const auto* from_desc = from_ns.loader->descriptor();
+                uint32_t out_idx = 0;
+                for (uint32_t pi = 0; pi < from_desc->port_count; ++pi) {
+                    if (from_desc->ports[pi].direction == VIVID_PORT_OUTPUT) {
+                        if (out_idx == fp_it->second) {
+                            from_port_type = from_desc->ports[pi].type;
+                            break;
+                        }
+                        out_idx++;
                     }
-                    out_idx++;
                 }
             }
         } else {
@@ -319,33 +374,39 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
 
             // Determine destination port type
             VividPortType to_port_type = VIVID_PORT_CONTROL_FLOAT;
-            const auto* to_op_desc = to_ns.loader->descriptor();
-            uint32_t inp_idx = 0;
-            for (uint32_t pi = 0; pi < to_op_desc->port_count; ++pi) {
-                if (to_op_desc->ports[pi].direction == VIVID_PORT_INPUT) {
-                    if (inp_idx == tp_it->second) {
-                        to_port_type = to_op_desc->ports[pi].type;
-                        break;
+            const VividOperatorDescriptor* to_op_desc = nullptr;
+            if (to_ns.loader && to_ns.loader->descriptor()) {
+                to_op_desc = to_ns.loader->descriptor();
+                uint32_t inp_idx = 0;
+                for (uint32_t pi = 0; pi < to_op_desc->port_count; ++pi) {
+                    if (to_op_desc->ports[pi].direction == VIVID_PORT_INPUT) {
+                        if (inp_idx == tp_it->second) {
+                            to_port_type = to_op_desc->ports[pi].type;
+                            break;
+                        }
+                        inp_idx++;
                     }
-                    inp_idx++;
                 }
             }
 
             // Validate texture wire: both ends must be GPU_TEXTURE
-            if (from_port_type == VIVID_PORT_GPU_TEXTURE &&
-                to_port_type == VIVID_PORT_GPU_TEXTURE) {
-                w.is_texture_wire = true;
-            } else if (from_port_type == VIVID_PORT_GPU_TEXTURE ||
-                       to_port_type == VIVID_PORT_GPU_TEXTURE) {
-                std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
-                    "(GPU_TEXTURE on only one end)\n",
-                    conn.from_node.c_str(), conn.from_port.c_str(),
-                    conn.to_node.c_str(), conn.to_port.c_str());
-                continue;  // skip this wire
+            if (!from_ns.missing_operator && !to_ns.missing_operator) {
+                if (from_port_type == VIVID_PORT_GPU_TEXTURE &&
+                    to_port_type == VIVID_PORT_GPU_TEXTURE) {
+                    w.is_texture_wire = true;
+                } else if (from_port_type == VIVID_PORT_GPU_TEXTURE ||
+                           to_port_type == VIVID_PORT_GPU_TEXTURE) {
+                    std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
+                        "(GPU_TEXTURE on only one end)\n",
+                        conn.from_node.c_str(), conn.from_port.c_str(),
+                        conn.to_node.c_str(), conn.to_port.c_str());
+                    continue;  // skip this wire
+                }
             }
 
             // Validate data wire: both ends must be VIVID_PORT_DATA with matching data_type
-            if (from_port_type == VIVID_PORT_DATA && to_port_type == VIVID_PORT_DATA) {
+            if (!from_ns.missing_operator && !to_ns.missing_operator &&
+                from_port_type == VIVID_PORT_DATA && to_port_type == VIVID_PORT_DATA) {
                 const VividPortDescriptor* from_pd = nullptr;
                 const VividPortDescriptor* to_pd = nullptr;
                 {
@@ -379,7 +440,8 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                         from_dt ? from_dt : "null", to_dt ? to_dt : "null");
                     continue;
                 }
-            } else if (from_port_type == VIVID_PORT_DATA || to_port_type == VIVID_PORT_DATA) {
+            } else if (!from_ns.missing_operator && !to_ns.missing_operator &&
+                       (from_port_type == VIVID_PORT_DATA || to_port_type == VIVID_PORT_DATA)) {
                 std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
                     "(DATA on only one end)\n",
                     conn.from_node.c_str(), conn.from_port.c_str(),
@@ -661,8 +723,13 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         ctx.input = (ns.is_gpu && input) ? const_cast<void*>(static_cast<const void*>(input)) : nullptr;
 
         try {
-            CrashGuard guard(ns.node_id.c_str());
-            ns.loader->process(ns.instance, &ctx);
+            if (ns.missing_operator || !ns.loader) {
+                std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
+                for (auto& sp : ns.output_spreads) sp.clear();
+            } else {
+                CrashGuard guard(ns.node_id.c_str());
+                ns.loader->process(ns.instance, &ctx);
+            }
         } catch (const std::exception& e) {
             ns.errored = true;
             ns.error_message = e.what();
@@ -762,6 +829,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
 
 bool Scheduler::has_gpu_operators() const {
     for (const auto& ns : nodes_) {
+        if (!ns.loader) continue;
         const VividOperatorDescriptor* desc = ns.loader->descriptor();
         if (!desc) continue;
         if (desc->domain == VIVID_DOMAIN_GPU)
@@ -772,6 +840,7 @@ bool Scheduler::has_gpu_operators() const {
 
 bool Scheduler::has_audio_operators() const {
     for (const auto& ns : nodes_) {
+        if (!ns.loader) continue;
         const VividOperatorDescriptor* desc = ns.loader->descriptor();
         if (!desc) continue;
         if (desc->domain == VIVID_DOMAIN_AUDIO)
@@ -804,6 +873,7 @@ WGPUTexture Scheduler::gpu_sink_source_texture(int sink_idx) const {
 
 bool Scheduler::is_audio_type(const std::string& type_name) const {
     for (const auto& ns : nodes_) {
+        if (!ns.loader) continue;
         const VividOperatorDescriptor* desc = ns.loader->descriptor();
         if (!desc) continue;
         if (std::string(desc->name) == type_name &&
@@ -841,7 +911,10 @@ NodeState* Scheduler::find_node_mut(const std::string& id) {
 
 std::string Scheduler::type_name(uint32_t node_idx) const {
     if (node_idx >= nodes_.size()) return {};
-    const auto* desc = nodes_[node_idx].loader->descriptor();
+    const auto& ns = nodes_[node_idx];
+    if (!ns.type_name.empty()) return ns.type_name;
+    if (!ns.loader) return {};
+    const auto* desc = ns.loader->descriptor();
     return desc ? desc->name : std::string{};
 }
 
@@ -858,6 +931,7 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
 
     for (uint32_t i = 0; i < static_cast<uint32_t>(nodes_.size()); ++i) {
         auto& ns = nodes_[i];
+        if (!ns.loader) continue;
         const auto* desc = ns.loader->descriptor();
         if (!desc || std::string(desc->name) != type_name) continue;
 
@@ -1016,7 +1090,8 @@ void Scheduler::shutdown() {
         if (ns.gpu_texture) { wgpuTextureRelease(ns.gpu_texture); ns.gpu_texture = nullptr; }
 
         if (ns.instance) {
-            ns.loader->destroy_instance(ns.instance);
+            if (ns.loader)
+                ns.loader->destroy_instance(ns.instance);
             ns.instance = nullptr;
         }
     }

@@ -11,6 +11,7 @@
 #include "runtime/capture_coordinator.h"
 #include "runtime/settings.h"
 #include "runtime/editor_detect.h"
+#include "runtime/undo_manager.h"
 #include "operator_api/data_driven_filter.h"
 #include <filesystem>
 #include <fstream>
@@ -19,85 +20,123 @@
 #include <cstdlib>
 #include <ctime>
 #include <string>
+#include <chrono>
 
 class RuntimeCommandSink : public vivid::ui::UICommandSink {
 public:
     explicit RuntimeCommandSink(vivid::RuntimeAPI& api) : api_(api) {}
     void set_param(const std::string& node_id, const std::string& param, float value) override {
-        api_.set_param(node_id, param, value);
+        auto r = api_.set_param(node_id, param, value);
+        if (r.ok) capture_undo_snapshot("param:" + node_id + "/" + param);
     }
     void add_node(const std::string& type, const std::string& id) override {
-        api_.add_node(type, id);
+        auto r = api_.add_node(type, id);
+        if (r.ok) capture_undo_snapshot();
     }
     void remove_node(const std::string& id) override {
-        api_.remove_node(id);
+        auto r = api_.remove_node(id);
+        if (r.ok) capture_undo_snapshot();
     }
     void connect(const std::string& from, const std::string& to) override {
-        api_.connect(from, to);
+        auto r = api_.connect(from, to);
+        if (r.ok) capture_undo_snapshot();
     }
     void disconnect(const std::string& from, const std::string& to) override {
-        api_.disconnect(from, to);
+        auto r = api_.disconnect(from, to);
+        if (r.ok) capture_undo_snapshot();
     }
     void set_connection_remap(const std::string& from, const std::string& to,
                               float from_min, float from_max,
                               float to_min, float to_max, bool clamp) override {
-        api_.set_connection_remap(from, to, from_min, from_max, to_min, to_max, clamp);
+        auto r = api_.set_connection_remap(from, to, from_min, from_max, to_min, to_max, clamp);
+        if (r.ok) capture_undo_snapshot();
     }
     void set_node_layout(const std::string& node_id, float x, float y) override {
-        api_.set_node_layout(node_id, x, y);
+        auto r = api_.set_node_layout(node_id, x, y);
+        if (r.ok) capture_undo_snapshot("layout:" + node_id);
     }
     void set_resolution(const std::string& node_id, uint32_t w, uint32_t h) override {
-        api_.set_resolution(node_id, w, h);
+        auto r = api_.set_resolution(node_id, w, h);
+        if (r.ok) capture_undo_snapshot();
     }
     void add_midi_mapping(const std::string& node_id, const std::string& param,
                           int cc, int channel, float range_min, float range_max) override {
-        api_.add_midi_mapping(node_id, param, cc, channel, range_min, range_max);
+        auto r = api_.add_midi_mapping(node_id, param, cc, channel, range_min, range_max);
+        if (r.ok) capture_undo_snapshot();
     }
     void remove_midi_mapping(const std::string& node_id, const std::string& param) override {
-        api_.remove_midi_mapping(node_id, param);
+        auto r = api_.remove_midi_mapping(node_id, param);
+        if (r.ok) capture_undo_snapshot();
     }
     void update_midi_mapping(const std::string& node_id, const std::string& param,
                              float range_min, float range_max) override {
-        api_.update_midi_mapping(node_id, param, range_min, range_max);
+        auto r = api_.update_midi_mapping(node_id, param, range_min, range_max);
+        if (r.ok) capture_undo_snapshot();
     }
 
     void set_string_param(const std::string& node_id, const std::string& param,
                           const std::string& value) override {
-        api_.set_string_param(node_id, param, value);
+        auto r = api_.set_string_param(node_id, param, value);
+        if (r.ok) capture_undo_snapshot();
     }
 
-    void save_variation(const std::string& name) override { api_.save_variation(name); }
-    void recall_variation(const std::string& name) override { api_.recall_variation(name); }
-    void recall_variation_idx(int idx) override { api_.recall_variation_idx(idx); }
-    void remove_variation(const std::string& name) override { api_.remove_variation(name); }
+    void save_variation(const std::string& name) override {
+        auto r = api_.save_variation(name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void recall_variation(const std::string& name) override {
+        auto r = api_.recall_variation(name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void recall_variation_idx(int idx) override {
+        auto r = api_.recall_variation_idx(idx);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void remove_variation(const std::string& name) override {
+        auto r = api_.remove_variation(name);
+        if (r.ok) capture_undo_snapshot();
+    }
     void rename_variation(const std::string& old_name, const std::string& new_name) override {
-        api_.rename_variation(old_name, new_name);
+        auto r = api_.rename_variation(old_name, new_name);
+        if (r.ok) capture_undo_snapshot();
     }
-    void update_variation(const std::string& name) override { api_.update_variation(name); }
+    void update_variation(const std::string& name) override {
+        auto r = api_.update_variation(name);
+        if (r.ok) capture_undo_snapshot();
+    }
     void queue_variation(const std::string& name, const std::string& quantize) override {
-        api_.queue_variation(name, quantize);
+        auto r = api_.queue_variation(name, quantize);
+        if (r.ok) capture_undo_snapshot();
     }
-    void set_quantize_clock(const std::string& node_id) override { api_.set_quantize_clock(node_id); }
+    void set_quantize_clock(const std::string& node_id) override {
+        auto r = api_.set_quantize_clock(node_id);
+        if (r.ok) capture_undo_snapshot();
+    }
 
     void set_param_lock(const std::string& node_id, const std::string& param, uint8_t flags) override {
-        api_.set_param_lock(node_id, param, flags);
+        auto r = api_.set_param_lock(node_id, param, flags);
+        if (r.ok) capture_undo_snapshot();
     }
 
     void recall_preset(const std::string& node_id, const std::string& name) override {
-        api_.recall_preset(node_id, name);
+        auto r = api_.recall_preset(node_id, name);
+        if (r.ok) capture_undo_snapshot();
     }
     void save_preset(const std::string& node_id, const std::string& name) override {
-        api_.save_preset(node_id, name);
+        auto r = api_.save_preset(node_id, name);
+        if (r.ok) capture_undo_snapshot();
     }
 
     void set_state_preset(const std::string& sm_node, int state_idx,
                           const std::string& target_node,
                           const std::string& preset_name) override {
-        api_.set_state_preset(sm_node, state_idx, target_node, preset_name);
+        auto r = api_.set_state_preset(sm_node, state_idx, target_node, preset_name);
+        if (r.ok) capture_undo_snapshot();
     }
     void remove_state_preset(const std::string& sm_node, int state_idx,
                              const std::string& target_node) override {
-        api_.remove_state_preset(sm_node, state_idx, target_node);
+        auto r = api_.remove_state_preset(sm_node, state_idx, target_node);
+        if (r.ok) capture_undo_snapshot();
     }
 
     void open_shader(const std::string& type_name) override {
@@ -234,6 +273,7 @@ public:
             fd.params.push_back(std::move(pd));
         }
         graph_->add_filter(fd);
+        capture_undo_snapshot();
 
         // Write self-describing .wgsl to working file
         if (!working_filters_dir_.empty()) {
@@ -394,11 +434,61 @@ public:
         capture_coordinator_->request_stop_recording();
     }
 
+    bool undo() override {
+        std::string snapshot_json;
+        if (!undo_manager_.undo(snapshot_json)) return false;
+        if (!has_gpu_ops_ || !has_audio_) return false;
+        auto r = api_.apply_snapshot_json(snapshot_json, *has_gpu_ops_, *has_audio_);
+        if (r.ok) {
+            last_coalesce_key_.clear();
+            return true;
+        }
+        // Restore undo cursor when apply fails, then reset history to current state.
+        std::string ignored;
+        (void)undo_manager_.redo(ignored);
+        std::fprintf(stderr, "[vivid] Undo: snapshot apply failed (%s); resetting undo history\n",
+                     r.message.c_str());
+        reset_undo_history();
+        return false;
+    }
+
+    bool redo() override {
+        std::string snapshot_json;
+        if (!undo_manager_.redo(snapshot_json)) return false;
+        if (!has_gpu_ops_ || !has_audio_) return false;
+        auto r = api_.apply_snapshot_json(snapshot_json, *has_gpu_ops_, *has_audio_);
+        if (r.ok) {
+            last_coalesce_key_.clear();
+            return true;
+        }
+        // Restore redo cursor when apply fails, then reset history to current state.
+        std::string ignored;
+        (void)undo_manager_.undo(ignored);
+        std::fprintf(stderr, "[vivid] Redo: snapshot apply failed (%s); resetting undo history\n",
+                     r.message.c_str());
+        reset_undo_history();
+        return false;
+    }
+
+    bool can_undo() const override { return undo_manager_.canUndo(); }
+    bool can_redo() const override { return undo_manager_.canRedo(); }
+
     void set_capture_coordinator(vivid::CaptureCoordinator* cc) { capture_coordinator_ = cc; }
+    void set_runtime_flags(bool* has_gpu_ops, bool* has_audio) {
+        has_gpu_ops_ = has_gpu_ops;
+        has_audio_ = has_audio;
+    }
+    void reset_undo_history() {
+        undo_manager_.clear();
+        capture_undo_snapshot();
+    }
     void set_operators_dir(const std::string& dir) { operators_dir_ = dir; }
     void set_filters_dir(const std::string& dir) { filters_dir_ = dir; }
     void set_registry(vivid::OperatorRegistry* r) { registry_ = r; }
-    void set_graph(vivid::Graph* g) { graph_ = g; }
+    void set_graph(vivid::Graph* g) {
+        graph_ = g;
+        reset_undo_history();
+    }
     void set_op_cache(OperatorInfoCache* c) { op_cache_ = c; }
     void set_working_filters_dir(const std::string& dir) { working_filters_dir_ = dir; }
     void set_build_dir(const std::string& dir) { build_dir_ = dir; }
@@ -406,6 +496,25 @@ public:
     void set_hot_reloader(vivid::HotReloader* hr) { hot_reloader_ = hr; }
 
 private:
+    void capture_undo_snapshot(const std::string& coalesce_key = "") {
+        if (!graph_) return;
+        auto now = std::chrono::steady_clock::now();
+        bool replace_top = false;
+        if (!coalesce_key.empty() && !last_coalesce_key_.empty() && coalesce_key == last_coalesce_key_) {
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_coalesce_time_).count();
+            replace_top = (ms <= 300);
+        }
+        std::string json;
+        if (!graph_->save_to_string(json)) return;
+        undo_manager_.push(std::move(json), replace_top);
+        if (coalesce_key.empty()) {
+            last_coalesce_key_.clear();
+        } else {
+            last_coalesce_key_ = coalesce_key;
+            last_coalesce_time_ = now;
+        }
+    }
+
     // Find the .wgsl preset file for a given type name in the filters/ directory
     std::string find_preset_wgsl(const std::string& type_name) {
         if (filters_dir_.empty()) return {};
@@ -574,7 +683,12 @@ private:
     }
 
     vivid::RuntimeAPI& api_;
+    vivid::UndoManager undo_manager_;
+    std::string last_coalesce_key_;
+    std::chrono::steady_clock::time_point last_coalesce_time_{};
     vivid::CaptureCoordinator* capture_coordinator_ = nullptr;
+    bool* has_gpu_ops_ = nullptr;
+    bool* has_audio_ = nullptr;
     std::string operators_dir_;
     std::string filters_dir_;
     std::string working_filters_dir_;

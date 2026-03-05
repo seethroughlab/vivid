@@ -328,6 +328,7 @@ add_executable(vivid
     src/runtime/file_watcher.cpp
     src/runtime/hot_reload.cpp
     src/runtime/runtime_api.cpp
+    src/runtime/undo_manager.cpp
     src/runtime/screenshot.cpp
     src/runtime/builtin_operators.cpp
     src/runtime/control_server.cpp
@@ -602,6 +603,7 @@ add_executable(test_control_server
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
+    src/runtime/undo_manager.cpp
     src/runtime/control_server.cpp
     src/runtime/capture_coordinator.cpp
     src/runtime/screenshot.cpp
@@ -1024,6 +1026,14 @@ add_executable(test_path_util
 target_include_directories(test_path_util PRIVATE src tests)
 add_test(NAME test_path_util COMMAND test_path_util WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# UndoManager unit tests (snapshot history behavior)
+add_executable(test_undo_manager
+    tests/test_undo_manager.cpp
+    src/runtime/undo_manager.cpp
+)
+target_include_directories(test_undo_manager PRIVATE src tests)
+add_test(NAME test_undo_manager COMMAND test_undo_manager WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # editor_detect unit tests (filesystem scan, no display)
 add_executable(test_editor_detect
     tests/test_editor_detect.cpp
@@ -1031,6 +1041,36 @@ add_executable(test_editor_detect
 )
 target_include_directories(test_editor_detect PRIVATE src tests)
 add_test(NAME test_editor_detect COMMAND test_editor_detect WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Undo coverage across roadmap mutation types via RuntimeCommandSink + RuntimeAPI
+add_executable(test_undo_mutation_types
+    tests/test_undo_mutation_types.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/undo_manager.cpp
+    src/runtime/operator_creator.cpp
+    src/runtime/settings.cpp
+    src/runtime/hot_reload.cpp
+    src/runtime/capture_coordinator.cpp
+    src/runtime/screenshot.cpp
+    src/runtime/av_exporter.mm
+    src/runtime/platform.cpp
+    src/runtime/system_midi.cpp
+)
+target_include_directories(test_undo_mutation_types PRIVATE src tests)
+target_link_libraries(test_undo_mutation_types PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu rtmidi stb_truetype
+    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+    "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
+add_dependencies(test_undo_mutation_types test_op_v1)
+add_test(NAME test_undo_mutation_types
+    COMMAND test_undo_mutation_types ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # builtin_operators unit tests (no dylib, no GPU)
 add_executable(test_builtin_operators

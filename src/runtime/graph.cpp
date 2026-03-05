@@ -1,6 +1,7 @@
 #include "runtime/graph.h"
 #include "yyjson.h"
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <algorithm>
 
@@ -34,8 +35,9 @@ bool Graph::load(const char* path) {
     return ok;
 }
 
-bool Graph::load_from_string(const char* json, size_t len) {
-    source_path_.clear();
+bool Graph::load_from_string(const char* json, size_t len, bool preserve_source_path) {
+    if (!preserve_source_path)
+        source_path_.clear();
 
     if (len == 0) len = std::strlen(json);
 
@@ -757,15 +759,15 @@ const StatePresetMapping* Graph::find_state_mapping(const std::string& sm_node) 
 
 // --- Serialization ---
 
-bool Graph::save(const char* path) const {
+static yyjson_mut_doc* build_graph_json_doc(const Graph& graph) {
     yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
     yyjson_mut_val* root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
 
     // Filters
-    if (!filters_.empty()) {
+    if (!graph.filters().empty()) {
         yyjson_mut_val* filters_obj = yyjson_mut_obj(doc);
-        for (const auto& fd : filters_) {
+        for (const auto& fd : graph.filters()) {
             yyjson_mut_val* f_obj = yyjson_mut_obj(doc);
             if (!fd.source.empty())
                 yyjson_mut_obj_add_strcpy(doc, f_obj, "source", fd.source.c_str());
@@ -795,7 +797,7 @@ bool Graph::save(const char* path) const {
 
     // Nodes
     yyjson_mut_val* nodes_obj = yyjson_mut_obj(doc);
-    for (const auto& node : nodes_) {
+    for (const auto& node : graph.nodes()) {
         yyjson_mut_val* node_obj = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_str(doc, node_obj, "type", node.type.c_str());
 
@@ -839,7 +841,7 @@ bool Graph::save(const char* path) const {
 
     // Connections
     yyjson_mut_val* conns_arr = yyjson_mut_arr(doc);
-    for (const auto& conn : connections_) {
+    for (const auto& conn : graph.connections()) {
         yyjson_mut_val* conn_obj = yyjson_mut_obj(doc);
         std::string from_addr = conn.from_node + "/" + conn.from_port;
         std::string to_addr = conn.to_node + "/" + conn.to_port;
@@ -858,9 +860,9 @@ bool Graph::save(const char* path) const {
     yyjson_mut_obj_add_val(doc, root, "connections", conns_arr);
 
     // MIDI mappings
-    if (!midi_mappings_.empty()) {
+    if (!graph.midi_mappings().empty()) {
         yyjson_mut_val* midi_arr = yyjson_mut_arr(doc);
-        for (const auto& mm : midi_mappings_) {
+        for (const auto& mm : graph.midi_mappings()) {
             yyjson_mut_val* mm_obj = yyjson_mut_obj(doc);
             yyjson_mut_obj_add_strcpy(doc, mm_obj, "node", mm.node_id.c_str());
             yyjson_mut_obj_add_strcpy(doc, mm_obj, "param", mm.param_name.c_str());
@@ -875,9 +877,9 @@ bool Graph::save(const char* path) const {
     }
 
     // Variations
-    if (!variations_.empty()) {
+    if (!graph.variations().empty()) {
         yyjson_mut_val* var_arr = yyjson_mut_arr(doc);
-        for (const auto& vd : variations_) {
+        for (const auto& vd : graph.variations()) {
             yyjson_mut_val* v_obj = yyjson_mut_obj(doc);
             yyjson_mut_obj_add_strcpy(doc, v_obj, "name", vd.name.c_str());
             yyjson_mut_val* params_obj = yyjson_mut_obj(doc);
@@ -911,15 +913,15 @@ bool Graph::save(const char* path) const {
         }
         yyjson_mut_obj_add_val(doc, root, "variations", var_arr);
     }
-    if (active_variation_ >= 0)
-        yyjson_mut_obj_add_int(doc, root, "active_variation", active_variation_);
-    if (!quantize_clock_node_.empty())
-        yyjson_mut_obj_add_strcpy(doc, root, "quantize_clock", quantize_clock_node_.c_str());
+    if (graph.active_variation() >= 0)
+        yyjson_mut_obj_add_int(doc, root, "active_variation", graph.active_variation());
+    if (!graph.quantize_clock_node().empty())
+        yyjson_mut_obj_add_strcpy(doc, root, "quantize_clock", graph.quantize_clock_node().c_str());
 
     // Per-operator presets
-    if (!node_presets_.empty()) {
+    if (!graph.node_presets().empty()) {
         yyjson_mut_val* presets_obj = yyjson_mut_obj(doc);
-        for (const auto& [node_id, presets] : node_presets_) {
+        for (const auto& [node_id, presets] : graph.node_presets()) {
             yyjson_mut_val* pr_arr = yyjson_mut_arr(doc);
             for (const auto& p : presets) {
                 yyjson_mut_val* pr_obj = yyjson_mut_obj(doc);
@@ -941,9 +943,9 @@ bool Graph::save(const char* path) const {
     }
 
     // State-preset mappings
-    if (!state_preset_mappings_.empty()) {
+    if (!graph.state_preset_mappings().empty()) {
         yyjson_mut_val* spm_arr = yyjson_mut_arr(doc);
-        for (const auto& spm : state_preset_mappings_) {
+        for (const auto& spm : graph.state_preset_mappings()) {
             yyjson_mut_val* spm_obj = yyjson_mut_obj(doc);
             yyjson_mut_obj_add_strcpy(doc, spm_obj, "node", spm.state_machine_node.c_str());
             yyjson_mut_val* states_arr = yyjson_mut_arr(doc);
@@ -962,13 +964,19 @@ bool Graph::save(const char* path) const {
     }
 
     // Viewport
-    if (has_viewport()) {
+    if (graph.has_viewport()) {
         yyjson_mut_val* vp_obj = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_real(doc, vp_obj, "pan_x", static_cast<double>(viewport_pan_x));
-        yyjson_mut_obj_add_real(doc, vp_obj, "pan_y", static_cast<double>(viewport_pan_y));
-        yyjson_mut_obj_add_real(doc, vp_obj, "zoom",  static_cast<double>(viewport_zoom));
+        yyjson_mut_obj_add_real(doc, vp_obj, "pan_x", static_cast<double>(graph.viewport_pan_x));
+        yyjson_mut_obj_add_real(doc, vp_obj, "pan_y", static_cast<double>(graph.viewport_pan_y));
+        yyjson_mut_obj_add_real(doc, vp_obj, "zoom",  static_cast<double>(graph.viewport_zoom));
         yyjson_mut_obj_add_val(doc, root, "viewport", vp_obj);
     }
+
+    return doc;
+}
+
+bool Graph::save(const char* path) const {
+    yyjson_mut_doc* doc = build_graph_json_doc(*this);
 
     // Write
     yyjson_write_err werr;
@@ -983,6 +991,22 @@ bool Graph::save(const char* path) const {
 
     std::fprintf(stderr, "[vivid] Graph saved: %s (%zu nodes, %zu connections)\n",
         path, nodes_.size(), connections_.size());
+    return true;
+}
+
+bool Graph::save_to_string(std::string& out_json) const {
+    yyjson_mut_doc* doc = build_graph_json_doc(*this);
+    size_t len = 0;
+    char* json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY | YYJSON_WRITE_NEWLINE_AT_END, &len);
+    yyjson_mut_doc_free(doc);
+
+    if (!json) {
+        std::fprintf(stderr, "[vivid] Graph: failed to write JSON to string\n");
+        return false;
+    }
+
+    out_json.assign(json, len);
+    std::free(json);
     return true;
 }
 

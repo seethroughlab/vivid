@@ -63,6 +63,12 @@ public:
     virtual void capture_snapshot() {}
     virtual void start_recording(const std::string& path, const std::string& codec, double fps) {}
     virtual void stop_recording() {}
+
+    // Undo/redo (default no-op for sinks that do not support history)
+    virtual bool undo() { return false; }
+    virtual bool redo() { return false; }
+    virtual bool can_undo() const { return false; }
+    virtual bool can_redo() const { return false; }
 };
 
 } // namespace vivid::ui

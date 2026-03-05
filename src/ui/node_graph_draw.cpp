@@ -3290,6 +3290,8 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
     {
         float btn_y = (kPerfBarH - kPerfBtnH) * 0.5f;
         float rx = fw - kPerfBarPadX;  // right edge cursor
+        bool can_undo = commands_.can_undo();
+        bool can_redo = commands_.can_redo();
 
         // Snapshot button
         {
@@ -3305,7 +3307,47 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
                                  0.30f, 0.32f, 0.35f, bg_a);
             tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
                          snap_label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 1});
+            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 1, true});
+            rx -= kPerfBtnMargin;
+        }
+
+        // Redo button
+        {
+            const char* redo_label = "Redo";
+            float tw = tr.text_width(redo_label);
+            float btn_w = tw + kPerfBtnPadX * 2;
+            rx -= btn_w;
+            bool hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
+                           mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+            float bg_a = can_redo ? (hovered ? 0.35f : 0.20f) : 0.10f;
+            tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f,
+                                 0.30f, 0.32f, 0.35f, bg_a);
+            float trr = can_redo ? style_.bright_text[0] : kDimText[0];
+            float trg = can_redo ? style_.bright_text[1] : kDimText[1];
+            float trb = can_redo ? style_.bright_text[2] : kDimText[2];
+            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                         redo_label, trr, trg, trb);
+            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 3, can_redo});
+            rx -= kPerfBtnMargin;
+        }
+
+        // Undo button
+        {
+            const char* undo_label = "Undo";
+            float tw = tr.text_width(undo_label);
+            float btn_w = tw + kPerfBtnPadX * 2;
+            rx -= btn_w;
+            bool hovered = mouse_.x >= rx && mouse_.x <= rx + btn_w &&
+                           mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+            float bg_a = can_undo ? (hovered ? 0.35f : 0.20f) : 0.10f;
+            tr.draw_rounded_rect(rx, btn_y, btn_w, kPerfBtnH, 3.0f,
+                                 0.30f, 0.32f, 0.35f, bg_a);
+            float tur = can_undo ? style_.bright_text[0] : kDimText[0];
+            float tug = can_undo ? style_.bright_text[1] : kDimText[1];
+            float tub = can_undo ? style_.bright_text[2] : kDimText[2];
+            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                         undo_label, tur, tug, tub);
+            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 2, can_undo});
             rx -= kPerfBtnMargin;
         }
 
@@ -3326,7 +3368,7 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
                                      0.60f, 0.20f, 0.20f, bg_a);
                 tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
                              stop_label, 1.0f, 0.85f, 0.85f);
-                perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 0});
+                perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 0, true});
                 rx -= kPerfBtnMargin;
             }
 
@@ -3398,7 +3440,7 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
             // Dropdown arrow
             tr.draw_text(ix, label_y, "\xe2\x96\xbe", kDimText[0], kDimText[1], kDimText[2]);
 
-            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 0});
+            perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 0, true});
         }
     }
 

@@ -606,6 +606,14 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
     }
 
     if (!chooser_open_) {
+        bool mod_key = (mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER)) != 0;
+        if (action == GLFW_PRESS && mod_key) {
+            if (key == GLFW_KEY_Z) {
+                if (mods & GLFW_MOD_SHIFT) commands_.redo();
+                else commands_.undo();
+                return;
+            }
+        }
         // Tab opens the chooser (only if cursor is in graph area)
         if (key == GLFW_KEY_TAB && action == GLFW_PRESS &&
             snap_valid_ && !snap_.operator_types.empty()) {
@@ -1032,6 +1040,10 @@ void NodeGraphUI::handle_left_click() {
     for (const auto& btn : perf_button_rects_) {
         if (mouse_.x >= btn.x && mouse_.x <= btn.x + btn.w &&
             mouse_.y >= btn.y && mouse_.y <= btn.y + btn.h) {
+            if (!btn.enabled) {
+                mouse_.left_clicked = false;
+                return;
+            }
             if (btn.action == 0) {  // Record/Stop
                 if (snap_.is_recording) {
                     commands_.stop_recording();
@@ -1042,6 +1054,10 @@ void NodeGraphUI::handle_left_click() {
                 }
             } else if (btn.action == 1) {  // Snapshot
                 commands_.capture_snapshot();
+            } else if (btn.action == 2) {  // Undo
+                commands_.undo();
+            } else if (btn.action == 3) {  // Redo
+                commands_.redo();
             }
             mouse_.left_clicked = false;
             return;

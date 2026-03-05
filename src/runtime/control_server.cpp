@@ -7,6 +7,7 @@
 #include "runtime/operator_loader.h"
 #include "runtime/operator_creator.h"
 #include "runtime/hot_reload.h"
+#include "runtime/undo_manager.h"
 #include "runtime/package_manager.h"
 #include "runtime/package_compiler.h"
 #include "runtime/package_test_runner.h"
@@ -118,6 +119,48 @@ static bool is_safe_package_name(const std::string& name) {
     return name.find('/') == std::string::npos &&
            name.find('\\') == std::string::npos &&
            name.find("..") == std::string::npos;
+}
+
+static bool response_is_ok(const std::string& response_json) {
+    yyjson_doc* doc = yyjson_read(response_json.c_str(), response_json.size(), 0);
+    if (!doc) return false;
+    yyjson_val* root = yyjson_doc_get_root(doc);
+    yyjson_val* ok_val = root ? yyjson_obj_get(root, "ok") : nullptr;
+    bool ok = ok_val && yyjson_is_bool(ok_val) && yyjson_get_bool(ok_val);
+    yyjson_doc_free(doc);
+    return ok;
+}
+
+static bool is_undo_tracked_method(const std::string& method) {
+    return method == "add_node" ||
+           method == "remove_node" ||
+           method == "connect" ||
+           method == "disconnect" ||
+           method == "set_connection_remap" ||
+           method == "set_param" ||
+           method == "set_string_param" ||
+           method == "set_resolution" ||
+           method == "set_node_layout" ||
+           method == "add_midi_mapping" ||
+           method == "remove_midi_mapping" ||
+           method == "update_midi_mapping" ||
+           method == "save_variation" ||
+           method == "recall_variation" ||
+           method == "remove_variation" ||
+           method == "rename_variation" ||
+           method == "update_variation" ||
+           method == "queue_variation" ||
+           method == "set_quantize_clock" ||
+           method == "save_preset" ||
+           method == "recall_preset" ||
+           method == "update_preset" ||
+           method == "remove_preset" ||
+           method == "rename_preset" ||
+           method == "set_param_lock" ||
+           method == "set_state_preset" ||
+           method == "remove_state_preset" ||
+           method == "clear_state_presets" ||
+           method == "load_graph";
 }
 
 // ---------------------------------------------------------------------------
@@ -1233,6 +1276,7 @@ struct ControlServer::Impl {
     std::mutex queue_mutex;
     std::deque<PendingRequest> queue;
     std::atomic<bool> running{false};
+    vivid::UndoManager undo_history{200};
 
     Impl(int port) : server(port, "127.0.0.1") {}
 };
@@ -1496,12 +1540,75 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
     }
 
     for (auto& req : local) {
+        // MCP undo/redo are handled here so they can use control-server history.
+        if (req.method == "undo") {
+            std::string snapshot_json;
+            if (!impl_->undo_history.undo(snapshot_json)) {
+                req.promise.set_value(json_err("nothing to undo"));
+                continue;
+            }
+            auto r = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
+            if (!r.ok) {
+                std::string ignored;
+                (void)impl_->undo_history.redo(ignored);
+                impl_->undo_history.clear();
+                std::string baseline_json;
+                if (graph.save_to_string(baseline_json)) {
+                    impl_->undo_history.push(std::move(baseline_json));
+                }
+                req.promise.set_value(json_err("undo failed: " + r.message));
+                continue;
+            }
+            req.promise.set_value(command_result_to_json(r));
+            continue;
+        }
+        if (req.method == "redo") {
+            std::string snapshot_json;
+            if (!impl_->undo_history.redo(snapshot_json)) {
+                req.promise.set_value(json_err("nothing to redo"));
+                continue;
+            }
+            auto r = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
+            if (!r.ok) {
+                std::string ignored;
+                (void)impl_->undo_history.undo(ignored);
+                impl_->undo_history.clear();
+                std::string baseline_json;
+                if (graph.save_to_string(baseline_json)) {
+                    impl_->undo_history.push(std::move(baseline_json));
+                }
+                req.promise.set_value(json_err("redo failed: " + r.message));
+                continue;
+            }
+            req.promise.set_value(command_result_to_json(r));
+            continue;
+        }
+
+        bool track_for_undo = is_undo_tracked_method(req.method);
+        if (track_for_undo && impl_->undo_history.size() == 0) {
+            std::string baseline_json;
+            if (graph.save_to_string(baseline_json)) {
+                impl_->undo_history.push(std::move(baseline_json));
+            }
+        }
+
         std::string response = dispatch(req.method, req.body,
                                         api, graph, scheduler, registry,
                                         has_gpu_ops, has_audio,
                                         src_dir_, hot_reloader_,
                                         package_manager_,
                                         package_compiler_);
+
+        if (track_for_undo && response_is_ok(response)) {
+            if (req.method == "load_graph") {
+                impl_->undo_history.clear();
+            }
+            std::string current_json;
+            if (graph.save_to_string(current_json)) {
+                impl_->undo_history.push(std::move(current_json));
+            }
+        }
+
         req.promise.set_value(std::move(response));
     }
 }

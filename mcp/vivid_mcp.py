@@ -175,6 +175,18 @@ async def load_graph() -> str:
 
 
 @mcp.tool()
+async def undo() -> str:
+    """Undo the last graph mutation made through MCP/control-server commands."""
+    return await _post("undo")
+
+
+@mcp.tool()
+async def redo() -> str:
+    """Redo the last undone graph mutation made through MCP/control-server commands."""
+    return await _post("redo")
+
+
+@mcp.tool()
 async def set_string_param(node_id: str, param: str, value: str) -> str:
     """Set a string parameter (e.g. file path) on a node.
 

@@ -1229,6 +1229,37 @@ int main() {
         std::remove(path.c_str());
     }
 
+    // =====================================================================
+    // Test 31: save_to_string round-trip
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 31: save_to_string round-trip ===\n");
+
+        vivid::Graph g1;
+        check(g1.add_node("a", "Clock", {{"bpm", 120.0f}}), "add node a");
+        check(g1.add_node("b", "Math", {{"scale", 2.0f}}), "add node b");
+        check(g1.add_connection("a", "beat_phase", "b", "input"), "add connection");
+        check(g1.add_midi_mapping("b", "scale", 12, 1, 0.0f, 2.0f), "add midi mapping");
+
+        std::string json;
+        check(g1.save_to_string(json), "save_to_string succeeds");
+        check(!json.empty(), "serialized JSON is non-empty");
+
+        vivid::Graph g2;
+        check(g2.load_from_string(json.c_str(), json.size()), "load_from_string serialized JSON succeeds");
+        check(g2.nodes().size() == 2, "round-trip node count preserved");
+        check(g2.connections().size() == 1, "round-trip connection count preserved");
+        check(g2.midi_mappings().size() == 1, "round-trip midi mapping count preserved");
+        const auto* na = g2.find_node("a");
+        check(na != nullptr, "round-trip node a exists");
+        if (na) {
+            auto it = na->params.find("bpm");
+            check(it != na->params.end(), "round-trip node a bpm exists");
+            if (it != na->params.end())
+                check_float(it->second, 120.0f, "round-trip node a bpm preserved");
+        }
+    }
+
     // --- Cleanup temp files ---
     std::remove("/tmp/vivid_test_valid.json");
     std::remove("/tmp/vivid_test_layout.json");

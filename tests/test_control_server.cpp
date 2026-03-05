@@ -170,6 +170,32 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Phase 4b: undo/redo via MCP control methods
+        std::fprintf(stderr, "\n--- undo/redo ---\n");
+        {
+            auto ru = post(client, base_url, "undo");
+            check(ru.ok, "undo ok");
+            auto rg = post(client, base_url, "get_param",
+                R"({"node_id":"a","param":"scale"})");
+            check(rg.ok, "get_param after undo ok");
+            if (rg.root) {
+                yyjson_val* val = yyjson_obj_get(rg.root, "value");
+                check(val && std::fabs(yyjson_get_num(val) - 3.0) < 1e-4,
+                      "value restored to 3.0 after undo");
+            }
+
+            auto rr = post(client, base_url, "redo");
+            check(rr.ok, "redo ok");
+            auto rg2 = post(client, base_url, "get_param",
+                R"({"node_id":"a","param":"scale"})");
+            check(rg2.ok, "get_param after redo ok");
+            if (rg2.root) {
+                yyjson_val* val = yyjson_obj_get(rg2.root, "value");
+                check(val && std::fabs(yyjson_get_num(val) - 9.0) < 1e-4,
+                      "value restored to 9.0 after redo");
+            }
+        }
+
         // Phase 5: add_node — add TestOp as "c"
         std::fprintf(stderr, "\n--- add_node ---\n");
         {
@@ -252,6 +278,25 @@ int main(int argc, char* argv[]) {
         {
             auto r = post(client, base_url, "load_graph");
             check(r.ok, "load_graph ok");
+
+            // Undo history must reset on file load.
+            auto u = post(client, base_url, "undo");
+            check(!u.ok, "undo after load_graph reports no history");
+
+            // Baseline should still be tracked: mutate then undo returns to loaded state.
+            auto sp = post(client, base_url, "set_param",
+                R"({"node_id":"a","param":"scale","value":8.0})");
+            check(sp.ok, "set_param after load_graph ok");
+            auto u2 = post(client, base_url, "undo");
+            check(u2.ok, "undo after post-load mutation ok");
+            auto gp = post(client, base_url, "get_param",
+                R"({"node_id":"a","param":"scale"})");
+            check(gp.ok, "get_param after post-load undo ok");
+            if (gp.root) {
+                yyjson_val* val = yyjson_obj_get(gp.root, "value");
+                check(val && std::fabs(yyjson_get_num(val) - 3.0) < 1e-4,
+                      "post-load undo restored loaded baseline value");
+            }
         }
 
         // Phase 13: error cases

@@ -676,8 +676,8 @@ private:
     float record_dropdown_x_ = 0.0f, record_dropdown_y_ = 0.0f;
     int record_codec_sel_ = 0;  // 0=H.264, 1=H.265, 2=ProRes 4444
 
-    struct PerfButtonRect { float x, y, w, h; int action; };
-    // action: 0=Record/Stop, 1=Snapshot
+    struct PerfButtonRect { float x, y, w, h; int action; bool enabled; };
+    // action: 0=Record/Stop, 1=Snapshot, 2=Undo, 3=Redo
     std::vector<PerfButtonRect> perf_button_rects_;
 };
 
