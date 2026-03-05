@@ -16,6 +16,7 @@ Vivid supports additional operator libraries as packages.
 - `DrumHiHat`
 - `DrumClap`
 - `DrumCymbal`
+- `DrumTom`
 - Repo: `https://github.com/seethroughlab/vivid-drums`
 
 ### vivid-plexus

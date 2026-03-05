@@ -236,8 +236,6 @@ set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS webcam_in)
 # --- Audio operator plugins ---
 add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp)
 add_vivid_operator(gain           operators/audio/gain/gain.cpp)
-add_vivid_operator(drum_tom       operators/audio/drum_tom/drum_tom.cpp
-                   FACTORY_PRESETS operators/audio/drum_tom/factory_presets.json)
 add_vivid_operator(spread_adsr    operators/audio/spread_adsr/spread_adsr.cpp)
 add_vivid_operator(spread_lfo     operators/audio/spread_lfo/spread_lfo.cpp)
 add_vivid_operator(reverb         operators/audio/reverb/reverb.cpp
@@ -830,7 +828,7 @@ add_dependencies(test_demo_graphs
     noise shape bars composite
     bloom feedback instance movie_file_in texture_analysis
     # audio
-    oscillator gain drum_tom spread_adsr spread_lfo
+    oscillator gain spread_adsr spread_lfo
     reverb delay bitcrush distortion
     movie_file_audio_in
     webcam_in time_machine

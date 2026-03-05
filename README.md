@@ -40,7 +40,6 @@ HSV, Levels, Blur, Gaussian Blur, Edge, Mirror, Pixelate, Posterize, Gradient, C
 
 ### Audio
 **Synthesis:** Oscillator, Gain
-**Drums:** Tom
 **Effects:** Reverb, Delay, Bitcrush, Distortion
 **Spread:** Spread ADSR, Spread LFO
 **Input:** Movie File Audio In
@@ -53,7 +52,7 @@ Clock, LFO, Math, Envelope, MIDI Input, FFT Analysis, Logic, Gate, Random, Smoot
 Install additional package libraries:
 
 - `vivid-wavetable`: `WavetableSynth`
-- `vivid-drums`: `DrumKick`, `DrumSnare`, `DrumHiHat`, `DrumClap`, `DrumCymbal`
+- `vivid-drums`: `DrumKick`, `DrumSnare`, `DrumHiHat`, `DrumClap`, `DrumCymbal`, `DrumTom`
 - `vivid-plexus`: `Plexus`, `PlexusSynth`
 - `vivid-sequencers`: `Sequencer`, `DrumSequencer`, `PatternSeq`, `NotePattern`, `NoteDuration`, `Arpeggiator`, `ChordProgression`, `StateMachine`
 - `vivid-3d`: 3D operator suite
