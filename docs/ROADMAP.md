@@ -627,46 +627,51 @@ Display workflow hardening status (2026-03-05):
   - defined minimal 1.0 mapping model via `OscIn`/`OscOut` control operators
   - implemented runtime send/receive path using vendored `oscpack` (core, non-feature-gated)
   - added audio+video demo graphs: `graphs/osc_av_in_demo.json`, `graphs/osc_av_loopback_demo.json`
-- [ ] NDI/Syphon output evaluation + implementation plan:
+- [x] NDI/Syphon output evaluation + implementation plan:
   - Decision (2026-03-05):
     - ship **Syphon output in core** (macOS-first)
     - align **Spout support** with future Windows port (same conceptual output surface)
     - keep **NDI** out of core and implement as a separate package (e.g. `vivid-texshare`)
   - implementation scope for Syphon:
-    - minimal `video_out`-adjacent publish path (no graph-format churn)
-    - baseline runtime toggle + sender naming
-    - docs + one demo graph + validation checklist
+    - implemented as dedicated GPU operators (`SyphonOut`, `SyphonIn`) rather than `video_out` embedding
+    - runtime sender naming + receiver server selection
+    - demo graphs + runtime validation checklist completed
   - package scope for NDI:
     - prototype/output operator in package repo
     - dependency/licensing isolation from core runtime
 
 External I/O status (2026-03-05):
 - OSC is shipped in core via `OscIn`/`OscOut` and validated with demo-graph coverage.
-- NDI/Syphon decision is set: Syphon in core next, NDI as package, Spout deferred until Windows port.
+- Syphon output is shipped in core via `SyphonOut` (with GPU-path publish; no CPU readback in publish flow) and validated live with TouchDesigner.
+- Syphon input is shipped in core via `SyphonIn` with event-latched frame updates.
+- NDI/Syphon decision is set: Syphon is in core, NDI remains a package target, Spout deferred until Windows port.
 
 ### Test & Validation Matrix
 
-- [ ] Docs/onboarding validation:
+- [x] Docs/onboarding validation:
   - clean-machine walkthrough completes without hidden steps
   - Getting Started links and example graph paths are valid
   - README claims match actual shipped behavior/operators/packages
-- [ ] Runtime UX validation:
+- [x] Runtime UX validation:
   - chosen capture/export workflow is discoverable and reliable
   - error-reporting link works and includes expected metadata
-- [ ] Display validation:
+- [x] Display validation:
   - fullscreen/external display scenarios pass on macOS test matrix
-- [ ] External I/O validation:
+- [x] External I/O validation:
   - OSC mapping smoke tests (live parameter updates)
-  - NDI/Syphon smoke tests (when implemented)
+  - NDI/Syphon smoke tests (Syphon implemented and validated; NDI deferred by design)
 
 ### Exit Criteria (Milestone 5 complete)
 
-- [ ] New users can get from launch to meaningful output quickly using Getting Started + curated examples
-- [ ] Public docs (`README` + key guides) are accurate to current core/package architecture
-- [ ] Primary capture/output workflow for 1.0 is clear and validated
-- [ ] GUI includes a practical issue-reporting path to GitHub
-- [ ] Fullscreen/external display behavior is stable for live use
-- [ ] OSC and NDI/Syphon are either shipped with baseline coverage or explicitly deferred with rationale
+- [x] New users can get from launch to meaningful output quickly using Getting Started + curated examples
+- [x] Public docs (`README` + key guides) are accurate to current core/package architecture
+- [x] Primary capture/output workflow for 1.0 is clear and validated
+- [x] GUI includes a practical issue-reporting path to GitHub
+- [x] Fullscreen/external display behavior is stable for live use
+- [x] OSC and NDI/Syphon are either shipped with baseline coverage or explicitly deferred with rationale
+
+Milestone 5 closure note (2026-03-05):
+- Milestone 5 is complete. Core UX goals are shipped: onboarding/docs refresh, display hardening, issue-reporting affordance, and external I/O baseline (OSC + Syphon in core, NDI deferred to package scope with rationale).
 
 ## Milestone 6: Release Infrastructure
 
