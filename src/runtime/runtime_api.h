@@ -120,6 +120,7 @@ public:
     // Variation state accessors for snapshot
     int pending_variation_idx() const { return pending_variation_.armed ? pending_variation_.variation_idx : -1; }
     bool variation_dirty() const { return variation_dirty_; }
+    bool graph_dirty() const { return graph_dirty_; }
 
     // Persistence
     CommandResult save();
@@ -155,6 +156,8 @@ private:
     PendingVariation pending_variation_;
     float prev_beat_phase_ = 0.0f;
     bool variation_dirty_ = false;
+    bool graph_dirty_ = false;
+    std::string last_saved_graph_json_;
 
     // Internal helper to apply a variation's params to live nodes
     void apply_variation(int idx);
@@ -173,6 +176,14 @@ private:
 
     // Resolve+persist helper: stores absolute in NodeState, relative in NodeDef
     void set_file_param_internal(NodeState& ns, const std::string& param, const std::string& value);
+    bool is_path_string_param(const NodeState& ns, const std::string& param) const;
+    std::string to_runtime_string_value(const NodeState& ns, const std::string& param,
+                                        const std::string& value) const;
+    std::string to_persisted_string_value(const NodeState& ns, const std::string& param,
+                                          const std::string& value) const;
+    void mark_graph_dirty();
+    void capture_saved_snapshot();
+    void refresh_graph_dirty_from_saved_snapshot();
 };
 
 } // namespace vivid

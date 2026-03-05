@@ -26,6 +26,9 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
+#include <cmath>
+#include <unordered_set>
 
 namespace vivid {
 
@@ -48,6 +51,7 @@ static const char* param_type_str(VividParamType t) {
         case VIVID_PARAM_INT:   return "int";
         case VIVID_PARAM_BOOL:  return "bool";
         case VIVID_PARAM_FILE:  return "file";
+        case VIVID_PARAM_TEXT:  return "text";
         default: return "unknown";
     }
 }
@@ -214,7 +218,7 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_obj_add_real(doc, p, "min", static_cast<double>(pd.min_value));
                 yyjson_mut_obj_add_real(doc, p, "max", static_cast<double>(pd.max_value));
                 yyjson_mut_obj_add_real(doc, p, "default", static_cast<double>(pd.default_value));
-                if (pd.type == VIVID_PARAM_FILE && ns) {
+                if ((pd.type == VIVID_PARAM_FILE || pd.type == VIVID_PARAM_TEXT) && ns) {
                     auto fi = ns->file_param_indices.find(pd.name);
                     if (fi != ns->file_param_indices.end()) {
                         yyjson_mut_obj_add_strcpy(doc, p, "string_value",
@@ -308,6 +312,946 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
     return json_ok(doc, result);
 }
 
+static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
+    std::unordered_map<std::string, const NodeDef*> def_map;
+    for (const auto& ndef : graph.nodes())
+        def_map[ndef.id] = &ndef;
+    std::unordered_map<std::string, int> incoming_wires;
+    std::unordered_map<std::string, int> outgoing_wires;
+    std::unordered_map<std::string, std::unordered_map<std::string, int>> incoming_port_wires;
+    std::unordered_map<std::string, std::unordered_map<std::string, int>> outgoing_port_wires;
+    for (const auto& conn : graph.connections()) {
+        incoming_wires[conn.to_node]++;
+        outgoing_wires[conn.from_node]++;
+        incoming_port_wires[conn.to_node][conn.to_port]++;
+        outgoing_port_wires[conn.from_node][conn.from_port]++;
+    }
+
+    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
+    yyjson_mut_val* root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    yyjson_mut_obj_add_bool(doc, root, "ok", true);
+    yyjson_mut_obj_add_int(doc, root, "schema_version", 1);
+
+    yyjson_mut_val* result = yyjson_mut_obj(doc);
+    yyjson_mut_val* nodes_arr = yyjson_mut_arr(doc);
+
+    const auto& nodes = scheduler.nodes();
+    for (size_t ni = 0; ni < nodes.size(); ++ni) {
+        const auto& ns = nodes[ni];
+        yyjson_mut_val* node = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, node, "node_id", ns.node_id.c_str());
+        yyjson_mut_obj_add_int(doc, node, "node_index", static_cast<int64_t>(ni));
+
+        std::string type_name = ns.type_name;
+        if (type_name.empty()) {
+            auto dit = def_map.find(ns.node_id);
+            if (dit != def_map.end() && dit->second)
+                type_name = dit->second->type;
+        }
+        yyjson_mut_obj_add_strcpy(doc, node, "type", type_name.c_str());
+        yyjson_mut_obj_add_str(doc, node, "domain",
+                               ns.is_gpu ? "gpu" : (ns.is_audio ? "audio" : "control"));
+        yyjson_mut_obj_add_int(doc, node, "incoming_wires",
+                               static_cast<int64_t>(incoming_wires[ns.node_id]));
+        yyjson_mut_obj_add_int(doc, node, "outgoing_wires",
+                               static_cast<int64_t>(outgoing_wires[ns.node_id]));
+
+        // Health
+        yyjson_mut_val* health = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_bool(doc, health, "errored", ns.errored || ns.missing_operator);
+        yyjson_mut_obj_add_strcpy(doc, health, "message", ns.error_message.c_str());
+        yyjson_mut_obj_add_bool(doc, health, "missing_operator", ns.missing_operator);
+        yyjson_mut_obj_add_val(doc, node, "health", health);
+
+        const VividOperatorDescriptor* desc = ns.loader ? ns.loader->descriptor() : nullptr;
+
+        // Current params
+        yyjson_mut_val* params_obj = yyjson_mut_obj(doc);
+        if (desc) {
+            for (uint32_t pi = 0; pi < desc->param_count; ++pi) {
+                const auto& pd = desc->params[pi];
+                if (pi < ns.param_values.size())
+                    yyjson_mut_obj_add_real(doc, params_obj, pd.name,
+                                            static_cast<double>(ns.param_values[pi]));
+            }
+            for (const auto& [name, idx] : ns.file_param_indices) {
+                if (idx < ns.file_param_storage.size())
+                    yyjson_mut_obj_add_strcpy(doc, params_obj, name.c_str(),
+                                              ns.file_param_storage[idx].c_str());
+            }
+        } else {
+            auto dit = def_map.find(ns.node_id);
+            if (dit != def_map.end() && dit->second) {
+                for (const auto& [k, v] : dit->second->params)
+                    yyjson_mut_obj_add_real(doc, params_obj, k.c_str(), static_cast<double>(v));
+                for (const auto& [k, v] : dit->second->string_params)
+                    yyjson_mut_obj_add_strcpy(doc, params_obj, k.c_str(), v.c_str());
+            }
+        }
+        yyjson_mut_obj_add_val(doc, node, "params", params_obj);
+
+        // Param metadata
+        yyjson_mut_val* param_meta_arr = yyjson_mut_arr(doc);
+        if (desc) {
+            for (uint32_t pi = 0; pi < desc->param_count; ++pi) {
+                const auto& pd = desc->params[pi];
+                yyjson_mut_val* pm = yyjson_mut_obj(doc);
+                yyjson_mut_obj_add_strcpy(doc, pm, "name", pd.name);
+                yyjson_mut_obj_add_str(doc, pm, "kind", param_type_str(pd.type));
+                yyjson_mut_obj_add_real(doc, pm, "default", static_cast<double>(pd.default_value));
+                yyjson_mut_obj_add_real(doc, pm, "min", static_cast<double>(pd.min_value));
+                yyjson_mut_obj_add_real(doc, pm, "max", static_cast<double>(pd.max_value));
+                yyjson_mut_arr_add_val(param_meta_arr, pm);
+            }
+        }
+        yyjson_mut_obj_add_val(doc, node, "param_meta", param_meta_arr);
+
+        // Input summary
+        yyjson_mut_val* inputs_arr = yyjson_mut_arr(doc);
+        if (desc) {
+            for (uint32_t pi = 0; pi < desc->port_count; ++pi) {
+                const auto& pd = desc->ports[pi];
+                if (pd.direction != VIVID_PORT_INPUT) continue;
+
+                yyjson_mut_val* in = yyjson_mut_obj(doc);
+                yyjson_mut_obj_add_strcpy(doc, in, "name", pd.name);
+                yyjson_mut_obj_add_str(doc, in, "kind", port_type_str(pd.type));
+                yyjson_mut_obj_add_int(doc, in, "connected_wires",
+                    static_cast<int64_t>(incoming_port_wires[ns.node_id][pd.name]));
+
+                auto iit = ns.input_port_indices.find(pd.name);
+                if (iit != ns.input_port_indices.end()) {
+                    uint32_t ii = iit->second;
+                    if (ii < ns.input_values.size()) {
+                        yyjson_mut_obj_add_real(doc, in, "scalar",
+                                                static_cast<double>(ns.input_values[ii]));
+                    }
+                    if (ii < ns.input_spreads.size()) {
+                        yyjson_mut_val* spread = yyjson_mut_obj(doc);
+                        yyjson_mut_obj_add_int(doc, spread, "length",
+                                               static_cast<int64_t>(ns.input_spreads[ii].size()));
+                        yyjson_mut_obj_add_val(doc, in, "spread", spread);
+                    }
+                }
+                yyjson_mut_arr_add_val(inputs_arr, in);
+            }
+        }
+        yyjson_mut_obj_add_val(doc, node, "inputs", inputs_arr);
+
+        // Output summary
+        yyjson_mut_val* outputs_arr = yyjson_mut_arr(doc);
+        if (desc) {
+            for (uint32_t pi = 0; pi < desc->port_count; ++pi) {
+                const auto& pd = desc->ports[pi];
+                if (pd.direction != VIVID_PORT_OUTPUT) continue;
+
+                yyjson_mut_val* out = yyjson_mut_obj(doc);
+                yyjson_mut_obj_add_strcpy(doc, out, "name", pd.name);
+                yyjson_mut_obj_add_str(doc, out, "kind", port_type_str(pd.type));
+                yyjson_mut_obj_add_int(doc, out, "connected_wires",
+                    static_cast<int64_t>(outgoing_port_wires[ns.node_id][pd.name]));
+
+                auto oit = ns.output_port_indices.find(pd.name);
+                if (oit != ns.output_port_indices.end()) {
+                    uint32_t oi = oit->second;
+                    if (oi < ns.output_values.size())
+                        yyjson_mut_obj_add_real(doc, out, "scalar",
+                                                static_cast<double>(ns.output_values[oi]));
+                    if (oi < ns.output_spreads.size()) {
+                        yyjson_mut_val* spread = yyjson_mut_obj(doc);
+                        yyjson_mut_obj_add_int(doc, spread, "length",
+                                               static_cast<int64_t>(ns.output_spreads[oi].size()));
+                        yyjson_mut_obj_add_val(doc, out, "spread", spread);
+                    }
+                }
+
+                if (pd.type == VIVID_PORT_GPU_TEXTURE && ns.gpu_tex_width > 0 && ns.gpu_tex_height > 0) {
+                    yyjson_mut_obj_add_int(doc, out, "width", ns.gpu_tex_width);
+                    yyjson_mut_obj_add_int(doc, out, "height", ns.gpu_tex_height);
+                }
+                yyjson_mut_arr_add_val(outputs_arr, out);
+            }
+        }
+        yyjson_mut_obj_add_val(doc, node, "outputs", outputs_arr);
+
+        // Domain metrics (lightweight first pass)
+        yyjson_mut_val* domain_metrics = yyjson_mut_obj(doc);
+        if (ns.is_gpu) {
+            yyjson_mut_val* gpu = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_int(doc, gpu, "width", ns.gpu_tex_width);
+            yyjson_mut_obj_add_int(doc, gpu, "height", ns.gpu_tex_height);
+            yyjson_mut_obj_add_bool(doc, gpu, "has_texture", ns.gpu_texture != nullptr);
+            yyjson_mut_obj_add_bool(doc, gpu, "has_depth_texture", ns.gpu_depth_texture != nullptr);
+            yyjson_mut_obj_add_val(doc, domain_metrics, "gpu", gpu);
+        } else if (ns.is_audio) {
+            yyjson_mut_val* audio = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_int(doc, audio, "output_port_count", ns.output_port_count);
+            yyjson_mut_obj_add_int(doc, audio, "input_port_count", ns.input_port_count);
+            auto rms_it = ns.output_port_indices.find("rms");
+            if (rms_it != ns.output_port_indices.end() &&
+                rms_it->second < ns.output_values.size()) {
+                yyjson_mut_obj_add_real(doc, audio, "rms",
+                    static_cast<double>(ns.output_values[rms_it->second]));
+            }
+            auto peak_it = ns.output_port_indices.find("peak");
+            if (peak_it != ns.output_port_indices.end() &&
+                peak_it->second < ns.output_values.size()) {
+                yyjson_mut_obj_add_real(doc, audio, "peak",
+                    static_cast<double>(ns.output_values[peak_it->second]));
+            }
+            auto wave_it = ns.output_port_indices.find("waveform");
+            if (wave_it != ns.output_port_indices.end() &&
+                wave_it->second < ns.output_spreads.size()) {
+                const auto& wave = ns.output_spreads[wave_it->second];
+                yyjson_mut_obj_add_int(doc, audio, "waveform_length",
+                    static_cast<int64_t>(wave.size()));
+                yyjson_mut_val* preview = yyjson_mut_arr(doc);
+                size_t preview_count = wave.size();
+                if (preview_count > 32) preview_count = 32;
+                for (size_t wi = 0; wi < preview_count; ++wi) {
+                    yyjson_mut_arr_add_real(doc, preview, static_cast<double>(wave[wi]));
+                }
+                yyjson_mut_obj_add_val(doc, audio, "waveform_preview", preview);
+            }
+            yyjson_mut_obj_add_val(doc, domain_metrics, "audio", audio);
+        } else {
+            yyjson_mut_val* control = yyjson_mut_obj(doc);
+            int64_t spread_out_nonempty = 0;
+            int64_t scalar_out_nonzero = 0;
+            for (const auto& sp : ns.output_spreads)
+                if (!sp.empty()) spread_out_nonempty++;
+            for (float v : ns.output_values)
+                if (v != 0.0f) scalar_out_nonzero++;
+            yyjson_mut_obj_add_int(doc, control, "non_empty_spread_outputs", spread_out_nonempty);
+            yyjson_mut_obj_add_int(doc, control, "non_zero_scalar_outputs", scalar_out_nonzero);
+            yyjson_mut_obj_add_val(doc, domain_metrics, "control", control);
+        }
+        yyjson_mut_obj_add_val(doc, node, "domain_metrics", domain_metrics);
+
+        yyjson_mut_arr_add_val(nodes_arr, node);
+    }
+
+    yyjson_mut_obj_add_val(doc, result, "nodes", nodes_arr);
+    yyjson_mut_obj_add_val(doc, root, "result", result);
+
+    std::string s = json_serialize(doc);
+    yyjson_mut_doc_free(doc);
+    return s;
+}
+
+static int severity_rank(const std::string& severity) {
+    if (severity == "critical") return 0;
+    if (severity == "warning") return 1;
+    return 2;
+}
+
+struct DiagnosticFinding {
+    std::string id;
+    std::string severity;
+    std::string node_id;
+    std::string message;
+    std::string suggestion;
+};
+
+static std::vector<DiagnosticFinding> collect_diagnostics(Graph& graph, Scheduler& scheduler) {
+    std::unordered_map<std::string, int> incoming_wires;
+    std::unordered_map<std::string, int> outgoing_wires;
+    for (const auto& conn : graph.connections()) {
+        incoming_wires[conn.to_node]++;
+        outgoing_wires[conn.from_node]++;
+    }
+
+    std::vector<DiagnosticFinding> findings;
+    findings.reserve(32);
+
+    const auto& nodes = scheduler.nodes();
+    for (const auto& ns : nodes) {
+        const VividOperatorDescriptor* desc = ns.loader ? ns.loader->descriptor() : nullptr;
+        std::string type_name = ns.type_name;
+        if (type_name.empty() && desc && desc->name) type_name = desc->name;
+
+        if (ns.missing_operator) {
+            findings.push_back({
+                "missing_operator_type",
+                "critical",
+                ns.node_id,
+                "Operator type is unresolved; missing-operator placeholder is active.",
+                "Install or link the package providing this operator type, then reload."
+            });
+        }
+
+        if (ns.errored) {
+            findings.push_back({
+                "node_runtime_error",
+                "critical",
+                ns.node_id,
+                std::string("Node is in errored state: ") + ns.error_message,
+                "Fix compile/runtime error in this operator; graph currently uses stale/broken output."
+            });
+        }
+
+        if (ns.is_audio && type_name == "audio_out" && incoming_wires[ns.node_id] == 0) {
+            findings.push_back({
+                "audio_sink_disconnected",
+                "critical",
+                ns.node_id,
+                "Audio sink node has no incoming connections.",
+                "Connect an audio-producing node to audio_out inputs."
+            });
+        }
+
+        if (!ns.missing_operator && incoming_wires[ns.node_id] == 0 && outgoing_wires[ns.node_id] == 0) {
+            findings.push_back({
+                "isolated_node",
+                "warning",
+                ns.node_id,
+                "Node is fully disconnected from the graph.",
+                "Connect it to upstream/downstream nodes or remove it if unused."
+            });
+        }
+
+        bool found_non_finite = false;
+        for (float v : ns.param_values) {
+            if (!std::isfinite(v)) { found_non_finite = true; break; }
+        }
+        if (!found_non_finite) {
+            for (float v : ns.output_values) {
+                if (!std::isfinite(v)) { found_non_finite = true; break; }
+            }
+        }
+        if (!found_non_finite) {
+            for (const auto& sp : ns.output_spreads) {
+                for (float v : sp) {
+                    if (!std::isfinite(v)) { found_non_finite = true; break; }
+                }
+                if (found_non_finite) break;
+            }
+        }
+        if (found_non_finite) {
+            findings.push_back({
+                "non_finite_values",
+                "warning",
+                ns.node_id,
+                "NaN or Inf value detected in node runtime state.",
+                "Clamp or sanitize values; check divisions, logs, and numeric domain assumptions."
+            });
+        }
+
+        if (ns.is_audio) {
+            auto peak_it = ns.output_port_indices.find("peak");
+            if (peak_it != ns.output_port_indices.end() && peak_it->second < ns.output_values.size()) {
+                float peak = ns.output_values[peak_it->second];
+                if (std::isfinite(peak) && peak > 1.05f) {
+                    findings.push_back({
+                        "audio_peak_clipping_risk",
+                        "warning",
+                        ns.node_id,
+                        "Audio peak exceeds 1.05; clipping risk likely.",
+                        "Reduce gain, add limiting, or remap modulation depth."
+                    });
+                }
+            }
+        }
+    }
+
+    std::sort(findings.begin(), findings.end(), [](const DiagnosticFinding& a, const DiagnosticFinding& b) {
+        int ar = severity_rank(a.severity);
+        int br = severity_rank(b.severity);
+        if (ar != br) return ar < br;
+        if (a.id != b.id) return a.id < b.id;
+        if (a.node_id != b.node_id) return a.node_id < b.node_id;
+        if (a.message != b.message) return a.message < b.message;
+        return a.suggestion < b.suggestion;
+    });
+    return findings;
+}
+
+static std::string handle_run_diagnostics(Graph& graph, Scheduler& scheduler) {
+    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
+    yyjson_mut_val* root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    yyjson_mut_obj_add_bool(doc, root, "ok", true);
+    yyjson_mut_obj_add_int(doc, root, "schema_version", 1);
+
+    std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, scheduler);
+
+    yyjson_mut_val* summary = yyjson_mut_obj(doc);
+    int64_t critical_count = 0;
+    int64_t warning_count = 0;
+    int64_t info_count = 0;
+    for (const auto& f : findings) {
+        if (f.severity == "critical") critical_count++;
+        else if (f.severity == "warning") warning_count++;
+        else info_count++;
+    }
+    yyjson_mut_obj_add_int(doc, summary, "critical", critical_count);
+    yyjson_mut_obj_add_int(doc, summary, "warning", warning_count);
+    yyjson_mut_obj_add_int(doc, summary, "info", info_count);
+
+    yyjson_mut_val* findings_arr = yyjson_mut_arr(doc);
+    for (const auto& f : findings) {
+        yyjson_mut_val* fv = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, fv, "id", f.id.c_str());
+        yyjson_mut_obj_add_strcpy(doc, fv, "severity", f.severity.c_str());
+        yyjson_mut_obj_add_strcpy(doc, fv, "node_id", f.node_id.c_str());
+        yyjson_mut_obj_add_strcpy(doc, fv, "message", f.message.c_str());
+        yyjson_mut_obj_add_strcpy(doc, fv, "suggestion", f.suggestion.c_str());
+        yyjson_mut_arr_add_val(findings_arr, fv);
+    }
+
+    // Hint list: dedupe by finding id, keep highest-priority instance.
+    yyjson_mut_val* hints_arr = yyjson_mut_arr(doc);
+    std::unordered_set<std::string> seen_hint_ids;
+    for (const auto& f : findings) {
+        if (seen_hint_ids.find(f.id) != seen_hint_ids.end()) continue;
+        seen_hint_ids.insert(f.id);
+        yyjson_mut_val* hint = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, hint, "id", f.id.c_str());
+        yyjson_mut_obj_add_strcpy(doc, hint, "severity", f.severity.c_str());
+        yyjson_mut_obj_add_strcpy(doc, hint, "suggestion", f.suggestion.c_str());
+        yyjson_mut_arr_add_val(hints_arr, hint);
+    }
+
+    yyjson_mut_val* result = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_val(doc, result, "summary", summary);
+    yyjson_mut_obj_add_val(doc, result, "findings", findings_arr);
+    yyjson_mut_obj_add_val(doc, result, "hints", hints_arr);
+    yyjson_mut_obj_add_val(doc, root, "result", result);
+
+    std::string s = json_serialize(doc);
+    yyjson_mut_doc_free(doc);
+    return s;
+}
+
+struct CheckValue {
+    enum class Kind { Missing, Number, Bool, String };
+    Kind kind = Kind::Missing;
+    double number = 0.0;
+    bool boolean = false;
+    std::string string;
+};
+
+static CheckValue cv_number(double n) { CheckValue v; v.kind = CheckValue::Kind::Number; v.number = n; return v; }
+static CheckValue cv_bool(bool b) { CheckValue v; v.kind = CheckValue::Kind::Bool; v.boolean = b; return v; }
+static CheckValue cv_string(const std::string& s) { CheckValue v; v.kind = CheckValue::Kind::String; v.string = s; return v; }
+
+static bool parse_check_value(yyjson_val* v, CheckValue& out) {
+    if (!v) return false;
+    if (yyjson_is_num(v)) {
+        out = cv_number(yyjson_get_num(v));
+        return true;
+    }
+    if (yyjson_is_bool(v)) {
+        out = cv_bool(yyjson_get_bool(v));
+        return true;
+    }
+    if (yyjson_is_str(v)) {
+        out = cv_string(yyjson_get_str(v));
+        return true;
+    }
+    return false;
+}
+
+static void add_json_check_value(yyjson_mut_doc* doc, yyjson_mut_val* obj,
+                                 const char* key, const CheckValue& v) {
+    if (v.kind == CheckValue::Kind::Number)
+        yyjson_mut_obj_add_real(doc, obj, key, v.number);
+    else if (v.kind == CheckValue::Kind::Bool)
+        yyjson_mut_obj_add_bool(doc, obj, key, v.boolean);
+    else if (v.kind == CheckValue::Kind::String)
+        yyjson_mut_obj_add_strcpy(doc, obj, key, v.string.c_str());
+}
+
+static bool check_is_true(const CheckValue& v) {
+    if (v.kind == CheckValue::Kind::Bool) return v.boolean;
+    if (v.kind == CheckValue::Kind::Number) return v.number != 0.0;
+    if (v.kind == CheckValue::Kind::String) return !v.string.empty();
+    return false;
+}
+
+static bool eval_compare(const CheckValue& actual, const std::string& op,
+                         const CheckValue& expected, double tolerance,
+                         const CheckValue* between_max = nullptr) {
+    if (op == "exists") return actual.kind != CheckValue::Kind::Missing;
+    if (op == "not_exists") return actual.kind == CheckValue::Kind::Missing;
+    if (actual.kind == CheckValue::Kind::Missing) return false;
+
+    if (op == "between") {
+        if (!between_max) return false;
+        if (actual.kind != CheckValue::Kind::Number ||
+            expected.kind != CheckValue::Kind::Number ||
+            between_max->kind != CheckValue::Kind::Number) return false;
+        double lo = expected.number;
+        double hi = between_max->number;
+        if (lo > hi) std::swap(lo, hi);
+        return actual.number >= (lo - tolerance) && actual.number <= (hi + tolerance);
+    }
+
+    if (actual.kind == CheckValue::Kind::Number && expected.kind == CheckValue::Kind::Number) {
+        double a = actual.number;
+        double b = expected.number;
+        if (op == "==") return std::fabs(a - b) <= tolerance;
+        if (op == "!=") return std::fabs(a - b) > tolerance;
+        if (op == ">") return a > b;
+        if (op == ">=") return a >= b;
+        if (op == "<") return a < b;
+        if (op == "<=") return a <= b;
+        return false;
+    }
+    if (actual.kind == CheckValue::Kind::Bool && expected.kind == CheckValue::Kind::Bool) {
+        if (op == "==") return actual.boolean == expected.boolean;
+        if (op == "!=") return actual.boolean != expected.boolean;
+        return false;
+    }
+    if (actual.kind == CheckValue::Kind::String && expected.kind == CheckValue::Kind::String) {
+        if (op == "==") return actual.string == expected.string;
+        if (op == "!=") return actual.string != expected.string;
+        return false;
+    }
+    return false;
+}
+
+static bool resolve_state_path(Graph& graph, Scheduler& scheduler,
+                               const std::unordered_map<std::string, int>& incoming_wires,
+                               const std::unordered_map<std::string, int>& outgoing_wires,
+                               const std::string& path, CheckValue& out) {
+    if (path == "graph.node_count") {
+        out = cv_number(static_cast<double>(graph.nodes().size()));
+        return true;
+    }
+    const std::string prefix = "nodes.";
+    if (path.rfind(prefix, 0) != 0) return false;
+
+    size_t node_end = path.find('.', prefix.size());
+    if (node_end == std::string::npos) return false;
+    std::string node_id = path.substr(prefix.size(), node_end - prefix.size());
+    std::string rest = path.substr(node_end + 1);
+
+    const NodeState* node = nullptr;
+    for (const auto& ns : scheduler.nodes()) {
+        if (ns.node_id == node_id) { node = &ns; break; }
+    }
+    if (!node) return false;
+
+    if (rest == "domain") {
+        out = cv_string(node->is_gpu ? "gpu" : (node->is_audio ? "audio" : "control"));
+        return true;
+    }
+    if (rest == "incoming_wires") {
+        auto it = incoming_wires.find(node_id);
+        out = cv_number(static_cast<double>(it == incoming_wires.end() ? 0 : it->second));
+        return true;
+    }
+    if (rest == "outgoing_wires") {
+        auto it = outgoing_wires.find(node_id);
+        out = cv_number(static_cast<double>(it == outgoing_wires.end() ? 0 : it->second));
+        return true;
+    }
+    if (rest == "health.errored") {
+        out = cv_bool(node->errored || node->missing_operator);
+        return true;
+    }
+    if (rest == "health.missing_operator") {
+        out = cv_bool(node->missing_operator);
+        return true;
+    }
+    if (rest == "health.message") {
+        out = cv_string(node->error_message);
+        return true;
+    }
+    if (rest == "domain_metrics.audio.rms") {
+        auto it = node->output_port_indices.find("rms");
+        if (!node->is_audio || it == node->output_port_indices.end() || it->second >= node->output_values.size())
+            return false;
+        out = cv_number(node->output_values[it->second]);
+        return true;
+    }
+    if (rest == "domain_metrics.audio.peak") {
+        auto it = node->output_port_indices.find("peak");
+        if (!node->is_audio || it == node->output_port_indices.end() || it->second >= node->output_values.size())
+            return false;
+        out = cv_number(node->output_values[it->second]);
+        return true;
+    }
+    if (rest == "domain_metrics.audio.waveform_length") {
+        auto it = node->output_port_indices.find("waveform");
+        if (!node->is_audio || it == node->output_port_indices.end() || it->second >= node->output_spreads.size())
+            return false;
+        out = cv_number(static_cast<double>(node->output_spreads[it->second].size()));
+        return true;
+    }
+
+    const std::string param_prefix = "params.";
+    if (rest.rfind(param_prefix, 0) == 0) {
+        std::string pname = rest.substr(param_prefix.size());
+        auto it = node->param_indices.find(pname);
+        if (it != node->param_indices.end() && it->second < node->param_values.size()) {
+            out = cv_number(node->param_values[it->second]);
+            return true;
+        }
+        auto fit = node->file_param_indices.find(pname);
+        if (fit != node->file_param_indices.end() && fit->second < node->file_param_storage.size()) {
+            out = cv_string(node->file_param_storage[fit->second]);
+            return true;
+        }
+        return false;
+    }
+
+    const std::string output_prefix = "outputs.";
+    if (rest.rfind(output_prefix, 0) == 0) {
+        size_t sep = rest.find('.', output_prefix.size());
+        if (sep == std::string::npos) return false;
+        std::string pname = rest.substr(output_prefix.size(), sep - output_prefix.size());
+        std::string tail = rest.substr(sep + 1);
+        auto it = node->output_port_indices.find(pname);
+        if (it == node->output_port_indices.end()) return false;
+        uint32_t pi = it->second;
+        if (tail == "scalar" && pi < node->output_values.size()) {
+            out = cv_number(node->output_values[pi]);
+            return true;
+        }
+        if (tail == "spread.length" && pi < node->output_spreads.size()) {
+            out = cv_number(static_cast<double>(node->output_spreads[pi].size()));
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+struct ParsedCheck {
+    std::string id;
+    std::string type;
+    std::string op;
+    std::string severity = "warning";
+    std::string message;
+    std::string path;
+    double tolerance = 0.0;
+    int64_t for_frames = 1;
+    int64_t after_frame = 0;
+
+    bool has_value = false;
+    CheckValue value;
+    bool has_between_max = false;
+    CheckValue between_max;
+
+    bool has_when = false;
+    std::string when_path;
+    std::string when_op;
+    bool has_when_value = false;
+    CheckValue when_value;
+
+    std::string finding_id;
+    std::string check_diag_severity;
+};
+
+static bool parse_check_def(yyjson_val* obj, ParsedCheck& out, std::string& err) {
+    if (!obj || !yyjson_is_obj(obj)) { err = "check must be an object"; return false; }
+    yyjson_val* idv = yyjson_obj_get(obj, "id");
+    yyjson_val* tv = yyjson_obj_get(obj, "type");
+    yyjson_val* opv = yyjson_obj_get(obj, "op");
+    if (!idv || !yyjson_is_str(idv)) { err = "check missing 'id'"; return false; }
+    if (!tv || !yyjson_is_str(tv)) { err = "check missing 'type'"; return false; }
+    if (!opv || !yyjson_is_str(opv)) { err = "check missing 'op'"; return false; }
+    out.id = yyjson_get_str(idv);
+    out.type = yyjson_get_str(tv);
+    out.op = yyjson_get_str(opv);
+    yyjson_val* sev = yyjson_obj_get(obj, "severity");
+    if (sev && yyjson_is_str(sev)) out.severity = yyjson_get_str(sev);
+    yyjson_val* msg = yyjson_obj_get(obj, "message");
+    if (msg && yyjson_is_str(msg)) out.message = yyjson_get_str(msg);
+    yyjson_val* tol = yyjson_obj_get(obj, "tolerance");
+    if (tol && yyjson_is_num(tol)) out.tolerance = yyjson_get_num(tol);
+    yyjson_val* ff = yyjson_obj_get(obj, "for_frames");
+    if (ff && yyjson_is_int(ff)) out.for_frames = yyjson_get_sint(ff);
+    yyjson_val* af = yyjson_obj_get(obj, "after_frame");
+    if (af && yyjson_is_int(af)) out.after_frame = yyjson_get_sint(af);
+
+    if (out.type == "state_check") {
+        yyjson_val* path = yyjson_obj_get(obj, "path");
+        if (!path || !yyjson_is_str(path)) { err = "state_check missing 'path'"; return false; }
+        out.path = yyjson_get_str(path);
+        if (out.op != "exists" && out.op != "not_exists") {
+            if (out.op == "between") {
+                yyjson_val* vv = yyjson_obj_get(obj, "value");
+                if (vv && yyjson_is_arr(vv) && yyjson_arr_size(vv) == 2) {
+                    yyjson_val* v0 = yyjson_arr_get(vv, 0);
+                    yyjson_val* v1 = yyjson_arr_get(vv, 1);
+                    out.has_value = parse_check_value(v0, out.value);
+                    out.has_between_max = parse_check_value(v1, out.between_max);
+                } else {
+                    yyjson_val* vmin = yyjson_obj_get(obj, "min");
+                    yyjson_val* vmax = yyjson_obj_get(obj, "max");
+                    out.has_value = parse_check_value(vmin, out.value);
+                    out.has_between_max = parse_check_value(vmax, out.between_max);
+                }
+                if (!out.has_value || !out.has_between_max) {
+                    err = "state_check 'between' requires numeric min/max (or value[2])";
+                    return false;
+                }
+            } else {
+                yyjson_val* vv = yyjson_obj_get(obj, "value");
+                out.has_value = parse_check_value(vv, out.value);
+                if (!out.has_value) { err = "state_check missing scalar 'value'"; return false; }
+            }
+        }
+    } else if (out.type == "diagnostic_check") {
+        yyjson_val* sev2 = yyjson_obj_get(obj, "check_severity");
+        if (!sev2) sev2 = yyjson_obj_get(obj, "severity");
+        if (sev2 && yyjson_is_str(sev2)) out.check_diag_severity = yyjson_get_str(sev2);
+        yyjson_val* fid = yyjson_obj_get(obj, "finding_id");
+        if (fid && yyjson_is_str(fid)) out.finding_id = yyjson_get_str(fid);
+        yyjson_val* fids = yyjson_obj_get(obj, "check_diagnostics_ids");
+        if (out.finding_id.empty() && fids && yyjson_is_arr(fids) && yyjson_arr_size(fids) > 0) {
+            yyjson_val* first = yyjson_arr_get_first(fids);
+            if (first && yyjson_is_str(first)) out.finding_id = yyjson_get_str(first);
+        }
+        if (out.op == "count_by_severity_eq" ||
+            out.op == "count_by_severity_lte" ||
+            out.op == "count_by_severity_gte") {
+            yyjson_val* vv = yyjson_obj_get(obj, "value");
+            out.has_value = parse_check_value(vv, out.value);
+            if (!out.has_value || out.value.kind != CheckValue::Kind::Number) {
+                err = "diagnostic_check count op requires numeric 'value'";
+                return false;
+            }
+            if (out.check_diag_severity.empty()) {
+                err = "diagnostic_check count op requires 'check_severity'";
+                return false;
+            }
+        } else if (out.op == "finding_present" || out.op == "finding_absent") {
+            if (out.finding_id.empty()) {
+                err = "diagnostic_check finding op requires 'finding_id'";
+                return false;
+            }
+        } else {
+            err = "unsupported diagnostic_check op";
+            return false;
+        }
+    } else {
+        err = "check 'type' must be 'state_check' or 'diagnostic_check'";
+        return false;
+    }
+
+    yyjson_val* when = yyjson_obj_get(obj, "when");
+    if (when) {
+        if (!yyjson_is_obj(when)) { err = "'when' must be object"; return false; }
+        yyjson_val* wp = yyjson_obj_get(when, "path");
+        yyjson_val* wo = yyjson_obj_get(when, "op");
+        if (!wp || !wo || !yyjson_is_str(wp) || !yyjson_is_str(wo)) {
+            err = "'when' requires 'path' and 'op'";
+            return false;
+        }
+        out.has_when = true;
+        out.when_path = yyjson_get_str(wp);
+        out.when_op = yyjson_get_str(wo);
+        yyjson_val* wv = yyjson_obj_get(when, "value");
+        out.has_when_value = parse_check_value(wv, out.when_value);
+    }
+
+    if (out.for_frames < 1) {
+        err = "'for_frames' must be >= 1";
+        return false;
+    }
+    if (out.after_frame < 0) {
+        err = "'after_frame' must be >= 0";
+        return false;
+    }
+    return true;
+}
+
+static std::string handle_validate_checks(yyjson_val* root) {
+    if (!root) return json_err("invalid JSON body");
+    yyjson_val* checks = yyjson_obj_get(root, "checks");
+    if (!checks || !yyjson_is_arr(checks)) return json_err("missing 'checks' array");
+
+    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
+    yyjson_mut_val* r = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_bool(doc, r, "ok", true);
+    yyjson_mut_obj_add_int(doc, r, "schema_version", 1);
+    yyjson_mut_val* result = yyjson_mut_obj(doc);
+    yyjson_mut_val* errs = yyjson_mut_arr(doc);
+    int64_t error_count = 0;
+
+    std::unordered_set<std::string> seen_ids;
+    size_t idx, max;
+    yyjson_val* cv;
+    yyjson_arr_foreach(checks, idx, max, cv) {
+        ParsedCheck pc;
+        std::string err;
+        if (!parse_check_def(cv, pc, err)) {
+            yyjson_mut_val* e = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_int(doc, e, "index", static_cast<int64_t>(idx));
+            yyjson_mut_obj_add_strcpy(doc, e, "message", err.c_str());
+            yyjson_mut_arr_add_val(errs, e);
+            error_count++;
+            continue;
+        }
+        if (!seen_ids.insert(pc.id).second) {
+            yyjson_mut_val* e = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_int(doc, e, "index", static_cast<int64_t>(idx));
+            yyjson_mut_obj_add_strcpy(doc, e, "id", pc.id.c_str());
+            yyjson_mut_obj_add_strcpy(doc, e, "message", "duplicate check id");
+            yyjson_mut_arr_add_val(errs, e);
+            error_count++;
+        }
+    }
+
+    yyjson_mut_obj_add_bool(doc, result, "valid", error_count == 0);
+    yyjson_mut_obj_add_int(doc, result, "error_count", error_count);
+    yyjson_mut_obj_add_val(doc, result, "errors", errs);
+    yyjson_mut_obj_add_val(doc, r, "result", result);
+    yyjson_mut_doc_set_root(doc, r);
+    std::string s = json_serialize(doc);
+    yyjson_mut_doc_free(doc);
+    return s;
+}
+
+static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, yyjson_val* root) {
+    if (!root) return json_err("invalid JSON body");
+    yyjson_val* checks = yyjson_obj_get(root, "checks");
+    if (!checks || !yyjson_is_arr(checks)) return json_err("missing 'checks' array");
+
+    std::vector<ParsedCheck> parsed;
+    parsed.reserve(yyjson_arr_size(checks));
+    std::unordered_set<std::string> seen_ids;
+    size_t idx, max;
+    yyjson_val* cv;
+    yyjson_arr_foreach(checks, idx, max, cv) {
+        ParsedCheck pc;
+        std::string err;
+        if (!parse_check_def(cv, pc, err))
+            return json_err("invalid check at index " + std::to_string(idx) + ": " + err);
+        if (!seen_ids.insert(pc.id).second)
+            return json_err("duplicate check id: " + pc.id);
+        parsed.push_back(std::move(pc));
+    }
+    std::sort(parsed.begin(), parsed.end(), [](const ParsedCheck& a, const ParsedCheck& b) {
+        return a.id < b.id;
+    });
+
+    std::unordered_map<std::string, int> incoming_wires;
+    std::unordered_map<std::string, int> outgoing_wires;
+    for (const auto& conn : graph.connections()) {
+        incoming_wires[conn.to_node]++;
+        outgoing_wires[conn.from_node]++;
+    }
+    std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, scheduler);
+
+    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
+    yyjson_mut_val* root_out = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root_out);
+    yyjson_mut_obj_add_bool(doc, root_out, "ok", true);
+    yyjson_mut_obj_add_int(doc, root_out, "schema_version", 1);
+
+    yyjson_mut_val* result = yyjson_mut_obj(doc);
+    yyjson_mut_val* results = yyjson_mut_arr(doc);
+
+    int64_t passed = 0, failed = 0, skipped = 0;
+    int64_t critical_failed = 0, warning_failed = 0, info_failed = 0;
+    bool all_passed = true;
+    bool all_critical_passed = true;
+
+    for (const auto& c : parsed) {
+        bool r_passed = false;
+        bool r_skipped = false;
+        CheckValue actual;
+        CheckValue expected = c.value;
+        std::string message = c.message;
+
+        if (c.for_frames > 1) {
+            r_skipped = true;
+            message = message.empty() ? "for_frames > 1 not yet supported in single-snapshot run" : message;
+        }
+
+        if (!r_skipped && c.has_when) {
+            CheckValue guard_actual;
+            if (!resolve_state_path(graph, scheduler, incoming_wires, outgoing_wires, c.when_path, guard_actual)) {
+                r_skipped = true;
+                message = message.empty() ? "guard path not found" : message;
+            } else {
+                CheckValue guard_expect = c.has_when_value ? c.when_value : cv_bool(true);
+                if (!eval_compare(guard_actual, c.when_op, guard_expect, 0.0)) {
+                    r_skipped = true;
+                    message = message.empty() ? "guard condition not met" : message;
+                }
+            }
+        }
+
+        if (!r_skipped && c.type == "state_check") {
+            bool has_actual = resolve_state_path(graph, scheduler, incoming_wires, outgoing_wires, c.path, actual);
+            if (!has_actual) actual.kind = CheckValue::Kind::Missing;
+            if (c.op == "between")
+                r_passed = eval_compare(actual, c.op, c.value, c.tolerance, &c.between_max);
+            else
+                r_passed = eval_compare(actual, c.op, c.value, c.tolerance, nullptr);
+        } else if (!r_skipped && c.type == "diagnostic_check") {
+            if (c.op == "count_by_severity_eq" ||
+                c.op == "count_by_severity_lte" ||
+                c.op == "count_by_severity_gte") {
+                int64_t count = 0;
+                for (const auto& f : findings) if (f.severity == c.check_diag_severity) count++;
+                actual = cv_number(static_cast<double>(count));
+                int64_t target = static_cast<int64_t>(c.value.number);
+                if (c.op == "count_by_severity_eq") r_passed = (count == target);
+                else if (c.op == "count_by_severity_lte") r_passed = (count <= target);
+                else r_passed = (count >= target);
+            } else {
+                bool found = false;
+                for (const auto& f : findings) {
+                    if (f.id == c.finding_id) { found = true; break; }
+                }
+                actual = cv_bool(found);
+                r_passed = (c.op == "finding_present") ? found : !found;
+            }
+        }
+
+        yyjson_mut_val* row = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, row, "id", c.id.c_str());
+        yyjson_mut_obj_add_strcpy(doc, row, "type", c.type.c_str());
+        yyjson_mut_obj_add_strcpy(doc, row, "severity", c.severity.c_str());
+        yyjson_mut_obj_add_bool(doc, row, "passed", r_skipped ? false : r_passed);
+        yyjson_mut_obj_add_bool(doc, row, "skipped", r_skipped);
+        yyjson_mut_obj_add_strcpy(doc, row, "op", c.op.c_str());
+        if (!c.path.empty()) yyjson_mut_obj_add_strcpy(doc, row, "path", c.path.c_str());
+        if (!message.empty()) yyjson_mut_obj_add_strcpy(doc, row, "message", message.c_str());
+        if (c.has_value) add_json_check_value(doc, row, "expected", expected);
+        if (c.op == "between" && c.has_between_max) add_json_check_value(doc, row, "expected_max", c.between_max);
+        add_json_check_value(doc, row, "actual", actual);
+        yyjson_mut_arr_add_val(results, row);
+
+        if (r_skipped) {
+            skipped++;
+        } else if (r_passed) {
+            passed++;
+        } else {
+            failed++;
+            all_passed = false;
+            if (c.severity == "critical") { critical_failed++; all_critical_passed = false; }
+            else if (c.severity == "warning") warning_failed++;
+            else info_failed++;
+        }
+    }
+
+    yyjson_mut_val* summary = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_int(doc, summary, "passed", passed);
+    yyjson_mut_obj_add_int(doc, summary, "failed", failed);
+    yyjson_mut_obj_add_int(doc, summary, "skipped", skipped);
+    yyjson_mut_obj_add_int(doc, summary, "critical_failed", critical_failed);
+    yyjson_mut_obj_add_int(doc, summary, "warning_failed", warning_failed);
+    yyjson_mut_obj_add_int(doc, summary, "info_failed", info_failed);
+    yyjson_mut_obj_add_bool(doc, result, "all_passed", all_passed);
+    yyjson_mut_obj_add_bool(doc, result, "all_critical_passed", all_critical_passed);
+    yyjson_mut_obj_add_val(doc, result, "summary", summary);
+    yyjson_mut_obj_add_val(doc, result, "results", results);
+    yyjson_mut_obj_add_val(doc, root_out, "result", result);
+
+    std::string s = json_serialize(doc);
+    yyjson_mut_doc_free(doc);
+    return s;
+}
+
 static std::string handle_list_types(OperatorRegistry& registry) {
     yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
     yyjson_mut_val* result = yyjson_mut_obj(doc);
@@ -375,6 +1319,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             PackageCompiler* package_compiler) {
     // Read-only queries (no body needed)
     if (method == "inspect_graph") return handle_inspect_graph(graph, scheduler);
+    if (method == "introspect_nodes") return handle_introspect_nodes(graph, scheduler);
+    if (method == "run_diagnostics") return handle_run_diagnostics(graph, scheduler);
     if (method == "list_types")    return handle_list_types(registry);
 
     // Parse body JSON (may be empty for some commands)
@@ -383,7 +1329,11 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
     std::string result;
 
-    if (method == "add_node") {
+    if (method == "validate_checks") {
+        result = handle_validate_checks(root);
+    } else if (method == "run_checks") {
+        result = handle_run_checks(graph, scheduler, root);
+    } else if (method == "add_node") {
         if (!root) { result = json_err("invalid JSON body"); }
         else {
             yyjson_val* type_v = yyjson_obj_get(root, "type");

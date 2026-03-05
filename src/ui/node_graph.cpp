@@ -572,19 +572,23 @@ int NodeGraphUI::hit_test_wire(float sx, float sy) const {
 // -----------------------------------------------------------------------
 void NodeGraphUI::confirm_param_edit() {
     if (!editing_param_) return;
-    try {
-        float val = std::stof(edit_buffer_);
-        const auto* ns = snap_.find_node(edit_node_id_);
-        if (ns) {
-            const ParamInfo* pd = ns->find_param(edit_param_name_);
-            if (pd) {
+    const auto* ns = snap_.find_node(edit_node_id_);
+    if (ns) {
+        const ParamInfo* pd = ns->find_param(edit_param_name_);
+        if (pd) {
+            if (pd->type == VIVID_PARAM_TEXT) {
+                commands_.set_string_param(edit_node_id_, edit_param_name_, edit_buffer_);
+            } else {
+                try {
+                    float val = std::stof(edit_buffer_);
                 val = std::max(pd->min_value, std::min(pd->max_value, val));
                 if (pd->type == VIVID_PARAM_INT) val = std::round(val);
                 commands_.set_param(edit_node_id_, edit_param_name_, val);
+                } catch (...) {
+                    // Invalid input — silently discard
+                }
             }
         }
-    } catch (...) {
-        // Invalid input — silently discard
     }
     editing_param_ = false;
     edit_buffer_.clear();
@@ -1336,7 +1340,7 @@ void NodeGraphUI::rebuild_param_picker_items() {
         std::sort(sorted_params.begin(), sorted_params.end());
         for (const auto& [idx, name] : sorted_params) {
             const ParamInfo* pd = ns->find_param(name);
-            if (pd && pd->type == VIVID_PARAM_FILE) continue;
+            if (pd && (pd->type == VIVID_PARAM_FILE || pd->type == VIVID_PARAM_TEXT)) continue;
             param_picker_items_.push_back(name);
             param_picker_item_is_param_.push_back(true);
         }
@@ -1384,7 +1388,7 @@ void NodeGraphUI::rebuild_param_picker_items() {
         for (const auto& [idx, name] : sorted_params) {
             // Skip FILE params (can't wire to them)
             const ParamInfo* pd = ns->find_param(name);
-            if (pd && pd->type == VIVID_PARAM_FILE) continue;
+            if (pd && (pd->type == VIVID_PARAM_FILE || pd->type == VIVID_PARAM_TEXT)) continue;
 
             // Skip if already connected
             bool already_connected = false;

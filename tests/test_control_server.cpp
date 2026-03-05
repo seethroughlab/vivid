@@ -66,6 +66,12 @@ static Response post(ix::HttpClient& client, const std::string& base_url,
     return r;
 }
 
+static std::string json_str(yyjson_val* v) {
+    if (!v) return "";
+    const char* s = yyjson_get_str(v);
+    return s ? s : "";
+}
+
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
@@ -185,6 +191,292 @@ int main(int argc, char* argv[]) {
                 yyjson_val* first_node = nodes ? yyjson_arr_get_first(nodes) : nullptr;
                 yyjson_val* params = first_node ? yyjson_obj_get(first_node, "params") : nullptr;
                 check(params && yyjson_arr_size(params) > 0, "params have values");
+            }
+        }
+
+        // Phase 1b: introspect_nodes — per-node perception payload
+        std::fprintf(stderr, "\n--- introspect_nodes ---\n");
+        {
+            auto r = post(client, base_url, "introspect_nodes");
+            check(r.ok, "introspect_nodes ok");
+            if (r.root) {
+                yyjson_val* sv = yyjson_obj_get(r.root, "schema_version");
+                check(sv && yyjson_is_int(sv) && yyjson_get_int(sv) == 1,
+                      "introspect_nodes schema_version=1");
+
+                yyjson_val* result = yyjson_obj_get(r.root, "result");
+                yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
+                check(nodes && yyjson_is_arr(nodes), "introspect_nodes returns nodes array");
+                check(nodes && yyjson_arr_size(nodes) == 2, "introspect_nodes returns 2 nodes");
+
+                yyjson_val* first_node = nodes ? yyjson_arr_get_first(nodes) : nullptr;
+                yyjson_val* node_id = first_node ? yyjson_obj_get(first_node, "node_id") : nullptr;
+                yyjson_val* node_type = first_node ? yyjson_obj_get(first_node, "type") : nullptr;
+                yyjson_val* domain = first_node ? yyjson_obj_get(first_node, "domain") : nullptr;
+                yyjson_val* health = first_node ? yyjson_obj_get(first_node, "health") : nullptr;
+                yyjson_val* params = first_node ? yyjson_obj_get(first_node, "params") : nullptr;
+                yyjson_val* param_meta = first_node ? yyjson_obj_get(first_node, "param_meta") : nullptr;
+                yyjson_val* inputs = first_node ? yyjson_obj_get(first_node, "inputs") : nullptr;
+                yyjson_val* outputs = first_node ? yyjson_obj_get(first_node, "outputs") : nullptr;
+                yyjson_val* domain_metrics = first_node ? yyjson_obj_get(first_node, "domain_metrics") : nullptr;
+                yyjson_val* incoming_wires = first_node ? yyjson_obj_get(first_node, "incoming_wires") : nullptr;
+                yyjson_val* outgoing_wires = first_node ? yyjson_obj_get(first_node, "outgoing_wires") : nullptr;
+                check(node_id && yyjson_is_str(node_id), "introspection node has node_id");
+                check(node_type && yyjson_is_str(node_type), "introspection node has type");
+                check(domain && yyjson_is_str(domain), "introspection node has domain");
+                check(health && yyjson_is_obj(health), "introspection node has health object");
+                check(params && yyjson_is_obj(params), "introspection node has params object");
+                check(param_meta && yyjson_is_arr(param_meta), "introspection node has param_meta array");
+                check(inputs && yyjson_is_arr(inputs), "introspection node has inputs array");
+                check(outputs && yyjson_is_arr(outputs), "introspection node has outputs array");
+                check(domain_metrics && yyjson_is_obj(domain_metrics),
+                      "introspection node has domain_metrics object");
+                check(incoming_wires && yyjson_is_int(incoming_wires),
+                      "introspection node has incoming_wires");
+                check(outgoing_wires && yyjson_is_int(outgoing_wires),
+                      "introspection node has outgoing_wires");
+            }
+        }
+
+        // Phase 1c: run_diagnostics — graph-level perception findings
+        std::fprintf(stderr, "\n--- run_diagnostics ---\n");
+        {
+            auto r = post(client, base_url, "run_diagnostics");
+            check(r.ok, "run_diagnostics ok");
+            if (r.root) {
+                yyjson_val* sv = yyjson_obj_get(r.root, "schema_version");
+                check(sv && yyjson_is_int(sv) && yyjson_get_int(sv) == 1,
+                      "run_diagnostics schema_version=1");
+
+                yyjson_val* result = yyjson_obj_get(r.root, "result");
+                yyjson_val* summary = result ? yyjson_obj_get(result, "summary") : nullptr;
+                yyjson_val* findings = result ? yyjson_obj_get(result, "findings") : nullptr;
+                yyjson_val* hints = result ? yyjson_obj_get(result, "hints") : nullptr;
+
+                check(summary && yyjson_is_obj(summary), "run_diagnostics has summary");
+                check(findings && yyjson_is_arr(findings), "run_diagnostics has findings array");
+                check(hints && yyjson_is_arr(hints), "run_diagnostics has hints array");
+
+                if (summary) {
+                    yyjson_val* critical = yyjson_obj_get(summary, "critical");
+                    yyjson_val* warning = yyjson_obj_get(summary, "warning");
+                    yyjson_val* info = yyjson_obj_get(summary, "info");
+                    check(critical && yyjson_is_int(critical), "summary has critical count");
+                    check(warning && yyjson_is_int(warning), "summary has warning count");
+                    check(info && yyjson_is_int(info), "summary has info count");
+                    if (critical && warning && info &&
+                        yyjson_is_int(critical) && yyjson_is_int(warning) && yyjson_is_int(info)) {
+                        check(yyjson_get_int(critical) == 0 &&
+                              yyjson_get_int(warning) == 0 &&
+                              yyjson_get_int(info) == 0,
+                              "healthy fixture graph yields minimal diagnostics");
+                    }
+                }
+            }
+        }
+        // Deterministic ordering regression: repeated diagnostics return stable finding id order.
+        {
+            auto r1 = post(client, base_url, "run_diagnostics");
+            auto r2 = post(client, base_url, "run_diagnostics");
+            check(r1.ok && r2.ok, "run_diagnostics repeat calls ok");
+            std::string ids1, ids2;
+            if (r1.root) {
+                yyjson_val* result = yyjson_obj_get(r1.root, "result");
+                yyjson_val* findings = result ? yyjson_obj_get(result, "findings") : nullptr;
+                if (findings && yyjson_is_arr(findings)) {
+                    size_t i, max; yyjson_val* f = nullptr;
+                    yyjson_arr_foreach(findings, i, max, f) {
+                        if (!ids1.empty()) ids1 += ",";
+                        ids1 += json_str(yyjson_obj_get(f, "id"));
+                        ids1 += "@";
+                        ids1 += json_str(yyjson_obj_get(f, "node_id"));
+                    }
+                }
+            }
+            if (r2.root) {
+                yyjson_val* result = yyjson_obj_get(r2.root, "result");
+                yyjson_val* findings = result ? yyjson_obj_get(result, "findings") : nullptr;
+                if (findings && yyjson_is_arr(findings)) {
+                    size_t i, max; yyjson_val* f = nullptr;
+                    yyjson_arr_foreach(findings, i, max, f) {
+                        if (!ids2.empty()) ids2 += ",";
+                        ids2 += json_str(yyjson_obj_get(f, "id"));
+                        ids2 += "@";
+                        ids2 += json_str(yyjson_obj_get(f, "node_id"));
+                    }
+                }
+            }
+            check(ids1 == ids2, "run_diagnostics findings order deterministic");
+        }
+        // Broken fixture regression: intentionally disconnected node should emit expected warning.
+        {
+            auto add_missing = post(client, base_url, "add_node",
+                R"({"type":"TestOp","id":"missing_fixture"})");
+            check(add_missing.ok, "add_node broken fixture ok");
+            phase.store(5);
+            while (phase.load() < 6) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+            auto r = post(client, base_url, "run_diagnostics");
+            check(r.ok, "run_diagnostics on broken fixture ok");
+            bool found_missing = false;
+            if (r.root) {
+                yyjson_val* result = yyjson_obj_get(r.root, "result");
+                yyjson_val* summary = result ? yyjson_obj_get(result, "summary") : nullptr;
+                yyjson_val* findings = result ? yyjson_obj_get(result, "findings") : nullptr;
+                if (summary) {
+                    yyjson_val* warning = yyjson_obj_get(summary, "warning");
+                    check(warning && yyjson_is_int(warning) && yyjson_get_int(warning) >= 1,
+                          "broken fixture emits warning diagnostics");
+                }
+                if (findings && yyjson_is_arr(findings)) {
+                    size_t i, max; yyjson_val* f = nullptr;
+                    yyjson_arr_foreach(findings, i, max, f) {
+                        yyjson_val* idv = yyjson_obj_get(f, "id");
+                        yyjson_val* nv = yyjson_obj_get(f, "node_id");
+                        if (idv && yyjson_is_str(idv) &&
+                            nv && yyjson_is_str(nv) &&
+                            std::string(yyjson_get_str(idv)) == "isolated_node" &&
+                            std::string(yyjson_get_str(nv)) == "missing_fixture") {
+                            found_missing = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            check(found_missing, "broken fixture has isolated_node finding for missing_fixture");
+
+            auto remove_missing = post(client, base_url, "remove_node",
+                R"({"node_id":"missing_fixture"})");
+            check(remove_missing.ok, "remove_node missing fixture ok");
+            phase.store(7);
+            while (phase.load() < 8) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+            auto ig = post(client, base_url, "inspect_graph");
+            check(ig.ok, "inspect_graph after broken fixture cleanup ok");
+            if (ig.root) {
+                yyjson_val* result = yyjson_obj_get(ig.root, "result");
+                yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
+                check(nodes && yyjson_is_arr(nodes) && yyjson_arr_size(nodes) == 2,
+                      "broken fixture cleanup restored 2-node graph");
+            }
+        }
+
+        // Phase 1d: validate_checks / run_checks
+        std::fprintf(stderr, "\n--- checks ---\n");
+        {
+            auto r = post(client, base_url, "validate_checks",
+                R"({"checks":[{"id":"node_count_is_two","type":"state_check","path":"graph.node_count","op":"==","value":2},{"id":"no_missing_ops","type":"diagnostic_check","op":"finding_absent","finding_id":"missing_operator_type"}]})");
+            check(r.ok, "validate_checks ok");
+            if (r.root) {
+                yyjson_val* sv = yyjson_obj_get(r.root, "schema_version");
+                check(sv && yyjson_is_int(sv) && yyjson_get_int(sv) == 1,
+                      "validate_checks schema_version=1");
+                yyjson_val* result = yyjson_obj_get(r.root, "result");
+                yyjson_val* valid = result ? yyjson_obj_get(result, "valid") : nullptr;
+                yyjson_val* ec = result ? yyjson_obj_get(result, "error_count") : nullptr;
+                check(valid && yyjson_is_bool(valid) && yyjson_get_bool(valid),
+                      "validate_checks valid=true");
+                check(ec && yyjson_is_int(ec) && yyjson_get_int(ec) == 0,
+                      "validate_checks error_count=0");
+            }
+        }
+        {
+            auto r = post(client, base_url, "validate_checks",
+                R"({"checks":[{"id":"dup","type":"state_check","path":"graph.node_count","op":"==","value":2},{"id":"dup","type":"state_check","path":"graph.node_count","op":"==","value":2}]})");
+            check(r.ok, "validate_checks duplicate-id request ok");
+            if (r.root) {
+                yyjson_val* result = yyjson_obj_get(r.root, "result");
+                yyjson_val* valid = result ? yyjson_obj_get(result, "valid") : nullptr;
+                yyjson_val* ec = result ? yyjson_obj_get(result, "error_count") : nullptr;
+                check(valid && yyjson_is_bool(valid) && !yyjson_get_bool(valid),
+                      "validate_checks duplicate-id valid=false");
+                check(ec && yyjson_is_int(ec) && yyjson_get_int(ec) > 0,
+                      "validate_checks duplicate-id has error_count>0");
+            }
+            auto rbad = post(client, base_url, "validate_checks", R"({"foo":[]})");
+            check(!rbad.ok, "validate_checks missing checks array -> ok=false");
+        }
+        {
+            auto r = post(client, base_url, "run_checks",
+                R"({"checks":[{"id":"node_count_is_two","type":"state_check","path":"graph.node_count","op":"==","value":2,"severity":"critical"},{"id":"no_missing_ops","type":"diagnostic_check","op":"finding_absent","finding_id":"missing_operator_type","severity":"critical"}]})");
+            check(r.ok, "run_checks ok");
+            if (r.root) {
+                yyjson_val* sv = yyjson_obj_get(r.root, "schema_version");
+                check(sv && yyjson_is_int(sv) && yyjson_get_int(sv) == 1,
+                      "run_checks schema_version=1");
+                yyjson_val* result = yyjson_obj_get(r.root, "result");
+                yyjson_val* all_passed = result ? yyjson_obj_get(result, "all_passed") : nullptr;
+                yyjson_val* all_critical = result ? yyjson_obj_get(result, "all_critical_passed") : nullptr;
+                yyjson_val* summary = result ? yyjson_obj_get(result, "summary") : nullptr;
+                yyjson_val* results = result ? yyjson_obj_get(result, "results") : nullptr;
+                check(all_passed && yyjson_is_bool(all_passed) && yyjson_get_bool(all_passed),
+                      "run_checks all_passed=true");
+                check(all_critical && yyjson_is_bool(all_critical) && yyjson_get_bool(all_critical),
+                      "run_checks all_critical_passed=true");
+                check(summary && yyjson_is_obj(summary), "run_checks has summary");
+                check(results && yyjson_is_arr(results) && yyjson_arr_size(results) == 2,
+                      "run_checks returns 2 results");
+            }
+        }
+        // Deterministic check result ordering regression: results sorted by id regardless of input order.
+        {
+            auto r = post(client, base_url, "run_checks",
+                R"({"checks":[{"id":"z_second","type":"state_check","path":"graph.node_count","op":"==","value":2},{"id":"a_first","type":"state_check","path":"graph.node_count","op":"==","value":2}]})");
+            check(r.ok, "run_checks deterministic-order request ok");
+            if (r.root) {
+                yyjson_val* result = yyjson_obj_get(r.root, "result");
+                yyjson_val* rows = result ? yyjson_obj_get(result, "results") : nullptr;
+                check(rows && yyjson_is_arr(rows) && yyjson_arr_size(rows) == 2,
+                      "run_checks deterministic-order returns 2 results");
+                if (rows && yyjson_arr_size(rows) == 2) {
+                    yyjson_val* r0 = yyjson_arr_get(rows, 0);
+                    yyjson_val* r1 = yyjson_arr_get(rows, 1);
+                    check(json_str(yyjson_obj_get(r0, "id")) == "a_first",
+                          "run_checks results sorted id[0]=a_first");
+                    check(json_str(yyjson_obj_get(r1, "id")) == "z_second",
+                          "run_checks results sorted id[1]=z_second");
+                }
+            }
+        }
+
+        // Perception API regression: read-only endpoints must not mutate graph state.
+        {
+            auto gp_before = post(client, base_url, "get_param",
+                R"({"node_id":"a","param":"scale"})");
+            check(gp_before.ok, "pre-mutation baseline get_param ok");
+            double before = 0.0;
+            if (gp_before.root) {
+                yyjson_val* v = yyjson_obj_get(gp_before.root, "value");
+                if (v && yyjson_is_num(v)) before = yyjson_get_num(v);
+            }
+
+            auto i = post(client, base_url, "introspect_nodes");
+            auto d = post(client, base_url, "run_diagnostics");
+            auto vc = post(client, base_url, "validate_checks",
+                R"({"checks":[{"id":"baseline","type":"state_check","path":"graph.node_count","op":"==","value":2}]})");
+            auto rc = post(client, base_url, "run_checks",
+                R"({"checks":[{"id":"baseline","type":"state_check","path":"graph.node_count","op":"==","value":2}]})");
+            check(i.ok && d.ok && vc.ok && rc.ok, "perception endpoints all return ok");
+
+            auto gp_after = post(client, base_url, "get_param",
+                R"({"node_id":"a","param":"scale"})");
+            check(gp_after.ok, "post-perception get_param ok");
+            if (gp_after.root) {
+                yyjson_val* v = yyjson_obj_get(gp_after.root, "value");
+                check(v && yyjson_is_num(v) && std::fabs(yyjson_get_num(v) - before) < 1e-6,
+                      "perception endpoints do not mutate parameter state");
+            }
+
+            auto ig = post(client, base_url, "inspect_graph");
+            check(ig.ok, "inspect_graph after perception endpoints ok");
+            if (ig.root) {
+                yyjson_val* result = yyjson_obj_get(ig.root, "result");
+                yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
+                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
+                check(nodes && yyjson_is_arr(nodes) && yyjson_arr_size(nodes) == 2,
+                      "node count unchanged after perception endpoints");
+                check(conns && yyjson_is_arr(conns) && yyjson_arr_size(conns) == 1,
+                      "connection count unchanged after perception endpoints");
             }
         }
 
@@ -534,6 +826,14 @@ int main(int argc, char* argv[]) {
             api.apply_pending(has_gpu_ops, has_audio);
             scheduler.tick(0.0, 0.016, 2);
             phase.store(4);
+        } else if (p == 5) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            scheduler.tick(0.0, 0.016, 3);
+            phase.store(6);
+        } else if (p == 7) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            scheduler.tick(0.0, 0.016, 4);
+            phase.store(8);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));

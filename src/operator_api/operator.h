@@ -70,13 +70,28 @@ struct Param<int> : ParamBase {
         min_value = 0;
         max_value = static_cast<float>(labels.size() - 1);
         value = default_value;
-        static_labels_.assign(labels.begin(), labels.end());
-        choice_labels = static_labels_.data();
-        choice_count = static_cast<uint32_t>(static_labels_.size());
+        label_ptrs_.assign(labels.begin(), labels.end());
+        choice_labels = label_ptrs_.data();
+        choice_count = static_cast<uint32_t>(label_ptrs_.size());
+    }
+    Param(const char* n, int def, const std::vector<std::string>& labels) {
+        name = n;
+        type = VIVID_PARAM_INT;
+        default_value = static_cast<float>(def);
+        min_value = 0;
+        max_value = labels.empty() ? 0.0f : static_cast<float>(labels.size() - 1);
+        value = default_value;
+        owned_labels_ = labels;
+        label_ptrs_.clear();
+        label_ptrs_.reserve(owned_labels_.size());
+        for (const auto& s : owned_labels_) label_ptrs_.push_back(s.c_str());
+        choice_labels = label_ptrs_.empty() ? nullptr : label_ptrs_.data();
+        choice_count = static_cast<uint32_t>(label_ptrs_.size());
     }
     int int_value() const { return static_cast<int>(value); }
 private:
-    std::vector<const char*> static_labels_;
+    std::vector<std::string> owned_labels_;
+    std::vector<const char*> label_ptrs_;
 };
 
 template<>
@@ -97,6 +112,7 @@ struct Param<bool> : ParamBase {
 // ---------------------------------------------------------------------------
 
 struct FilePath {};
+struct TextValue {};
 
 template<>
 struct Param<FilePath> : ParamBase {
@@ -104,6 +120,20 @@ struct Param<FilePath> : ParamBase {
     Param(const char* n, const char* def = "") {
         name = n;
         type = VIVID_PARAM_FILE;
+        default_value = 0;
+        min_value = 0;
+        max_value = 0;
+        value = 0;
+        str_value = def;
+    }
+};
+
+template<>
+struct Param<TextValue> : ParamBase {
+    std::string str_value;
+    Param(const char* n, const char* def = "") {
+        name = n;
+        type = VIVID_PARAM_TEXT;
         default_value = 0;
         min_value = 0;
         max_value = 0;
@@ -165,7 +195,8 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     static VividOperatorDescriptor desc{};                                    \
     static std::vector<VividParamDescriptor> s_params;                        \
     static std::vector<VividPortDescriptor>  s_ports;                         \
-    static std::vector<std::vector<const char*>> s_label_storage;             \
+    static std::vector<std::vector<std::string>> s_label_storage;             \
+    static std::vector<std::vector<const char*>> s_label_ptrs;                \
     static std::vector<std::string> s_file_defaults;                          \
     static bool inited = false;                                               \
     if (!inited) {                                                            \
@@ -175,6 +206,7 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         tmp.collect_params(pbases);                                           \
         s_params.resize(pbases.size());                                       \
         s_label_storage.resize(pbases.size());                                \
+        s_label_ptrs.resize(pbases.size());                                   \
         s_file_defaults.resize(pbases.size());                                 \
         for (size_t i = 0; i < pbases.size(); ++i) {                          \
             s_params[i].name          = pbases[i]->name;                      \
@@ -187,19 +219,35 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             s_params[i].layout_columns      = pbases[i]->layout_columns;       \
             s_params[i].layout_column_index = pbases[i]->layout_column_index;  \
             if (pbases[i]->choice_count > 0) {                                \
-                s_label_storage[i].assign(                                    \
-                    pbases[i]->choice_labels,                                 \
-                    pbases[i]->choice_labels + pbases[i]->choice_count);      \
-                s_params[i].choice_labels = s_label_storage[i].data();        \
+                s_label_storage[i].clear();                                   \
+                s_label_ptrs[i].clear();                                      \
+                s_label_storage[i].reserve(pbases[i]->choice_count);          \
+                s_label_ptrs[i].reserve(pbases[i]->choice_count);             \
+                for (uint32_t li = 0; li < pbases[i]->choice_count; ++li) {   \
+                    const char* src = pbases[i]->choice_labels[li];           \
+                    s_label_storage[i].emplace_back(src ? src : "");          \
+                }                                                              \
+                for (const auto& lbl : s_label_storage[i])                    \
+                    s_label_ptrs[i].push_back(lbl.c_str());                   \
+                s_params[i].choice_labels = s_label_ptrs[i].data();           \
                 s_params[i].choice_count  = pbases[i]->choice_count;          \
             } else {                                                          \
                 s_params[i].choice_labels = nullptr;                          \
                 s_params[i].choice_count  = 0;                                \
             }                                                                 \
-            if (pbases[i]->type == VIVID_PARAM_FILE) {                        \
-                auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(       \
-                    pbases[i]);                                               \
-                s_file_defaults[i] = fp->str_value;                           \
+            if (pbases[i]->type == VIVID_PARAM_FILE ||                         \
+                pbases[i]->type == VIVID_PARAM_TEXT) {                         \
+                const std::string* strp = nullptr;                             \
+                if (pbases[i]->type == VIVID_PARAM_FILE) {                     \
+                    auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(    \
+                        pbases[i]);                                            \
+                    strp = &fp->str_value;                                     \
+                } else {                                                       \
+                    auto* tp = static_cast<vivid::Param<vivid::TextValue>*>(   \
+                        pbases[i]);                                            \
+                    strp = &tp->str_value;                                     \
+                }                                                              \
+                s_file_defaults[i] = *strp;                                    \
                 s_params[i].default_string = s_file_defaults[i].c_str();      \
             } else {                                                          \
                 s_params[i].default_string = nullptr;                         \
@@ -237,12 +285,20 @@ extern "C" void vivid_process(void* instance,                                 \
     auto& param_ptrs = inst->param_ptrs;                                      \
     uint32_t file_idx = 0;                                                    \
     for (size_t i = 0; i < param_ptrs.size(); ++i) {                          \
-        if (param_ptrs[i]->type == VIVID_PARAM_FILE) {                        \
+        if (param_ptrs[i]->type == VIVID_PARAM_FILE ||                        \
+            param_ptrs[i]->type == VIVID_PARAM_TEXT) {                        \
             if (ctx->file_param_values && file_idx < ctx->file_param_count) { \
-                auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(       \
-                    param_ptrs[i]);                                           \
-                if (ctx->file_param_values[file_idx])                         \
-                    fp->str_value = ctx->file_param_values[file_idx];         \
+                if (ctx->file_param_values[file_idx]) {                       \
+                    if (param_ptrs[i]->type == VIVID_PARAM_FILE) {            \
+                        auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(\
+                            param_ptrs[i]);                                   \
+                        fp->str_value = ctx->file_param_values[file_idx];     \
+                    } else {                                                   \
+                        auto* tp = static_cast<vivid::Param<vivid::TextValue>*>(\
+                            param_ptrs[i]);                                   \
+                        tp->str_value = ctx->file_param_values[file_idx];     \
+                    }                                                          \
+                }                                                              \
             }                                                                 \
             file_idx++;                                                       \
         } else {                                                              \
@@ -259,12 +315,20 @@ extern "C" void vivid_main_thread_update(void* instance, double time,         \
     auto& param_ptrs = inst->param_ptrs;                                      \
     uint32_t file_idx = 0;                                                    \
     for (size_t i = 0; i < param_ptrs.size(); ++i) {                          \
-        if (param_ptrs[i]->type == VIVID_PARAM_FILE) {                        \
+        if (param_ptrs[i]->type == VIVID_PARAM_FILE ||                        \
+            param_ptrs[i]->type == VIVID_PARAM_TEXT) {                        \
             if (file_param_values && file_idx < file_param_count) {           \
-                auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(       \
-                    param_ptrs[i]);                                           \
-                if (file_param_values[file_idx])                              \
-                    fp->str_value = file_param_values[file_idx];              \
+                if (file_param_values[file_idx]) {                            \
+                    if (param_ptrs[i]->type == VIVID_PARAM_FILE) {            \
+                        auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(\
+                            param_ptrs[i]);                                   \
+                        fp->str_value = file_param_values[file_idx];          \
+                    } else {                                                   \
+                        auto* tp = static_cast<vivid::Param<vivid::TextValue>*>(\
+                            param_ptrs[i]);                                   \
+                        tp->str_value = file_param_values[file_idx];          \
+                    }                                                          \
+                }                                                              \
             }                                                                 \
             file_idx++;                                                       \
         }                                                                     \

@@ -7,13 +7,16 @@
 #include "common/path_util.h"
 #include <cstdio>
 #include <sstream>
+#include <cmath>
 
 namespace vivid {
 
 RuntimeAPI::RuntimeAPI(Graph& graph, Scheduler& scheduler, AudioEngine& audio_engine,
                        OperatorRegistry& registry, SystemMidiListener* system_midi)
     : graph_(graph), scheduler_(scheduler), audio_engine_(audio_engine),
-      registry_(registry), system_midi_(system_midi) {}
+      registry_(registry), system_midi_(system_midi) {
+    capture_saved_snapshot();
+}
 
 bool RuntimeAPI::split_addr(const std::string& addr, std::string& node, std::string& port) {
     auto slash = addr.find('/');
@@ -37,6 +40,27 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
     ns->param_values[pi->second] = value;
     ns->generation++;
 
+    // Convenience sync for SyphonIn: selecting enum server writes server_name.
+    if (param == "server") {
+        const auto* desc = ns->loader ? ns->loader->descriptor() : nullptr;
+        if (desc) {
+            auto si = ns->param_indices.find("server");
+            auto ni = ns->file_param_indices.find("server_name");
+            if (si != ns->param_indices.end() && ni != ns->file_param_indices.end()) {
+                uint32_t pidx = si->second;
+                if (pidx < desc->param_count) {
+                    const auto& pd = desc->params[pidx];
+                    int idx = static_cast<int>(std::round(value));
+                    std::string selected;
+                    if (idx > 0 && pd.choice_labels && idx < static_cast<int>(pd.choice_count)) {
+                        selected = pd.choice_labels[idx] ? pd.choice_labels[idx] : "";
+                    }
+                    set_file_param_internal(*ns, "server_name", selected);
+                }
+            }
+        }
+    }
+
     // Also update graph's NodeDef so save reflects the change
     NodeDef* ndef = graph_.find_node(node_id);
     if (ndef) ndef->params[param] = value;
@@ -44,6 +68,7 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
     // Mark variation dirty if we have an active variation
     if (graph_.active_variation() >= 0)
         variation_dirty_ = true;
+    mark_graph_dirty();
 
     std::ostringstream oss;
     oss << node_id << "/" << param << " = " << value;
@@ -58,6 +83,7 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
         if (ndef && (ndef->type == "WGSLFilter" || registry_.is_wgsl_preset(ndef->type))) {
             ndef->string_params["filter"] = value;
             pending_topology_change_ = true;
+            mark_graph_dirty();
             return {true, node_id + "/filter = " + value};
         }
     }
@@ -71,6 +97,7 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
     }
 
     set_file_param_internal(*ns, param, value);
+    mark_graph_dirty();
 
     return {true, node_id + "/" + param + " = " + value};
 }
@@ -113,6 +140,7 @@ CommandResult RuntimeAPI::set_param_lock(const std::string& node_id, const std::
 
     std::ostringstream oss;
     oss << node_id << "/" << param << " lock = " << static_cast<int>(flags);
+    mark_graph_dirty();
     return {true, oss.str()};
 }
 
@@ -137,6 +165,7 @@ CommandResult RuntimeAPI::set_node_layout(const std::string& node_id, float x, f
     if (!ndef) return {false, "unknown node '" + node_id + "'"};
     ndef->layout_x = x;
     ndef->layout_y = y;
+    mark_graph_dirty();
     return {true, "layout set"};
 }
 
@@ -163,6 +192,7 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
     }
 
     needs_gpu_realloc_ = true;
+    mark_graph_dirty();
 
     std::ostringstream oss;
     oss << node_id << " resolution = " << width << "x" << height;
@@ -179,6 +209,7 @@ CommandResult RuntimeAPI::add_node(const std::string& type, const std::string& i
         return {false, "node '" + id + "' already exists"};
     }
     pending_topology_change_ = true;
+    mark_graph_dirty();
     return {true, "added " + type + " as " + id};
 }
 
@@ -187,6 +218,7 @@ CommandResult RuntimeAPI::remove_node(const std::string& id) {
         return {false, "unknown node '" + id + "'"};
     }
     pending_topology_change_ = true;
+    mark_graph_dirty();
     return {true, "removed " + id};
 }
 
@@ -204,6 +236,7 @@ CommandResult RuntimeAPI::connect(const std::string& from_addr, const std::strin
         return {false, "connection already exists"};
     }
     pending_topology_change_ = true;
+    mark_graph_dirty();
     return {true, "connected " + from_addr + " -> " + to_addr};
 }
 
@@ -216,6 +249,7 @@ CommandResult RuntimeAPI::disconnect(const std::string& from_addr, const std::st
         return {false, "connection not found"};
     }
     pending_topology_change_ = true;
+    mark_graph_dirty();
     return {true, "disconnected " + from_addr + " -> " + to_addr};
 }
 
@@ -231,6 +265,7 @@ CommandResult RuntimeAPI::set_connection_remap(const std::string& from_addr,
         return {false, "connection not found"};
     }
     pending_topology_change_ = true;
+    mark_graph_dirty();
     return {true, "set remap on " + from_addr + " -> " + to_addr};
 }
 
@@ -399,12 +434,14 @@ CommandResult RuntimeAPI::list_types() {
 CommandResult RuntimeAPI::add_midi_mapping(const std::string& node_id, const std::string& param,
                                            int cc, int channel, float range_min, float range_max) {
     graph_.add_midi_mapping(node_id, param, cc, channel, range_min, range_max);
+    mark_graph_dirty();
     return {true, "mapped CC " + std::to_string(cc) + " -> " + node_id + "/" + param};
 }
 
 CommandResult RuntimeAPI::remove_midi_mapping(const std::string& node_id, const std::string& param) {
     if (!graph_.remove_midi_mapping(node_id, param))
         return {false, "no mapping for " + node_id + "/" + param};
+    mark_graph_dirty();
     return {true, "unmapped " + node_id + "/" + param};
 }
 
@@ -412,6 +449,7 @@ CommandResult RuntimeAPI::update_midi_mapping(const std::string& node_id, const 
                                               float range_min, float range_max) {
     if (!graph_.update_midi_mapping(node_id, param, range_min, range_max))
         return {false, "no mapping for " + node_id + "/" + param};
+    mark_graph_dirty();
     return {true, "updated range for " + node_id + "/" + param};
 }
 
@@ -450,6 +488,7 @@ CommandResult RuntimeAPI::save_variation(const std::string& name) {
             // Delta encoding: only store non-default values
             if (idx < desc->param_count &&
                 desc->params[idx].type != VIVID_PARAM_FILE &&
+                desc->params[idx].type != VIVID_PARAM_TEXT &&
                 ns.param_values[idx] != desc->params[idx].default_value) {
                 pm[pname] = ns.param_values[idx];
             }
@@ -458,7 +497,6 @@ CommandResult RuntimeAPI::save_variation(const std::string& name) {
         if (pm.empty()) vd.params.erase(ns.node_id);
 
         // String params: only store non-default, relativized for persistence
-        auto base = graph_base_dir();
         for (const auto& [pname, fidx] : ns.file_param_indices) {
             const char* def_str = nullptr;
             auto pi = ns.param_indices.find(pname);
@@ -466,7 +504,7 @@ CommandResult RuntimeAPI::save_variation(const std::string& name) {
                 def_str = desc->params[pi->second].default_string;
             const auto& val = ns.file_param_storage[fidx];
             if (!val.empty() && (def_str == nullptr || val != def_str)) {
-                vd.string_params[ns.node_id][pname] = make_relative_path(val, base);
+                vd.string_params[ns.node_id][pname] = to_persisted_string_value(ns, pname, val);
             }
         }
     }
@@ -474,6 +512,7 @@ CommandResult RuntimeAPI::save_variation(const std::string& name) {
     int idx = graph_.find_variation_index(name);
     graph_.set_active_variation(idx);
     variation_dirty_ = false;
+    mark_graph_dirty();
     return {true, "saved variation '" + name + "'"};
 }
 
@@ -500,7 +539,9 @@ void RuntimeAPI::apply_variation(int idx) {
         NodeDef* ndef = graph_.find_node(ns.node_id);
         for (const auto& [pname, pidx] : ns.param_indices) {
             if (ns.param_lock_flags[pidx] & PARAM_LOCK_PRESETS) continue;
-            if (pidx < desc->param_count && desc->params[pidx].type != VIVID_PARAM_FILE) {
+            if (pidx < desc->param_count &&
+                desc->params[pidx].type != VIVID_PARAM_FILE &&
+                desc->params[pidx].type != VIVID_PARAM_TEXT) {
                 ns.param_values[pidx] = desc->params[pidx].default_value;
                 if (ndef) ndef->params[pname] = desc->params[pidx].default_value;
             }
@@ -545,7 +586,6 @@ void RuntimeAPI::apply_variation(int idx) {
     }
 
     // Apply stored string param deltas (resolve for runtime, keep relative for persistence)
-    auto base = graph_base_dir();
     for (const auto& [node_id, spm] : vd.string_params) {
         NodeState* ns = scheduler_.find_node_mut(node_id);
         if (!ns) continue;
@@ -556,7 +596,7 @@ void RuntimeAPI::apply_variation(int idx) {
             if (pi != ns->param_indices.end() &&
                 (ns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
                 continue;
-            ns->file_param_storage[fi->second] = resolve_file_path(pval, base);
+            ns->file_param_storage[fi->second] = to_runtime_string_value(*ns, pname, pval);
             ns->file_param_ptrs[fi->second] = ns->file_param_storage[fi->second].c_str();
             NodeDef* ndef = graph_.find_node(node_id);
             if (ndef) ndef->string_params[pname] = pval;  // already relative
@@ -567,17 +607,20 @@ void RuntimeAPI::apply_variation(int idx) {
     graph_.set_active_variation(idx);
     variation_dirty_ = false;
     pending_variation_.armed = false;
+    mark_graph_dirty();
 }
 
 CommandResult RuntimeAPI::remove_variation(const std::string& name) {
     if (!graph_.remove_variation(name))
         return {false, "unknown variation '" + name + "'"};
+    mark_graph_dirty();
     return {true, "removed variation '" + name + "'"};
 }
 
 CommandResult RuntimeAPI::rename_variation(const std::string& old_name, const std::string& new_name) {
     if (!graph_.rename_variation(old_name, new_name))
         return {false, "rename failed (not found or name conflict)"};
+    mark_graph_dirty();
     return {true, "renamed '" + old_name + "' to '" + new_name + "'"};
 }
 
@@ -592,13 +635,13 @@ CommandResult RuntimeAPI::update_variation(const std::string& name) {
         for (const auto& [pname, idx] : ns.param_indices) {
             if (idx < desc->param_count &&
                 desc->params[idx].type != VIVID_PARAM_FILE &&
+                desc->params[idx].type != VIVID_PARAM_TEXT &&
                 ns.param_values[idx] != desc->params[idx].default_value) {
                 pm[pname] = ns.param_values[idx];
             }
         }
         if (pm.empty()) vd->params.erase(ns.node_id);
 
-        auto base = graph_base_dir();
         for (const auto& [pname, fidx] : ns.file_param_indices) {
             const char* def_str = nullptr;
             auto pi = ns.param_indices.find(pname);
@@ -606,11 +649,12 @@ CommandResult RuntimeAPI::update_variation(const std::string& name) {
                 def_str = desc->params[pi->second].default_string;
             const auto& val = ns.file_param_storage[fidx];
             if (!val.empty() && (def_str == nullptr || val != def_str)) {
-                vd->string_params[ns.node_id][pname] = make_relative_path(val, base);
+                vd->string_params[ns.node_id][pname] = to_persisted_string_value(ns, pname, val);
             }
         }
     }
     variation_dirty_ = false;
+    mark_graph_dirty();
     return {true, "updated variation '" + name + "'"};
 }
 
@@ -652,6 +696,7 @@ CommandResult RuntimeAPI::queue_variation(const std::string& name, const std::st
 
 CommandResult RuntimeAPI::set_quantize_clock(const std::string& node_id) {
     graph_.set_quantize_clock_node(node_id);
+    mark_graph_dirty();
     return {true, "quantize clock set to '" + node_id + "'"};
 }
 
@@ -713,12 +758,12 @@ CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::str
     for (const auto& [pname, idx] : ns->param_indices) {
         preset.params[pname] = ns->param_values[idx];
     }
-    auto base = graph_base_dir();
     for (const auto& [pname, idx] : ns->file_param_indices) {
-        preset.string_params[pname] = make_relative_path(ns->file_param_storage[idx], base);
+        preset.string_params[pname] = to_persisted_string_value(*ns, pname, ns->file_param_storage[idx]);
     }
     graph_.save_preset(node_id, preset);
     active_presets_[node_id] = name;
+    mark_graph_dirty();
     return {true, "saved preset '" + name + "' on " + node_id};
 }
 
@@ -757,7 +802,6 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
         }
     }
     {
-        auto base = graph_base_dir();
         for (const auto& [pname, pval] : preset->string_params) {
             auto fi = ns->file_param_indices.find(pname);
             if (fi != ns->file_param_indices.end()) {
@@ -766,7 +810,7 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
                 if (pi != ns->param_indices.end() &&
                     (ns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
                     continue;
-                ns->file_param_storage[fi->second] = resolve_file_path(pval, base);
+                ns->file_param_storage[fi->second] = to_runtime_string_value(*ns, pname, pval);
                 ns->file_param_ptrs[fi->second] = ns->file_param_storage[fi->second].c_str();
                 NodeDef* ndef = graph_.find_node(node_id);
                 if (ndef) ndef->string_params[pname] = pval;  // already relative
@@ -775,6 +819,7 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
     }
     ns->generation++;
     active_presets_[node_id] = name;
+    mark_graph_dirty();
     return {true, "recalled preset '" + name + "' on " + node_id};
 }
 
@@ -804,11 +849,11 @@ CommandResult RuntimeAPI::update_preset(const std::string& node_id, const std::s
     }
     preset->string_params.clear();
     {
-        auto base = graph_base_dir();
         for (const auto& [pname, idx] : ns->file_param_indices) {
-            preset->string_params[pname] = make_relative_path(ns->file_param_storage[idx], base);
+            preset->string_params[pname] = to_persisted_string_value(*ns, pname, ns->file_param_storage[idx]);
         }
     }
+    mark_graph_dirty();
     return {true, "updated preset '" + name + "' on " + node_id};
 }
 
@@ -827,6 +872,7 @@ CommandResult RuntimeAPI::remove_preset(const std::string& node_id, const std::s
         }
         return {false, "preset '" + name + "' not found on " + node_id};
     }
+    mark_graph_dirty();
     return {true, "removed preset '" + name + "' from " + node_id};
 }
 
@@ -846,6 +892,7 @@ CommandResult RuntimeAPI::rename_preset(const std::string& node_id, const std::s
         }
         return {false, "rename failed (not found or name conflict)"};
     }
+    mark_graph_dirty();
     return {true, "renamed preset '" + old_name + "' to '" + new_name + "' on " + node_id};
 }
 
@@ -881,6 +928,7 @@ CommandResult RuntimeAPI::set_state_preset(const std::string& sm_node, int state
     if (state_idx < 0 || state_idx > 7)
         return {false, "state index must be 0-7"};
     graph_.set_state_preset(sm_node, state_idx, target_node, preset_name);
+    mark_graph_dirty();
     return {true, "bound " + sm_node + " state " + std::to_string(state_idx)
                   + " -> " + target_node + "/" + preset_name};
 }
@@ -889,12 +937,14 @@ CommandResult RuntimeAPI::remove_state_preset(const std::string& sm_node, int st
                                                const std::string& target_node) {
     if (!graph_.remove_state_preset(sm_node, state_idx, target_node))
         return {false, "binding not found"};
+    mark_graph_dirty();
     return {true, "removed binding"};
 }
 
 CommandResult RuntimeAPI::clear_state_presets(const std::string& sm_node) {
     graph_.clear_state_presets(sm_node);
     prev_sm_state_.erase(sm_node);
+    mark_graph_dirty();
     return {true, "cleared all state-preset mappings for " + sm_node};
 }
 
@@ -989,7 +1039,6 @@ void RuntimeAPI::tick_state_presets() {
                         cs.target_params[pname] = pval;
                     }
                     // String params: switch immediately (not interpolatable)
-                    auto base = graph_base_dir();
                     for (const auto& [pname, pval] : preset->string_params) {
                         auto fi = tns->file_param_indices.find(pname);
                         if (fi == tns->file_param_indices.end()) continue;
@@ -997,7 +1046,7 @@ void RuntimeAPI::tick_state_presets() {
                         if (pi != tns->param_indices.end() &&
                             (tns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
                             continue;
-                        tns->file_param_storage[fi->second] = resolve_file_path(pval, base);
+                        tns->file_param_storage[fi->second] = to_runtime_string_value(*tns, pname, pval);
                         tns->file_param_ptrs[fi->second] = tns->file_param_storage[fi->second].c_str();
                         NodeDef* ndef = graph_.find_node(target_node);
                         if (ndef) ndef->string_params[pname] = pval;  // already relative
@@ -1064,6 +1113,7 @@ CommandResult RuntimeAPI::save() {
 
 CommandResult RuntimeAPI::save_as(const std::string& path) {
     if (graph_.save(path.c_str())) {
+        capture_saved_snapshot();
         return {true, "saved to " + path};
     }
     return {false, "failed to save to " + path};
@@ -1151,6 +1201,7 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
     }
 
     reload_serial_++;
+    capture_saved_snapshot();
     return {true, "reloaded from " + path};
 }
 
@@ -1220,6 +1271,7 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
 
     pending_topology_change_ = false;
     active_crossfades_.clear();
+    refresh_graph_dirty_from_saved_snapshot();
     return {true, "applied graph snapshot"};
 }
 
@@ -1229,21 +1281,65 @@ std::filesystem::path RuntimeAPI::graph_base_dir() const {
     return std::filesystem::path(sp).parent_path();
 }
 
+bool RuntimeAPI::is_path_string_param(const NodeState& ns, const std::string& param) const {
+    auto fi = ns.file_param_indices.find(param);
+    if (fi == ns.file_param_indices.end()) return false;
+    return fi->second < ns.file_param_is_path.size() && ns.file_param_is_path[fi->second] != 0;
+}
+
+std::string RuntimeAPI::to_runtime_string_value(const NodeState& ns, const std::string& param,
+                                                const std::string& value) const {
+    if (!is_path_string_param(ns, param)) return value;
+    return resolve_file_path(value, graph_base_dir());
+}
+
+std::string RuntimeAPI::to_persisted_string_value(const NodeState& ns, const std::string& param,
+                                                  const std::string& value) const {
+    if (!is_path_string_param(ns, param)) return value;
+    return make_relative_path(value, graph_base_dir());
+}
+
 void RuntimeAPI::set_file_param_internal(NodeState& ns, const std::string& param,
                                           const std::string& value) {
     auto fi = ns.file_param_indices.find(param);
     if (fi == ns.file_param_indices.end()) return;
 
-    auto base = graph_base_dir();
-
-    // Runtime storage gets the resolved (absolute) path
-    ns.file_param_storage[fi->second] = resolve_file_path(value, base);
+    // Path params are resolved for runtime and relativized for persistence.
+    // Text params keep literal string values.
+    ns.file_param_storage[fi->second] = to_runtime_string_value(ns, param, value);
     ns.file_param_ptrs[fi->second] = ns.file_param_storage[fi->second].c_str();
     ns.generation++;
 
-    // Persistence layer gets the relative path
     NodeDef* ndef = graph_.find_node(ns.node_id);
-    if (ndef) ndef->string_params[param] = make_relative_path(value, base);
+    if (ndef) ndef->string_params[param] = to_persisted_string_value(ns, param, value);
+}
+
+void RuntimeAPI::mark_graph_dirty() {
+    graph_dirty_ = true;
+}
+
+void RuntimeAPI::capture_saved_snapshot() {
+    std::string current;
+    if (graph_.save_to_string(current)) {
+        last_saved_graph_json_ = std::move(current);
+        graph_dirty_ = false;
+        return;
+    }
+    last_saved_graph_json_.clear();
+    graph_dirty_ = false;
+}
+
+void RuntimeAPI::refresh_graph_dirty_from_saved_snapshot() {
+    if (last_saved_graph_json_.empty()) {
+        graph_dirty_ = true;
+        return;
+    }
+    std::string current;
+    if (!graph_.save_to_string(current)) {
+        graph_dirty_ = true;
+        return;
+    }
+    graph_dirty_ = (current != last_saved_graph_json_);
 }
 
 } // namespace vivid

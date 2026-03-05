@@ -177,6 +177,7 @@ struct GraphSnapshot {
     std::vector<VariationInfo> variations;
     int active_variation = -1;
     bool variation_dirty = false;
+    bool graph_dirty = false;
     int queued_variation = -1;
     std::string quantize_clock_node;
 

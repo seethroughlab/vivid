@@ -21,6 +21,7 @@ typedef enum VividParamType {
     VIVID_PARAM_INT   = 1,
     VIVID_PARAM_BOOL  = 2,
     VIVID_PARAM_FILE  = 3,
+    VIVID_PARAM_TEXT  = 4,
 } VividParamType;
 
 typedef enum VividDisplayHint {
@@ -57,7 +58,7 @@ typedef struct VividParamDescriptor {
     float          max_value;
     const char**   choice_labels;   /* NULL if not an enum, else array of choice_count strings */
     uint32_t       choice_count;    /* 0 for regular params */
-    const char*    default_string;  /* default value for VIVID_PARAM_FILE, NULL otherwise */
+    const char*    default_string;  /* default value for VIVID_PARAM_FILE/TEXT, NULL otherwise */
 
     /* inspector layout metadata */
     const char*       group;              /* NULL = ungrouped */

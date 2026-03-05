@@ -54,6 +54,137 @@ async def _post(method: str, body: dict | None = None) -> str:
         return resp.text
 
 
+def _compact_envelope(raw: str) -> dict:
+    """Create a compact, deterministic envelope for MCP-facing perception tools."""
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return {
+            "ok": False,
+            "schema_version": 1,
+            "error": {"code": "invalid_json", "message": "control server returned non-JSON payload"},
+        }
+
+    ok = bool(payload.get("ok", False))
+    schema_version = int(payload.get("schema_version", 1))
+    if not ok:
+        err = payload.get("error")
+        if isinstance(err, dict):
+            return {"ok": False, "schema_version": schema_version, "error": err}
+        if isinstance(err, str):
+            return {
+                "ok": False,
+                "schema_version": schema_version,
+                "error": {"code": "runtime_error", "message": err},
+            }
+        return {
+            "ok": False,
+            "schema_version": schema_version,
+            "error": {"code": "runtime_error", "message": "unknown error"},
+        }
+    return {"ok": True, "schema_version": schema_version, "result": payload.get("result", {})}
+
+
+def _perception_response(raw: str, kind: str, include_payload: bool = False) -> str:
+    env = _compact_envelope(raw)
+    if not env.get("ok", False):
+        out = env
+        if include_payload:
+            out["payload"] = raw
+        return json.dumps(out, separators=(",", ":"), sort_keys=True)
+
+    result = env.get("result", {})
+    summary: dict = {}
+    if kind == "introspect_nodes":
+        nodes = result.get("nodes", []) if isinstance(result, dict) else []
+        if not isinstance(nodes, list):
+            nodes = []
+        domains = {"audio": 0, "gpu": 0, "control": 0}
+        errored = 0
+        for n in nodes:
+            if not isinstance(n, dict):
+                continue
+            d = n.get("domain")
+            if d in domains:
+                domains[d] += 1
+            health = n.get("health")
+            if isinstance(health, dict) and health.get("errored", False):
+                errored += 1
+        summary = {
+            "kind": kind,
+            "node_count": len(nodes),
+            "errored_nodes": errored,
+            "domains": domains,
+        }
+    elif kind == "run_diagnostics":
+        diag_summary = result.get("summary", {}) if isinstance(result, dict) else {}
+        hints = result.get("hints", []) if isinstance(result, dict) else []
+        top_hint_ids: list[str] = []
+        if isinstance(hints, list):
+            for h in hints[:3]:
+                if isinstance(h, dict) and isinstance(h.get("id"), str):
+                    top_hint_ids.append(h["id"])
+        summary = {
+            "kind": kind,
+            "critical": int(diag_summary.get("critical", 0)) if isinstance(diag_summary, dict) else 0,
+            "warning": int(diag_summary.get("warning", 0)) if isinstance(diag_summary, dict) else 0,
+            "info": int(diag_summary.get("info", 0)) if isinstance(diag_summary, dict) else 0,
+            "top_hint_ids": top_hint_ids,
+        }
+    elif kind == "validate_checks":
+        summary = {
+            "kind": kind,
+            "valid": bool(result.get("valid", False)) if isinstance(result, dict) else False,
+            "error_count": int(result.get("error_count", 0)) if isinstance(result, dict) else 0,
+        }
+    elif kind == "run_checks":
+        csum = result.get("summary", {}) if isinstance(result, dict) else {}
+        summary = {
+            "kind": kind,
+            "all_passed": bool(result.get("all_passed", False)) if isinstance(result, dict) else False,
+            "all_critical_passed": bool(result.get("all_critical_passed", False)) if isinstance(result, dict) else False,
+            "passed": int(csum.get("passed", 0)) if isinstance(csum, dict) else 0,
+            "failed": int(csum.get("failed", 0)) if isinstance(csum, dict) else 0,
+            "skipped": int(csum.get("skipped", 0)) if isinstance(csum, dict) else 0,
+            "critical_failed": int(csum.get("critical_failed", 0)) if isinstance(csum, dict) else 0,
+        }
+    else:
+        summary = {"kind": kind}
+
+    out = {"ok": True, "schema_version": env.get("schema_version", 1), "summary": summary}
+    if include_payload:
+        out["result"] = result
+    return json.dumps(out, separators=(",", ":"), sort_keys=True)
+
+
+@mcp.tool()
+async def introspect_nodes(include_payload: bool = False) -> str:
+    """Get per-node introspection with compact summary. Set include_payload=true to include full result."""
+    raw = await _post("introspect_nodes")
+    return _perception_response(raw, "introspect_nodes", include_payload)
+
+
+@mcp.tool()
+async def run_diagnostics(include_payload: bool = False) -> str:
+    """Run graph-level diagnostics and return severity summary + top hints. Set include_payload=true for full findings."""
+    raw = await _post("run_diagnostics")
+    return _perception_response(raw, "run_diagnostics", include_payload)
+
+
+@mcp.tool()
+async def validate_checks(checks: list[dict], include_payload: bool = False) -> str:
+    """Validate check definitions before execution."""
+    raw = await _post("validate_checks", {"checks": checks})
+    return _perception_response(raw, "validate_checks", include_payload)
+
+
+@mcp.tool()
+async def run_checks(checks: list[dict], include_payload: bool = False) -> str:
+    """Evaluate checks against the current introspection/diagnostics snapshot."""
+    raw = await _post("run_checks", {"checks": checks})
+    return _perception_response(raw, "run_checks", include_payload)
+
+
 @mcp.tool()
 async def inspect_graph() -> str:
     """Get the full graph state: nodes with params (live values), input/output ports (with current output values), and connections."""

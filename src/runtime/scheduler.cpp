@@ -97,12 +97,15 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     ns.file_param_storage.clear();
     ns.file_param_ptrs.clear();
     ns.file_param_indices.clear();
+    ns.file_param_is_path.clear();
     for (uint32_t i = 0; i < desc->param_count; ++i) {
-        if (desc->params[i].type == VIVID_PARAM_FILE) {
+        if (desc->params[i].type == VIVID_PARAM_FILE ||
+            desc->params[i].type == VIVID_PARAM_TEXT) {
             uint32_t fidx = static_cast<uint32_t>(ns.file_param_storage.size());
             ns.file_param_indices[desc->params[i].name] = fidx;
             const char* def = desc->params[i].default_string;
             ns.file_param_storage.push_back(def ? def : "");
+            ns.file_param_is_path.push_back(desc->params[i].type == VIVID_PARAM_FILE ? 1 : 0);
         }
     }
     if (string_overrides) {
@@ -115,7 +118,9 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     }
     // Resolve relative file paths against the graph's directory
     if (!graph_base_dir_.empty()) {
-        for (auto& val : ns.file_param_storage) {
+        for (size_t i = 0; i < ns.file_param_storage.size(); ++i) {
+            if (!ns.file_param_is_path.empty() && !ns.file_param_is_path[i]) continue;
+            auto& val = ns.file_param_storage[i];
             if (!val.empty() && std::filesystem::path(val).is_relative()) {
                 auto resolved = graph_base_dir_ / val;
                 if (std::filesystem::exists(resolved))

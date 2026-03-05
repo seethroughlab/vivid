@@ -126,7 +126,8 @@ public:
         // Sync param_values_ into child's Param<T>.value fields
         // (replicates what VIVID_REGISTER's vivid_process() does)
         for (size_t i = 0; i < param_ptrs_.size(); ++i) {
-            if (param_ptrs_[i]->type != VIVID_PARAM_FILE) {
+            if (param_ptrs_[i]->type != VIVID_PARAM_FILE &&
+                param_ptrs_[i]->type != VIVID_PARAM_TEXT) {
                 param_ptrs_[i]->value = param_values_[i];
             }
         }

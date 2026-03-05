@@ -227,9 +227,14 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         else if (key == GLFW_KEY_TAB) {
             std::string node_id = edit_node_id_;
             std::string param_name = edit_param_name_;
+            const auto* ns = snap_.find_node(node_id);
+            const ParamInfo* cur_pd = ns ? ns->find_param(param_name) : nullptr;
+            if (cur_pd && cur_pd->type == VIVID_PARAM_TEXT) {
+                confirm_param_edit();
+                return;
+            }
             confirm_param_edit();
             // Check for XY pad sibling
-            const auto* ns = snap_.find_node(node_id);
             if (ns && ns->op_info) {
                 const ParamInfo* pd = ns->find_param(param_name);
                 if (pd && pd->display_hint == VIVID_DISPLAY_XY_PAD) {
@@ -719,9 +724,14 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
         return;
     }
     if (editing_param_) {
+        const auto* ns = snap_.find_node(edit_node_id_);
+        const ParamInfo* pd = ns ? ns->find_param(edit_param_name_) : nullptr;
         char ch = static_cast<char>(codepoint);
-        if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-')
+        if (pd && pd->type == VIVID_PARAM_TEXT) {
+            if (codepoint >= 32 && codepoint < 127) edit_buffer_ += ch;
+        } else if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-') {
             edit_buffer_ += ch;
+        }
         return;
     }
     if (editing_wire_remap_) {
@@ -1537,7 +1547,10 @@ bool NodeGraphUI::handle_inspector_click() {
             if (it != ns->param_indices.end()) {
                 for (const auto& pd : ns->op_info->params) {
                     if (pd.name != edit_param_name_) continue;
-                    if (pd.type == VIVID_PARAM_INT) {
+                    if (pd.type == VIVID_PARAM_TEXT) {
+                        auto fit = ns->file_param_values.find(edit_param_name_);
+                        edit_buffer_ = (fit != ns->file_param_values.end()) ? fit->second : "";
+                    } else if (pd.type == VIVID_PARAM_INT) {
                         edit_buffer_ = format_int(static_cast<int>(ns->param_values[it->second]));
                     } else {
                         edit_buffer_ = format_float(ns->param_values[it->second], 2);

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(vivid VERSION 0.1.0 LANGUAGES C CXX)
+project(vivid VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,6 +13,38 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(webgpu)
+
+option(VIVID_USE_WGPU_NATIVE_FORK "Build and use the pinned wgpu-native fork for Metal interop symbols" ON)
+if(APPLE AND VIVID_USE_WGPU_NATIVE_FORK)
+    FetchContent_Declare(
+        wgpu_native_fork
+        GIT_REPOSITORY https://github.com/seethroughlab/wgpu-native
+        GIT_TAG        df32c6bc8db1eaf3a166781354b927a1036e1f1e
+        GIT_SHALLOW    TRUE
+        GIT_SUBMODULES_RECURSE TRUE
+    )
+    FetchContent_GetProperties(wgpu_native_fork)
+    if(NOT wgpu_native_fork_POPULATED)
+        FetchContent_Populate(wgpu_native_fork)
+    endif()
+
+    find_program(VIVID_CARGO_EXECUTABLE cargo REQUIRED)
+    set(VIVID_WGPU_NATIVE_FORK_LIB
+        "${wgpu_native_fork_SOURCE_DIR}/target/release/libwgpu_native.dylib")
+
+    add_custom_target(wgpu_native_fork_build ALL
+        COMMAND ${VIVID_CARGO_EXECUTABLE} build --release
+        WORKING_DIRECTORY ${wgpu_native_fork_SOURCE_DIR}
+        COMMENT "Building pinned wgpu-native fork (Metal interop symbols)"
+        VERBATIM
+    )
+
+    if(TARGET webgpu)
+        add_dependencies(webgpu wgpu_native_fork_build)
+        set_target_properties(webgpu PROPERTIES IMPORTED_LOCATION "${VIVID_WGPU_NATIVE_FORK_LIB}")
+    endif()
+    set(WEBGPU_RUNTIME_LIB "${VIVID_WGPU_NATIVE_FORK_LIB}" CACHE INTERNAL "Path to the WebGPU library binary" FORCE)
+endif()
 
 FetchContent_Declare(
     ixwebsocket
@@ -64,6 +96,78 @@ target_link_libraries(rtmidi PUBLIC
     "-framework CoreAudio"
     "-framework CoreFoundation"
 )
+
+# --- oscpack (vendored OSC over UDP) ---
+if(WIN32)
+    set(VIVID_OSCPACK_IP_PATH deps/oscpack/ip/win32)
+else()
+    set(VIVID_OSCPACK_IP_PATH deps/oscpack/ip/posix)
+endif()
+
+add_library(oscpack STATIC
+    deps/oscpack/ip/IpEndpointName.cpp
+    ${VIVID_OSCPACK_IP_PATH}/NetworkingUtils.cpp
+    ${VIVID_OSCPACK_IP_PATH}/UdpSocket.cpp
+    deps/oscpack/osc/OscTypes.cpp
+    deps/oscpack/osc/OscReceivedElements.cpp
+    deps/oscpack/osc/OscPrintReceivedElements.cpp
+    deps/oscpack/osc/OscOutboundPacketStream.cpp
+)
+target_include_directories(oscpack PUBLIC deps/oscpack)
+if(WIN32)
+    target_link_libraries(oscpack PUBLIC ws2_32 winmm)
+endif()
+
+# --- Syphon runtime (macOS) ---
+if(APPLE)
+    add_library(syphon_runtime SHARED
+        deps/syphon/SyphonCFMessageReceiver.m
+        deps/syphon/SyphonCFMessageSender.m
+        deps/syphon/SyphonClientBase.m
+        deps/syphon/SyphonClientConnectionManager.m
+        deps/syphon/SyphonDispatch.c
+        deps/syphon/SyphonMessageQueue.m
+        deps/syphon/SyphonMessageReceiver.m
+        deps/syphon/SyphonMessageSender.m
+        deps/syphon/SyphonMessaging.m
+        deps/syphon/SyphonMetalClient.m
+        deps/syphon/SyphonMetalServer.m
+        deps/syphon/SyphonPrivate.m
+        deps/syphon/SyphonServerBase.m
+        deps/syphon/SyphonServerConnectionManager.m
+        deps/syphon/SyphonServerDirectory.m
+        deps/syphon/SyphonServerRendererMetal.m
+    )
+    target_include_directories(syphon_runtime PUBLIC deps/syphon deps)
+    target_link_libraries(syphon_runtime PUBLIC
+        "-framework Foundation"
+        "-framework AppKit"
+        "-framework Metal"
+        "-framework IOSurface"
+        "-framework CoreVideo"
+        "-framework QuartzCore"
+        "-framework CoreFoundation"
+    )
+    target_compile_options(syphon_runtime PRIVATE "-include${CMAKE_SOURCE_DIR}/deps/syphon/Syphon_Prefix.pch")
+    set_source_files_properties(
+        deps/syphon/SyphonCFMessageReceiver.m
+        deps/syphon/SyphonCFMessageSender.m
+        deps/syphon/SyphonClientBase.m
+        deps/syphon/SyphonClientConnectionManager.m
+        deps/syphon/SyphonMessageQueue.m
+        deps/syphon/SyphonMessageReceiver.m
+        deps/syphon/SyphonMessageSender.m
+        deps/syphon/SyphonMessaging.m
+        deps/syphon/SyphonMetalClient.m
+        deps/syphon/SyphonMetalServer.m
+        deps/syphon/SyphonPrivate.m
+        deps/syphon/SyphonServerBase.m
+        deps/syphon/SyphonServerConnectionManager.m
+        deps/syphon/SyphonServerDirectory.m
+        deps/syphon/SyphonServerRendererMetal.m
+        PROPERTIES COMPILE_FLAGS "-fobjc-arc"
+    )
+endif()
 
 # --- Operator API (header-only interface library) ---
 add_library(vivid_operator_api INTERFACE)
@@ -159,6 +263,8 @@ add_vivid_operator(pat_transform     operators/control/pat_transform/pat_transfo
 add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_gain.cpp
                                     EXTRA_LIBS vivid_composable_ops)
 add_vivid_operator(spread_noise    operators/control/spread_noise/spread_noise.cpp)
+add_vivid_operator(osc_in            operators/control/osc_in/osc_in.cpp      EXTRA_LIBS oscpack)
+add_vivid_operator(osc_out           operators/control/osc_out/osc_out.cpp     EXTRA_LIBS oscpack)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu
@@ -232,6 +338,77 @@ else()
         "  \"webcam_in\": { \"sources\": [\"operators/gpu/webcam_in/webcam_in.cpp\"], \"extra_libs\": [\"webgpu\"] }")
 endif()
 set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS webcam_in)
+
+# --- Syphon In (macOS Syphon client input) ---
+if(APPLE)
+    add_library(syphon_in MODULE
+        operators/gpu/syphon_in/syphon_in.mm
+    )
+    target_link_libraries(syphon_in PRIVATE
+        vivid_operator_api webgpu syphon_runtime
+        "-framework Foundation" "-framework AppKit" "-framework Metal"
+    )
+    target_include_directories(syphon_in PRIVATE deps/syphon deps)
+    set_source_files_properties(operators/gpu/syphon_in/syphon_in.mm
+        PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    add_library(syphon_in MODULE operators/gpu/syphon_in/syphon_in_stub.cpp)
+    target_link_libraries(syphon_in PRIVATE vivid_operator_api webgpu)
+endif()
+set_target_properties(syphon_in PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+if(APPLE)
+    add_custom_command(TARGET syphon_in POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:syphon_in>
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
+        COMMENT "Updating syphon_in in Vivid.app bundle"
+    )
+endif()
+if(APPLE)
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"syphon_in\": { \"sources\": [\"operators/gpu/syphon_in/syphon_in.mm\"], \"extra_libs\": [\"webgpu\"], \"frameworks\": [\"Foundation\", \"AppKit\", \"Metal\"], \"objc_arc\": [\"operators/gpu/syphon_in/syphon_in.mm\"], \"include_dirs\": [\"deps/syphon\", \"deps\"] }")
+else()
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"syphon_in\": { \"sources\": [\"operators/gpu/syphon_in/syphon_in_stub.cpp\"], \"extra_libs\": [\"webgpu\"] }")
+endif()
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS syphon_in)
+
+# --- SyphonOut operator (macOS only) ---
+if(APPLE)
+    add_library(syphon_out MODULE
+        operators/gpu/syphon_out/syphon_out.mm
+    )
+    target_link_libraries(syphon_out PRIVATE
+        vivid_operator_api webgpu syphon_runtime
+    )
+    target_include_directories(syphon_out PRIVATE deps/syphon deps)
+    set_source_files_properties(operators/gpu/syphon_out/syphon_out.mm
+        PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    add_library(syphon_out MODULE operators/gpu/syphon_out/syphon_out_stub.cpp)
+    target_link_libraries(syphon_out PRIVATE vivid_operator_api webgpu)
+endif()
+set_target_properties(syphon_out PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+if(APPLE)
+    add_custom_command(TARGET syphon_out POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:syphon_out>
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
+        COMMENT "Updating syphon_out in Vivid.app bundle"
+    )
+endif()
+if(APPLE)
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"syphon_out\": { \"sources\": [\"operators/gpu/syphon_out/syphon_out.mm\"], \"extra_libs\": [\"webgpu\"], \"frameworks\": [\"Foundation\", \"AppKit\", \"Metal\"], \"objc_arc\": [\"operators/gpu/syphon_out/syphon_out.mm\"], \"include_dirs\": [\"deps/syphon\", \"deps\"] }")
+else()
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"syphon_out\": { \"sources\": [\"operators/gpu/syphon_out/syphon_out_stub.cpp\"], \"extra_libs\": [\"webgpu\"] }")
+endif()
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS syphon_out)
 
 # --- Audio operator plugins ---
 add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp)
@@ -338,6 +515,9 @@ endif()
 
 target_include_directories(vivid PRIVATE src)
 target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11)
+if(APPLE)
+    target_link_libraries(vivid PRIVATE syphon_runtime)
+endif()
 
 if(APPLE)
     target_compile_definitions(vivid PRIVATE
@@ -351,8 +531,8 @@ endif()
 
 # macOS native menu bar
 if(APPLE)
-    target_sources(vivid PRIVATE src/runtime/macos_menu.mm)
-    set_source_files_properties(src/runtime/macos_menu.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    target_sources(vivid PRIVATE src/runtime/macos_menu.mm src/runtime/metal_interop.mm src/runtime/syphon_output.mm)
+    set_source_files_properties(src/runtime/macos_menu.mm src/runtime/metal_interop.mm src/runtime/syphon_output.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 endif()
 
 # ObjC ARC for AVExporter
@@ -591,6 +771,38 @@ target_link_libraries(test_control_server PRIVATE
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
 add_dependencies(test_control_server test_op_v1)
 add_test(NAME test_control_server COMMAND test_control_server WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Perception introspection matrix test (domain snapshots + deterministic health)
+add_executable(test_perception_introspection
+    tests/test_perception_introspection.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/undo_manager.cpp
+    src/runtime/control_server.cpp
+    src/runtime/capture_coordinator.cpp
+    src/runtime/screenshot.cpp
+    src/runtime/av_exporter.mm
+    src/runtime/operator_creator.cpp
+    src/runtime/hot_reload.cpp
+    src/runtime/system_midi.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/package_test_runner.cpp
+    src/runtime/package_catalog.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_perception_introspection PRIVATE src)
+target_link_libraries(test_perception_introspection PRIVATE
+    vivid_operator_api yyjson miniaudio ixwebsocket webgpu rtmidi stb_truetype
+    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+    "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
+add_dependencies(test_perception_introspection test_op_v1)
+add_test(NAME test_perception_introspection COMMAND test_perception_introspection WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Test operator plugins
 add_vivid_operator(audio_test_op      tests/operators/audio_test_op.cpp)

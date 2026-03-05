@@ -350,6 +350,7 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
     snap.quantize_clock_node = graph.quantize_clock_node();
     if (runtime_api) {
         snap.variation_dirty = runtime_api->variation_dirty();
+        snap.graph_dirty = runtime_api->graph_dirty();
         snap.queued_variation = runtime_api->pending_variation_idx();
     }
 
@@ -1785,6 +1786,9 @@ int main(int argc, char* argv[]) {
     double prev_time = glfwGetTime();
     uint64_t frame_count = 0;
     bool pkg_update_notice_done = false;
+#ifdef __APPLE__
+    bool window_doc_edited = false;
+#endif
 
     // --- Main loop ---
     auto tick_frame = [&]() -> bool {
@@ -1911,6 +1915,14 @@ int main(int argc, char* argv[]) {
         if (!graph_loaded && !scheduler.nodes().empty()) {
             graph_loaded = true;
         }
+
+#ifdef __APPLE__
+        bool now_dirty = runtime_api.graph_dirty();
+        if (now_dirty != window_doc_edited) {
+            vivid::macos_set_document_edited(now_dirty);
+            window_doc_edited = now_dirty;
+        }
+#endif
 
         // Drive fullscreen/display selection from video_out sink params when present.
         if (has_gpu_ops && video_out_idx >= 0 &&
@@ -2195,6 +2207,7 @@ int main(int argc, char* argv[]) {
                 } else {
                     emit_clear_pass(frame.encoder, frame.view, clear);
                 }
+
             } else {
                 emit_clear_pass(frame.encoder, frame.view, clear);
             }

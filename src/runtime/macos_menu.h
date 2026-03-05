@@ -40,6 +40,7 @@ struct MenuCallbacks {
 
 void macos_setup_menu(const MenuCallbacks& callbacks);
 void macos_set_presentation_fullscreen(bool enabled);
+void macos_set_document_edited(bool edited);
 
 }  // namespace vivid
 

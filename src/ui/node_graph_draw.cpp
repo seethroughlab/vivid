@@ -1245,6 +1245,36 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         layout.end_param(py - start_y);
         return;
     }
+    // Text params: inline editable field, no file dialog.
+    if (pd.type == VIVID_PARAM_TEXT) {
+        py += kLineH;
+        std::string text_value;
+        auto sp_it = node.file_param_values.find(pd.name);
+        if (sp_it != node.file_param_values.end()) text_value = sp_it->second;
+        float field_h = kDropdownH;
+        if (is_editing_this) {
+            tr.draw_rect(px - 1, py - 1, panel_w + 2, field_h + 2,
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+            tr.draw_rect(px, py, panel_w, field_h,
+                         style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+            std::string display = edit_buffer_ + "_";
+            tr.draw_text(px + 6, py + 1, display.c_str(), 0.95f, 0.95f, 0.95f);
+        } else {
+            tr.draw_rect(px, py, panel_w, field_h,
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+            std::string display = text_value.empty() ? "(empty)" : text_value;
+            float max_text_w = panel_w - 12;
+            while (tr.text_width(display.c_str()) > max_text_w && display.size() > 4) {
+                display = display.substr(0, display.size() - 2);
+            }
+            tr.draw_text(px + 6, py + 1, display.c_str(),
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
+        value_text_rects_.push_back({px, py, panel_w, field_h, single_selected_id(), pd.name});
+        py += field_h + 6;
+        layout.end_param(py - start_y);
+        return;
+    }
 
     // Value text (right-aligned on the label line)
     std::string val_str;
@@ -2291,7 +2321,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         std::sort(sorted_params.begin(), sorted_params.end());
         for (const auto& [idx, name] : sorted_params) {
             const ParamInfo* pd = ns.find_param(name);
-            if (pd && pd->type == VIVID_PARAM_FILE) continue;
+            if (pd && (pd->type == VIVID_PARAM_FILE || pd->type == VIVID_PARAM_TEXT)) continue;
             ports.push_back({name, VIVID_PORT_CONTROL_FLOAT, true, true, true});
         }
         return ports;
@@ -3352,6 +3382,19 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
             tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
                          undo_label, tur, tug, tub);
             perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 2, can_undo});
+            rx -= kPerfBtnMargin;
+        }
+
+        // Unsaved graph badge (non-interactive)
+        if (snap_.graph_dirty) {
+            const char* dirty_label = "Unsaved";
+            float tw = tr.text_width(dirty_label);
+            float badge_w = tw + kPerfBtnPadX * 2;
+            rx -= badge_w;
+            tr.draw_rounded_rect(rx, btn_y, badge_w, kPerfBtnH, 3.0f,
+                                 0.72f, 0.40f, 0.14f, 0.32f);
+            tr.draw_text(rx + kPerfBtnPadX, btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                         dirty_label, 1.0f, 0.88f, 0.74f);
             rx -= kPerfBtnMargin;
         }
 

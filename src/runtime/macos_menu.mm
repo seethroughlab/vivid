@@ -316,6 +316,16 @@ void macos_set_presentation_fullscreen(bool enabled) {
     }
 }
 
+void macos_set_document_edited(bool edited) {
+    @autoreleasepool {
+        if (!NSApp) return;
+        NSWindow* window = [NSApp keyWindow];
+        if (!window) window = [NSApp mainWindow];
+        if (!window) return;
+        [window setDocumentEdited:(edited ? YES : NO)];
+    }
+}
+
 }  // namespace vivid
 
 #endif  // __APPLE__
