@@ -143,29 +143,21 @@ endfunction()
 add_vivid_operator(lfo            operators/control/lfo/lfo.cpp
                    FACTORY_PRESETS operators/control/lfo/factory_presets.json)
 add_vivid_operator(clock          operators/control/clock/clock.cpp)
-add_vivid_operator(note_duration  operators/control/note_duration/note_duration.cpp)
 add_vivid_operator(math           operators/control/math/math.cpp)
 add_vivid_operator(envelope       operators/control/envelope/envelope.cpp
                    FACTORY_PRESETS operators/control/envelope/factory_presets.json)
 add_vivid_operator(midi_input     operators/control/midi_input/midi_input.cpp     EXTRA_LIBS rtmidi)
 add_vivid_operator(fft_analysis   operators/control/fft_analysis/fft_analysis.cpp)
-add_vivid_operator(note_pattern   operators/control/note_pattern/note_pattern.cpp)
-add_vivid_operator(chord_progression operators/control/chord_progression/chord_progression.cpp)
-add_vivid_operator(arpeggiator      operators/control/arpeggiator/arpeggiator.cpp)
 add_vivid_operator(logic             operators/control/logic/logic.cpp)
 add_vivid_operator(gate              operators/control/gate/gate.cpp)
 add_vivid_operator(random            operators/control/random/random.cpp)
 add_vivid_operator(smooth            operators/control/smooth/smooth.cpp)
-add_vivid_operator(sequencer         operators/control/sequencer/sequencer.cpp)
-add_vivid_operator(drum_sequencer    operators/control/drum_sequencer/drum_sequencer.cpp)
 add_vivid_operator(euclidean         operators/control/euclidean/euclidean.cpp)
-add_vivid_operator(pattern_seq       operators/control/pattern_seq/pattern_seq.cpp)
 add_vivid_operator(stack             operators/control/stack/stack.cpp)
 add_vivid_operator(alternate         operators/control/alternate/alternate.cpp)
 add_vivid_operator(pat_transform     operators/control/pat_transform/pat_transform.cpp)
 add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_gain.cpp
                                     EXTRA_LIBS vivid_composable_ops)
-add_vivid_operator(state_machine    operators/control/state_machine/state_machine.cpp)
 add_vivid_operator(spread_noise    operators/control/spread_noise/spread_noise.cpp)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
@@ -369,7 +361,6 @@ configure_file(graphs/midi_demo.json ${CMAKE_BINARY_DIR}/midi_demo.json COPYONLY
 configure_file(graphs/fft_bars_demo.json ${CMAKE_BINARY_DIR}/fft_bars_demo.json COPYONLY)
 configure_file(graphs/polysynth_demo.json ${CMAKE_BINARY_DIR}/polysynth_demo.json COPYONLY)
 configure_file(graphs/external_adsr_demo.json ${CMAKE_BINARY_DIR}/external_adsr_demo.json COPYONLY)
-configure_file(graphs/chord_progression_demo.json ${CMAKE_BINARY_DIR}/chord_progression_demo.json COPYONLY)
 configure_file(graphs/displace_demo.json ${CMAKE_BINARY_DIR}/displace_demo.json COPYONLY)
 configure_file(graphs/movie_file_in_demo.json ${CMAKE_BINARY_DIR}/movie_file_in_demo.json COPYONLY)
 configure_file(graphs/mfi_halftone_demo.json ${CMAKE_BINARY_DIR}/mfi_halftone_demo.json COPYONLY)
@@ -379,7 +370,6 @@ configure_file(graphs/mfi_displace_demo.json ${CMAKE_BINARY_DIR}/mfi_displace_de
 configure_file(graphs/mfi_composite_demo.json ${CMAKE_BINARY_DIR}/mfi_composite_demo.json COPYONLY)
 configure_file(graphs/mfi_kitchen_sink_demo.json ${CMAKE_BINARY_DIR}/mfi_kitchen_sink_demo.json COPYONLY)
 configure_file(graphs/mfi_av_sync_demo.json ${CMAKE_BINARY_DIR}/mfi_av_sync_demo.json COPYONLY)
-configure_file(graphs/arpeggiator_demo.json ${CMAKE_BINARY_DIR}/arpeggiator_demo.json COPYONLY)
 configure_file(graphs/gradient_demo.json ${CMAKE_BINARY_DIR}/gradient_demo.json COPYONLY)
 configure_file(graphs/hsv_demo.json ${CMAKE_BINARY_DIR}/hsv_demo.json COPYONLY)
 configure_file(graphs/mirror_demo.json ${CMAKE_BINARY_DIR}/mirror_demo.json COPYONLY)
@@ -393,7 +383,6 @@ configure_file(graphs/switch_demo.json ${CMAKE_BINARY_DIR}/switch_demo.json COPY
 configure_file(graphs/feedback_demo.json ${CMAKE_BINARY_DIR}/feedback_demo.json COPYONLY)
 configure_file(graphs/shape_instance_demo.json ${CMAKE_BINARY_DIR}/shape_instance_demo.json COPYONLY)
 configure_file(graphs/wgsl_filters_demo.json ${CMAKE_BINARY_DIR}/wgsl_filters_demo.json COPYONLY)
-configure_file(graphs/pattern_algebra_demo.json ${CMAKE_BINARY_DIR}/pattern_algebra_demo.json COPYONLY)
 configure_file(graphs/webcam_timemachine_demo.json ${CMAKE_BINARY_DIR}/webcam_timemachine_demo.json COPYONLY)
 
 # Copy all demo graphs into graphs/ subdirectory (for test_demo_graphs)
@@ -569,12 +558,6 @@ target_include_directories(test_runtime_api PRIVATE src)
 target_link_libraries(test_runtime_api PRIVATE vivid_operator_api yyjson miniaudio webgpu rtmidi)
 add_dependencies(test_runtime_api test_op_v1)
 add_test(NAME test_runtime_api COMMAND test_runtime_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-
-# StateMachine operator unit test (includes operator source directly, no plugin loading)
-add_executable(test_state_machine tests/test_state_machine.cpp)
-target_include_directories(test_state_machine PRIVATE src)
-target_link_libraries(test_state_machine PRIVATE vivid_operator_api)
-add_test(NAME test_state_machine COMMAND test_state_machine WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # ControlServer integration test (HTTP endpoints, no GPU, no audio, no window)
 add_executable(test_control_server
@@ -806,23 +789,6 @@ add_dependencies(test_audio_spread_wire spread_source_op audio_spread_op spread_
 add_test(NAME test_audio_spread_wire COMMAND test_audio_spread_wire
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# Pattern algebra unit + integration test
-add_executable(test_pattern_algebra
-    tests/test_pattern_algebra.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/scheduler.cpp
-)
-target_include_directories(test_pattern_algebra PRIVATE src)
-target_link_libraries(test_pattern_algebra PRIVATE vivid_operator_api yyjson webgpu)
-add_dependencies(test_pattern_algebra
-    euclidean pattern_seq stack alternate pat_transform
-    spread_source_op clock)
-add_test(NAME test_pattern_algebra COMMAND test_pattern_algebra
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-
 # ChildOp<T> composition unit test (no plugins, no scheduler, header-only)
 add_executable(test_child_op tests/test_child_op.cpp)
 target_include_directories(test_child_op PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
@@ -855,10 +821,9 @@ target_link_libraries(test_demo_graphs PRIVATE
 add_dependencies(test_demo_graphs
     # control
     lfo clock math envelope midi_input fft_analysis
-    note_pattern chord_progression arpeggiator
-    logic gate random smooth sequencer
-    euclidean pattern_seq stack alternate pat_transform
-    modulated_gain spread_noise drum_sequencer state_machine
+    logic gate random smooth
+    euclidean stack alternate pat_transform
+    modulated_gain spread_noise
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
     noise shape bars composite
     bloom feedback instance movie_file_in texture_analysis

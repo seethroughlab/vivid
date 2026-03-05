@@ -286,13 +286,13 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 
 #### Phase 4: vivid-sequencers
 
-- [ ] Move 8 sequencing operators into `vivid-sequencers`
-- [ ] Ensure remaining core timing primitives still cover demos/tests
-- [ ] Add package manifest + CMake + CI smoke test
-- [ ] Move sequencer-specific demo graphs from `vivid/graphs` into `../vivid-sequencers/graphs`
-- [ ] Move sequencer-specific tests from `vivid/tests` into `../vivid-sequencers/tests`
-- [ ] Run package tests in `vivid-sequencers` CI (not only core smoke checks)
-- [ ] Verify install/uninstall + runtime behavior
+- [x] Move 8 sequencing operators into `vivid-sequencers`
+- [x] Ensure remaining core timing primitives still cover demos/tests
+- [x] Add package manifest + CMake + CI smoke test
+- [x] Move sequencer-specific demo graphs from `vivid/graphs` into `../vivid-sequencers/graphs`
+- [x] Move sequencer-specific tests from `vivid/tests` into `../vivid-sequencers/tests`
+- [x] Run package tests in `vivid-sequencers` CI (not only core smoke checks)
+- [x] Verify install/uninstall + runtime behavior
 
 #### Phase 5: Post-extraction cleanup
 
@@ -312,7 +312,7 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 - [x] Extract vivid-wavetable: move `wavetable_synth.cpp`, create package repo, add CI smoke test
 - [x] Extract vivid-drums: move 5 drum operators + `drum_dsp.h` to operator API, create package repo, add CI smoke test
 - [x] Extract vivid-plexus: move `plexus.cpp` + `plexus_synth.cpp`, create package repo, add CI smoke test
-- [ ] Extract vivid-sequencers: move 8 operators, create package repo, add CI smoke test
+- [x] Extract vivid-sequencers: move 8 operators, create package repo, add CI smoke test
 - [ ] Add licenses and AGENTS.md to all extracted packages and existing external packages (vivid-3d, vivid-glitch)
 - [ ] Update README.md operator list to reflect minimal core after extraction
 - [ ] Verify `test_demo_graphs` passes with reduced core (no graphs in vivid-core should reference extracted operators)
