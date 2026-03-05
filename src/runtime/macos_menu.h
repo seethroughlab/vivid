@@ -13,6 +13,7 @@ struct MenuCallbacks {
     std::function<void()> on_preferences;
     std::function<void()> on_export;
     std::function<void()> on_browse_packages;
+    std::function<void()> on_open_package_catalog_website;
 
     // Edit menu
     std::function<void()> on_delete_selected;

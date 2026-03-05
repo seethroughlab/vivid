@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vivid Package Catalog</title>
+  <style>
+    :root {
+      --bg: #11161d;
+      --card: #1a212b;
+      --text: #e6edf3;
+      --muted: #95a4b5;
+      --accent: #4ecdc4;
+      --border: #2c3644;
+    }
+    body {
+      margin: 0;
+      font-family: "JetBrains Mono", Menlo, Monaco, monospace;
+      background: linear-gradient(180deg, #10151c 0%, #0d1117 100%);
+      color: var(--text);
+    }
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 28px 16px 40px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .thumb {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      display: block;
+      background: #121923;
+      border-bottom: 1px solid var(--border);
+    }
+    .content {
+      padding: 12px;
+    }
+    .name {
+      margin: 0 0 6px;
+      font-size: 16px;
+      color: var(--accent);
+    }
+    .desc {
+      margin: 0 0 10px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .meta {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .actions a {
+      display: inline-block;
+      margin: 0 8px 8px 0;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .actions a:hover {
+      border-color: var(--accent);
+    }
+    code {
+      display: block;
+      margin-top: 4px;
+      padding: 7px 8px;
+      background: #0f141b;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: #d8f3f1;
+      font-size: 11px;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Vivid Package Catalog</h1>
+    <p>Curated package index for the Vivid runtime.</p>
+    <div id="grid" class="grid"></div>
+  </main>
+  <script>
+    async function run() {
+      const grid = document.getElementById("grid");
+      try {
+        const res = await fetch("./packages.json", { cache: "no-store" });
+        const data = await res.json();
+        const pkgs = data.packages || [];
+        grid.innerHTML = "";
+        for (const p of pkgs) {
+          const card = document.createElement("article");
+          card.className = "card";
+          const preview = p.preview_image_url || "";
+          const description = p.description_short || p.description || "";
+          card.innerHTML = `
+            ${preview ? `<img class="thumb" src="${preview}" alt="${p.name} preview">` : ""}
+            <div class="content">
+              <h2 class="name">${p.name}</h2>
+              <p class="desc">${description}</p>
+              <p class="meta">v${p.version || "?"} · ${p.category || "uncategorized"}</p>
+              <div class="actions">
+                ${p.repo_url ? `<a href="${p.repo_url}" target="_blank" rel="noopener">Repo</a>` : ""}
+                ${p.homepage_url ? `<a href="${p.homepage_url}" target="_blank" rel="noopener">Homepage</a>` : ""}
+              </div>
+              <code>vivid packages install ${p.install_url || p.url || ""}</code>
+            </div>`;
+          grid.appendChild(card);
+        }
+      } catch (err) {
+        grid.innerHTML = "<p>Failed to load package catalog.</p>";
+      }
+    }
+    run();
+  </script>
+</body>
+</html>

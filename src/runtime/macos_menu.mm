@@ -9,6 +9,7 @@ enum MenuTag : NSInteger {
     kMenuTagPreferences,
     kMenuTagExport,
     kMenuTagBrowsePackages,
+    kMenuTagOpenPackageCatalogWebsite,
     // Edit
     kMenuTagDeleteSelected,
     // View
@@ -35,6 +36,9 @@ enum MenuTag : NSInteger {
         case kMenuTagPreferences:       if (_callbacks.on_preferences) _callbacks.on_preferences(); break;
         case kMenuTagExport:            if (_callbacks.on_export) _callbacks.on_export(); break;
         case kMenuTagBrowsePackages:    if (_callbacks.on_browse_packages) _callbacks.on_browse_packages(); break;
+        case kMenuTagOpenPackageCatalogWebsite:
+            if (_callbacks.on_open_package_catalog_website) _callbacks.on_open_package_catalog_website();
+            break;
         case kMenuTagDeleteSelected:    if (_callbacks.on_delete_selected) _callbacks.on_delete_selected(); break;
         case kMenuTagToggleUI:          if (_callbacks.on_toggle_ui) _callbacks.on_toggle_ui(); break;
         case kMenuTagToggleBezierWires: if (_callbacks.on_toggle_bezier_wires) _callbacks.on_toggle_bezier_wires(); break;
@@ -153,6 +157,14 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         browseItem.target = sDelegate;
         browseItem.tag = kMenuTagBrowsePackages;
         [fileMenu addItem:browseItem];
+
+        NSMenuItem* openCatalogSiteItem = [[NSMenuItem alloc]
+            initWithTitle:@"Open Package Catalog Website..."
+                   action:@selector(menuAction:)
+            keyEquivalent:@""];
+        openCatalogSiteItem.target = sDelegate;
+        openCatalogSiteItem.tag = kMenuTagOpenPackageCatalogWebsite;
+        [fileMenu addItem:openCatalogSiteItem];
 
         NSMenuItem* fileMenuItem = [[NSMenuItem alloc] initWithTitle:@"File"
                                                              action:nil

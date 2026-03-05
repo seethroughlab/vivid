@@ -34,6 +34,7 @@
 #include "runtime/package_manager.h"
 #include "runtime/package_catalog.h"
 #include "runtime/package_scaffolder.h"
+#include "runtime/platform.h"
 #include <fstream>
 #include <sstream>
 #include <webgpu/webgpu.h>
@@ -1524,6 +1525,22 @@ int main(int argc, char* argv[]) {
 
         menu_cbs.on_browse_packages = [&]() {
             graph_ui.toggle_package_browser();
+        };
+
+        menu_cbs.on_open_package_catalog_website = [&]() {
+            const char* env_url = std::getenv("VIVID_PACKAGE_DISCOVERY_URL");
+            const std::string url =
+                (env_url && env_url[0] != '\0')
+                    ? std::string(env_url)
+                    : std::string("https://vivid.seethroughlab.com");
+            std::string err;
+            if (!vivid::open_url(url, &err)) {
+                std::fprintf(stderr, "[vivid] Failed to open package catalog URL '%s': %s\n",
+                             url.c_str(), err.c_str());
+            } else {
+                std::fprintf(stderr, "[vivid] Opened package catalog website: %s\n",
+                             url.c_str());
+            }
         };
 
         // Edit menu

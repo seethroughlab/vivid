@@ -389,11 +389,14 @@ Goal: make package authoring, install/update behavior, and discovery feel first-
 
 ### Phase 4: Discovery Surface Decision
 
-- [ ] Evaluate package discovery options and choose one for 1.0:
+*Execution note:* 1.0 discovery follows the GitHub-hosted hybrid plan in `docs/PACKAGE-DISCOVERY-SPEC.md`: external website + runtime install bridge, with **no CEF in core**.
+Initial artifact shipped: `catalog/packages.json` with current sibling package metadata and preview-image URL placeholders.
+
+- [x] Evaluate package discovery options and choose one for 1.0 (see `docs/PACKAGE-DISCOVERY-SPEC.md`):
   - lightweight curated index in repo/catalog JSON
   - web browsing site
   - deferred (documented rationale)
-- [ ] If included in 1.0, define minimal viable implementation:
+- [x] If included in 1.0, define minimal viable implementation (see `docs/PACKAGE-DISCOVERY-SPEC.md`):
   - metadata format
   - moderation/curation ownership
   - ingestion/update workflow

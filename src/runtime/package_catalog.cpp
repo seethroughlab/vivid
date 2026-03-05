@@ -11,7 +11,11 @@
 
 namespace vivid {
 
-static constexpr const char* kCatalogURL =
+static constexpr const char* kCatalogPrimaryURL =
+    "https://raw.githubusercontent.com/seethroughlab/vivid/master/catalog/packages.json";
+static constexpr const char* kCatalogFallbackURL1 =
+    "https://raw.githubusercontent.com/seethroughlab/vivid/main/catalog/packages.json";
+static constexpr const char* kCatalogFallbackURL2 =
     "https://raw.githubusercontent.com/seethroughlab/package-index/main/packages.json";
 
 static constexpr int kCacheTTLSeconds = 3600;  // 1 hour
@@ -23,6 +27,18 @@ static std::string cache_path() {
 static bool skip_catalog_network_fetch() {
     const char* v = std::getenv("VIVID_SKIP_PACKAGE_CATALOG_NETWORK");
     return v && v[0] != '\0' && std::string(v) != "0";
+}
+
+static std::vector<std::string> catalog_urls() {
+    // Optional explicit override for local testing/ops.
+    const char* override_url = std::getenv("VIVID_PACKAGE_CATALOG_URL");
+    if (override_url && override_url[0] != '\0')
+        return {std::string(override_url)};
+    return {
+        kCatalogPrimaryURL,
+        kCatalogFallbackURL1,
+        kCatalogFallbackURL2,
+    };
 }
 
 PackageCatalog::PackageCatalog(PackageManager& pm) : pm_(pm) {}
@@ -129,45 +145,46 @@ void PackageCatalog::fetch_thread_fn() {
         return;
     }
 
-    // Fetch fresh data via curl
-    std::string cmd = std::string("curl -sS --max-time 10 '") + kCatalogURL + "' 2>&1";
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!have_cache) {
-            state_ = CatalogFetchState::Error;
-            error_ = "Failed to execute curl";
-        } else {
-            state_ = CatalogFetchState::Ready;
+    std::vector<CatalogEntry> remote;
+    std::string fetch_error_msg = "Failed to execute curl";
+    bool fetched = false;
+
+    // Try catalog URLs in deterministic order; first successful parse wins.
+    for (const auto& url : catalog_urls()) {
+        std::string cmd = std::string("curl -sS --max-time 10 '") + url + "' 2>&1";
+        FILE* pipe = popen(cmd.c_str(), "r");
+        if (!pipe) {
+            fetch_error_msg = "Failed to execute curl";
+            continue;
         }
-        return;
+
+        std::string output;
+        std::array<char, 4096> buf;
+        while (fgets(buf.data(), buf.size(), pipe) != nullptr)
+            output += buf.data();
+        int status = pclose(pipe);
+
+        if (status != 0) {
+            fetch_error_msg = "curl failed: " + output.substr(0, 200);
+            continue;
+        }
+
+        remote.clear();
+        if (!parse_index_json(output, remote)) {
+            fetch_error_msg = "Failed to parse catalog JSON";
+            continue;
+        }
+        fetched = true;
+        break;
     }
 
-    std::string output;
-    std::array<char, 4096> buf;
-    while (fgets(buf.data(), buf.size(), pipe) != nullptr)
-        output += buf.data();
-    int status = pclose(pipe);
-
-    if (status != 0) {
+    if (!fetched) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!have_cache) {
             state_ = CatalogFetchState::Error;
-            error_ = "curl failed: " + output.substr(0, 200);
+            error_ = fetch_error_msg;
         } else {
             // Keep cached data, mark ready
-            state_ = CatalogFetchState::Ready;
-        }
-        return;
-    }
-
-    std::vector<CatalogEntry> remote;
-    if (!parse_index_json(output, remote)) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!have_cache) {
-            state_ = CatalogFetchState::Error;
-            error_ = "Failed to parse catalog JSON";
-        } else {
             state_ = CatalogFetchState::Ready;
         }
         return;
@@ -217,6 +234,10 @@ bool PackageCatalog::parse_index_json(const std::string& json_str,
 
         v = yyjson_obj_get(val, "description");
         if (v && yyjson_is_str(v)) e.description = yyjson_get_str(v);
+        if (e.description.empty()) {
+            v = yyjson_obj_get(val, "description_short");
+            if (v && yyjson_is_str(v)) e.description = yyjson_get_str(v);
+        }
 
         v = yyjson_obj_get(val, "version");
         if (v && yyjson_is_str(v)) e.version = yyjson_get_str(v);
@@ -227,8 +248,12 @@ bool PackageCatalog::parse_index_json(const std::string& json_str,
         v = yyjson_obj_get(val, "author");
         if (v && yyjson_is_str(v)) e.author = yyjson_get_str(v);
 
-        v = yyjson_obj_get(val, "url");
+        v = yyjson_obj_get(val, "install_url");
         if (v && yyjson_is_str(v)) e.url = yyjson_get_str(v);
+        if (e.url.empty()) {
+            v = yyjson_obj_get(val, "url");
+            if (v && yyjson_is_str(v)) e.url = yyjson_get_str(v);
+        }
 
         v = yyjson_obj_get(val, "category");
         if (v && yyjson_is_str(v)) e.category = yyjson_get_str(v);
