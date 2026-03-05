@@ -14,12 +14,14 @@ struct MenuCallbacks {
     std::function<void()> on_export;
     std::function<void()> on_browse_packages;
     std::function<void()> on_open_package_catalog_website;
+    std::function<void()> on_report_issue;
 
     // Edit menu
     std::function<void()> on_delete_selected;
 
     // View menu
     std::function<void()> on_toggle_ui;
+    std::function<void()> on_toggle_fullscreen;
     std::function<void()> on_toggle_bezier_wires;
     std::function<void()> on_toggle_session_grid;
     std::function<void()> on_toggle_midi_map;
@@ -29,6 +31,7 @@ struct MenuCallbacks {
 
     // State queries for checkmarks / enable states
     std::function<bool()> is_ui_visible;
+    std::function<bool()> is_fullscreen;
     std::function<bool()> is_bezier_wires;
     std::function<bool()> is_session_grid_open;
     std::function<bool()> is_midi_map_mode;
@@ -36,6 +39,7 @@ struct MenuCallbacks {
 };
 
 void macos_setup_menu(const MenuCallbacks& callbacks);
+void macos_set_presentation_fullscreen(bool enabled);
 
 }  // namespace vivid
 

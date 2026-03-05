@@ -426,21 +426,234 @@ Initial artifact shipped: `catalog/packages.json` with current sibling package m
 
 ## Milestone 4: LLM Perception System
 
-- [ ] Per-node introspection (structured output describing what each node produces)
-- [ ] Analysis tools (automated graph-level diagnostics)
-- [ ] Assertions (runtime correctness checks)
-- [ ] Explore legacy branch analysis work (visual analysis, audio analysis, analysis hints, DSP utilities, spectrogram rendering)
-- [ ] Ensure MCP server has comprehensive understanding of Vivid's structure
+Goal: give MCP/LLM workflows a reliable perception loop: inspect current graph state, run automated diagnostics, run checks, and iterate safely.
+
+Legacy references consulted for fit checks (patterns only, no verbatim porting):
+- `legacy:docs/ANALYSIS-TOOLS.md`
+- `legacy:docs/ASSERTIONS-REFERENCE.md`
+- `legacy:src/cli/analysis_hints.cpp`
+- `legacy:src/cli/assertion.cpp`
+- `legacy:src/cli/include/vivid/analysis_hints.h`
+- `legacy:src/cli/include/vivid/assertion.h`
+- `legacy:src/cli/mcp_server.cpp`
+- `legacy:src/cli/runtime_api.cpp`
+
+### Phase 0: Spec + API Contract
+
+- [x] Define the canonical perception payload schema in docs (see `docs/PERCEPTION-API-SPEC.md`):
+  - per-node introspection object
+  - graph-level diagnostics object
+  - check definition/result object
+  - severity model (`critical|warning|info`)
+- [x] Decide ownership boundaries (runtime core vs control server vs MCP bridge):
+  - what is produced by runtime core vs MCP bridge
+  - what is cached vs computed on-demand
+- [x] Add a compatibility note for schema versioning (`schema_version` field)
+
+### Phase 1: Per-Node Introspection (Runtime Core)
+
+- [x] Add per-node introspection builder in runtime:
+  - node identity (`id`, `type`, `domain`)
+  - param snapshot (current values only; metadata references optional)
+  - output snapshot (scalar + spread summary)
+  - error/health state (errored flag + message when present)
+- [x] Include domain-specific extras:
+  - audio: RMS/peak/wave summary where available
+  - GPU: texture dimensions/format where available
+  - control: spread length/type summary
+- [x] Expose introspection via control server endpoint (initial `introspect_nodes` payload, MCP-consumable JSON)
+
+### Phase 2: Analysis Tools (Graph-Level Diagnostics)
+
+- [x] Implement first-pass diagnostics over introspection output:
+  - disconnected critical sinks/sources
+  - missing operator placeholders / unresolved types
+  - obvious value anomalies (NaN/Inf/clipping-like flags where detectable)
+  - stale/erroring nodes with propagation hints
+- [x] Add hint generation pass:
+  - prioritized hints list with severity + suggested remediation
+  - cap + dedupe strategy (avoid noisy outputs)
+- [x] Add deterministic ordering for diagnostics (stable for CI and MCP diffs)
+
+### Phase 3: Checks System
+
+- [x] Define and document storage policy before implementation:
+  - checks live in external profile files (for example `checks/dev.json`, `checks/ci.json`)
+  - graph stores optional check profile reference only (no embedded full checks by default)
+  - control server can accept ad-hoc ephemeral checks in request bodies for one-off runs
+
+- [x] Define checks file format for current graph/runtime model:
+  - path-based checks (`exists`, `==`, `!=`, comparison, `between`)
+  - optional guards (`when`, `after_frame`/time window equivalent)
+- [x] Implement check evaluator over introspection/diagnostics payload
+- [x] Add control server endpoint(s):
+  - validate checks payload
+  - run checks and return structured report
+- [x] Ensure check report supports CI consumption:
+  - `all_passed`
+  - per-check pass/fail/skip + message + observed value
+
+### Phase 4: MCP Surface + Tooling
+
+- [x] Add MCP tools mapped to control-server perception endpoints:
+  - get node introspection snapshot
+  - run diagnostics
+  - run checks
+- [x] Keep MCP outputs compact and stable:
+  - short summaries + optional detailed payload
+  - explicit error envelope for runtime-side failures
+- [x] Add MCP docs updates (`docs/LLM-INTEGRATION.md` + tool docs section)
+
+### Phase 5: Legacy Pattern Adoption Pass (Selective)
+
+- [x] Compare implemented payloads to legacy hint/check ergonomics:
+  - carry over only ideas that fit current JSON-graph + control-server architecture
+- [x] Evaluate advanced metrics backlog (defer unless clearly low-risk/high-value):
+  - color harmony / symmetry
+  - audio loudness/spectral detail
+  - temporal reactivity scoring
+- [x] Record accepted vs deferred legacy ideas in roadmap notes
+
+Legacy adoption disposition (Milestone 4):
+- **Accepted now:** deterministic severity-ranked diagnostics with stable finding IDs; structured checks with CI-friendly summary/results; compact MCP summaries with optional full payload passthrough.
+- **Deferred:** advanced visual/audio perception metrics (color harmony, symmetry, LUFS/spectral scoring) and temporal/cross-domain reactivity scoring windows. These remain post-Milestone-4 backlog items.
+
+### Test & Validation Matrix
+
+- [x] Introspection tests:
+  - per-domain node snapshots are structured and stable
+  - errored nodes include deterministic health info
+- [x] Diagnostics tests:
+  - known broken fixture graph yields expected warnings/errors
+  - healthy fixture graph yields empty/minimal findings
+- [x] Checks tests:
+  - passing/failing/guarded checks behave correctly
+  - invalid checks schema yields clear validation errors
+- [x] MCP/API tests:
+  - endpoints return structured JSON envelopes
+  - MCP tools preserve key fields and severity semantics
+- [x] Regression tests:
+  - perception endpoints do not mutate graph/runtime state
+  - deterministic output ordering across repeated runs
+
+### Exit Criteria (Milestone 4 complete)
+
+- [x] Per-node introspection is available via runtime API/control server and consumed by MCP
+- [x] Graph-level diagnostics produce actionable, severity-ranked findings on fixture graphs
+- [x] Checks can be validated and executed headlessly with CI-friendly reports
+- [x] Legacy analysis/check patterns have been reviewed and either adopted or explicitly deferred
+- [x] Documentation reflects the shipped perception tool surface and schemas
 
 ## Milestone 5: Developer & User Experience
 
-- [ ] Getting Started guide with example graphs
-- [ ] Update README.md (fix stale operator list — glitch ops listed but extracted; reflect current state)
-- [ ] Evaluate: MovieOut operator vs. menubar record button
-- [ ] Error reporting link from the GUI to GitHub Issues
-- [ ] Fullscreen / external display output (projectors, LED walls)
-- [ ] OSC input for installations and external hardware
-- [ ] NDI/Syphon output for routing video to other apps
+Goal: improve first-run onboarding, day-to-day usability, and installation/show workflows without expanding core architecture risk late in 1.0.
+
+### Phase 0: Scope + Baseline
+
+- [x] Freeze Milestone 5 success criteria and non-goals:
+  - docs/readme accuracy
+  - onboarding quality (Getting Started + graph organization)
+  - GUI affordances for error reporting + output workflows
+  - external integration priorities (OSC, NDI/Syphon) scoped as implementation-ready or explicitly deferred
+- [x] Capture baseline UX pain points from current app/docs:
+  - setup friction
+  - package/operator discoverability
+  - capture/export confusion
+  - fullscreen/external display reliability
+
+Phase 0 decisions (2026-03-05):
+- **In scope for Milestone 5:** documentation and onboarding quality, graph browse organization, capture/output UX decision, GitHub issue-reporting affordance, fullscreen/external display hardening, and explicit OSC/NDI/Syphon ship-or-defer decisions.
+- **Out of scope for Milestone 5:** major architecture changes, new package ecosystem features, non-macOS platform parity, and deep perception-system expansion (handled in other milestones).
+
+Baseline findings (from current repo/docs state):
+- `README.md` still has stale/high-level claims (for example MCP tool count wording) and needs tighter alignment with current core/package split and current Milestone 4 checks/perception surface.
+- Core `graphs/` is a flat list with no curated onboarding taxonomy/index, increasing first-run browsing friction.
+- Getting Started path exists but lacks a curated “first 10 minutes” flow linking graph examples, package libraries, and hot-reload loop.
+- Capture/output guidance is split across runtime behavior/docs and does not yet present one clearly designated primary 1.0 workflow.
+- GUI issue-reporting affordance to GitHub is not surfaced as a first-class path in current UX docs.
+- Fullscreen/external display behavior has checklist coverage but not yet a Milestone-5 hardening pass with explicit acceptance scenarios.
+
+### Phase 1: Onboarding + Documentation
+
+- [x] Publish a practical Getting Started path with example graphs:
+  - first 10-minute workflow (load graph, tweak params, hot-reload operator, save variation)
+  - curated “starter graph set” with consistent naming/tags by domain/use-case
+  - graph directory organization for easier browsing (intro/performance/demo/package examples)
+- [x] Update `README.md` to current operator/package reality:
+  - remove stale in-core references from extracted packages
+  - clearly list core vs sibling package libraries
+  - reflect current MCP/perception/checks tool surface
+- [x] Add doc cross-links:
+  - `README.md` ↔ `docs/ARCHITECTURE.md` / `docs/LLM-INTEGRATION.md` / package template docs
+  - Getting Started ↔ demo graph index
+
+### Phase 2: Runtime UX Affordances
+
+- [x] Evaluate and decide output capture UX:
+  - `MovieOut` operator path vs menubar record path
+  - select one primary 1.0 workflow, document rationale, defer the alternative if needed
+
+Capture UX decision (2026-03-05):
+- **Primary 1.0 workflow:** keep the existing top-bar/menubar recording path, backed by core capture/export services and MCP/control-server capture endpoints.
+- **Rationale:** synchronized AV export remains in core (required for reliable LLM outer-loop demo generation) without introducing graph-level export node complexity in 1.0.
+- **Deferred alternative:** `MovieOut` operator is deferred post-1.0 unless graph-embedded export orchestration becomes a clear user requirement.
+- [x] Add error reporting affordance in GUI:
+  - GitHub Issues deep-link entry point
+  - include useful context payload (version, platform, basic runtime diagnostics)
+  - ensure this is non-blocking and does not interrupt render/audio loops
+
+Error-reporting affordance status (2026-03-05):
+- Added macOS GUI entry point: `Help -> Report an Issue...`
+- Opens GitHub new-issue URL with prefilled diagnostics payload (core version, platform, build mode, graph path, operator/package counts, audio/GPU flags)
+- Uses existing non-blocking URL dispatch (`open_url`) so render/audio loop remains uninterrupted
+
+### Phase 3: Display + Installation Workflows
+
+- [x] Fullscreen + external display output hardening:
+  - reliable enter/exit fullscreen
+  - stable output on external display attach/detach
+  - deterministic behavior when display configuration changes mid-session
+
+Display workflow hardening status (2026-03-05):
+- Added sink-level controls in `video_out` (`fullscreen`, `display_target`) so output routing/fullscreen behavior is controlled from the render sink itself.
+- Implemented stable macOS fullscreen as borderless windowed fullscreen (not monitor-mode switch), sized to full monitor bounds (`glfwGetMonitorPos` + `glfwGetVideoMode`) with menu bar/dock hidden while active.
+- Added runtime monitor-topology reconciliation (GLFW monitor callback + frame-loop reconciliation) to retarget fullscreen window or reposition window safely after attach/detach and reconfiguration events.
+- Hardened frame/surface transitions around display changes (surface reconfigure on transitions, settle-frame suppression, suboptimal-surface acquire guard, discard-path for invalid in-flight frames) to avoid WebGPU submit-time crashes.
+- Added macOS `View -> Toggle Fullscreen` fallback affordance (Cmd+Ctrl+F) for manual control when needed.
+
+### Phase 4: External I/O Expansion (Feature-Gated)
+
+- [ ] OSC input for installations/hardware:
+  - define minimal message mapping model for 1.0
+  - runtime receive path + basic mapping to params/control signals
+  - docs/examples for common controllers/install workflows
+- [ ] NDI/Syphon output evaluation + implementation plan:
+  - ship one (or both) if low-risk
+  - otherwise explicitly defer with documented rationale and integration notes
+
+### Test & Validation Matrix
+
+- [ ] Docs/onboarding validation:
+  - clean-machine walkthrough completes without hidden steps
+  - Getting Started links and example graph paths are valid
+  - README claims match actual shipped behavior/operators/packages
+- [ ] Runtime UX validation:
+  - chosen capture/export workflow is discoverable and reliable
+  - error-reporting link works and includes expected metadata
+- [ ] Display validation:
+  - fullscreen/external display scenarios pass on macOS test matrix
+- [ ] External I/O validation:
+  - OSC mapping smoke tests (live parameter updates)
+  - NDI/Syphon smoke tests (when implemented)
+
+### Exit Criteria (Milestone 5 complete)
+
+- [ ] New users can get from launch to meaningful output quickly using Getting Started + curated examples
+- [ ] Public docs (`README` + key guides) are accurate to current core/package architecture
+- [ ] Primary capture/output workflow for 1.0 is clear and validated
+- [ ] GUI includes a practical issue-reporting path to GitHub
+- [ ] Fullscreen/external display behavior is stable for live use
+- [ ] OSC and NDI/Syphon are either shipped with baseline coverage or explicitly deferred with rationale
 
 ## Milestone 6: Release Infrastructure
 

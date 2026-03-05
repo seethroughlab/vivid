@@ -10,10 +10,12 @@ enum MenuTag : NSInteger {
     kMenuTagExport,
     kMenuTagBrowsePackages,
     kMenuTagOpenPackageCatalogWebsite,
+    kMenuTagReportIssue,
     // Edit
     kMenuTagDeleteSelected,
     // View
     kMenuTagToggleUI,
+    kMenuTagToggleFullscreen,
     kMenuTagToggleBezierWires,
     kMenuTagToggleSessionGrid,
     kMenuTagToggleMidiMap,
@@ -39,8 +41,12 @@ enum MenuTag : NSInteger {
         case kMenuTagOpenPackageCatalogWebsite:
             if (_callbacks.on_open_package_catalog_website) _callbacks.on_open_package_catalog_website();
             break;
+        case kMenuTagReportIssue:
+            if (_callbacks.on_report_issue) _callbacks.on_report_issue();
+            break;
         case kMenuTagDeleteSelected:    if (_callbacks.on_delete_selected) _callbacks.on_delete_selected(); break;
         case kMenuTagToggleUI:          if (_callbacks.on_toggle_ui) _callbacks.on_toggle_ui(); break;
+        case kMenuTagToggleFullscreen:  if (_callbacks.on_toggle_fullscreen) _callbacks.on_toggle_fullscreen(); break;
         case kMenuTagToggleBezierWires: if (_callbacks.on_toggle_bezier_wires) _callbacks.on_toggle_bezier_wires(); break;
         case kMenuTagToggleSessionGrid: if (_callbacks.on_toggle_session_grid) _callbacks.on_toggle_session_grid(); break;
         case kMenuTagToggleMidiMap:     if (_callbacks.on_toggle_midi_map) _callbacks.on_toggle_midi_map(); break;
@@ -55,6 +61,10 @@ enum MenuTag : NSInteger {
 
         case kMenuTagToggleUI:
             item.state = (_callbacks.is_ui_visible && _callbacks.is_ui_visible()) ? NSControlStateValueOn : NSControlStateValueOff;
+            return YES;
+
+        case kMenuTagToggleFullscreen:
+            item.state = (_callbacks.is_fullscreen && _callbacks.is_fullscreen()) ? NSControlStateValueOn : NSControlStateValueOff;
             return YES;
 
         case kMenuTagToggleBezierWires:
@@ -202,6 +212,15 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         toggleUIItem.tag = kMenuTagToggleUI;
         [viewMenu addItem:toggleUIItem];
 
+        NSMenuItem* toggleFullscreenItem = [[NSMenuItem alloc]
+            initWithTitle:@"Toggle Fullscreen"
+                   action:@selector(menuAction:)
+            keyEquivalent:@"f"];
+        toggleFullscreenItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagControl;
+        toggleFullscreenItem.target = sDelegate;
+        toggleFullscreenItem.tag = kMenuTagToggleFullscreen;
+        [viewMenu addItem:toggleFullscreenItem];
+
         NSMenuItem* toggleBezierItem = [[NSMenuItem alloc]
             initWithTitle:@"Toggle Bezier Wires"
                    action:@selector(menuAction:)
@@ -252,6 +271,48 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
                                                          keyEquivalent:@""];
         [insertMenuItem setSubmenu:insertMenu];
         [mainMenu insertItem:insertMenuItem atIndex:4];
+
+        // --- Create "Help" menu and append ---
+        NSMenu* helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
+
+        NSMenuItem* reportIssueItem = [[NSMenuItem alloc]
+            initWithTitle:@"Report an Issue..."
+                   action:@selector(menuAction:)
+            keyEquivalent:@""];
+        reportIssueItem.target = sDelegate;
+        reportIssueItem.tag = kMenuTagReportIssue;
+        [helpMenu addItem:reportIssueItem];
+
+        NSMenuItem* helpMenuItem = [[NSMenuItem alloc] initWithTitle:@"Help"
+                                                              action:nil
+                                                       keyEquivalent:@""];
+        [helpMenuItem setSubmenu:helpMenu];
+        [mainMenu addItem:helpMenuItem];
+    }
+}
+
+void macos_set_presentation_fullscreen(bool enabled) {
+    @autoreleasepool {
+        if (!NSApp) return;
+        static NSApplicationPresentationOptions s_saved_options = NSApplicationPresentationDefault;
+        static bool s_saved = false;
+        if (enabled) {
+            if (!s_saved) {
+                s_saved_options = [NSApp presentationOptions];
+                s_saved = true;
+            }
+            NSApplicationPresentationOptions opts =
+                NSApplicationPresentationHideDock |
+                NSApplicationPresentationHideMenuBar;
+            [NSApp setPresentationOptions:opts];
+        } else {
+            if (s_saved) {
+                [NSApp setPresentationOptions:s_saved_options];
+                s_saved = false;
+            } else {
+                [NSApp setPresentationOptions:NSApplicationPresentationDefault];
+            }
+        }
     }
 }
 

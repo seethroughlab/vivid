@@ -177,7 +177,7 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
 }
 
 void GpuContext::resize(uint32_t width, uint32_t height) {
-    if (width == width_ && height == height_) return;
+    if (width == 0 || height == 0) return;
     wgpuSurfaceUnconfigure(surface_);
     WGPUSurfaceConfiguration config{};
     config.device = device_;
@@ -195,8 +195,15 @@ void GpuContext::resize(uint32_t width, uint32_t height) {
 bool GpuContext::begin_frame(FrameState& frame) {
     WGPUSurfaceTexture surface_tex{};
     wgpuSurfaceGetCurrentTexture(surface_, &surface_tex);
-    if (surface_tex.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
-        surface_tex.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
+    if (surface_tex.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal) {
+        if (surface_tex.status == WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
+            // Treat suboptimal as transiently invalid during monitor/fullscreen transitions.
+            // The main loop will keep ticking offscreen and retry acquire on subsequent frames.
+            if (surface_tex.texture) {
+                wgpuTextureRelease(surface_tex.texture);
+            }
+            return false;
+        }
         std::fprintf(stderr, "[vivid] Failed to acquire surface texture (status %d)\n",
                      static_cast<int>(surface_tex.status));
         return false;
@@ -214,11 +221,25 @@ bool GpuContext::begin_frame(FrameState& frame) {
     view_desc.aspect = WGPUTextureAspect_All;
     frame.texture = surface_tex.texture;
     frame.view = wgpuTextureCreateView(surface_tex.texture, &view_desc);
+    if (!frame.view) {
+        std::fprintf(stderr, "[vivid] Failed to create surface texture view\n");
+        wgpuTextureRelease(frame.texture);
+        frame.texture = nullptr;
+        return false;
+    }
 
     WGPUCommandEncoderDescriptor enc_desc{};
     enc_desc.nextInChain = nullptr;
     enc_desc.label = to_sv("Frame Encoder");
     frame.encoder = wgpuDeviceCreateCommandEncoder(device_, &enc_desc);
+    if (!frame.encoder) {
+        std::fprintf(stderr, "[vivid] Failed to create frame encoder\n");
+        wgpuTextureViewRelease(frame.view);
+        wgpuTextureRelease(frame.texture);
+        frame.view = nullptr;
+        frame.texture = nullptr;
+        return false;
+    }
 
     return true;
 }
@@ -238,6 +259,13 @@ void GpuContext::end_frame(const FrameState& frame) {
 
     wgpuTextureViewRelease(frame.view);
     wgpuTextureRelease(frame.texture);
+}
+
+void GpuContext::discard_frame(const FrameState& frame) {
+    // Drop acquired surface frame without submit/present when window/surface changed mid-frame.
+    if (frame.encoder) wgpuCommandEncoderRelease(frame.encoder);
+    if (frame.view) wgpuTextureViewRelease(frame.view);
+    if (frame.texture) wgpuTextureRelease(frame.texture);
 }
 
 void GpuContext::shutdown() {

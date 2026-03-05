@@ -44,10 +44,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
 #include <filesystem>
 #include <string>
 #include <algorithm>
 #include <chrono>
+#include <atomic>
 #include <memory>
 #include <thread>
 #include <unordered_set>
@@ -88,6 +90,108 @@ using vivid::to_sv;
 #ifndef VIVID_CORE_VERSION
 #define VIVID_CORE_VERSION "0.1.0"
 #endif
+
+static std::string url_encode(const std::string& text) {
+    static const char kHex[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(text.size() * 3);
+    for (unsigned char c : text) {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            out.push_back(static_cast<char>(c));
+            continue;
+        }
+        out.push_back('%');
+        out.push_back(kHex[(c >> 4) & 0x0F]);
+        out.push_back(kHex[c & 0x0F]);
+    }
+    return out;
+}
+
+static std::string platform_label() {
+#if defined(__APPLE__)
+    return "macOS";
+#elif defined(_WIN32)
+    return "Windows";
+#elif defined(__linux__)
+    return "Linux";
+#else
+    return "Unknown";
+#endif
+}
+
+static std::atomic<uint64_t> g_monitor_topology_serial{0};
+
+static void monitor_callback(GLFWmonitor* /*monitor*/, int event) {
+    const char* ev = (event == GLFW_CONNECTED) ? "connected" :
+                     (event == GLFW_DISCONNECTED) ? "disconnected" : "unknown";
+    const uint64_t serial = g_monitor_topology_serial.fetch_add(1, std::memory_order_relaxed) + 1;
+    std::fprintf(stderr, "[vivid] Monitor topology changed: %s (serial=%llu)\n",
+                 ev, static_cast<unsigned long long>(serial));
+}
+
+static bool monitor_connected(GLFWmonitor* monitor) {
+    if (!monitor) return false;
+    int count = 0;
+    GLFWmonitor** monitors = glfwGetMonitors(&count);
+    for (int i = 0; i < count; ++i) {
+        if (monitors[i] == monitor) return true;
+    }
+    return false;
+}
+
+static GLFWmonitor* monitor_for_window(GLFWwindow* window) {
+    if (!window) return glfwGetPrimaryMonitor();
+    int wx = 0, wy = 0, ww = 0, wh = 0;
+    glfwGetWindowPos(window, &wx, &wy);
+    glfwGetWindowSize(window, &ww, &wh);
+
+    int count = 0;
+    GLFWmonitor** monitors = glfwGetMonitors(&count);
+    GLFWmonitor* best = glfwGetPrimaryMonitor();
+    long best_overlap = -1;
+    for (int i = 0; i < count; ++i) {
+        int mx = 0, my = 0, mw = 0, mh = 0;
+        glfwGetMonitorWorkarea(monitors[i], &mx, &my, &mw, &mh);
+        int ix = std::max(wx, mx);
+        int iy = std::max(wy, my);
+        int ax = std::min(wx + ww, mx + mw);
+        int ay = std::min(wy + wh, my + mh);
+        long overlap = 0;
+        if (ax > ix && ay > iy)
+            overlap = static_cast<long>(ax - ix) * static_cast<long>(ay - iy);
+        if (overlap > best_overlap) {
+            best_overlap = overlap;
+            best = monitors[i];
+        }
+    }
+    return best;
+}
+
+static GLFWmonitor* monitor_for_target(int target, GLFWwindow* window) {
+    GLFWmonitor* primary = glfwGetPrimaryMonitor();
+    if (target == 1) return primary;
+    if (target == 2) {
+        int count = 0;
+        GLFWmonitor** monitors = glfwGetMonitors(&count);
+        for (int i = 0; i < count; ++i) {
+            if (monitors[i] != primary) return monitors[i];
+        }
+        return primary;
+    }
+    return monitor_for_window(window);
+}
+
+static void clamp_window_rect_to_monitor(GLFWmonitor* monitor, int* x, int* y, int* w, int* h) {
+    if (!x || !y || !w || !h) return;
+    if (!monitor) monitor = glfwGetPrimaryMonitor();
+    if (!monitor) return;
+    int mx = 0, my = 0, mw = 0, mh = 0;
+    glfwGetMonitorWorkarea(monitor, &mx, &my, &mw, &mh);
+    *w = std::max(640, std::min(*w, mw));
+    *h = std::max(480, std::min(*h, mh));
+    *x = std::max(mx, std::min(*x, mx + mw - *w));
+    *y = std::max(my, std::min(*y, my + mh - *h));
+}
 
 
 // ---------------------------------------------------------------------------
@@ -1039,6 +1143,7 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "[vivid] Failed to init GLFW\n");
         return 1;
     }
+    glfwSetMonitorCallback(monitor_callback);
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
@@ -1086,6 +1191,19 @@ int main(int argc, char* argv[]) {
             glfwSetWindowPos(window, settings.window_x, settings.window_y);
         }
     }
+
+    struct DisplayState {
+        bool fullscreen = false;
+        GLFWmonitor* fullscreen_monitor = nullptr;
+        int windowed_x = 100;
+        int windowed_y = 100;
+        int windowed_w = 1280;
+        int windowed_h = 800;
+        uint64_t seen_monitor_serial = 0;
+        int sink_target = -1;
+        bool surface_reconfigure_pending = false;
+        int surface_settle_frames = 0;
+    } display_state;
 
     // --- Query physical framebuffer size and DPI scale ---
     int fb_width, fb_height;
@@ -1441,6 +1559,62 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    auto enter_fullscreen = [&](GLFWmonitor* preferred_monitor) {
+        if (display_state.fullscreen) return;
+        glfwGetWindowPos(window, &display_state.windowed_x, &display_state.windowed_y);
+        glfwGetWindowSize(window, &display_state.windowed_w, &display_state.windowed_h);
+        GLFWmonitor* monitor = preferred_monitor;
+        if (!monitor_connected(monitor)) monitor = monitor_for_window(window);
+        if (!monitor) monitor = glfwGetPrimaryMonitor();
+        if (!monitor) return;
+        int mx = 0, my = 0;
+        glfwGetMonitorPos(monitor, &mx, &my);
+        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+        if (!mode) return;
+        const int mw = mode->width;
+        const int mh = mode->height;
+        glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
+        glfwSetWindowPos(window, mx, my);
+        glfwSetWindowSize(window, mw, mh);
+#ifdef __APPLE__
+        vivid::macos_set_presentation_fullscreen(true);
+#endif
+        display_state.fullscreen = true;
+        display_state.fullscreen_monitor = monitor;
+        display_state.surface_reconfigure_pending = true;
+        display_state.surface_settle_frames = 2;
+        std::fprintf(stderr, "[vivid] Fullscreen enabled (borderless %dx%d at %d,%d)\n",
+                     mw, mh, mx, my);
+    };
+
+    auto exit_fullscreen = [&]() {
+        if (!display_state.fullscreen) return;
+        int x = display_state.windowed_x;
+        int y = display_state.windowed_y;
+        int w = display_state.windowed_w;
+        int h = display_state.windowed_h;
+        clamp_window_rect_to_monitor(glfwGetPrimaryMonitor(), &x, &y, &w, &h);
+        glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_TRUE);
+        glfwSetWindowPos(window, x, y);
+        glfwSetWindowSize(window, w, h);
+#ifdef __APPLE__
+        vivid::macos_set_presentation_fullscreen(false);
+#endif
+        display_state.fullscreen = false;
+        display_state.fullscreen_monitor = nullptr;
+        display_state.surface_reconfigure_pending = true;
+        display_state.surface_settle_frames = 2;
+        std::fprintf(stderr, "[vivid] Fullscreen disabled (%dx%d at %d,%d)\n", w, h, x, y);
+    };
+
+    auto toggle_fullscreen = [&]() {
+        if (display_state.fullscreen) {
+            exit_fullscreen();
+        } else {
+            enter_fullscreen(monitor_for_window(window));
+        }
+    };
+
     // --- macOS native menu bar ---
 #ifdef __APPLE__
     {
@@ -1543,11 +1717,52 @@ int main(int argc, char* argv[]) {
             }
         };
 
+        menu_cbs.on_report_issue = [&]() {
+            const auto packages = pkg_manager.list();
+            const auto operators = registry.type_names();
+            const char* graph_path = graph.source_path().empty() ? "<unsaved>" : graph.source_path().c_str();
+#ifdef NDEBUG
+            const char* build_mode = "Release";
+#else
+            const char* build_mode = "Debug";
+#endif
+
+            std::ostringstream body;
+            body << "## What happened?\n";
+            body << "<!-- Describe expected vs actual behavior -->\n\n";
+            body << "## Steps to reproduce\n";
+            body << "1. \n";
+            body << "2. \n";
+            body << "3. \n\n";
+            body << "## Runtime diagnostics\n";
+            body << "- Core version: " << VIVID_CORE_VERSION << "\n";
+            body << "- Platform: " << platform_label() << "\n";
+            body << "- Build mode: " << build_mode << "\n";
+            body << "- Graph: " << graph_path << "\n";
+            body << "- Registered operator types: " << operators.size() << "\n";
+            body << "- Installed packages: " << packages.size() << "\n";
+            body << "- Audio enabled: " << (has_audio ? "yes" : "no") << "\n";
+            body << "- GPU operators enabled: " << (has_gpu_ops ? "yes" : "no") << "\n";
+
+            const std::string issue_url =
+                "https://github.com/seethroughlab/vivid/issues/new"
+                "?title=" + url_encode("[Bug] ") +
+                "&body=" + url_encode(body.str());
+
+            std::string err;
+            if (!vivid::open_url(issue_url, &err)) {
+                std::fprintf(stderr, "[vivid] Failed to open issue URL: %s\n", err.c_str());
+            } else {
+                std::fprintf(stderr, "[vivid] Opened issue reporter URL\n");
+            }
+        };
+
         // Edit menu
         menu_cbs.on_delete_selected = [&]() { graph_ui.delete_selected(); };
 
         // View menu
         menu_cbs.on_toggle_ui = [&]() { graph_ui.toggle_visible(); };
+        menu_cbs.on_toggle_fullscreen = [&]() { toggle_fullscreen(); };
         menu_cbs.on_toggle_bezier_wires = [&]() { graph_ui.set_bezier_wires(!graph_ui.bezier_wires()); };
         menu_cbs.on_toggle_session_grid = [&]() { graph_ui.toggle_session_grid(); };
         menu_cbs.on_toggle_midi_map = [&]() { graph_ui.toggle_midi_map_mode(); };
@@ -1557,6 +1772,7 @@ int main(int argc, char* argv[]) {
 
         // State queries for checkmarks / enable states
         menu_cbs.is_ui_visible = [&]() { return graph_ui.visible(); };
+        menu_cbs.is_fullscreen = [&]() { return display_state.fullscreen; };
         menu_cbs.is_bezier_wires = [&]() { return graph_ui.bezier_wires(); };
         menu_cbs.is_session_grid_open = [&]() { return graph_ui.session_grid_open(); };
         menu_cbs.is_midi_map_mode = [&]() { return graph_ui.midi_map_mode(); };
@@ -1579,6 +1795,57 @@ int main(int argc, char* argv[]) {
         glfwGetWindowSize(window, &win_w, &win_h);
         int fb_w, fb_h;
         glfwGetFramebufferSize(window, &fb_w, &fb_h);
+        // Fullscreen state is managed by display_state (borderless fullscreen), not GLFW monitor mode.
+
+        const uint64_t monitor_serial = g_monitor_topology_serial.load(std::memory_order_relaxed);
+        if (display_state.seen_monitor_serial != monitor_serial) {
+            display_state.seen_monitor_serial = monitor_serial;
+            if (display_state.fullscreen) {
+                if (!monitor_connected(display_state.fullscreen_monitor)) {
+                    GLFWmonitor* fallback = glfwGetPrimaryMonitor();
+                    if (!fallback) fallback = monitor_for_window(window);
+                    if (fallback) {
+                        int mx = 0, my = 0;
+                        glfwGetMonitorPos(fallback, &mx, &my);
+                        const GLFWvidmode* mode = glfwGetVideoMode(fallback);
+                        if (!mode) return true;
+                        const int mw = mode->width;
+                        const int mh = mode->height;
+                        glfwSetWindowPos(window, mx, my);
+                        glfwSetWindowSize(window, mw, mh);
+                        display_state.fullscreen_monitor = fallback;
+                        display_state.surface_reconfigure_pending = true;
+                        display_state.surface_settle_frames = 2;
+                        std::fprintf(stderr, "[vivid] Rebound fullscreen to active monitor (%dx%d at %d,%d)\n",
+                                     mw, mh, mx, my);
+                    }
+                }
+            } else {
+                int x = 0, y = 0, w = 0, h = 0;
+                glfwGetWindowPos(window, &x, &y);
+                glfwGetWindowSize(window, &w, &h);
+                bool on_screen = false;
+                int mon_count = 0;
+                GLFWmonitor** monitors = glfwGetMonitors(&mon_count);
+                for (int i = 0; i < mon_count; ++i) {
+                    int mx = 0, my = 0, mw = 0, mh = 0;
+                    glfwGetMonitorWorkarea(monitors[i], &mx, &my, &mw, &mh);
+                    if (x + 100 > mx && x < mx + mw && y + 100 > my && y < my + mh) {
+                        on_screen = true;
+                        break;
+                    }
+                }
+                if (!on_screen) {
+                    clamp_window_rect_to_monitor(glfwGetPrimaryMonitor(), &x, &y, &w, &h);
+                    glfwSetWindowPos(window, x, y);
+                    glfwSetWindowSize(window, w, h);
+                    display_state.surface_reconfigure_pending = true;
+                    display_state.surface_settle_frames = 2;
+                    std::fprintf(stderr, "[vivid] Repositioned window after display change (%dx%d at %d,%d)\n",
+                                 w, h, x, y);
+                }
+            }
+        }
 
         // Skip frame if minimized
         if (fb_w == 0 || fb_h == 0) return true;
@@ -1605,6 +1872,8 @@ int main(int argc, char* argv[]) {
             fb_width = fb_w;
             fb_height = fb_h;
             gpu.resize(static_cast<uint32_t>(fb_width), static_cast<uint32_t>(fb_height));
+            display_state.surface_settle_frames = std::max(display_state.surface_settle_frames, 2);
+            return true;
         }
 
         // Drain control server requests (may set pending topology changes)
@@ -1643,6 +1912,66 @@ int main(int argc, char* argv[]) {
             graph_loaded = true;
         }
 
+        // Drive fullscreen/display selection from video_out sink params when present.
+        if (has_gpu_ops && video_out_idx >= 0 &&
+            static_cast<size_t>(video_out_idx) < scheduler.nodes().size()) {
+            const auto& vo_ns = scheduler.nodes()[video_out_idx];
+            auto fs_it = vo_ns.param_indices.find("fullscreen");
+            if (fs_it != vo_ns.param_indices.end() &&
+                fs_it->second < vo_ns.param_values.size()) {
+                const bool want_fullscreen = vo_ns.param_values[fs_it->second] >= 0.5f;
+                int target = 0; // Current monitor
+                auto dt_it = vo_ns.param_indices.find("display_target");
+                if (dt_it != vo_ns.param_indices.end() &&
+                    dt_it->second < vo_ns.param_values.size()) {
+                    target = static_cast<int>(vo_ns.param_values[dt_it->second]);
+                    if (target < 0) target = 0;
+                    if (target > 2) target = 2;
+                }
+
+                if (want_fullscreen) {
+                    GLFWmonitor* target_monitor = monitor_for_target(target, window);
+                    if (!display_state.fullscreen) {
+                        enter_fullscreen(target_monitor);
+                    } else if (target != display_state.sink_target &&
+                               monitor_connected(target_monitor)) {
+                        int mx = 0, my = 0;
+                        glfwGetMonitorPos(target_monitor, &mx, &my);
+                        const GLFWvidmode* mode = glfwGetVideoMode(target_monitor);
+                        if (!mode) return true;
+                        const int mw = mode->width;
+                        const int mh = mode->height;
+                        glfwSetWindowPos(window, mx, my);
+                        glfwSetWindowSize(window, mw, mh);
+                        display_state.fullscreen_monitor = target_monitor;
+                        display_state.surface_reconfigure_pending = true;
+                        display_state.surface_settle_frames = 2;
+                        std::fprintf(stderr, "[vivid] Switched fullscreen target monitor (%dx%d at %d,%d)\n",
+                                     mw, mh, mx, my);
+                    }
+                } else if (display_state.fullscreen) {
+                    exit_fullscreen();
+                }
+                display_state.sink_target = target;
+            }
+        }
+
+        if (display_state.surface_reconfigure_pending) {
+            glfwGetWindowSize(window, &win_w, &win_h);
+            glfwGetFramebufferSize(window, &fb_w, &fb_h);
+            if (fb_w > 0 && fb_h > 0) {
+                fb_width = fb_w;
+                fb_height = fb_h;
+                gpu.resize(static_cast<uint32_t>(fb_width), static_cast<uint32_t>(fb_height));
+            }
+            display_state.surface_reconfigure_pending = false;
+        }
+        bool suppress_surface_frame = false;
+        if (display_state.surface_settle_frames > 0) {
+            suppress_surface_frame = true;
+            display_state.surface_settle_frames--;
+        }
+
         // --- Compute dt unconditionally (before GPU work) ---
         double now = glfwGetTime();
         double dt = now - prev_time;
@@ -1676,7 +2005,7 @@ int main(int argc, char* argv[]) {
 
         // --- Try to acquire surface texture for presentation ---
         vivid::FrameState frame;
-        bool have_surface = gpu.begin_frame(frame);
+        bool have_surface = !suppress_surface_frame && gpu.begin_frame(frame);
 
         // If no surface (e.g. during resize), create a standalone encoder
         // so offscreen GPU work (scheduler tick, thumbnails) still runs.
@@ -1896,6 +2225,19 @@ int main(int argc, char* argv[]) {
             if (try_capture_screenshot(screenshot_path, gpu, frame, fb_width, fb_height,
                                        frame_count, screenshot_delay, window)) {
                 return true; // frame already submitted inside try_capture_screenshot
+            }
+
+            int fb_now_w = 0, fb_now_h = 0;
+            glfwGetFramebufferSize(window, &fb_now_w, &fb_now_h);
+            if (fb_now_w != fb_width || fb_now_h != fb_height || fb_now_w == 0 || fb_now_h == 0) {
+                if (fb_now_w > 0 && fb_now_h > 0) {
+                    fb_width = fb_now_w;
+                    fb_height = fb_now_h;
+                    gpu.resize(static_cast<uint32_t>(fb_width), static_cast<uint32_t>(fb_height));
+                }
+                display_state.surface_settle_frames = std::max(display_state.surface_settle_frames, 2);
+                gpu.discard_frame(frame);
+                return true;
             }
 
             gpu.end_frame(frame);

@@ -25,6 +25,7 @@ public:
     void resize(uint32_t width, uint32_t height);
     bool begin_frame(FrameState& frame);
     void end_frame(const FrameState& frame);
+    void discard_frame(const FrameState& frame);
     void shutdown();
 
     WGPUDevice device() const { return device_; }
