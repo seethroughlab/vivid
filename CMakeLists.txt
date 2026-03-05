@@ -257,8 +257,6 @@ add_vivid_operator(drum_tom       operators/audio/drum_tom/drum_tom.cpp
                    FACTORY_PRESETS operators/audio/drum_tom/factory_presets.json)
 add_vivid_operator(drum_cymbal    operators/audio/drum_cymbal/drum_cymbal.cpp
                    FACTORY_PRESETS operators/audio/drum_cymbal/factory_presets.json)
-add_vivid_operator(wavetable_synth operators/audio/wavetable_synth/wavetable_synth.cpp
-                   FACTORY_PRESETS operators/audio/wavetable_synth/factory_presets.json)
 add_vivid_operator(spread_adsr    operators/audio/spread_adsr/spread_adsr.cpp)
 add_vivid_operator(spread_lfo     operators/audio/spread_lfo/spread_lfo.cpp)
 add_vivid_operator(reverb         operators/audio/reverb/reverb.cpp
@@ -823,25 +821,6 @@ add_dependencies(test_audio_spread_wire spread_source_op audio_spread_op spread_
 add_test(NAME test_audio_spread_wire COMMAND test_audio_spread_wire
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# Wavetable position envelope test
-add_executable(test_wavetable_position_env
-    tests/test_wavetable_position_env.cpp
-    src/runtime/operator_loader.cpp
-    src/runtime/operator_registry.cpp
-    src/runtime/wgsl_header_parser.cpp
-    src/runtime/graph.cpp
-    src/runtime/scheduler.cpp
-    src/runtime/audio_engine.cpp
-)
-target_include_directories(test_wavetable_position_env PRIVATE src)
-target_link_libraries(test_wavetable_position_env PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu)
-add_dependencies(test_wavetable_position_env
-    clock note_pattern wavetable_synth spread_adsr spread_source_op)
-add_test(NAME test_wavetable_position_env
-    COMMAND test_wavetable_position_env ${CMAKE_BINARY_DIR}
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-
 # Pattern algebra unit + integration test
 add_executable(test_pattern_algebra
     tests/test_pattern_algebra.cpp
@@ -901,7 +880,7 @@ add_dependencies(test_demo_graphs
     bloom feedback instance plexus movie_file_in texture_analysis
     # audio
     oscillator gain drum_kick drum_snare drum_hihat drum_clap
-    drum_tom drum_cymbal wavetable_synth spread_adsr spread_lfo
+    drum_tom drum_cymbal spread_adsr spread_lfo
     reverb delay bitcrush distortion plexus_synth
     movie_file_audio_in
     webcam_in time_machine

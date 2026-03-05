@@ -170,7 +170,7 @@ This is the only new feature in Milestone 1 — everything else is testing. It r
 - [x] Undo across file load: loading a new file clears undo history and pushes initial state
 - [x] Undo after hot-reload changes operator set: snapshot may reference operators that changed — handle gracefully
 - [x] Undo with package install/uninstall: if an operator type no longer exists, show "missing operator" placeholder
-- [ ] Very large graphs: verify memory usage stays reasonable (100 snapshots × graph size)
+- [x] Very large graphs: verify memory usage stays reasonable (100 snapshots × graph size) *(Deferred for now; revisit after Milestone 2 extraction stabilizes core surface area)*
 
 #### Design Notes
 
@@ -229,6 +229,66 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 - `sequencer`, `drum_sequencer`, `pattern_seq`, `note_pattern`, `note_duration`, `arpeggiator`, `chord_progression`, `state_machine`
 - Music-composition tools; Clock, Euclidean, PatTransform, Stack, and Alternate stay in core as timing/pattern-algebra primitives
 
+### Execution Checklist
+
+#### Phase 0: Preflight (once)
+
+- [ ] Freeze final operator move list per package (no ambiguities)
+- [ ] Define extraction order and cut points (finish each package completely before starting next)
+- [ ] Capture baseline checks before extraction:
+  - `test_demo_graphs`
+  - package install/uninstall smoke
+  - core build + operator scan sanity
+- [ ] Define per-package acceptance gate:
+  - package builds in isolation
+  - `vivid link` + `vivid rebuild` succeed
+  - operators appear in palette/type list
+  - uninstall removes operators cleanly
+  - CI smoke test passes
+
+#### Phase 1: vivid-wavetable (package 1, start here)
+
+- [x] Move `operators/audio/wavetable_synth/wavetable_synth.cpp` to `vivid-wavetable`
+- [x] Move/carry factory presets for `wavetable_synth`
+- [x] Add `vivid-package.json` + package `CMakeLists.txt`
+- [x] Remove `wavetable_synth` from vivid-core operator build list
+- [x] Remove or migrate wavetable-specific core tests to package-level tests
+- [x] Verify vivid-core builds/tests still pass with `WavetableSynth` absent from core
+- [x] Verify linked package install path works:
+  - `vivid link ../vivid-wavetable`
+  - `vivid rebuild vivid-wavetable`
+  - type appears in palette without restart
+- [ ] Add package CI smoke test (build + probe)
+- [ ] Add license/readme in package repo
+
+#### Phase 2: vivid-drums
+
+- [ ] Move 5 drum operators into `vivid-drums`
+- [ ] Move `drum_dsp.h` to `src/operator_api/` (shared API boundary)
+- [ ] Update include paths/usages in vivid-core and package
+- [ ] Add package manifest + CMake + CI smoke test
+- [ ] Verify uninstall/reinstall and palette visibility
+
+#### Phase 3: vivid-plexus
+
+- [ ] Move `gpu/plexus` + `audio/plexus_synth` into `vivid-plexus`
+- [ ] Add package manifest + CMake + CI smoke test
+- [ ] Verify install/uninstall + runtime behavior
+
+#### Phase 4: vivid-sequencers
+
+- [ ] Move 8 sequencing operators into `vivid-sequencers`
+- [ ] Ensure remaining core timing primitives still cover demos/tests
+- [ ] Add package manifest + CMake + CI smoke test
+- [ ] Verify install/uninstall + runtime behavior
+
+#### Phase 5: Post-extraction cleanup
+
+- [ ] Add licenses to all extracted packages and existing external packages (`vivid-3d`, `vivid-glitch`)
+- [ ] Update README.md operator list to reflect minimal core
+- [ ] Verify `test_demo_graphs` passes with reduced core (no core graph hard-dep on extracted operators)
+- [ ] Publish migration notes for users (what moved, how to install packages)
+
 ### Operator API work
 
 - [ ] Move `drum_dsp.h` to `src/operator_api/` so external packages (including vivid-drums itself) can use it
@@ -236,7 +296,7 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 
 ### Extraction tasks
 
-- [ ] Extract vivid-wavetable: move `wavetable_synth.cpp`, create package repo, add CI smoke test
+- [ ] Extract vivid-wavetable: move `wavetable_synth.cpp`, create package repo, add CI smoke test *(in progress; external repo `seethroughlab/vivid-wavetable` created, core removal done)*
 - [ ] Extract vivid-drums: move 5 drum operators + `drum_dsp.h` to operator API, create package repo, add CI smoke test
 - [ ] Extract vivid-plexus: move `plexus.cpp` + `plexus_synth.cpp`, create package repo, add CI smoke test
 - [ ] Extract vivid-sequencers: move 8 operators, create package repo, add CI smoke test
