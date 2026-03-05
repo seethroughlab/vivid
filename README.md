@@ -21,13 +21,13 @@ Built in C++ with WebGPU (Dawn). Designed from the ground up for LLM-assisted cr
 
 - **Audio-visual parity** — Audio and GPU operators live in the same graph, connected by the same wires
 - **Three execution domains** — GPU (textures), Audio (sample-rate buffers), and Control (per-frame values) evaluated in dependency order
-- **40 core operators + package ecosystem** — Core operators ship in vivid; specialized families (wavetable, drums, plexus, sequencers, 3D, glitch) live in package repos
+- **Core operator set + package ecosystem** — Core operators ship in vivid; specialized families (wavetable, drums, plexus, sequencers, 3D, glitch) live in sibling package repos
 - **Spreads** — Implicit vectorization: a single wire carries N values, enabling polyphony and instancing without manual fan-out
 - **19 data-driven WGSL filters** — Self-describing GPU shaders loaded at runtime from `.wgsl` files with embedded metadata
 - **Hot-reload everything** — Edit a graph JSON, a WGSL filter, or recompile an operator dylib — changes apply instantly without restart
 - **JSON graph as single source of truth** — Every graph is a plain JSON file: nodes, connections, parameters, layout
 - **Live thumbnails on every node** — GPU nodes show texture previews; audio nodes show waveforms; control nodes show value readouts
-- **MCP server** — 22-tool Model Context Protocol server for LLM integration (Claude Code, etc.)
+- **MCP server** — Comprehensive Model Context Protocol surface for graph editing, package workflows, introspection, diagnostics, and checks
 - **MIDI input with CC learn** — Hardware controller support with automatic CC mapping
 
 ## Core Operators (Built-In)
@@ -36,7 +36,7 @@ Built in C++ with WebGPU (Dawn). Designed from the ground up for LLM-assisted cr
 Shape, Noise, Bars, Composite, Bloom, Feedback, Instance, Time Machine, Text, Texture Analysis, Movie File In, Webcam In
 
 ### GPU Filters (WGSL)
-HSV, Levels, Blur, Gaussian Blur, Edge, Mirror, Pixelate, Posterize, Gradient, Chromatic Aberration, Scanlines, CRT Effect, Transform, Displace, Channel Mixer, Vignette, Dither, Halftone, Tile, Ramp, Solid Color, Switch
+HSV, Levels, Blur, Edge, Mirror, Pixelate, Posterize, Gradient, Chromatic Aberration, Scanlines, CRT Effect, Transform, Displace, Dither, Halftone, Tile, Ramp, Solid Color, Switch
 
 ### Audio
 **Synthesis:** Oscillator, Gain
@@ -58,25 +58,32 @@ Install additional package libraries:
 - `vivid-3d`: 3D operator suite
 - `vivid-glitch`: glitch audio/GPU suite
 
+See [docs/PACKAGE-LIBRARIES.md](docs/PACKAGE-LIBRARIES.md) for install/link/rebuild commands and package details.
+
 ### Sinks
 `audio_out` (stereo output), `video_out` (GPU display with fit/fill/stretch)
 
 ## Getting Started
 
-### Build
+Canonical onboarding guide:
+- **[First 10 Minutes](docs/GETTING-STARTED.md)**
+- **[Graph Browser Index](graphs/README.md)**
+
+### Release Build (Recommended)
+
+Download the latest macOS release build:
+- <https://github.com/jeffcrouse/vivid/releases>
+
+Open `Vivid.app` and load a starter graph (for example `av_demo.json`).
+
+### Build From Source (Developers)
 
 ```bash
 git clone --recursive https://github.com/jeffcrouse/vivid.git
 cd vivid
 cmake -B build
 cmake --build build
-```
-
-### Run
-
-```bash
-# Open a demo graph
-./build/vivid graphs/feedback_demo.json
+./build/vivid graphs/av_demo.json
 
 # Headless screenshot
 ./build/vivid graphs/wgsl_filters_demo.json --screenshot output.png --screenshot-delay 15
@@ -84,9 +91,9 @@ cmake --build build
 
 ### Requirements
 
-- C++17 compiler (Clang or GCC)
-- CMake 3.20+
-- macOS, Linux, or Windows (macOS is the primary development platform)
+- macOS (primary supported platform for 1.0 release builds)
+- Developer/source-build only: CMake 3.20+ and C++17 compiler (Clang or GCC)
+- Linux/Windows builds may work from source but are not currently first-class targets
 
 Dependencies are vendored or fetched automatically: WebGPU (Dawn), GLFW, miniaudio, RtMidi, yyjson, stb_image_write, stb_truetype, IXWebSocket, CLI11.
 
@@ -104,14 +111,17 @@ Control outputs can drive both GPU and Audio parameters. GPU and Audio operators
 
 ## Documentation
 
+- **[Getting Started](docs/GETTING-STARTED.md)** — First 10 minutes, starter graph set, and graph browse index
 - **[Product Requirements](docs/PRD.md)** — Vision, core principles, system architecture
 - **[Architecture](docs/ARCHITECTURE.md)** — Language choice, build system, operator contract, directory structure
 - **[Interface Design](docs/INTERFACE.md)** — UI architecture, visual style, node graph rendering
 - **[LLM Integration](docs/LLM-INTEGRATION.md)** — MCP server, the four LLM roles
+- **[Package Libraries](docs/PACKAGE-LIBRARIES.md)** — Install/link/rebuild package operator libraries
+- **[Package Template](https://github.com/seethroughlab/vivid-package-template)** — Scaffold and author new package repos
 
 ## Status
 
-Active development. Core engine, node graph UI, 50+ operators, WGSL filter framework, and MCP server are complete.
+Active development. Core engine, node graph UI, core operators + package ecosystem, WGSL filter framework, and MCP server are in active use.
 
 ## License
 

@@ -38,9 +38,20 @@ This is the most LLM-friendly design: the LLM reads JSON, writes JSON. No code g
 
 The LLM connects to Vivid through two complementary paths, both built on a shared Runtime API.
 
-**The Runtime API** is an internal interface exposing all LLM-relevant operations: inspect graph structure, read and write parameters, capture frames and audio, run analysis tools, evaluate assertions, scaffold operators, and modify graph topology. This is the single source of truth for what the LLM can do. Both integration paths below call into the same API.
+**The Runtime API** is an internal interface exposing all LLM-relevant operations: inspect graph structure, read and write parameters, capture frames and audio, run analysis tools, evaluate checks, scaffold operators, and modify graph topology. This is the single source of truth for what the LLM can do. Both integration paths below call into the same API.
 
-**Path 1: MCP server.** Vivid runs an MCP (Model Context Protocol) server that exposes the Runtime API as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to it externally. This is the primary LLM integration path — it provides the complete tool surface (inspect, add, connect, set_param, scaffold_operator) with streaming, multi-turn context, and tool use UIs that external clients already provide. It also enables non-interactive use cases: CI pipelines running assertions, scripts generating patch variations, installation monitors watching for drift.
+**Path 1: MCP server.** Vivid runs an MCP (Model Context Protocol) server that exposes the Runtime API as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to it externally. This is the primary LLM integration path — it provides the complete tool surface (inspect, add, connect, set_param, scaffold_operator, introspection/diagnostics/checks) with streaming, multi-turn context, and tool use UIs that external clients already provide. It also enables non-interactive use cases: CI pipelines running checks, scripts generating patch variations, installation monitors watching for drift.
+
+Perception MCP tool surface (current):
+- `introspect_nodes(include_payload=false)` — compact node-count/domain/error summary; optional full payload.
+- `run_diagnostics(include_payload=false)` — compact severity summary + top hint IDs; optional full findings.
+- `validate_checks(checks, include_payload=false)` — compact validity/error-count summary; optional full validation details.
+- `run_checks(checks, include_payload=false)` — compact pass/fail summary (`all_passed`, `all_critical_passed`); optional full per-check results.
+
+Perception MCP response policy:
+- Default output is compact and deterministic for stable tool loops.
+- `include_payload=true` adds the full underlying runtime result object.
+- Runtime-side failures are normalized into explicit `{ ok:false, error:{...} }` envelopes.
 
 **Path 2: Built-in chat (deferred).** Originally planned as a collapsible chat panel inside Vivid's interface calling the Anthropic API directly. Deferred because the MCP server already provides full LLM integration through external clients, and building a built-in chat would mean significant complexity to produce a worse version of what Claude Code and Cursor already offer. May be revisited if in-app chat proves essential for creative workflows where context-switching to an external client is too slow.
 
@@ -76,16 +87,16 @@ The LLM's judgment. Higher-level evaluation that goes beyond raw metrics to asse
 - **Audio-visual reactivity:** this is core to Vivid's thesis. Measures how well visuals respond to audio: correlation between audio energy and visual brightness/motion, onset response rate (what fraction of beats produce visual change), reactivity latency (how many milliseconds between an audio event and the visual response), per-band correlation (does bass drive one thing and treble drive another).
 - **Comparison tools:** A/B frame comparison (semantic diffs: brightness change, contrast change, sharpness change), A/B audio comparison (spectral diff, loudness diff), parameter sweeps (capture output across a parameter range to find optimal values).
 
-#### Layer 3: Assertions
+#### Layer 3: Checks
 
 The LLM's memory of intent. Codified quality gates that persist across sessions and can be checked automatically.
 
-Assertions are JSON declarations that bind a metric path to a comparison: "output brightness must be between 0.2 and 0.8," "audio RMS must be above 0.01," "AV onset response rate must exceed 0.5." They serve multiple purposes:
+Checks are JSON declarations that bind a metric path or diagnostic condition to a comparison: "output brightness must be between 0.2 and 0.8," "audio RMS must be above 0.01," "critical diagnostics must be zero." They serve multiple purposes:
 
-- **CI/CD:** run the graph headlessly and validate that all assertions pass. Prevents regressions when operators are modified.
-- **Intent preservation:** when the user says "make it brighter," the LLM can add an assertion that brightness stays above a threshold. Future changes that violate this assertion are flagged.
-- **Installation monitoring:** for long-running installations, assertions detect drift (frozen output, silence, loss of audio reactivity) and alert or trigger recovery.
-- **Conditional assertions:** guards allow assertions to apply only when relevant. "Bass energy should be high, but only when the kick operator is active."
+- **CI/CD:** run the graph headlessly and validate that all checks pass. Prevents regressions when operators are modified.
+- **Intent preservation:** when the user says "make it brighter," the LLM can add a check that brightness stays above a threshold. Future changes that violate this check are flagged.
+- **Installation monitoring:** for long-running installations, checks detect drift (frozen output, silence, loss of audio reactivity) and alert or trigger recovery.
+- **Conditional checks:** guards allow checks to apply only when relevant. "Bass energy should be high, but only when the kick operator is active."
 
 ### 9.3 Temporal and Cross-Domain Metrics
 
@@ -95,4 +106,4 @@ These temporal and cross-domain metrics require multi-sample capture: the system
 
 ### 9.4 Design Principle
 
-The perception system is not a debugger bolted onto the side. It is a core architectural component — the mechanism through which the LLM iterates on creative output. Every operator should expose metrics. Every domain bridge should be measurable. The JSON graph format should support assertion definitions alongside node and connection definitions. When the perception system works well, the LLM becomes a genuine collaborator: it can see what it built, evaluate whether it's good, and fix what's wrong.
+The perception system is not a debugger bolted onto the side. It is a core architectural component — the mechanism through which the LLM iterates on creative output. Every operator should expose metrics. Every domain bridge should be measurable. Checks should remain explicit and machine-readable. When the perception system works well, the LLM becomes a genuine collaborator: it can see what it built, evaluate whether it's good, and fix what's wrong.

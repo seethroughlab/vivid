@@ -621,15 +621,28 @@ Display workflow hardening status (2026-03-05):
 - Hardened frame/surface transitions around display changes (surface reconfigure on transitions, settle-frame suppression, suboptimal-surface acquire guard, discard-path for invalid in-flight frames) to avoid WebGPU submit-time crashes.
 - Added macOS `View -> Toggle Fullscreen` fallback affordance (Cmd+Ctrl+F) for manual control when needed.
 
-### Phase 4: External I/O Expansion (Feature-Gated)
+### Phase 4: External I/O Expansion
 
-- [ ] OSC input for installations/hardware:
-  - define minimal message mapping model for 1.0
-  - runtime receive path + basic mapping to params/control signals
-  - docs/examples for common controllers/install workflows
+- [x] OSC input/output for installations/hardware:
+  - defined minimal 1.0 mapping model via `OscIn`/`OscOut` control operators
+  - implemented runtime send/receive path using vendored `oscpack` (core, non-feature-gated)
+  - added audio+video demo graphs: `graphs/osc_av_in_demo.json`, `graphs/osc_av_loopback_demo.json`
 - [ ] NDI/Syphon output evaluation + implementation plan:
-  - ship one (or both) if low-risk
-  - otherwise explicitly defer with documented rationale and integration notes
+  - Decision (2026-03-05):
+    - ship **Syphon output in core** (macOS-first)
+    - align **Spout support** with future Windows port (same conceptual output surface)
+    - keep **NDI** out of core and implement as a separate package (e.g. `vivid-texshare`)
+  - implementation scope for Syphon:
+    - minimal `video_out`-adjacent publish path (no graph-format churn)
+    - baseline runtime toggle + sender naming
+    - docs + one demo graph + validation checklist
+  - package scope for NDI:
+    - prototype/output operator in package repo
+    - dependency/licensing isolation from core runtime
+
+External I/O status (2026-03-05):
+- OSC is shipped in core via `OscIn`/`OscOut` and validated with demo-graph coverage.
+- NDI/Syphon decision is set: Syphon in core next, NDI as package, Spout deferred until Windows port.
 
 ### Test & Validation Matrix
 
@@ -694,3 +707,11 @@ These are acknowledged but explicitly out of scope for the initial release:
 - Project file format (single JSON vs. directory with assets)
 - Library version pinning
 - Accessibility
+
+
+
+## Extra Findings
+
+[ ] Developer & User Experience -- the graphs folder is still flat and intimidating to a new user. The folders with READMEs isn't a great improvement
+[ ] Let's think about the dev process for teams. Let's say a team wants to slightly change the way the osc_in operator works. They clone the node. Where does the code go by default? Is it condusive to source repository workflows?
+[ ] Check if PR was accepted, switch back to main repo: https://github.com/gfx-rs/wgpu-native/pull/557
