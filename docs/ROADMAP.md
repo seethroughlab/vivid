@@ -277,12 +277,12 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 
 #### Phase 3: vivid-plexus
 
-- [ ] Move `gpu/plexus` + `audio/plexus_synth` into `vivid-plexus`
-- [ ] Add package manifest + CMake + CI smoke test
-- [ ] Move plexus-specific demo graphs from `vivid/graphs` into `../vivid-plexus/graphs`
-- [ ] Move plexus-specific tests from `vivid/tests` into `../vivid-plexus/tests`
-- [ ] Run package tests in `vivid-plexus` CI (not only core smoke checks)
-- [ ] Verify install/uninstall + runtime behavior
+- [x] Move `gpu/plexus` + `audio/plexus_synth` into `vivid-plexus`
+- [x] Add package manifest + CMake + CI smoke test
+- [x] Move plexus-specific demo graphs from `vivid/graphs` into `../vivid-plexus/graphs`
+- [x] Move plexus-specific tests from `vivid/tests` into `../vivid-plexus/tests` *(no dedicated plexus core test files remained; added package-owned manifest smoke test in `vivid-plexus/tests`)*
+- [x] Run package tests in `vivid-plexus` CI (not only core smoke checks)
+- [x] Verify install/uninstall + runtime behavior
 
 #### Phase 4: vivid-sequencers
 
@@ -311,9 +311,9 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 
 - [x] Extract vivid-wavetable: move `wavetable_synth.cpp`, create package repo, add CI smoke test
 - [x] Extract vivid-drums: move 5 drum operators + `drum_dsp.h` to operator API, create package repo, add CI smoke test
-- [ ] Extract vivid-plexus: move `plexus.cpp` + `plexus_synth.cpp`, create package repo, add CI smoke test
+- [x] Extract vivid-plexus: move `plexus.cpp` + `plexus_synth.cpp`, create package repo, add CI smoke test
 - [ ] Extract vivid-sequencers: move 8 operators, create package repo, add CI smoke test
-- [ ] Add licenses to all extracted packages and existing external packages (vivid-3d, vivid-glitch)
+- [ ] Add licenses and AGENTS.md to all extracted packages and existing external packages (vivid-3d, vivid-glitch)
 - [ ] Update README.md operator list to reflect minimal core after extraction
 - [ ] Verify `test_demo_graphs` passes with reduced core (no graphs in vivid-core should reference extracted operators)
 

@@ -182,7 +182,6 @@ add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp     
                    FACTORY_PRESETS operators/gpu/feedback/factory_presets.json)
 add_vivid_operator(instance             operators/gpu/instance/instance.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
-add_vivid_operator(plexus                operators/gpu/plexus/plexus.cpp                           EXTRA_LIBS webgpu)
 add_vivid_operator(text                  operators/gpu/text/text.cpp                               EXTRA_LIBS webgpu stb_truetype)
 # 3D operators are available via the vivid-3d package (see ../vivid-3d/)
 # Simple WGSL filters are loaded from filters/*.wgsl (no C++ needed)
@@ -257,7 +256,6 @@ add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp
                    FACTORY_PRESETS operators/audio/bitcrush/factory_presets.json)
 add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp
                    FACTORY_PRESETS operators/audio/distortion/factory_presets.json)
-add_vivid_operator(plexus_synth   operators/audio/plexus_synth/plexus_synth.cpp)
 
 # --- Movie File Audio In (audio extraction from video files) ---
 if(APPLE)
@@ -397,7 +395,6 @@ configure_file(graphs/shape_instance_demo.json ${CMAKE_BINARY_DIR}/shape_instanc
 configure_file(graphs/wgsl_filters_demo.json ${CMAKE_BINARY_DIR}/wgsl_filters_demo.json COPYONLY)
 configure_file(graphs/pattern_algebra_demo.json ${CMAKE_BINARY_DIR}/pattern_algebra_demo.json COPYONLY)
 configure_file(graphs/webcam_timemachine_demo.json ${CMAKE_BINARY_DIR}/webcam_timemachine_demo.json COPYONLY)
-configure_file(graphs/plexus_demo.json ${CMAKE_BINARY_DIR}/plexus_demo.json COPYONLY)
 
 # Copy all demo graphs into graphs/ subdirectory (for test_demo_graphs)
 file(GLOB DEMO_GRAPHS graphs/*.json)
@@ -864,10 +861,10 @@ add_dependencies(test_demo_graphs
     modulated_gain spread_noise drum_sequencer state_machine
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
     noise shape bars composite
-    bloom feedback instance plexus movie_file_in texture_analysis
+    bloom feedback instance movie_file_in texture_analysis
     # audio
     oscillator gain drum_tom spread_adsr spread_lfo
-    reverb delay bitcrush distortion plexus_synth
+    reverb delay bitcrush distortion
     movie_file_audio_in
     webcam_in time_machine
 )
