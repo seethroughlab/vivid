@@ -381,7 +381,7 @@ Goal: make package authoring, install/update behavior, and discovery feel first-
 - [x] Include standard files in templates (`../vivid-package-template`):
   - `vivid-package.json`, `CMakeLists.txt`, `README.md`, `LICENSE`, `AGENTS.md`
   - package CI smoke workflow (clone vivid-core + run package graphs/tests)
-- [ ] Add author docs:
+- [x] Add author docs (`../vivid-package-template/AUTHORING.md`):
   - naming/versioning conventions
   - dependency guidance
   - release tagging and compatibility notes
