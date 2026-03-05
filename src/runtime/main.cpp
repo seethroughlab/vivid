@@ -55,6 +55,7 @@
 #include <unordered_set>
 #include <vector>
 #include <CLI/CLI.hpp>
+#include <yyjson.h>
 
 #ifdef __APPLE__
 #include "runtime/macos_frame_timer.h"
@@ -117,6 +118,247 @@ static std::string platform_label() {
 #else
     return "Unknown";
 #endif
+}
+
+static std::vector<std::string> json_str_array(yyjson_val* arr) {
+    std::vector<std::string> out;
+    if (!arr || !yyjson_is_arr(arr)) return out;
+    size_t idx = 0, max = 0;
+    yyjson_val* v = nullptr;
+    yyjson_arr_foreach(arr, idx, max, v) {
+        if (yyjson_is_str(v)) out.emplace_back(yyjson_get_str(v));
+    }
+    return out;
+}
+
+static std::string trim_copy(const std::string& s) {
+    size_t b = 0;
+    while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
+    size_t e = s.size();
+    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
+    return s.substr(b, e - b);
+}
+
+static std::vector<std::string> split_csv(const std::string& csv) {
+    std::vector<std::string> out;
+    size_t pos = 0;
+    while (pos <= csv.size()) {
+        size_t comma = csv.find(',', pos);
+        if (comma == std::string::npos) comma = csv.size();
+        std::string tok = trim_copy(csv.substr(pos, comma - pos));
+        if (!tok.empty()) out.push_back(tok);
+        pos = comma + 1;
+    }
+    return out;
+}
+
+static std::string join_csv(const std::vector<std::string>& items) {
+    std::string out;
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i) out += ", ";
+        out += items[i];
+    }
+    return out;
+}
+
+static bool load_example_entry_from_graph(const std::filesystem::path& graph_path,
+                                          const std::filesystem::path& graphs_root,
+                                          vivid::ui::ExampleEntry& out) {
+    yyjson_read_err err{};
+    yyjson_doc* doc = yyjson_read_file(graph_path.string().c_str(), 0, nullptr, &err);
+    if (!doc) return false;
+    yyjson_val* root = yyjson_doc_get_root(doc);
+    if (!root || !yyjson_is_obj(root)) {
+        yyjson_doc_free(doc);
+        return false;
+    }
+
+    std::string rel = std::filesystem::relative(graph_path, graphs_root).generic_string();
+    std::string stem = graph_path.stem().string();
+    out.path = rel;
+    out.id = stem;
+    out.title = stem;
+    out.summary = "";
+    out.difficulty = "intermediate";
+    out.featured_rank = 1000;
+
+    yyjson_val* meta = yyjson_obj_get(root, "meta");
+    if (meta && yyjson_is_obj(meta)) {
+        yyjson_val* v = nullptr;
+        if ((v = yyjson_obj_get(meta, "id")) && yyjson_is_str(v)) out.id = yyjson_get_str(v);
+        if ((v = yyjson_obj_get(meta, "title")) && yyjson_is_str(v)) out.title = yyjson_get_str(v);
+        if ((v = yyjson_obj_get(meta, "description")) && yyjson_is_str(v)) out.summary = yyjson_get_str(v);
+        if ((v = yyjson_obj_get(meta, "difficulty")) && yyjson_is_str(v)) out.difficulty = yyjson_get_str(v);
+        if ((v = yyjson_obj_get(meta, "featured_rank")) && yyjson_is_int(v)) {
+            out.featured_rank = static_cast<int>(yyjson_get_int(v));
+        }
+        if ((v = yyjson_obj_get(meta, "estimated_minutes")) && yyjson_is_int(v)) {
+            out.estimated_minutes = static_cast<int>(yyjson_get_int(v));
+        }
+        out.tags = json_str_array(yyjson_obj_get(meta, "tags"));
+        out.domains = json_str_array(yyjson_obj_get(meta, "domains"));
+        out.requires_packages = json_str_array(yyjson_obj_get(meta, "requires_packages"));
+    }
+
+    if (out.title.empty()) out.title = stem;
+    if (out.id.empty()) out.id = stem;
+    yyjson_doc_free(doc);
+    return true;
+}
+
+static bool load_graph_meta_edit_data(const std::string& graph_path,
+                                      vivid::ui::GraphMetaEditData& out,
+                                      std::string& error) {
+    yyjson_read_err err{};
+    yyjson_doc* doc = yyjson_read_file(graph_path.c_str(), 0, nullptr, &err);
+    if (!doc) {
+        error = "Failed to read graph JSON";
+        return false;
+    }
+    yyjson_val* root = yyjson_doc_get_root(doc);
+    if (!root || !yyjson_is_obj(root)) {
+        yyjson_doc_free(doc);
+        error = "Graph JSON root must be an object";
+        return false;
+    }
+    yyjson_val* meta = yyjson_obj_get(root, "meta");
+    out = {};
+    out.path = graph_path;
+    auto stem = std::filesystem::path(graph_path).stem().string();
+    out.id = stem;
+    out.title = stem;
+    out.difficulty = "intermediate";
+    out.featured_rank = "1000";
+    if (meta && yyjson_is_obj(meta)) {
+        yyjson_val* v = nullptr;
+        if ((v = yyjson_obj_get(meta, "id")) && yyjson_is_str(v)) out.id = yyjson_get_str(v);
+        if ((v = yyjson_obj_get(meta, "title")) && yyjson_is_str(v)) out.title = yyjson_get_str(v);
+        if ((v = yyjson_obj_get(meta, "description")) && yyjson_is_str(v)) out.description = yyjson_get_str(v);
+        if ((v = yyjson_obj_get(meta, "difficulty")) && yyjson_is_str(v)) out.difficulty = yyjson_get_str(v);
+        if ((v = yyjson_obj_get(meta, "featured_rank")) && yyjson_is_int(v))
+            out.featured_rank = std::to_string(static_cast<int>(yyjson_get_int(v)));
+        out.tags_csv = join_csv(json_str_array(yyjson_obj_get(meta, "tags")));
+        out.domains_csv = join_csv(json_str_array(yyjson_obj_get(meta, "domains")));
+        out.requires_packages_csv = join_csv(json_str_array(yyjson_obj_get(meta, "requires_packages")));
+    }
+    yyjson_doc_free(doc);
+    return true;
+}
+
+static bool save_graph_meta_edit_data(const vivid::ui::GraphMetaEditData& in, std::string& error) {
+    yyjson_read_err err{};
+    yyjson_doc* doc = yyjson_read_file(in.path.c_str(), 0, nullptr, &err);
+    if (!doc) {
+        error = "Failed to read graph JSON for save";
+        return false;
+    }
+    yyjson_val* root = yyjson_doc_get_root(doc);
+    if (!root || !yyjson_is_obj(root)) {
+        yyjson_doc_free(doc);
+        error = "Graph JSON root must be an object";
+        return false;
+    }
+
+    yyjson_mut_doc* mdoc = yyjson_doc_mut_copy(doc, nullptr);
+    yyjson_doc_free(doc);
+    if (!mdoc) {
+        error = "Failed to copy JSON document";
+        return false;
+    }
+    yyjson_mut_val* mroot = yyjson_mut_doc_get_root(mdoc);
+    if (!mroot || !yyjson_mut_is_obj(mroot)) {
+        yyjson_mut_doc_free(mdoc);
+        error = "Graph JSON root must be an object";
+        return false;
+    }
+    yyjson_mut_val* meta = yyjson_mut_obj_get(mroot, "meta");
+    if (!meta || !yyjson_mut_is_obj(meta)) {
+        meta = yyjson_mut_obj(mdoc);
+        yyjson_mut_obj_put(mroot, yyjson_mut_strcpy(mdoc, "meta"), meta);
+    }
+
+    auto put_str = [&](const char* key, const std::string& value) {
+        yyjson_mut_obj_remove_str(meta, key);
+        yyjson_mut_obj_put(meta, yyjson_mut_strcpy(mdoc, key),
+                           yyjson_mut_strcpy(mdoc, value.c_str()));
+    };
+    auto put_arr_csv = [&](const char* key, const std::string& csv) {
+        yyjson_mut_obj_remove_str(meta, key);
+        auto items = split_csv(csv);
+        yyjson_mut_val* arr = yyjson_mut_arr(mdoc);
+        for (const auto& s : items)
+            yyjson_mut_arr_add_val(arr, yyjson_mut_strcpy(mdoc, s.c_str()));
+        yyjson_mut_obj_put(meta, yyjson_mut_strcpy(mdoc, key), arr);
+    };
+
+    put_str("id", trim_copy(in.id));
+    put_str("title", trim_copy(in.title));
+    put_str("description", trim_copy(in.description));
+    put_str("difficulty", trim_copy(in.difficulty));
+    put_arr_csv("tags", in.tags_csv);
+    put_arr_csv("domains", in.domains_csv);
+    put_arr_csv("requires_packages", in.requires_packages_csv);
+    int rank = 1000;
+    try {
+        if (!trim_copy(in.featured_rank).empty()) rank = std::stoi(trim_copy(in.featured_rank));
+    } catch (...) {}
+    yyjson_mut_obj_remove_str(meta, "featured_rank");
+    yyjson_mut_obj_put(meta, yyjson_mut_strcpy(mdoc, "featured_rank"),
+                       yyjson_mut_int(mdoc, rank));
+
+    yyjson_write_err werr{};
+    bool ok = yyjson_mut_write_file(in.path.c_str(), mdoc,
+                                    YYJSON_WRITE_PRETTY | YYJSON_WRITE_NEWLINE_AT_END,
+                                    nullptr, &werr);
+    yyjson_mut_doc_free(mdoc);
+    if (!ok) {
+        error = "Failed to write graph JSON";
+        return false;
+    }
+    return true;
+}
+
+static std::vector<vivid::ui::ExampleEntry>
+discover_examples_recursive(const std::filesystem::path& graphs_root) {
+    std::vector<vivid::ui::ExampleEntry> out;
+    std::error_code ec;
+    if (!std::filesystem::is_directory(graphs_root, ec)) return out;
+    for (const auto& e : std::filesystem::recursive_directory_iterator(graphs_root, ec)) {
+        if (ec) break;
+        if (!e.is_regular_file()) continue;
+        if (e.path().extension() != ".json") continue;
+        vivid::ui::ExampleEntry item;
+        if (load_example_entry_from_graph(e.path(), graphs_root, item))
+            out.push_back(std::move(item));
+    }
+    std::sort(out.begin(), out.end(), [](const vivid::ui::ExampleEntry& a,
+                                         const vivid::ui::ExampleEntry& b) {
+        if (a.featured_rank != b.featured_rank) return a.featured_rank < b.featured_rank;
+        return a.title < b.title;
+    });
+    return out;
+}
+
+static std::string resolve_graph_input_path(const std::string& input,
+                                            const std::filesystem::path& graphs_root,
+                                            const std::vector<vivid::ui::ExampleEntry>& examples) {
+    if (input.empty()) return input;
+    std::filesystem::path p(input);
+    std::error_code ec;
+    if (std::filesystem::exists(p, ec)) return p.string();
+    if (p.is_relative()) {
+        std::filesystem::path in_graphs = graphs_root / p;
+        if (std::filesystem::exists(in_graphs, ec)) return in_graphs.string();
+    }
+    const std::string filename = p.filename().string();
+    for (const auto& e : examples) {
+        if (e.id == input || e.id == filename ||
+            std::filesystem::path(e.path).filename().string() == filename) {
+            std::filesystem::path candidate = graphs_root / e.path;
+            if (std::filesystem::exists(candidate, ec)) return candidate.string();
+        }
+    }
+    return input;
 }
 
 static std::atomic<uint64_t> g_monitor_topology_serial{0};
@@ -1285,6 +1527,15 @@ int main(int argc, char* argv[]) {
     // Non-blocking background fetch so update alerts can be shown without delaying startup.
     pkg_catalog.refresh();
 
+    // --- Recursive graph discovery + graph-level meta ---
+    std::filesystem::path graphs_root = resources_dir / "graphs";
+    if (!std::filesystem::is_directory(graphs_root)) {
+        // Compatibility fallback for older flat resource layout.
+        graphs_root = resources_dir;
+    }
+    std::vector<vivid::ui::ExampleEntry> discovered_examples = discover_examples_recursive(graphs_root);
+    graph_file = resolve_graph_input_path(graph_file, graphs_root, discovered_examples);
+
     // --- Load graph ---
     vivid::Graph graph;
     vivid::Scheduler scheduler;
@@ -1409,6 +1660,18 @@ int main(int argc, char* argv[]) {
     graph_ui.set_dpi_scale(dpi_scale);
     graph_ui.set_bezier_wires(settings.bezier_wires);
     graph_ui.set_package_catalog(&pkg_catalog);
+    graph_ui.set_examples(discovered_examples);
+    graph_ui.set_example_package_checker(
+        [&pkg_manager](const std::vector<std::string>& requires, std::string& missing) {
+            for (const auto& pkg : requires) {
+                if (!pkg.empty() && !pkg_manager.is_installed(pkg)) {
+                    missing = pkg;
+                    return false;
+                }
+            }
+            missing.clear();
+            return true;
+        });
     if (graph.has_viewport())
         graph_ui.set_viewport(graph.viewport_pan_x, graph.viewport_pan_y, graph.viewport_zoom);
 
@@ -1616,6 +1879,33 @@ int main(int argc, char* argv[]) {
         }
     };
 
+    auto load_graph_runtime = [&](const std::string& input_path, const char* label) {
+        std::string resolved = resolve_graph_input_path(input_path, graphs_root, discovered_examples);
+        if (!graph.load(resolved.c_str())) {
+            std::fprintf(stderr, "[vivid] %s: failed to load %s\n", label, resolved.c_str());
+            return false;
+        }
+        registry.load_for_graph(graph);
+        auto result = runtime_api.reload(has_gpu_ops, has_audio);
+        if (result.ok) {
+            graph_loaded = true;
+            command_sink.reset_undo_history();
+        }
+        std::fprintf(stderr, "[vivid] %s: %s\n", label, result.message.c_str());
+        return result.ok;
+    };
+
+    graph_ui.set_example_open_callback([&](const std::string& rel_path) {
+        load_graph_runtime(rel_path, "Open Example");
+    });
+    graph_ui.set_graph_meta_save_callback([&](const vivid::ui::GraphMetaEditData& data,
+                                              std::string& error) {
+        if (!save_graph_meta_edit_data(data, error)) return false;
+        discovered_examples = discover_examples_recursive(graphs_root);
+        graph_ui.set_examples(discovered_examples);
+        return true;
+    });
+
     // --- macOS native menu bar ---
 #ifdef __APPLE__
     {
@@ -1648,23 +1938,11 @@ int main(int argc, char* argv[]) {
         menu_cbs.on_open = [&]() {
             std::string path = vivid::ui::open_file_dialog();
             if (path.empty()) return;
+            load_graph_runtime(path, "Open");
+        };
 
-            // Load the graph file (sets source_path internally)
-            if (!graph.load(path.c_str())) {
-                std::fprintf(stderr, "[vivid] Failed to load %s\n", path.c_str());
-                return;
-            }
-
-            // Ensure operators used by this graph are fully loaded
-            registry.load_for_graph(graph);
-
-            // Rebuild via reload (re-reads from graph.source_path())
-            auto result = runtime_api.reload(has_gpu_ops, has_audio);
-            if (result.ok) {
-                graph_loaded = true;
-                command_sink.reset_undo_history();
-            }
-            std::fprintf(stderr, "[vivid] Open: %s\n", result.message.c_str());
+        menu_cbs.on_open_example = [&]() {
+            graph_ui.toggle_example_browser();
         };
 
         menu_cbs.on_export = [&]() {
@@ -1760,6 +2038,16 @@ int main(int argc, char* argv[]) {
 
         // Edit menu
         menu_cbs.on_delete_selected = [&]() { graph_ui.delete_selected(); };
+        menu_cbs.on_edit_meta = [&]() {
+            if (graph.source_path().empty()) return;
+            vivid::ui::GraphMetaEditData data;
+            std::string error;
+            if (!load_graph_meta_edit_data(graph.source_path(), data, error)) {
+                std::fprintf(stderr, "[vivid] Edit Meta: %s\n", error.c_str());
+                return;
+            }
+            graph_ui.open_graph_meta_editor(data);
+        };
 
         // View menu
         menu_cbs.on_toggle_ui = [&]() { graph_ui.toggle_visible(); };
@@ -1778,6 +2066,7 @@ int main(int argc, char* argv[]) {
         menu_cbs.is_session_grid_open = [&]() { return graph_ui.session_grid_open(); };
         menu_cbs.is_midi_map_mode = [&]() { return graph_ui.midi_map_mode(); };
         menu_cbs.has_selection = [&]() { return graph_ui.has_selection(); };
+        menu_cbs.can_edit_meta = [&]() { return !graph.source_path().empty(); };
 
         vivid::macos_setup_menu(menu_cbs);
     }
@@ -1858,17 +2147,7 @@ int main(int argc, char* argv[]) {
         if (!window_user_data.pending_drop_path.empty()) {
             std::string path = std::move(window_user_data.pending_drop_path);
             window_user_data.pending_drop_path.clear();
-            if (graph.load(path.c_str())) {
-                registry.load_for_graph(graph);
-                auto result = runtime_api.reload(has_gpu_ops, has_audio);
-                if (result.ok) {
-                    graph_loaded = true;
-                    command_sink.reset_undo_history();
-                }
-                std::fprintf(stderr, "[vivid] Drop: %s\n", result.message.c_str());
-            } else {
-                std::fprintf(stderr, "[vivid] Drop: failed to load %s\n", path.c_str());
-            }
+            load_graph_runtime(path, "Drop");
         }
 
         // Reconfigure GPU surface if framebuffer size changed.

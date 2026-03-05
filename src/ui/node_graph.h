@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <cassert>
@@ -18,6 +19,31 @@
 namespace vivid { class PackageCatalog; struct CatalogEntry; }
 
 namespace vivid::ui {
+
+struct ExampleEntry {
+    std::string id;
+    std::string title;
+    std::string path;
+    std::string summary;
+    std::vector<std::string> tags;
+    std::string difficulty;
+    std::vector<std::string> domains;
+    std::vector<std::string> requires_packages;
+    int featured_rank = 1000;
+    int estimated_minutes = 0;
+};
+
+struct GraphMetaEditData {
+    std::string path;
+    std::string id;
+    std::string title;
+    std::string description;
+    std::string tags_csv;
+    std::string difficulty;
+    std::string domains_csv;
+    std::string requires_packages_csv;
+    std::string featured_rank;
+};
 
 class Renderer2D;
 class ThumbnailRenderer;
@@ -72,7 +98,9 @@ public:
             || session_editing_name_
             || record_dropdown_open_
             || preset_name_popup_open_
-            || pkg_browser_open_;
+            || pkg_browser_open_
+            || example_browser_open_
+            || graph_meta_editor_open_;
     }
     bool wire_inspector_visible() const;
     bool has_selection() const { return !selected_node_ids_.empty() || wire_inspector_visible(); }
@@ -127,6 +155,14 @@ public:
     void toggle_preferences();
     void toggle_package_browser();
     void set_package_catalog(PackageCatalog* catalog);
+    void toggle_example_browser();
+    void set_examples(std::vector<ExampleEntry> examples);
+    void set_example_open_callback(std::function<void(const std::string&)> cb);
+    void set_example_package_checker(
+        std::function<bool(const std::vector<std::string>&, std::string&)> cb);
+    void open_graph_meta_editor(const GraphMetaEditData& data);
+    void set_graph_meta_save_callback(
+        std::function<bool(const GraphMetaEditData&, std::string&)> cb);
     void set_editor_options(std::vector<std::string> names, std::vector<std::string> ids,
                             int current_idx = 0, const std::string& custom_command = "");
     void set_style_options(std::vector<UIStyle> styles, int current_idx,
@@ -242,6 +278,11 @@ private:
     void update_package_browser();
     void draw_package_browser(Renderer2D& tr);
     void rebuild_pkg_browser_items();
+    void update_example_browser();
+    void draw_example_browser(Renderer2D& tr);
+    void rebuild_example_items();
+    void update_graph_meta_editor();
+    void draw_graph_meta_editor(Renderer2D& tr);
 
     // --- Parameter picker popup ---
     void rebuild_param_picker_items();
@@ -608,6 +649,34 @@ private:
     PackageCatalog* pkg_catalog_ = nullptr;
     bool pkg_action_pending_ = false;
     std::string pkg_action_error_;
+
+    // --- Example browser ---
+    bool example_browser_open_ = false;
+    std::string example_browser_filter_;
+    int example_browser_sel_ = 0;
+    int example_browser_scroll_ = 0;
+    int example_browser_domain_ = 0;      // 0=All 1=GPU 2=Audio 3=Control 4=IO
+    int example_browser_difficulty_ = 0;  // 0=All 1=Beginner 2=Intermediate 3=Advanced
+    int example_browser_sort_ = 0;        // 0=Featured 1=Alphabetical
+    bool example_browser_core_only_ = true;
+    bool example_browser_package_only_ = false;
+    std::array<float, 5> example_domain_tab_widths_{};
+    std::array<float, 4> example_diff_tab_widths_{};
+    std::array<float, 2> example_sort_tab_widths_{};
+    std::vector<ExampleEntry> example_entries_all_;
+    std::vector<ExampleEntry> example_entries_;
+    std::string example_action_error_;
+    std::string example_warn_id_;
+    std::function<void(const std::string&)> example_open_callback_;
+    std::function<bool(const std::vector<std::string>&, std::string&)> example_package_checker_;
+
+    // --- Graph meta editor ---
+    bool graph_meta_editor_open_ = false;
+    int graph_meta_active_field_ = 0;
+    std::vector<std::string*> graph_meta_fields_;
+    GraphMetaEditData graph_meta_data_;
+    std::string graph_meta_error_;
+    std::function<bool(const GraphMetaEditData&, std::string&)> graph_meta_save_callback_;
 
     // --- Session grid (variation strip) ---
     bool session_grid_open_ = false;

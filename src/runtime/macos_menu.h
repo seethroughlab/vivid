@@ -9,6 +9,7 @@ namespace vivid {
 // Bound functions may freely access main-thread-only state (graph, scheduler, UI).
 struct MenuCallbacks {
     std::function<void()> on_open;
+    std::function<void()> on_open_example;
     std::function<void()> on_save;
     std::function<void()> on_preferences;
     std::function<void()> on_export;
@@ -18,6 +19,7 @@ struct MenuCallbacks {
 
     // Edit menu
     std::function<void()> on_delete_selected;
+    std::function<void()> on_edit_meta;
 
     // View menu
     std::function<void()> on_toggle_ui;
@@ -36,6 +38,7 @@ struct MenuCallbacks {
     std::function<bool()> is_session_grid_open;
     std::function<bool()> is_midi_map_mode;
     std::function<bool()> has_selection;
+    std::function<bool()> can_edit_meta;
 };
 
 void macos_setup_menu(const MenuCallbacks& callbacks);

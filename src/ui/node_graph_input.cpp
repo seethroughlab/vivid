@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cstring>
 
 namespace vivid::ui {
 
@@ -53,6 +54,14 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
 }
 
 void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
+    // Example browser scroll
+    if (example_browser_open_ && !example_entries_.empty()) {
+        example_browser_scroll_ -= static_cast<int>(y_offset);
+        int max_scroll = std::max(0, static_cast<int>(example_entries_.size()) - kPkgBrowserMaxVisible);
+        example_browser_scroll_ = std::max(0, std::min(example_browser_scroll_, max_scroll));
+        return;
+    }
+
     // Package browser scroll
     if (pkg_browser_open_ && !pkg_browser_entries_.empty()) {
         pkg_browser_scroll_ -= static_cast<int>(y_offset);
@@ -125,6 +134,82 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
 // -----------------------------------------------------------------------
 void NodeGraphUI::on_key(int key, int action, int mods) {
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
+
+    if (graph_meta_editor_open_) {
+        if (key == GLFW_KEY_ESCAPE) {
+            graph_meta_editor_open_ = false;
+            graph_meta_error_.clear();
+        } else if (key == GLFW_KEY_TAB || key == GLFW_KEY_DOWN) {
+            graph_meta_active_field_ =
+                (graph_meta_active_field_ + 1) % static_cast<int>(graph_meta_fields_.size());
+        } else if (key == GLFW_KEY_UP) {
+            graph_meta_active_field_--;
+            if (graph_meta_active_field_ < 0)
+                graph_meta_active_field_ = static_cast<int>(graph_meta_fields_.size()) - 1;
+        } else if (key == GLFW_KEY_BACKSPACE &&
+                   graph_meta_active_field_ >= 0 &&
+                   graph_meta_active_field_ < static_cast<int>(graph_meta_fields_.size())) {
+            auto* field = graph_meta_fields_[graph_meta_active_field_];
+            if (field && !field->empty()) field->pop_back();
+        } else if (key == GLFW_KEY_ENTER) {
+            if (graph_meta_save_callback_) {
+                std::string err;
+                if (graph_meta_save_callback_(graph_meta_data_, err)) {
+                    graph_meta_editor_open_ = false;
+                    graph_meta_error_.clear();
+                } else {
+                    graph_meta_error_ = err.empty() ? "Failed to save meta" : err;
+                }
+            }
+        }
+        return;
+    }
+
+    if (example_browser_open_) {
+        if (key == GLFW_KEY_ESCAPE) {
+            example_browser_open_ = false;
+            example_browser_filter_.clear();
+        } else if (key == GLFW_KEY_UP) {
+            example_browser_sel_ = std::max(0, example_browser_sel_ - 1);
+            if (example_browser_sel_ < example_browser_scroll_)
+                example_browser_scroll_ = example_browser_sel_;
+        } else if (key == GLFW_KEY_DOWN) {
+            int max_sel = static_cast<int>(example_entries_.size()) - 1;
+            example_browser_sel_ = std::min(max_sel, example_browser_sel_ + 1);
+            if (example_browser_sel_ >= example_browser_scroll_ + kPkgBrowserMaxVisible)
+                example_browser_scroll_ = example_browser_sel_ - kPkgBrowserMaxVisible + 1;
+        } else if (key == GLFW_KEY_BACKSPACE && !example_browser_filter_.empty()) {
+            example_browser_filter_.pop_back();
+            example_browser_scroll_ = 0;
+            example_browser_sel_ = 0;
+            rebuild_example_items();
+        } else if (key == GLFW_KEY_ENTER) {
+            if (example_open_callback_ && example_browser_sel_ >= 0 &&
+                example_browser_sel_ < static_cast<int>(example_entries_.size())) {
+                const auto& e = example_entries_[example_browser_sel_];
+                std::string missing;
+                bool ok = true;
+                if (example_package_checker_) {
+                    ok = example_package_checker_(e.requires_packages, missing);
+                }
+                if (ok) {
+                    example_action_error_.clear();
+                    example_warn_id_.clear();
+                    example_open_callback_(e.path);
+                    example_browser_open_ = false;
+                } else if (example_warn_id_ == e.id) {
+                    example_action_error_ = "Opening anyway with missing package: " + missing;
+                    example_open_callback_(e.path);
+                    example_browser_open_ = false;
+                } else {
+                    example_warn_id_ = e.id;
+                    example_action_error_ =
+                        "Missing package: " + missing + " (press Enter again to open anyway)";
+                }
+            }
+        }
+        return;
+    }
 
     if (pkg_browser_open_) {
         if (key == GLFW_KEY_ESCAPE) {
@@ -698,6 +783,24 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
 }
 
 void NodeGraphUI::on_char(unsigned int codepoint) {
+    if (graph_meta_editor_open_) {
+        if (codepoint >= 32 && codepoint < 127 &&
+            graph_meta_active_field_ >= 0 &&
+            graph_meta_active_field_ < static_cast<int>(graph_meta_fields_.size())) {
+            auto* field = graph_meta_fields_[graph_meta_active_field_];
+            if (field) field->push_back(static_cast<char>(codepoint));
+        }
+        return;
+    }
+    if (example_browser_open_) {
+        if (codepoint >= 32 && codepoint < 127) {
+            example_browser_filter_ += static_cast<char>(codepoint);
+            example_browser_scroll_ = 0;
+            example_browser_sel_ = 0;
+            rebuild_example_items();
+        }
+        return;
+    }
     if (pkg_browser_open_) {
         if (codepoint >= 32 && codepoint < 127) {
             pkg_browser_filter_ += static_cast<char>(codepoint);
@@ -2176,6 +2279,229 @@ void NodeGraphUI::update_package_browser() {
     }
 
     // Consume click inside panel
+    mouse_.left_clicked = false;
+    mouse_.left_released = false;
+}
+
+void NodeGraphUI::update_example_browser() {
+    if (!example_browser_open_) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+    int visible_count = std::min(static_cast<int>(example_entries_.size()), kPkgBrowserMaxVisible);
+    float list_h = visible_count * kPkgBrowserItemH;
+    float content_h = kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6
+                    + kPkgBrowserTabH + 8 + kPkgBrowserTabH + 8 + kPkgBrowserTabH + 8
+                    + list_h + 8 + 18 + kPkgBrowserPadY;
+    float ph = std::min(kPkgBrowserMaxH, std::min(content_h, hf - 40.0f));
+    float pw = kPkgBrowserW + 120.0f;
+    float px = (wf - pw) * 0.5f;
+    float py = (hf - ph) * 0.5f;
+    float cx = px + kPkgBrowserPadX;
+    float inner_w = pw - 2 * kPkgBrowserPadX;
+    if (!mouse_.left_clicked) return;
+
+    if (mouse_.x < px || mouse_.x > px + pw || mouse_.y < py || mouse_.y > py + ph) {
+        example_browser_open_ = false;
+        example_browser_filter_.clear();
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
+    float cy = py + kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6;
+    static const char* domain_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
+    float tx = cx;
+    for (int i = 0; i < 5; ++i) {
+        float tw = example_domain_tab_widths_[i] > 0 ? example_domain_tab_widths_[i]
+                 : static_cast<float>(std::strlen(domain_tabs[i])) * 8.0f + 16.0f;
+        if (mouse_.x >= tx && mouse_.x <= tx + tw && mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH) {
+            example_browser_domain_ = i;
+            example_browser_scroll_ = 0;
+            example_browser_sel_ = 0;
+            rebuild_example_items();
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+        tx += tw + 4.0f;
+    }
+    cy += kPkgBrowserTabH + 8;
+
+    static const char* diff_tabs[] = { "All", "Beginner", "Intermediate", "Advanced" };
+    tx = cx;
+    for (int i = 0; i < 4; ++i) {
+        float tw = example_diff_tab_widths_[i] > 0 ? example_diff_tab_widths_[i]
+                 : static_cast<float>(std::strlen(diff_tabs[i])) * 8.0f + 16.0f;
+        if (mouse_.x >= tx && mouse_.x <= tx + tw && mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH) {
+            example_browser_difficulty_ = i;
+            example_browser_scroll_ = 0;
+            example_browser_sel_ = 0;
+            rebuild_example_items();
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+        tx += tw + 4.0f;
+    }
+
+    float right_x = cx + inner_w - 210.0f;
+    float toggle_w = 88.0f;
+    if (mouse_.x >= right_x && mouse_.x <= right_x + toggle_w &&
+        mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH) {
+        example_browser_core_only_ = !example_browser_core_only_;
+        if (example_browser_core_only_) example_browser_package_only_ = false;
+        rebuild_example_items();
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+    if (mouse_.x >= right_x + toggle_w + 6.0f && mouse_.x <= right_x + 2 * toggle_w + 6.0f &&
+        mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH) {
+        example_browser_package_only_ = !example_browser_package_only_;
+        if (example_browser_package_only_) example_browser_core_only_ = false;
+        rebuild_example_items();
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+    cy += kPkgBrowserTabH + 8;
+
+    float sort_x = cx;
+    float sort_w0 = example_sort_tab_widths_[0] > 0 ? example_sort_tab_widths_[0] : 92.0f;
+    float sort_w1 = example_sort_tab_widths_[1] > 0 ? example_sort_tab_widths_[1] : 104.0f;
+    if (mouse_.x >= sort_x && mouse_.x <= sort_x + sort_w0 &&
+        mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH) {
+        example_browser_sort_ = 0;
+        rebuild_example_items();
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+    if (mouse_.x >= sort_x + sort_w0 + 4.0f && mouse_.x <= sort_x + sort_w0 + 4.0f + sort_w1 &&
+        mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH) {
+        example_browser_sort_ = 1;
+        rebuild_example_items();
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+    cy += kPkgBrowserTabH + 8;
+
+    if (!example_entries_.empty()) {
+        int clicked_rel = static_cast<int>((mouse_.y - cy) / kPkgBrowserItemH);
+        if (clicked_rel >= 0 && clicked_rel < visible_count) {
+            int idx = example_browser_scroll_ + clicked_rel;
+            if (idx >= 0 && idx < static_cast<int>(example_entries_.size())) {
+                example_browser_sel_ = idx;
+                float row_y = cy + clicked_rel * kPkgBrowserItemH;
+                float open_w = 64.0f;
+                float open_h = 22.0f;
+                float bx = cx + inner_w - open_w - 8.0f;
+                float by = row_y + (kPkgBrowserItemH - open_h) * 0.5f;
+                if (mouse_.x >= bx && mouse_.x <= bx + open_w &&
+                    mouse_.y >= by && mouse_.y <= by + open_h &&
+                    example_open_callback_) {
+                    const auto& e = example_entries_[idx];
+                    std::string missing;
+                    bool ok = true;
+                    if (example_package_checker_) {
+                        ok = example_package_checker_(e.requires_packages, missing);
+                    }
+                    if (ok) {
+                        example_action_error_.clear();
+                        example_warn_id_.clear();
+                        example_open_callback_(e.path);
+                        example_browser_open_ = false;
+                    } else if (example_warn_id_ == e.id) {
+                        example_action_error_ = "Opening anyway with missing package: " + missing;
+                        example_open_callback_(e.path);
+                        example_browser_open_ = false;
+                    } else {
+                        example_warn_id_ = e.id;
+                        example_action_error_ =
+                            "Missing package: " + missing + " (click Open again to continue)";
+                    }
+                }
+                mouse_.left_clicked = false;
+                mouse_.left_released = false;
+                return;
+            }
+        }
+    }
+
+    mouse_.left_clicked = false;
+    mouse_.left_released = false;
+}
+
+void NodeGraphUI::update_graph_meta_editor() {
+    if (!graph_meta_editor_open_) return;
+    if (!mouse_.left_clicked) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+    float pw = 720.0f;
+    float ph = 420.0f;
+    float px = (wf - pw) * 0.5f;
+    float py = (hf - ph) * 0.5f;
+
+    if (mouse_.x < px || mouse_.x > px + pw || mouse_.y < py || mouse_.y > py + ph) {
+        graph_meta_editor_open_ = false;
+        graph_meta_error_.clear();
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
+    float cx = px + 16.0f;
+    float cy = py + 52.0f;
+    float label_w = 160.0f;
+    float field_h = 24.0f;
+    float field_w = pw - 32.0f - label_w;
+    float row_gap = 8.0f;
+    const int kFieldCount = 8;
+    for (int i = 0; i < kFieldCount; ++i) {
+        float fy = cy + i * (field_h + row_gap);
+        float fx = cx + label_w;
+        if (mouse_.x >= fx && mouse_.x <= fx + field_w &&
+            mouse_.y >= fy && mouse_.y <= fy + field_h) {
+            graph_meta_active_field_ = i;
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+    }
+
+    float by = py + ph - 42.0f;
+    float save_w = 80.0f;
+    float cancel_w = 90.0f;
+    float save_x = px + pw - 16.0f - save_w - 8.0f - cancel_w;
+    float cancel_x = save_x + save_w + 8.0f;
+
+    if (mouse_.x >= save_x && mouse_.x <= save_x + save_w &&
+        mouse_.y >= by && mouse_.y <= by + 24.0f) {
+        if (graph_meta_save_callback_) {
+            std::string err;
+            if (graph_meta_save_callback_(graph_meta_data_, err)) {
+                graph_meta_editor_open_ = false;
+                graph_meta_error_.clear();
+            } else {
+                graph_meta_error_ = err.empty() ? "Failed to save meta" : err;
+            }
+        }
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+    if (mouse_.x >= cancel_x && mouse_.x <= cancel_x + cancel_w &&
+        mouse_.y >= by && mouse_.y <= by + 24.0f) {
+        graph_meta_editor_open_ = false;
+        graph_meta_error_.clear();
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
     mouse_.left_clicked = false;
     mouse_.left_released = false;
 }

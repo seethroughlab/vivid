@@ -5,6 +5,7 @@
 // Tag values for menu items
 enum MenuTag : NSInteger {
     kMenuTagOpen = 1,
+    kMenuTagOpenExample,
     kMenuTagSave,
     kMenuTagPreferences,
     kMenuTagExport,
@@ -13,6 +14,7 @@ enum MenuTag : NSInteger {
     kMenuTagReportIssue,
     // Edit
     kMenuTagDeleteSelected,
+    kMenuTagEditMeta,
     // View
     kMenuTagToggleUI,
     kMenuTagToggleFullscreen,
@@ -34,6 +36,7 @@ enum MenuTag : NSInteger {
 - (void)menuAction:(NSMenuItem*)sender {
     switch (sender.tag) {
         case kMenuTagOpen:              if (_callbacks.on_open) _callbacks.on_open(); break;
+        case kMenuTagOpenExample:       if (_callbacks.on_open_example) _callbacks.on_open_example(); break;
         case kMenuTagSave:              if (_callbacks.on_save) _callbacks.on_save(); break;
         case kMenuTagPreferences:       if (_callbacks.on_preferences) _callbacks.on_preferences(); break;
         case kMenuTagExport:            if (_callbacks.on_export) _callbacks.on_export(); break;
@@ -45,6 +48,7 @@ enum MenuTag : NSInteger {
             if (_callbacks.on_report_issue) _callbacks.on_report_issue();
             break;
         case kMenuTagDeleteSelected:    if (_callbacks.on_delete_selected) _callbacks.on_delete_selected(); break;
+        case kMenuTagEditMeta:          if (_callbacks.on_edit_meta) _callbacks.on_edit_meta(); break;
         case kMenuTagToggleUI:          if (_callbacks.on_toggle_ui) _callbacks.on_toggle_ui(); break;
         case kMenuTagToggleFullscreen:  if (_callbacks.on_toggle_fullscreen) _callbacks.on_toggle_fullscreen(); break;
         case kMenuTagToggleBezierWires: if (_callbacks.on_toggle_bezier_wires) _callbacks.on_toggle_bezier_wires(); break;
@@ -58,6 +62,8 @@ enum MenuTag : NSInteger {
     switch (item.tag) {
         case kMenuTagDeleteSelected:
             return _callbacks.has_selection ? _callbacks.has_selection() : NO;
+        case kMenuTagEditMeta:
+            return _callbacks.can_edit_meta ? _callbacks.can_edit_meta() : NO;
 
         case kMenuTagToggleUI:
             item.state = (_callbacks.is_ui_visible && _callbacks.is_ui_visible()) ? NSControlStateValueOn : NSControlStateValueOff;
@@ -139,6 +145,15 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         openItem.tag = kMenuTagOpen;
         [fileMenu addItem:openItem];
 
+        NSMenuItem* openExampleItem = [[NSMenuItem alloc]
+            initWithTitle:@"Open Example..."
+                   action:@selector(menuAction:)
+            keyEquivalent:@"O"];
+        openExampleItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+        openExampleItem.target = sDelegate;
+        openExampleItem.tag = kMenuTagOpenExample;
+        [fileMenu addItem:openExampleItem];
+
         NSMenuItem* saveItem = [[NSMenuItem alloc]
             initWithTitle:@"Save"
                    action:@selector(menuAction:)
@@ -193,6 +208,15 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         deleteItem.target = sDelegate;
         deleteItem.tag = kMenuTagDeleteSelected;
         [editMenu addItem:deleteItem];
+
+        NSMenuItem* editMetaItem = [[NSMenuItem alloc]
+            initWithTitle:@"Edit Meta..."
+                   action:@selector(menuAction:)
+            keyEquivalent:@"e"];
+        editMetaItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+        editMetaItem.target = sDelegate;
+        editMetaItem.tag = kMenuTagEditMeta;
+        [editMenu addItem:editMetaItem];
 
         NSMenuItem* editMenuItem = [[NSMenuItem alloc] initWithTitle:@"Edit"
                                                               action:nil

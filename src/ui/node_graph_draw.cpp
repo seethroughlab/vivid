@@ -2853,6 +2853,8 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     draw_preset_name_popup(tr);
     draw_preferences(tr);
     draw_package_browser(tr);
+    draw_example_browser(tr);
+    draw_graph_meta_editor(tr);
 }
 
 // -----------------------------------------------------------------------
@@ -4032,6 +4034,266 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
         tr.draw_text(cx, cy, status.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
     }
+}
+
+void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
+    if (!example_browser_open_) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+    tr.draw_rect(0, 0, wf, hf,
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+
+    int visible_count = std::min(static_cast<int>(example_entries_.size()), kPkgBrowserMaxVisible);
+    float list_h = visible_count * kPkgBrowserItemH;
+    float content_h = kPkgBrowserPadY + kPkgBrowserHeaderH + kPkgBrowserSearchH + 6
+                    + kPkgBrowserTabH + 8 + kPkgBrowserTabH + 8 + kPkgBrowserTabH + 8
+                    + list_h + 8 + 18 + kPkgBrowserPadY;
+    float ph = std::min(kPkgBrowserMaxH + 70.0f, std::min(content_h, hf - 40.0f));
+    float pw = kPkgBrowserW + 120.0f;
+    float px = (wf - pw) * 0.5f;
+    float py = (hf - ph) * 0.5f;
+
+    tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
+                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    tr.draw_rect(px, py, pw, 2,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    float cx = px + kPkgBrowserPadX;
+    float inner_w = pw - 2 * kPkgBrowserPadX;
+    float cy = py + kPkgBrowserPadY;
+
+    tr.draw_text(cx, cy + 6, "Open Example",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    cy += kPkgBrowserHeaderH;
+
+    tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
+                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+    tr.draw_rect(cx, cy, inner_w, 1, style_.accent[0], style_.accent[1], style_.accent[2]);
+    std::string s = example_browser_filter_;
+    s += (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0) ? "_" : " ";
+    if (example_browser_filter_.empty() && s.size() <= 1) {
+        tr.draw_text(cx + 4, cy + 5, "Search by title, tags, id, path...",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.55f);
+    } else {
+        tr.draw_text(cx + 4, cy + 5, s.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+    cy += kPkgBrowserSearchH + 6;
+
+    static const char* domain_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
+    float tx = cx;
+    for (int i = 0; i < 5; ++i) {
+        float tw = tr.text_width(domain_tabs[i]) + 16;
+        example_domain_tab_widths_[i] = tw;
+        bool sel = (i == example_browser_domain_);
+        tr.draw_rect(tx, cy, tw, kPkgBrowserTabH,
+                     sel ? style_.accent[0] : style_.button_bg[0],
+                     sel ? style_.accent[1] : style_.button_bg[1],
+                     sel ? style_.accent[2] : style_.button_bg[2],
+                     sel ? 0.9f : 0.65f);
+        tr.draw_text(tx + 8, cy + 3, domain_tabs[i],
+                     sel ? 0.0f : style_.dim_text[0],
+                     sel ? 0.0f : style_.dim_text[1],
+                     sel ? 0.0f : style_.dim_text[2]);
+        tx += tw + 4.0f;
+    }
+    cy += kPkgBrowserTabH + 8;
+
+    static const char* diff_tabs[] = { "All", "Beginner", "Intermediate", "Advanced" };
+    tx = cx;
+    for (int i = 0; i < 4; ++i) {
+        float tw = tr.text_width(diff_tabs[i]) + 16;
+        example_diff_tab_widths_[i] = tw;
+        bool sel = (i == example_browser_difficulty_);
+        tr.draw_rect(tx, cy, tw, kPkgBrowserTabH,
+                     sel ? style_.accent[0] : style_.button_bg[0],
+                     sel ? style_.accent[1] : style_.button_bg[1],
+                     sel ? style_.accent[2] : style_.button_bg[2],
+                     sel ? 0.9f : 0.65f);
+        tr.draw_text(tx + 8, cy + 3, diff_tabs[i],
+                     sel ? 0.0f : style_.dim_text[0],
+                     sel ? 0.0f : style_.dim_text[1],
+                     sel ? 0.0f : style_.dim_text[2]);
+        tx += tw + 4.0f;
+    }
+
+    float toggle_w = 88.0f;
+    float toggles_x = cx + inner_w - 210.0f;
+    tr.draw_rect(toggles_x, cy, toggle_w, kPkgBrowserTabH,
+                 example_browser_core_only_ ? style_.accent[0] : style_.button_bg[0],
+                 example_browser_core_only_ ? style_.accent[1] : style_.button_bg[1],
+                 example_browser_core_only_ ? style_.accent[2] : style_.button_bg[2],
+                 example_browser_core_only_ ? 0.9f : 0.65f);
+    tr.draw_text(toggles_x + 8, cy + 3, "Core only",
+                 example_browser_core_only_ ? 0.0f : style_.dim_text[0],
+                 example_browser_core_only_ ? 0.0f : style_.dim_text[1],
+                 example_browser_core_only_ ? 0.0f : style_.dim_text[2]);
+    tr.draw_rect(toggles_x + toggle_w + 6.0f, cy, toggle_w, kPkgBrowserTabH,
+                 example_browser_package_only_ ? style_.accent[0] : style_.button_bg[0],
+                 example_browser_package_only_ ? style_.accent[1] : style_.button_bg[1],
+                 example_browser_package_only_ ? style_.accent[2] : style_.button_bg[2],
+                 example_browser_package_only_ ? 0.9f : 0.65f);
+    tr.draw_text(toggles_x + toggle_w + 14.0f, cy + 3, "Package",
+                 example_browser_package_only_ ? 0.0f : style_.dim_text[0],
+                 example_browser_package_only_ ? 0.0f : style_.dim_text[1],
+                 example_browser_package_only_ ? 0.0f : style_.dim_text[2]);
+    cy += kPkgBrowserTabH + 8;
+
+    static const char* sort_tabs[] = { "Featured", "A-Z" };
+    tx = cx;
+    for (int i = 0; i < 2; ++i) {
+        float tw = tr.text_width(sort_tabs[i]) + 16;
+        example_sort_tab_widths_[i] = tw;
+        bool sel = (i == example_browser_sort_);
+        tr.draw_rect(tx, cy, tw, kPkgBrowserTabH,
+                     sel ? style_.accent[0] : style_.button_bg[0],
+                     sel ? style_.accent[1] : style_.button_bg[1],
+                     sel ? style_.accent[2] : style_.button_bg[2],
+                     sel ? 0.9f : 0.65f);
+        tr.draw_text(tx + 8, cy + 3, sort_tabs[i],
+                     sel ? 0.0f : style_.dim_text[0],
+                     sel ? 0.0f : style_.dim_text[1],
+                     sel ? 0.0f : style_.dim_text[2]);
+        tx += tw + 4.0f;
+    }
+    cy += kPkgBrowserTabH + 8;
+
+    int total = static_cast<int>(example_entries_.size());
+    int end = std::min(total, example_browser_scroll_ + kPkgBrowserMaxVisible);
+    for (int i = example_browser_scroll_; i < end; ++i) {
+        const auto& e = example_entries_[i];
+        float iy = cy + (i - example_browser_scroll_) * kPkgBrowserItemH;
+        bool hovered = mouse_.x >= cx && mouse_.x <= cx + inner_w &&
+                       mouse_.y >= iy && mouse_.y <= iy + kPkgBrowserItemH;
+        if (hovered || i == example_browser_sel_) {
+            tr.draw_rect(cx, iy, inner_w, kPkgBrowserItemH,
+                         style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2],
+                         hovered ? 0.5f : 0.3f);
+        }
+        if (i > example_browser_scroll_) {
+            tr.draw_rect(cx + 4, iy, inner_w - 8, 1,
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.3f);
+        }
+
+        tr.draw_text(cx + 8, iy + 6, e.title.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        std::string meta = e.id + " · " + e.path;
+        tr.draw_text(cx + 8, iy + 22, meta.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+
+        std::string summary = e.summary;
+        if (summary.size() > 64) summary = summary.substr(0, 61) + "...";
+        tr.draw_text(cx + 8, iy + 37, summary.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+
+        float bx = cx + inner_w - 64.0f - 8.0f;
+        float by = iy + (kPkgBrowserItemH - 22.0f) * 0.5f;
+        tr.draw_rect(bx, by, 64.0f, 22.0f,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
+        float tw = tr.text_width("Open");
+        tr.draw_text(bx + (64.0f - tw) * 0.5f, by + 3, "Open",
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+        if (!e.requires_packages.empty()) {
+            tr.draw_text(bx - 165.0f, by + 3, "needs package(s)",
+                         0.95f, 0.70f, 0.25f, 0.85f);
+        }
+    }
+
+    float status_y = cy + visible_count * kPkgBrowserItemH + 8;
+    if (!example_action_error_.empty()) {
+        tr.draw_text(cx, status_y, example_action_error_.c_str(),
+                     kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
+    } else {
+        std::string status = std::to_string(example_entries_.size()) + " graph";
+        if (example_entries_.size() != 1) status += "s";
+        status += " · Enter opens selection";
+        tr.draw_text(cx, status_y, status.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+    }
+}
+
+void NodeGraphUI::draw_graph_meta_editor(Renderer2D& tr) {
+    if (!graph_meta_editor_open_) return;
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+    float pw = 720.0f;
+    float ph = 420.0f;
+    float px = (wf - pw) * 0.5f;
+    float py = (hf - ph) * 0.5f;
+
+    tr.draw_rect(0, 0, wf, hf, style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+    tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
+                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    tr.draw_rect(px, py, pw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
+    tr.draw_text(px + 16.0f, py + 16.0f, "Edit Meta",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+    if (!graph_meta_data_.path.empty()) {
+        std::string p = graph_meta_data_.path;
+        if (p.size() > 70) p = "..." + p.substr(p.size() - 67);
+        tr.draw_text(px + 16.0f, py + 32.0f, p.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+    }
+
+    static const char* labels[] = {
+        "id", "title", "description", "tags (csv)", "difficulty",
+        "domains (csv)", "requires_packages (csv)", "featured_rank"
+    };
+    const std::string values[] = {
+        graph_meta_data_.id,
+        graph_meta_data_.title,
+        graph_meta_data_.description,
+        graph_meta_data_.tags_csv,
+        graph_meta_data_.difficulty,
+        graph_meta_data_.domains_csv,
+        graph_meta_data_.requires_packages_csv,
+        graph_meta_data_.featured_rank
+    };
+
+    float cx = px + 16.0f;
+    float cy = py + 52.0f;
+    float label_w = 160.0f;
+    float field_h = 24.0f;
+    float field_w = pw - 32.0f - label_w;
+    float row_gap = 8.0f;
+    for (int i = 0; i < 8; ++i) {
+        float fy = cy + i * (field_h + row_gap);
+        float fx = cx + label_w;
+        tr.draw_text(cx, fy + 4, labels[i],
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        bool active = (i == graph_meta_active_field_);
+        tr.draw_rect(fx, fy, field_w, field_h,
+                     active ? style_.node_sel_bg[0] : style_.input_field_bg[0],
+                     active ? style_.node_sel_bg[1] : style_.input_field_bg[1],
+                     active ? style_.node_sel_bg[2] : style_.input_field_bg[2],
+                     active ? 0.95f : 0.85f);
+        std::string txt = values[i];
+        if (active && (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0)) txt += "_";
+        if (txt.size() > 94) txt = txt.substr(0, 91) + "...";
+        tr.draw_text(fx + 6.0f, fy + 4.0f, txt.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+
+    if (!graph_meta_error_.empty()) {
+        tr.draw_text(px + 16.0f, py + ph - 66.0f, graph_meta_error_.c_str(),
+                     kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.95f);
+    }
+
+    float by = py + ph - 42.0f;
+    float save_w = 80.0f;
+    float cancel_w = 90.0f;
+    float save_x = px + pw - 16.0f - save_w - 8.0f - cancel_w;
+    float cancel_x = save_x + save_w + 8.0f;
+    tr.draw_rect(save_x, by, save_w, 24.0f, style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+    tr.draw_rect(cancel_x, by, cancel_w, 24.0f,
+                 style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.85f);
+    tr.draw_text(save_x + 20.0f, by + 4.0f, "Save",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    tr.draw_text(cancel_x + 18.0f, by + 4.0f, "Cancel",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 }
 
 } // namespace vivid::ui
