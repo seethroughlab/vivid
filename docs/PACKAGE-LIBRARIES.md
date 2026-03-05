@@ -1,8 +1,8 @@
-# Operator Extraction Migration Notes
+# Package Libraries
 
-Milestone 2 moved several operator families out of `vivid-core` into package repos.
+Vivid supports additional operator libraries as packages.
 
-## What Moved
+## Available Package Libraries
 
 ### vivid-wavetable
 
@@ -36,7 +36,7 @@ Milestone 2 moved several operator families out of `vivid-core` into package rep
 - `StateMachine`
 - Repo: `https://github.com/seethroughlab/vivid-sequencers`
 
-### Existing external packages (unchanged ownership)
+### Additional package libraries
 
 - `vivid-3d`: `https://github.com/seethroughlab/vivid-3d`
 - `vivid-glitch`: `https://github.com/seethroughlab/vivid-glitch`
@@ -52,7 +52,7 @@ From a built vivid-core checkout:
 ./build/vivid install https://github.com/seethroughlab/vivid-sequencers.git
 ```
 
-Optional families:
+Optional package libraries:
 
 ```bash
 ./build/vivid install https://github.com/seethroughlab/vivid-3d.git
@@ -68,9 +68,3 @@ Optional families:
 ```
 
 Use the same pattern for other package names.
-
-## Behavior Changes
-
-- `vivid-core` now ships a smaller default operator set.
-- Graphs that require extracted operators should live in package repos.
-- Package repos own smoke tests for their graphs and package-specific tests.

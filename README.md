@@ -50,7 +50,7 @@ Clock, LFO, Math, Envelope, MIDI Input, FFT Analysis, Logic, Gate, Random, Smoot
 
 ## Package Operators
 
-Install extracted families as packages:
+Install additional package libraries:
 
 - `vivid-wavetable`: `WavetableSynth`
 - `vivid-drums`: `DrumKick`, `DrumSnare`, `DrumHiHat`, `DrumClap`, `DrumCymbal`
