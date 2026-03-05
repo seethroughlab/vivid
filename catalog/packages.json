@@ -16,7 +16,11 @@
       "homepage_url": "https://github.com/seethroughlab/vivid-3d",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-3d/master/docs/images/preview.png",
       "category": "gpu",
-      "tags": ["gpu", "3d", "rendering"],
+      "tags": [
+        "gpu",
+        "3d",
+        "rendering"
+      ],
       "status": "stable"
     },
     {
@@ -33,7 +37,11 @@
       "homepage_url": "https://github.com/seethroughlab/vivid-glitch",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-glitch/master/docs/images/preview.png",
       "category": "gpu",
-      "tags": ["gpu", "effects", "glitch"],
+      "tags": [
+        "gpu",
+        "effects",
+        "glitch"
+      ],
       "status": "stable"
     },
     {
@@ -50,7 +58,11 @@
       "homepage_url": "https://github.com/seethroughlab/vivid-wavetable",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-wavetable/master/docs/images/preview.png",
       "category": "audio",
-      "tags": ["audio", "synthesis", "wavetable"],
+      "tags": [
+        "audio",
+        "synthesis",
+        "wavetable"
+      ],
       "status": "stable"
     },
     {
@@ -67,7 +79,11 @@
       "homepage_url": "https://github.com/seethroughlab/vivid-drums",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-drums/master/docs/images/preview.png",
       "category": "audio",
-      "tags": ["audio", "drums", "synthesis"],
+      "tags": [
+        "audio",
+        "drums",
+        "synthesis"
+      ],
       "status": "stable"
     },
     {
@@ -84,7 +100,11 @@
       "homepage_url": "https://github.com/seethroughlab/vivid-plexus",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-plexus/master/docs/images/preview.png",
       "category": "hybrid",
-      "tags": ["gpu", "audio", "visualizer"],
+      "tags": [
+        "gpu",
+        "audio",
+        "visualizer"
+      ],
       "status": "stable"
     },
     {
@@ -101,7 +121,11 @@
       "homepage_url": "https://github.com/seethroughlab/vivid-sequencers",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-sequencers/master/docs/images/preview.png",
       "category": "control",
-      "tags": ["control", "sequencer", "music"],
+      "tags": [
+        "control",
+        "sequencer",
+        "music"
+      ],
       "status": "stable"
     },
     {
@@ -118,7 +142,11 @@
       "homepage_url": "https://github.com/seethroughlab/vivid-cef",
       "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-cef/master/docs/images/preview.png",
       "category": "ui",
-      "tags": ["ui", "web", "experimental"],
+      "tags": [
+        "ui",
+        "web",
+        "experimental"
+      ],
       "status": "experimental"
     }
   ]
