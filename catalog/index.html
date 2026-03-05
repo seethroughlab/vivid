@@ -59,11 +59,58 @@
       font-size: 16px;
       color: var(--accent);
     }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .badge {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .badge.stable {
+      color: #4edc8f;
+      border-color: #2a6c47;
+      background: rgba(78, 220, 143, 0.12);
+    }
+    .badge.beta {
+      color: #78b9ff;
+      border-color: #2f5f90;
+      background: rgba(120, 185, 255, 0.12);
+    }
+    .badge.experimental {
+      color: #ffd166;
+      border-color: #866a2d;
+      background: rgba(255, 209, 102, 0.12);
+    }
+    .badge.broken {
+      color: #ff8b8b;
+      border-color: #8d3f3f;
+      background: rgba(255, 139, 139, 0.12);
+    }
+    .badge.deprecated {
+      color: #c0c8d0;
+      border-color: #5b6572;
+      background: rgba(192, 200, 208, 0.12);
+    }
     .desc {
       margin: 0 0 10px;
       color: var(--text);
       font-size: 13px;
       line-height: 1.4;
+    }
+    .status-note {
+      margin: 0 0 10px;
+      color: #ffd166;
+      font-size: 12px;
+      line-height: 1.35;
     }
     .meta {
       margin: 0 0 10px;
@@ -104,6 +151,21 @@
     <div id="grid" class="grid"></div>
   </main>
   <script>
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function normalizeStatus(value) {
+      const allowed = new Set(["stable", "beta", "experimental", "broken", "deprecated"]);
+      const s = String(value || "").toLowerCase();
+      return allowed.has(s) ? s : "experimental";
+    }
+
     async function run() {
       const grid = document.getElementById("grid");
       try {
@@ -116,17 +178,23 @@
           card.className = "card";
           const preview = p.preview_image_url || "";
           const description = p.description_short || p.description || "";
+          const status = normalizeStatus(p.status);
+          const statusNote = p.status_note ? `<p class="status-note">${escapeHtml(p.status_note)}</p>` : "";
           card.innerHTML = `
-            ${preview ? `<img class="thumb" src="${preview}" alt="${p.name} preview">` : ""}
+            ${preview ? `<img class="thumb" src="${escapeHtml(preview)}" alt="${escapeHtml(p.name)} preview">` : ""}
             <div class="content">
-              <h2 class="name">${p.name}</h2>
-              <p class="desc">${description}</p>
-              <p class="meta">v${p.version || "?"} · ${p.category || "uncategorized"}</p>
-              <div class="actions">
-                ${p.repo_url ? `<a href="${p.repo_url}" target="_blank" rel="noopener">Repo</a>` : ""}
-                ${p.homepage_url ? `<a href="${p.homepage_url}" target="_blank" rel="noopener">Homepage</a>` : ""}
+              <div class="header">
+                <h2 class="name">${escapeHtml(p.name || "unknown")}</h2>
+                <span class="badge ${status}">${status}</span>
               </div>
-              <code>vivid packages install ${p.install_url || p.url || ""}</code>
+              <p class="desc">${escapeHtml(description)}</p>
+              ${statusNote}
+              <p class="meta">v${escapeHtml(p.version || "?")} · ${escapeHtml(p.category || "uncategorized")}</p>
+              <div class="actions">
+                ${p.repo_url ? `<a href="${escapeHtml(p.repo_url)}" target="_blank" rel="noopener">Repo</a>` : ""}
+                ${p.homepage_url ? `<a href="${escapeHtml(p.homepage_url)}" target="_blank" rel="noopener">Homepage</a>` : ""}
+              </div>
+              <code>vivid packages install ${escapeHtml(p.install_url || p.url || "")}</code>
             </div>`;
           grid.appendChild(card);
         }

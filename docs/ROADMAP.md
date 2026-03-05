@@ -403,26 +403,26 @@ Initial artifact shipped: `catalog/packages.json` with current sibling package m
 
 ### Test & Validation Matrix
 
-- [ ] Versioning tests:
+- [x] Versioning tests:
   - install exact version, reinstall same version, update to newer version
   - incompatible version warning path
-- [ ] Resolution tests:
+- [x] Resolution tests:
   - same package in two scopes resolves deterministically
   - uninstall from one scope does not remove others
-- [ ] Failure tests:
+- [x] Failure tests:
   - malformed/absent version field
   - unreachable update source
   - conflicting package names from different repos
-- [ ] MCP/API tests:
+- [x] MCP/API tests:
   - update-check endpoint/tool returns structured status
   - package source/scope visible to MCP clients
 
 ### Exit Criteria (Milestone 3 complete)
 
-- [ ] Versioned packages are supported and update availability is visible without breaking workflows
-- [ ] Package resolution across scopes is deterministic, documented, and test-covered
-- [ ] At least one official package template path is documented and validated in CI
-- [ ] Discovery strategy for 1.0 is explicitly shipped or explicitly deferred with rationale
+- [x] Versioned packages are supported and update availability is visible without breaking workflows
+- [x] Package resolution across scopes is deterministic, documented, and test-covered
+- [x] At least one official package template path is documented and validated in CI
+- [x] Discovery strategy for 1.0 is explicitly shipped or explicitly deferred with rationale
 
 ## Milestone 4: LLM Perception System
 

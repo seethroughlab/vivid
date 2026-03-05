@@ -147,7 +147,8 @@
         "web",
         "experimental"
       ],
-      "status": "experimental"
+      "status": "broken",
+      "status_note": "Known startup/runtime issues; contributions welcome."
     }
   ]
 }

@@ -6,7 +6,11 @@
 #include "runtime/package_compiler.h"
 #include "runtime/operator_registry.h"
 #include <cassert>
+#include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <thread>
 #include <vector>
 
 using namespace vivid;
@@ -192,6 +196,41 @@ static void test_initial_state() {
     std::fprintf(stderr, "  PASS\n");
 }
 
+// ---------------------------------------------------------------------------
+// Test 6: refresh failure path when network fetch is disabled and no cache exists
+// ---------------------------------------------------------------------------
+static void test_refresh_without_cache_and_network() {
+    std::fprintf(stderr, "test_refresh_without_cache_and_network...\n");
+
+    namespace fs = std::filesystem;
+    const fs::path sandbox = fs::temp_directory_path() / "vivid_test_pkg_catalog_no_cache";
+    fs::remove_all(sandbox);
+    fs::create_directories(sandbox);
+
+    setenv("HOME", sandbox.string().c_str(), 1);
+    setenv("VIVID_SKIP_PACKAGE_CATALOG_NETWORK", "1", 1);
+
+    OperatorRegistry registry;
+    PackageCompiler compiler("", "");
+    PackageManager pm(compiler, registry);
+    PackageCatalog catalog(pm);
+
+    catalog.refresh();
+    for (int i = 0; i < 200; ++i) {
+        auto st = catalog.fetch_state();
+        if (st == CatalogFetchState::Error || st == CatalogFetchState::Ready)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    assert(catalog.fetch_state() == CatalogFetchState::Error);
+    const std::string err = catalog.fetch_error();
+    assert(err.find("disabled") != std::string::npos);
+
+    fs::remove_all(sandbox);
+    std::fprintf(stderr, "  PASS\n");
+}
+
 int main() {
     std::fprintf(stderr, "=== test_package_catalog ===\n");
 
@@ -200,6 +239,7 @@ int main() {
     test_parse_invalid_json();
     test_parse_cache_like_json();
     test_parse_vivid_catalog_schema();
+    test_refresh_without_cache_and_network();
 
     std::fprintf(stderr, "All tests passed.\n");
     return 0;

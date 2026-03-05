@@ -92,6 +92,11 @@ int main(int argc, char* argv[]) {
     write_manifest(ws_pkgs / "scope_workspace", "scope_pkg", "2.0.0");
     write_manifest(user_pkg, "scope_pkg", "1.0.0");
     write_manifest(extra_root / "scope_extra", "scope_pkg", "9.0.0");
+    // Separate package name to validate uninstall semantics across scopes.
+    fs::path user_uninstall_pkg = fs::path(vivid::PackageManager::packages_dir()) / "scope_uninstall_pkg";
+    fs::remove_all(user_uninstall_pkg);
+    write_manifest(local_pkgs / "scope_uninstall_local", "scope_uninstall_pkg", "3.0.0");
+    write_manifest(user_uninstall_pkg, "scope_uninstall_pkg", "1.0.0");
     setenv("VIVID_PACKAGE_PATHS", extra_root.string().c_str(), 1);
 
     {
@@ -101,6 +106,19 @@ int main(int argc, char* argv[]) {
         check(p.version == "3.0.0", "local scope wins");
         check(p.source_scope == "local", "source scope is local");
         check(pm.resolve_package_path("scope_pkg") == p.path, "resolved package path points to local package");
+    }
+
+    {
+        vivid::PackageInfo p;
+        auto pkgs = pm.list();
+        check(find_pkg(pkgs, "scope_uninstall_pkg", p), "scope_uninstall_pkg resolved");
+        check(p.source_scope == "local", "scope_uninstall_pkg initially resolved from local");
+        check(pm.uninstall("scope_uninstall_pkg"), "uninstall removes user-scope package entry");
+        check(!fs::exists(user_uninstall_pkg), "user-scope package directory removed by uninstall");
+        auto pkgs_after = pm.list();
+        check(find_pkg(pkgs_after, "scope_uninstall_pkg", p),
+              "scope_uninstall_pkg still resolves after user uninstall");
+        check(p.source_scope == "local", "scope_uninstall_pkg remains from local scope after uninstall");
     }
 
     fs::remove_all(local_pkgs / "scope_local");
@@ -152,6 +170,7 @@ int main(int argc, char* argv[]) {
 
     fs::remove_all(sandbox);
     fs::remove_all(user_pkg);
+    fs::remove_all(user_uninstall_pkg);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n",
                  failures == 0 ? "ALL PASSED" : "SOME FAILED",

@@ -36,7 +36,7 @@ int main() {
 
     {
         auto r = PackageManager::assess_update(installed, "1.2.3", ">=0.1.0 <2.0.0", "0.9.0");
-        check(!r.update_available, "equal version is not update");
+        check(!r.update_available, "reinstall same version is not an update");
         check(r.classification == PackageUpdateClass::UpToDate, "classification: up to date");
     }
 
@@ -55,6 +55,20 @@ int main() {
     {
         auto r = PackageManager::assess_update(installed, "not-semver", ">=0.1.0 <2.0.0", "0.9.0");
         check(r.classification == PackageUpdateClass::InvalidVersionData, "invalid remote semver classified");
+    }
+
+    {
+        auto r = PackageManager::assess_update(installed, "", ">=0.1.0 <2.0.0", "0.9.0");
+        check(r.classification == PackageUpdateClass::InvalidVersionData,
+              "empty remote version classified as invalid");
+    }
+
+    {
+        PackageInfo missing_installed = installed;
+        missing_installed.version.clear();
+        auto r = PackageManager::assess_update(missing_installed, "1.3.0", ">=0.1.0 <2.0.0", "0.9.0");
+        check(r.classification == PackageUpdateClass::InvalidVersionData,
+              "missing installed version classified as invalid");
     }
 
     std::fprintf(stderr, "%s (%d failures)\n",

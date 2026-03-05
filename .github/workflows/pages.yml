@@ -32,8 +32,7 @@ jobs:
           set -euo pipefail
           rm -rf _site
           mkdir -p _site
-          cp catalog/index.html _site/index.html
-          cp catalog/packages.json _site/packages.json
+          cp -R catalog/* _site/
           echo "vivid.seethroughlab.com" > _site/CNAME
 
       - name: Upload Pages artifact
