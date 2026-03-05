@@ -566,6 +566,20 @@ async def list_packages() -> str:
 
 
 @mcp.tool()
+async def check_package_updates(core_version: str = "0.1.0", include_all_installed: bool = False) -> str:
+    """Check installed packages for available updates and vivid_core compatibility.
+
+    Args:
+        core_version: Core version string used for compatibility checks (default "0.1.0")
+        include_all_installed: If true, include installed packages even when no update is available
+    """
+    return await _post("check_package_updates", {
+        "core_version": core_version,
+        "include_all_installed": include_all_installed,
+    })
+
+
+@mcp.tool()
 async def read_package_docs(name: str) -> str:
     """Read the README documentation for an installed package."""
     return await _post("read_package_docs", {"name": name})

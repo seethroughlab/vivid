@@ -27,18 +27,20 @@ static void test_parse_valid_json() {
         "schema_version": 1,
         "packages": [
             {
-                "name": "vivid-drums",
+                "name": "codex-test-drums",
                 "description": "808-style drum synthesis operators",
                 "version": "1.0.0",
+                "vivid_core": ">=0.1.0 <2.0.0",
                 "author": "Jeff",
                 "url": "https://github.com/vivid-project/vivid-drums",
                 "category": "audio",
                 "tags": ["drums", "synthesis"]
             },
             {
-                "name": "vivid-glitch",
+                "name": "codex-test-glitch",
                 "description": "Glitch effect operators",
                 "version": "0.2.0",
+                "vivid_core": ">=0.1.0 <2.0.0",
                 "author": "Alice",
                 "url": "https://github.com/vivid-project/vivid-glitch",
                 "category": "gpu",
@@ -86,39 +88,35 @@ static void test_parse_valid_json() {
     // For a more direct test, we trigger refresh and wait briefly
     catalog.refresh();
 
-    // Wait for fetch thread to complete (it will fail on network but load cache)
-    for (int i = 0; i < 100; ++i) {
-        auto state = catalog.fetch_state();
-        if (state != CatalogFetchState::Fetching) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-
-    auto entries = catalog.entries();
-    assert(entries.size() >= 2);
-
     bool found_drums = false, found_glitch = false;
-    for (const auto& e : entries) {
-        if (e.name == "vivid-drums") {
-            assert(e.description == "808-style drum synthesis operators");
-            assert(e.version == "1.0.0");
-            assert(e.author == "Jeff");
-            assert(e.category == "audio");
-            assert(e.tags.size() == 2);
-            assert(e.tags[0] == "drums");
-            assert(e.tags[1] == "synthesis");
-            assert(!e.installed);
-            found_drums = true;
+    for (int i = 0; i < 100 && (!found_drums || !found_glitch); ++i) {
+        auto entries = catalog.entries();
+        for (const auto& e : entries) {
+            if (e.name == "codex-test-drums") {
+                assert(e.description == "808-style drum synthesis operators");
+                assert(e.version == "1.0.0");
+                assert(e.vivid_core == ">=0.1.0 <2.0.0");
+                assert(e.author == "Jeff");
+                assert(e.category == "audio");
+                assert(e.tags.size() == 2);
+                assert(e.tags[0] == "drums");
+                assert(e.tags[1] == "synthesis");
+                assert(!e.installed);
+                found_drums = true;
+            }
+            if (e.name == "codex-test-glitch") {
+                assert(e.description == "Glitch effect operators");
+                assert(e.version == "0.2.0");
+                assert(e.vivid_core == ">=0.1.0 <2.0.0");
+                assert(e.author == "Alice");
+                assert(e.category == "gpu");
+                found_glitch = true;
+            }
         }
-        if (e.name == "vivid-glitch") {
-            assert(e.description == "Glitch effect operators");
-            assert(e.version == "0.2.0");
-            assert(e.author == "Alice");
-            assert(e.category == "gpu");
-            found_glitch = true;
-        }
+        if (!found_drums || !found_glitch)
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
-    assert(found_drums);
-    assert(found_glitch);
+    assert(found_drums && found_glitch);
 
     // Restore original cache
     if (had_cache) {
@@ -234,6 +232,7 @@ static void test_cache_round_trip() {
                 "name": "test-pkg",
                 "description": "A test package",
                 "version": "2.0.0",
+                "vivid_core": ">=0.1.0 <2.0.0",
                 "author": "Tester",
                 "url": "https://example.com/test-pkg",
                 "category": "control",
@@ -253,24 +252,23 @@ static void test_cache_round_trip() {
     PackageCatalog catalog(pm);
 
     catalog.refresh();
-    for (int i = 0; i < 100; ++i) {
-        if (catalog.fetch_state() != CatalogFetchState::Fetching) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-
-    auto entries = catalog.entries();
-    // Should have at least the cached entry
     bool found = false;
-    for (const auto& e : entries) {
-        if (e.name == "test-pkg") {
-            assert(e.description == "A test package");
-            assert(e.version == "2.0.0");
-            assert(e.author == "Tester");
-            assert(e.category == "control");
-            assert(e.tags.size() == 1);
-            assert(e.tags[0] == "test");
-            found = true;
+    for (int i = 0; i < 100 && !found; ++i) {
+        auto entries = catalog.entries();
+        for (const auto& e : entries) {
+            if (e.name == "test-pkg") {
+                assert(e.description == "A test package");
+                assert(e.version == "2.0.0");
+                assert(e.vivid_core == ">=0.1.0 <2.0.0");
+                assert(e.author == "Tester");
+                assert(e.category == "control");
+                assert(e.tags.size() == 1);
+                assert(e.tags[0] == "test");
+                found = true;
+            }
         }
+        if (!found)
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     assert(found);
 

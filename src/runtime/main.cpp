@@ -45,7 +45,9 @@
 #include <filesystem>
 #include <string>
 #include <algorithm>
+#include <chrono>
 #include <memory>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 #include <CLI/CLI.hpp>
@@ -80,6 +82,10 @@ static bool is_srgb_format(WGPUTextureFormat fmt) {
 }
 
 using vivid::to_sv;
+
+#ifndef VIVID_CORE_VERSION
+#define VIVID_CORE_VERSION "0.1.0"
+#endif
 
 
 // ---------------------------------------------------------------------------
@@ -714,6 +720,16 @@ int main(int argc, char* argv[]) {
     auto* rebuild_cmd = app.add_subcommand("rebuild", "Recompile operators for a package");
     rebuild_cmd->add_option("name", rebuild_name, "Package name")->required();
 
+    std::string update_core_version = VIVID_CORE_VERSION;
+    bool update_include_all = false;
+    auto* check_updates_cmd = app.add_subcommand("package-check-updates",
+        "Check installed packages for available updates and compatibility");
+    check_updates_cmd->add_option("--core-version", update_core_version,
+                                  "Core version to evaluate against vivid_core constraints")
+        ->default_val(VIVID_CORE_VERSION);
+    check_updates_cmd->add_flag("--all", update_include_all,
+                                "Include installed packages even when no update is available");
+
     app.require_subcommand(0, 1);
 
     try {
@@ -762,7 +778,8 @@ int main(int argc, char* argv[]) {
 
     // --- Handle package management subcommands (early exit, no GLFW) ---
     if (install_cmd->parsed() || uninstall_cmd->parsed() || list_pkg_cmd->parsed() ||
-        link_cmd->parsed() || unlink_cmd->parsed() || rebuild_cmd->parsed()) {
+        link_cmd->parsed() || unlink_cmd->parsed() || rebuild_cmd->parsed() ||
+        check_updates_cmd->parsed()) {
         vivid::OperatorRegistry registry;
 #ifdef __APPLE__
         registry.scan_deferred(plugins_dir.string().c_str());
@@ -808,6 +825,8 @@ int main(int argc, char* argv[]) {
                                 pkg.name.c_str(), pkg.version.c_str(),
                                 pkg.operators.size() + pkg.gpu_operators.size(),
                                 pkg.linked ? "  [linked]" : "");
+                    if (!pkg.vivid_core.empty())
+                        std::printf("  vivid_core: %s\n", pkg.vivid_core.c_str());
                     if (!pkg.description.empty())
                         std::printf("  %s\n", pkg.description.c_str());
                     for (const auto& op : pkg.operators)
@@ -857,6 +876,75 @@ int main(int argc, char* argv[]) {
                 }
                 return 1;
             }
+        } else if (check_updates_cmd->parsed()) {
+            vivid::PackageCatalog catalog(pm);
+            catalog.refresh();
+
+            for (int i = 0; i < 200; ++i) {
+                auto st = catalog.fetch_state();
+                if (st != vivid::CatalogFetchState::Fetching) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+
+            auto entries = catalog.entries();
+            auto state = catalog.fetch_state();
+            if (entries.empty() && state == vivid::CatalogFetchState::Error) {
+                std::fprintf(stderr, "Update check failed: %s\n", catalog.fetch_error().c_str());
+                return 1;
+            }
+
+            auto class_str = [](vivid::PackageUpdateClass c) -> const char* {
+                switch (c) {
+                    case vivid::PackageUpdateClass::UpToDate: return "up_to_date";
+                    case vivid::PackageUpdateClass::CompatibleUpdate: return "compatible_update";
+                    case vivid::PackageUpdateClass::IncompatibleUpdate: return "incompatible_update";
+                    case vivid::PackageUpdateClass::RemoteOlderOrEqual: return "remote_older_or_equal";
+                    case vivid::PackageUpdateClass::InvalidVersionData: return "invalid_version_data";
+                    default: return "unknown";
+                }
+            };
+
+            int installed_count = 0;
+            int updates_available = 0;
+            int incompatible_updates = 0;
+            for (const auto& e : entries) {
+                if (!e.installed) continue;
+                installed_count++;
+
+                vivid::PackageInfo installed;
+                installed.name = e.name;
+                installed.version = e.installed_version;
+                auto a = vivid::PackageManager::assess_update(
+                    installed, e.version, e.vivid_core, update_core_version);
+
+                if (!update_include_all && !a.update_available) continue;
+
+                std::printf("%s: installed=%s remote=%s class=%s compatible=%s\n",
+                            a.package_name.c_str(),
+                            a.installed_version.c_str(),
+                            a.remote_version.c_str(),
+                            class_str(a.classification),
+                            a.compatible ? "yes" : "no");
+                if (!a.remote_vivid_core.empty())
+                    std::printf("  vivid_core: %s\n", a.remote_vivid_core.c_str());
+                if (!a.message.empty())
+                    std::printf("  %s\n", a.message.c_str());
+
+                if (a.update_available) updates_available++;
+                if (a.classification == vivid::PackageUpdateClass::IncompatibleUpdate)
+                    incompatible_updates++;
+            }
+
+            if (installed_count == 0) {
+                std::printf("No installed packages found in catalog.\n");
+            } else if (!update_include_all && updates_available == 0) {
+                std::printf("No package updates available.\n");
+            }
+
+            std::printf("Summary: installed=%d updates_available=%d incompatible_updates=%d core_version=%s\n",
+                        installed_count, updates_available, incompatible_updates,
+                        update_core_version.c_str());
+            return 0;
         }
     }
 

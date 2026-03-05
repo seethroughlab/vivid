@@ -321,12 +321,103 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 
 ## Milestone 3: Package Ecosystem
 
-Infrastructure exists (package manifest, search paths, `operators/packages/` directory), but the full vision is incomplete:
+Goal: make package authoring, install/update behavior, and discovery feel first-class and predictable for both humans and MCP/LLM workflows.
 
-- [ ] Package versioning system with update alerts
-- [ ] Template repos for publishing operator packages
-- [ ] Search path resolution across local, project, and system scopes
-- [ ] Evaluate: package browsing site (a la Ableton Packs)
+### Scope for Milestone 3
+
+- [ ] Package versioning + update alerts
+- [ ] Package publishing templates and docs
+- [ ] Deterministic multi-scope search-path resolution (local/project/system)
+- [ ] Evaluate and decide on package browsing/discovery surface
+
+### Phase 0: Spec & Baseline
+
+- [x] Freeze current package contract in docs:
+  - `vivid-package.json` required/optional fields
+  - install/link/rebuild/uninstall behavior and expected state transitions
+  - current package root locations and scan order
+- [x] Add a short architecture note (`docs/PACKAGE-ECOSYSTEM-DESIGN.md`) covering:
+  - version model (`version`, optional constraints, compatibility surface)
+  - update policy (manual check vs startup check; non-blocking warnings)
+  - scope precedence rules (local > project > user/system, with explicit tie-breakers)
+- [x] Capture baseline tests before changes:
+  - core package install/link/unlink tests
+  - package smoke tests in sibling repos
+  - MCP package tool sanity checks
+
+### Phase 1: Versioning + Updates
+
+- [x] Extend manifest schema with semantic version and optional compatibility metadata (`vivid_core` SemVer range parsed by `PackageManager`; sibling package manifests updated)
+- [x] Implement version-aware package metadata in `PackageManager`:
+  - read installed version
+  - detect newer remote version
+  - classify update as compatible/incompatible based on policy
+- [x] Add update check command/API surface:
+  - CLI: `vivid package-check-updates` (or equivalent existing command namespace)
+  - control server endpoint + MCP tool for update checks
+- [ ] Add non-intrusive UI/CLI update alert messaging:
+  - never block startup or graph load
+  - provide actionable remediation command
+
+### Phase 2: Search Paths & Resolution
+
+- [ ] Finalize canonical scope directories and config knobs:
+  - local graph/package folder scope
+  - project workspace scope
+  - user/system package scope
+- [ ] Implement deterministic resolver with explicit precedence and conflict handling
+- [ ] Add diagnostics:
+  - `list-packages --verbose` (or equivalent) shows source scope/path/version
+  - clear duplicate/conflict warnings
+- [ ] Verify hot-reload and operator registry behavior when same package exists in multiple scopes
+
+### Phase 3: Package Templates & Publishing Workflow
+
+- [ ] Create official template repos/checklists for at least:
+  - single-operator package
+  - multi-operator package with graphs + tests
+- [ ] Include standard files in templates:
+  - `vivid-package.json`, `CMakeLists.txt`, `README.md`, `LICENSE`, `AGENTS.md`
+  - package CI smoke workflow (clone vivid-core + run package graphs/tests)
+- [ ] Add author docs:
+  - naming/versioning conventions
+  - dependency guidance
+  - release tagging and compatibility notes
+- [ ] Add CLI helper (or MCP helper) to scaffold package skeleton from template
+
+### Phase 4: Discovery Surface Decision
+
+- [ ] Evaluate package discovery options and choose one for 1.0:
+  - lightweight curated index in repo/catalog JSON
+  - web browsing site
+  - deferred (documented rationale)
+- [ ] If included in 1.0, define minimal viable implementation:
+  - metadata format
+  - moderation/curation ownership
+  - ingestion/update workflow
+
+### Test & Validation Matrix
+
+- [ ] Versioning tests:
+  - install exact version, reinstall same version, update to newer version
+  - incompatible version warning path
+- [ ] Resolution tests:
+  - same package in two scopes resolves deterministically
+  - uninstall from one scope does not remove others
+- [ ] Failure tests:
+  - malformed/absent version field
+  - unreachable update source
+  - conflicting package names from different repos
+- [ ] MCP/API tests:
+  - update-check endpoint/tool returns structured status
+  - package source/scope visible to MCP clients
+
+### Exit Criteria (Milestone 3 complete)
+
+- [ ] Versioned packages are supported and update availability is visible without breaking workflows
+- [ ] Package resolution across scopes is deterministic, documented, and test-covered
+- [ ] At least one official package template path is documented and validated in CI
+- [ ] Discovery strategy for 1.0 is explicitly shipped or explicitly deferred with rationale
 
 ## Milestone 4: LLM Perception System
 

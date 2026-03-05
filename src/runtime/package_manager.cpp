@@ -3,10 +3,12 @@
 #include "runtime/platform.h"
 #include "yyjson.h"
 #include <array>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <queue>
 #include <sstream>
 #include <unordered_map>
@@ -16,6 +18,103 @@ namespace vivid {
 
 static std::string quote(const std::string& s) {
     return "'" + s + "'";
+}
+
+static std::string trim_copy(const std::string& s) {
+    size_t start = 0;
+    while (start < s.size() && std::isspace(static_cast<unsigned char>(s[start]))) start++;
+    size_t end = s.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(s[end - 1]))) end--;
+    return s.substr(start, end - start);
+}
+
+static bool parse_semver_triplet(const std::string& raw, std::array<int, 3>& out) {
+    std::string s = trim_copy(raw);
+    if (s.empty()) return false;
+    if (s[0] == 'v' || s[0] == 'V') s.erase(0, 1);
+
+    size_t metadata = s.find_first_of("-+");
+    if (metadata != std::string::npos) s = s.substr(0, metadata);
+    if (s.empty()) return false;
+
+    out = {0, 0, 0};
+    std::vector<std::string> parts;
+    size_t pos = 0;
+    while (pos <= s.size()) {
+        size_t next = s.find('.', pos);
+        parts.push_back(s.substr(pos, next == std::string::npos ? std::string::npos : (next - pos)));
+        if (next == std::string::npos) break;
+        pos = next + 1;
+    }
+    if (parts.empty() || parts.size() > 3) return false;
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (parts[i].empty()) return false;
+        for (char c : parts[i]) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) return false;
+        }
+        out[i] = std::stoi(parts[i]);
+    }
+    return true;
+}
+
+static bool compare_semver(const std::string& a, const std::string& b, int& cmp) {
+    std::array<int, 3> va{};
+    std::array<int, 3> vb{};
+    if (!parse_semver_triplet(a, va) || !parse_semver_triplet(b, vb)) {
+        cmp = std::numeric_limits<int>::min();
+        return false;
+    }
+    for (int i = 0; i < 3; i++) {
+        if (va[i] < vb[i]) { cmp = -1; return true; }
+        if (va[i] > vb[i]) { cmp = 1; return true; }
+    }
+    cmp = 0;
+    return true;
+}
+
+static bool eval_constraint_cmp(int cmp, const std::string& op) {
+    if (op == ">")  return cmp > 0;
+    if (op == ">=") return cmp >= 0;
+    if (op == "<")  return cmp < 0;
+    if (op == "<=") return cmp <= 0;
+    if (op == "=" || op == "==") return cmp == 0;
+    return false;
+}
+
+static bool is_core_version_compatible(const std::string& core_version,
+                                       const std::string& vivid_core_range,
+                                       bool& constraint_valid) {
+    constraint_valid = true;
+    std::string range = trim_copy(vivid_core_range);
+    if (range.empty()) return true;  // no constraint == compatible by default
+
+    std::istringstream iss(range);
+    std::string token;
+    while (iss >> token) {
+        std::string op = "=";
+        std::string rhs = token;
+        if (token.rfind(">=", 0) == 0 || token.rfind("<=", 0) == 0 || token.rfind("==", 0) == 0) {
+            op = token.substr(0, 2);
+            rhs = token.substr(2);
+        } else if (!token.empty() && (token[0] == '>' || token[0] == '<' || token[0] == '=')) {
+            op = token.substr(0, 1);
+            rhs = token.substr(1);
+        }
+
+        rhs = trim_copy(rhs);
+        if (rhs.empty()) {
+            constraint_valid = false;
+            return false;
+        }
+
+        int cmp = 0;
+        if (!compare_semver(core_version, rhs, cmp)) {
+            constraint_valid = false;
+            return false;
+        }
+        if (!eval_constraint_cmp(cmp, op)) return false;
+    }
+    return true;
 }
 
 static bool tool_forced_missing(const std::string& tool) {
@@ -60,6 +159,55 @@ PackageManager::PackageManager(PackageCompiler& compiler, OperatorRegistry& regi
     : compiler_(compiler)
     , registry_(registry) {}
 
+PackageUpdateAssessment PackageManager::assess_update(const PackageInfo& installed,
+                                                      const std::string& remote_version,
+                                                      const std::string& remote_vivid_core,
+                                                      const std::string& core_version) {
+    PackageUpdateAssessment out;
+    out.package_name = installed.name;
+    out.installed_version = installed.version;
+    out.remote_version = remote_version;
+    out.remote_vivid_core = remote_vivid_core;
+
+    int cmp = 0;
+    if (!compare_semver(installed.version, remote_version, cmp)) {
+        out.classification = PackageUpdateClass::InvalidVersionData;
+        out.compatible = false;
+        out.constraint_valid = false;
+        out.message = "invalid installed or remote semantic version";
+        return out;
+    }
+
+    if (cmp < 0) {
+        out.update_available = true;
+        bool constraint_valid = true;
+        bool compatible = is_core_version_compatible(core_version, remote_vivid_core, constraint_valid);
+        out.compatible = compatible;
+        out.constraint_valid = constraint_valid;
+        if (!constraint_valid) {
+            out.classification = PackageUpdateClass::InvalidVersionData;
+            out.message = "invalid vivid_core compatibility constraint";
+        } else if (compatible) {
+            out.classification = PackageUpdateClass::CompatibleUpdate;
+            out.message = "newer compatible version available";
+        } else {
+            out.classification = PackageUpdateClass::IncompatibleUpdate;
+            out.message = "newer version requires different vivid core version";
+        }
+        return out;
+    }
+
+    if (cmp == 0) {
+        out.classification = PackageUpdateClass::UpToDate;
+        out.message = "package is up to date";
+        return out;
+    }
+
+    out.classification = PackageUpdateClass::RemoteOlderOrEqual;
+    out.message = "remote version is not newer than installed version";
+    return out;
+}
+
 void PackageManager::set_resolver(PackageResolver resolver) {
     resolver_ = std::move(resolver);
 }
@@ -90,6 +238,7 @@ bool PackageManager::parse_manifest(const std::string& package_dir, PackageInfo&
     yyjson_val* name_v = yyjson_obj_get(root, "name");
     yyjson_val* ver_v  = yyjson_obj_get(root, "version");
     yyjson_val* desc_v = yyjson_obj_get(root, "description");
+    yyjson_val* core_v = yyjson_obj_get(root, "vivid_core");
 
     if (!name_v || !yyjson_is_str(name_v)) {
         yyjson_doc_free(doc);
@@ -98,6 +247,7 @@ bool PackageManager::parse_manifest(const std::string& package_dir, PackageInfo&
 
     info.name = yyjson_get_str(name_v);
     info.version = (ver_v && yyjson_is_str(ver_v)) ? yyjson_get_str(ver_v) : "0.0.0";
+    info.vivid_core = (core_v && yyjson_is_str(core_v)) ? yyjson_get_str(core_v) : "";
     info.description = (desc_v && yyjson_is_str(desc_v)) ? yyjson_get_str(desc_v) : "";
     info.path = package_dir;
 

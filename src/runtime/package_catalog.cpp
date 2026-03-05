@@ -187,6 +187,9 @@ bool PackageCatalog::parse_index_json(const std::string& json_str,
         v = yyjson_obj_get(val, "version");
         if (v && yyjson_is_str(v)) e.version = yyjson_get_str(v);
 
+        v = yyjson_obj_get(val, "vivid_core");
+        if (v && yyjson_is_str(v)) e.vivid_core = yyjson_get_str(v);
+
         v = yyjson_obj_get(val, "author");
         if (v && yyjson_is_str(v)) e.author = yyjson_get_str(v);
 
@@ -269,6 +272,8 @@ void PackageCatalog::save_cache(const std::vector<CatalogEntry>& entries) {
         yyjson_mut_obj_add_strcpy(doc, obj, "name", e.name.c_str());
         yyjson_mut_obj_add_strcpy(doc, obj, "description", e.description.c_str());
         yyjson_mut_obj_add_strcpy(doc, obj, "version", e.version.c_str());
+        if (!e.vivid_core.empty())
+            yyjson_mut_obj_add_strcpy(doc, obj, "vivid_core", e.vivid_core.c_str());
         yyjson_mut_obj_add_strcpy(doc, obj, "author", e.author.c_str());
         yyjson_mut_obj_add_strcpy(doc, obj, "url", e.url.c_str());
         yyjson_mut_obj_add_strcpy(doc, obj, "category", e.category.c_str());

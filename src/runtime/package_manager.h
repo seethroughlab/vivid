@@ -28,6 +28,7 @@ struct PackageTests {
 struct PackageInfo {
     std::string name;
     std::string version;
+    std::string vivid_core;                 // optional SemVer range for core compatibility
     std::string description;
     std::string author;
     std::vector<std::string> operators;      // "audio/drum_kick", etc.
@@ -45,6 +46,26 @@ struct InstallResult {
     PackageInfo info;
     std::vector<CompileResult> compile_results;
     std::vector<std::string> installed_deps;  // deps installed during this call
+};
+
+enum class PackageUpdateClass {
+    UpToDate,
+    CompatibleUpdate,
+    IncompatibleUpdate,
+    RemoteOlderOrEqual,
+    InvalidVersionData
+};
+
+struct PackageUpdateAssessment {
+    std::string package_name;
+    std::string installed_version;
+    std::string remote_version;
+    std::string remote_vivid_core;
+    bool update_available = false;
+    bool compatible = true;
+    bool constraint_valid = true;
+    PackageUpdateClass classification = PackageUpdateClass::UpToDate;
+    std::string message;
 };
 
 class PackageManager {
@@ -82,6 +103,12 @@ public:
 
     // Check if a package is installed (by name)
     bool is_installed(const std::string& name) const;
+
+    // Compare installed vs remote metadata and classify update compatibility.
+    static PackageUpdateAssessment assess_update(const PackageInfo& installed,
+                                                 const std::string& remote_version,
+                                                 const std::string& remote_vivid_core,
+                                                 const std::string& core_version);
 
 private:
     // Parse vivid-package.json into PackageInfo

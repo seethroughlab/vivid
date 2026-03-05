@@ -339,8 +339,12 @@ target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_opera
 
 if(APPLE)
     target_compile_definitions(vivid PRIVATE
+        "VIVID_CORE_VERSION=\"${PROJECT_VERSION}\""
         "VIVID_BUILD_DIR=\"${CMAKE_BINARY_DIR}\""
         "VIVID_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+else()
+    target_compile_definitions(vivid PRIVATE
+        "VIVID_CORE_VERSION=\"${PROJECT_VERSION}\"")
 endif()
 
 # macOS native menu bar
@@ -884,6 +888,22 @@ target_include_directories(test_package_manager PRIVATE src)
 target_link_libraries(test_package_manager PRIVATE vivid_operator_api yyjson webgpu)
 add_test(NAME test_package_manager
     COMMAND test_package_manager ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# PackageManager update metadata logic test (semantic version + compatibility)
+add_executable(test_package_update_logic
+    tests/test_package_update_logic.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_package_update_logic PRIVATE src)
+target_link_libraries(test_package_update_logic PRIVATE vivid_operator_api yyjson webgpu)
+add_test(NAME test_package_update_logic
+    COMMAND test_package_update_logic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # PackageTestRunner test (graph + C++ test execution for packages)

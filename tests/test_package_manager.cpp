@@ -92,6 +92,7 @@ VIVID_REGISTER(TestMgrOp)
         ofs << R"json({
   "name": "test-mgr-package",
   "version": "1.2.3",
+  "vivid_core": ">=0.1.0 <2.0.0",
   "description": "Test package for manager tests",
   "author": "tester",
   "operators": ["control/test_mgr_op"],
@@ -120,6 +121,7 @@ VIVID_REGISTER(TestMgrOp)
     check(install_result.success, "install succeeds");
     check(install_result.info.name == "test-mgr-package", "package name correct");
     check(install_result.info.version == "1.2.3", "version correct");
+    check(install_result.info.vivid_core == ">=0.1.0 <2.0.0", "vivid_core parsed");
     check(install_result.info.author == "tester", "author correct");
     check(install_result.info.operators.size() == 1, "1 operator listed");
     check(install_result.compile_results.size() == 1, "1 compile result");
@@ -233,6 +235,7 @@ VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
         ofs << R"json({
   "name": "test-expanded-package",
   "version": "2.0.0",
+  "vivid_core": ">=0.1.0 <2.0.0",
   "description": "Package with all manifest fields",
   "author": "Jane Doe",
   "operators": [],
@@ -266,6 +269,7 @@ VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
         check(found_pkg != nullptr, "expanded package in list");
         if (found_pkg) {
             check(found_pkg->author == "Jane Doe", "author parsed");
+            check(found_pkg->vivid_core == ">=0.1.0 <2.0.0", "vivid_core parsed");
             check(found_pkg->dependencies.packages.size() == 2, "2 dependency packages");
             check(found_pkg->dependencies.packages[0] == "vivid-core", "dep package 0");
             check(found_pkg->dependencies.packages[1] == "vivid-audio", "dep package 1");

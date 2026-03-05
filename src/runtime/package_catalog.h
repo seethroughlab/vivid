@@ -14,6 +14,7 @@ struct CatalogEntry {
     std::string name;
     std::string description;
     std::string version;
+    std::string vivid_core;
     std::string author;
     std::string url;
     std::string category;

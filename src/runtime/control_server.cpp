@@ -65,6 +65,17 @@ static const char* port_type_str(VividPortType t) {
     }
 }
 
+static const char* update_class_str(PackageUpdateClass c) {
+    switch (c) {
+        case PackageUpdateClass::UpToDate: return "up_to_date";
+        case PackageUpdateClass::CompatibleUpdate: return "compatible_update";
+        case PackageUpdateClass::IncompatibleUpdate: return "incompatible_update";
+        case PackageUpdateClass::RemoteOlderOrEqual: return "remote_older_or_equal";
+        case PackageUpdateClass::InvalidVersionData: return "invalid_version_data";
+        default: return "unknown";
+    }
+}
+
 // ---------------------------------------------------------------------------
 // JSON response helpers
 // ---------------------------------------------------------------------------
@@ -891,6 +902,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     yyjson_mut_val* res = yyjson_mut_obj(rdoc);
                     yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());
                     yyjson_mut_obj_add_strcpy(rdoc, res, "version", ir.info.version.c_str());
+                    if (!ir.info.vivid_core.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, res, "vivid_core", ir.info.vivid_core.c_str());
                     yyjson_mut_obj_add_int(rdoc, res, "operator_count",
                         static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
                     result = json_ok(rdoc, res);
@@ -931,6 +944,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     yyjson_mut_val* res = yyjson_mut_obj(rdoc);
                     yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());
                     yyjson_mut_obj_add_strcpy(rdoc, res, "version", ir.info.version.c_str());
+                    if (!ir.info.vivid_core.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, res, "vivid_core", ir.info.vivid_core.c_str());
                     yyjson_mut_obj_add_int(rdoc, res, "operator_count",
                         static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
                     yyjson_mut_obj_add_bool(rdoc, res, "linked", true);
@@ -992,6 +1007,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 yyjson_mut_val* p = yyjson_mut_obj(rdoc);
                 yyjson_mut_obj_add_strcpy(rdoc, p, "name", pkg.name.c_str());
                 yyjson_mut_obj_add_strcpy(rdoc, p, "version", pkg.version.c_str());
+                if (!pkg.vivid_core.empty())
+                    yyjson_mut_obj_add_strcpy(rdoc, p, "vivid_core", pkg.vivid_core.c_str());
                 yyjson_mut_obj_add_strcpy(rdoc, p, "description", pkg.description.c_str());
                 yyjson_mut_obj_add_strcpy(rdoc, p, "author", pkg.author.c_str());
                 yyjson_mut_val* ops = yyjson_mut_arr(rdoc);
@@ -1422,6 +1439,8 @@ bool ControlServer::start(int port) {
                     yyjson_mut_obj_add_strcpy(rdoc, obj, "name", e.name.c_str());
                     yyjson_mut_obj_add_strcpy(rdoc, obj, "description", e.description.c_str());
                     yyjson_mut_obj_add_strcpy(rdoc, obj, "version", e.version.c_str());
+                    if (!e.vivid_core.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "vivid_core", e.vivid_core.c_str());
                     yyjson_mut_obj_add_strcpy(rdoc, obj, "author", e.author.c_str());
                     yyjson_mut_obj_add_strcpy(rdoc, obj, "url", e.url.c_str());
                     yyjson_mut_obj_add_strcpy(rdoc, obj, "category", e.category.c_str());
@@ -1435,6 +1454,77 @@ bool ControlServer::start(int port) {
                     yyjson_mut_arr_add_val(arr, obj);
                 }
                 yyjson_mut_obj_add_val(rdoc, rroot, "packages", arr);
+                char* json_str = yyjson_mut_write(rdoc, 0, nullptr);
+                std::string response_body = json_str ? json_str : R"({"ok":false,"error":"json write failed"})";
+                if (json_str) free(json_str);
+                yyjson_mut_doc_free(rdoc);
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    response_body);
+            }
+
+            // Check package updates using catalog metadata + installed package versions
+            if (method == "check_package_updates" && package_catalog_ && package_manager_) {
+                std::string core_version = "0.1.0";
+                bool include_all_installed = false;
+                if (!request->body.empty()) {
+                    yyjson_doc* doc = yyjson_read(request->body.c_str(), request->body.size(), 0);
+                    if (doc) {
+                        yyjson_val* root = yyjson_doc_get_root(doc);
+                        yyjson_val* cv = root ? yyjson_obj_get(root, "core_version") : nullptr;
+                        if (cv && yyjson_is_str(cv))
+                            core_version = yyjson_get_str(cv);
+                        yyjson_val* ia = root ? yyjson_obj_get(root, "include_all_installed") : nullptr;
+                        if (ia && yyjson_is_bool(ia))
+                            include_all_installed = yyjson_get_bool(ia);
+                        yyjson_doc_free(doc);
+                    }
+                }
+
+                auto entries = package_catalog_->entries();
+                yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                yyjson_mut_val* rroot = yyjson_mut_obj(rdoc);
+                yyjson_mut_doc_set_root(rdoc, rroot);
+                yyjson_mut_obj_add_true(rdoc, rroot, "ok");
+                yyjson_mut_obj_add_strcpy(rdoc, rroot, "core_version", core_version.c_str());
+
+                yyjson_mut_val* updates = yyjson_mut_arr(rdoc);
+                int64_t update_count = 0;
+                int64_t incompatible_count = 0;
+                for (const auto& e : entries) {
+                    if (!e.installed) continue;
+
+                    PackageInfo installed;
+                    installed.name = e.name;
+                    installed.version = e.installed_version;
+                    auto assessment = PackageManager::assess_update(
+                        installed, e.version, e.vivid_core, core_version);
+
+                    if (!include_all_installed && !assessment.update_available) continue;
+
+                    yyjson_mut_val* obj = yyjson_mut_obj(rdoc);
+                    yyjson_mut_obj_add_strcpy(rdoc, obj, "name", assessment.package_name.c_str());
+                    yyjson_mut_obj_add_strcpy(rdoc, obj, "installed_version", assessment.installed_version.c_str());
+                    yyjson_mut_obj_add_strcpy(rdoc, obj, "remote_version", assessment.remote_version.c_str());
+                    if (!assessment.remote_vivid_core.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "vivid_core", assessment.remote_vivid_core.c_str());
+                    yyjson_mut_obj_add_bool(rdoc, obj, "update_available", assessment.update_available);
+                    yyjson_mut_obj_add_bool(rdoc, obj, "compatible", assessment.compatible);
+                    yyjson_mut_obj_add_bool(rdoc, obj, "constraint_valid", assessment.constraint_valid);
+                    yyjson_mut_obj_add_strcpy(rdoc, obj, "classification", update_class_str(assessment.classification));
+                    yyjson_mut_obj_add_strcpy(rdoc, obj, "message", assessment.message.c_str());
+
+                    if (assessment.update_available) update_count++;
+                    if (assessment.classification == PackageUpdateClass::IncompatibleUpdate)
+                        incompatible_count++;
+
+                    yyjson_mut_arr_add_val(updates, obj);
+                }
+                yyjson_mut_obj_add_int(rdoc, rroot, "updates_available", update_count);
+                yyjson_mut_obj_add_int(rdoc, rroot, "incompatible_updates", incompatible_count);
+                yyjson_mut_obj_add_val(rdoc, rroot, "packages", updates);
+
                 char* json_str = yyjson_mut_write(rdoc, 0, nullptr);
                 std::string response_body = json_str ? json_str : R"({"ok":false,"error":"json write failed"})";
                 if (json_str) free(json_str);
