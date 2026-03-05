@@ -2,6 +2,7 @@
 #include "runtime/package_manager.h"
 #include "runtime/package_compiler.h"
 #include "runtime/operator_registry.h"
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -174,7 +175,54 @@ VIVID_REGISTER(TestMgrOp)
     check(!bad_result.success, "install without manifest fails");
     check(!bad_result.error.empty(), "error message set");
 
-    // --- Test 7: Expanded manifest fields ---
+    // --- Test 7: Missing compiler tool has clear remediation ---
+    std::fprintf(stderr, "\n--- Missing compiler tool preflight ---\n");
+    setenv("VIVID_MOCK_MISSING_TOOL", "clang++", 1);
+    auto missing_tool_result = pm.install(mock_pkg_dir);
+    unsetenv("VIVID_MOCK_MISSING_TOOL");
+    check(!missing_tool_result.success, "install fails when compiler is unavailable");
+    check(missing_tool_result.error.find("Missing required build tool: clang++") != std::string::npos,
+          "missing compiler error is clear");
+    check(!fs::exists(pkg_install_dir), "missing compiler failure rolls back package directory");
+
+    // --- Test 8: Compile failure cleans up partial install ---
+    std::fprintf(stderr, "\n--- Compile failure cleanup ---\n");
+    std::string fail_pkg_dir = build_dir + "/.test_compile_fail_package";
+    std::string fail_install_dir = vivid::PackageManager::packages_dir() + "/test-compile-fail-package";
+    fs::remove_all(fail_pkg_dir);
+    fs::remove_all(fail_install_dir);
+    fs::create_directories(fail_pkg_dir + "/operators/control/bad_compile");
+    {
+        std::ofstream ofs(fail_pkg_dir + "/vivid-package.json");
+        ofs << R"json({
+  "name": "test-compile-fail-package",
+  "version": "0.0.1",
+  "description": "Intentional compile failure",
+  "operators": ["control/bad_compile"],
+  "gpu_operators": []
+})json";
+    }
+    {
+        std::ofstream ofs(fail_pkg_dir + "/operators/control/bad_compile/bad_compile.cpp");
+        ofs << R"cpp(
+#include "operator_api/operator.h"
+using namespace vivid;
+struct BadCompile : OperatorBase {
+    void process(const VividProcessContext* ctx) override {
+        int x = ; // intentional syntax error
+        (void)x;
+    }
+};
+VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
+)cpp";
+    }
+    auto fail_result = pm.install(fail_pkg_dir);
+    check(!fail_result.success, "install with compile failure fails");
+    check(!fail_result.error.empty(), "compile failure has error message");
+    check(!fs::exists(fail_install_dir), "compile failure rolls back package directory");
+    fs::remove_all(fail_pkg_dir);
+
+    // --- Test 9: Expanded manifest fields ---
     std::fprintf(stderr, "\n--- Expanded manifest fields ---\n");
     {
         std::string exp_pkg_dir = build_dir + "/.test_expanded_package";
@@ -238,7 +286,7 @@ VIVID_REGISTER(TestMgrOp)
         fs::remove_all(exp_pkg_dir);
     }
 
-    // --- Test 8: Install cmake-built package ---
+    // --- Test 10: Install cmake-built package ---
     std::fprintf(stderr, "\n--- Install cmake-built package ---\n");
     std::string cmake_pkg_dir = build_dir + "/.test_cmake_package";
     fs::remove_all(cmake_pkg_dir);

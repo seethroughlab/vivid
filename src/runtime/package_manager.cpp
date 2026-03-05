@@ -18,6 +18,44 @@ static std::string quote(const std::string& s) {
     return "'" + s + "'";
 }
 
+static bool tool_forced_missing(const std::string& tool) {
+    const char* env = std::getenv("VIVID_MOCK_MISSING_TOOL");
+    if (!env || !*env) return false;
+    std::string s(env);
+    size_t pos = 0;
+    while (pos < s.size()) {
+        size_t next = s.find(',', pos);
+        std::string item = s.substr(pos, next == std::string::npos ? std::string::npos : next - pos);
+        while (!item.empty() && item.front() == ' ') item.erase(item.begin());
+        while (!item.empty() && item.back() == ' ') item.pop_back();
+        if (item == tool) return true;
+        if (next == std::string::npos) break;
+        pos = next + 1;
+    }
+    return false;
+}
+
+static bool command_exists(const char* tool) {
+    if (tool_forced_missing(tool)) return false;
+    std::string probe = "command -v ";
+    probe += tool;
+    probe += " >/dev/null 2>&1";
+    return std::system(probe.c_str()) == 0;
+}
+
+static std::string missing_tool_error(const char* tool) {
+    std::string msg = "Missing required build tool: ";
+    msg += tool;
+    if (std::string(tool) == "clang++") {
+        msg += ". Install Xcode Command Line Tools with `xcode-select --install`.";
+    } else if (std::string(tool) == "cmake") {
+        msg += ". Install CMake (e.g. `brew install cmake`).";
+    } else if (std::string(tool) == "git") {
+        msg += ". Install Git (included with Xcode Command Line Tools).";
+    }
+    return msg;
+}
+
 PackageManager::PackageManager(PackageCompiler& compiler, OperatorRegistry& registry)
     : compiler_(compiler)
     , registry_(registry) {}
@@ -185,6 +223,10 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
             return result;
         }
     } else {
+        if (!command_exists("git")) {
+            result.error = missing_tool_error("git");
+            return result;
+        }
         // Git clone (quote URL and path for spaces)
         std::string cmd = "git clone --depth 1 '" + url + "' '" + staging_dir + "' 2>&1";
         std::fprintf(stderr, "[vivid] PackageManager: %s\n", cmd.c_str());
@@ -264,8 +306,16 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
     std::filesystem::rename(staging_dir, pkg_dir);
     result.info.path = pkg_dir;
 
-    if (!compile_package(pkg_dir, result))
+    if (!compile_package(pkg_dir, result)) {
+        // Roll back failed installs so partial packages don't remain on disk.
+        std::error_code ec;
+        std::filesystem::remove_all(pkg_dir, ec);
+        if (ec) {
+            std::fprintf(stderr, "[vivid] PackageManager: warning: failed to clean up %s after compile failure: %s\n",
+                         pkg_dir.c_str(), ec.message().c_str());
+        }
         return result;
+    }
 
     result.success = true;
     std::fprintf(stderr, "[vivid] PackageManager: installed %s (%zu operators)\n",
@@ -278,6 +328,10 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
     std::string build_dir = pkg_dir + "/build";
 
     if (result.info.build_type == "cmake") {
+        if (!command_exists("cmake")) {
+            result.error = missing_tool_error("cmake");
+            return false;
+        }
         // CMake-based package: configure + build
         std::filesystem::create_directories(build_dir);
 
@@ -342,6 +396,10 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
             }
         }
     } else {
+        if (!command_exists("clang++")) {
+            result.error = missing_tool_error("clang++");
+            return false;
+        }
         // Default: clang++ compilation via PackageCompiler
         std::vector<std::string> vendor_includes;
         for (const auto& vd : result.info.dependencies.vendor)
