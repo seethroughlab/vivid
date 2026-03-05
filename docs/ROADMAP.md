@@ -85,7 +85,7 @@ Windows and Linux support is deferred past 1.0.
 
 ### 5. Test operator creation + MCP-assisted development
 
-**Status:** `test_operator_creator.cpp` covers scaffold. MCP `scaffold_operator` tool exists in `mcp_server.cpp`. Manual/E2E plan documented in `docs/OPERATOR-CREATION-MCP-TEST-PLAN.md`. Execution notes are in `docs/OPERATOR-CREATION-MCP-TEST-RESULTS.md` (OC-1 + OC-3 live bridge pass; startup mitigations were required due deferred-probe crashes in specific plugins).
+**Status:** `test_operator_creator.cpp` covers scaffold. MCP `scaffold_operator` tool exists in `mcp_server.cpp`. Manual/E2E plan documented in `docs/OPERATOR-CREATION-MCP-TEST-PLAN.md`. Execution notes are in `docs/archive/OPERATOR-CREATION-MCP-TEST-RESULTS.md` (OC-1 + OC-3 live bridge pass; startup mitigations were required due deferred-probe crashes in specific plugins).
 
 - [ ] End-to-end test: scaffold → edit implementation → hot-reload → use in a graph → verify output
 - [ ] Test all domain variants:
@@ -100,7 +100,7 @@ Windows and Linux support is deferred past 1.0.
 
 ### 6. Test package install/uninstall from GitHub
 
-**Status:** Complete. Results documented in `docs/PACKAGE-INSTALL-E2E-RESULTS.md`: both `vivid-3d` and `vivid-glitch` install/uninstall/reinstall successfully from real GitHub URLs; failure-case handling is verified (bad URL, missing manifest, compile failure, network failure, missing local tools); and package operators appear in the type list/palette without restart after live install/uninstall.
+**Status:** Complete. Results documented in `docs/archive/PACKAGE-INSTALL-E2E-RESULTS.md`: both `vivid-3d` and `vivid-glitch` install/uninstall/reinstall successfully from real GitHub URLs; failure-case handling is verified (bad URL, missing manifest, compile failure, network failure, missing local tools); and package operators appear in the type list/palette without restart after live install/uninstall.
 
 - [x] Test install from real GitHub repos:
   - `vivid-3d` (has dependencies, multiple operators)
@@ -157,7 +157,7 @@ This is the only new feature in Milestone 1 — everything else is testing. It r
 - [x] Wire `UndoManager` into `RuntimeCommandSink` so all graph mutations flow through it
 - [x] Add undo/redo buttons to the toolbar (grayed out when unavailable)
 - [x] Expose undo/redo via MCP tools (for LLM-assisted editing workflows)
-- [x] Test with all mutation types *(see `docs/UNDO-MUTATION-TEST-RESULTS.md`)*:
+- [x] Test with all mutation types *(see `docs/archive/UNDO-MUTATION-TEST-RESULTS.md`)*:
   - Add/delete node
   - Connect/disconnect wire
   - Change parameter value (slider, typed, color picker)
@@ -367,11 +367,11 @@ Goal: make package authoring, install/update behavior, and discovery feel first-
   - local graph/package folder scope
   - project workspace scope
   - user/system package scope
-- [ ] Implement deterministic resolver with explicit precedence and conflict handling
-- [ ] Add diagnostics:
+- [x] Implement deterministic resolver with explicit precedence and conflict handling
+- [x] Add diagnostics:
   - `list-packages --verbose` (or equivalent) shows source scope/path/version
   - clear duplicate/conflict warnings
-- [ ] Verify hot-reload and operator registry behavior when same package exists in multiple scopes
+- [x] Verify hot-reload and operator registry behavior when same package exists in multiple scopes
 
 ### Phase 3: Package Templates & Publishing Workflow
 
