@@ -706,6 +706,11 @@ add_executable(test_string_util tests/test_string_util.cpp)
 target_include_directories(test_string_util PRIVATE src tests)
 add_test(NAME test_string_util COMMAND test_string_util WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# audio_dsp operator API compatibility test
+add_executable(test_audio_dsp_api tests/test_audio_dsp_api.cpp)
+target_include_directories(test_audio_dsp_api PRIVATE src)
+add_test(NAME test_audio_dsp_api COMMAND test_audio_dsp_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # OperatorLoader + OperatorRegistry unit tests (no GPU, no scheduler, no graph)
 add_executable(test_operator_loader
     tests/test_operator_loader.cpp

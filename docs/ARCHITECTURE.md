@@ -119,6 +119,27 @@ struct MyOp : vivid::OperatorBase {
 
 **Domain restriction:** ChildOp is for control-domain composition only. Audio operators need per-sample buffer processing on the audio thread, and GPU operators run as shader pipelines — neither maps to the `ChildOp` call-and-read pattern.
 
+### 5.7.2 Audio DSP Utilities (Public Operator API)
+
+`src/operator_api/audio_dsp.h` is part of the public operator API for package and project operators.
+
+The following utilities are stable and documented for external use:
+
+- `audio_dsp::WhiteNoise`
+- `audio_dsp::PinkNoise`
+- `audio_dsp::detect_trigger(float phase, float prev_phase)`
+- `audio_dsp::waveform(double phase, int type)`
+
+Semantics:
+
+- `WhiteNoise::next()` returns `[-1, 1]`
+- `WhiteNoise::next_unipolar()` returns `[0, 1]`
+- `PinkNoise::next()` returns a bounded pink-noise sample (Voss-McCartney)
+- `detect_trigger` is phase-wrap detection (`delta < -0.5`)
+- `waveform` supports `type`: `0=sine`, `1=saw`, `2=square`, `3=triangle`
+
+Compatibility is enforced by `tests/test_audio_dsp_api.cpp`.
+
 **Canonical example:** `operators/control/modulated_gain/modulated_gain.cpp` — LFO → Smooth → gain modulation.
 
 ## 5.8 Hot-Reload Behavior

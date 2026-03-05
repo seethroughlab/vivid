@@ -305,7 +305,7 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 ### Operator API work
 
 - [x] Move `drum_dsp.h` to `src/operator_api/` so external packages (including vivid-drums itself) can use it
-- [ ] Evaluate whether `audio_dsp.h` utilities (WhiteNoise, PinkNoise, waveform, detect_trigger) should be documented and exposed in the operator API
+- [x] Document and expose `audio_dsp.h` utilities (`WhiteNoise`, `PinkNoise`, `waveform`, `detect_trigger`) as public operator API, with compatibility coverage (`test_audio_dsp_api`)
 
 ### Extraction tasks
 
