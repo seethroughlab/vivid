@@ -2,6 +2,7 @@
 #include "runtime/operator_registry.h"
 #include "runtime/platform.h"
 #include "yyjson.h"
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdio>
@@ -9,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <queue>
 #include <sstream>
 #include <unordered_map>
@@ -18,6 +20,108 @@ namespace vivid {
 
 static std::string quote(const std::string& s) {
     return "'" + s + "'";
+}
+
+static std::string trim_copy(const std::string& s);
+
+struct ScopeRoot {
+    std::string scope;
+    std::string root;
+    int precedence = 0;
+};
+
+struct PackageCandidate {
+    PackageInfo info;
+    std::string source_scope;
+    std::string scope_root;
+    int precedence = 0;
+    bool invalid_same_scope = false;
+};
+
+static std::vector<std::string> split_path_list(const std::string& s) {
+    std::vector<std::string> out;
+#if defined(_WIN32)
+    const char sep = ';';
+#else
+    const char sep = ':';
+#endif
+    size_t pos = 0;
+    while (pos <= s.size()) {
+        size_t next = s.find(sep, pos);
+        std::string tok = trim_copy(s.substr(pos, next == std::string::npos ? std::string::npos : next - pos));
+        if (!tok.empty()) out.push_back(tok);
+        if (next == std::string::npos) break;
+        pos = next + 1;
+    }
+    return out;
+}
+
+static std::string try_normalize_dir(const std::string& p) {
+    std::error_code ec;
+    auto canon = std::filesystem::weakly_canonical(std::filesystem::path(p), ec);
+    if (!ec) return canon.string();
+    return std::filesystem::path(p).lexically_normal().string();
+}
+
+static std::string discover_workspace_root() {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path cur = fs::current_path(ec);
+    if (ec) return "";
+    for (int depth = 0; depth < 20; ++depth) {
+        if (fs::exists(cur / "CMakeLists.txt") && fs::exists(cur / "src" / "runtime")) {
+            return cur.string();
+        }
+        if (!cur.has_parent_path()) break;
+        auto parent = cur.parent_path();
+        if (parent == cur) break;
+        cur = parent;
+    }
+    return "";
+}
+
+static void append_scope_root(std::vector<ScopeRoot>& roots,
+                              std::unordered_set<std::string>& seen,
+                              const std::string& scope,
+                              const std::string& path,
+                              int precedence) {
+    if (path.empty()) return;
+    std::string norm = try_normalize_dir(path);
+    if (seen.insert(norm).second) {
+        roots.push_back({scope, norm, precedence});
+    }
+}
+
+static std::vector<ScopeRoot> discover_scope_roots() {
+    namespace fs = std::filesystem;
+    std::vector<ScopeRoot> roots;
+    std::unordered_set<std::string> seen;
+
+    std::error_code ec;
+    fs::path cwd = fs::current_path(ec);
+    if (!ec) {
+        append_scope_root(roots, seen, "local", (cwd / "packages").string(), 0);
+        append_scope_root(roots, seen, "local", (cwd / "operators" / "packages").string(), 0);
+    }
+
+    std::string workspace_root = discover_workspace_root();
+    if (!workspace_root.empty()) {
+        append_scope_root(roots, seen, "workspace",
+                          (fs::path(workspace_root) / "packages").string(), 1);
+        append_scope_root(roots, seen, "workspace",
+                          (fs::path(workspace_root) / "operators" / "packages").string(), 1);
+    }
+
+    append_scope_root(roots, seen, "user", PackageManager::packages_dir(), 2);
+
+    const char* extra_env = std::getenv("VIVID_PACKAGE_PATHS");
+    if (extra_env && *extra_env) {
+        for (const auto& p : split_path_list(extra_env)) {
+            append_scope_root(roots, seen, "extra", p, 3);
+        }
+    }
+
+    return roots;
 }
 
 static std::string trim_copy(const std::string& s) {
@@ -142,6 +246,83 @@ static bool command_exists(const char* tool) {
     return std::system(probe.c_str()) == 0;
 }
 
+std::vector<PackageInfo> PackageManager::resolve_packages(bool emit_warnings) {
+    namespace fs = std::filesystem;
+    std::vector<PackageCandidate> candidates;
+
+    auto scope_roots = discover_scope_roots();
+    for (const auto& sr : scope_roots) {
+        if (!fs::exists(sr.root)) continue;
+        std::error_code ec;
+        for (const auto& entry : fs::directory_iterator(sr.root, ec)) {
+            if (ec) break;
+            if (!entry.is_directory()) continue;
+
+            PackageInfo info;
+            if (!parse_manifest(entry.path().string(), info)) {
+                if (emit_warnings) {
+                    std::fprintf(stderr, "[vivid] PackageManager: warning: invalid manifest in %s (scope=%s)\n",
+                                 entry.path().string().c_str(), sr.scope.c_str());
+                }
+                continue;
+            }
+
+            info.path = entry.path().string();
+            info.linked = entry.is_symlink();
+            info.source_scope = sr.scope;
+            candidates.push_back({std::move(info), sr.scope, sr.root, sr.precedence});
+        }
+    }
+
+    // Same-scope duplicate names are treated as errors; skip all duplicates in that scope.
+    std::map<std::pair<std::string, std::string>, std::vector<size_t>> by_scope_and_name;
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        by_scope_and_name[{candidates[i].source_scope, candidates[i].info.name}].push_back(i);
+    }
+    for (const auto& [key, idxs] : by_scope_and_name) {
+        if (idxs.size() <= 1) continue;
+        for (size_t idx : idxs) candidates[idx].invalid_same_scope = true;
+        if (emit_warnings) {
+            std::fprintf(stderr,
+                         "[vivid] PackageManager: error: duplicate package name '%s' in scope '%s' (skipping all duplicates)\n",
+                         key.second.c_str(), key.first.c_str());
+            for (size_t idx : idxs) {
+                std::fprintf(stderr, "  - %s\n", candidates[idx].info.path.c_str());
+            }
+        }
+    }
+
+    // Cross-scope resolution: first by precedence wins.
+    std::stable_sort(candidates.begin(), candidates.end(),
+        [](const PackageCandidate& a, const PackageCandidate& b) {
+            if (a.precedence != b.precedence) return a.precedence < b.precedence;
+            return a.info.path < b.info.path;
+        });
+
+    std::vector<PackageInfo> resolved;
+    std::unordered_map<std::string, size_t> selected_by_name;
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        const auto& c = candidates[i];
+        if (c.invalid_same_scope) continue;
+        auto it = selected_by_name.find(c.info.name);
+        if (it == selected_by_name.end()) {
+            selected_by_name[c.info.name] = resolved.size();
+            resolved.push_back(c.info);
+        } else if (emit_warnings) {
+            const auto& winner = resolved[it->second];
+            std::fprintf(stderr,
+                         "[vivid] PackageManager: warning: shadowed package '%s' (%s:%s) by (%s:%s)\n",
+                         c.info.name.c_str(),
+                         c.info.source_scope.c_str(), c.info.path.c_str(),
+                         winner.source_scope.c_str(), winner.path.c_str());
+        }
+    }
+
+    std::sort(resolved.begin(), resolved.end(),
+              [](const PackageInfo& a, const PackageInfo& b) { return a.name < b.name; });
+    return resolved;
+}
+
 static std::string missing_tool_error(const char* tool) {
     std::string msg = "Missing required build tool: ";
     msg += tool;
@@ -213,7 +394,19 @@ void PackageManager::set_resolver(PackageResolver resolver) {
 }
 
 bool PackageManager::is_installed(const std::string& name) const {
-    return std::filesystem::exists(packages_dir() + "/" + name + "/vivid-package.json");
+    auto pkgs = PackageManager::resolve_packages(false);
+    for (const auto& p : pkgs) {
+        if (p.name == name) return true;
+    }
+    return false;
+}
+
+std::string PackageManager::resolve_package_path(const std::string& name) const {
+    auto pkgs = PackageManager::resolve_packages(false);
+    for (const auto& p : pkgs) {
+        if (p.name == name) return p.path;
+    }
+    return {};
 }
 
 std::string PackageManager::packages_dir() {
@@ -791,55 +984,31 @@ bool PackageManager::uninstall(const std::string& name) {
 }
 
 std::vector<PackageInfo> PackageManager::list() {
-    std::vector<PackageInfo> packages;
-    std::string dir = packages_dir();
-
-    if (!std::filesystem::exists(dir))
-        return packages;
-
-    for (auto& entry : std::filesystem::directory_iterator(dir)) {
-        if (!entry.is_directory()) continue;
-
-        PackageInfo info;
-        if (parse_manifest(entry.path().string(), info)) {
-            info.linked = entry.is_symlink();
-            packages.push_back(std::move(info));
-        }
-    }
-
-    return packages;
+    return PackageManager::resolve_packages(true);
 }
 
 void PackageManager::scan_installed() {
-    std::string dir = packages_dir();
-    if (!std::filesystem::exists(dir)) return;
-
-    // First pass: parse all manifests
-    std::vector<PackageInfo> all_packages;
-    std::unordered_map<std::string, size_t> name_to_idx;
-
-    for (auto& entry : std::filesystem::directory_iterator(dir)) {
-        if (!entry.is_directory()) continue;
-
-        std::string build_dir = entry.path().string() + "/build";
-        if (!std::filesystem::exists(build_dir)) continue;
-
-        PackageInfo info;
-        if (parse_manifest(entry.path().string(), info)) {
-            name_to_idx[info.name] = all_packages.size();
-            all_packages.push_back(std::move(info));
-        }
-    }
-
+    std::vector<PackageInfo> all_packages = PackageManager::resolve_packages(true);
     if (all_packages.empty()) return;
 
+    // First pass: keep only packages that have a build directory.
+    std::vector<PackageInfo> loadable_packages;
+    std::unordered_map<std::string, size_t> name_to_idx;
+    for (auto& info : all_packages) {
+        std::string build_dir = info.path + "/build";
+        if (!std::filesystem::exists(build_dir)) continue;
+        name_to_idx[info.name] = loadable_packages.size();
+        loadable_packages.push_back(std::move(info));
+    }
+    if (loadable_packages.empty()) return;
+
     // Build adjacency list and in-degree counts for topological sort
-    size_t n = all_packages.size();
+    size_t n = loadable_packages.size();
     std::vector<std::vector<size_t>> dependents(n);  // dep → packages that depend on it
     std::vector<int> in_degree(n, 0);
 
     for (size_t i = 0; i < n; i++) {
-        for (const auto& dep_name : all_packages[i].dependencies.packages) {
+        for (const auto& dep_name : loadable_packages[i].dependencies.packages) {
             auto it = name_to_idx.find(dep_name);
             if (it != name_to_idx.end()) {
                 dependents[it->second].push_back(i);
@@ -879,13 +1048,14 @@ void PackageManager::scan_installed() {
     // Load in topological order
     int count = 0;
     for (size_t idx : sorted_order) {
-        const auto& info = all_packages[idx];
+        const auto& info = loadable_packages[idx];
         std::string build_dir = info.path + "/build";
         registry_.scan_deferred(build_dir.c_str());
         registry_.register_package(info.name, build_dir);
         count++;
-        std::fprintf(stderr, "[vivid] PackageManager: loaded package %s (%zu operators)\n",
+        std::fprintf(stderr, "[vivid] PackageManager: loaded package %s [%s] (%zu operators)\n",
                      info.name.c_str(),
+                     info.source_scope.empty() ? "unknown" : info.source_scope.c_str(),
                      info.operators.size() + info.gpu_operators.size());
     }
 

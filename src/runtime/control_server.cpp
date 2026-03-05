@@ -1009,6 +1009,12 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 yyjson_mut_obj_add_strcpy(rdoc, p, "version", pkg.version.c_str());
                 if (!pkg.vivid_core.empty())
                     yyjson_mut_obj_add_strcpy(rdoc, p, "vivid_core", pkg.vivid_core.c_str());
+                if (!pkg.source_scope.empty())
+                    yyjson_mut_obj_add_strcpy(rdoc, p, "source_scope", pkg.source_scope.c_str());
+                if (!pkg.path.empty())
+                    yyjson_mut_obj_add_strcpy(rdoc, p, "path", pkg.path.c_str());
+                if (!pkg.build_type.empty())
+                    yyjson_mut_obj_add_strcpy(rdoc, p, "build_type", pkg.build_type.c_str());
                 yyjson_mut_obj_add_strcpy(rdoc, p, "description", pkg.description.c_str());
                 yyjson_mut_obj_add_strcpy(rdoc, p, "author", pkg.author.c_str());
                 yyjson_mut_val* ops = yyjson_mut_arr(rdoc);

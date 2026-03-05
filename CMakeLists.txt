@@ -320,6 +320,7 @@ add_executable(vivid
     src/export/export_pipeline.cpp
     src/runtime/package_compiler.cpp
     src/runtime/package_manager.cpp
+    src/runtime/package_scaffolder.cpp
     src/runtime/package_test_runner.cpp
     src/runtime/package_catalog.cpp
 )
@@ -889,6 +890,48 @@ target_include_directories(test_package_manager PRIVATE src)
 target_link_libraries(test_package_manager PRIVATE vivid_operator_api yyjson webgpu)
 add_test(NAME test_package_manager
     COMMAND test_package_manager ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Package scope resolver test (deterministic multi-scope precedence/conflicts)
+add_executable(test_package_scope_resolver
+    tests/test_package_scope_resolver.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_package_scope_resolver PRIVATE src)
+target_link_libraries(test_package_scope_resolver PRIVATE vivid_operator_api yyjson webgpu)
+add_test(NAME test_package_scope_resolver
+    COMMAND test_package_scope_resolver ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Package scope + registry integration test (winner package only)
+add_executable(test_package_scope_registry
+    tests/test_package_scope_registry.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_package_scope_registry PRIVATE src)
+target_link_libraries(test_package_scope_registry PRIVATE vivid_operator_api yyjson webgpu)
+add_test(NAME test_package_scope_registry
+    COMMAND test_package_scope_registry ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Package scaffolder unit test (template copy + placeholder replacement)
+add_executable(test_package_scaffolder
+    tests/test_package_scaffolder.cpp
+    src/runtime/package_scaffolder.cpp
+)
+target_include_directories(test_package_scaffolder PRIVATE src)
+add_test(NAME test_package_scaffolder
+    COMMAND test_package_scaffolder ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # PackageManager update metadata logic test (semantic version + compatibility)

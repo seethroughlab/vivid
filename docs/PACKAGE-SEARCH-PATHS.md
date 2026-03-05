@@ -104,8 +104,8 @@ Deferred for now. No settings-file knobs in initial Phase 2 rollout.
 - `scope` (`local|workspace|user|extra`)
 - `path`
 - `linked`
-- `selected` (winner boolean)
-- `shadowed_by` (if not selected)
+
+Shadowed/duplicate entries are emitted as resolver warnings/errors (stderr) rather than returned in the package list payload.
 
 ## Non-goals for Step 1 (trimmed)
 

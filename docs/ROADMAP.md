@@ -385,7 +385,7 @@ Goal: make package authoring, install/update behavior, and discovery feel first-
   - naming/versioning conventions
   - dependency guidance
   - release tagging and compatibility notes
-- [ ] Add CLI helper (or MCP helper) to scaffold package skeleton from template
+- [x] Add CLI helper (or MCP helper) to scaffold package skeleton from template (`vivid scaffold-package <name> --template single|multi`)
 
 ### Phase 4: Discovery Surface Decision
 

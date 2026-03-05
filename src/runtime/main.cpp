@@ -33,6 +33,7 @@
 #include "runtime/package_compiler.h"
 #include "runtime/package_manager.h"
 #include "runtime/package_catalog.h"
+#include "runtime/package_scaffolder.h"
 #include <fstream>
 #include <sstream>
 #include <webgpu/webgpu.h>
@@ -338,6 +339,38 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
             audio_engine.resume();
         }
     }
+}
+
+static int add_watch_for_resolved_package(vivid::FileWatcher& fw, const vivid::PackageInfo& pkg) {
+    namespace fs = std::filesystem;
+    fs::path ops_dir = fs::path(pkg.path) / "operators";
+    if (!fs::exists(ops_dir)) return 0;
+
+    int count = 0;
+    std::error_code ec_domain;
+    for (const auto& domain_entry : fs::directory_iterator(ops_dir, ec_domain)) {
+        if (ec_domain) break;
+        if (!domain_entry.is_directory()) continue;
+
+        std::error_code ec_op;
+        for (const auto& op_entry : fs::directory_iterator(domain_entry.path(), ec_op)) {
+            if (ec_op) break;
+            if (!op_entry.is_directory()) continue;
+
+            std::string op_name = op_entry.path().filename().string();
+            std::string target = "pkg:" + pkg.name + ":" + op_name;
+
+            std::error_code ec_file;
+            for (const auto& file_entry : fs::directory_iterator(op_entry.path(), ec_file)) {
+                if (ec_file) break;
+                if (!file_entry.is_regular_file()) continue;
+                std::string fname = file_entry.path().filename().string();
+                if (fname.size() < 5 || fname.substr(fname.size() - 4) != ".cpp") continue;
+                if (fw.add_watch(file_entry.path().string(), target)) count++;
+            }
+        }
+    }
+    return count;
 }
 
 static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
@@ -707,6 +740,9 @@ int main(int argc, char* argv[]) {
     uninstall_cmd->add_option("name", uninstall_name, "Package name")->required();
 
     auto* list_pkg_cmd = app.add_subcommand("list-packages", "List installed operator packages");
+    bool list_pkg_verbose = false;
+    list_pkg_cmd->add_flag("--verbose", list_pkg_verbose,
+                           "Show resolver diagnostics (scope/path/build metadata)");
 
     std::string link_path;
     auto* link_cmd = app.add_subcommand("link", "Link a local package for development");
@@ -719,6 +755,25 @@ int main(int argc, char* argv[]) {
     std::string rebuild_name;
     auto* rebuild_cmd = app.add_subcommand("rebuild", "Recompile operators for a package");
     rebuild_cmd->add_option("name", rebuild_name, "Package name")->required();
+
+    std::string scaffold_pkg_name;
+    std::string scaffold_pkg_template = "single";
+    std::string scaffold_pkg_output_dir;
+    std::string scaffold_pkg_template_root;
+    bool scaffold_pkg_force = false;
+    auto* scaffold_pkg_cmd = app.add_subcommand("scaffold-package",
+        "Scaffold a package skeleton from template");
+    scaffold_pkg_cmd->add_option("name", scaffold_pkg_name, "Package name")->required();
+    scaffold_pkg_cmd->add_option("--template", scaffold_pkg_template,
+                                 "Template variant: single|multi")
+        ->check(CLI::IsMember({"single", "multi"}))
+        ->default_val("single");
+    scaffold_pkg_cmd->add_option("--output-dir", scaffold_pkg_output_dir,
+                                 "Parent directory for generated package");
+    scaffold_pkg_cmd->add_option("--template-root", scaffold_pkg_template_root,
+                                 "Explicit template root (overrides auto-discovery)");
+    scaffold_pkg_cmd->add_flag("--force", scaffold_pkg_force,
+                               "Overwrite destination if it already exists");
 
     std::string update_core_version = VIVID_CORE_VERSION;
     bool update_include_all = false;
@@ -779,7 +834,30 @@ int main(int argc, char* argv[]) {
     // --- Handle package management subcommands (early exit, no GLFW) ---
     if (install_cmd->parsed() || uninstall_cmd->parsed() || list_pkg_cmd->parsed() ||
         link_cmd->parsed() || unlink_cmd->parsed() || rebuild_cmd->parsed() ||
-        check_updates_cmd->parsed()) {
+        check_updates_cmd->parsed() || scaffold_pkg_cmd->parsed()) {
+        if (scaffold_pkg_cmd->parsed()) {
+            vivid::PackageScaffoldOptions opts;
+            opts.name = scaffold_pkg_name;
+            opts.variant = scaffold_pkg_template;
+            opts.output_dir = scaffold_pkg_output_dir;
+            opts.template_root = scaffold_pkg_template_root;
+            opts.source_dir = build_paths.source_dir;
+            opts.force = scaffold_pkg_force;
+
+            auto result = vivid::PackageScaffolder::scaffold(opts);
+            if (!result.success) {
+                std::fprintf(stderr, "Scaffold failed: %s\n", result.error.c_str());
+                return 1;
+            }
+
+            std::printf("Scaffolded package: %s\n", result.package_dir.c_str());
+            std::printf("Template used: %s\n", result.template_dir.c_str());
+            std::printf("Next steps:\n");
+            std::printf("  ./build/vivid link %s\n", result.package_dir.c_str());
+            std::printf("  ./build/vivid rebuild %s\n", opts.name.c_str());
+            return 0;
+        }
+
         vivid::OperatorRegistry registry;
 #ifdef __APPLE__
         registry.scan_deferred(plugins_dir.string().c_str());
@@ -825,6 +903,12 @@ int main(int argc, char* argv[]) {
                                 pkg.name.c_str(), pkg.version.c_str(),
                                 pkg.operators.size() + pkg.gpu_operators.size(),
                                 pkg.linked ? "  [linked]" : "");
+                    if (list_pkg_verbose) {
+                        std::printf("  scope: %s\n", pkg.source_scope.empty() ? "unknown" : pkg.source_scope.c_str());
+                        std::printf("  path: %s\n", pkg.path.c_str());
+                        if (!pkg.build_type.empty())
+                            std::printf("  build: %s\n", pkg.build_type.c_str());
+                    }
                     if (!pkg.vivid_core.empty())
                         std::printf("  vivid_core: %s\n", pkg.vivid_core.c_str());
                     if (!pkg.description.empty())
@@ -1289,15 +1373,21 @@ int main(int argc, char* argv[]) {
                 command_sink.set_hot_reloader(&hot_reloader);
                 std::fprintf(stderr, "[vivid] Hot-reload enabled (watching %s)\n", operators_dir.c_str());
 
-                // Also watch installed package operator directories
-                std::string pkgs_dir = vivid::PackageManager::packages_dir();
-                file_watcher.add_package_watches(pkgs_dir);
+                // Also watch selected package operator directories across all scopes.
+                int watched_pkg_files = 0;
+                for (const auto& pkg : pkg_manager.list()) {
+                    watched_pkg_files += add_watch_for_resolved_package(file_watcher, pkg);
+                }
+                if (watched_pkg_files > 0) {
+                    std::fprintf(stderr, "[vivid] FileWatcher: watching %d resolved package files\n",
+                                 watched_pkg_files);
+                }
 
                 // Set up package compile callback for hot-reloader
                 std::string pkg_src_dir = src_dir;
                 std::string pkg_build_dir = build_paths.build_dir;
                 hot_reloader.set_package_compiler(
-                    [pkgs_dir, pkg_src_dir, pkg_build_dir](const std::string& target) -> vivid::ReloadResult {
+                    [&pkg_manager, pkg_src_dir, pkg_build_dir](const std::string& target) -> vivid::ReloadResult {
                         // Parse "pkg:<package_name>:<operator_name>"
                         vivid::ReloadResult result;
                         result.target_name = target;
@@ -1312,7 +1402,12 @@ int main(int argc, char* argv[]) {
 
                         std::string pkg_name = target.substr(first_colon + 1, second_colon - first_colon - 1);
                         std::string op_name = target.substr(second_colon + 1);
-                        std::string pkg_dir = pkgs_dir + "/" + pkg_name;
+                        std::string pkg_dir = pkg_manager.resolve_package_path(pkg_name);
+                        if (pkg_dir.empty()) {
+                            result.success = false;
+                            result.error_output = "Cannot resolve active package path for " + pkg_name;
+                            return result;
+                        }
 
                         vivid::PackageCompiler compiler(pkg_src_dir, pkg_build_dir);
 

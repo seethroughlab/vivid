@@ -34,6 +34,7 @@ struct PackageInfo {
     std::vector<std::string> operators;      // "audio/drum_kick", etc.
     std::vector<std::string> gpu_operators;  // operators needing Dawn
     std::string path;                        // absolute path on disk
+    std::string source_scope;                // local|workspace|user|extra
     std::string build_type;                  // "" = clang++ (default), "cmake" = cmake build
     bool linked = false;                     // true if symlinked (vivid link)
     PackageDependencies dependencies;
@@ -104,6 +105,10 @@ public:
     // Check if a package is installed (by name)
     bool is_installed(const std::string& name) const;
 
+    // Return the resolved active package path for a given package name.
+    // Empty string if no package resolves for that name.
+    std::string resolve_package_path(const std::string& name) const;
+
     // Compare installed vs remote metadata and classify update compatibility.
     static PackageUpdateAssessment assess_update(const PackageInfo& installed,
                                                  const std::string& remote_version,
@@ -111,6 +116,9 @@ public:
                                                  const std::string& core_version);
 
 private:
+    // Discover package candidates across all scopes and resolve winners by precedence.
+    static std::vector<PackageInfo> resolve_packages(bool emit_warnings);
+
     // Parse vivid-package.json into PackageInfo
     static bool parse_manifest(const std::string& package_dir, PackageInfo& info);
 

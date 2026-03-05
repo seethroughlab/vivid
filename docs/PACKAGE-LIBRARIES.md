@@ -2,6 +2,8 @@
 
 Vivid supports additional operator libraries as packages.
 
+For package authoring templates/checklists, see `../vivid-package-template/README.md`.
+
 ## Available Package Libraries
 
 ### vivid-wavetable
@@ -63,6 +65,9 @@ Optional package libraries:
 ## Local Development Workflow
 
 ```bash
+# Scaffold a new package from template
+./build/vivid scaffold-package vivid-my-package --template single
+
 ./build/vivid link ../vivid-sequencers
 ./build/vivid rebuild vivid-sequencers
 ./build/vivid uninstall vivid-sequencers
