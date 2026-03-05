@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "id": "mfi_av_sync_demo",
+    "title": "Mfi Av Sync",
+    "description": "Mfi Av Sync demo graph.",
+    "tags": [
+      "file",
+      "mfi",
+      "av",
+      "sync",
+      "demo"
+    ],
+    "difficulty": "intermediate",
+    "domains": [
+      "io",
+      "gpu",
+      "audio"
+    ],
+    "requires_packages": [],
+    "featured_rank": 38
+  },
+  "nodes": {
+    "vid": {
+      "type": "MovieFileIn",
+      "params": {
+        "file": "media/camera.mp4"
+      }
+    },
+    "audio": {
+      "type": "MovieFileAudioIn",
+      "params": {
+        "file": "media/camera.mp4"
+      }
+    },
+    "rev": {
+      "type": "Reverb",
+      "params": {
+        "room_size": 0.5,
+        "damping": 0.4
+      }
+    },
+    "vout": {
+      "type": "video_out"
+    },
+    "aout": {
+      "type": "audio_out"
+    }
+  },
+  "connections": [
+    {
+      "from": "vid/texture",
+      "to": "vout/input"
+    },
+    {
+      "from": "vid/time",
+      "to": "audio/video_time"
+    },
+    {
+      "from": "vid/speed",
+      "to": "audio/video_speed"
+    },
+    {
+      "from": "audio/left",
+      "to": "rev/input"
+    },
+    {
+      "from": "rev/output",
+      "to": "aout/input"
+    }
+  ]
+}

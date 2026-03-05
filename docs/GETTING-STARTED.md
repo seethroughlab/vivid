@@ -14,7 +14,7 @@ Download the latest macOS release build:
 
 - GitHub Releases: <https://github.com/jeffcrouse/vivid/releases>
 - Open `Vivid.app`.
-- In the app, open a starter graph from the bundled `graphs/` set (start with `av_demo.json`).
+- In the app, use **File → Open Example...** and start with `av_demo`.
 
 ## 2. Make Your First Edit (2 minutes)
 
@@ -77,34 +77,23 @@ Reference:
 
 Use this order for first-run browsing:
 
-1. `graphs/av_demo.json` — fastest “audio + visual together” baseline
-2. `graphs/feedback_demo.json` — visual motion/feedback behavior
-3. `graphs/audio_demo.json` — audio-only baseline
-4. `graphs/audio_reactive_demo.json` — cross-domain response
-5. `graphs/wgsl_filters_demo.json` — filter-chain workflow
+1. `graphs/intro/av_demo.json` — fastest “audio + visual together” baseline
+2. `graphs/gpu/feedback_demo.json` — visual motion/feedback behavior
+3. `graphs/intro/audio_demo.json` — audio-only baseline
+4. `graphs/intro/audio_reactive_demo.json` — cross-domain response
+5. `graphs/filters/wgsl_filters_demo.json` — filter-chain workflow
 
 ## Graph Browse Index
 
-Current `graphs/` remains flat; use this taxonomy for browsing:
+`graphs/` is physically organized and discovered recursively:
 
-- **Intro / Core**
-  - `demo.json`, `av_demo.json`, `audio_demo.json`, `audio_reactive_demo.json`
-- **GPU Composition / Motion**
-  - `feedback_demo.json`, `composite_demo.json`, `bloom_demo.json`, `texture_analysis_demo.json`, `webcam_timemachine_demo.json`
-- **WGSL Filter Demos**
-  - `wgsl_filters_demo.json`, `hsv_demo.json`, `mirror_demo.json`, `edge_demo.json`, `displace_demo.json`, `transform_demo.json`, `gradient_demo.json`, `scanlines_demo.json`, `crt_effect_demo.json`, `dither_demo.json`, `ramp_demo.json`, `switch_demo.json`
-- **Movie File In (MFI)**
-  - `movie_file_in_demo.json`, `mfi_blur_demo.json`, `mfi_composite_demo.json`, `mfi_displace_demo.json`, `mfi_halftone_demo.json`, `mfi_posterize_demo.json`, `mfi_av_sync_demo.json`, `mfi_kitchen_sink_demo.json`
-- **Control / MIDI**
-  - `midi_demo.json`, `fft_bars_demo.json`
+- `graphs/intro/`
+- `graphs/audio/`
+- `graphs/gpu/`
+- `graphs/filters/`
+- `graphs/io/`
 
-Curated browse entrypoints in-repo:
-
-- [`graphs/README.md`](../graphs/README.md)
-- [`graphs/intro/README.md`](../graphs/intro/README.md)
-- [`graphs/performance/README.md`](../graphs/performance/README.md)
-- [`graphs/demo/README.md`](../graphs/demo/README.md)
-- [`graphs/package-examples/README.md`](../graphs/package-examples/README.md)
+Each graph file includes a top-level `meta` section (`id`, `title`, `description`, `tags`, `difficulty`, `domains`, `requires_packages`, `featured_rank`), which powers in-app discovery/search.
 
 ## Suggested Directory Convention (for new graphs)
 
@@ -117,7 +106,7 @@ For new additions, prefer:
 - `graphs/mfi/`
 - `graphs/control/`
 
-Do not move existing core demo files in-place during active development unless coordinated with tests/docs in the same change.
+Keep metadata current when adding or changing graphs so search/filter remains useful.
 
 ---
 
@@ -133,5 +122,5 @@ git clone --recursive https://github.com/jeffcrouse/vivid.git
 cd vivid
 cmake -B build
 cmake --build build
-./build/vivid graphs/av_demo.json
+./build/vivid graphs/intro/av_demo.json
 ```

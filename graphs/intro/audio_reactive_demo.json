@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "id": "audio_reactive_demo",
+    "title": "Audio Reactive",
+    "description": "Audio Reactive demo graph.",
+    "tags": [
+      "reactive",
+      "demo"
+    ],
+    "difficulty": "beginner",
+    "domains": [
+      "audio",
+      "gpu",
+      "control"
+    ],
+    "requires_packages": [],
+    "featured_rank": 3
+  },
+  "nodes": {
+    "lfo1": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.5,
+        "amplitude": 0.4,
+        "offset": 0.5
+      }
+    },
+    "osc1": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 220.0,
+        "amplitude": 0.8
+      }
+    },
+    "gain1": {
+      "type": "Gain",
+      "params": {
+        "gain": 1.0
+      }
+    },
+    "out1": {
+      "type": "audio_out",
+      "params": {}
+    },
+    "noise1": {
+      "type": "Noise",
+      "params": {
+        "speed": 1.0
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    {
+      "from": "lfo1/value",
+      "to": "osc1/amplitude"
+    },
+    {
+      "from": "osc1/output",
+      "to": "gain1/input"
+    },
+    {
+      "from": "gain1/output",
+      "to": "out1/input"
+    },
+    {
+      "from": "gain1/rms",
+      "to": "noise1/scale"
+    },
+    {
+      "from": "noise1/texture",
+      "to": "vout/input"
+    }
+  ]
+}

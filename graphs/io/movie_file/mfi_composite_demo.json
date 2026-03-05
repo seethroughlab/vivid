@@ -1,0 +1,106 @@
+{
+  "meta": {
+    "id": "mfi_composite_demo",
+    "title": "Mfi Composite",
+    "description": "Mfi Composite demo graph.",
+    "tags": [
+      "file",
+      "mfi",
+      "composite",
+      "demo"
+    ],
+    "difficulty": "intermediate",
+    "domains": [
+      "io",
+      "gpu"
+    ],
+    "requires_packages": [],
+    "featured_rank": 40
+  },
+  "nodes": {
+    "vid1": {
+      "type": "MovieFileIn",
+      "params": {
+        "file": "media/sing.mov",
+        "play_mode": 0,
+        "speed": 1.0
+      }
+    },
+    "vid2": {
+      "type": "MovieFileIn",
+      "params": {
+        "file": "media/kitchen.mp4",
+        "play_mode": 0,
+        "speed": 0.5
+      }
+    },
+    "audio": {
+      "type": "MovieFileAudioIn",
+      "params": {
+        "file": "media/sing.mov"
+      }
+    },
+    "comp": {
+      "type": "Composite",
+      "params": {
+        "blend_mode": 3,
+        "opacity": 0.6
+      }
+    },
+    "levels": {
+      "type": "Levels",
+      "params": {
+        "brightness": 0.05,
+        "contrast": 1.3
+      }
+    },
+    "lfo1": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.08,
+        "amplitude": 0.4,
+        "offset": 0.5
+      }
+    },
+    "vout": {
+      "type": "video_out"
+    },
+    "aout": {
+      "type": "audio_out"
+    }
+  },
+  "connections": [
+    {
+      "from": "vid1/texture",
+      "to": "comp/a"
+    },
+    {
+      "from": "vid2/texture",
+      "to": "comp/b"
+    },
+    {
+      "from": "lfo1/value",
+      "to": "comp/opacity"
+    },
+    {
+      "from": "comp/texture",
+      "to": "levels/input"
+    },
+    {
+      "from": "levels/texture",
+      "to": "vout/input"
+    },
+    {
+      "from": "vid1/time",
+      "to": "audio/video_time"
+    },
+    {
+      "from": "audio/left",
+      "to": "aout/left"
+    },
+    {
+      "from": "audio/right",
+      "to": "aout/right"
+    }
+  ]
+}

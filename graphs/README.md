@@ -1,21 +1,31 @@
-# Graph Browser Index
+# Graphs
 
-This folder is intentionally split into two layers:
+Graphs are now organized as real folders and discovered via recursive scan.
 
-- Source graph files remain at top level (`*.json`) for compatibility with existing tests/scripts.
-- Category folders (`intro/`, `performance/`, `demo/`, `package-examples/`) provide curated browsing guides.
+- `intro/` — first-run starter patches
+- `audio/` — audio/control-focused examples
+- `gpu/` — core GPU composition examples
+- `filters/` — focused WGSL/post-process examples
+- `io/` — OSC/Syphon/Movie File I/O examples
 
-## Quick Start Set
+Each graph JSON should include a top-level `meta` object. Discovery/search uses this data.
+You can update this in runtime via **File -> Open Example... -> Edit Meta** (opens the graph file for metadata edits).
 
-1. `av_demo.json`
-2. `feedback_demo.json`
-3. `audio_demo.json`
-4. `audio_reactive_demo.json`
-5. `wgsl_filters_demo.json`
+Example:
 
-## Categories
-
-- [intro](intro/README.md) — fastest first-run graphs
-- [performance](performance/README.md) — live-set / show-oriented graphs
-- [demo](demo/README.md) — focused operator/filter examples
-- [package-examples](package-examples/README.md) — examples expected to involve package ecosystems over time
+```json
+{
+  "meta": {
+    "id": "av_demo",
+    "title": "Audio + Visual Starter",
+    "description": "Canonical first audiovisual patch.",
+    "tags": ["starter", "av", "audio", "gpu"],
+    "difficulty": "beginner",
+    "domains": ["audio", "gpu", "control"],
+    "requires_packages": [],
+    "featured_rank": 0
+  },
+  "nodes": {},
+  "connections": []
+}
+```

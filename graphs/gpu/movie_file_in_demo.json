@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "id": "movie_file_in_demo",
+    "title": "Movie File In",
+    "description": "Video file texture input baseline.",
+    "tags": [
+      "movie",
+      "file",
+      "input",
+      "gpu"
+    ],
+    "difficulty": "intermediate",
+    "domains": [
+      "gpu",
+      "io"
+    ],
+    "requires_packages": [],
+    "featured_rank": 18
+  },
+    "nodes": {
+        "mfi1": {
+            "type": "MovieFileIn",
+            "params": {
+                "file": "../../assets/photo.jpg"
+            },
+            "layout": {
+                "x": 30.0,
+                "y": 486.0
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "mfi1/texture",
+            "to": "vout/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 0.0,
+        "pan_y": 0.0,
+        "zoom": 1.0
+    }
+}

@@ -1,0 +1,105 @@
+{
+  "meta": {
+    "id": "mfi_kitchen_sink_demo",
+    "title": "Mfi Kitchen Sink",
+    "description": "Mfi Kitchen Sink demo graph.",
+    "tags": [
+      "file",
+      "mfi",
+      "kitchen",
+      "sink",
+      "demo"
+    ],
+    "difficulty": "advanced",
+    "domains": [
+      "io",
+      "gpu"
+    ],
+    "requires_packages": [],
+    "featured_rank": 43
+  },
+  "nodes": {
+    "vid": {
+      "type": "MovieFileIn",
+      "params": {
+        "file": "../media/camera.mp4",
+        "play_mode": 0,
+        "speed": 1.0
+      }
+    },
+    "audio": {
+      "type": "MovieFileAudioIn",
+      "params": {
+        "file": "../media/camera.mp4"
+      }
+    },
+    "levels": {
+      "type": "Levels",
+      "params": {
+        "brightness": -0.05,
+        "contrast": 1.8,
+        "gamma": 0.85
+      }
+    },
+    "posterize": {
+      "type": "Posterize",
+      "params": {
+        "levels": 10.0
+      }
+    },
+    "halftone": {
+      "type": "Halftone",
+      "params": {
+        "dot_size": 6.0,
+        "angle": 0.78
+      }
+    },
+    "blur": {
+      "type": "Blur",
+      "params": {
+        "radius": 2.0,
+        "quality": 6.0
+      }
+    },
+    "vout": {
+      "type": "video_out"
+    },
+    "aout": {
+      "type": "audio_out"
+    }
+  },
+  "connections": [
+    {
+      "from": "vid/texture",
+      "to": "levels/input"
+    },
+    {
+      "from": "levels/texture",
+      "to": "posterize/input"
+    },
+    {
+      "from": "posterize/texture",
+      "to": "halftone/input"
+    },
+    {
+      "from": "halftone/texture",
+      "to": "blur/input"
+    },
+    {
+      "from": "blur/texture",
+      "to": "vout/input"
+    },
+    {
+      "from": "vid/time",
+      "to": "audio/video_time"
+    },
+    {
+      "from": "audio/left",
+      "to": "aout/left"
+    },
+    {
+      "from": "audio/right",
+      "to": "aout/right"
+    }
+  ]
+}

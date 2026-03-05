@@ -1,0 +1,50 @@
+{
+  "meta": {
+    "id": "syphon_out_demo",
+    "title": "Syphon Out",
+    "description": "Syphon Out demo graph.",
+    "tags": [
+      "syphon",
+      "out",
+      "demo"
+    ],
+    "difficulty": "advanced",
+    "domains": [
+      "io",
+      "gpu"
+    ],
+    "requires_packages": [],
+    "featured_rank": 46
+  },
+  "nodes": {
+    "noise1": {
+      "type": "Noise",
+      "params": {
+        "speed": 0.2
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {
+        "fit_mode": 0
+      }
+    },
+    "sout": {
+      "type": "SyphonOut",
+      "params": {
+        "active": 1,
+        "server_name": "Vivid Output"
+      }
+    }
+  },
+  "connections": [
+    {
+      "from": "noise1/texture",
+      "to": "vout/input"
+    },
+    {
+      "from": "noise1/texture",
+      "to": "sout/input"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "id": "syphon_in_demo",
+    "title": "Syphon In",
+    "description": "Syphon In demo graph.",
+    "tags": [
+      "syphon",
+      "in",
+      "demo"
+    ],
+    "difficulty": "advanced",
+    "domains": [
+      "io",
+      "gpu"
+    ],
+    "requires_packages": [],
+    "featured_rank": 45
+  },
+  "nodes": {
+    "sin1": {
+      "type": "SyphonIn",
+      "params": {
+        "active": 1,
+        "server_name": ""
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {
+        "fit_mode": 0
+      }
+    }
+  },
+  "connections": [
+    {
+      "from": "sin1/texture",
+      "to": "vout/input"
+    }
+  ]
+}

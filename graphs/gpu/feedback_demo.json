@@ -1,0 +1,82 @@
+{
+  "meta": {
+    "id": "feedback_demo",
+    "title": "Feedback",
+    "description": "Feedback demo graph.",
+    "tags": [
+      "feedback",
+      "demo"
+    ],
+    "difficulty": "intermediate",
+    "domains": [
+      "gpu"
+    ],
+    "requires_packages": [],
+    "featured_rank": 4
+  },
+  "nodes": {
+    "star": {
+      "type": "Shape",
+      "params": {
+        "sides": 5,
+        "star": 0.5,
+        "radius": 0.15,
+        "softness": 0.01,
+        "r": 1.0,
+        "g": 0.6,
+        "b": 0.2
+      },
+      "resolution": [
+        800,
+        600
+      ]
+    },
+    "lfo_rot": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.15,
+        "amplitude": 3.14,
+        "offset": 0.0
+      }
+    },
+    "lfo_size": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.08,
+        "amplitude": 0.1,
+        "offset": 0.2,
+        "waveform": 0
+      }
+    },
+    "feedback": {
+      "type": "Feedback",
+      "params": {
+        "decay": 0.92,
+        "mix": 0.8,
+        "zoom": 1.02,
+        "rotate": 3.0
+      }
+    },
+    "vout": {
+      "type": "video_out"
+    }
+  },
+  "connections": [
+    {
+      "from": "lfo_rot/value",
+      "to": "star/rotation"
+    },
+    {
+      "from": "lfo_size/value",
+      "to": "star/radius"
+    },
+    {
+      "from": "star/texture",
+      "to": "feedback/input"
+    },
+    {
+      "from": "feedback/texture",
+      "to": "vout/input"
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "meta": {
+    "id": "crt_effect_demo",
+    "title": "Crt Effect",
+    "description": "Crt Effect demo graph.",
+    "tags": [
+      "crt",
+      "effect",
+      "demo"
+    ],
+    "difficulty": "intermediate",
+    "domains": [
+      "gpu"
+    ],
+    "requires_packages": [],
+    "featured_rank": 22
+  },
+  "nodes": {
+    "vid": {
+      "type": "MovieFileIn",
+      "params": {
+        "play_mode": 0.0,
+        "speed": 1.0,
+        "file": "../assets/camera.mp4"
+      },
+      "layout": {
+        "x": 30.0,
+        "y": 534.0
+      }
+    },
+    "audio": {
+      "type": "MovieFileAudioIn",
+      "params": {
+        "file": "../assets/camera.mp4"
+      },
+      "layout": {
+        "x": 230.0,
+        "y": 572.0
+      }
+    },
+    "crt": {
+      "type": "CRTEffect",
+      "params": {
+        "curvature": 0.4000000059604645,
+        "bloom": 0.25,
+        "vignette": 0.3499999940395355,
+        "scanline_intensity": 0.5,
+        "chromatic": 0.00800000037997961
+      },
+      "layout": {
+        "x": 230.0,
+        "y": 395.0
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "layout": {
+        "x": 649.69921875,
+        "y": 336.33203125
+      }
+    },
+    "aout": {
+      "type": "audio_out"
+    }
+  },
+  "connections": [
+    {
+      "from": "vid/texture",
+      "to": "crt/input"
+    },
+    {
+      "from": "crt/texture",
+      "to": "vout/input"
+    },
+    {
+      "from": "vid/time",
+      "to": "audio/video_time"
+    },
+    {
+      "from": "audio/left",
+      "to": "aout/left"
+    },
+    {
+      "from": "audio/right",
+      "to": "aout/right"
+    }
+  ],
+  "viewport": {
+    "pan_x": 0.0,
+    "pan_y": 0.0,
+    "zoom": 1.0
+  }
+}

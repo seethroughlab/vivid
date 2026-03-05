@@ -567,7 +567,7 @@ Phase 0 decisions (2026-03-05):
 
 Baseline findings (from current repo/docs state):
 - `README.md` still has stale/high-level claims (for example MCP tool count wording) and needs tighter alignment with current core/package split and current Milestone 4 checks/perception surface.
-- Core `graphs/` is a flat list with no curated onboarding taxonomy/index, increasing first-run browsing friction.
+- Graph discovery needed stronger in-app navigation than docs-only folder READMEs.
 - Getting Started path exists but lacks a curated “first 10 minutes” flow linking graph examples, package libraries, and hot-reload loop.
 - Capture/output guidance is split across runtime behavior/docs and does not yet present one clearly designated primary 1.0 workflow.
 - GUI issue-reporting affordance to GitHub is not surfaced as a first-class path in current UX docs.
@@ -626,7 +626,7 @@ Display workflow hardening status (2026-03-05):
 - [x] OSC input/output for installations/hardware:
   - defined minimal 1.0 mapping model via `OscIn`/`OscOut` control operators
   - implemented runtime send/receive path using vendored `oscpack` (core, non-feature-gated)
-  - added audio+video demo graphs: `graphs/osc_av_in_demo.json`, `graphs/osc_av_loopback_demo.json`
+  - added audio+video demo graphs: `graphs/io/osc_av_in_demo.json`, `graphs/io/osc_av_loopback_demo.json`
 - [x] NDI/Syphon output evaluation + implementation plan:
   - Decision (2026-03-05):
     - ship **Syphon output in core** (macOS-first)
@@ -717,6 +717,6 @@ These are acknowledged but explicitly out of scope for the initial release:
 
 ## Extra Findings
 
-[ ] Developer & User Experience -- the graphs folder is still flat and intimidating to a new user. The folders with READMEs isn't a great improvement
+[x] Developer & User Experience -- graph discovery now uses recursive folder scan + per-graph `meta` and in-app **Open Example...** search/filter UI.
 [ ] Let's think about the dev process for teams. Let's say a team wants to slightly change the way the osc_in operator works. They clone the node. Where does the code go by default? Is it condusive to source repository workflows?
 [ ] Check if PR was accepted, switch back to main repo: https://github.com/gfx-rs/wgpu-native/pull/557

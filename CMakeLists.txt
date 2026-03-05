@@ -538,39 +538,13 @@ endif()
 # ObjC ARC for AVExporter
 set_source_files_properties(src/runtime/av_exporter.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 
-# Copy demo graphs to build directory
-configure_file(graphs/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
-configure_file(graphs/audio_demo.json ${CMAKE_BINARY_DIR}/audio_demo.json COPYONLY)
-configure_file(graphs/midi_demo.json ${CMAKE_BINARY_DIR}/midi_demo.json COPYONLY)
-configure_file(graphs/fft_bars_demo.json ${CMAKE_BINARY_DIR}/fft_bars_demo.json COPYONLY)
-configure_file(graphs/displace_demo.json ${CMAKE_BINARY_DIR}/displace_demo.json COPYONLY)
-configure_file(graphs/movie_file_in_demo.json ${CMAKE_BINARY_DIR}/movie_file_in_demo.json COPYONLY)
-configure_file(graphs/mfi_halftone_demo.json ${CMAKE_BINARY_DIR}/mfi_halftone_demo.json COPYONLY)
-configure_file(graphs/mfi_posterize_demo.json ${CMAKE_BINARY_DIR}/mfi_posterize_demo.json COPYONLY)
-configure_file(graphs/mfi_blur_demo.json ${CMAKE_BINARY_DIR}/mfi_blur_demo.json COPYONLY)
-configure_file(graphs/mfi_displace_demo.json ${CMAKE_BINARY_DIR}/mfi_displace_demo.json COPYONLY)
-configure_file(graphs/mfi_composite_demo.json ${CMAKE_BINARY_DIR}/mfi_composite_demo.json COPYONLY)
-configure_file(graphs/mfi_kitchen_sink_demo.json ${CMAKE_BINARY_DIR}/mfi_kitchen_sink_demo.json COPYONLY)
-configure_file(graphs/mfi_av_sync_demo.json ${CMAKE_BINARY_DIR}/mfi_av_sync_demo.json COPYONLY)
-configure_file(graphs/gradient_demo.json ${CMAKE_BINARY_DIR}/gradient_demo.json COPYONLY)
-configure_file(graphs/hsv_demo.json ${CMAKE_BINARY_DIR}/hsv_demo.json COPYONLY)
-configure_file(graphs/mirror_demo.json ${CMAKE_BINARY_DIR}/mirror_demo.json COPYONLY)
-configure_file(graphs/edge_demo.json ${CMAKE_BINARY_DIR}/edge_demo.json COPYONLY)
-configure_file(graphs/scanlines_demo.json ${CMAKE_BINARY_DIR}/scanlines_demo.json COPYONLY)
-configure_file(graphs/ramp_demo.json ${CMAKE_BINARY_DIR}/ramp_demo.json COPYONLY)
-configure_file(graphs/dither_demo.json ${CMAKE_BINARY_DIR}/dither_demo.json COPYONLY)
-configure_file(graphs/transform_demo.json ${CMAKE_BINARY_DIR}/transform_demo.json COPYONLY)
-configure_file(graphs/crt_effect_demo.json ${CMAKE_BINARY_DIR}/crt_effect_demo.json COPYONLY)
-configure_file(graphs/switch_demo.json ${CMAKE_BINARY_DIR}/switch_demo.json COPYONLY)
-configure_file(graphs/feedback_demo.json ${CMAKE_BINARY_DIR}/feedback_demo.json COPYONLY)
-configure_file(graphs/wgsl_filters_demo.json ${CMAKE_BINARY_DIR}/wgsl_filters_demo.json COPYONLY)
-configure_file(graphs/webcam_timemachine_demo.json ${CMAKE_BINARY_DIR}/webcam_timemachine_demo.json COPYONLY)
+# Copy default startup graph
+configure_file(graphs/intro/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
 
-# Copy all demo graphs into graphs/ subdirectory (for test_demo_graphs)
-file(GLOB DEMO_GRAPHS graphs/*.json)
+# Copy all graphs recursively into build/graphs
+file(GLOB_RECURSE DEMO_GRAPHS RELATIVE ${CMAKE_SOURCE_DIR}/graphs graphs/*.json)
 foreach(g ${DEMO_GRAPHS})
-    get_filename_component(name ${g} NAME)
-    configure_file(${g} ${CMAKE_BINARY_DIR}/graphs/${name} COPYONLY)
+    configure_file(${CMAKE_SOURCE_DIR}/graphs/${g} ${CMAKE_BINARY_DIR}/graphs/${g} COPYONLY)
 endforeach()
 
 # Copy font to build directory
@@ -591,11 +565,20 @@ if(APPLE)
     set_source_files_properties(fonts/JetBrainsMono-Regular.ttf
         PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 
-    # Demo graphs → Resources/
-    file(GLOB _BUNDLE_GRAPHS graphs/*.json)
-    target_sources(vivid PRIVATE ${_BUNDLE_GRAPHS})
-    set_source_files_properties(${_BUNDLE_GRAPHS}
-        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    # Demo graphs → Resources/graphs/(recursive)
+    file(GLOB_RECURSE _BUNDLE_GRAPHS RELATIVE ${CMAKE_SOURCE_DIR}/graphs graphs/*.json)
+    foreach(g ${_BUNDLE_GRAPHS})
+        set(src_path ${CMAKE_SOURCE_DIR}/graphs/${g})
+        get_filename_component(rel_dir ${g} DIRECTORY)
+        if(rel_dir STREQUAL "")
+            set(dst_loc Resources/graphs)
+        else()
+            set(dst_loc Resources/graphs/${rel_dir})
+        endif()
+        target_sources(vivid PRIVATE ${src_path})
+        set_source_files_properties(${src_path}
+            PROPERTIES MACOSX_PACKAGE_LOCATION ${dst_loc})
+    endforeach()
 
     # Icon → Resources/
     target_sources(vivid PRIVATE platform/macos/Vivid.icns)

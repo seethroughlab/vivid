@@ -1,0 +1,275 @@
+{
+  "meta": {
+    "id": "wgsl_filters_demo",
+    "title": "Wgsl Filters",
+    "description": "Wgsl Filters demo graph.",
+    "tags": [
+      "wgsl",
+      "demo"
+    ],
+    "difficulty": "intermediate",
+    "domains": [
+      "gpu"
+    ],
+    "requires_packages": [],
+    "featured_rank": 5
+  },
+  "nodes": {
+    "vid": {
+      "type": "MovieFileIn",
+      "params": {
+        "speed": 1.0,
+        "play_mode": 0.0,
+        "file": "/Users/jeff/Developer/vivid/media/camera.mp4"
+      },
+      "layout": {
+        "x": 30.0,
+        "y": 936.0
+      }
+    },
+    "audio": {
+      "type": "MovieFileAudioIn",
+      "params": {
+        "file": "/Users/jeff/Developer/vivid/media/camera.mp4"
+      }
+    },
+    "hsv": {
+      "type": "HSV",
+      "params": {
+        "value": 0.05000000074505806,
+        "saturation": 0.15000000596046448,
+        "hue_shift": 0.0
+      }
+    },
+    "levels": {
+      "type": "Levels",
+      "params": {
+        "gamma": 0.8999999761581421,
+        "contrast": 1.399999976158142,
+        "brightness": -0.019999999552965164
+      }
+    },
+    "mirror": {
+      "type": "Mirror",
+      "params": {
+        "angle": 0.0,
+        "segments": 8.0,
+        "center_y": 0.5,
+        "center_x": 0.5,
+        "mode": 3.0
+      }
+    },
+    "transform": {
+      "type": "Transform",
+      "params": {
+        "pivot_y": 0.5,
+        "pivot_x": 0.5,
+        "scale_y": 1.0,
+        "translate_y": 0.0,
+        "translate_x": 0.0,
+        "rotation": 0.0,
+        "scale_x": 1.0
+      }
+    },
+    "edge": {
+      "type": "Edge",
+      "params": {
+        "invert": 0.0,
+        "threshold": 0.10000000149011612,
+        "strength": 2.5
+      }
+    },
+    "chroma": {
+      "type": "ChromaticAberration",
+      "params": {
+        "radial": 1.0,
+        "angle": 45.0,
+        "amount": 0.00800000037997961
+      }
+    },
+    "scanlines": {
+      "type": "Scanlines",
+      "params": {
+        "vertical": 0.0,
+        "thickness": 0.4000000059604645,
+        "intensity": 0.25,
+        "spacing": 3.0
+      }
+    },
+    "pixelate": {
+      "type": "Pixelate",
+      "params": {
+        "size_y": 3.0,
+        "size_x": 3.0
+      }
+    },
+    "posterize": {
+      "type": "Posterize",
+      "params": {
+        "levels": 12.0
+      }
+    },
+    "crt": {
+      "type": "CRTEffect",
+      "params": {
+        "chromatic": 0.003000000026077032,
+        "scanline_intensity": 0.30000001192092896,
+        "vignette": 0.4000000059604645,
+        "bloom": 0.15000000596046448,
+        "curvature": 0.20000000298023224
+      }
+    },
+    "gradient": {
+      "type": "Gradient",
+      "params": {
+        "offset": 0.0,
+        "center_y": 0.5,
+        "scale": 0.800000011920929,
+        "angle": 0.0,
+        "center_x": 0.5,
+        "mode": 1.0
+      }
+    },
+    "noise": {
+      "type": "Noise",
+      "params": {
+        "octaves": 3.0,
+        "speed": 0.30000001192092896,
+        "scale": 4.0
+      }
+    },
+    "displace": {
+      "type": "Displace",
+      "params": {
+        "amount": 0.029999999329447746
+      }
+    },
+    "lfo_hue": {
+      "type": "LFO",
+      "params": {
+        "waveform": 1.0,
+        "offset": 0.0,
+        "amplitude": 180.0,
+        "frequency": 0.05000000074505806
+      }
+    },
+    "lfo_rot": {
+      "type": "LFO",
+      "params": {
+        "waveform": 1.0,
+        "offset": 0.0,
+        "amplitude": 15.0,
+        "frequency": 0.019999999552965164
+      }
+    },
+    "lfo_chroma": {
+      "type": "LFO",
+      "params": {
+        "offset": 0.004999999888241291,
+        "amplitude": 0.009999999776482582,
+        "frequency": 0.15000000596046448
+      }
+    },
+    "lfo_pixel": {
+      "type": "LFO",
+      "params": {
+        "offset": 4.0,
+        "amplitude": 4.0,
+        "frequency": 0.07999999821186066
+      }
+    },
+    "vout": {
+      "type": "video_out"
+    },
+    "aout": {
+      "type": "audio_out"
+    }
+  },
+  "connections": [
+    {
+      "from": "vid/texture",
+      "to": "hsv/input"
+    },
+    {
+      "from": "hsv/texture",
+      "to": "levels/input"
+    },
+    {
+      "from": "levels/texture",
+      "to": "mirror/input"
+    },
+    {
+      "from": "mirror/texture",
+      "to": "displace/source"
+    },
+    {
+      "from": "noise/texture",
+      "to": "displace/map"
+    },
+    {
+      "from": "displace/texture",
+      "to": "transform/input"
+    },
+    {
+      "from": "transform/texture",
+      "to": "posterize/input"
+    },
+    {
+      "from": "posterize/texture",
+      "to": "pixelate/input"
+    },
+    {
+      "from": "pixelate/texture",
+      "to": "chroma/input"
+    },
+    {
+      "from": "chroma/texture",
+      "to": "scanlines/input"
+    },
+    {
+      "from": "scanlines/texture",
+      "to": "crt/input"
+    },
+    {
+      "from": "crt/texture",
+      "to": "vout/input"
+    },
+    {
+      "from": "lfo_hue/value",
+      "to": "hsv/hue_shift"
+    },
+    {
+      "from": "lfo_rot/value",
+      "to": "transform/rotation"
+    },
+    {
+      "from": "lfo_chroma/value",
+      "to": "chroma/amount"
+    },
+    {
+      "from": "lfo_pixel/value",
+      "to": "pixelate/size_x"
+    },
+    {
+      "from": "lfo_pixel/value",
+      "to": "pixelate/size_y"
+    },
+    {
+      "from": "vid/time",
+      "to": "audio/video_time"
+    },
+    {
+      "from": "audio/left",
+      "to": "aout/left"
+    },
+    {
+      "from": "audio/right",
+      "to": "aout/right"
+    }
+  ],
+  "viewport": {
+    "pan_x": 555.22802734375,
+    "pan_y": -410.5469665527344,
+    "zoom": 1.011397361755371
+  }
+}

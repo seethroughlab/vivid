@@ -74,7 +74,7 @@ Canonical onboarding guide:
 Download the latest macOS release build:
 - <https://github.com/jeffcrouse/vivid/releases>
 
-Open `Vivid.app` and load a starter graph (for example `av_demo.json`).
+Open `Vivid.app`, then use **File -> Open Example...** and load `av_demo`.
 
 ### Build From Source (Developers)
 
@@ -83,10 +83,10 @@ git clone --recursive https://github.com/jeffcrouse/vivid.git
 cd vivid
 cmake -B build
 cmake --build build
-./build/vivid graphs/av_demo.json
+./build/vivid graphs/intro/av_demo.json
 
 # Headless screenshot
-./build/vivid graphs/wgsl_filters_demo.json --screenshot output.png --screenshot-delay 15
+./build/vivid graphs/filters/wgsl_filters_demo.json --screenshot output.png --screenshot-delay 15
 ```
 
 ### Requirements

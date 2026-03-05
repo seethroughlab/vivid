@@ -1,0 +1,69 @@
+{
+  "meta": {
+    "id": "ramp_demo",
+    "title": "Ramp",
+    "description": "Ramp demo graph.",
+    "tags": [
+      "ramp",
+      "demo"
+    ],
+    "difficulty": "intermediate",
+    "domains": [
+      "gpu"
+    ],
+    "requires_packages": [],
+    "featured_rank": 29
+  },
+  "nodes": {
+    "ramp": {
+      "type": "Ramp",
+      "params": {
+        "mode": 0,
+        "angle": 30.0,
+        "scale": 1.0,
+        "repeat": 3.0,
+        "hue_offset": 0.0,
+        "hue_range": 1.0,
+        "saturation": 1.0,
+        "brightness": 1.0
+      },
+      "resolution": [
+        800,
+        600
+      ]
+    },
+    "lfo_hue": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.06,
+        "amplitude": 0.5,
+        "offset": 0.5
+      }
+    },
+    "lfo_angle": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.04,
+        "amplitude": 180.0,
+        "offset": 0.0
+      }
+    },
+    "vout": {
+      "type": "video_out"
+    }
+  },
+  "connections": [
+    {
+      "from": "lfo_hue/value",
+      "to": "ramp/hue_offset"
+    },
+    {
+      "from": "lfo_angle/value",
+      "to": "ramp/angle"
+    },
+    {
+      "from": "ramp/texture",
+      "to": "vout/input"
+    }
+  ]
+}
