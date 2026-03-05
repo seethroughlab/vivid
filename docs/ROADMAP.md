@@ -258,11 +258,11 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
   - `vivid link ../vivid-wavetable`
   - `vivid rebuild vivid-wavetable`
   - type appears in palette without restart
-- [ ] Add package CI smoke test (build + probe)
-- [ ] Move wavetable-specific demo graphs from `vivid/graphs` into `../vivid-wavetable/graphs`
-- [ ] Move wavetable-specific tests from `vivid/tests` into `../vivid-wavetable/tests`
-- [ ] Run package tests in `vivid-wavetable` CI (not only core smoke checks)
-- [ ] Add license/readme in package repo
+- [x] Add package CI smoke test (build + probe)
+- [x] Move wavetable-specific demo graphs from `vivid/graphs` into `../vivid-wavetable/graphs`
+- [x] Move wavetable-specific tests from `vivid/tests` into `../vivid-wavetable/tests`
+- [x] Run package tests in `vivid-wavetable` CI (not only core smoke checks)
+- [x] Add license/readme in package repo
 
 #### Phase 2: vivid-drums
 
@@ -309,7 +309,7 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 
 ### Extraction tasks
 
-- [ ] Extract vivid-wavetable: move `wavetable_synth.cpp`, create package repo, add CI smoke test *(in progress; external repo `seethroughlab/vivid-wavetable` created, core removal done)*
+- [x] Extract vivid-wavetable: move `wavetable_synth.cpp`, create package repo, add CI smoke test
 - [x] Extract vivid-drums: move 5 drum operators + `drum_dsp.h` to operator API, create package repo, add CI smoke test
 - [ ] Extract vivid-plexus: move `plexus.cpp` + `plexus_synth.cpp`, create package repo, add CI smoke test
 - [ ] Extract vivid-sequencers: move 8 operators, create package repo, add CI smoke test

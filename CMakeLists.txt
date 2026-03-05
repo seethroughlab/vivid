@@ -370,7 +370,6 @@ configure_file(graphs/audio_demo.json ${CMAKE_BINARY_DIR}/audio_demo.json COPYON
 configure_file(graphs/midi_demo.json ${CMAKE_BINARY_DIR}/midi_demo.json COPYONLY)
 configure_file(graphs/fft_bars_demo.json ${CMAKE_BINARY_DIR}/fft_bars_demo.json COPYONLY)
 configure_file(graphs/polysynth_demo.json ${CMAKE_BINARY_DIR}/polysynth_demo.json COPYONLY)
-configure_file(graphs/wavetable_demo.json ${CMAKE_BINARY_DIR}/wavetable_demo.json COPYONLY)
 configure_file(graphs/external_adsr_demo.json ${CMAKE_BINARY_DIR}/external_adsr_demo.json COPYONLY)
 configure_file(graphs/chord_progression_demo.json ${CMAKE_BINARY_DIR}/chord_progression_demo.json COPYONLY)
 configure_file(graphs/displace_demo.json ${CMAKE_BINARY_DIR}/displace_demo.json COPYONLY)
@@ -841,7 +840,6 @@ configure_file(tests/graphs/test_audio_robustness.json ${CMAKE_BINARY_DIR}/test_
 configure_file(tests/graphs/test_spread_broadcast.json ${CMAKE_BINARY_DIR}/test_spread_broadcast.json COPYONLY)
 configure_file(tests/graphs/test_cross_domain_spread.json ${CMAKE_BINARY_DIR}/test_cross_domain_spread.json COPYONLY)
 configure_file(tests/graphs/test_audio_spread_wire.json ${CMAKE_BINARY_DIR}/test_audio_spread_wire.json COPYONLY)
-configure_file(tests/graphs/test_wavetable_position_env.json ${CMAKE_BINARY_DIR}/test_wavetable_position_env.json COPYONLY)
 
 # Demo graph smoke test (loads every demo graph, builds scheduler, ticks 5 frames)
 add_executable(test_demo_graphs
