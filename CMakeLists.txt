@@ -289,6 +289,7 @@ endif()
 target_include_directories(vivid_ui PRIVATE src)
 target_link_libraries(vivid_ui PUBLIC vivid_operator_api webgpu)
 target_link_libraries(vivid_ui PRIVATE stb_truetype glfw yyjson)
+target_compile_definitions(vivid_ui PRIVATE "VIVID_CORE_VERSION=\"${PROJECT_VERSION}\"")
 
 # --- Vivid executable ---
 add_executable(vivid

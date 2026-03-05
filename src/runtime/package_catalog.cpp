@@ -20,6 +20,11 @@ static std::string cache_path() {
     return get_config_dir() + "/package-catalog-cache.json";
 }
 
+static bool skip_catalog_network_fetch() {
+    const char* v = std::getenv("VIVID_SKIP_PACKAGE_CATALOG_NETWORK");
+    return v && v[0] != '\0' && std::string(v) != "0";
+}
+
 PackageCatalog::PackageCatalog(PackageManager& pm) : pm_(pm) {}
 
 void PackageCatalog::refresh() {
@@ -48,6 +53,24 @@ std::string PackageCatalog::fetch_error() const {
 std::vector<CatalogEntry> PackageCatalog::entries() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return entries_;
+}
+
+CatalogUpdateSummary PackageCatalog::summarize_updates(const std::string& core_version) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    CatalogUpdateSummary summary;
+    for (const auto& e : entries_) {
+        if (!e.installed) continue;
+        summary.installed_packages++;
+        PackageInfo installed;
+        installed.name = e.name;
+        installed.version = e.installed_version;
+        auto assessment = PackageManager::assess_update(
+            installed, e.version, e.vivid_core, core_version);
+        if (assessment.update_available) summary.updates_available++;
+        if (assessment.classification == PackageUpdateClass::IncompatibleUpdate)
+            summary.incompatible_updates++;
+    }
+    return summary;
 }
 
 InstallResult PackageCatalog::install(const std::string& name) {
@@ -93,6 +116,17 @@ void PackageCatalog::fetch_thread_fn() {
         std::lock_guard<std::mutex> lock(mutex_);
         entries_ = cached;
         merge_with_installed();
+    }
+
+    if (skip_catalog_network_fetch()) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (have_cache) {
+            state_ = CatalogFetchState::Ready;
+        } else {
+            state_ = CatalogFetchState::Error;
+            error_ = "catalog network fetch disabled and no cache available";
+        }
+        return;
     }
 
     // Fetch fresh data via curl

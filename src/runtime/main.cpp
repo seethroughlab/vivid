@@ -835,6 +835,7 @@ int main(int argc, char* argv[]) {
                         std::printf("    %s (gpu)\n", op.c_str());
                 }
             }
+            std::printf("Tip: run `vivid package-check-updates` to check for package updates.\n");
             return 0;
         } else if (link_cmd->parsed()) {
             auto result = pm.link(link_path);
@@ -1077,6 +1078,8 @@ int main(int argc, char* argv[]) {
             if (e.name == name) return e.url;
         return "";
     });
+    // Non-blocking background fetch so update alerts can be shown without delaying startup.
+    pkg_catalog.refresh();
 
     // --- Load graph ---
     vivid::Graph graph;
@@ -1453,6 +1456,7 @@ int main(int argc, char* argv[]) {
 
     double prev_time = glfwGetTime();
     uint64_t frame_count = 0;
+    bool pkg_update_notice_done = false;
 
     // --- Main loop ---
     auto tick_frame = [&]() -> bool {
@@ -1532,6 +1536,25 @@ int main(int argc, char* argv[]) {
         double dt = now - prev_time;
         prev_time = now;
         graph_ui.set_dt(static_cast<float>(dt));
+
+        // Non-intrusive startup update alert (logs once, never blocks startup).
+        if (!pkg_update_notice_done) {
+            auto state = pkg_catalog.fetch_state();
+            if (state == vivid::CatalogFetchState::Ready) {
+                auto summary = pkg_catalog.summarize_updates(VIVID_CORE_VERSION);
+                if (summary.updates_available > 0) {
+                    std::fprintf(stderr,
+                        "[vivid] Package updates available: %d (%d incompatible). "
+                        "Run `vivid package-check-updates` for details.\n",
+                        summary.updates_available, summary.incompatible_updates);
+                }
+                pkg_update_notice_done = true;
+            } else if (state == vivid::CatalogFetchState::Error) {
+                std::fprintf(stderr, "[vivid] Package update check unavailable (non-fatal): %s\n",
+                             pkg_catalog.fetch_error().c_str());
+                pkg_update_notice_done = true;
+            }
+        }
 
         // --- Apply MIDI mappings (before tick so wire wins on conflict) ---
         runtime_api.apply_midi_mappings();

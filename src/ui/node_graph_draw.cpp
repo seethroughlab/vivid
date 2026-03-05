@@ -12,6 +12,10 @@
 #include <cstdio>
 #include <unordered_set>
 
+#ifndef VIVID_CORE_VERSION
+#define VIVID_CORE_VERSION "0.1.0"
+#endif
+
 namespace vivid::ui {
 
 using vivid::format_float;
@@ -3967,6 +3971,15 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
         } else {
             status = std::to_string(pkg_browser_entries_.size()) + " package" +
                      (pkg_browser_entries_.size() != 1 ? "s" : "");
+            auto summary = pkg_catalog_->summarize_updates(VIVID_CORE_VERSION);
+            if (summary.updates_available > 0) {
+                status += " • " + std::to_string(summary.updates_available) + " update";
+                if (summary.updates_available != 1) status += "s";
+                if (summary.incompatible_updates > 0) {
+                    status += " (" + std::to_string(summary.incompatible_updates) + " incompatible)";
+                }
+                status += " • run `vivid package-check-updates`";
+            }
         }
     }
     if (!pkg_action_error_.empty()) {

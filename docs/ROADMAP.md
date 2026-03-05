@@ -355,7 +355,7 @@ Goal: make package authoring, install/update behavior, and discovery feel first-
 - [x] Add update check command/API surface:
   - CLI: `vivid package-check-updates` (or equivalent existing command namespace)
   - control server endpoint + MCP tool for update checks
-- [ ] Add non-intrusive UI/CLI update alert messaging:
+- [x] Add non-intrusive UI/CLI update alert messaging:
   - never block startup or graph load
   - provide actionable remediation command
 

@@ -24,6 +24,12 @@ struct CatalogEntry {
     std::string installed_version;
 };
 
+struct CatalogUpdateSummary {
+    int installed_packages = 0;
+    int updates_available = 0;
+    int incompatible_updates = 0;
+};
+
 class PackageCatalog {
 public:
     explicit PackageCatalog(PackageManager& pm);
@@ -36,6 +42,11 @@ public:
 
     // Thread-safe snapshot of all entries (returns by value).
     std::vector<CatalogEntry> entries() const;
+    CatalogUpdateSummary summarize_updates(const std::string& core_version) const;
+
+    // Parse package index JSON payload into catalog entries.
+    static bool parse_index_json(const std::string& json_str,
+                                 std::vector<CatalogEntry>& out);
 
     // Install by catalog name → looks up URL, delegates to PackageManager.
     InstallResult install(const std::string& name);
@@ -48,8 +59,6 @@ private:
     void merge_with_installed();
     bool load_cache(std::vector<CatalogEntry>& out);
     void save_cache(const std::vector<CatalogEntry>& entries);
-    static bool parse_index_json(const std::string& json_str,
-                                 std::vector<CatalogEntry>& out);
 
     PackageManager& pm_;
     mutable std::mutex mutex_;
