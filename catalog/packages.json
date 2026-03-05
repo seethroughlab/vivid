@@ -14,7 +14,7 @@
       "install_url": "https://github.com/seethroughlab/vivid-3d.git",
       "repo_url": "https://github.com/seethroughlab/vivid-3d",
       "homepage_url": "https://github.com/seethroughlab/vivid-3d",
-      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-3d/main/docs/images/preview.png",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-3d/master/docs/images/preview.png",
       "category": "gpu",
       "tags": ["gpu", "3d", "rendering"],
       "status": "stable"
@@ -31,7 +31,7 @@
       "install_url": "https://github.com/seethroughlab/vivid-glitch.git",
       "repo_url": "https://github.com/seethroughlab/vivid-glitch",
       "homepage_url": "https://github.com/seethroughlab/vivid-glitch",
-      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-glitch/main/docs/images/preview.png",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-glitch/master/docs/images/preview.png",
       "category": "gpu",
       "tags": ["gpu", "effects", "glitch"],
       "status": "stable"
@@ -48,7 +48,7 @@
       "install_url": "https://github.com/seethroughlab/vivid-wavetable.git",
       "repo_url": "https://github.com/seethroughlab/vivid-wavetable",
       "homepage_url": "https://github.com/seethroughlab/vivid-wavetable",
-      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-wavetable/main/docs/images/preview.png",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-wavetable/master/docs/images/preview.png",
       "category": "audio",
       "tags": ["audio", "synthesis", "wavetable"],
       "status": "stable"
@@ -65,7 +65,7 @@
       "install_url": "https://github.com/seethroughlab/vivid-drums.git",
       "repo_url": "https://github.com/seethroughlab/vivid-drums",
       "homepage_url": "https://github.com/seethroughlab/vivid-drums",
-      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-drums/main/docs/images/preview.png",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-drums/master/docs/images/preview.png",
       "category": "audio",
       "tags": ["audio", "drums", "synthesis"],
       "status": "stable"
@@ -82,7 +82,7 @@
       "install_url": "https://github.com/seethroughlab/vivid-plexus.git",
       "repo_url": "https://github.com/seethroughlab/vivid-plexus",
       "homepage_url": "https://github.com/seethroughlab/vivid-plexus",
-      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-plexus/main/docs/images/preview.png",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-plexus/master/docs/images/preview.png",
       "category": "hybrid",
       "tags": ["gpu", "audio", "visualizer"],
       "status": "stable"
@@ -99,7 +99,7 @@
       "install_url": "https://github.com/seethroughlab/vivid-sequencers.git",
       "repo_url": "https://github.com/seethroughlab/vivid-sequencers",
       "homepage_url": "https://github.com/seethroughlab/vivid-sequencers",
-      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-sequencers/main/docs/images/preview.png",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-sequencers/master/docs/images/preview.png",
       "category": "control",
       "tags": ["control", "sequencer", "music"],
       "status": "stable"
@@ -116,7 +116,7 @@
       "install_url": "https://github.com/seethroughlab/vivid-cef.git",
       "repo_url": "https://github.com/seethroughlab/vivid-cef",
       "homepage_url": "https://github.com/seethroughlab/vivid-cef",
-      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-cef/main/docs/images/preview.png",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-cef/master/docs/images/preview.png",
       "category": "ui",
       "tags": ["ui", "web", "experimental"],
       "status": "experimental"
