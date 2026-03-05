@@ -375,10 +375,10 @@ Goal: make package authoring, install/update behavior, and discovery feel first-
 
 ### Phase 3: Package Templates & Publishing Workflow
 
-- [ ] Create official template repos/checklists for at least:
+- [x] Create official template repos/checklists for at least (see `../vivid-package-template/README.md`):
   - single-operator package
   - multi-operator package with graphs + tests
-- [ ] Include standard files in templates:
+- [x] Include standard files in templates (`../vivid-package-template`):
   - `vivid-package.json`, `CMakeLists.txt`, `README.md`, `LICENSE`, `AGENTS.md`
   - package CI smoke workflow (clone vivid-core + run package graphs/tests)
 - [ ] Add author docs:
