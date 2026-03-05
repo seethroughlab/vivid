@@ -18,3 +18,4 @@ Current behavior/spec docs remain in `docs/` (for example: `ROADMAP.md`, archite
 - `PACKAGE-ECOSYSTEM-BASELINE.md`
 - `PACKAGE-INSTALL-E2E-RESULTS.md`
 - `UNDO-MUTATION-TEST-RESULTS.md`
+- `UNDO-REDO-DESIGN.md`

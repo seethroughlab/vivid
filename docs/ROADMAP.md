@@ -136,10 +136,10 @@ This is the only new feature in Milestone 1 — everything else is testing. It r
 
 #### Design
 
-- [x] Define `UndoManager` public API: `push()`, `undo()`, `redo()`, `clear()`, `canUndo()`, `canRedo()` *(see `docs/UNDO-REDO-DESIGN.md`)*
-- [x] Decide snapshot granularity (see Design Notes below) *(see `docs/UNDO-REDO-DESIGN.md`)*
-- [x] Decide max history depth (see Design Notes below) *(see `docs/UNDO-REDO-DESIGN.md`)*
-- [x] Write a brief design doc or code comment block before implementation *(see `docs/UNDO-REDO-DESIGN.md`)*
+- [x] Define `UndoManager` public API: `push()`, `undo()`, `redo()`, `clear()`, `canUndo()`, `canRedo()` *(see `docs/archive/UNDO-REDO-DESIGN.md`)*
+- [x] Decide snapshot granularity (see Design Notes below) *(see `docs/archive/UNDO-REDO-DESIGN.md`)*
+- [x] Decide max history depth (see Design Notes below) *(see `docs/archive/UNDO-REDO-DESIGN.md`)*
+- [x] Write a brief design doc or code comment block before implementation *(see `docs/archive/UNDO-REDO-DESIGN.md`)*
 
 #### Implementation
 
