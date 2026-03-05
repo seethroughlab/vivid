@@ -95,7 +95,7 @@ public:
     // Scan already-installed packages into registry (called at startup)
     void scan_installed();
 
-    // Returns ~/.vivid/packages/ (or platform equivalent)
+    // Returns <config_dir>/packages (platform-specific config dir)
     static std::string packages_dir();
 
     // Set a callback that resolves package names to URLs (for dependency resolution)

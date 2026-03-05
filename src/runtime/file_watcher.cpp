@@ -228,7 +228,7 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
     if (!fs::exists(packages_dir)) return 0;
 
     int count = 0;
-    // Walk ~/.vivid/packages/*/operators/<domain>/<name>/*.cpp
+    // Walk <config_dir>/packages/*/operators/<domain>/<name>/*.cpp
     std::error_code ec;
     for (auto& pkg_entry : fs::directory_iterator(packages_dir, ec)) {
         if (ec) break;

@@ -361,7 +361,9 @@ Goal: make package authoring, install/update behavior, and discovery feel first-
 
 ### Phase 2: Search Paths & Resolution
 
-- [ ] Finalize canonical scope directories and config knobs:
+*Trimmed rollout note:* implement fixed scope order (`local > workspace > user > builtin`) first; defer `system` scope and configurable scope-order/settings knobs until after initial resolver/diagnostic shipping.
+
+- [x] Finalize canonical scope directories and config knobs (spec: `docs/PACKAGE-SEARCH-PATHS.md`)
   - local graph/package folder scope
   - project workspace scope
   - user/system package scope

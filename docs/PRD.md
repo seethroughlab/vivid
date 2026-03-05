@@ -502,8 +502,8 @@ Each operator is a directory containing its .cpp source and, for GPU operators, 
 **Operator search path (priority order):**
 
 1. **Project-local** — `my_project/operators/` — operators specific to this patch
-2. **User global** — `~/.vivid/operators/` — personal operators shared across projects
-3. **Installed libraries** — `~/.vivid/libraries/*/operators/` — third-party packages (§5.17)
+2. **User global** — `<config_dir>/operators/` — personal operators shared across projects
+3. **Installed libraries** — `<config_dir>/packages/*/operators/` — third-party packages (§5.17)
 4. **Seed operators** — `vivid/operators/` — minimal set shipped with Vivid, primarily serving as LLM examples and domain validation
 
 When two operators share the same name, earlier in the path wins. This lets users fork a library operator into their project to customize it.
@@ -549,7 +549,7 @@ The manifest is minimal:
 }
 ```
 
-**Install flow:** `vivid install github.com/user/awesome-particles` → clones to `~/.vivid/libraries/awesome-particles/` → compiles all operators → they appear in the operator palette. Compilation is fast (single operators compile in under a second with clang).
+**Install flow:** `vivid install github.com/user/awesome-particles` → clones to `<config_dir>/packages/awesome-particles/` (macOS: `~/Library/Application Support/Vivid/packages/awesome-particles/`) → compiles all operators → they appear in the operator palette. Compilation is fast (single operators compile in under a second with clang).
 
 **Development workflow:** `vivid link /path/to/my-package` creates a symlink from the packages directory to the developer's source tree instead of copying. Operators are compiled in-place — the `build/` directory lives inside the original source. After editing operator source, `vivid rebuild my-package` recompiles without re-copying. `vivid unlink my-package` removes the symlink without touching the source. This mirrors the `npm link` workflow: link once during development, rebuild after changes, unlink when done.
 
