@@ -367,7 +367,6 @@ set_source_files_properties(src/runtime/av_exporter.mm PROPERTIES COMPILE_FLAGS 
 # Copy demo graphs to build directory
 configure_file(graphs/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
 configure_file(graphs/audio_demo.json ${CMAKE_BINARY_DIR}/audio_demo.json COPYONLY)
-configure_file(graphs/av_sync_demo.json ${CMAKE_BINARY_DIR}/av_sync_demo.json COPYONLY)
 configure_file(graphs/midi_demo.json ${CMAKE_BINARY_DIR}/midi_demo.json COPYONLY)
 configure_file(graphs/fft_bars_demo.json ${CMAKE_BINARY_DIR}/fft_bars_demo.json COPYONLY)
 configure_file(graphs/polysynth_demo.json ${CMAKE_BINARY_DIR}/polysynth_demo.json COPYONLY)

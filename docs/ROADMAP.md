@@ -259,6 +259,9 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
   - `vivid rebuild vivid-wavetable`
   - type appears in palette without restart
 - [ ] Add package CI smoke test (build + probe)
+- [ ] Move wavetable-specific demo graphs from `vivid/graphs` into `../vivid-wavetable/graphs`
+- [ ] Move wavetable-specific tests from `vivid/tests` into `../vivid-wavetable/tests`
+- [ ] Run package tests in `vivid-wavetable` CI (not only core smoke checks)
 - [ ] Add license/readme in package repo
 
 #### Phase 2: vivid-drums
@@ -266,13 +269,19 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 - [x] Move 5 drum operators into `vivid-drums`
 - [x] Move `drum_dsp.h` to `src/operator_api/` (shared API boundary)
 - [x] Update include paths/usages in vivid-core and package
-- [ ] Add package manifest + CMake + CI smoke test
-- [ ] Verify uninstall/reinstall and palette visibility
+- [x] Add package manifest + CMake + CI smoke test
+- [x] Move drum-specific demo graphs from `vivid/graphs` into `../vivid-drums/graphs`
+- [x] Move drum-specific tests from `vivid/tests` into `../vivid-drums/tests` *(no drum-specific core test files remained; added package-owned manifest smoke test in `vivid-drums/tests`)*
+- [x] Run package tests in `vivid-drums` CI (not only core smoke checks)
+- [x] Verify uninstall/reinstall and palette visibility
 
 #### Phase 3: vivid-plexus
 
 - [ ] Move `gpu/plexus` + `audio/plexus_synth` into `vivid-plexus`
 - [ ] Add package manifest + CMake + CI smoke test
+- [ ] Move plexus-specific demo graphs from `vivid/graphs` into `../vivid-plexus/graphs`
+- [ ] Move plexus-specific tests from `vivid/tests` into `../vivid-plexus/tests`
+- [ ] Run package tests in `vivid-plexus` CI (not only core smoke checks)
 - [ ] Verify install/uninstall + runtime behavior
 
 #### Phase 4: vivid-sequencers
@@ -280,6 +289,9 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 - [ ] Move 8 sequencing operators into `vivid-sequencers`
 - [ ] Ensure remaining core timing primitives still cover demos/tests
 - [ ] Add package manifest + CMake + CI smoke test
+- [ ] Move sequencer-specific demo graphs from `vivid/graphs` into `../vivid-sequencers/graphs`
+- [ ] Move sequencer-specific tests from `vivid/tests` into `../vivid-sequencers/tests`
+- [ ] Run package tests in `vivid-sequencers` CI (not only core smoke checks)
 - [ ] Verify install/uninstall + runtime behavior
 
 #### Phase 5: Post-extraction cleanup
@@ -287,6 +299,7 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 - [ ] Add licenses to all extracted packages and existing external packages (`vivid-3d`, `vivid-glitch`)
 - [ ] Update README.md operator list to reflect minimal core
 - [ ] Verify `test_demo_graphs` passes with reduced core (no core graph hard-dep on extracted operators)
+- [ ] Verify extracted-package graphs/tests are no longer duplicated in vivid-core
 - [ ] Publish migration notes for users (what moved, how to install packages)
 
 ### Operator API work
@@ -297,7 +310,7 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 ### Extraction tasks
 
 - [ ] Extract vivid-wavetable: move `wavetable_synth.cpp`, create package repo, add CI smoke test *(in progress; external repo `seethroughlab/vivid-wavetable` created, core removal done)*
-- [ ] Extract vivid-drums: move 5 drum operators + `drum_dsp.h` to operator API, create package repo, add CI smoke test *(in progress; external repo `seethroughlab/vivid-drums` created, core removal done)*
+- [x] Extract vivid-drums: move 5 drum operators + `drum_dsp.h` to operator API, create package repo, add CI smoke test
 - [ ] Extract vivid-plexus: move `plexus.cpp` + `plexus_synth.cpp`, create package repo, add CI smoke test
 - [ ] Extract vivid-sequencers: move 8 operators, create package repo, add CI smoke test
 - [ ] Add licenses to all extracted packages and existing external packages (vivid-3d, vivid-glitch)
