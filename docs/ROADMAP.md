@@ -296,11 +296,11 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 
 #### Phase 5: Post-extraction cleanup
 
-- [ ] Add licenses to all extracted packages and existing external packages (`vivid-3d`, `vivid-glitch`)
-- [ ] Update README.md operator list to reflect minimal core
-- [ ] Verify `test_demo_graphs` passes with reduced core (no core graph hard-dep on extracted operators)
-- [ ] Verify extracted-package graphs/tests are no longer duplicated in vivid-core
-- [ ] Publish migration notes for users (what moved, how to install packages)
+- [x] Add licenses to all extracted packages and existing external packages (`vivid-3d`, `vivid-glitch`)
+- [x] Update README.md operator list to reflect minimal core
+- [x] Verify `test_demo_graphs` passes with reduced core (no core graph hard-dep on extracted operators)
+- [x] Verify extracted-package graphs/tests are no longer duplicated in vivid-core
+- [x] Publish migration notes for users (what moved, how to install packages)
 
 ### Operator API work
 
@@ -313,9 +313,9 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 - [x] Extract vivid-drums: move 5 drum operators + `drum_dsp.h` to operator API, create package repo, add CI smoke test
 - [x] Extract vivid-plexus: move `plexus.cpp` + `plexus_synth.cpp`, create package repo, add CI smoke test
 - [x] Extract vivid-sequencers: move 8 operators, create package repo, add CI smoke test
-- [ ] Add licenses and AGENTS.md to all extracted packages and existing external packages (vivid-3d, vivid-glitch)
-- [ ] Update README.md operator list to reflect minimal core after extraction
-- [ ] Verify `test_demo_graphs` passes with reduced core (no graphs in vivid-core should reference extracted operators)
+- [x] Add licenses and AGENTS.md to all extracted packages and existing external packages (vivid-3d, vivid-glitch)
+- [x] Update README.md operator list to reflect minimal core after extraction
+- [x] Verify `test_demo_graphs` passes with reduced core (no graphs in vivid-core should reference extracted operators)
 
 ---
 

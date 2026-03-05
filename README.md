@@ -21,7 +21,7 @@ Built in C++ with WebGPU (Dawn). Designed from the ground up for LLM-assisted cr
 
 - **Audio-visual parity** — Audio and GPU operators live in the same graph, connected by the same wires
 - **Three execution domains** — GPU (textures), Audio (sample-rate buffers), and Control (per-frame values) evaluated in dependency order
-- **50+ built-in operators** — Synthesizers, drum machines, audio effects, shape generators, image filters, compositors, and control sources
+- **40 core operators + package ecosystem** — Core operators ship in vivid; specialized families (wavetable, drums, plexus, sequencers, 3D, glitch) live in package repos
 - **Spreads** — Implicit vectorization: a single wire carries N values, enabling polyphony and instancing without manual fan-out
 - **19 data-driven WGSL filters** — Self-describing GPU shaders loaded at runtime from `.wgsl` files with embedded metadata
 - **Hot-reload everything** — Edit a graph JSON, a WGSL filter, or recompile an operator dylib — changes apply instantly without restart
@@ -30,23 +30,34 @@ Built in C++ with WebGPU (Dawn). Designed from the ground up for LLM-assisted cr
 - **MCP server** — 22-tool Model Context Protocol server for LLM integration (Claude Code, etc.)
 - **MIDI input with CC learn** — Hardware controller support with automatic CC mapping
 
-## Built-in Operators
+## Core Operators (Built-In)
 
 ### GPU
-Shape, Noise, Bars, Composite, Bloom, Feedback, Instance, Movie File In
+Shape, Noise, Bars, Composite, Bloom, Feedback, Instance, Time Machine, Text, Texture Analysis, Movie File In, Webcam In
 
 ### GPU Filters (WGSL)
 HSV, Levels, Blur, Gaussian Blur, Edge, Mirror, Pixelate, Posterize, Gradient, Chromatic Aberration, Scanlines, CRT Effect, Transform, Displace, Channel Mixer, Vignette, Dither, Halftone, Tile, Ramp, Solid Color, Switch
 
 ### Audio
-**Synthesis:** Oscillator, Wavetable Synth, Gain
-**Drums:** Kick, Snare, Hi-Hat, Clap, Tom, Cymbal
-**Effects:** Reverb, Delay, Bitcrush, Distortion, Stutter, Tape Stop, Beat Repeat, Reverse, Scratch, Stretch, Freq Shift, Glitch
+**Synthesis:** Oscillator, Gain
+**Drums:** Tom
+**Effects:** Reverb, Delay, Bitcrush, Distortion
 **Spread:** Spread ADSR, Spread LFO
 **Input:** Movie File Audio In
 
 ### Control
-Clock, LFO, Math, Envelope, MIDI Input, FFT Analysis, Note Pattern, Chord Progression, Arpeggiator, Drum Sequencer, Sequencer, Logic, Gate, Random, Smooth
+Clock, LFO, Math, Envelope, MIDI Input, FFT Analysis, Logic, Gate, Random, Smooth, Euclidean, Stack, Alternate, Pattern Transform, Modulated Gain, Spread Noise
+
+## Package Operators
+
+Install extracted families as packages:
+
+- `vivid-wavetable`: `WavetableSynth`
+- `vivid-drums`: `DrumKick`, `DrumSnare`, `DrumHiHat`, `DrumClap`, `DrumCymbal`
+- `vivid-plexus`: `Plexus`, `PlexusSynth`
+- `vivid-sequencers`: `Sequencer`, `DrumSequencer`, `PatternSeq`, `NotePattern`, `NoteDuration`, `Arpeggiator`, `ChordProgression`, `StateMachine`
+- `vivid-3d`: 3D operator suite
+- `vivid-glitch`: glitch audio/GPU suite
 
 ### Sinks
 `audio_out` (stereo output), `video_out` (GPU display with fit/fill/stretch)
