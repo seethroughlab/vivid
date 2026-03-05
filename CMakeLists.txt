@@ -245,18 +245,8 @@ set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS webcam_in)
 # --- Audio operator plugins ---
 add_vivid_operator(oscillator     operators/audio/oscillator/oscillator.cpp)
 add_vivid_operator(gain           operators/audio/gain/gain.cpp)
-add_vivid_operator(drum_kick      operators/audio/drum_kick/drum_kick.cpp
-                   FACTORY_PRESETS operators/audio/drum_kick/factory_presets.json)
-add_vivid_operator(drum_snare     operators/audio/drum_snare/drum_snare.cpp
-                   FACTORY_PRESETS operators/audio/drum_snare/factory_presets.json)
-add_vivid_operator(drum_hihat     operators/audio/drum_hihat/drum_hihat.cpp
-                   FACTORY_PRESETS operators/audio/drum_hihat/factory_presets.json)
-add_vivid_operator(drum_clap      operators/audio/drum_clap/drum_clap.cpp
-                   FACTORY_PRESETS operators/audio/drum_clap/factory_presets.json)
 add_vivid_operator(drum_tom       operators/audio/drum_tom/drum_tom.cpp
                    FACTORY_PRESETS operators/audio/drum_tom/factory_presets.json)
-add_vivid_operator(drum_cymbal    operators/audio/drum_cymbal/drum_cymbal.cpp
-                   FACTORY_PRESETS operators/audio/drum_cymbal/factory_presets.json)
 add_vivid_operator(spread_adsr    operators/audio/spread_adsr/spread_adsr.cpp)
 add_vivid_operator(spread_lfo     operators/audio/spread_lfo/spread_lfo.cpp)
 add_vivid_operator(reverb         operators/audio/reverb/reverb.cpp
@@ -879,8 +869,7 @@ add_dependencies(test_demo_graphs
     noise shape bars composite
     bloom feedback instance plexus movie_file_in texture_analysis
     # audio
-    oscillator gain drum_kick drum_snare drum_hihat drum_clap
-    drum_tom drum_cymbal spread_adsr spread_lfo
+    oscillator gain drum_tom spread_adsr spread_lfo
     reverb delay bitcrush distortion plexus_synth
     movie_file_audio_in
     webcam_in time_machine

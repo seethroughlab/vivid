@@ -263,9 +263,9 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 
 #### Phase 2: vivid-drums
 
-- [ ] Move 5 drum operators into `vivid-drums`
-- [ ] Move `drum_dsp.h` to `src/operator_api/` (shared API boundary)
-- [ ] Update include paths/usages in vivid-core and package
+- [x] Move 5 drum operators into `vivid-drums`
+- [x] Move `drum_dsp.h` to `src/operator_api/` (shared API boundary)
+- [x] Update include paths/usages in vivid-core and package
 - [ ] Add package manifest + CMake + CI smoke test
 - [ ] Verify uninstall/reinstall and palette visibility
 
@@ -291,13 +291,13 @@ That's ~37 operators, down from 62. The 25 extracted operators move to four exte
 
 ### Operator API work
 
-- [ ] Move `drum_dsp.h` to `src/operator_api/` so external packages (including vivid-drums itself) can use it
+- [x] Move `drum_dsp.h` to `src/operator_api/` so external packages (including vivid-drums itself) can use it
 - [ ] Evaluate whether `audio_dsp.h` utilities (WhiteNoise, PinkNoise, waveform, detect_trigger) should be documented and exposed in the operator API
 
 ### Extraction tasks
 
 - [ ] Extract vivid-wavetable: move `wavetable_synth.cpp`, create package repo, add CI smoke test *(in progress; external repo `seethroughlab/vivid-wavetable` created, core removal done)*
-- [ ] Extract vivid-drums: move 5 drum operators + `drum_dsp.h` to operator API, create package repo, add CI smoke test
+- [ ] Extract vivid-drums: move 5 drum operators + `drum_dsp.h` to operator API, create package repo, add CI smoke test *(in progress; external repo `seethroughlab/vivid-drums` created, core removal done)*
 - [ ] Extract vivid-plexus: move `plexus.cpp` + `plexus_synth.cpp`, create package repo, add CI smoke test
 - [ ] Extract vivid-sequencers: move 8 operators, create package repo, add CI smoke test
 - [ ] Add licenses to all extracted packages and existing external packages (vivid-3d, vivid-glitch)

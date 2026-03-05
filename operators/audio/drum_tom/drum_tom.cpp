@@ -1,6 +1,6 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
-#include "../drum_common/drum_dsp.h"
+#include "operator_api/drum_dsp.h"
 
 // ---------------------------------------------------------------------------
 // DrumTom: Pitched sine + harmonics with pitch bend envelope
