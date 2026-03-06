@@ -1,0 +1,185 @@
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (vX.Y.Z)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: [self-hosted, macOS]
+    env:
+      CMAKE_BUILD_TYPE: Release
+      APP_NAME: Vivid
+      SPARKLE_VERSION: 2.6.4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Resolve tag/version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid tag: $tag" >&2
+            exit 1
+          fi
+          ver="${tag#v}"
+          cmake_ver=$(grep -E '^project\(vivid VERSION ' CMakeLists.txt | sed -E 's/.*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+          [[ "$ver" == "$cmake_ver" ]] || { echo "Tag $ver != CMake $cmake_ver" >&2; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: Configure
+        env:
+          VIVID_SPARKLE_PUBLIC_KEY: ${{ secrets.VIVID_SPARKLE_PUBLIC_KEY }}
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+            -DVIVID_SPARKLE_PUBLIC_KEY="${VIVID_SPARKLE_PUBLIC_KEY}"
+
+      - name: Build
+        run: cmake --build build --config ${CMAKE_BUILD_TYPE} -j$(sysctl -n hw.logicalcpu)
+
+      - name: Embed Sparkle framework
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/vivid.app"
+          FW_DIR="$APP/Contents/Frameworks"
+          mkdir -p "$FW_DIR"
+          curl -L --fail \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" \
+            -o "$RUNNER_TEMP/sparkle.tar.xz"
+          tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP"
+          cp -R "$RUNNER_TEMP/Sparkle-${SPARKLE_VERSION}/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$FW_DIR/"
+
+      - name: Import Developer ID certificate
+        env:
+          APPLE_CERT_P12_B64: ${{ secrets.APPLE_CERT_P12_B64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${APPLE_CERT_P12_B64}" ]] || { echo "Missing APPLE_CERT_P12_B64" >&2; exit 1; }
+          [[ -n "${APPLE_CERT_PASSWORD}" ]] || { echo "Missing APPLE_CERT_PASSWORD" >&2; exit 1; }
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          echo "$APPLE_CERT_P12_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN_PATH"
+
+      - name: Codesign app bundle
+        env:
+          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${APPLE_CODESIGN_IDENTITY}" ]] || { echo "Missing APPLE_CODESIGN_IDENTITY" >&2; exit 1; }
+          APP="build/vivid.app"
+          find "$APP/Contents/Frameworks" -name "*.framework" -maxdepth 1 -print0 | while IFS= read -r -d '' fw; do
+            codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$fw"
+          done
+          find "$APP/Contents/PlugIns" -name "*.dylib" -print0 | while IFS= read -r -d '' dylib; do
+            codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$dylib"
+          done
+          codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$APP"
+
+      - name: Notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${APPLE_ID}" ]] || { echo "Missing APPLE_ID" >&2; exit 1; }
+          [[ -n "${APPLE_TEAM_ID}" ]] || { echo "Missing APPLE_TEAM_ID" >&2; exit 1; }
+          [[ -n "${APPLE_APP_PASSWORD}" ]] || { echo "Missing APPLE_APP_PASSWORD" >&2; exit 1; }
+          APP="build/vivid.app"
+          ZIP="build/${APP_NAME}-${{ steps.ver.outputs.version }}-macos-arm64.zip"
+          ditto -c -k --keepParent "$APP" "$ZIP"
+          xcrun notarytool submit "$ZIP" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$APP"
+
+      - name: Validate signature and stapling
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/vivid.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+
+      - name: Package artifact
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="build/${APP_NAME}-${{ steps.ver.outputs.version }}-macos-arm64.zip"
+          if [[ ! -f "$ZIP" ]]; then
+            ditto -c -k --keepParent build/vivid.app "$ZIP"
+          fi
+          size=$(stat -f "%z" "$ZIP")
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+
+      - name: Generate appcast XML
+        id: appcast
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP_NAME="$(basename '${{ steps.artifact.outputs.zip }}')"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ steps.ver.outputs.tag }}/${ZIP_NAME}"
+          NOTES_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.ver.outputs.tag }}"
+          python3 scripts/release/generate_appcast.py \
+            --version "${{ steps.ver.outputs.version }}" \
+            --url "$URL" \
+            --length "${{ steps.artifact.outputs.size }}" \
+            --title "Vivid" \
+            --notes-url "$NOTES_URL" \
+            --output build/appcast.xml
+          echo "path=build/appcast.xml" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.artifact.outputs.zip }}
+            ${{ steps.appcast.outputs.path }}
+
+      - name: Update catalog/appcast.xml on master
+        if: ${{ github.event_name == 'push' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout master
+          cp build/appcast.xml catalog/appcast.xml
+          if git diff --quiet -- catalog/appcast.xml; then
+            echo "No appcast change"
+            exit 0
+          fi
+          git add catalog/appcast.xml
+          git commit -m "release: update appcast for ${{ steps.ver.outputs.tag }}"
+          git push origin HEAD:master

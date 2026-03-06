@@ -675,9 +675,22 @@ Milestone 5 closure note (2026-03-05):
 
 ## Milestone 6: Release Infrastructure
 
-- [ ] GitHub Actions to build macOS releases
-- [ ] Versioning system for Vivid itself (user alerts, auto-updates)
-- [ ] Redesign the application icon
+- [x] GitHub Actions to build macOS releases
+  - Added `.github/workflows/release-macos.yml` (tag/manual releases, version guard, codesign/notarize/staple, release assets, appcast generation/publish).
+  - Added `scripts/release/generate_appcast.py` and Pages-served `catalog/appcast.xml`.
+  - Added `.github/workflows/version-guard.yml` to enforce CMake/runtime version surface consistency.
+- [x] Versioning system for Vivid itself (user alerts, auto-updates)
+  - Added runtime `AppUpdateManager` appcast fetch/check path with non-blocking startup behavior.
+  - Added CLI `vivid check-core-updates`.
+  - Added control-server endpoint `check_core_updates` + MCP tool `check_core_updates`.
+  - Added settings persistence for core update policy/last-check/skipped version.
+  - Added macOS menu actions: `Check for Updates...` and `Automatically Check for Updates`.
+  - Added non-intrusive in-app update notice with `Install`, `Skip`, `Later`.
+- [x] Redesign the application icon
+
+Milestone 6 follow-up notes:
+- Sparkle runtime bridge is integrated via Objective-C runtime lookup; release builds should embed Sparkle framework and set `VIVID_SPARKLE_PUBLIC_KEY`.
+- Release operations and secrets are documented in `docs/RELEASE-OPS.md`.
 
 ## Milestone 7: Legacy Branch Evaluation
 

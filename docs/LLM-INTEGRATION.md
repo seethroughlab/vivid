@@ -42,6 +42,10 @@ The LLM connects to Vivid through two complementary paths, both built on a share
 
 **Path 1: MCP server.** Vivid runs an MCP (Model Context Protocol) server that exposes the Runtime API as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to it externally. This is the primary LLM integration path — it provides the complete tool surface (inspect, add, connect, set_param, scaffold_operator, introspection/diagnostics/checks) with streaming, multi-turn context, and tool use UIs that external clients already provide. It also enables non-interactive use cases: CI pipelines running checks, scripts generating patch variations, installation monitors watching for drift.
 
+Core/package update MCP tool surface (current):
+- `check_core_updates(force_refresh=false)` — checks Vivid core app update availability from appcast metadata.
+- `check_package_updates(core_version, include_all_installed=false)` — checks installed package update/compatibility status.
+
 Perception MCP tool surface (current):
 - `introspect_nodes(include_payload=false)` — compact node-count/domain/error summary; optional full payload.
 - `run_diagnostics(include_payload=false)` — compact severity summary + top hint IDs; optional full findings.
