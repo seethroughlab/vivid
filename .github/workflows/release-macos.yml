@@ -66,16 +66,18 @@ jobs:
           APP="build/vivid.app"
           FW_DIR="$APP/Contents/Frameworks"
           mkdir -p "$FW_DIR"
+          SPARKLE_EXTRACT_DIR="$RUNNER_TEMP/sparkle_extract"
+          rm -rf "$SPARKLE_EXTRACT_DIR"
+          mkdir -p "$SPARKLE_EXTRACT_DIR"
           curl -L --fail \
             "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" \
             -o "$RUNNER_TEMP/sparkle.tar.xz"
-          tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP"
-          SPARKLE_ROOT="$RUNNER_TEMP/Sparkle-${SPARKLE_VERSION}"
-          SPARKLE_FRAMEWORK="$(find "$SPARKLE_ROOT" -type d -path "*/macos-arm64*/Sparkle.framework" | head -n1 || true)"
+          tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$SPARKLE_EXTRACT_DIR"
+          SPARKLE_FRAMEWORK="$(find "$SPARKLE_EXTRACT_DIR" -type d -path "*/macos-arm64*/Sparkle.framework" | head -n1 || true)"
           if [[ -z "$SPARKLE_FRAMEWORK" ]]; then
-            SPARKLE_FRAMEWORK="$(find "$SPARKLE_ROOT" -type d -name "Sparkle.framework" | head -n1 || true)"
+            SPARKLE_FRAMEWORK="$(find "$SPARKLE_EXTRACT_DIR" -type d -name "Sparkle.framework" | head -n1 || true)"
           fi
-          [[ -n "$SPARKLE_FRAMEWORK" ]] || { echo "Could not find Sparkle.framework in $SPARKLE_ROOT" >&2; find "$SPARKLE_ROOT" -maxdepth 4 -type d | sed -n '1,120p'; exit 1; }
+          [[ -n "$SPARKLE_FRAMEWORK" ]] || { echo "Could not find Sparkle.framework under $SPARKLE_EXTRACT_DIR" >&2; find "$SPARKLE_EXTRACT_DIR" -maxdepth 6 -type d | sed -n '1,200p'; exit 1; }
           cp -R "$SPARKLE_FRAMEWORK" "$FW_DIR/"
 
       - name: Import Developer ID certificate
