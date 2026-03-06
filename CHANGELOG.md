@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- No unreleased changes yet.
+
+## [0.1.0-alpha1] - 2026-03-06
+
 ### Core Runtime
 - WebGPU graph engine with node-based visual programming
 - Hot-reload operator system via dlopen
@@ -63,8 +67,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Patch panel UI (replaced connection matrix)
 - Performance bar with FPS/frame time/memory sparklines
 - Session grid UI
-
-## [0.1.0-alpha1] - 2026-03-06
 
 ### Added
 - Core app update system:
