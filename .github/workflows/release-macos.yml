@@ -53,6 +53,7 @@ jobs:
           VIVID_SPARKLE_PUBLIC_KEY: ${{ secrets.VIVID_SPARKLE_PUBLIC_KEY }}
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DVIVID_SPARKLE_PUBLIC_KEY="${VIVID_SPARKLE_PUBLIC_KEY}"
 
       - name: Build
