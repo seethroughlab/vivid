@@ -86,8 +86,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Version drift guard workflow (`version-guard.yml`)
   - appcast generator script and published `catalog/appcast.xml`
 - Release operations documentation and checklist:
-  - `docs/RELEASE-OPS.md`
-  - `docs/RELEASE-CHECKLIST.md`
+  - `docs/release/RELEASE-OPS.md`
+  - `docs/release/RELEASE-CHECKLIST.md`
 
 ### Changed
 - Updated macOS app icon assets (`Vivid.icns`, iconset, SVG source)
