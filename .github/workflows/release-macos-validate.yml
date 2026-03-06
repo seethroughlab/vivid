@@ -1,15 +1,19 @@
-name: Release macOS
+name: Release macOS Validate
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to validate (branch/tag/SHA)"
+        required: false
+        default: "master"
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-release:
+  validate-release:
     runs-on: [self-hosted, macOS]
     env:
       CMAKE_BUILD_TYPE: Release
@@ -18,26 +22,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref }}
           submodules: recursive
           fetch-depth: 0
 
-      - name: Resolve tag/version
+      - name: Resolve version
         id: ver
         shell: bash
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
-          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
-            echo "Invalid tag: $tag" >&2
-            exit 1
-          fi
-          ver="${tag#v}"
-          base_ver="${ver%%-*}"
           cmake_ver=$(grep -E '^project\(vivid VERSION ' CMakeLists.txt | sed -E 's/.*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
-          [[ "$base_ver" == "$cmake_ver" ]] || { echo "Tag base $base_ver != CMake $cmake_ver" >&2; exit 1; }
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=$ver" >> "$GITHUB_OUTPUT"
-          echo "base_version=$base_ver" >> "$GITHUB_OUTPUT"
+          short_sha=$(git rev-parse --short HEAD)
+          echo "version=$cmake_ver" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
 
       - name: Configure
         env:
@@ -120,7 +117,7 @@ jobs:
           [[ -n "${APPLE_TEAM_ID}" ]] || { echo "Missing APPLE_TEAM_ID" >&2; exit 1; }
           [[ -n "${APPLE_APP_PASSWORD}" ]] || { echo "Missing APPLE_APP_PASSWORD" >&2; exit 1; }
           APP="build/vivid.app"
-          ZIP="build/${APP_NAME}-${{ steps.ver.outputs.version }}-macos-arm64.zip"
+          ZIP="build/${APP_NAME}-${{ steps.ver.outputs.version }}-validate-${{ steps.ver.outputs.short_sha }}-macos-arm64.zip"
           ditto -c -k --keepParent "$APP" "$ZIP"
           NOTARY_JSON="$RUNNER_TEMP/notary-result.json"
           xcrun notarytool submit "$ZIP" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$NOTARY_JSON"
@@ -143,58 +140,21 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP"
           spctl --assess --type execute --verbose=4 "$APP"
 
-      - name: Package artifact
+      - name: Package validation artifact
         id: artifact
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="build/${APP_NAME}-${{ steps.ver.outputs.version }}-macos-arm64.zip"
+          ZIP="build/${APP_NAME}-${{ steps.ver.outputs.version }}-validate-${{ steps.ver.outputs.short_sha }}-macos-arm64.zip"
           if [[ ! -f "$ZIP" ]]; then
             ditto -c -k --keepParent build/vivid.app "$ZIP"
           fi
-          size=$(stat -f "%z" "$ZIP")
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
-          echo "size=$size" >> "$GITHUB_OUTPUT"
 
-      - name: Generate appcast XML
-        id: appcast
-        shell: bash
-        run: |
-          set -euo pipefail
-          ZIP_NAME="$(basename '${{ steps.artifact.outputs.zip }}')"
-          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ steps.ver.outputs.tag }}/${ZIP_NAME}"
-          NOTES_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.ver.outputs.tag }}"
-          python3 scripts/release/generate_appcast.py \
-            --version "${{ steps.ver.outputs.version }}" \
-            --url "$URL" \
-            --length "${{ steps.artifact.outputs.size }}" \
-            --title "Vivid" \
-            --notes-url "$NOTES_URL" \
-            --output build/appcast.xml
-          echo "path=build/appcast.xml" >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+      - name: Upload validation artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ steps.ver.outputs.tag }}
-          generate_release_notes: true
-          files: |
-            ${{ steps.artifact.outputs.zip }}
-            ${{ steps.appcast.outputs.path }}
-
-      - name: Update catalog/appcast.xml on master
-        if: ${{ github.event_name == 'push' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout master
-          cp build/appcast.xml catalog/appcast.xml
-          if git diff --quiet -- catalog/appcast.xml; then
-            echo "No appcast change"
-            exit 0
-          fi
-          git add catalog/appcast.xml
-          git commit -m "release: update appcast for ${{ steps.ver.outputs.tag }}"
-          git push origin HEAD:master
+          name: vivid-macos-validate-${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.short_sha }}
+          path: ${{ steps.artifact.outputs.zip }}
+          if-no-files-found: error
+          retention-days: 14

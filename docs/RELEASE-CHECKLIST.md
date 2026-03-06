@@ -21,6 +21,7 @@ gh auth status
 ## B. GitHub Configuration
 
 - [ ] Release workflow exists: `.github/workflows/release-macos.yml`
+- [ ] Validation workflow exists: `.github/workflows/release-macos-validate.yml`
 - [ ] Version guard workflow exists: `.github/workflows/version-guard.yml`
 - [ ] Required secrets are configured in GitHub repo:
   - `APPLE_CERT_P12_B64`
@@ -78,10 +79,18 @@ Command:
 curl -I -L --max-time 20 https://vivid.seethroughlab.com/appcast.xml
 ```
 
-## E. Release Execution
+## E. Validation (No Tag)
+
+- [ ] Run `release-macos-validate.yml` on `master` (or target ref)
+- [ ] Validate run succeeds through notarize/staple/verify
+- [ ] Download workflow artifact and sanity launch locally
+- [ ] Confirm no GitHub Release was created
+- [ ] Confirm `catalog/appcast.xml` was not changed by validation run
+
+## F. Publish Rolling-Alpha Checkpoint
 
 - [ ] Commit + push final release changes
-- [ ] Create release tag `vX.Y.Z`
+- [ ] Create intentional public tag `vX.Y.Z` (no CI-only retry tags)
 - [ ] Push tag
 - [ ] Watch release workflow to completion
 - [ ] Confirm GitHub Release has:
@@ -97,16 +106,16 @@ gh run list --workflow "Release macOS" --limit 5
 gh run watch <run-id>
 ```
 
-## F. Post-Release Validation
+## G. Post-Release Validation
 
 - [ ] Download release zip on a clean macOS machine
 - [ ] Launch app; Gatekeeper acceptance is clean
 - [ ] In-app `Check for Updates...` works
 - [ ] Startup update check is non-blocking and no crash on offline/error path
 
-## G. Rollback / Reissue
+## H. Rollback / Reissue
 
 - [ ] If release is bad, cut a new patch release `vX.Y.(Z+1)` (do not rewrite existing tag)
-- [ ] Re-run release workflow via new tag
+- [ ] Use validation workflow before re-publishing
+- [ ] Re-run publish workflow via new tag
 - [ ] Verify `catalog/appcast.xml` points to the latest good artifact
-

@@ -14,16 +14,26 @@ This document defines the Milestone 6 release flow for signed/notarized macOS bu
 
 ## Workflow
 
-- Trigger: push tag `vX.Y.Z` (or manual `workflow_dispatch` with tag input)
-- `release-macos.yml` validates tag/version consistency against `project(vivid VERSION ...)`
-- Builds Release app bundle
-- Codesigns, notarizes, and staples `Vivid.app`
-- Embeds Sparkle framework into `Vivid.app/Contents/Frameworks`
-- Verifies signature/stapling (`codesign --verify`, `spctl --assess`)
-- Packages zip artifact `Vivid-<version>-macos-arm64.zip`
-- Generates `appcast.xml` for Sparkle consumers
-- Publishes both files to GitHub Releases
-- Updates `catalog/appcast.xml` on `master` for Pages-hosted feed
+Two-workflow model:
+
+- `release-macos-validate.yml` (manual `workflow_dispatch`)
+  - Build/sign/notarize/staple/verify using a chosen ref.
+  - Uploads validation zip artifact only.
+  - Does **not** create GitHub Releases.
+  - Does **not** update `catalog/appcast.xml`.
+- `release-macos.yml` (publish-only)
+  - Trigger: push intentional public tag `vX.Y.Z`.
+  - Validates tag/version consistency against `project(vivid VERSION ...)`.
+  - Builds, signs, notarizes, staples, and validates.
+  - Packages release zip + generates `appcast.xml`.
+  - Publishes assets to GitHub Releases.
+  - Updates `catalog/appcast.xml` on `master` for Pages-hosted feed.
+
+Policy:
+
+- Do not cut public tags for CI-only fixes.
+- Use validate workflow for iteration.
+- Tag only when promoting a user-facing rolling-alpha checkpoint.
 
 ## Rollback / Reissue
 

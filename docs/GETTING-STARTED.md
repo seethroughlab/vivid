@@ -13,6 +13,7 @@ Goal: go from zero to a running audiovisual graph, make meaningful edits, and sa
 Download the latest macOS release build:
 
 - GitHub Releases: <https://github.com/seethroughlab/vivid/releases>
+- Releases are promoted as rolling-alpha checkpoints (not every CI fix appears as a new tag).
 - Open `Vivid.app`.
 - In the app, use **File → Open Example...** and start with `av_demo`.
 
