@@ -696,6 +696,37 @@ void NodeGraphUI::draw_midi_map_banner(Renderer2D& tr) {
     tr.draw_text(10, banner_y + 4, status, 0.9f, 0.95f, 1.0f);
 }
 
+void NodeGraphUI::draw_core_update_banner(Renderer2D& tr) {
+    core_update_button_rects_.clear();
+    if (!core_update_notice_open_) return;
+
+    float y = kPerfBarH + (midi_map_mode_ ? kMidiMapBannerH : 0.0f);
+    float h = 28.0f;
+    float w = static_cast<float>(win_w_);
+    if (has_selection()) w = graph_right();
+
+    tr.draw_rect(0.0f, y, w, h, 0.14f, 0.20f, 0.26f, 0.95f);
+    tr.draw_rect(0.0f, y, w, 1.0f, 0.28f, 0.46f, 0.58f, 0.8f);
+
+    std::string label = "Core update available: v" + core_update_notice_version_;
+    if (!core_update_notice_summary_.empty()) label += " - " + core_update_notice_summary_;
+    tr.draw_text(10.0f, y + 6.0f, label.c_str(), 0.86f, 0.92f, 0.98f);
+
+    float bx = w - 12.0f;
+    auto draw_btn = [&](const char* text, int action, float r, float g, float b) {
+        float bw = tr.text_width(text) + 14.0f;
+        bx -= bw;
+        tr.draw_rounded_rect(bx, y + 4.0f, bw, 20.0f, 3.0f, r, g, b, 0.85f);
+        tr.draw_text(bx + 7.0f, y + 6.0f, text, 0.95f, 0.97f, 1.0f);
+        core_update_button_rects_.push_back({bx, y + 4.0f, bw, 20.0f, action});
+        bx -= 6.0f;
+    };
+
+    draw_btn("Later", 2, 0.26f, 0.30f, 0.34f);
+    draw_btn("Skip", 1, 0.33f, 0.25f, 0.23f);
+    draw_btn("Install", 0, 0.22f, 0.42f, 0.28f);
+}
+
 void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node,
                                         float px, float& py) {
     const auto& op = *node.op_info;
@@ -2725,6 +2756,7 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_grid(tr);
     draw_perf_bar(tr);
     draw_midi_map_banner(tr);
+    draw_core_update_banner(tr);
 
     draw_graph(tr);
     draw_connections(tr);

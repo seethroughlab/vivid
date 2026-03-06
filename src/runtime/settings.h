@@ -14,6 +14,10 @@ struct Settings {
     std::string editor;          // app name for `open -a`, empty = system default
     std::string editor_command;  // custom command template with {file} placeholder
     std::string style_id;        // "dark_steel", "midnight", "slate"
+
+    bool core_update_auto_check = true;
+    std::string core_update_last_checked_at;  // unix epoch seconds as string
+    std::string core_update_skipped_version;
 };
 
 Settings load_settings();

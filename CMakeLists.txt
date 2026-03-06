@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(vivid VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
 
+set(VIVID_APPCAST_URL "https://vivid.seethroughlab.com/appcast.xml" CACHE STRING
+    "Sparkle appcast URL for core app updates")
+set(VIVID_SPARKLE_PUBLIC_KEY "" CACHE STRING
+    "Sparkle EdDSA public key (SUPublicEDKey)")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -504,6 +509,7 @@ add_executable(vivid
     src/runtime/package_scaffolder.cpp
     src/runtime/package_test_runner.cpp
     src/runtime/package_catalog.cpp
+    src/runtime/app_update_manager.cpp
 )
 
 if(APPLE)
@@ -535,8 +541,8 @@ endif()
 
 # macOS native menu bar
 if(APPLE)
-    target_sources(vivid PRIVATE src/runtime/macos_menu.mm src/runtime/metal_interop.mm src/runtime/syphon_output.mm)
-    set_source_files_properties(src/runtime/macos_menu.mm src/runtime/metal_interop.mm src/runtime/syphon_output.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    target_sources(vivid PRIVATE src/runtime/macos_menu.mm src/runtime/metal_interop.mm src/runtime/syphon_output.mm src/runtime/sparkle_bridge.mm)
+    set_source_files_properties(src/runtime/macos_menu.mm src/runtime/metal_interop.mm src/runtime/syphon_output.mm src/runtime/sparkle_bridge.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 endif()
 
 # ObjC ARC for AVExporter
@@ -750,6 +756,7 @@ add_executable(test_control_server
     src/runtime/package_test_runner.cpp
     src/runtime/package_catalog.cpp
     src/runtime/platform.cpp
+    src/runtime/app_update_manager.cpp
 )
 target_include_directories(test_control_server PRIVATE src)
 target_link_libraries(test_control_server PRIVATE
@@ -782,6 +789,7 @@ add_executable(test_perception_introspection
     src/runtime/package_test_runner.cpp
     src/runtime/package_catalog.cpp
     src/runtime/platform.cpp
+    src/runtime/app_update_manager.cpp
 )
 target_include_directories(test_perception_introspection PRIVATE src)
 target_link_libraries(test_perception_introspection PRIVATE
@@ -1173,6 +1181,17 @@ target_include_directories(test_package_update_logic PRIVATE src)
 target_link_libraries(test_package_update_logic PRIVATE vivid_operator_api yyjson webgpu)
 add_test(NAME test_package_update_logic
     COMMAND test_package_update_logic
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Core app update metadata parsing test (appcast + semver compare)
+add_executable(test_app_update_manager
+    tests/test_app_update_manager.cpp
+    src/runtime/app_update_manager.cpp
+)
+target_include_directories(test_app_update_manager PRIVATE src)
+target_link_libraries(test_app_update_manager PRIVATE vivid_operator_api webgpu)
+add_test(NAME test_app_update_manager
+    COMMAND test_app_update_manager
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # PackageTestRunner test (graph + C++ test execution for packages)

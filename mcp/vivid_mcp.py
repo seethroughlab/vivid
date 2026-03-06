@@ -711,6 +711,18 @@ async def check_package_updates(core_version: str = "0.1.0", include_all_install
 
 
 @mcp.tool()
+async def check_core_updates(force_refresh: bool = False) -> str:
+    """Check for Vivid core application updates from the stable appcast.
+
+    Args:
+        force_refresh: If true, bypass cached state and fetch immediately
+    """
+    return await _post("check_core_updates", {
+        "force_refresh": force_refresh,
+    })
+
+
+@mcp.tool()
 async def read_package_docs(name: str) -> str:
     """Read the README documentation for an installed package."""
     return await _post("read_package_docs", {"name": name})

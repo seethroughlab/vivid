@@ -15,6 +15,8 @@ struct MenuCallbacks {
     std::function<void()> on_export;
     std::function<void()> on_browse_packages;
     std::function<void()> on_open_package_catalog_website;
+    std::function<void()> on_check_for_updates;
+    std::function<void()> on_toggle_auto_check_updates;
     std::function<void()> on_report_issue;
 
     // Edit menu
@@ -39,6 +41,7 @@ struct MenuCallbacks {
     std::function<bool()> is_midi_map_mode;
     std::function<bool()> has_selection;
     std::function<bool()> can_edit_meta;
+    std::function<bool()> is_auto_check_updates;
 };
 
 void macos_setup_menu(const MenuCallbacks& callbacks);

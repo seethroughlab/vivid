@@ -23,5 +23,9 @@
     <string>Vivid uses the microphone for audio input.</string>
     <key>NSCameraUsageDescription</key>
     <string>Vivid uses the camera for video input.</string>
+    <key>SUFeedURL</key>
+    <string>@VIVID_APPCAST_URL@</string>
+    <key>SUPublicEDKey</key>
+    <string>@VIVID_SPARKLE_PUBLIC_KEY@</string>
 </dict>
 </plist>

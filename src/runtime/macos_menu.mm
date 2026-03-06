@@ -11,6 +11,8 @@ enum MenuTag : NSInteger {
     kMenuTagExport,
     kMenuTagBrowsePackages,
     kMenuTagOpenPackageCatalogWebsite,
+    kMenuTagCheckForUpdates,
+    kMenuTagToggleAutoCheckUpdates,
     kMenuTagReportIssue,
     // Edit
     kMenuTagDeleteSelected,
@@ -43,6 +45,12 @@ enum MenuTag : NSInteger {
         case kMenuTagBrowsePackages:    if (_callbacks.on_browse_packages) _callbacks.on_browse_packages(); break;
         case kMenuTagOpenPackageCatalogWebsite:
             if (_callbacks.on_open_package_catalog_website) _callbacks.on_open_package_catalog_website();
+            break;
+        case kMenuTagCheckForUpdates:
+            if (_callbacks.on_check_for_updates) _callbacks.on_check_for_updates();
+            break;
+        case kMenuTagToggleAutoCheckUpdates:
+            if (_callbacks.on_toggle_auto_check_updates) _callbacks.on_toggle_auto_check_updates();
             break;
         case kMenuTagReportIssue:
             if (_callbacks.on_report_issue) _callbacks.on_report_issue();
@@ -84,6 +92,9 @@ enum MenuTag : NSInteger {
         case kMenuTagToggleMidiMap:
             item.state = (_callbacks.is_midi_map_mode && _callbacks.is_midi_map_mode()) ? NSControlStateValueOn : NSControlStateValueOff;
             return YES;
+        case kMenuTagToggleAutoCheckUpdates:
+            item.state = (_callbacks.is_auto_check_updates && _callbacks.is_auto_check_updates()) ? NSControlStateValueOn : NSControlStateValueOff;
+            return YES;
 
         default:
             return YES;
@@ -120,8 +131,25 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
             }
 
             if (servicesIdx >= 0) {
-                // Insert separator + Preferences before Services
+                // Insert separator + update actions + Preferences before Services
                 [appMenu insertItem:[NSMenuItem separatorItem] atIndex:servicesIdx];
+
+                NSMenuItem* checkUpdatesItem = [[NSMenuItem alloc]
+                    initWithTitle:@"Check for Updates..."
+                           action:@selector(menuAction:)
+                    keyEquivalent:@""];
+                checkUpdatesItem.target = sDelegate;
+                checkUpdatesItem.tag = kMenuTagCheckForUpdates;
+                [appMenu insertItem:checkUpdatesItem atIndex:servicesIdx];
+
+                NSMenuItem* autoCheckUpdatesItem = [[NSMenuItem alloc]
+                    initWithTitle:@"Automatically Check for Updates"
+                           action:@selector(menuAction:)
+                    keyEquivalent:@""];
+                autoCheckUpdatesItem.target = sDelegate;
+                autoCheckUpdatesItem.tag = kMenuTagToggleAutoCheckUpdates;
+                [appMenu insertItem:autoCheckUpdatesItem atIndex:servicesIdx];
+
                 NSMenuItem* prefsItem = [[NSMenuItem alloc]
                     initWithTitle:@"Preferences..."
                            action:@selector(menuAction:)

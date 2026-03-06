@@ -1218,6 +1218,28 @@ void NodeGraphUI::set_style_options(std::vector<UIStyle> styles, int current_idx
     }
 }
 
+void NodeGraphUI::show_core_update_notice(const std::string& latest_version,
+                                          const std::string& summary) {
+    core_update_notice_open_ = true;
+    core_update_notice_version_ = latest_version;
+    core_update_notice_summary_ = summary;
+}
+
+void NodeGraphUI::clear_core_update_notice() {
+    core_update_notice_open_ = false;
+    core_update_notice_version_.clear();
+    core_update_notice_summary_.clear();
+    core_update_button_rects_.clear();
+}
+
+void NodeGraphUI::set_core_update_notice_callbacks(std::function<void()> install_cb,
+                                                   std::function<void()> skip_cb,
+                                                   std::function<void()> later_cb) {
+    on_core_update_install_ = std::move(install_cb);
+    on_core_update_skip_ = std::move(skip_cb);
+    on_core_update_later_ = std::move(later_cb);
+}
+
 // -----------------------------------------------------------------------
 // resolve_port_type — shared utility (was file-local static in input.cpp)
 // -----------------------------------------------------------------------

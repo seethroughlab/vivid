@@ -34,6 +34,7 @@
 #include "runtime/package_manager.h"
 #include "runtime/package_catalog.h"
 #include "runtime/package_scaffolder.h"
+#include "runtime/app_update_manager.h"
 #include "runtime/platform.h"
 #include <fstream>
 #include <sstream>
@@ -60,6 +61,7 @@
 #ifdef __APPLE__
 #include "runtime/macos_frame_timer.h"
 #include "runtime/macos_menu.h"
+#include "runtime/sparkle_bridge.h"
 #include "ui/file_dialog.h"
 #endif
 
@@ -118,6 +120,13 @@ static std::string platform_label() {
 #else
     return "Unknown";
 #endif
+}
+
+static std::string now_epoch_seconds_str() {
+    auto now = std::chrono::system_clock::now();
+    auto sec = std::chrono::time_point_cast<std::chrono::seconds>(now)
+                   .time_since_epoch().count();
+    return std::to_string(static_cast<long long>(sec));
 }
 
 static std::vector<std::string> json_str_array(yyjson_val* arr) {
@@ -1133,6 +1142,12 @@ int main(int argc, char* argv[]) {
     check_updates_cmd->add_flag("--all", update_include_all,
                                 "Include installed packages even when no update is available");
 
+    bool check_core_force = false;
+    auto* check_core_updates_cmd = app.add_subcommand("check-core-updates",
+        "Check for available Vivid core application updates");
+    check_core_updates_cmd->add_flag("--force", check_core_force,
+                                     "Force immediate network refresh");
+
     app.require_subcommand(0, 1);
 
     try {
@@ -1182,7 +1197,8 @@ int main(int argc, char* argv[]) {
     // --- Handle package management subcommands (early exit, no GLFW) ---
     if (install_cmd->parsed() || uninstall_cmd->parsed() || list_pkg_cmd->parsed() ||
         link_cmd->parsed() || unlink_cmd->parsed() || rebuild_cmd->parsed() ||
-        check_updates_cmd->parsed() || scaffold_pkg_cmd->parsed()) {
+        check_updates_cmd->parsed() || check_core_updates_cmd->parsed() ||
+        scaffold_pkg_cmd->parsed()) {
         if (scaffold_pkg_cmd->parsed()) {
             vivid::PackageScaffoldOptions opts;
             opts.name = scaffold_pkg_name;
@@ -1309,6 +1325,44 @@ int main(int argc, char* argv[]) {
                 }
                 return 1;
             }
+        } else if (check_core_updates_cmd->parsed()) {
+            vivid::AppUpdateManager updates(VIVID_CORE_VERSION);
+            if (check_core_force || updates.fetch_state() == vivid::AppUpdateFetchState::Idle)
+                updates.refresh();
+
+            for (int i = 0; i < 200; ++i) {
+                auto st = updates.fetch_state();
+                if (st != vivid::AppUpdateFetchState::Fetching) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+
+            auto st = updates.fetch_state();
+            auto info = updates.latest();
+            if (st == vivid::AppUpdateFetchState::Error) {
+                std::fprintf(stderr, "Core update check failed: %s\n",
+                             updates.fetch_error().c_str());
+                return 1;
+            }
+
+            std::printf("Core version: %s\n", VIVID_CORE_VERSION);
+            std::printf("Appcast: %s\n", vivid::AppUpdateManager::appcast_url().c_str());
+            if (info.latest_version.empty()) {
+                std::printf("No update metadata available.\n");
+            } else if (info.update_available) {
+                std::printf("Update available: %s -> %s\n",
+                            info.current_version.c_str(),
+                            info.latest_version.c_str());
+                if (!info.title.empty())
+                    std::printf("Title: %s\n", info.title.c_str());
+                if (!info.download_url.empty())
+                    std::printf("Download: %s\n", info.download_url.c_str());
+                if (!info.release_notes_url.empty())
+                    std::printf("Release notes: %s\n", info.release_notes_url.c_str());
+            } else {
+                std::printf("Up to date (%s).\n",
+                            info.current_version.empty() ? VIVID_CORE_VERSION : info.current_version.c_str());
+            }
+            return 0;
         } else if (check_updates_cmd->parsed()) {
             vivid::PackageCatalog catalog(pm);
             catalog.refresh();
@@ -1527,6 +1581,13 @@ int main(int argc, char* argv[]) {
     // Non-blocking background fetch so update alerts can be shown without delaying startup.
     pkg_catalog.refresh();
 
+    // --- Core app update checks (non-blocking appcast fetch) ---
+    vivid::AppUpdateManager app_updates(VIVID_CORE_VERSION);
+    app_updates.set_skipped_version(settings.core_update_skipped_version);
+    if (settings.core_update_auto_check) {
+        app_updates.refresh();
+    }
+
     // --- Recursive graph discovery + graph-level meta ---
     std::filesystem::path graphs_root = resources_dir / "graphs";
     if (!std::filesystem::is_directory(graphs_root)) {
@@ -1625,6 +1686,7 @@ int main(int argc, char* argv[]) {
     control_server.set_package_manager(&pkg_manager);
     control_server.set_package_compiler(&pkg_compiler);
     control_server.set_package_catalog(&pkg_catalog);
+    control_server.set_app_update_manager(&app_updates);
     if (!control_server.start(9876)) {
         std::fprintf(stderr, "[vivid] Control server unavailable (port 9876 in use?)\n");
     }
@@ -1723,6 +1785,35 @@ int main(int argc, char* argv[]) {
             missing.clear();
             return true;
         });
+    graph_ui.set_core_update_notice_callbacks(
+        [&]() {
+#ifdef __APPLE__
+            std::string err;
+            if (!vivid::SparkleBridge::check_for_updates(&err)) {
+                auto info = app_updates.latest();
+                if (!info.download_url.empty()) {
+                    if (!vivid::open_url(info.download_url, &err)) {
+                        std::fprintf(stderr, "[vivid] Update install fallback failed: %s\n", err.c_str());
+                    }
+                } else {
+                    std::fprintf(stderr, "[vivid] Sparkle unavailable: %s\n", err.c_str());
+                }
+            }
+#else
+            auto info = app_updates.latest();
+            std::string err;
+            if (!info.download_url.empty() && !vivid::open_url(info.download_url, &err)) {
+                std::fprintf(stderr, "[vivid] Update install failed: %s\n", err.c_str());
+            }
+#endif
+        },
+        [&]() {
+            auto info = app_updates.latest();
+            settings.core_update_skipped_version = info.latest_version;
+            app_updates.set_skipped_version(info.latest_version);
+            vivid::save_settings(settings);
+        },
+        [&]() {});
     if (graph.has_viewport())
         graph_ui.set_viewport(graph.viewport_pan_x, graph.viewport_pan_y, graph.viewport_zoom);
 
@@ -2047,6 +2138,29 @@ int main(int argc, char* argv[]) {
             }
         };
 
+        menu_cbs.on_check_for_updates = [&]() {
+#ifdef __APPLE__
+            std::string err;
+            if (vivid::SparkleBridge::available() &&
+                vivid::SparkleBridge::check_for_updates(&err)) {
+                settings.core_update_last_checked_at = now_epoch_seconds_str();
+                vivid::save_settings(settings);
+                return;
+            }
+#endif
+            app_updates.refresh();
+            settings.core_update_last_checked_at = now_epoch_seconds_str();
+            vivid::save_settings(settings);
+            std::fprintf(stderr, "[vivid] Checking for core updates via appcast...\n");
+        };
+
+        menu_cbs.on_toggle_auto_check_updates = [&]() {
+            settings.core_update_auto_check = !settings.core_update_auto_check;
+            vivid::save_settings(settings);
+            std::fprintf(stderr, "[vivid] Core auto-update checks: %s\n",
+                         settings.core_update_auto_check ? "enabled" : "disabled");
+        };
+
         menu_cbs.on_report_issue = [&]() {
             const auto packages = pkg_manager.list();
             const auto operators = registry.type_names();
@@ -2118,6 +2232,7 @@ int main(int argc, char* argv[]) {
         menu_cbs.is_midi_map_mode = [&]() { return graph_ui.midi_map_mode(); };
         menu_cbs.has_selection = [&]() { return graph_ui.has_selection(); };
         menu_cbs.can_edit_meta = [&]() { return !graph.source_path().empty(); };
+        menu_cbs.is_auto_check_updates = [&]() { return settings.core_update_auto_check; };
 
         vivid::macos_setup_menu(menu_cbs);
     }
@@ -2126,6 +2241,7 @@ int main(int argc, char* argv[]) {
     double prev_time = glfwGetTime();
     uint64_t frame_count = 0;
     bool pkg_update_notice_done = false;
+    bool core_update_notice_done = false;
 #ifdef __APPLE__
     bool window_doc_edited = false;
 #endif
@@ -2336,6 +2452,28 @@ int main(int argc, char* argv[]) {
                 std::fprintf(stderr, "[vivid] Package update check unavailable (non-fatal): %s\n",
                              pkg_catalog.fetch_error().c_str());
                 pkg_update_notice_done = true;
+            }
+        }
+
+        // Non-intrusive startup core update alert.
+        if (!core_update_notice_done && settings.core_update_auto_check) {
+            auto st = app_updates.fetch_state();
+            if (st == vivid::AppUpdateFetchState::Ready) {
+                auto info = app_updates.latest();
+                settings.core_update_last_checked_at = now_epoch_seconds_str();
+                if (info.update_available && !app_updates.is_skipped(info.latest_version)) {
+                    std::fprintf(stderr,
+                        "[vivid] Core update available: %s -> %s. "
+                        "Use File -> Check for Updates... for installer flow.\n",
+                        info.current_version.c_str(), info.latest_version.c_str());
+                    graph_ui.show_core_update_notice(info.latest_version, info.title);
+                }
+                core_update_notice_done = true;
+            } else if (st == vivid::AppUpdateFetchState::Error) {
+                settings.core_update_last_checked_at = now_epoch_seconds_str();
+                std::fprintf(stderr, "[vivid] Core update check unavailable (non-fatal): %s\n",
+                             app_updates.fetch_error().c_str());
+                core_update_notice_done = true;
             }
         }
 

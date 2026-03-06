@@ -50,6 +50,12 @@ Settings load_settings() {
         s.editor_command = yyjson_get_str(v);
     if ((v = yyjson_obj_get(root, "style_id")) && yyjson_is_str(v))
         s.style_id = yyjson_get_str(v);
+    if ((v = yyjson_obj_get(root, "core_update_auto_check")) && yyjson_is_bool(v))
+        s.core_update_auto_check = yyjson_get_bool(v);
+    if ((v = yyjson_obj_get(root, "core_update_last_checked_at")) && yyjson_is_str(v))
+        s.core_update_last_checked_at = yyjson_get_str(v);
+    if ((v = yyjson_obj_get(root, "core_update_skipped_version")) && yyjson_is_str(v))
+        s.core_update_skipped_version = yyjson_get_str(v);
 
     // Sanity: clamp size to something reasonable
     if (s.window_width < 320) s.window_width = 320;
@@ -75,6 +81,13 @@ void save_settings(const Settings& s) {
         yyjson_mut_obj_add_str(doc, root, "editor_command", s.editor_command.c_str());
     if (!s.style_id.empty())
         yyjson_mut_obj_add_str(doc, root, "style_id", s.style_id.c_str());
+    yyjson_mut_obj_add_bool(doc, root, "core_update_auto_check", s.core_update_auto_check);
+    if (!s.core_update_last_checked_at.empty())
+        yyjson_mut_obj_add_str(doc, root, "core_update_last_checked_at",
+                               s.core_update_last_checked_at.c_str());
+    if (!s.core_update_skipped_version.empty())
+        yyjson_mut_obj_add_str(doc, root, "core_update_skipped_version",
+                               s.core_update_skipped_version.c_str());
 
     std::string path = settings_path();
     yyjson_write_err werr;

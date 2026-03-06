@@ -198,6 +198,12 @@ public:
                             int current_idx = 0, const std::string& custom_command = "");
     void set_style_options(std::vector<UIStyle> styles, int current_idx,
                             std::vector<ThemeInfo> themes = {});
+    void show_core_update_notice(const std::string& latest_version,
+                                 const std::string& summary = "");
+    void clear_core_update_notice();
+    void set_core_update_notice_callbacks(std::function<void()> install_cb,
+                                          std::function<void()> skip_cb,
+                                          std::function<void()> later_cb);
 
 private:
     // --- Layout ---
@@ -243,6 +249,7 @@ private:
     void draw_wire_tooltip(Renderer2D& tr);
     void draw_inspector_scrollbar(Renderer2D& tr);
     void draw_midi_map_banner(Renderer2D& tr);
+    void draw_core_update_banner(Renderer2D& tr);
 
     // --- Session grid ---
     void draw_session_grid(Renderer2D& tr);
@@ -779,6 +786,17 @@ private:
     struct PerfButtonRect { float x, y, w, h; int action; bool enabled; };
     // action: 0=Record/Stop, 1=Snapshot, 2=Undo, 3=Redo
     std::vector<PerfButtonRect> perf_button_rects_;
+
+    // --- Core update notice ---
+    bool core_update_notice_open_ = false;
+    std::string core_update_notice_version_;
+    std::string core_update_notice_summary_;
+    struct CoreUpdateButtonRect { float x, y, w, h; int action; };
+    // action: 0=Install, 1=Skip, 2=Later
+    std::vector<CoreUpdateButtonRect> core_update_button_rects_;
+    std::function<void()> on_core_update_install_;
+    std::function<void()> on_core_update_skip_;
+    std::function<void()> on_core_update_later_;
 };
 
 } // namespace vivid::ui

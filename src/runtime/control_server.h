@@ -14,6 +14,7 @@ class CaptureCoordinator;
 class PackageManager;
 class PackageCompiler;
 class PackageCatalog;
+class AppUpdateManager;
 
 class ControlServer {
 public:
@@ -34,6 +35,7 @@ public:
     void set_package_manager(PackageManager* pm);
     void set_package_compiler(PackageCompiler* pc);
     void set_package_catalog(PackageCatalog* cat);
+    void set_app_update_manager(AppUpdateManager* aum);
 
     // Call from main loop each frame. Drains pending HTTP requests,
     // dispatches commands against the runtime, and signals responses.
@@ -52,6 +54,7 @@ private:
     PackageManager* package_manager_ = nullptr;
     PackageCompiler* package_compiler_ = nullptr;
     PackageCatalog* package_catalog_ = nullptr;
+    AppUpdateManager* app_update_manager_ = nullptr;
 };
 
 } // namespace vivid

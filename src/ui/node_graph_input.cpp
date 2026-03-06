@@ -1155,6 +1155,25 @@ void NodeGraphUI::handle_left_click() {
     }
 
     // Perf bar buttons (Record/Stop, Snapshot)
+    for (const auto& btn : core_update_button_rects_) {
+        if (mouse_.x >= btn.x && mouse_.x <= btn.x + btn.w &&
+            mouse_.y >= btn.y && mouse_.y <= btn.y + btn.h) {
+            if (btn.action == 0) {
+                if (on_core_update_install_) on_core_update_install_();
+                clear_core_update_notice();
+            } else if (btn.action == 1) {
+                if (on_core_update_skip_) on_core_update_skip_();
+                clear_core_update_notice();
+            } else if (btn.action == 2) {
+                if (on_core_update_later_) on_core_update_later_();
+                clear_core_update_notice();
+            }
+            mouse_.left_clicked = false;
+            return;
+        }
+    }
+
+    // Perf bar buttons (Record/Stop, Snapshot)
     for (const auto& btn : perf_button_rects_) {
         if (mouse_.x >= btn.x && mouse_.x <= btn.x + btn.w &&
             mouse_.y >= btn.y && mouse_.y <= btn.y + btn.h) {

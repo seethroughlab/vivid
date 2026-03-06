@@ -12,6 +12,7 @@
 #include "runtime/package_compiler.h"
 #include "runtime/package_test_runner.h"
 #include "runtime/package_catalog.h"
+#include "runtime/app_update_manager.h"
 #include "operator_api/types.h"
 #include "yyjson.h"
 #include <ixwebsocket/IXHttpServer.h>
@@ -29,6 +30,8 @@
 #include <algorithm>
 #include <cmath>
 #include <unordered_set>
+#include <thread>
+#include <chrono>
 
 namespace vivid {
 
@@ -2267,6 +2270,7 @@ void ControlServer::set_capture_coordinator(CaptureCoordinator* cc) { capture_co
 void ControlServer::set_package_manager(PackageManager* pm) { package_manager_ = pm; }
 void ControlServer::set_package_compiler(PackageCompiler* pc) { package_compiler_ = pc; }
 void ControlServer::set_package_catalog(PackageCatalog* cat) { package_catalog_ = cat; }
+void ControlServer::set_app_update_manager(AppUpdateManager* aum) { app_update_manager_ = aum; }
 
 bool ControlServer::start(int port) {
     impl_ = std::make_unique<Impl>(port);
@@ -2480,6 +2484,81 @@ bool ControlServer::start(int port) {
                 yyjson_mut_obj_add_int(rdoc, rroot, "updates_available", update_count);
                 yyjson_mut_obj_add_int(rdoc, rroot, "incompatible_updates", incompatible_count);
                 yyjson_mut_obj_add_val(rdoc, rroot, "packages", updates);
+
+                char* json_str = yyjson_mut_write(rdoc, 0, nullptr);
+                std::string response_body = json_str ? json_str : R"({"ok":false,"error":"json write failed"})";
+                if (json_str) free(json_str);
+                yyjson_mut_doc_free(rdoc);
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    response_body);
+            }
+
+            // Check core app updates using appcast metadata.
+            if (method == "check_core_updates") {
+                if (!app_update_manager_) {
+                    return std::make_shared<ix::HttpResponse>(
+                        200, "OK", ix::HttpErrorCode::Ok,
+                        ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                        R"({"ok":false,"error":"core update manager unavailable"})");
+                }
+                bool force_refresh = false;
+                if (!request->body.empty()) {
+                    yyjson_doc* doc = yyjson_read(request->body.c_str(), request->body.size(), 0);
+                    if (doc) {
+                        yyjson_val* root = yyjson_doc_get_root(doc);
+                        yyjson_val* fr = root ? yyjson_obj_get(root, "force_refresh") : nullptr;
+                        if (fr && yyjson_is_bool(fr))
+                            force_refresh = yyjson_get_bool(fr);
+                        yyjson_doc_free(doc);
+                    }
+                }
+                if (force_refresh) app_update_manager_->refresh();
+                if (app_update_manager_->fetch_state() == AppUpdateFetchState::Idle)
+                    app_update_manager_->refresh();
+                for (int i = 0; i < 200; ++i) {
+                    auto st = app_update_manager_->fetch_state();
+                    if (st != AppUpdateFetchState::Fetching) break;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                }
+
+                yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                yyjson_mut_val* rroot = yyjson_mut_obj(rdoc);
+                yyjson_mut_doc_set_root(rdoc, rroot);
+                yyjson_mut_obj_add_true(rdoc, rroot, "ok");
+
+                const auto st = app_update_manager_->fetch_state();
+                switch (st) {
+                    case AppUpdateFetchState::Idle:
+                        yyjson_mut_obj_add_strcpy(rdoc, rroot, "state", "idle");
+                        break;
+                    case AppUpdateFetchState::Fetching:
+                        yyjson_mut_obj_add_strcpy(rdoc, rroot, "state", "fetching");
+                        break;
+                    case AppUpdateFetchState::Ready:
+                        yyjson_mut_obj_add_strcpy(rdoc, rroot, "state", "ready");
+                        break;
+                    case AppUpdateFetchState::Error:
+                        yyjson_mut_obj_add_strcpy(rdoc, rroot, "state", "error");
+                        break;
+                }
+
+                auto info = app_update_manager_->latest();
+                yyjson_mut_obj_add_bool(rdoc, rroot, "update_available", info.update_available);
+                yyjson_mut_obj_add_strcpy(rdoc, rroot, "current_version", info.current_version.c_str());
+                yyjson_mut_obj_add_strcpy(rdoc, rroot, "latest_version", info.latest_version.c_str());
+                yyjson_mut_obj_add_strcpy(rdoc, rroot, "download_url", info.download_url.c_str());
+                yyjson_mut_obj_add_strcpy(rdoc, rroot, "release_notes_url", info.release_notes_url.c_str());
+                yyjson_mut_obj_add_strcpy(rdoc, rroot, "title", info.title.c_str());
+                yyjson_mut_obj_add_strcpy(rdoc, rroot, "publication_date", info.publication_date.c_str());
+                yyjson_mut_obj_add_strcpy(rdoc, rroot, "minimum_system_version", info.minimum_system_version.c_str());
+                yyjson_mut_obj_add_strcpy(rdoc, rroot, "appcast_url",
+                                          AppUpdateManager::appcast_url().c_str());
+                if (st == AppUpdateFetchState::Error) {
+                    yyjson_mut_obj_add_strcpy(rdoc, rroot, "error",
+                                              app_update_manager_->fetch_error().c_str());
+                }
 
                 char* json_str = yyjson_mut_write(rdoc, 0, nullptr);
                 std::string response_body = json_str ? json_str : R"({"ok":false,"error":"json write failed"})";
