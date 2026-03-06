@@ -67,4 +67,4 @@ Observed:
 Notes:
 - This confirms workflow presence locally, not GitHub run status.
 - Prior smoke protocol and expectations are documented in:
-  - `docs/PACKAGE-SMOKE-TEST.md`
+  - `docs/testing/PACKAGE-SMOKE-TEST.md`

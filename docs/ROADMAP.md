@@ -25,7 +25,7 @@ Windows and Linux support is deferred past 1.0.
 
 ### 2. Smoke tests
 
-**Status:** Complete. `test_demo_graphs` loads all demo graphs headlessly, validates no stderr warnings, and runs in CI. Package repos (vivid-3d, vivid-glitch) each have their own smoke test CI that clones vivid-core and runs `test_demo_graphs` against their graphs. Protocol documented in `docs/PACKAGE-SMOKE-TEST.md`.
+**Status:** Complete. `test_demo_graphs` loads all demo graphs headlessly, validates no stderr warnings, and runs in CI. Package repos (vivid-3d, vivid-glitch) each have their own smoke test CI that clones vivid-core and runs `test_demo_graphs` against their graphs. Protocol documented in `docs/testing/PACKAGE-SMOKE-TEST.md`.
 
 - [x] Extend demo graph smoke test to also validate no stderr warnings (not just no crashes)
 - [x] Add a dedicated CI smoke-test step that runs the full smoke suite (`.github/workflows/smoke.yml`)
@@ -37,9 +37,9 @@ Windows and Linux support is deferred past 1.0.
 
 ### 3. Catalog application functionality for manual testing
 
-**Status:** Complete. Manual test catalog exists at `docs/MANUAL-TEST-CATALOG.md` with functional-area coverage, pass/fail criteria, and macOS-specific notes.
+**Status:** Complete. Manual test catalog exists at `docs/testing/MANUAL-TEST-CATALOG.md` with functional-area coverage, pass/fail criteria, and macOS-specific notes.
 
-- [x] Create `docs/MANUAL-TEST-CATALOG.md` organized by functional area:
+- [x] Create `docs/testing/MANUAL-TEST-CATALOG.md` organized by functional area:
   - **Graph editing:** add/delete nodes, connect/disconnect wires, copy/paste, drag to reorder, group selection
   - **Parameter UI:** sliders, xy-pads, color pickers, typed input, dropdown menus, toggle buttons
   - **Audio:** audio operators produce sound, AudioOut routing, sample rate handling, buffer sizes
@@ -58,7 +58,7 @@ Windows and Linux support is deferred past 1.0.
 
 #### Inner loop (parameter tweaking)
 
-**Status:** Test plan documented in `docs/INNER-OUTER-LOOP-TEST-PLAN.md`. Manual execution is still pending.
+**Status:** Test plan documented in `docs/testing/INNER-OUTER-LOOP-TEST-PLAN.md`. Manual execution is still pending.
 
 - [x] Document the expected inner-loop workflow: adjust slider → see visual/audio change in real time
 - [x] Manual test checklist:
@@ -70,7 +70,7 @@ Windows and Linux support is deferred past 1.0.
 
 #### Outer loop (operator editing + hot-reload)
 
-**Status:** Workflow and manual checklist documented in `docs/INNER-OUTER-LOOP-TEST-PLAN.md`. End-to-end manual verification across domains is still pending.
+**Status:** Workflow and manual checklist documented in `docs/testing/INNER-OUTER-LOOP-TEST-PLAN.md`. End-to-end manual verification across domains is still pending.
 
 - [x] Document the expected outer-loop workflow: edit .cpp → save → file watcher fires → hot-reload compiles → operator reloads in running graph
 - [ ] Verify hot-reload for each domain:
@@ -85,7 +85,7 @@ Windows and Linux support is deferred past 1.0.
 
 ### 5. Test operator creation + MCP-assisted development
 
-**Status:** `test_operator_creator.cpp` covers scaffold. MCP `scaffold_operator` tool exists in `mcp_server.cpp`. Manual/E2E plan documented in `docs/OPERATOR-CREATION-MCP-TEST-PLAN.md`. Execution notes are in `docs/archive/OPERATOR-CREATION-MCP-TEST-RESULTS.md` (OC-1 + OC-3 live bridge pass; startup mitigations were required due deferred-probe crashes in specific plugins).
+**Status:** `test_operator_creator.cpp` covers scaffold. MCP `scaffold_operator` tool exists in `mcp_server.cpp`. Manual/E2E plan documented in `docs/testing/OPERATOR-CREATION-MCP-TEST-PLAN.md`. Execution notes are in `docs/archive/OPERATOR-CREATION-MCP-TEST-RESULTS.md` (OC-1 + OC-3 live bridge pass; startup mitigations were required due deferred-probe crashes in specific plugins).
 
 - [ ] End-to-end test: scaffold → edit implementation → hot-reload → use in a graph → verify output
 - [ ] Test all domain variants:
@@ -336,7 +336,7 @@ Goal: make package authoring, install/update behavior, and discovery feel first-
   - `vivid-package.json` required/optional fields
   - install/link/rebuild/uninstall behavior and expected state transitions
   - current package root locations and scan order
-- [x] Add a short architecture note (`docs/PACKAGE-ECOSYSTEM-DESIGN.md`) covering:
+- [x] Add a short architecture note (`docs/internal/PACKAGE-ECOSYSTEM-DESIGN.md`) covering:
   - version model (`version`, optional constraints, compatibility surface)
   - update policy (manual check vs startup check; non-blocking warnings)
   - scope precedence rules (local > project > user/system, with explicit tie-breakers)
@@ -363,7 +363,7 @@ Goal: make package authoring, install/update behavior, and discovery feel first-
 
 *Trimmed rollout note:* implement fixed scope order (`local > workspace > user > builtin`) first; defer `system` scope and configurable scope-order/settings knobs until after initial resolver/diagnostic shipping.
 
-- [x] Finalize canonical scope directories and config knobs (spec: `docs/PACKAGE-SEARCH-PATHS.md`)
+- [x] Finalize canonical scope directories and config knobs (spec: `docs/internal/PACKAGE-SEARCH-PATHS.md`)
   - local graph/package folder scope
   - project workspace scope
   - user/system package scope
@@ -389,14 +389,14 @@ Goal: make package authoring, install/update behavior, and discovery feel first-
 
 ### Phase 4: Discovery Surface Decision
 
-*Execution note:* 1.0 discovery follows the GitHub-hosted hybrid plan in `docs/PACKAGE-DISCOVERY-SPEC.md`: external website + runtime install bridge, with **no CEF in core**.
+*Execution note:* 1.0 discovery follows the GitHub-hosted hybrid plan in `docs/internal/PACKAGE-DISCOVERY-SPEC.md`: external website + runtime install bridge, with **no CEF in core**.
 Initial artifact shipped: `catalog/packages.json` with current sibling package metadata and preview-image URL placeholders.
 
-- [x] Evaluate package discovery options and choose one for 1.0 (see `docs/PACKAGE-DISCOVERY-SPEC.md`):
+- [x] Evaluate package discovery options and choose one for 1.0 (see `docs/internal/PACKAGE-DISCOVERY-SPEC.md`):
   - lightweight curated index in repo/catalog JSON
   - web browsing site
   - deferred (documented rationale)
-- [x] If included in 1.0, define minimal viable implementation (see `docs/PACKAGE-DISCOVERY-SPEC.md`):
+- [x] If included in 1.0, define minimal viable implementation (see `docs/internal/PACKAGE-DISCOVERY-SPEC.md`):
   - metadata format
   - moderation/curation ownership
   - ingestion/update workflow
@@ -440,7 +440,7 @@ Legacy references consulted for fit checks (patterns only, no verbatim porting):
 
 ### Phase 0: Spec + API Contract
 
-- [x] Define the canonical perception payload schema in docs (see `docs/PERCEPTION-API-SPEC.md`):
+- [x] Define the canonical perception payload schema in docs (see `docs/internal/PERCEPTION-API-SPEC.md`):
   - per-node introspection object
   - graph-level diagnostics object
   - check definition/result object
@@ -690,18 +690,18 @@ Milestone 5 closure note (2026-03-05):
 
 Milestone 6 follow-up notes:
 - Sparkle runtime bridge is integrated via Objective-C runtime lookup; release builds should embed Sparkle framework and set `VIVID_SPARKLE_PUBLIC_KEY`.
-- Release operations and secrets are documented in `docs/RELEASE-OPS.md`.
+- Release operations and secrets are documented in `docs/release/RELEASE-OPS.md`.
 
 ## Milestone 7: Legacy Branch Evaluation
 
 - [x] Explore legacy branch for features worth bringing into core and sibling repos
 - [x] Apply conservative selection gate (high-fit, low-risk only) and explicitly defer/reject the rest
-- [x] Publish decision artifact with ranked shortlist + explicit deferrals/rejections (`docs/LEGACY-EVALUATION-M7.md`)
+- [x] Publish decision artifact with ranked shortlist + explicit deferrals/rejections (`docs/internal/LEGACY-EVALUATION-M7.md`)
 
 Milestone 7 closure note (2026-03-06):
 - Completed as a planning/evaluation milestone with no runtime/API mutations.
 - Package-first pass completed in this order: `vivid-3d`, `vivid-drums`, `vivid-glitch`, `vivid-sequencers`, `vivid-wavetable`, then core.
-- `docs/LEGACY-EVALUATION-M7.md` is the source-of-truth for adopt/defer/reject decisions and prerequisites.
+- `docs/internal/LEGACY-EVALUATION-M7.md` is the source-of-truth for adopt/defer/reject decisions and prerequisites.
 
 Milestone 7 Next Execution Queue (from ranked `adopt_next` shortlist):
 1. `M7-SQ-01` (`vivid-sequencers`) - step probability + ratchet support

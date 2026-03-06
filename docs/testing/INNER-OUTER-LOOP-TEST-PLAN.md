@@ -5,7 +5,7 @@ This document defines manual test procedures for Milestone 1 item 4:
 - Inner loop: parameter tweaking in a running graph
 - Outer loop: operator source edits with hot-reload in a running graph
 
-Use this plan with `docs/MANUAL-TEST-CATALOG.md`. That catalog defines broad functional coverage; this document focuses on iteration speed and reliability.
+Use this plan with `docs/testing/MANUAL-TEST-CATALOG.md`. That catalog defines broad functional coverage; this document focuses on iteration speed and reliability.
 
 ## Test Preconditions
 

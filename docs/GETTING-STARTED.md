@@ -61,7 +61,7 @@ to inspect current state and validate constraints while editing.
 
 Reference:
 - [LLM-INTEGRATION.md](LLM-INTEGRATION.md)
-- [PERCEPTION-API-SPEC.md](PERCEPTION-API-SPEC.md)
+- [PERCEPTION-API-SPEC.md](internal/PERCEPTION-API-SPEC.md)
 
 ---
 
@@ -71,7 +71,7 @@ Reference:
   - Operator contract + runtime architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
   - MCP workflow and scaffold tools: [LLM-INTEGRATION.md](LLM-INTEGRATION.md)
   - Semantic tagging guidance (when to tag vs not to tag): [SEMANTIC-PARAM-TAGS.md](SEMANTIC-PARAM-TAGS.md)
-  - Practical scaffold/edit/reload checklist: [OPERATOR-CREATION-MCP-TEST-PLAN.md](OPERATOR-CREATION-MCP-TEST-PLAN.md)
+  - Practical scaffold/edit/reload checklist: [OPERATOR-CREATION-MCP-TEST-PLAN.md](testing/OPERATOR-CREATION-MCP-TEST-PLAN.md)
 - **Install more operator libraries:** [PACKAGE-LIBRARIES.md](PACKAGE-LIBRARIES.md)
 - **Author your own package repo:** [vivid-package-template](https://github.com/seethroughlab/vivid-package-template)
 
