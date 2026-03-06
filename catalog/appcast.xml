@@ -6,10 +6,10 @@
     <description>Stable updates for Vivid</description>
     <language>en</language>
     <item>
-      <title>Vivid 0.1.0-alpha12</title>
-      <pubDate>Fri, 06 Mar 2026 16:12:40 +0000</pubDate>
-    <sparkle:releaseNotesLink>https://github.com/seethroughlab/vivid/releases/tag/v0.1.0-alpha12</sparkle:releaseNotesLink>
-      <enclosure url="https://github.com/seethroughlab/vivid/releases/download/v0.1.0-alpha12/Vivid-0.1.0-alpha12-macos-arm64.zip" sparkle:version="0.1.0-alpha12" sparkle:shortVersionString="0.1.0-alpha12" length="6351259" type="application/octet-stream" />
+      <title>Vivid 0.1.0-alpha13</title>
+      <pubDate>Fri, 06 Mar 2026 16:47:51 +0000</pubDate>
+    <sparkle:releaseNotesLink>https://github.com/seethroughlab/vivid/releases/tag/v0.1.0-alpha13</sparkle:releaseNotesLink>
+      <enclosure url="https://github.com/seethroughlab/vivid/releases/download/v0.1.0-alpha13/Vivid-0.1.0-alpha13-macos-arm64.zip" sparkle:version="0.1.0-alpha13" sparkle:shortVersionString="0.1.0-alpha13" length="6389422" type="application/octet-stream" />
     </item>
   </channel>
 </rss>
