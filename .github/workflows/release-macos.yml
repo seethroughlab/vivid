@@ -70,7 +70,13 @@ jobs:
             "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" \
             -o "$RUNNER_TEMP/sparkle.tar.xz"
           tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP"
-          cp -R "$RUNNER_TEMP/Sparkle-${SPARKLE_VERSION}/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$FW_DIR/"
+          SPARKLE_ROOT="$RUNNER_TEMP/Sparkle-${SPARKLE_VERSION}"
+          SPARKLE_FRAMEWORK="$(find "$SPARKLE_ROOT" -type d -path "*/macos-arm64*/Sparkle.framework" | head -n1 || true)"
+          if [[ -z "$SPARKLE_FRAMEWORK" ]]; then
+            SPARKLE_FRAMEWORK="$(find "$SPARKLE_ROOT" -type d -name "Sparkle.framework" | head -n1 || true)"
+          fi
+          [[ -n "$SPARKLE_FRAMEWORK" ]] || { echo "Could not find Sparkle.framework in $SPARKLE_ROOT" >&2; find "$SPARKLE_ROOT" -maxdepth 4 -type d | sed -n '1,120p'; exit 1; }
+          cp -R "$SPARKLE_FRAMEWORK" "$FW_DIR/"
 
       - name: Import Developer ID certificate
         env:
