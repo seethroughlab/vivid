@@ -135,6 +135,27 @@ static std::string command_result_to_json(const CommandResult& r) {
     return r.ok ? json_ok_msg(r.message) : json_err(r.message);
 }
 
+static bool split_addr_local(const std::string& addr, std::string& node, std::string& port) {
+    size_t slash = addr.find('/');
+    if (slash == std::string::npos) return false;
+    node = addr.substr(0, slash);
+    port = addr.substr(slash + 1);
+    return !node.empty() && !port.empty();
+}
+
+static const ConnectionDef* find_connection_by_addr(const Graph& graph,
+                                                    const std::string& from_addr,
+                                                    const std::string& to_addr) {
+    std::string fn, fp, tn, tp;
+    if (!split_addr_local(from_addr, fn, fp) || !split_addr_local(to_addr, tn, tp))
+        return nullptr;
+    for (const auto& c : graph.connections()) {
+        if (c.from_node == fn && c.from_port == fp && c.to_node == tn && c.to_port == tp)
+            return &c;
+    }
+    return nullptr;
+}
+
 static bool is_safe_package_name(const std::string& name) {
     return name.find('/') == std::string::npos &&
            name.find('\\') == std::string::npos &&
@@ -1398,10 +1419,39 @@ static std::string dispatch(const std::string& method, const std::string& body,
             yyjson_val* sem  = yyjson_obj_get(root, "semantic_defaults");
             if (!from || !to || !yyjson_is_str(from) || !yyjson_is_str(to))
                 result = json_err("missing 'from_addr' or 'to_addr'");
-            else
-                result = command_result_to_json(
-                    api.connect(yyjson_get_str(from), yyjson_get_str(to),
-                                sem && yyjson_is_bool(sem) && yyjson_get_bool(sem)));
+            else {
+                const std::string from_addr = yyjson_get_str(from);
+                const std::string to_addr = yyjson_get_str(to);
+                const bool semantic_defaults = sem && yyjson_is_bool(sem) && yyjson_get_bool(sem);
+                CommandResult cr = api.connect(from_addr, to_addr, semantic_defaults);
+                if (!cr.ok) {
+                    result = json_err(cr.message);
+                } else {
+                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                    yyjson_mut_val* rroot = yyjson_mut_obj(rdoc);
+                    yyjson_mut_doc_set_root(rdoc, rroot);
+                    yyjson_mut_obj_add_bool(rdoc, rroot, "ok", true);
+                    yyjson_mut_obj_add_strcpy(rdoc, rroot, "message", cr.message.c_str());
+
+                    bool inferred_applied = false;
+                    if (semantic_defaults) {
+                        const ConnectionDef* conn = find_connection_by_addr(graph, from_addr, to_addr);
+                        if (conn && conn->has_remap()) {
+                            inferred_applied = true;
+                            yyjson_mut_val* remap = yyjson_mut_obj(rdoc);
+                            yyjson_mut_obj_add_real(rdoc, remap, "from_min", conn->from_min);
+                            yyjson_mut_obj_add_real(rdoc, remap, "from_max", conn->from_max);
+                            yyjson_mut_obj_add_real(rdoc, remap, "to_min", conn->to_min);
+                            yyjson_mut_obj_add_real(rdoc, remap, "to_max", conn->to_max);
+                            yyjson_mut_obj_add_bool(rdoc, remap, "clamp", conn->clamp);
+                            yyjson_mut_obj_add_val(rdoc, rroot, "inferred_remap", remap);
+                        }
+                    }
+                    yyjson_mut_obj_add_bool(rdoc, rroot, "inferred_remap_applied", inferred_applied);
+                    result = json_serialize(rdoc);
+                    yyjson_mut_doc_free(rdoc);
+                }
+            }
         }
     } else if (method == "disconnect") {
         if (!root) { result = json_err("invalid JSON body"); }

@@ -35,6 +35,21 @@ struct ParamSemanticMeta {
     float max_value = 1.0f;
 };
 
+struct SemanticCoercionRule {
+    const char* from_tag;
+    const char* to_tag;
+    float scale;
+};
+
+// Explicit coercion contract for semantic-default remap.
+// Keep in sync with docs/SEMANTIC-PARAM-TAGS.md.
+static constexpr SemanticCoercionRule kSemanticCoercionRules[] = {
+    {"time_milliseconds", "time_seconds", 1.0f / 1000.0f},
+    {"time_seconds", "time_milliseconds", 1000.0f},
+    {"rotation_degrees", "rotation_radians", 3.14159265358979323846f / 180.0f},
+    {"rotation_radians", "rotation_degrees", 180.0f / 3.14159265358979323846f},
+};
+
 bool resolve_param_semantic_meta(const vivid::Graph& graph,
                                  vivid::OperatorRegistry& registry,
                                  const std::string& node_id,
@@ -82,33 +97,13 @@ bool converted_range_for_pair(const ParamSemanticMeta& src,
                               const ParamSemanticMeta& dst,
                               float& out_to_min,
                               float& out_to_max) {
-    auto convert = [&](float v, const std::string& from, const std::string& to, float& out) -> bool {
-        if (from == "time_milliseconds" && to == "time_seconds") {
-            out = v / 1000.0f;
-            return true;
-        }
-        if (from == "time_seconds" && to == "time_milliseconds") {
-            out = v * 1000.0f;
-            return true;
-        }
-        if (from == "rotation_degrees" && to == "rotation_radians") {
-            out = v * (3.14159265358979323846f / 180.0f);
-            return true;
-        }
-        if (from == "rotation_radians" && to == "rotation_degrees") {
-            out = v * (180.0f / 3.14159265358979323846f);
-            return true;
-        }
-        return false;
-    };
-
-    float min_conv = 0.0f;
-    float max_conv = 0.0f;
-    if (!convert(src.min_value, src.tag, dst.tag, min_conv)) return false;
-    if (!convert(src.max_value, src.tag, dst.tag, max_conv)) return false;
-    out_to_min = min_conv;
-    out_to_max = max_conv;
-    return true;
+    for (const auto& rule : kSemanticCoercionRules) {
+        if (src.tag != rule.from_tag || dst.tag != rule.to_tag) continue;
+        out_to_min = src.min_value * rule.scale;
+        out_to_max = src.max_value * rule.scale;
+        return true;
+    }
+    return false;  // Different-tag coercion is disabled unless explicitly listed above.
 }
 
 bool semantic_default_remap(const ParamSemanticMeta& src,
