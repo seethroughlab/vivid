@@ -133,20 +133,8 @@ jobs:
           ditto -c -k --keepParent "$APP" "$ZIP"
           NOTARY_JSON="$RUNNER_TEMP/notary-result.json"
           xcrun notarytool submit "$ZIP" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$NOTARY_JSON"
-          NOTARY_ID="$(python3 - <<'PY' "$NOTARY_JSON"
-import json, sys
-with open(sys.argv[1], "r", encoding="utf-8") as f:
-    data = json.load(f)
-print(data.get("id", ""))
-PY
-)"
-          NOTARY_STATUS="$(python3 - <<'PY' "$NOTARY_JSON"
-import json, sys
-with open(sys.argv[1], "r", encoding="utf-8") as f:
-    data = json.load(f)
-print(data.get("status", ""))
-PY
-)"
+          NOTARY_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("id",""))' "$NOTARY_JSON")"
+          NOTARY_STATUS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status",""))' "$NOTARY_JSON")"
           if [[ "$NOTARY_STATUS" != "Accepted" ]]; then
             echo "Notarization status: $NOTARY_STATUS (id: $NOTARY_ID)" >&2
             if [[ -n "$NOTARY_ID" ]]; then
