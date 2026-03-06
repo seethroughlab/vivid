@@ -3,12 +3,10 @@ name: Smoke Tests
 on:
   push:
     branches: [master]
-  pull_request:
-    branches: [master]
+  workflow_dispatch:
 
 jobs:
   smoke:
-    if: ${{ github.event_name != "pull_request" || github.event.pull_request.head.repo.fork == false }}
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
