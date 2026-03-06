@@ -1659,7 +1659,58 @@ int main(int argc, char* argv[]) {
     vivid::ui::NodeGraphUI graph_ui(command_sink);
     graph_ui.set_dpi_scale(dpi_scale);
     graph_ui.set_bezier_wires(settings.bezier_wires);
-    graph_ui.set_package_catalog(&pkg_catalog);
+    vivid::ui::PackageBrowserCallbacks pkg_browser_cbs;
+    pkg_browser_cbs.refresh = [&pkg_catalog]() {
+        pkg_catalog.refresh();
+    };
+    pkg_browser_cbs.list_entries = [&pkg_catalog]() {
+            std::vector<vivid::ui::PackageBrowserEntry> out;
+            auto entries = pkg_catalog.entries();
+            out.reserve(entries.size());
+            for (const auto& e : entries) {
+                vivid::ui::PackageBrowserEntry ui_e;
+                ui_e.name = e.name;
+                ui_e.description = e.description;
+                ui_e.version = e.version;
+                ui_e.author = e.author;
+                ui_e.category = e.category;
+                ui_e.tags = e.tags;
+                ui_e.installed = e.installed;
+                out.push_back(std::move(ui_e));
+            }
+            return out;
+    };
+    pkg_browser_cbs.fetch_state = [&pkg_catalog]() {
+        switch (pkg_catalog.fetch_state()) {
+            case vivid::CatalogFetchState::Idle: return vivid::ui::PackageBrowserFetchState::Idle;
+            case vivid::CatalogFetchState::Fetching: return vivid::ui::PackageBrowserFetchState::Fetching;
+            case vivid::CatalogFetchState::Ready: return vivid::ui::PackageBrowserFetchState::Ready;
+            case vivid::CatalogFetchState::Error: return vivid::ui::PackageBrowserFetchState::Error;
+        }
+        return vivid::ui::PackageBrowserFetchState::Error;
+    };
+    pkg_browser_cbs.fetch_error = [&pkg_catalog]() {
+        return pkg_catalog.fetch_error();
+    };
+    pkg_browser_cbs.update_summary = [&pkg_catalog]() {
+        auto s = pkg_catalog.summarize_updates(VIVID_CORE_VERSION);
+        vivid::ui::PackageBrowserUpdateSummary out;
+        out.installed_packages = s.installed_packages;
+        out.updates_available = s.updates_available;
+        out.incompatible_updates = s.incompatible_updates;
+        return out;
+    };
+    pkg_browser_cbs.install = [&pkg_catalog](const std::string& name, std::string& error) {
+        auto r = pkg_catalog.install(name);
+        if (!r.success) error = r.error;
+        return r.success;
+    };
+    pkg_browser_cbs.uninstall = [&pkg_catalog](const std::string& name, std::string& error) {
+        if (pkg_catalog.uninstall(name)) return true;
+        error = "Failed to uninstall " + name;
+        return false;
+    };
+    graph_ui.set_package_browser_callbacks(std::move(pkg_browser_cbs));
     graph_ui.set_examples(discovered_examples);
     graph_ui.set_example_package_checker(
         [&pkg_manager](const std::vector<std::string>& requires, std::string& missing) {

@@ -454,8 +454,12 @@ add_library(vivid_ui STATIC
     src/ui/thumbnail_renderer.cpp
     src/ui/thumbnail_cache.cpp
     src/ui/node_graph.cpp
+    src/ui/node_graph_overlays.cpp
     src/ui/node_graph_draw.cpp
+    src/ui/node_graph_overlay_draw.cpp
     src/ui/node_graph_input.cpp
+    src/ui/node_graph_overlay_input.cpp
+    src/ui/overlay_layouts.cpp
     src/ui/ui_style.cpp
     src/ui/theme_loader.cpp
 )
@@ -890,6 +894,32 @@ add_executable(test_theme_loader
 target_include_directories(test_theme_loader PRIVATE src tests)
 target_link_libraries(test_theme_loader PRIVATE yyjson)
 add_test(NAME test_theme_loader COMMAND test_theme_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Overlay layout/hit-test regressions
+add_executable(test_overlay_layouts
+    tests/test_overlay_layouts.cpp
+    src/ui/overlay_layouts.cpp
+)
+target_include_directories(test_overlay_layouts PRIVATE src tests)
+add_test(NAME test_overlay_layouts COMMAND test_overlay_layouts WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# UI overlay interaction regressions (example/package/meta overlay callbacks)
+add_executable(test_ui_overlay_interactions
+    tests/test_ui_overlay_interactions.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_ui_overlay_interactions PRIVATE src tests)
+target_link_libraries(test_ui_overlay_interactions PRIVATE vivid_ui webgpu glfw yyjson stb_truetype)
+if(APPLE)
+    target_link_libraries(test_ui_overlay_interactions PRIVATE
+        "-framework Cocoa" "-framework Foundation")
+endif()
+add_test(NAME test_ui_overlay_interactions COMMAND test_ui_overlay_interactions WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Architecture guard: UI layer must not directly include runtime package catalog
+add_executable(test_ui_arch_guard tests/test_ui_arch_guard.cpp)
+target_include_directories(test_ui_arch_guard PRIVATE src tests)
+add_test(NAME test_ui_arch_guard COMMAND test_ui_arch_guard ${CMAKE_SOURCE_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # WGSL header parser unit test
 add_executable(test_wgsl_header

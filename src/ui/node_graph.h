@@ -16,8 +16,6 @@
 #include <unordered_set>
 #include <cassert>
 
-namespace vivid { class PackageCatalog; struct CatalogEntry; }
-
 namespace vivid::ui {
 
 struct ExampleEntry {
@@ -43,6 +41,39 @@ struct GraphMetaEditData {
     std::string domains_csv;
     std::string requires_packages_csv;
     std::string featured_rank;
+};
+
+enum class PackageBrowserFetchState {
+    Idle,
+    Fetching,
+    Ready,
+    Error
+};
+
+struct PackageBrowserEntry {
+    std::string name;
+    std::string description;
+    std::string version;
+    std::string author;
+    std::string category;
+    std::vector<std::string> tags;
+    bool installed = false;
+};
+
+struct PackageBrowserUpdateSummary {
+    int installed_packages = 0;
+    int updates_available = 0;
+    int incompatible_updates = 0;
+};
+
+struct PackageBrowserCallbacks {
+    std::function<void()> refresh;
+    std::function<std::vector<PackageBrowserEntry>()> list_entries;
+    std::function<PackageBrowserFetchState()> fetch_state;
+    std::function<std::string()> fetch_error;
+    std::function<PackageBrowserUpdateSummary()> update_summary;
+    std::function<bool(const std::string&, std::string&)> install;
+    std::function<bool(const std::string&, std::string&)> uninstall;
 };
 
 class Renderer2D;
@@ -154,7 +185,7 @@ public:
 
     void toggle_preferences();
     void toggle_package_browser();
-    void set_package_catalog(PackageCatalog* catalog);
+    void set_package_browser_callbacks(PackageBrowserCallbacks callbacks);
     void toggle_example_browser();
     void set_examples(std::vector<ExampleEntry> examples);
     void set_example_open_callback(std::function<void(const std::string&)> cb);
@@ -644,9 +675,9 @@ private:
     int pkg_browser_scroll_ = 0;
     int pkg_browser_category_ = 0;   // 0=All, 1=Audio, 2=GPU, 3=Control, 4=Utility, 5=Installed
     std::array<float, 6> pkg_browser_tab_widths_{};
-    std::vector<CatalogEntry> pkg_browser_entries_;   // filtered snapshot
-    std::vector<CatalogEntry> pkg_browser_all_;       // full snapshot
-    PackageCatalog* pkg_catalog_ = nullptr;
+    std::vector<PackageBrowserEntry> pkg_browser_entries_;   // filtered snapshot
+    std::vector<PackageBrowserEntry> pkg_browser_all_;       // full snapshot
+    PackageBrowserCallbacks pkg_browser_callbacks_{};
     bool pkg_action_pending_ = false;
     std::string pkg_action_error_;
 
