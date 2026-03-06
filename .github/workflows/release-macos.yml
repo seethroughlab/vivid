@@ -36,15 +36,17 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             tag="${{ inputs.tag }}"
           fi
-          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
             echo "Invalid tag: $tag" >&2
             exit 1
           fi
           ver="${tag#v}"
+          base_ver="${ver%%-*}"
           cmake_ver=$(grep -E '^project\(vivid VERSION ' CMakeLists.txt | sed -E 's/.*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
-          [[ "$ver" == "$cmake_ver" ]] || { echo "Tag $ver != CMake $cmake_ver" >&2; exit 1; }
+          [[ "$base_ver" == "$cmake_ver" ]] || { echo "Tag base $base_ver != CMake $cmake_ver" >&2; exit 1; }
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "base_version=$base_ver" >> "$GITHUB_OUTPUT"
 
       - name: Configure
         env:
