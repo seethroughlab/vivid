@@ -50,6 +50,28 @@ jobs:
       - name: Build
         run: cmake --build build --config ${CMAKE_BUILD_TYPE} -j$(sysctl -n hw.logicalcpu)
 
+      - name: Normalize WebGPU dylib linkage
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/vivid.app"
+          FW_DIR="$APP/Contents/Frameworks"
+          mkdir -p "$FW_DIR"
+          WGPU_SRC="$(otool -L "$APP/Contents/MacOS/vivid" | awk '/libwgpu_native.dylib/{print $1; exit}')"
+          [[ -n "$WGPU_SRC" ]] || { echo "Failed to locate libwgpu_native.dylib dependency in vivid binary" >&2; exit 1; }
+          cp -f "$WGPU_SRC" "$FW_DIR/libwgpu_native.dylib"
+          install_name_tool -id "@rpath/libwgpu_native.dylib" "$FW_DIR/libwgpu_native.dylib"
+          for bin in "$APP/Contents/MacOS/vivid" "$APP/Contents/PlugIns/"*.dylib; do
+            [[ -e "$bin" ]] || continue
+            dep="$(otool -L "$bin" | awk '/libwgpu_native.dylib/{print $1; exit}')"
+            if [[ -n "$dep" && "$dep" != "@rpath/libwgpu_native.dylib" ]]; then
+              install_name_tool -change "$dep" "@rpath/libwgpu_native.dylib" "$bin"
+            fi
+            if [[ "$bin" == *"/Contents/PlugIns/"* ]] && ! otool -l "$bin" | grep -q "@loader_path/../Frameworks"; then
+              install_name_tool -add_rpath "@loader_path/../Frameworks" "$bin"
+            fi
+          done
+
       - name: Embed Sparkle framework
         shell: bash
         run: |
