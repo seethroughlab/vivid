@@ -370,6 +370,9 @@ if(APPLE)
             $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
         COMMENT "Updating syphon_in in Vivid.app bundle"
     )
+    set_target_properties(syphon_in PROPERTIES
+        BUILD_RPATH "@loader_path/../Frameworks"
+        INSTALL_RPATH "@loader_path/../Frameworks")
 endif()
 if(APPLE)
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
@@ -405,6 +408,9 @@ if(APPLE)
             $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
         COMMENT "Updating syphon_out in Vivid.app bundle"
     )
+    set_target_properties(syphon_out PROPERTIES
+        BUILD_RPATH "@loader_path/../Frameworks"
+        INSTALL_RPATH "@loader_path/../Frameworks")
 endif()
 if(APPLE)
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
@@ -527,6 +533,10 @@ target_include_directories(vivid PRIVATE src)
 target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11)
 if(APPLE)
     target_link_libraries(vivid PRIVATE syphon_runtime)
+    # Ensure bundle-launched app resolves syphon runtime from Contents/Frameworks.
+    set_target_properties(vivid PROPERTIES
+        BUILD_RPATH "@executable_path/../Frameworks"
+        INSTALL_RPATH "@executable_path/../Frameworks")
 endif()
 
 if(APPLE)
@@ -665,7 +675,17 @@ if(APPLE)
     add_custom_command(TARGET vivid POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
             $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/Frameworks
     )
+
+    if(TARGET syphon_runtime)
+        add_custom_command(TARGET vivid POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:syphon_runtime>
+                $<TARGET_BUNDLE_CONTENT_DIR:vivid>/Frameworks/
+        )
+    endif()
 
     foreach(op_target IN LISTS _op_targets)
         add_custom_command(TARGET vivid POST_BUILD
