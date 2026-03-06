@@ -63,3 +63,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Patch panel UI (replaced connection matrix)
 - Performance bar with FPS/frame time/memory sparklines
 - Session grid UI
+
+## [0.1.0-alpha1] - 2026-03-06
+
+### Added
+- Core app update system:
+  - appcast-backed `AppUpdateManager` with non-blocking startup checks
+  - CLI: `vivid check-core-updates`
+  - Control server endpoint: `check_core_updates`
+  - MCP tool: `check_core_updates(force_refresh=false)`
+- macOS update UX:
+  - menu actions for `Check for Updates...` and `Automatically Check for Updates`
+  - in-app non-intrusive update notice with `Install`, `Skip`, and `Later`
+- Settings persistence for core update behavior:
+  - `core_update_auto_check`
+  - `core_update_last_checked_at`
+  - `core_update_skipped_version`
+- Release infrastructure:
+  - GitHub Actions release pipeline for macOS (`release-macos.yml`)
+  - Version drift guard workflow (`version-guard.yml`)
+  - appcast generator script and published `catalog/appcast.xml`
+- Release operations documentation and checklist:
+  - `docs/RELEASE-OPS.md`
+  - `docs/RELEASE-CHECKLIST.md`
+
+### Changed
+- Updated macOS app icon assets (`Vivid.icns`, iconset, SVG source)
+- Updated onboarding/docs references to canonical `seethroughlab/vivid` release location
+
+### Notes
+- This is the first alpha pre-release tag for Vivid 0.1.0.
