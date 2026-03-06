@@ -24,7 +24,7 @@ if(APPLE AND VIVID_USE_WGPU_NATIVE_FORK)
     FetchContent_Declare(
         wgpu_native_fork
         GIT_REPOSITORY https://github.com/seethroughlab/wgpu-native
-        GIT_TAG        df32c6bc8db1eaf3a166781354b927a1036e1f1e
+        GIT_TAG        5b278226543632af984fae102c81a7dca9d815a2
         GIT_SHALLOW    TRUE
         GIT_SUBMODULES_RECURSE TRUE
     )
