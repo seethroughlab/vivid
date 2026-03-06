@@ -881,8 +881,8 @@ Phase 3 status (2026-03-06, scaffold template semantics):
 Phase 4: Behavior improvements guarded by tags
 - [x] LLM-assisted operator creation: prefer semantically compatible defaults when connecting nodes.
 - [x] Auto-wiring suggestions: rank candidate ports by semantic compatibility before simple type match ties.
-- [ ] Safe coercion rules (example: `time_ms` -> `time_seconds`) only when explicitly defined in contract.
-- [ ] No hidden mutations: all inferred mappings must be inspectable/overridable by user.
+- [x] Safe coercion rules (example: `time_ms` -> `time_seconds`) only when explicitly defined in contract.
+- [x] No hidden mutations: all inferred mappings must be inspectable/overridable by user.
 
 Phase 4 status (2026-03-06, step 1):
 - Control-server `connect` now accepts optional `semantic_defaults` (bool).
@@ -903,15 +903,52 @@ Phase 4 status (2026-03-06, step 2):
   - `./build/test_ui_overlay_interactions`
   - `./build/test_control_server .`
 
+Phase 4 status (2026-03-06, step 3):
+- Semantic coercion is now contract-gated:
+  - runtime only applies different-tag remap for explicit rule table pairs
+  - non-listed tag pairs are left unchanged (no hidden conversion)
+- Coercion contract documented in `docs/SEMANTIC-PARAM-TAGS.md` under
+  "Explicit Coercion Rules (Behavior Contract)".
+- Regression coverage added in `test_control_server`:
+  - explicit pair applies remap (`time_milliseconds` -> `time_seconds`)
+  - non-listed pair does not apply remap (`frequency_hz` -> `time_seconds`)
+
+Phase 4 status (2026-03-06, step 4):
+- Control-server `connect` now makes inferred remaps explicit in response payload when semantic defaults are enabled:
+  - `inferred_remap_applied` (bool)
+  - `inferred_remap` object (`from_min`, `from_max`, `to_min`, `to_max`, `clamp`) when applied
+- Inferred remaps remain inspectable through `inspect_graph` wire fields.
+- Inferred remaps are user-overridable via `set_connection_remap`; regression coverage verifies
+  override values replace inferred defaults and persist in `inspect_graph`.
+
 Phase 5: Validation matrix + rollout gate
-- [ ] Unit tests: taxonomy parser/validator, metadata propagation, unknown-tag tolerance.
-- [ ] Integration tests: introspection/control/MCP parity for tagged vs untagged params.
-- [ ] Regression tests: untagged legacy graphs/operators behave exactly as before.
+- [x] Unit tests: taxonomy parser/validator, metadata propagation, unknown-tag tolerance.
+- [x] Integration tests: introspection/control/MCP parity for tagged vs untagged params.
+- [x] Regression tests: untagged legacy graphs/operators behave exactly as before.
 - [ ] Exit gate for activation of tag-driven behaviors:
-  - [ ] stable taxonomy version
-  - [ ] core seed coverage target met
-  - [ ] sibling package baseline coverage met
+  - [x] stable taxonomy version
+  - [x] core seed coverage target met
+  - [x] sibling package baseline coverage met
   - [ ] no graph/load/runtime regressions in CI.
+
+Phase 5 status (2026-03-06):
+- Unit/contract validation:
+  - semantic taxonomy validator passes for core + sibling repos:
+    - `./scripts/validate_semantic_tags.sh operators src tests ...<sibling roots>...`
+  - control-server matrix validates semantic metadata propagation and unknown-tag tolerance:
+    - `./build/test_control_server .`
+    - includes extension-tag operator (`x_test_unknown_scalar`) and untagged operator parity checks
+- Integration parity:
+  - tagged/untagged metadata parity covered through `list_types`, `inspect_graph`, and `introspect_nodes`
+    in `test_control_server`.
+  - MCP regression baseline remains green:
+    - `python3 mcp/test_vivid_mcp_perception.py`
+- Legacy regression coverage:
+  - demo graph smoke suite remains green (31 pass / 0 fail / 4 external-I/O skips):
+    - `./build/test_demo_graphs ./build/graphs`
+- Rollout gate:
+  - taxonomy/core/sibling readiness checks are complete.
+  - CI-wide regression confirmation remains open until GitHub CI run is green.
 
 ---
 
@@ -937,4 +974,5 @@ These are acknowledged but explicitly out of scope for the initial release:
 [x] Developer & User Experience -- graph discovery now uses recursive folder scan + per-graph `meta` and in-app **Open Example...** search/filter UI.
 [x] Team workflow issue documented and converted into concrete launch follow-up plan: **Project-Local Operator Ownership** (see Milestone 8 section above).
 [ ] Check if PR was accepted, switch back to main repo: https://github.com/gfx-rs/wgpu-native/pull/557
-[ ] Clean up docs directory. There should really only be user-facing documents in there. The rest should be in subfolders, and some should be gitignored because they're just for me.
+[ ] Clean up docs directory. There should really only be user-facing documents in there. The rest should be either in subfolders (eg: archive), and/or some should be gitignored because they're just for me.
+[ ] Clean up the ROADMAP - remove what has been done, but be conservative in case some unfinished items could benefit from the context of finished items. 

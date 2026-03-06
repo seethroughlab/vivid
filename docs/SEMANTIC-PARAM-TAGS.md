@@ -118,6 +118,21 @@ Rules:
 - Unknown shapes must be ignored (fallback to existing type behavior).
 - Tooling may warn on invalid/unknown tags, but load/evaluation must remain non-breaking.
 
+## Explicit Coercion Rules (Behavior Contract)
+
+Tag-driven runtime remap/coercion between different semantic tags is allowed only for explicitly listed pairs.
+No implicit conversions are permitted for unlisted tag pairs.
+
+Allowed coercions in v1:
+- `time_milliseconds` -> `time_seconds` (scale `1/1000`)
+- `time_seconds` -> `time_milliseconds` (scale `1000`)
+- `rotation_degrees` -> `rotation_radians` (scale `pi/180`)
+- `rotation_radians` -> `rotation_degrees` (scale `180/pi`)
+
+Notes:
+- Same-tag remap (for range normalization) remains allowed.
+- Different-tag coercion outside this table must be ignored unless this contract is updated.
+
 ## Serialization Boundary
 
 - Graph JSON remains source-of-truth for parameter values.
