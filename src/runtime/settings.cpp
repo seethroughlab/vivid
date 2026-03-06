@@ -56,6 +56,10 @@ Settings load_settings() {
         s.core_update_last_checked_at = yyjson_get_str(v);
     if ((v = yyjson_obj_get(root, "core_update_skipped_version")) && yyjson_is_str(v))
         s.core_update_skipped_version = yyjson_get_str(v);
+    if ((v = yyjson_obj_get(root, "workspace_root")) && yyjson_is_str(v))
+        s.workspace_root = yyjson_get_str(v);
+    if ((v = yyjson_obj_get(root, "workspace_seeded_version")) && yyjson_is_str(v))
+        s.workspace_seeded_version = yyjson_get_str(v);
 
     // Sanity: clamp size to something reasonable
     if (s.window_width < 320) s.window_width = 320;
@@ -88,6 +92,11 @@ void save_settings(const Settings& s) {
     if (!s.core_update_skipped_version.empty())
         yyjson_mut_obj_add_str(doc, root, "core_update_skipped_version",
                                s.core_update_skipped_version.c_str());
+    if (!s.workspace_root.empty())
+        yyjson_mut_obj_add_str(doc, root, "workspace_root", s.workspace_root.c_str());
+    if (!s.workspace_seeded_version.empty())
+        yyjson_mut_obj_add_str(doc, root, "workspace_seeded_version",
+                               s.workspace_seeded_version.c_str());
 
     std::string path = settings_path();
     yyjson_write_err werr;

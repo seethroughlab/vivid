@@ -18,6 +18,8 @@ struct Settings {
     bool core_update_auto_check = true;
     std::string core_update_last_checked_at;  // unix epoch seconds as string
     std::string core_update_skipped_version;
+    std::string workspace_root;               // user-editable workspace root (default: ~/Documents/Vivid)
+    std::string workspace_seeded_version;     // last app version that seeded workspace assets
 };
 
 Settings load_settings();

@@ -47,6 +47,15 @@ jobs:
       - name: Build
         run: cmake --build build --config ${CMAKE_BUILD_TYPE} -j$(sysctl -n hw.logicalcpu)
 
+      - name: Validate bundled demo resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/vivid.app"
+          [[ -d "$APP/Contents/Resources/graphs" ]] || { echo "Missing bundled graphs" >&2; exit 1; }
+          [[ -d "$APP/Contents/Resources/media" ]] || { echo "Missing bundled media" >&2; exit 1; }
+          [[ -f "$APP/Contents/Resources/media/camera.mp4" ]] || { echo "Missing expected demo media file camera.mp4" >&2; exit 1; }
+
       - name: Normalize WebGPU dylib linkage
         shell: bash
         run: |

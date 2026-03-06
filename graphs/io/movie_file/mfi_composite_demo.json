@@ -21,7 +21,7 @@
     "vid1": {
       "type": "MovieFileIn",
       "params": {
-        "file": "media/sing.mov",
+        "file": "../../../media/camera.mp4",
         "play_mode": 0,
         "speed": 1.0
       }
@@ -29,7 +29,7 @@
     "vid2": {
       "type": "MovieFileIn",
       "params": {
-        "file": "media/kitchen.mp4",
+        "file": "../../../media/kitchen.mp4",
         "play_mode": 0,
         "speed": 0.5
       }
@@ -37,7 +37,7 @@
     "audio": {
       "type": "MovieFileAudioIn",
       "params": {
-        "file": "media/sing.mov"
+        "file": "../../../media/camera.mp4"
       }
     },
     "comp": {

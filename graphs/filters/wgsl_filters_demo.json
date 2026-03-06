@@ -20,7 +20,7 @@
       "params": {
         "speed": 1.0,
         "play_mode": 0.0,
-        "file": "/Users/jeff/Developer/vivid/media/camera.mp4"
+        "file": "../../media/camera.mp4"
       },
       "layout": {
         "x": 30.0,
@@ -30,7 +30,7 @@
     "audio": {
       "type": "MovieFileAudioIn",
       "params": {
-        "file": "/Users/jeff/Developer/vivid/media/camera.mp4"
+        "file": "../../media/camera.mp4"
       }
     },
     "hsv": {

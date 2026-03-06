@@ -18,7 +18,7 @@
     "vid": {
       "type": "MovieFileIn",
       "params": {
-        "file": "media/lake.mp4",
+        "file": "../../media/lake.mp4",
         "play_mode": 0,
         "speed": 1.0
       }
@@ -26,7 +26,7 @@
     "audio": {
       "type": "MovieFileAudioIn",
       "params": {
-        "file": "media/lake.mp4"
+        "file": "../../media/lake.mp4"
       }
     },
     "mirror": {

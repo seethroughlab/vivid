@@ -23,13 +23,13 @@
     "vid": {
       "type": "MovieFileIn",
       "params": {
-        "file": "media/camera.mp4"
+        "file": "../../../media/camera.mp4"
       }
     },
     "audio": {
       "type": "MovieFileAudioIn",
       "params": {
-        "file": "media/camera.mp4"
+        "file": "../../../media/camera.mp4"
       }
     },
     "rev": {

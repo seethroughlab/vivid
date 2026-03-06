@@ -370,6 +370,116 @@ static std::string resolve_graph_input_path(const std::string& input,
     return input;
 }
 
+static std::filesystem::path expand_tilde_path(const std::string& input) {
+    if (input.empty()) return {};
+    if (input[0] != '~') return std::filesystem::path(input);
+    const char* home = std::getenv("HOME");
+    if (!home) return std::filesystem::path(input);
+    if (input.size() == 1) return std::filesystem::path(home);
+    if (input[1] == '/' || input[1] == '\\')
+        return std::filesystem::path(home) / input.substr(2);
+    return std::filesystem::path(input);
+}
+
+static std::filesystem::path default_workspace_root() {
+    const char* home = std::getenv("HOME");
+    if (home && home[0] != '\0')
+        return std::filesystem::path(home) / "Documents" / "Vivid";
+    return std::filesystem::path(vivid::get_config_dir()) / "workspace";
+}
+
+static bool copy_tree_missing(const std::filesystem::path& src,
+                              const std::filesystem::path& dst) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::is_directory(src, ec)) return false;
+    fs::create_directories(dst, ec);
+    if (ec) return false;
+
+    for (const auto& entry : fs::recursive_directory_iterator(src, ec)) {
+        if (ec) return false;
+        auto rel = fs::relative(entry.path(), src, ec);
+        if (ec) return false;
+        auto out = dst / rel;
+        if (entry.is_directory()) {
+            fs::create_directories(out, ec);
+            if (ec) return false;
+            continue;
+        }
+        if (!entry.is_regular_file()) continue;
+        if (fs::exists(out, ec)) continue;  // non-destructive: never overwrite user files
+        fs::create_directories(out.parent_path(), ec);
+        if (ec) return false;
+        fs::copy_file(entry.path(), out, fs::copy_options::none, ec);
+        if (ec) return false;
+    }
+    return true;
+}
+
+static bool ensure_workspace_seeded(const std::filesystem::path& resources_dir,
+                                    vivid::Settings& settings,
+                                    std::filesystem::path& workspace_root) {
+    namespace fs = std::filesystem;
+    bool settings_changed = false;
+
+    if (settings.workspace_root.empty()) {
+        settings.workspace_root = default_workspace_root().string();
+        settings_changed = true;
+    }
+    workspace_root = expand_tilde_path(settings.workspace_root);
+    if (workspace_root.empty()) {
+        workspace_root = default_workspace_root();
+    }
+    std::string normalized_root = workspace_root.lexically_normal().string();
+    if (normalized_root != settings.workspace_root) {
+        settings.workspace_root = normalized_root;
+        settings_changed = true;
+    }
+
+    fs::path src_graphs = resources_dir / "graphs";
+    fs::path src_media = resources_dir / "media";
+    fs::path dst_graphs = workspace_root / "graphs";
+    fs::path dst_media = workspace_root / "media";
+
+    std::error_code ec;
+    bool needs_seed =
+        settings.workspace_seeded_version != VIVID_CORE_VERSION ||
+        !fs::is_directory(dst_graphs, ec) ||
+        !fs::is_directory(dst_media, ec);
+
+    if (!needs_seed) return settings_changed;
+
+    bool seed_ok = true;
+    if (fs::is_directory(src_graphs, ec)) {
+        if (!copy_tree_missing(src_graphs, dst_graphs)) {
+            std::fprintf(stderr, "[vivid] Workspace seed warning: failed to copy graphs to %s\n",
+                         dst_graphs.string().c_str());
+            seed_ok = false;
+        }
+    } else {
+        std::fprintf(stderr, "[vivid] Workspace seed warning: missing bundled graphs at %s\n",
+                     src_graphs.string().c_str());
+        seed_ok = false;
+    }
+    if (fs::is_directory(src_media, ec)) {
+        if (!copy_tree_missing(src_media, dst_media)) {
+            std::fprintf(stderr, "[vivid] Workspace seed warning: failed to copy media to %s\n",
+                         dst_media.string().c_str());
+            seed_ok = false;
+        }
+    } else {
+        std::fprintf(stderr, "[vivid] Workspace seed warning: missing bundled media at %s\n",
+                     src_media.string().c_str());
+        seed_ok = false;
+    }
+
+    if (seed_ok) {
+        settings.workspace_seeded_version = VIVID_CORE_VERSION;
+        settings_changed = true;
+    }
+    return settings_changed;
+}
+
 static std::atomic<uint64_t> g_monitor_topology_serial{0};
 
 static void monitor_callback(GLFWmonitor* /*monitor*/, int event) {
@@ -1449,6 +1559,10 @@ int main(int argc, char* argv[]) {
     }
 
     vivid::Settings settings = vivid::load_settings();
+    std::filesystem::path workspace_root;
+    if (ensure_workspace_seeded(resources_dir, settings, workspace_root)) {
+        vivid::save_settings(settings);
+    }
 
     // Clamp saved window size to fit the primary monitor's work area
     {
@@ -1589,10 +1703,14 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Recursive graph discovery + graph-level meta ---
-    std::filesystem::path graphs_root = resources_dir / "graphs";
-    if (!std::filesystem::is_directory(graphs_root)) {
+    std::filesystem::path bundle_graphs_root = resources_dir / "graphs";
+    if (!std::filesystem::is_directory(bundle_graphs_root)) {
         // Compatibility fallback for older flat resource layout.
-        graphs_root = resources_dir;
+        bundle_graphs_root = resources_dir;
+    }
+    std::filesystem::path graphs_root = workspace_root / "graphs";
+    if (!std::filesystem::is_directory(graphs_root)) {
+        graphs_root = bundle_graphs_root;
     }
     std::vector<vivid::ui::ExampleEntry> discovered_examples = discover_examples_recursive(graphs_root);
     graph_file = resolve_graph_input_path(graph_file, graphs_root, discovered_examples);

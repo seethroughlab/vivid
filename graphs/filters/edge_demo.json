@@ -20,7 +20,7 @@
       "params": {
         "speed": 1.0,
         "play_mode": 0.0,
-        "file": "../assets/sword.mp4"
+        "file": "../../media/sword.mp4"
       },
       "layout": {
         "x": 30.0,
@@ -30,7 +30,7 @@
     "audio": {
       "type": "MovieFileAudioIn",
       "params": {
-        "file": "../assets/sword.mp4"
+        "file": "../../media/sword.mp4"
       },
       "layout": {
         "x": 230.0,

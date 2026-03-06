@@ -567,6 +567,20 @@ foreach(g ${DEMO_GRAPHS})
     configure_file(${CMAKE_SOURCE_DIR}/graphs/${g} ${CMAKE_BINARY_DIR}/graphs/${g} COPYONLY)
 endforeach()
 
+# Demo media source directory (prefer media/, fallback to legacy assets/)
+set(VIVID_DEMO_MEDIA_SOURCE_DIR "${CMAKE_SOURCE_DIR}/media")
+if(NOT EXISTS "${VIVID_DEMO_MEDIA_SOURCE_DIR}")
+    set(VIVID_DEMO_MEDIA_SOURCE_DIR "${CMAKE_SOURCE_DIR}/assets")
+endif()
+
+# Copy all demo media recursively into build/media
+file(GLOB_RECURSE DEMO_MEDIA RELATIVE ${VIVID_DEMO_MEDIA_SOURCE_DIR} ${VIVID_DEMO_MEDIA_SOURCE_DIR}/*)
+list(FILTER DEMO_MEDIA EXCLUDE REGEX "^\\.")
+list(FILTER DEMO_MEDIA EXCLUDE REGEX "/\\.")
+foreach(m ${DEMO_MEDIA})
+    configure_file(${VIVID_DEMO_MEDIA_SOURCE_DIR}/${m} ${CMAKE_BINARY_DIR}/media/${m} COPYONLY)
+endforeach()
+
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)
 
@@ -594,6 +608,23 @@ if(APPLE)
             set(dst_loc Resources/graphs)
         else()
             set(dst_loc Resources/graphs/${rel_dir})
+        endif()
+        target_sources(vivid PRIVATE ${src_path})
+        set_source_files_properties(${src_path}
+            PROPERTIES MACOSX_PACKAGE_LOCATION ${dst_loc})
+    endforeach()
+
+    # Demo media → Resources/media/(recursive)
+    file(GLOB_RECURSE _BUNDLE_MEDIA RELATIVE ${VIVID_DEMO_MEDIA_SOURCE_DIR} ${VIVID_DEMO_MEDIA_SOURCE_DIR}/*)
+    list(FILTER _BUNDLE_MEDIA EXCLUDE REGEX "^\\.")
+    list(FILTER _BUNDLE_MEDIA EXCLUDE REGEX "/\\.")
+    foreach(m ${_BUNDLE_MEDIA})
+        set(src_path ${VIVID_DEMO_MEDIA_SOURCE_DIR}/${m})
+        get_filename_component(rel_dir ${m} DIRECTORY)
+        if(rel_dir STREQUAL "")
+            set(dst_loc Resources/media)
+        else()
+            set(dst_loc Resources/media/${rel_dir})
         endif()
         target_sources(vivid PRIVATE ${src_path})
         set_source_files_properties(${src_path}

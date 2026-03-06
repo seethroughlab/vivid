@@ -21,7 +21,7 @@
     "img": {
       "type": "MovieFileIn",
       "params": {
-        "file": "media/nature.jpg"
+        "file": "../../../media/nature.jpg"
       }
     },
     "blur": {

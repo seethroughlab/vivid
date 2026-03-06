@@ -21,7 +21,7 @@
         "mfi1": {
             "type": "MovieFileIn",
             "params": {
-                "file": "../../assets/photo.jpg"
+                "file": "../../media/photo.jpg"
             },
             "layout": {
                 "x": 30.0,
