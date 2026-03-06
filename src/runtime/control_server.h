@@ -15,6 +15,7 @@ class PackageManager;
 class PackageCompiler;
 class PackageCatalog;
 class AppUpdateManager;
+struct Settings;
 
 class ControlServer {
 public:
@@ -36,6 +37,7 @@ public:
     void set_package_compiler(PackageCompiler* pc);
     void set_package_catalog(PackageCatalog* cat);
     void set_app_update_manager(AppUpdateManager* aum);
+    void set_settings(const Settings* settings);
 
     // Call from main loop each frame. Drains pending HTTP requests,
     // dispatches commands against the runtime, and signals responses.
@@ -55,6 +57,7 @@ private:
     PackageCompiler* package_compiler_ = nullptr;
     PackageCatalog* package_catalog_ = nullptr;
     AppUpdateManager* app_update_manager_ = nullptr;
+    const Settings* settings_ = nullptr;
 };
 
 } // namespace vivid

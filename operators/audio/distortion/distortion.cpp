@@ -36,6 +36,23 @@ struct Distortion : vivid::OperatorBase {
 
     OnePole tone_filter_;
 
+    Distortion() {
+        vivid::semantic_tag(drive, "amplitude_linear");
+        vivid::semantic_shape(drive, "scalar");
+        vivid::semantic_intent(drive, "pre_gain");
+
+        vivid::semantic_tag(tone, "probability_01");
+        vivid::semantic_shape(tone, "scalar");
+
+        vivid::semantic_tag(level, "amplitude_linear");
+        vivid::semantic_shape(level, "scalar");
+        vivid::semantic_intent(level, "post_gain");
+
+        vivid::semantic_tag(mix, "probability_01");
+        vivid::semantic_shape(mix, "scalar");
+        vivid::semantic_intent(mix, "wet_mix");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&drive);
         out.push_back(&tone);

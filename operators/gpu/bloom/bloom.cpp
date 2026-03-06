@@ -208,6 +208,20 @@ struct Bloom : vivid::OperatorBase {
     vivid::Param<float> radius    {"radius",    1.0f, 0.5f, 3.0f};
     vivid::Param<int>   passes    {"passes",    3,    1,    8};
 
+    Bloom() {
+        vivid::semantic_tag(threshold, "probability_01");
+        vivid::semantic_shape(threshold, "scalar");
+
+        vivid::semantic_tag(intensity, "amplitude_linear");
+        vivid::semantic_shape(intensity, "scalar");
+
+        vivid::semantic_tag(radius, "scale_xy");
+        vivid::semantic_shape(radius, "scalar");
+
+        vivid::semantic_tag(passes, "count");
+        vivid::semantic_shape(passes, "int");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&threshold);
         out.push_back(&intensity);

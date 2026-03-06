@@ -20,6 +20,13 @@ struct Settings {
     std::string core_update_skipped_version;
     std::string workspace_root;               // user-editable workspace root (default: ~/Documents/Vivid)
     std::string workspace_seeded_version;     // last app version that seeded workspace assets
+
+    // Project-local operator destination policy.
+    // project_default: prefer project package/root first, fallback to core.
+    // core_explicit: default to core unless caller explicitly requests project.
+    std::string operator_clone_destination_mode = "project_default";
+    std::string project_operator_root;         // absolute path (optional)
+    std::string project_package_name;          // package target hint (optional)
 };
 
 Settings load_settings();

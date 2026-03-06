@@ -36,6 +36,8 @@
 #include "runtime/package_scaffolder.h"
 #include "runtime/app_update_manager.h"
 #include "runtime/platform.h"
+#include "runtime/operator_creator.h"
+#include "runtime/operator_destination_policy.h"
 #include <fstream>
 #include <sstream>
 #include <webgpu/webgpu.h>
@@ -386,6 +388,31 @@ static std::filesystem::path default_workspace_root() {
     if (home && home[0] != '\0')
         return std::filesystem::path(home) / "Documents" / "Vivid";
     return std::filesystem::path(vivid::get_config_dir()) / "workspace";
+}
+
+struct ScaffoldDestination {
+    std::string root;
+    bool package_layout = false;
+    std::string package_name;
+    std::string warning;
+};
+
+static bool resolve_scaffold_destination(const std::string& destination,
+                                         const std::string& source_dir,
+                                         vivid::PackageManager& pm,
+                                         const vivid::Settings* settings,
+                                         ScaffoldDestination& out,
+                                         std::string& error) {
+    vivid::OperatorDestination resolved;
+    if (!vivid::resolve_operator_destination(destination, source_dir, pm.list(), settings,
+                                             resolved, error)) {
+        return false;
+    }
+    out.root = resolved.root;
+    out.package_layout = resolved.package_layout;
+    out.package_name = resolved.package_name;
+    out.warning = resolved.warning;
+    return true;
 }
 
 static bool copy_tree_missing(const std::filesystem::path& src,
@@ -810,31 +837,44 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
 
 static int add_watch_for_resolved_package(vivid::FileWatcher& fw, const vivid::PackageInfo& pkg) {
     namespace fs = std::filesystem;
-    fs::path ops_dir = fs::path(pkg.path) / "operators";
-    if (!fs::exists(ops_dir)) return 0;
-
     int count = 0;
-    std::error_code ec_domain;
-    for (const auto& domain_entry : fs::directory_iterator(ops_dir, ec_domain)) {
-        if (ec_domain) break;
-        if (!domain_entry.is_directory()) continue;
+    fs::path ops_dir = fs::path(pkg.path) / "operators";
+    if (fs::exists(ops_dir)) {
+        std::error_code ec_domain;
+        for (const auto& domain_entry : fs::directory_iterator(ops_dir, ec_domain)) {
+            if (ec_domain) break;
+            if (!domain_entry.is_directory()) continue;
 
-        std::error_code ec_op;
-        for (const auto& op_entry : fs::directory_iterator(domain_entry.path(), ec_op)) {
-            if (ec_op) break;
-            if (!op_entry.is_directory()) continue;
+            std::error_code ec_op;
+            for (const auto& op_entry : fs::directory_iterator(domain_entry.path(), ec_op)) {
+                if (ec_op) break;
+                if (!op_entry.is_directory()) continue;
 
-            std::string op_name = op_entry.path().filename().string();
-            std::string target = "pkg:" + pkg.name + ":" + op_name;
+                std::string op_name = op_entry.path().filename().string();
+                std::string target = "pkg:" + pkg.name + ":" + op_name;
 
-            std::error_code ec_file;
-            for (const auto& file_entry : fs::directory_iterator(op_entry.path(), ec_file)) {
-                if (ec_file) break;
-                if (!file_entry.is_regular_file()) continue;
-                std::string fname = file_entry.path().filename().string();
-                if (fname.size() < 5 || fname.substr(fname.size() - 4) != ".cpp") continue;
-                if (fw.add_watch(file_entry.path().string(), target)) count++;
+                std::error_code ec_file;
+                for (const auto& file_entry : fs::directory_iterator(op_entry.path(), ec_file)) {
+                    if (ec_file) break;
+                    if (!file_entry.is_regular_file()) continue;
+                    std::string fname = file_entry.path().filename().string();
+                    if (fname.size() < 5 || fname.substr(fname.size() - 4) != ".cpp") continue;
+                    if (fw.add_watch(file_entry.path().string(), target)) count++;
+                }
             }
+        }
+    }
+
+    fs::path src_dir = fs::path(pkg.path) / "src";
+    if (fs::exists(src_dir)) {
+        std::error_code ec;
+        for (const auto& entry : fs::recursive_directory_iterator(src_dir, ec)) {
+            if (ec) break;
+            if (!entry.is_regular_file()) continue;
+            if (entry.path().extension() != ".cpp") continue;
+            std::string op_name = entry.path().stem().string();
+            std::string target = "pkg:" + pkg.name + ":" + op_name;
+            if (fw.add_watch(entry.path().string(), target)) count++;
         }
     }
     return count;
@@ -1242,6 +1282,23 @@ int main(int argc, char* argv[]) {
     scaffold_pkg_cmd->add_flag("--force", scaffold_pkg_force,
                                "Overwrite destination if it already exists");
 
+    std::string scaffold_op_name;
+    std::string scaffold_op_domain = "control";
+    std::string scaffold_op_variant;
+    std::string scaffold_op_dest = "auto";
+    auto* scaffold_op_cmd = app.add_subcommand("scaffold-operator",
+        "Scaffold a new operator source file");
+    scaffold_op_cmd->add_option("name", scaffold_op_name, "Operator name (snake_case)")->required();
+    scaffold_op_cmd->add_option("--domain", scaffold_op_domain,
+                                "Operator domain: control|audio|gpu")
+        ->check(CLI::IsMember({"control", "audio", "gpu"}))
+        ->default_val("control");
+    scaffold_op_cmd->add_option("--variant", scaffold_op_variant,
+                                "Optional template variant (e.g. composite)");
+    scaffold_op_cmd->add_option("--dest", scaffold_op_dest,
+                                "Destination: auto|core|package:<name>|absolute path")
+        ->default_val("auto");
+
     std::string update_core_version = VIVID_CORE_VERSION;
     bool update_include_all = false;
     auto* check_updates_cmd = app.add_subcommand("package-check-updates",
@@ -1268,6 +1325,7 @@ int main(int argc, char* argv[]) {
 
     // Resolve build/source directories once (used by export, packages, hot-reload)
     auto build_paths = discover_build_paths(exe_dir, resources_dir, src_dir);
+    vivid::Settings settings = vivid::load_settings();
 
     // --- Handle export subcommand (early exit, no GLFW) ---
     if (export_cmd->parsed()) {
@@ -1308,7 +1366,7 @@ int main(int argc, char* argv[]) {
     if (install_cmd->parsed() || uninstall_cmd->parsed() || list_pkg_cmd->parsed() ||
         link_cmd->parsed() || unlink_cmd->parsed() || rebuild_cmd->parsed() ||
         check_updates_cmd->parsed() || check_core_updates_cmd->parsed() ||
-        scaffold_pkg_cmd->parsed()) {
+        scaffold_pkg_cmd->parsed() || scaffold_op_cmd->parsed()) {
         if (scaffold_pkg_cmd->parsed()) {
             vivid::PackageScaffoldOptions opts;
             opts.name = scaffold_pkg_name;
@@ -1342,6 +1400,56 @@ int main(int argc, char* argv[]) {
 
         vivid::PackageCompiler compiler(build_paths.source_dir, build_paths.build_dir);
         vivid::PackageManager pm(compiler, registry);
+
+        if (scaffold_op_cmd->parsed()) {
+            std::string validation_error = vivid::OperatorCreator::validate_name(scaffold_op_name, registry);
+            if (!validation_error.empty()) {
+                std::fprintf(stderr, "Scaffold failed: %s\n", validation_error.c_str());
+                return 1;
+            }
+
+            VividDomain domain = VIVID_DOMAIN_CONTROL;
+            if (scaffold_op_domain == "audio")
+                domain = VIVID_DOMAIN_AUDIO;
+            else if (scaffold_op_domain == "gpu")
+                domain = VIVID_DOMAIN_GPU;
+
+            ScaffoldDestination destination;
+            std::string dest_error;
+            if (!resolve_scaffold_destination(scaffold_op_dest, build_paths.source_dir, pm,
+                                              &settings,
+                                              destination, dest_error)) {
+                std::fprintf(stderr, "Scaffold failed: %s\n", dest_error.c_str());
+                return 1;
+            }
+            if (!destination.warning.empty())
+                std::fprintf(stderr, "[vivid] %s\n", destination.warning.c_str());
+
+            auto result = vivid::OperatorCreator::create(scaffold_op_name,
+                                                         domain,
+                                                         destination.root,
+                                                         scaffold_op_variant,
+                                                         destination.package_layout);
+            if (!result.success) {
+                std::fprintf(stderr, "Scaffold failed: %s\n", result.error.c_str());
+                return 1;
+            }
+
+            vivid::OperatorCreator::open_in_editor(result.cpp_path);
+            std::printf("Scaffolded operator: %s\n", result.target_name.c_str());
+            std::printf("Source file: %s\n", result.cpp_path.c_str());
+            std::printf("Destination root: %s\n", destination.root.c_str());
+            if (destination.package_layout) {
+                if (!destination.package_name.empty())
+                    std::printf("Destination package: %s\n", destination.package_name.c_str());
+                std::printf("Next step: ./build/vivid rebuild %s\n",
+                            destination.package_name.empty() ? "<package-name>" : destination.package_name.c_str());
+            } else {
+                std::printf("Next step: cmake --build %s --target %s\n",
+                            build_paths.build_dir.c_str(), result.target_name.c_str());
+            }
+            return 0;
+        }
 
         if (install_cmd->parsed()) {
             auto result = pm.install(install_url);
@@ -1558,7 +1666,6 @@ int main(int argc, char* argv[]) {
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     }
 
-    vivid::Settings settings = vivid::load_settings();
     std::filesystem::path workspace_root;
     if (ensure_workspace_seeded(resources_dir, settings, workspace_root)) {
         vivid::save_settings(settings);
@@ -1805,6 +1912,7 @@ int main(int argc, char* argv[]) {
     control_server.set_package_compiler(&pkg_compiler);
     control_server.set_package_catalog(&pkg_catalog);
     control_server.set_app_update_manager(&app_updates);
+    control_server.set_settings(&settings);
     if (!control_server.start(9876)) {
         std::fprintf(stderr, "[vivid] Control server unavailable (port 9876 in use?)\n");
     }
@@ -1836,6 +1944,7 @@ int main(int argc, char* argv[]) {
     command_sink.set_settings(&settings);
     command_sink.set_capture_coordinator(&capture_coordinator);
     command_sink.set_runtime_flags(&has_gpu_ops, &has_audio);
+    command_sink.set_package_manager(&pkg_manager);
     vivid::ui::NodeGraphUI graph_ui(command_sink);
     graph_ui.set_dpi_scale(dpi_scale);
     graph_ui.set_bezier_wires(settings.bezier_wires);
@@ -1985,6 +2094,17 @@ int main(int argc, char* argv[]) {
     vivid::FileWatcher file_watcher;
     vivid::HotReloader hot_reloader;
     bool hot_reload_enabled = false;
+    auto next_package_watch_rescan_at = std::chrono::steady_clock::time_point{};
+    auto refresh_package_watches = [&]() {
+        int watched_pkg_files = 0;
+        for (const auto& pkg : pkg_manager.list()) {
+            watched_pkg_files += add_watch_for_resolved_package(file_watcher, pkg);
+        }
+        if (watched_pkg_files > 0) {
+            std::fprintf(stderr, "[vivid] FileWatcher: watching %d package files (rescan)\n",
+                         watched_pkg_files);
+        }
+    };
     {
         if (src_dir.empty()) {
             auto probe = exe_dir;
@@ -2016,15 +2136,9 @@ int main(int argc, char* argv[]) {
                 command_sink.set_hot_reloader(&hot_reloader);
                 std::fprintf(stderr, "[vivid] Hot-reload enabled (watching %s)\n", operators_dir.c_str());
 
-                // Also watch selected package operator directories across all scopes.
-                int watched_pkg_files = 0;
-                for (const auto& pkg : pkg_manager.list()) {
-                    watched_pkg_files += add_watch_for_resolved_package(file_watcher, pkg);
-                }
-                if (watched_pkg_files > 0) {
-                    std::fprintf(stderr, "[vivid] FileWatcher: watching %d resolved package files\n",
-                                 watched_pkg_files);
-                }
+                // Also watch package source files (both operators/ and src/ layouts).
+                refresh_package_watches();
+                next_package_watch_rescan_at = std::chrono::steady_clock::now() + std::chrono::seconds(1);
 
                 // Set up package compile callback for hot-reloader
                 std::string pkg_src_dir = src_dir;
@@ -2052,10 +2166,67 @@ int main(int argc, char* argv[]) {
                             return result;
                         }
 
-                        vivid::PackageCompiler compiler(pkg_src_dir, pkg_build_dir);
+                        // CMake src/ layout package (modern sibling package flow)
+                        // supports hot-reload by building the package target directly.
+                        std::filesystem::path src_cpp = std::filesystem::path(pkg_dir) / "src" / (op_name + ".cpp");
+                        if (std::filesystem::exists(src_cpp)) {
+                            auto quote = [](const std::string& s) { return "'" + s + "'"; };
+                            std::string pkg_build = pkg_dir + "/build";
 
-                        // Find the operator's relative path from the manifest
-                        // or try common pattern: look for it under operators/
+                            // Ensure build directory exists/configured.
+                            if (!std::filesystem::exists(std::filesystem::path(pkg_build) / "CMakeCache.txt")) {
+                                std::filesystem::create_directories(pkg_build);
+                                std::string cfg_cmd = "cmake"
+                                    " -B " + quote(pkg_build) +
+                                    " -S " + quote(pkg_dir) +
+                                    " -DVIVID_SRC_DIR=" + quote(pkg_src_dir) +
+                                    " -DVIVID_BUILD_DIR=" + quote(pkg_build_dir) +
+                                    " -DVIVID_PLUGIN_SUFFIX=" + std::string(vivid::kPluginSuffix) +
+                                    " 2>&1";
+                                std::string cfg_out;
+                                FILE* cfg_pipe = popen(cfg_cmd.c_str(), "r");
+                                if (!cfg_pipe) {
+                                    result.success = false;
+                                    result.error_output = "Failed to execute cmake configure for package target";
+                                    return result;
+                                }
+                                std::array<char, 256> cfg_buf;
+                                while (fgets(cfg_buf.data(), cfg_buf.size(), cfg_pipe) != nullptr)
+                                    cfg_out += cfg_buf.data();
+                                int cfg_status = pclose(cfg_pipe);
+                                if (cfg_status != 0) {
+                                    result.success = false;
+                                    result.error_output = "cmake configure failed:\n" + cfg_out;
+                                    return result;
+                                }
+                            }
+
+                            std::string build_cmd = "cmake --build " + quote(pkg_build) +
+                                                    " --target " + quote(op_name) + " 2>&1";
+                            std::string build_out;
+                            FILE* pipe = popen(build_cmd.c_str(), "r");
+                            if (!pipe) {
+                                result.success = false;
+                                result.error_output = "Failed to execute cmake build for package target";
+                                return result;
+                            }
+                            std::array<char, 256> buf;
+                            while (fgets(buf.data(), buf.size(), pipe) != nullptr)
+                                build_out += buf.data();
+                            int status = pclose(pipe);
+                            if (status != 0) {
+                                result.success = false;
+                                result.error_output = "cmake build failed:\n" + build_out;
+                                return result;
+                            }
+
+                            result.success = true;
+                            result.staged_dylib_path = pkg_build + "/" + op_name + vivid::kPluginSuffix;
+                            return result;
+                        }
+
+                        // Legacy operators/<domain>/<name>/ layout
+                        vivid::PackageCompiler compiler(pkg_src_dir, pkg_build_dir);
                         std::string op_rel;
                         for (const auto& domain : {"audio", "control", "gpu"}) {
                             std::string candidate = pkg_dir + "/operators/" +
@@ -2171,6 +2342,7 @@ int main(int argc, char* argv[]) {
     {
         vivid::MenuCallbacks menu_cbs;
 
+        menu_cbs.on_about = [&]() { graph_ui.open_about(); };
         menu_cbs.on_preferences = [&]() {
             graph_ui.toggle_preferences();
         };
@@ -2633,6 +2805,11 @@ int main(int argc, char* argv[]) {
 
             // --- Hot-reload polling ---
             if (hot_reload_enabled) {
+                auto now_scan = std::chrono::steady_clock::now();
+                if (now_scan >= next_package_watch_rescan_at) {
+                    refresh_package_watches();
+                    next_package_watch_rescan_at = now_scan + std::chrono::seconds(1);
+                }
                 poll_hot_reload(file_watcher, hot_reloader, scheduler, registry,
                                 audio_engine, has_audio, &op_info_cache,
                                 scheduler.operators_src_dir());

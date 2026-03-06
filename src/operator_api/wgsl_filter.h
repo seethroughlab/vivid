@@ -3,6 +3,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
+#include "operator_api/wgsl_preprocessor.h"
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -350,12 +351,15 @@ private:
             return false;
         }
 
-        // Read fragment shader from file
-        std::string fragment_src = read_file(shader_path_);
-        if (fragment_src.empty()) {
-            std::fprintf(stderr, "[wgsl_filter] Cannot read shader: %s\n", shader_path_.c_str());
+        // Read + preprocess fragment shader (supports // @include with diagnostics)
+        auto pp = preprocess_wgsl_file(shader_path_);
+        if (!pp.ok) {
+            shader_error_ = true;
+            shader_error_msg_ = pp.error;
+            std::fprintf(stderr, "[wgsl_filter] Preprocess error: %s\n", pp.error.c_str());
             return false;
         }
+        std::string fragment_src = std::move(pp.output);
         last_mtime_ = file_mtime(shader_path_);
 
         // Compile shader
@@ -435,12 +439,16 @@ private:
 
         std::fprintf(stderr, "[wgsl_filter] Shader changed, recompiling: %s\n", shader_path_.c_str());
 
-        std::string fragment_src = read_file(shader_path_);
-        if (fragment_src.empty()) {
-            std::fprintf(stderr, "[wgsl_filter] Cannot read shader (keeping old): %s\n",
-                         shader_path_.c_str());
+        auto pp = preprocess_wgsl_file(shader_path_);
+        if (!pp.ok) {
+            shader_error_ = true;
+            shader_error_msg_ = pp.error;
+            std::fprintf(stderr, "[wgsl_filter] Preprocess error (keeping old): %s\n",
+                         pp.error.c_str());
+            last_mtime_ = mt;  // don't retry every 30 frames
             return;
         }
+        std::string fragment_src = std::move(pp.output);
 
         std::string preamble = generate_preamble();
         WGPUShaderModule sm = compile_shader(gpu->device, preamble, fragment_src);

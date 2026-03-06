@@ -26,6 +26,112 @@ bool RuntimeAPI::split_addr(const std::string& addr, std::string& node, std::str
     return !node.empty() && !port.empty();
 }
 
+namespace {
+struct ParamSemanticMeta {
+    bool found = false;
+    std::string tag;
+    std::string unit;
+    float min_value = 0.0f;
+    float max_value = 1.0f;
+};
+
+bool resolve_param_semantic_meta(const vivid::Graph& graph,
+                                 vivid::OperatorRegistry& registry,
+                                 const std::string& node_id,
+                                 const std::string& param_name,
+                                 ParamSemanticMeta& out) {
+    const NodeDef* def = graph.find_node(node_id);
+    if (!def) return false;
+    const VividOperatorDescriptor* desc = registry.probe_descriptor(def->type);
+    if (!desc) return false;
+    for (uint32_t i = 0; i < desc->param_count; ++i) {
+        const auto& pd = desc->params[i];
+        if (param_name != pd.name) continue;
+        out.found = true;
+        out.tag = pd.semantic_tag ? pd.semantic_tag : "";
+        out.unit = pd.semantic_unit ? pd.semantic_unit : "";
+        out.min_value = pd.min_value;
+        out.max_value = pd.max_value;
+        return true;
+    }
+    // Common control pattern: operator exposes one output port and one parameter with
+    // different names (e.g. out/value). For single-param operators, infer semantics
+    // from that sole parameter when endpoint-name lookup doesn't match.
+    if (desc->param_count == 1) {
+        const auto& pd = desc->params[0];
+        out.found = true;
+        out.tag = pd.semantic_tag ? pd.semantic_tag : "";
+        out.unit = pd.semantic_unit ? pd.semantic_unit : "";
+        out.min_value = pd.min_value;
+        out.max_value = pd.max_value;
+        return true;
+    }
+    return false;
+}
+
+bool is_identity_remap(float from_min, float from_max, float to_min, float to_max) {
+    constexpr float kEps = 1e-4f;
+    float denom = from_max - from_min;
+    if (std::fabs(denom) < kEps) return false;
+    float slope = (to_max - to_min) / denom;
+    float intercept = to_min - slope * from_min;
+    return std::fabs(slope - 1.0f) < kEps && std::fabs(intercept) < kEps;
+}
+
+bool converted_range_for_pair(const ParamSemanticMeta& src,
+                              const ParamSemanticMeta& dst,
+                              float& out_to_min,
+                              float& out_to_max) {
+    auto convert = [&](float v, const std::string& from, const std::string& to, float& out) -> bool {
+        if (from == "time_milliseconds" && to == "time_seconds") {
+            out = v / 1000.0f;
+            return true;
+        }
+        if (from == "time_seconds" && to == "time_milliseconds") {
+            out = v * 1000.0f;
+            return true;
+        }
+        if (from == "rotation_degrees" && to == "rotation_radians") {
+            out = v * (3.14159265358979323846f / 180.0f);
+            return true;
+        }
+        if (from == "rotation_radians" && to == "rotation_degrees") {
+            out = v * (180.0f / 3.14159265358979323846f);
+            return true;
+        }
+        return false;
+    };
+
+    float min_conv = 0.0f;
+    float max_conv = 0.0f;
+    if (!convert(src.min_value, src.tag, dst.tag, min_conv)) return false;
+    if (!convert(src.max_value, src.tag, dst.tag, max_conv)) return false;
+    out_to_min = min_conv;
+    out_to_max = max_conv;
+    return true;
+}
+
+bool semantic_default_remap(const ParamSemanticMeta& src,
+                            const ParamSemanticMeta& dst,
+                            float& from_min,
+                            float& from_max,
+                            float& to_min,
+                            float& to_max) {
+    if (!src.found || !dst.found || src.tag.empty() || dst.tag.empty()) return false;
+
+    from_min = src.min_value;
+    from_max = src.max_value;
+
+    if (src.tag == dst.tag) {
+        to_min = dst.min_value;
+        to_max = dst.max_value;
+        return true;
+    }
+
+    return converted_range_for_pair(src, dst, to_min, to_max);
+}
+} // namespace
+
 // --- Immediate param changes ---
 
 CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::string& param, float value) {
@@ -222,7 +328,8 @@ CommandResult RuntimeAPI::remove_node(const std::string& id) {
     return {true, "removed " + id};
 }
 
-CommandResult RuntimeAPI::connect(const std::string& from_addr, const std::string& to_addr) {
+CommandResult RuntimeAPI::connect(const std::string& from_addr, const std::string& to_addr,
+                                  bool semantic_defaults) {
     std::string fn, fp, tn, tp;
     if (!split_addr(from_addr, fn, fp)) {
         return {false, "invalid address '" + from_addr + "' (expected node/port)"};
@@ -235,9 +342,30 @@ CommandResult RuntimeAPI::connect(const std::string& from_addr, const std::strin
     if (!graph_.add_connection(fn, fp, tn, tp)) {
         return {false, "connection already exists"};
     }
+
+    bool applied_semantic_remap = false;
+    if (semantic_defaults) {
+        ParamSemanticMeta src_meta;
+        ParamSemanticMeta dst_meta;
+        if (resolve_param_semantic_meta(graph_, registry_, fn, fp, src_meta) &&
+            resolve_param_semantic_meta(graph_, registry_, tn, tp, dst_meta)) {
+            float from_min = 0.0f, from_max = 1.0f, to_min = 0.0f, to_max = 1.0f;
+            if (semantic_default_remap(src_meta, dst_meta, from_min, from_max, to_min, to_max) &&
+                !is_identity_remap(from_min, from_max, to_min, to_max)) {
+                if (graph_.set_connection_remap(fn, fp, tn, tp,
+                                                from_min, from_max, to_min, to_max, false)) {
+                    applied_semantic_remap = true;
+                }
+            }
+        }
+    }
+
     pending_topology_change_ = true;
     mark_graph_dirty();
-    return {true, "connected " + from_addr + " -> " + to_addr};
+    std::string msg = "connected " + from_addr + " -> " + to_addr;
+    if (applied_semantic_remap)
+        msg += " (semantic default remap applied)";
+    return {true, msg};
 }
 
 CommandResult RuntimeAPI::disconnect(const std::string& from_addr, const std::string& to_addr) {

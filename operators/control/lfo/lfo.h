@@ -18,6 +18,19 @@ struct LFO : vivid::OperatorBase {
     vivid::Param<int>   waveform {"waveform",  0, {"sine", "saw", "square", "triangle"}};
     double free_phase_ = 0.0;
 
+    LFO() {
+        vivid::semantic_tag(frequency, "frequency_hz");
+        vivid::semantic_shape(frequency, "scalar");
+        vivid::semantic_unit(frequency, "Hz");
+
+        vivid::semantic_tag(amplitude, "amplitude_linear");
+        vivid::semantic_shape(amplitude, "scalar");
+
+        vivid::semantic_tag(offset, "amplitude_linear");
+        vivid::semantic_shape(offset, "scalar");
+        vivid::semantic_intent(offset, "dc_offset");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&frequency);
         out.push_back(&amplitude);

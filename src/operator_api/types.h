@@ -65,6 +65,12 @@ typedef struct VividParamDescriptor {
     VividDisplayHint  display_hint;       /* VIVID_DISPLAY_DEFAULT if unset */
     uint8_t           layout_columns;     /* 0 = full-width (1 column), 2 = half-width, etc. */
     uint8_t           layout_column_index;/* 0-based column position within a multi-column row */
+
+    /* optional semantic metadata (for tooling/introspection) */
+    const char*       semantic_tag;       /* e.g. "frequency_hz", "gate", "color_rgba" */
+    const char*       semantic_shape;     /* e.g. "scalar", "vec2", "color", "event" */
+    const char*       semantic_unit;      /* e.g. "Hz", "s", "dB" */
+    const char*       semantic_intent;    /* free-form hint, e.g. "input_gain" */
 } VividParamDescriptor;
 
 typedef struct VividPortDescriptor {

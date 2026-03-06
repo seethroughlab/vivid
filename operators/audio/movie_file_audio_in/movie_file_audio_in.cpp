@@ -36,6 +36,21 @@ struct MovieFileAudioIn : vivid::OperatorBase {
     vivid::Param<float> video_time  {"video_time", 0.0f, 0.0f, 86400.0f};
     vivid::Param<float> video_speed {"video_speed", 1.0f, 0.0f, 4.0f};
 
+    MovieFileAudioIn() {
+        vivid::semantic_tag(file, "path_video");
+        vivid::semantic_shape(file, "path");
+
+        vivid::semantic_tag(volume, "amplitude_linear");
+        vivid::semantic_shape(volume, "scalar");
+
+        vivid::semantic_tag(video_time, "time_seconds");
+        vivid::semantic_shape(video_time, "scalar");
+        vivid::semantic_unit(video_time, "s");
+
+        vivid::semantic_tag(video_speed, "x_playback_speed");
+        vivid::semantic_shape(video_speed, "scalar");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&file);
         out.push_back(&volume);

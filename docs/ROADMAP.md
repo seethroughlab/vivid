@@ -694,8 +694,33 @@ Milestone 6 follow-up notes:
 
 ## Milestone 7: Legacy Branch Evaluation
 
-- [ ] Explore legacy branch for features worth bringing into master
-- [ ] Be selective — legacy goals differ from the minimal 1.0 (step sequencer, section-aware export, extended analysis are candidates)
+- [x] Explore legacy branch for features worth bringing into core and sibling repos
+- [x] Apply conservative selection gate (high-fit, low-risk only) and explicitly defer/reject the rest
+- [x] Publish decision artifact with ranked shortlist + explicit deferrals/rejections (`docs/LEGACY-EVALUATION-M7.md`)
+
+Milestone 7 closure note (2026-03-06):
+- Completed as a planning/evaluation milestone with no runtime/API mutations.
+- Package-first pass completed in this order: `vivid-3d`, `vivid-drums`, `vivid-glitch`, `vivid-sequencers`, `vivid-wavetable`, then core.
+- `docs/LEGACY-EVALUATION-M7.md` is the source-of-truth for adopt/defer/reject decisions and prerequisites.
+
+Milestone 7 Next Execution Queue (from ranked `adopt_next` shortlist):
+1. `M7-SQ-01` (`vivid-sequencers`) - step probability + ratchet support
+2. `M7-GL-01` (`vivid-glitch`) - tempo-locked rate helpers
+3. `M7-GL-02` (`vivid-glitch`) - anti-click reverse transitions
+4. `M7-3D-01` (`vivid-3d`) - GLTF diagnostics/fallback handling
+5. `M7-WV-01` (`vivid-wavetable`) - wavetable morph quality improvements
+
+Milestone 7 execution progress:
+- [x] `M7-SQ-01` complete in `../vivid-sequencers` (per-step `prob_*` + `ratchet_*` in `Sequencer`, plus regression tests)
+- [x] `M7-GL-01` complete in `../vivid-glitch` (shared tempo-locked rate helpers + integration into beat-synced glitch operators, with helper tests)
+- [x] `M7-GL-02` complete in `../vivid-glitch` (Reverse wet-path transition ramping for cleaner entry/exit, preserving existing defaults)
+- [x] `M7-3D-01` complete in `../vivid-3d` (`MeshImport` diagnostics/fallback improvements, external glTF texture URI support, and fallback marker mesh on load failure)
+- [x] `M7-WV-01` complete in `../vivid-wavetable` (cubic periodic wavetable sampling + smoother frame/mip morph blending, with interpolation regression tests)
+- [x] `M7-SQ-03` complete in `../vivid-sequencers` (new arp modes `RandomNoRepeat` + `OrderDown`, step-stable random selection per step, and pattern regression tests)
+- [x] `M7-3D-02` complete in `../vivid-3d` (Environment3D IBL rotation support via `rotation_y` with correct cache invalidation + environment regression coverage)
+- [x] `M7-DR-01` complete in `../vivid-drums` (drum-stack macro demo graphs + package factory presets for layered kit starting points, with package asset regression coverage)
+- [x] `M7-CORE-01` complete in core (`HotReloader` queue robustness: in-flight coalescing + single deferred retry for edits during compile, with queue regression test)
+- [x] `M7-CORE-02` complete in core (WGSL include preprocessor diagnostics with include-chain/cycle reporting, integrated into `WgslFilter` hot-reload path, plus regression tests)
 
 ## Milestone 8: Launch
 
@@ -703,11 +728,190 @@ Milestone 6 follow-up notes:
 - [ ] Finalize and proof all documentation
 - [ ] Update ROADMAP.md to reflect completed/deferred items
 
+### Team Workflow Follow-Up: Project-Local Operator Ownership
+
+Goal: make clone/scaffold behavior conducive to team repository workflows by default (project/package-local, not core-repo-local).
+
+Current behavior (2026-03-06):
+- `Clone` writes to core `operators/<domain>/...` and appends targets to core `CMakeLists.txt`.
+- This is convenient for solo core-dev work but poor for team/project ownership boundaries.
+
+Target behavior:
+- Clone/scaffold destination defaults to active project package (or configured project operator root).
+- Core repo stays engine-only unless user explicitly chooses "clone into core".
+- Graphs persist stable operator type refs independent of physical source location.
+
+Execution checklist (concrete):
+1. **Destination policy + config contract**
+- [x] Add settings keys:
+  - `operator_clone_destination_mode`: `project_default|core_explicit`
+  - `project_operator_root`: absolute path (optional)
+  - `project_package_name`: package target for scaffold/clone (optional)
+- [x] Define resolution order:
+  1) explicit user choice in action
+  2) graph/workspace-local project package
+  3) configured `project_package_name` / `project_operator_root`
+  4) fallback core path with warning
+
+2. **Runtime/UI/CLI surface**
+- [x] Update node clone flow to choose/write destination via policy (not hardcoded core path).
+- [x] Add explicit UI option: `Clone Into -> Project Package | Core`.
+- [~] Extend scaffold API/CLI with optional destination:
+  - [x] control-server/MCP: `scaffold_operator(..., destination=...)`
+  - [x] CLI: `vivid scaffold-operator <name> --domain ... --dest <path|package>`
+
+3. **Project/package integration**
+- [x] If destination is package: patch that package's `CMakeLists.txt`/manifest rather than core.
+- [x] Ensure hot-reload watcher auto-registers cloned/scaffolded files in project/package roots.
+- [x] Ensure install/link workflows preserve expected ownership boundaries.
+
+4. **Migration safety**
+- [ ] Keep current core-destination path available behind explicit opt-in during transition.
+- [ ] Add non-destructive migration helper:
+  - detect cloned operators in core with no upstream usage
+  - offer move/copy into project package with patch suggestions (no automatic delete).
+
+5. **Validation matrix**
+- [x] Unit tests for destination resolution precedence.
+- [x] End-to-end tests:
+  - clone into project package -> build/hot-reload works
+  - scaffold into project package via MCP -> files + CMake edits correct
+  - fallback-to-core path emits clear warning and remains functional
+- [ ] Team workflow regression: two repos (core + project package) with clean git diff boundaries.
+
+Minimal first slice (recommended next implementation step):
+- Implement destination resolution + new destination parameters in clone/scaffold APIs.
+- Support one project destination mode: linked package (`vivid link ...`) as default target.
+- Keep core fallback; no automatic migration yet.
+
+Minimal first slice status (2026-03-06):
+- `scaffold_operator` now accepts optional `destination` (`core`, `package:<name>`, or absolute path) and defaults to first linked package when available.
+- UI create-operator flow now defaults to first linked package destination when available, with fallback to core source tree.
+- Package destination scaffolding writes to `src/<name>.cpp` (and `.wgsl` for GPU) and patches package `CMakeLists.txt` ops list.
+- Project-default destination now only selects linked packages in `local/workspace` scopes (not user/global installs), preserving ownership boundaries for installed dependencies.
+- Destination policy contract is now centralized and shared across runtime clone/create, CLI scaffold, and control-server scaffold via settings-backed precedence resolution.
+- E2E trio coverage is now automated and passing:
+  - `test_undo_mutation_types`: clone into linked project package writes `src/`, patches package CMake ops, and queues package hot-reload target.
+  - `test_control_server`: MCP `scaffold_operator` writes to package destination and validates fallback-to-core warning path.
+
 ---
 
 ## Open Questions
 
-- **Semantic parameter tags:** Tags like `"frequency"` or `"amplitude"` on `ParamBase` could enable LLM hinting and smart defaults, but no tagging system exists yet. Worth designing before or alongside Milestone 3.
+### Semantic Parameter Tags Plan (Large Feature, post-1.0)
+
+Goal: add machine-readable parameter semantics (for LLM hints, safer auto-wiring, and better defaults) without breaking existing operators or graphs.
+
+Status: planning only; implementation deferred past 1.0.
+
+Phase 0: Spec + taxonomy baseline
+- [x] Define initial controlled vocabulary (`frequency`, `amplitude`, `gate`, `phase`, `time_seconds`, `bpm`, `color_rgba`, `position_xy`, `seed`, etc.).
+- [x] Define value-shape metadata (`scalar`, `vec2`, `vec3`, `color`, `enum`, `pattern`, `event`).
+- [x] Define compatibility rules: unknown tags ignored; untagged params remain valid.
+- [x] Publish canonical contract doc (`docs/SEMANTIC-PARAM-TAGS.md`) with examples and anti-patterns.
+
+Phase 1: Operator API + runtime surface
+- [x] Extend `ParamBase` metadata to carry semantic tag(s) and optional units/range intent.
+- [x] Keep source compatibility: existing operators compile unchanged.
+- [x] Expose tags through existing introspection/control surfaces (Runtime API, control server, MCP).
+- [x] Ensure serialization boundaries are explicit: tags live in operator code/metadata, not required in graph JSON values.
+
+Phase 2: Seed operator adoption (core + sibling packages)
+- [ ] Tag core seed operators first (audio/control/gpu high-traffic params).
+- [ ] Tag sibling package operators (`../vivid-3d`, `../vivid-drums`, `../vivid-glitch`, `../vivid-sequencers`, `../vivid-wavetable`, `../vivid-cef`) using same vocabulary.
+- [x] Add lint/check script to detect invalid or unknown tags in operator metadata.
+- [ ] Keep rollout incremental: partial coverage is acceptable while contract stabilizes.
+
+Phase 2 status (2026-03-06, core wave 1):
+- Added semantic tags to high-traffic core operators:
+  - Control: `LFO`, `Clock`, `Envelope`
+  - Audio: `Oscillator`, `Gain`
+  - GPU: `Shape`, `Noise`, `Bars`
+- Regression check: `test_control_server` passes with semantic metadata API surfaces enabled.
+
+Phase 2 status (2026-03-06, sibling wave 1):
+- Added semantic tags in sibling repos:
+  - `../vivid-3d`: `Transform3D`
+  - `../vivid-drums`: `DrumKick`, `DrumSnare`, `DrumHiHat`, `DrumClap`, `DrumCymbal`, `DrumTom`
+  - `../vivid-glitch`: `Reverse`
+  - `../vivid-sequencers`: `Sequencer`
+  - `../vivid-wavetable`: `WavetableSynth` (core envelope/filter semantics)
+  - `../vivid-cef`: `BrowserOp`
+- Added validator script: `scripts/validate_semantic_tags.sh` (core + sibling paths supported).
+- Validation results:
+  - `vivid-3d`: build + 16/16 tests pass
+  - `vivid-drums`: build + tests pass
+  - `vivid-glitch`: build + tests pass
+  - `vivid-sequencers`: build + tests pass (`test_pattern_algebra` passes after core plugin ABI rebuild)
+  - `vivid-wavetable`: build + tests pass
+  - `vivid-cef`: rebuild succeeds (`ctest`: no tests defined)
+
+Phase 2 status (2026-03-06, core wave 2):
+- Added semantic tags to additional core operators:
+  - Control: `Random`, `Gate`, `ModulatedGain`
+  - Audio: `Delay`, `Reverb`, `Bitcrush`, `Distortion`
+  - GPU: `Composite`, `Feedback`, `Bloom`
+- Validation results:
+  - Semantic tag validator passes: `scripts/validate_semantic_tags.sh operators src tests`
+  - Targeted builds pass for all updated operators.
+  - Control-server semantic metadata regression passes from build dir: `./test_control_server .`
+
+Phase 2 status (2026-03-06, core wave 3):
+- Added semantic tags to core media/I/O operators:
+  - GPU: `MovieFileIn`, `WebcamIn`
+  - Audio: `MovieFileAudioIn`
+  - Control: `OscIn`, `OscOut`
+- Validation results:
+  - Semantic tag validator still passes.
+  - Targeted builds pass for updated operators.
+  - Control-server regression passes from build dir: `./test_control_server .`
+
+Phase 3: Tooling + UX integration
+- [x] UI: show semantic hint text in parameter inspector (non-intrusive).
+- [x] MCP/control: include semantic tags in parameter schema responses used by LLM tools.
+- [x] Scaffold/clone templates: include optional semantic-tag examples so generated operators start with best practices.
+- [x] Add docs section in operator-authoring guides for when to tag and when not to tag.
+
+Phase 3 status (2026-03-06, scaffold template semantics):
+- `OperatorCreator` templates now seed semantic metadata examples in generated operators:
+  - control/audio/gpu default templates include `semantic_tag` + `semantic_shape` on starter params
+  - composite control template includes semantic examples for modulation/time params (`lfo_rate`, `smooth_time`, etc.)
+- `test_operator_creator` now asserts semantic metadata snippets are present in scaffolded sources.
+
+Phase 4: Behavior improvements guarded by tags
+- [x] LLM-assisted operator creation: prefer semantically compatible defaults when connecting nodes.
+- [x] Auto-wiring suggestions: rank candidate ports by semantic compatibility before simple type match ties.
+- [ ] Safe coercion rules (example: `time_ms` -> `time_seconds`) only when explicitly defined in contract.
+- [ ] No hidden mutations: all inferred mappings must be inspectable/overridable by user.
+
+Phase 4 status (2026-03-06, step 1):
+- Control-server `connect` now accepts optional `semantic_defaults` (bool).
+- MCP `connect` enables `semantic_defaults` by default for LLM workflows.
+- RuntimeAPI connect applies tag-guarded default remap only for parameter-to-parameter connections:
+  - same-tag range mapping (when non-identity)
+  - explicit conversion pairs: `time_milliseconds` <-> `time_seconds`, `rotation_degrees` <-> `rotation_radians`
+- Regression coverage added in `test_runtime_api` with deterministic semantic test operators.
+
+Phase 4 status (2026-03-06, step 2):
+- Insert-on-wire auto wiring now ranks candidate input/output ports by semantic-tag compatibility
+  before falling back to plain type compatibility.
+- Destination param picker now ranks compatible inputs/params by semantic-tag match against the
+  source endpoint tag, preserving existing order when semantic tags are absent.
+- Descriptor lookup now works for both deferred and already-loaded operators during semantic
+  auto-wiring (`OperatorRegistry::probe_descriptor` includes loaded operators).
+- Regression validation passes:
+  - `./build/test_ui_overlay_interactions`
+  - `./build/test_control_server .`
+
+Phase 5: Validation matrix + rollout gate
+- [ ] Unit tests: taxonomy parser/validator, metadata propagation, unknown-tag tolerance.
+- [ ] Integration tests: introspection/control/MCP parity for tagged vs untagged params.
+- [ ] Regression tests: untagged legacy graphs/operators behave exactly as before.
+- [ ] Exit gate for activation of tag-driven behaviors:
+  - [ ] stable taxonomy version
+  - [ ] core seed coverage target met
+  - [ ] sibling package baseline coverage met
+  - [ ] no graph/load/runtime regressions in CI.
 
 ---
 
@@ -731,5 +935,6 @@ These are acknowledged but explicitly out of scope for the initial release:
 ## Extra Findings
 
 [x] Developer & User Experience -- graph discovery now uses recursive folder scan + per-graph `meta` and in-app **Open Example...** search/filter UI.
-[ ] Let's think about the dev process for teams. Let's say a team wants to slightly change the way the osc_in operator works. They clone the node. Where does the code go by default? Is it condusive to source repository workflows?
+[x] Team workflow issue documented and converted into concrete launch follow-up plan: **Project-Local Operator Ownership** (see Milestone 8 section above).
 [ ] Check if PR was accepted, switch back to main repo: https://github.com/gfx-rs/wgpu-native/pull/557
+[ ] Clean up docs directory. There should really only be user-facing documents in there. The rest should be in subfolders, and some should be gitignored because they're just for me.

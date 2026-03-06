@@ -93,6 +93,28 @@ struct Feedback : vivid::OperatorBase {
     vivid::Param<float> zoom     {"zoom",     1.0f,  0.9f, 1.1f};
     vivid::Param<float> rotate   {"rotate",   0.0f,  0.0f, 360.0f};
 
+    Feedback() {
+        vivid::semantic_tag(decay, "probability_01");
+        vivid::semantic_shape(decay, "scalar");
+
+        vivid::semantic_tag(mix, "probability_01");
+        vivid::semantic_shape(mix, "scalar");
+
+        vivid::semantic_tag(offset_x, "position_xy");
+        vivid::semantic_shape(offset_x, "scalar");
+        vivid::semantic_intent(offset_x, "x_component");
+        vivid::semantic_tag(offset_y, "position_xy");
+        vivid::semantic_shape(offset_y, "scalar");
+        vivid::semantic_intent(offset_y, "y_component");
+
+        vivid::semantic_tag(zoom, "scale_xy");
+        vivid::semantic_shape(zoom, "scalar");
+
+        vivid::semantic_tag(rotate, "rotation_degrees");
+        vivid::semantic_shape(rotate, "scalar");
+        vivid::semantic_unit(rotate, "deg");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         display_hint(offset_x, VIVID_DISPLAY_XY_PAD);
         display_hint(offset_y, VIVID_DISPLAY_XY_PAD);

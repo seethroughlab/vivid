@@ -8,6 +8,15 @@ struct Gate : vivid::OperatorBase {
     vivid::Param<float> threshold{"threshold", 0.5f, 0.0f, 1.0f};
     vivid::Param<bool>  invert{"invert", false};
 
+    Gate() {
+        vivid::semantic_tag(threshold, "probability_01");
+        vivid::semantic_shape(threshold, "scalar");
+
+        vivid::semantic_tag(invert, "enabled");
+        vivid::semantic_shape(invert, "bool");
+        vivid::semantic_intent(invert, "invert_logic");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&threshold);
         out.push_back(&invert);

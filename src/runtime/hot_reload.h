@@ -4,6 +4,7 @@
 #include <vector>
 #include <deque>
 #include <unordered_map>
+#include <unordered_set>
 #include <functional>
 #include <mutex>
 #include <thread>
@@ -51,6 +52,9 @@ private:
     std::mutex queue_mutex_;
     std::condition_variable queue_cv_;
     std::deque<std::string> build_queue_;
+    std::unordered_set<std::string> queued_targets_;
+    std::unordered_set<std::string> in_flight_targets_;
+    std::unordered_set<std::string> deferred_targets_;
 
     // Completed results (compile thread → main)
     std::mutex result_mutex_;

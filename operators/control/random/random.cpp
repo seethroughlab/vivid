@@ -13,6 +13,22 @@ struct Random : vivid::OperatorBase {
     vivid::Param<int>   seed        {"seed",         12345, 1, 99999};
     vivid::Param<bool>  free_run    {"free_run",     true};
 
+    Random() {
+        vivid::semantic_tag(min_val, "amplitude_linear");
+        vivid::semantic_shape(min_val, "scalar");
+        vivid::semantic_intent(min_val, "range_min");
+
+        vivid::semantic_tag(max_val, "amplitude_linear");
+        vivid::semantic_shape(max_val, "scalar");
+        vivid::semantic_intent(max_val, "range_max");
+
+        vivid::semantic_tag(seed, "seed");
+        vivid::semantic_shape(seed, "int");
+
+        vivid::semantic_tag(free_run, "enabled");
+        vivid::semantic_shape(free_run, "bool");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&min_val);
         out.push_back(&max_val);

@@ -25,7 +25,12 @@ public:
                                      float range_min, float range_max) = 0;
     virtual void open_shader(const std::string& type_name) {}
     virtual void duplicate_as_user_filter(const std::string& type_name) {}
-    virtual void clone_and_edit(const std::string& type_name) {}
+    virtual void clone_and_edit(const std::string& type_name) {
+        clone_and_edit(type_name, "auto");
+    }
+    // destination: "auto", "project", or "core"
+    virtual void clone_and_edit(const std::string& type_name, const std::string& destination) {}
+    virtual bool has_project_clone_destination() { return false; }
     virtual void set_editor_preference(const std::string& editor_id,
                                        const std::string& custom_command) {}
     virtual void set_style_preference(const std::string& style_id) {}

@@ -53,6 +53,29 @@ static void draw_dashed_wire(Renderer2D& tr,
         });
 }
 
+static std::string build_semantic_hint(const ParamInfo& pd) {
+    if (pd.semantic_tag.empty() && pd.semantic_shape.empty() &&
+        pd.semantic_unit.empty() && pd.semantic_intent.empty()) {
+        return {};
+    }
+
+    std::string hint;
+    if (!pd.semantic_tag.empty()) hint += pd.semantic_tag;
+    if (!pd.semantic_shape.empty()) {
+        if (!hint.empty()) hint += " ";
+        hint += "(" + pd.semantic_shape + ")";
+    }
+    if (!pd.semantic_unit.empty()) {
+        if (!hint.empty()) hint += " ";
+        hint += "[" + pd.semantic_unit + "]";
+    }
+    if (!pd.semantic_intent.empty()) {
+        if (!hint.empty()) hint += " - ";
+        hint += pd.semantic_intent;
+    }
+    return hint;
+}
+
 // -----------------------------------------------------------------------
 // Drawing
 // -----------------------------------------------------------------------
@@ -1155,6 +1178,8 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
     float panel_w = layout.col_w;
     const auto& pd = op.params[pi];
     float val = node.param_values[pi];
+    const std::string semantic_hint = build_semantic_hint(pd);
+    const bool has_semantic_hint = !semantic_hint.empty();
 
     if (pd.display_hint == VIVID_DISPLAY_KNOB && pd.type == VIVID_PARAM_FLOAT) {
         draw_inspector_knob(tr, node, layout, pi);
@@ -1345,7 +1370,13 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                                          single_selected_id(), pd.name});
         }
     }
+
     py += kLineH;
+    if (has_semantic_hint) {
+        tr.draw_text(px, py - 2.0f, semantic_hint.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f);
+        py += kLineH - 2.0f;
+    }
 
     if (pd.type == VIVID_PARAM_BOOL) {
         float bx = px, by = py;
@@ -2886,6 +2917,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     draw_package_browser(tr);
     draw_example_browser(tr);
     draw_graph_meta_editor(tr);
+    draw_about(tr);
 }
 
 // -----------------------------------------------------------------------
@@ -2899,7 +2931,7 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
                  style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
 
     // Dialog panel (centered)
-    float dw = 280.0f, dh = 70.0f;
+    float dw = 360.0f, dh = 108.0f;
     float dx = (static_cast<float>(win_w_) - dw) * 0.5f;
     float dy = (static_cast<float>(win_h_) - dh) * 0.5f;
 
@@ -2909,8 +2941,47 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
     tr.draw_rect(dx, dy, dw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
 
     // Label text
-    std::string label = "Clone " + clone_confirm_type_ + " for editing?";
+    std::string label = "Clone " + clone_confirm_type_ + " for editing";
     tr.draw_text(dx + 12, dy + 10, label.c_str(), style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+    float toggle_x = dx + 12.0f;
+    float toggle_y = dy + 38.0f;
+    float toggle_w = dw - 24.0f;
+    float toggle_h = 24.0f;
+    float left_w = toggle_w * 0.5f;
+
+    float border = 0.6f;
+    tr.draw_rect(toggle_x, toggle_y, toggle_w, toggle_h,
+                 style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.8f);
+    tr.draw_rect(toggle_x, toggle_y, toggle_w, 1.0f,
+                 style_.separator[0], style_.separator[1], style_.separator[2], border);
+    tr.draw_rect(toggle_x, toggle_y + toggle_h - 1.0f, toggle_w, 1.0f,
+                 style_.separator[0], style_.separator[1], style_.separator[2], border);
+    tr.draw_rect(toggle_x, toggle_y, 1.0f, toggle_h,
+                 style_.separator[0], style_.separator[1], style_.separator[2], border);
+    tr.draw_rect(toggle_x + toggle_w - 1.0f, toggle_y, 1.0f, toggle_h,
+                 style_.separator[0], style_.separator[1], style_.separator[2], border);
+    tr.draw_rect(toggle_x + left_w - 0.5f, toggle_y, 1.0f, toggle_h,
+                 style_.separator[0], style_.separator[1], style_.separator[2], border);
+
+    if (clone_confirm_project_available_ && clone_confirm_destination_ == 0) {
+        tr.draw_rect(toggle_x + 1.0f, toggle_y + 1.0f, left_w - 2.0f, toggle_h - 2.0f,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
+    }
+    if (clone_confirm_destination_ == 1) {
+        tr.draw_rect(toggle_x + left_w + 1.0f, toggle_y + 1.0f, left_w - 2.0f, toggle_h - 2.0f,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
+    }
+
+    if (clone_confirm_project_available_) {
+        tr.draw_text(toggle_x + 12.0f, toggle_y + 4.0f, "Project Package",
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    } else {
+        tr.draw_text(toggle_x + 12.0f, toggle_y + 4.0f, "Project Package (unavailable)",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    }
+    tr.draw_text(toggle_x + left_w + 12.0f, toggle_y + 4.0f, "Core",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
     // Buttons
     float btn_w = 70.0f, btn_h = 22.0f;

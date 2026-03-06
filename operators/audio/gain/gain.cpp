@@ -8,6 +8,12 @@ struct Gain : vivid::OperatorBase {
 
     vivid::Param<float> gain{"gain", 1.0f, 0.0f, 2.0f};
 
+    Gain() {
+        vivid::semantic_tag(gain, "amplitude_linear");
+        vivid::semantic_shape(gain, "scalar");
+        vivid::semantic_intent(gain, "input_gain");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&gain);
     }

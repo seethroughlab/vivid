@@ -27,6 +27,13 @@ NodeGraphUI::NodeGraphUI(UICommandSink& commands)
     if (!styles.empty()) style_ = styles[0];
 }
 
+void NodeGraphUI::open_clone_confirm_dialog(const std::string& type_name) {
+    clone_confirm_type_ = type_name;
+    clone_confirm_project_available_ = commands_.has_project_clone_destination();
+    clone_confirm_destination_ = clone_confirm_project_available_ ? 0 : 1;
+    clone_confirm_open_ = true;
+}
+
 float NodeGraphUI::graph_right() const {
     return has_selection() ? inspector_x() : static_cast<float>(win_w_);
 }
@@ -660,13 +667,57 @@ static bool can_insert_on_wire(const OperatorInfo& op, VividPortType src, VividP
     return false;
 }
 
-static std::string find_compatible_port(const OperatorInfo& op, VividPortType wire_type,
-                                        VividPortDirection dir) {
-    for (const auto& p : op.ports) {
-        if (p.direction == dir && port_type_compatible(wire_type, p.type))
-            return p.name;
+static const ParamInfo* find_param_semantic_for_endpoint(const OperatorInfo& op,
+                                                         const std::string& endpoint_name) {
+    for (const auto& p : op.params) {
+        if (p.name == endpoint_name) return &p;
     }
-    return {};
+    // Single-param fallback for operators whose wire port name differs from param name.
+    if (op.params.size() == 1) return &op.params[0];
+    return nullptr;
+}
+
+static std::string semantic_tag_for_operator_endpoint(const OperatorInfo& op,
+                                                      const std::string& endpoint_name) {
+    const ParamInfo* p = find_param_semantic_for_endpoint(op, endpoint_name);
+    return p ? p->semantic_tag : std::string{};
+}
+
+static std::string semantic_tag_for_snapshot_endpoint(const GraphSnapshot& snap,
+                                                      const std::string& node_id,
+                                                      const std::string& endpoint_name) {
+    const auto* ns = snap.find_node(node_id);
+    if (!ns || !ns->op_info) return {};
+    return semantic_tag_for_operator_endpoint(*ns->op_info, endpoint_name);
+}
+
+static std::string find_compatible_port(const OperatorInfo& op, VividPortType wire_type,
+                                        VividPortDirection dir,
+                                        const std::string& preferred_semantic_tag = {}) {
+    struct Candidate {
+        size_t order = 0;
+        int score = 0;
+        std::string name;
+    };
+    std::vector<Candidate> candidates;
+    size_t order = 0;
+    for (const auto& p : op.ports) {
+        if (p.direction != dir || !port_type_compatible(wire_type, p.type)) continue;
+        int score = 0;
+        if (!preferred_semantic_tag.empty()) {
+            std::string candidate_tag = semantic_tag_for_operator_endpoint(op, p.name);
+            if (!candidate_tag.empty() && candidate_tag == preferred_semantic_tag)
+                score = 1;
+        }
+        candidates.push_back(Candidate{order++, score, p.name});
+    }
+    if (candidates.empty()) return {};
+    auto best = std::max_element(candidates.begin(), candidates.end(),
+        [](const Candidate& a, const Candidate& b) {
+            if (a.score != b.score) return a.score < b.score;
+            return a.order > b.order;
+        });
+    return best->name;
 }
 
 // -----------------------------------------------------------------------
@@ -739,13 +790,19 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
         auto cat_it = snap_.operator_catalog.find(type);
         if (cat_it != snap_.operator_catalog.end() && cat_it->second) {
             const auto& op = *cat_it->second;
+            std::string source_tag =
+                semantic_tag_for_snapshot_endpoint(snap_, chooser_insert_conn_.from_node,
+                                                   chooser_insert_conn_.from_port);
+            std::string dest_tag =
+                semantic_tag_for_snapshot_endpoint(snap_, chooser_insert_conn_.to_node,
+                                                   chooser_insert_conn_.to_port);
             // Remove original wire
             commands_.disconnect(
                 chooser_insert_conn_.from_node + "/" + chooser_insert_conn_.from_port,
                 chooser_insert_conn_.to_node   + "/" + chooser_insert_conn_.to_port);
             // Find compatible ports on the new node
-            std::string in_port  = find_compatible_port(op, insert_wire_source_type_, VIVID_PORT_INPUT);
-            std::string out_port = find_compatible_port(op, insert_wire_dest_type_,   VIVID_PORT_OUTPUT);
+            std::string in_port  = find_compatible_port(op, insert_wire_source_type_, VIVID_PORT_INPUT, source_tag);
+            std::string out_port = find_compatible_port(op, insert_wire_dest_type_,   VIVID_PORT_OUTPUT, dest_tag);
             // Wire source → new node
             if (!in_port.empty())
                 commands_.connect(chooser_insert_conn_.from_node + "/" + chooser_insert_conn_.from_port,
@@ -803,6 +860,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_package_browser(); // may consume left_clicked
     update_example_browser(); // may consume left_clicked
     update_graph_meta_editor(); // may consume left_clicked
+    update_about();             // may consume left_clicked
     update_preferences();    // may consume left_clicked
     update_clone_confirm();  // may consume left_clicked
     update_create_popup();   // may consume left_clicked
@@ -1302,11 +1360,23 @@ void NodeGraphUI::rebuild_param_picker_items() {
         // Picking an input param on this node (destination side)
         // Determine source port type for compatibility filtering
         VividPortType src_type;
+        std::string src_semantic_tag;
         if (!wire_from_is_output_)
             src_type = VIVID_PORT_CONTROL_FLOAT;  // param sources are always float
         else
             src_type = resolve_port_type(snap_, param_picker_wire_from_node_,
                                           param_picker_wire_from_port_, true);
+        src_semantic_tag = semantic_tag_for_snapshot_endpoint(
+            snap_, param_picker_wire_from_node_, param_picker_wire_from_port_);
+
+        struct PickerCandidate {
+            std::string name;
+            bool is_param = false;
+            int semantic_score = 0;
+            size_t order = 0;
+        };
+        std::vector<PickerCandidate> candidates;
+        size_t candidate_order = 0;
 
         // Add signal input ports first
         auto sorted_ins = sorted_ports(ns->input_port_indices);
@@ -1330,7 +1400,14 @@ void NodeGraphUI::rebuild_param_picker_items() {
                 }
             }
             if (!port_type_compatible(src_type, dest_type)) continue;
-            param_picker_items_.push_back(name);
+            int semantic_score = 0;
+            if (!src_semantic_tag.empty()) {
+                std::string candidate_tag =
+                    semantic_tag_for_snapshot_endpoint(snap_, param_picker_node_id_, name);
+                if (!candidate_tag.empty() && candidate_tag == src_semantic_tag)
+                    semantic_score = 1;
+            }
+            candidates.push_back(PickerCandidate{name, false, semantic_score, candidate_order++});
         }
 
         // Add params (not already signal ports, not FILE type, not already connected)
@@ -1354,7 +1431,23 @@ void NodeGraphUI::rebuild_param_picker_items() {
             }
             if (already_connected) continue;
 
-            param_picker_items_.push_back(name);
+            int semantic_score = 0;
+            if (!src_semantic_tag.empty() && pd &&
+                !pd->semantic_tag.empty() && pd->semantic_tag == src_semantic_tag) {
+                semantic_score = 1;
+            }
+            candidates.push_back(PickerCandidate{name, true, semantic_score, candidate_order++});
+        }
+
+        std::stable_sort(candidates.begin(), candidates.end(),
+            [](const PickerCandidate& a, const PickerCandidate& b) {
+                if (a.semantic_score != b.semantic_score)
+                    return a.semantic_score > b.semantic_score;
+                return a.order < b.order;
+            });
+        for (const auto& c : candidates) {
+            param_picker_items_.push_back(c.name);
+            param_picker_item_is_param_.push_back(c.is_param);
         }
     }
 }

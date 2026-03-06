@@ -497,6 +497,8 @@ add_executable(vivid
     src/runtime/file_watcher.cpp
     src/runtime/hot_reload.cpp
     src/runtime/runtime_api.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/screenshot.cpp
     src/runtime/builtin_operators.cpp
@@ -752,6 +754,8 @@ enable_testing()
 # Test operator plugins (two versions of the same operator)
 add_vivid_operator(test_op_v1     tests/operators/test_op_v1.cpp)
 add_vivid_operator(test_op_v2     tests/operators/test_op_v2.cpp)
+add_vivid_operator(semantic_ms_source_op tests/operators/semantic_ms_source_op.cpp)
+add_vivid_operator(semantic_s_dest_op    tests/operators/semantic_s_dest_op.cpp)
 
 # Hot-reload integration test (no GPU, no audio, no window)
 add_executable(test_hot_reload
@@ -794,6 +798,8 @@ add_executable(test_control_server
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/control_server.cpp
     src/runtime/capture_coordinator.cpp
@@ -814,7 +820,7 @@ target_link_libraries(test_control_server PRIVATE
     vivid_operator_api yyjson miniaudio ixwebsocket webgpu rtmidi stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
-add_dependencies(test_control_server test_op_v1)
+add_dependencies(test_control_server test_op_v1 semantic_ms_source_op semantic_s_dest_op)
 add_test(NAME test_control_server COMMAND test_control_server WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Perception introspection matrix test (domain snapshots + deterministic health)
@@ -827,6 +833,8 @@ add_executable(test_perception_introspection
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/control_server.cpp
     src/runtime/capture_coordinator.cpp
@@ -943,6 +951,15 @@ target_include_directories(test_settings PRIVATE src tests)
 target_link_libraries(test_settings PRIVATE yyjson)
 add_test(NAME test_settings COMMAND test_settings WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Operator destination policy precedence unit test
+add_executable(test_operator_destination_policy
+    tests/test_operator_destination_policy.cpp
+)
+target_include_directories(test_operator_destination_policy PRIVATE src tests)
+add_test(NAME test_operator_destination_policy
+    COMMAND test_operator_destination_policy
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Theme loader unit test
 add_executable(test_theme_loader
     tests/test_theme_loader.cpp
@@ -988,6 +1005,13 @@ add_executable(test_wgsl_header
 target_include_directories(test_wgsl_header PRIVATE src)
 target_link_libraries(test_wgsl_header PRIVATE yyjson)
 add_test(NAME test_wgsl_header COMMAND test_wgsl_header WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# WGSL include preprocessor diagnostics (missing include/cycle/include chain)
+add_executable(test_wgsl_preprocessor
+    tests/test_wgsl_preprocessor.cpp
+)
+target_include_directories(test_wgsl_preprocessor PRIVATE src tests)
+add_test(NAME test_wgsl_preprocessor COMMAND test_wgsl_preprocessor WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # String utility unit test (header-only, no dependencies)
 add_executable(test_string_util tests/test_string_util.cpp)
@@ -1305,6 +1329,14 @@ add_executable(test_file_watcher
 target_include_directories(test_file_watcher PRIVATE src tests)
 add_test(NAME test_file_watcher COMMAND test_file_watcher WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# HotReloader queueing unit tests (no compiler invocation; package callback path)
+add_executable(test_hot_reloader_queue
+    tests/test_hot_reloader_queue.cpp
+    src/runtime/hot_reload.cpp
+)
+target_include_directories(test_hot_reloader_queue PRIVATE src tests)
+add_test(NAME test_hot_reloader_queue COMMAND test_hot_reloader_queue WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # path_util unit tests (header-only, no extra deps)
 add_executable(test_path_util
     tests/test_path_util.cpp
@@ -1338,6 +1370,8 @@ add_executable(test_undo_mutation_types
     src/runtime/scheduler.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/operator_creator.cpp
     src/runtime/settings.cpp

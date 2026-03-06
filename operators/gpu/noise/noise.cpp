@@ -339,6 +339,13 @@ struct Noise : vivid::OperatorBase {
     vivid::Param<int>   channels    {"channels", 0, {"Mono", "2 Channel", "RGB"}};
     vivid::Param<int>   center_origin{"center_origin", 0, {"Off", "On"}};
 
+    Noise() {
+        vivid::semantic_tag(speed, "frequency_hz");
+        vivid::semantic_shape(speed, "scalar");
+        vivid::semantic_unit(speed, "Hz");
+        vivid::semantic_intent(speed, "animation_rate");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&scale);
         out.push_back(&speed);

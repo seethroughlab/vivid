@@ -131,7 +131,8 @@ public:
             || preset_name_popup_open_
             || pkg_browser_open_
             || example_browser_open_
-            || graph_meta_editor_open_;
+            || graph_meta_editor_open_
+            || about_open_;
     }
     bool wire_inspector_visible() const;
     bool has_selection() const { return !selected_node_ids_.empty() || wire_inspector_visible(); }
@@ -204,6 +205,7 @@ public:
     void set_core_update_notice_callbacks(std::function<void()> install_cb,
                                           std::function<void()> skip_cb,
                                           std::function<void()> later_cb);
+    void open_about() { about_open_ = true; about_scroll_ = 0.0f; }
 
 private:
     // --- Layout ---
@@ -298,6 +300,7 @@ private:
         const std::unordered_map<std::string, uint32_t>& port_indices);
 
     // --- Clone confirmation dialog ---
+    void open_clone_confirm_dialog(const std::string& type_name);
     void update_clone_confirm();
     void draw_clone_confirm(Renderer2D& tr);
 
@@ -321,6 +324,8 @@ private:
     void rebuild_example_items();
     void update_graph_meta_editor();
     void draw_graph_meta_editor(Renderer2D& tr);
+    void update_about();
+    void draw_about(Renderer2D& tr);
 
     // --- Parameter picker popup ---
     void rebuild_param_picker_items();
@@ -656,6 +661,8 @@ private:
     // Clone confirmation dialog state
     bool clone_confirm_open_ = false;
     std::string clone_confirm_type_;
+    bool clone_confirm_project_available_ = false;
+    int clone_confirm_destination_ = 0; // 0=Project Package, 1=Core
 
     // Create operator popup state
     bool create_popup_open_ = false;
@@ -715,6 +722,11 @@ private:
     GraphMetaEditData graph_meta_data_;
     std::string graph_meta_error_;
     std::function<bool(const GraphMetaEditData&, std::string&)> graph_meta_save_callback_;
+
+    // --- About modal ---
+    bool about_open_ = false;
+    float about_scroll_ = 0.0f;
+    float about_max_scroll_ = 0.0f;
 
     // --- Session grid (variation strip) ---
     bool session_grid_open_ = false;

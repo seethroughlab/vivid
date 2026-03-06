@@ -66,6 +66,11 @@ static std::string control_template(const std::string& name, const std::string& 
     s << "    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;\n";
     s << "    static constexpr bool kTimeDependent = false;\n\n";
     s << "    vivid::Param<float> amount{\"amount\", 1.0f, 0.0f, 1.0f};\n\n";
+    s << "    " << struct_name << "() {\n";
+    s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
+    s << "        vivid::semantic_tag(amount, \"probability_01\");\n";
+    s << "        vivid::semantic_shape(amount, \"scalar\");\n";
+    s << "    }\n\n";
     s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
     s << "        out.push_back(&amount);\n";
     s << "    }\n\n";
@@ -90,6 +95,11 @@ static std::string audio_template(const std::string& name, const std::string& st
     s << "    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
     s << "    vivid::Param<float> gain{\"gain\", 1.0f, 0.0f, 2.0f};\n\n";
+    s << "    " << struct_name << "() {\n";
+    s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
+    s << "        vivid::semantic_tag(gain, \"amplitude_linear\");\n";
+    s << "        vivid::semantic_shape(gain, \"scalar\");\n";
+    s << "    }\n\n";
     s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
     s << "        out.push_back(&gain);\n";
     s << "    }\n\n";
@@ -119,7 +129,11 @@ static std::string gpu_template(const std::string& name, const std::string& stru
     s << "    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
     s << "    vivid::Param<float> amount{\"amount\", 1.0f, 0.0f, 1.0f};\n\n";
-    s << "    " << struct_name << "() : WgslFilterBase(\"" << name << ".wgsl\") {}\n\n";
+    s << "    " << struct_name << "() : WgslFilterBase(\"" << name << ".wgsl\") {\n";
+    s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
+    s << "        vivid::semantic_tag(amount, \"probability_01\");\n";
+    s << "        vivid::semantic_shape(amount, \"scalar\");\n";
+    s << "    }\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
     s << "        out.push_back({\"input\",   VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});\n";
     s << "        out.push_back({\"texture\", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});\n";
@@ -147,6 +161,19 @@ static std::string composite_control_template(const std::string& name, const std
     s << "    vivid::Param<float> smooth_time{\"smooth_time\", 0.05f, 0.0f, 2.0f};\n\n";
     s << "    vivid::ChildOp<LFO>    lfo_;\n";
     s << "    vivid::ChildOp<Smooth> smoother_;\n\n";
+    s << "    " << struct_name << "() {\n";
+    s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
+    s << "        vivid::semantic_tag(amount, \"amplitude_linear\");\n";
+    s << "        vivid::semantic_shape(amount, \"scalar\");\n";
+    s << "        vivid::semantic_tag(lfo_rate, \"frequency_hz\");\n";
+    s << "        vivid::semantic_shape(lfo_rate, \"scalar\");\n";
+    s << "        vivid::semantic_unit(lfo_rate, \"Hz\");\n";
+    s << "        vivid::semantic_tag(lfo_depth, \"amplitude_linear\");\n";
+    s << "        vivid::semantic_shape(lfo_depth, \"scalar\");\n";
+    s << "        vivid::semantic_tag(smooth_time, \"time_seconds\");\n";
+    s << "        vivid::semantic_shape(smooth_time, \"scalar\");\n";
+    s << "        vivid::semantic_unit(smooth_time, \"s\");\n";
+    s << "    }\n\n";
     s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
     s << "        out.push_back(&amount);\n";
     s << "        out.push_back(&lfo_rate);\n";
@@ -244,6 +271,45 @@ static bool patch_cmake(const std::string& src_dir, const std::string& name,
     return true;
 }
 
+static bool patch_package_cmake(const std::string& pkg_dir, const std::string& name,
+                                std::string& error) {
+    std::string cmake_path = pkg_dir + "/CMakeLists.txt";
+    std::ifstream ifs(cmake_path);
+    if (!ifs) {
+        error = "cannot open CMakeLists.txt at " + cmake_path;
+        return false;
+    }
+
+    std::string content((std::istreambuf_iterator<char>(ifs)),
+                         std::istreambuf_iterator<char>());
+    ifs.close();
+
+    if (content.find(name) != std::string::npos) return true;
+
+    size_t scan = 0;
+    while (true) {
+        size_t set_pos = content.find("set(", scan);
+        if (set_pos == std::string::npos) break;
+        size_t close = content.find(')', set_pos);
+        if (close == std::string::npos) break;
+        std::string block = content.substr(set_pos, close - set_pos + 1);
+        if (block.find("_OPS") != std::string::npos) {
+            content.insert(close, "\n  " + name);
+            std::ofstream ofs(cmake_path);
+            if (!ofs) {
+                error = "cannot write CMakeLists.txt";
+                return false;
+            }
+            ofs << content;
+            return true;
+        }
+        scan = close + 1;
+    }
+
+    error = "cannot find package ops list (set(..._OPS ...)) in CMakeLists.txt";
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -266,7 +332,8 @@ std::string OperatorCreator::validate_name(const std::string& name, const Operat
 
 CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomain domain,
                                               const std::string& src_dir,
-                                              const std::string& variant) {
+                                              const std::string& variant,
+                                              bool package_layout) {
     CreateOperatorResult result{};
     const char* dsub = domain_subdir(domain);
     if (!dsub) {
@@ -285,12 +352,21 @@ CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomai
     }
 
     std::string struct_name = to_pascal_case(name);
-    std::string op_dir = src_dir + "/operators/" + dsub + "/" + name;
-    std::string cpp_path = op_dir + "/" + name + ".cpp";
+    std::string op_dir;
+    std::string cpp_path;
+    if (package_layout) {
+        op_dir = src_dir + "/src";
+        cpp_path = op_dir + "/" + name + ".cpp";
+    } else {
+        op_dir = src_dir + "/operators/" + dsub + "/" + name;
+        cpp_path = op_dir + "/" + name + ".cpp";
+    }
 
     // Check filesystem collision
-    if (fs::exists(op_dir)) {
-        result.error = "directory already exists: " + op_dir;
+    if (package_layout ? fs::exists(cpp_path) : fs::exists(op_dir)) {
+        result.error = package_layout
+            ? ("file already exists: " + cpp_path)
+            : ("directory already exists: " + op_dir);
         return result;
     }
 
@@ -341,7 +417,12 @@ CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomai
         extra_libs = "vivid_composable_ops";
 
     std::string cmake_err;
-    if (!patch_cmake(src_dir, name, domain, extra_libs, cmake_err)) {
+    bool patch_ok = false;
+    if (package_layout)
+        patch_ok = patch_package_cmake(src_dir, name, cmake_err);
+    else
+        patch_ok = patch_cmake(src_dir, name, domain, extra_libs, cmake_err);
+    if (!patch_ok) {
         result.error = cmake_err;
         return result;
     }

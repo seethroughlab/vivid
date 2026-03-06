@@ -23,6 +23,22 @@ struct ModulatedGain : vivid::OperatorBase {
     vivid::ChildOp<LFO>    lfo_;
     vivid::ChildOp<Smooth> smoother_;
 
+    ModulatedGain() {
+        vivid::semantic_tag(base_gain, "amplitude_linear");
+        vivid::semantic_shape(base_gain, "scalar");
+
+        vivid::semantic_tag(lfo_rate, "frequency_hz");
+        vivid::semantic_shape(lfo_rate, "scalar");
+        vivid::semantic_unit(lfo_rate, "Hz");
+
+        vivid::semantic_tag(lfo_depth, "amplitude_linear");
+        vivid::semantic_shape(lfo_depth, "scalar");
+
+        vivid::semantic_tag(smooth_time, "time_seconds");
+        vivid::semantic_shape(smooth_time, "scalar");
+        vivid::semantic_unit(smooth_time, "s");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&base_gain);
         out.push_back(&lfo_rate);

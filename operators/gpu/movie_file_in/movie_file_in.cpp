@@ -110,6 +110,17 @@ struct MovieFileIn : vivid::OperatorBase {
     vivid::Param<int>   play_mode {"play_mode", 0, {"Loop", "Once", "Hold Last"}};
     vivid::Param<float> speed     {"speed", 1.0f, 0.0f, 4.0f};
 
+    MovieFileIn() {
+        vivid::semantic_tag(file, "path_video");
+        vivid::semantic_shape(file, "path");
+
+        vivid::semantic_tag(play_mode, "x_play_mode");
+        vivid::semantic_shape(play_mode, "enum");
+
+        vivid::semantic_tag(speed, "x_playback_speed");
+        vivid::semantic_shape(speed, "scalar");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&file);
         out.push_back(&play_mode);

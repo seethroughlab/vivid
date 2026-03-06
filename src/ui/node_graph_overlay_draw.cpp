@@ -463,4 +463,222 @@ void NodeGraphUI::draw_graph_meta_editor(Renderer2D& tr) {
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 }
 
+void NodeGraphUI::draw_about(Renderer2D& tr) {
+    if (!about_open_) return;
+
+    OverlayPanelLayout layout = compute_about_layout(win_w_, win_h_);
+    float wf = layout.wf, hf = layout.hf;
+    float pw = layout.pw, ph = layout.ph;
+    float px = layout.px, py = layout.py;
+
+    tr.draw_rect(0, 0, wf, hf, style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+    tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
+                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    tr.draw_rect(px, py, pw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    // Fixed header
+    float hx = px + 20.0f;
+    float hy = py + 17.0f;
+    tr.draw_text(hx, hy, "Vivid",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 1.0f, 1.4f);
+    hy += 22.0f;
+    tr.draw_text(hx, hy, "Version " VIVID_CORE_VERSION,
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    hy += 16.0f;
+    tr.draw_text(hx, hy, "\xC2\xA9 2024-present See-Through Lab LLC",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    hy += 19.0f;
+    tr.draw_rect(px + 8.0f, hy, pw - 16.0f, 1.0f,
+                 style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
+
+    float list_top = layout.list_top;
+    float list_h = layout.list_h;
+
+    struct LibNotice { const char* name; const char* text; };
+    static const LibNotice kNotices[] = {
+        { "GLFW",
+          "Copyright (c) 2002-2006 Marcus Geelnard\n"
+          "Copyright (c) 2006-2019 Camilla Loewy\n"
+          "License: zlib/libpng\n"
+          "This software is provided 'as-is', without any express or implied warranty.\n"
+          "Permission is granted to use, alter and redistribute it freely, subject to:\n"
+          "1. The origin must not be misrepresented.\n"
+          "2. Altered versions must be plainly marked as such.\n"
+          "3. This notice may not be removed or altered from any source distribution."
+        },
+        { "glfw3webgpu",
+          "Copyright (c) 2022-2024 Elie Michel and the wgpu-native authors\n"
+          "License: MIT\n"
+          "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+          "of this software to deal in it without restriction, subject to: the above\n"
+          "copyright notice and this permission notice shall be included in all copies.\n"
+          "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
+        { "oscpack",
+          "Copyright (c) 2004-2013 Ross Bencina <rossb@audiomulch.com>\n"
+          "License: MIT\n"
+          "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+          "of this software to deal in it without restriction, subject to: the above\n"
+          "copyright notice and this permission notice shall be included in all copies.\n"
+          "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
+        { "yyjson",
+          "Copyright (c) 2020 YaoYuan <ibireme@gmail.com>\n"
+          "License: MIT\n"
+          "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+          "of this software to deal in it without restriction, subject to: the above\n"
+          "copyright notice and this permission notice shall be included in all copies.\n"
+          "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
+        { "miniaudio",
+          "Copyright 2025 David Reid\n"
+          "License: Choice of Public Domain (Unlicense) or MIT-0\n"
+          "This software is dedicated to the public domain. Alternatively available\n"
+          "under MIT-0 (MIT with no attribution requirement).\n"
+          "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
+        { "RtMidi",
+          "Copyright (c) 2003-2023 Gary P. Scavone\n"
+          "License: MIT\n"
+          "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+          "of this software to deal in it without restriction, subject to: the above\n"
+          "copyright notice and this permission notice shall be included in all copies.\n"
+          "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
+        { "stb_truetype, stb_image, stb_image_write",
+          "Copyright (c) 2017 Sean Barrett\n"
+          "License: MIT or Public Domain\n"
+          "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+          "of this software to deal in it without restriction, subject to: the above\n"
+          "copyright notice and this permission notice shall be included in all copies.\n"
+          "Alternatively released into the public domain (www.unlicense.org).\n"
+          "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
+        { "Syphon",
+          "Copyright 2010 bangnoise (Tom Butterworth) & vade (Anton Marini). All rights reserved.\n"
+          "License: BSD 2-Clause\n"
+          "Redistribution and use in source and binary forms, with or without modification,\n"
+          "are permitted provided that: (1) source distributions retain the copyright notice\n"
+          "and disclaimer; (2) binary distributions reproduce the copyright notice in docs.\n"
+          "THIS SOFTWARE IS PROVIDED \"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES ARE DISCLAIMED."
+        },
+        { "IXWebSocket",
+          "Copyright (c) 2018 Machine Zone, Inc. All rights reserved.\n"
+          "License: BSD 3-Clause\n"
+          "Redistribution and use in source and binary forms, with or without modification,\n"
+          "are permitted provided that: (1) source distributions retain the copyright notice;\n"
+          "(2) binary distributions reproduce the notice in docs; (3) neither the name of the\n"
+          "copyright holder nor contributor names may be used to endorse derived products.\n"
+          "THIS SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
+        { "CLI11",
+          "CLI11 2.6 Copyright (c) 2017-2025 University of Cincinnati,\n"
+          "developed by Henry Schreiner under NSF AWARD 1414736. All rights reserved.\n"
+          "License: BSD 3-Clause\n"
+          "Redistribution and use in source and binary forms, with or without modification,\n"
+          "are permitted provided that: (1) source distributions retain the copyright notice;\n"
+          "(2) binary distributions reproduce the notice in docs; (3) the name of the copyright\n"
+          "holder and contributors may not be used without specific prior written permission.\n"
+          "THIS SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
+        { "WebGPU-distribution",
+          "Copyright (c) 2022-2024 Elie Michel\n"
+          "License: MIT\n"
+          "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+          "of this software to deal in it without restriction, subject to: the above\n"
+          "copyright notice and this permission notice shall be included in all copies.\n"
+          "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
+        { "wgpu-native",
+          "Copyright (c) 2021 The gfx-rs developers\n"
+          "License: MIT or Apache 2.0\n"
+          "MIT: Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+          "of this software to deal in it without restriction, subject to: the above\n"
+          "copyright notice and this permission notice shall be included in all copies.\n"
+          "Apache 2.0: See THIRD_PARTY_NOTICES.txt for full Apache License 2.0 text.\n"
+          "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
+        { "Sparkle",
+          "Copyright (c) 2006-2016 Andy Matuschak and Sparkle Project contributors\n"
+          "License: MIT  (loaded at runtime on macOS via Sparkle.framework)\n"
+          "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+          "of this software to deal in it without restriction, subject to: the above\n"
+          "copyright notice and this permission notice shall be included in all copies.\n"
+          "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
+    };
+
+    constexpr int kNoticeCount = static_cast<int>(sizeof(kNotices) / sizeof(kNotices[0]));
+    constexpr float kLineHHeader = 16.0f;
+    constexpr float kLineHText   = 13.0f;
+    constexpr float kSectionGap  = 10.0f;
+
+    // Compute total scrollable content height
+    float total_h = 0.0f;
+    for (int i = 0; i < kNoticeCount; ++i) {
+        total_h += kLineHHeader + 4.0f;
+        int line_count = 1;
+        for (const char* p = kNotices[i].text; *p; ++p)
+            if (*p == '\n') ++line_count;
+        total_h += line_count * kLineHText + 4.0f;
+        total_h += kSectionGap;
+    }
+    about_max_scroll_ = std::max(0.0f, total_h - list_h);
+    about_scroll_     = std::max(0.0f, std::min(about_scroll_, about_max_scroll_));
+
+    // Scrollable notices area
+    tr.push_clip_rect(px, list_top, pw, list_h);
+    float cy = list_top - about_scroll_;
+    float text_x = px + 20.0f;
+
+    for (int i = 0; i < kNoticeCount; ++i) {
+        if (cy + kLineHHeader > list_top && cy < list_top + list_h)
+            tr.draw_text(text_x, cy, kNotices[i].name,
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+        cy += kLineHHeader + 4.0f;
+
+        const char* p = kNotices[i].text;
+        const char* line_start = p;
+        auto emit_line = [&]() {
+            if (cy + kLineHText > list_top && cy < list_top + list_h) {
+                std::string line(line_start, p - line_start);
+                tr.draw_text(text_x + 4.0f, cy, line.c_str(),
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f, 0.75f);
+            }
+            cy += kLineHText;
+        };
+        while (*p) {
+            if (*p == '\n') { emit_line(); line_start = p + 1; }
+            ++p;
+        }
+        if (p > line_start) emit_line();
+        cy += kSectionGap;
+    }
+    tr.pop_clip_rect();
+
+    // Close button
+    float btn_w = 80.0f, btn_h = 24.0f;
+    float btn_x = px + (pw - btn_w) * 0.5f;
+    float btn_y = layout.status_y;
+    bool btn_hovered = mouse_.x >= btn_x && mouse_.x <= btn_x + btn_w &&
+                       mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h;
+    tr.draw_rect(btn_x, btn_y, btn_w, btn_h,
+                 btn_hovered ? style_.button_hover[0] : style_.button_bg[0],
+                 btn_hovered ? style_.button_hover[1] : style_.button_bg[1],
+                 btn_hovered ? style_.button_hover[2] : style_.button_bg[2], 0.85f);
+    tr.draw_text(btn_x + 22.0f, btn_y + 4.0f, "Close",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+    // Scrollbar indicator
+    if (about_max_scroll_ > 0.0f) {
+        float sb_x = px + pw - 7.0f;
+        float thumb_h = list_h * list_h / (list_h + about_max_scroll_);
+        float thumb_y = list_top + (about_scroll_ / about_max_scroll_) * (list_h - thumb_h);
+        tr.draw_rect(sb_x, list_top, 3.0f, list_h,
+                     style_.separator[0], style_.separator[1], style_.separator[2], 0.25f);
+        tr.draw_rect(sb_x, thumb_y, 3.0f, thumb_h,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.6f);
+    }
+}
+
 } // namespace vivid::ui

@@ -30,6 +30,12 @@ struct ParamInfo {
     VividDisplayHint display_hint = VIVID_DISPLAY_DEFAULT;
     uint8_t layout_columns = 0;
     uint8_t layout_column_index = 0;
+
+    // Optional semantic metadata copied from VividParamDescriptor
+    std::string semantic_tag;
+    std::string semantic_shape;
+    std::string semantic_unit;
+    std::string semantic_intent;
 };
 
 // Owned copy of port metadata

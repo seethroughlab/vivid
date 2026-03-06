@@ -80,6 +80,18 @@ struct Reverb : vivid::OperatorBase {
     bool          initialized_ = false;
     uint32_t      init_rate_   = 0;
 
+    Reverb() {
+        vivid::semantic_tag(room_size, "probability_01");
+        vivid::semantic_shape(room_size, "scalar");
+
+        vivid::semantic_tag(damping, "probability_01");
+        vivid::semantic_shape(damping, "scalar");
+
+        vivid::semantic_tag(mix, "probability_01");
+        vivid::semantic_shape(mix, "scalar");
+        vivid::semantic_intent(mix, "wet_mix");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&room_size);
         out.push_back(&damping);

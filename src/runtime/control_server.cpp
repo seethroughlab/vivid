@@ -13,6 +13,8 @@
 #include "runtime/package_test_runner.h"
 #include "runtime/package_catalog.h"
 #include "runtime/app_update_manager.h"
+#include "runtime/settings.h"
+#include "runtime/operator_destination_policy.h"
 #include "operator_api/types.h"
 #include "yyjson.h"
 #include <ixwebsocket/IXHttpServer.h>
@@ -211,6 +213,7 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                 const auto& pd = desc->params[i];
                 yyjson_mut_val* p = yyjson_mut_obj(doc);
                 yyjson_mut_obj_add_strcpy(doc, p, "name", pd.name);
+                yyjson_mut_obj_add_str(doc, p, "type", param_type_str(pd.type));
                 float value = pd.default_value;
                 if (ns) {
                     auto pi = ns->param_indices.find(pd.name);
@@ -221,6 +224,20 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_obj_add_real(doc, p, "min", static_cast<double>(pd.min_value));
                 yyjson_mut_obj_add_real(doc, p, "max", static_cast<double>(pd.max_value));
                 yyjson_mut_obj_add_real(doc, p, "default", static_cast<double>(pd.default_value));
+                if (pd.semantic_tag)
+                    yyjson_mut_obj_add_strcpy(doc, p, "semantic_tag", pd.semantic_tag);
+                if (pd.semantic_shape)
+                    yyjson_mut_obj_add_strcpy(doc, p, "semantic_shape", pd.semantic_shape);
+                if (pd.semantic_unit)
+                    yyjson_mut_obj_add_strcpy(doc, p, "semantic_unit", pd.semantic_unit);
+                if (pd.semantic_intent)
+                    yyjson_mut_obj_add_strcpy(doc, p, "semantic_intent", pd.semantic_intent);
+                if (pd.choice_count > 0 && pd.choice_labels) {
+                    yyjson_mut_val* choices = yyjson_mut_arr(doc);
+                    for (uint32_t c = 0; c < pd.choice_count; ++c)
+                        yyjson_mut_arr_add_strcpy(doc, choices, pd.choice_labels[c]);
+                    yyjson_mut_obj_add_val(doc, p, "choices", choices);
+                }
                 if ((pd.type == VIVID_PARAM_FILE || pd.type == VIVID_PARAM_TEXT) && ns) {
                     auto fi = ns->file_param_indices.find(pd.name);
                     if (fi != ns->file_param_indices.end()) {
@@ -405,6 +422,14 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_obj_add_real(doc, pm, "default", static_cast<double>(pd.default_value));
                 yyjson_mut_obj_add_real(doc, pm, "min", static_cast<double>(pd.min_value));
                 yyjson_mut_obj_add_real(doc, pm, "max", static_cast<double>(pd.max_value));
+                if (pd.semantic_tag)
+                    yyjson_mut_obj_add_strcpy(doc, pm, "semantic_tag", pd.semantic_tag);
+                if (pd.semantic_shape)
+                    yyjson_mut_obj_add_strcpy(doc, pm, "semantic_shape", pd.semantic_shape);
+                if (pd.semantic_unit)
+                    yyjson_mut_obj_add_strcpy(doc, pm, "semantic_unit", pd.semantic_unit);
+                if (pd.semantic_intent)
+                    yyjson_mut_obj_add_strcpy(doc, pm, "semantic_intent", pd.semantic_intent);
                 yyjson_mut_arr_add_val(param_meta_arr, pm);
             }
         }
@@ -1280,6 +1305,14 @@ static std::string handle_list_types(OperatorRegistry& registry) {
             yyjson_mut_obj_add_real(doc, p, "default", static_cast<double>(pd.default_value));
             yyjson_mut_obj_add_real(doc, p, "min", static_cast<double>(pd.min_value));
             yyjson_mut_obj_add_real(doc, p, "max", static_cast<double>(pd.max_value));
+            if (pd.semantic_tag)
+                yyjson_mut_obj_add_strcpy(doc, p, "semantic_tag", pd.semantic_tag);
+            if (pd.semantic_shape)
+                yyjson_mut_obj_add_strcpy(doc, p, "semantic_shape", pd.semantic_shape);
+            if (pd.semantic_unit)
+                yyjson_mut_obj_add_strcpy(doc, p, "semantic_unit", pd.semantic_unit);
+            if (pd.semantic_intent)
+                yyjson_mut_obj_add_strcpy(doc, p, "semantic_intent", pd.semantic_intent);
             yyjson_mut_arr_add_val(params_arr, p);
         }
         yyjson_mut_obj_add_val(doc, t, "params", params_arr);
@@ -1319,7 +1352,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             bool& has_gpu_ops, bool& has_audio,
                             const std::string& src_dir, HotReloader* hot_reloader,
                             PackageManager* package_manager,
-                            PackageCompiler* package_compiler) {
+                            PackageCompiler* package_compiler,
+                            const Settings* settings) {
     // Read-only queries (no body needed)
     if (method == "inspect_graph") return handle_inspect_graph(graph, scheduler);
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, scheduler);
@@ -1361,11 +1395,13 @@ static std::string dispatch(const std::string& method, const std::string& body,
         else {
             yyjson_val* from = yyjson_obj_get(root, "from_addr");
             yyjson_val* to   = yyjson_obj_get(root, "to_addr");
+            yyjson_val* sem  = yyjson_obj_get(root, "semantic_defaults");
             if (!from || !to || !yyjson_is_str(from) || !yyjson_is_str(to))
                 result = json_err("missing 'from_addr' or 'to_addr'");
             else
                 result = command_result_to_json(
-                    api.connect(yyjson_get_str(from), yyjson_get_str(to)));
+                    api.connect(yyjson_get_str(from), yyjson_get_str(to),
+                                sem && yyjson_is_bool(sem) && yyjson_get_bool(sem)));
         }
     } else if (method == "disconnect") {
         if (!root) { result = json_err("invalid JSON body"); }
@@ -1822,14 +1858,42 @@ static std::string dispatch(const std::string& method, const std::string& body,
             if (variant_v && yyjson_is_str(variant_v))
                 variant = yyjson_get_str(variant_v);
 
+            // Optional destination:
+            //   "auto" (policy-driven default)
+            //   "project"
+            //   "core"
+            //   "package:<name>"
+            //   absolute path to a project/package root
+            std::string destination = "auto";
+            yyjson_val* dest_v = yyjson_obj_get(root, "destination");
+            if (dest_v && yyjson_is_str(dest_v))
+                destination = yyjson_get_str(dest_v);
+
             std::string err = OperatorCreator::validate_name(name, registry);
             if (!err.empty()) return json_err(err);
 
-            auto cr = OperatorCreator::create(name, domain, src_dir, variant);
+            const std::vector<PackageInfo> packages =
+                package_manager ? package_manager->list() : std::vector<PackageInfo>{};
+            OperatorDestination resolved;
+            std::string resolve_error;
+            if (!resolve_operator_destination(destination, src_dir, packages, settings,
+                                              resolved, resolve_error)) {
+                return json_err(resolve_error);
+            }
+            if (!resolved.warning.empty()) {
+                std::fprintf(stderr, "[vivid] %s\n", resolved.warning.c_str());
+            }
+
+            auto cr = OperatorCreator::create(name, domain, resolved.root, variant,
+                                              resolved.package_layout);
             if (!cr.success) return json_err(cr.error);
 
-            if (hot_reloader)
-                hot_reloader->queue_rebuild(cr.target_name);
+            if (hot_reloader) {
+                if (resolved.package_layout && !resolved.package_name.empty())
+                    hot_reloader->queue_rebuild("pkg:" + resolved.package_name + ":" + cr.target_name);
+                else
+                    hot_reloader->queue_rebuild(cr.target_name);
+            }
 
             OperatorCreator::open_in_editor(cr.cpp_path);
 
@@ -1837,6 +1901,12 @@ static std::string dispatch(const std::string& method, const std::string& body,
             yyjson_mut_val* res = yyjson_mut_obj(rdoc);
             yyjson_mut_obj_add_strcpy(rdoc, res, "cpp_path", cr.cpp_path.c_str());
             yyjson_mut_obj_add_strcpy(rdoc, res, "target_name", cr.target_name.c_str());
+            yyjson_mut_obj_add_strcpy(rdoc, res, "destination_root", resolved.root.c_str());
+            yyjson_mut_obj_add_bool(rdoc, res, "destination_is_package", resolved.package_layout);
+            if (!resolved.package_name.empty())
+                yyjson_mut_obj_add_strcpy(rdoc, res, "destination_package", resolved.package_name.c_str());
+            if (!resolved.warning.empty())
+                yyjson_mut_obj_add_strcpy(rdoc, res, "destination_warning", resolved.warning.c_str());
             return json_ok(rdoc, res);
         }();
     } else if (method == "install_package") {
@@ -2146,6 +2216,14 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             yyjson_mut_obj_add_real(rdoc, p, "default", static_cast<double>(pd.default_value));
                             yyjson_mut_obj_add_real(rdoc, p, "min", static_cast<double>(pd.min_value));
                             yyjson_mut_obj_add_real(rdoc, p, "max", static_cast<double>(pd.max_value));
+                            if (pd.semantic_tag)
+                                yyjson_mut_obj_add_strcpy(rdoc, p, "semantic_tag", pd.semantic_tag);
+                            if (pd.semantic_shape)
+                                yyjson_mut_obj_add_strcpy(rdoc, p, "semantic_shape", pd.semantic_shape);
+                            if (pd.semantic_unit)
+                                yyjson_mut_obj_add_strcpy(rdoc, p, "semantic_unit", pd.semantic_unit);
+                            if (pd.semantic_intent)
+                                yyjson_mut_obj_add_strcpy(rdoc, p, "semantic_intent", pd.semantic_intent);
                             if (pd.default_string)
                                 yyjson_mut_obj_add_strcpy(rdoc, p, "default_string", pd.default_string);
                             if (pd.group)
@@ -2271,6 +2349,7 @@ void ControlServer::set_package_manager(PackageManager* pm) { package_manager_ =
 void ControlServer::set_package_compiler(PackageCompiler* pc) { package_compiler_ = pc; }
 void ControlServer::set_package_catalog(PackageCatalog* cat) { package_catalog_ = cat; }
 void ControlServer::set_app_update_manager(AppUpdateManager* aum) { app_update_manager_ = aum; }
+void ControlServer::set_settings(const Settings* settings) { settings_ = settings; }
 
 bool ControlServer::start(int port) {
     impl_ = std::make_unique<Impl>(port);
@@ -2722,7 +2801,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
                                         has_gpu_ops, has_audio,
                                         src_dir_, hot_reloader_,
                                         package_manager_,
-                                        package_compiler_);
+                                        package_compiler_,
+                                        settings_);
 
         if (track_for_undo && response_is_ok(response)) {
             if (req.method == "load_graph") {

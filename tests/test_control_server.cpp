@@ -7,6 +7,7 @@
 #include "runtime/package_compiler.h"
 #include "runtime/package_manager.h"
 #include "runtime/package_catalog.h"
+#include "runtime/settings.h"
 #include "runtime/platform.h"
 #include "yyjson.h"
 #include <ixwebsocket/IXHttpClient.h>
@@ -85,12 +86,19 @@ int main(int argc, char* argv[]) {
     std::filesystem::create_directories(test_home);
     setenv("HOME", test_home.c_str(), 1);
     setenv("VIVID_SKIP_PACKAGE_CATALOG_NETWORK", "1", 1);
+    setenv("VISUAL", "true", 1);
 
     // --- Setup: staging dir with test_op_v1 ---
     std::string staging = build_dir + "/.test_cs_staging";
     std::filesystem::create_directories(staging);
     std::filesystem::copy_file(build_dir + "/test_op_v1.dylib",
         staging + "/test_op_v1.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/semantic_ms_source_op.dylib",
+        staging + "/semantic_ms_source_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/semantic_s_dest_op.dylib",
+        staging + "/semantic_s_dest_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: ControlServer ===\n\n");
@@ -158,13 +166,77 @@ int main(int argc, char* argv[]) {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 
+    // Scaffold destination e2e fixtures:
+    // - core src root for fallback-to-core path
+    // - linked local package for project package scaffolding
+    std::string scaffold_core_src = build_dir + "/.test_cs_scaffold_core";
+    std::filesystem::remove_all(scaffold_core_src);
+    std::filesystem::create_directories(scaffold_core_src + "/operators/control");
+    {
+        std::ofstream ofs(scaffold_core_src + "/CMakeLists.txt");
+        ofs << "cmake_minimum_required(VERSION 3.20)\n"
+               "project(vivid_scaffold_core)\n"
+               "# --- Control operator plugins ---\n"
+               "\n"
+               "# --- GPU operator plugins ---\n"
+               "\n"
+               "# --- Movie File In\n"
+               "\n"
+               "# --- Movie File Audio In\n";
+    }
+
+    std::string local_pkg_src = build_dir + "/.test_cs_linked_pkg_src";
+    std::filesystem::remove_all(local_pkg_src);
+    std::filesystem::create_directories(local_pkg_src + "/src");
+    {
+        std::ofstream ofs(local_pkg_src + "/vivid-package.json");
+        ofs << "{\n"
+               "  \"name\": \"vivid-scaffold-e2e\",\n"
+               "  \"version\": \"0.0.1\",\n"
+               "  \"build\": \"cmake\",\n"
+               "  \"operators\": []\n"
+               "}\n";
+    }
+    {
+        std::ofstream ofs(local_pkg_src + "/CMakeLists.txt");
+        ofs << "cmake_minimum_required(VERSION 3.20)\n"
+               "project(vivid_scaffold_e2e)\n"
+               "set(CONTROL_OPS\n"
+               ")\n";
+    }
+    std::string local_pkg_link_root = build_dir + "/packages";
+    std::filesystem::remove_all(local_pkg_link_root);
+    std::filesystem::create_directories(local_pkg_link_root);
+    std::string local_pkg_link = local_pkg_link_root + "/vivid-scaffold-e2e";
+    std::error_code sec;
+    std::filesystem::remove(local_pkg_link, sec);
+    std::filesystem::create_directory_symlink(std::filesystem::absolute(local_pkg_src),
+                                              local_pkg_link, sec);
+    check(!sec, "created linked local scaffold package");
+    {
+        auto packages = pkg_manager.list();
+        bool found_linked = false;
+        for (const auto& p : packages) {
+            if (p.name == "vivid-scaffold-e2e" && p.linked) {
+                found_linked = true;
+                break;
+            }
+        }
+        check(found_linked, "package manager discovered linked scaffold package");
+    }
+
     // Tick once so nodes have output values
     scheduler.tick(0.0, 0.016, 0);
 
     // --- Start ControlServer ---
+    vivid::Settings settings;
+    settings.operator_clone_destination_mode = "project_default";
+    settings.project_package_name = "vivid-scaffold-e2e";
     vivid::ControlServer server;
     server.set_package_manager(&pkg_manager);
     server.set_package_catalog(&pkg_catalog);
+    server.set_src_dir(scaffold_core_src);
+    server.set_settings(&settings);
     check(server.start(kPort), "server.start()");
 
     // Coordination between main and client threads
@@ -191,6 +263,27 @@ int main(int argc, char* argv[]) {
                 yyjson_val* first_node = nodes ? yyjson_arr_get_first(nodes) : nullptr;
                 yyjson_val* params = first_node ? yyjson_obj_get(first_node, "params") : nullptr;
                 check(params && yyjson_arr_size(params) > 0, "params have values");
+                if (params && yyjson_arr_size(params) > 0) {
+                    yyjson_val* p0 = yyjson_arr_get_first(params);
+                    yyjson_val* type = p0 ? yyjson_obj_get(p0, "type") : nullptr;
+                    yyjson_val* tag = p0 ? yyjson_obj_get(p0, "semantic_tag") : nullptr;
+                    yyjson_val* shape = p0 ? yyjson_obj_get(p0, "semantic_shape") : nullptr;
+                    yyjson_val* unit = p0 ? yyjson_obj_get(p0, "semantic_unit") : nullptr;
+                    yyjson_val* intent = p0 ? yyjson_obj_get(p0, "semantic_intent") : nullptr;
+                    check(type && yyjson_is_str(type), "inspect_graph params expose type");
+                    check(tag && yyjson_is_str(tag) &&
+                              std::string(yyjson_get_str(tag)) == "frequency_hz",
+                          "inspect_graph params expose semantic_tag");
+                    check(shape && yyjson_is_str(shape) &&
+                              std::string(yyjson_get_str(shape)) == "scalar",
+                          "inspect_graph params expose semantic_shape");
+                    check(unit && yyjson_is_str(unit) &&
+                              std::string(yyjson_get_str(unit)) == "Hz",
+                          "inspect_graph params expose semantic_unit");
+                    check(intent && yyjson_is_str(intent) &&
+                              std::string(yyjson_get_str(intent)) == "test_scale",
+                          "inspect_graph params expose semantic_intent");
+                }
             }
         }
 
@@ -227,6 +320,25 @@ int main(int argc, char* argv[]) {
                 check(health && yyjson_is_obj(health), "introspection node has health object");
                 check(params && yyjson_is_obj(params), "introspection node has params object");
                 check(param_meta && yyjson_is_arr(param_meta), "introspection node has param_meta array");
+                if (param_meta && yyjson_arr_size(param_meta) > 0) {
+                    yyjson_val* pm0 = yyjson_arr_get_first(param_meta);
+                    yyjson_val* tag = pm0 ? yyjson_obj_get(pm0, "semantic_tag") : nullptr;
+                    yyjson_val* shape = pm0 ? yyjson_obj_get(pm0, "semantic_shape") : nullptr;
+                    yyjson_val* unit = pm0 ? yyjson_obj_get(pm0, "semantic_unit") : nullptr;
+                    yyjson_val* intent = pm0 ? yyjson_obj_get(pm0, "semantic_intent") : nullptr;
+                    check(tag && yyjson_is_str(tag) &&
+                              std::string(yyjson_get_str(tag)) == "frequency_hz",
+                          "introspection param_meta exposes semantic_tag");
+                    check(shape && yyjson_is_str(shape) &&
+                              std::string(yyjson_get_str(shape)) == "scalar",
+                          "introspection param_meta exposes semantic_shape");
+                    check(unit && yyjson_is_str(unit) &&
+                              std::string(yyjson_get_str(unit)) == "Hz",
+                          "introspection param_meta exposes semantic_unit");
+                    check(intent && yyjson_is_str(intent) &&
+                              std::string(yyjson_get_str(intent)) == "test_scale",
+                          "introspection param_meta exposes semantic_intent");
+                }
                 check(inputs && yyjson_is_arr(inputs), "introspection node has inputs array");
                 check(outputs && yyjson_is_arr(outputs), "introspection node has outputs array");
                 check(domain_metrics && yyjson_is_obj(domain_metrics),
@@ -490,14 +602,64 @@ int main(int argc, char* argv[]) {
                 yyjson_val* types = result ? yyjson_obj_get(result, "types") : nullptr;
                 check(types && yyjson_arr_size(types) > 0, "has types");
                 if (types) {
-                    yyjson_val* t0 = yyjson_arr_get_first(types);
-                    yyjson_val* name = t0 ? yyjson_obj_get(t0, "name") : nullptr;
-                    check(name && std::string(yyjson_get_str(name)) == "TestOp",
-                          "contains TestOp");
+                    yyjson_val* t0 = nullptr;
+                    yyjson_val* ms_type = nullptr;
+                    yyjson_val* sec_type = nullptr;
+                    size_t i = 0, max = 0;
+                    yyjson_val* t = nullptr;
+                    yyjson_arr_foreach(types, i, max, t) {
+                        yyjson_val* n = yyjson_obj_get(t, "name");
+                        if (!n || !yyjson_is_str(n)) continue;
+                        std::string tn = yyjson_get_str(n);
+                        if (tn == "TestOp") {
+                            t0 = t;
+                        } else if (tn == "MsSourceOp") {
+                            ms_type = t;
+                        } else if (tn == "SecDestOp") {
+                            sec_type = t;
+                        }
+                    }
+                    check(t0 != nullptr, "contains TestOp");
                     yyjson_val* params = t0 ? yyjson_obj_get(t0, "params") : nullptr;
                     check(params && yyjson_arr_size(params) > 0, "TestOp has params");
+                    if (params && yyjson_arr_size(params) > 0) {
+                        yyjson_val* p0 = yyjson_arr_get_first(params);
+                        yyjson_val* tag = p0 ? yyjson_obj_get(p0, "semantic_tag") : nullptr;
+                        yyjson_val* shape = p0 ? yyjson_obj_get(p0, "semantic_shape") : nullptr;
+                        yyjson_val* unit = p0 ? yyjson_obj_get(p0, "semantic_unit") : nullptr;
+                        yyjson_val* intent = p0 ? yyjson_obj_get(p0, "semantic_intent") : nullptr;
+                        check(tag && yyjson_is_str(tag) &&
+                                  std::string(yyjson_get_str(tag)) == "frequency_hz",
+                              "list_types param exposes semantic_tag");
+                        check(shape && yyjson_is_str(shape) &&
+                                  std::string(yyjson_get_str(shape)) == "scalar",
+                              "list_types param exposes semantic_shape");
+                        check(unit && yyjson_is_str(unit) &&
+                                  std::string(yyjson_get_str(unit)) == "Hz",
+                              "list_types param exposes semantic_unit");
+                        check(intent && yyjson_is_str(intent) &&
+                                  std::string(yyjson_get_str(intent)) == "test_scale",
+                              "list_types param exposes semantic_intent");
+                    }
                     yyjson_val* outputs = t0 ? yyjson_obj_get(t0, "outputs") : nullptr;
                     check(outputs && yyjson_arr_size(outputs) > 0, "TestOp has ports");
+
+                    auto check_first_param_tag = [&](yyjson_val* type_obj, const char* expected_tag,
+                                                     const char* label) {
+                        check(type_obj != nullptr, label);
+                        yyjson_val* params_obj = type_obj ? yyjson_obj_get(type_obj, "params") : nullptr;
+                        yyjson_val* p0 = (params_obj && yyjson_arr_size(params_obj) > 0)
+                                       ? yyjson_arr_get_first(params_obj) : nullptr;
+                        yyjson_val* tag = p0 ? yyjson_obj_get(p0, "semantic_tag") : nullptr;
+                        std::string tag_label = std::string(label) + " tag";
+                        check(tag && yyjson_is_str(tag) &&
+                                  std::string(yyjson_get_str(tag)) == expected_tag,
+                              tag_label.c_str());
+                    };
+                    check_first_param_tag(ms_type, "time_milliseconds",
+                                          "MsSourceOp semantic_tag is time_milliseconds");
+                    check_first_param_tag(sec_type, "time_seconds",
+                                          "SecDestOp semantic_tag is time_seconds");
                 }
             }
         }
@@ -614,6 +776,79 @@ int main(int argc, char* argv[]) {
                 yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
                 check(nodes && yyjson_arr_size(nodes) == 2, "back to 2 nodes");
             }
+        }
+
+        // Phase 10b: semantic-default connect remap
+        std::fprintf(stderr, "\n--- semantic default connect remap ---\n");
+        {
+            auto add_src = post(client, base_url, "add_node",
+                R"({"type":"MsSourceOp","id":"ms1"})");
+            check(add_src.ok, "add_node MsSourceOp ms1 ok");
+
+            auto add_dst = post(client, base_url, "add_node",
+                R"({"type":"SecDestOp","id":"s1"})");
+            check(add_dst.ok, "add_node SecDestOp s1 ok");
+
+            auto c = post(client, base_url, "connect",
+                R"({"from_addr":"ms1/ms","to_addr":"s1/sec","semantic_defaults":true})");
+            check(c.ok, "connect ms1/ms -> s1/sec with semantic_defaults ok");
+            if (c.root) {
+                yyjson_val* msg = yyjson_obj_get(c.root, "message");
+                std::string m = json_str(msg);
+                check(m.find("semantic default remap applied") != std::string::npos,
+                      "connect response reports semantic remap applied");
+            }
+        }
+
+        phase.store(9);
+        while (phase.load() < 10) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+        {
+            auto ig = post(client, base_url, "inspect_graph");
+            check(ig.ok, "inspect_graph after semantic connect ok");
+            if (ig.root) {
+                yyjson_val* result = yyjson_obj_get(ig.root, "result");
+                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
+                bool found = false;
+                if (conns && yyjson_is_arr(conns)) {
+                    yyjson_val* conn = nullptr;
+                    size_t idx = 0, max = 0;
+                    yyjson_arr_foreach(conns, idx, max, conn) {
+                        yyjson_val* from = yyjson_obj_get(conn, "from");
+                        yyjson_val* to   = yyjson_obj_get(conn, "to");
+                        if (json_str(from) != "ms1/ms" || json_str(to) != "s1/sec") continue;
+                        found = true;
+                        yyjson_val* fmin = yyjson_obj_get(conn, "from_min");
+                        yyjson_val* fmax = yyjson_obj_get(conn, "from_max");
+                        yyjson_val* tmin = yyjson_obj_get(conn, "to_min");
+                        yyjson_val* tmax = yyjson_obj_get(conn, "to_max");
+                        check(fmin && std::fabs(yyjson_get_num(fmin) - 0.0) < 1e-6,
+                              "semantic remap from_min=0");
+                        check(fmax && std::fabs(yyjson_get_num(fmax) - 2000.0) < 1e-6,
+                              "semantic remap from_max=2000");
+                        check(tmin && std::fabs(yyjson_get_num(tmin) - 0.0) < 1e-6,
+                              "semantic remap to_min=0");
+                        check(tmax && std::fabs(yyjson_get_num(tmax) - 2.0) < 1e-6,
+                              "semantic remap to_max=2");
+                        break;
+                    }
+                }
+                check(found, "semantic remap connection present in inspect_graph");
+            }
+        }
+
+        {
+            auto d = post(client, base_url, "disconnect",
+                R"({"from_addr":"ms1/ms","to_addr":"s1/sec"})");
+            check(d.ok, "disconnect semantic remap connection ok");
+
+            auto rm_src = post(client, base_url, "remove_node",
+                R"({"node_id":"ms1"})");
+            check(rm_src.ok, "remove_node ms1 ok");
+
+            auto rm_dst = post(client, base_url, "remove_node",
+                R"({"node_id":"s1"})");
+            check(rm_dst.ok, "remove_node s1 ok");
         }
 
         // Phase 11: save_graph
@@ -764,6 +999,66 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Phase 13c: scaffold_operator destination e2e
+        std::fprintf(stderr, "\n--- scaffold_operator destination ---\n");
+        {
+            auto rp = post(client, base_url, "scaffold_operator",
+                R"({"name":"mcp_pkg_e2e","domain":"control","destination":"package:vivid-scaffold-e2e"})");
+            check(rp.ok, "scaffold_operator project destination ok");
+            if (!rp.ok && rp.root) {
+                yyjson_val* err_v = yyjson_obj_get(rp.root, "error");
+                if (err_v && yyjson_is_str(err_v)) {
+                    std::fprintf(stderr, "  INFO: scaffold_operator project error: %s\n",
+                                 yyjson_get_str(err_v));
+                }
+            }
+            if (rp.root) {
+                yyjson_val* result = yyjson_obj_get(rp.root, "result");
+                yyjson_val* is_pkg = result ? yyjson_obj_get(result, "destination_is_package") : nullptr;
+                yyjson_val* pkg_name = result ? yyjson_obj_get(result, "destination_package") : nullptr;
+                yyjson_val* root_path = result ? yyjson_obj_get(result, "destination_root") : nullptr;
+                check(is_pkg && yyjson_is_bool(is_pkg) && yyjson_get_bool(is_pkg),
+                      "scaffold_operator project resolved to package");
+                check(pkg_name && yyjson_is_str(pkg_name) &&
+                          std::string(yyjson_get_str(pkg_name)) == "vivid-scaffold-e2e",
+                      "scaffold_operator reports destination package");
+                check(root_path && yyjson_is_str(root_path), "scaffold_operator reports destination root");
+            }
+            check(std::filesystem::exists(local_pkg_src + "/src/mcp_pkg_e2e.cpp"),
+                  "MCP scaffold wrote operator source into linked package src/");
+            {
+                std::ifstream ifs(local_pkg_src + "/CMakeLists.txt");
+                std::string cmake((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+                check(cmake.find("mcp_pkg_e2e") != std::string::npos,
+                      "MCP scaffold patched package CMake ops list");
+            }
+
+            // Remove linked project package so auto destination falls back to core with warning.
+            std::error_code ec;
+            std::filesystem::remove(local_pkg_link, ec);
+            check(!ec, "removed linked project package for fallback test");
+
+            auto rc = post(client, base_url, "scaffold_operator",
+                R"({"name":"mcp_core_fallback","domain":"control","destination":"auto"})");
+            check(rc.ok, "scaffold_operator auto fallback ok");
+            if (rc.root) {
+                yyjson_val* result = yyjson_obj_get(rc.root, "result");
+                yyjson_val* is_pkg = result ? yyjson_obj_get(result, "destination_is_package") : nullptr;
+                yyjson_val* warn = result ? yyjson_obj_get(result, "destination_warning") : nullptr;
+                yyjson_val* root_path = result ? yyjson_obj_get(result, "destination_root") : nullptr;
+                check(is_pkg && yyjson_is_bool(is_pkg) && !yyjson_get_bool(is_pkg),
+                      "auto fallback resolved to core destination");
+                check(warn && yyjson_is_str(warn) && std::string(yyjson_get_str(warn)).size() > 0,
+                      "auto fallback returns destination warning");
+                check(root_path && yyjson_is_str(root_path) &&
+                          std::string(yyjson_get_str(root_path)) == scaffold_core_src,
+                      "auto fallback destination root is configured core src");
+            }
+            check(std::filesystem::exists(scaffold_core_src +
+                                         "/operators/control/mcp_core_fallback/mcp_core_fallback.cpp"),
+                  "fallback-to-core scaffold wrote core operator source");
+        }
+
         // Cleanup temp file
         std::filesystem::remove(tmp_path);
 
@@ -834,6 +1129,10 @@ int main(int argc, char* argv[]) {
             api.apply_pending(has_gpu_ops, has_audio);
             scheduler.tick(0.0, 0.016, 4);
             phase.store(8);
+        } else if (p == 9) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            scheduler.tick(0.0, 0.016, 5);
+            phase.store(10);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));

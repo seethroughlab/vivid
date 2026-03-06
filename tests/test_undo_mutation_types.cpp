@@ -4,6 +4,11 @@
 #include "runtime/audio_engine.h"
 #include "runtime/runtime_api.h"
 #include "runtime/runtime_command_sink.h"
+#include "runtime/package_compiler.h"
+#include "runtime/package_manager.h"
+#include "runtime/hot_reload.h"
+#include "runtime/operator_info_cache.h"
+#include "runtime/settings.h"
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -69,6 +74,11 @@ int main(int argc, char* argv[]) {
     RuntimeCommandSink sink(api);
     sink.set_graph(&graph);
     sink.set_runtime_flags(&has_gpu_ops, &has_audio);
+    vivid::Settings sink_settings;
+    sink_settings.editor = "custom";
+    sink_settings.editor_command = "true";
+    sink_settings.operator_clone_destination_mode = "project_default";
+    sink.set_settings(&sink_settings);
 
     // 1) Change parameter value (covers slider/typed/color code paths via set_param).
     sink.set_param("a", "scale", 9.0f);
@@ -246,6 +256,123 @@ int main(int argc, char* argv[]) {
         check(sink.undo(), "undo succeeds after operator uninstall");
         check(graph.find_node("a")->params["scale"] == 4.0f,
               "undo restored baseline value with missing-operator placeholder");
+    }
+
+    // 10) Clone into project package routes to package src/ and package hot-reload target.
+    {
+        check(registry.scan(staging.c_str()), "re-scan registry for clone e2e");
+
+        fs::path local_packages_root = fs::path(build_dir) / "packages";
+        std::error_code clean_ec;
+        fs::remove_all(local_packages_root, clean_ec);
+        fs::create_directories(local_packages_root);
+
+        fs::path pkg_src = fs::path(build_dir) / ".test_clone_project_pkg_src";
+        fs::remove_all(pkg_src);
+        fs::create_directories(pkg_src / "src");
+        {
+            std::ofstream ofs(pkg_src / "vivid-package.json");
+            ofs << "{\n"
+                   "  \"name\": \"vivid-clone-e2e\",\n"
+                   "  \"version\": \"0.0.1\",\n"
+                   "  \"build\": \"cmake\",\n"
+                   "  \"operators\": []\n"
+                   "}\n";
+        }
+        {
+            std::ofstream ofs(pkg_src / "CMakeLists.txt");
+            ofs << "cmake_minimum_required(VERSION 3.20)\n"
+                   "project(vivid_clone_e2e)\n"
+                   "set(CONTROL_OPS\n"
+                   ")\n";
+        }
+        fs::path pkg_link = local_packages_root / "vivid-clone-e2e";
+        std::error_code ec;
+        fs::create_directory_symlink(fs::absolute(pkg_src), pkg_link, ec);
+        check(!ec, "created linked local project package");
+
+        fs::path core_ops = fs::path(build_dir) / ".test_clone_core_ops";
+        fs::remove_all(core_ops);
+        fs::create_directories(core_ops / "control" / "testop");
+        {
+            std::ofstream ofs(core_ops / "control" / "testop" / "testop.cpp");
+            ofs << "#include \"operator_api/operator.h\"\n"
+                   "struct TestOp : vivid::OperatorBase {\n"
+                   "  static constexpr const char* kName = \"TestOp\";\n"
+                   "  static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;\n"
+                   "  static constexpr bool kTimeDependent = false;\n"
+                   "  vivid::Param<float> scale{\"scale\", 1.0f, 0.0f, 10.0f};\n"
+                   "  void collect_params(std::vector<vivid::ParamBase*>& out) override { out.push_back(&scale); }\n"
+                   "  void collect_ports(std::vector<VividPortDescriptor>& out) override {\n"
+                   "    out.push_back({\"scale\", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT});\n"
+                   "    out.push_back({\"out\", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});\n"
+                   "  }\n"
+                   "  void process(const VividProcessContext* ctx) override { ctx->output_values[0] = ctx->input_values[0] * scale.value; }\n"
+                   "};\n"
+                   "VIVID_REGISTER(TestOp)\n";
+        }
+
+        vivid::PackageCompiler pkg_compiler(build_dir, build_dir);
+        vivid::PackageManager pkg_manager(pkg_compiler, registry);
+        sink.set_package_manager(&pkg_manager);
+        {
+            auto packages = pkg_manager.list();
+            bool found_linked = false;
+            for (const auto& p : packages) {
+                if (p.name == "vivid-clone-e2e" && p.linked) {
+                    found_linked = true;
+                    break;
+                }
+            }
+            check(found_linked, "package manager discovered linked project package");
+        }
+
+        vivid::HotReloader hr;
+        fs::path hr_build = fs::path(build_dir) / ".test_clone_hr_build";
+        fs::create_directories(hr_build);
+        check(hr.start(hr_build.string()), "hot reloader started for clone e2e");
+        hr.set_package_compiler([](const std::string& target) {
+            vivid::ReloadResult r;
+            r.target_name = target;
+            r.success = true;
+            r.staged_dylib_path = "/tmp/fake_clone_e2e.dylib";
+            return r;
+        });
+        sink.set_hot_reloader(&hr);
+
+        sink.set_operators_dir(core_ops.string());
+        sink.set_build_dir(build_dir);
+        sink.set_registry(&registry);
+        OperatorInfoCache op_cache;
+        sink.set_op_cache(&op_cache);
+
+        sink.clone_and_edit("TestOp", "package:vivid-clone-e2e");
+
+        fs::path cloned_cpp = pkg_src / "src" / "testop_copy.cpp";
+        check(fs::exists(cloned_cpp), "clone wrote source into linked package src/");
+
+        std::string cmake_content;
+        {
+            std::ifstream ifs(pkg_src / "CMakeLists.txt");
+            cmake_content.assign(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
+        }
+        check(cmake_content.find("testop_copy") != std::string::npos,
+              "clone patched package CMake ops list");
+
+        bool saw_pkg_reload = false;
+        for (int i = 0; i < 40 && !saw_pkg_reload; ++i) {
+            auto ready = hr.poll_ready();
+            for (const auto& rr : ready) {
+                if (rr.target_name == "pkg:vivid-clone-e2e:testop_copy" && rr.success) {
+                    saw_pkg_reload = true;
+                    break;
+                }
+            }
+            if (!saw_pkg_reload)
+                std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        }
+        check(saw_pkg_reload, "clone queued package hot-reload target that compiled");
+        hr.stop();
     }
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

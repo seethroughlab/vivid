@@ -9,6 +9,13 @@ struct TestOp : vivid::OperatorBase {
 
     vivid::Param<float> scale{"scale", 1.0f, 0.0f, 100.0f};
 
+    TestOp() {
+        vivid::semantic_tag(scale, "frequency_hz");
+        vivid::semantic_shape(scale, "scalar");
+        vivid::semantic_unit(scale, "Hz");
+        vivid::semantic_intent(scale, "test_scale");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&scale);
     }

@@ -187,13 +187,13 @@ async def run_checks(checks: list[dict], include_payload: bool = False) -> str:
 
 @mcp.tool()
 async def inspect_graph() -> str:
-    """Get the full graph state: nodes with params (live values), input/output ports (with current output values), and connections."""
+    """Get the full graph state: nodes with params (live values + schema metadata including semantic_tag/shape/unit/intent), input/output ports (with current output values), and connections."""
     return await _post("inspect_graph")
 
 
 @mcp.tool()
 async def list_types() -> str:
-    """List all available operator types with their params (name, type, default, min, max) and ports (name, type, direction)."""
+    """List all available operator types with their params (name, type, default, min, max, semantic_tag/shape/unit/intent) and ports (name, type, direction)."""
     return await _post("list_types")
 
 
@@ -219,14 +219,19 @@ async def remove_node(node_id: str) -> str:
 
 
 @mcp.tool()
-async def connect(from_addr: str, to_addr: str) -> str:
+async def connect(from_addr: str, to_addr: str, semantic_defaults: bool = True) -> str:
     """Connect two ports. Address format is "node_id/port_name".
 
     Args:
         from_addr: Source port (e.g. "lfo1/value")
         to_addr: Destination port (e.g. "shape1/rotation")
+        semantic_defaults: Apply semantic-tag-based default remap when possible (default true for MCP workflows)
     """
-    return await _post("connect", {"from_addr": from_addr, "to_addr": to_addr})
+    return await _post("connect", {
+        "from_addr": from_addr,
+        "to_addr": to_addr,
+        "semantic_defaults": semantic_defaults,
+    })
 
 
 @mcp.tool()
@@ -742,7 +747,7 @@ async def read_package_example(name: str, filename: str) -> str:
 
 @mcp.tool()
 async def package_operator_docs(name: str) -> str:
-    """Get detailed operator documentation for an installed package: params with types/ranges/defaults/choices, input/output ports, and domain."""
+    """Get detailed operator documentation for an installed package: params with types/ranges/defaults/choices and semantic_tag/shape/unit/intent, plus input/output ports and domain."""
     return await _post("package_operator_docs", {"name": name})
 
 

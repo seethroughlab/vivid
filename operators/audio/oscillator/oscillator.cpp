@@ -14,6 +14,15 @@ struct Oscillator : vivid::OperatorBase {
 
     double phase_ = 0.0;
 
+    Oscillator() {
+        vivid::semantic_tag(frequency, "frequency_hz");
+        vivid::semantic_shape(frequency, "scalar");
+        vivid::semantic_unit(frequency, "Hz");
+
+        vivid::semantic_tag(amplitude, "amplitude_linear");
+        vivid::semantic_shape(amplitude, "scalar");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&frequency);
         out.push_back(&amplitude);

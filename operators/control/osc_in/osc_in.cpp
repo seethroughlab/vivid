@@ -22,6 +22,17 @@ struct OscIn : vivid::OperatorBase {
     vivid::Param<vivid::FilePath> address{"address", "/vivid/value"};
     vivid::Param<bool> strict_address{"strict_address", true};
 
+    OscIn() {
+        vivid::semantic_tag(listen_port, "x_network_port");
+        vivid::semantic_shape(listen_port, "int");
+
+        vivid::semantic_tag(address, "x_osc_address");
+        vivid::semantic_shape(address, "string");
+
+        vivid::semantic_tag(strict_address, "enabled");
+        vivid::semantic_shape(strict_address, "bool");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&listen_port);
         out.push_back(&address);

@@ -104,6 +104,18 @@ struct Bars : vivid::OperatorBase {
     vivid::Param<float> g     {"g",     0.8f, 0.0f, 1.0f};
     vivid::Param<float> b     {"b",     0.77f, 0.0f, 1.0f};
 
+    Bars() {
+        vivid::semantic_tag(r, "color_rgba");
+        vivid::semantic_shape(r, "scalar");
+        vivid::semantic_intent(r, "color_red");
+        vivid::semantic_tag(g, "color_rgba");
+        vivid::semantic_shape(g, "scalar");
+        vivid::semantic_intent(g, "color_green");
+        vivid::semantic_tag(b, "color_rgba");
+        vivid::semantic_shape(b, "scalar");
+        vivid::semantic_intent(b, "color_blue");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         display_hint(r, VIVID_DISPLAY_COLOR);
         display_hint(g, VIVID_DISPLAY_COLOR);

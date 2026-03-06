@@ -26,6 +26,31 @@ struct Envelope : vivid::OperatorBase {
     bool  prev_gate_    = false;
     bool  gate_ever_on_ = false;
 
+    Envelope() {
+        vivid::semantic_tag(attack, "time_seconds");
+        vivid::semantic_shape(attack, "scalar");
+        vivid::semantic_unit(attack, "s");
+
+        vivid::semantic_tag(decay, "time_seconds");
+        vivid::semantic_shape(decay, "scalar");
+        vivid::semantic_unit(decay, "s");
+
+        vivid::semantic_tag(sustain, "amplitude_linear");
+        vivid::semantic_shape(sustain, "scalar");
+
+        vivid::semantic_tag(release, "time_seconds");
+        vivid::semantic_shape(release, "scalar");
+        vivid::semantic_unit(release, "s");
+
+        vivid::semantic_tag(amplitude, "amplitude_linear");
+        vivid::semantic_shape(amplitude, "scalar");
+        vivid::semantic_intent(amplitude, "env_amount");
+
+        vivid::semantic_tag(offset, "amplitude_linear");
+        vivid::semantic_shape(offset, "scalar");
+        vivid::semantic_intent(offset, "env_offset");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         display_hint(attack,  VIVID_DISPLAY_KNOB);
         display_hint(decay,   VIVID_DISPLAY_KNOB);

@@ -48,6 +48,10 @@ public:
             pi.display_hint        = pd.display_hint;
             pi.layout_columns      = pd.layout_columns;
             pi.layout_column_index = pd.layout_column_index;
+            pi.semantic_tag        = pd.semantic_tag ? pd.semantic_tag : "";
+            pi.semantic_shape      = pd.semantic_shape ? pd.semantic_shape : "";
+            pi.semantic_unit       = pd.semantic_unit ? pd.semantic_unit : "";
+            pi.semantic_intent     = pd.semantic_intent ? pd.semantic_intent : "";
             if (pd.choice_labels && pd.choice_count > 0) {
                 pi.choice_labels.reserve(pd.choice_count);
                 for (uint32_t ci = 0; ci < pd.choice_count; ++ci)

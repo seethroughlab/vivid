@@ -12,6 +12,12 @@ struct Clock : vivid::OperatorBase {
     vivid::Param<float> bpm{"bpm", 120.0f, 1.0f, 300.0f};
     double phase_ = 0.0;
 
+    Clock() {
+        vivid::semantic_tag(bpm, "bpm");
+        vivid::semantic_shape(bpm, "scalar");
+        vivid::semantic_unit(bpm, "bpm");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&bpm);
     }

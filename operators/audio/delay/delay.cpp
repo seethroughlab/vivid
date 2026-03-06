@@ -55,6 +55,19 @@ struct Delay : vivid::OperatorBase {
     float dc_x1_ = 0.0f;
     float dc_y1_ = 0.0f;
 
+    Delay() {
+        vivid::semantic_tag(time, "time_milliseconds");
+        vivid::semantic_shape(time, "scalar");
+        vivid::semantic_unit(time, "ms");
+
+        vivid::semantic_tag(feedback, "probability_01");
+        vivid::semantic_shape(feedback, "scalar");
+
+        vivid::semantic_tag(mix, "probability_01");
+        vivid::semantic_shape(mix, "scalar");
+        vivid::semantic_intent(mix, "wet_mix");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&time);
         out.push_back(&feedback);

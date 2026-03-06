@@ -305,4 +305,34 @@ void NodeGraphUI::update_graph_meta_editor() {
     mouse_.left_released = false;
 }
 
+void NodeGraphUI::update_about() {
+    if (!about_open_) return;
+    if (!mouse_.left_clicked) return;
+
+    OverlayPanelLayout layout = compute_about_layout(win_w_, win_h_);
+
+    // Click outside panel closes modal
+    if (!overlay_contains(layout, mouse_.x, mouse_.y)) {
+        about_open_ = false;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
+    // Close button
+    float btn_w = 80.0f, btn_h = 24.0f;
+    float btn_x = layout.px + (layout.pw - btn_w) * 0.5f;
+    float btn_y = layout.status_y;
+    if (mouse_.x >= btn_x && mouse_.x <= btn_x + btn_w &&
+        mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
+        about_open_ = false;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
+    mouse_.left_clicked = false;
+    mouse_.left_released = false;
+}
+
 } // namespace vivid::ui

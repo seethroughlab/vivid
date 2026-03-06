@@ -22,6 +22,10 @@ struct DeferredEntry {
     std::vector<std::string> param_names;           // stable strings for param name pointers
     std::vector<std::string> port_names;            // stable strings for port name pointers
     std::vector<std::string> default_strings;       // stable strings for default_string pointers
+    std::vector<std::string> semantic_tags;         // stable strings for semantic_tag pointers
+    std::vector<std::string> semantic_shapes;       // stable strings for semantic_shape pointers
+    std::vector<std::string> semantic_units;        // stable strings for semantic_unit pointers
+    std::vector<std::string> semantic_intents;      // stable strings for semantic_intent pointers
     std::vector<std::vector<std::string>> choice_labels;     // owned choice label strings
     std::vector<std::vector<const char*>> choice_label_ptrs; // C pointer arrays into choice_labels
 };

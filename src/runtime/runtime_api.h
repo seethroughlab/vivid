@@ -55,7 +55,8 @@ public:
     // Buffered topology changes (require apply_pending)
     CommandResult add_node(const std::string& type, const std::string& id);
     CommandResult remove_node(const std::string& id);
-    CommandResult connect(const std::string& from_addr, const std::string& to_addr);
+    CommandResult connect(const std::string& from_addr, const std::string& to_addr,
+                          bool semantic_defaults = false);
     CommandResult disconnect(const std::string& from_addr, const std::string& to_addr);
     CommandResult set_connection_remap(const std::string& from_addr, const std::string& to_addr,
                                        float from_min, float from_max, float to_min, float to_max, bool clamp);

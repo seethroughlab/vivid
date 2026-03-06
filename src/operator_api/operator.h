@@ -31,6 +31,12 @@ struct ParamBase {
     VividDisplayHint display_hint        = VIVID_DISPLAY_DEFAULT;
     uint8_t          layout_columns      = 0;
     uint8_t          layout_column_index = 0;
+
+    // Optional semantic metadata for tooling/introspection.
+    const char* semantic_tag    = nullptr;
+    const char* semantic_shape  = nullptr;
+    const char* semantic_unit   = nullptr;
+    const char* semantic_intent = nullptr;
 };
 
 // ---------------------------------------------------------------------------
@@ -165,6 +171,30 @@ Param<T>& layout_row(Param<T>& p, uint8_t columns, uint8_t col) {
     return p;
 }
 
+template<typename T>
+Param<T>& semantic_tag(Param<T>& p, const char* tag) {
+    p.semantic_tag = tag;
+    return p;
+}
+
+template<typename T>
+Param<T>& semantic_shape(Param<T>& p, const char* shape) {
+    p.semantic_shape = shape;
+    return p;
+}
+
+template<typename T>
+Param<T>& semantic_unit(Param<T>& p, const char* unit) {
+    p.semantic_unit = unit;
+    return p;
+}
+
+template<typename T>
+Param<T>& semantic_intent(Param<T>& p, const char* intent) {
+    p.semantic_intent = intent;
+    return p;
+}
+
 // ---------------------------------------------------------------------------
 // OperatorBase — abstract base class for operators
 // ---------------------------------------------------------------------------
@@ -218,6 +248,10 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             s_params[i].display_hint        = pbases[i]->display_hint;         \
             s_params[i].layout_columns      = pbases[i]->layout_columns;       \
             s_params[i].layout_column_index = pbases[i]->layout_column_index;  \
+            s_params[i].semantic_tag        = pbases[i]->semantic_tag;         \
+            s_params[i].semantic_shape      = pbases[i]->semantic_shape;       \
+            s_params[i].semantic_unit       = pbases[i]->semantic_unit;        \
+            s_params[i].semantic_intent     = pbases[i]->semantic_intent;      \
             if (pbases[i]->choice_count > 0) {                                \
                 s_label_storage[i].clear();                                   \
                 s_label_ptrs[i].clear();                                      \

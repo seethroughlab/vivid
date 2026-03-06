@@ -59,6 +59,9 @@ int main() {
         s.editor = "VSCode";
         s.editor_command = "code {file}";
         s.style_id = "midnight";
+        s.operator_clone_destination_mode = "core_explicit";
+        s.project_operator_root = "/tmp/vivid_project_ops";
+        s.project_package_name = "vivid-project";
 
         vivid::save_settings(s);
         check(fs::exists(home.settings_path()), "settings file created");
@@ -72,6 +75,12 @@ int main() {
         check(loaded.editor == "VSCode", "editor preserved");
         check(loaded.editor_command == "code {file}", "editor_command preserved");
         check(loaded.style_id == "midnight", "style_id preserved");
+        check(loaded.operator_clone_destination_mode == "core_explicit",
+              "operator_clone_destination_mode preserved");
+        check(loaded.project_operator_root == "/tmp/vivid_project_ops",
+              "project_operator_root preserved");
+        check(loaded.project_package_name == "vivid-project",
+              "project_package_name preserved");
     }
 
     // =================================================================
@@ -91,6 +100,10 @@ int main() {
         check(loaded.editor.empty(), "default editor is empty");
         check(loaded.editor_command.empty(), "default editor_command is empty");
         check(loaded.style_id.empty(), "default style_id is empty");
+        check(loaded.operator_clone_destination_mode == "project_default",
+              "default operator_clone_destination_mode is project_default");
+        check(loaded.project_operator_root.empty(), "default project_operator_root is empty");
+        check(loaded.project_package_name.empty(), "default project_package_name is empty");
     }
 
     // =================================================================
@@ -172,12 +185,20 @@ int main() {
               "empty editor_command not written to JSON");
         check(content.find("\"style_id\"") == std::string::npos,
               "empty style_id not written to JSON");
+        check(content.find("\"project_operator_root\"") == std::string::npos,
+              "empty project_operator_root not written to JSON");
+        check(content.find("\"project_package_name\"") == std::string::npos,
+              "empty project_package_name not written to JSON");
 
         // But it should still load cleanly
         vivid::Settings loaded = vivid::load_settings();
         check(loaded.editor.empty(), "editor loads as empty");
         check(loaded.editor_command.empty(), "editor_command loads as empty");
         check(loaded.style_id.empty(), "style_id loads as empty");
+        check(loaded.operator_clone_destination_mode == "project_default",
+              "operator_clone_destination_mode defaults correctly");
+        check(loaded.project_operator_root.empty(), "project_operator_root loads as empty");
+        check(loaded.project_package_name.empty(), "project_package_name loads as empty");
     }
 
     // =================================================================

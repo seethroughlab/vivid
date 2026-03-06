@@ -98,6 +98,14 @@ struct Composite : vivid::OperatorBase {
     vivid::Param<int>   blend_mode {"blend_mode", 0, {"Normal", "Add", "Multiply", "Screen", "Overlay"}};
     vivid::Param<float> opacity    {"opacity", 1.0f, 0.0f, 1.0f};
 
+    Composite() {
+        vivid::semantic_tag(blend_mode, "x_blend_mode");
+        vivid::semantic_shape(blend_mode, "enum");
+
+        vivid::semantic_tag(opacity, "probability_01");
+        vivid::semantic_shape(opacity, "scalar");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&blend_mode);
         out.push_back(&opacity);

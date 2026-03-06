@@ -58,6 +58,23 @@ OverlayPanelLayout compute_graph_meta_editor_layout(uint32_t win_w, uint32_t win
     return l;
 }
 
+OverlayPanelLayout compute_about_layout(uint32_t win_w, uint32_t win_h) {
+    OverlayPanelLayout l;
+    l.wf = static_cast<float>(win_w);
+    l.hf = static_cast<float>(win_h);
+    l.pw = 640.0f;
+    l.ph = 500.0f;
+    l.px = (l.wf - l.pw) * 0.5f;
+    l.py = (l.hf - l.ph) * 0.5f;
+    l.cx = l.px + 20.0f;
+    l.inner_w = l.pw - 40.0f;
+    // Header: title (22px) + version (16px) + copyright (18px) + separator+gap (11px) = 67px + top pad 17px = 84px
+    l.list_top = l.py + 84.0f;
+    l.status_y = l.py + l.ph - 44.0f;
+    l.list_h = l.status_y - l.list_top - 8.0f;
+    return l;
+}
+
 OverlayRect compute_example_open_button_rect(const OverlayPanelLayout& layout, int visible_row) {
     OverlayRect r;
     r.w = 64.0f;

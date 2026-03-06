@@ -12,6 +12,8 @@
 #include "runtime/settings.h"
 #include "runtime/editor_detect.h"
 #include "runtime/undo_manager.h"
+#include "runtime/package_manager.h"
+#include "runtime/operator_destination_policy.h"
 #include "operator_api/data_driven_filter.h"
 #include <filesystem>
 #include <fstream>
@@ -333,6 +335,10 @@ public:
     }
 
     void clone_and_edit(const std::string& type_name) override {
+        clone_and_edit(type_name, "auto");
+    }
+
+    void clone_and_edit(const std::string& type_name, const std::string& destination) override {
         if (!registry_ || !op_cache_) return;
 
         // WGSL presets (no longer in loaders_) → duplicate as user filter
@@ -356,7 +362,21 @@ public:
         }
 
         if (!loader || operators_dir_.empty()) return;
-        clone_cpp_operator(type_name);
+        clone_cpp_operator(type_name, destination);
+    }
+
+    bool has_project_clone_destination() override {
+        const std::string core_src_dir = operators_dir_.empty()
+            ? std::string{}
+            : std::filesystem::path(operators_dir_).parent_path().string();
+        const std::vector<vivid::PackageInfo> packages = package_manager_
+            ? package_manager_->list()
+            : std::vector<vivid::PackageInfo>{};
+        vivid::OperatorDestination dest;
+        std::string err;
+        if (!vivid::resolve_operator_destination("project", core_src_dir, packages, settings_, dest, err))
+            return false;
+        return !dest.used_core_fallback;
     }
 
     void set_editor_preference(const std::string& editor_id,
@@ -393,13 +413,39 @@ public:
             default: return false;
         }
 
-        // src_dir is the parent of operators/
-        std::string src_dir = std::filesystem::path(operators_dir_).parent_path().string();
-        auto cr = vivid::OperatorCreator::create(name, d, src_dir);
+        const std::string core_src_dir = std::filesystem::path(operators_dir_).parent_path().string();
+        const std::vector<vivid::PackageInfo> packages = package_manager_
+            ? package_manager_->list()
+            : std::vector<vivid::PackageInfo>{};
+        vivid::OperatorDestination dest;
+        std::string resolve_error;
+        if (!vivid::resolve_operator_destination("auto", core_src_dir, packages, settings_,
+                                                 dest, resolve_error)) {
+            std::fprintf(stderr, "[vivid] Create operator destination error: %s\n",
+                         resolve_error.c_str());
+            return false;
+        }
+        if (!dest.warning.empty()) {
+            std::fprintf(stderr, "[vivid] %s\n", dest.warning.c_str());
+        }
+        if (dest.package_layout && dest.package_name.empty()) {
+            std::fprintf(stderr,
+                         "[vivid] Project destination '%s' is not an active package; using core destination\n",
+                         dest.root.c_str());
+            dest = {};
+            dest.root = core_src_dir;
+        }
+
+        auto cr = vivid::OperatorCreator::create(name, d, dest.root, "", dest.package_layout);
         if (!cr.success) return false;
 
-        if (hot_reloader_)
-            hot_reloader_->queue_rebuild(cr.target_name);
+        if (hot_reloader_) {
+            if (dest.package_layout && !dest.package_name.empty()) {
+                hot_reloader_->queue_rebuild("pkg:" + dest.package_name + ":" + cr.target_name);
+            } else {
+                hot_reloader_->queue_rebuild(cr.target_name);
+            }
+        }
 
         vivid::OperatorCreator::open_in_editor(cr.cpp_path);
         return true;
@@ -494,6 +540,7 @@ public:
     void set_build_dir(const std::string& dir) { build_dir_ = dir; }
     void set_settings(vivid::Settings* s) { settings_ = s; }
     void set_hot_reloader(vivid::HotReloader* hr) { hot_reloader_ = hr; }
+    void set_package_manager(vivid::PackageManager* pm) { package_manager_ = pm; }
 
 private:
     void capture_undo_snapshot(const std::string& coalesce_key = "") {
@@ -534,7 +581,39 @@ private:
         return {};
     }
 
-    void clone_cpp_operator(const std::string& type_name) {
+    bool patch_package_cmake_ops(const std::string& pkg_dir, const std::string& op_name) {
+        std::string cmake_path = (std::filesystem::path(pkg_dir) / "CMakeLists.txt").string();
+        std::ifstream ifs(cmake_path);
+        if (!ifs) return false;
+        std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+        ifs.close();
+
+        if (content.find("\n  " + op_name + "\n") != std::string::npos ||
+            content.find("\n  " + op_name + ")") != std::string::npos ||
+            content.find(" " + op_name + "\n") != std::string::npos) {
+            return true;
+        }
+
+        size_t scan = 0;
+        while (true) {
+            size_t set_pos = content.find("set(", scan);
+            if (set_pos == std::string::npos) break;
+            size_t close = content.find(')', set_pos);
+            if (close == std::string::npos) break;
+            std::string block = content.substr(set_pos, close - set_pos + 1);
+            if (block.find("_OPS") != std::string::npos) {
+                content.insert(close, "\n  " + op_name);
+                std::ofstream ofs(cmake_path);
+                if (!ofs) return false;
+                ofs << content;
+                return true;
+            }
+            scan = close + 1;
+        }
+        return false;
+    }
+
+    void clone_cpp_operator(const std::string& type_name, const std::string& destination) {
         if (build_dir_.empty()) {
             std::fprintf(stderr, "[vivid] Clone: no build directory configured\n");
             return;
@@ -581,9 +660,37 @@ private:
         std::string new_stem = new_type;
         for (auto& c : new_stem) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
-        // Create directory
-        std::string new_dir = operators_dir_ + "/" + domain_dir + "/" + new_stem;
-        std::filesystem::create_directories(new_dir);
+        const std::string core_src_dir = std::filesystem::path(operators_dir_).parent_path().string();
+        const std::vector<vivid::PackageInfo> packages = package_manager_
+            ? package_manager_->list()
+            : std::vector<vivid::PackageInfo>{};
+        vivid::OperatorDestination dest;
+        std::string resolve_error;
+        std::string request = destination.empty() ? "auto" : destination;
+        if (!vivid::resolve_operator_destination(request, core_src_dir, packages, settings_,
+                                                 dest, resolve_error)) {
+            std::fprintf(stderr, "[vivid] Clone destination error: %s\n", resolve_error.c_str());
+            return;
+        }
+        if (!dest.warning.empty()) {
+            std::fprintf(stderr, "[vivid] %s\n", dest.warning.c_str());
+        }
+        if (dest.package_layout && dest.package_name.empty()) {
+            std::fprintf(stderr,
+                         "[vivid] Clone destination '%s' is not an active package; using core destination\n",
+                         dest.root.c_str());
+            dest = {};
+            dest.root = core_src_dir;
+        }
+        const bool use_project_package = dest.package_layout && !dest.package_name.empty();
+
+        std::string new_dir;
+        if (use_project_package) {
+            new_dir = (std::filesystem::path(dest.root) / "src").string();
+        } else {
+            new_dir = operators_dir_ + "/" + domain_dir + "/" + new_stem;
+            std::filesystem::create_directories(new_dir);
+        }
 
         // Transform source: replace old type name → new type name
         std::string transformed = cpp_source;
@@ -609,7 +716,8 @@ private:
         std::string wgsl_path = src_dir + "/" + stem + ".wgsl";
         if (std::filesystem::exists(wgsl_path)) {
             std::string new_wgsl = new_dir + "/" + new_stem + ".wgsl";
-            std::filesystem::copy_file(wgsl_path, new_wgsl);
+            std::filesystem::copy_file(wgsl_path, new_wgsl,
+                                       std::filesystem::copy_options::overwrite_existing);
         }
 
         // Write transformed .cpp
@@ -623,8 +731,14 @@ private:
             ofs << transformed;
         }
 
-        // Append CMake target
-        {
+        if (use_project_package) {
+            if (!patch_package_cmake_ops(dest.root, new_stem)) {
+                std::fprintf(stderr, "[vivid] Clone: cannot update package CMakeLists.txt for %s\n",
+                             dest.package_name.c_str());
+                return;
+            }
+        } else {
+            // Append CMake target
             std::string cmake_path = operators_dir_ + "/../CMakeLists.txt";
             std::ofstream ofs(cmake_path, std::ios::app);
             if (!ofs) {
@@ -649,7 +763,20 @@ private:
             }
         }
 
-        // Build synchronously
+        if (use_project_package) {
+            // Package clones rebuild via package hot-reload flow.
+            registry_->register_user_operator(new_type, new_cpp);
+            op_cache_->invalidate_all();
+            if (hot_reloader_) {
+                hot_reloader_->queue_rebuild("pkg:" + dest.package_name + ":" + new_stem);
+            }
+            vivid::open_in_editor(new_cpp, settings_ ? *settings_ : vivid::Settings{});
+            std::fprintf(stderr, "[vivid] Cloned '%s' as '%s' in package '%s'\n",
+                         type_name.c_str(), new_type.c_str(), dest.package_name.c_str());
+            return;
+        }
+
+        // Build synchronously (core destination)
         std::string build_cmd = "cmake --build \"" + build_dir_ + "\" --target \"" + new_stem + "\" 2>&1";
         std::fprintf(stderr, "[vivid] Clone: building %s...\n", new_stem.c_str());
         int rc = std::system(build_cmd.c_str());
@@ -658,7 +785,7 @@ private:
             return;
         }
 
-        // Load the new dylib
+        // Load the new dylib (core destination)
 #if defined(__APPLE__)
         std::string dylib_name = new_stem + ".dylib";
 #elif defined(_WIN32)
@@ -698,4 +825,5 @@ private:
     OperatorInfoCache* op_cache_ = nullptr;
     vivid::Settings* settings_ = nullptr;
     vivid::HotReloader* hot_reloader_ = nullptr;
+    vivid::PackageManager* package_manager_ = nullptr;
 };

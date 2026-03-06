@@ -4,7 +4,8 @@
 
 // Tag values for menu items
 enum MenuTag : NSInteger {
-    kMenuTagOpen = 1,
+    kMenuTagAbout = 1,
+    kMenuTagOpen,
     kMenuTagOpenExample,
     kMenuTagSave,
     kMenuTagPreferences,
@@ -37,6 +38,7 @@ enum MenuTag : NSInteger {
 
 - (void)menuAction:(NSMenuItem*)sender {
     switch (sender.tag) {
+        case kMenuTagAbout:             if (_callbacks.on_about) _callbacks.on_about(); break;
         case kMenuTagOpen:              if (_callbacks.on_open) _callbacks.on_open(); break;
         case kMenuTagOpenExample:       if (_callbacks.on_open_example) _callbacks.on_open_example(); break;
         case kMenuTagSave:              if (_callbacks.on_save) _callbacks.on_save(); break;
@@ -120,6 +122,16 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         NSMenuItem* appMenuItem = [mainMenu itemAtIndex:0];
         NSMenu* appMenu = [appMenuItem submenu];
         if (appMenu) {
+            // Insert "About Vivid" as the first item (standard macOS convention)
+            NSMenuItem* aboutItem = [[NSMenuItem alloc]
+                initWithTitle:@"About Vivid"
+                       action:@selector(menuAction:)
+                keyEquivalent:@""];
+            aboutItem.target = sDelegate;
+            aboutItem.tag = kMenuTagAbout;
+            [appMenu insertItem:aboutItem atIndex:0];
+            [appMenu insertItem:[NSMenuItem separatorItem] atIndex:1];
+
             // Find the "Services" item to insert before it
             NSInteger servicesIdx = -1;
             for (NSInteger i = 0; i < [appMenu numberOfItems]; i++) {

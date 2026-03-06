@@ -102,6 +102,10 @@ static DeferredEntry deep_copy_descriptor(const VividOperatorDescriptor* src,
     entry.params.resize(src->param_count);
     entry.param_names.resize(src->param_count);
     entry.default_strings.resize(src->param_count);
+    entry.semantic_tags.resize(src->param_count);
+    entry.semantic_shapes.resize(src->param_count);
+    entry.semantic_units.resize(src->param_count);
+    entry.semantic_intents.resize(src->param_count);
     entry.choice_labels.resize(src->param_count);
     entry.choice_label_ptrs.resize(src->param_count);
     for (uint32_t i = 0; i < src->param_count; ++i) {
@@ -114,6 +118,10 @@ static DeferredEntry deep_copy_descriptor(const VividOperatorDescriptor* src,
         dp.min_value = sp.min_value;
         dp.max_value = sp.max_value;
         dp.choice_count = sp.choice_count;
+        dp.group = sp.group;
+        dp.display_hint = sp.display_hint;
+        dp.layout_columns = sp.layout_columns;
+        dp.layout_column_index = sp.layout_column_index;
 
         // Deep-copy choice labels
         if (sp.choice_labels && sp.choice_count > 0) {
@@ -134,6 +142,31 @@ static DeferredEntry deep_copy_descriptor(const VividOperatorDescriptor* src,
             dp.default_string = entry.default_strings[i].c_str();
         } else {
             dp.default_string = nullptr;
+        }
+
+        if (sp.semantic_tag) {
+            entry.semantic_tags[i] = sp.semantic_tag;
+            dp.semantic_tag = entry.semantic_tags[i].c_str();
+        } else {
+            dp.semantic_tag = nullptr;
+        }
+        if (sp.semantic_shape) {
+            entry.semantic_shapes[i] = sp.semantic_shape;
+            dp.semantic_shape = entry.semantic_shapes[i].c_str();
+        } else {
+            dp.semantic_shape = nullptr;
+        }
+        if (sp.semantic_unit) {
+            entry.semantic_units[i] = sp.semantic_unit;
+            dp.semantic_unit = entry.semantic_units[i].c_str();
+        } else {
+            dp.semantic_unit = nullptr;
+        }
+        if (sp.semantic_intent) {
+            entry.semantic_intents[i] = sp.semantic_intent;
+            dp.semantic_intent = entry.semantic_intents[i].c_str();
+        } else {
+            dp.semantic_intent = nullptr;
         }
     }
 
@@ -334,6 +367,10 @@ OperatorLoader* OperatorRegistry::find_loaded(const std::string& type_name) {
 }
 
 const VividOperatorDescriptor* OperatorRegistry::probe_descriptor(const std::string& type_name) const {
+    auto lit = loaders_.find(type_name);
+    if (lit != loaders_.end() && lit->second) {
+        return lit->second->descriptor();
+    }
     auto dit = deferred_.find(type_name);
     if (dit == deferred_.end()) return nullptr;
     return &dit->second.desc;

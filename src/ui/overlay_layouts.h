@@ -33,6 +33,7 @@ struct OverlayPanelLayout {
 OverlayPanelLayout compute_package_browser_layout(uint32_t win_w, uint32_t win_h, size_t entry_count);
 OverlayPanelLayout compute_example_browser_layout(uint32_t win_w, uint32_t win_h, size_t entry_count);
 OverlayPanelLayout compute_graph_meta_editor_layout(uint32_t win_w, uint32_t win_h);
+OverlayPanelLayout compute_about_layout(uint32_t win_w, uint32_t win_h);
 OverlayRect compute_example_open_button_rect(const OverlayPanelLayout& layout, int visible_row);
 OverlayRect compute_package_action_button_rect(const OverlayPanelLayout& layout, int visible_row);
 

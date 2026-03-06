@@ -19,6 +19,20 @@ struct Bitcrush : vivid::OperatorBase {
     float hold_    = 0.0f; // sample-and-hold value
     float counter_ = 0.0f; // fractional sample counter
 
+    Bitcrush() {
+        vivid::semantic_tag(bits, "count");
+        vivid::semantic_shape(bits, "scalar");
+        vivid::semantic_intent(bits, "bit_depth");
+
+        vivid::semantic_tag(rate, "frequency_hz");
+        vivid::semantic_shape(rate, "scalar");
+        vivid::semantic_unit(rate, "Hz");
+
+        vivid::semantic_tag(mix, "probability_01");
+        vivid::semantic_shape(mix, "scalar");
+        vivid::semantic_intent(mix, "wet_mix");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&bits);
         out.push_back(&rate);

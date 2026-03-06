@@ -53,6 +53,13 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
 }
 
 void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
+    // About modal scroll
+    if (about_open_) {
+        about_scroll_ -= y_offset * 20.0f;
+        about_scroll_ = std::max(0.0f, std::min(about_scroll_, about_max_scroll_));
+        return;
+    }
+
     // Example browser scroll
     if (example_browser_open_ && !example_entries_.empty()) {
         example_browser_scroll_ -= static_cast<int>(y_offset);
@@ -133,6 +140,12 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
 // -----------------------------------------------------------------------
 void NodeGraphUI::on_key(int key, int action, int mods) {
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
+
+    if (about_open_) {
+        if (key == GLFW_KEY_ESCAPE)
+            about_open_ = false;
+        return;
+    }
 
     if (graph_meta_editor_open_) {
         if (key == GLFW_KEY_ESCAPE) {
@@ -594,7 +607,17 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
     }
 
     if (clone_confirm_open_) {
-        if (key == GLFW_KEY_ESCAPE) clone_confirm_open_ = false;
+        if (key == GLFW_KEY_ESCAPE) {
+            clone_confirm_open_ = false;
+        } else if (key == GLFW_KEY_LEFT || key == GLFW_KEY_RIGHT) {
+            if (clone_confirm_project_available_) {
+                clone_confirm_destination_ = 1 - clone_confirm_destination_;
+            }
+        } else if (key == GLFW_KEY_ENTER) {
+            const char* destination = (clone_confirm_destination_ == 0) ? "project" : "core";
+            commands_.clone_and_edit(clone_confirm_type_, destination);
+            clone_confirm_open_ = false;
+        }
         return;
     }
 
@@ -904,7 +927,7 @@ void NodeGraphUI::update_clone_confirm() {
     if (!clone_confirm_open_ || !mouse_.left_clicked) return;
 
     // Dialog geometry (centered on screen)
-    float dw = 280.0f, dh = 70.0f;
+    float dw = 360.0f, dh = 108.0f;
     float dx = (static_cast<float>(win_w_) - dw) * 0.5f;
     float dy = (static_cast<float>(win_h_) - dh) * 0.5f;
 
@@ -913,10 +936,27 @@ void NodeGraphUI::update_clone_confirm() {
     float clone_x = dx + dw * 0.5f - btn_w - 6.0f;
     float cancel_x = dx + dw * 0.5f + 6.0f;
 
+    float toggle_y = dy + 38.0f;
+    float toggle_h = 24.0f;
+    float toggle_x = dx + 12.0f;
+    float toggle_w = dw - 24.0f;
+    float left_w = toggle_w * 0.5f;
+
+    if (clone_confirm_project_available_) {
+        if (mouse_.x >= toggle_x && mouse_.x <= toggle_x + left_w &&
+            mouse_.y >= toggle_y && mouse_.y <= toggle_y + toggle_h) {
+            clone_confirm_destination_ = 0;
+        } else if (mouse_.x >= toggle_x + left_w && mouse_.x <= toggle_x + toggle_w &&
+                   mouse_.y >= toggle_y && mouse_.y <= toggle_y + toggle_h) {
+            clone_confirm_destination_ = 1;
+        }
+    }
+
     if (mouse_.x >= clone_x && mouse_.x <= clone_x + btn_w &&
         mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
         // Clone button clicked
-        commands_.clone_and_edit(clone_confirm_type_);
+        const char* destination = (clone_confirm_destination_ == 0) ? "project" : "core";
+        commands_.clone_and_edit(clone_confirm_type_, destination);
         clone_confirm_open_ = false;
         mouse_.left_clicked = false;
         mouse_.left_released = false;
@@ -1026,7 +1066,7 @@ void NodeGraphUI::update_context_menu() {
                     }
                 } else if (clicked_item == 1 && context_node_has_shader_) {
                     // "Clone & Edit"
-                    commands_.clone_and_edit(context_node_type_);
+                    open_clone_confirm_dialog(context_node_type_);
                 }
             } else if (context_wire_idx_ >= 0) {
                 const auto& conns = snap_.connections;
@@ -1950,8 +1990,7 @@ void NodeGraphUI::handle_graph_click() {
                 if (is_user) {
                     commands_.open_shader(type_name);
                 } else {
-                    clone_confirm_type_ = type_name;
-                    clone_confirm_open_ = true;
+                    open_clone_confirm_dialog(type_name);
                 }
                 last_click_node_id_.clear();
             } else {

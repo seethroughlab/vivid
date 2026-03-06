@@ -110,6 +110,16 @@ void FileWatcher::stop() {
 }
 
 bool FileWatcher::add_watch(const std::string& path, const std::string& target_name) {
+    {
+        std::lock_guard<std::mutex> lock(watch_mutex_);
+        for (const auto& [fd, entry] : watched_fds_) {
+            (void)fd;
+            if (entry.path == path && entry.target_name == target_name) {
+                return true;
+            }
+        }
+    }
+
     int fd = open(path.c_str(), O_RDONLY);
     if (fd < 0) {
         std::fprintf(stderr, "[vivid] FileWatcher: cannot open %s\n", path.c_str());

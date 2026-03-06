@@ -85,6 +85,10 @@ int main() {
         check(src.find("struct MyOp") != std::string::npos, "struct name is MyOp (PascalCase)");
         check(src.find("VIVID_DOMAIN_CONTROL") != std::string::npos, "domain is control");
         check(src.find("VIVID_REGISTER(MyOp)") != std::string::npos, "VIVID_REGISTER present");
+        check(src.find("semantic_tag(amount, \"probability_01\")") != std::string::npos,
+              "control template includes semantic_tag example");
+        check(src.find("semantic_shape(amount, \"scalar\")") != std::string::npos,
+              "control template includes semantic_shape example");
 
         // Verify CMakeLists.txt was patched
         std::string cmake = read_file(tmp + "/CMakeLists.txt");
@@ -124,6 +128,10 @@ int main() {
         check(src.find("struct MySynth") != std::string::npos, "struct name is MySynth");
         check(src.find("VIVID_DOMAIN_AUDIO") != std::string::npos, "domain is audio");
         check(src.find("audio_operator.h") != std::string::npos, "includes audio header");
+        check(src.find("semantic_tag(gain, \"amplitude_linear\")") != std::string::npos,
+              "audio template includes semantic_tag example");
+        check(src.find("semantic_shape(gain, \"scalar\")") != std::string::npos,
+              "audio template includes semantic_shape example");
 
         fs::remove_all(tmp);
     }
@@ -159,6 +167,10 @@ int main() {
         check(src.find("VIVID_DOMAIN_GPU") != std::string::npos, "domain is gpu");
         check(src.find("EXTRA_LIBS webgpu") == std::string::npos,
               "template source doesn't contain cmake flags");
+        check(src.find("semantic_tag(amount, \"probability_01\")") != std::string::npos,
+              "gpu template includes semantic_tag example");
+        check(src.find("semantic_shape(amount, \"scalar\")") != std::string::npos,
+              "gpu template includes semantic_shape example");
 
         // Verify cmake patching added EXTRA_LIBS webgpu
         std::string cmake = read_file(tmp + "/CMakeLists.txt");
@@ -266,6 +278,12 @@ int main() {
         check(src.find("lfo_.process(ctx)") != std::string::npos, "calls lfo_.process(ctx)");
         check(src.find("smoother_.process(ctx)") != std::string::npos, "calls smoother_.process(ctx)");
         check(src.find("struct ModFilter") != std::string::npos, "struct name is ModFilter");
+        check(src.find("semantic_tag(lfo_rate, \"frequency_hz\")") != std::string::npos,
+              "composite template includes semantic_tag for lfo_rate");
+        check(src.find("semantic_unit(lfo_rate, \"Hz\")") != std::string::npos,
+              "composite template includes semantic_unit for lfo_rate");
+        check(src.find("semantic_tag(smooth_time, \"time_seconds\")") != std::string::npos,
+              "composite template includes semantic_tag for smooth_time");
 
         // Verify CMakeLists.txt includes EXTRA_LIBS vivid_composable_ops
         std::string cmake = read_file(tmp + "/CMakeLists.txt");
@@ -295,6 +313,39 @@ int main() {
         check(!result.success, "composite GPU rejected");
         check(result.error.find("control domain") != std::string::npos,
               "error mentions 'control domain'");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 11: create() package layout destination
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 11: create() package layout ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_package_layout";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp + "/src");
+
+        {
+            std::ofstream mof(tmp + "/vivid-package.json");
+            mof << "{ \"name\": \"test-pkg\", \"operators\": [] }\n";
+        }
+        {
+            std::ofstream cof(tmp + "/CMakeLists.txt");
+            cof << "set(TEST_PKG_OPS\n"
+                << "  existing_op\n"
+                << ")\n";
+        }
+
+        auto result = vivid::OperatorCreator::create("team_gain", VIVID_DOMAIN_AUDIO, tmp, "", true);
+        check(result.success, "create package-layout op succeeds");
+
+        std::string cpp_path = tmp + "/src/team_gain.cpp";
+        check(fs::exists(cpp_path), "package-layout cpp exists under src/");
+
+        std::string cmake = read_file(tmp + "/CMakeLists.txt");
+        check(cmake.find("team_gain") != std::string::npos,
+              "package CMake ops list includes new target");
 
         fs::remove_all(tmp);
     }

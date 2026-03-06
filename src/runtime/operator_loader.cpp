@@ -156,6 +156,10 @@ void OperatorLoader::init_data_driven(std::shared_ptr<DataDrivenFilterConfig> co
         dp.display_hint = sp.display_hint;
         dp.layout_columns = sp.layout_columns;
         dp.layout_column_index = sp.layout_column_index;
+        dp.semantic_tag = nullptr;
+        dp.semantic_shape = nullptr;
+        dp.semantic_unit = nullptr;
+        dp.semantic_intent = nullptr;
 
         // Group
         dd_group_strings_[i] = sp.group;

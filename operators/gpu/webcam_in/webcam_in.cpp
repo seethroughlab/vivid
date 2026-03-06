@@ -87,6 +87,18 @@ struct WebcamIn : vivid::OperatorBase {
     std::vector<const char*>  device_name_ptrs_;
 
     WebcamIn() {
+        vivid::semantic_tag(active, "enabled");
+        vivid::semantic_shape(active, "bool");
+
+        vivid::semantic_tag(device, "index");
+        vivid::semantic_shape(device, "int");
+
+        vivid::semantic_tag(resolution, "resolution_px");
+        vivid::semantic_shape(resolution, "enum");
+
+        vivid::semantic_tag(fps, "frequency_hz");
+        vivid::semantic_shape(fps, "enum");
+
         auto cameras = enumerate_cameras();
         if (cameras.empty()) {
             device_names_.push_back("No camera");

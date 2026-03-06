@@ -22,6 +22,23 @@ struct OscOut : vivid::OperatorBase {
     vivid::Param<int> value_type{"value_type", 0, {"float", "int", "bool"}};
     vivid::Param<int> send_mode{"send_mode", 0, {"on_trigger", "every_frame", "on_change"}};
 
+    OscOut() {
+        vivid::semantic_tag(host, "x_network_host");
+        vivid::semantic_shape(host, "string");
+
+        vivid::semantic_tag(target_port, "x_network_port");
+        vivid::semantic_shape(target_port, "int");
+
+        vivid::semantic_tag(address, "x_osc_address");
+        vivid::semantic_shape(address, "string");
+
+        vivid::semantic_tag(value_type, "x_osc_value_type");
+        vivid::semantic_shape(value_type, "enum");
+
+        vivid::semantic_tag(send_mode, "x_osc_send_mode");
+        vivid::semantic_shape(send_mode, "enum");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&host);
         out.push_back(&target_port);

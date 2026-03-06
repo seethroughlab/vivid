@@ -60,6 +60,17 @@ Settings load_settings() {
         s.workspace_root = yyjson_get_str(v);
     if ((v = yyjson_obj_get(root, "workspace_seeded_version")) && yyjson_is_str(v))
         s.workspace_seeded_version = yyjson_get_str(v);
+    if ((v = yyjson_obj_get(root, "operator_clone_destination_mode")) && yyjson_is_str(v))
+        s.operator_clone_destination_mode = yyjson_get_str(v);
+    if ((v = yyjson_obj_get(root, "project_operator_root")) && yyjson_is_str(v))
+        s.project_operator_root = yyjson_get_str(v);
+    if ((v = yyjson_obj_get(root, "project_package_name")) && yyjson_is_str(v))
+        s.project_package_name = yyjson_get_str(v);
+
+    if (s.operator_clone_destination_mode != "project_default" &&
+        s.operator_clone_destination_mode != "core_explicit") {
+        s.operator_clone_destination_mode = "project_default";
+    }
 
     // Sanity: clamp size to something reasonable
     if (s.window_width < 320) s.window_width = 320;
@@ -97,6 +108,14 @@ void save_settings(const Settings& s) {
     if (!s.workspace_seeded_version.empty())
         yyjson_mut_obj_add_str(doc, root, "workspace_seeded_version",
                                s.workspace_seeded_version.c_str());
+    yyjson_mut_obj_add_str(doc, root, "operator_clone_destination_mode",
+                           s.operator_clone_destination_mode.c_str());
+    if (!s.project_operator_root.empty())
+        yyjson_mut_obj_add_str(doc, root, "project_operator_root",
+                               s.project_operator_root.c_str());
+    if (!s.project_package_name.empty())
+        yyjson_mut_obj_add_str(doc, root, "project_package_name",
+                               s.project_package_name.c_str());
 
     std::string path = settings_path();
     yyjson_write_err werr;
