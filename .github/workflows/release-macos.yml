@@ -112,7 +112,7 @@ jobs:
           find "$APP/Contents/PlugIns" -name "*.dylib" -print0 | while IFS= read -r -d '' dylib; do
             codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$dylib"
           done
-          codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$APP"
+          codesign --force --deep --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$APP"
 
       - name: Notarize and staple
         env:
@@ -131,7 +131,29 @@ jobs:
           APP="build/vivid.app"
           ZIP="build/${APP_NAME}-${{ steps.ver.outputs.version }}-macos-arm64.zip"
           ditto -c -k --keepParent "$APP" "$ZIP"
-          xcrun notarytool submit "$ZIP" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          NOTARY_JSON="$RUNNER_TEMP/notary-result.json"
+          xcrun notarytool submit "$ZIP" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$NOTARY_JSON"
+          NOTARY_ID="$(python3 - <<'PY' "$NOTARY_JSON"
+import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+print(data.get("id", ""))
+PY
+)"
+          NOTARY_STATUS="$(python3 - <<'PY' "$NOTARY_JSON"
+import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+print(data.get("status", ""))
+PY
+)"
+          if [[ "$NOTARY_STATUS" != "Accepted" ]]; then
+            echo "Notarization status: $NOTARY_STATUS (id: $NOTARY_ID)" >&2
+            if [[ -n "$NOTARY_ID" ]]; then
+              xcrun notarytool log "$NOTARY_ID" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" || true
+            fi
+            exit 1
+          fi
           xcrun stapler staple "$APP"
 
       - name: Validate signature and stapling
