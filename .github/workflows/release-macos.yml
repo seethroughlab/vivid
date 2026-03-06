@@ -122,6 +122,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          APPLE_ID="$(echo "${APPLE_ID:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          APPLE_TEAM_ID="$(echo "${APPLE_TEAM_ID:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          APPLE_APP_PASSWORD="$(echo "${APPLE_APP_PASSWORD:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
           [[ -n "${APPLE_ID}" ]] || { echo "Missing APPLE_ID" >&2; exit 1; }
           [[ -n "${APPLE_TEAM_ID}" ]] || { echo "Missing APPLE_TEAM_ID" >&2; exit 1; }
           [[ -n "${APPLE_APP_PASSWORD}" ]] || { echo "Missing APPLE_APP_PASSWORD" >&2; exit 1; }
