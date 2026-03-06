@@ -756,6 +756,8 @@ add_vivid_operator(test_op_v1     tests/operators/test_op_v1.cpp)
 add_vivid_operator(test_op_v2     tests/operators/test_op_v2.cpp)
 add_vivid_operator(semantic_ms_source_op tests/operators/semantic_ms_source_op.cpp)
 add_vivid_operator(semantic_s_dest_op    tests/operators/semantic_s_dest_op.cpp)
+add_vivid_operator(semantic_unknown_source_op tests/operators/semantic_unknown_source_op.cpp)
+add_vivid_operator(untagged_dest_op          tests/operators/untagged_dest_op.cpp)
 
 # Hot-reload integration test (no GPU, no audio, no window)
 add_executable(test_hot_reload
@@ -820,7 +822,8 @@ target_link_libraries(test_control_server PRIVATE
     vivid_operator_api yyjson miniaudio ixwebsocket webgpu rtmidi stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
-add_dependencies(test_control_server test_op_v1 semantic_ms_source_op semantic_s_dest_op)
+add_dependencies(test_control_server test_op_v1 semantic_ms_source_op semantic_s_dest_op
+    semantic_unknown_source_op untagged_dest_op)
 add_test(NAME test_control_server COMMAND test_control_server WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Perception introspection matrix test (domain snapshots + deterministic health)

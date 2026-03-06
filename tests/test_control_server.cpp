@@ -100,6 +100,12 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(build_dir + "/semantic_s_dest_op.dylib",
         staging + "/semantic_s_dest_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/semantic_unknown_source_op.dylib",
+        staging + "/semantic_unknown_source_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/untagged_dest_op.dylib",
+        staging + "/untagged_dest_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: ControlServer ===\n\n");
 
@@ -605,6 +611,8 @@ int main(int argc, char* argv[]) {
                     yyjson_val* t0 = nullptr;
                     yyjson_val* ms_type = nullptr;
                     yyjson_val* sec_type = nullptr;
+                    yyjson_val* unknown_type = nullptr;
+                    yyjson_val* untagged_type = nullptr;
                     size_t i = 0, max = 0;
                     yyjson_val* t = nullptr;
                     yyjson_arr_foreach(types, i, max, t) {
@@ -617,6 +625,10 @@ int main(int argc, char* argv[]) {
                             ms_type = t;
                         } else if (tn == "SecDestOp") {
                             sec_type = t;
+                        } else if (tn == "UnknownTagSourceOp") {
+                            unknown_type = t;
+                        } else if (tn == "UntaggedDestOp") {
+                            untagged_type = t;
                         }
                     }
                     check(t0 != nullptr, "contains TestOp");
@@ -660,6 +672,16 @@ int main(int argc, char* argv[]) {
                                           "MsSourceOp semantic_tag is time_milliseconds");
                     check_first_param_tag(sec_type, "time_seconds",
                                           "SecDestOp semantic_tag is time_seconds");
+                    check_first_param_tag(unknown_type, "x_test_unknown_scalar",
+                                          "UnknownTagSourceOp semantic_tag preserves extension tag");
+                    check(untagged_type != nullptr, "contains UntaggedDestOp");
+                    if (untagged_type) {
+                        yyjson_val* params_obj = yyjson_obj_get(untagged_type, "params");
+                        yyjson_val* p0 = (params_obj && yyjson_arr_size(params_obj) > 0)
+                                       ? yyjson_arr_get_first(params_obj) : nullptr;
+                        yyjson_val* tag = p0 ? yyjson_obj_get(p0, "semantic_tag") : nullptr;
+                        check(tag == nullptr, "UntaggedDestOp param omits semantic_tag");
+                    }
                 }
             }
         }
@@ -797,6 +819,11 @@ int main(int argc, char* argv[]) {
                 std::string m = json_str(msg);
                 check(m.find("semantic default remap applied") != std::string::npos,
                       "connect response reports semantic remap applied");
+                yyjson_val* inferred = yyjson_obj_get(c.root, "inferred_remap_applied");
+                check(inferred && yyjson_is_bool(inferred) && yyjson_get_bool(inferred),
+                      "connect response inferred_remap_applied=true");
+                yyjson_val* remap = yyjson_obj_get(c.root, "inferred_remap");
+                check(remap && yyjson_is_obj(remap), "connect response includes inferred_remap object");
             }
         }
 
@@ -837,6 +864,50 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Inferred remap must be user-overridable via set_connection_remap.
+        {
+            auto r = post(client, base_url, "set_connection_remap",
+                R"({"from_addr":"ms1/ms","to_addr":"s1/sec","from_min":10.0,"from_max":20.0,"to_min":1.0,"to_max":2.0,"clamp":true})");
+            check(r.ok, "set_connection_remap overrides inferred remap");
+        }
+
+        {
+            auto ig = post(client, base_url, "inspect_graph");
+            check(ig.ok, "inspect_graph after remap override ok");
+            if (ig.root) {
+                yyjson_val* result = yyjson_obj_get(ig.root, "result");
+                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
+                bool found = false;
+                if (conns && yyjson_is_arr(conns)) {
+                    yyjson_val* conn = nullptr;
+                    size_t idx = 0, max = 0;
+                    yyjson_arr_foreach(conns, idx, max, conn) {
+                        yyjson_val* from = yyjson_obj_get(conn, "from");
+                        yyjson_val* to   = yyjson_obj_get(conn, "to");
+                        if (json_str(from) != "ms1/ms" || json_str(to) != "s1/sec") continue;
+                        found = true;
+                        yyjson_val* fmin = yyjson_obj_get(conn, "from_min");
+                        yyjson_val* fmax = yyjson_obj_get(conn, "from_max");
+                        yyjson_val* tmin = yyjson_obj_get(conn, "to_min");
+                        yyjson_val* tmax = yyjson_obj_get(conn, "to_max");
+                        yyjson_val* clamp = yyjson_obj_get(conn, "clamp");
+                        check(fmin && std::fabs(yyjson_get_num(fmin) - 10.0) < 1e-6,
+                              "override remap from_min=10");
+                        check(fmax && std::fabs(yyjson_get_num(fmax) - 20.0) < 1e-6,
+                              "override remap from_max=20");
+                        check(tmin && std::fabs(yyjson_get_num(tmin) - 1.0) < 1e-6,
+                              "override remap to_min=1");
+                        check(tmax && std::fabs(yyjson_get_num(tmax) - 2.0) < 1e-6,
+                              "override remap to_max=2");
+                        check(clamp && yyjson_is_bool(clamp) && yyjson_get_bool(clamp),
+                              "override remap clamp=true");
+                        break;
+                    }
+                }
+                check(found, "semantic remap connection present after override");
+            }
+        }
+
         {
             auto d = post(client, base_url, "disconnect",
                 R"({"from_addr":"ms1/ms","to_addr":"s1/sec"})");
@@ -849,6 +920,147 @@ int main(int argc, char* argv[]) {
             auto rm_dst = post(client, base_url, "remove_node",
                 R"({"node_id":"s1"})");
             check(rm_dst.ok, "remove_node s1 ok");
+        }
+
+        // Phase 10c: semantic-default coercion only for explicit conversion pairs.
+        std::fprintf(stderr, "\n--- semantic explicit coercion contract ---\n");
+        {
+            auto add_src = post(client, base_url, "add_node",
+                R"({"type":"TestOp","id":"hz1"})");
+            check(add_src.ok, "add_node TestOp hz1 ok");
+
+            auto add_dst = post(client, base_url, "add_node",
+                R"({"type":"SecDestOp","id":"s2"})");
+            check(add_dst.ok, "add_node SecDestOp s2 ok");
+
+            auto c = post(client, base_url, "connect",
+                R"({"from_addr":"hz1/out","to_addr":"s2/sec","semantic_defaults":true})");
+            check(c.ok, "connect hz1/out -> s2/sec with semantic_defaults ok");
+            if (c.root) {
+                yyjson_val* msg = yyjson_obj_get(c.root, "message");
+                std::string m = json_str(msg);
+                check(m.find("semantic default remap applied") == std::string::npos,
+                      "non-contract coercion does not apply remap");
+                yyjson_val* inferred = yyjson_obj_get(c.root, "inferred_remap_applied");
+                check(inferred && yyjson_is_bool(inferred) && !yyjson_get_bool(inferred),
+                      "connect response inferred_remap_applied=false for non-contract pair");
+                check(yyjson_obj_get(c.root, "inferred_remap") == nullptr,
+                      "connect response omits inferred_remap object for non-contract pair");
+            }
+        }
+
+        phase.store(11);
+        while (phase.load() < 12) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+        {
+            auto ig = post(client, base_url, "inspect_graph");
+            check(ig.ok, "inspect_graph after non-contract semantic connect ok");
+            if (ig.root) {
+                yyjson_val* result = yyjson_obj_get(ig.root, "result");
+                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
+                bool found = false;
+                if (conns && yyjson_is_arr(conns)) {
+                    yyjson_val* conn = nullptr;
+                    size_t idx = 0, max = 0;
+                    yyjson_arr_foreach(conns, idx, max, conn) {
+                        yyjson_val* from = yyjson_obj_get(conn, "from");
+                        yyjson_val* to   = yyjson_obj_get(conn, "to");
+                        if (json_str(from) != "hz1/out" || json_str(to) != "s2/sec") continue;
+                        found = true;
+                        check(yyjson_obj_get(conn, "from_min") == nullptr,
+                              "non-contract coercion leaves from_min unset");
+                        check(yyjson_obj_get(conn, "from_max") == nullptr,
+                              "non-contract coercion leaves from_max unset");
+                        check(yyjson_obj_get(conn, "to_min") == nullptr,
+                              "non-contract coercion leaves to_min unset");
+                        check(yyjson_obj_get(conn, "to_max") == nullptr,
+                              "non-contract coercion leaves to_max unset");
+                        break;
+                    }
+                }
+                check(found, "non-contract coercion connection present in inspect_graph");
+            }
+        }
+
+        {
+            auto d = post(client, base_url, "disconnect",
+                R"({"from_addr":"hz1/out","to_addr":"s2/sec"})");
+            check(d.ok, "disconnect non-contract semantic connection ok");
+
+            auto rm_src = post(client, base_url, "remove_node",
+                R"({"node_id":"hz1"})");
+            check(rm_src.ok, "remove_node hz1 ok");
+
+            auto rm_dst = post(client, base_url, "remove_node",
+                R"({"node_id":"s2"})");
+            check(rm_dst.ok, "remove_node s2 ok");
+        }
+
+        // Unknown tags and untagged params must remain tolerated with no implicit remap.
+        std::fprintf(stderr, "\n--- semantic unknown/untagged tolerance ---\n");
+        {
+            auto add_src = post(client, base_url, "add_node",
+                R"({"type":"UnknownTagSourceOp","id":"ux1"})");
+            check(add_src.ok, "add_node UnknownTagSourceOp ux1 ok");
+            auto add_dst = post(client, base_url, "add_node",
+                R"({"type":"UntaggedDestOp","id":"ud1"})");
+            check(add_dst.ok, "add_node UntaggedDestOp ud1 ok");
+
+            auto c = post(client, base_url, "connect",
+                R"({"from_addr":"ux1/out","to_addr":"ud1/value","semantic_defaults":true})");
+            check(c.ok, "connect unknown-tag -> untagged with semantic_defaults ok");
+            if (c.root) {
+                yyjson_val* inferred = yyjson_obj_get(c.root, "inferred_remap_applied");
+                check(inferred && yyjson_is_bool(inferred) && !yyjson_get_bool(inferred),
+                      "unknown/untagged connection has no inferred remap");
+                check(yyjson_obj_get(c.root, "inferred_remap") == nullptr,
+                      "unknown/untagged connection omits inferred_remap payload");
+            }
+        }
+
+        phase.store(13);
+        while (phase.load() < 14) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+        {
+            auto ig = post(client, base_url, "inspect_graph");
+            check(ig.ok, "inspect_graph after unknown/untagged connect ok");
+            if (ig.root) {
+                yyjson_val* result = yyjson_obj_get(ig.root, "result");
+                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
+                bool found = false;
+                if (conns && yyjson_is_arr(conns)) {
+                    yyjson_val* conn = nullptr;
+                    size_t idx = 0, max = 0;
+                    yyjson_arr_foreach(conns, idx, max, conn) {
+                        yyjson_val* from = yyjson_obj_get(conn, "from");
+                        yyjson_val* to   = yyjson_obj_get(conn, "to");
+                        if (json_str(from) != "ux1/out" || json_str(to) != "ud1/value") continue;
+                        found = true;
+                        check(yyjson_obj_get(conn, "from_min") == nullptr,
+                              "unknown/untagged leaves from_min unset");
+                        check(yyjson_obj_get(conn, "from_max") == nullptr,
+                              "unknown/untagged leaves from_max unset");
+                        check(yyjson_obj_get(conn, "to_min") == nullptr,
+                              "unknown/untagged leaves to_min unset");
+                        check(yyjson_obj_get(conn, "to_max") == nullptr,
+                              "unknown/untagged leaves to_max unset");
+                        break;
+                    }
+                }
+                check(found, "unknown/untagged connection present in inspect_graph");
+            }
+        }
+
+        {
+            auto d = post(client, base_url, "disconnect",
+                R"({"from_addr":"ux1/out","to_addr":"ud1/value"})");
+            check(d.ok, "disconnect unknown/untagged connection ok");
+            auto rm_src = post(client, base_url, "remove_node",
+                R"({"node_id":"ux1"})");
+            check(rm_src.ok, "remove_node ux1 ok");
+            auto rm_dst = post(client, base_url, "remove_node",
+                R"({"node_id":"ud1"})");
+            check(rm_dst.ok, "remove_node ud1 ok");
         }
 
         // Phase 11: save_graph
@@ -1133,6 +1345,14 @@ int main(int argc, char* argv[]) {
             api.apply_pending(has_gpu_ops, has_audio);
             scheduler.tick(0.0, 0.016, 5);
             phase.store(10);
+        } else if (p == 11) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            scheduler.tick(0.0, 0.016, 6);
+            phase.store(12);
+        } else if (p == 13) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            scheduler.tick(0.0, 0.016, 7);
+            phase.store(14);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
