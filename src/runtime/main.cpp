@@ -350,6 +350,43 @@ discover_examples_recursive(const std::filesystem::path& graphs_root) {
     return out;
 }
 
+static std::vector<vivid::ui::ExampleEntry>
+discover_examples_with_packages(const std::filesystem::path& graphs_root,
+                                vivid::PackageManager* pkg_manager) {
+    std::vector<vivid::ui::ExampleEntry> out = discover_examples_recursive(graphs_root);
+    if (!pkg_manager) return out;
+
+    std::unordered_set<std::string> seen_paths;
+    for (const auto& e : out) seen_paths.insert(e.path);
+
+    for (const auto& pkg : pkg_manager->list()) {
+        if (pkg.path.empty()) continue;
+        std::error_code ec;
+        std::filesystem::path pkg_graphs_root = std::filesystem::path(pkg.path) / "graphs";
+        if (!std::filesystem::is_directory(pkg_graphs_root, ec)) continue;
+
+        auto pkg_examples = discover_examples_recursive(pkg_graphs_root);
+        for (auto& e : pkg_examples) {
+            std::filesystem::path abs_path = pkg_graphs_root / e.path;
+            std::string open_path = abs_path.lexically_normal().string();
+            if (!seen_paths.insert(open_path).second) continue;
+            e.path = open_path;
+
+            if (e.requires_packages.empty()) {
+                e.requires_packages.push_back(pkg.name);
+            }
+            out.push_back(std::move(e));
+        }
+    }
+
+    std::sort(out.begin(), out.end(), [](const vivid::ui::ExampleEntry& a,
+                                         const vivid::ui::ExampleEntry& b) {
+        if (a.featured_rank != b.featured_rank) return a.featured_rank < b.featured_rank;
+        return a.title < b.title;
+    });
+    return out;
+}
+
 static std::string resolve_graph_input_path(const std::string& input,
                                             const std::filesystem::path& graphs_root,
                                             const std::vector<vivid::ui::ExampleEntry>& examples) {
@@ -1819,7 +1856,8 @@ int main(int argc, char* argv[]) {
     if (!std::filesystem::is_directory(graphs_root)) {
         graphs_root = bundle_graphs_root;
     }
-    std::vector<vivid::ui::ExampleEntry> discovered_examples = discover_examples_recursive(graphs_root);
+    std::vector<vivid::ui::ExampleEntry> discovered_examples =
+        discover_examples_with_packages(graphs_root, &pkg_manager);
     graph_file = resolve_graph_input_path(graph_file, graphs_root, discovered_examples);
 
     // --- Load graph ---
@@ -1948,12 +1986,21 @@ int main(int argc, char* argv[]) {
     vivid::ui::NodeGraphUI graph_ui(command_sink);
     graph_ui.set_dpi_scale(dpi_scale);
     graph_ui.set_bezier_wires(settings.bezier_wires);
+    auto refresh_discovered_examples = [&]() {
+        discovered_examples = discover_examples_with_packages(graphs_root, &pkg_manager);
+        graph_ui.set_examples(discovered_examples);
+    };
+
     vivid::ui::PackageBrowserCallbacks pkg_browser_cbs;
     pkg_browser_cbs.refresh = [&pkg_catalog]() {
         pkg_catalog.refresh();
     };
-    pkg_browser_cbs.list_entries = [&pkg_catalog]() {
+    pkg_browser_cbs.list_entries = [&pkg_catalog, &pkg_manager]() {
             std::vector<vivid::ui::PackageBrowserEntry> out;
+            std::unordered_map<std::string, vivid::PackageInfo> installed_map;
+            for (const auto& p : pkg_manager.list()) {
+                installed_map[p.name] = p;
+            }
             auto entries = pkg_catalog.entries();
             out.reserve(entries.size());
             for (const auto& e : entries) {
@@ -1964,7 +2011,14 @@ int main(int argc, char* argv[]) {
                 ui_e.author = e.author;
                 ui_e.category = e.category;
                 ui_e.tags = e.tags;
-                ui_e.installed = e.installed;
+                auto it = installed_map.find(e.name);
+                if (it != installed_map.end()) {
+                    ui_e.installed = true;
+                    ui_e.linked = it->second.linked;
+                } else {
+                    ui_e.installed = e.installed;
+                    ui_e.linked = false;
+                }
                 out.push_back(std::move(ui_e));
             }
             return out;
@@ -1989,14 +2043,26 @@ int main(int argc, char* argv[]) {
         out.incompatible_updates = s.incompatible_updates;
         return out;
     };
-    pkg_browser_cbs.install = [&pkg_catalog](const std::string& name, std::string& error) {
+    pkg_browser_cbs.install = [&pkg_catalog, &refresh_discovered_examples](const std::string& name, std::string& error) {
         auto r = pkg_catalog.install(name);
         if (!r.success) error = r.error;
+        if (r.success) refresh_discovered_examples();
         return r.success;
     };
-    pkg_browser_cbs.uninstall = [&pkg_catalog](const std::string& name, std::string& error) {
-        if (pkg_catalog.uninstall(name)) return true;
+    pkg_browser_cbs.uninstall = [&pkg_catalog, &refresh_discovered_examples](const std::string& name, std::string& error) {
+        if (pkg_catalog.uninstall(name)) {
+            refresh_discovered_examples();
+            return true;
+        }
         error = "Failed to uninstall " + name;
+        return false;
+    };
+    pkg_browser_cbs.unlink = [&pkg_manager, &refresh_discovered_examples](const std::string& name, std::string& error) {
+        if (pkg_manager.unlink(name)) {
+            refresh_discovered_examples();
+            return true;
+        }
+        error = "Failed to unlink " + name;
         return false;
     };
     graph_ui.set_package_browser_callbacks(std::move(pkg_browser_cbs));
@@ -2332,8 +2398,7 @@ int main(int argc, char* argv[]) {
     graph_ui.set_graph_meta_save_callback([&](const vivid::ui::GraphMetaEditData& data,
                                               std::string& error) {
         if (!save_graph_meta_edit_data(data, error)) return false;
-        discovered_examples = discover_examples_recursive(graphs_root);
-        graph_ui.set_examples(discovered_examples);
+        refresh_discovered_examples();
         return true;
     });
 

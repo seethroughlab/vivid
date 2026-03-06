@@ -58,6 +58,7 @@ struct PackageBrowserEntry {
     std::string category;
     std::vector<std::string> tags;
     bool installed = false;
+    bool linked = false;
 };
 
 struct PackageBrowserUpdateSummary {
@@ -74,6 +75,7 @@ struct PackageBrowserCallbacks {
     std::function<PackageBrowserUpdateSummary()> update_summary;
     std::function<bool(const std::string&, std::string&)> install;
     std::function<bool(const std::string&, std::string&)> uninstall;
+    std::function<bool(const std::string&, std::string&)> unlink;
 };
 
 class Renderer2D;

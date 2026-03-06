@@ -11,6 +11,7 @@ zig-cache/
 # IDE and editor files
 .vscode/
 .idea/
+.venv-mcp/
 *.swp
 *.swo
 *~
@@ -56,6 +57,7 @@ docs/api/
 *.tmp
 *.temp
 *.log
+/.test_*
 
 # OS generated files
 Thumbs.db
@@ -65,3 +67,9 @@ Desktop.ini
 
 TODO.md
 __pycache__
+
+# Personal/local docs
+docs/crash.txt
+docs/private/
+docs/personal/
+docs/*.local.md

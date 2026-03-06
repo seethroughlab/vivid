@@ -89,6 +89,20 @@ bool OperatorLoader::load(const char* path) {
     }
 
     // Resolve all four entry points
+    auto abi_fn = reinterpret_cast<VividAbiVersionFn>(dlsym(handle_, "vivid_abi_version"));
+    if (!abi_fn) {
+        std::fprintf(stderr, "[vivid] Missing symbol: vivid_abi_version (stale/incompatible plugin)\n");
+        unload();
+        return false;
+    }
+    const uint32_t abi = abi_fn();
+    if (abi != VIVID_OPERATOR_ABI_VERSION) {
+        std::fprintf(stderr, "[vivid] Incompatible plugin ABI: got %u, expected %u\n",
+                     abi, VIVID_OPERATOR_ABI_VERSION);
+        unload();
+        return false;
+    }
+
     desc_fn_    = reinterpret_cast<VividDescriptorFn>(dlsym(handle_, "vivid_descriptor"));
     create_fn_  = reinterpret_cast<VividCreateFn>(dlsym(handle_, "vivid_create"));
     destroy_fn_ = reinterpret_cast<VividDestroyFn>(dlsym(handle_, "vivid_destroy"));

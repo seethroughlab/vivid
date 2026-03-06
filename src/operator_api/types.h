@@ -6,6 +6,9 @@
 extern "C" {
 #endif
 
+/* Bump when operator-facing C ABI changes in incompatible ways. */
+#define VIVID_OPERATOR_ABI_VERSION 2u
+
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
@@ -159,6 +162,7 @@ typedef struct VividProcessContext {
 // ---------------------------------------------------------------------------
 
 typedef const VividOperatorDescriptor* (*VividDescriptorFn)(void);
+typedef uint32_t (*VividAbiVersionFn)(void);
 typedef void*  (*VividCreateFn)(void);
 typedef void   (*VividDestroyFn)(void* instance);
 typedef void   (*VividProcessFn)(void* instance, const VividProcessContext* ctx);

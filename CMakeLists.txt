@@ -706,6 +706,8 @@ if(APPLE)
 
     # Create PlugIns directory
     add_custom_command(TARGET vivid POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
         COMMAND ${CMAKE_COMMAND} -E make_directory
             $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
         COMMAND ${CMAKE_COMMAND} -E make_directory

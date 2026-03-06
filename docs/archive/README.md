@@ -10,7 +10,10 @@ This directory contains historical planning/execution artifacts that are no long
 
 ## Active docs
 
-Current behavior/spec docs remain in `docs/` (for example: `ROADMAP.md`, architecture/interface/LLM docs, package search-path spec, package ecosystem design, and active test plans).
+Current user-facing docs remain in `docs/`. Engineering references are organized in:
+- `docs/internal/` for internal specs and evaluations
+- `docs/testing/` for test plans and validation protocols
+- `docs/release/` for release operations/checklists
 
 ## Archived files
 

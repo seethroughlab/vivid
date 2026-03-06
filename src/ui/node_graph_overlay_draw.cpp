@@ -121,6 +121,21 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
         std::string ver_str = "v" + entry.version;
         tr.draw_text(cx + 8 + name_w + 8, iy + 6, ver_str.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+        if (entry.installed) {
+            const char* state = entry.linked ? "Linked" : "Installed";
+            float state_x = cx + 8 + name_w + 8 + tr.text_width(ver_str.c_str()) + 10.0f;
+            float chip_w = tr.text_width(state) + 12.0f;
+            tr.draw_rect(state_x, iy + 4, chip_w, 14.0f,
+                         entry.linked ? style_.accent[0] : style_.button_bg[0],
+                         entry.linked ? style_.accent[1] : style_.button_bg[1],
+                         entry.linked ? style_.accent[2] : style_.button_bg[2],
+                         entry.linked ? 0.85f : 0.75f);
+            tr.draw_text(state_x + 6.0f, iy + 6, state,
+                         entry.linked ? 0.0f : style_.bright_text[0],
+                         entry.linked ? 0.0f : style_.bright_text[1],
+                         entry.linked ? 0.0f : style_.bright_text[2],
+                         0.9f);
+        }
 
         std::string desc = entry.description;
         if (desc.size() > 60) desc = desc.substr(0, 57) + "...";
@@ -141,7 +156,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
         OverlayRect btn = compute_package_action_button_rect(layout, i - pkg_browser_scroll_);
         float btn_x = btn.x;
         float btn_y = btn.y;
-        const char* btn_label = entry.installed ? "Remove" : "Install";
+        const char* btn_label = entry.installed ? (entry.linked ? "Unlink" : "Remove") : "Install";
         bool btn_hover = overlay_contains(btn, mouse_.x, mouse_.y);
         if (entry.installed) {
             tr.draw_rect(btn_x, btn_y, kPkgBrowserBtnW, kPkgBrowserBtnH,

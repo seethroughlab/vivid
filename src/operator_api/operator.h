@@ -299,6 +299,10 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     return &desc;                                                             \
 }                                                                             \
                                                                               \
+extern "C" uint32_t vivid_abi_version() {                                     \
+    return VIVID_OPERATOR_ABI_VERSION;                                        \
+}                                                                             \
+                                                                              \
 extern "C" const VividOperatorDescriptor* vivid_descriptor() {                \
     return _vivid_get_descriptor();                                           \
 }                                                                             \

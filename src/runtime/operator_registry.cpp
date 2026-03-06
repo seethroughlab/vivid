@@ -209,6 +209,20 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         }
 
         auto desc_fn = reinterpret_cast<VividDescriptorFn>(dlsym(handle, "vivid_descriptor"));
+        auto abi_fn = reinterpret_cast<VividAbiVersionFn>(dlsym(handle, "vivid_abi_version"));
+        if (!abi_fn) {
+            std::fprintf(stderr, "[vivid] probe: skipping %s (missing vivid_abi_version; stale/incompatible plugin)\n", name);
+            deferred_probe_handles_.push_back(handle);
+            return;
+        }
+        const uint32_t abi = abi_fn();
+        if (abi != VIVID_OPERATOR_ABI_VERSION) {
+            std::fprintf(stderr,
+                         "[vivid] probe: skipping %s (ABI %u != runtime ABI %u)\n",
+                         name, abi, VIVID_OPERATOR_ABI_VERSION);
+            deferred_probe_handles_.push_back(handle);
+            return;
+        }
         if (!desc_fn) {
             std::fprintf(stderr, "[vivid] probe: missing vivid_descriptor in %s\n", name);
             deferred_probe_handles_.push_back(handle);

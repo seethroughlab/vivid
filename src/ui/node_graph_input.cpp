@@ -243,8 +243,14 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 const auto& entry = pkg_browser_entries_[pkg_browser_sel_];
                 pkg_action_error_.clear();
                 if (entry.installed) {
-                    if (!pkg_browser_callbacks_.uninstall ||
-                        !pkg_browser_callbacks_.uninstall(entry.name, pkg_action_error_)) {
+                    if (entry.linked) {
+                        if (!pkg_browser_callbacks_.unlink ||
+                            !pkg_browser_callbacks_.unlink(entry.name, pkg_action_error_)) {
+                            if (pkg_action_error_.empty())
+                                pkg_action_error_ = "Failed to unlink " + entry.name;
+                        }
+                    } else if (!pkg_browser_callbacks_.uninstall ||
+                               !pkg_browser_callbacks_.uninstall(entry.name, pkg_action_error_)) {
                         if (pkg_action_error_.empty())
                             pkg_action_error_ = "Failed to uninstall " + entry.name;
                     }
