@@ -6,6 +6,23 @@
 
 namespace vivid::ui {
 
+namespace {
+std::string fit_text_to_width(Renderer2D& tr, const std::string& text, float max_w) {
+    if (max_w <= 0.0f) return {};
+    if (tr.text_width(text.c_str()) <= max_w) return text;
+    static const char* kEllipsis = "...";
+    const float ell_w = tr.text_width(kEllipsis);
+    if (ell_w >= max_w) return {};
+    std::string out = text;
+    while (!out.empty()) {
+        out.pop_back();
+        std::string candidate = out + kEllipsis;
+        if (tr.text_width(candidate.c_str()) <= max_w) return candidate;
+    }
+    return {};
+}
+} // namespace
+
 void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
     if (!pkg_browser_open_) return;
 
@@ -115,16 +132,26 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.3f);
         }
 
-        tr.draw_text(cx + 8, iy + 6, entry.name.c_str(),
-                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        float name_w = tr.text_width(entry.name.c_str());
+        OverlayRect btn = compute_package_action_button_rect(layout, i - pkg_browser_scroll_);
+        const float text_left = cx + 8.0f;
+        const float text_right = btn.x - 10.0f;
+        const float text_w = std::max(0.0f, text_right - text_left);
+        tr.push_clip_rect(text_left, iy + 2.0f, text_w, kPkgBrowserItemH - 4.0f);
+
         std::string ver_str = "v" + entry.version;
-        tr.draw_text(cx + 8 + name_w + 8, iy + 6, ver_str.c_str(),
+        const float ver_w = tr.text_width(ver_str.c_str());
+        const char* state = entry.linked ? "Linked" : "Installed";
+        const float chip_w = tr.text_width(state) + 12.0f;
+        float available_name_w = text_w - 8.0f - ver_w;
+        if (entry.installed) available_name_w -= (10.0f + chip_w);
+        std::string display_name = fit_text_to_width(tr, entry.name, available_name_w);
+        tr.draw_text(text_left, iy + 6, display_name.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        float name_w = tr.text_width(display_name.c_str());
+        tr.draw_text(text_left + name_w + 8, iy + 6, ver_str.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
         if (entry.installed) {
-            const char* state = entry.linked ? "Linked" : "Installed";
-            float state_x = cx + 8 + name_w + 8 + tr.text_width(ver_str.c_str()) + 10.0f;
-            float chip_w = tr.text_width(state) + 12.0f;
+            float state_x = text_left + name_w + 8 + ver_w + 10.0f;
             tr.draw_rect(state_x, iy + 4, chip_w, 14.0f,
                          entry.linked ? style_.accent[0] : style_.button_bg[0],
                          entry.linked ? style_.accent[1] : style_.button_bg[1],
@@ -137,9 +164,8 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
                          0.9f);
         }
 
-        std::string desc = entry.description;
-        if (desc.size() > 60) desc = desc.substr(0, 57) + "...";
-        tr.draw_text(cx + 8, iy + 22, desc.c_str(),
+        std::string desc = fit_text_to_width(tr, entry.description, text_w);
+        tr.draw_text(text_left, iy + 22, desc.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 
         std::string meta;
@@ -149,11 +175,12 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
             meta += entry.author;
         }
         if (!meta.empty()) {
-            tr.draw_text(cx + 8, iy + 37, meta.c_str(),
+            meta = fit_text_to_width(tr, meta, text_w);
+            tr.draw_text(text_left, iy + 37, meta.c_str(),
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
         }
+        tr.pop_clip_rect();
 
-        OverlayRect btn = compute_package_action_button_rect(layout, i - pkg_browser_scroll_);
         float btn_x = btn.x;
         float btn_y = btn.y;
         const char* btn_label = entry.installed ? (entry.linked ? "Unlink" : "Remove") : "Install";
@@ -357,29 +384,48 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.3f);
         }
 
-        tr.draw_text(cx + 8, iy + 6, e.title.c_str(),
-                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        std::string meta = e.id + " · " + e.path;
-        tr.draw_text(cx + 8, iy + 22, meta.c_str(),
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
-
-        std::string summary = e.summary;
-        if (summary.size() > 64) summary = summary.substr(0, 61) + "...";
-        tr.draw_text(cx + 8, iy + 37, summary.c_str(),
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
-
         OverlayRect open_btn = compute_example_open_button_rect(layout, i - example_browser_scroll_);
         float bx = open_btn.x;
         float by = open_btn.y;
+        const bool has_required_packages = !e.requires_packages.empty();
+        bool has_missing_packages = false;
+        if (has_required_packages && example_package_checker_) {
+            std::string missing_pkg_name;
+            has_missing_packages = !example_package_checker_(e.requires_packages, missing_pkg_name);
+        }
+
+        const float badge_gap = 8.0f;
+        const float badge_w = 128.0f;
+        const float text_left = cx + 8.0f;
+        float text_right = bx - 10.0f;
+        if (has_missing_packages) text_right -= (badge_w + badge_gap);
+        const float text_w = std::max(0.0f, text_right - text_left);
+
+        tr.push_clip_rect(text_left, iy + 2.0f, text_w, kPkgBrowserItemH - 4.0f);
+        const std::string title = fit_text_to_width(tr, e.title, text_w);
+        tr.draw_text(text_left, iy + 6, title.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        std::string meta = e.id + " · " + e.path;
+        meta = fit_text_to_width(tr, meta, text_w);
+        tr.draw_text(text_left, iy + 22, meta.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+        std::string summary = fit_text_to_width(tr, e.summary, text_w);
+        tr.draw_text(text_left, iy + 37, summary.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+        tr.pop_clip_rect();
+
         tr.draw_rect(bx, by, open_btn.w, open_btn.h,
                      style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
         float tw = tr.text_width("Open");
         tr.draw_text(bx + (open_btn.w - tw) * 0.5f, by + 3, "Open",
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
-        if (!e.requires_packages.empty()) {
-            tr.draw_text(bx - 165.0f, by + 3, "needs package(s)",
-                         0.95f, 0.70f, 0.25f, 0.85f);
+        if (has_missing_packages) {
+            const float badge_x = bx - badge_gap - badge_w;
+            tr.draw_rect(badge_x, by, badge_w, open_btn.h,
+                         0.42f, 0.30f, 0.12f, 0.9f);
+            tr.draw_text(badge_x + 8.0f, by + 3.0f, "needs package(s)",
+                         0.95f, 0.78f, 0.32f, 0.95f);
         }
     }
 
