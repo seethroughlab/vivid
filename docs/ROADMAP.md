@@ -149,11 +149,11 @@ Execution checklist (concrete):
 - [x] Ensure hot-reload watcher auto-registers cloned/scaffolded files in project/package roots.
 - [x] Ensure install/link workflows preserve expected ownership boundaries.
 
-4. **Migration safety**
-- [ ] Keep current core-destination path available behind explicit opt-in during transition.
-- [ ] Add non-destructive migration helper:
-  - detect cloned operators in core with no upstream usage
-  - offer move/copy into project package with patch suggestions (no automatic delete).
+4. **Migration safety** *(deferred — no pre-launch users means no orphaned operators to migrate)*
+- [~] Keep current core-destination path available behind explicit opt-in during transition.
+  - Core opt-in already implemented via `destination="core"` in CLI/MCP/UI. No additional work needed pre-launch.
+- [~] Add non-destructive migration helper (detect cloned operators in core with no upstream usage, offer move/copy into project package).
+  - Deferred post-launch: no pre-launch users means no orphaned operators exist to migrate.
 
 5. **Validation matrix**
 - [x] Unit tests for destination resolution precedence.
@@ -161,7 +161,8 @@ Execution checklist (concrete):
   - clone into project package -> build/hot-reload works
   - scaffold into project package via MCP -> files + CMake edits correct
   - fallback-to-core path emits clear warning and remains functional
-- [ ] Team workflow regression: two repos (core + project package) with clean git diff boundaries.
+- [x] Team workflow regression: two repos (core + project package) with clean git diff boundaries.
+  - `test_team_workflow_regression`: Case A (scaffold isolation), Case B (clone isolation via command sink), Case C (fallback-to-core warning) — all passing.
 
 Minimal first slice (recommended next implementation step):
 - Implement destination resolution + new destination parameters in clone/scaffold APIs.

@@ -1405,6 +1405,38 @@ add_test(NAME test_undo_mutation_types
     COMMAND test_undo_mutation_types ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Team workflow regression: project package isolation (Cases A/C: unit; Case B: dylib staging)
+add_executable(test_team_workflow_regression
+    tests/test_team_workflow_regression.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/undo_manager.cpp
+    src/runtime/operator_creator.cpp
+    src/runtime/settings.cpp
+    src/runtime/hot_reload.cpp
+    src/runtime/capture_coordinator.cpp
+    src/runtime/screenshot.cpp
+    src/runtime/av_exporter.mm
+    src/runtime/platform.cpp
+    src/runtime/system_midi.cpp
+)
+target_include_directories(test_team_workflow_regression PRIVATE src tests)
+target_link_libraries(test_team_workflow_regression PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu rtmidi stb_truetype
+    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+    "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
+add_dependencies(test_team_workflow_regression test_op_v1)
+add_test(NAME test_team_workflow_regression
+    COMMAND test_team_workflow_regression ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # builtin_operators unit tests (no dylib, no GPU)
 add_executable(test_builtin_operators
     tests/test_builtin_operators.cpp

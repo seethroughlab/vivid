@@ -112,6 +112,11 @@ public:
     void on_key(int key, int action, int mods);
     void on_char(unsigned int codepoint);
 
+    // Returns true during the "on" phase of a blinking cursor (30-frame half-period)
+    bool cursor_blink_on() const {
+        return (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0);
+    }
+
     // Returns true when a popup is open and wants keyboard focus
     bool wants_keyboard() const {
         return create_popup_open_
