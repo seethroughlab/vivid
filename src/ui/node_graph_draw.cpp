@@ -85,7 +85,9 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         bool selected = selected_node_ids_.count(r.node_id) > 0;
         const float* bg = selected ? style_.node_sel_bg.data() : style_.node_bg.data();
         bool node_errored = (i < snap_.nodes.size() && snap_.nodes[i].errored);
-        const float* dcol = node_errored ? kErrorAccent.data() : domain_color(r.domain);
+        bool node_missing = (i < snap_.nodes.size() && snap_.nodes[i].missing_operator);
+        bool node_bad     = node_errored || node_missing;
+        const float* dcol = node_bad ? kErrorAccent.data() : domain_color(r.domain);
 
         // Transform graph-space rect to screen space
         float sx = gx_to_sx(r.x), sy = gy_to_sy(r.y);
@@ -95,8 +97,8 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float sr = g_to_s(style_.corner_radius);
         tr.draw_rounded_rect(sx, sy, sw, sh, sr, bg[0], bg[1], bg[2]);
 
-        // Red border on errored nodes (2px)
-        if (node_errored) {
+        // Red border on errored or missing nodes (2px)
+        if (node_bad) {
             float bw = g_to_s(2.0f);
             tr.draw_rect(sx, sy, sw, bw, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);           // top
             tr.draw_rect(sx, sy + sh - bw, sw, bw, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]); // bottom
@@ -114,7 +116,18 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float body_h = domain_body_height(r.domain, has_ct);
         float s_body_h = g_to_s(body_h);
 
-        if (r.domain == VIVID_DOMAIN_CONTROL && !has_ct) {
+        if (node_missing) {
+            // Dark red-tinted background
+            tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
+                         sw - g_to_s(4), s_body_h - g_to_s(4),
+                         kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.15f);
+            // Centered "MISSING" label
+            const char* label = "MISSING";
+            float lw = tr.text_width(label, zoom_);
+            float lx = sx + (sw - lw) * 0.5f;
+            float ly = s_body_y + (s_body_h - tr.line_height() * zoom_) * 0.5f;
+            tr.draw_text(lx, ly, label, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.8f, zoom_);
+        } else if (r.domain == VIVID_DOMAIN_CONTROL && !has_ct) {
             // Sparkline
             tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
                          sw - g_to_s(4), s_body_h - g_to_s(4),

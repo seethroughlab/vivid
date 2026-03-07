@@ -82,6 +82,7 @@ struct NodeSnapshot {
     // Error state (from scheduler)
     bool errored = false;
     std::string error_message;
+    bool missing_operator = false;
 
     // Layout position from graph
     float layout_x = 0.0f;
