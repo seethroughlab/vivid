@@ -71,37 +71,44 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
 
     // GPU operators need Dawn/WebGPU includes and library
     if (needs_gpu) {
-        // Find the wgpu directory in the build tree
+        // Prefer host runtime locations first to avoid linking packages against
+        // a second, stale wgpu-native binary from _deps.
         std::string wgpu_include;
         std::string wgpu_lib_dir;
-        std::string deps_dir = vivid_build_dir_ + "/_deps";
-        if (std::filesystem::is_directory(deps_dir)) {
-            for (auto& entry : std::filesystem::directory_iterator(deps_dir)) {
-                std::string entry_name = entry.path().filename().string();
-                if (entry_name.find("wgpu") != std::string::npos &&
-                    entry_name.find("-src") != std::string::npos) {
-                    std::string candidate = entry.path().string() + "/include";
-                    if (std::filesystem::exists(candidate + "/webgpu/webgpu.h")) {
-                        wgpu_include = candidate;
-                        // Library is in the sibling lib/ directory
-                        std::string lib_candidate = entry.path().string() + "/lib";
-                        if (std::filesystem::exists(lib_candidate))
-                            wgpu_lib_dir = lib_candidate;
-                        break;
+        std::string sdk_candidate = vivid_src_dir_ + "/include";
+        if (std::filesystem::exists(sdk_candidate + "/webgpu/webgpu.h"))
+            wgpu_include = sdk_candidate;
+
+        std::string host_bundle_lib = vivid_build_dir_ + "/vivid.app/Contents/MacOS/libwgpu_native.dylib";
+        if (std::filesystem::exists(host_bundle_lib)) {
+            wgpu_lib_dir = vivid_build_dir_ + "/vivid.app/Contents/MacOS";
+        } else if (std::filesystem::exists(vivid_build_dir_ + "/libwgpu_native.dylib")) {
+            wgpu_lib_dir = vivid_build_dir_;
+        }
+
+        // Fallback: find include/lib under _deps if host locations are unavailable.
+        if (wgpu_include.empty() || wgpu_lib_dir.empty()) {
+            std::string deps_dir = vivid_build_dir_ + "/_deps";
+            if (std::filesystem::is_directory(deps_dir)) {
+                for (auto& entry : std::filesystem::directory_iterator(deps_dir)) {
+                    std::string entry_name = entry.path().filename().string();
+                    if (entry_name.find("wgpu") != std::string::npos &&
+                        entry_name.find("-src") != std::string::npos) {
+                        if (wgpu_include.empty()) {
+                            std::string include_candidate = entry.path().string() + "/include";
+                            if (std::filesystem::exists(include_candidate + "/webgpu/webgpu.h"))
+                                wgpu_include = include_candidate;
+                        }
+                        if (wgpu_lib_dir.empty()) {
+                            std::string lib_candidate = entry.path().string() + "/lib";
+                            if (std::filesystem::exists(lib_candidate))
+                                wgpu_lib_dir = lib_candidate;
+                        }
+                        if (!wgpu_include.empty() && !wgpu_lib_dir.empty())
+                            break;
                     }
                 }
             }
-        }
-        // Fallback: check sdk/include in vivid_src_dir (bundle SDK)
-        if (wgpu_include.empty()) {
-            std::string sdk_candidate = vivid_src_dir_ + "/include";
-            if (std::filesystem::exists(sdk_candidate + "/webgpu/webgpu.h"))
-                wgpu_include = sdk_candidate;
-        }
-        // Fallback: libwgpu_native lives next to the executable in the bundle
-        if (wgpu_lib_dir.empty()) {
-            if (std::filesystem::exists(vivid_build_dir_ + "/libwgpu_native.dylib"))
-                wgpu_lib_dir = vivid_build_dir_;
         }
 
         if (!wgpu_include.empty()) {

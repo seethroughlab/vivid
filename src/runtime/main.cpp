@@ -923,6 +923,7 @@ static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
     std::vector<uint8_t> thumb_pixels(thumb_w * thumb_h * 4);
     std::unordered_set<std::string> custom_thumb_ids;
     for (const auto& ns : scheduler.nodes()) {
+        if (!ns.loader || !ns.instance || ns.missing_operator) continue;
         if (!ns.loader->has_draw_thumbnail()) continue;
         VividThumbnailContext tctx{};
         tctx.pixels = thumb_pixels.data();

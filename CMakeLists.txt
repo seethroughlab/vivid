@@ -722,6 +722,14 @@ if(APPLE)
         )
     endif()
 
+    # Keep WebGPU runtime available in Frameworks for package plugins that link
+    # libwgpu_native via @rpath.
+    add_custom_command(TARGET vivid POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/MacOS/libwgpu_native.dylib
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/Frameworks/libwgpu_native.dylib
+    )
+
     foreach(op_target IN LISTS _op_targets)
         add_custom_command(TARGET vivid POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
