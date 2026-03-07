@@ -724,8 +724,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ctx.gpu = nullptr;
         }
 
-        // Forward input state to GPU operators (they ignore it if they don't care)
-        ctx.input = (ns.is_gpu && input) ? const_cast<void*>(static_cast<const void*>(input)) : nullptr;
+        // Forward input state to all operators (they ignore it if they don't care)
+        ctx.input = input ? const_cast<void*>(static_cast<const void*>(input)) : nullptr;
 
         try {
             if (ns.missing_operator || !ns.loader) {

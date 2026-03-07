@@ -270,6 +270,8 @@ add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_g
 add_vivid_operator(spread_noise    operators/control/spread_noise/spread_noise.cpp)
 add_vivid_operator(osc_in            operators/control/osc_in/osc_in.cpp      EXTRA_LIBS oscpack)
 add_vivid_operator(osc_out           operators/control/osc_out/osc_out.cpp     EXTRA_LIBS oscpack)
+add_vivid_operator(mouse             operators/control/mouse/mouse.cpp)
+add_vivid_operator(keyboard          operators/control/keyboard/keyboard.cpp)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu

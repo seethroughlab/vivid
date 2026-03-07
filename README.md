@@ -45,7 +45,7 @@ HSV, Levels, Blur, Edge, Mirror, Pixelate, Posterize, Gradient, Chromatic Aberra
 **Input:** Movie File Audio In
 
 ### Control
-Clock, LFO, Math, Envelope, MIDI Input, FFT Analysis, Logic, Gate, Random, Smooth, Euclidean, Stack, Alternate, Pattern Transform, Modulated Gain, Spread Noise
+Clock, LFO, Math, Envelope, MIDI Input, FFT Analysis, Logic, Gate, Random, Smooth, Euclidean, Stack, Alternate, Pattern Transform, Modulated Gain, Spread Noise, Mouse, Keyboard
 
 ## Package Operators
 
@@ -103,7 +103,7 @@ Vivid evaluates a directed acyclic graph across three domains every frame:
 
 | Domain | Rate | Data type | Examples |
 |--------|------|-----------|---------|
-| **Control** | Per-frame (~60 Hz) | Scalar values, spreads | Clock, LFO, Envelope, MIDI |
+| **Control** | Per-frame (~60 Hz) | Scalar values, spreads | Clock, LFO, Envelope, MIDI, Mouse |
 | **GPU** | Per-frame | Textures (800x600) | Shape, Filters, Composite |
 | **Audio** | Per-sample (48 kHz) | Float buffers (256 frames) | Oscillator, Drums, Effects |
 
