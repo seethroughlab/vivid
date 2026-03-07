@@ -507,7 +507,8 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             tr.draw_rect(fx, py + fh - 1, fw, 1, style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
 
             if (editing_this) {
-                tr.draw_text(fx + 4, py + 2, edit_buffer_.c_str(),
+                std::string remap_display = edit_buffer_ + (cursor_blink_on() ? "_" : " ");
+                tr.draw_text(fx + 4, py + 2, remap_display.c_str(),
                              style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
             } else {
                 char buf[32];
@@ -1116,13 +1117,6 @@ void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
     // Hex input field
     float hex_y = sv_y + sv_size + gap;
     float hex_w_full = sv_size + gap + hue_w;
-    tr.draw_rect(sv_x, hex_y, hex_w_full, hex_h,
-                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-    // Border
-    if (color_editing_hex_) {
-        tr.draw_rect(sv_x - 1, hex_y - 1, hex_w_full + 2, hex_h + 2,
-                     style_.accent[0], style_.accent[1], style_.accent[2]);
-    }
 
     // Hex text
     float cr, cg, cb;
@@ -1131,9 +1125,11 @@ void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
     rgb_to_hex(cr, cg, cb, hex, sizeof(hex));
 
     if (color_editing_hex_) {
-        std::string display = color_hex_buffer_ + "_";
-        tr.draw_text(sv_x + 4, hex_y + 2, display.c_str(), 0.95f, 0.95f, 0.95f);
+        draw_editing_text_field(tr, style_, sv_x, hex_y, hex_w_full, hex_h,
+                                color_hex_buffer_, cursor_blink_on());
     } else {
+        tr.draw_rect(sv_x, hex_y, hex_w_full, hex_h,
+                     style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
         tr.draw_text(sv_x + 4, hex_y + 2, hex,
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     }
@@ -1151,16 +1147,13 @@ void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
     const char* rgb_labels[3] = { "R", "G", "B" };
     for (int ch = 0; ch < 3; ++ch) {
         float fx = sv_x + ch * (field_w + field_gap);
-        // Background
-        tr.draw_rect(fx, rgb_y, field_w, rgb_h,
-                     style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-        // Accent border if editing this channel
         if (color_editing_rgb_ == ch) {
-            tr.draw_rect(fx - 1, rgb_y - 1, field_w + 2, rgb_h + 2,
-                         style_.accent[0], style_.accent[1], style_.accent[2]);
-            std::string display = std::string(rgb_labels[ch]) + " " + color_rgb_buffer_ + "_";
-            tr.draw_text(fx + 3, rgb_y + 2, display.c_str(), 0.95f, 0.95f, 0.95f);
+            std::string buf = std::string(rgb_labels[ch]) + " " + color_rgb_buffer_;
+            draw_editing_text_field(tr, style_, fx, rgb_y, field_w, rgb_h,
+                                    buf, cursor_blink_on(), 3.0f, 2.0f);
         } else {
+            tr.draw_rect(fx, rgb_y, field_w, rgb_h,
+                         style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
             char label[16];
             snprintf(label, sizeof(label), "%s %d", rgb_labels[ch], rgb_values[ch]);
             tr.draw_text(fx + 3, rgb_y + 2, label,
@@ -1308,12 +1301,8 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         if (sp_it != node.file_param_values.end()) text_value = sp_it->second;
         float field_h = kDropdownH;
         if (is_editing_this) {
-            tr.draw_rect(px - 1, py - 1, panel_w + 2, field_h + 2,
-                         style_.accent[0], style_.accent[1], style_.accent[2]);
-            tr.draw_rect(px, py, panel_w, field_h,
-                         style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-            std::string display = edit_buffer_ + "_";
-            tr.draw_text(px + 6, py + 1, display.c_str(), 0.95f, 0.95f, 0.95f);
+            draw_editing_text_field(tr, style_, px, py, panel_w, field_h,
+                                    edit_buffer_, cursor_blink_on(), 6.0f, 1.0f);
         } else {
             tr.draw_rect(px, py, panel_w, field_h,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
@@ -1355,11 +1344,8 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float edit_w = panel_w * 0.4f;
         float edit_x = px + panel_w - edit_w;
         float edit_h = kLineH;
-        tr.draw_rect(edit_x - 1, val_y - 1, edit_w + 2, edit_h + 2,
-                     style_.accent[0], style_.accent[1], style_.accent[2]);
-        tr.draw_rect(edit_x, val_y, edit_w, edit_h, style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-        std::string display = edit_buffer_ + "_";
-        tr.draw_text(edit_x + 2, val_y, display.c_str(), 0.95f, 0.95f, 0.95f);
+        draw_editing_text_field(tr, style_, edit_x, val_y, edit_w, edit_h,
+                                edit_buffer_, cursor_blink_on(), 2.0f, 0.0f);
     } else {
         if (is_connected)
             tr.draw_text(val_x, py, val_str.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
@@ -1380,12 +1366,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
 
     if (pd.type == VIVID_PARAM_BOOL) {
         float bx = px, by = py;
-        tr.draw_rect(bx, by, kCheckboxSize, kCheckboxSize, style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-        if (val > 0.5f) {
-            float check_a = is_connected ? 0.3f : 1.0f;
-            tr.draw_rect(bx + 2, by + 2, kCheckboxSize - 4, kCheckboxSize - 4,
-                         style_.accent[0], style_.accent[1], style_.accent[2], check_a);
-        }
+        draw_checkbox(tr, style_, bx, by, kCheckboxSize, val > 0.5f, is_connected ? 0.3f : 1.0f);
         bool_rects_.push_back({bx, by, kCheckboxSize, kCheckboxSize, single_selected_id(), pd.name});
         py += kCheckboxSize + 6;
     } else if (pd.choice_count > 0) {
@@ -1462,11 +1443,8 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         tr.draw_text(px, row_y, "min", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         float min_x = px + 28;
         if (is_editing_min) {
-            tr.draw_rect(min_x - 1, row_y - 1, field_w + 2, kMidiRangeH,
-                         style_.accent[0], style_.accent[1], style_.accent[2]);
-            tr.draw_rect(min_x, row_y, field_w, kMidiRangeH - 2, style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-            std::string display = edit_buffer_ + "_";
-            tr.draw_text(min_x + 2, row_y, display.c_str(), 0.95f, 0.95f, 0.95f);
+            draw_editing_text_field(tr, style_, min_x, row_y, field_w, kMidiRangeH - 2,
+                                    edit_buffer_, cursor_blink_on(), 2.0f, 0.0f);
         } else {
             tr.draw_rect(min_x, row_y, field_w, kMidiRangeH - 2,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
@@ -1481,11 +1459,8 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         tr.draw_text(max_label_x, row_y, "max", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         float max_x = max_label_x + 30;
         if (is_editing_max) {
-            tr.draw_rect(max_x - 1, row_y - 1, field_w + 2, kMidiRangeH,
-                         style_.accent[0], style_.accent[1], style_.accent[2]);
-            tr.draw_rect(max_x, row_y, field_w, kMidiRangeH - 2, style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-            std::string display = edit_buffer_ + "_";
-            tr.draw_text(max_x + 2, row_y, display.c_str(), 0.95f, 0.95f, 0.95f);
+            draw_editing_text_field(tr, style_, max_x, row_y, field_w, kMidiRangeH - 2,
+                                    edit_buffer_, cursor_blink_on(), 2.0f, 0.0f);
         } else {
             tr.draw_rect(max_x, row_y, field_w, kMidiRangeH - 2,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
@@ -2159,8 +2134,8 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
     bool editing_h = editing_resolution_ &&
                      edit_res_node_id_ == single_selected_id() && !edit_res_is_width_;
 
-    std::string w_str = editing_w ? (edit_buffer_ + "_") : format_uint(node.gpu_tex_width);
-    std::string h_str = editing_h ? (edit_buffer_ + "_") : format_uint(node.gpu_tex_height);
+    std::string w_str = editing_w ? (edit_buffer_ + (cursor_blink_on() ? "_" : " ")) : format_uint(node.gpu_tex_width);
+    std::string h_str = editing_h ? (edit_buffer_ + (cursor_blink_on() ? "_" : " ")) : format_uint(node.gpu_tex_height);
 
     float val_x = px + 4;
 
@@ -2642,11 +2617,7 @@ void NodeGraphUI::draw_box_select(Renderer2D& tr) {
     // Semi-transparent fill
     tr.draw_rect(sx0, sy0, sw, sh, style_.accent[0], style_.accent[1], style_.accent[2], 0.12f);
     // Border
-    float bw = 1.0f;
-    tr.draw_rect(sx0, sy0, sw, bw, style_.accent[0], style_.accent[1], style_.accent[2], 0.6f); // top
-    tr.draw_rect(sx0, sy1 - bw, sw, bw, style_.accent[0], style_.accent[1], style_.accent[2], 0.6f); // bottom
-    tr.draw_rect(sx0, sy0, bw, sh, style_.accent[0], style_.accent[1], style_.accent[2], 0.6f); // left
-    tr.draw_rect(sx1 - bw, sy0, bw, sh, style_.accent[0], style_.accent[1], style_.accent[2], 0.6f); // right
+    draw_rect_border(tr, sx0, sy0, sw, sh, style_.accent[0], style_.accent[1], style_.accent[2], 0.6f);
 }
 
 void NodeGraphUI::draw_chooser(Renderer2D& tr) {
@@ -3233,7 +3204,7 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
                          style_.accent[0], style_.accent[1], style_.accent[2]);
         }
         std::string display = prefs_custom_command_;
-        if (prefs_editing_custom_) display += "_";
+        if (prefs_editing_custom_) display += (cursor_blink_on() ? "_" : " ");
         if (display.empty()) display = "/usr/local/bin/code {file}";
         float text_alpha = prefs_custom_command_.empty() && !prefs_editing_custom_ ? 0.4f : 1.0f;
         tr.draw_text(cx + 22, cy + 2, display.c_str(),
@@ -3876,7 +3847,7 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
         // Variation name
         if (session_editing_name_ && session_edit_idx_ == i) {
             // Edit mode: draw text buffer with cursor
-            std::string display = session_edit_buffer_ + "|";
+            std::string display = session_edit_buffer_ + (cursor_blink_on() ? "_" : " ");
             tr.draw_text(cx + 6, cy + 4, display.c_str(),
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         } else {

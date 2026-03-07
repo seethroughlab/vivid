@@ -1,5 +1,6 @@
 #include "ui/node_graph.h"
 #include "ui/node_graph_constants.h"
+#include "ui/node_graph_util.h"
 #include "ui/overlay_layouts.h"
 #include "ui/renderer_2d.h"
 #include <algorithm>
@@ -89,26 +90,12 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
     float tab_x = cx;
     float tab_gap = 4.0f;
     for (int i = 0; i < tab_count; ++i) {
-        float tw = tr.text_width(tab_labels[i]) + 16;
-        pkg_browser_tab_widths_[i] = tw;
         bool selected = (i == pkg_browser_category_);
-        bool hovered = mouse_.x >= tab_x && mouse_.x <= tab_x + tw &&
+        float approx_tw = tr.text_width(tab_labels[i]) + 16.0f;
+        bool hovered = mouse_.x >= tab_x && mouse_.x <= tab_x + approx_tw &&
                        mouse_.y >= cy && mouse_.y <= cy + kPkgBrowserTabH;
-
-        if (selected) {
-            tr.draw_rect(tab_x, cy, tw, kPkgBrowserTabH,
-                         style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
-            tr.draw_text(tab_x + 8, cy + 3, tab_labels[i], 0.0f, 0.0f, 0.0f);
-        } else {
-            if (hovered)
-                tr.draw_rect(tab_x, cy, tw, kPkgBrowserTabH,
-                             style_.button_hover[0], style_.button_hover[1], style_.button_hover[2], 0.6f);
-            else
-                tr.draw_rect(tab_x, cy, tw, kPkgBrowserTabH,
-                             style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.6f);
-            tr.draw_text(tab_x + 8, cy + 3, tab_labels[i],
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-        }
+        float tw = draw_tab_button(tr, style_, tab_x, cy, kPkgBrowserTabH, tab_labels[i], selected, hovered);
+        pkg_browser_tab_widths_[i] = tw;
         tab_x += tw + tab_gap;
     }
     cy += kPkgBrowserTabH + 8;
@@ -292,18 +279,9 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
     static const char* domain_tabs[] = { "All", "GPU", "Audio", "Control", "I/O" };
     float tx = cx;
     for (int i = 0; i < 5; ++i) {
-        float tw = tr.text_width(domain_tabs[i]) + 16;
-        example_domain_tab_widths_[i] = tw;
         bool sel = (i == example_browser_domain_);
-        tr.draw_rect(tx, cy, tw, kPkgBrowserTabH,
-                     sel ? style_.accent[0] : style_.button_bg[0],
-                     sel ? style_.accent[1] : style_.button_bg[1],
-                     sel ? style_.accent[2] : style_.button_bg[2],
-                     sel ? 0.9f : 0.65f);
-        tr.draw_text(tx + 8, cy + 3, domain_tabs[i],
-                     sel ? 0.0f : style_.dim_text[0],
-                     sel ? 0.0f : style_.dim_text[1],
-                     sel ? 0.0f : style_.dim_text[2]);
+        float tw = draw_tab_button(tr, style_, tx, cy, kPkgBrowserTabH, domain_tabs[i], sel, false);
+        example_domain_tab_widths_[i] = tw;
         tx += tw + 4.0f;
     }
     cy += kPkgBrowserTabH + 8;
@@ -311,18 +289,9 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
     static const char* diff_tabs[] = { "All", "Beginner", "Intermediate", "Advanced" };
     tx = cx;
     for (int i = 0; i < 4; ++i) {
-        float tw = tr.text_width(diff_tabs[i]) + 16;
-        example_diff_tab_widths_[i] = tw;
         bool sel = (i == example_browser_difficulty_);
-        tr.draw_rect(tx, cy, tw, kPkgBrowserTabH,
-                     sel ? style_.accent[0] : style_.button_bg[0],
-                     sel ? style_.accent[1] : style_.button_bg[1],
-                     sel ? style_.accent[2] : style_.button_bg[2],
-                     sel ? 0.9f : 0.65f);
-        tr.draw_text(tx + 8, cy + 3, diff_tabs[i],
-                     sel ? 0.0f : style_.dim_text[0],
-                     sel ? 0.0f : style_.dim_text[1],
-                     sel ? 0.0f : style_.dim_text[2]);
+        float tw = draw_tab_button(tr, style_, tx, cy, kPkgBrowserTabH, diff_tabs[i], sel, false);
+        example_diff_tab_widths_[i] = tw;
         tx += tw + 4.0f;
     }
 
@@ -351,18 +320,9 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
     static const char* sort_tabs[] = { "Featured", "A-Z" };
     tx = cx;
     for (int i = 0; i < 2; ++i) {
-        float tw = tr.text_width(sort_tabs[i]) + 16;
-        example_sort_tab_widths_[i] = tw;
         bool sel = (i == example_browser_sort_);
-        tr.draw_rect(tx, cy, tw, kPkgBrowserTabH,
-                     sel ? style_.accent[0] : style_.button_bg[0],
-                     sel ? style_.accent[1] : style_.button_bg[1],
-                     sel ? style_.accent[2] : style_.button_bg[2],
-                     sel ? 0.9f : 0.65f);
-        tr.draw_text(tx + 8, cy + 3, sort_tabs[i],
-                     sel ? 0.0f : style_.dim_text[0],
-                     sel ? 0.0f : style_.dim_text[1],
-                     sel ? 0.0f : style_.dim_text[2]);
+        float tw = draw_tab_button(tr, style_, tx, cy, kPkgBrowserTabH, sort_tabs[i], sel, false);
+        example_sort_tab_widths_[i] = tw;
         tx += tw + 4.0f;
     }
     cy += kPkgBrowserTabH + 8;

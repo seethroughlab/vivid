@@ -71,6 +71,67 @@ inline void draw_popup_bg(Renderer2D& tr, const UIStyle& style,
                  style.accent[0], style.accent[1], style.accent[2]);
 }
 
+// --- Editing text field ---
+
+// Draws the active editing state of a text field:
+//   - 1px accent border (outset by 1px on all sides)
+//   - input_field_bg filled rect
+//   - buffer text with blinking cursor
+// Call this only in the is_editing branch. The caller handles non-editing display.
+inline void draw_editing_text_field(
+    Renderer2D& tr, const UIStyle& style,
+    float x, float y, float w, float h,
+    const std::string& buffer, bool blink_on,
+    float pad_left = 4.0f, float pad_top = 2.0f)
+{
+    tr.draw_rect(x - 1, y - 1, w + 2, h + 2,
+                 style.accent[0], style.accent[1], style.accent[2]);
+    tr.draw_rect(x, y, w, h,
+                 style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2]);
+    std::string display = buffer + (blink_on ? "_" : " ");
+    tr.draw_text(x + pad_left, y + pad_top, display.c_str(),
+                 style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+}
+
+// --- Tab button ---
+
+// Draws one tab button and returns its pixel width (text_width + 16).
+// Caller is responsible for advancing tab_x by the returned width + gap.
+inline float draw_tab_button(
+    Renderer2D& tr, const UIStyle& style,
+    float x, float y, float h,
+    const char* label, bool selected, bool hovered)
+{
+    float tw = tr.text_width(label) + 16.0f;
+    if (selected) {
+        tr.draw_rect(x, y, tw, h, style.accent[0], style.accent[1], style.accent[2], 0.9f);
+        tr.draw_text(x + 8, y + 3, label, 0.0f, 0.0f, 0.0f);
+    } else {
+        if (hovered)
+            tr.draw_rect(x, y, tw, h, style.button_hover[0], style.button_hover[1], style.button_hover[2], 0.6f);
+        else
+            tr.draw_rect(x, y, tw, h, style.button_bg[0], style.button_bg[1], style.button_bg[2], 0.6f);
+        tr.draw_text(x + 8, y + 3, label, style.dim_text[0], style.dim_text[1], style.dim_text[2]);
+    }
+    return tw;
+}
+
+// --- Checkbox ---
+
+// Draws a checkbox: background track rect, filled accent rect if checked.
+// alpha_if_checked lets callers dim the fill (e.g. 0.3f when param is connected).
+inline void draw_checkbox(
+    Renderer2D& tr, const UIStyle& style,
+    float x, float y, float size,
+    bool checked, float alpha_if_checked = 1.0f)
+{
+    tr.draw_rect(x, y, size, size, style.slider_track[0], style.slider_track[1], style.slider_track[2]);
+    if (checked) {
+        tr.draw_rect(x + 2, y + 2, size - 4, size - 4,
+                     style.accent[0], style.accent[1], style.accent[2], alpha_if_checked);
+    }
+}
+
 // --- Port type compatibility ---
 
 inline bool is_control_type(VividPortType t) {
