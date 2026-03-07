@@ -16,6 +16,19 @@ std::string open_file_dialog() {
     }
 }
 
+std::string open_directory_dialog() {
+    @autoreleasepool {
+        NSOpenPanel* panel = [NSOpenPanel openPanel];
+        [panel setCanChooseFiles:NO];
+        [panel setCanChooseDirectories:YES];
+        [panel setAllowsMultipleSelection:NO];
+        if ([panel runModal] == NSModalResponseOK) {
+            return std::string([[[panel URL] path] UTF8String]);
+        }
+        return {};
+    }
+}
+
 std::string save_file_dialog(const std::string& default_name) {
     @autoreleasepool {
         NSSavePanel* panel = [NSSavePanel savePanel];

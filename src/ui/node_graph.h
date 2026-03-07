@@ -76,6 +76,7 @@ struct PackageBrowserCallbacks {
     std::function<bool(const std::string&, std::string&)> install;
     std::function<bool(const std::string&, std::string&)> uninstall;
     std::function<bool(const std::string&, std::string&)> unlink;
+    std::function<bool(const std::string&, std::string&)> link;
 };
 
 class Renderer2D;

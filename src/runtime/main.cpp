@@ -2017,7 +2017,7 @@ int main(int argc, char* argv[]) {
                     ui_e.installed = true;
                     ui_e.linked = it->second.linked;
                 } else {
-                    ui_e.installed = e.installed;
+                    ui_e.installed = false;
                     ui_e.linked = false;
                 }
                 out.push_back(std::move(ui_e));
@@ -2065,6 +2065,12 @@ int main(int argc, char* argv[]) {
         }
         error = "Failed to unlink " + name;
         return false;
+    };
+    pkg_browser_cbs.link = [&pkg_manager, &refresh_discovered_examples](const std::string& path, std::string& error) {
+        auto r = pkg_manager.link(path);
+        if (!r.success) { error = r.error; return false; }
+        refresh_discovered_examples();
+        return true;
     };
     graph_ui.set_package_browser_callbacks(std::move(pkg_browser_cbs));
     graph_ui.set_examples(discovered_examples);

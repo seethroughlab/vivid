@@ -63,6 +63,21 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
 
     tr.draw_text(cx, cy + 6, "Packages",
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+    static const float kLinkBtnW = 96.0f;
+    float link_btn_x = cx + inner_w - kLinkBtnW;
+    float link_btn_y = cy + (kPkgBrowserHeaderH - kPkgBrowserBtnH) / 2.0f - 2.0f;
+    bool link_btn_hovered = mouse_.x >= link_btn_x && mouse_.x <= link_btn_x + kLinkBtnW &&
+                            mouse_.y >= link_btn_y && mouse_.y <= link_btn_y + kPkgBrowserBtnH;
+    tr.draw_rect(link_btn_x, link_btn_y, kLinkBtnW, kPkgBrowserBtnH,
+                 link_btn_hovered ? style_.accent[0] : style_.button_bg[0],
+                 link_btn_hovered ? style_.accent[1] : style_.button_bg[1],
+                 link_btn_hovered ? style_.accent[2] : style_.button_bg[2],
+                 link_btn_hovered ? 0.9f : 0.8f);
+    float link_lbl_x = link_btn_x + (kLinkBtnW - tr.text_width("Link Local...")) * 0.5f;
+    tr.draw_text(link_lbl_x, link_btn_y + 3, "Link Local...",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
     cy += kPkgBrowserHeaderH;
 
     tr.draw_rect(cx, cy, inner_w, kPkgBrowserSearchH,
@@ -128,7 +143,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
         std::string ver_str = "v" + entry.version;
         const float ver_w = tr.text_width(ver_str.c_str());
         const char* state = entry.linked ? "Linked" : "Installed";
-        const float chip_w = tr.text_width(state) + 12.0f;
+        const float chip_w = tr.text_width(state) + 16.0f;
         float available_name_w = text_w - 8.0f - ver_w;
         if (entry.installed) available_name_w -= (10.0f + chip_w);
         std::string display_name = fit_text_to_width(tr, entry.name, available_name_w);
@@ -139,7 +154,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
         if (entry.installed) {
             float state_x = text_left + name_w + 8 + ver_w + 10.0f;
-            tr.draw_rect(state_x, iy + 4, chip_w, 14.0f,
+            tr.draw_rect(state_x, iy + 4, chip_w, 16.0f,
                          entry.linked ? style_.accent[0] : style_.button_bg[0],
                          entry.linked ? style_.accent[1] : style_.button_bg[1],
                          entry.linked ? style_.accent[2] : style_.button_bg[2],

@@ -238,12 +238,23 @@ static bool tool_forced_missing(const std::string& tool) {
     return false;
 }
 
+static std::string find_tool(const char* tool) {
+    if (tool_forced_missing(tool)) return {};
+    std::string cmd = "PATH=$PATH:/opt/homebrew/bin:/usr/local/bin command -v ";
+    cmd += tool;
+    cmd += " 2>/dev/null";
+    FILE* f = popen(cmd.c_str(), "r");
+    if (!f) return {};
+    char buf[512] = {};
+    fgets(buf, sizeof(buf), f);
+    pclose(f);
+    std::string s = buf;
+    while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
+    return s;
+}
+
 static bool command_exists(const char* tool) {
-    if (tool_forced_missing(tool)) return false;
-    std::string probe = "command -v ";
-    probe += tool;
-    probe += " >/dev/null 2>&1";
-    return std::system(probe.c_str()) == 0;
+    return !find_tool(tool).empty();
 }
 
 std::vector<PackageInfo> PackageManager::resolve_packages(bool emit_warnings) {
@@ -671,7 +682,8 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
     std::string build_dir = pkg_dir + "/build";
 
     if (result.info.build_type == "cmake") {
-        if (!command_exists("cmake")) {
+        std::string cmake_exe = find_tool("cmake");
+        if (cmake_exe.empty()) {
             result.error = missing_tool_error("cmake");
             return false;
         }
@@ -682,8 +694,8 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         std::string vivid_build = compiler_.build_dir();
 
         // Configure
-        std::string cmake_cmd = "cmake"
-            " -B " + quote(build_dir) +
+        std::string cmake_cmd = quote(cmake_exe)
+            + " -B " + quote(build_dir) +
             " -S " + quote(pkg_dir) +
             " -DVIVID_SRC_DIR=" + quote(src_dir) +
             " -DVIVID_BUILD_DIR=" + quote(vivid_build) +
@@ -709,7 +721,7 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         }
 
         // Build
-        std::string build_cmd = "cmake --build " + quote(build_dir) + " 2>&1";
+        std::string build_cmd = quote(cmake_exe) + " --build " + quote(build_dir) + " 2>&1";
         std::fprintf(stderr, "[vivid] PackageManager: %s\n", build_cmd.c_str());
 
         output.clear();

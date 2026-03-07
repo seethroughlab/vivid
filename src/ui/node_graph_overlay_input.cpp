@@ -1,6 +1,7 @@
 #include "ui/node_graph.h"
 #include "ui/node_graph_constants.h"
 #include "ui/overlay_layouts.h"
+#include "ui/file_dialog.h"
 #include <algorithm>
 #include <cstring>
 
@@ -27,6 +28,26 @@ void NodeGraphUI::update_package_browser() {
         pkg_browser_filter_.clear();
         mouse_.left_clicked = false;
         mouse_.left_released = false;
+        return;
+    }
+
+    // Hit-test "Link Local..." button
+    static const float kLinkBtnW = 96.0f;
+    float link_btn_x = cx + inner_w - kLinkBtnW;
+    float link_btn_y = py + kPkgBrowserPadY + (kPkgBrowserHeaderH - kPkgBrowserBtnH) / 2.0f - 2.0f;
+    if (mouse_.x >= link_btn_x && mouse_.x <= link_btn_x + kLinkBtnW &&
+        mouse_.y >= link_btn_y && mouse_.y <= link_btn_y + kPkgBrowserBtnH) {
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        std::string path = open_directory_dialog();
+        if (!path.empty() && pkg_browser_callbacks_.link) {
+            pkg_action_error_.clear();
+            if (!pkg_browser_callbacks_.link(path, pkg_action_error_) && pkg_action_error_.empty())
+                pkg_action_error_ = "Failed to link " + path;
+            if (pkg_browser_callbacks_.list_entries)
+                pkg_browser_all_ = pkg_browser_callbacks_.list_entries();
+            rebuild_pkg_browser_items();
+        }
         return;
     }
 
