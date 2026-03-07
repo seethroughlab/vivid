@@ -195,6 +195,7 @@ public:
     void toggle_preferences();
     void toggle_package_browser();
     void set_package_browser_callbacks(PackageBrowserCallbacks callbacks);
+    void notify_pkg_action_complete(bool success, const std::string& error);
     void toggle_example_browser();
     void set_examples(std::vector<ExampleEntry> examples);
     void set_example_open_callback(std::function<void(const std::string&)> cb);
@@ -701,6 +702,7 @@ private:
     std::vector<PackageBrowserEntry> pkg_browser_all_;       // full snapshot
     PackageBrowserCallbacks pkg_browser_callbacks_{};
     bool pkg_action_pending_ = false;
+    std::string pkg_action_name_;
     std::string pkg_action_error_;
 
     // --- Example browser ---

@@ -241,29 +241,36 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             if (pkg_browser_sel_ >= 0 &&
                 pkg_browser_sel_ < static_cast<int>(pkg_browser_entries_.size())) {
                 const auto& entry = pkg_browser_entries_[pkg_browser_sel_];
+                if (!pkg_action_pending_) {
                 pkg_action_error_.clear();
+                pkg_action_pending_ = true;
+                pkg_action_name_ = entry.name;
                 if (entry.installed) {
                     if (entry.linked) {
                         if (!pkg_browser_callbacks_.unlink ||
                             !pkg_browser_callbacks_.unlink(entry.name, pkg_action_error_)) {
+                            pkg_action_pending_ = false;
+                            pkg_action_name_.clear();
                             if (pkg_action_error_.empty())
                                 pkg_action_error_ = "Failed to unlink " + entry.name;
                         }
                     } else if (!pkg_browser_callbacks_.uninstall ||
                                !pkg_browser_callbacks_.uninstall(entry.name, pkg_action_error_)) {
+                        pkg_action_pending_ = false;
+                        pkg_action_name_.clear();
                         if (pkg_action_error_.empty())
                             pkg_action_error_ = "Failed to uninstall " + entry.name;
                     }
                 } else {
                     if (!pkg_browser_callbacks_.install ||
                         !pkg_browser_callbacks_.install(entry.name, pkg_action_error_)) {
+                        pkg_action_pending_ = false;
+                        pkg_action_name_.clear();
                         if (pkg_action_error_.empty())
                             pkg_action_error_ = "Failed to install " + entry.name;
                     }
                 }
-                if (pkg_browser_callbacks_.list_entries)
-                    pkg_browser_all_ = pkg_browser_callbacks_.list_entries();
-                rebuild_pkg_browser_items();
+                }
             }
         } else if (key == GLFW_KEY_BACKSPACE && !pkg_browser_filter_.empty()) {
             pkg_browser_filter_.pop_back();

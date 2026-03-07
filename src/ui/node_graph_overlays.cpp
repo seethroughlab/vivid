@@ -25,6 +25,16 @@ void NodeGraphUI::toggle_package_browser() {
     }
 }
 
+void NodeGraphUI::notify_pkg_action_complete(bool success, const std::string& error) {
+    pkg_action_pending_ = false;
+    pkg_action_name_.clear();
+    if (!success && !error.empty())
+        pkg_action_error_ = error;
+    if (pkg_browser_callbacks_.list_entries)
+        pkg_browser_all_ = pkg_browser_callbacks_.list_entries();
+    rebuild_pkg_browser_items();
+}
+
 void NodeGraphUI::toggle_example_browser() {
     example_browser_open_ = !example_browser_open_;
     if (example_browser_open_) {

@@ -54,6 +54,7 @@
 #include <chrono>
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <thread>
 #include <unordered_set>
 #include <vector>
@@ -663,6 +664,7 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.gpu_tex_height = ns.gpu_tex_height;
         sn.errored = ns.errored;
         sn.error_message = ns.error_message;
+        sn.missing_operator = ns.missing_operator;
 
         // Layout from graph
         const auto* ndef = graph.find_node(ns.node_id);
@@ -1992,6 +1994,13 @@ int main(int argc, char* argv[]) {
         graph_ui.set_examples(discovered_examples);
     };
 
+    // Async package action state — mirrors PackageCatalog::refresh() pattern
+    std::mutex          pkg_action_mutex;
+    enum class PkgActionState { Idle, Running, Done, Error };
+    PkgActionState      pkg_action_state{PkgActionState::Idle};
+    std::string         pkg_action_error_msg;
+    bool                pkg_action_needs_refresh{false};
+
     vivid::ui::PackageBrowserCallbacks pkg_browser_cbs;
     pkg_browser_cbs.refresh = [&pkg_catalog]() {
         pkg_catalog.refresh();
@@ -2044,32 +2053,92 @@ int main(int argc, char* argv[]) {
         out.incompatible_updates = s.incompatible_updates;
         return out;
     };
-    pkg_browser_cbs.install = [&pkg_catalog, &refresh_discovered_examples](const std::string& name, std::string& error) {
-        auto r = pkg_catalog.install(name);
-        if (!r.success) error = r.error;
-        if (r.success) refresh_discovered_examples();
-        return r.success;
-    };
-    pkg_browser_cbs.uninstall = [&pkg_catalog, &refresh_discovered_examples](const std::string& name, std::string& error) {
-        if (pkg_catalog.uninstall(name)) {
-            refresh_discovered_examples();
-            return true;
+    pkg_browser_cbs.install = [&pkg_catalog,
+                               &pkg_action_mutex, &pkg_action_state,
+                               &pkg_action_error_msg, &pkg_action_needs_refresh](
+                                   const std::string& name, std::string&) -> bool {
+        {
+            std::lock_guard<std::mutex> lk(pkg_action_mutex);
+            if (pkg_action_state == PkgActionState::Running) return false;
+            pkg_action_state = PkgActionState::Running;
+            pkg_action_error_msg.clear();
+            pkg_action_needs_refresh = false;
         }
-        error = "Failed to uninstall " + name;
-        return false;
+        std::thread([&pkg_catalog, name,
+                     &pkg_action_mutex, &pkg_action_state,
+                     &pkg_action_error_msg, &pkg_action_needs_refresh]() {
+            auto r = pkg_catalog.install(name);
+            std::lock_guard<std::mutex> lk(pkg_action_mutex);
+            pkg_action_error_msg = r.success ? "" : r.error;
+            pkg_action_needs_refresh = r.success;
+            pkg_action_state = r.success ? PkgActionState::Done : PkgActionState::Error;
+        }).detach();
+        return true;
     };
-    pkg_browser_cbs.unlink = [&pkg_manager, &refresh_discovered_examples](const std::string& name, std::string& error) {
-        if (pkg_manager.unlink(name)) {
-            refresh_discovered_examples();
-            return true;
+    pkg_browser_cbs.uninstall = [&pkg_catalog,
+                                 &pkg_action_mutex, &pkg_action_state,
+                                 &pkg_action_error_msg, &pkg_action_needs_refresh](
+                                     const std::string& name, std::string&) -> bool {
+        {
+            std::lock_guard<std::mutex> lk(pkg_action_mutex);
+            if (pkg_action_state == PkgActionState::Running) return false;
+            pkg_action_state = PkgActionState::Running;
+            pkg_action_error_msg.clear();
+            pkg_action_needs_refresh = false;
         }
-        error = "Failed to unlink " + name;
-        return false;
+        std::thread([&pkg_catalog, name,
+                     &pkg_action_mutex, &pkg_action_state,
+                     &pkg_action_error_msg, &pkg_action_needs_refresh]() {
+            bool ok = pkg_catalog.uninstall(name);
+            std::lock_guard<std::mutex> lk(pkg_action_mutex);
+            pkg_action_error_msg = ok ? "" : "Failed to uninstall " + name;
+            pkg_action_needs_refresh = ok;
+            pkg_action_state = ok ? PkgActionState::Done : PkgActionState::Error;
+        }).detach();
+        return true;
     };
-    pkg_browser_cbs.link = [&pkg_manager, &refresh_discovered_examples](const std::string& path, std::string& error) {
-        auto r = pkg_manager.link(path);
-        if (!r.success) { error = r.error; return false; }
-        refresh_discovered_examples();
+    pkg_browser_cbs.unlink = [&pkg_manager,
+                              &pkg_action_mutex, &pkg_action_state,
+                              &pkg_action_error_msg, &pkg_action_needs_refresh](
+                                  const std::string& name, std::string&) -> bool {
+        {
+            std::lock_guard<std::mutex> lk(pkg_action_mutex);
+            if (pkg_action_state == PkgActionState::Running) return false;
+            pkg_action_state = PkgActionState::Running;
+            pkg_action_error_msg.clear();
+            pkg_action_needs_refresh = false;
+        }
+        std::thread([&pkg_manager, name,
+                     &pkg_action_mutex, &pkg_action_state,
+                     &pkg_action_error_msg, &pkg_action_needs_refresh]() {
+            bool ok = pkg_manager.unlink(name);
+            std::lock_guard<std::mutex> lk(pkg_action_mutex);
+            pkg_action_error_msg = ok ? "" : "Failed to unlink " + name;
+            pkg_action_needs_refresh = ok;
+            pkg_action_state = ok ? PkgActionState::Done : PkgActionState::Error;
+        }).detach();
+        return true;
+    };
+    pkg_browser_cbs.link = [&pkg_manager,
+                            &pkg_action_mutex, &pkg_action_state,
+                            &pkg_action_error_msg, &pkg_action_needs_refresh](
+                                const std::string& path, std::string&) -> bool {
+        {
+            std::lock_guard<std::mutex> lk(pkg_action_mutex);
+            if (pkg_action_state == PkgActionState::Running) return false;
+            pkg_action_state = PkgActionState::Running;
+            pkg_action_error_msg.clear();
+            pkg_action_needs_refresh = false;
+        }
+        std::thread([&pkg_manager, path,
+                     &pkg_action_mutex, &pkg_action_state,
+                     &pkg_action_error_msg, &pkg_action_needs_refresh]() {
+            auto r = pkg_manager.link(path);
+            std::lock_guard<std::mutex> lk(pkg_action_mutex);
+            pkg_action_error_msg = r.success ? "" : r.error;
+            pkg_action_needs_refresh = r.success;
+            pkg_action_state = r.success ? PkgActionState::Done : PkgActionState::Error;
+        }).detach();
         return true;
     };
     graph_ui.set_package_browser_callbacks(std::move(pkg_browser_cbs));
@@ -3053,6 +3122,27 @@ int main(int argc, char* argv[]) {
                     graph, scheduler, has_audio ? &audio_engine : nullptr,
                     registry, op_info_cache, &system_midi, &runtime_api,
                     &capture_coordinator);
+                // Poll async package action completion (main thread only)
+                {
+                    bool done = false, needs_refresh = false;
+                    std::string err;
+                    {
+                        std::lock_guard<std::mutex> lk(pkg_action_mutex);
+                        if (pkg_action_state == PkgActionState::Done ||
+                            pkg_action_state == PkgActionState::Error) {
+                            done = true;
+                            needs_refresh = pkg_action_needs_refresh;
+                            err = pkg_action_error_msg;
+                            pkg_action_state = PkgActionState::Idle;
+                            pkg_action_needs_refresh = false;
+                        }
+                    }
+                    if (done) {
+                        if (needs_refresh) refresh_discovered_examples();
+                        graph_ui.notify_pkg_action_complete(needs_refresh, err);
+                    }
+                }
+
                 graph_ui.update(snapshot);
                 graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
                 // Pass 1: text/rects

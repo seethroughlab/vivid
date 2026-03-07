@@ -186,7 +186,28 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
         float btn_x = btn.x;
         float btn_y = btn.y;
         const char* btn_label = entry.installed ? (entry.linked ? "Unlink" : "Remove") : "Install";
-        bool btn_hover = overlay_contains(btn, mouse_.x, mouse_.y);
+        bool this_pending = pkg_action_pending_ && (entry.name == pkg_action_name_);
+        bool any_pending  = pkg_action_pending_;
+        bool btn_hover = !any_pending && overlay_contains(btn, mouse_.x, mouse_.y);
+
+        if (this_pending) {
+            // Draw spinner arc instead of button text
+            tr.draw_rect(btn_x, btn_y, kPkgBrowserBtnW, kPkgBrowserBtnH,
+                         style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.8f);
+            float arc_cx = btn_x + kPkgBrowserBtnW * 0.5f;
+            float arc_cy = btn_y + kPkgBrowserBtnH * 0.5f;
+            float arc_r  = kPkgBrowserBtnH * 0.30f;
+            float a0 = static_cast<float>(perf_frame_counter_) * 0.08f;
+            tr.draw_arc(arc_cx, arc_cy, arc_r, a0, a0 + 4.5f, 1.5f, 12,
+                        style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+        } else if (any_pending) {
+            // Grey out — no hover, no interaction
+            tr.draw_rect(btn_x, btn_y, kPkgBrowserBtnW, kPkgBrowserBtnH,
+                         style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.35f);
+            float label_x = btn_x + (btn.w - tr.text_width(btn_label)) * 0.5f;
+            tr.draw_text(label_x, btn_y + 3, btn_label,
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.35f);
+        } else {
         if (entry.installed) {
             tr.draw_rect(btn_x, btn_y, kPkgBrowserBtnW, kPkgBrowserBtnH,
                          btn_hover ? kErrorAccent[0] : style_.button_bg[0],
@@ -204,6 +225,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
         float label_x = btn_x + (btn.w - tr.text_width(btn_label)) * 0.5f;
         tr.draw_text(label_x, btn_y + 3, btn_label,
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
     }
 
     if (total > kPkgBrowserMaxVisible) {

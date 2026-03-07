@@ -40,13 +40,11 @@ void NodeGraphUI::update_package_browser() {
         mouse_.left_clicked = false;
         mouse_.left_released = false;
         std::string path = open_directory_dialog();
-        if (!path.empty() && pkg_browser_callbacks_.link) {
+        if (!path.empty() && pkg_browser_callbacks_.link && !pkg_action_pending_) {
             pkg_action_error_.clear();
-            if (!pkg_browser_callbacks_.link(path, pkg_action_error_) && pkg_action_error_.empty())
-                pkg_action_error_ = "Failed to link " + path;
-            if (pkg_browser_callbacks_.list_entries)
-                pkg_browser_all_ = pkg_browser_callbacks_.list_entries();
-            rebuild_pkg_browser_items();
+            pkg_action_pending_ = true;
+            pkg_action_name_ = path;
+            pkg_browser_callbacks_.link(path, pkg_action_error_);
         }
         return;
     }
@@ -82,30 +80,37 @@ void NodeGraphUI::update_package_browser() {
 
         OverlayRect btn = compute_package_action_button_rect(layout, i - pkg_browser_scroll_);
         if (overlay_contains(btn, mouse_.x, mouse_.y)) {
-            const auto& entry = pkg_browser_entries_[i];
-            pkg_action_error_.clear();
-            if (entry.installed) {
-                if (entry.linked) {
-                    if (!pkg_browser_callbacks_.unlink ||
-                        !pkg_browser_callbacks_.unlink(entry.name, pkg_action_error_)) {
+            if (!pkg_action_pending_) {
+                const auto& entry = pkg_browser_entries_[i];
+                pkg_action_error_.clear();
+                pkg_action_pending_ = true;
+                pkg_action_name_ = entry.name;
+                if (entry.installed) {
+                    if (entry.linked) {
+                        if (!pkg_browser_callbacks_.unlink ||
+                            !pkg_browser_callbacks_.unlink(entry.name, pkg_action_error_)) {
+                            pkg_action_pending_ = false;
+                            pkg_action_name_.clear();
+                            if (pkg_action_error_.empty())
+                                pkg_action_error_ = "Failed to unlink " + entry.name;
+                        }
+                    } else if (!pkg_browser_callbacks_.uninstall ||
+                               !pkg_browser_callbacks_.uninstall(entry.name, pkg_action_error_)) {
+                        pkg_action_pending_ = false;
+                        pkg_action_name_.clear();
                         if (pkg_action_error_.empty())
-                            pkg_action_error_ = "Failed to unlink " + entry.name;
+                            pkg_action_error_ = "Failed to uninstall " + entry.name;
                     }
-                } else if (!pkg_browser_callbacks_.uninstall ||
-                           !pkg_browser_callbacks_.uninstall(entry.name, pkg_action_error_)) {
-                    if (pkg_action_error_.empty())
-                        pkg_action_error_ = "Failed to uninstall " + entry.name;
-                }
-            } else {
-                if (!pkg_browser_callbacks_.install ||
-                    !pkg_browser_callbacks_.install(entry.name, pkg_action_error_)) {
-                    if (pkg_action_error_.empty())
-                        pkg_action_error_ = "Failed to install " + entry.name;
+                } else {
+                    if (!pkg_browser_callbacks_.install ||
+                        !pkg_browser_callbacks_.install(entry.name, pkg_action_error_)) {
+                        pkg_action_pending_ = false;
+                        pkg_action_name_.clear();
+                        if (pkg_action_error_.empty())
+                            pkg_action_error_ = "Failed to install " + entry.name;
+                    }
                 }
             }
-            if (pkg_browser_callbacks_.list_entries)
-                pkg_browser_all_ = pkg_browser_callbacks_.list_entries();
-            rebuild_pkg_browser_items();
             mouse_.left_clicked = false;
             mouse_.left_released = false;
             return;
