@@ -155,6 +155,7 @@ typedef struct VividProcessContext {
     uint32_t  preferred_tex_width;   // operator writes non-zero to request resize
     uint32_t  preferred_tex_height;  // 0 = no preference (keep current)
     void*     input;          // VividInputState* for GPU operators when UI hidden, NULL otherwise
+    const char* graph_base_dir;  // parent directory of the loaded graph file, or "" if unsaved
 } VividProcessContext;
 
 // ---------------------------------------------------------------------------

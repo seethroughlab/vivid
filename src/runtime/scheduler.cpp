@@ -641,6 +641,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         ctx.file_param_values = ns.file_param_ptrs.empty()
                                     ? nullptr : ns.file_param_ptrs.data();
         ctx.file_param_count  = static_cast<uint32_t>(ns.file_param_ptrs.size());
+        ctx.graph_base_dir    = graph_base_dir_.empty() ? "" : graph_base_dir_.c_str();
 
         // GPU state: build per-node VividGpuState with this node's texture
         VividGpuState per_node_gpu{};
