@@ -36,7 +36,7 @@
     "files": {
       "type": "FolderList",
       "params": {
-        "folder": "../../../assets/sync/hap_only",
+        "folder": "../../../assets/sync",
         "extensions": "mov",
         "recursive": false,
         "sort_mode": 0
