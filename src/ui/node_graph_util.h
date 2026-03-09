@@ -151,6 +151,9 @@ inline bool port_type_compatible(VividPortType a, VividPortType b) {
     if (a == VIVID_PORT_CONTROL_STRING) return b == VIVID_PORT_CONTROL_STRING;
     if (a == VIVID_PORT_CONTROL_STRING_SPREAD) return b == VIVID_PORT_CONTROL_STRING_SPREAD;
     if (a == VIVID_PORT_AUDIO_FLOAT)   return b == VIVID_PORT_AUDIO_FLOAT;
+    if (a == VIVID_PORT_GPU_BUFFER)    return b == VIVID_PORT_GPU_BUFFER;
+    if (a == VIVID_PORT_GPU_MESH)      return b == VIVID_PORT_GPU_MESH;
+    if (a == VIVID_PORT_GPU_COMPUTE)   return b == VIVID_PORT_GPU_COMPUTE;
     return is_control_type(a) && is_control_type(b);
 }
 

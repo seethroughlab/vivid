@@ -44,6 +44,9 @@ typedef enum VividPortType {
     VIVID_PORT_DATA           = 6,  // package-defined opaque pointer type
     VIVID_PORT_CONTROL_STRING = 7,
     VIVID_PORT_CONTROL_STRING_SPREAD = 8,
+    VIVID_PORT_GPU_BUFFER  = 9,
+    VIVID_PORT_GPU_MESH    = 10,
+    VIVID_PORT_GPU_COMPUTE = 11,
 } VividPortType;
 
 typedef enum VividPortDirection {

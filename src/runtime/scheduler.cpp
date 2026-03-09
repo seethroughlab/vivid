@@ -160,6 +160,12 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     ns.data_output_port_indices.clear();
     ns.string_input_port_indices.clear();
     ns.string_spread_input_port_indices.clear();
+    ns.buffer_input_port_indices.clear();
+    ns.buffer_output_port_indices.clear();
+    ns.mesh_input_port_indices.clear();
+    ns.mesh_output_port_indices.clear();
+    ns.compute_input_port_indices.clear();
+    ns.compute_output_port_indices.clear();
     ns.is_gpu_sink = false;
     ns.has_texture_output = false;
     ns.has_data_output = false;
@@ -181,6 +187,12 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
                 ns.string_input_port_indices.push_back(input_idx);
             } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING_SPREAD) {
                 ns.string_spread_input_port_indices.push_back(input_idx);
+            } else if (desc->ports[i].type == VIVID_PORT_GPU_BUFFER) {
+                ns.buffer_input_port_indices.push_back(input_idx);
+            } else if (desc->ports[i].type == VIVID_PORT_GPU_MESH) {
+                ns.mesh_input_port_indices.push_back(input_idx);
+            } else if (desc->ports[i].type == VIVID_PORT_GPU_COMPUTE) {
+                ns.compute_input_port_indices.push_back(input_idx);
             }
             input_idx++;
         } else {
@@ -199,6 +211,12 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
                 ns.has_string_output = true;
             } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING_SPREAD) {
                 ns.has_string_spread_output = true;
+            } else if (desc->ports[i].type == VIVID_PORT_GPU_BUFFER) {
+                ns.buffer_output_port_indices.push_back(out_idx);
+            } else if (desc->ports[i].type == VIVID_PORT_GPU_MESH) {
+                ns.mesh_output_port_indices.push_back(out_idx);
+            } else if (desc->ports[i].type == VIVID_PORT_GPU_COMPUTE) {
+                ns.compute_output_port_indices.push_back(out_idx);
             }
             out_idx++;
         }
@@ -213,6 +231,19 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     uint32_t data_out_count = static_cast<uint32_t>(ns.data_output_port_indices.size());
     ns.output_data_buf.assign(data_out_count, nullptr);
     ns.gpu_data_outputs.assign(data_out_count, nullptr);
+
+    // Pre-allocate GPU buffer/mesh/compute output buffers
+    ns.output_buffer_buf.assign(ns.buffer_output_port_indices.size(), nullptr);
+    ns.gpu_buffer_outputs.assign(ns.buffer_output_port_indices.size(), nullptr);
+    ns.resolved_buffer_inputs.assign(ns.buffer_input_port_indices.size(), nullptr);
+
+    ns.output_mesh_buf.assign(ns.mesh_output_port_indices.size(), nullptr);
+    ns.gpu_mesh_outputs.assign(ns.mesh_output_port_indices.size(), nullptr);
+    ns.resolved_mesh_inputs.assign(ns.mesh_input_port_indices.size(), nullptr);
+
+    ns.output_compute_buf.assign(ns.compute_output_port_indices.size(), nullptr);
+    ns.gpu_compute_outputs.assign(ns.compute_output_port_indices.size(), nullptr);
+    ns.resolved_compute_inputs.assign(ns.compute_input_port_indices.size(), nullptr);
 }
 
 bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
@@ -553,6 +584,24 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                     conn.from_node.c_str(), conn.from_port.c_str(),
                     conn.to_node.c_str(), conn.to_port.c_str());
                 continue;  // skip this wire
+            }
+
+            // GPU buffer / mesh / compute wire classification (enum-backed, exact match required)
+            if (!from_ns.missing_operator && !to_ns.missing_operator) {
+                if (from_port_type == VIVID_PORT_GPU_BUFFER && to_port_type == VIVID_PORT_GPU_BUFFER) {
+                    w.is_buffer_wire = true;
+                } else if (from_port_type == VIVID_PORT_GPU_MESH && to_port_type == VIVID_PORT_GPU_MESH) {
+                    w.is_mesh_wire = true;
+                } else if (from_port_type == VIVID_PORT_GPU_COMPUTE && to_port_type == VIVID_PORT_GPU_COMPUTE) {
+                    w.is_compute_wire = true;
+                } else if (from_port_type == VIVID_PORT_GPU_BUFFER || to_port_type == VIVID_PORT_GPU_BUFFER ||
+                           from_port_type == VIVID_PORT_GPU_MESH   || to_port_type == VIVID_PORT_GPU_MESH   ||
+                           from_port_type == VIVID_PORT_GPU_COMPUTE || to_port_type == VIVID_PORT_GPU_COMPUTE) {
+                    std::fprintf(stderr, "[vivid] Scheduler: GPU type mismatch on wire %s/%s -> %s/%s\n",
+                        conn.from_node.c_str(), conn.from_port.c_str(),
+                        conn.to_node.c_str(), conn.to_port.c_str());
+                    continue;  // skip this wire
+                }
             }
         } else {
             // Check if target is a file/text param first
@@ -931,6 +980,72 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ctx.input_data = per_node_gpu.input_data;
             ctx.input_data_count = per_node_gpu.input_data_count;
 
+            // Resolve GPU buffer inputs from upstream nodes
+            for (size_t bi = 0; bi < ns.buffer_input_port_indices.size(); ++bi) {
+                uint32_t port_idx = ns.buffer_input_port_indices[bi];
+                ns.resolved_buffer_inputs[bi] = nullptr;
+                for (const auto& w : wires_) {
+                    if (!w.is_buffer_wire || w.to_node_idx != ni || w.targets_param) continue;
+                    if (w.to_port_idx != port_idx) continue;
+                    const auto& from_ns = nodes_[w.from_node_idx];
+                    for (size_t si = 0; si < from_ns.buffer_output_port_indices.size(); ++si) {
+                        if (from_ns.buffer_output_port_indices[si] == w.from_port_idx) {
+                            ns.resolved_buffer_inputs[bi] = from_ns.gpu_buffer_outputs[si];
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            per_node_gpu.output_buffers      = ns.output_buffer_buf.empty() ? nullptr : ns.output_buffer_buf.data();
+            per_node_gpu.output_buffer_count = static_cast<uint32_t>(ns.output_buffer_buf.size());
+            per_node_gpu.input_buffers       = ns.resolved_buffer_inputs.empty() ? nullptr : ns.resolved_buffer_inputs.data();
+            per_node_gpu.input_buffer_count  = static_cast<uint32_t>(ns.resolved_buffer_inputs.size());
+
+            // Resolve GPU mesh inputs from upstream nodes
+            for (size_t mi = 0; mi < ns.mesh_input_port_indices.size(); ++mi) {
+                uint32_t port_idx = ns.mesh_input_port_indices[mi];
+                ns.resolved_mesh_inputs[mi] = nullptr;
+                for (const auto& w : wires_) {
+                    if (!w.is_mesh_wire || w.to_node_idx != ni || w.targets_param) continue;
+                    if (w.to_port_idx != port_idx) continue;
+                    const auto& from_ns = nodes_[w.from_node_idx];
+                    for (size_t si = 0; si < from_ns.mesh_output_port_indices.size(); ++si) {
+                        if (from_ns.mesh_output_port_indices[si] == w.from_port_idx) {
+                            ns.resolved_mesh_inputs[mi] = from_ns.gpu_mesh_outputs[si];
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            per_node_gpu.output_meshes     = ns.output_mesh_buf.empty() ? nullptr : ns.output_mesh_buf.data();
+            per_node_gpu.output_mesh_count = static_cast<uint32_t>(ns.output_mesh_buf.size());
+            per_node_gpu.input_meshes      = ns.resolved_mesh_inputs.empty() ? nullptr : ns.resolved_mesh_inputs.data();
+            per_node_gpu.input_mesh_count  = static_cast<uint32_t>(ns.resolved_mesh_inputs.size());
+
+            // Resolve GPU compute inputs from upstream nodes
+            for (size_t ci = 0; ci < ns.compute_input_port_indices.size(); ++ci) {
+                uint32_t port_idx = ns.compute_input_port_indices[ci];
+                ns.resolved_compute_inputs[ci] = nullptr;
+                for (const auto& w : wires_) {
+                    if (!w.is_compute_wire || w.to_node_idx != ni || w.targets_param) continue;
+                    if (w.to_port_idx != port_idx) continue;
+                    const auto& from_ns = nodes_[w.from_node_idx];
+                    for (size_t si = 0; si < from_ns.compute_output_port_indices.size(); ++si) {
+                        if (from_ns.compute_output_port_indices[si] == w.from_port_idx) {
+                            ns.resolved_compute_inputs[ci] = from_ns.gpu_compute_outputs[si];
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            per_node_gpu.output_compute       = ns.output_compute_buf.empty() ? nullptr : ns.output_compute_buf.data();
+            per_node_gpu.output_compute_count = static_cast<uint32_t>(ns.output_compute_buf.size());
+            per_node_gpu.input_compute        = ns.resolved_compute_inputs.empty() ? nullptr : ns.resolved_compute_inputs.data();
+            per_node_gpu.input_compute_count  = static_cast<uint32_t>(ns.resolved_compute_inputs.size());
+
             ctx.gpu = &per_node_gpu;
         } else {
             ctx.gpu = nullptr;
@@ -976,6 +1091,11 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         // Both ctx.output_data and per_node_gpu.output_data point to output_data_buf.data(),
         // so the operator's writes are already in ns.output_data_buf — just copy.
         ns.gpu_data_outputs = ns.output_data_buf;
+
+        // Capture GPU buffer/mesh/compute outputs (operator wrote pointers into the buf arrays)
+        ns.gpu_buffer_outputs  = ns.output_buffer_buf;
+        ns.gpu_mesh_outputs    = ns.output_mesh_buf;
+        ns.gpu_compute_outputs = ns.output_compute_buf;
 
         // Check if the operator requested a texture resize
         if (ctx.preferred_tex_width > 0 && ctx.preferred_tex_height > 0 &&

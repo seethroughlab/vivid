@@ -73,6 +73,9 @@ static const char* port_type_str(VividPortType t) {
         case VIVID_PORT_DATA:          return "data";
         case VIVID_PORT_CONTROL_STRING: return "control_string";
         case VIVID_PORT_CONTROL_STRING_SPREAD: return "control_string_spread";
+        case VIVID_PORT_GPU_BUFFER:  return "gpu_buffer";
+        case VIVID_PORT_GPU_MESH:    return "gpu_mesh";
+        case VIVID_PORT_GPU_COMPUTE: return "gpu_compute";
         default: return "unknown";
     }
 }

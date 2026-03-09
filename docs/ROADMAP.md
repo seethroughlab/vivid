@@ -65,55 +65,17 @@ The `MovieLoaded` / `MovieVideoOut` / `MovieAudioOut` trio is shipped and the im
 
 ---
 
-## Milestone 8: Port Domain Naming
+## Milestone 8: First-Class GPU Port Types
 
-Resolve the "GPU" label ambiguity before it gets baked deeper into serialization, documentation, and user muscle memory. Vertex buffers are as GPU-resident as textures; the current label is misleading.
+**Status:** Complete.
 
-### Decision
-
-- [ ] Decide on replacement label (`Render`, `Visual`, `Video`, `Graphics`, or other) or explicitly defer with rationale
-  - Criteria: accuracy (covers textures, shaders, geometry), distinctness from Audio/Control, brevity in UI, familiarity to creative-coding users
-
-### Enum & API Surface
-
-- [ ] Rename `VIVID_DOMAIN_GPU` in `src/operator_api/types.h`
-- [ ] Rename `VIVID_PORT_GPU_TEXTURE` in `VividPortType` enum (same file)
-- [ ] Update `domain_str()` in `src/runtime/control_server.cpp` — this is the canonical enum→string mapping used in JSON serialization
-- [ ] Update `domain_subdir()` in `src/runtime/operator_creator.cpp` (directory name for scaffolded operators)
-- [ ] Update domain validation in `src/runtime/main.cpp` CLI scaffold (`--domain` flag accepts new label)
-- [ ] Update `is_gpu` flag and domain checks in `src/runtime/scheduler.h` / `scheduler.cpp`
-- [ ] Update `video_out` builtin domain assignment in `src/runtime/builtin_operators.cpp`
-
-### Serialization & Migration
-
-- [ ] Define migration strategy for existing saved graphs that contain the `"gpu"` string
-  - Option A: accept both `"gpu"` and the new label on load, always write the new label on save (rolling migration)
-  - Option B: one-time migration pass on load, reject old label after a version cutoff
-- [ ] Implement chosen migration in graph load path (`control_server.cpp` deserialization)
-- [ ] Verify round-trip: load a pre-rename graph → save → reload → no data loss or domain misassignment
-
-### UI & Styling
-
-- [ ] Rename user-facing `domain_labels[]` in `src/ui/node_graph_draw.cpp`
-- [ ] Rename `kGpuAccent` color constant in `src/ui/node_graph_constants.h` (and `domain_color()` helper)
-- [ ] Verify the Create Operator popup, patch bay, and node headers all display the new label
-
-### Scaffold Templates
-
-- [ ] Update GPU template domain assignment in `src/runtime/operator_creator.cpp`
-- [ ] Update CMake insertion markers that reference the GPU domain (same file)
-- [ ] Verify `vivid scaffold-operator <name> --domain <new-label>` produces a compilable operator
-
-### Documentation
-
-- [ ] Update `docs/INTERFACE.md` — domain references, theme key names (`domain.gpu` → new key)
-- [ ] Update `docs/PRD.md` — architecture and port-type sections
-- [ ] Update any other docs that reference "GPU domain" or "GPU operators"
-
-### Tests
-
-- [ ] Update test operator descriptors in `tests/operators/` that use `VIVID_DOMAIN_GPU`
-- [ ] Confirm all CTests pass after rename
+- **New ABI-stable structs** (`src/operator_api/gpu_types.h`): `VividGpuBuffer`, `VividComputeBuffer`, `VividVertexAttribute`, `VividMesh` — C-compatible, include-safe, no `data_type` string matching.
+- **Three new `VividPortType` enum values**: `VIVID_PORT_GPU_BUFFER = 9`, `VIVID_PORT_GPU_MESH = 10`, `VIVID_PORT_GPU_COMPUTE = 11` (`src/operator_api/types.h`).
+- **`VividGpuState` extended** (`src/operator_api/gpu_operator.h`): six new pointer/count pairs for buffer, mesh, and compute I/O — operators access typed inputs and write typed outputs through the same `ctx->gpu` handle they already use.
+- **Scheduler wiring** (`src/runtime/scheduler.h` / `scheduler.cpp`): `NodeState` carries per-type port-index vectors and resolved-input vectors; `Wire` carries three new flags (`is_buffer_wire`, `is_mesh_wire`, `is_compute_wire`); `build()` classifies wires with enum-level mismatch rejection; `tick()` resolves inputs from upstream `NodeState` and commits outputs after `process()`.
+- **UI compatibility** (`src/ui/node_graph_util.h`): `port_type_compatible()` enforces exact-match for all three new types — cross-type connections are rejected at drag time.
+- **Control server** (`src/runtime/control_server.cpp`): `port_type_str()` maps the three new enum values to `"gpu_buffer"`, `"gpu_mesh"`, `"gpu_compute"` for JSON serialization.
+- **No visual changes needed**: all three types use the existing `kGpuAccent` cyan via `domain_color(VIVID_DOMAIN_GPU)`; no `type_suffix` suffix is shown (correct behavior).
 
 ---
 

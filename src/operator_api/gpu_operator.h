@@ -1,5 +1,6 @@
 #pragma once
 #include "operator_api/types.h"
+#include "operator_api/gpu_types.h"
 #include <webgpu/webgpu.h>
 #include <cstring>
 
@@ -36,6 +37,24 @@ struct VividGpuState {
     uint32_t  output_data_count = 0;
     void**    input_data        = nullptr;  // resolved from upstream
     uint32_t  input_data_count  = 0;
+
+    // GPU buffer ports
+    VividGpuBuffer** output_buffers      = nullptr;
+    uint32_t         output_buffer_count = 0;
+    VividGpuBuffer** input_buffers       = nullptr;
+    uint32_t         input_buffer_count  = 0;
+
+    // GPU mesh ports
+    VividMesh** output_meshes     = nullptr;
+    uint32_t    output_mesh_count = 0;
+    VividMesh** input_meshes      = nullptr;
+    uint32_t    input_mesh_count  = 0;
+
+    // GPU compute ports
+    VividComputeBuffer** output_compute       = nullptr;
+    uint32_t             output_compute_count = 0;
+    VividComputeBuffer** input_compute        = nullptr;
+    uint32_t             input_compute_count  = 0;
 };
 
 static inline VividGpuState* vivid_gpu(VividProcessContext* ctx) {
