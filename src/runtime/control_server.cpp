@@ -583,7 +583,8 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
             yyjson_mut_obj_add_int(doc, gpu, "width", ns.gpu_tex_width);
             yyjson_mut_obj_add_int(doc, gpu, "height", ns.gpu_tex_height);
             yyjson_mut_obj_add_bool(doc, gpu, "has_texture", ns.gpu_texture != nullptr);
-            yyjson_mut_obj_add_bool(doc, gpu, "has_depth_texture", ns.gpu_depth_texture != nullptr);
+            yyjson_mut_obj_add_int(doc, gpu, "aux_texture_count",
+                static_cast<int64_t>(ns.aux_gpu_texture_views.size()));
             yyjson_mut_obj_add_val(doc, domain_metrics, "gpu", gpu);
         } else if (ns.is_audio) {
             yyjson_mut_val* audio = yyjson_mut_obj(doc);

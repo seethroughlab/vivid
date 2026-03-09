@@ -76,14 +76,16 @@ struct NodeState {
     std::vector<uint32_t>        resolved_tex_heights;   // input texture heights
     bool is_gpu_sink = false;  // GPU domain + texture inputs + no texture outputs
 
-    // Secondary depth texture output (Phase 6e)
-    WGPUTexture     gpu_depth_texture      = nullptr;
-    WGPUTextureView gpu_depth_texture_view = nullptr;
-    int32_t         depth_output_port_idx  = -1;  // -1 = no depth output
+    // Auxiliary texture outputs (2nd, 3rd... GPU_TEXTURE output ports), scheduler-allocated.
+    std::vector<int32_t>         aux_texture_output_port_indices; // output port idx per aux slot
+    std::vector<WGPUTexture>     aux_gpu_textures;
+    std::vector<WGPUTextureView> aux_gpu_texture_views;
 
     // Per-node opaque data (package-defined types, e.g. 3D scene fragments)
-    void* gpu_data = nullptr;
+    std::vector<void*> gpu_data_outputs;          // [data_output_slot_idx], captured each tick
+    std::vector<void*> output_data_buf;           // pre-allocated buffer passed to operator via ctx
     std::vector<uint32_t> data_input_port_indices;
+    std::vector<uint32_t> data_output_port_indices; // which output port indices are DATA type
     std::vector<uint32_t> string_input_port_indices;
     std::vector<uint32_t> string_spread_input_port_indices;
     std::vector<void*> resolved_data_inputs;

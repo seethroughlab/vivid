@@ -12,7 +12,10 @@ struct VividGpuState {
     uint32_t           output_width;
     uint32_t           output_height;
     WGPUTextureFormat  output_format;
-    WGPUTextureView    output_depth_view = nullptr;  // Phase 6e: R32Float depth output
+    // Auxiliary texture outputs (2nd, 3rd... GPU_TEXTURE output ports), scheduler-allocated.
+    // Operator renders into these views; count matches aux_texture_output_port_indices in NodeState.
+    WGPUTextureView*   aux_output_texture_views = nullptr;
+    uint32_t           aux_output_texture_count = 0;
 
     // Texture inputs (one per GPU_TEXTURE input port, nullptr if disconnected)
     WGPUTextureView*   input_texture_views;
@@ -28,7 +31,8 @@ struct VividGpuState {
     const char*        operators_src_dir;
 
     // Opaque data I/O (package-defined types, e.g. 3D scene fragments)
-    void*     output_data       = nullptr;  // operator sets during process()
+    void**    output_data       = nullptr;  // [data_output_port_idx], operator writes during process()
+    uint32_t  output_data_count = 0;
     void**    input_data        = nullptr;  // resolved from upstream
     uint32_t  input_data_count  = 0;
 };

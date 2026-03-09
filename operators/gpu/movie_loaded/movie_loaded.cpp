@@ -632,7 +632,8 @@ private:
             media_stream_.schema_version = 1;
             media_stream_.flags = 0;
             media_stream_.clock = media_clock_;
-            mutable_ctx->output_data = &media_stream_;
+            if (mutable_ctx->output_data && mutable_ctx->output_data_count > 0)
+                mutable_ctx->output_data[0] = &media_stream_;
         }
     }
 

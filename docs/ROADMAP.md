@@ -8,242 +8,272 @@ Windows and Linux support is deferred past 1.0.
 
 ## Milestone 1: Core Stability & Testing
 
-**Status:** Mostly complete.
+**Status:** In progress — movie playback architecture and project-local operator ownership complete; remaining items are exit-gate verification and manual QA.
 
-Conservative completed summary retained for context:
-- Core test matrix, smoke coverage, package install/link/unlink flows, manual test catalog, and undo/redo coverage were implemented and validated.
-- Package smoke-test ownership was correctly moved to package repos (core smoke covers core-shipped graphs only).
-- Milestone 1 testing/docs artifacts live under `docs/testing/` and `docs/archive/` as needed.
+### Movie Playback Exit Gate
 
-Remaining active test items:
+The `MovieLoaded` / `MovieVideoOut` / `MovieAudioOut` trio is shipped and the implementation phases are complete. The following acceptance criteria need a final sign-off before the exit gate closes.
+
+- [ ] Architecture integrity: no media-specific runtime service; operator stack is package-portable
+- [x] Sync stability: thresholds validated by `test_movie_long_loop_sync` and runtime instrumentation
+
+  | Metric | Green (pass) | Yellow (warn) | Red (fail) |
+  |--------|-------------|---------------|------------|
+  | `audio_underrun_frames` per loop cycle | 0 | ≤512 (~10 ms) | >512 or progressive |
+  | `sync_resync_applied` per 60 s steady state | 0–1 | 2–5 | >5 |
+  | `video_payload_dropped` per loop cycle | 0 | 1–2 | >2 or progressive |
+  | Loop boundary settle time | <0.5 s | 0.5–2 s | >2 s |
+
+  Validated codecs: HAP, HAPQ, HAP-alpha, H.264, HEVC.
+
+- [x] Threading correctness: RT-safe audio callback, crash-free teardown, stale-command rejection tested
+- [ ] Cross-domain data correctness: `media_stream_v1` / `media_clock_v1` verified across control/audio/GPU domains
+- [x] Codec/regression behavior: HAP BC path, AVF fallback, HAPQ YCoCg all functional
+- [x] Migration outcome: legacy operators removed; canonical demos use `MovieLoaded` trio
+- [ ] **Exit gate closed** (all six confirmed)
 
 ### Automated Coverage Gaps
 
-- [ ] Add MIDI input tests: note on/off mapping, CC mapping, channel filtering *(hardware-dependent; best handled via virtual MIDI loopback integration suite)*.
-- [~] MovieLoaded sufficient coverage gate (macOS CI):
-  - [x] Fixture corpus adopted from `assets/sync` (Hap1/Hap5/HapY + H.264 + non-HAP baseline).
-  - [x] Async lifecycle unit coverage:
-    - rapid switch supersession
-    - stale result rejection
-    - cancel in-flight load
-    - teardown cancellation safety
-  - [x] Route/fallback coverage:
-    - HAP + BC available -> compressed route
-    - HAP + BC unavailable -> AVF fallback
-    - non-HAP fixtures stay AVF route
-    - NotchLC route logic deterministic at unit layer
-  - [x] Failure determinism coverage for missing/corrupt media (stable error, no crash path in tests).
-  - [ ] CI proof: new MovieLoaded tests passing in default macOS CTest run.
-  - Superseded by active movie restart track below; keep this block as historical context while migration is in progress.
+- [ ] MIDI input tests *(hardware-dependent; likely deferred to post-1.0 virtual MIDI loopback suite)*
+- [ ] CI proof: MovieLoaded + long-loop tests passing in default macOS CTest run
 
-### Active Track: Movie Restart (Architecture First)
+### Manual Verification: Hot-Reload
 
-- [ ] Execute `docs/MOVIE-RESTART-SPEC.md` as the source of truth.
-- [ ] Phase 1: generic runtime primitives
-  - [ ] typed shared-handle registry
-  - [ ] generic cross-domain `VIVID_PORT_DATA` bridge
-  - [ ] data-port introspection updates (control-server/MCP)
-- [ ] Phase 2: operator-layer media session architecture (`vivid-video` style in core repo first)
-- [x] Phase 3: new trio operators (`MovieLoaded`, `MovieVideoOut`, `MovieAudioOut`)
-  - canonical operator names are now the only runtime path (legacy movie aliases removed)
-- [x] Phase 4: intentionally skipped (no compatibility wrappers, no graph migration tooling; legacy movie graphs are unsupported by design)
-- [ ] Phase 5: hardening/rollout + long-loop stability validation against `assets/sync` (active)
-  - [x] Add media-session stress instrumentation (audio underruns/overflow, queue high-water, frame drops, sync action counters, generation transitions)
-  - [x] Add instrumentation assertions in `test_media_session_queue`
-  - [x] Add deterministic long-loop sync-policy regression (`test_movie_long_loop_sync`) with gate/chatter/resync thresholds
-  - [x] Run runtime `assets/sync` long-loop validation and capture acceptable thresholds for crackle/resync/underrun
-  - [x] Close remaining acceptance criteria in `docs/MOVIE-RESTART-SPEC.md`
-- [ ] Exit gate: all acceptance criteria in `docs/MOVIE-RESTART-SPEC.md` are met.
+- [ ] Hot-reload verified for each domain: Control, Audio, GPU
+- [ ] Error cases: syntax error keeps last good version; missing include same; editing linked package operator reloads from source
+- [ ] State preservation across reload: params, wires, node positions
 
-### Inner/Outer Loop Manual Verification
+### Manual Verification: Operator Creation + MCP E2E
 
-- [ ] Verify hot-reload for each domain:
-  - Control operators
-  - Audio operators
-  - GPU operators
-- [ ] Test outer-loop error cases:
-  - Syntax error in `.cpp` keeps last good version and surfaces clear error
-  - Missing include has same graceful behavior
-  - Editing linked package operator triggers hot-reload from linked source
-- [ ] Verify state preservation across reload:
-  - parameter values retained
-  - wire connections retained
-  - node positions retained
-
-### Operator Creation + MCP E2E
-
-- [ ] End-to-end test: scaffold -> edit implementation -> hot-reload -> use in graph -> verify output
-- [ ] Verify all domain variants:
-  - Control operator
-  - Audio operator
-  - GPU operator
-  - Composite operator (multi-domain)
-- [ ] Verify MCP `scaffold_operator` via control-server request path
-- [ ] Verify LLM-guided workflow end-to-end (scaffold/edit/reload/validate)
-- [ ] Verify scaffold into existing package directory (not just top-level operators path)
-- [ ] Verify generated code compiles without warnings on first build
+- [ ] End-to-end: scaffold → edit → hot-reload → use in graph → verify output
+- [ ] All domain variants: Control, Audio, GPU, Composite
+- [ ] MCP `scaffold_operator` via control-server request path
+- [ ] LLM-guided workflow end-to-end
+- [ ] Scaffold into existing package directory (not just top-level `operators/`)
+- [ ] Generated code compiles without warnings on first build
 
 ---
 
-## Milestone 2: Operator Extraction
+## Milestones 2–7: Complete
 
-**Status:** Complete.
+- **M2 Operator Extraction:** Core operator surface reduced to 1.0 set; domain packages extracted (`vivid-wavetable`, `vivid-drums`, `vivid-plexus`, `vivid-sequencers`).
+- **M3 Package Ecosystem:** Version-aware metadata, deterministic multi-scope resolver, scaffold workflow, and discovery baseline shipped.
+- **M4 LLM Perception System:** Introspection, diagnostics, and checks shipped through control server and MCP.
+- **M5 Developer & User Experience:** Docs/onboarding refresh, runtime UX improvements, and external I/O baseline (OSC + Syphon) shipped.
+- **M6 Release Infrastructure:** macOS release pipeline, notarization, update system, and app icon shipped.
+- **M7 Legacy Branch Evaluation:** Evaluation complete; highest-value items executed; remainder deferred/rejected with rationale in `docs/internal/LEGACY-EVALUATION-M7.md`.
 
-Conservative summary retained for context:
-- Core operator surface was reduced to the minimal 1.0 set.
-- Domain packages extracted and operational: `vivid-wavetable`, `vivid-drums`, `vivid-plexus`, `vivid-sequencers`.
-- Shared operator API updates shipped (`drum_dsp.h`, `audio_dsp.h` exposure), with package CI/smoke coverage and install/uninstall validation.
+---
 
-## Milestone 3: Package Ecosystem
+## Milestone 8: Port Domain Naming
 
-**Status:** Complete.
+Resolve the "GPU" label ambiguity before it gets baked deeper into serialization, documentation, and user muscle memory. Vertex buffers are as GPU-resident as textures; the current label is misleading.
 
-Conservative summary retained for context:
-- Version-aware package metadata + update-check surfaces are shipped (CLI/control/MCP).
-- Deterministic multi-scope resolver and diagnostics are shipped.
-- Package template/scaffold workflow is shipped.
-- Discovery decision and baseline implementation are shipped (`catalog/packages.json` + GitHub-hosted catalog path).
+### Decision
 
-## Milestone 4: LLM Perception System
+- [ ] Decide on replacement label (`Render`, `Visual`, `Video`, `Graphics`, or other) or explicitly defer with rationale
+  - Criteria: accuracy (covers textures, shaders, geometry), distinctness from Audio/Control, brevity in UI, familiarity to creative-coding users
 
-**Status:** Complete.
+### Enum & API Surface
 
-Conservative summary retained for context:
-- Introspection, diagnostics, and checks are shipped and exposed through control server + MCP.
-- Deterministic ordering and CI-friendly check reports are in place.
-- Legacy patterns were reviewed with explicit adopt/defer outcomes.
+- [ ] Rename `VIVID_DOMAIN_GPU` in `src/operator_api/types.h`
+- [ ] Rename `VIVID_PORT_GPU_TEXTURE` in `VividPortType` enum (same file)
+- [ ] Update `domain_str()` in `src/runtime/control_server.cpp` — this is the canonical enum→string mapping used in JSON serialization
+- [ ] Update `domain_subdir()` in `src/runtime/operator_creator.cpp` (directory name for scaffolded operators)
+- [ ] Update domain validation in `src/runtime/main.cpp` CLI scaffold (`--domain` flag accepts new label)
+- [ ] Update `is_gpu` flag and domain checks in `src/runtime/scheduler.h` / `scheduler.cpp`
+- [ ] Update `video_out` builtin domain assignment in `src/runtime/builtin_operators.cpp`
 
-## Milestone 5: Developer & User Experience
+### Serialization & Migration
 
-**Status:** Complete.
+- [ ] Define migration strategy for existing saved graphs that contain the `"gpu"` string
+  - Option A: accept both `"gpu"` and the new label on load, always write the new label on save (rolling migration)
+  - Option B: one-time migration pass on load, reject old label after a version cutoff
+- [ ] Implement chosen migration in graph load path (`control_server.cpp` deserialization)
+- [ ] Verify round-trip: load a pre-rename graph → save → reload → no data loss or domain misassignment
 
-Conservative summary retained for context:
-- Docs/onboarding refresh shipped (README + Getting Started + example browser flow).
-- Runtime UX improvements shipped (error-reporting affordance, fullscreen/display hardening).
-- External I/O baseline shipped (OSC + Syphon in core; NDI deferred to package scope).
+### UI & Styling
 
-## Milestone 6: Release Infrastructure
+- [ ] Rename user-facing `domain_labels[]` in `src/ui/node_graph_draw.cpp`
+- [ ] Rename `kGpuAccent` color constant in `src/ui/node_graph_constants.h` (and `domain_color()` helper)
+- [ ] Verify the Create Operator popup, patch bay, and node headers all display the new label
 
-**Status:** Complete.
+### Scaffold Templates
 
-Conservative summary retained for context:
-- macOS release pipeline + notarization path shipped.
-- Core update system shipped (appcast, runtime check surface, CLI/control/MCP integration).
-- App icon refresh shipped.
+- [ ] Update GPU template domain assignment in `src/runtime/operator_creator.cpp`
+- [ ] Update CMake insertion markers that reference the GPU domain (same file)
+- [ ] Verify `vivid scaffold-operator <name> --domain <new-label>` produces a compilable operator
 
-## Milestone 7: Legacy Branch Evaluation
+### Documentation
 
-**Status:** Complete.
+- [ ] Update `docs/INTERFACE.md` — domain references, theme key names (`domain.gpu` → new key)
+- [ ] Update `docs/PRD.md` — architecture and port-type sections
+- [ ] Update any other docs that reference "GPU domain" or "GPU operators"
 
-Conservative summary retained for context:
-- Evaluation artifact lives in `docs/internal/LEGACY-EVALUATION-M7.md`.
-- Highest-value shortlist items were executed across core + sibling repos.
-- Remaining legacy candidates are explicitly deferred/rejected with rationale in the artifact.
+### Tests
 
-## Milestone 8: Launch
+- [ ] Update test operator descriptors in `tests/operators/` that use `VIVID_DOMAIN_GPU`
+- [ ] Confirm all CTests pass after rename
+
+---
+
+## Milestone 9: Multiple Output Ports
+
+Multiple scalar, spread, string, and texture outputs already work at the API and serialization
+layers. Three gaps remain before the capability is fully general.
+
+**ABI (version bump 4→5 shipped):**
+- [x] Extend `VividProcessContext.output_data` from single `void*` to indexed `void**` array
+      to support operators with more than one `VIVID_PORT_DATA` output
+- [x] Update scheduler `NodeState` and tick dispatch accordingly (`gpu_data_outputs`,
+      `data_output_port_indices`, `output_data_buf`)
+
+**Runtime/GPU:**
+- [x] Generalized `gpu_depth_texture` special case into a proper multi-texture output vector
+      (`aux_texture_output_port_indices`, `aux_gpu_textures`, `aux_gpu_texture_views` in
+      NodeState; `aux_output_texture_views`/`aux_output_texture_count` in VividGpuState; ABI 6)
+
+**UI:**
+- [ ] Replace the hard ≤3 output-port visibility threshold in `count_visible_output_ports()`
+      (`src/ui/node_graph.cpp:110`) with a user-expandable affordance for operators with many outputs
+- [ ] Update scaffold templates and `scaffold_operator` to support declaring multiple named
+      outputs at creation time (coordinate with M11 operator creation modal)
+
+---
+
+## Milestone 10: Versioning Strategy
+
+ABI versioning exists but does not cover the full compatibility surface across graphs, themes, and
+operators. Define the scheme before 1.0 locks the serialization format.
+
+### Decisions
+
+- **Version granularity: per-package, not per-operator.** Operators are grouped in packages;
+  `vivid-package.json` already carries a SemVer `version` field. Per-operator tracking would bloat
+  graph files with no independent update mechanism to justify it.
+
+- **Version metadata lives in the manifest only; graphs record a package snapshot at save time.**
+  No operator-header field needed — `OperatorRegistry` already resolves type name → package name
+  at runtime, and `PackageManager` can supply the installed version.
+
+- **Graph negotiation policy: hard reject on schema version bump, best-effort + diagnostics on
+  package version mismatch.** A future `schema_version > GRAPH_SCHEMA_VERSION` means the engine
+  cannot safely interpret the file — fail fast with a clear error. A stale `pkg_version` on a node
+  means the user's package has changed since they saved — warn, don't reject, since forcing a
+  hard reject on a working graph is too destructive pre-1.0. Use `IncompatibleUpdate` vs.
+  `CompatibleUpdate` classification (already in `PackageUpdateAssessment`) to grade the warning.
+
+- **Theme negotiation policy: best-effort load, never a hard reject.** Themes are pure presentation
+  data; missing keys fall back to `default_style()`. A major-version skew emits a single stderr
+  warning.
+
+### Graph Serialization
+
+- [ ] Define `GRAPH_SCHEMA_VERSION 1` compile-time constant (in `graph.h` or near
+  `VIVID_CORE_VERSION` in `main.cpp`)
+- [ ] Add `schema_version` (int) and `vivid_version` (string) to the graph JSON root; write them
+  at save time, read at load time; hard-reject if `schema_version > GRAPH_SCHEMA_VERSION`; treat
+  absent `schema_version` as `1` for backward compat
+- [ ] Add optional `"pkg": {"name": "...", "version": "..."}` sub-object to each node entry;
+  omit for core operators, WGSL filters, and operators with no package manifest; populate at
+  save time by querying `OperatorRegistry::package_for_type` + `PackageManager::list()`
+- [ ] Extend `NodeDef` in `graph.h` with `pkg_name` / `pkg_version` fields; extend `Graph` with
+  `schema_version` / `vivid_version` fields
+- [ ] Update demo graphs in `graphs/` to include root-level `schema_version` and `vivid_version`
+  (node `"pkg"` fields omit — demos use core operators only)
+
+**Graph JSON shape (additions only):**
+```json
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "nodes": {
+    "drum_kick1": {
+      "type": "audio/drum_kick",
+      "pkg": { "name": "vivid-drums", "version": "0.1.0" },
+      "params": {}, "layout": { "x": 120, "y": 80 }
+    }
+  }
+}
+```
+
+### Package Version Mismatch Diagnostics
+
+- [ ] Define `GraphLoadDiagnostic` struct (node_id, pkg_name, saved_version, installed_version,
+  `PackageUpdateClass` classification) in `graph.h` or a companion header
+- [ ] After `Graph::load`, iterate nodes with non-empty `pkg_name`; cross-reference against
+  `PackageManager::list()`; classify via `assess_update()`; emit `IncompatibleUpdate` as a UI
+  toast/inspector warning, `CompatibleUpdate` as stderr-only
+- [ ] Reuse `parse_semver_triplet` / `compare_semver` / `assess_update` from
+  `package_manager.cpp:135-222` — no new SemVer parsing code
+- [ ] Expose diagnostics via MCP / control-server `get_diagnostics` so LLM-assisted workflows
+  can surface version warnings
+
+### Theme Versioning
+
+- [ ] Add `"vivid_version": "0.1.0"` to all 8 embedded theme JSON constants in `theme_loader.cpp`
+- [ ] Parse `"vivid_version"` in `parse_theme_root`; store it in `UIStyle`; if major component
+  differs from `VIVID_CORE_VERSION`, emit a single stderr warning
+- [ ] Stamp `VIVID_CORE_VERSION` into `"vivid_version"` when `ensure_default_themes` writes
+  theme files to disk
+
+**Theme JSON shape (addition only):**
+```json
+{ "vivid_version": "0.1.0", "name": "Dark Steel", "corner_radius": 0, ... }
+```
+
+### Critical Files
+
+- `src/runtime/graph.h` — extend `NodeDef`, `Graph`; define `GraphLoadDiagnostic`
+- `src/runtime/graph.cpp` — `parse_doc` + `build_graph_json_doc` (read/write new fields)
+- `src/runtime/main.cpp` — load-time diagnostics; define `GRAPH_SCHEMA_VERSION`
+- `src/ui/theme_loader.cpp` — embedded constants + `parse_theme_root` + `ensure_default_themes`
+- `src/runtime/package_manager.cpp` — reuse point only (no new code)
+
+---
+
+## Milestone 11: Operator Creation Modal
+
+Replace the minimal "create operator" flow with a modal that surfaces all scaffolding options upfront. Depends on M9 (output port API shape settled) and M8 (domain label finalized).
+
+- [ ] Design full-options modal: domain selection, port types + count, param scaffolding (name/type/default), destination (project package vs. core)
+- [ ] Include "create empty" path for advanced users who want a blank slate without the wizard
+- [ ] Decide whether the modal is the canonical entry point for both GUI-triggered and MCP-triggered scaffold, or whether the two paths diverge intentionally
+
+---
+
+## Milestone 12: Solo Mode
+
+"Solo" in a multi-domain graph has non-obvious cross-domain interactions. Design must be decided before implementation.
+
+- [ ] Define GPU solo semantics: bypass upstream compositing and render only that operator to preview? What happens to downstream operators?
+- [ ] Define audio solo semantics: mute all other audio outputs, or route only that operator to the audio device?
+- [ ] Define cross-domain behavior: if a GPU operator is soloed but depends on an audio operator for modulation, does the audio chain still run?
+- [ ] Decide scope: session-only UI affordance vs. graph-level concept (serialized with the graph)
+- [ ] Implement
+
+---
+
+## Milestone 13: Semantic Parameter Tags Rollout
+
+Implementation largely complete; remaining work is adoption breadth and CI gate.
+
+- [ ] Finish broader seed-tag adoption (core + sibling operators not fully tagged)
+- [ ] Close final CI rollout gate: no graph/load/runtime regressions
+
+---
+
+## Milestone 14: Launch
 
 - [ ] YouTube video
 - [ ] Finalize and proof all documentation
 - [ ] Update ROADMAP.md to reflect completed/deferred items
 
-### Team Workflow Follow-Up: Project-Local Operator Ownership
-
-Goal: make clone/scaffold behavior conducive to team repository workflows by default (project/package-local, not core-repo-local).
-
-Current behavior (2026-03-06):
-- `Clone` writes to core `operators/<domain>/...` and appends targets to core `CMakeLists.txt`.
-- This is convenient for solo core-dev work but poor for team/project ownership boundaries.
-
-Target behavior:
-- Clone/scaffold destination defaults to active project package (or configured project operator root).
-- Core repo stays engine-only unless user explicitly chooses "clone into core".
-- Graphs persist stable operator type refs independent of physical source location.
-
-Execution checklist (concrete):
-1. **Destination policy + config contract**
-- [x] Add settings keys:
-  - `operator_clone_destination_mode`: `project_default|core_explicit`
-  - `project_operator_root`: absolute path (optional)
-  - `project_package_name`: package target for scaffold/clone (optional)
-- [x] Define resolution order:
-  1) explicit user choice in action
-  2) graph/workspace-local project package
-  3) configured `project_package_name` / `project_operator_root`
-  4) fallback core path with warning
-
-2. **Runtime/UI/CLI surface**
-- [x] Update node clone flow to choose/write destination via policy (not hardcoded core path).
-- [x] Add explicit UI option: `Clone Into -> Project Package | Core`.
-- [~] Extend scaffold API/CLI with optional destination:
-  - [x] control-server/MCP: `scaffold_operator(..., destination=...)`
-  - [x] CLI: `vivid scaffold-operator <name> --domain ... --dest <path|package>`
-
-3. **Project/package integration**
-- [x] If destination is package: patch that package's `CMakeLists.txt`/manifest rather than core.
-- [x] Ensure hot-reload watcher auto-registers cloned/scaffolded files in project/package roots.
-- [x] Ensure install/link workflows preserve expected ownership boundaries.
-
-4. **Migration safety** *(deferred — no pre-launch users means no orphaned operators to migrate)*
-- [~] Keep current core-destination path available behind explicit opt-in during transition.
-  - Core opt-in already implemented via `destination="core"` in CLI/MCP/UI. No additional work needed pre-launch.
-- [~] Add non-destructive migration helper (detect cloned operators in core with no upstream usage, offer move/copy into project package).
-  - Deferred post-launch: no pre-launch users means no orphaned operators exist to migrate.
-
-5. **Validation matrix**
-- [x] Unit tests for destination resolution precedence.
-- [x] End-to-end tests:
-  - clone into project package -> build/hot-reload works
-  - scaffold into project package via MCP -> files + CMake edits correct
-  - fallback-to-core path emits clear warning and remains functional
-- [x] Team workflow regression: two repos (core + project package) with clean git diff boundaries.
-  - `test_team_workflow_regression`: Case A (scaffold isolation), Case B (clone isolation via command sink), Case C (fallback-to-core warning) — all passing.
-
-Minimal first slice (recommended next implementation step):
-- Implement destination resolution + new destination parameters in clone/scaffold APIs.
-- Support one project destination mode: linked package (`vivid link ...`) as default target.
-- Keep core fallback; no automatic migration yet.
-
-Minimal first slice status (2026-03-06):
-- `scaffold_operator` now accepts optional `destination` (`core`, `package:<name>`, or absolute path) and defaults to first linked package when available.
-- UI create-operator flow now defaults to first linked package destination when available, with fallback to core source tree.
-- Package destination scaffolding writes to `src/<name>.cpp` (and `.wgsl` for GPU) and patches package `CMakeLists.txt` ops list.
-- Project-default destination now only selects linked packages in `local/workspace` scopes (not user/global installs), preserving ownership boundaries for installed dependencies.
-- Destination policy contract is now centralized and shared across runtime clone/create, CLI scaffold, and control-server scaffold via settings-backed precedence resolution.
-- E2E trio coverage is now automated and passing:
-  - `test_undo_mutation_types`: clone into linked project package writes `src/`, patches package CMake ops, and queues package hot-reload target.
-  - `test_control_server`: MCP `scaffold_operator` writes to package destination and validates fallback-to-core warning path.
-
----
-
-## Open Questions
-
-### Semantic Parameter Tags Plan (Large Feature, post-1.0)
-
-Goal: add machine-readable parameter semantics (for LLM hints, safer auto-wiring, and better defaults) without breaking existing operators or graphs.
-
-**Current status:** Implementation is largely complete; rollout is in stabilization.
-
-Conservative completed context retained:
-- Spec + taxonomy baseline is defined in `docs/SEMANTIC-PARAM-TAGS.md`.
-- Runtime/control/MCP semantic metadata surfaces are shipped.
-- Tag-driven behavior improvements are shipped:
-  - semantic default remap on connect
-  - semantic-ranked auto-wiring suggestions
-  - explicit coercion-contract enforcement
-  - inspectable + user-overridable inferred remaps
-- Validation matrix is green locally (`validate_semantic_tags`, `test_control_server`, MCP + demo smoke checks).
-
-Remaining active items:
-- [ ] Finish broader seed-tag adoption coverage (core + sibling operators still not fully tagged).
-- [ ] Keep incremental rollout discipline while taxonomy stabilizes (avoid over-tagging low-confidence params).
-- [ ] Close final rollout gate:
-  - [ ] no graph/load/runtime regressions in CI.
+Project-local operator ownership (clone/scaffold destination policy, package CMake patching, team workflow regression tests) shipped as part of launch prep.
 
 ---
 
 ## Deferred Past 1.0
-
-These are acknowledged but explicitly out of scope for the initial release:
 
 - Subpatches
 - Simulation zones (frame-to-frame feedback)
@@ -254,9 +284,10 @@ These are acknowledged but explicitly out of scope for the initial release:
 - Project file format (single JSON vs. directory with assets)
 - Library version pinning
 - Accessibility
+- MIDI input tests (virtual MIDI loopback integration suite)
 
-
+---
 
 ## Extra Findings
 
-- [ ] Check if PR was accepted, switch back to main repo: https://github.com/gfx-rs/wgpu-native/pull/557
+- [ ] Check if wgpu-native PR was accepted, switch back to main repo: https://github.com/gfx-rs/wgpu-native/pull/557

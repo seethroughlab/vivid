@@ -563,10 +563,20 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
             auto& dst = snap.data_inputs[dw.audio_node_idx][dw.audio_port_idx];
             dst.clear();
             if (payload_size == 0 || payload_size > DataInputSnapshot::kMaxBytes) break;
+            // Find the DATA output slot for this wire's source port
+            void* data_ptr = nullptr;
             if (dw.source_output_port_idx < src_ns.output_port_types.size() &&
-                src_ns.output_port_types[dw.source_output_port_idx] == VIVID_PORT_DATA &&
-                src_ns.gpu_data) {
-                std::memcpy(dst.bytes, src_ns.gpu_data, payload_size);
+                src_ns.output_port_types[dw.source_output_port_idx] == VIVID_PORT_DATA) {
+                for (uint32_t s = 0; s < src_ns.data_output_port_indices.size(); ++s) {
+                    if (src_ns.data_output_port_indices[s] == dw.source_output_port_idx &&
+                        s < src_ns.gpu_data_outputs.size()) {
+                        data_ptr = src_ns.gpu_data_outputs[s];
+                        break;
+                    }
+                }
+            }
+            if (data_ptr) {
+                std::memcpy(dst.bytes, data_ptr, payload_size);
                 dst.byte_size = static_cast<uint32_t>(payload_size);
                 std::strncpy(dst.data_type, dw.data_type.c_str(), sizeof(dst.data_type) - 1);
                 dst.data_type[sizeof(dst.data_type) - 1] = '\0';

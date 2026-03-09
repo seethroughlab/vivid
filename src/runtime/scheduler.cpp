@@ -157,6 +157,7 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     // Identify special input ports and sink/output capabilities
     ns.texture_input_port_indices.clear();
     ns.data_input_port_indices.clear();
+    ns.data_output_port_indices.clear();
     ns.string_input_port_indices.clear();
     ns.string_spread_input_port_indices.clear();
     ns.is_gpu_sink = false;
@@ -164,9 +165,12 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     ns.has_data_output = false;
     ns.has_string_output = false;
     ns.has_string_spread_output = false;
+    ns.aux_texture_output_port_indices.clear();
+    ns.aux_gpu_textures.clear();
+    ns.aux_gpu_texture_views.clear();
     uint32_t input_idx = 0;
     uint32_t out_idx = 0;
-    ns.depth_output_port_idx = -1;
+    uint32_t gpu_tex_out_count = 0;
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
@@ -182,11 +186,15 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
         } else {
             if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
                 ns.has_texture_output = true;
-                if (std::strcmp(desc->ports[i].name, "depth") == 0) {
-                    ns.depth_output_port_idx = static_cast<int32_t>(out_idx);
+                if (gpu_tex_out_count > 0) {  // 2nd+ texture output → aux
+                    ns.aux_texture_output_port_indices.push_back(static_cast<int32_t>(out_idx));
+                    ns.aux_gpu_textures.push_back(nullptr);
+                    ns.aux_gpu_texture_views.push_back(nullptr);
                 }
+                ++gpu_tex_out_count;
             } else if (desc->ports[i].type == VIVID_PORT_DATA) {
                 ns.has_data_output = true;
+                ns.data_output_port_indices.push_back(out_idx);
             } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING) {
                 ns.has_string_output = true;
             } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING_SPREAD) {
@@ -200,6 +208,11 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
                       && !ns.has_texture_output
                       && !ns.has_data_output;
     }
+
+    // Pre-allocate DATA output buffer (one slot per DATA output port)
+    uint32_t data_out_count = static_cast<uint32_t>(ns.data_output_port_indices.size());
+    ns.output_data_buf.assign(data_out_count, nullptr);
+    ns.gpu_data_outputs.assign(data_out_count, nullptr);
 }
 
 bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
@@ -791,7 +804,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         ctx.output_spreads = ns.c_out_spreads.data();
         ctx.input_data = nullptr;
         ctx.input_data_count = 0;
-        ctx.output_data = nullptr;
+        // Clear and expose the DATA output buffer (operator writes into it)
+        std::fill(ns.output_data_buf.begin(), ns.output_data_buf.end(), nullptr);
+        ctx.output_data = ns.output_data_buf.empty() ? nullptr : ns.output_data_buf.data();
+        ctx.output_data_count = static_cast<uint32_t>(ns.output_data_buf.size());
         ctx.input_string_values = ns.c_input_string_values.empty()
                                     ? nullptr : ns.c_input_string_values.data();
         ctx.output_string_values = ns.c_output_string_values.empty()
@@ -834,13 +850,18 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                 for (const auto& w : wires_) {
                     if (w.to_node_idx == ni && !w.targets_param &&
                         w.to_port_idx == port_idx && w.is_texture_wire) {
-                        auto& upstream = nodes_[w.from_node_idx];
-                        // Phase 6e: route depth texture when wire comes from depth output port
-                        if (upstream.depth_output_port_idx >= 0 &&
-                            w.from_port_idx == static_cast<uint32_t>(upstream.depth_output_port_idx)) {
-                            ns.resolved_tex_inputs[ti] = upstream.gpu_depth_texture_view;
-                            ns.resolved_tex_raw[ti]    = upstream.gpu_depth_texture;
-                        } else {
+                        const auto& upstream = nodes_[w.from_node_idx];
+                        bool routed_aux = false;
+                        for (size_t ai = 0; ai < upstream.aux_texture_output_port_indices.size(); ++ai) {
+                            if (w.from_port_idx ==
+                                    static_cast<uint32_t>(upstream.aux_texture_output_port_indices[ai])) {
+                                ns.resolved_tex_inputs[ti] = upstream.aux_gpu_texture_views[ai];
+                                ns.resolved_tex_raw[ti]    = upstream.aux_gpu_textures[ai];
+                                routed_aux = true;
+                                break;
+                            }
+                        }
+                        if (!routed_aux) {
                             ns.resolved_tex_inputs[ti] = upstream.gpu_texture_view;
                             ns.resolved_tex_raw[ti]    = upstream.gpu_texture;
                         }
@@ -861,7 +882,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                                                     ? nullptr : ns.resolved_tex_heights.data();
             per_node_gpu.operators_src_dir = operators_src_dir_.empty()
                                                 ? nullptr : operators_src_dir_.c_str();
-            per_node_gpu.output_depth_view = nullptr;  // Phase 6e: operator sets during process()
+            per_node_gpu.aux_output_texture_views = ns.aux_gpu_texture_views.empty()
+                ? nullptr : ns.aux_gpu_texture_views.data();
+            per_node_gpu.aux_output_texture_count =
+                static_cast<uint32_t>(ns.aux_gpu_texture_views.size());
 
             // Resolve data inputs from upstream nodes
             size_t data_count = ns.data_input_port_indices.size();
@@ -872,8 +896,17 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                 for (const auto& w : wires_) {
                     if (w.to_node_idx == ni && !w.targets_param &&
                         w.to_port_idx == port_idx && w.is_data_wire) {
-                        auto& upstream = nodes_[w.from_node_idx];
-                        ns.resolved_data_inputs[di] = upstream.gpu_data;
+                        const auto& upstream = nodes_[w.from_node_idx];
+                        // Find which DATA output slot corresponds to this wire's source port
+                        void* resolved = nullptr;
+                        for (uint32_t s = 0; s < upstream.data_output_port_indices.size(); ++s) {
+                            if (upstream.data_output_port_indices[s] == w.from_port_idx) {
+                                if (s < upstream.gpu_data_outputs.size())
+                                    resolved = upstream.gpu_data_outputs[s];
+                                break;
+                            }
+                        }
+                        ns.resolved_data_inputs[di] = resolved;
                         break;
                     }
                 }
@@ -881,7 +914,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             per_node_gpu.input_data = ns.resolved_data_inputs.empty()
                                           ? nullptr : ns.resolved_data_inputs.data();
             per_node_gpu.input_data_count = static_cast<uint32_t>(data_count);
-            per_node_gpu.output_data = nullptr;
+            per_node_gpu.output_data = ctx.output_data;
+            per_node_gpu.output_data_count = ctx.output_data_count;
             ctx.input_data = per_node_gpu.input_data;
             ctx.input_data_count = per_node_gpu.input_data_count;
 
@@ -926,17 +960,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                          ns.node_id.c_str());
         }
 
-        // Capture opaque data output from GPU operators (e.g. 3D scene fragments)
-        if (ns.is_gpu && gpu_state) {
-            ns.gpu_data = ctx.output_data ? ctx.output_data : per_node_gpu.output_data;
-
-            // Phase 6e: capture depth texture output
-            if (ns.depth_output_port_idx >= 0) {
-                ns.gpu_depth_texture_view = per_node_gpu.output_depth_view;
-            }
-        } else {
-            ns.gpu_data = ctx.output_data;
-        }
+        // Capture opaque data outputs.
+        // Both ctx.output_data and per_node_gpu.output_data point to output_data_buf.data(),
+        // so the operator's writes are already in ns.output_data_buf — just copy.
+        ns.gpu_data_outputs = ns.output_data_buf;
 
         // Check if the operator requested a texture resize
         if (ctx.preferred_tex_width > 0 && ctx.preferred_tex_height > 0 &&
@@ -1083,7 +1110,13 @@ WGPUTexture Scheduler::gpu_sink_source_texture(int sink_idx) const {
     for (const auto& wire : wires_) {
         if (wire.to_node_idx == static_cast<uint32_t>(sink_idx) &&
             wire.is_texture_wire && !wire.targets_param) {
-            return nodes_[wire.from_node_idx].gpu_texture;
+            const auto& up = nodes_[wire.from_node_idx];
+            for (size_t ai = 0; ai < up.aux_texture_output_port_indices.size(); ++ai) {
+                if (wire.from_port_idx ==
+                        static_cast<uint32_t>(up.aux_texture_output_port_indices[ai]))
+                    return up.aux_gpu_textures[ai];
+            }
+            return up.gpu_texture;  // primary
         }
     }
     return nullptr;
@@ -1223,9 +1256,11 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
         auto& ns = nodes_[ni];
         if (!ns.is_gpu) continue;
 
-        // Release existing texture if any
+        // Release existing textures (primary and aux)
         if (ns.gpu_texture_view) { wgpuTextureViewRelease(ns.gpu_texture_view); ns.gpu_texture_view = nullptr; }
         if (ns.gpu_texture) { wgpuTextureRelease(ns.gpu_texture); ns.gpu_texture = nullptr; }
+        for (auto& v : ns.aux_gpu_texture_views) { if (v) { wgpuTextureViewRelease(v); v = nullptr; } }
+        for (auto& t : ns.aux_gpu_textures)      { if (t) { wgpuTextureRelease(t); t = nullptr; } }
 
         // GPU sinks and scene-only nodes don't produce their own textures
         if (ns.is_gpu_sink || !ns.has_texture_output) {
@@ -1289,6 +1324,19 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
         view_desc.aspect = WGPUTextureAspect_All;
         ns.gpu_texture_view = wgpuTextureCreateView(ns.gpu_texture, &view_desc);
 
+        // Allocate aux textures (same size and format as primary)
+        for (size_t ai = 0; ai < ns.aux_texture_output_port_indices.size(); ++ai) {
+            std::string aux_label = "Node Aux Texture [" + ns.node_id + "/" + std::to_string(ai) + "]";
+            WGPUTextureDescriptor aux_desc = tex_desc;
+            aux_desc.label = to_sv(aux_label.c_str());
+            ns.aux_gpu_textures[ai] = wgpuDeviceCreateTexture(device, &aux_desc);
+
+            std::string aux_view_label = "Node Aux View [" + ns.node_id + "/" + std::to_string(ai) + "]";
+            WGPUTextureViewDescriptor aux_view_desc = view_desc;
+            aux_view_desc.label = to_sv(aux_view_label.c_str());
+            ns.aux_gpu_texture_views[ai] = wgpuTextureCreateView(ns.aux_gpu_textures[ai], &aux_view_desc);
+        }
+
         std::fprintf(stderr, "[vivid] Allocated %ux%u texture for node '%s'\n",
                      w, h, ns.node_id.c_str());
     }
@@ -1303,9 +1351,11 @@ int Scheduler::find_gpu_sink() const {
 
 void Scheduler::shutdown() {
     for (auto& ns : nodes_) {
-        // Release per-node GPU textures
+        // Release per-node GPU textures (primary and aux)
         if (ns.gpu_texture_view) { wgpuTextureViewRelease(ns.gpu_texture_view); ns.gpu_texture_view = nullptr; }
         if (ns.gpu_texture) { wgpuTextureRelease(ns.gpu_texture); ns.gpu_texture = nullptr; }
+        for (auto& v : ns.aux_gpu_texture_views) { if (v) { wgpuTextureViewRelease(v); v = nullptr; } }
+        for (auto& t : ns.aux_gpu_textures)      { if (t) { wgpuTextureRelease(t); t = nullptr; } }
 
         if (ns.instance) {
             if (ns.loader)

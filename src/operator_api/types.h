@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 4u
+#define VIVID_OPERATOR_ABI_VERSION 6u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -174,8 +174,9 @@ typedef struct VividProcessContext {
     VividSpreadPort* input_spreads;   // [input_port_idx], NULL if none
     VividSpreadPort* output_spreads;  // [output_port_idx], NULL if none
     void**     input_data;            // [input_port_idx], NULL if none
-    uint32_t   input_data_count;      // number of input ports
-    void*      output_data;           // single opaque output payload pointer
+    uint32_t   input_data_count;      // number of DATA input ports
+    void**     output_data;           // [data_output_port_idx], NULL if none
+    uint32_t   output_data_count;     // number of DATA output ports
     const char** input_string_values;   // indexed by input port order
     const char** output_string_values;  // indexed by output port order
     VividStringSpreadPort* input_string_spreads;   // [input_port_idx], NULL if none
