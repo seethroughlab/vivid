@@ -26,7 +26,7 @@ This is the most LLM-friendly design: the LLM reads JSON, writes JSON. No code g
 
 ### 4.4 The Four LLM Roles
 
-**Operator layer — LLM as author (primary role).** The user describes intent, the LLM writes a self-contained C++ operator, hot-reload compiles it in under a second. "Write a GPU operator that makes particles orbit a central point with velocity proportional to their FFT bin value." This is the core workflow. Because operator authoring is cheap and fast, Vivid doesn't need to ship a comprehensive operator library — the LLM generates what the project needs, and the operator contract is designed to make that generation reliable.
+**Operator layer — LLM as author (when needed).** The LLM first composes from existing operators (seed + installed packages). When no existing operator or combination achieves the goal, the LLM writes a self-contained C++ operator, hot-reload compiles it in under a second, and the user sees the result immediately. Authored operators should be designed for reuse — generic names, clear parameters, broad applicability — so they become lasting additions to the project, not throwaway scaffolding. The operator contract is designed to make this generation reliable.
 
 **Routing layer — LLM as architect.** "Build me a patch with 3 audio analysis bands driving 3 visual layers with independent particle systems." The LLM generates graph structure as JSON that the user then explores. This is the scaffolding role — often combined with operator authoring when the scaffold requires new operators that don't yet exist.
 

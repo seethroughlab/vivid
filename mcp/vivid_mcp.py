@@ -21,10 +21,10 @@ Connections must match types: `gpu_texture` → `gpu_texture`, `data` → `data`
 
 ## Workflow
 
-1. `list_types` — discover available operators, their params, and ports
-2. `add_node` — add nodes by type and unique ID
-3. `connect` — wire outputs to inputs using `"node_id/port_name"` addresses
-4. `set_param` — adjust parameters (takes effect immediately)
+1. `list_types` — discover all available operators (seed + installed packages)
+2. **Compose first** — build the graph from existing operators before considering custom ones. Most goals are achievable by wiring existing operators together.
+3. `add_node` → `connect` → `set_param` — assemble and configure the graph
+4. `scaffold_operator` — only when no existing operator or combination achieves the goal. Design it for reuse: generic name, broad params, not single-purpose.
 5. `inspect_graph` — verify the graph state, check live output values
 
 ## Common Patterns
@@ -430,7 +430,12 @@ async def get_graph_errors() -> str:
 
 @mcp.tool()
 async def scaffold_operator(name: str, domain: str, variant: str = "") -> str:
-    """Create a new operator from a template. Writes source, patches CMakeLists, triggers build.
+    """Create a new operator from a template. Only use after confirming via list_types that no
+    existing operator (seed or installed package) achieves the goal, alone or in combination.
+
+    Design the operator for reuse: generic name, broadly useful params, clear single responsibility.
+
+    Writes source, patches CMakeLists, triggers build.
 
     Args:
         name: Operator name in lowercase_with_underscores (e.g. "tone_gen")
