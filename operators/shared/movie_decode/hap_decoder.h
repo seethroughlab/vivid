@@ -22,6 +22,7 @@ public:
     void pause() override;
     float current_time() const override;
     bool seek(double time_seconds) override;
+    float frame_rate() const override;
     VideoFrameCompressionMode compression_mode() const override;
     VideoCompressedFormat compressed_format() const override;
     bool requires_ycocg_decode() const override;

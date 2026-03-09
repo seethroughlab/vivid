@@ -148,6 +148,10 @@ bool HAPDecoder::open(const std::string& path) {
         impl_->frame_rate = track.nominalFrameRate > 0.0f ? track.nominalFrameRate : 30.0f;
         impl_->media_duration = static_cast<float>(CMTimeGetSeconds(impl_->asset.duration));
 
+        std::fprintf(stderr, "[hap_decoder] Opened: %s  frame_rate=%.2f  duration=%.3f  %ux%u\n",
+            path.c_str(), impl_->frame_rate, impl_->media_duration,
+            impl_->frame_width, impl_->frame_height);
+
         impl_->reset_reader(0.0);
         if (!impl_->reader || !impl_->video_output) {
             close();
@@ -281,6 +285,7 @@ bool HAPDecoder::seek(double time_seconds) {
     impl_->reset_reader(t);
     return (impl_->reader && impl_->video_output);
 }
+float HAPDecoder::frame_rate() const { return impl_->frame_rate; }
 VideoFrameCompressionMode HAPDecoder::compression_mode() const {
     return VideoFrameCompressionMode::CompressedBC;
 }

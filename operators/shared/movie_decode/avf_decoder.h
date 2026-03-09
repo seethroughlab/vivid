@@ -25,6 +25,7 @@ public:
     void pause() override;
     float current_time() const override;
     bool seek(double time_seconds) override;
+    float frame_rate() const override;
 
 private:
     struct Impl;

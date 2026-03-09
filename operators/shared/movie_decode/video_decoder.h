@@ -35,6 +35,9 @@ public:
     // Optional: seek decoder timeline to local media time (seconds).
     virtual bool seek(double /*time_seconds*/) { return false; }
 
+    // Nominal frame rate (fps). Used for sync threshold calculation.
+    virtual float frame_rate() const { return 30.0f; }
+
     // Optional compressed-frame path (used by HAP direct BC uploads).
     // Contract: compression mode/format are fixed after successful open();
     // decode_frame() updates only frame payload and playback time.

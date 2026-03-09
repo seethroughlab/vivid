@@ -69,6 +69,7 @@ struct AVFDecoder::Impl {
     uint32_t frame_width  = 0;
     uint32_t frame_height = 0;
     float    media_duration = 0.0f;
+    float    frame_rate_    = 30.0f;
     bool     is_looping    = true;
     bool     opened        = false;
     float    current_speed_ = 1.0f;
@@ -120,6 +121,8 @@ struct AVFDecoder::Impl {
                 frame_width  = static_cast<uint32_t>(size.width);
                 frame_height = static_cast<uint32_t>(size.height);
             }
+
+            frame_rate_ = tracks[0].nominalFrameRate > 0.0f ? tracks[0].nominalFrameRate : 30.0f;
 
             CMTime dur = asset.duration;
             media_duration = static_cast<float>(CMTimeGetSeconds(dur));
@@ -355,6 +358,7 @@ void AVFDecoder::play() { impl_->play(); }
 void AVFDecoder::pause() { impl_->pause(); }
 float AVFDecoder::current_time() const { return impl_->current_time(); }
 bool AVFDecoder::seek(double time_seconds) { return impl_->seek(time_seconds); }
+float AVFDecoder::frame_rate() const { return impl_->frame_rate_; }
 
 std::unique_ptr<VideoDecoder> create_avf_decoder() {
     return std::make_unique<AVFDecoder>();

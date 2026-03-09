@@ -227,7 +227,11 @@ struct MovieLoaded : vivid::OperatorBase {
             decoder_->set_loop(play_mode.int_value() == 0);
             decoder_->set_speed(speed.value);
 
-            if (session_) {
+            // Check whether audio preroll is complete before decoding/syncing.
+            const bool preroll_ready = !session_ ||
+                session_->audio_preroll_ready.load(std::memory_order_acquire) != 0;
+
+            if (session_ && preroll_ready) {
                 const uint64_t audio_frames = session_->audio_frames_read.load(std::memory_order_acquire);
                 const uint64_t generation = media_clock_.source_generation;
                 if (audio_frames > 0 &&
@@ -239,11 +243,20 @@ struct MovieLoaded : vivid::OperatorBase {
                     const double desired_local = wrap_time(desired_video_mono, duration_s);
                     const double video_local = std::max(0.0, static_cast<double>(decoder_->current_time()));
                     const double err = shortest_circular_diff(desired_local, video_local, duration_s);
-                    constexpr double kVideoSeekErrSec = 0.012;
+                    const double frame_dur = 1.0 / std::max(1.0, static_cast<double>(decoder_->frame_rate()));
+                    const double kVideoSeekErrSec = frame_dur * 1.5;
                     constexpr double kVideoSeekCooldownSec = 0.030;
                     const bool generation_changed = (last_video_sync_seek_generation_ != generation);
-                    if ((generation_changed || std::abs(err) > kVideoSeekErrSec) &&
-                        (desired_video_mono - last_video_sync_seek_mono_s_) > kVideoSeekCooldownSec) {
+                    const bool cooldown_ok = (desired_video_mono - last_video_sync_seek_mono_s_) > kVideoSeekCooldownSec;
+                    if (session_->video_frame_counter % 60 == 0) {
+                        std::fprintf(stderr,
+                            "[movie_loaded] SYNC  err=%.4f  desired_local=%.4f  video_local=%.4f  "
+                            "gen_changed=%d  cooldown_ok=%d  desired_mono=%.4f  last_seek=%.4f  thresh=%.4f\n",
+                            err, desired_local, video_local,
+                            generation_changed ? 1 : 0, cooldown_ok ? 1 : 0,
+                            desired_video_mono, last_video_sync_seek_mono_s_, kVideoSeekErrSec);
+                    }
+                    if (generation_changed || (std::abs(err) > kVideoSeekErrSec && cooldown_ok)) {
                         if (decoder_->seek(desired_local)) {
                             last_video_sync_seek_mono_s_ = desired_video_mono;
                             last_video_sync_seek_generation_ = generation;
@@ -252,7 +265,7 @@ struct MovieLoaded : vivid::OperatorBase {
                 }
             }
 
-            if (decoder_->decode_frame()) {
+            if (preroll_ready && decoder_->decode_frame()) {
                 uint32_t w = decoder_->width();
                 uint32_t h = decoder_->height();
                 if (w > 0 && h > 0) {
@@ -474,6 +487,7 @@ private:
         media_clock_.source_generation += 1;
         media_clock_.loop_epoch = 0;
         last_local_time_s_ = 0.0;
+        last_video_sync_seek_mono_s_ = -1000.0;
         if (!session_) session_ = std::make_unique<vivid::media::MediaSession>();
         vivid::media::media_session_note_generation_transition(*session_);
         {
@@ -563,6 +577,18 @@ private:
                     local_time_s = audio_mono;
                 }
             }
+        }
+
+        if (session_ && (session_->video_frame_counter % 120) == 0) {
+            const uint64_t rf = session_->audio_frames_read.load(std::memory_order_relaxed);
+            const double am = session_->audio_read_head_media_time.load(std::memory_order_relaxed);
+            std::fprintf(stderr,
+                "[movie_loaded] CLOCK  audio_master=%d  read_frames=%llu  audio_mono=%.4f  "
+                "decoder_local=%.4f  local=%.4f  gen=%u\n",
+                using_audio_master ? 1 : 0,
+                static_cast<unsigned long long>(rf), am,
+                decoder_local_time_s, local_time_s,
+                media_clock_.source_generation);
         }
 
         if (!using_audio_master) {

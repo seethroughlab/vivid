@@ -106,6 +106,11 @@ private:
         if (session->audio_preroll_ready.load(std::memory_order_relaxed) == 0) {
             const uint32_t depth = vivid::media::media_session_audio_available_read(*session);
             if (depth >= kPrerollFrames) {
+                const double rh = session->audio_read_head_media_time.load(std::memory_order_relaxed);
+                const double wh = session->audio_write_head_media_time.load(std::memory_order_relaxed);
+                std::fprintf(stderr,
+                    "[MAO fill] PREROLL_READY  depth=%u  rh=%.4f  wh=%.4f\n",
+                    depth, rh, wh);
                 session->audio_preroll_ready.store(1, std::memory_order_release);
             }
         }
@@ -184,11 +189,31 @@ struct MovieAudioOut : vivid::OperatorBase {
         deferred_session_releases_.clear();
 
         // Attach/detach shared media-stream handle (from MovieLoaded output data).
-        const uint64_t pending_session_ptr = pending_stream_ptr_.load(std::memory_order_acquire);
+        const uint64_t pending_session_ptr = pending_stream_ptr_.exchange(0, std::memory_order_acq_rel);
         if (pending_session_ptr != 0) {
-            active_session_ = reinterpret_cast<vivid::media::MediaSession*>(pending_session_ptr);
-            active_session_ptr_.store(active_session_, std::memory_order_release);
-            active_stream_handle_ = 0;
+            // Verify the session is still valid via shared handles
+            const uint64_t handle = pending_stream_handle_.load(std::memory_order_acquire);
+            bool valid = false;
+            if (hs && handle != 0) {
+                auto entry = hs->resolve(handle);
+                valid = entry.valid && entry.payload == reinterpret_cast<void*>(pending_session_ptr);
+            }
+            if (valid) {
+                active_session_ = reinterpret_cast<vivid::media::MediaSession*>(pending_session_ptr);
+                active_session_ptr_.store(active_session_, std::memory_order_release);
+                active_stream_handle_ = handle;
+            } else {
+                // Session was destroyed — null everything out
+                fill_thread_.update_session(nullptr);
+                fill_thread_.update_extractor(nullptr);
+                extractor_.store(nullptr, std::memory_order_release);
+                if (session_extractor_) {
+                    deferred_session_releases_.push_back(std::move(session_extractor_));
+                }
+                session_extractor_.reset();
+                active_session_ = nullptr;
+                active_session_ptr_.store(nullptr, std::memory_order_release);
+            }
         } else {
             const uint64_t pending_handle = pending_stream_handle_.load(std::memory_order_acquire);
             if (pending_handle != active_stream_handle_) {
@@ -199,6 +224,24 @@ struct MovieAudioOut : vivid::OperatorBase {
                 if (hs && pending_handle != 0 &&
                     hs->retain(pending_handle)) {
                     active_stream_handle_ = pending_handle;
+                }
+            }
+            // Validate existing session is still alive via its handle.
+            // The session may have been destroyed by MovieLoaded since last frame.
+            if (active_session_ && hs && active_stream_handle_ != 0) {
+                auto entry = hs->resolve(active_stream_handle_);
+                if (!entry.valid || entry.payload != active_session_) {
+                    fill_thread_.update_session(nullptr);
+                    fill_thread_.update_extractor(nullptr);
+                    extractor_.store(nullptr, std::memory_order_release);
+                    if (session_extractor_) {
+                        deferred_session_releases_.push_back(std::move(session_extractor_));
+                    }
+                    session_extractor_.reset();
+                    active_session_ = nullptr;
+                    active_session_ptr_.store(nullptr, std::memory_order_release);
+                    hs->release(active_stream_handle_);
+                    active_stream_handle_ = 0;
                 }
             }
         }
@@ -282,6 +325,7 @@ struct MovieAudioOut : vivid::OperatorBase {
             pending_load_.reset();
 
             // Stop fill thread while we swap extractors
+            fill_thread_.update_session(nullptr);
             fill_thread_.update_extractor(nullptr);
 
             auto* old = extractor_.load(std::memory_order_relaxed);
@@ -317,8 +361,12 @@ struct MovieAudioOut : vivid::OperatorBase {
                 }).detach();
             }
             if (active_session_) {
+                const double rh_before = active_session_->audio_read_head_media_time.load(std::memory_order_relaxed);
                 vivid::media::media_session_audio_ring_clear(*active_session_);
                 active_session_->audio_preroll_ready.store(0, std::memory_order_release);
+                std::fprintf(stderr,
+                    "[MAO main] SOURCE_SWITCH  path='%s'  rh_before=%.4f  rh_after=0.0  preroll→0\n",
+                    last_path_.c_str(), rh_before);
             }
             return;
         }
@@ -337,8 +385,12 @@ struct MovieAudioOut : vivid::OperatorBase {
                         std::shared_ptr<AVFAudioExtractor>(fresh);
                     session_extractor_ = active_session_->audio_extractor;
                     extractor_.store(session_extractor_.get(), std::memory_order_release);
+                    const double rh_pre = active_session_->audio_read_head_media_time.load(std::memory_order_relaxed);
                     vivid::media::media_session_audio_ring_clear(*active_session_);
                     active_session_->audio_preroll_ready.store(0, std::memory_order_release);
+                    std::fprintf(stderr,
+                        "[MAO main] ASYNC_LOAD_DONE  rh_before=%.4f  rh_after=0.0  preroll→0\n",
+                        rh_pre);
                     if (old_shared) {
                         deferred_session_releases_.push_back(std::move(old_shared));
                     }
@@ -389,9 +441,13 @@ struct MovieAudioOut : vivid::OperatorBase {
         if (requested >= 0.0) {
             ext->resync(requested);
             if (active_session_) {
+                const double rh_pre = active_session_->audio_read_head_media_time.load(std::memory_order_relaxed);
                 vivid::media::media_session_audio_ring_clear(*active_session_, requested);
                 active_session_->audio_preroll_ready.store(0, std::memory_order_release);
                 active_session_->sync_resync_applied.fetch_add(1, std::memory_order_relaxed);
+                std::fprintf(stderr,
+                    "[MAO main] RESYNC  seek_to=%.4f  rh_before=%.4f  preroll→0\n",
+                    requested, rh_pre);
             }
             fill_thread_.notify();
         }
@@ -438,9 +494,36 @@ struct MovieAudioOut : vivid::OperatorBase {
         }
         callback_counter_++;
 
-        // Read from session ring. That's it.
+        // Read from session ring — but only after pre-roll is ready.
+        // During source switches, outputting silence without advancing the read
+        // head prevents drift accumulation while the fill thread buffers data.
         if (active_session && clock.valid) {
-            vivid::media::media_session_audio_read(*active_session, L, R, n);
+            const uint8_t preroll = active_session->audio_preroll_ready.load(std::memory_order_acquire);
+            if (preroll != 0) {
+                const double rh_before = active_session->audio_read_head_media_time.load(std::memory_order_relaxed);
+                const uint32_t got = vivid::media::media_session_audio_read(*active_session, L, R, n);
+                const double rh_after = active_session->audio_read_head_media_time.load(std::memory_order_relaxed);
+                const double wh = active_session->audio_write_head_media_time.load(std::memory_order_relaxed);
+                const uint32_t depth = vivid::media::media_session_audio_available_read(*active_session);
+                if ((callback_counter_ % 480u) == 0u) {
+                    std::fprintf(stderr,
+                        "[MAO process] READ  rh=%.4f→%.4f  wh=%.4f  depth=%u  got=%u/%u  sr=%.0f  spd=%.3f\n",
+                        rh_before, rh_after, wh, depth, got, n,
+                        static_cast<double>(active_session->audio_ring_sample_rate.load(std::memory_order_relaxed)),
+                        static_cast<double>(active_session->audio_ring_speed.load(std::memory_order_relaxed)));
+                }
+            } else {
+                std::memset(L, 0, n * sizeof(float));
+                std::memset(R, 0, n * sizeof(float));
+                if ((callback_counter_ % 480u) == 0u) {
+                    const double rh = active_session->audio_read_head_media_time.load(std::memory_order_relaxed);
+                    const double wh = active_session->audio_write_head_media_time.load(std::memory_order_relaxed);
+                    const uint32_t depth = vivid::media::media_session_audio_available_read(*active_session);
+                    std::fprintf(stderr,
+                        "[MAO process] PREROLL_WAIT  rh=%.4f  wh=%.4f  depth=%u\n",
+                        rh, wh, depth);
+                }
+            }
         } else {
             std::memset(L, 0, n * sizeof(float));
             std::memset(R, 0, n * sizeof(float));
