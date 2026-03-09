@@ -19,7 +19,12 @@
 namespace vivid {
 
 static std::string quote(const std::string& s) {
-    return "'" + s + "'";
+    std::string escaped;
+    for (char c : s) {
+        if (c == '\'') escaped += "'\\''";
+        else escaped += c;
+    }
+    return "'" + escaped + "'";
 }
 
 static std::string trim_copy(const std::string& s);
@@ -132,12 +137,15 @@ static std::string trim_copy(const std::string& s) {
     return s.substr(start, end - start);
 }
 
-static bool parse_semver_triplet(const std::string& raw, std::array<int, 3>& out) {
+static bool parse_semver_triplet(const std::string& raw, std::array<int, 3>& out,
+                                 bool& is_prerelease) {
     std::string s = trim_copy(raw);
     if (s.empty()) return false;
     if (s[0] == 'v' || s[0] == 'V') s.erase(0, 1);
 
     size_t metadata = s.find_first_of("-+");
+    // '-' indicates a pre-release identifier (e.g. 1.0.0-alpha); '+' is build metadata only
+    is_prerelease = (metadata != std::string::npos && s[metadata] == '-');
     if (metadata != std::string::npos) s = s.substr(0, metadata);
     if (s.empty()) return false;
 
@@ -164,7 +172,8 @@ static bool parse_semver_triplet(const std::string& raw, std::array<int, 3>& out
 static bool compare_semver(const std::string& a, const std::string& b, int& cmp) {
     std::array<int, 3> va{};
     std::array<int, 3> vb{};
-    if (!parse_semver_triplet(a, va) || !parse_semver_triplet(b, vb)) {
+    bool a_pre = false, b_pre = false;
+    if (!parse_semver_triplet(a, va, a_pre) || !parse_semver_triplet(b, vb, b_pre)) {
         cmp = std::numeric_limits<int>::min();
         return false;
     }
@@ -172,6 +181,9 @@ static bool compare_semver(const std::string& a, const std::string& b, int& cmp)
         if (va[i] < vb[i]) { cmp = -1; return true; }
         if (va[i] > vb[i]) { cmp = 1; return true; }
     }
+    // Same numeric triplet: per SemVer, pre-release < stable (e.g. 1.0.0-alpha < 1.0.0)
+    if (a_pre && !b_pre) { cmp = -1; return true; }
+    if (!a_pre && b_pre) { cmp = 1; return true; }
     cmp = 0;
     return true;
 }
@@ -268,6 +280,11 @@ std::vector<PackageInfo> PackageManager::resolve_packages(bool emit_warnings) {
         for (const auto& entry : fs::directory_iterator(sr.root, ec)) {
             if (ec) break;
             if (!entry.is_directory()) continue;
+
+            // Skip in-progress staging directories — they're transient and must not
+            // appear as installed packages (otherwise circular-dep detection breaks).
+            std::string dir_name = entry.path().filename().string();
+            if (dir_name.size() > 9 && dir_name.compare(0, 9, ".staging_") == 0) continue;
 
             PackageInfo info;
             if (!parse_manifest(entry.path().string(), info)) {
@@ -474,13 +491,40 @@ bool PackageManager::parse_manifest(const std::string& package_dir, PackageInfo&
     yyjson_val* build_v = yyjson_obj_get(root, "build");
     info.build_type = (build_v && yyjson_is_str(build_v)) ? yyjson_get_str(build_v) : "";
 
+    // Validate that an operator name is a safe relative path with no traversal components.
+    // Names like "audio/drum_kick" are fine; "../../etc/passwd" or "../bad" are not.
+    auto is_valid_op_name = [](const std::string& name) -> bool {
+        if (name.empty() || name[0] == '/' || name[0] == '.') return false;
+        size_t pos = 0;
+        while (pos <= name.size()) {
+            size_t next = name.find('/', pos);
+            std::string component = name.substr(
+                pos, next == std::string::npos ? std::string::npos : next - pos);
+            if (component.empty() || component == "." || component == "..") return false;
+            if (component[0] == '.') return false;
+            for (char c : component) {
+                if (!std::isalnum(static_cast<unsigned char>(c)) &&
+                    c != '_' && c != '-') return false;
+            }
+            if (next == std::string::npos) break;
+            pos = next + 1;
+        }
+        return true;
+    };
+
     yyjson_val* ops = yyjson_obj_get(root, "operators");
     if (ops && yyjson_is_arr(ops)) {
         size_t idx, max;
         yyjson_val* val;
         yyjson_arr_foreach(ops, idx, max, val) {
-            if (yyjson_is_str(val))
-                info.operators.push_back(yyjson_get_str(val));
+            if (yyjson_is_str(val)) {
+                std::string op_name = yyjson_get_str(val);
+                if (!is_valid_op_name(op_name)) {
+                    yyjson_doc_free(doc);
+                    return false;
+                }
+                info.operators.push_back(std::move(op_name));
+            }
         }
     }
 
@@ -489,8 +533,14 @@ bool PackageManager::parse_manifest(const std::string& package_dir, PackageInfo&
         size_t idx, max;
         yyjson_val* val;
         yyjson_arr_foreach(gpu_ops, idx, max, val) {
-            if (yyjson_is_str(val))
-                info.gpu_operators.push_back(yyjson_get_str(val));
+            if (yyjson_is_str(val)) {
+                std::string op_name = yyjson_get_str(val);
+                if (!is_valid_op_name(op_name)) {
+                    yyjson_doc_free(doc);
+                    return false;
+                }
+                info.gpu_operators.push_back(std::move(op_name));
+            }
         }
     }
 
@@ -597,8 +647,8 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
             result.error = missing_tool_error("git");
             return result;
         }
-        // Git clone (quote URL and path for spaces)
-        std::string cmd = "git clone --depth 1 '" + url + "' '" + staging_dir + "' 2>&1";
+        // Git clone (quote URL and path for spaces and special characters)
+        std::string cmd = "git clone --depth 1 " + quote(url) + " " + quote(staging_dir) + " 2>&1";
         std::fprintf(stderr, "[vivid] PackageManager: %s\n", cmd.c_str());
 
         std::string output;

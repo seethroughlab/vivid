@@ -142,6 +142,43 @@ int main() {
         fs::remove_all(root);
     }
 
+    // --- Test 7: add_package_watches skips unreadable subdirectory, still counts good ones ---
+    {
+        // Build a packages dir with two packages: one good, one whose operators/ dir
+        // is not readable. The good package should still be watched.
+        fs::path pkgs = tmp / "t7_pkgs";
+        fs::create_directories(pkgs);
+
+        // Good package: pkgs/good_pkg/operators/audio/myop/myop.cpp
+        fs::path good_op = pkgs / "good_pkg" / "operators" / "audio" / "myop";
+        fs::create_directories(good_op);
+        std::ofstream(good_op / "myop.cpp") << "// stub\n";
+
+        // Bad package: exists but operators/ dir has permissions 000
+        fs::path bad_ops = pkgs / "bad_pkg" / "operators";
+        fs::create_directories(bad_ops);
+        // Remove read permission so directory_iterator will fail
+        fs::permissions(bad_ops, fs::perms::none);
+
+        // We need a running FileWatcher (start() requires a valid operators tree).
+        fs::path root = tmp / "t7_root";
+        make_operator_tree(root, "audio", "dummy7");
+        vivid::FileWatcher fw;
+        fw.start(root.string());
+
+        int count = fw.add_package_watches(pkgs.string());
+
+        // Restore permissions before cleanup
+        fs::permissions(bad_ops, fs::perms::all);
+
+        check(count > 0,
+              "add_package_watches: unreadable subdirectory doesn't abort scan of other packages");
+
+        fw.stop();
+        fs::remove_all(root);
+        fs::remove_all(pkgs);
+    }
+
     fs::remove_all(tmp);
     std::fprintf(stderr, "%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

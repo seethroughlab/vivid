@@ -221,6 +221,7 @@ void FileWatcher::watch_thread() {
         }
 
         if (need_reopen) {
+            // Note: reopen_file sleeps up to 5×50ms — blocks watch_thread during rename retries.
             reopen_file(path, target);
         }
     }
@@ -241,7 +242,7 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
     // Walk <config_dir>/packages/*/operators/<domain>/<name>/*.cpp
     std::error_code ec;
     for (auto& pkg_entry : fs::directory_iterator(packages_dir, ec)) {
-        if (ec) break;
+        if (ec) { ec.clear(); continue; }
         if (!pkg_entry.is_directory()) continue;
 
         std::string ops_dir = pkg_entry.path().string() + "/operators";
@@ -252,12 +253,12 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
 
         std::error_code ec2;
         for (auto& domain_entry : fs::directory_iterator(ops_dir, ec2)) {
-            if (ec2) break;
+            if (ec2) { ec2.clear(); continue; }
             if (!domain_entry.is_directory()) continue;
 
             std::error_code ec3;
             for (auto& op_entry : fs::directory_iterator(domain_entry.path(), ec3)) {
-                if (ec3) break;
+                if (ec3) { ec3.clear(); continue; }
                 if (!op_entry.is_directory()) continue;
 
                 std::string op_name = op_entry.path().filename().string();
@@ -265,7 +266,7 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
 
                 std::error_code ec4;
                 for (auto& file_entry : fs::directory_iterator(op_entry.path(), ec4)) {
-                    if (ec4) break;
+                    if (ec4) { ec4.clear(); continue; }
                     if (!file_entry.is_regular_file()) continue;
                     std::string fname = file_entry.path().filename().string();
                     size_t len = fname.size();

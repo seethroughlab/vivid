@@ -77,7 +77,7 @@ struct TestMgrOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0] * MOCK_VENDOR_SCALE;
     }
 };
@@ -210,7 +210,7 @@ VIVID_REGISTER(TestMgrOp)
 #include "operator_api/operator.h"
 using namespace vivid;
 struct BadCompile : OperatorBase {
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         int x = ; // intentional syntax error
         (void)x;
     }
@@ -329,7 +329,7 @@ struct TestCmakeOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0] * 2.0f;
     }
 };
@@ -595,6 +595,113 @@ set_target_properties(test_cmake_op PROPERTIES
         fs::remove_all(vivid::PackageManager::packages_dir() + "/test-unres");
         fs::remove_all(unres_dir);
         pm.set_resolver(nullptr);
+    }
+
+    // --- Test 14: SemVer pre-release ordering ---
+    std::fprintf(stderr, "\n--- SemVer pre-release ordering ---\n");
+    {
+        // assess_update compares installed.version vs remote_version via compare_semver.
+        // A pre-release should be strictly less than its stable counterpart.
+
+        vivid::PackageInfo installed_pre;
+        installed_pre.name = "test-semver";
+        installed_pre.version = "1.0.0-alpha";
+
+        // 1.0.0-alpha < 1.0.0 → update available
+        auto ua = vivid::PackageManager::assess_update(installed_pre, "1.0.0", "", "0.1.0");
+        check(ua.update_available, "1.0.0-alpha < 1.0.0: update_available is true");
+        check(ua.classification == vivid::PackageUpdateClass::CompatibleUpdate,
+              "1.0.0-alpha < 1.0.0: classified as CompatibleUpdate");
+
+        // 1.0.0 vs >= 1.0.0-beta core constraint: 1.0.0 > 1.0.0-beta, so satisfied
+        vivid::PackageInfo installed_stable;
+        installed_stable.name = "test-semver2";
+        installed_stable.version = "1.0.0";
+        auto ub = vivid::PackageManager::assess_update(installed_stable, "2.0.0", ">=1.0.0-beta", "1.0.0");
+        check(ub.update_available, "1.0.0 < 2.0.0: update available");
+        check(ub.compatible, "core 1.0.0 satisfies >=1.0.0-beta constraint");
+
+        // 1.0.0-alpha vs core constraint >= 1.0.0: pre-release does NOT satisfy >= stable
+        auto uc = vivid::PackageManager::assess_update(installed_stable, "2.0.0", ">=1.0.0", "1.0.0-alpha");
+        check(uc.update_available, "1.0.0 < 2.0.0: update available");
+        check(!uc.compatible, "core 1.0.0-alpha does NOT satisfy >=1.0.0 (pre-release < stable)");
+        check(uc.classification == vivid::PackageUpdateClass::IncompatibleUpdate,
+              "classified as IncompatibleUpdate when core is pre-release vs stable constraint");
+
+        // 1.0.0-alpha == 1.0.0-alpha → up to date
+        vivid::PackageInfo installed_same;
+        installed_same.name = "test-semver3";
+        installed_same.version = "1.0.0-alpha";
+        auto ud = vivid::PackageManager::assess_update(installed_same, "1.0.0-alpha", "", "0.1.0");
+        check(!ud.update_available, "1.0.0-alpha == 1.0.0-alpha: no update");
+        check(ud.classification == vivid::PackageUpdateClass::UpToDate,
+              "same pre-release version: UpToDate");
+    }
+
+    // --- Test 15: Exact-pin == constraint ---
+    std::fprintf(stderr, "\n--- Exact-pin == constraint ---\n");
+    {
+        vivid::PackageInfo pkg;
+        pkg.name = "test-pin";
+        pkg.version = "1.0.0";
+
+        // Remote requires exactly 1.2.3 of core; our core is 1.2.3 → compatible
+        auto ua = vivid::PackageManager::assess_update(pkg, "2.0.0", "==1.2.3", "1.2.3");
+        check(ua.update_available, "exact-pin: update available");
+        check(ua.compatible, "core 1.2.3 satisfies ==1.2.3");
+
+        // Remote requires exactly 1.2.3; our core is 1.2.4 → incompatible
+        auto ub = vivid::PackageManager::assess_update(pkg, "2.0.0", "==1.2.3", "1.2.4");
+        check(ub.update_available, "exact-pin: update still available");
+        check(!ub.compatible, "core 1.2.4 does NOT satisfy ==1.2.3");
+        check(ub.classification == vivid::PackageUpdateClass::IncompatibleUpdate,
+              "exact-pin mismatch: IncompatibleUpdate");
+    }
+
+    // --- Test 16: Operator name path-traversal rejection ---
+    // parse_manifest is private, so we exercise it via install() which calls it internally.
+    std::fprintf(stderr, "\n--- Operator name path-traversal rejection ---\n");
+    {
+        std::string trav_pkg_dir = build_dir + "/.test_traversal_package";
+        std::string trav_install_dir = vivid::PackageManager::packages_dir() + "/test-traversal";
+
+        auto write_manifest = [&](const char* operators_json) {
+            fs::remove_all(trav_pkg_dir);
+            fs::create_directories(trav_pkg_dir);
+            std::ofstream ofs(trav_pkg_dir + "/vivid-package.json");
+            ofs << "{\n  \"name\": \"test-traversal\",\n  \"version\": \"0.1.0\",\n"
+                << "  \"operators\": " << operators_json << ",\n  \"gpu_operators\": []\n}";
+        };
+        auto cleanup_install = [&]() {
+            fs::remove_all(trav_install_dir);
+        };
+
+        // Path traversal: ../../etc/passwd
+        write_manifest("[\"../../etc/passwd\"]");
+        cleanup_install();
+        {
+            auto r = pm.install(trav_pkg_dir);
+            check(!r.success, "install with path-traversal operator name (../../) is rejected");
+        }
+
+        // Leading-dot component: .hidden/op
+        write_manifest("[\".hidden/op\"]");
+        cleanup_install();
+        {
+            auto r = pm.install(trav_pkg_dir);
+            check(!r.success, "install with leading-dot operator component is rejected");
+        }
+
+        // Absolute path: /etc/passwd
+        write_manifest("[\"/etc/passwd\"]");
+        cleanup_install();
+        {
+            auto r = pm.install(trav_pkg_dir);
+            check(!r.success, "install with absolute operator path is rejected");
+        }
+
+        cleanup_install();
+        fs::remove_all(trav_pkg_dir);
     }
 
     // Cleanup

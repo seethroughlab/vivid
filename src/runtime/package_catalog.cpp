@@ -302,7 +302,19 @@ bool PackageCatalog::load_cache(std::vector<CatalogEntry>& out) {
     std::string path = cache_path();
     if (!std::filesystem::exists(path)) return false;
 
-    // Even if stale, still load as initial data (refresh will update)
+    // Reject stale caches; the caller will fall through to a live network fetch.
+    std::error_code ec;
+    auto mtime = std::filesystem::last_write_time(path, ec);
+    if (!ec) {
+        auto age = std::chrono::duration_cast<std::chrono::seconds>(
+            std::filesystem::file_time_type::clock::now() - mtime);
+        if (age.count() > kCacheTTLSeconds) {
+            std::fprintf(stderr,
+                "[vivid] PackageCatalog: cache is stale (%lld s old), fetching fresh data\n",
+                static_cast<long long>(age.count()));
+            return false;
+        }
+    }
 
     std::ifstream ifs(path);
     if (!ifs) return false;
@@ -313,7 +325,6 @@ bool PackageCatalog::load_cache(std::vector<CatalogEntry>& out) {
 
     if (!parse_index_json(json_str, out)) return false;
 
-    // Return true even if stale — caller will background-refresh anyway
     return true;
 }
 

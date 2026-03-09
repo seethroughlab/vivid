@@ -3,6 +3,7 @@
 #include <yyjson.h>
 #include <filesystem>
 #include <cstdio>
+#include <cstring>
 #include <spawn.h>
 #include <string>
 
@@ -135,21 +136,37 @@ void save_settings(const Settings& s) {
 // Fire-and-forget process launch via posix_spawn (no shell interpolation).
 static void spawn_detached(const char* const argv[]) {
     pid_t pid;
-    posix_spawn(&pid, argv[0], nullptr, nullptr,
-                const_cast<char* const*>(argv), environ);
+    int rc = posix_spawn(&pid, argv[0], nullptr, nullptr,
+                         const_cast<char* const*>(argv), environ);
+    if (rc != 0) {
+        std::fprintf(stderr, "[vivid] spawn_detached: posix_spawn failed for %s: %s\n",
+                     argv[0], strerror(rc));
+    }
     // Fire-and-forget: don't waitpid — child is short-lived (open/sh).
+}
+
+// Shell-quote a path with single quotes, escaping embedded single quotes as '\''.
+static std::string shell_quote(const std::string& s) {
+    std::string out = "'";
+    for (char c : s) {
+        if (c == '\'') out += "'\\''";
+        else out += c;
+    }
+    out += "'";
+    return out;
 }
 
 void open_in_editor(const std::string& file_path, const Settings& settings) {
     if (settings.editor == "custom" && !settings.editor_command.empty()) {
         // User-provided shell command template — must use shell for expansion.
+        // Shell-quote the file path to handle spaces and metacharacters.
         std::string cmd = settings.editor_command;
         std::string placeholder = "{file}";
         size_t pos = cmd.find(placeholder);
         if (pos != std::string::npos) {
-            cmd.replace(pos, placeholder.size(), file_path);
+            cmd.replace(pos, placeholder.size(), shell_quote(file_path));
         } else {
-            cmd += " " + file_path;
+            cmd += " " + shell_quote(file_path);
         }
         const char* argv[] = { "/bin/sh", "-c", cmd.c_str(), nullptr };
         spawn_detached(argv);
