@@ -1395,6 +1395,7 @@ int main(int argc, char* argv[]) {
     std::string scaffold_op_domain = "control";
     std::string scaffold_op_variant;
     std::string scaffold_op_dest = "auto";
+    std::string scaffold_op_outputs;  // comma-separated "name:type" pairs
     auto* scaffold_op_cmd = app.add_subcommand("scaffold-operator",
         "Scaffold a new operator source file");
     scaffold_op_cmd->add_option("name", scaffold_op_name, "Operator name (snake_case)")->required();
@@ -1407,6 +1408,9 @@ int main(int argc, char* argv[]) {
     scaffold_op_cmd->add_option("--dest", scaffold_op_dest,
                                 "Destination: auto|core|package:<name>|absolute path")
         ->default_val("auto");
+    scaffold_op_cmd->add_option("--outputs", scaffold_op_outputs,
+                                "Extra output ports: comma-separated name:type pairs "
+                                "(e.g. \"result:float,error:float\")");
 
     std::string update_core_version = VIVID_CORE_VERSION;
     bool update_include_all = false;
@@ -1534,11 +1538,74 @@ int main(int argc, char* argv[]) {
             if (!destination.warning.empty())
                 std::fprintf(stderr, "[vivid] %s\n", destination.warning.c_str());
 
+            // Parse --outputs "name:type,name:type" into OutputPortSpec list
+            std::vector<vivid::OutputPortSpec> extra_outputs;
+            if (!scaffold_op_outputs.empty()) {
+                // Split on commas
+                std::istringstream ss(scaffold_op_outputs);
+                std::string token;
+                bool parse_ok = true;
+                while (std::getline(ss, token, ',')) {
+                    if (token.empty()) continue;
+                    auto colon = token.find(':');
+                    if (colon == std::string::npos) {
+                        std::fprintf(stderr, "Scaffold failed: invalid --outputs entry '%s' "
+                                     "(expected name:type)\n", token.c_str());
+                        parse_ok = false;
+                        break;
+                    }
+                    std::string pname = token.substr(0, colon);
+                    std::string ptype = token.substr(colon + 1);
+                    // Validate port name
+                    {
+                        std::string verr = vivid::OperatorCreator::validate_name(pname, registry);
+                        if (!verr.empty()) {
+                            std::fprintf(stderr, "Scaffold failed: output port name '%s': %s\n",
+                                         pname.c_str(), verr.c_str());
+                            parse_ok = false;
+                            break;
+                        }
+                    }
+                    // Map type string -> VividPortType
+                    VividPortType vt = VIVID_PORT_CONTROL_FLOAT;
+                    if (domain == VIVID_DOMAIN_CONTROL) {
+                        if      (ptype == "float")  vt = VIVID_PORT_CONTROL_FLOAT;
+                        else if (ptype == "int")    vt = VIVID_PORT_CONTROL_INT;
+                        else if (ptype == "bool")   vt = VIVID_PORT_CONTROL_BOOL;
+                        else if (ptype == "spread") vt = VIVID_PORT_CONTROL_SPREAD;
+                        else if (ptype == "string") vt = VIVID_PORT_CONTROL_STRING;
+                        else {
+                            std::fprintf(stderr, "Scaffold failed: unknown type '%s' for control domain "
+                                         "(valid: float, int, bool, spread, string)\n", ptype.c_str());
+                            parse_ok = false; break;
+                        }
+                    } else if (domain == VIVID_DOMAIN_AUDIO) {
+                        if (ptype == "float") vt = VIVID_PORT_AUDIO_FLOAT;
+                        else {
+                            std::fprintf(stderr, "Scaffold failed: unknown type '%s' for audio domain "
+                                         "(valid: float)\n", ptype.c_str());
+                            parse_ok = false; break;
+                        }
+                    } else if (domain == VIVID_DOMAIN_GPU) {
+                        if      (ptype == "texture") vt = VIVID_PORT_GPU_TEXTURE;
+                        else if (ptype == "data")    vt = VIVID_PORT_DATA;
+                        else {
+                            std::fprintf(stderr, "Scaffold failed: unknown type '%s' for gpu domain "
+                                         "(valid: texture, data)\n", ptype.c_str());
+                            parse_ok = false; break;
+                        }
+                    }
+                    extra_outputs.push_back({pname, vt});
+                }
+                if (!parse_ok) return 1;
+            }
+
             auto result = vivid::OperatorCreator::create(scaffold_op_name,
                                                          domain,
                                                          destination.root,
                                                          scaffold_op_variant,
-                                                         destination.package_layout);
+                                                         destination.package_layout,
+                                                         extra_outputs);
             if (!result.success) {
                 std::fprintf(stderr, "Scaffold failed: %s\n", result.error.c_str());
                 return 1;

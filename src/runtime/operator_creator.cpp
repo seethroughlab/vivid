@@ -45,6 +45,21 @@ static bool is_valid_identifier(const std::string& name) {
     return true;
 }
 
+static const char* port_type_name(VividPortType t) {
+    switch (t) {
+        case VIVID_PORT_CONTROL_FLOAT:        return "VIVID_PORT_CONTROL_FLOAT";
+        case VIVID_PORT_CONTROL_INT:          return "VIVID_PORT_CONTROL_INT";
+        case VIVID_PORT_CONTROL_BOOL:         return "VIVID_PORT_CONTROL_BOOL";
+        case VIVID_PORT_AUDIO_FLOAT:          return "VIVID_PORT_AUDIO_FLOAT";
+        case VIVID_PORT_CONTROL_SPREAD:       return "VIVID_PORT_CONTROL_SPREAD";
+        case VIVID_PORT_GPU_TEXTURE:          return "VIVID_PORT_GPU_TEXTURE";
+        case VIVID_PORT_DATA:                 return "VIVID_PORT_DATA";
+        case VIVID_PORT_CONTROL_STRING:       return "VIVID_PORT_CONTROL_STRING";
+        case VIVID_PORT_CONTROL_STRING_SPREAD:return "VIVID_PORT_CONTROL_STRING_SPREAD";
+        default:                              return "VIVID_PORT_CONTROL_FLOAT";
+    }
+}
+
 static const char* domain_subdir(VividDomain d) {
     switch (d) {
         case VIVID_DOMAIN_CONTROL: return "control";
@@ -58,7 +73,8 @@ static const char* domain_subdir(VividDomain d) {
 // Templates
 // ---------------------------------------------------------------------------
 
-static std::string control_template(const std::string& name, const std::string& struct_name) {
+static std::string control_template(const std::string& name, const std::string& struct_name,
+                                     const std::vector<OutputPortSpec>& extra_outputs) {
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
     s << "struct " << struct_name << " : vivid::OperatorBase {\n";
@@ -77,16 +93,21 @@ static std::string control_template(const std::string& name, const std::string& 
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
     s << "        out.push_back({\"input\",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT});\n";
     s << "        out.push_back({\"output\", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});\n";
+    for (const auto& ep : extra_outputs)
+        s << "        out.push_back({\"" << ep.name << "\", " << port_type_name(ep.type) << ", VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
     s << "    void process(const VividProcessContext* ctx) override {\n";
     s << "        ctx->output_values[0] = ctx->input_values[0] * amount.value;\n";
+    for (size_t i = 0; i < extra_outputs.size(); ++i)
+        s << "        ctx->output_values[" << (i + 1) << "] = 0.0f;  // TODO: fill " << extra_outputs[i].name << "\n";
     s << "    }\n";
     s << "};\n\n";
     s << "VIVID_REGISTER(" << struct_name << ")\n";
     return s.str();
 }
 
-static std::string audio_template(const std::string& name, const std::string& struct_name) {
+static std::string audio_template(const std::string& name, const std::string& struct_name,
+                                   const std::vector<OutputPortSpec>& extra_outputs) {
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n";
     s << "#include \"operator_api/audio_operator.h\"\n\n";
@@ -106,22 +127,29 @@ static std::string audio_template(const std::string& name, const std::string& st
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
     s << "        out.push_back({\"input\",  VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_INPUT});\n";
     s << "        out.push_back({\"output\", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});\n";
+    for (const auto& ep : extra_outputs)
+        s << "        out.push_back({\"" << ep.name << "\", " << port_type_name(ep.type) << ", VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
     s << "    void process(const VividProcessContext* ctx) override {\n";
     s << "        auto* audio = vivid_audio(ctx);\n";
     s << "        if (!audio) return;\n\n";
     s << "        float* in  = audio->input_buffers[0];\n";
     s << "        float* out = audio->output_buffers[0];\n";
+    for (size_t i = 0; i < extra_outputs.size(); ++i)
+        s << "        float* out" << (i + 1) << " = audio->output_buffers[" << (i + 1) << "];  // " << extra_outputs[i].name << "\n";
     s << "        float g = gain.value;\n\n";
     s << "        for (uint32_t i = 0; i < audio->buffer_size; i++)\n";
     s << "            out[i] = in[i] * g;\n";
+    for (size_t i = 0; i < extra_outputs.size(); ++i)
+        s << "        // TODO: fill out" << (i + 1) << " (" << extra_outputs[i].name << ")\n";
     s << "    }\n";
     s << "};\n\n";
     s << "VIVID_REGISTER(" << struct_name << ")\n";
     return s.str();
 }
 
-static std::string gpu_template(const std::string& name, const std::string& struct_name) {
+static std::string gpu_template(const std::string& name, const std::string& struct_name,
+                                 const std::vector<OutputPortSpec>& extra_outputs) {
     std::ostringstream s;
     s << "#include \"operator_api/wgsl_filter.h\"\n\n";
     s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
@@ -137,10 +165,16 @@ static std::string gpu_template(const std::string& name, const std::string& stru
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
     s << "        out.push_back({\"input\",   VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});\n";
     s << "        out.push_back({\"texture\", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});\n";
+    for (const auto& ep : extra_outputs)
+        s << "        out.push_back({\"" << ep.name << "\", " << port_type_name(ep.type) << ", VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
     s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
     s << "        out.push_back(&amount);\n";
     s << "    }\n";
+    if (!extra_outputs.empty()) {
+        s << "\n    // Extra output textures are available via g->aux_output_texture_views[0.."
+          << (extra_outputs.size() - 1) << "] in a custom process() override.\n";
+    }
     s << "};\n\n";
     s << "VIVID_REGISTER(" << struct_name << ")\n";
     return s.str();
@@ -333,7 +367,8 @@ std::string OperatorCreator::validate_name(const std::string& name, const Operat
 CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomain domain,
                                               const std::string& src_dir,
                                               const std::string& variant,
-                                              bool package_layout) {
+                                              bool package_layout,
+                                              const std::vector<OutputPortSpec>& extra_outputs) {
     CreateOperatorResult result{};
     const char* dsub = domain_subdir(domain);
     if (!dsub) {
@@ -384,9 +419,9 @@ CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomai
         source = composite_control_template(name, struct_name);
     } else {
         switch (domain) {
-            case VIVID_DOMAIN_CONTROL: source = control_template(name, struct_name); break;
-            case VIVID_DOMAIN_AUDIO:   source = audio_template(name, struct_name);   break;
-            case VIVID_DOMAIN_GPU:     source = gpu_template(name, struct_name);     break;
+            case VIVID_DOMAIN_CONTROL: source = control_template(name, struct_name, extra_outputs); break;
+            case VIVID_DOMAIN_AUDIO:   source = audio_template(name, struct_name, extra_outputs);   break;
+            case VIVID_DOMAIN_GPU:     source = gpu_template(name, struct_name, extra_outputs);     break;
             default: break;
         }
     }

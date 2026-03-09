@@ -96,10 +96,12 @@ layers. Three gaps remain before the capability is fully general.
       NodeState; `aux_output_texture_views`/`aux_output_texture_count` in VividGpuState; ABI 6)
 
 **UI:**
-- [ ] Replace the hard ≤3 output-port visibility threshold in `count_visible_output_ports()`
-      (`src/ui/node_graph.cpp:110`) with a user-expandable affordance for operators with many outputs
-- [ ] Update scaffold templates and `scaffold_operator` to support declaring multiple named
-      outputs at creation time (coordinate with M11 operator creation modal)
+- [x] Replace the hard ≤3 output-port visibility threshold in `count_visible_output_ports()`
+      (`src/ui/node_graph.cpp:110`) with a user-expandable affordance for operators with many outputs.
+      Nodes with >3 outputs show connected ports + a `"▸ N more…"` row; click to expand/collapse.
+- [x] Update scaffold templates and `scaffold_operator` to support declaring multiple named
+      outputs at creation time via `--outputs "name:type,..."` flag (coordinate with M11 operator
+      creation modal)
 
 ---
 

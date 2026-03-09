@@ -2,10 +2,16 @@
 
 #include "operator_api/types.h"
 #include <string>
+#include <vector>
 
 namespace vivid {
 
 class OperatorRegistry;
+
+struct OutputPortSpec {
+    std::string   name;
+    VividPortType type;
+};
 
 struct CreateOperatorResult {
     bool success;
@@ -23,10 +29,12 @@ public:
     // Create directory, write .cpp from template, patch CMakeLists.txt.
     // src_dir is the project root (parent of operators/).
     // variant: optional template variant (e.g. "composite" for ChildOp-based control operators).
+    // extra_outputs: additional output ports beyond the single default output.
     static CreateOperatorResult create(const std::string& name, VividDomain domain,
                                        const std::string& src_dir,
                                        const std::string& variant = "",
-                                       bool package_layout = false);
+                                       bool package_layout = false,
+                                       const std::vector<OutputPortSpec>& extra_outputs = {});
 
     // Open file in $VISUAL/$EDITOR/open (async, non-blocking).
     static void open_in_editor(const std::string& path);
