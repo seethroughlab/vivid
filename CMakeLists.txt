@@ -1232,7 +1232,7 @@ add_dependencies(test_demo_graphs
 add_test(NAME test_demo_graphs
     COMMAND test_demo_graphs ${CMAKE_BINARY_DIR}/graphs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_demo_graphs PROPERTIES LABELS "SMOKE")
+set_tests_properties(test_demo_graphs PROPERTIES LABELS "SMOKE" TIMEOUT 120)
 
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler

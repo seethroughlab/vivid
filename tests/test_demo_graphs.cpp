@@ -209,11 +209,16 @@ int main(int argc, char* argv[]) {
         // Load operators needed by this graph
         registry.load_for_graph(graph);
 
-        // Some I/O runtime graphs are integration-heavy and flaky in headless CI harnesses.
+        // Some operators require external hardware or OS services that are
+        // unavailable in headless CI harnesses (camera permission dialogs,
+        // Syphon server, OSC socket, AVFoundation dispatch_sync to main queue).
+        // Skip any graph containing them.
         bool has_external_io = false;
         for (const auto& n : graph.nodes()) {
-            if (n.type == "SyphonIn" || n.type == "SyphonOut" ||
-                n.type == "OscIn" || n.type == "OscOut") {
+            if (n.type == "SyphonIn"    || n.type == "SyphonOut"   ||
+                n.type == "OscIn"       || n.type == "OscOut"      ||
+                n.type == "WebcamIn"    ||
+                n.type == "MovieLoaded" || n.type == "MovieAudioOut") {
                 has_external_io = true;
                 break;
             }
