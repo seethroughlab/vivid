@@ -1260,6 +1260,150 @@ int main() {
         }
     }
 
+    // =====================================================================
+    // Test 32: non-string "from" in connection skipped without crash
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 32: non-string connection address skipped ===\n");
+        const char* json = R"({
+            "nodes": { "a": { "type": "Foo" }, "b": { "type": "Bar" } },
+            "connections": [
+                { "from": 42, "to": "a/out" },
+                { "from": "a/out", "to": 99 },
+                { "from": "a/out", "to": "b/in" }
+            ]
+        })";
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "load with non-string from/to succeeds");
+        check(g.connections().size() == 1, "only valid connection stored");
+    }
+
+    // =====================================================================
+    // Test 33: active_variation out of bounds clamped to -1
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 33: active_variation out of bounds reset to -1 ===\n");
+        const char* json = R"({
+            "nodes": { "a": { "type": "Foo" } },
+            "connections": [],
+            "active_variation": 99
+        })";
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "load with bad active_variation succeeds");
+        check(g.active_variation() == -1, "active_variation clamped to -1");
+    }
+
+    // =====================================================================
+    // Test 34: MIDI mapping with out-of-range cc skipped
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 34: MIDI cc out of range skipped ===\n");
+        const char* json = R"({
+            "nodes": { "a": { "type": "Foo" } },
+            "connections": [],
+            "midi_mappings": [
+                { "node": "a", "param": "x", "cc": 200 },
+                { "node": "a", "param": "y", "cc": 10 }
+            ]
+        })";
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "load with bad midi cc succeeds");
+        check(g.midi_mappings().size() == 1, "out-of-range cc mapping skipped");
+        if (!g.midi_mappings().empty())
+            check(g.midi_mappings()[0].cc_number == 10, "valid mapping retained");
+    }
+
+    // =====================================================================
+    // Test 35: MIDI mapping with out-of-range channel skipped
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 35: MIDI channel out of range skipped ===\n");
+        const char* json = R"({
+            "nodes": { "a": { "type": "Foo" } },
+            "connections": [],
+            "midi_mappings": [
+                { "node": "a", "param": "x", "cc": 10, "channel": 99 },
+                { "node": "a", "param": "y", "cc": 11, "channel": 0 }
+            ]
+        })";
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "load with bad midi channel succeeds");
+        check(g.midi_mappings().size() == 1, "out-of-range channel mapping skipped");
+    }
+
+    // =====================================================================
+    // Test 36: duplicate node IDs — only first kept
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 36: duplicate node IDs — only first kept ===\n");
+        const char* json = R"({
+            "nodes": {
+                "a": { "type": "Foo" },
+                "b": { "type": "Bar" }
+            },
+            "connections": []
+        })";
+        // We can't test key collision inside a JSON object (second key silently
+        // overwrites in most parsers), but we can verify that if parse_doc is
+        // called on a graph that already has a node, it starts fresh.  The real
+        // duplicate-ID guard is tested by direct API:
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "load base graph");
+        check(g.nodes().size() == 2, "2 distinct nodes loaded");
+
+        // Programmatic duplicate prevention (add_node path)
+        check(!g.add_node("a", "Baz"), "add_node rejects duplicate id");
+        check(g.nodes().size() == 2, "node count unchanged after rejected duplicate");
+        const auto* na = g.find_node("a");
+        check(na && na->type == "Foo", "original node a preserved");
+    }
+
+    // =====================================================================
+    // Test 37: duplicate connections on load deduplicated
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 37: duplicate connections deduplicated on load ===\n");
+        const char* json = R"({
+            "nodes": { "a": { "type": "Foo" }, "b": { "type": "Bar" } },
+            "connections": [
+                { "from": "a/out", "to": "b/in" },
+                { "from": "a/out", "to": "b/in" },
+                { "from": "a/out", "to": "b/in" }
+            ]
+        })";
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "load with duplicate connections succeeds");
+        check(g.connections().size() == 1, "duplicate connections collapsed to one");
+    }
+
+    // =====================================================================
+    // Test 38: tex_width/tex_height exceeding 8192 zeroed out
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 38: oversized resolution zeroed ===\n");
+        const char* json = R"({
+            "nodes": {
+                "a": { "type": "Foo", "resolution": [999999, 999999] },
+                "b": { "type": "Bar", "resolution": [1920, 1080] }
+            },
+            "connections": []
+        })";
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "load with oversized resolution succeeds");
+        const auto* na = g.find_node("a");
+        const auto* nb = g.find_node("b");
+        check(na != nullptr, "node a exists");
+        check(nb != nullptr, "node b exists");
+        if (na) {
+            check(na->tex_width == 0,  "oversized tex_width zeroed");
+            check(na->tex_height == 0, "oversized tex_height zeroed");
+        }
+        if (nb) {
+            check(nb->tex_width  == 1920, "valid tex_width preserved");
+            check(nb->tex_height == 1080, "valid tex_height preserved");
+        }
+    }
+
     // --- Cleanup temp files ---
     std::remove("/tmp/vivid_test_valid.json");
     std::remove("/tmp/vivid_test_layout.json");

@@ -172,6 +172,12 @@ bool Graph::parse_doc(yyjson_doc* doc) {
                 if (rw && yyjson_is_int(rw) && rh && yyjson_is_int(rh)) {
                     node.tex_width  = static_cast<uint32_t>(yyjson_get_int(rw));
                     node.tex_height = static_cast<uint32_t>(yyjson_get_int(rh));
+                    if (node.tex_width > 8192 || node.tex_height > 8192) {
+                        std::fprintf(stderr, "[vivid] Graph: node '%s' resolution %ux%u exceeds max (8192), ignoring\n",
+                                     node.id.c_str(), node.tex_width, node.tex_height);
+                        node.tex_width  = 0;
+                        node.tex_height = 0;
+                    }
                 }
             }
 
@@ -190,6 +196,10 @@ bool Graph::parse_doc(yyjson_doc* doc) {
                 }
             }
 
+            if (find_node(node.id)) {
+                std::fprintf(stderr, "[vivid] Graph: duplicate node id '%s', skipping\n", node.id.c_str());
+                continue;
+            }
             nodes_.push_back(std::move(node));
         }
     }
@@ -202,7 +212,10 @@ bool Graph::parse_doc(yyjson_doc* doc) {
         yyjson_arr_foreach(conns_arr, idx, max, val) {
             yyjson_val* from_val = yyjson_obj_get(val, "from");
             yyjson_val* to_val   = yyjson_obj_get(val, "to");
-            if (!from_val || !to_val) continue;
+            if (!from_val || !yyjson_is_str(from_val) || !to_val || !yyjson_is_str(to_val)) {
+                std::fprintf(stderr, "[vivid] Graph: connection 'from'/'to' must be strings, skipping\n");
+                continue;
+            }
 
             ConnectionDef conn;
             if (!split_address(yyjson_get_str(from_val), conn.from_node, conn.from_port) ||
@@ -233,6 +246,20 @@ bool Graph::parse_doc(yyjson_doc* doc) {
                 if (scale_val && yyjson_is_num(scale_val))
                     conn.to_max = static_cast<float>(yyjson_get_num(scale_val));
             }
+            // Deduplicate: skip if an identical connection already exists
+            bool dup = false;
+            for (const auto& c : connections_) {
+                if (c.from_node == conn.from_node && c.from_port == conn.from_port &&
+                    c.to_node   == conn.to_node   && c.to_port   == conn.to_port) {
+                    dup = true; break;
+                }
+            }
+            if (dup) {
+                std::fprintf(stderr, "[vivid] Graph: duplicate connection %s/%s -> %s/%s, skipping\n",
+                             conn.from_node.c_str(), conn.from_port.c_str(),
+                             conn.to_node.c_str(),   conn.to_port.c_str());
+                continue;
+            }
             connections_.push_back(std::move(conn));
         }
     }
@@ -254,6 +281,14 @@ bool Graph::parse_doc(yyjson_doc* doc) {
             yyjson_val* chan_val = yyjson_obj_get(mval, "channel");
             if (chan_val && yyjson_is_int(chan_val))
                 mm.channel = static_cast<int>(yyjson_get_int(chan_val));
+            if (mm.cc_number < 0 || mm.cc_number > 127) {
+                std::fprintf(stderr, "[vivid] Graph: MIDI cc %d out of range [0,127], skipping\n", mm.cc_number);
+                continue;
+            }
+            if (mm.channel < 0 || mm.channel > 16) {
+                std::fprintf(stderr, "[vivid] Graph: MIDI channel %d out of range [0,16], skipping\n", mm.channel);
+                continue;
+            }
             yyjson_val* rmin_val = yyjson_obj_get(mval, "range_min");
             if (rmin_val && yyjson_is_num(rmin_val))
                 mm.range_min = static_cast<float>(yyjson_get_num(rmin_val));
@@ -315,8 +350,14 @@ bool Graph::parse_doc(yyjson_doc* doc) {
 
     // Parse active_variation
     yyjson_val* av_val = yyjson_obj_get(root, "active_variation");
-    if (av_val && yyjson_is_int(av_val))
+    if (av_val && yyjson_is_int(av_val)) {
         active_variation_ = static_cast<int>(yyjson_get_int(av_val));
+        if (active_variation_ >= static_cast<int>(variations_.size())) {
+            std::fprintf(stderr, "[vivid] Graph: active_variation %d out of bounds (%zu variations), resetting to -1\n",
+                         active_variation_, variations_.size());
+            active_variation_ = -1;
+        }
+    }
 
     // Parse quantize_clock
     yyjson_val* qc_val = yyjson_obj_get(root, "quantize_clock");
