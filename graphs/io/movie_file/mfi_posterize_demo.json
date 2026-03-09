@@ -1,82 +1,81 @@
 {
-  "meta": {
-    "id": "mfi_posterize_demo",
-    "title": "Mfi Posterize",
-    "description": "Mfi Posterize demo graph.",
-    "tags": [
-      "file",
-      "mfi",
-      "posterize",
-      "demo"
+    "nodes": {
+        "vid": {
+            "type": "MovieLoaded",
+            "params": {
+                "speed": 1.0,
+                "play_mode": 0.0,
+                "file": "../../../assets/lake.mp4"
+            },
+            "layout": {
+                "x": 15.6953125,
+                "y": 440.79296875
+            }
+        },
+        "audio": {
+            "type": "MovieAudioOut",
+            "params": {
+                "file": "../../../assets/lake.mp4"
+            },
+            "layout": {
+                "x": 235.4609375,
+                "y": 549.87890625
+            }
+        },
+        "levels": {
+            "type": "Levels",
+            "params": {
+                "gamma": 0.8999999761581421,
+                "contrast": 1.5,
+                "brightness": 0.10000000149011612
+            },
+            "layout": {
+                "x": 243.0625,
+                "y": 282.34765625
+            }
+        },
+        "posterize": {
+            "type": "Posterize",
+            "params": {
+                "levels": 6.0
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        },
+        "aout": {
+            "type": "audio_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "vid/texture",
+            "to": "levels/input"
+        },
+        {
+            "from": "levels/texture",
+            "to": "posterize/input"
+        },
+        {
+            "from": "posterize/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "vid/time",
+            "to": "audio/video_time"
+        },
+        {
+            "from": "audio/left",
+            "to": "aout/left"
+        },
+        {
+            "from": "audio/right",
+            "to": "aout/right"
+        }
     ],
-    "difficulty": "intermediate",
-    "domains": [
-      "io",
-      "gpu"
-    ],
-    "requires_packages": [],
-    "featured_rank": 44
-  },
-  "nodes": {
-    "vid": {
-      "type": "MovieFileIn",
-      "params": {
-        "file": "../../../media/lake.mp4",
-        "play_mode": 0,
-        "speed": 1.0
-      }
-    },
-    "audio": {
-      "type": "MovieFileAudioIn",
-      "params": {
-        "file": "../../../media/lake.mp4"
-      }
-    },
-    "levels": {
-      "type": "Levels",
-      "params": {
-        "brightness": 0.1,
-        "contrast": 1.5,
-        "gamma": 0.9
-      }
-    },
-    "posterize": {
-      "type": "Posterize",
-      "params": {
-        "levels": 6.0
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    },
-    "aout": {
-      "type": "audio_out"
+    "viewport": {
+        "pan_x": 0.0,
+        "pan_y": 0.0,
+        "zoom": 1.0
     }
-  },
-  "connections": [
-    {
-      "from": "vid/texture",
-      "to": "levels/input"
-    },
-    {
-      "from": "levels/texture",
-      "to": "posterize/input"
-    },
-    {
-      "from": "posterize/texture",
-      "to": "vout/input"
-    },
-    {
-      "from": "vid/time",
-      "to": "audio/video_time"
-    },
-    {
-      "from": "audio/left",
-      "to": "aout/left"
-    },
-    {
-      "from": "audio/right",
-      "to": "aout/right"
-    }
-  ]
 }

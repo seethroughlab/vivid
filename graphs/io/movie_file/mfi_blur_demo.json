@@ -19,9 +19,9 @@
   },
   "nodes": {
     "img": {
-      "type": "MovieFileIn",
+      "type": "MovieLoaded",
       "params": {
-        "file": "../../../media/nature.jpg"
+        "file": "../../../assets/nature.jpg"
       }
     },
     "blur": {

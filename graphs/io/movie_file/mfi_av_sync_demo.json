@@ -1,71 +1,72 @@
 {
-  "meta": {
-    "id": "mfi_av_sync_demo",
-    "title": "Mfi Av Sync",
-    "description": "Mfi Av Sync demo graph.",
-    "tags": [
-      "file",
-      "mfi",
-      "av",
-      "sync",
-      "demo"
+    "nodes": {
+        "vid": {
+            "type": "MovieLoaded",
+            "params": {
+                "file": "../../../assets/camera.mp4"
+            },
+            "layout": {
+                "x": 29.746726989746094,
+                "y": 408.754638671875
+            }
+        },
+        "audio": {
+            "type": "MovieAudioOut",
+            "params": {
+                "file": "../../../assets/camera.mp4"
+            },
+            "layout": {
+                "x": 230.0,
+                "y": 512.3734130859375
+            }
+        },
+        "rev": {
+            "type": "Reverb",
+            "params": {
+                "damping": 0.4000000059604645,
+                "room_size": 0.5
+            },
+            "layout": {
+                "x": 430.0,
+                "y": 450.8733825683594
+            }
+        },
+        "vout": {
+            "type": "video_out",
+            "layout": {
+                "x": 230.0,
+                "y": 335.3733825683594
+            }
+        },
+        "aout": {
+            "type": "audio_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "vid/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "vid/time",
+            "to": "audio/video_time"
+        },
+        {
+            "from": "vid/speed",
+            "to": "audio/video_speed"
+        },
+        {
+            "from": "audio/left",
+            "to": "rev/input"
+        },
+        {
+            "from": "rev/output",
+            "to": "aout/input"
+        }
     ],
-    "difficulty": "intermediate",
-    "domains": [
-      "io",
-      "gpu",
-      "audio"
-    ],
-    "requires_packages": [],
-    "featured_rank": 38
-  },
-  "nodes": {
-    "vid": {
-      "type": "MovieFileIn",
-      "params": {
-        "file": "../../../media/camera.mp4"
-      }
-    },
-    "audio": {
-      "type": "MovieFileAudioIn",
-      "params": {
-        "file": "../../../media/camera.mp4"
-      }
-    },
-    "rev": {
-      "type": "Reverb",
-      "params": {
-        "room_size": 0.5,
-        "damping": 0.4
-      }
-    },
-    "vout": {
-      "type": "video_out"
-    },
-    "aout": {
-      "type": "audio_out"
+    "viewport": {
+        "pan_x": 6.698161602020264,
+        "pan_y": 8.960257530212402,
+        "zoom": 0.9870792627334595
     }
-  },
-  "connections": [
-    {
-      "from": "vid/texture",
-      "to": "vout/input"
-    },
-    {
-      "from": "vid/time",
-      "to": "audio/video_time"
-    },
-    {
-      "from": "vid/speed",
-      "to": "audio/video_speed"
-    },
-    {
-      "from": "audio/left",
-      "to": "rev/input"
-    },
-    {
-      "from": "rev/output",
-      "to": "aout/input"
-    }
-  ]
 }

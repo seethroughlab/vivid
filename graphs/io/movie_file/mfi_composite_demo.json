@@ -19,25 +19,25 @@
   },
   "nodes": {
     "vid1": {
-      "type": "MovieFileIn",
+      "type": "MovieLoaded",
       "params": {
-        "file": "../../../media/camera.mp4",
+        "file": "../../../assets/camera.mp4",
         "play_mode": 0,
         "speed": 1.0
       }
     },
     "vid2": {
-      "type": "MovieFileIn",
+      "type": "MovieLoaded",
       "params": {
-        "file": "../../../media/kitchen.mp4",
+        "file": "../../../assets/kitchen.mp4",
         "play_mode": 0,
         "speed": 0.5
       }
     },
     "audio": {
-      "type": "MovieFileAudioIn",
+      "type": "MovieAudioOut",
       "params": {
-        "file": "../../../media/camera.mp4"
+        "file": "../../../assets/camera.mp4"
       }
     },
     "comp": {

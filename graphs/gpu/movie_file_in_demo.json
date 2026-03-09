@@ -19,9 +19,9 @@
   },
     "nodes": {
         "mfi1": {
-            "type": "MovieFileIn",
+            "type": "MovieLoaded",
             "params": {
-                "file": "../../media/photo.jpg"
+                "file": "../../assets/photo.jpg"
             },
             "layout": {
                 "x": 30.0,

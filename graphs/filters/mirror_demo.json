@@ -16,17 +16,17 @@
   },
   "nodes": {
     "vid": {
-      "type": "MovieFileIn",
+      "type": "MovieLoaded",
       "params": {
-        "file": "../../media/lake.mp4",
+        "file": "../../assets/lake.mp4",
         "play_mode": 0,
         "speed": 1.0
       }
     },
     "audio": {
-      "type": "MovieFileAudioIn",
+      "type": "MovieAudioOut",
       "params": {
-        "file": "../../media/lake.mp4"
+        "file": "../../assets/lake.mp4"
       }
     },
     "mirror": {

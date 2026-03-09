@@ -16,17 +16,17 @@
   },
   "nodes": {
     "vid": {
-      "type": "MovieFileIn",
+      "type": "MovieLoaded",
       "params": {
-        "file": "../../media/camera.mp4",
+        "file": "../../assets/camera.mp4",
         "play_mode": 0,
         "speed": 1.0
       }
     },
     "audio": {
-      "type": "MovieFileAudioIn",
+      "type": "MovieAudioOut",
       "params": {
-        "file": "../../media/camera.mp4"
+        "file": "../../assets/camera.mp4"
       }
     },
     "scanlines": {

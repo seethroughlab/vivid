@@ -1,0 +1,124 @@
+{
+  "meta": {
+    "id": "mfi_space_cycle_sync_demo",
+    "title": "Movie File Space Cycle (Sync Folder)",
+    "description": "Press Space (with UI hidden) to cycle videos in assets/sync with audio/video sync via string ports.",
+    "tags": [
+      "movie",
+      "string-ports",
+      "keyboard",
+      "folder-list",
+      "demo"
+    ],
+    "difficulty": "intermediate",
+    "domains": [
+      "io",
+      "control",
+      "gpu",
+      "audio"
+    ],
+    "requires_packages": [],
+    "featured_rank": 44
+  },
+  "nodes": {
+    "kb": {
+      "type": "Keyboard",
+      "params": {
+        "key": "space"
+      }
+    },
+    "step": {
+      "type": "StepCounter",
+      "params": {
+        "initial": 0
+      }
+    },
+    "files": {
+      "type": "FolderList",
+      "params": {
+        "folder": "../../../assets/sync/hap_only",
+        "extensions": "mov",
+        "recursive": false,
+        "sort_mode": 0
+      }
+    },
+    "pick": {
+      "type": "StringSelect",
+      "params": {
+        "wrap": true
+      }
+    },
+    "movie": {
+      "type": "MovieLoaded",
+      "params": {
+        "file": "",
+        "play_mode": 0,
+        "speed": 1.0
+      }
+    },
+    "movie_audio": {
+      "type": "MovieAudioOut",
+      "params": {
+        "file": "",
+        "volume": 1.0,
+        "video_time": 0.0,
+        "video_speed": 1.0
+      }
+    },
+    "movie_video": {
+      "type": "MovieVideoOut"
+    },
+    "aout": {
+      "type": "audio_out"
+    },
+    "vout": {
+      "type": "video_out"
+    }
+  },
+  "connections": [
+    {
+      "from": "kb/pressed",
+      "to": "step/trigger"
+    },
+    {
+      "from": "files/count",
+      "to": "step/modulus"
+    },
+    {
+      "from": "files/files",
+      "to": "pick/files"
+    },
+    {
+      "from": "step/index",
+      "to": "pick/index"
+    },
+    {
+      "from": "pick/file",
+      "to": "movie/file_in"
+    },
+    {
+      "from": "movie/media_clock",
+      "to": "movie_audio/media_stream"
+    },
+    {
+      "from": "movie/media_clock",
+      "to": "movie_video/media_stream"
+    },
+    {
+      "from": "movie/texture",
+      "to": "movie_video/texture"
+    },
+    {
+      "from": "movie_audio/left",
+      "to": "aout/left"
+    },
+    {
+      "from": "movie_audio/right",
+      "to": "aout/right"
+    },
+    {
+      "from": "movie_video/texture",
+      "to": "vout/input"
+    }
+  ]
+}
