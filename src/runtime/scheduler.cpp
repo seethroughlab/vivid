@@ -354,6 +354,17 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                 std::fprintf(stderr, "[vivid] Scheduler: missing operator type '%s' (node '%s') — using placeholder\n",
                              ndef.type.c_str(), ndef.id.c_str());
             }
+
+            // Warn if this looks like a GPU-domain operator — texture chains will be broken.
+            for (const auto& name : out_names) {
+                if (name == "texture" || name == "output") {
+                    std::fprintf(stderr,
+                        "[vivid] WARNING: missing operator '%s' (node '%s') appears to be GPU-domain"
+                        " (has output port '%s'). GPU texture chain will be broken — outputs will be null.\n",
+                        ndef.type.c_str(), ndef.id.c_str(), name.c_str());
+                    break;
+                }
+            }
         }
 
         node_index[ndef.id] = static_cast<uint32_t>(nodes_.size());
@@ -644,12 +655,14 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
     }
     // (upstream_nodes built above; no per-upstream cached state needed)
 
-    // Print evaluation order
-    std::fprintf(stderr, "[vivid] Evaluation order:");
-    for (uint32_t i = 0; i < n; ++i) {
-        std::fprintf(stderr, "%s%s", (i == 0 ? " " : " → "), nodes_[i].node_id.c_str());
+    // Print evaluation order (gated on VIVID_VERBOSE to avoid noise on every hot-reload)
+    if (std::getenv("VIVID_VERBOSE")) {
+        std::fprintf(stderr, "[vivid] Evaluation order:");
+        for (uint32_t i = 0; i < n; ++i) {
+            std::fprintf(stderr, "%s%s", (i == 0 ? " " : " → "), nodes_[i].node_id.c_str());
+        }
+        std::fprintf(stderr, "\n");
     }
-    std::fprintf(stderr, "\n");
 
     return true;
 }
@@ -819,7 +832,6 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         ctx.file_param_values = ns.file_param_ptrs.empty()
                                     ? nullptr : ns.file_param_ptrs.data();
         ctx.file_param_count  = static_cast<uint32_t>(ns.file_param_ptrs.size());
-        ctx.graph_base_dir    = graph_base_dir_.empty() ? "" : graph_base_dir_.c_str();
         ctx.shared_handles = vivid::shared_handle_service();
 
         // GPU state: build per-node VividGpuState with this node's texture
@@ -1047,10 +1059,16 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         ns.processed_this_tick = true;
     }
 
-    // Propagate control→audio param wires for inspector display.
-    // Audio nodes are skipped in the main loop (they run on the audio thread),
-    // but their scheduler-side param_values must reflect modulation so the
-    // inspector shows animated values.
+    // Propagate control→audio param wires for inspector display and push_params() staging.
+    // Audio nodes are skipped in the main loop (they run on the audio thread), but their
+    // scheduler-side param_values must reflect modulation so:
+    //   (a) the inspector shows animated values, and
+    //   (b) push_params() can read the current modulated value and write it to the
+    //       lock-free audio snapshot.
+    //
+    // THREADING: tick() and push_params() both run on the main thread, sequentially in the
+    // same frame (tick → push_params). The audio callback never reads scheduler NodeState;
+    // it reads only from the double-buffered AudioEngine snapshot. No cross-thread data race.
     for (const auto& w : wires_) {
         if (!w.targets_param) continue;
         auto& to_ns = nodes_[w.to_node_idx];
@@ -1136,7 +1154,9 @@ bool Scheduler::is_audio_type(const std::string& type_name) const {
 }
 
 void Scheduler::inject_external_output(uint32_t node_idx, uint32_t port_idx, float value) {
+    if (node_idx >= nodes_.size()) return;
     auto& ns = nodes_[node_idx];
+    if (port_idx >= ns.output_values.size()) return;
     if (ns.output_values[port_idx] != value) {
         ns.output_values[port_idx] = value;
         ns.prev_output_values[port_idx] = value;
@@ -1146,11 +1166,12 @@ void Scheduler::inject_external_output(uint32_t node_idx, uint32_t port_idx, flo
 
 void Scheduler::inject_external_spread(uint32_t node_idx, uint32_t port_idx,
                                        const float* data, uint32_t length) {
+    if (node_idx >= nodes_.size()) return;
     auto& ns = nodes_[node_idx];
-    if (port_idx < ns.output_spreads.size()) {
-        ns.output_spreads[port_idx].assign(data, data + length);
-        ns.generation++;
-    }
+    if (port_idx >= ns.output_spreads.size()) return;
+    if (length > kMaxSpreadCapacity) length = kMaxSpreadCapacity;
+    ns.output_spreads[port_idx].assign(data, data + length);
+    ns.generation++;
 }
 
 NodeState* Scheduler::find_node_mut(const std::string& id) {
@@ -1311,6 +1332,10 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
         tex_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding
                        | WGPUTextureUsage_CopySrc | WGPUTextureUsage_CopyDst | extra_usage;
         ns.gpu_texture = wgpuDeviceCreateTexture(device, &tex_desc);
+        if (!ns.gpu_texture) {
+            std::fprintf(stderr, "[vivid] GPU texture alloc failed for node '%s'\n", ns.node_id.c_str());
+            continue;
+        }
 
         WGPUTextureViewDescriptor view_desc{};
         std::string view_label = "Node View [" + ns.node_id + "]";
@@ -1323,6 +1348,12 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
         view_desc.arrayLayerCount = 1;
         view_desc.aspect = WGPUTextureAspect_All;
         ns.gpu_texture_view = wgpuTextureCreateView(ns.gpu_texture, &view_desc);
+        if (!ns.gpu_texture_view) {
+            std::fprintf(stderr, "[vivid] GPU texture view creation failed for node '%s'\n", ns.node_id.c_str());
+            wgpuTextureRelease(ns.gpu_texture);
+            ns.gpu_texture = nullptr;
+            continue;
+        }
 
         // Allocate aux textures (same size and format as primary)
         for (size_t ai = 0; ai < ns.aux_texture_output_port_indices.size(); ++ai) {
@@ -1330,11 +1361,22 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
             WGPUTextureDescriptor aux_desc = tex_desc;
             aux_desc.label = to_sv(aux_label.c_str());
             ns.aux_gpu_textures[ai] = wgpuDeviceCreateTexture(device, &aux_desc);
+            if (!ns.aux_gpu_textures[ai]) {
+                std::fprintf(stderr, "[vivid] GPU aux texture alloc failed for node '%s' slot %zu\n",
+                             ns.node_id.c_str(), ai);
+                continue;
+            }
 
             std::string aux_view_label = "Node Aux View [" + ns.node_id + "/" + std::to_string(ai) + "]";
             WGPUTextureViewDescriptor aux_view_desc = view_desc;
             aux_view_desc.label = to_sv(aux_view_label.c_str());
             ns.aux_gpu_texture_views[ai] = wgpuTextureCreateView(ns.aux_gpu_textures[ai], &aux_view_desc);
+            if (!ns.aux_gpu_texture_views[ai]) {
+                std::fprintf(stderr, "[vivid] GPU aux texture view creation failed for node '%s' slot %zu\n",
+                             ns.node_id.c_str(), ai);
+                wgpuTextureRelease(ns.aux_gpu_textures[ai]);
+                ns.aux_gpu_textures[ai] = nullptr;
+            }
         }
 
         std::fprintf(stderr, "[vivid] Allocated %ux%u texture for node '%s'\n",

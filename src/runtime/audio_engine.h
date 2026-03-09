@@ -26,45 +26,41 @@ struct SpreadSnapshot {
 };
 
 struct AudioNodeState {
+    // --- Identity ---
     std::string node_id;
     OperatorLoader* loader;
     void* instance;
+
+    // --- Port config ---
     uint32_t input_port_count;
     uint32_t output_port_count;
     uint32_t param_count;
-    std::vector<float> param_values;
-
-    // Audio buffers: [port][sample]
-    std::vector<std::vector<float>> input_buffers;
-    std::vector<std::vector<float>> output_buffers;
-
-    // Port name → index mappings
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
     std::unordered_map<std::string, uint32_t> param_indices;
-
-    // Port type arrays (indexed by input/output port order)
     std::vector<VividPortType> input_port_types;
     std::vector<VividPortType> output_port_types;
     bool has_spread_ports = false;
     bool has_string_input_ports = false;
     bool has_data_input_ports = false;
 
-    // Spread data for cross-domain bridge
-    std::vector<SpreadSnapshot> spread_inputs;    // [input_port_idx]
-    std::vector<SpreadSnapshot> spread_outputs;   // [output_port_idx]
-    std::vector<VividSpreadPort> spread_in_ports;  // pre-allocated for process ctx
-    std::vector<VividSpreadPort> spread_out_ports;
-    std::vector<std::string> input_string_values;   // [input_port_idx]
-    std::vector<const char*> c_input_string_values; // [input_port_idx]
-    std::vector<void*> input_data_values;           // [input_port_idx]
-
-    // Pre-allocated pointer arrays (avoids audio-thread allocation)
+    // --- Per-tick buffers (pre-allocated, no audio-thread allocation) ---
+    std::vector<float> param_values;
+    std::vector<std::vector<float>> input_buffers;   // [port][sample]
+    std::vector<std::vector<float>> output_buffers;  // [port][sample]
     std::vector<float*> in_ptrs;
     std::vector<float*> out_ptrs;
 
-    // Error state — written and read on the audio thread only.
-    // Propagated to the main thread via AnalysisSnapshot double-buffer.
+    // --- Spread / string / data inputs (cross-domain bridge) ---
+    std::vector<SpreadSnapshot> spread_inputs;       // [input_port_idx]
+    std::vector<SpreadSnapshot> spread_outputs;      // [output_port_idx]
+    std::vector<VividSpreadPort> spread_in_ports;    // pre-allocated for process ctx
+    std::vector<VividSpreadPort> spread_out_ports;
+    std::vector<std::string> input_string_values;    // [input_port_idx]
+    std::vector<const char*> c_input_string_values;  // [input_port_idx]
+    std::vector<void*> input_data_values;            // [input_port_idx]
+
+    // --- Error state (audio thread only; propagated via AnalysisSnapshot) ---
     bool errored = false;
     char error_message[256] = {};  // fixed-size, no allocation on audio thread
 };
@@ -99,6 +95,7 @@ struct CrossDomainSpreadWire {
     uint32_t audio_node_idx;
     uint32_t audio_port_idx;            // unified input port index
     float scale = 1.0f;
+    mutable bool truncation_warned = false;
 };
 
 // Cross-domain wire: control string output -> audio string input port
@@ -268,6 +265,7 @@ private:
 
     // Recording tap (stereo mix capture)
     RecordingTap recording_tap_;
+    uint32_t recording_overrun_count_ = 0;  // audio thread only
 };
 
 } // namespace vivid

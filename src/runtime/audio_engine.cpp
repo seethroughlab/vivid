@@ -12,7 +12,6 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
-#include <unordered_set>
 
 namespace vivid {
 
@@ -462,15 +461,15 @@ bool AudioEngine::start(bool use_null_device) {
         return false;
     }
 
+    running_ = true;
     if (ma_device_start(device_) != MA_SUCCESS) {
+        running_ = false;
         std::fprintf(stderr, "[vivid] AudioEngine: failed to start miniaudio device\n");
         ma_device_uninit(device_);
         delete device_;
         device_ = nullptr;
         return false;
     }
-
-    running_ = true;
     std::fprintf(stderr, "[vivid] AudioEngine: started (%u Hz, %u frames/buffer, %zu audio nodes)\n",
         kSampleRate, kBufferSize, nodes_.size());
     return true;
@@ -522,11 +521,11 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
                     uint32_t src_len = static_cast<uint32_t>(src.size());
                     dst.length = std::min(src_len, SpreadSnapshot::kMaxLength);
                     if (src_len > SpreadSnapshot::kMaxLength) {
-                        // Log truncation warning once per wire
-                        static std::unordered_set<const void*> warned;
-                        if (warned.insert(&dst).second) {
+                        if (!sw.truncation_warned) {
+                            sw.truncation_warned = true;
                             std::fprintf(stderr, "[vivid] spread truncated from %u to %u "
-                                "crossing to audio domain\n", src_len, SpreadSnapshot::kMaxLength);
+                                "crossing to audio domain (wire: %s → audio)\n",
+                                src_len, SpreadSnapshot::kMaxLength, sw.control_node_id.c_str());
                         }
                     }
                     if (dst.length > 0) {
@@ -960,8 +959,12 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             uint64_t rp = recording_tap_.read_pos.load(std::memory_order_acquire);
             uint64_t available = RecordingTap::kRingSize - (wp - rp);
             uint64_t samples_to_copy = chunk * 2; // stereo interleaved
-            if (samples_to_copy > available)
-                samples_to_copy = available; // drop oldest on overflow
+            if (samples_to_copy > available) {
+                if (recording_overrun_count_ == 0)
+                    std::fprintf(stderr, "[vivid] Recording tap overrun — samples dropped\n");
+                recording_overrun_count_++;
+                samples_to_copy = available;
+            }
             for (uint64_t i = 0; i < samples_to_copy; ++i) {
                 recording_tap_.ring[(wp + i) % RecordingTap::kRingSize] = dst[i];
             }

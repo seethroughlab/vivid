@@ -19,10 +19,13 @@ enum ParamLockFlags : uint8_t {
 };
 
 struct NodeState {
+    // ── Identity & lifecycle ──────────────────────────────────────────────────
     std::string node_id;
     std::string type_name;
     OperatorLoader* loader;
     void* instance;
+
+    // ── Port configuration (set once at build() time) ─────────────────────────
     uint32_t input_port_count;
     uint32_t output_port_count;
     std::vector<float> param_values;
@@ -39,7 +42,7 @@ struct NodeState {
     std::unordered_map<std::string, uint32_t> output_port_indices;
     std::unordered_map<std::string, uint32_t> param_indices;
 
-    // Generation-based cooking
+    // ── Generation-based cooking (per-tick evaluation memoization) ────────────
     bool time_dependent = false;
     bool is_gpu = false;
     bool is_audio = false;
@@ -49,22 +52,23 @@ struct NodeState {
     uint64_t last_processed_gen = 0;
     std::vector<float> prev_output_values;
 
-    // Spread data
+    // ── Spread data (per-tick values for spread ports) ────────────────────────
     std::vector<std::vector<float>> output_spreads;   // [port_idx] → spread data
     std::vector<std::vector<float>> input_spreads;    // [port_idx] → spread data
     std::vector<std::vector<std::string>> output_string_spreads; // [port_idx] → string spread
     std::vector<std::vector<std::string>> input_string_spreads;  // [port_idx] → string spread
 
-    // Pre-allocated spread port arrays for process context (avoids per-frame heap allocs)
+    // Pre-allocated staging buffers for the VividProcessContext passed to operators each tick.
+    // Sized to kMaxSpreadCapacity at build() time; operators write into these in-place.
     std::vector<VividSpreadPort> c_in_spreads;
     std::vector<VividSpreadPort> c_out_spreads;
-    std::vector<std::vector<float>> out_spread_buf;
+    std::vector<std::vector<float>> out_spread_buf;  // backing storage for c_out_spreads[i].data
     std::vector<VividStringSpreadPort> c_in_string_spreads;
     std::vector<VividStringSpreadPort> c_out_string_spreads;
     std::vector<std::vector<const char*>> in_string_spread_ptrs;
     std::vector<std::vector<const char*>> out_string_spread_ptr_buf;
 
-    // Per-node GPU texture
+    // ── GPU resources (allocated by allocate_gpu_textures()) ─────────────────
     WGPUTexture      gpu_texture      = nullptr;
     WGPUTextureView  gpu_texture_view = nullptr;
     uint32_t         gpu_tex_width    = 0;
@@ -74,14 +78,16 @@ struct NodeState {
     std::vector<WGPUTexture>     resolved_tex_raw;       // raw texture handles (parallel)
     std::vector<uint32_t>        resolved_tex_widths;    // input texture widths
     std::vector<uint32_t>        resolved_tex_heights;   // input texture heights
-    bool is_gpu_sink = false;  // GPU domain + texture inputs + no texture outputs
+    // Invariant: is_gpu_sink ↔ GPU domain node with ≥1 GPU_TEXTURE input and 0 GPU_TEXTURE outputs.
+    // The GPU sink is the terminal node of the GPU subgraph; its primary texture feeds the display.
+    bool is_gpu_sink = false;
 
     // Auxiliary texture outputs (2nd, 3rd... GPU_TEXTURE output ports), scheduler-allocated.
     std::vector<int32_t>         aux_texture_output_port_indices; // output port idx per aux slot
     std::vector<WGPUTexture>     aux_gpu_textures;
     std::vector<WGPUTextureView> aux_gpu_texture_views;
 
-    // Per-node opaque data (package-defined types, e.g. 3D scene fragments)
+    // ── Opaque data ports (package-defined types, e.g. 3D scene fragments) ────
     std::vector<void*> gpu_data_outputs;          // [data_output_slot_idx], captured each tick
     std::vector<void*> output_data_buf;           // pre-allocated buffer passed to operator via ctx
     std::vector<uint32_t> data_input_port_indices;
@@ -94,13 +100,13 @@ struct NodeState {
     bool has_string_output = false;
     bool has_string_spread_output = false;
 
-    // File (string) params — separate from float param_values
+    // ── File (string) params — separate from float param_values ──────────────
     std::vector<std::string> file_param_storage;     // owned strings
     std::vector<const char*> file_param_ptrs;        // pointers into storage
     std::unordered_map<std::string, uint32_t> file_param_indices;
     std::vector<uint8_t> file_param_is_path;         // 1=file path semantics, 0=plain text
 
-    // Error state — set by try/catch in tick(), cleared on reload
+    // ── Error state — set by try/catch in tick(), cleared on reload ───────────
     bool errored = false;
     std::string error_message;
 
