@@ -74,3 +74,14 @@ Optional package libraries:
 ```
 
 Use the same pattern for other package names.
+
+## Troubleshooting
+
+- If package graphs show up but nodes appear as `MISSING`, check for plugin ABI mismatch.
+- Typical symptom in logs: `probe: skipping ... (ABI X != runtime ABI Y)`.
+- Fix: rebuild and run the matching `vivid` binary, then rerun package rebuild:
+
+```bash
+cmake --build build
+./build/vivid rebuild <package-name>
+```

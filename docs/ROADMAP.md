@@ -20,6 +20,40 @@ Remaining active test items:
 ### Automated Coverage Gaps
 
 - [ ] Add MIDI input tests: note on/off mapping, CC mapping, channel filtering *(hardware-dependent; best handled via virtual MIDI loopback integration suite)*.
+- [~] MovieFileIn sufficient coverage gate (macOS CI):
+  - [x] Fixture corpus adopted from `assets/sync` (Hap1/Hap5/HapY + H.264 + non-HAP baseline).
+  - [x] Async lifecycle unit coverage:
+    - rapid switch supersession
+    - stale result rejection
+    - cancel in-flight load
+    - teardown cancellation safety
+  - [x] Route/fallback coverage:
+    - HAP + BC available -> compressed route
+    - HAP + BC unavailable -> AVF fallback
+    - non-HAP fixtures stay AVF route
+    - NotchLC route logic deterministic at unit layer
+  - [x] Failure determinism coverage for missing/corrupt media (stable error, no crash path in tests).
+  - [ ] CI proof: new MovieFileIn tests passing in default macOS CTest run.
+  - Superseded by active movie restart track below; keep this block as historical context while migration is in progress.
+
+### Active Track: Movie Restart (Architecture First)
+
+- [ ] Execute `docs/MOVIE-RESTART-SPEC.md` as the source of truth.
+- [ ] Phase 1: generic runtime primitives
+  - [ ] typed shared-handle registry
+  - [ ] generic cross-domain `VIVID_PORT_DATA` bridge
+  - [ ] data-port introspection updates (control-server/MCP)
+- [ ] Phase 2: operator-layer media session architecture (`vivid-video` style in core repo first)
+- [x] Phase 3: new trio operators (`MovieLoaded`, `MovieVideoOut`, `MovieAudioOut`)
+  - canonical operator names are now the only runtime path (legacy movie aliases removed)
+- [x] Phase 4: intentionally skipped (no compatibility wrappers, no graph migration tooling; legacy movie graphs are unsupported by design)
+- [ ] Phase 5: hardening/rollout + long-loop stability validation against `assets/sync` (active)
+  - [x] Add media-session stress instrumentation (audio underruns/overflow, queue high-water, frame drops, sync action counters, generation transitions)
+  - [x] Add instrumentation assertions in `test_media_session_queue`
+  - [x] Add deterministic long-loop sync-policy regression (`test_movie_long_loop_sync`) with gate/chatter/resync thresholds
+  - [ ] Run runtime `assets/sync` long-loop validation and capture acceptable thresholds for crackle/resync/underrun
+  - [ ] Close remaining acceptance criteria in `docs/MOVIE-RESTART-SPEC.md`
+- [ ] Exit gate: all acceptance criteria in `docs/MOVIE-RESTART-SPEC.md` are met.
 
 ### Inner/Outer Loop Manual Verification
 
