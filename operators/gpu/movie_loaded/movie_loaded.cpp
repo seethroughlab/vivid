@@ -178,7 +178,6 @@ struct MovieLoaded : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"file_in", VIVID_PORT_CONTROL_STRING, VIVID_PORT_INPUT});
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
         out.push_back({"time", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"speed", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
@@ -199,9 +198,8 @@ struct MovieLoaded : vivid::OperatorBase {
             }
         }
 
+        // Read file path from param (scheduler updates it if wired)
         std::string effective_path = file.str_value;
-        if (ctx->input_string_values && !ns_input_file(ctx).empty())
-            effective_path = ns_input_file(ctx);
 
         if (effective_path != last_path_) {
             last_path_ = effective_path;
@@ -323,12 +321,6 @@ struct MovieLoaded : vivid::OperatorBase {
     }
 
 private:
-    static std::string ns_input_file(const VividProcessContext* ctx) {
-        if (!ctx || !ctx->input_string_values) return {};
-        const char* s = ctx->input_string_values[0];
-        return s ? std::string(s) : std::string();
-    }
-
     static double wrap_time(double t, double duration) {
         if (duration <= 0.0) return std::max(0.0, t);
         double out = std::fmod(t, duration);

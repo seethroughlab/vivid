@@ -2,7 +2,7 @@
   "meta": {
     "id": "mfi_space_cycle_sync_demo",
     "title": "Movie File Space Cycle (Sync Folder)",
-    "description": "Press Space (with UI hidden) to cycle videos in assets/sync with audio/video sync via string ports.",
+    "description": "Press Space (with UI hidden) to cycle videos in assets/sync with audio/video sync via wired params.",
     "tags": [
       "movie",
       "string-ports",
@@ -105,7 +105,7 @@
     },
     {
       "from": "pick/file",
-      "to": "movie/file_in"
+      "to": "movie/file"
     },
     {
       "from": "movie/media_clock",
@@ -133,7 +133,7 @@
     },
     {
       "from": "bname/name",
-      "to": "label/text_in"
+      "to": "label/text"
     },
     {
       "from": "label/texture",

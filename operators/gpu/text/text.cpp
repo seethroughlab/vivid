@@ -113,7 +113,6 @@ struct Text : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"text_in", VIVID_PORT_CONTROL_STRING, VIVID_PORT_INPUT});
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
@@ -128,12 +127,8 @@ struct Text : vivid::OperatorBase {
             }
         }
 
-        // Use string input port if connected, otherwise fall back to param
+        // Read text from param (scheduler updates it if wired)
         std::string current_text = text.str_value;
-        if (ctx->input_string_values) {
-            const char* s = ctx->input_string_values[0];
-            if (s && s[0] != '\0') current_text = s;
-        }
 
         // Check if glyph texture needs re-bake
         uint32_t w = gpu->output_width;
