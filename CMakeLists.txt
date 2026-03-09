@@ -1450,22 +1450,6 @@ add_executable(test_movie_load_async
 target_include_directories(test_movie_load_async PRIVATE src tests ${CMAKE_SOURCE_DIR})
 add_test(NAME test_movie_load_async COMMAND test_movie_load_async WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(test_movie_audio_sync_policy
-    tests/test_movie_audio_sync_policy.cpp
-)
-target_include_directories(test_movie_audio_sync_policy PRIVATE src tests ${CMAKE_SOURCE_DIR})
-add_test(NAME test_movie_audio_sync_policy
-    COMMAND test_movie_audio_sync_policy
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-
-add_executable(test_movie_long_loop_sync
-    tests/test_movie_long_loop_sync.cpp
-)
-target_include_directories(test_movie_long_loop_sync PRIVATE src tests ${CMAKE_SOURCE_DIR})
-add_test(NAME test_movie_long_loop_sync
-    COMMAND test_movie_long_loop_sync
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-
 add_executable(test_media_clock
     tests/test_media_clock.cpp
 )

@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cmath>
+#include <vector>
 
 #include "operators/shared/media_session/media_session.h"
 
@@ -125,19 +126,77 @@ int main() {
 
     float short_l[4] = {};
     float short_r[4] = {};
+    const double time_before_underrun = session.audio_read_head_media_time.load();
     uint32_t short_read = vivid::media::media_session_audio_read(session, short_l, short_r, 4);
     expect_true(short_read == 0, "audio underrun read returns available frame count");
     expect_true(session.audio_underrun_callbacks.load() >= 1, "audio underrun callback counter increments");
     expect_true(session.audio_underrun_frames.load() >= 4, "audio underrun frame counter increments");
+    // Time must still advance during underruns to match audio hardware wall-clock progress.
+    // 4 frames * speed(2.0) / sample_rate(10.0) = 0.8
+    const double expected_underrun_advance = 4.0 * 2.0 / 10.0;
+    expect_true(std::fabs(session.audio_read_head_media_time.load() -
+                          (time_before_underrun + expected_underrun_advance)) < 1e-6,
+                "audio underrun still advances media-time by frames*speed/sample_rate");
 
-    float big_l[vivid::media::MediaSession::kAudioRingCapacity] = {};
-    float big_r[vivid::media::MediaSession::kAudioRingCapacity] = {};
+    std::vector<float> big_l(vivid::media::MediaSession::kAudioRingCapacity, 0.0f);
+    std::vector<float> big_r(vivid::media::MediaSession::kAudioRingCapacity, 0.0f);
     uint32_t overflow_write = vivid::media::media_session_audio_write(
-        session, big_l, big_r, vivid::media::MediaSession::kAudioRingCapacity);
+        session, big_l.data(), big_r.data(), vivid::media::MediaSession::kAudioRingCapacity);
     expect_true(overflow_write < vivid::media::MediaSession::kAudioRingCapacity,
                 "audio write respects ring capacity");
     expect_true(session.audio_write_overflow_frames.load() > 0,
                 "audio write overflow counter increments");
+
+    // --- Epoch-based ring clear test ---
+    {
+        vivid::media::MediaSession s2;
+        s2.audio_ring_sample_rate.store(48000.0f);
+        s2.audio_ring_speed.store(1.0f);
+        float wl[8] = {1,2,3,4,5,6,7,8};
+        float wr[8] = {1,2,3,4,5,6,7,8};
+        vivid::media::media_session_audio_write(s2, wl, wr, 8);
+        expect_true(vivid::media::media_session_audio_available_read(s2) == 8,
+                    "epoch test: 8 frames written");
+
+        uint32_t epoch_before = s2.audio_ring_epoch.load();
+        vivid::media::media_session_audio_ring_clear(s2, 5.0);
+        expect_true(s2.audio_ring_epoch.load() == epoch_before + 1,
+                    "epoch test: ring_clear increments epoch");
+        expect_true(vivid::media::media_session_audio_available_read(s2) == 0,
+                    "epoch test: ring empty after clear");
+        expect_true(std::fabs(s2.audio_read_head_media_time.load() - 5.0) < 1e-6,
+                    "epoch test: ring_clear with reset_time sets read-head");
+        expect_true(std::fabs(s2.audio_write_head_media_time.load() - 5.0) < 1e-6,
+                    "epoch test: ring_clear with reset_time sets write-head");
+    }
+
+    // --- Write-head PTS field test (no clamp — write_head is informational only) ---
+    {
+        vivid::media::MediaSession s3;
+        s3.audio_ring_sample_rate.store(100.0f);
+        s3.audio_ring_speed.store(1.0f);
+        s3.audio_read_head_media_time.store(0.0);
+        s3.audio_write_head_media_time.store(0.5);
+        // During underrun, read-head advances by full frames regardless of write-head.
+        // advance = 100 * 1.0 / 100.0 = 1.0
+        float rl[100] = {};
+        float rr[100] = {};
+        vivid::media::media_session_audio_read(s3, rl, rr, 100);
+        expect_true(std::fabs(s3.audio_read_head_media_time.load() - 1.0) < 1e-6,
+                    "write-head is informational: read-head advances past it during underrun");
+    }
+
+    // --- Pre-roll flag test ---
+    {
+        vivid::media::MediaSession s4;
+        expect_true(s4.audio_preroll_ready.load() == 0, "preroll flag starts at 0");
+        s4.audio_preroll_ready.store(1, std::memory_order_release);
+        expect_true(s4.audio_preroll_ready.load() == 1, "preroll flag can be set to 1");
+        vivid::media::media_session_audio_ring_clear(s4);
+        // ring_clear does NOT reset preroll — that's the caller's responsibility
+        expect_true(s4.audio_preroll_ready.load() == 1,
+                    "preroll flag not reset by ring_clear (caller responsibility)");
+    }
 
     if (g_failures != 0) {
         std::fprintf(stderr, "\n%d test(s) failed.\n", g_failures);

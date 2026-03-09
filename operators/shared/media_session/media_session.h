@@ -83,12 +83,14 @@ struct MediaSession {
     // Shared ownership for audio extractor/ring-buffer path.
     std::mutex audio_owner_mu;
     std::shared_ptr<::AVFAudioExtractor> audio_extractor;
-    static constexpr uint32_t kAudioRingCapacity = 96000;
+    static constexpr uint32_t kAudioRingCapacity = 240000;
     std::array<float, kAudioRingCapacity> audio_left{};
     std::array<float, kAudioRingCapacity> audio_right{};
     std::atomic<uint32_t> audio_write_pos{0};
     std::atomic<uint32_t> audio_read_pos{0};
     std::atomic<double> audio_read_head_media_time{0.0};
+    std::atomic<double> audio_write_head_media_time{0.0};
+    std::atomic<uint32_t> audio_ring_epoch{0};
     std::atomic<float> audio_ring_sample_rate{48000.0f};
     std::atomic<float> audio_ring_speed{1.0f};
     std::atomic<uint64_t> audio_frames_written{0};
@@ -102,6 +104,9 @@ struct MediaSession {
     std::atomic<uint64_t> sync_resync_applied{0};
     std::atomic<uint64_t> sync_skip_actions{0};
     std::atomic<uint64_t> sync_silence_actions{0};
+
+    // Pre-roll: fill thread sets this once ring has >= 0.5s of data.
+    std::atomic<uint8_t> audio_preroll_ready{0};
 
     // Shared ownership for video-frame event queue metadata.
     std::mutex video_queue_mu;
@@ -161,10 +166,12 @@ inline std::optional<VideoFramePayload> media_session_pop_video_frame(MediaSessi
     return out;
 }
 
-inline void media_session_audio_ring_clear(MediaSession& s) {
+inline void media_session_audio_ring_clear(MediaSession& s, double reset_time = 0.0) {
     s.audio_write_pos.store(0, std::memory_order_relaxed);
     s.audio_read_pos.store(0, std::memory_order_relaxed);
-    s.audio_read_head_media_time.store(0.0, std::memory_order_relaxed);
+    s.audio_read_head_media_time.store(reset_time, std::memory_order_relaxed);
+    s.audio_write_head_media_time.store(reset_time, std::memory_order_relaxed);
+    s.audio_ring_epoch.fetch_add(1, std::memory_order_release);
 }
 
 inline uint32_t media_session_audio_available_read(const MediaSession& s) {
@@ -209,6 +216,7 @@ inline uint32_t media_session_audio_read(MediaSession& s,
                                          float* right_out,
                                          uint32_t frames) {
     if (!left_out || !right_out || frames == 0) return 0;
+    const uint32_t epoch_before = s.audio_ring_epoch.load(std::memory_order_acquire);
     const uint32_t avail = media_session_audio_available_read(s);
     const uint32_t to_read = std::min(frames, avail);
     const uint32_t rp = s.audio_read_pos.load(std::memory_order_relaxed);
@@ -216,6 +224,13 @@ inline uint32_t media_session_audio_read(MediaSession& s,
         const uint32_t idx = (rp + i) % MediaSession::kAudioRingCapacity;
         left_out[i] = s.audio_left[idx];
         right_out[i] = s.audio_right[idx];
+    }
+    // If the ring was cleared mid-read, discard everything we read.
+    const uint32_t epoch_after = s.audio_ring_epoch.load(std::memory_order_acquire);
+    if (epoch_after != epoch_before) {
+        std::memset(left_out, 0, frames * sizeof(float));
+        std::memset(right_out, 0, frames * sizeof(float));
+        return 0;
     }
     if (to_read < frames) {
         std::memset(left_out + to_read, 0, (frames - to_read) * sizeof(float));
@@ -227,10 +242,13 @@ inline uint32_t media_session_audio_read(MediaSession& s,
     if (to_read > 0) {
         s.audio_frames_read.fetch_add(to_read, std::memory_order_relaxed);
     }
-    if (to_read > 0) {
+    // Always advance time by the full requested frame count (not just samples delivered).
+    // During underruns the audio hardware still advances wall time; if we only advanced
+    // by to_read the clock would permanently fall behind, causing progressive drift.
+    {
         const double sample_rate = std::max(1.0, static_cast<double>(s.audio_ring_sample_rate.load(std::memory_order_relaxed)));
-        const double speed = std::max(0.0, static_cast<double>(s.audio_ring_speed.load(std::memory_order_relaxed)));
-        const double advance = static_cast<double>(to_read) * speed / sample_rate;
+        const double spd = std::max(0.0, static_cast<double>(s.audio_ring_speed.load(std::memory_order_relaxed)));
+        const double advance = static_cast<double>(frames) * spd / sample_rate;
         const double old_time = s.audio_read_head_media_time.load(std::memory_order_relaxed);
         s.audio_read_head_media_time.store(old_time + advance, std::memory_order_relaxed);
     }
@@ -239,17 +257,22 @@ inline uint32_t media_session_audio_read(MediaSession& s,
 
 inline uint32_t media_session_audio_discard(MediaSession& s, uint32_t frames) {
     if (frames == 0) return 0;
+    const uint32_t epoch_before = s.audio_ring_epoch.load(std::memory_order_acquire);
     const uint32_t avail = media_session_audio_available_read(s);
     const uint32_t to_drop = std::min(frames, avail);
     const uint32_t rp = s.audio_read_pos.load(std::memory_order_relaxed);
+    // If ring was cleared mid-discard, bail out.
+    if (s.audio_ring_epoch.load(std::memory_order_acquire) != epoch_before) {
+        return 0;
+    }
     s.audio_read_pos.store((rp + to_drop) % MediaSession::kAudioRingCapacity, std::memory_order_release);
     if (to_drop > 0) {
         s.audio_frames_discarded.fetch_add(to_drop, std::memory_order_relaxed);
     }
     if (to_drop > 0) {
         const double sample_rate = std::max(1.0, static_cast<double>(s.audio_ring_sample_rate.load(std::memory_order_relaxed)));
-        const double speed = std::max(0.0, static_cast<double>(s.audio_ring_speed.load(std::memory_order_relaxed)));
-        const double advance = static_cast<double>(to_drop) * speed / sample_rate;
+        const double spd = std::max(0.0, static_cast<double>(s.audio_ring_speed.load(std::memory_order_relaxed)));
+        const double advance = static_cast<double>(to_drop) * spd / sample_rate;
         const double old_time = s.audio_read_head_media_time.load(std::memory_order_relaxed);
         s.audio_read_head_media_time.store(old_time + advance, std::memory_order_relaxed);
     }

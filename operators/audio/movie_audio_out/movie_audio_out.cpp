@@ -4,17 +4,126 @@
 #include "operator_api/media_stream.h"
 #include "../../shared/media_session/media_session.h"
 #include "../../shared/movie_audio/avf_audio_extractor.h"
-#include "../../shared/movie_audio/sync_policy.h"
 
 #include <atomic>
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
+
+// =============================================================================
+// AudioFillThread — dedicated thread that fills the session ring buffer
+// from the AVFAudioExtractor, independent of GPU frame rate.
+// =============================================================================
+
+class AudioFillThread {
+public:
+    void start(vivid::media::MediaSession* session, AVFAudioExtractor* extractor) {
+        stop();
+        session_.store(session, std::memory_order_release);
+        extractor_.store(extractor, std::memory_order_release);
+        running_.store(true, std::memory_order_release);
+        thread_ = std::thread([this]() { run(); });
+    }
+
+    void stop() {
+        if (!running_.load(std::memory_order_acquire)) return;
+        running_.store(false, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            wake_.notify_one();
+        }
+        if (thread_.joinable()) thread_.join();
+    }
+
+    void update_session(vivid::media::MediaSession* session) {
+        session_.store(session, std::memory_order_release);
+    }
+
+    void update_extractor(AVFAudioExtractor* extractor) {
+        extractor_.store(extractor, std::memory_order_release);
+    }
+
+    void notify() {
+        std::lock_guard<std::mutex> lock(mu_);
+        wake_.notify_one();
+    }
+
+    ~AudioFillThread() { stop(); }
+
+private:
+    static constexpr uint32_t kFillChunk = 2048;
+    // Target: keep ring ~2s ahead (at 48kHz)
+    static constexpr uint32_t kTargetAhead = 96000;
+    // Pre-roll threshold: 0.5s at 48kHz
+    static constexpr uint32_t kPrerollFrames = 24000;
+
+    void run() {
+        while (running_.load(std::memory_order_acquire)) {
+            pump();
+            std::unique_lock<std::mutex> lock(mu_);
+            wake_.wait_for(lock, std::chrono::milliseconds(5));
+        }
+    }
+
+    void pump() {
+        auto* session = session_.load(std::memory_order_acquire);
+        auto* ext = extractor_.load(std::memory_order_acquire);
+        if (!session || !ext || !ext->is_open() || !ext->has_audio()) return;
+
+        bool any_written = false;
+        uint32_t total_written = 0;
+
+        while (true) {
+            const uint32_t avail_read = vivid::media::media_session_audio_available_read(*session);
+            if (avail_read >= kTargetAhead) break;
+
+            const uint32_t writable = vivid::media::media_session_audio_available_write(*session);
+            if (writable == 0) break;
+
+            const uint32_t chunk = std::min<uint32_t>(writable, kFillChunk);
+            const uint32_t got = ext->decode_samples(fill_left_.data(), fill_right_.data(), chunk);
+            if (got == 0) break;
+
+            vivid::media::media_session_audio_write(*session,
+                                                     fill_left_.data(),
+                                                     fill_right_.data(),
+                                                     got);
+            any_written = true;
+            total_written += got;
+        }
+
+        if (any_written) {
+            session->audio_write_head_media_time.store(ext->write_head_pts(), std::memory_order_release);
+        }
+
+        // Signal pre-roll ready once we have enough buffered
+        if (session->audio_preroll_ready.load(std::memory_order_relaxed) == 0) {
+            const uint32_t depth = vivid::media::media_session_audio_available_read(*session);
+            if (depth >= kPrerollFrames) {
+                session->audio_preroll_ready.store(1, std::memory_order_release);
+            }
+        }
+    }
+
+    std::thread thread_;
+    std::atomic<bool> running_{false};
+    std::atomic<vivid::media::MediaSession*> session_{nullptr};
+    std::atomic<AVFAudioExtractor*> extractor_{nullptr};
+    std::mutex mu_;
+    std::condition_variable wake_;
+    std::array<float, kFillChunk> fill_left_{};
+    std::array<float, kFillChunk> fill_right_{};
+};
+
+// =============================================================================
+// MovieAudioOut operator
+// =============================================================================
 
 struct MovieAudioOut : vivid::OperatorBase {
     static constexpr const char* kName   = "MovieAudioOut";
@@ -22,14 +131,18 @@ struct MovieAudioOut : vivid::OperatorBase {
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> volume {"volume", 1.0f, 0.0f, 2.0f};
+    vivid::Param<int> pitch_preserve {"pitch_preserve", 1, {"Off", "On"}};
 
     MovieAudioOut() {
         vivid::semantic_tag(volume, "amplitude_linear");
         vivid::semantic_shape(volume, "scalar");
+        vivid::semantic_tag(pitch_preserve, "x_pitch_preserve");
+        vivid::semantic_shape(pitch_preserve, "enum");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&volume);
+        out.push_back(&pitch_preserve);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -46,8 +159,6 @@ struct MovieAudioOut : vivid::OperatorBase {
     };
 
     static constexpr uint32_t kInputPortMediaStream = 0;
-    static constexpr uint64_t kStartupGateCallbacks = 24;
-    static constexpr uint64_t kLoopGateCallbacks = 16;
 
     static MediaClockSnapshot read_media_clock(const VividProcessContext* ctx) {
         MediaClockSnapshot s{};
@@ -68,7 +179,6 @@ struct MovieAudioOut : vivid::OperatorBase {
         const auto* hs = shared_handles_.load(std::memory_order_acquire);
 
         // Deferred delete: by now the audio thread has observed the new pointer
-        // (at least one full audio buffer has elapsed since the previous frame).
         delete deferred_delete_;
         deferred_delete_ = nullptr;
         deferred_session_releases_.clear();
@@ -135,7 +245,11 @@ struct MovieAudioOut : vivid::OperatorBase {
             extractor_.store(session_extractor_.get(), std::memory_order_release);
             active_session_ = active_session;
             active_session_ptr_.store(active_session_, std::memory_order_release);
+            fill_thread_.update_session(active_session_);
+            fill_thread_.update_extractor(session_extractor_.get());
         } else if (!active_session && active_session_ != nullptr) {
+            fill_thread_.update_session(nullptr);
+            fill_thread_.update_extractor(nullptr);
             extractor_.store(nullptr, std::memory_order_release);
             if (session_extractor_) {
                 deferred_session_releases_.push_back(std::move(session_extractor_));
@@ -165,13 +279,11 @@ struct MovieAudioOut : vivid::OperatorBase {
         if (effective_path != last_path_) {
             last_path_ = effective_path;
 
-            // Cancel any in-flight async load
             pending_load_.reset();
 
-            // Clear current extractor immediately (audio thread gets silence).
-            // Important ownership split:
-            // - session-backed path uses shared_ptr ownership (never hand to raw deferred delete)
-            // - legacy non-session path keeps raw pointer handoff semantics
+            // Stop fill thread while we swap extractors
+            fill_thread_.update_extractor(nullptr);
+
             auto* old = extractor_.load(std::memory_order_relaxed);
             extractor_.store(nullptr, std::memory_order_release);
             if (active_session_) {
@@ -188,12 +300,13 @@ struct MovieAudioOut : vivid::OperatorBase {
             }
 
             if (!last_path_.empty()) {
-                // Launch async load on background thread
                 auto result = std::make_shared<AsyncAudioLoad>();
                 pending_load_ = result;
                 std::string path = last_path_;
-                std::thread([result, path]{
+                bool pp = (pitch_preserve.int_value() != 0);
+                std::thread([result, path, pp]{
                     auto* ext = new AVFAudioExtractor();
+                    ext->set_pitch_preserve(pp);
                     if (ext->open(path)) {
                         result->extractor = ext;
                         result->success = true;
@@ -205,15 +318,15 @@ struct MovieAudioOut : vivid::OperatorBase {
             }
             if (active_session_) {
                 vivid::media::media_session_audio_ring_clear(*active_session_);
+                active_session_->audio_preroll_ready.store(0, std::memory_order_release);
             }
-            return;  // Skip sync check on file change
+            return;
         }
 
         // Check if async load completed
         if (pending_load_ && pending_load_->done.load(std::memory_order_acquire)) {
             if (pending_load_->success) {
                 auto* old = extractor_.load(std::memory_order_relaxed);
-                // Take ownership — null it so AsyncAudioLoad destructor won't delete
                 auto* fresh = pending_load_->extractor;
                 pending_load_->extractor = nullptr;
                 if (active_session_) {
@@ -225,15 +338,23 @@ struct MovieAudioOut : vivid::OperatorBase {
                     session_extractor_ = active_session_->audio_extractor;
                     extractor_.store(session_extractor_.get(), std::memory_order_release);
                     vivid::media::media_session_audio_ring_clear(*active_session_);
+                    active_session_->audio_preroll_ready.store(0, std::memory_order_release);
                     if (old_shared) {
                         deferred_session_releases_.push_back(std::move(old_shared));
                     }
                     deferred_delete_ = nullptr;
+                    // Start/update fill thread with new extractor
+                    fill_thread_.update_extractor(session_extractor_.get());
+                    fill_thread_.update_session(active_session_);
+                    if (!fill_thread_started_) {
+                        fill_thread_.start(active_session_, session_extractor_.get());
+                        fill_thread_started_ = true;
+                    }
+                    fill_thread_.notify();
                 } else {
                     extractor_.store(fresh, std::memory_order_release);
                     deferred_delete_ = old;
                 }
-                request_startup_gate_.store(true, std::memory_order_release);
             }
             pending_load_.reset();
         }
@@ -244,23 +365,23 @@ struct MovieAudioOut : vivid::OperatorBase {
         const bool has_clock = clock_connected_.load(std::memory_order_acquire) != 0;
         if (!has_clock) return;
 
-        // Update playback speed for pitch-preserving time stretch.
+        // Update playback speed and pitch-preserve mode
         const float applied_speed =
             static_cast<float>(clock_speed_.load(std::memory_order_acquire));
         ext->set_speed(applied_speed);
         ext->set_loop(loop_enabled_);
+        ext->set_pitch_preserve(pitch_preserve.int_value() != 0);
         if (active_session_) {
             active_session_->audio_ring_speed.store(applied_speed, std::memory_order_release);
         }
 
-        // Audio thread may request a hard resync on sustained large drift.
+        // Handle seek/resync requests
         double requested = pending_resync_time_.exchange(-1.0, std::memory_order_acq_rel);
         uint64_t requested_gen = pending_resync_generation_.exchange(0, std::memory_order_acq_rel);
         if (requested >= 0.0) {
             if (requested_gen != 0 && has_clock) {
                 uint64_t live_gen = clock_generation_.load(std::memory_order_acquire);
                 if (requested_gen != live_gen) {
-                    // Stale request from a superseded source generation.
                     requested = -1.0;
                 }
             }
@@ -268,24 +389,18 @@ struct MovieAudioOut : vivid::OperatorBase {
         if (requested >= 0.0) {
             ext->resync(requested);
             if (active_session_) {
-                vivid::media::media_session_audio_ring_clear(*active_session_);
-                active_session_->audio_read_head_media_time.store(requested, std::memory_order_release);
+                vivid::media::media_session_audio_ring_clear(*active_session_, requested);
+                active_session_->audio_preroll_ready.store(0, std::memory_order_release);
                 active_session_->sync_resync_applied.fetch_add(1, std::memory_order_relaxed);
             }
-            log_sync("resync", 0.0, 0.0, requested_gen, clock_loop_epoch_.load(std::memory_order_acquire));
-            request_startup_gate_.store(true, std::memory_order_release);
-            sync_mode_ = AVSyncCorrectionMode::Locked;
-            hard_error_streak_ = 0;
+            fill_thread_.notify();
         }
 
-        // Pre-fill ring buffer from AVAssetReader
-        ext->fill_buffer();
-        if (active_session_) {
-            pump_session_audio_ring(*active_session_, *ext);
-        }
+        // Wake fill thread each frame (it also self-wakes every 5ms)
+        fill_thread_.notify();
     }
 
-    // Audio thread
+    // Audio thread — simplified: just read from ring, apply volume
     void process(const VividProcessContext* ctx) override {
         auto* audio = vivid_audio(ctx);
         if (!audio) return;
@@ -301,17 +416,12 @@ struct MovieAudioOut : vivid::OperatorBase {
         clock_connected_.store(clock.valid ? 1u : 0u, std::memory_order_release);
         if (clock.valid) {
             clock_generation_.store(clock.clock.source_generation, std::memory_order_release);
-            clock_loop_epoch_.store(clock.clock.loop_epoch, std::memory_order_release);
-            clock_local_time_s_.store(static_cast<double>(clock.clock.local_time_s), std::memory_order_release);
-            clock_monotonic_time_s_.store(clock.clock.monotonic_time_s, std::memory_order_release);
             clock_speed_.store(static_cast<double>(clock.clock.speed), std::memory_order_release);
-            clock_duration_s_.store(static_cast<double>(clock.clock.duration_s), std::memory_order_release);
             if (last_seen_clock_generation_ != clock.clock.source_generation) {
                 last_seen_clock_generation_ = clock.clock.source_generation;
-                hard_error_streak_ = 0;
-                resync_cooldown_until_cb_ = callback_counter_ + 48;
+                // New source: request resync to start
                 pending_resync_generation_.store(clock.clock.source_generation, std::memory_order_release);
-                pending_resync_time_.store(static_cast<double>(clock.clock.local_time_s), std::memory_order_release);
+                pending_resync_time_.store(0.0, std::memory_order_release);
             }
         }
 
@@ -327,170 +437,10 @@ struct MovieAudioOut : vivid::OperatorBase {
                 std::memory_order_release);
         }
         callback_counter_++;
-        const uint64_t cb = callback_counter_;
 
-        if (request_startup_gate_.exchange(false, std::memory_order_acq_rel)) {
-            startup_gate_pending_ = true;
-        }
-
-        constexpr AVSyncThresholds kSync{};
-        auto* ext = extractor_.load(std::memory_order_acquire);
-        const bool sync_ready =
-            (active_session && ext && ext->is_open() && ext->has_audio() && clock.valid);
-        if (sync_ready && !last_sync_ready_) {
-            startup_gate_pending_ = true;
-        }
-        last_sync_ready_ = sync_ready;
-
-        if (clock.valid) {
-            const uint64_t generation = clock.clock.source_generation;
-            const uint32_t loop_epoch = clock.clock.loop_epoch;
-            if (!last_clock_seen_) {
-                last_clock_seen_ = true;
-                last_clock_generation_seen_ = generation;
-                last_clock_loop_epoch_seen_ = loop_epoch;
-            } else if (generation != last_clock_generation_seen_) {
-                last_clock_generation_seen_ = generation;
-                last_clock_loop_epoch_seen_ = loop_epoch;
-                startup_gate_pending_ = true;
-            } else if (loop_epoch != last_clock_loop_epoch_seen_) {
-                last_clock_loop_epoch_seen_ = loop_epoch;
-                loop_gate_pending_ = true;
-            }
-        }
-
-        if (sync_ready) {
-            if (startup_gate_pending_) {
-                startup_gate_until_cb_ = cb + kStartupGateCallbacks;
-                startup_gate_pending_ = false;
-            }
-            if (loop_gate_pending_) {
-                loop_gate_until_cb_ = cb + kLoopGateCallbacks;
-                loop_gate_pending_ = false;
-            }
-        }
-
-        const uint64_t gate_generation =
-            clock.valid ? clock.clock.source_generation : clock_generation_.load(std::memory_order_acquire);
-        const uint32_t gate_loop_epoch =
-            clock.valid ? clock.clock.loop_epoch : clock_loop_epoch_.load(std::memory_order_acquire);
-        const bool prev_gate_active = last_startup_gate_active_ || last_loop_gate_active_;
-        const bool startup_gate_active = sync_gate_active(cb, startup_gate_until_cb_);
-        const bool loop_gate_active = sync_gate_active(cb, loop_gate_until_cb_);
-        const bool gate_active = startup_gate_active || loop_gate_active;
-        if (startup_gate_active != last_startup_gate_active_) {
-            log_gate_transition(startup_gate_active ? "startup_gate_begin" : "startup_gate_end",
-                                gate_generation, gate_loop_epoch);
-        }
-        if (loop_gate_active != last_loop_gate_active_) {
-            log_gate_transition(loop_gate_active ? "loop_gate_begin" : "loop_gate_end",
-                                gate_generation, gate_loop_epoch);
-        }
-        last_startup_gate_active_ = startup_gate_active;
-        last_loop_gate_active_ = loop_gate_active;
-        if (gate_active || prev_gate_active != gate_active) {
-            sync_mode_ = AVSyncCorrectionMode::Locked;
-            hard_error_streak_ = 0;
-        }
-
-        if (sync_ready) {
-            double target_time = 0.0;
-            double audio_time = active_session
-                ? active_session->audio_read_head_media_time.load(std::memory_order_acquire)
-                : ext->read_head_pts();
-            double speed_for_skip =
-                std::max(0.01, clock_speed_.load(std::memory_order_acquire));
-            uint64_t generation = 0;
-            uint32_t loop_epoch = 0;
-            target_time = clock.clock.monotonic_time_s;
-            speed_for_skip = std::max(0.01, static_cast<double>(clock.clock.speed));
-            generation = clock.clock.source_generation;
-            loop_epoch = clock.clock.loop_epoch;
-
-            const double error = target_time - audio_time;
-            AVSyncDecision decision =
-                decide_av_sync_stateful_gated(error, kSync, sync_mode_, gate_active);
-            switch (decision.action) {
-                case AVSyncAction::None:
-                    hard_error_streak_ = 0;
-                    log_sync("locked", error, 0.0, generation, loop_epoch);
-                    break;
-                case AVSyncAction::Skip: {
-                    hard_error_streak_ = 0;
-                    uint32_t frames_to_drop = static_cast<uint32_t>(std::ceil(
-                        decision.skip_media_s * static_cast<double>(audio->sample_rate) / speed_for_skip));
-                    if (active_session) {
-                        vivid::media::media_session_audio_discard(*active_session, frames_to_drop);
-                        active_session->sync_skip_actions.fetch_add(1, std::memory_order_relaxed);
-                    } else {
-                        ext->discard_samples(frames_to_drop);
-                    }
-                    log_sync("skip", error, decision.skip_media_s, generation, loop_epoch);
-                    break;
-                }
-                case AVSyncAction::Silence:
-                    hard_error_streak_ = 0;
-                    {
-                        const double ahead_s = std::max(0.0, -error);
-                        if (ahead_s >= kSync.critical_s &&
-                            callback_counter_ >= resync_cooldown_until_cb_ &&
-                            pending_resync_time_.load(std::memory_order_acquire) < 0.0 &&
-                            !gate_active) {
-                            const double request_local =
-                                static_cast<double>(clock.clock.local_time_s);
-                            if (auto* session = active_session_ptr_.load(std::memory_order_acquire)) {
-                                vivid::media::TransportCommand cmd;
-                                cmd.type = vivid::media::TransportCommandType::Seek;
-                                cmd.generation = generation;
-                                cmd.seek_time_s = request_local;
-                                vivid::media::media_session_enqueue_command(*session, std::move(cmd));
-                                session->sync_resync_requests.fetch_add(1, std::memory_order_relaxed);
-                            } else {
-                                pending_resync_time_.store(request_local, std::memory_order_release);
-                                pending_resync_generation_.store(generation, std::memory_order_release);
-                            }
-                            resync_cooldown_until_cb_ = callback_counter_ + 48;
-                            log_sync("resync_req_ahead", error, 0.0, generation, loop_epoch);
-                        } else {
-                            log_sync("hold_suppressed", error, 0.0, generation, loop_epoch);
-                        }
-                    }
-                    break;
-                case AVSyncAction::Resync:
-                    hard_error_streak_++;
-                    if (callback_counter_ >= resync_cooldown_until_cb_ &&
-                        hard_error_streak_ >= 3 &&
-                        pending_resync_time_.load(std::memory_order_acquire) < 0.0 &&
-                        !gate_active) {
-                        const double request_local =
-                            static_cast<double>(clock.clock.local_time_s);
-                        if (auto* session = active_session_ptr_.load(std::memory_order_acquire)) {
-                            vivid::media::TransportCommand cmd;
-                            cmd.type = vivid::media::TransportCommandType::Seek;
-                            cmd.generation = generation;
-                            cmd.seek_time_s = request_local;
-                            vivid::media::media_session_enqueue_command(*session, std::move(cmd));
-                            session->sync_resync_requests.fetch_add(1, std::memory_order_relaxed);
-                        } else {
-                            pending_resync_time_.store(request_local, std::memory_order_release);
-                            pending_resync_generation_.store(generation, std::memory_order_release);
-                        }
-                        resync_cooldown_until_cb_ = callback_counter_ + 48;
-                        hard_error_streak_ = 0;
-                        log_sync("resync_req", error, 0.0, generation, loop_epoch);
-                    } else {
-                        log_sync("resync_hold", error, 0.0, generation, loop_epoch);
-                    }
-                    std::memset(L, 0, n * sizeof(float));
-                    std::memset(R, 0, n * sizeof(float));
-                    return;
-            }
-
-            if (active_session) {
-                vivid::media::media_session_audio_read(*active_session, L, R, n);
-            } else {
-                ext->read_samples(L, R, n);
-            }
+        // Read from session ring. That's it.
+        if (active_session && clock.valid) {
+            vivid::media::media_session_audio_read(*active_session, L, R, n);
         } else {
             std::memset(L, 0, n * sizeof(float));
             std::memset(R, 0, n * sizeof(float));
@@ -502,12 +452,14 @@ struct MovieAudioOut : vivid::OperatorBase {
             L[i] *= vol;
             R[i] *= vol;
         }
-        if (active_session && (cb % 240u) == 0u) {
+
+        if (active_session && (callback_counter_ % 240u) == 0u) {
             log_session_stats(*active_session);
         }
     }
 
     ~MovieAudioOut() override {
+        fill_thread_.stop();
         const auto* hs = shared_handles_.load(std::memory_order_acquire);
         if (hs && active_stream_handle_ != 0) {
             hs->release(active_stream_handle_);
@@ -523,48 +475,11 @@ struct MovieAudioOut : vivid::OperatorBase {
     }
 
 private:
-    static void copy_small(char* dst, size_t cap, const char* src) {
-        if (!dst || cap == 0) return;
-        if (!src) {
-            dst[0] = '\0';
-            return;
-        }
-        std::strncpy(dst, src, cap - 1);
-        dst[cap - 1] = '\0';
-    }
-
-    void log_sync(const char* action, double error_s, double aux_s,
-                  uint64_t generation, uint32_t loop_epoch) {
-        const uint64_t frame = sync_log_frame_.fetch_add(1, std::memory_order_relaxed);
-        const uint64_t cooldown_until = sync_log_cooldown_until_.load(std::memory_order_relaxed);
-        if (frame < cooldown_until && std::strcmp(action, last_sync_action_) == 0) return;
-        copy_small(last_sync_action_, sizeof(last_sync_action_), action);
-        sync_log_cooldown_until_.store(frame + 120, std::memory_order_relaxed);
-        std::fprintf(stderr,
-                     "[movie_audio_out] sync_state=%s gen=%llu epoch=%u err=%.1fms aux=%.1fms\n",
-                     action,
-                     static_cast<unsigned long long>(generation),
-                     loop_epoch,
-                     error_s * 1000.0,
-                     aux_s * 1000.0);
-    }
-
-    void log_gate_transition(const char* action, uint64_t generation, uint32_t loop_epoch) {
-        std::fprintf(stderr,
-                     "[movie_audio_out] sync_state=%s gen=%llu epoch=%u err=0.0ms aux=0.0ms\n",
-                     action,
-                     static_cast<unsigned long long>(generation),
-                     loop_epoch);
-    }
-
     void log_session_stats(const vivid::media::MediaSession& session) {
         const uint64_t underrun_callbacks = session.audio_underrun_callbacks.load(std::memory_order_relaxed);
         const uint64_t underrun_frames = session.audio_underrun_frames.load(std::memory_order_relaxed);
         const uint64_t overflow_frames = session.audio_write_overflow_frames.load(std::memory_order_relaxed);
-        const uint64_t resync_req = session.sync_resync_requests.load(std::memory_order_relaxed);
         const uint64_t resync_applied = session.sync_resync_applied.load(std::memory_order_relaxed);
-        const uint64_t skip_actions = session.sync_skip_actions.load(std::memory_order_relaxed);
-        const uint64_t silence_actions = session.sync_silence_actions.load(std::memory_order_relaxed);
         const uint32_t audio_hwm = session.audio_ring_depth_high_water.load(std::memory_order_relaxed);
         const uint64_t video_dropped = session.video_payload_dropped.load(std::memory_order_relaxed);
         const uint32_t video_hwm = session.video_payload_depth_high_water.load(std::memory_order_relaxed);
@@ -572,10 +487,7 @@ private:
         if (underrun_callbacks == last_stats_underrun_callbacks_ &&
             underrun_frames == last_stats_underrun_frames_ &&
             overflow_frames == last_stats_overflow_frames_ &&
-            resync_req == last_stats_resync_req_ &&
             resync_applied == last_stats_resync_applied_ &&
-            skip_actions == last_stats_skip_actions_ &&
-            silence_actions == last_stats_silence_actions_ &&
             audio_hwm == last_stats_audio_hwm_ &&
             video_dropped == last_stats_video_dropped_ &&
             video_hwm == last_stats_video_hwm_) {
@@ -585,45 +497,21 @@ private:
         last_stats_underrun_callbacks_ = underrun_callbacks;
         last_stats_underrun_frames_ = underrun_frames;
         last_stats_overflow_frames_ = overflow_frames;
-        last_stats_resync_req_ = resync_req;
         last_stats_resync_applied_ = resync_applied;
-        last_stats_skip_actions_ = skip_actions;
-        last_stats_silence_actions_ = silence_actions;
         last_stats_audio_hwm_ = audio_hwm;
         last_stats_video_dropped_ = video_dropped;
         last_stats_video_hwm_ = video_hwm;
 
         std::fprintf(stderr,
                      "[movie_audio_out] stats underrun_cb=%llu underrun_frames=%llu overflow_frames=%llu "
-                     "resync_req=%llu resync_apply=%llu skip=%llu silence=%llu audio_hwm=%u video_drop=%llu video_hwm=%u\n",
+                     "resync_apply=%llu audio_hwm=%u video_drop=%llu video_hwm=%u\n",
                      static_cast<unsigned long long>(underrun_callbacks),
                      static_cast<unsigned long long>(underrun_frames),
                      static_cast<unsigned long long>(overflow_frames),
-                     static_cast<unsigned long long>(resync_req),
                      static_cast<unsigned long long>(resync_applied),
-                     static_cast<unsigned long long>(skip_actions),
-                     static_cast<unsigned long long>(silence_actions),
                      audio_hwm,
                      static_cast<unsigned long long>(video_dropped),
                      video_hwm);
-    }
-
-    static constexpr uint32_t kSessionPumpChunk = 1024;
-    void pump_session_audio_ring(vivid::media::MediaSession& session,
-                                 AVFAudioExtractor& ext) {
-        while (true) {
-            const uint32_t writable = vivid::media::media_session_audio_available_write(session);
-            if (writable == 0) break;
-            const uint32_t chunk = std::min<uint32_t>(writable, kSessionPumpChunk);
-            const uint32_t got = ext.read_samples(session_pump_left_.data(),
-                                                  session_pump_right_.data(),
-                                                  chunk);
-            if (got == 0) break;
-            vivid::media::media_session_audio_write(session,
-                                                    session_pump_left_.data(),
-                                                    session_pump_right_.data(),
-                                                    got);
-        }
     }
 
     struct AsyncAudioLoad {
@@ -633,8 +521,11 @@ private:
         ~AsyncAudioLoad() { delete extractor; }
     };
 
+    AudioFillThread fill_thread_;
+    bool fill_thread_started_ = false;
+
     std::atomic<AVFAudioExtractor*> extractor_{nullptr};
-    AVFAudioExtractor* deferred_delete_ = nullptr;  // held for one frame before deletion
+    AVFAudioExtractor* deferred_delete_ = nullptr;
     std::shared_ptr<AsyncAudioLoad> pending_load_;
     std::string last_path_;
     bool loop_enabled_ = true;
@@ -643,29 +534,9 @@ private:
     std::atomic<uint64_t> pending_resync_generation_{0};
     std::atomic<uint8_t> clock_connected_{0};
     std::atomic<uint64_t> clock_generation_{0};
-    std::atomic<uint32_t> clock_loop_epoch_{0};
-    std::atomic<double> clock_local_time_s_{0.0};
-    std::atomic<double> clock_monotonic_time_s_{0.0};
     std::atomic<double> clock_speed_{1.0};
-    std::atomic<double> clock_duration_s_{0.0};
     uint64_t last_seen_clock_generation_ = 0;
-    uint64_t startup_gate_until_cb_ = 0;
-    uint64_t loop_gate_until_cb_ = 0;
-    bool startup_gate_pending_ = false;
-    bool loop_gate_pending_ = false;
-    bool last_startup_gate_active_ = false;
-    bool last_loop_gate_active_ = false;
-    bool last_sync_ready_ = false;
-    bool last_clock_seen_ = false;
-    uint64_t last_clock_generation_seen_ = 0;
-    uint32_t last_clock_loop_epoch_seen_ = 0;
     uint64_t callback_counter_ = 0;
-    uint64_t resync_cooldown_until_cb_ = 0;
-    uint32_t hard_error_streak_ = 0;
-    AVSyncCorrectionMode sync_mode_ = AVSyncCorrectionMode::Locked;
-    std::atomic<bool> request_startup_gate_{false};
-    std::atomic<uint64_t> sync_log_frame_{0};
-    std::atomic<uint64_t> sync_log_cooldown_until_{0};
     std::atomic<const VividSharedHandleService*> shared_handles_{nullptr};
     std::atomic<uint64_t> pending_stream_handle_{0};
     std::atomic<uint64_t> pending_stream_ptr_{0};
@@ -674,18 +545,10 @@ private:
     std::atomic<vivid::media::MediaSession*> active_session_ptr_{nullptr};
     std::shared_ptr<AVFAudioExtractor> session_extractor_;
     std::vector<std::shared_ptr<AVFAudioExtractor>> deferred_session_releases_;
-    std::array<float, 4096> scratch_left_{};
-    std::array<float, 4096> scratch_right_{};
-    std::array<float, kSessionPumpChunk> session_pump_left_{};
-    std::array<float, kSessionPumpChunk> session_pump_right_{};
-    char last_sync_action_[32] = {};
     uint64_t last_stats_underrun_callbacks_ = 0;
     uint64_t last_stats_underrun_frames_ = 0;
     uint64_t last_stats_overflow_frames_ = 0;
-    uint64_t last_stats_resync_req_ = 0;
     uint64_t last_stats_resync_applied_ = 0;
-    uint64_t last_stats_skip_actions_ = 0;
-    uint64_t last_stats_silence_actions_ = 0;
     uint64_t last_stats_video_dropped_ = 0;
     uint32_t last_stats_audio_hwm_ = 0;
     uint32_t last_stats_video_hwm_ = 0;

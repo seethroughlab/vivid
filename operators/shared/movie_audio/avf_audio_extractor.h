@@ -5,9 +5,8 @@
 #include <string>
 
 // AVFoundation-based audio extractor for macOS.
-// Decodes audio from a movie file into a lock-free SPSC ring buffer.
-// Main thread: open/close/fill_buffer/resync
-// Audio thread: read_samples/read_head_pts/discard_samples
+// Decodes audio from a movie file.
+// All methods are called from the fill thread (or main thread during open/close).
 
 class AVFAudioExtractor {
 public:
@@ -20,25 +19,24 @@ public:
     bool has_audio() const;
     float duration() const;
 
-    // Main thread: set playback speed for pitch-preserving time stretch
+    // Set playback speed for pitch-preserving time stretch (or rate change)
     void set_speed(float speed);
-    // Main thread: control EOF loop behavior
+    // Control EOF loop behavior
     void set_loop(bool loop);
+    // Toggle pitch-preserving mode (true = TimePitch, false = rate-only)
+    void set_pitch_preserve(bool preserve);
+    bool pitch_preserve() const;
 
-    // Main thread: decode into ring buffer (call each frame)
-    void fill_buffer();
+    // Decode samples directly into caller-provided buffers.
+    // Returns the number of frames actually decoded.
+    // This replaces the old fill_buffer + read_samples two-stage pipeline.
+    uint32_t decode_samples(float* left, float* right, uint32_t max_frames);
 
-    // Main thread: recreate AVAssetReader at specified time position
+    // Recreate AVAssetReader at specified time position
     void resync(double time_seconds);
 
-    // Audio thread: read deinterleaved samples from ring buffer
-    uint32_t read_samples(float* left, float* right, uint32_t max_frames);
-
-    // Audio thread: drop samples from ring buffer to catch up to external clock
-    uint32_t discard_samples(uint32_t max_frames);
-
-    // Audio thread: PTS of current read position
-    double read_head_pts() const;
+    // PTS of current write position (latest decoded media time)
+    double write_head_pts() const;
 
 private:
     struct Impl;

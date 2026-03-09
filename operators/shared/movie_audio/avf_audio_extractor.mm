@@ -10,42 +10,7 @@
 #include <algorithm>
 
 // =============================================================================
-// Lock-free SPSC ring buffer for stereo audio
-// =============================================================================
-
-struct AudioRingBuffer {
-    static constexpr uint32_t kCapacity = 48000;  // ~1 second at 48kHz
-
-    float left[kCapacity];
-    float right[kCapacity];
-    std::atomic<uint32_t> write_pos{0};
-    std::atomic<uint32_t> read_pos{0};
-
-    double sample_rate = 48000;  // for PTS computation
-
-    void clear() {
-        std::memset(left, 0, sizeof(left));
-        std::memset(right, 0, sizeof(right));
-        write_pos.store(0, std::memory_order_relaxed);
-        read_pos.store(0, std::memory_order_relaxed);
-    }
-
-    uint32_t available_read() const {
-        uint32_t w = write_pos.load(std::memory_order_acquire);
-        uint32_t r = read_pos.load(std::memory_order_relaxed);
-        return (w - r + kCapacity) % kCapacity;
-    }
-
-    uint32_t available_write() const {
-        uint32_t w = write_pos.load(std::memory_order_relaxed);
-        uint32_t r = read_pos.load(std::memory_order_acquire);
-        // Leave one slot empty to distinguish full from empty
-        return (r - w - 1 + kCapacity) % kCapacity;
-    }
-};
-
-// =============================================================================
-// AVFAudioExtractor::Impl — AVAudioEngine manual rendering pipeline
+// AVFAudioExtractor::Impl — decodes directly into caller buffers
 // =============================================================================
 
 struct AVFAudioExtractor::Impl {
@@ -60,27 +25,31 @@ struct AVFAudioExtractor::Impl {
     AVAudioUnitTimePitch*     timePitch    = nil;
     AVAudioFormat*            processingFormat = nil;
 
-    AudioRingBuffer ring;
     uint32_t        target_sample_rate = 48000;
     float           media_duration     = 0.0f;
     bool            opened             = false;
     bool            has_audio_track    = false;
     bool            finished_reading   = false;
     bool            loop_enabled       = true;
+    bool            pitch_preserve_    = true;
 
     // Speed / PTS tracking
     std::atomic<float>  current_speed{1.0f};
-    double              media_time_written = 0.0;   // media time corresponding to ring write head
-    std::atomic<double> read_head_media_time{0.0};  // media time at ring buffer read head
+    double              media_time_written = 0.0;
 
     static constexpr uint32_t kRenderFrameCount  = 4096;
-    static constexpr uint32_t kTargetAhead       = 24000;  // 0.5s at 48kHz
-    static constexpr uint32_t kTimePitchLatency  = 4096;   // AVAudioUnitTimePitch look-ahead
+    static constexpr uint32_t kTimePitchLatency  = 4096;
+
+    // Residual buffer: TimePitch may produce more frames than the caller wants
+    // in a single render pass. We store the leftovers here.
+    float residual_left[kRenderFrameCount];
+    float residual_right[kRenderFrameCount];
+    uint32_t residual_count = 0;
+    uint32_t residual_offset = 0;
 
     bool open(const std::string& path, uint32_t sample_rate) {
         @autoreleasepool {
             target_sample_rate = sample_rate;
-            ring.sample_rate = sample_rate;
 
             NSURL* url = [NSURL fileURLWithPath:
                 [NSString stringWithUTF8String:path.c_str()]];
@@ -88,7 +57,6 @@ struct AVFAudioExtractor::Impl {
 
             asset = [AVAsset assetWithURL:url];
 
-            // Synchronously load essential properties
             dispatch_semaphore_t sem = dispatch_semaphore_create(0);
             __block bool ready = false;
 
@@ -116,38 +84,30 @@ struct AVFAudioExtractor::Impl {
                 std::fprintf(stderr, "[avf_audio_extractor] No audio tracks in file\n");
                 has_audio_track = false;
                 opened = true;
-                return true;  // Not an error — file just has no audio
+                return true;
             }
 
             has_audio_track = true;
 
-            // Set up AVAudioEngine for manual offline rendering
-            if (!setup_engine()) {
-                return false;
+            if (pitch_preserve_) {
+                if (!setup_engine()) return false;
             }
 
-            if (!create_reader_at_time(0.0)) {
-                return false;
-            }
+            if (!create_reader_at_time(0.0)) return false;
 
-            ring.clear();
             media_time_written = 0.0;
-            read_head_media_time.store(0.0, std::memory_order_relaxed);
+            residual_count = 0;
+            residual_offset = 0;
             opened = true;
 
-            std::fprintf(stderr, "[avf_audio_extractor] Opened audio: %s (%.1fs, %uHz)\n",
-                         path.c_str(), media_duration, target_sample_rate);
-
-            // Pre-fill ring buffer so audio thread doesn't read silence initially
-            fill_buffer();
-
+            std::fprintf(stderr, "[avf_audio_extractor] Opened audio: %s (%.1fs, %uHz, pitch_preserve=%d)\n",
+                         path.c_str(), media_duration, target_sample_rate, pitch_preserve_ ? 1 : 0);
             return true;
         }
     }
 
     bool setup_engine() {
         @autoreleasepool {
-            // Create processing format: 48kHz stereo non-interleaved float
             processingFormat = [[AVAudioFormat alloc]
                 initStandardFormatWithSampleRate:target_sample_rate
                 channels:2];
@@ -163,7 +123,6 @@ struct AVFAudioExtractor::Impl {
             [engine connect:playerNode to:timePitch format:processingFormat];
             [engine connect:timePitch to:engine.mainMixerNode format:processingFormat];
 
-            // Enable manual offline rendering
             NSError* error = nil;
             BOOL ok = [engine enableManualRenderingMode:AVAudioEngineManualRenderingModeOffline
                                                 format:processingFormat
@@ -186,9 +145,18 @@ struct AVFAudioExtractor::Impl {
         }
     }
 
+    void teardown_engine() {
+        @autoreleasepool {
+            if (playerNode) [playerNode stop];
+            if (engine) [engine stop];
+            engine = nil;
+            playerNode = nil;
+            timePitch = nil;
+        }
+    }
+
     bool create_reader_at_time(double start_seconds) {
         @autoreleasepool {
-            // Clean up existing reader
             reader = nil;
             track_output = nil;
             finished_reading = false;
@@ -204,8 +172,6 @@ struct AVFAudioExtractor::Impl {
             NSArray<AVAssetTrack*>* audio_tracks = [asset tracksWithMediaType:AVMediaTypeAudio];
             if (audio_tracks.count == 0) return false;
 
-            // Configure output: 32-bit float, stereo, target sample rate, non-interleaved
-            // (AVAudioPCMBuffer expects non-interleaved for standard format)
             NSDictionary* settings = @{
                 AVFormatIDKey:                @(kAudioFormatLinearPCM),
                 AVLinearPCMBitDepthKey:       @32,
@@ -223,7 +189,6 @@ struct AVFAudioExtractor::Impl {
 
             [reader addOutput:track_output];
 
-            // Set time range from start_seconds to end of file
             CMTime start = CMTimeMakeWithSeconds(start_seconds, 600);
             CMTime duration = CMTimeSubtract(asset.duration, start);
             if (CMTimeCompare(duration, kCMTimeZero) <= 0) {
@@ -241,9 +206,8 @@ struct AVFAudioExtractor::Impl {
         }
     }
 
-    // Decode a chunk of PCM from AVAssetReader, wrap in AVAudioPCMBuffer,
-    // and schedule it on the playerNode.
-    // Returns number of frames scheduled, or 0 if no more data.
+    // Decode a chunk from AVAssetReader into an AVAudioPCMBuffer and schedule
+    // on the player node (for TimePitch path).
     uint32_t decode_and_schedule() {
         @autoreleasepool {
             if (finished_reading) return 0;
@@ -274,19 +238,22 @@ struct AVFAudioExtractor::Impl {
             CMItemCount num_samples = CMSampleBufferGetNumSamples(sample_buf);
             uint32_t frames = static_cast<uint32_t>(num_samples);
 
-            // Get raw interleaved data
             CMBlockBufferRef block = CMSampleBufferGetDataBuffer(sample_buf);
             size_t data_length = 0;
             char* data_ptr = nullptr;
             CMBlockBufferGetDataPointer(block, 0, nullptr, &data_length, &data_ptr);
             const float* interleaved = reinterpret_cast<const float*>(data_ptr);
 
-            // Create AVAudioPCMBuffer in standard (non-interleaved) format
+            if (!processingFormat) {
+                processingFormat = [[AVAudioFormat alloc]
+                    initStandardFormatWithSampleRate:target_sample_rate
+                    channels:2];
+            }
+
             AVAudioPCMBuffer* pcmBuffer = [[AVAudioPCMBuffer alloc]
                 initWithPCMFormat:processingFormat frameCapacity:frames];
             pcmBuffer.frameLength = frames;
 
-            // Deinterleave: [L R L R ...] → separate L and R channel buffers
             float* chL = pcmBuffer.floatChannelData[0];
             float* chR = pcmBuffer.floatChannelData[1];
             for (uint32_t i = 0; i < frames; ++i) {
@@ -294,7 +261,6 @@ struct AVFAudioExtractor::Impl {
                 chR[i] = interleaved[i * 2 + 1];
             }
 
-            // Schedule on player node (non-blocking)
             [playerNode scheduleBuffer:pcmBuffer completionHandler:nil];
 
             CFRelease(sample_buf);
@@ -302,39 +268,97 @@ struct AVFAudioExtractor::Impl {
         }
     }
 
-    void fill_buffer() {
+    // Decode raw PCM directly (bypass TimePitch), deinterleave into L/R.
+    // Returns frames decoded (0 at EOF).
+    uint32_t decode_raw(float* left, float* right, uint32_t max_frames) {
         @autoreleasepool {
-            if (!opened || !has_audio_track) return;
-            if (!engine) return;
+            if (finished_reading) return 0;
+            if (!reader || reader.status != AVAssetReaderStatusReading) return 0;
 
-            // Scale target ahead by speed — at higher speeds, keep more buffered
-            float speed = current_speed.load(std::memory_order_relaxed);
-            uint32_t target_ahead = std::min(AudioRingBuffer::kCapacity - 1,
-                static_cast<uint32_t>(kTargetAhead * std::max(speed, 1.0f)));
-            uint32_t avail = ring.available_read();
-            if (avail >= target_ahead) return;
-
-            uint32_t frames_needed = target_ahead - avail;
-
-            // Pre-feed: account for speed and time-pitch algorithm look-ahead
-            uint32_t input_needed = static_cast<uint32_t>(
-                std::ceil(frames_needed * std::max(speed, 1.0f))) + kTimePitchLatency;
-            uint32_t input_fed = 0;
-            while (input_fed < input_needed) {
-                uint32_t fed = decode_and_schedule();
-                if (fed == 0) break;  // EOF or error
-                input_fed += fed;
+            CMSampleBufferRef sample_buf = [track_output copyNextSampleBuffer];
+            if (!sample_buf) {
+                if (reader.status == AVAssetReaderStatusCompleted) {
+                    if (loop_enabled) {
+                        if (!create_reader_at_time(0.0)) {
+                            finished_reading = true;
+                            return 0;
+                        }
+                        sample_buf = [track_output copyNextSampleBuffer];
+                        if (!sample_buf) {
+                            finished_reading = true;
+                            return 0;
+                        }
+                    } else {
+                        finished_reading = true;
+                        return 0;
+                    }
+                } else {
+                    return 0;
+                }
             }
 
-            // Render loop: pull time-stretched output from engine
-            AVAudioPCMBuffer* outputBuffer = [[AVAudioPCMBuffer alloc]
-                initWithPCMFormat:processingFormat frameCapacity:kRenderFrameCount];
+            CMItemCount num_samples = CMSampleBufferGetNumSamples(sample_buf);
+            uint32_t frames = static_cast<uint32_t>(std::min(static_cast<CMItemCount>(max_frames), num_samples));
 
-            uint32_t total_rendered = 0;
-            while (total_rendered < frames_needed) {
+            CMBlockBufferRef block = CMSampleBufferGetDataBuffer(sample_buf);
+            size_t data_length = 0;
+            char* data_ptr = nullptr;
+            CMBlockBufferGetDataPointer(block, 0, nullptr, &data_length, &data_ptr);
+            const float* interleaved = reinterpret_cast<const float*>(data_ptr);
+
+            for (uint32_t i = 0; i < frames; ++i) {
+                left[i]  = interleaved[i * 2];
+                right[i] = interleaved[i * 2 + 1];
+            }
+
+            CFRelease(sample_buf);
+
+            float speed = current_speed.load(std::memory_order_relaxed);
+            media_time_written += static_cast<double>(frames) * speed / target_sample_rate;
+
+            return frames;
+        }
+    }
+
+    // Decode samples using the TimePitch engine pipeline.
+    uint32_t decode_with_timepitch(float* left, float* right, uint32_t max_frames) {
+        @autoreleasepool {
+            if (!engine) return 0;
+
+            uint32_t total_out = 0;
+
+            // First drain any residual from previous render pass
+            if (residual_count > 0) {
+                uint32_t from_residual = std::min(max_frames, residual_count);
+                std::memcpy(left, residual_left + residual_offset, from_residual * sizeof(float));
+                std::memcpy(right, residual_right + residual_offset, from_residual * sizeof(float));
+                residual_count -= from_residual;
+                residual_offset += from_residual;
+                total_out += from_residual;
+                if (total_out >= max_frames) return total_out;
+            }
+
+            float speed = current_speed.load(std::memory_order_relaxed);
+
+            // Feed input and render in chunks
+            while (total_out < max_frames) {
+                uint32_t remaining = max_frames - total_out;
+
+                // Pre-feed: schedule enough input for the engine
+                uint32_t input_needed = static_cast<uint32_t>(
+                    std::ceil(remaining * std::max(speed, 1.0f))) + kTimePitchLatency;
+                uint32_t input_fed = 0;
+                while (input_fed < input_needed) {
+                    uint32_t fed = decode_and_schedule();
+                    if (fed == 0) break;
+                    input_fed += fed;
+                }
+
+                AVAudioPCMBuffer* outputBuffer = [[AVAudioPCMBuffer alloc]
+                    initWithPCMFormat:processingFormat frameCapacity:kRenderFrameCount];
+
+                uint32_t chunk = std::min(kRenderFrameCount, remaining);
                 NSError* error = nil;
-                uint32_t chunk = std::min(kRenderFrameCount, frames_needed - total_rendered);
-
                 AVAudioEngineManualRenderingStatus status =
                     [engine renderOffline:chunk toBuffer:outputBuffer error:&error];
 
@@ -342,97 +366,96 @@ struct AVFAudioExtractor::Impl {
                     uint32_t rendered = outputBuffer.frameLength;
                     if (rendered == 0) break;
 
-                    // Write rendered output to ring buffer
-                    uint32_t can_write = ring.available_write();
-                    uint32_t to_write = std::min(rendered, can_write);
-
                     const float* outL = outputBuffer.floatChannelData[0];
                     const float* outR = outputBuffer.floatChannelData[1];
-                    uint32_t wp = ring.write_pos.load(std::memory_order_relaxed);
 
-                    for (uint32_t i = 0; i < to_write; ++i) {
-                        uint32_t idx = (wp + i) % AudioRingBuffer::kCapacity;
-                        ring.left[idx]  = outL[i];
-                        ring.right[idx] = outR[i];
+                    uint32_t to_copy = std::min(rendered, max_frames - total_out);
+                    std::memcpy(left + total_out, outL, to_copy * sizeof(float));
+                    std::memcpy(right + total_out, outR, to_copy * sizeof(float));
+
+                    // Store residual if we rendered more than needed
+                    if (rendered > to_copy) {
+                        uint32_t leftover = rendered - to_copy;
+                        std::memcpy(residual_left, outL + to_copy, leftover * sizeof(float));
+                        std::memcpy(residual_right, outR + to_copy, leftover * sizeof(float));
+                        residual_count = leftover;
+                        residual_offset = 0;
                     }
-                    ring.write_pos.store((wp + to_write) % AudioRingBuffer::kCapacity,
-                                         std::memory_order_release);
 
-                    // Update media time tracking:
-                    // Each rendered output frame represents current_speed/sample_rate seconds
-                    // of media time (because time-pitch speeds up playback)
-                    media_time_written += static_cast<double>(to_write) * speed / ring.sample_rate;
-
-                    total_rendered += to_write;
-
-                    if (to_write < rendered) break;  // Ring buffer full
+                    media_time_written += static_cast<double>(to_copy) * speed / target_sample_rate;
+                    total_out += to_copy;
                 } else if (status == AVAudioEngineManualRenderingStatusInsufficientDataFromInputNode) {
-                    // Need more input data — feed multiple chunks (higher speeds burn through faster)
                     uint32_t extra_fed = 0;
                     while (extra_fed < kRenderFrameCount * 2) {
                         uint32_t fed = decode_and_schedule();
-                        if (fed == 0) break;  // EOF
+                        if (fed == 0) break;
                         extra_fed += fed;
                     }
-                    if (extra_fed == 0) break;  // No more data available
+                    if (extra_fed == 0) break;
                 } else {
-                    // Error or other status
                     break;
                 }
             }
+
+            return total_out;
+        }
+    }
+
+    uint32_t decode_samples(float* left, float* right, uint32_t max_frames) {
+        if (!opened || !has_audio_track) return 0;
+        if (max_frames == 0) return 0;
+
+        if (pitch_preserve_) {
+            return decode_with_timepitch(left, right, max_frames);
+        } else {
+            return decode_raw(left, right, max_frames);
         }
     }
 
     void set_speed(float speed) {
         current_speed = speed;
         if (timePitch) {
-            // AVAudioUnitTimePitch.rate range: 1/32 to 32.0
             timePitch.rate = std::clamp(speed, 1.0f / 32.0f, 32.0f);
         }
     }
 
     void set_loop(bool loop) { loop_enabled = loop; }
 
+    void set_pitch_preserve(bool preserve) {
+        if (pitch_preserve_ == preserve) return;
+        pitch_preserve_ = preserve;
+        if (!opened || !has_audio_track) return;
+
+        @autoreleasepool {
+            if (preserve && !engine) {
+                setup_engine();
+            } else if (!preserve && engine) {
+                teardown_engine();
+            }
+        }
+    }
+
     void resync(double time_seconds) {
         @autoreleasepool {
             if (!opened || !has_audio_track) return;
 
-            ring.clear();
             media_time_written = time_seconds;
-            read_head_media_time.store(time_seconds, std::memory_order_relaxed);
+            residual_count = 0;
+            residual_offset = 0;
 
-            // Reset engine state to clear time-pitch internal buffers
-            if (playerNode) {
-                [playerNode stop];
-            }
-            if (engine) {
-                [engine reset];
-            }
-            if (playerNode) {
-                [playerNode play];
-            }
+            if (playerNode) [playerNode stop];
+            if (engine) [engine reset];
+            if (playerNode) [playerNode play];
 
             create_reader_at_time(time_seconds);
 
             std::fprintf(stderr, "[avf_audio_extractor] Resync to %.3fs\n", time_seconds);
-
-            // Pre-fill ring buffer so audio thread doesn't read silence
-            fill_buffer();
         }
     }
 
     void close() {
         @autoreleasepool {
-            // Tear down engine
-            if (playerNode) {
-                [playerNode stop];
-            }
-            if (engine) {
-                [engine stop];
-            }
-            engine = nil;
-            playerNode = nil;
-            timePitch = nil;
+            teardown_engine();
             processingFormat = nil;
 
             if (reader && reader.status == AVAssetReaderStatusReading) {
@@ -441,66 +464,14 @@ struct AVFAudioExtractor::Impl {
             reader = nil;
             track_output = nil;
             asset = nil;
-            ring.clear();
             opened = false;
             has_audio_track = false;
             media_duration = 0.0f;
             media_time_written = 0.0;
-            read_head_media_time.store(0.0, std::memory_order_relaxed);
             current_speed = 1.0f;
+            residual_count = 0;
+            residual_offset = 0;
         }
-    }
-
-    uint32_t read_samples(float* left_out, float* right_out, uint32_t max_frames) {
-        uint32_t avail = ring.available_read();
-        uint32_t to_read = std::min(max_frames, avail);
-        uint32_t rp = ring.read_pos.load(std::memory_order_relaxed);
-
-        for (uint32_t i = 0; i < to_read; ++i) {
-            uint32_t idx = (rp + i) % AudioRingBuffer::kCapacity;
-            left_out[i]  = ring.left[idx];
-            right_out[i] = ring.right[idx];
-        }
-
-        // Zero-fill remainder on underrun
-        if (to_read < max_frames) {
-            std::memset(left_out + to_read, 0, (max_frames - to_read) * sizeof(float));
-            std::memset(right_out + to_read, 0, (max_frames - to_read) * sizeof(float));
-        }
-
-        ring.read_pos.store((rp + to_read) % AudioRingBuffer::kCapacity,
-                            std::memory_order_release);
-
-        // Advance read head media time: each consumed output frame represents
-        // current_speed/sample_rate seconds of media time
-        if (to_read > 0) {
-            float speed = current_speed.load(std::memory_order_relaxed);
-            double advance = static_cast<double>(to_read) * speed / ring.sample_rate;
-            double old_time = read_head_media_time.load(std::memory_order_relaxed);
-            read_head_media_time.store(old_time + advance, std::memory_order_relaxed);
-        }
-
-        return to_read;
-    }
-
-    uint32_t discard_samples(uint32_t max_frames) {
-        uint32_t avail = ring.available_read();
-        uint32_t to_drop = std::min(max_frames, avail);
-        if (to_drop == 0) return 0;
-
-        uint32_t rp = ring.read_pos.load(std::memory_order_relaxed);
-        ring.read_pos.store((rp + to_drop) % AudioRingBuffer::kCapacity,
-                            std::memory_order_release);
-
-        float speed = current_speed.load(std::memory_order_relaxed);
-        double advance = static_cast<double>(to_drop) * speed / ring.sample_rate;
-        double old_time = read_head_media_time.load(std::memory_order_relaxed);
-        read_head_media_time.store(old_time + advance, std::memory_order_relaxed);
-        return to_drop;
-    }
-
-    double read_head_pts() const {
-        return read_head_media_time.load(std::memory_order_relaxed);
     }
 };
 
@@ -520,12 +491,10 @@ bool AVFAudioExtractor::has_audio() const { return impl_ && impl_->has_audio_tra
 float AVFAudioExtractor::duration() const { return impl_ ? impl_->media_duration : 0.0f; }
 void AVFAudioExtractor::set_speed(float speed) { impl_->set_speed(speed); }
 void AVFAudioExtractor::set_loop(bool loop) { impl_->set_loop(loop); }
-void AVFAudioExtractor::fill_buffer() { impl_->fill_buffer(); }
+void AVFAudioExtractor::set_pitch_preserve(bool preserve) { impl_->set_pitch_preserve(preserve); }
+bool AVFAudioExtractor::pitch_preserve() const { return impl_ ? impl_->pitch_preserve_ : true; }
+uint32_t AVFAudioExtractor::decode_samples(float* left, float* right, uint32_t max_frames) {
+    return impl_->decode_samples(left, right, max_frames);
+}
 void AVFAudioExtractor::resync(double time_seconds) { impl_->resync(time_seconds); }
-uint32_t AVFAudioExtractor::read_samples(float* left, float* right, uint32_t max_frames) {
-    return impl_->read_samples(left, right, max_frames);
-}
-uint32_t AVFAudioExtractor::discard_samples(uint32_t max_frames) {
-    return impl_->discard_samples(max_frames);
-}
-double AVFAudioExtractor::read_head_pts() const { return impl_->read_head_pts(); }
+double AVFAudioExtractor::write_head_pts() const { return impl_ ? impl_->media_time_written : 0.0; }
