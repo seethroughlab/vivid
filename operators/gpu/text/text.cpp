@@ -9,6 +9,10 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#ifdef __APPLE__
+#include <dlfcn.h>
+#include <mach-o/dyld.h>
+#endif
 
 // =============================================================================
 // Text WGSL Fragment Shader
@@ -73,7 +77,7 @@ struct Text : vivid::OperatorBase {
     static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = false;
 
-    vivid::Param<vivid::FilePath> text {"text", ""};
+    vivid::Param<vivid::TextValue> text {"text", ""};
     vivid::Param<float> size {"size", 0.4f, 0.05f, 1.0f};
     vivid::Param<float> r    {"r",    1.0f, 0.0f, 1.0f};
     vivid::Param<float> g    {"g",    1.0f, 0.0f, 1.0f};
@@ -109,6 +113,7 @@ struct Text : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"text_in", VIVID_PORT_CONTROL_STRING, VIVID_PORT_INPUT});
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
@@ -123,13 +128,20 @@ struct Text : vivid::OperatorBase {
             }
         }
 
+        // Use string input port if connected, otherwise fall back to param
+        std::string current_text = text.str_value;
+        if (ctx->input_string_values) {
+            const char* s = ctx->input_string_values[0];
+            if (s && s[0] != '\0') current_text = s;
+        }
+
         // Check if glyph texture needs re-bake
         uint32_t w = gpu->output_width;
         uint32_t h = gpu->output_height;
-        if (text.str_value != last_text_ || size.value != last_size_ ||
+        if (current_text != last_text_ || size.value != last_size_ ||
             w != last_w_ || h != last_h_) {
-            bake_glyphs(gpu, w, h);
-            last_text_ = text.str_value;
+            bake_glyphs(gpu, w, h, current_text);
+            last_text_ = current_text;
             last_size_ = size.value;
             last_w_ = w;
             last_h_ = h;
@@ -187,13 +199,36 @@ private:
     uint32_t    last_w_ = 0;
     uint32_t    last_h_ = 0;
 
+    static std::string resolve_font_path() {
+        const char* name = "JetBrainsMono-Regular.ttf";
+        // Try CWD first
+        if (FILE* f = std::fopen(name, "rb")) { std::fclose(f); return name; }
+#ifdef __APPLE__
+        // Resolve relative to this dylib's location
+        Dl_info info;
+        if (dladdr(reinterpret_cast<void*>(&resolve_font_path), &info) && info.dli_fname) {
+            std::string dir(info.dli_fname);
+            auto slash = dir.rfind('/');
+            if (slash != std::string::npos) {
+                dir.resize(slash + 1);
+                std::string p = dir + name;
+                if (FILE* f = std::fopen(p.c_str(), "rb")) { std::fclose(f); return p; }
+                // Also try ../Resources/ (app bundle)
+                p = dir + "../Resources/" + name;
+                if (FILE* f = std::fopen(p.c_str(), "rb")) { std::fclose(f); return p; }
+            }
+        }
+#endif
+        return name; // fallback
+    }
+
     bool load_font() {
         if (font_loaded_) return true;
 
-        const char* font_path = "JetBrainsMono-Regular.ttf";
-        FILE* f = std::fopen(font_path, "rb");
+        std::string font_path = resolve_font_path();
+        FILE* f = std::fopen(font_path.c_str(), "rb");
         if (!f) {
-            std::fprintf(stderr, "[text] cannot open font: %s\n", font_path);
+            std::fprintf(stderr, "[text] cannot open font: %s\n", font_path.c_str());
             return false;
         }
         std::fseek(f, 0, SEEK_END);
@@ -213,7 +248,7 @@ private:
         return true;
     }
 
-    void bake_glyphs(VividGpuState* gpu, uint32_t w, uint32_t h) {
+    void bake_glyphs(VividGpuState* gpu, uint32_t w, uint32_t h, const std::string& str) {
         if (!load_font()) return;
 
         // Compute pixel height from size param (fraction of output height)
@@ -224,8 +259,6 @@ private:
         int ascent, descent, line_gap;
         stbtt_GetFontVMetrics(&font_info_, &ascent, &descent, &line_gap);
         float scaled_ascent = ascent * scale;
-
-        const std::string& str = text.str_value;
 
         // First pass: measure total width
         float total_width = 0;
