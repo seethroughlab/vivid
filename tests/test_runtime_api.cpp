@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 static int failures = 0;
@@ -40,6 +41,9 @@ int main(int argc, char* argv[]) {
     std::filesystem::create_directories(staging);
     std::filesystem::copy_file(build_dir + "/test_op_v1.dylib",
         staging + "/test_op_v1.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/test_state_carry_op.dylib",
+        staging + "/test_state_carry_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: RuntimeAPI ===\n\n");
@@ -380,6 +384,82 @@ int main(int argc, char* argv[]) {
         auto r = api_empty.reload(hgpu, haudio);
         check(!r.ok, "reload() fails with no source_path");
         check(r.message.find("no source path") != std::string::npos, "error mentions no source path");
+    }
+
+    // --- Regression: graph switch must not restore runtime state by node ID ---
+    std::fprintf(stderr, "\n--- reload graph switch regression ---\n");
+    {
+        const std::string graph_a_path = build_dir + "/test_reload_graph_a.json";
+        const std::string graph_b_path = build_dir + "/test_reload_graph_b.json";
+
+        {
+            std::ofstream ofs(graph_a_path);
+            ofs << R"({
+  "nodes": {
+    "a": { "type": "TestStateCarryOp", "params": { "scale": 1.0, "label": "graph-a" } }
+  }
+}
+)";
+        }
+        {
+            std::ofstream ofs(graph_b_path);
+            ofs << R"({
+  "nodes": {
+    "a": { "type": "TestStateCarryOp", "params": { "scale": 5.0, "label": "graph-b" } }
+  }
+}
+)";
+        }
+
+        vivid::Graph g_switch;
+        check(g_switch.load(graph_a_path.c_str()), "switch regression: load graph A");
+        vivid::Scheduler s_switch;
+        check(s_switch.build(g_switch, registry), "switch regression: build graph A");
+        vivid::AudioEngine ae_switch;
+        vivid::RuntimeAPI api_switch(g_switch, s_switch, ae_switch, registry);
+
+        auto r1 = api_switch.set_param("a", "scale", 77.0f);
+        check(r1.ok, "switch regression: mutate numeric param on graph A");
+        auto r2 = api_switch.set_string_param("a", "label", "runtime-value");
+        check(r2.ok, "switch regression: mutate string param on graph A");
+        auto r3 = api_switch.set_param_lock("a", "scale", vivid::PARAM_LOCK_ALL);
+        check(r3.ok, "switch regression: mutate lock flags on graph A");
+
+        check(g_switch.load(graph_b_path.c_str()),
+              "switch regression: load graph B into same Graph object");
+        bool hgpu = false, haudio = false;
+        auto rr = api_switch.reload(hgpu, haudio);
+        check(rr.ok, "switch regression: reload after graph switch");
+
+        const vivid::NodeState* a_node = nullptr;
+        for (const auto& ns : s_switch.nodes()) {
+            if (ns.node_id == "a") {
+                a_node = &ns;
+                break;
+            }
+        }
+        check(a_node != nullptr, "switch regression: node a exists in graph B");
+        if (a_node) {
+            auto pi = a_node->param_indices.find("scale");
+            check(pi != a_node->param_indices.end(), "switch regression: scale param present");
+            if (pi != a_node->param_indices.end()) {
+                check_float(a_node->param_values[pi->second], 5.0f,
+                            "switch regression: numeric param reset from graph B");
+                check(a_node->param_lock_flags[pi->second] == vivid::PARAM_LOCK_NONE,
+                      "switch regression: lock flags reset from graph B");
+            }
+
+            auto fi = a_node->file_param_indices.find("label");
+            check(fi != a_node->file_param_indices.end(), "switch regression: label string param present");
+            if (fi != a_node->file_param_indices.end()) {
+                check(a_node->file_param_storage[fi->second] == "graph-b",
+                      "switch regression: string param reset from graph B");
+            }
+        }
+
+        s_switch.shutdown();
+        std::filesystem::remove(graph_a_path);
+        std::filesystem::remove(graph_b_path);
     }
 
     // --- Test set_node_layout persists through save/reload ---

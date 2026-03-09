@@ -224,7 +224,19 @@ VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
     check(!fs::exists(fail_install_dir), "compile failure rolls back package directory");
     fs::remove_all(fail_pkg_dir);
 
-    // --- Test 9: Expanded manifest fields ---
+    // --- Test 9: ABI mismatch is a hard package install failure ---
+    std::fprintf(stderr, "\n--- ABI mismatch guardrail ---\n");
+    setenv("VIVID_MOCK_RUNTIME_ABI", "999", 1);
+    auto abi_mismatch_result = pm.install(mock_pkg_dir);
+    unsetenv("VIVID_MOCK_RUNTIME_ABI");
+    check(!abi_mismatch_result.success, "install fails when plugin ABI mismatches runtime ABI");
+    check(abi_mismatch_result.error.find("Plugin ABI mismatch for package 'test-mgr-package'") != std::string::npos,
+          "ABI mismatch failure message is clear");
+    check(abi_mismatch_result.error.find("Rebuild vivid and rerun package rebuild.") != std::string::npos,
+          "ABI mismatch remediation is included");
+    check(!fs::exists(pkg_install_dir), "ABI mismatch failure rolls back package directory");
+
+    // --- Test 10: Expanded manifest fields ---
     std::fprintf(stderr, "\n--- Expanded manifest fields ---\n");
     {
         std::string exp_pkg_dir = build_dir + "/.test_expanded_package";
@@ -290,7 +302,7 @@ VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
         fs::remove_all(exp_pkg_dir);
     }
 
-    // --- Test 10: Install cmake-built package ---
+    // --- Test 11: Install cmake-built package ---
     std::fprintf(stderr, "\n--- Install cmake-built package ---\n");
     std::string cmake_pkg_dir = build_dir + "/.test_cmake_package";
     fs::remove_all(cmake_pkg_dir);

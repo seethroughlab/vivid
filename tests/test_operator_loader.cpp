@@ -227,6 +227,20 @@ int main() {
         check(reg.type_names().empty(), "empty dir = 0 types");
     }
 
+    // Test 13b: ABI mismatch diagnostics are recorded during deferred scan
+    {
+        vivid::OperatorRegistry reg;
+        setenv("VIVID_MOCK_RUNTIME_ABI", "999", 1);
+        check(reg.scan_deferred(staging.c_str()), "scan_deferred succeeds with mocked ABI mismatch");
+        unsetenv("VIVID_MOCK_RUNTIME_ABI");
+        check(reg.has_abi_mismatch_diagnostics(), "ABI mismatch diagnostics present");
+        auto mismatches = reg.abi_mismatch_diagnostics_for_dir(staging);
+        check(!mismatches.empty(), "ABI mismatch diagnostics filtered by dir");
+        if (!mismatches.empty()) {
+            check(mismatches[0].runtime_abi == 999, "runtime ABI captured in diagnostic");
+        }
+    }
+
     // Test 14: find existing type
     {
         vivid::OperatorRegistry reg;
