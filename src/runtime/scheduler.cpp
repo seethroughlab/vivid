@@ -408,13 +408,24 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             }
             from_port_idx = pp_it->second;
             source_is_param = true;
-            from_port_type = VIVID_PORT_CONTROL_FLOAT;  // all params are float
+            // Check actual param type — file/text params carry string data
+            auto fp_src_it = from_ns.file_param_indices.find(conn.from_port);
+            if (fp_src_it != from_ns.file_param_indices.end()) {
+                from_port_type = VIVID_PORT_CONTROL_STRING;
+            } else {
+                from_port_type = VIVID_PORT_CONTROL_FLOAT;
+            }
         }
 
         Wire w;
         w.from_node_idx = fi;
         w.from_port_idx = from_port_idx;
         w.sources_param = source_is_param;
+        if (source_is_param && from_port_type == VIVID_PORT_CONTROL_STRING) {
+            auto fp_src_it2 = from_ns.file_param_indices.find(conn.from_port);
+            w.sources_file_param = true;
+            w.from_file_param_idx = fp_src_it2->second;
+        }
         w.to_node_idx   = ti;
 
         auto tp_it = to_ns.input_port_indices.find(conn.to_port);
@@ -520,14 +531,34 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                 continue;  // skip this wire
             }
         } else {
-            auto pp_it = to_ns.param_indices.find(conn.to_port);
-            if (pp_it == to_ns.param_indices.end()) {
-                std::fprintf(stderr, "[vivid] Scheduler: node '%s' has no input port or parameter '%s'\n",
-                    conn.to_node.c_str(), conn.to_port.c_str());
-                return false;
+            // Check if target is a file/text param first
+            auto fp_it2 = to_ns.file_param_indices.find(conn.to_port);
+            if (fp_it2 != to_ns.file_param_indices.end()) {
+                // String param target — validate source is string-compatible
+                if (from_port_type != VIVID_PORT_CONTROL_STRING) {
+                    std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
+                        "(float source cannot wire to string param)\n",
+                        conn.from_node.c_str(), conn.from_port.c_str(),
+                        conn.to_node.c_str(), conn.to_port.c_str());
+                    continue;
+                }
+                w.targets_file_param = true;
+                w.to_file_param_idx = fp_it2->second;
+                w.is_string_wire = true;
+                // to_port_idx unused for file param targets, but set for safety
+                auto pp_it = to_ns.param_indices.find(conn.to_port);
+                w.to_port_idx = (pp_it != to_ns.param_indices.end()) ? pp_it->second : 0;
+                w.targets_param = true;
+            } else {
+                auto pp_it = to_ns.param_indices.find(conn.to_port);
+                if (pp_it == to_ns.param_indices.end()) {
+                    std::fprintf(stderr, "[vivid] Scheduler: node '%s' has no input port or parameter '%s'\n",
+                        conn.to_node.c_str(), conn.to_port.c_str());
+                    return false;
+                }
+                w.to_port_idx = pp_it->second;
+                w.targets_param = true;
             }
-            w.to_port_idx = pp_it->second;
-            w.targets_param = true;
         }
         w.from_min = conn.from_min;
         w.from_max = conn.from_max;
@@ -641,6 +672,15 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         for (const auto& w : wires_) {
             if (w.to_node_idx == ni) {
                 if (w.is_texture_wire || w.is_data_wire) continue;
+                if (w.targets_file_param) {
+                    // String wire into a file/text param
+                    const std::string& src = w.sources_file_param
+                        ? nodes_[w.from_node_idx].file_param_storage[w.from_file_param_idx]
+                        : nodes_[w.from_node_idx].output_string_values[w.from_port_idx];
+                    ns.file_param_storage[w.to_file_param_idx] = src;
+                    ns.file_param_ptrs[w.to_file_param_idx] = ns.file_param_storage[w.to_file_param_idx].c_str();
+                    continue;
+                }
                 if (w.is_string_wire) {
                     ns.input_string_values[w.to_port_idx] =
                         nodes_[w.from_node_idx].output_string_values[w.from_port_idx];
@@ -988,6 +1028,14 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         if (!w.targets_param) continue;
         auto& to_ns = nodes_[w.to_node_idx];
         if (!to_ns.is_audio) continue;
+        if (w.targets_file_param) {
+            const std::string& src = w.sources_file_param
+                ? nodes_[w.from_node_idx].file_param_storage[w.from_file_param_idx]
+                : nodes_[w.from_node_idx].output_string_values[w.from_port_idx];
+            to_ns.file_param_storage[w.to_file_param_idx] = src;
+            to_ns.file_param_ptrs[w.to_file_param_idx] = to_ns.file_param_storage[w.to_file_param_idx].c_str();
+            continue;
+        }
         float raw = w.sources_param
             ? nodes_[w.from_node_idx].param_values[w.from_port_idx]
             : nodes_[w.from_node_idx].output_values[w.from_port_idx];

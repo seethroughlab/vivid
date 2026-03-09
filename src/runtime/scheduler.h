@@ -114,6 +114,10 @@ struct Wire {
     uint32_t to_node_idx, to_port_idx;
     bool sources_param = false;   // true → from_port_idx indexes into param_values
     bool targets_param = false;   // true → to_port_idx indexes into param_values
+    bool sources_file_param = false; // true → from_port_idx indexes file_param_storage
+    bool targets_file_param = false; // true → string wire into file_param_storage
+    uint32_t from_file_param_idx = 0; // index into file_param_storage (when sources_file_param)
+    uint32_t to_file_param_idx = 0;   // index into file_param_storage (when targets_file_param)
     bool is_texture_wire = false; // true → carries GPU_TEXTURE data
     bool is_data_wire    = false; // true → carries VIVID_PORT_DATA
     bool is_string_wire = false;  // true → carries CONTROL_STRING
