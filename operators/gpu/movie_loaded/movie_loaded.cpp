@@ -470,6 +470,7 @@ private:
         load_coordinator_.mark_applied(ready->generation);
         if (ready->success && ready->decoder) {
             decoder_ = std::move(ready->decoder);
+            movie_texture_release(texture_);
             decoder_->set_loop(play_mode.int_value() == 0);
             decoder_->set_speed(speed.value);
             placeholder_active_ = false;
