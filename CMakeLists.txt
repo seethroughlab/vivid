@@ -288,6 +288,7 @@ add_vivid_operator(mouse             operators/control/mouse/mouse.cpp)
 add_vivid_operator(keyboard          operators/control/keyboard/keyboard.cpp)
 add_vivid_operator(folder_list       operators/control/folder_list/folder_list.cpp)
 add_vivid_operator(string_select     operators/control/string_select/string_select.cpp)
+add_vivid_operator(basename          operators/control/basename/basename.cpp)
 add_vivid_operator(step_counter      operators/control/step_counter/step_counter.cpp)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
