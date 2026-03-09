@@ -22,6 +22,7 @@ enum MenuTag : NSInteger {
     kMenuTagToggleUI,
     kMenuTagToggleFullscreen,
     kMenuTagToggleBezierWires,
+    kMenuTagToggleShowParamWires,
     kMenuTagToggleSessionGrid,
     kMenuTagToggleMidiMap,
     // Insert
@@ -62,6 +63,7 @@ enum MenuTag : NSInteger {
         case kMenuTagToggleUI:          if (_callbacks.on_toggle_ui) _callbacks.on_toggle_ui(); break;
         case kMenuTagToggleFullscreen:  if (_callbacks.on_toggle_fullscreen) _callbacks.on_toggle_fullscreen(); break;
         case kMenuTagToggleBezierWires: if (_callbacks.on_toggle_bezier_wires) _callbacks.on_toggle_bezier_wires(); break;
+        case kMenuTagToggleShowParamWires: if (_callbacks.on_toggle_show_param_wires) _callbacks.on_toggle_show_param_wires(); break;
         case kMenuTagToggleSessionGrid: if (_callbacks.on_toggle_session_grid) _callbacks.on_toggle_session_grid(); break;
         case kMenuTagToggleMidiMap:     if (_callbacks.on_toggle_midi_map) _callbacks.on_toggle_midi_map(); break;
         case kMenuTagAddNode:           if (_callbacks.on_add_node) _callbacks.on_add_node(); break;
@@ -85,6 +87,10 @@ enum MenuTag : NSInteger {
 
         case kMenuTagToggleBezierWires:
             item.state = (_callbacks.is_bezier_wires && _callbacks.is_bezier_wires()) ? NSControlStateValueOn : NSControlStateValueOff;
+            return YES;
+
+        case kMenuTagToggleShowParamWires:
+            item.state = (_callbacks.is_show_param_wires && _callbacks.is_show_param_wires()) ? NSControlStateValueOn : NSControlStateValueOff;
             return YES;
 
         case kMenuTagToggleSessionGrid:
@@ -293,6 +299,15 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         toggleBezierItem.target = sDelegate;
         toggleBezierItem.tag = kMenuTagToggleBezierWires;
         [viewMenu addItem:toggleBezierItem];
+
+        NSMenuItem* toggleParamWiresItem = [[NSMenuItem alloc]
+            initWithTitle:@"Show Param Wires"
+                   action:@selector(menuAction:)
+            keyEquivalent:@"p"];
+        toggleParamWiresItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+        toggleParamWiresItem.target = sDelegate;
+        toggleParamWiresItem.tag = kMenuTagToggleShowParamWires;
+        [viewMenu addItem:toggleParamWiresItem];
 
         NSMenuItem* toggleGridItem = [[NSMenuItem alloc]
             initWithTitle:@"Toggle Session Grid"

@@ -44,6 +44,8 @@ Settings load_settings() {
         s.window_height = (int)yyjson_get_int(v);
     if ((v = yyjson_obj_get(root, "bezier_wires")) && yyjson_is_bool(v))
         s.bezier_wires = yyjson_get_bool(v);
+    if ((v = yyjson_obj_get(root, "show_param_wires")) && yyjson_is_bool(v))
+        s.show_param_wires = yyjson_get_bool(v);
     if ((v = yyjson_obj_get(root, "editor")) && yyjson_is_str(v))
         s.editor = yyjson_get_str(v);
     if ((v = yyjson_obj_get(root, "editor_command")) && yyjson_is_str(v))
@@ -90,6 +92,7 @@ void save_settings(const Settings& s) {
     yyjson_mut_obj_add_int(doc, root, "window_width", s.window_width);
     yyjson_mut_obj_add_int(doc, root, "window_height", s.window_height);
     yyjson_mut_obj_add_bool(doc, root, "bezier_wires", s.bezier_wires);
+    yyjson_mut_obj_add_bool(doc, root, "show_param_wires", s.show_param_wires);
     if (!s.editor.empty())
         yyjson_mut_obj_add_str(doc, root, "editor", s.editor.c_str());
     if (!s.editor_command.empty())

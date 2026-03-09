@@ -189,6 +189,9 @@ public:
     bool bezier_wires() const { return bezier_wires_; }
     void set_bezier_wires(bool v) { bezier_wires_ = v; }
 
+    bool show_param_wires() const { return show_param_wires_; }
+    void set_show_param_wires(bool v) { show_param_wires_ = v; }
+
     const UIStyle& style() const { return style_; }
     void set_style(const UIStyle& s) { style_ = s; }
 
@@ -762,6 +765,9 @@ private:
 
     // Wire rendering style toggle (B key)
     bool bezier_wires_ = false;
+
+    // Param wire visibility toggle (P key)
+    bool show_param_wires_ = false;
 
     // UI visibility toggle (tilde key)
     bool visible_ = true;

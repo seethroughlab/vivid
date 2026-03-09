@@ -2004,6 +2004,7 @@ int main(int argc, char* argv[]) {
     vivid::ui::NodeGraphUI graph_ui(command_sink);
     graph_ui.set_dpi_scale(dpi_scale);
     graph_ui.set_bezier_wires(settings.bezier_wires);
+    graph_ui.set_show_param_wires(settings.show_param_wires);
     auto refresh_discovered_examples = [&]() {
         discovered_examples = discover_examples_with_packages(graphs_root, &pkg_manager);
         graph_ui.set_examples(discovered_examples);
@@ -2678,6 +2679,7 @@ int main(int argc, char* argv[]) {
         menu_cbs.on_toggle_ui = [&]() { graph_ui.toggle_visible(); };
         menu_cbs.on_toggle_fullscreen = [&]() { toggle_fullscreen(); };
         menu_cbs.on_toggle_bezier_wires = [&]() { graph_ui.set_bezier_wires(!graph_ui.bezier_wires()); };
+        menu_cbs.on_toggle_show_param_wires = [&]() { graph_ui.set_show_param_wires(!graph_ui.show_param_wires()); };
         menu_cbs.on_toggle_session_grid = [&]() { graph_ui.toggle_session_grid(); };
         menu_cbs.on_toggle_midi_map = [&]() { graph_ui.toggle_midi_map_mode(); };
 
@@ -2688,6 +2690,7 @@ int main(int argc, char* argv[]) {
         menu_cbs.is_ui_visible = [&]() { return graph_ui.visible(); };
         menu_cbs.is_fullscreen = [&]() { return display_state.fullscreen; };
         menu_cbs.is_bezier_wires = [&]() { return graph_ui.bezier_wires(); };
+        menu_cbs.is_show_param_wires = [&]() { return graph_ui.show_param_wires(); };
         menu_cbs.is_session_grid_open = [&]() { return graph_ui.session_grid_open(); };
         menu_cbs.is_midi_map_mode = [&]() { return graph_ui.midi_map_mode(); };
         menu_cbs.has_selection = [&]() { return graph_ui.has_selection(); };
@@ -3286,6 +3289,7 @@ int main(int argc, char* argv[]) {
         glfwGetWindowPos(window, &s.window_x, &s.window_y);
         glfwGetWindowSize(window, &s.window_width, &s.window_height);
         s.bezier_wires = graph_ui.bezier_wires();
+        s.show_param_wires = graph_ui.show_param_wires();
         vivid::save_settings(s);
     }
 

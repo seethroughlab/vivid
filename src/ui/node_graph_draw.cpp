@@ -254,6 +254,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float s_dot = kPortDotSize * zoom_;
         float s_line_h = tr.line_height() * zoom_;
         for (const auto& p : r.inputs) {
+            if (p.is_param && !show_param_wires_) continue;
             float spx = gx_to_sx(p.x), spy = gy_to_sy(p.y);
             float dot_scale = p.is_param ? 0.7f : 1.0f;
             float dot_alpha = p.is_param ? 0.6f : 1.0f;
@@ -266,6 +267,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         }
         // Output port dots and labels (use domain color)
         for (const auto& p : r.outputs) {
+            if (p.is_param && !show_param_wires_) continue;
             float spx = gx_to_sx(p.x), spy = gy_to_sy(p.y);
             float dot_scale = p.is_param ? 0.7f : 1.0f;
             float dot_alpha = p.is_param ? 0.6f : 1.0f;
@@ -290,6 +292,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
 
     for (int ci = 0; ci < static_cast<int>(conns.size()); ++ci) {
         const auto& c = conns[ci];
+        if (c.from_is_param && !show_param_wires_) continue;
         auto fi = id_to_rect.find(c.from_node);
         auto ti = id_to_rect.find(c.to_node);
         if (fi == id_to_rect.end() || ti == id_to_rect.end()) continue;
@@ -2364,10 +2367,14 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         bool can_dest;     // inputs + params
         bool is_param;
     };
+    struct PortList {
+        std::vector<PortEntry> ports;   // outputs + inputs (non-param)
+        std::vector<PortEntry> params;  // params only
+    };
 
     auto build_ports = [](const NodeSnapshot& ns) {
-        std::vector<PortEntry> ports;
-        if (!ns.op_info) return ports;
+        PortList result;
+        if (!ns.op_info) return result;
 
         // Outputs first (signal output ports)
         auto sorted_outs = sorted_ports(ns.output_port_indices);
@@ -2375,7 +2382,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
             VividPortType pt = VIVID_PORT_CONTROL_FLOAT;
             for (const auto& p : ns.op_info->ports)
                 if (p.name == name && p.direction == VIVID_PORT_OUTPUT) { pt = p.type; break; }
-            ports.push_back({name, pt, true, false, false});
+            result.ports.push_back({name, pt, true, false, false});
         }
 
         // Inputs (signal input ports that aren't params)
@@ -2383,7 +2390,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
             if (pi.direction != VIVID_PORT_INPUT) continue;
             bool is_param = ns.param_indices.count(pi.name) > 0;
             if (!is_param)
-                ports.push_back({pi.name, pi.type, false, true, false});
+                result.ports.push_back({pi.name, pi.type, false, true, false});
         }
 
         // Params (non-FILE, excluding output port names)
@@ -2394,9 +2401,9 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         for (const auto& [idx, name] : sorted_params) {
             const ParamInfo* pd = ns.find_param(name);
             if (pd && (pd->type == VIVID_PARAM_FILE || pd->type == VIVID_PARAM_TEXT)) continue;
-            ports.push_back({name, VIVID_PORT_CONTROL_FLOAT, true, true, true});
+            result.params.push_back({name, VIVID_PORT_CONTROL_FLOAT, true, true, true});
         }
-        return ports;
+        return result;
     };
     auto type_suffix = [](VividPortType t) -> const char* {
         if (t == VIVID_PORT_CONTROL_STRING) return " \"";
@@ -2404,8 +2411,18 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         return "";
     };
 
-    auto left_ports = build_ports(node_a);
-    auto right_ports = build_ports(node_b);
+    auto left_pl = build_ports(node_a);
+    auto right_pl = build_ports(node_b);
+
+    // Flatten into single list per column (ports then params) for drawing, tracking section offsets
+    auto flatten = [](const PortList& pl) {
+        std::vector<PortEntry> all;
+        all.insert(all.end(), pl.ports.begin(), pl.ports.end());
+        all.insert(all.end(), pl.params.begin(), pl.params.end());
+        return all;
+    };
+    auto left_ports = flatten(left_pl);
+    auto right_ports = flatten(right_pl);
 
     // --- Column headers ---
     const float* clr_a = domain_color(node_a.domain);
@@ -2425,103 +2442,196 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
 
     py += kPatchHeaderH + 4;
 
+    // Helper: draw a diamond (rotated square) for param jacks
+    auto draw_diamond = [&](float cx, float cy, float r, float cr, float cg, float cb, float ca) {
+        tr.draw_line(cx, cy - r, cx + r, cy, 1.5f, cr, cg, cb, ca);
+        tr.draw_line(cx + r, cy, cx, cy + r, 1.5f, cr, cg, cb, ca);
+        tr.draw_line(cx, cy + r, cx - r, cy, 1.5f, cr, cg, cb, ca);
+        tr.draw_line(cx - r, cy, cx, cy - r, 1.5f, cr, cg, cb, ca);
+    };
+
+    // Helper: draw a section header (dim text at 0.75 scale with 1px separator)
+    auto draw_section_header = [&](float hx, float hy, float col_w, const char* text,
+                                    const float* clr, bool right_align) {
+        float tw = tr.text_width(text, 0.75f);
+        float tx = right_align ? (hx + col_w - tw) : hx;
+        tr.draw_text(tx, hy + 3, text,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f, 0.75f);
+        tr.draw_rect(hx, hy + kPatchRowH - 2, col_w, 1,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.2f);
+    };
+
+    // Compute row Y positions accounting for section headers
+    // Each column: optional "PORTS" header, port rows, optional "PARAMS" header, param rows
+    bool left_has_ports = !left_pl.ports.empty();
+    bool left_has_params = !left_pl.params.empty();
+    bool right_has_ports = !right_pl.ports.empty();
+    bool right_has_params = !right_pl.params.empty();
+
+    int left_total = (int)left_ports.size() + (left_has_ports ? 1 : 0) + (left_has_params ? 1 : 0);
+    int right_total = (int)right_ports.size() + (right_has_ports ? 1 : 0) + (right_has_params ? 1 : 0);
+    int max_rows = std::max(left_total, right_total);
+
     // --- Draw left ports (node A) ---
     float left_jack_x = px + kPatchColW;  // jack at right edge of left column
     float start_y = py;
-    int max_rows = std::max(static_cast<int>(left_ports.size()), static_cast<int>(right_ports.size()));
 
-    for (int i = 0; i < static_cast<int>(left_ports.size()); ++i) {
-        const auto& port = left_ports[i];
-        float row_y = start_y + i * kPatchRowH;
-        float jack_cy = row_y + kPatchRowH * 0.5f;
-
-        // Label (right-aligned, with param prefix)
-        std::string label = port.is_param ? ("\xC2\xB7" + port.name) : port.name;
-        label += type_suffix(port.port_type);
-        if (label.size() > 12) label = label.substr(0, 11) + "~";
-        float label_w = tr.text_width(label.c_str(), 0.85f);
-        float label_alpha = port.is_param ? 0.5f : 0.8f;
-        tr.draw_text(left_jack_x - kPatchJackRadius * 2 - 2 - label_w, row_y + 2,
-                     label.c_str(), clr_a[0], clr_a[1], clr_a[2], label_alpha, 0.85f);
-
-        // Jack circle
-        float jack_alpha = 1.0f;
-        // During drag: dim incompatible jacks
-        if (patch_dragging_ && patch_drag_from_idx_ >= 0 &&
-            patch_drag_from_idx_ < static_cast<int>(patch_jacks_.size())) {
-            const auto& src = patch_jacks_[patch_drag_from_idx_];
-            // This jack must be on the other node and be dest-capable
-            bool compatible = (src.node_id != node_a.node_id) && port.can_dest &&
-                              port_type_compatible(src.port_type, port.port_type);
-            jack_alpha = compatible ? 1.0f : 0.2f;
+    {
+        float cur_y = start_y;
+        if (left_has_ports) {
+            draw_section_header(px, cur_y, kPatchColW, "PORTS", clr_a, true);
+            cur_y += kPatchRowH;
         }
+        for (int i = 0; i < static_cast<int>(left_pl.ports.size()); ++i) {
+            const auto& port = left_pl.ports[i];
+            float row_y = cur_y;
+            float jack_cy = row_y + kPatchRowH * 0.5f;
 
-        if (port.is_param) {
-            // Half-filled: filled circle at reduced alpha
-            tr.draw_rect(left_jack_x - kPatchJackRadius, jack_cy - kPatchJackRadius,
-                         kPatchJackRadius * 2, kPatchJackRadius * 2,
-                         clr_a[0], clr_a[1], clr_a[2], 0.6f * jack_alpha);
-        } else if (port.can_source) {
-            // Output: filled circle
-            tr.draw_rect(left_jack_x - kPatchJackRadius, jack_cy - kPatchJackRadius,
-                         kPatchJackRadius * 2, kPatchJackRadius * 2,
-                         clr_a[0], clr_a[1], clr_a[2], jack_alpha);
-        } else {
-            // Input: hollow ring
-            tr.draw_arc(left_jack_x, jack_cy, kPatchJackRadius, 0.0f, 6.283f,
-                        1.5f, 12, clr_a[0], clr_a[1], clr_a[2], jack_alpha);
+            std::string label = port.name;
+            label += type_suffix(port.port_type);
+            if (label.size() > 12) label = label.substr(0, 11) + "~";
+            float label_w = tr.text_width(label.c_str(), 0.85f);
+            tr.draw_text(left_jack_x - kPatchJackRadius * 2 - 2 - label_w, row_y + 2,
+                         label.c_str(), clr_a[0], clr_a[1], clr_a[2], 0.8f, 0.85f);
+
+            float jack_alpha = 1.0f;
+            if (patch_dragging_ && patch_drag_from_idx_ >= 0 &&
+                patch_drag_from_idx_ < static_cast<int>(patch_jacks_.size())) {
+                const auto& src = patch_jacks_[patch_drag_from_idx_];
+                bool compatible = (src.node_id != node_a.node_id) && port.can_dest &&
+                                  port_type_compatible(src.port_type, port.port_type);
+                jack_alpha = compatible ? 1.0f : 0.2f;
+            }
+
+            if (port.can_source) {
+                tr.draw_rect(left_jack_x - kPatchJackRadius, jack_cy - kPatchJackRadius,
+                             kPatchJackRadius * 2, kPatchJackRadius * 2,
+                             clr_a[0], clr_a[1], clr_a[2], jack_alpha);
+            } else {
+                tr.draw_arc(left_jack_x, jack_cy, kPatchJackRadius, 0.0f, 6.283f,
+                            1.5f, 12, clr_a[0], clr_a[1], clr_a[2], jack_alpha);
+            }
+
+            patch_jacks_.push_back({
+                left_jack_x, jack_cy, node_a.node_id, port.name,
+                port.port_type, port.can_source, port.can_dest, port.is_param
+            });
+            cur_y += kPatchRowH;
         }
+        if (left_has_params) {
+            draw_section_header(px, cur_y, kPatchColW, "PARAMS", clr_a, true);
+            cur_y += kPatchRowH;
+        }
+        for (int i = 0; i < static_cast<int>(left_pl.params.size()); ++i) {
+            const auto& port = left_pl.params[i];
+            float row_y = cur_y;
+            float jack_cy = row_y + kPatchRowH * 0.5f;
 
-        // Store jack for hit testing
-        patch_jacks_.push_back({
-            left_jack_x, jack_cy, node_a.node_id, port.name,
-            port.port_type, port.can_source, port.can_dest, port.is_param
-        });
+            std::string label = "\xC2\xB7" + port.name;
+            label += type_suffix(port.port_type);
+            if (label.size() > 12) label = label.substr(0, 11) + "~";
+            float label_w = tr.text_width(label.c_str(), 0.85f);
+            tr.draw_text(left_jack_x - kPatchJackRadius * 2 - 2 - label_w, row_y + 2,
+                         label.c_str(), clr_a[0], clr_a[1], clr_a[2], 0.5f, 0.85f);
+
+            float jack_alpha = 1.0f;
+            if (patch_dragging_ && patch_drag_from_idx_ >= 0 &&
+                patch_drag_from_idx_ < static_cast<int>(patch_jacks_.size())) {
+                const auto& src = patch_jacks_[patch_drag_from_idx_];
+                bool compatible = (src.node_id != node_a.node_id) && port.can_dest &&
+                                  port_type_compatible(src.port_type, port.port_type);
+                jack_alpha = compatible ? 1.0f : 0.2f;
+            }
+
+            draw_diamond(left_jack_x, jack_cy, kPatchJackRadius,
+                         clr_a[0], clr_a[1], clr_a[2], 0.8f * jack_alpha);
+
+            patch_jacks_.push_back({
+                left_jack_x, jack_cy, node_a.node_id, port.name,
+                port.port_type, port.can_source, port.can_dest, port.is_param
+            });
+            cur_y += kPatchRowH;
+        }
     }
 
     // --- Draw right ports (node B) ---
     float right_jack_x = right_col_x;  // jack at left edge of right column
 
-    for (int i = 0; i < static_cast<int>(right_ports.size()); ++i) {
-        const auto& port = right_ports[i];
-        float row_y = start_y + i * kPatchRowH;
-        float jack_cy = row_y + kPatchRowH * 0.5f;
-
-        // Label (left-aligned, after jack)
-        std::string label = port.is_param ? ("\xC2\xB7" + port.name) : port.name;
-        label += type_suffix(port.port_type);
-        if (label.size() > 12) label = label.substr(0, 11) + "~";
-        float label_alpha = port.is_param ? 0.5f : 0.8f;
-        tr.draw_text(right_jack_x + kPatchJackRadius * 2 + 2, row_y + 2,
-                     label.c_str(), clr_b[0], clr_b[1], clr_b[2], label_alpha, 0.85f);
-
-        // Jack circle
-        float jack_alpha = 1.0f;
-        if (patch_dragging_ && patch_drag_from_idx_ >= 0 &&
-            patch_drag_from_idx_ < static_cast<int>(patch_jacks_.size())) {
-            const auto& src = patch_jacks_[patch_drag_from_idx_];
-            bool compatible = (src.node_id != node_b.node_id) && port.can_dest &&
-                              port_type_compatible(src.port_type, port.port_type);
-            jack_alpha = compatible ? 1.0f : 0.2f;
+    {
+        float cur_y = start_y;
+        if (right_has_ports) {
+            draw_section_header(right_col_x, cur_y, kPatchColW, "PORTS", clr_b, false);
+            cur_y += kPatchRowH;
         }
+        for (int i = 0; i < static_cast<int>(right_pl.ports.size()); ++i) {
+            const auto& port = right_pl.ports[i];
+            float row_y = cur_y;
+            float jack_cy = row_y + kPatchRowH * 0.5f;
 
-        if (port.is_param) {
-            tr.draw_rect(right_jack_x - kPatchJackRadius, jack_cy - kPatchJackRadius,
-                         kPatchJackRadius * 2, kPatchJackRadius * 2,
-                         clr_b[0], clr_b[1], clr_b[2], 0.6f * jack_alpha);
-        } else if (port.can_source) {
-            tr.draw_rect(right_jack_x - kPatchJackRadius, jack_cy - kPatchJackRadius,
-                         kPatchJackRadius * 2, kPatchJackRadius * 2,
-                         clr_b[0], clr_b[1], clr_b[2], jack_alpha);
-        } else {
-            tr.draw_arc(right_jack_x, jack_cy, kPatchJackRadius, 0.0f, 6.283f,
-                        1.5f, 12, clr_b[0], clr_b[1], clr_b[2], jack_alpha);
+            std::string label = port.name;
+            label += type_suffix(port.port_type);
+            if (label.size() > 12) label = label.substr(0, 11) + "~";
+            float label_alpha = 0.8f;
+            tr.draw_text(right_jack_x + kPatchJackRadius * 2 + 2, row_y + 2,
+                         label.c_str(), clr_b[0], clr_b[1], clr_b[2], label_alpha, 0.85f);
+
+            float jack_alpha = 1.0f;
+            if (patch_dragging_ && patch_drag_from_idx_ >= 0 &&
+                patch_drag_from_idx_ < static_cast<int>(patch_jacks_.size())) {
+                const auto& src = patch_jacks_[patch_drag_from_idx_];
+                bool compatible = (src.node_id != node_b.node_id) && port.can_dest &&
+                                  port_type_compatible(src.port_type, port.port_type);
+                jack_alpha = compatible ? 1.0f : 0.2f;
+            }
+
+            if (port.can_source) {
+                tr.draw_rect(right_jack_x - kPatchJackRadius, jack_cy - kPatchJackRadius,
+                             kPatchJackRadius * 2, kPatchJackRadius * 2,
+                             clr_b[0], clr_b[1], clr_b[2], jack_alpha);
+            } else {
+                tr.draw_arc(right_jack_x, jack_cy, kPatchJackRadius, 0.0f, 6.283f,
+                            1.5f, 12, clr_b[0], clr_b[1], clr_b[2], jack_alpha);
+            }
+
+            patch_jacks_.push_back({
+                right_jack_x, jack_cy, node_b.node_id, port.name,
+                port.port_type, port.can_source, port.can_dest, port.is_param
+            });
+            cur_y += kPatchRowH;
         }
+        if (right_has_params) {
+            draw_section_header(right_col_x, cur_y, kPatchColW, "PARAMS", clr_b, false);
+            cur_y += kPatchRowH;
+        }
+        for (int i = 0; i < static_cast<int>(right_pl.params.size()); ++i) {
+            const auto& port = right_pl.params[i];
+            float row_y = cur_y;
+            float jack_cy = row_y + kPatchRowH * 0.5f;
 
-        patch_jacks_.push_back({
-            right_jack_x, jack_cy, node_b.node_id, port.name,
-            port.port_type, port.can_source, port.can_dest, port.is_param
-        });
+            std::string label = "\xC2\xB7" + port.name;
+            label += type_suffix(port.port_type);
+            if (label.size() > 12) label = label.substr(0, 11) + "~";
+            tr.draw_text(right_jack_x + kPatchJackRadius * 2 + 2, row_y + 2,
+                         label.c_str(), clr_b[0], clr_b[1], clr_b[2], 0.5f, 0.85f);
+
+            float jack_alpha = 1.0f;
+            if (patch_dragging_ && patch_drag_from_idx_ >= 0 &&
+                patch_drag_from_idx_ < static_cast<int>(patch_jacks_.size())) {
+                const auto& src = patch_jacks_[patch_drag_from_idx_];
+                bool compatible = (src.node_id != node_b.node_id) && port.can_dest &&
+                                  port_type_compatible(src.port_type, port.port_type);
+                jack_alpha = compatible ? 1.0f : 0.2f;
+            }
+
+            draw_diamond(right_jack_x, jack_cy, kPatchJackRadius,
+                         clr_b[0], clr_b[1], clr_b[2], 0.8f * jack_alpha);
+
+            patch_jacks_.push_back({
+                right_jack_x, jack_cy, node_b.node_id, port.name,
+                port.port_type, port.can_source, port.can_dest, port.is_param
+            });
+            cur_y += kPatchRowH;
+        }
     }
 
     // --- Draw connection wires ---

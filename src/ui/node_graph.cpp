@@ -544,6 +544,7 @@ int NodeGraphUI::hit_test_wire(float sx, float sy) const {
 
     for (int ci = 0; ci < static_cast<int>(conns.size()); ++ci) {
         const auto& c = conns[ci];
+        if (c.from_is_param && !show_param_wires_) continue;
         auto fi = id_to_rect.find(c.from_node);
         auto ti = id_to_rect.find(c.to_node);
         if (fi == id_to_rect.end() || ti == id_to_rect.end()) continue;
@@ -825,6 +826,13 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
 void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     snap_ = snapshot;
     snap_valid_ = true;
+
+    // Deselect a param wire that becomes hidden
+    if (!show_param_wires_ && selected_wire_idx_ >= 0 &&
+        selected_wire_idx_ < (int)snap_.connections.size() &&
+        snap_.connections[selected_wire_idx_].from_is_param) {
+        selected_wire_idx_ = -1;
+    }
 
     // MIDI map mode: capture CC event when waiting for knob wiggle
     if (midi_map_waiting_ && !snap_.pending_cc_events.empty()) {

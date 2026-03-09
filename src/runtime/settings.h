@@ -10,6 +10,7 @@ struct Settings {
     int window_width  = 1280;
     int window_height = 800;
     bool bezier_wires = false;
+    bool show_param_wires = false;
 
     std::string editor;          // app name for `open -a`, empty = system default
     std::string editor_command;  // custom command template with {file} placeholder
