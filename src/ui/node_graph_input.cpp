@@ -15,6 +15,19 @@ using vivid::format_float;
 using vivid::format_int;
 using vivid::format_uint;
 
+namespace {
+template <typename Pred>
+void append_paste_filtered(std::string& dst, const char* clip, Pred pred, size_t max_len = SIZE_MAX) {
+    if (!clip) return;
+    for (const char* p = clip; *p; ++p) {
+        unsigned char ch = static_cast<unsigned char>(*p);
+        if (!pred(ch)) continue;
+        if (dst.size() >= max_len) break;
+        dst.push_back(static_cast<char>(ch));
+    }
+}
+} // namespace
+
 // -----------------------------------------------------------------------
 // GLFW callbacks
 // -----------------------------------------------------------------------
@@ -140,6 +153,114 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
 // -----------------------------------------------------------------------
 void NodeGraphUI::on_key(int key, int action, int mods) {
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
+    const bool mod_key = (mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER)) != 0;
+
+    if (action == GLFW_PRESS && mod_key && key == GLFW_KEY_V) {
+        const char* clip = glfwGetClipboardString(nullptr);
+        if (graph_meta_editor_open_) {
+            if (graph_meta_active_field_ >= 0 &&
+                graph_meta_active_field_ < static_cast<int>(graph_meta_fields_.size())) {
+                auto* field = graph_meta_fields_[graph_meta_active_field_];
+                if (field) {
+                    append_paste_filtered(*field, clip, [](unsigned char c) {
+                        return c >= 32 && c < 127;
+                    });
+                }
+            }
+            return;
+        }
+        if (example_browser_open_) {
+            append_paste_filtered(example_browser_filter_, clip, [](unsigned char c) {
+                return c >= 32 && c < 127;
+            });
+            example_browser_scroll_ = 0;
+            example_browser_sel_ = 0;
+            rebuild_example_items();
+            return;
+        }
+        if (pkg_browser_open_) {
+            append_paste_filtered(pkg_browser_filter_, clip, [](unsigned char c) {
+                return c >= 32 && c < 127;
+            });
+            pkg_browser_scroll_ = 0;
+            pkg_browser_sel_ = 0;
+            rebuild_pkg_browser_items();
+            return;
+        }
+        if (prefs_open_ && prefs_editing_custom_) {
+            append_paste_filtered(prefs_custom_command_, clip, [](unsigned char c) {
+                return c >= 32 && c < 127;
+            });
+            return;
+        }
+        if (session_editing_name_) {
+            append_paste_filtered(session_edit_buffer_, clip, [](unsigned char c) {
+                return c >= 32 && c < 127;
+            });
+            return;
+        }
+        if (editing_midi_range_ || editing_wire_remap_) {
+            append_paste_filtered(edit_buffer_, clip, [](unsigned char c) {
+                return std::isdigit(c) || c == '.' || c == '-';
+            });
+            return;
+        }
+        if (editing_param_) {
+            const auto* ns = snap_.find_node(edit_node_id_);
+            const ParamInfo* pd = ns ? ns->find_param(edit_param_name_) : nullptr;
+            if (pd && pd->type == VIVID_PARAM_TEXT) {
+                append_paste_filtered(edit_buffer_, clip, [](unsigned char c) {
+                    return c >= 32 && c < 127;
+                });
+            } else {
+                append_paste_filtered(edit_buffer_, clip, [](unsigned char c) {
+                    return std::isdigit(c) || c == '.' || c == '-';
+                });
+            }
+            return;
+        }
+        if (editing_resolution_) {
+            append_paste_filtered(edit_buffer_, clip, [](unsigned char c) {
+                return std::isdigit(c);
+            });
+            return;
+        }
+        if (color_editing_hex_) {
+            color_hex_buffer_.clear();
+            append_paste_filtered(color_hex_buffer_, clip, [](unsigned char c) {
+                return c == '#' || std::isxdigit(c);
+            }, 7);
+            return;
+        }
+        if (color_editing_rgb_ >= 0) {
+            append_paste_filtered(color_rgb_buffer_, clip, [](unsigned char c) {
+                return std::isdigit(c);
+            }, 3);
+            return;
+        }
+        if (preset_name_popup_open_) {
+            append_paste_filtered(preset_name_buffer_, clip, [](unsigned char c) {
+                if (std::isupper(c)) c = static_cast<unsigned char>(std::tolower(c));
+                return std::islower(c) || std::isdigit(c) || c == '_';
+            });
+            return;
+        }
+        if (create_popup_open_) {
+            append_paste_filtered(create_name_buf_, clip, [](unsigned char c) {
+                if (std::isupper(c)) c = static_cast<unsigned char>(std::tolower(c));
+                return std::islower(c) || std::isdigit(c) || c == '_';
+            });
+            create_error_ = commands_.validate_operator_name(create_name_buf_);
+            return;
+        }
+        if (chooser_open_) {
+            append_paste_filtered(chooser_filter_, clip, [](unsigned char c) {
+                return c >= 32 && c < 127;
+            });
+            rebuild_chooser_items();
+            return;
+        }
+    }
 
     if (about_open_) {
         if (key == GLFW_KEY_ESCAPE)
@@ -737,7 +858,6 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
     }
 
     if (!chooser_open_) {
-        bool mod_key = (mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER)) != 0;
         if (action == GLFW_PRESS && mod_key) {
             if (key == GLFW_KEY_Z) {
                 if (mods & GLFW_MOD_SHIFT) commands_.redo();
@@ -763,7 +883,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             bezier_wires_ = !bezier_wires_;
         }
         // V: toggle session grid
-        if (key == GLFW_KEY_V && action == GLFW_PRESS) {
+        if (key == GLFW_KEY_V && action == GLFW_PRESS && !mod_key) {
             toggle_session_grid();
         }
         // M: toggle MIDI map mode

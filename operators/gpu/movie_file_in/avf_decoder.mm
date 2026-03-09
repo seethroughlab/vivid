@@ -3,9 +3,11 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
+#import <QuartzCore/QuartzCore.h>
 #include <vector>
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 #include <thread>
 
 // =============================================================================
@@ -70,11 +72,11 @@ struct AVFDecoder::Impl {
     bool     is_looping    = true;
     bool     opened        = false;
     float    current_speed_ = 1.0f;
+    uint64_t no_frame_counter_ = 0;
 
-    bool open(const std::string& path) {
+    bool open_main_thread(NSString* path_ns) {
         @autoreleasepool {
-            NSURL* url = [NSURL fileURLWithPath:
-                [NSString stringWithUTF8String:path.c_str()]];
+            NSURL* url = [NSURL fileURLWithPath:path_ns];
             if (!url) return false;
 
             AVAsset* asset = [AVAsset assetWithURL:url];
@@ -144,18 +146,12 @@ struct AVFDecoder::Impl {
             loop_observer = [[LoopObserver alloc] initWithPlayer:player];
             loop_observer.shouldLoop = is_looping;
 
-            // Wait for player item to be ready to play.
-            // AVFoundation updates status via internal GCD queues.
-            // On the main thread we'd pump the run loop, but a simple
-            // sleep works on any thread (including background loaders).
-            for (int i = 0; i < 300; ++i) {
-                if (player_item.status != AVPlayerItemStatusUnknown) break;
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            }
-
-            if (player_item.status != AVPlayerItemStatusReadyToPlay) {
-                std::fprintf(stderr, "[avf_decoder] Player item not ready (status=%ld)\n",
-                             (long)player_item.status);
+            // Do not hard-fail on AVPlayerItemStatusUnknown during open.
+            // AVFoundation can remain in Unknown briefly after attaching output;
+            // decode_frame() will naturally yield no frame until ready.
+            if (player_item.status == AVPlayerItemStatusFailed) {
+                std::fprintf(stderr, "[avf_decoder] Player item failed during open: %s\n",
+                             player_item.error.localizedDescription.UTF8String ?: "<no error>");
                 close();
                 return false;
             }
@@ -166,7 +162,26 @@ struct AVFDecoder::Impl {
         }
     }
 
+    bool open(const std::string& path) {
+        NSString* path_ns = [NSString stringWithUTF8String:path.c_str()];
+        if (!path_ns) return false;
+        if ([NSThread isMainThread]) {
+            return open_main_thread(path_ns);
+        }
+        __block bool ok = false;
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            ok = open_main_thread(path_ns);
+        });
+        return ok;
+    }
+
     void close() {
+        if (![NSThread isMainThread]) {
+            dispatch_sync(dispatch_get_main_queue(), ^{
+                close();
+            });
+            return;
+        }
         @autoreleasepool {
             if (player) {
                 [player pause];
@@ -186,14 +201,46 @@ struct AVFDecoder::Impl {
         @autoreleasepool {
             if (!opened || !video_output || !player) return false;
 
-            CMTime time = player_item.currentTime;
-            if (![video_output hasNewPixelBufferForItemTime:time])
-                return false;
+            // Recover from transient paused state (seen after seeks/loops).
+            if (current_speed_ > 0.0f && player.rate == 0.0f) {
+                [player play];
+                player.rate = current_speed_;
+            }
 
-            CVPixelBufferRef cv_buf = [video_output
-                copyPixelBufferForItemTime:time
+            AVPlayerItem* current_item = player.currentItem ? player.currentItem : player_item;
+            if (!current_item) return false;
+            AVPlayerItemVideoOutput* active_output = video_output;
+            if (current_item != player_item) {
+                for (AVPlayerItemOutput* out in current_item.outputs) {
+                    if ([out isKindOfClass:[AVPlayerItemVideoOutput class]]) {
+                        active_output = (AVPlayerItemVideoOutput*)out;
+                        break;
+                    }
+                }
+            }
+            if (!active_output) return false;
+            CMTime display_time = [video_output itemTimeForHostTime:CACurrentMediaTime()];
+            if (!CMTIME_IS_VALID(display_time) || CMTIME_IS_INDEFINITE(display_time)) {
+                display_time = current_item.currentTime;
+            }
+
+            CVPixelBufferRef cv_buf = [active_output
+                copyPixelBufferForItemTime:display_time
                 itemTimeForDisplay:nil];
-            if (!cv_buf) return false;
+            if (!cv_buf) {
+                // Fallback path for some containers/codecs where host-time lookup can miss.
+                CMTime now_time = current_item.currentTime;
+                cv_buf = [active_output copyPixelBufferForItemTime:now_time itemTimeForDisplay:nil];
+            }
+            if (!cv_buf) {
+                no_frame_counter_++;
+                if ((no_frame_counter_ % 240) == 0) {
+                    std::fprintf(stderr, "[avf_decoder] no pixel buffer for ~%llu decode ticks\n",
+                                 static_cast<unsigned long long>(no_frame_counter_));
+                }
+                return false;
+            }
+            no_frame_counter_ = 0;
 
             CVPixelBufferLockBaseAddress(cv_buf, kCVPixelBufferLock_ReadOnly);
 
@@ -237,7 +284,8 @@ struct AVFDecoder::Impl {
             if (!player || !opened) return;
             bool force = loop_observer && loop_observer.loopFired;
             if (force) loop_observer.loopFired = NO;
-            if (speed != current_speed_ || force) {
+            float actual_rate = player.rate;
+            if (std::abs(actual_rate - speed) > 1e-6f || force) {
                 current_speed_ = speed;
                 player.rate = speed;
             }
@@ -269,6 +317,21 @@ struct AVFDecoder::Impl {
             return 0.0f;
         }
     }
+
+    bool seek(double time_seconds) {
+        if (!opened || !player_item || !player) return false;
+        const double t = std::max(0.0, time_seconds);
+        @autoreleasepool {
+            CMTime seek_time = CMTimeMakeWithSeconds(t, 600);
+            [player seekToTime:seek_time
+                toleranceBefore:kCMTimeZero
+                 toleranceAfter:kCMTimeZero];
+            if (current_speed_ > 0.0f) {
+                player.rate = current_speed_;
+            }
+        }
+        return true;
+    }
 };
 
 // =============================================================================
@@ -291,6 +354,7 @@ void AVFDecoder::set_speed(float speed) { impl_->set_speed(speed); }
 void AVFDecoder::play() { impl_->play(); }
 void AVFDecoder::pause() { impl_->pause(); }
 float AVFDecoder::current_time() const { return impl_->current_time(); }
+bool AVFDecoder::seek(double time_seconds) { return impl_->seek(time_seconds); }
 
 std::unique_ptr<VideoDecoder> create_avf_decoder() {
     return std::make_unique<AVFDecoder>();

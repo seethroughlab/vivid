@@ -3,11 +3,11 @@
 #include "operator_api/gpu_common.h"
 #include "operator_api/media_clock.h"
 #include "operator_api/media_stream.h"
-#include "video_decoder.h"
-#include "decoder_factory.h"
-#include "texture_upload.h"
-#include "placeholder_frame.h"
-#include "load_generation.h"
+#include "../movie_file_in/video_decoder.h"
+#include "../movie_file_in/decoder_factory.h"
+#include "../movie_file_in/texture_upload.h"
+#include "../movie_file_in/placeholder_frame.h"
+#include "../movie_file_in/load_generation.h"
 #include "../../shared/media_session/media_session.h"
 
 #include <cstdio>
@@ -21,6 +21,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <cmath>
 #include <optional>
 #include <utility>
 
@@ -132,6 +133,7 @@ struct MovieFileIn : vivid::OperatorBase {
     vivid::Param<vivid::FilePath> file {"file"};
     vivid::Param<int>   play_mode {"play_mode", 0, {"Loop", "Once", "Hold Last"}};
     vivid::Param<float> speed     {"speed", 1.0f, 0.0f, 4.0f};
+    vivid::Param<float> video_phase_offset_ms {"video_phase_offset_ms", 0.0f, -250.0f, 250.0f};
 
     MovieFileIn() {
         vivid::semantic_tag(file, "path_video");
@@ -142,6 +144,10 @@ struct MovieFileIn : vivid::OperatorBase {
 
         vivid::semantic_tag(speed, "x_playback_speed");
         vivid::semantic_shape(speed, "scalar");
+
+        vivid::semantic_tag(video_phase_offset_ms, "time_offset_ms");
+        vivid::semantic_shape(video_phase_offset_ms, "scalar");
+        vivid::semantic_unit(video_phase_offset_ms, "ms");
 
         start_loader_thread();
     }
@@ -168,6 +174,7 @@ struct MovieFileIn : vivid::OperatorBase {
         out.push_back(&file);
         out.push_back(&play_mode);
         out.push_back(&speed);
+        out.push_back(&video_phase_offset_ms);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -220,6 +227,31 @@ struct MovieFileIn : vivid::OperatorBase {
             decoder_->set_loop(play_mode.int_value() == 0);
             decoder_->set_speed(speed.value);
 
+            if (session_) {
+                const uint64_t audio_frames = session_->audio_frames_read.load(std::memory_order_acquire);
+                const uint64_t generation = media_clock_.source_generation;
+                if (audio_frames > 0 &&
+                    session_->source_generation.load(std::memory_order_acquire) == generation) {
+                    const double duration_s = std::max(0.0, static_cast<double>(decoder_->duration()));
+                    const double desired_mono = session_->audio_read_head_media_time.load(std::memory_order_acquire);
+                    const double phase_offset_s = static_cast<double>(video_phase_offset_ms.value) * 0.001;
+                    const double desired_video_mono = desired_mono + phase_offset_s;
+                    const double desired_local = wrap_time(desired_video_mono, duration_s);
+                    const double video_local = std::max(0.0, static_cast<double>(decoder_->current_time()));
+                    const double err = shortest_circular_diff(desired_local, video_local, duration_s);
+                    constexpr double kVideoSeekErrSec = 0.012;
+                    constexpr double kVideoSeekCooldownSec = 0.030;
+                    const bool generation_changed = (last_video_sync_seek_generation_ != generation);
+                    if ((generation_changed || std::abs(err) > kVideoSeekErrSec) &&
+                        (desired_video_mono - last_video_sync_seek_mono_s_) > kVideoSeekCooldownSec) {
+                        if (decoder_->seek(desired_local)) {
+                            last_video_sync_seek_mono_s_ = desired_video_mono;
+                            last_video_sync_seek_generation_ = generation;
+                        }
+                    }
+                }
+            }
+
             if (decoder_->decode_frame()) {
                 uint32_t w = decoder_->width();
                 uint32_t h = decoder_->height();
@@ -269,11 +301,12 @@ struct MovieFileIn : vivid::OperatorBase {
             clear_output(gpu);
         }
 
+        update_and_publish_media_clock(ctx);
         if (ctx->output_values) {
-            ctx->output_values[1] = decoder_ ? decoder_->current_time() : 0.0f;
+            // Time output mirrors authoritative media clock (audio-master when available).
+            ctx->output_values[1] = static_cast<float>(media_clock_.local_time_s);
             ctx->output_values[2] = speed.value;
         }
-        update_and_publish_media_clock(ctx);
     }
 
 private:
@@ -281,6 +314,22 @@ private:
         if (!ctx || !ctx->input_string_values) return {};
         const char* s = ctx->input_string_values[0];
         return s ? std::string(s) : std::string();
+    }
+
+    static double wrap_time(double t, double duration) {
+        if (duration <= 0.0) return std::max(0.0, t);
+        double out = std::fmod(t, duration);
+        if (out < 0.0) out += duration;
+        return out;
+    }
+
+    static double shortest_circular_diff(double target, double current, double duration) {
+        if (duration <= 0.0) return target - current;
+        double d = target - current;
+        const double half = duration * 0.5;
+        while (d > half) d -= duration;
+        while (d < -half) d += duration;
+        return d;
     }
 
     struct LoadRequest {
@@ -327,6 +376,8 @@ private:
     std::thread loader_thread_;
     float last_cmd_speed_ = 1.0f;
     int last_cmd_play_mode_ = 0;
+    double last_video_sync_seek_mono_s_ = -1000.0;
+    uint64_t last_video_sync_seek_generation_ = 0;
 
     void ensure_texture(VividGpuState* gpu,
                         uint32_t w,
@@ -424,6 +475,7 @@ private:
         media_clock_.loop_epoch = 0;
         last_local_time_s_ = 0.0;
         if (!session_) session_ = std::make_unique<vivid::media::MediaSession>();
+        vivid::media::media_session_note_generation_transition(*session_);
         {
             std::lock_guard<std::mutex> lock(session_->mu);
             session_->source_path = last_path_;
@@ -487,16 +539,43 @@ private:
 
     void update_and_publish_media_clock(const VividProcessContext* ctx) {
         const double duration_s = decoder_ ? std::max(0.0, static_cast<double>(decoder_->duration())) : 0.0;
-        const double local_time_s = decoder_ ? std::max(0.0, static_cast<double>(decoder_->current_time())) : 0.0;
+        const double decoder_local_time_s = decoder_ ? std::max(0.0, static_cast<double>(decoder_->current_time())) : 0.0;
         const bool loop_enabled = (play_mode.int_value() == 0);
         const bool playing = (decoder_ && speed.value > 0.0f && !placeholder_active_);
+        double local_time_s = decoder_local_time_s;
+        double monotonic_time_s = decoder_local_time_s;
+        bool using_audio_master = false;
 
-        if (decoder_ && loop_enabled && duration_s > 0.0) {
-            // Detect wrap by local-time regression beyond small jitter.
-            if (local_time_s + 0.010 < last_local_time_s_ &&
-                (last_local_time_s_ - local_time_s) > (duration_s * 0.25)) {
-                media_clock_.loop_epoch += 1;
+        // Audio-master authority: when audio is active, publish clock from audio read-head.
+        if (session_) {
+            const uint64_t read_frames = session_->audio_frames_read.load(std::memory_order_acquire);
+            const double audio_mono = session_->audio_read_head_media_time.load(std::memory_order_acquire);
+            if (read_frames > 0 && audio_mono >= 0.0) {
+                using_audio_master = true;
+                monotonic_time_s = audio_mono;
+                if (duration_s > 0.0) {
+                    const double q = std::floor(audio_mono / duration_s);
+                    media_clock_.loop_epoch = static_cast<uint32_t>(std::max(0.0, q));
+                    local_time_s = std::fmod(audio_mono, duration_s);
+                    if (local_time_s < 0.0) local_time_s += duration_s;
+                } else {
+                    media_clock_.loop_epoch = 0;
+                    local_time_s = audio_mono;
+                }
             }
+        }
+
+        if (!using_audio_master) {
+            if (decoder_ && loop_enabled && duration_s > 0.0) {
+                // Detect wrap by local-time regression beyond small jitter.
+                if (decoder_local_time_s + 0.010 < last_local_time_s_ &&
+                    (last_local_time_s_ - decoder_local_time_s) > (duration_s * 0.25)) {
+                    media_clock_.loop_epoch += 1;
+                }
+            }
+            local_time_s = decoder_local_time_s;
+            monotonic_time_s =
+                vivid::media_clock_monotonic(local_time_s, duration_s, media_clock_.loop_epoch);
         }
         last_local_time_s_ = local_time_s;
 
@@ -505,8 +584,7 @@ private:
         media_clock_.speed = speed.value;
         media_clock_.playing = playing ? 1u : 0u;
         media_clock_.loop_enabled = loop_enabled ? 1u : 0u;
-        media_clock_.monotonic_time_s =
-            vivid::media_clock_monotonic(local_time_s, duration_s, media_clock_.loop_epoch);
+        media_clock_.monotonic_time_s = monotonic_time_s;
         if (session_) {
             session_->source_generation.store(media_clock_.source_generation, std::memory_order_release);
             session_->loop_epoch.store(media_clock_.loop_epoch, std::memory_order_release);

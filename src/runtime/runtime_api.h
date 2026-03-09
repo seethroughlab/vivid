@@ -159,6 +159,7 @@ private:
     bool variation_dirty_ = false;
     bool graph_dirty_ = false;
     std::string last_saved_graph_json_;
+    std::string active_graph_source_path_;
 
     // Internal helper to apply a variation's params to live nodes
     void apply_variation(int idx);

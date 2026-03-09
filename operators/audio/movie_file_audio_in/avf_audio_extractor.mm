@@ -66,6 +66,7 @@ struct AVFAudioExtractor::Impl {
     bool            opened             = false;
     bool            has_audio_track    = false;
     bool            finished_reading   = false;
+    bool            loop_enabled       = true;
 
     // Speed / PTS tracking
     std::atomic<float>  current_speed{1.0f};
@@ -251,9 +252,23 @@ struct AVFAudioExtractor::Impl {
             CMSampleBufferRef sample_buf = [track_output copyNextSampleBuffer];
             if (!sample_buf) {
                 if (reader.status == AVAssetReaderStatusCompleted) {
-                    finished_reading = true;
+                    if (loop_enabled) {
+                        if (!create_reader_at_time(0.0)) {
+                            finished_reading = true;
+                            return 0;
+                        }
+                        sample_buf = [track_output copyNextSampleBuffer];
+                        if (!sample_buf) {
+                            finished_reading = true;
+                            return 0;
+                        }
+                    } else {
+                        finished_reading = true;
+                        return 0;
+                    }
+                } else {
+                    return 0;
                 }
-                return 0;
             }
 
             CMItemCount num_samples = CMSampleBufferGetNumSamples(sample_buf);
@@ -376,6 +391,8 @@ struct AVFAudioExtractor::Impl {
         }
     }
 
+    void set_loop(bool loop) { loop_enabled = loop; }
+
     void resync(double time_seconds) {
         @autoreleasepool {
             if (!opened || !has_audio_track) return;
@@ -466,6 +483,22 @@ struct AVFAudioExtractor::Impl {
         return to_read;
     }
 
+    uint32_t discard_samples(uint32_t max_frames) {
+        uint32_t avail = ring.available_read();
+        uint32_t to_drop = std::min(max_frames, avail);
+        if (to_drop == 0) return 0;
+
+        uint32_t rp = ring.read_pos.load(std::memory_order_relaxed);
+        ring.read_pos.store((rp + to_drop) % AudioRingBuffer::kCapacity,
+                            std::memory_order_release);
+
+        float speed = current_speed.load(std::memory_order_relaxed);
+        double advance = static_cast<double>(to_drop) * speed / ring.sample_rate;
+        double old_time = read_head_media_time.load(std::memory_order_relaxed);
+        read_head_media_time.store(old_time + advance, std::memory_order_relaxed);
+        return to_drop;
+    }
+
     double read_head_pts() const {
         return read_head_media_time.load(std::memory_order_relaxed);
     }
@@ -486,9 +519,13 @@ bool AVFAudioExtractor::is_open() const { return impl_ && impl_->opened; }
 bool AVFAudioExtractor::has_audio() const { return impl_ && impl_->has_audio_track; }
 float AVFAudioExtractor::duration() const { return impl_ ? impl_->media_duration : 0.0f; }
 void AVFAudioExtractor::set_speed(float speed) { impl_->set_speed(speed); }
+void AVFAudioExtractor::set_loop(bool loop) { impl_->set_loop(loop); }
 void AVFAudioExtractor::fill_buffer() { impl_->fill_buffer(); }
 void AVFAudioExtractor::resync(double time_seconds) { impl_->resync(time_seconds); }
 uint32_t AVFAudioExtractor::read_samples(float* left, float* right, uint32_t max_frames) {
     return impl_->read_samples(left, right, max_frames);
+}
+uint32_t AVFAudioExtractor::discard_samples(uint32_t max_frames) {
+    return impl_->discard_samples(max_frames);
 }
 double AVFAudioExtractor::read_head_pts() const { return impl_->read_head_pts(); }

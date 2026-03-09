@@ -136,7 +136,8 @@ inline void draw_checkbox(
 
 inline bool is_control_type(VividPortType t) {
     return t == VIVID_PORT_CONTROL_FLOAT || t == VIVID_PORT_CONTROL_INT ||
-           t == VIVID_PORT_CONTROL_BOOL  || t == VIVID_PORT_CONTROL_SPREAD;
+           t == VIVID_PORT_CONTROL_BOOL  || t == VIVID_PORT_CONTROL_SPREAD ||
+           t == VIVID_PORT_CONTROL_STRING || t == VIVID_PORT_CONTROL_STRING_SPREAD;
 }
 
 inline bool is_numeric_type(VividPortType t) {
@@ -147,6 +148,8 @@ inline bool is_numeric_type(VividPortType t) {
 inline bool port_type_compatible(VividPortType a, VividPortType b) {
     if (a == VIVID_PORT_GPU_TEXTURE)   return b == VIVID_PORT_GPU_TEXTURE;
     if (a == VIVID_PORT_DATA)          return b == VIVID_PORT_DATA;
+    if (a == VIVID_PORT_CONTROL_STRING) return b == VIVID_PORT_CONTROL_STRING;
+    if (a == VIVID_PORT_CONTROL_STRING_SPREAD) return b == VIVID_PORT_CONTROL_STRING_SPREAD;
     if (a == VIVID_PORT_AUDIO_FLOAT)   return b == VIVID_PORT_AUDIO_FLOAT;
     return is_control_type(a) && is_control_type(b);
 }

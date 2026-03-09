@@ -70,6 +70,8 @@ static const char* port_type_str(VividPortType t) {
         case VIVID_PORT_CONTROL_SPREAD: return "control_spread";
         case VIVID_PORT_GPU_TEXTURE:    return "gpu_texture";
         case VIVID_PORT_DATA:          return "data";
+        case VIVID_PORT_CONTROL_STRING: return "control_string";
+        case VIVID_PORT_CONTROL_STRING_SPREAD: return "control_string_spread";
         default: return "unknown";
     }
 }
@@ -291,12 +293,26 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                             static_cast<double>(ns->output_values[oi->second]));
                     }
                     if (oi != ns->output_port_indices.end() &&
+                        oi->second < ns->output_string_values.size() &&
+                        !ns->output_string_values[oi->second].empty()) {
+                        yyjson_mut_obj_add_strcpy(doc, p, "current_string",
+                            ns->output_string_values[oi->second].c_str());
+                    }
+                    if (oi != ns->output_port_indices.end() &&
                         oi->second < ns->output_spreads.size() &&
                         !ns->output_spreads[oi->second].empty()) {
                         yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
                         for (float sv : ns->output_spreads[oi->second])
                             yyjson_mut_arr_add_real(doc, spread_arr, static_cast<double>(sv));
                         yyjson_mut_obj_add_val(doc, p, "spread", spread_arr);
+                    }
+                    if (oi != ns->output_port_indices.end() &&
+                        oi->second < ns->output_string_spreads.size() &&
+                        !ns->output_string_spreads[oi->second].empty()) {
+                        yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                        for (const auto& sv : ns->output_string_spreads[oi->second])
+                            yyjson_mut_arr_add_strcpy(doc, spread_arr, sv.c_str());
+                        yyjson_mut_obj_add_val(doc, p, "string_spread", spread_arr);
                     }
                 }
 
@@ -308,12 +324,26 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                             static_cast<double>(ns->input_values[ii->second]));
                     }
                     if (ii != ns->input_port_indices.end() &&
+                        ii->second < ns->input_string_values.size() &&
+                        !ns->input_string_values[ii->second].empty()) {
+                        yyjson_mut_obj_add_strcpy(doc, p, "current_string",
+                            ns->input_string_values[ii->second].c_str());
+                    }
+                    if (ii != ns->input_port_indices.end() &&
                         ii->second < ns->input_spreads.size() &&
                         !ns->input_spreads[ii->second].empty()) {
                         yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
                         for (float sv : ns->input_spreads[ii->second])
                             yyjson_mut_arr_add_real(doc, spread_arr, static_cast<double>(sv));
                         yyjson_mut_obj_add_val(doc, p, "spread", spread_arr);
+                    }
+                    if (ii != ns->input_port_indices.end() &&
+                        ii->second < ns->input_string_spreads.size() &&
+                        !ns->input_string_spreads[ii->second].empty()) {
+                        yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                        for (const auto& sv : ns->input_string_spreads[ii->second])
+                            yyjson_mut_arr_add_strcpy(doc, spread_arr, sv.c_str());
+                        yyjson_mut_obj_add_val(doc, p, "string_spread", spread_arr);
                     }
                 }
 
@@ -476,11 +506,22 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                         yyjson_mut_obj_add_real(doc, in, "scalar",
                                                 static_cast<double>(ns.input_values[ii]));
                     }
+                    if (ii < ns.input_string_values.size() &&
+                        !ns.input_string_values[ii].empty()) {
+                        yyjson_mut_obj_add_strcpy(doc, in, "string",
+                                                  ns.input_string_values[ii].c_str());
+                    }
                     if (ii < ns.input_spreads.size()) {
                         yyjson_mut_val* spread = yyjson_mut_obj(doc);
                         yyjson_mut_obj_add_int(doc, spread, "length",
                                                static_cast<int64_t>(ns.input_spreads[ii].size()));
                         yyjson_mut_obj_add_val(doc, in, "spread", spread);
+                    }
+                    if (ii < ns.input_string_spreads.size()) {
+                        yyjson_mut_val* sspread = yyjson_mut_obj(doc);
+                        yyjson_mut_obj_add_int(doc, sspread, "length",
+                                               static_cast<int64_t>(ns.input_string_spreads[ii].size()));
+                        yyjson_mut_obj_add_val(doc, in, "string_spread", sspread);
                     }
                 }
                 yyjson_mut_arr_add_val(inputs_arr, in);
@@ -507,11 +548,22 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                     if (oi < ns.output_values.size())
                         yyjson_mut_obj_add_real(doc, out, "scalar",
                                                 static_cast<double>(ns.output_values[oi]));
+                    if (oi < ns.output_string_values.size() &&
+                        !ns.output_string_values[oi].empty()) {
+                        yyjson_mut_obj_add_strcpy(doc, out, "string",
+                                                  ns.output_string_values[oi].c_str());
+                    }
                     if (oi < ns.output_spreads.size()) {
                         yyjson_mut_val* spread = yyjson_mut_obj(doc);
                         yyjson_mut_obj_add_int(doc, spread, "length",
                                                static_cast<int64_t>(ns.output_spreads[oi].size()));
                         yyjson_mut_obj_add_val(doc, out, "spread", spread);
+                    }
+                    if (oi < ns.output_string_spreads.size()) {
+                        yyjson_mut_val* sspread = yyjson_mut_obj(doc);
+                        yyjson_mut_obj_add_int(doc, sspread, "length",
+                                               static_cast<int64_t>(ns.output_string_spreads[oi].size()));
+                        yyjson_mut_obj_add_val(doc, out, "string_spread", sspread);
                     }
                 }
 
@@ -603,7 +655,8 @@ struct DiagnosticFinding {
     std::string suggestion;
 };
 
-static std::vector<DiagnosticFinding> collect_diagnostics(Graph& graph, Scheduler& scheduler) {
+static std::vector<DiagnosticFinding> collect_diagnostics(
+        Graph& graph, Scheduler& scheduler, OperatorRegistry& registry) {
     std::unordered_map<std::string, int> incoming_wires;
     std::unordered_map<std::string, int> outgoing_wires;
     for (const auto& conn : graph.connections()) {
@@ -621,12 +674,17 @@ static std::vector<DiagnosticFinding> collect_diagnostics(Graph& graph, Schedule
         if (type_name.empty() && desc && desc->name) type_name = desc->name;
 
         if (ns.missing_operator) {
+            std::string suggestion = "Install or link the package providing this operator type, then reload.";
+            if (registry.has_abi_mismatch_diagnostics()) {
+                suggestion = "Install/link may be fine but plugin ABI appears incompatible. "
+                             "Rebuild vivid and rerun package rebuild.";
+            }
             findings.push_back({
                 "missing_operator_type",
                 "critical",
                 ns.node_id,
                 "Operator type is unresolved; missing-operator placeholder is active.",
-                "Install or link the package providing this operator type, then reload."
+                suggestion
             });
         }
 
@@ -716,14 +774,14 @@ static std::vector<DiagnosticFinding> collect_diagnostics(Graph& graph, Schedule
     return findings;
 }
 
-static std::string handle_run_diagnostics(Graph& graph, Scheduler& scheduler) {
+static std::string handle_run_diagnostics(Graph& graph, Scheduler& scheduler, OperatorRegistry& registry) {
     yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
     yyjson_mut_val* root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_bool(doc, root, "ok", true);
     yyjson_mut_obj_add_int(doc, root, "schema_version", 1);
 
-    std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, scheduler);
+    std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, scheduler, registry);
 
     yyjson_mut_val* summary = yyjson_mut_obj(doc);
     int64_t critical_count = 0;
@@ -1157,7 +1215,7 @@ static std::string handle_validate_checks(yyjson_val* root) {
     return s;
 }
 
-static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, yyjson_val* root) {
+static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, OperatorRegistry& registry, yyjson_val* root) {
     if (!root) return json_err("invalid JSON body");
     yyjson_val* checks = yyjson_obj_get(root, "checks");
     if (!checks || !yyjson_is_arr(checks)) return json_err("missing 'checks' array");
@@ -1186,7 +1244,7 @@ static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, yyjson_
         incoming_wires[conn.to_node]++;
         outgoing_wires[conn.from_node]++;
     }
-    std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, scheduler);
+    std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, scheduler, registry);
 
     yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
     yyjson_mut_val* root_out = yyjson_mut_obj(doc);
@@ -1378,7 +1436,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
     // Read-only queries (no body needed)
     if (method == "inspect_graph") return handle_inspect_graph(graph, scheduler);
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, scheduler);
-    if (method == "run_diagnostics") return handle_run_diagnostics(graph, scheduler);
+    if (method == "run_diagnostics") return handle_run_diagnostics(graph, scheduler, registry);
     if (method == "list_types")    return handle_list_types(registry);
 
     // Parse body JSON (may be empty for some commands)
@@ -1390,7 +1448,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
     if (method == "validate_checks") {
         result = handle_validate_checks(root);
     } else if (method == "run_checks") {
-        result = handle_run_checks(graph, scheduler, root);
+        result = handle_run_checks(graph, scheduler, registry, root);
     } else if (method == "add_node") {
         if (!root) { result = json_err("invalid JSON body"); }
         else {

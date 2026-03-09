@@ -13,8 +13,22 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_set>
+#include <filesystem>
 
 namespace vivid {
+
+static std::string resolve_alias_once(const std::unordered_map<std::string, std::string>& aliases,
+                                      const std::string& type_name) {
+    std::string cur = type_name;
+    std::unordered_set<std::string> seen;
+    while (true) {
+        auto it = aliases.find(cur);
+        if (it == aliases.end()) break;
+        if (!seen.insert(cur).second) break;
+        cur = it->second;
+    }
+    return cur;
+}
 
 static std::unordered_set<std::string> parse_skip_plugins_env() {
     std::unordered_set<std::string> out;
@@ -34,6 +48,29 @@ static std::unordered_set<std::string> parse_skip_plugins_env() {
         pos = next + 1;
     }
     return out;
+}
+
+static uint32_t runtime_abi_override() {
+    const char* env = std::getenv("VIVID_MOCK_RUNTIME_ABI");
+    if (!env || !*env) return VIVID_OPERATOR_ABI_VERSION;
+    char* end = nullptr;
+    unsigned long v = std::strtoul(env, &end, 10);
+    if (end == env) return VIVID_OPERATOR_ABI_VERSION;
+    return static_cast<uint32_t>(v);
+}
+
+static std::string guess_package_name_from_plugin_path(const std::string& plugin_path) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path p = fs::path(plugin_path).lexically_normal();
+    if (p.empty()) return {};
+    fs::path parent = p.parent_path();
+    if (parent.empty()) return {};
+    if (parent.filename() == "build") {
+        fs::path pkg = parent.parent_path();
+        if (!pkg.empty()) return pkg.filename().string();
+    }
+    return {};
 }
 
 // Iterate plugin files in a directory, calling fn(path, filename, stem_len) for each
@@ -197,6 +234,7 @@ static DeferredEntry deep_copy_descriptor(const VividOperatorDescriptor* src,
 
 bool OperatorRegistry::scan_deferred(const char* directory) {
     const bool trace_probe = std::getenv("VIVID_REGISTRY_TRACE") != nullptr;
+    const uint32_t runtime_abi = runtime_abi_override();
     return scan_plugin_dir(directory, [&](const std::string& path, const char* name, size_t /*stem_len*/) {
         // Probe only: open, read descriptor, close
         if (trace_probe) {
@@ -216,10 +254,17 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
             return;
         }
         const uint32_t abi = abi_fn();
-        if (abi != VIVID_OPERATOR_ABI_VERSION) {
+        if (abi != runtime_abi) {
             std::fprintf(stderr,
                          "[vivid] probe: skipping %s (ABI %u != runtime ABI %u)\n",
-                         name, abi, VIVID_OPERATOR_ABI_VERSION);
+                         name, abi, runtime_abi);
+            AbiMismatchDiagnostic diag;
+            diag.plugin_path = path;
+            diag.plugin_name = name;
+            diag.package_name = guess_package_name_from_plugin_path(path);
+            diag.plugin_abi = abi;
+            diag.runtime_abi = runtime_abi;
+            abi_mismatch_by_path_[path] = std::move(diag);
             deferred_probe_handles_.push_back(handle);
             return;
         }
@@ -234,6 +279,7 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
             deferred_probe_handles_.push_back(handle);
             return;
         }
+        abi_mismatch_by_path_.erase(path);
 
         std::string type_name = desc->name;
 
@@ -356,36 +402,39 @@ void OperatorRegistry::register_target_mapping(const std::string& dylib_path,
 
 bool OperatorRegistry::load_for_graph(const Graph& graph) {
     for (const auto& ndef : graph.nodes()) {
-        if (loaders_.count(ndef.type)) continue;      // already loaded
-        if (wgsl_configs_.count(ndef.type)) continue;  // handled by scheduler
-        auto dit = deferred_.find(ndef.type);
+        const std::string resolved = resolve_alias_once(aliases_, ndef.type);
+        if (loaders_.count(resolved)) continue;      // already loaded
+        if (wgsl_configs_.count(resolved)) continue;  // handled by scheduler
+        auto dit = deferred_.find(resolved);
         if (dit == deferred_.end()) continue;          // builtin or unknown
 
         auto loader = std::make_unique<OperatorLoader>();
         if (!loader->load(dit->second.dylib_path.c_str())) {
-            std::fprintf(stderr, "[vivid] Registry: failed to load %s\n", ndef.type.c_str());
+            std::fprintf(stderr, "[vivid] Registry: failed to load %s\n", resolved.c_str());
             return false;
         }
 
-        register_target_mapping(dit->second.dylib_path, ndef.type);
-        loaders_[ndef.type] = std::move(loader);
+        register_target_mapping(dit->second.dylib_path, resolved);
+        loaders_[resolved] = std::move(loader);
         deferred_.erase(dit);
-        std::fprintf(stderr, "[vivid] Registry: loaded %s (on demand)\n", ndef.type.c_str());
+        std::fprintf(stderr, "[vivid] Registry: loaded %s (on demand)\n", resolved.c_str());
     }
     return true;
 }
 
 OperatorLoader* OperatorRegistry::find_loaded(const std::string& type_name) {
-    auto it = loaders_.find(type_name);
+    const std::string resolved = resolve_alias_once(aliases_, type_name);
+    auto it = loaders_.find(resolved);
     return (it != loaders_.end()) ? it->second.get() : nullptr;
 }
 
 const VividOperatorDescriptor* OperatorRegistry::probe_descriptor(const std::string& type_name) const {
-    auto lit = loaders_.find(type_name);
+    const std::string resolved = resolve_alias_once(aliases_, type_name);
+    auto lit = loaders_.find(resolved);
     if (lit != loaders_.end() && lit->second) {
         return lit->second->descriptor();
     }
-    auto dit = deferred_.find(type_name);
+    auto dit = deferred_.find(resolved);
     if (dit == deferred_.end()) return nullptr;
     return &dit->second.desc;
 }
@@ -399,22 +448,31 @@ void OperatorRegistry::register_builtin(const std::string& type_name,
     loaders_[type_name] = std::move(loader);
 }
 
+void OperatorRegistry::register_alias(const std::string& alias_name,
+                                      const std::string& canonical_type_name) {
+    if (alias_name.empty() || canonical_type_name.empty() || alias_name == canonical_type_name) return;
+    aliases_[alias_name] = canonical_type_name;
+}
+
 OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
-    auto it = loaders_.find(type_name);
+    const std::string resolved = resolve_alias_once(aliases_, type_name);
+    auto it = loaders_.find(resolved);
     if (it != loaders_.end()) return it->second.get();
 
     // Try deferred loading
-    auto dit = deferred_.find(type_name);
+    auto dit = deferred_.find(resolved);
     if (dit == deferred_.end()) return nullptr;
 
     auto loader = std::make_unique<OperatorLoader>();
     if (!loader->load(dit->second.dylib_path.c_str())) return nullptr;
 
-    register_target_mapping(dit->second.dylib_path, type_name);
+    const std::string loaded_path = dit->second.dylib_path;
+    register_target_mapping(loaded_path, resolved);
     auto* ptr = loader.get();
-    loaders_[type_name] = std::move(loader);
+    loaders_[resolved] = std::move(loader);
     deferred_.erase(dit);
-    std::fprintf(stderr, "[vivid] Registry: loaded %s (lazy)\n", type_name.c_str());
+    abi_mismatch_by_path_.erase(loaded_path);
+    std::fprintf(stderr, "[vivid] Registry: loaded %s (lazy)\n", resolved.c_str());
     return ptr;
 }
 
@@ -467,15 +525,18 @@ bool OperatorRegistry::register_loaded_operator(const std::string& dylib_path) {
 
     register_target_mapping(dylib_path, type_name);
     loaders_[type_name] = std::move(loader);
+    abi_mismatch_by_path_.erase(dylib_path);
     return true;
 }
 
 std::vector<std::string> OperatorRegistry::type_names() const {
     std::vector<std::string> names;
-    names.reserve(loaders_.size() + deferred_.size());
+    names.reserve(loaders_.size() + deferred_.size() + aliases_.size());
     for (const auto& [name, _] : loaders_) names.push_back(name);
     for (const auto& [name, _] : deferred_) names.push_back(name);
+    for (const auto& [name, _] : aliases_) names.push_back(name);
     std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
     return names;
 }
 
@@ -564,6 +625,45 @@ const std::string* OperatorRegistry::package_for_type(const std::string& type_na
 
 bool OperatorRegistry::is_package_operator(const std::string& type_name) const {
     return type_to_package_.count(type_name) > 0;
+}
+
+std::vector<AbiMismatchDiagnostic> OperatorRegistry::abi_mismatch_diagnostics() const {
+    std::vector<AbiMismatchDiagnostic> out;
+    out.reserve(abi_mismatch_by_path_.size());
+    for (const auto& [_, diag] : abi_mismatch_by_path_) out.push_back(diag);
+    std::sort(out.begin(), out.end(), [](const AbiMismatchDiagnostic& a, const AbiMismatchDiagnostic& b) {
+        return a.plugin_path < b.plugin_path;
+    });
+    return out;
+}
+
+std::vector<AbiMismatchDiagnostic> OperatorRegistry::abi_mismatch_diagnostics_for_dir(
+        const std::string& directory) const {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path dir = fs::weakly_canonical(fs::path(directory), ec);
+    if (ec) dir = fs::path(directory).lexically_normal();
+    const std::string dir_s = dir.string();
+    const std::string dir_slash = dir_s.empty() ? dir_s : (dir_s + "/");
+
+    std::vector<AbiMismatchDiagnostic> out;
+    for (const auto& [path, diag] : abi_mismatch_by_path_) {
+        fs::path path_norm = fs::weakly_canonical(fs::path(path), ec);
+        if (ec) {
+            ec.clear();
+            path_norm = fs::path(path).lexically_normal();
+        }
+        const std::string path_s = path_norm.string();
+        if (path_s == dir_s || path_s.rfind(dir_slash, 0) == 0) out.push_back(diag);
+    }
+    std::sort(out.begin(), out.end(), [](const AbiMismatchDiagnostic& a, const AbiMismatchDiagnostic& b) {
+        return a.plugin_path < b.plugin_path;
+    });
+    return out;
+}
+
+bool OperatorRegistry::has_abi_mismatch_diagnostics() const {
+    return !abi_mismatch_by_path_.empty();
 }
 
 // --- Factory presets ---

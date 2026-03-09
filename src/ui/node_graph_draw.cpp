@@ -356,9 +356,18 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
                 auto port_it = src_node.output_port_indices.find(c.from_port);
                 if (port_it != src_node.output_port_indices.end()) {
                     uint32_t pidx = port_it->second;
+                    size_t spread_len = 0;
+                    bool has_spread = false;
                     if (pidx < src_node.output_spreads.size() &&
                         !src_node.output_spreads[pidx].empty()) {
-                        size_t spread_len = src_node.output_spreads[pidx].size();
+                        spread_len = src_node.output_spreads[pidx].size();
+                        has_spread = true;
+                    } else if (pidx < src_node.output_string_spreads.size() &&
+                               !src_node.output_string_spreads[pidx].empty()) {
+                        spread_len = src_node.output_string_spreads[pidx].size();
+                        has_spread = true;
+                    }
+                    if (has_spread) {
                         float mx = (ssx + sex) * 0.5f;
                         float my = (ssy + sey) * 0.5f - 6.0f * zoom_;
                         char badge[16];
@@ -404,8 +413,17 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
                     !src_ns->output_spreads[pidx].empty()) {
                     value_str = format_float(val) + " [spread: " +
                                 std::to_string(src_ns->output_spreads[pidx].size()) + "]";
+                } else if (pidx < src_ns->output_string_spreads.size() &&
+                           !src_ns->output_string_spreads[pidx].empty()) {
+                    value_str = "\"" + src_ns->output_string_spreads[pidx][0] + "\" [string spread: " +
+                                std::to_string(src_ns->output_string_spreads[pidx].size()) + "]";
                 } else {
-                    value_str = format_float(val);
+                    if (pidx < src_ns->output_string_values.size() &&
+                        !src_ns->output_string_values[pidx].empty()) {
+                        value_str = "\"" + src_ns->output_string_values[pidx] + "\"";
+                    } else {
+                        value_str = format_float(val);
+                    }
                 }
             }
         } else {
@@ -2305,8 +2323,13 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
 
     for (const auto& [idx, name] : sorted_outs) {
         std::string line;
-        if (idx < node.output_spreads.size() && !node.output_spreads[idx].empty()) {
+        if (idx < node.output_string_spreads.size() && !node.output_string_spreads[idx].empty()) {
+            const auto& sp = node.output_string_spreads[idx];
+            line = name + " = [\"" + sp[0] + "\" ..] (" + std::to_string(sp.size()) + ")";
+        } else if (idx < node.output_spreads.size() && !node.output_spreads[idx].empty()) {
             line = name + " = [" + std::to_string(node.output_spreads[idx].size()) + " bins]";
+        } else if (idx < node.output_string_values.size() && !node.output_string_values[idx].empty()) {
+            line = name + " = \"" + node.output_string_values[idx] + "\"";
         } else if (idx < node.output_values.size()) {
             line = name + " = " + format_float(node.output_values[idx]);
         } else {
@@ -2375,6 +2398,11 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         }
         return ports;
     };
+    auto type_suffix = [](VividPortType t) -> const char* {
+        if (t == VIVID_PORT_CONTROL_STRING) return " \"";
+        if (t == VIVID_PORT_CONTROL_STRING_SPREAD) return " [\"]";
+        return "";
+    };
 
     auto left_ports = build_ports(node_a);
     auto right_ports = build_ports(node_b);
@@ -2409,6 +2437,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
 
         // Label (right-aligned, with param prefix)
         std::string label = port.is_param ? ("\xC2\xB7" + port.name) : port.name;
+        label += type_suffix(port.port_type);
         if (label.size() > 12) label = label.substr(0, 11) + "~";
         float label_w = tr.text_width(label.c_str(), 0.85f);
         float label_alpha = port.is_param ? 0.5f : 0.8f;
@@ -2460,6 +2489,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
 
         // Label (left-aligned, after jack)
         std::string label = port.is_param ? ("\xC2\xB7" + port.name) : port.name;
+        label += type_suffix(port.port_type);
         if (label.size() > 12) label = label.substr(0, 11) + "~";
         float label_alpha = port.is_param ? 0.5f : 0.8f;
         tr.draw_text(right_jack_x + kPatchJackRadius * 2 + 2, row_y + 2,

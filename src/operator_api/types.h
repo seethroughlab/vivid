@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 2u
+#define VIVID_OPERATOR_ABI_VERSION 4u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -42,6 +42,8 @@ typedef enum VividPortType {
     VIVID_PORT_CONTROL_SPREAD = 4,
     VIVID_PORT_GPU_TEXTURE    = 5,
     VIVID_PORT_DATA           = 6,  // package-defined opaque pointer type
+    VIVID_PORT_CONTROL_STRING = 7,
+    VIVID_PORT_CONTROL_STRING_SPREAD = 8,
 } VividPortType;
 
 typedef enum VividPortDirection {
@@ -135,6 +137,27 @@ typedef struct VividSpreadPort {
     uint32_t capacity;  // allocated size (for output ports)
 } VividSpreadPort;
 
+typedef struct VividStringSpreadPort {
+    const char** data;    // pointer to array of UTF-8 string pointers
+    uint32_t length;      // current number of strings
+    uint32_t capacity;    // allocated size (for output ports)
+} VividStringSpreadPort;
+
+typedef struct VividSharedHandleEntry {
+    const char* type;
+    uint64_t generation;
+    void* payload;
+    uint8_t valid;
+} VividSharedHandleEntry;
+
+typedef struct VividSharedHandleService {
+    uint64_t (*create)(const char* type, void* payload, uint64_t generation);
+    uint8_t  (*retain)(uint64_t id);
+    uint8_t  (*release)(uint64_t id);
+    uint8_t  (*invalidate)(uint64_t id, uint64_t generation);
+    VividSharedHandleEntry (*resolve)(uint64_t id);
+} VividSharedHandleService;
+
 // ---------------------------------------------------------------------------
 // Process context — passed each tick
 // ---------------------------------------------------------------------------
@@ -150,12 +173,20 @@ typedef struct VividProcessContext {
     void*     audio;          // VividAudioState* for audio operators, NULL otherwise
     VividSpreadPort* input_spreads;   // [input_port_idx], NULL if none
     VividSpreadPort* output_spreads;  // [output_port_idx], NULL if none
+    void**     input_data;            // [input_port_idx], NULL if none
+    uint32_t   input_data_count;      // number of input ports
+    void*      output_data;           // single opaque output payload pointer
+    const char** input_string_values;   // indexed by input port order
+    const char** output_string_values;  // indexed by output port order
+    VividStringSpreadPort* input_string_spreads;   // [input_port_idx], NULL if none
+    VividStringSpreadPort* output_string_spreads;  // [output_port_idx], NULL if none
     const char** file_param_values;   // indexed by file param order, NULL if none
     uint32_t     file_param_count;
     uint32_t  preferred_tex_width;   // operator writes non-zero to request resize
     uint32_t  preferred_tex_height;  // 0 = no preference (keep current)
     void*     input;          // VividInputState* for GPU operators when UI hidden, NULL otherwise
     const char* graph_base_dir;  // parent directory of the loaded graph file, or "" if unsaved
+    const VividSharedHandleService* shared_handles; // runtime-owned process-wide handle service
 } VividProcessContext;
 
 // ---------------------------------------------------------------------------

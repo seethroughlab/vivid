@@ -103,8 +103,20 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     WGPUDeviceDescriptor device_desc{};
     device_desc.nextInChain = nullptr;
     device_desc.label = to_sv("Vivid Device");
-    device_desc.requiredFeatureCount = 0;
-    device_desc.requiredFeatures = nullptr;
+    bc_texture_compression_enabled_ =
+        wgpuAdapterHasFeature(adapter_, WGPUFeatureName_TextureCompressionBC);
+    if (bc_texture_compression_enabled_) {
+        static WGPUFeatureName kRequiredFeatures[] = {
+            WGPUFeatureName_TextureCompressionBC
+        };
+        device_desc.requiredFeatureCount = 1;
+        device_desc.requiredFeatures = kRequiredFeatures;
+        std::fprintf(stderr, "[vivid] GPU feature enabled: TextureCompressionBC (HAP direct BC path available)\n");
+    } else {
+        device_desc.requiredFeatureCount = 0;
+        device_desc.requiredFeatures = nullptr;
+        std::fprintf(stderr, "[vivid] GPU feature unavailable: TextureCompressionBC (HAP direct BC path disabled)\n");
+    }
     device_desc.requiredLimits = nullptr;
     device_desc.defaultQueue.nextInChain = nullptr;
     device_desc.defaultQueue.label = to_sv("Vivid Queue");

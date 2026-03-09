@@ -347,6 +347,22 @@ static std::string missing_tool_error(const char* tool) {
     return msg;
 }
 
+static std::string abi_mismatch_error_for_package(const std::string& package_name,
+                                                  const std::vector<AbiMismatchDiagnostic>& mismatches) {
+    std::ostringstream oss;
+    oss << "Plugin ABI mismatch for package '" << package_name << "'. "
+        << "Rebuild vivid and rerun package rebuild.";
+    if (!mismatches.empty()) {
+        oss << "\n";
+        for (const auto& m : mismatches) {
+            oss << "  - " << (m.plugin_name.empty() ? m.plugin_path : m.plugin_name)
+                << ": plugin ABI " << m.plugin_abi
+                << ", runtime ABI " << m.runtime_abi << "\n";
+        }
+    }
+    return oss.str();
+}
+
 PackageManager::PackageManager(PackageCompiler& compiler, OperatorRegistry& registry)
     : compiler_(compiler)
     , registry_(registry) {}
@@ -779,6 +795,11 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
 
     // Scan compiled operators into registry
     registry_.scan_deferred(build_dir.c_str());
+    auto abi_mismatches = registry_.abi_mismatch_diagnostics_for_dir(build_dir);
+    if (!abi_mismatches.empty()) {
+        result.error = abi_mismatch_error_for_package(result.info.name, abi_mismatches);
+        return false;
+    }
 
     // Track provenance
     registry_.register_package(result.info.name, build_dir);

@@ -29,6 +29,12 @@ struct NodeState {
     std::vector<uint8_t> param_lock_flags;  // parallel to param_values
     std::vector<float> input_values;
     std::vector<float> output_values;
+    std::vector<std::string> input_string_values;
+    std::vector<std::string> output_string_values;
+    std::vector<const char*> c_input_string_values;
+    std::vector<const char*> c_output_string_values;
+    std::vector<VividPortType> input_port_types;
+    std::vector<VividPortType> output_port_types;
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
     std::unordered_map<std::string, uint32_t> param_indices;
@@ -46,11 +52,17 @@ struct NodeState {
     // Spread data
     std::vector<std::vector<float>> output_spreads;   // [port_idx] → spread data
     std::vector<std::vector<float>> input_spreads;    // [port_idx] → spread data
+    std::vector<std::vector<std::string>> output_string_spreads; // [port_idx] → string spread
+    std::vector<std::vector<std::string>> input_string_spreads;  // [port_idx] → string spread
 
     // Pre-allocated spread port arrays for process context (avoids per-frame heap allocs)
     std::vector<VividSpreadPort> c_in_spreads;
     std::vector<VividSpreadPort> c_out_spreads;
     std::vector<std::vector<float>> out_spread_buf;
+    std::vector<VividStringSpreadPort> c_in_string_spreads;
+    std::vector<VividStringSpreadPort> c_out_string_spreads;
+    std::vector<std::vector<const char*>> in_string_spread_ptrs;
+    std::vector<std::vector<const char*>> out_string_spread_ptr_buf;
 
     // Per-node GPU texture
     WGPUTexture      gpu_texture      = nullptr;
@@ -72,8 +84,13 @@ struct NodeState {
     // Per-node opaque data (package-defined types, e.g. 3D scene fragments)
     void* gpu_data = nullptr;
     std::vector<uint32_t> data_input_port_indices;
+    std::vector<uint32_t> string_input_port_indices;
+    std::vector<uint32_t> string_spread_input_port_indices;
     std::vector<void*> resolved_data_inputs;
     bool has_texture_output = false;
+    bool has_data_output = false;
+    bool has_string_output = false;
+    bool has_string_spread_output = false;
 
     // File (string) params — separate from float param_values
     std::vector<std::string> file_param_storage;     // owned strings
@@ -99,6 +116,8 @@ struct Wire {
     bool targets_param = false;   // true → to_port_idx indexes into param_values
     bool is_texture_wire = false; // true → carries GPU_TEXTURE data
     bool is_data_wire    = false; // true → carries VIVID_PORT_DATA
+    bool is_string_wire = false;  // true → carries CONTROL_STRING
+    bool is_string_spread_wire = false; // true → carries CONTROL_STRING_SPREAD
     float from_min = 0.0f, from_max = 1.0f;
     float to_min   = 0.0f, to_max  = 1.0f;
     bool  clamp    = false;

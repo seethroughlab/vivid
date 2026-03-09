@@ -3,6 +3,8 @@
 
 #include "runtime/audio_engine.h"
 #include "runtime/crash_guard.h"
+#include "runtime/data_type_registry.h"
+#include "runtime/shared_handle_registry.h"
 #include "runtime/scheduler.h"
 #include "common/topo_sort.h"
 #include <algorithm>
@@ -33,6 +35,8 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
     ns.input_port_types.clear();
     ns.output_port_types.clear();
     ns.has_spread_ports = false;
+    ns.has_string_input_ports = false;
+    ns.has_data_input_ports = false;
 
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
@@ -44,6 +48,14 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
         }
         if (desc->ports[i].type == VIVID_PORT_CONTROL_SPREAD) {
             ns.has_spread_ports = true;
+        }
+        if (desc->ports[i].direction == VIVID_PORT_INPUT &&
+            desc->ports[i].type == VIVID_PORT_CONTROL_STRING) {
+            ns.has_string_input_ports = true;
+        }
+        if (desc->ports[i].direction == VIVID_PORT_INPUT &&
+            desc->ports[i].type == VIVID_PORT_DATA) {
+            ns.has_data_input_ports = true;
         }
     }
 
@@ -65,6 +77,9 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
         ns.spread_out_ports[p].length = 0;
         ns.spread_out_ports[p].capacity = SpreadSnapshot::kMaxLength;
     }
+    ns.input_string_values.assign(ns.input_port_count, "");
+    ns.c_input_string_values.assign(ns.input_port_count, nullptr);
+    ns.input_data_values.assign(ns.input_port_count, nullptr);
 
     // Pre-allocate pointer arrays (avoids audio-thread allocation)
     ns.in_ptrs.resize(ns.input_port_count);
@@ -96,6 +111,8 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     audio_spread_wires_.clear();
     cross_wires_.clear();
     cross_spread_wires_.clear();
+    cross_string_wires_.clear();
+    cross_data_wires_.clear();
 
     // Map node id → audio node index
     std::unordered_map<std::string, uint32_t> audio_node_index;
@@ -209,6 +226,59 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     sw.audio_port_idx = ip_it->second;
                     sw.scale = remap_to_scale(conn);
                     cross_spread_wires_.push_back(sw);
+                } else if (ip_it != to_ns.input_port_indices.end() &&
+                           ip_it->second < to_ns.input_port_types.size() &&
+                           cp_it->second < ctrl_ns.output_port_types.size() &&
+                           to_ns.input_port_types[ip_it->second] == VIVID_PORT_CONTROL_STRING &&
+                           ctrl_ns.output_port_types[cp_it->second] == VIVID_PORT_CONTROL_STRING) {
+                    CrossDomainStringWire sw;
+                    sw.control_node_id = conn.from_node;
+                    sw.control_output_port_idx = cp_it->second;
+                    sw.audio_node_idx = ti;
+                    sw.audio_port_idx = ip_it->second;
+                    cross_string_wires_.push_back(sw);
+                } else if (ip_it != to_ns.input_port_indices.end() &&
+                           ip_it->second < to_ns.input_port_types.size() &&
+                           cp_it->second < ctrl_ns.output_port_types.size() &&
+                           to_ns.input_port_types[ip_it->second] == VIVID_PORT_DATA &&
+                           ctrl_ns.output_port_types[cp_it->second] == VIVID_PORT_DATA) {
+                    const char* src_dt = nullptr;
+                    const char* dst_dt = nullptr;
+                    if (ctrl_ns.loader && ctrl_ns.loader->descriptor()) {
+                        const auto* sd = ctrl_ns.loader->descriptor();
+                        uint32_t oi = 0;
+                        for (uint32_t pi = 0; pi < sd->port_count; ++pi) {
+                            if (sd->ports[pi].direction == VIVID_PORT_OUTPUT) {
+                                if (oi == cp_it->second) {
+                                    src_dt = sd->ports[pi].data_type;
+                                    break;
+                                }
+                                oi++;
+                            }
+                        }
+                    }
+                    if (to_ns.loader && to_ns.loader->descriptor()) {
+                        const auto* dd = to_ns.loader->descriptor();
+                        uint32_t ii = 0;
+                        for (uint32_t pi = 0; pi < dd->port_count; ++pi) {
+                            if (dd->ports[pi].direction == VIVID_PORT_INPUT) {
+                                if (ii == ip_it->second) {
+                                    dst_dt = dd->ports[pi].data_type;
+                                    break;
+                                }
+                                ii++;
+                            }
+                        }
+                    }
+                    if (src_dt && dst_dt && std::strcmp(src_dt, dst_dt) == 0) {
+                        CrossDomainDataWire dw;
+                        dw.source_node_id = conn.from_node;
+                        dw.source_output_port_idx = cp_it->second;
+                        dw.audio_node_idx = ti;
+                        dw.audio_port_idx = ip_it->second;
+                        dw.data_type = src_dt;
+                        cross_data_wires_.push_back(std::move(dw));
+                    }
                 }
             }
         }
@@ -247,14 +317,24 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     for (auto& sw : cross_spread_wires_) {
         sw.audio_node_idx = old_to_new[sw.audio_node_idx];
     }
+    for (auto& sw : cross_string_wires_) {
+        sw.audio_node_idx = old_to_new[sw.audio_node_idx];
+    }
+    for (auto& dw : cross_data_wires_) {
+        dw.audio_node_idx = old_to_new[dw.audio_node_idx];
+    }
 
     // Initialize param snapshots
     for (auto& snap : snapshots_) {
         snap.node_params.resize(n);
         snap.spread_inputs.resize(n);
+        snap.input_string_values.resize(n);
+        snap.data_inputs.resize(n);
         for (uint32_t i = 0; i < n; ++i) {
             snap.node_params[i] = nodes_[i].param_values;
             snap.spread_inputs[i].resize(nodes_[i].input_port_count);
+            snap.input_string_values[i].assign(nodes_[i].input_port_count, "");
+            snap.data_inputs[i].resize(nodes_[i].input_port_count);
         }
     }
 
@@ -403,6 +483,11 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
     // Base: audio engine's own param values (initial defaults)
     for (size_t i = 0; i < nodes_.size(); ++i) {
         snap.node_params[i] = nodes_[i].param_values;
+        for (auto& s : snap.spread_inputs[i]) s.length = 0;
+        snap.input_string_values[i].assign(nodes_[i].input_port_count, "");
+        for (auto& di : snap.data_inputs[i]) {
+            di.clear();
+        }
     }
 
     // Overlay: scheduler's param values (where set_param/inspector writes)
@@ -452,6 +537,42 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
                 }
                 break;
             }
+        }
+    }
+
+    // Cross-domain string wires: copy string values from scheduler to audio input ports
+    for (const auto& sw : cross_string_wires_) {
+        for (const auto& ctrl_ns : scheduler.nodes()) {
+            if (ctrl_ns.node_id == sw.control_node_id) {
+                auto& dst = snap.input_string_values[sw.audio_node_idx][sw.audio_port_idx];
+                if (sw.control_output_port_idx < ctrl_ns.output_string_values.size()) {
+                    dst = ctrl_ns.output_string_values[sw.control_output_port_idx];
+                } else {
+                    dst.clear();
+                }
+                break;
+            }
+        }
+    }
+
+    // Cross-domain data wires: copy typed opaque payload snapshots.
+    for (const auto& dw : cross_data_wires_) {
+        const size_t payload_size = data_type_size(dw.data_type);
+        for (const auto& src_ns : scheduler.nodes()) {
+            if (src_ns.node_id != dw.source_node_id) continue;
+            auto& dst = snap.data_inputs[dw.audio_node_idx][dw.audio_port_idx];
+            dst.clear();
+            if (payload_size == 0 || payload_size > DataInputSnapshot::kMaxBytes) break;
+            if (dw.source_output_port_idx < src_ns.output_port_types.size() &&
+                src_ns.output_port_types[dw.source_output_port_idx] == VIVID_PORT_DATA &&
+                src_ns.gpu_data) {
+                std::memcpy(dst.bytes, src_ns.gpu_data, payload_size);
+                dst.byte_size = static_cast<uint32_t>(payload_size);
+                std::strncpy(dst.data_type, dw.data_type.c_str(), sizeof(dst.data_type) - 1);
+                dst.data_type[sizeof(dst.data_type) - 1] = '\0';
+                dst.valid = true;
+            }
+            break;
         }
     }
 
@@ -591,9 +712,13 @@ bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry
     for (auto& snap : snapshots_) {
         snap.node_params.resize(n);
         snap.spread_inputs.resize(n);
+        snap.input_string_values.resize(n);
+        snap.data_inputs.resize(n);
         for (uint32_t i = 0; i < n; ++i) {
             snap.node_params[i] = nodes_[i].param_values;
             snap.spread_inputs[i].resize(nodes_[i].input_port_count);
+            snap.input_string_values[i].assign(nodes_[i].input_port_count, "");
+            snap.data_inputs[i].resize(nodes_[i].input_port_count);
         }
     }
 
@@ -623,6 +748,8 @@ void AudioEngine::shutdown() {
     audio_spread_wires_.clear();
     cross_wires_.clear();
     cross_spread_wires_.clear();
+    cross_string_wires_.clear();
+    cross_data_wires_.clear();
 
     std::fprintf(stderr, "[vivid] AudioEngine: shutdown\n");
 }
@@ -651,6 +778,20 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             for (size_t p = 0; p < ns.spread_inputs.size() && p < snap.spread_inputs[i].size(); ++p) {
                 ns.spread_inputs[p] = snap.spread_inputs[i][p];
             }
+        }
+        if (ns.has_string_input_ports && i < snap.input_string_values.size()) {
+            for (size_t p = 0; p < ns.input_string_values.size() &&
+                               p < snap.input_string_values[i].size(); ++p) {
+                ns.input_string_values[p] = snap.input_string_values[i][p];
+            }
+        }
+        if (ns.has_data_input_ports && i < snap.data_inputs.size()) {
+            for (size_t p = 0; p < ns.input_data_values.size() && p < snap.data_inputs[i].size(); ++p) {
+                auto& in = snap.data_inputs[i][p];
+                ns.input_data_values[p] = in.valid ? static_cast<void*>(const_cast<uint8_t*>(in.bytes)) : nullptr;
+            }
+        } else {
+            std::fill(ns.input_data_values.begin(), ns.input_data_values.end(), nullptr);
         }
     }
 
@@ -712,6 +853,21 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             ctx.audio = &audio_state;
             ctx.input_spreads = ns.has_spread_ports ? ns.spread_in_ports.data() : nullptr;
             ctx.output_spreads = ns.has_spread_ports ? ns.spread_out_ports.data() : nullptr;
+            if (ns.has_string_input_ports) {
+                for (uint32_t p = 0; p < ns.input_port_count; ++p) {
+                    ns.c_input_string_values[p] = ns.input_string_values[p].c_str();
+                }
+            }
+            ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
+            ctx.output_string_values = nullptr;
+            ctx.input_string_spreads = nullptr;
+            ctx.output_string_spreads = nullptr;
+            ctx.input_data = ns.has_data_input_ports ? ns.input_data_values.data() : nullptr;
+            ctx.input_data_count = ns.input_port_count;
+            ctx.output_data = nullptr;
+            ctx.file_param_values = nullptr;
+            ctx.file_param_count = 0;
+            ctx.shared_handles = vivid::shared_handle_service();
 
             if (!ns.errored) {
                 try {

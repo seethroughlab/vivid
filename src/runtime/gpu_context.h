@@ -32,6 +32,7 @@ public:
     WGPUQueue queue() const { return queue_; }
     WGPUTextureFormat surface_format() const { return surface_format_; }
     bool surface_supports_copy_src() const { return surface_copy_src_; }
+    bool bc_texture_compression_enabled() const { return bc_texture_compression_enabled_; }
     uint32_t width() const { return width_; }
     uint32_t height() const { return height_; }
 
@@ -43,6 +44,7 @@ private:
     WGPUSurface surface_ = nullptr;
     WGPUTextureFormat surface_format_ = WGPUTextureFormat_Undefined;
     bool surface_copy_src_ = false;
+    bool bc_texture_compression_enabled_ = false;
     uint32_t width_ = 0;
     uint32_t height_ = 0;
 };

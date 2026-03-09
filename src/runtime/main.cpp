@@ -421,6 +421,19 @@ static std::filesystem::path expand_tilde_path(const std::string& input) {
     return std::filesystem::path(input);
 }
 
+static void refresh_window_title(GLFWwindow* window, const std::string& graph_path) {
+    if (!window) return;
+    std::string title = "Vivid";
+    if (!graph_path.empty()) {
+        std::string file = std::filesystem::path(graph_path).filename().string();
+        if (!file.empty()) {
+            title += " - ";
+            title += file;
+        }
+    }
+    glfwSetWindowTitle(window, title.c_str());
+}
+
 static std::filesystem::path default_workspace_root() {
     const char* home = std::getenv("HOME");
     if (home && home[0] != '\0')
@@ -658,6 +671,8 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.param_lock_flags = ns.param_lock_flags;
         sn.output_values = ns.output_values;
         sn.output_spreads = ns.output_spreads;
+        sn.output_string_values = ns.output_string_values;
+        sn.output_string_spreads = ns.output_string_spreads;
         for (const auto& [name, idx] : ns.file_param_indices)
             sn.file_param_values[name] = ns.file_param_storage[idx];
         sn.gpu_tex_width = ns.gpu_tex_width;
@@ -2136,12 +2151,26 @@ int main(int argc, char* argv[]) {
             auto r = pkg_manager.link(path);
             std::lock_guard<std::mutex> lk(pkg_action_mutex);
             pkg_action_error_msg = r.success ? "" : r.error;
-            pkg_action_needs_refresh = r.success;
+            // Refresh examples if the symlink was created (graphs/ dir may exist even if compile failed)
+            pkg_action_needs_refresh = r.success || !r.info.path.empty();
             pkg_action_state = r.success ? PkgActionState::Done : PkgActionState::Error;
         }).detach();
         return true;
     };
     graph_ui.set_package_browser_callbacks(std::move(pkg_browser_cbs));
+    if (registry.has_abi_mismatch_diagnostics()) {
+        auto mismatches = registry.abi_mismatch_diagnostics();
+        std::string msg = "Plugin ABI mismatch detected. Rebuild vivid and rerun package rebuild.";
+        if (!mismatches.empty()) {
+            msg += " First mismatch: ";
+            msg += mismatches.front().plugin_name.empty()
+                       ? mismatches.front().plugin_path
+                       : mismatches.front().plugin_name;
+            msg += " (plugin ABI " + std::to_string(mismatches.front().plugin_abi) +
+                   ", runtime ABI " + std::to_string(mismatches.front().runtime_abi) + ")";
+        }
+        graph_ui.notify_pkg_action_complete(false, msg);
+    }
     graph_ui.set_examples(discovered_examples);
     graph_ui.set_example_package_checker(
         [&pkg_manager](const std::vector<std::string>& requires, std::string& missing) {
@@ -2676,11 +2705,18 @@ int main(int argc, char* argv[]) {
 #ifdef __APPLE__
     bool window_doc_edited = false;
 #endif
+    std::string window_title_graph_path;
 
     // --- Main loop ---
     auto tick_frame = [&]() -> bool {
         // Close button may fire during macOS tracking (resize/menus).
         if (glfwWindowShouldClose(window)) return false;
+
+        const std::string current_graph_path = graph.source_path();
+        if (current_graph_path != window_title_graph_path) {
+            refresh_window_title(window, current_graph_path);
+            window_title_graph_path = current_graph_path;
+        }
 
         int win_w, win_h;
         glfwGetWindowSize(window, &win_w, &win_h);
@@ -3086,6 +3122,38 @@ int main(int argc, char* argv[]) {
         }
 
         if (have_surface) {
+            // Poll async package action completion (main thread only).
+            {
+                bool done = false, needs_refresh = false;
+                std::string err;
+                {
+                    std::lock_guard<std::mutex> lk(pkg_action_mutex);
+                    if (pkg_action_state == PkgActionState::Done ||
+                        pkg_action_state == PkgActionState::Error) {
+                        done = true;
+                        needs_refresh = pkg_action_needs_refresh;
+                        err = pkg_action_error_msg;
+                        pkg_action_state = PkgActionState::Idle;
+                        pkg_action_needs_refresh = false;
+                    }
+                }
+                if (done) {
+                    if (needs_refresh) {
+                        refresh_discovered_examples();
+                        registry.load_for_graph(graph);
+                        scheduler.build(graph, registry);  // Rebind nodes after operators added/removed
+                        has_gpu_ops = scheduler.has_gpu_operators();
+                        if (has_gpu_ops) {
+                            scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
+                            video_out_idx = scheduler.find_gpu_sink();
+                        } else {
+                            video_out_idx = -1;
+                        }
+                    }
+                    graph_ui.notify_pkg_action_complete(needs_refresh, err);
+                }
+            }
+
             // --- Surface presentation path ---
             if (has_gpu_ops && video_out_idx >= 0) {
                 // Find video_out's input texture from its resolved_tex_inputs
@@ -3122,26 +3190,6 @@ int main(int argc, char* argv[]) {
                     graph, scheduler, has_audio ? &audio_engine : nullptr,
                     registry, op_info_cache, &system_midi, &runtime_api,
                     &capture_coordinator);
-                // Poll async package action completion (main thread only)
-                {
-                    bool done = false, needs_refresh = false;
-                    std::string err;
-                    {
-                        std::lock_guard<std::mutex> lk(pkg_action_mutex);
-                        if (pkg_action_state == PkgActionState::Done ||
-                            pkg_action_state == PkgActionState::Error) {
-                            done = true;
-                            needs_refresh = pkg_action_needs_refresh;
-                            err = pkg_action_error_msg;
-                            pkg_action_state = PkgActionState::Idle;
-                            pkg_action_needs_refresh = false;
-                        }
-                    }
-                    if (done) {
-                        if (needs_refresh) refresh_discovered_examples();
-                        graph_ui.notify_pkg_action_complete(needs_refresh, err);
-                    }
-                }
 
                 graph_ui.update(snapshot);
                 graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));

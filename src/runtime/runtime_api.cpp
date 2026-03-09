@@ -15,6 +15,10 @@ RuntimeAPI::RuntimeAPI(Graph& graph, Scheduler& scheduler, AudioEngine& audio_en
                        OperatorRegistry& registry, SystemMidiListener* system_midi)
     : graph_(graph), scheduler_(scheduler), audio_engine_(audio_engine),
       registry_(registry), system_midi_(system_midi) {
+    if (!graph_.source_path().empty()) {
+        active_graph_source_path_ =
+            std::filesystem::path(graph_.source_path()).lexically_normal().string();
+    }
     capture_saved_snapshot();
 }
 
@@ -27,6 +31,11 @@ bool RuntimeAPI::split_addr(const std::string& addr, std::string& node, std::str
 }
 
 namespace {
+std::string normalized_graph_identity_path(const std::string& path_str) {
+    if (path_str.empty()) return {};
+    return std::filesystem::path(path_str).lexically_normal().string();
+}
+
 struct ParamSemanticMeta {
     bool found = false;
     std::string tag;
@@ -499,6 +508,8 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
         oss << "\n  outputs:";
         for (const auto& [name, idx] : ns.output_port_indices) {
             oss << " " << name << "=" << ns.output_values[idx];
+            if (idx < ns.output_string_values.size() && !ns.output_string_values[idx].empty())
+                oss << " \"" << ns.output_string_values[idx] << "\"";
             if (idx < ns.output_spreads.size() && !ns.output_spreads[idx].empty()) {
                 oss << " [";
                 for (size_t si = 0; si < ns.output_spreads[idx].size(); ++si) {
@@ -507,16 +518,34 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
                 }
                 oss << "]";
             }
+            if (idx < ns.output_string_spreads.size() && !ns.output_string_spreads[idx].empty()) {
+                oss << " [";
+                for (size_t si = 0; si < ns.output_string_spreads[idx].size(); ++si) {
+                    if (si > 0) oss << ",";
+                    oss << "\"" << ns.output_string_spreads[idx][si] << "\"";
+                }
+                oss << "]";
+            }
         }
         if (!ns.input_port_indices.empty()) {
             oss << "\n  inputs:";
             for (const auto& [name, idx] : ns.input_port_indices) {
                 oss << " " << name << "=" << ns.input_values[idx];
+                if (idx < ns.input_string_values.size() && !ns.input_string_values[idx].empty())
+                    oss << " \"" << ns.input_string_values[idx] << "\"";
                 if (idx < ns.input_spreads.size() && !ns.input_spreads[idx].empty()) {
                     oss << " [";
                     for (size_t si = 0; si < ns.input_spreads[idx].size(); ++si) {
                         if (si > 0) oss << ",";
                         oss << ns.input_spreads[idx][si];
+                    }
+                    oss << "]";
+                }
+                if (idx < ns.input_string_spreads.size() && !ns.input_string_spreads[idx].empty()) {
+                    oss << " [";
+                    for (size_t si = 0; si < ns.input_string_spreads[idx].size(); ++si) {
+                        if (si > 0) oss << ",";
+                        oss << "\"" << ns.input_string_spreads[idx][si] << "\"";
                     }
                     oss << "]";
                 }
@@ -1245,21 +1274,26 @@ CommandResult RuntimeAPI::save_as(const std::string& path) {
 CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
     const auto& path = graph_.source_path();
     if (path.empty()) return {false, "no source path to reload from"};
+    const bool preserve_runtime_state =
+        normalized_graph_identity_path(path) == active_graph_source_path_;
 
-    // Save params, string params, and lock flags before reload
+    // Preserve live state only for same-graph reloads (e.g. hot reload).
+    // Graph switches should always start from file-defined values.
     std::unordered_map<std::string, std::unordered_map<std::string, float>> saved_params;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> saved_string_params;
     std::unordered_map<std::string, std::unordered_map<std::string, uint8_t>> saved_locks;
-    for (const auto& ns : scheduler_.nodes()) {
-        auto& sp = saved_params[ns.node_id];
-        for (const auto& [name, idx] : ns.param_indices) {
-            sp[name] = ns.param_values[idx];
-            if (ns.param_lock_flags[idx] != PARAM_LOCK_NONE)
-                saved_locks[ns.node_id][name] = ns.param_lock_flags[idx];
-        }
-        auto& ssp = saved_string_params[ns.node_id];
-        for (const auto& [name, idx] : ns.file_param_indices) {
-            ssp[name] = ns.file_param_storage[idx];
+    if (preserve_runtime_state) {
+        for (const auto& ns : scheduler_.nodes()) {
+            auto& sp = saved_params[ns.node_id];
+            for (const auto& [name, idx] : ns.param_indices) {
+                sp[name] = ns.param_values[idx];
+                if (ns.param_lock_flags[idx] != PARAM_LOCK_NONE)
+                    saved_locks[ns.node_id][name] = ns.param_lock_flags[idx];
+            }
+            auto& ssp = saved_string_params[ns.node_id];
+            for (const auto& [name, idx] : ns.file_param_indices) {
+                ssp[name] = ns.file_param_storage[idx];
+            }
         }
     }
 
@@ -1282,32 +1316,34 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
         return {false, "rebuild failed after reload"};
     }
 
-    // Restore saved params to rebuilt nodes
-    for (auto& ns : scheduler_.nodes_mut()) {
-        auto sit = saved_params.find(ns.node_id);
-        if (sit != saved_params.end()) {
-            for (const auto& [pname, pval] : sit->second) {
-                auto pi = ns.param_indices.find(pname);
-                if (pi != ns.param_indices.end())
-                    ns.param_values[pi->second] = pval;
-            }
-        }
-        auto ssit = saved_string_params.find(ns.node_id);
-        if (ssit != saved_string_params.end()) {
-            for (const auto& [pname, pval] : ssit->second) {
-                auto fi = ns.file_param_indices.find(pname);
-                if (fi != ns.file_param_indices.end()) {
-                    ns.file_param_storage[fi->second] = pval;
-                    ns.file_param_ptrs[fi->second] = ns.file_param_storage[fi->second].c_str();
+    if (preserve_runtime_state) {
+        // Restore saved params to rebuilt nodes.
+        for (auto& ns : scheduler_.nodes_mut()) {
+            auto sit = saved_params.find(ns.node_id);
+            if (sit != saved_params.end()) {
+                for (const auto& [pname, pval] : sit->second) {
+                    auto pi = ns.param_indices.find(pname);
+                    if (pi != ns.param_indices.end())
+                        ns.param_values[pi->second] = pval;
                 }
             }
-        }
-        auto lit = saved_locks.find(ns.node_id);
-        if (lit != saved_locks.end()) {
-            for (const auto& [pname, flags] : lit->second) {
-                auto pi = ns.param_indices.find(pname);
-                if (pi != ns.param_indices.end())
-                    ns.param_lock_flags[pi->second] = flags;
+            auto ssit = saved_string_params.find(ns.node_id);
+            if (ssit != saved_string_params.end()) {
+                for (const auto& [pname, pval] : ssit->second) {
+                    auto fi = ns.file_param_indices.find(pname);
+                    if (fi != ns.file_param_indices.end()) {
+                        ns.file_param_storage[fi->second] = pval;
+                        ns.file_param_ptrs[fi->second] = ns.file_param_storage[fi->second].c_str();
+                    }
+                }
+            }
+            auto lit = saved_locks.find(ns.node_id);
+            if (lit != saved_locks.end()) {
+                for (const auto& [pname, flags] : lit->second) {
+                    auto pi = ns.param_indices.find(pname);
+                    if (pi != ns.param_indices.end())
+                        ns.param_lock_flags[pi->second] = flags;
+                }
             }
         }
     }
@@ -1323,6 +1359,7 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
         }
     }
 
+    active_graph_source_path_ = normalized_graph_identity_path(path);
     reload_serial_++;
     capture_saved_snapshot();
     return {true, "reloaded from " + path};

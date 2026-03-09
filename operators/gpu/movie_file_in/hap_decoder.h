@@ -3,13 +3,10 @@
 #include "video_decoder.h"
 #include <memory>
 
-// AVFoundation-based video decoder for macOS.
-// Implementation in avf_decoder.mm (Objective-C++).
-
-class AVFDecoder : public VideoDecoder {
+class HAPDecoder : public VideoDecoder {
 public:
-    AVFDecoder();
-    ~AVFDecoder() override;
+    HAPDecoder();
+    ~HAPDecoder() override;
 
     bool open(const std::string& path) override;
     void close() override;
@@ -25,10 +22,18 @@ public:
     void pause() override;
     float current_time() const override;
     bool seek(double time_seconds) override;
+    VideoFrameCompressionMode compression_mode() const override;
+    VideoCompressedFormat compressed_format() const override;
+    bool requires_ycocg_decode() const override;
+    const uint8_t* compressed_data() const override;
+    size_t compressed_size() const override;
+
+    static bool is_hap_file(const std::string& path);
 
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
 
-std::unique_ptr<VideoDecoder> create_avf_decoder();
+bool is_hap_video_file(const std::string& path);
+std::unique_ptr<VideoDecoder> create_hap_decoder();

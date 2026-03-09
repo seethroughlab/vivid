@@ -1,5 +1,6 @@
 #include "runtime/scheduler.h"
 #include "runtime/crash_guard.h"
+#include "runtime/shared_handle_registry.h"
 #include "common/gpu_util.h"
 #include "common/topo_sort.h"
 #include "operator_api/gpu_operator.h"
@@ -39,19 +40,29 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     ns.input_port_indices.clear();
     ns.output_port_indices.clear();
     ns.param_indices.clear();
+    ns.input_port_types.clear();
+    ns.output_port_types.clear();
 
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             ns.input_port_indices[desc->ports[i].name] = ns.input_port_count++;
+            ns.input_port_types.push_back(desc->ports[i].type);
         } else {
             ns.output_port_indices[desc->ports[i].name] = ns.output_port_count++;
+            ns.output_port_types.push_back(desc->ports[i].type);
         }
     }
 
     ns.input_values.assign(ns.input_port_count, 0.0f);
     ns.output_values.assign(ns.output_port_count, 0.0f);
+    ns.input_string_values.assign(ns.input_port_count, "");
+    ns.output_string_values.assign(ns.output_port_count, "");
+    ns.c_input_string_values.assign(ns.input_port_count, nullptr);
+    ns.c_output_string_values.assign(ns.output_port_count, nullptr);
     ns.input_spreads.resize(ns.input_port_count);
     ns.output_spreads.resize(ns.output_port_count);
+    ns.input_string_spreads.resize(ns.input_port_count);
+    ns.output_string_spreads.resize(ns.output_port_count);
 
     // Init param_values from descriptor defaults, then apply overrides
     ns.param_values.resize(desc->param_count);
@@ -89,8 +100,16 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     ns.c_in_spreads.resize(ns.input_port_count);
     ns.c_out_spreads.resize(ns.output_port_count);
     ns.out_spread_buf.resize(ns.output_port_count);
+    ns.c_in_string_spreads.resize(ns.input_port_count);
+    ns.c_out_string_spreads.resize(ns.output_port_count);
+    ns.in_string_spread_ptrs.resize(ns.input_port_count);
+    ns.out_string_spread_ptr_buf.resize(ns.output_port_count);
     for (uint32_t p = 0; p < ns.output_port_count; ++p) {
         ns.out_spread_buf[p].resize(kMaxSpreadCapacity, 0.0f);
+        ns.out_string_spread_ptr_buf[p].resize(kMaxSpreadCapacity, nullptr);
+    }
+    for (uint32_t p = 0; p < ns.input_port_count; ++p) {
+        ns.in_string_spread_ptrs[p].resize(kMaxSpreadCapacity, nullptr);
     }
 
     // Init file params from descriptor
@@ -135,54 +154,51 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
         ns.file_param_ptrs[i] = ns.file_param_storage[i].c_str();
     }
 
-    // Identify GPU_TEXTURE / DATA input ports and detect GPU sinks
+    // Identify special input ports and sink/output capabilities
     ns.texture_input_port_indices.clear();
     ns.data_input_port_indices.clear();
+    ns.string_input_port_indices.clear();
+    ns.string_spread_input_port_indices.clear();
     ns.is_gpu_sink = false;
     ns.has_texture_output = false;
-    if (ns.is_gpu) {
-        uint32_t input_idx = 0;
-        for (uint32_t i = 0; i < desc->port_count; ++i) {
-            if (desc->ports[i].direction == VIVID_PORT_INPUT) {
-                if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
-                    ns.texture_input_port_indices.push_back(input_idx);
-                } else if (desc->ports[i].type == VIVID_PORT_DATA) {
-                    ns.data_input_port_indices.push_back(input_idx);
-                }
-                input_idx++;
+    ns.has_data_output = false;
+    ns.has_string_output = false;
+    ns.has_string_spread_output = false;
+    uint32_t input_idx = 0;
+    uint32_t out_idx = 0;
+    ns.depth_output_port_idx = -1;
+    for (uint32_t i = 0; i < desc->port_count; ++i) {
+        if (desc->ports[i].direction == VIVID_PORT_INPUT) {
+            if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
+                ns.texture_input_port_indices.push_back(input_idx);
+            } else if (desc->ports[i].type == VIVID_PORT_DATA) {
+                ns.data_input_port_indices.push_back(input_idx);
+            } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING) {
+                ns.string_input_port_indices.push_back(input_idx);
+            } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING_SPREAD) {
+                ns.string_spread_input_port_indices.push_back(input_idx);
             }
-        }
-        for (uint32_t i = 0; i < desc->port_count; ++i) {
-            if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
-                desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
+            input_idx++;
+        } else {
+            if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
                 ns.has_texture_output = true;
-                break;
-            }
-        }
-        bool has_data_output = false;
-        for (uint32_t i = 0; i < desc->port_count; ++i) {
-            if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
-                desc->ports[i].type == VIVID_PORT_DATA) {
-                has_data_output = true;
-                break;
-            }
-        }
-        ns.is_gpu_sink = !ns.texture_input_port_indices.empty()
-                      && !ns.has_texture_output
-                      && !has_data_output;
-
-        // Phase 6e: detect depth output port by name
-        ns.depth_output_port_idx = -1;
-        uint32_t out_idx = 0;
-        for (uint32_t i = 0; i < desc->port_count; ++i) {
-            if (desc->ports[i].direction == VIVID_PORT_OUTPUT) {
-                if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE &&
-                    std::strcmp(desc->ports[i].name, "depth") == 0) {
+                if (std::strcmp(desc->ports[i].name, "depth") == 0) {
                     ns.depth_output_port_idx = static_cast<int32_t>(out_idx);
                 }
-                out_idx++;
+            } else if (desc->ports[i].type == VIVID_PORT_DATA) {
+                ns.has_data_output = true;
+            } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING) {
+                ns.has_string_output = true;
+            } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING_SPREAD) {
+                ns.has_string_spread_output = true;
             }
+            out_idx++;
         }
+    }
+    if (ns.is_gpu) {
+        ns.is_gpu_sink = !ns.texture_input_port_indices.empty()
+                      && !ns.has_texture_output
+                      && !ns.has_data_output;
     }
 }
 
@@ -275,12 +291,20 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                 ns.input_port_indices[in_names[i]] = i;
             for (uint32_t i = 0; i < ns.output_port_count; ++i)
                 ns.output_port_indices[out_names[i]] = i;
+            ns.input_port_types.assign(ns.input_port_count, VIVID_PORT_CONTROL_FLOAT);
+            ns.output_port_types.assign(ns.output_port_count, VIVID_PORT_CONTROL_FLOAT);
 
             ns.input_values.assign(ns.input_port_count, 0.0f);
             ns.output_values.assign(ns.output_port_count, 0.0f);
+            ns.input_string_values.assign(ns.input_port_count, "");
+            ns.output_string_values.assign(ns.output_port_count, "");
+            ns.c_input_string_values.assign(ns.input_port_count, nullptr);
+            ns.c_output_string_values.assign(ns.output_port_count, nullptr);
             ns.prev_output_values.assign(ns.output_port_count, 0.0f);
             ns.input_spreads.resize(ns.input_port_count);
             ns.output_spreads.resize(ns.output_port_count);
+            ns.input_string_spreads.resize(ns.input_port_count);
+            ns.output_string_spreads.resize(ns.output_port_count);
 
             uint32_t pidx = 0;
             for (const auto& [pname, pval] : ndef.params) {
@@ -297,11 +321,26 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             ns.c_in_spreads.resize(ns.input_port_count);
             ns.c_out_spreads.resize(ns.output_port_count);
             ns.out_spread_buf.resize(ns.output_port_count);
+            ns.c_in_string_spreads.resize(ns.input_port_count);
+            ns.c_out_string_spreads.resize(ns.output_port_count);
+            ns.in_string_spread_ptrs.resize(ns.input_port_count);
+            ns.out_string_spread_ptr_buf.resize(ns.output_port_count);
             for (uint32_t p = 0; p < ns.output_port_count; ++p)
                 ns.out_spread_buf[p].resize(kMaxSpreadCapacity, 0.0f);
+            for (uint32_t p = 0; p < ns.input_port_count; ++p)
+                ns.in_string_spread_ptrs[p].resize(kMaxSpreadCapacity, nullptr);
+            for (uint32_t p = 0; p < ns.output_port_count; ++p)
+                ns.out_string_spread_ptr_buf[p].resize(kMaxSpreadCapacity, nullptr);
 
-            std::fprintf(stderr, "[vivid] Scheduler: missing operator type '%s' (node '%s') — using placeholder\n",
-                         ndef.type.c_str(), ndef.id.c_str());
+            if (registry.has_abi_mismatch_diagnostics()) {
+                std::fprintf(stderr,
+                             "[vivid] Scheduler: missing operator type '%s' (node '%s') — using placeholder"
+                             " (possible plugin ABI mismatch; rebuild vivid and rerun package rebuild)\n",
+                             ndef.type.c_str(), ndef.id.c_str());
+            } else {
+                std::fprintf(stderr, "[vivid] Scheduler: missing operator type '%s' (node '%s') — using placeholder\n",
+                             ndef.type.c_str(), ndef.id.c_str());
+            }
         }
 
         node_index[ndef.id] = static_cast<uint32_t>(nodes_.size());
@@ -313,6 +352,12 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
     uint32_t n = static_cast<uint32_t>(nodes_.size());
     std::vector<std::vector<uint32_t>> adj(n);     // adj[from] = list of to
     std::vector<uint32_t> in_degree(n, 0);
+    std::vector<std::vector<uint32_t>> string_in_fanin(n);
+    std::vector<std::vector<uint32_t>> string_spread_in_fanin(n);
+    for (uint32_t i = 0; i < n; ++i) {
+        string_in_fanin[i].assign(nodes_[i].input_port_count, 0);
+        string_spread_in_fanin[i].assign(nodes_[i].input_port_count, 0);
+    }
 
     for (const auto& conn : graph.connections()) {
         auto from_it = node_index.find(conn.from_node);
@@ -391,6 +436,27 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                         }
                         inp_idx++;
                     }
+                }
+            }
+
+            if (!from_ns.missing_operator && !to_ns.missing_operator) {
+                if (from_port_type == VIVID_PORT_CONTROL_STRING &&
+                    to_port_type == VIVID_PORT_CONTROL_STRING) {
+                    w.is_string_wire = true;
+                    string_in_fanin[ti][w.to_port_idx]++;
+                } else if (from_port_type == VIVID_PORT_CONTROL_STRING_SPREAD &&
+                           to_port_type == VIVID_PORT_CONTROL_STRING_SPREAD) {
+                    w.is_string_spread_wire = true;
+                    string_spread_in_fanin[ti][w.to_port_idx]++;
+                } else if (from_port_type == VIVID_PORT_CONTROL_STRING ||
+                           from_port_type == VIVID_PORT_CONTROL_STRING_SPREAD ||
+                           to_port_type == VIVID_PORT_CONTROL_STRING ||
+                           to_port_type == VIVID_PORT_CONTROL_STRING_SPREAD) {
+                    std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
+                        "(string port types must match exactly)\n",
+                        conn.from_node.c_str(), conn.from_port.c_str(),
+                        conn.to_node.c_str(), conn.to_port.c_str());
+                    return false;
                 }
             }
 
@@ -474,6 +540,23 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         in_degree[ti]++;
     }
 
+    for (uint32_t ni = 0; ni < n; ++ni) {
+        for (uint32_t pi = 0; pi < nodes_[ni].input_port_count; ++pi) {
+            if (string_in_fanin[ni][pi] > 1) {
+                std::fprintf(stderr, "[vivid] Scheduler: invalid fan-in on string input '%s/%u' "
+                    "(%u wires, max 1)\n",
+                    nodes_[ni].node_id.c_str(), pi, string_in_fanin[ni][pi]);
+                return false;
+            }
+            if (string_spread_in_fanin[ni][pi] > 1) {
+                std::fprintf(stderr, "[vivid] Scheduler: invalid fan-in on string spread input '%s/%u' "
+                    "(%u wires, max 1)\n",
+                    nodes_[ni].node_id.c_str(), pi, string_spread_in_fanin[ni][pi]);
+                return false;
+            }
+        }
+    }
+
     // 3. Topological sort
     auto sorted_order = kahn_sort(n, adj, in_degree);
     if (sorted_order.empty()) {
@@ -542,18 +625,32 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         if (ns.errored) {
             std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
             for (auto& sp : ns.output_spreads) sp.clear();
+            for (auto& sp : ns.output_string_spreads) sp.clear();
+            std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
             continue;
         }
 
         // Zero input values and clear input spreads (unwired ports default to 0.0)
         std::fill(ns.input_values.begin(), ns.input_values.end(), 0.0f);
+        std::fill(ns.input_string_values.begin(), ns.input_string_values.end(), "");
         for (auto& sp : ns.input_spreads) sp.clear();
+        for (auto& sp : ns.input_string_spreads) sp.clear();
 
         // Copy upstream outputs into this node's inputs / params
         // (skip texture-type wires — those are resolved separately)
         for (const auto& w : wires_) {
             if (w.to_node_idx == ni) {
                 if (w.is_texture_wire || w.is_data_wire) continue;
+                if (w.is_string_wire) {
+                    ns.input_string_values[w.to_port_idx] =
+                        nodes_[w.from_node_idx].output_string_values[w.from_port_idx];
+                    continue;
+                }
+                if (w.is_string_spread_wire) {
+                    ns.input_string_spreads[w.to_port_idx] =
+                        nodes_[w.from_node_idx].output_string_spreads[w.from_port_idx];
+                    continue;
+                }
                 float raw;
                 if (w.sources_param)
                     raw = nodes_[w.from_node_idx].param_values[w.from_port_idx];
@@ -620,12 +717,26 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ns.c_in_spreads[p].data     = isp.empty() ? nullptr : isp.data();
             ns.c_in_spreads[p].length   = static_cast<uint32_t>(isp.size());
             ns.c_in_spreads[p].capacity = static_cast<uint32_t>(isp.size());
+
+            auto& ssp = ns.input_string_spreads[p];
+            auto& ptrs = ns.in_string_spread_ptrs[p];
+            uint32_t slen = static_cast<uint32_t>(
+                std::min(ssp.size(), static_cast<size_t>(kMaxSpreadCapacity)));
+            for (uint32_t si = 0; si < slen; ++si) ptrs[si] = ssp[si].c_str();
+            ns.c_in_string_spreads[p].data = slen > 0 ? ptrs.data() : nullptr;
+            ns.c_in_string_spreads[p].length = slen;
+            ns.c_in_string_spreads[p].capacity = slen;
+            ns.c_input_string_values[p] = ns.input_string_values[p].c_str();
         }
 
         for (uint32_t p = 0; p < ns.output_port_count; ++p) {
             ns.c_out_spreads[p].data     = ns.out_spread_buf[p].data();
             ns.c_out_spreads[p].length   = 0;
             ns.c_out_spreads[p].capacity = kMaxSpreadCapacity;
+            ns.c_out_string_spreads[p].data = ns.out_string_spread_ptr_buf[p].data();
+            ns.c_out_string_spreads[p].length = 0;
+            ns.c_out_string_spreads[p].capacity = kMaxSpreadCapacity;
+            ns.c_output_string_values[p] = ns.output_string_values[p].c_str();
         }
 
         // Build process context and tick
@@ -638,10 +749,22 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         ctx.output_values = ns.output_values.data();
         ctx.input_spreads  = ns.c_in_spreads.data();
         ctx.output_spreads = ns.c_out_spreads.data();
+        ctx.input_data = nullptr;
+        ctx.input_data_count = 0;
+        ctx.output_data = nullptr;
+        ctx.input_string_values = ns.c_input_string_values.empty()
+                                    ? nullptr : ns.c_input_string_values.data();
+        ctx.output_string_values = ns.c_output_string_values.empty()
+                                    ? nullptr : ns.c_output_string_values.data();
+        ctx.input_string_spreads = ns.c_in_string_spreads.empty()
+                                    ? nullptr : ns.c_in_string_spreads.data();
+        ctx.output_string_spreads = ns.c_out_string_spreads.empty()
+                                    ? nullptr : ns.c_out_string_spreads.data();
         ctx.file_param_values = ns.file_param_ptrs.empty()
                                     ? nullptr : ns.file_param_ptrs.data();
         ctx.file_param_count  = static_cast<uint32_t>(ns.file_param_ptrs.size());
         ctx.graph_base_dir    = graph_base_dir_.empty() ? "" : graph_base_dir_.c_str();
+        ctx.shared_handles = vivid::shared_handle_service();
 
         // GPU state: build per-node VividGpuState with this node's texture
         VividGpuState per_node_gpu{};
@@ -719,6 +842,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                                           ? nullptr : ns.resolved_data_inputs.data();
             per_node_gpu.input_data_count = static_cast<uint32_t>(data_count);
             per_node_gpu.output_data = nullptr;
+            ctx.input_data = per_node_gpu.input_data;
+            ctx.input_data_count = per_node_gpu.input_data_count;
 
             ctx.gpu = &per_node_gpu;
         } else {
@@ -727,11 +852,16 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
 
         // Forward input state to all operators (they ignore it if they don't care)
         ctx.input = input ? const_cast<void*>(static_cast<const void*>(input)) : nullptr;
+        const auto prev_output_spreads = ns.output_spreads;
+        const auto prev_output_strings = ns.output_string_values;
+        const auto prev_output_string_spreads = ns.output_string_spreads;
 
         try {
             if (ns.missing_operator || !ns.loader) {
                 std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
                 for (auto& sp : ns.output_spreads) sp.clear();
+                for (auto& sp : ns.output_string_spreads) sp.clear();
+                std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
             } else {
                 CrashGuard guard(ns.node_id.c_str());
                 ns.loader->process(ns.instance, &ctx);
@@ -741,6 +871,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ns.error_message = e.what();
             std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
             for (auto& sp : ns.output_spreads) sp.clear();
+            for (auto& sp : ns.output_string_spreads) sp.clear();
+            std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
             std::fprintf(stderr, "[vivid] operator '%s' threw: %s\n",
                          ns.node_id.c_str(), e.what());
         } catch (...) {
@@ -748,18 +880,22 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ns.error_message = "Unknown exception";
             std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
             for (auto& sp : ns.output_spreads) sp.clear();
+            for (auto& sp : ns.output_string_spreads) sp.clear();
+            std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
             std::fprintf(stderr, "[vivid] operator '%s' threw unknown exception\n",
                          ns.node_id.c_str());
         }
 
         // Capture opaque data output from GPU operators (e.g. 3D scene fragments)
         if (ns.is_gpu && gpu_state) {
-            ns.gpu_data = per_node_gpu.output_data;
+            ns.gpu_data = ctx.output_data ? ctx.output_data : per_node_gpu.output_data;
 
             // Phase 6e: capture depth texture output
             if (ns.depth_output_port_idx >= 0) {
                 ns.gpu_depth_texture_view = per_node_gpu.output_depth_view;
             }
+        } else {
+            ns.gpu_data = ctx.output_data;
         }
 
         // Check if the operator requested a texture resize
@@ -781,6 +917,23 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             } else {
                 ns.output_spreads[p].clear();
             }
+
+            if (ns.c_output_string_values[p]) {
+                ns.output_string_values[p] = ns.c_output_string_values[p];
+            } else {
+                ns.output_string_values[p].clear();
+            }
+
+            auto& out_ss = ns.output_string_spreads[p];
+            out_ss.clear();
+            uint32_t s_len = std::min(ns.c_out_string_spreads[p].length, kMaxSpreadCapacity);
+            if (s_len > 0 && ns.c_out_string_spreads[p].data) {
+                out_ss.reserve(s_len);
+                for (uint32_t si = 0; si < s_len; ++si) {
+                    const char* sv = ns.c_out_string_spreads[p].data[si];
+                    out_ss.emplace_back(sv ? sv : "");
+                }
+            }
         }
 
         // Invoke post-GPU-node callback (for thumbnail capture)
@@ -800,7 +953,18 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         }
         if (!outputs_changed) {
             for (uint32_t p = 0; p < ns.output_port_count; ++p) {
-                if (!ns.output_spreads[p].empty()) {
+                if (p < prev_output_spreads.size() &&
+                    ns.output_spreads[p] != prev_output_spreads[p]) {
+                    outputs_changed = true;
+                    break;
+                }
+                if (p < prev_output_strings.size() &&
+                    ns.output_string_values[p] != prev_output_strings[p]) {
+                    outputs_changed = true;
+                    break;
+                }
+                if (p < prev_output_string_spreads.size() &&
+                    ns.output_string_spreads[p] != prev_output_string_spreads[p]) {
                     outputs_changed = true;
                     break;
                 }
