@@ -1,4 +1,4 @@
-#include "operators/gpu/movie_file_in/load_generation.h"
+#include "operators/shared/movie_decode/load_generation.h"
 #include <cstdio>
 
 static int g_fail = 0;

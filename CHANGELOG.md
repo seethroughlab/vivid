@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Control operators: Gate, Logic, Random, Sequencer, Smooth, Switch, LFO, Clock, DrumSequencer, ChordProgression
 - Pattern algebra: Euclidean, PatternSeq, Stack, Alternate, PatTransform
 - Composition: ChildOp<T> pattern, Instance (GPU instancing)
-- Input: Webcam, MovieFileIn, MidiInput, Interactive input system
+- Input: Webcam, MovieLoaded, MovieAudioOut/MovieVideoOut, MidiInput, Interactive input system
 - Analysis: TextureAnalysis (GPU→Control readback), FFT
 
 ### Audio

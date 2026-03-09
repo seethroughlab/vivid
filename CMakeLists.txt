@@ -309,16 +309,16 @@ add_vivid_operator(movie_video_out       operators/gpu/movie_video_out/movie_vid
 # 3D operators are available via the vivid-3d package (see ../vivid-3d/)
 # Simple WGSL filters are loaded from filters/*.wgsl (no C++ needed)
 
-# --- Movie File In (image + video loader) ---
+# --- MovieLoaded (image + video session source) ---
 if(APPLE)
     add_library(movie_loaded MODULE
         operators/gpu/movie_loaded/movie_loaded.cpp
-        operators/gpu/movie_file_in/decoder_factory.cpp
-        operators/gpu/movie_file_in/texture_upload.cpp
-        operators/gpu/movie_file_in/placeholder_frame.cpp
-        operators/gpu/movie_file_in/avf_decoder.mm
-        operators/gpu/movie_file_in/hap_decoder.mm
-        operators/gpu/movie_file_in/codec_probe.mm
+        operators/shared/movie_decode/decoder_factory.cpp
+        operators/shared/movie_decode/texture_upload.cpp
+        operators/shared/movie_decode/placeholder_frame.cpp
+        operators/shared/movie_decode/avf_decoder.mm
+        operators/shared/movie_decode/hap_decoder.mm
+        operators/shared/movie_decode/codec_probe.mm
         deps/hap/hap.c
     )
     target_link_libraries(movie_loaded PRIVATE
@@ -327,9 +327,9 @@ if(APPLE)
         "-framework Foundation" "-framework QuartzCore"
     )
     set_source_files_properties(
-        operators/gpu/movie_file_in/avf_decoder.mm
-        operators/gpu/movie_file_in/hap_decoder.mm
-        operators/gpu/movie_file_in/codec_probe.mm
+        operators/shared/movie_decode/avf_decoder.mm
+        operators/shared/movie_decode/hap_decoder.mm
+        operators/shared/movie_decode/codec_probe.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 else()
     add_library(movie_loaded MODULE operators/gpu/movie_loaded/movie_loaded.cpp)
@@ -352,7 +352,7 @@ target_include_directories(movie_loaded PRIVATE
 )
 if(APPLE)
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
-        "  \"movie_loaded\": { \"sources\": [\"operators/gpu/movie_loaded/movie_loaded.cpp\", \"operators/gpu/movie_file_in/decoder_factory.cpp\", \"operators/gpu/movie_file_in/texture_upload.cpp\", \"operators/gpu/movie_file_in/placeholder_frame.cpp\", \"operators/gpu/movie_file_in/avf_decoder.mm\", \"operators/gpu/movie_file_in/hap_decoder.mm\", \"operators/gpu/movie_file_in/codec_probe.mm\", \"deps/hap/hap.c\"], \"extra_libs\": [\"webgpu\", \"snappy\"], \"frameworks\": [\"AVFoundation\", \"CoreMedia\", \"CoreVideo\", \"Foundation\"], \"objc_arc\": [\"operators/gpu/movie_file_in/avf_decoder.mm\", \"operators/gpu/movie_file_in/hap_decoder.mm\", \"operators/gpu/movie_file_in/codec_probe.mm\"], \"include_dirs\": [\"deps/stb\", \"deps/hap\"] }")
+        "  \"movie_loaded\": { \"sources\": [\"operators/gpu/movie_loaded/movie_loaded.cpp\", \"operators/shared/movie_decode/decoder_factory.cpp\", \"operators/shared/movie_decode/texture_upload.cpp\", \"operators/shared/movie_decode/placeholder_frame.cpp\", \"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\", \"deps/hap/hap.c\"], \"extra_libs\": [\"webgpu\", \"snappy\"], \"frameworks\": [\"AVFoundation\", \"CoreMedia\", \"CoreVideo\", \"Foundation\"], \"objc_arc\": [\"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\"], \"include_dirs\": [\"deps/stb\", \"deps/hap\"] }")
 else()
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
         "  \"movie_loaded\": { \"sources\": [\"operators/gpu/movie_loaded/movie_loaded.cpp\"], \"extra_libs\": [\"webgpu\"], \"include_dirs\": [\"deps/stb\"] }")
@@ -477,18 +477,18 @@ add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp
 add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp
                    FACTORY_PRESETS operators/audio/distortion/factory_presets.json)
 
-# --- Movie File Audio In (audio extraction from video files) ---
+# --- MovieAudioOut (audio output from media stream) ---
 if(APPLE)
     add_library(movie_audio_out MODULE
         operators/audio/movie_audio_out/movie_audio_out.cpp
-        operators/audio/movie_file_audio_in/avf_audio_extractor.mm
+        operators/shared/movie_audio/avf_audio_extractor.mm
     )
     target_link_libraries(movie_audio_out PRIVATE
         vivid_operator_api
         "-framework AVFoundation" "-framework AVFAudio" "-framework CoreMedia" "-framework Foundation"
     )
     set_source_files_properties(
-        operators/audio/movie_file_audio_in/avf_audio_extractor.mm
+        operators/shared/movie_audio/avf_audio_extractor.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc")
     set_target_properties(movie_audio_out PROPERTIES
         PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
@@ -501,7 +501,7 @@ if(APPLE)
         COMMENT "Updating movie_audio_out in Vivid.app bundle"
     )
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
-        "  \"movie_audio_out\": { \"sources\": [\"operators/audio/movie_audio_out/movie_audio_out.cpp\", \"operators/audio/movie_file_audio_in/avf_audio_extractor.mm\"], \"extra_libs\": [], \"frameworks\": [\"AVFoundation\", \"AVFAudio\", \"CoreMedia\", \"Foundation\"], \"objc_arc\": [\"operators/audio/movie_file_audio_in/avf_audio_extractor.mm\"] }")
+        "  \"movie_audio_out\": { \"sources\": [\"operators/audio/movie_audio_out/movie_audio_out.cpp\", \"operators/shared/movie_audio/avf_audio_extractor.mm\"], \"extra_libs\": [], \"frameworks\": [\"AVFoundation\", \"AVFAudio\", \"CoreMedia\", \"Foundation\"], \"objc_arc\": [\"operators/shared/movie_audio/avf_audio_extractor.mm\"] }")
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS movie_audio_out)
 endif()
 
@@ -1417,19 +1417,19 @@ add_executable(test_hap_codec
 target_include_directories(test_hap_codec PRIVATE src tests ${CMAKE_SOURCE_DIR})
 add_test(NAME test_hap_codec COMMAND test_hap_codec WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(test_movie_file_in_upload
-    tests/test_movie_file_in_upload.cpp
-    operators/gpu/movie_file_in/texture_upload.cpp
+add_executable(test_movie_decode_upload
+    tests/test_movie_decode_upload.cpp
+    operators/shared/movie_decode/texture_upload.cpp
 )
-target_include_directories(test_movie_file_in_upload PRIVATE src tests ${CMAKE_SOURCE_DIR})
-target_link_libraries(test_movie_file_in_upload PRIVATE webgpu)
-add_test(NAME test_movie_file_in_upload COMMAND test_movie_file_in_upload WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+target_include_directories(test_movie_decode_upload PRIVATE src tests ${CMAKE_SOURCE_DIR})
+target_link_libraries(test_movie_decode_upload PRIVATE webgpu)
+add_test(NAME test_movie_decode_upload COMMAND test_movie_decode_upload WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(test_movie_file_in_generation
-    tests/test_movie_file_in_generation.cpp
+add_executable(test_movie_load_generation
+    tests/test_movie_load_generation.cpp
 )
-target_include_directories(test_movie_file_in_generation PRIVATE src tests ${CMAKE_SOURCE_DIR})
-add_test(NAME test_movie_file_in_generation COMMAND test_movie_file_in_generation WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+target_include_directories(test_movie_load_generation PRIVATE src tests ${CMAKE_SOURCE_DIR})
+add_test(NAME test_movie_load_generation COMMAND test_movie_load_generation WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_string_ports
     tests/test_string_ports.cpp
@@ -1444,18 +1444,18 @@ target_link_libraries(test_string_ports PRIVATE vivid_operator_api yyjson webgpu
 add_dependencies(test_string_ports test_op_v1 string_source_op string_sink_op)
 add_test(NAME test_string_ports COMMAND test_string_ports WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(test_movie_file_in_async
-    tests/test_movie_file_in_async.cpp
+add_executable(test_movie_load_async
+    tests/test_movie_load_async.cpp
 )
-target_include_directories(test_movie_file_in_async PRIVATE src tests ${CMAKE_SOURCE_DIR})
-add_test(NAME test_movie_file_in_async COMMAND test_movie_file_in_async WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+target_include_directories(test_movie_load_async PRIVATE src tests ${CMAKE_SOURCE_DIR})
+add_test(NAME test_movie_load_async COMMAND test_movie_load_async WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(test_movie_file_audio_sync_policy
-    tests/test_movie_file_audio_sync_policy.cpp
+add_executable(test_movie_audio_sync_policy
+    tests/test_movie_audio_sync_policy.cpp
 )
-target_include_directories(test_movie_file_audio_sync_policy PRIVATE src tests ${CMAKE_SOURCE_DIR})
-add_test(NAME test_movie_file_audio_sync_policy
-    COMMAND test_movie_file_audio_sync_policy
+target_include_directories(test_movie_audio_sync_policy PRIVATE src tests ${CMAKE_SOURCE_DIR})
+add_test(NAME test_movie_audio_sync_policy
+    COMMAND test_movie_audio_sync_policy
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_movie_long_loop_sync
@@ -1483,25 +1483,25 @@ add_test(NAME test_media_session_queue
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 if(APPLE)
-    add_executable(test_movie_file_in_route
-        tests/test_movie_file_in_route.cpp
-        operators/gpu/movie_file_in/decoder_factory.cpp
-        operators/gpu/movie_file_in/codec_probe.mm
-        operators/gpu/movie_file_in/avf_decoder.mm
-        operators/gpu/movie_file_in/hap_decoder.mm
+    add_executable(test_movie_decode_route
+        tests/test_movie_decode_route.cpp
+        operators/shared/movie_decode/decoder_factory.cpp
+        operators/shared/movie_decode/codec_probe.mm
+        operators/shared/movie_decode/avf_decoder.mm
+        operators/shared/movie_decode/hap_decoder.mm
         deps/hap/hap.c
     )
     set_source_files_properties(
-        operators/gpu/movie_file_in/codec_probe.mm
-        operators/gpu/movie_file_in/avf_decoder.mm
-        operators/gpu/movie_file_in/hap_decoder.mm
+        operators/shared/movie_decode/codec_probe.mm
+        operators/shared/movie_decode/avf_decoder.mm
+        operators/shared/movie_decode/hap_decoder.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-    target_include_directories(test_movie_file_in_route PRIVATE src tests ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/deps/hap)
-    target_link_libraries(test_movie_file_in_route PRIVATE snappy
+    target_include_directories(test_movie_decode_route PRIVATE src tests ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/deps/hap)
+    target_link_libraries(test_movie_decode_route PRIVATE snappy
         "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
         "-framework Foundation" "-framework QuartzCore")
-    add_test(NAME test_movie_file_in_route
-        COMMAND test_movie_file_in_route ${CMAKE_SOURCE_DIR}
+    add_test(NAME test_movie_decode_route
+        COMMAND test_movie_decode_route ${CMAKE_SOURCE_DIR}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 endif()
 

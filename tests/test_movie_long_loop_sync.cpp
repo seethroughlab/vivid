@@ -1,4 +1,4 @@
-#include "operators/audio/movie_file_audio_in/sync_policy.h"
+#include "operators/shared/movie_audio/sync_policy.h"
 
 #include <cstdio>
 #include <cmath>

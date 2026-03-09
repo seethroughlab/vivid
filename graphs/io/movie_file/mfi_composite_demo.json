@@ -90,10 +90,7 @@
       "from": "levels/texture",
       "to": "vout/input"
     },
-    {
-      "from": "vid1/time",
-      "to": "audio/video_time"
-    },
+    {"from": "vid1/media_clock", "to": "audio/media_stream"},
     {
       "from": "audio/left",
       "to": "aout/left"

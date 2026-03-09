@@ -26,7 +26,7 @@ bool movie_texture_recreate(WGPUDevice device,
     movie_texture_release(state);
 
     WGPUTextureDescriptor td{};
-    td.label = vivid_sv("MovieFileIn Staging");
+    td.label = vivid_sv("MovieLoaded Staging");
     td.size = {width, height, 1};
     td.mipLevelCount = 1;
     td.sampleCount = 1;
@@ -55,7 +55,7 @@ bool movie_texture_recreate(WGPUDevice device,
     entries[1].textureView = state.view;
 
     WGPUBindGroupDescriptor bg_desc{};
-    bg_desc.label = vivid_sv("MovieFileIn BG");
+    bg_desc.label = vivid_sv("MovieLoaded BG");
     bg_desc.layout = bind_layout;
     bg_desc.entryCount = 2;
     bg_desc.entries = entries;

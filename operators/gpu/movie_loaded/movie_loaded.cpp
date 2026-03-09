@@ -3,11 +3,11 @@
 #include "operator_api/gpu_common.h"
 #include "operator_api/media_clock.h"
 #include "operator_api/media_stream.h"
-#include "../movie_file_in/video_decoder.h"
-#include "../movie_file_in/decoder_factory.h"
-#include "../movie_file_in/texture_upload.h"
-#include "../movie_file_in/placeholder_frame.h"
-#include "../movie_file_in/load_generation.h"
+#include "../../shared/movie_decode/video_decoder.h"
+#include "../../shared/movie_decode/decoder_factory.h"
+#include "../../shared/movie_decode/texture_upload.h"
+#include "../../shared/movie_decode/placeholder_frame.h"
+#include "../../shared/movie_decode/load_generation.h"
 #include "../../shared/media_session/media_session.h"
 
 #include <cstdio>
@@ -118,14 +118,14 @@ static void log_load_event(const char* event,
                            const std::string& path,
                            uint64_t generation,
                            const std::string& details) {
-    std::fprintf(stderr, "[movie_file_in] %s gen=%llu path='%s' %s\n",
+    std::fprintf(stderr, "[movie_loaded] %s gen=%llu path='%s' %s\n",
                  event,
                  static_cast<unsigned long long>(generation),
                  path.c_str(),
                  details.c_str());
 }
 
-struct MovieFileIn : vivid::OperatorBase {
+struct MovieLoaded : vivid::OperatorBase {
     static constexpr const char* kName   = "MovieLoaded";
     static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = true;
@@ -135,7 +135,7 @@ struct MovieFileIn : vivid::OperatorBase {
     vivid::Param<float> speed     {"speed", 1.0f, 0.0f, 4.0f};
     vivid::Param<float> video_phase_offset_ms {"video_phase_offset_ms", 0.0f, -250.0f, 250.0f};
 
-    MovieFileIn() {
+    MovieLoaded() {
         vivid::semantic_tag(file, "path_video");
         vivid::semantic_shape(file, "path");
 
@@ -152,7 +152,7 @@ struct MovieFileIn : vivid::OperatorBase {
         start_loader_thread();
     }
 
-    ~MovieFileIn() override {
+    ~MovieLoaded() override {
         if (shared_handles_ && handle_id_ != 0) {
             shared_handles_->invalidate(handle_id_, media_clock_.source_generation);
             shared_handles_->release(handle_id_);
@@ -194,7 +194,7 @@ struct MovieFileIn : vivid::OperatorBase {
 
         if (!pipeline_) {
             if (!lazy_init(gpu)) {
-                std::fprintf(stderr, "[movie_file_in] lazy_init FAILED\n");
+                std::fprintf(stderr, "[movie_loaded] lazy_init FAILED\n");
                 return;
             }
         }
@@ -296,7 +296,7 @@ struct MovieFileIn : vivid::OperatorBase {
                 active = pipeline_ycocg_;
             }
             vivid::gpu::run_pass(gpu->command_encoder, active, texture_.bind_group,
-                                 gpu->output_texture_view, "MovieFileIn Blit");
+                                 gpu->output_texture_view, "MovieLoaded Blit");
         } else {
             clear_output(gpu);
         }
@@ -404,7 +404,7 @@ private:
         int w = 0, h = 0, channels = 0;
         uint8_t* data = stbi_load(last_path_.c_str(), &w, &h, &channels, 4);
         if (!data) {
-            std::fprintf(stderr, "[movie_file_in] Failed to load image: %s\n", last_path_.c_str());
+            std::fprintf(stderr, "[movie_loaded] Failed to load image: %s\n", last_path_.c_str());
             show_placeholder(gpu);
             return;
         }
@@ -419,7 +419,7 @@ private:
                           static_cast<uint32_t>(w), static_cast<uint32_t>(h));
         stbi_image_free(data);
         placeholder_active_ = false;
-        std::fprintf(stderr, "[movie_file_in] Loaded image: %s (%dx%d)\n", last_path_.c_str(), w, h);
+        std::fprintf(stderr, "[movie_loaded] Loaded image: %s (%dx%d)\n", last_path_.c_str(), w, h);
     }
 
     void request_video_load(const std::string& path, bool bc_supported) {
@@ -678,7 +678,7 @@ private:
         color_att.clearValue = {0.0, 0.0, 0.0, 1.0};
 
         WGPURenderPassDescriptor rp_desc{};
-        rp_desc.label = vivid_sv("MovieFileIn Clear");
+        rp_desc.label = vivid_sv("MovieLoaded Clear");
         rp_desc.colorAttachmentCount = 1;
         rp_desc.colorAttachments = &color_att;
 
@@ -688,11 +688,11 @@ private:
     }
 
     bool lazy_init(VividGpuState* gpu) {
-        shader_ = vivid::gpu::create_shader(gpu->device, kBlitFragment, "MovieFileIn Shader");
-        shader_ycocg_ = vivid::gpu::create_shader(gpu->device, kBlitFragmentYCoCg, "MovieFileIn YCoCg Shader");
+        shader_ = vivid::gpu::create_shader(gpu->device, kBlitFragment, "MovieLoaded Shader");
+        shader_ycocg_ = vivid::gpu::create_shader(gpu->device, kBlitFragmentYCoCg, "MovieLoaded YCoCg Shader");
         if (!shader_ || !shader_ycocg_) return false;
 
-        sampler_ = vivid::gpu::create_linear_sampler(gpu->device, "MovieFileIn Sampler");
+        sampler_ = vivid::gpu::create_linear_sampler(gpu->device, "MovieLoaded Sampler");
 
         WGPUBindGroupLayoutEntry entries[2]{};
         entries[0].binding = 0;
@@ -706,23 +706,23 @@ private:
         entries[1].texture.multisampled = false;
 
         WGPUBindGroupLayoutDescriptor bgl_desc{};
-        bgl_desc.label = vivid_sv("MovieFileIn BGL");
+        bgl_desc.label = vivid_sv("MovieLoaded BGL");
         bgl_desc.entryCount = 2;
         bgl_desc.entries = entries;
         bind_layout_ = wgpuDeviceCreateBindGroupLayout(gpu->device, &bgl_desc);
 
         WGPUPipelineLayoutDescriptor pl_desc{};
-        pl_desc.label = vivid_sv("MovieFileIn Pipeline Layout");
+        pl_desc.label = vivid_sv("MovieLoaded Pipeline Layout");
         pl_desc.bindGroupLayoutCount = 1;
         pl_desc.bindGroupLayouts = &bind_layout_;
         pipe_layout_ = wgpuDeviceCreatePipelineLayout(gpu->device, &pl_desc);
 
         pipeline_ = vivid::gpu::create_pipeline(gpu->device, shader_, pipe_layout_,
-                                                gpu->output_format, "MovieFileIn Pipeline");
+                                                gpu->output_format, "MovieLoaded Pipeline");
         pipeline_ycocg_ = vivid::gpu::create_pipeline(gpu->device, shader_ycocg_, pipe_layout_,
-                                                       gpu->output_format, "MovieFileIn YCoCg Pipeline");
+                                                       gpu->output_format, "MovieLoaded YCoCg Pipeline");
         return pipeline_ != nullptr && pipeline_ycocg_ != nullptr;
     }
 };
 
-VIVID_REGISTER(MovieFileIn)
+VIVID_REGISTER(MovieLoaded)

@@ -3,8 +3,8 @@
 #include "operator_api/media_clock.h"
 #include "operator_api/media_stream.h"
 #include "../../shared/media_session/media_session.h"
-#include "../movie_file_audio_in/avf_audio_extractor.h"
-#include "../movie_file_audio_in/sync_policy.h"
+#include "../../shared/movie_audio/avf_audio_extractor.h"
+#include "../../shared/movie_audio/sync_policy.h"
 
 #include <atomic>
 #include <array>
@@ -16,14 +16,14 @@
 #include <thread>
 #include <vector>
 
-struct MovieFileAudioIn : vivid::OperatorBase {
+struct MovieAudioOut : vivid::OperatorBase {
     static constexpr const char* kName   = "MovieAudioOut";
     static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> volume {"volume", 1.0f, 0.0f, 2.0f};
 
-    MovieFileAudioIn() {
+    MovieAudioOut() {
         vivid::semantic_tag(volume, "amplitude_linear");
         vivid::semantic_shape(volume, "scalar");
     }
@@ -73,7 +73,7 @@ struct MovieFileAudioIn : vivid::OperatorBase {
         deferred_delete_ = nullptr;
         deferred_session_releases_.clear();
 
-        // Attach/detach shared media-stream handle (from MovieFileIn output data).
+        // Attach/detach shared media-stream handle (from MovieLoaded output data).
         const uint64_t pending_session_ptr = pending_stream_ptr_.load(std::memory_order_acquire);
         if (pending_session_ptr != 0) {
             active_session_ = reinterpret_cast<vivid::media::MediaSession*>(pending_session_ptr);
@@ -507,7 +507,7 @@ struct MovieFileAudioIn : vivid::OperatorBase {
         }
     }
 
-    ~MovieFileAudioIn() override {
+    ~MovieAudioOut() override {
         const auto* hs = shared_handles_.load(std::memory_order_acquire);
         if (hs && active_stream_handle_ != 0) {
             hs->release(active_stream_handle_);
@@ -541,7 +541,7 @@ private:
         copy_small(last_sync_action_, sizeof(last_sync_action_), action);
         sync_log_cooldown_until_.store(frame + 120, std::memory_order_relaxed);
         std::fprintf(stderr,
-                     "[movie_file_audio_in] sync_state=%s gen=%llu epoch=%u err=%.1fms aux=%.1fms\n",
+                     "[movie_audio_out] sync_state=%s gen=%llu epoch=%u err=%.1fms aux=%.1fms\n",
                      action,
                      static_cast<unsigned long long>(generation),
                      loop_epoch,
@@ -551,7 +551,7 @@ private:
 
     void log_gate_transition(const char* action, uint64_t generation, uint32_t loop_epoch) {
         std::fprintf(stderr,
-                     "[movie_file_audio_in] sync_state=%s gen=%llu epoch=%u err=0.0ms aux=0.0ms\n",
+                     "[movie_audio_out] sync_state=%s gen=%llu epoch=%u err=0.0ms aux=0.0ms\n",
                      action,
                      static_cast<unsigned long long>(generation),
                      loop_epoch);
@@ -691,4 +691,4 @@ private:
     uint32_t last_stats_video_hwm_ = 0;
 };
 
-VIVID_REGISTER(MovieFileAudioIn)
+VIVID_REGISTER(MovieAudioOut)

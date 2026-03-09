@@ -95,13 +95,13 @@ vivid/
 │       ├── input_state.h             # Interactive input events/state
 │       └── wgsl_filter.h             # Self-describing WGSL filter support
 ├── operators/                # Seed operators (each a single-file directory)
-│   ├── gpu/                  # 13 operators: noise, shape, bars, composite, bloom,
+│   ├── gpu/                  # 14 operators: noise, shape, bars, composite, bloom,
 │   │                         #   feedback, instance, plexus, time_machine, text,
-│   │                         #   texture_analysis, movie_file_in, webcam_in
+│   │                         #   texture_analysis, movie_loaded, movie_video_out, webcam_in
 │   ├── audio/                # 18 operators: oscillator, gain, delay, reverb,
 │   │                         #   bitcrush, distortion, drum_kick/snare/hihat/clap/tom/cymbal,
 │   │                         #   drum_common, wavetable_synth, spread_adsr, spread_lfo,
-│   │                         #   plexus_synth, movie_file_audio_in
+│   │                         #   plexus_synth, movie_audio_out
 │   └── control/              # 23 operators: lfo, clock, math, envelope, midi_input,
 │                             #   fft_analysis, note_pattern, chord_progression,
 │                             #   arpeggiator, sequencer, drum_sequencer, euclidean,

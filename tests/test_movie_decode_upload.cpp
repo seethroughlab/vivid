@@ -1,4 +1,4 @@
-#include "operators/gpu/movie_file_in/texture_upload.h"
+#include "operators/shared/movie_decode/texture_upload.h"
 #include <cstdio>
 
 static int g_fail = 0;

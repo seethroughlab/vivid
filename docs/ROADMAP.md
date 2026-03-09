@@ -20,7 +20,7 @@ Remaining active test items:
 ### Automated Coverage Gaps
 
 - [ ] Add MIDI input tests: note on/off mapping, CC mapping, channel filtering *(hardware-dependent; best handled via virtual MIDI loopback integration suite)*.
-- [~] MovieFileIn sufficient coverage gate (macOS CI):
+- [~] MovieLoaded sufficient coverage gate (macOS CI):
   - [x] Fixture corpus adopted from `assets/sync` (Hap1/Hap5/HapY + H.264 + non-HAP baseline).
   - [x] Async lifecycle unit coverage:
     - rapid switch supersession
@@ -33,7 +33,7 @@ Remaining active test items:
     - non-HAP fixtures stay AVF route
     - NotchLC route logic deterministic at unit layer
   - [x] Failure determinism coverage for missing/corrupt media (stable error, no crash path in tests).
-  - [ ] CI proof: new MovieFileIn tests passing in default macOS CTest run.
+  - [ ] CI proof: new MovieLoaded tests passing in default macOS CTest run.
   - Superseded by active movie restart track below; keep this block as historical context while migration is in progress.
 
 ### Active Track: Movie Restart (Architecture First)

@@ -9,7 +9,7 @@
 #include <vector>
 
 // =============================================================================
-// Blit WGSL — identical to MovieFileIn's (samples staging texture → output)
+// Blit WGSL — identical to MovieLoaded's (samples staging texture → output)
 // =============================================================================
 
 static const char* kBlitFragment = R"(
@@ -274,7 +274,7 @@ private:
         }
     }
 
-    // --- GPU helpers (same pattern as MovieFileIn) ---
+    // --- GPU helpers (same pattern as MovieLoaded) ---
 
     void recreate_staging(VividGpuState* gpu, uint32_t w, uint32_t h) {
         vivid::gpu::release(staging_tex_);

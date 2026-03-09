@@ -13,7 +13,7 @@ Locked decisions:
   - `MovieLoaded` (session source/control)
   - `MovieVideoOut` (GPU consumer)
   - `MovieAudioOut` (audio consumer)
-- Existing `MovieFileIn` / `MovieFileAudioIn` become compatibility wrappers or are deprecated after migration window.
+- Existing legacy movie operators are removed; no compatibility wrappers are retained in core.
 
 ## Public Interfaces / Contracts
 1. `media_stream_v1` data contract
@@ -131,4 +131,3 @@ Locked decisions:
 - Perceptual A/V alignment on transient clips.
 - Loop boundary behavior without crackle.
 - Package-portability check using same contracts.
-

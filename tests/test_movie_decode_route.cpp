@@ -1,5 +1,5 @@
-#include "operators/gpu/movie_file_in/codec_probe.h"
-#include "operators/gpu/movie_file_in/decoder_factory.h"
+#include "operators/shared/movie_decode/codec_probe.h"
+#include "operators/shared/movie_decode/decoder_factory.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
     check(d_notch.backend == DecoderBackend::AVF, "NotchLC routes to AVF");
     check(d_notch.probe_notchlc, "NotchLC probe bit retained");
 
-    const auto bad = load_video_decoder_for_path("/tmp/vivid_movie_file_in_missing_notch.mov",
+    const auto bad = load_video_decoder_for_path("/tmp/vivid_movie_missing_notch.mov",
                                                   true, nullptr);
     check(!bad.success, "missing file load fails deterministically");
     check(bad.diagnostics.find("avf_open_failed") != std::string::npos,

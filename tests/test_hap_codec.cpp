@@ -1,4 +1,4 @@
-#include "operators/gpu/movie_file_in/hap_codec.h"
+#include "operators/shared/movie_decode/hap_codec.h"
 #include <cstdio>
 
 static int g_failures = 0;

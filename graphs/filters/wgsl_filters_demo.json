@@ -254,10 +254,7 @@
       "from": "lfo_pixel/value",
       "to": "pixelate/size_y"
     },
-    {
-      "from": "vid/time",
-      "to": "audio/video_time"
-    },
+    {"from": "vid/media_clock", "to": "audio/media_stream"},
     {
       "from": "audio/left",
       "to": "aout/left"

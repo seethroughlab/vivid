@@ -77,10 +77,7 @@
       "from": "edge/texture",
       "to": "vout/input"
     },
-    {
-      "from": "vid/time",
-      "to": "audio/video_time"
-    },
+    {"from": "vid/media_clock", "to": "audio/media_stream"},
     {
       "from": "audio/left",
       "to": "aout/left"

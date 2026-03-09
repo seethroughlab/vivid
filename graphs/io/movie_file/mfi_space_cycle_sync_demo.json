@@ -59,10 +59,7 @@
     "movie_audio": {
       "type": "MovieAudioOut",
       "params": {
-        "file": "",
-        "volume": 1.0,
-        "video_time": 0.0,
-        "video_speed": 1.0
+        "volume": 1.0
       }
     },
     "movie_video": {
