@@ -51,8 +51,8 @@ Remaining active test items:
   - [x] Add media-session stress instrumentation (audio underruns/overflow, queue high-water, frame drops, sync action counters, generation transitions)
   - [x] Add instrumentation assertions in `test_media_session_queue`
   - [x] Add deterministic long-loop sync-policy regression (`test_movie_long_loop_sync`) with gate/chatter/resync thresholds
-  - [ ] Run runtime `assets/sync` long-loop validation and capture acceptable thresholds for crackle/resync/underrun
-  - [ ] Close remaining acceptance criteria in `docs/MOVIE-RESTART-SPEC.md`
+  - [x] Run runtime `assets/sync` long-loop validation and capture acceptable thresholds for crackle/resync/underrun
+  - [x] Close remaining acceptance criteria in `docs/MOVIE-RESTART-SPEC.md`
 - [ ] Exit gate: all acceptance criteria in `docs/MOVIE-RESTART-SPEC.md` are met.
 
 ### Inner/Outer Loop Manual Verification

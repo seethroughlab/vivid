@@ -306,7 +306,26 @@ add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp     
 add_vivid_operator(instance             operators/gpu/instance/instance.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 add_vivid_operator(text                  operators/gpu/text/text.cpp                               EXTRA_LIBS webgpu stb_truetype)
-add_vivid_operator(movie_video_out       operators/gpu/movie_video_out/movie_video_out.cpp         EXTRA_LIBS webgpu)
+# --- MovieVideoOut (frame-pull from MediaSession) ---
+add_library(movie_video_out MODULE
+    operators/gpu/movie_video_out/movie_video_out.cpp
+    operators/shared/movie_decode/texture_upload.cpp
+)
+target_link_libraries(movie_video_out PRIVATE vivid_operator_api webgpu)
+set_target_properties(movie_video_out PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+if(APPLE)
+    add_custom_command(TARGET movie_video_out POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:movie_video_out>
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
+        COMMENT "Updating movie_video_out in Vivid.app bundle"
+    )
+endif()
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+    "  \"movie_video_out\": { \"sources\": [\"operators/gpu/movie_video_out/movie_video_out.cpp\", \"operators/shared/movie_decode/texture_upload.cpp\"], \"extra_libs\": [\"webgpu\"] }")
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS movie_video_out)
 # 3D operators are available via the vivid-3d package (see ../vivid-3d/)
 # Simple WGSL filters are loaded from filters/*.wgsl (no C++ needed)
 
@@ -620,18 +639,14 @@ foreach(g ${DEMO_GRAPHS})
     configure_file(${CMAKE_SOURCE_DIR}/graphs/${g} ${CMAKE_BINARY_DIR}/graphs/${g} COPYONLY)
 endforeach()
 
-# Demo media source directory (prefer media/, fallback to legacy assets/)
-set(VIVID_DEMO_MEDIA_SOURCE_DIR "${CMAKE_SOURCE_DIR}/media")
-if(NOT EXISTS "${VIVID_DEMO_MEDIA_SOURCE_DIR}")
-    set(VIVID_DEMO_MEDIA_SOURCE_DIR "${CMAKE_SOURCE_DIR}/assets")
-endif()
+set(VIVID_DEMO_ASSETS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/assets")
 
-# Copy all demo media recursively into build/media
-file(GLOB_RECURSE DEMO_MEDIA RELATIVE ${VIVID_DEMO_MEDIA_SOURCE_DIR} ${VIVID_DEMO_MEDIA_SOURCE_DIR}/*)
-list(FILTER DEMO_MEDIA EXCLUDE REGEX "^\\.")
-list(FILTER DEMO_MEDIA EXCLUDE REGEX "/\\.")
-foreach(m ${DEMO_MEDIA})
-    configure_file(${VIVID_DEMO_MEDIA_SOURCE_DIR}/${m} ${CMAKE_BINARY_DIR}/media/${m} COPYONLY)
+# Copy all demo assets recursively into build/assets
+file(GLOB_RECURSE DEMO_ASSETS RELATIVE ${VIVID_DEMO_ASSETS_SOURCE_DIR} ${VIVID_DEMO_ASSETS_SOURCE_DIR}/*)
+list(FILTER DEMO_ASSETS EXCLUDE REGEX "^\\.")
+list(FILTER DEMO_ASSETS EXCLUDE REGEX "/\\.")
+foreach(m ${DEMO_ASSETS})
+    configure_file(${VIVID_DEMO_ASSETS_SOURCE_DIR}/${m} ${CMAKE_BINARY_DIR}/assets/${m} COPYONLY)
 endforeach()
 
 # Copy font to build directory
@@ -667,17 +682,17 @@ if(APPLE)
             PROPERTIES MACOSX_PACKAGE_LOCATION ${dst_loc})
     endforeach()
 
-    # Demo media → Resources/media/(recursive)
-    file(GLOB_RECURSE _BUNDLE_MEDIA RELATIVE ${VIVID_DEMO_MEDIA_SOURCE_DIR} ${VIVID_DEMO_MEDIA_SOURCE_DIR}/*)
-    list(FILTER _BUNDLE_MEDIA EXCLUDE REGEX "^\\.")
-    list(FILTER _BUNDLE_MEDIA EXCLUDE REGEX "/\\.")
-    foreach(m ${_BUNDLE_MEDIA})
-        set(src_path ${VIVID_DEMO_MEDIA_SOURCE_DIR}/${m})
+    # Demo assets → Resources/assets/(recursive)
+    file(GLOB_RECURSE _BUNDLE_ASSETS RELATIVE ${VIVID_DEMO_ASSETS_SOURCE_DIR} ${VIVID_DEMO_ASSETS_SOURCE_DIR}/*)
+    list(FILTER _BUNDLE_ASSETS EXCLUDE REGEX "^\\.")
+    list(FILTER _BUNDLE_ASSETS EXCLUDE REGEX "/\\.")
+    foreach(m ${_BUNDLE_ASSETS})
+        set(src_path ${VIVID_DEMO_ASSETS_SOURCE_DIR}/${m})
         get_filename_component(rel_dir ${m} DIRECTORY)
         if(rel_dir STREQUAL "")
-            set(dst_loc Resources/media)
+            set(dst_loc Resources/assets)
         else()
-            set(dst_loc Resources/media/${rel_dir})
+            set(dst_loc Resources/assets/${rel_dir})
         endif()
         target_sources(vivid PRIVATE ${src_path})
         set_source_files_properties(${src_path}
@@ -1465,6 +1480,14 @@ add_executable(test_media_session_queue
 target_include_directories(test_media_session_queue PRIVATE src tests ${CMAKE_SOURCE_DIR})
 add_test(NAME test_media_session_queue
     COMMAND test_media_session_queue
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_movie_long_loop_sync
+    tests/test_movie_long_loop_sync.cpp
+)
+target_include_directories(test_movie_long_loop_sync PRIVATE src tests ${CMAKE_SOURCE_DIR})
+add_test(NAME test_movie_long_loop_sync
+    COMMAND test_movie_long_loop_sync
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 if(APPLE)

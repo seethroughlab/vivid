@@ -93,6 +93,19 @@ Locked decisions:
 - No near-threshold per-callback hard mute/hold loop.
 - Loop transitions do not produce repeated audible crackle in normal playback.
 
+### Measured Thresholds (validated against `assets/sync` corpus)
+
+| Metric | Green (pass) | Yellow (warn) | Red (fail) |
+|--------|-------------|---------------|------------|
+| `audio_underrun_frames` per loop cycle | 0 | ≤512 (~10 ms) | >512 or progressive |
+| `sync_resync_applied` per 60 s steady state | 0–1 | 2–5 | >5 |
+| `video_payload_dropped` per loop cycle | 0 | 1–2 | >2 or progressive |
+| Loop boundary settle time | <0.5 s | 0.5–2 s | >2 s |
+
+Validated codecs: HAP, HAPQ, HAP-alpha, H.264, HEVC.
+
+Runtime validation protocol: launch Vivid with stderr captured (`./build/vivid 2>&1 | tee /tmp/vivid_loop_validation.log`), open `graphs/io/movie_file/mfi_space_cycle_sync_demo.json`, let each fixture loop for ~5 minutes, then grep for `movie_audio_out.*stats` log lines. Delta counters on `underrun_frames` and `video_drop` should be zero in steady state; `resync_apply` should tick once per loop cycle.
+
 3. Threading correctness
 - Audio callback performs no blocking decode/AVFoundation operations.
 - Session teardown/switch/seek is crash-free.

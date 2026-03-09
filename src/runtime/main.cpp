@@ -494,6 +494,51 @@ static bool copy_tree_missing(const std::filesystem::path& src,
     return true;
 }
 
+// Copies src → dst, overwriting files where src is strictly newer.
+// Used to propagate bundled asset updates into the workspace without
+// clobbering files that the user has modified more recently.
+static bool copy_tree_overwrite_newer(const std::filesystem::path& src,
+                                      const std::filesystem::path& dst) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::is_directory(src, ec)) return false;
+    fs::create_directories(dst, ec);
+    if (ec) return false;
+
+    for (const auto& entry : fs::recursive_directory_iterator(src, ec)) {
+        if (ec) return false;
+        auto rel = fs::relative(entry.path(), src, ec);
+        if (ec) return false;
+        auto out = dst / rel;
+        if (entry.is_directory()) {
+            fs::create_directories(out, ec);
+            if (ec) return false;
+            continue;
+        }
+        if (!entry.is_regular_file()) continue;
+        fs::create_directories(out.parent_path(), ec);
+        if (ec) return false;
+        if (fs::exists(out, ec)) {
+            auto src_time = fs::last_write_time(entry.path(), ec);
+            if (ec) continue;
+            auto dst_time = fs::last_write_time(out, ec);
+            if (ec) {
+                // dst exists but can't read time — skip to be safe
+                continue;
+            }
+            if (src_time <= dst_time) continue;  // dst is same age or newer — keep it
+        }
+        fs::copy_file(entry.path(), out, fs::copy_options::overwrite_existing, ec);
+        // Non-fatal: log but continue if one file fails
+        if (ec) {
+            std::fprintf(stderr, "[vivid] Workspace sync warning: failed to update %s\n",
+                         out.string().c_str());
+            ec.clear();
+        }
+    }
+    return true;
+}
+
 static bool ensure_workspace_seeded(const std::filesystem::path& resources_dir,
                                     vivid::Settings& settings,
                                     std::filesystem::path& workspace_root) {
@@ -515,15 +560,15 @@ static bool ensure_workspace_seeded(const std::filesystem::path& resources_dir,
     }
 
     fs::path src_graphs = resources_dir / "graphs";
-    fs::path src_media = resources_dir / "media";
+    fs::path src_assets = resources_dir / "assets";
     fs::path dst_graphs = workspace_root / "graphs";
-    fs::path dst_media = workspace_root / "media";
+    fs::path dst_assets = workspace_root / "assets";
 
     std::error_code ec;
     bool needs_seed =
         settings.workspace_seeded_version != VIVID_CORE_VERSION ||
         !fs::is_directory(dst_graphs, ec) ||
-        !fs::is_directory(dst_media, ec);
+        !fs::is_directory(dst_assets, ec);
 
     if (!needs_seed) return settings_changed;
 
@@ -539,15 +584,15 @@ static bool ensure_workspace_seeded(const std::filesystem::path& resources_dir,
                      src_graphs.string().c_str());
         seed_ok = false;
     }
-    if (fs::is_directory(src_media, ec)) {
-        if (!copy_tree_missing(src_media, dst_media)) {
-            std::fprintf(stderr, "[vivid] Workspace seed warning: failed to copy media to %s\n",
-                         dst_media.string().c_str());
+    if (fs::is_directory(src_assets, ec)) {
+        if (!copy_tree_missing(src_assets, dst_assets)) {
+            std::fprintf(stderr, "[vivid] Workspace seed warning: failed to copy assets to %s\n",
+                         dst_assets.string().c_str());
             seed_ok = false;
         }
     } else {
-        std::fprintf(stderr, "[vivid] Workspace seed warning: missing bundled media at %s\n",
-                     src_media.string().c_str());
+        std::fprintf(stderr, "[vivid] Workspace seed warning: missing bundled assets at %s\n",
+                     src_assets.string().c_str());
         seed_ok = false;
     }
 
@@ -555,6 +600,15 @@ static bool ensure_workspace_seeded(const std::filesystem::path& resources_dir,
         settings.workspace_seeded_version = VIVID_CORE_VERSION;
         settings_changed = true;
     }
+
+    // Always sync bundle → workspace for files where the bundle copy is newer.
+    // This propagates graph/asset updates from fresh builds without clobbering
+    // files the user has modified more recently.
+    if (fs::is_directory(src_graphs, ec))
+        copy_tree_overwrite_newer(src_graphs, dst_graphs);
+    if (fs::is_directory(src_assets, ec))
+        copy_tree_overwrite_newer(src_assets, dst_assets);
+
     return settings_changed;
 }
 

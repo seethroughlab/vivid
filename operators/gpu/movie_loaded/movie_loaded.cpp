@@ -245,7 +245,7 @@ struct MovieLoaded : vivid::OperatorBase {
                     const double kVideoSeekErrSec = frame_dur * 1.5;
                     constexpr double kVideoSeekCooldownSec = 0.030;
                     const bool generation_changed = (last_video_sync_seek_generation_ != generation);
-                    const bool cooldown_ok = (desired_video_mono - last_video_sync_seek_mono_s_) > kVideoSeekCooldownSec;
+                    const bool cooldown_ok = std::abs(desired_video_mono - last_video_sync_seek_mono_s_) > kVideoSeekCooldownSec;
                     if (session_->video_frame_counter % 60 == 0) {
                         std::fprintf(stderr,
                             "[movie_loaded] SYNC  err=%.4f  desired_local=%.4f  video_local=%.4f  "
