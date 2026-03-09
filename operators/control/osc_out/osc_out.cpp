@@ -54,7 +54,7 @@ struct OscOut : vivid::OperatorBase {
         out.push_back({"connected", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         const std::string h = host.str_value.empty() ? "127.0.0.1" : host.str_value;
         const int p = target_port.int_value();
         const std::string a = normalized_address(address.str_value);

@@ -43,7 +43,7 @@ struct LFO : vivid::OperatorBase {
         out.push_back({"value", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         float phase_in = ctx->input_values[0];
         double phase;
         if (phase_in != 0.0f) {

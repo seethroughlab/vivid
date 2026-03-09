@@ -134,7 +134,7 @@ struct Bars : vivid::OperatorBase {
         out.push_back({"output", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         VividGpuState* gpu = vivid_gpu(ctx);
         if (!gpu) return;
 

@@ -84,7 +84,8 @@ bool OperatorLoader::load(const char* path) {
 
     handle_ = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!handle_) {
-        std::fprintf(stderr, "[vivid] dlopen failed: %s\n", dlerror());
+        const char* dl_err = dlerror();
+        std::fprintf(stderr, "[vivid] dlopen failed: %s\n", dl_err ? dl_err : "unknown error");
         return false;
     }
 
@@ -240,7 +241,10 @@ void OperatorLoader::fixup_dd_pointers() {
 
 void OperatorLoader::unload() {
     if (handle_) {
-        dlclose(handle_);
+        if (dlclose(handle_) != 0) {
+            const char* dl_err = dlerror();
+            std::fprintf(stderr, "[vivid] dlclose failed: %s\n", dl_err ? dl_err : "unknown error");
+        }
         handle_        = nullptr;
         desc_fn_       = nullptr;
         create_fn_     = nullptr;
@@ -275,7 +279,7 @@ void* OperatorLoader::create_instance() const {
 
 void OperatorLoader::destroy_instance(void* instance) const {
     if (dd_config_) {
-        delete static_cast<DataDrivenFilter*>(instance);
+        if (instance) delete static_cast<DataDrivenFilter*>(instance);
         return;
     }
     if (destroy_fn_ && instance) {
@@ -283,8 +287,9 @@ void OperatorLoader::destroy_instance(void* instance) const {
     }
 }
 
-void OperatorLoader::process(void* instance, const VividProcessContext* ctx) const {
+void OperatorLoader::process(void* instance, VividProcessContext* ctx) const {
     if (dd_config_) {
+        if (!instance) return;
         static_cast<WgslFilterBase*>(instance)->process(ctx);
         return;
     }

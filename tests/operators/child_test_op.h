@@ -20,7 +20,7 @@ struct ChildTestOp : vivid::OperatorBase {
         out.push_back({"value", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->input_values[0] * gain.value;
     }
 };

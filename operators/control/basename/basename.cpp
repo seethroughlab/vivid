@@ -16,7 +16,7 @@ struct Basename : vivid::OperatorBase {
         out.push_back({"name", VIVID_PORT_CONTROL_STRING, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         result_.clear();
 
         if (ctx->input_string_values) {

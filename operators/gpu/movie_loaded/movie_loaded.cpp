@@ -184,7 +184,7 @@ struct MovieLoaded : vivid::OperatorBase {
         out.push_back({"media_clock", VIVID_PORT_DATA, VIVID_PORT_OUTPUT, "media_stream_v1"});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         if (ctx && ctx->shared_handles) {
             shared_handles_ = ctx->shared_handles;
         }
@@ -295,9 +295,8 @@ struct MovieLoaded : vivid::OperatorBase {
         }
 
         if (texture_.width > 0 && texture_.height > 0) {
-            auto* mutable_ctx = const_cast<VividProcessContext*>(ctx);
-            mutable_ctx->preferred_tex_width = texture_.width;
-            mutable_ctx->preferred_tex_height = texture_.height;
+            ctx->preferred_tex_width = texture_.width;
+            ctx->preferred_tex_height = texture_.height;
         }
 
         if (texture_.view && texture_.bind_group) {
@@ -625,15 +624,14 @@ private:
         }
 
         if (ctx) {
-            auto* mutable_ctx = const_cast<VividProcessContext*>(ctx);
             media_stream_.handle_id = handle_id_;
             media_stream_.session_ptr = reinterpret_cast<uint64_t>(session_.get());
             media_stream_.source_generation = media_clock_.source_generation;
             media_stream_.schema_version = 1;
             media_stream_.flags = 0;
             media_stream_.clock = media_clock_;
-            if (mutable_ctx->output_data && mutable_ctx->output_data_count > 0)
-                mutable_ctx->output_data[0] = &media_stream_;
+            if (ctx->output_data && ctx->output_data_count > 0)
+                ctx->output_data[0] = &media_stream_;
         }
     }
 

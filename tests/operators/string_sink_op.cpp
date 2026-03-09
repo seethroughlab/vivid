@@ -24,7 +24,7 @@ struct StringSinkOp : vivid::OperatorBase {
         out.push_back({"count", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         last_.clear();
         if (ctx->input_string_values && ctx->input_string_values[0]) last_ = ctx->input_string_values[0];
 

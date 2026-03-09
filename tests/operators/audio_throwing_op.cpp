@@ -20,7 +20,7 @@ struct AudioThrowingOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         throw std::runtime_error("AudioThrowingOp: intentional test exception");
     }
 };

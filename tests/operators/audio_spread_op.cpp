@@ -18,7 +18,7 @@ struct AudioSpreadOp : vivid::OperatorBase {
         out.push_back({"echo",   VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         auto* audio = vivid_audio(ctx);
         if (!audio) return;
 

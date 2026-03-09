@@ -42,7 +42,7 @@ public:
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         VividGpuState* gpu = vivid_gpu(ctx);
         if (!gpu) return;
 

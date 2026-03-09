@@ -203,7 +203,7 @@ struct OperatorBase {
     virtual ~OperatorBase() = default;
     virtual void collect_params(std::vector<ParamBase*>& out) = 0;
     virtual void collect_ports(std::vector<VividPortDescriptor>& out) = 0;
-    virtual void process(const VividProcessContext* ctx) = 0;
+    virtual void process(VividProcessContext* ctx) = 0;
     virtual void draw_thumbnail(const VividThumbnailContext*) {}  // optional override
     virtual void main_thread_update(double time) {}               // optional override
 };
@@ -318,7 +318,7 @@ extern "C" void vivid_destroy(void* instance) {                               \
 }                                                                             \
                                                                               \
 extern "C" void vivid_process(void* instance,                                 \
-                              const VividProcessContext* ctx) {                \
+                              VividProcessContext* ctx) {                      \
     auto* inst = static_cast<_VividInstance*>(instance);                       \
     auto& param_ptrs = inst->param_ptrs;                                      \
     uint32_t file_idx = 0;                                                    \

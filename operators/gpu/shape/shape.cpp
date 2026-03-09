@@ -160,7 +160,7 @@ struct Shape : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         VividGpuState* gpu = vivid_gpu(ctx);
         if (!gpu) {
             if (ctx->frame % 60 == 0) std::fprintf(stderr, "[shape] gpu is NULL\n");

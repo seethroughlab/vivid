@@ -63,7 +63,7 @@ struct FolderList : vivid::OperatorBase {
         out.push_back({"count", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         const bool should_refresh =
             folder.str_value != last_folder_ ||
             extensions.str_value != last_exts_ ||

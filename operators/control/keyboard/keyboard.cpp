@@ -59,7 +59,7 @@ struct Keyboard : vivid::OperatorBase {
         out.push_back({"alt",      VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         const VividInputState* input = vivid_input(ctx);
         if (!input) {
             for (int i = 0; i < 6; ++i) ctx->output_values[i] = 0.0f;

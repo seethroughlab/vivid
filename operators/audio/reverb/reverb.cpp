@@ -114,7 +114,7 @@ struct Reverb : vivid::OperatorBase {
         init_rate_   = sr;
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         auto* audio = vivid_audio(ctx);
         if (!audio) return;
 

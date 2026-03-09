@@ -138,7 +138,7 @@ struct WebcamIn : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         VividGpuState* gpu = vivid_gpu(ctx);
         if (!gpu) return;
 
@@ -213,9 +213,8 @@ struct WebcamIn : vivid::OperatorBase {
 
         // Tell runtime our preferred output size
         if (staging_width_ > 0 && staging_height_ > 0) {
-            auto* mutable_ctx = const_cast<VividProcessContext*>(ctx);
-            mutable_ctx->preferred_tex_width  = staging_width_;
-            mutable_ctx->preferred_tex_height = staging_height_;
+            ctx->preferred_tex_width  = staging_width_;
+            ctx->preferred_tex_height = staging_height_;
         }
 
         // Blit staging → output (or clear to black)

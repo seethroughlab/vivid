@@ -26,7 +26,7 @@ struct PatTransform : vivid::OperatorBase {
         out.push_back({"pattern", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // out spread[0]
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         if (!ctx->input_spreads || !ctx->output_spreads) return;
 
         auto& in  = ctx->input_spreads[0];

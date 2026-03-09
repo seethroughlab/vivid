@@ -62,7 +62,7 @@ static void write_control_operator(const std::filesystem::path& package_dir,
         << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n"
         << "        out.push_back({\"out\", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});\n"
         << "    }\n\n"
-        << "    void process(const VividProcessContext* ctx) override {\n"
+        << "    void process(VividProcessContext* ctx) override {\n"
         << "        (void)ctx;\n"
         << "    }\n"
         << "};\n\n"

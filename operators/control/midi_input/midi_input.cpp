@@ -42,7 +42,7 @@ struct MidiInput : vivid::OperatorBase {
         std::memset(cc_values_, 0, sizeof(cc_values_));
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         ensure_midi_initialized();
         int desired_device = device.int_value();
 

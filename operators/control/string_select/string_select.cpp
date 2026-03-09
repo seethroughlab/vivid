@@ -26,7 +26,7 @@ struct StringSelect : vivid::OperatorBase {
         out.push_back({"resolved_index", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         selected_.clear();
         int resolved = -1;
         bool valid = false;

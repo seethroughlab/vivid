@@ -76,7 +76,7 @@ struct Envelope : vivid::OperatorBase {
         out.push_back({"value", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         float gate_in  = ctx->input_values[0];
         float phase_in = ctx->input_values[1];
 

@@ -50,7 +50,7 @@ struct OscIn : vivid::OperatorBase {
         stop_listener();
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         ensure_listener();
 
         float out_value = last_value_;

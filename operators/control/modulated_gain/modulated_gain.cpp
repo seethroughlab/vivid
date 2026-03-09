@@ -52,7 +52,7 @@ struct ModulatedGain : vivid::OperatorBase {
         out.push_back({"value", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         float input = ctx->input_values[0];
 
         // Drive the internal LFO

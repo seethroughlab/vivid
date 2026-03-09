@@ -29,7 +29,7 @@ struct Gate : vivid::OperatorBase {
         out.push_back({"open",   VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         float signal = ctx->input_values[0];
         bool is_open = ctx->input_values[1] > threshold.value;
         if (invert.bool_value()) is_open = !is_open;

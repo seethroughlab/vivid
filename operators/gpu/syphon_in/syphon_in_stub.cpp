@@ -19,7 +19,7 @@ struct SyphonIn : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext*) override {}
+    void process(VividProcessContext*) override {}
 };
 
 VIVID_REGISTER(SyphonIn)

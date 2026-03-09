@@ -33,7 +33,7 @@ struct Oscillator : vivid::OperatorBase {
         out.push_back({"output", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         auto* audio = vivid_audio(ctx);
         if (!audio) return;
 

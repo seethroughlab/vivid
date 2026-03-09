@@ -17,7 +17,7 @@ struct ControlPassOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         float g = ctx->param_values[0];
         float in = ctx->input_values[0];
         ctx->output_values[0] = in * g;

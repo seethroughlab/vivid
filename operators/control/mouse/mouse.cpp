@@ -16,7 +16,7 @@ struct Mouse : vivid::OperatorBase {
         out.push_back({"middle", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         const VividInputState* input = vivid_input(ctx);
         if (!input) {
             ctx->output_values[0] = 0.0f;

@@ -13,7 +13,8 @@ struct VividGpuState {
     uint32_t           output_height;
     WGPUTextureFormat  output_format;
     // Auxiliary texture outputs (2nd, 3rd... GPU_TEXTURE output ports), scheduler-allocated.
-    // Operator renders into these views; count matches aux_texture_output_port_indices in NodeState.
+    // Index matches aux_texture_output_port_indices order in NodeState.
+    // Usage: if (g->aux_output_texture_count > 0) render_into(g->aux_output_texture_views[0]);
     WGPUTextureView*   aux_output_texture_views = nullptr;
     uint32_t           aux_output_texture_count = 0;
 
@@ -37,7 +38,7 @@ struct VividGpuState {
     uint32_t  input_data_count  = 0;
 };
 
-static inline VividGpuState* vivid_gpu(const VividProcessContext* ctx) {
+static inline VividGpuState* vivid_gpu(VividProcessContext* ctx) {
     return static_cast<VividGpuState*>(ctx->gpu);
 }
 

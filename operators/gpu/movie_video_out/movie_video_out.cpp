@@ -83,7 +83,7 @@ struct MovieVideoOut : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         VividGpuState* gpu = vivid_gpu(ctx);
         if (!gpu) return;
 
@@ -141,9 +141,8 @@ struct MovieVideoOut : vivid::OperatorBase {
 
         // Set preferred texture dimensions
         if (texture_.width > 0 && texture_.height > 0) {
-            auto* mutable_ctx = const_cast<VividProcessContext*>(ctx);
-            mutable_ctx->preferred_tex_width = texture_.width;
-            mutable_ctx->preferred_tex_height = texture_.height;
+            ctx->preferred_tex_width = texture_.width;
+            ctx->preferred_tex_height = texture_.height;
         }
 
         // Render: blit owned texture to output, or clear to black

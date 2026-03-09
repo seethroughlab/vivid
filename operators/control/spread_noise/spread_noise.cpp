@@ -29,7 +29,7 @@ struct SpreadNoise : vivid::OperatorBase {
         out.push_back({"values", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // 0
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         float dt = static_cast<float>(ctx->delta_time);
         float spd = ctx->param_values[1];     // speed
         float amp = ctx->param_values[2];     // amplitude

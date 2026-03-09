@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 6u
+#define VIVID_OPERATOR_ABI_VERSION 7u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -163,6 +163,7 @@ typedef struct VividSharedHandleService {
 // ---------------------------------------------------------------------------
 
 typedef struct VividProcessContext {
+    // ---- Runtime-provided: read-only inputs --------------------------------
     double    time;
     double    delta_time;
     uint64_t  frame;
@@ -171,23 +172,31 @@ typedef struct VividProcessContext {
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
     void*     gpu;            // VividGpuState* for GPU operators, NULL otherwise
     void*     audio;          // VividAudioState* for audio operators, NULL otherwise
-    VividSpreadPort* input_spreads;   // [input_port_idx], NULL if none
-    VividSpreadPort* output_spreads;  // [output_port_idx], NULL if none
-    void**     input_data;            // [input_port_idx], NULL if none
+    // NOTE: input_spreads[i] is indexed by SPREAD-PORT ORDINAL — the i-th
+    // VIVID_PORT_CONTROL_SPREAD input port, not the global input port index.
+    // Same convention applies to output_spreads, input_data, input_string_values,
+    // input_string_spreads, and output_data below.
+    VividSpreadPort* input_spreads;   // [spread_port_ordinal], NULL if none
+    VividSpreadPort* output_spreads;  // [spread_port_ordinal], NULL if none
+    void**     input_data;            // [data_port_ordinal], NULL if none
     uint32_t   input_data_count;      // number of DATA input ports
-    void**     output_data;           // [data_output_port_idx], NULL if none
+    void**     output_data;           // [data_port_ordinal], NULL if none
     uint32_t   output_data_count;     // number of DATA output ports
-    const char** input_string_values;   // indexed by input port order
-    const char** output_string_values;  // indexed by output port order
-    VividStringSpreadPort* input_string_spreads;   // [input_port_idx], NULL if none
-    VividStringSpreadPort* output_string_spreads;  // [output_port_idx], NULL if none
+    const char** input_string_values;   // [string_port_ordinal]
+    const char** output_string_values;  // [string_port_ordinal]
+    VividStringSpreadPort* input_string_spreads;   // [string_spread_port_ordinal], NULL if none
+    VividStringSpreadPort* output_string_spreads;  // [string_spread_port_ordinal], NULL if none
     const char** file_param_values;   // indexed by file param order, NULL if none
     uint32_t     file_param_count;
-    uint32_t  preferred_tex_width;   // operator writes non-zero to request resize
-    uint32_t  preferred_tex_height;  // 0 = no preference (keep current)
     void*     input;          // VividInputState* for GPU operators when UI hidden, NULL otherwise
-    const char* graph_base_dir;  // parent directory of the loaded graph file, or "" if unsaved
     const VividSharedHandleService* shared_handles; // runtime-owned process-wide handle service
+
+    // ---- Operator write-back: operator sets these during process() ---------
+    // The runtime reads them after process() returns and acts accordingly.
+    // preferred_tex_*: set to request a texture reallocation next frame.
+    // Leave as 0 to keep the current size (no action taken).
+    uint32_t  preferred_tex_width;
+    uint32_t  preferred_tex_height;
 } VividProcessContext;
 
 // ---------------------------------------------------------------------------
@@ -198,7 +207,7 @@ typedef const VividOperatorDescriptor* (*VividDescriptorFn)(void);
 typedef uint32_t (*VividAbiVersionFn)(void);
 typedef void*  (*VividCreateFn)(void);
 typedef void   (*VividDestroyFn)(void* instance);
-typedef void   (*VividProcessFn)(void* instance, const VividProcessContext* ctx);
+typedef void   (*VividProcessFn)(void* instance, VividProcessContext* ctx);
 
 // ---------------------------------------------------------------------------
 // Thumbnail context — optional custom thumbnail rendering

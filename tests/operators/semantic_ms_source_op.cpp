@@ -21,7 +21,7 @@ struct MsSourceOp : vivid::OperatorBase {
         out.push_back({"ms", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0];
     }
 };

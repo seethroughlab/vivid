@@ -28,7 +28,7 @@ public:
     const VividOperatorDescriptor* descriptor() const;
     void* create_instance() const;
     void  destroy_instance(void* instance) const;
-    void  process(void* instance, const VividProcessContext* ctx) const;
+    void  process(void* instance, VividProcessContext* ctx) const;
 
     bool has_draw_thumbnail() const { return draw_thumb_fn_ != nullptr; }
     void draw_thumbnail(void* instance, const VividThumbnailContext* ctx) const;

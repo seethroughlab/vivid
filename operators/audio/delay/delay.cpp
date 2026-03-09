@@ -97,7 +97,7 @@ struct Delay : vivid::OperatorBase {
         return y;
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         auto* audio = vivid_audio(ctx);
         if (!audio) return;
 

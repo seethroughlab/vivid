@@ -18,7 +18,7 @@ struct SpreadSourceOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         float b = ctx->param_values[0];
         int   n = static_cast<int>(ctx->param_values[1]);
 

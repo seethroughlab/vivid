@@ -23,7 +23,7 @@ struct Alternate : vivid::OperatorBase {
         out.push_back({"index",      VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // out float[0]
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         float beat_phase = ctx->input_values[0];
         int c = std::clamp(static_cast<int>(ctx->param_values[0]), 0, 4);
 

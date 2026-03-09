@@ -27,7 +27,7 @@ struct Clock : vivid::OperatorBase {
         out.push_back({"beat_ms",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         double beats_per_sec = static_cast<double>(bpm.value) / 60.0;
         phase_ += ctx->delta_time * beats_per_sec;
         phase_ -= std::floor(phase_);

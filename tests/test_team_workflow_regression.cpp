@@ -179,7 +179,7 @@ int main(int argc, char* argv[]) {
                            "  void collect_ports(std::vector<VividPortDescriptor>& out) override {\n"
                            "    out.push_back({\"out\", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});\n"
                            "  }\n"
-                           "  void process(const VividProcessContext* ctx) override "
+                           "  void process(VividProcessContext* ctx) override "
                            "{ ctx->output_values[0] = ctx->param_values[0] * 2.0f; }\n"
                            "};\n"
                            "VIVID_REGISTER(TestOp)\n";

@@ -19,7 +19,7 @@ struct Math : vivid::OperatorBase {
         out.push_back({"result", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         float a = ctx->input_values[0];
         float b = ctx->input_values[1];
         float result = 0.0f;

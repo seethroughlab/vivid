@@ -38,7 +38,7 @@ struct SyphonIn : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         VividGpuState* gpu = vivid_gpu(ctx);
         if (!gpu || !gpu->device || !gpu->queue || !gpu->output_texture) return;
 
@@ -64,9 +64,8 @@ struct SyphonIn : vivid::OperatorBase {
         if (!source_texture) return;
         consumed_event_counter_ = pending;
 
-        auto* mutable_ctx = const_cast<VividProcessContext*>(ctx);
-        mutable_ctx->preferred_tex_width = static_cast<uint32_t>(source_texture.width);
-        mutable_ctx->preferred_tex_height = static_cast<uint32_t>(source_texture.height);
+        ctx->preferred_tex_width = static_cast<uint32_t>(source_texture.width);
+        ctx->preferred_tex_height = static_cast<uint32_t>(source_texture.height);
 
         if (!ensure_pipeline(metal_device, output_texture.pixelFormat)) return;
 

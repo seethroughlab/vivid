@@ -29,7 +29,7 @@ struct Euclidean : vivid::OperatorBase {
         out.push_back({"pattern",    VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});   // spread[0]
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         float beat_phase = ctx->input_values[0];
         int h   = std::clamp(static_cast<int>(ctx->param_values[0]), 0, 32);
         int n   = std::clamp(static_cast<int>(ctx->param_values[1]), 1, 32);

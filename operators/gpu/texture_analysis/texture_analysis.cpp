@@ -72,7 +72,7 @@ struct TextureAnalysis : vivid::OperatorBase {
         out.push_back({"edge_density", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         VividGpuState* gpu = vivid_gpu(ctx);
         if (!gpu) return;
 
@@ -94,9 +94,8 @@ struct TextureAnalysis : vivid::OperatorBase {
         // --- Passthrough: copy input texture → output texture ---
         if (input_tex && input_w > 0 && input_h > 0) {
             // Request same size as input for passthrough
-            auto* mutable_ctx = const_cast<VividProcessContext*>(ctx);
-            mutable_ctx->preferred_tex_width  = input_w;
-            mutable_ctx->preferred_tex_height = input_h;
+            ctx->preferred_tex_width  = input_w;
+            ctx->preferred_tex_height = input_h;
 
             if (input_w == gpu->output_width && input_h == gpu->output_height) {
                 WGPUTexelCopyTextureInfo src{};

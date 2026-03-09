@@ -30,7 +30,7 @@ struct SyphonOut : vivid::OperatorBase {
         out.push_back({"input", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         VividGpuState* gpu = vivid_gpu(ctx);
         if (!gpu || !gpu->device || !gpu->queue) return;
 

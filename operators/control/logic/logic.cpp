@@ -17,7 +17,7 @@ struct Logic : vivid::OperatorBase {
         out.push_back({"result", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         bool a = ctx->input_values[0] > 0.5f;
         bool b = ctx->input_values[1] > 0.5f;
         bool result = false;

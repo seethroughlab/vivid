@@ -42,7 +42,7 @@ struct Random : vivid::OperatorBase {
         out.push_back({"value",   VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         if (!seeded_) {
             rng_state_ = static_cast<uint32_t>(seed.int_value());
             if (rng_state_ == 0) rng_state_ = 1;

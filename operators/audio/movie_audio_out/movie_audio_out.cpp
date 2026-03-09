@@ -470,7 +470,7 @@ struct MovieAudioOut : vivid::OperatorBase {
     }
 
     // Audio thread — simplified: just read from ring, apply volume
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         auto* audio = vivid_audio(ctx);
         if (!audio) return;
 
