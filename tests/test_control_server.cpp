@@ -429,7 +429,7 @@ int main(int argc, char* argv[]) {
         // Broken fixture regression: intentionally disconnected node should emit expected warning.
         {
             auto add_missing = post(client, base_url, "add_node",
-                R"({"type":"TestOp","id":"missing_fixture"})");
+                R"({"type":"TestOp","node_id":"missing_fixture"})");
             check(add_missing.ok, "add_node broken fixture ok");
             phase.store(5);
             while (phase.load() < 6) std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -737,7 +737,7 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "\n--- add_node ---\n");
         {
             auto r = post(client, base_url, "add_node",
-                R"({"type":"TestOp","id":"c"})");
+                R"({"type":"TestOp","node_id":"c"})");
             check(r.ok, "add_node TestOp c ok");
         }
 
@@ -804,11 +804,11 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "\n--- semantic default connect remap ---\n");
         {
             auto add_src = post(client, base_url, "add_node",
-                R"({"type":"MsSourceOp","id":"ms1"})");
+                R"({"type":"MsSourceOp","node_id":"ms1"})");
             check(add_src.ok, "add_node MsSourceOp ms1 ok");
 
             auto add_dst = post(client, base_url, "add_node",
-                R"({"type":"SecDestOp","id":"s1"})");
+                R"({"type":"SecDestOp","node_id":"s1"})");
             check(add_dst.ok, "add_node SecDestOp s1 ok");
 
             auto c = post(client, base_url, "connect",
@@ -926,11 +926,11 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "\n--- semantic explicit coercion contract ---\n");
         {
             auto add_src = post(client, base_url, "add_node",
-                R"({"type":"TestOp","id":"hz1"})");
+                R"({"type":"TestOp","node_id":"hz1"})");
             check(add_src.ok, "add_node TestOp hz1 ok");
 
             auto add_dst = post(client, base_url, "add_node",
-                R"({"type":"SecDestOp","id":"s2"})");
+                R"({"type":"SecDestOp","node_id":"s2"})");
             check(add_dst.ok, "add_node SecDestOp s2 ok");
 
             auto c = post(client, base_url, "connect",
@@ -1000,10 +1000,10 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "\n--- semantic unknown/untagged tolerance ---\n");
         {
             auto add_src = post(client, base_url, "add_node",
-                R"({"type":"UnknownTagSourceOp","id":"ux1"})");
+                R"({"type":"UnknownTagSourceOp","node_id":"ux1"})");
             check(add_src.ok, "add_node UnknownTagSourceOp ux1 ok");
             auto add_dst = post(client, base_url, "add_node",
-                R"({"type":"UntaggedDestOp","id":"ud1"})");
+                R"({"type":"UntaggedDestOp","node_id":"ud1"})");
             check(add_dst.ok, "add_node UntaggedDestOp ud1 ok");
 
             auto c = post(client, base_url, "connect",
@@ -1313,6 +1313,41 @@ int main(int argc, char* argv[]) {
 
             auto r10 = post(client, base_url, "remove_variation", R"({"name":"bogus"})");
             check(!r10.ok, "remove_variation bogus fails");
+        }
+
+        // --- input validation: recording path traversal ---
+        std::fprintf(stderr, "\n--- recording path traversal rejection ---\n");
+        {
+            // No capture coordinator in this test harness, so start_recording routes
+            // through the path-validation guard before reaching the coordinator check.
+            // A traversal path must be rejected with ok:false before coordinator dispatch.
+            auto r1 = post(client, base_url, "start_recording",
+                R"({"path":"../../../tmp/evil.mov"})");
+            check(!r1.ok, "start_recording traversal path rejected");
+
+            auto r2 = post(client, base_url, "start_recording",
+                R"({"path":"/tmp/ok.mov"})");
+            // No coordinator attached, so this either times out or errors — but must NOT
+            // be the traversal rejection (i.e. it should not fail with the traversal guard).
+            // We verify the path guard passed by checking the response is not the
+            // hard-coded "invalid recording path" error.
+            if (r2.root) {
+                yyjson_val* err = yyjson_obj_get(r2.root, "error");
+                std::string err_str = err ? (yyjson_get_str(err) ? yyjson_get_str(err) : "") : "";
+                check(err_str != "invalid recording path", "valid path passes traversal guard");
+            }
+        }
+
+        // --- add_node: old "id" field rejected, "node_id" accepted ---
+        std::fprintf(stderr, "\n--- add_node field name validation ---\n");
+        {
+            auto r_bad = post(client, base_url, "add_node",
+                R"({"type":"TestOp","id":"should_fail"})");
+            check(!r_bad.ok, "add_node with old 'id' field rejected");
+
+            auto r_good = post(client, base_url, "add_node",
+                R"({"type":"TestOp","node_id":"validation_test_node"})");
+            check(r_good.ok, "add_node with 'node_id' field accepted");
         }
 
         done.store(true);

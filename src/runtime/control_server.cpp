@@ -18,6 +18,7 @@
 #include "operator_api/types.h"
 #include "yyjson.h"
 #include <ixwebsocket/IXHttpServer.h>
+#include <cassert>
 #include <deque>
 #include <future>
 #include <atomic>
@@ -162,6 +163,19 @@ static bool is_safe_package_name(const std::string& name) {
     return name.find('/') == std::string::npos &&
            name.find('\\') == std::string::npos &&
            name.find("..") == std::string::npos;
+}
+
+static bool is_safe_recording_path(const std::string& path) {
+    if (path.empty()) return false;
+    // Must be absolute
+    if (path[0] != '/') return false;
+    // Must not contain .. components
+    if (path.find("..") != std::string::npos) return false;
+    // Must end with an allowed extension
+    auto dot = path.rfind('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = path.substr(dot);
+    return ext == ".mov" || ext == ".mp4";
 }
 
 static bool response_is_ok(const std::string& response_json) {
@@ -1454,9 +1468,9 @@ static std::string dispatch(const std::string& method, const std::string& body,
         if (!root) { result = json_err("invalid JSON body"); }
         else {
             yyjson_val* type_v = yyjson_obj_get(root, "type");
-            yyjson_val* id_v   = yyjson_obj_get(root, "id");
+            yyjson_val* id_v   = yyjson_obj_get(root, "node_id");
             if (!type_v || !id_v || !yyjson_is_str(type_v) || !yyjson_is_str(id_v))
-                result = json_err("missing 'type' or 'id'");
+                result = json_err("missing 'type' or 'node_id'");
             else
                 result = command_result_to_json(
                     api.add_node(yyjson_get_str(type_v), yyjson_get_str(id_v)));
@@ -1625,8 +1639,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
             else
                 result = command_result_to_json(
                     api.set_resolution(yyjson_get_str(nid),
-                                       static_cast<uint32_t>(yyjson_get_int(w)),
-                                       static_cast<uint32_t>(yyjson_get_int(h))));
+                                       static_cast<uint32_t>(yyjson_get_num(w)),
+                                       static_cast<uint32_t>(yyjson_get_num(h))));
         }
     } else if (method == "set_node_layout") {
         if (!root) { result = json_err("invalid JSON body"); }
@@ -1894,11 +1908,11 @@ static std::string dispatch(const std::string& method, const std::string& body,
             yyjson_val* sm    = yyjson_obj_get(root, "sm_node");
             yyjson_val* sidx  = yyjson_obj_get(root, "state_idx");
             yyjson_val* tgt   = yyjson_obj_get(root, "target_node");
-            yyjson_val* pname = yyjson_obj_get(root, "preset_name");
+            yyjson_val* pname = yyjson_obj_get(root, "name");
             if (!sm || !sidx || !tgt || !pname ||
                 !yyjson_is_str(sm) || !yyjson_is_num(sidx) ||
                 !yyjson_is_str(tgt) || !yyjson_is_str(pname))
-                result = json_err("missing 'sm_node', 'state_idx', 'target_node', or 'preset_name'");
+                result = json_err("missing 'sm_node', 'state_idx', 'target_node', or 'name'");
             else
                 result = command_result_to_json(
                     api.set_state_preset(yyjson_get_str(sm),
@@ -2451,14 +2465,14 @@ struct ControlServer::Impl {
 ControlServer::ControlServer() = default;
 ControlServer::~ControlServer() { stop(); }
 
-void ControlServer::set_src_dir(const std::string& src_dir) { src_dir_ = src_dir; }
-void ControlServer::set_hot_reloader(HotReloader* hr) { hot_reloader_ = hr; }
-void ControlServer::set_capture_coordinator(CaptureCoordinator* cc) { capture_coordinator_ = cc; }
-void ControlServer::set_package_manager(PackageManager* pm) { package_manager_ = pm; }
-void ControlServer::set_package_compiler(PackageCompiler* pc) { package_compiler_ = pc; }
-void ControlServer::set_package_catalog(PackageCatalog* cat) { package_catalog_ = cat; }
-void ControlServer::set_app_update_manager(AppUpdateManager* aum) { app_update_manager_ = aum; }
-void ControlServer::set_settings(const Settings* settings) { settings_ = settings; }
+void ControlServer::set_src_dir(const std::string& src_dir) { assert(!impl_); src_dir_ = src_dir; }
+void ControlServer::set_hot_reloader(HotReloader* hr) { assert(!impl_); hot_reloader_ = hr; }
+void ControlServer::set_capture_coordinator(CaptureCoordinator* cc) { assert(!impl_); capture_coordinator_ = cc; }
+void ControlServer::set_package_manager(PackageManager* pm) { assert(!impl_); package_manager_ = pm; }
+void ControlServer::set_package_compiler(PackageCompiler* pc) { assert(!impl_); package_compiler_ = pc; }
+void ControlServer::set_package_catalog(PackageCatalog* cat) { assert(!impl_); package_catalog_ = cat; }
+void ControlServer::set_app_update_manager(AppUpdateManager* aum) { assert(!impl_); app_update_manager_ = aum; }
+void ControlServer::set_settings(const Settings* settings) { assert(!impl_); settings_ = settings; }
 
 bool ControlServer::start(int port) {
     impl_ = std::make_unique<Impl>(port);
@@ -2512,8 +2526,17 @@ bool ControlServer::start(int port) {
                         yyjson_val* root = yyjson_doc_get_root(doc);
                         yyjson_val* path_v = root ? yyjson_obj_get(root, "path") : nullptr;
                         yyjson_val* fps_v  = root ? yyjson_obj_get(root, "fps")  : nullptr;
-                        if (path_v && yyjson_is_str(path_v))
-                            path = yyjson_get_str(path_v);
+                        if (path_v && yyjson_is_str(path_v)) {
+                            std::string candidate = yyjson_get_str(path_v);
+                            if (!is_safe_recording_path(candidate)) {
+                                yyjson_doc_free(doc);
+                                return std::make_shared<ix::HttpResponse>(
+                                    200, "OK", ix::HttpErrorCode::Ok,
+                                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                                    R"({"ok":false,"error":"invalid recording path"})");
+                            }
+                            path = candidate;
+                        }
                         if (fps_v && yyjson_is_real(fps_v))
                             fps = yyjson_get_real(fps_v);
                         else if (fps_v && yyjson_is_int(fps_v))
