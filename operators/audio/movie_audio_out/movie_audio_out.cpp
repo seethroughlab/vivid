@@ -49,6 +49,12 @@ public:
         extractor_.store(extractor, std::memory_order_release);
     }
 
+    // Block until any in-flight pump() completes, then prevent new pumps
+    // until update_session/update_extractor re-arms the thread.
+    void quiesce() {
+        std::lock_guard<std::mutex> lock(pump_mu_);
+    }
+
     void notify() {
         std::lock_guard<std::mutex> lock(mu_);
         wake_.notify_one();
@@ -72,6 +78,7 @@ private:
     }
 
     void pump() {
+        std::lock_guard<std::mutex> pump_lock(pump_mu_);
         auto* session = session_.load(std::memory_order_acquire);
         auto* ext = extractor_.load(std::memory_order_acquire);
         if (!session || !ext || !ext->is_open() || !ext->has_audio()) return;
@@ -121,6 +128,7 @@ private:
     std::atomic<vivid::media::MediaSession*> session_{nullptr};
     std::atomic<AVFAudioExtractor*> extractor_{nullptr};
     std::mutex mu_;
+    std::mutex pump_mu_;    // held during pump(); quiesce() locks to wait for completion
     std::condition_variable wake_;
     std::array<float, kFillChunk> fill_left_{};
     std::array<float, kFillChunk> fill_right_{};
@@ -324,9 +332,12 @@ struct MovieAudioOut : vivid::OperatorBase {
 
             pending_load_.reset();
 
-            // Stop fill thread while we swap extractors
+            // Stop fill thread while we swap extractors — quiesce()
+            // blocks until any in-flight pump() finishes, so the old
+            // extractor is never used after we begin tearing it down.
             fill_thread_.update_session(nullptr);
             fill_thread_.update_extractor(nullptr);
+            fill_thread_.quiesce();
 
             auto* old = extractor_.load(std::memory_order_relaxed);
             extractor_.store(nullptr, std::memory_order_release);
@@ -403,6 +414,8 @@ struct MovieAudioOut : vivid::OperatorBase {
                         fill_thread_started_ = true;
                     }
                     fill_thread_.notify();
+                    // Drain stale resync — fresh load already positions at t=0.
+                    pending_resync_time_.store(-1.0, std::memory_order_release);
                 } else {
                     extractor_.store(fresh, std::memory_order_release);
                     deferred_delete_ = old;
@@ -475,9 +488,9 @@ struct MovieAudioOut : vivid::OperatorBase {
             clock_speed_.store(static_cast<double>(clock.clock.speed), std::memory_order_release);
             if (last_seen_clock_generation_ != clock.clock.source_generation) {
                 last_seen_clock_generation_ = clock.clock.source_generation;
-                // New source: request resync to start
-                pending_resync_generation_.store(clock.clock.source_generation, std::memory_order_release);
-                pending_resync_time_.store(0.0, std::memory_order_release);
+                // Generation tracking only — no resync here.
+                // ASYNC_LOAD_DONE already handles source transitions
+                // (fresh extractor at t=0, cleared ring, fill thread started).
             }
         }
 
