@@ -24,6 +24,9 @@
 #include <cmath>
 #include <optional>
 #include <utility>
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -378,6 +381,7 @@ private:
     std::optional<LoadResult> loader_ready_result_;
     MovieLoadCoordinator load_coordinator_{};
     std::thread loader_thread_;
+    std::atomic<bool> loader_finished_{false};
     float last_cmd_speed_ = 1.0f;
     int last_cmd_play_mode_ = 0;
     double last_video_sync_seek_mono_s_ = -1000.0;
@@ -636,6 +640,7 @@ private:
     }
 
     void start_loader_thread() {
+        loader_finished_.store(false, std::memory_order_release);
         loader_thread_ = std::thread([this]() {
             for (;;) {
                 LoadRequest req;
@@ -670,6 +675,7 @@ private:
                 }
                 load_coordinator_.clear_active(cancel);
             }
+            loader_finished_.store(true, std::memory_order_release);
         });
     }
 
@@ -680,9 +686,21 @@ private:
             load_coordinator_.cancel_all();
             loader_cv_.notify_one();
         }
-        if (loader_thread_.joinable()) {
-            loader_thread_.join();
+        if (!loader_thread_.joinable()) return;
+
+#ifdef __APPLE__
+        if (CFRunLoopGetCurrent() == CFRunLoopGetMain()) {
+            // The loader thread may be blocked in AVFDecoder::open() →
+            // dispatch_sync(dispatch_get_main_queue(), …). Pumping the main
+            // run loop lets the queued block execute, unblocking the loader
+            // thread so it can exit and we can join without deadlock.
+            while (!loader_finished_.load(std::memory_order_acquire)) {
+                CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.005, false);
+            }
         }
+#endif
+
+        loader_thread_.join();
     }
 
     void clear_output(VividGpuState* gpu) {

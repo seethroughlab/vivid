@@ -16,6 +16,9 @@
 #include <string>
 #include <vector>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 
 // ============================================================================
 // Test infrastructure
@@ -211,16 +214,18 @@ int main(int argc, char* argv[]) {
 
         // Some operators require external hardware or OS services that are
         // unavailable in headless CI harnesses (camera permission dialogs,
-        // Syphon server, OSC socket, AVFoundation dispatch_sync to main queue).
-        // Skip any graph containing them.
+        // Syphon server, OSC socket).  MovieLoaded/MovieAudioOut can run
+        // headlessly now that the AVFoundation dispatch_sync deadlock is fixed.
         bool has_external_io = false;
+        bool has_movie_loaded = false;
         for (const auto& n : graph.nodes()) {
-            if (n.type == "SyphonIn"    || n.type == "SyphonOut"   ||
-                n.type == "OscIn"       || n.type == "OscOut"      ||
-                n.type == "WebcamIn"    ||
-                n.type == "MovieLoaded" || n.type == "MovieAudioOut") {
+            if (n.type == "SyphonIn"  || n.type == "SyphonOut" ||
+                n.type == "OscIn"     || n.type == "OscOut"    ||
+                n.type == "WebcamIn") {
                 has_external_io = true;
-                break;
+            }
+            if (n.type == "MovieLoaded" || n.type == "MovieAudioOut") {
+                has_movie_loaded = true;
             }
         }
         if (has_external_io) {
@@ -266,6 +271,7 @@ int main(int argc, char* argv[]) {
 
         // Tick — more frames for complex graphs to catch late-onset issues
         int tick_count = (use_gpu && use_audio) ? 30 : 5;
+        if (has_movie_loaded) tick_count = std::max(tick_count, 60);
         for (uint64_t frame = 0; frame < (uint64_t)tick_count; ++frame) {
             double time = frame * 0.016;
             if (use_gpu) {
@@ -276,6 +282,11 @@ int main(int argc, char* argv[]) {
             if (audio) {
                 audio->push_params(sched);
             }
+#ifdef __APPLE__
+            if (has_movie_loaded) {
+                CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.005, false);
+            }
+#endif
         }
 
         // Restore stderr and read captured output
