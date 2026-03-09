@@ -139,8 +139,14 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
     }
 
     std::array<char, 256> buf;
+    bool output_truncated = false;
     while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
-        output += buf.data();
+        if (output.size() < 1024 * 1024)
+            output += buf.data();
+        else if (!output_truncated) {
+            output += "\n... (compiler output truncated at 1MB) ...\n";
+            output_truncated = true;
+        }
     }
     int status = pclose(pipe);
 

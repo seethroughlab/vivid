@@ -35,6 +35,9 @@ public:
     explicit PackageCatalog(PackageManager& pm);
 
     // Kick off a background fetch (detached thread). Safe to call repeatedly.
+    // IMPORTANT: the detached thread captures `this` — the PackageCatalog
+    // instance must have process lifetime (constructed once, never destroyed
+    // while the application is running) to avoid use-after-free.
     void refresh();
 
     CatalogFetchState fetch_state() const;

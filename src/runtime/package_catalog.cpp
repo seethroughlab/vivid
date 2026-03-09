@@ -11,6 +11,16 @@
 
 namespace vivid {
 
+// Shell-quote a string (single-quote style, with embedded ' escaped).
+static std::string quote(const std::string& s) {
+    std::string escaped;
+    for (char c : s) {
+        if (c == '\'') escaped += "'\\''";
+        else escaped += c;
+    }
+    return "'" + escaped + "'";
+}
+
 static constexpr const char* kCatalogPrimaryURL =
     "https://raw.githubusercontent.com/seethroughlab/vivid/master/catalog/packages.json";
 static constexpr const char* kCatalogFallbackURL1 =
@@ -151,7 +161,7 @@ void PackageCatalog::fetch_thread_fn() {
 
     // Try catalog URLs in deterministic order; first successful parse wins.
     for (const auto& url : catalog_urls()) {
-        std::string cmd = std::string("curl -sS --max-time 10 '") + url + "' 2>&1";
+        std::string cmd = "curl -sS --max-time 10 " + quote(url) + " 2>&1";
         FILE* pipe = popen(cmd.c_str(), "r");
         if (!pipe) {
             fetch_error_msg = "Failed to execute curl";
@@ -160,8 +170,15 @@ void PackageCatalog::fetch_thread_fn() {
 
         std::string output;
         std::array<char, 4096> buf;
-        while (fgets(buf.data(), buf.size(), pipe) != nullptr)
-            output += buf.data();
+        bool output_truncated = false;
+        while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
+            if (output.size() < 1024 * 1024)
+                output += buf.data();
+            else if (!output_truncated) {
+                output += "\n... (catalog fetch output truncated at 1MB) ...\n";
+                output_truncated = true;
+            }
+        }
         int status = pclose(pipe);
 
         if (status != 0) {
@@ -190,10 +207,11 @@ void PackageCatalog::fetch_thread_fn() {
         return;
     }
 
-    // Success — update entries and cache
-    save_cache(remote);
-
+    // Success — update entries and cache (save_cache inside lock so it
+    // completes before state transitions to Ready; callers observe a
+    // consistent snapshot).
     std::lock_guard<std::mutex> lock(mutex_);
+    save_cache(remote);
     entries_ = std::move(remote);
     merge_with_installed();
     state_ = CatalogFetchState::Ready;
@@ -305,15 +323,17 @@ bool PackageCatalog::load_cache(std::vector<CatalogEntry>& out) {
     // Reject stale caches; the caller will fall through to a live network fetch.
     std::error_code ec;
     auto mtime = std::filesystem::last_write_time(path, ec);
-    if (!ec) {
-        auto age = std::chrono::duration_cast<std::chrono::seconds>(
-            std::filesystem::file_time_type::clock::now() - mtime);
-        if (age.count() > kCacheTTLSeconds) {
-            std::fprintf(stderr,
-                "[vivid] PackageCatalog: cache is stale (%lld s old), fetching fresh data\n",
-                static_cast<long long>(age.count()));
-            return false;
-        }
+    if (ec) {
+        // Can't determine mtime — treat as expired so we don't serve stale data.
+        return false;
+    }
+    auto age = std::chrono::duration_cast<std::chrono::seconds>(
+        std::filesystem::file_time_type::clock::now() - mtime);
+    if (age.count() > kCacheTTLSeconds) {
+        std::fprintf(stderr,
+            "[vivid] PackageCatalog: cache is stale (%lld s old), fetching fresh data\n",
+            static_cast<long long>(age.count()));
+        return false;
     }
 
     std::ifstream ifs(path);
@@ -363,7 +383,13 @@ void PackageCatalog::save_cache(const std::vector<CatalogEntry>& entries) {
         std::filesystem::create_directories(
             std::filesystem::path(path).parent_path());
         std::ofstream ofs(path);
-        if (ofs) ofs << json_str;
+        if (!ofs) {
+            std::fprintf(stderr,
+                "[vivid] PackageCatalog: warning: failed to write cache to %s\n",
+                path.c_str());
+        } else {
+            ofs << json_str;
+        }
         free(json_str);
     }
 

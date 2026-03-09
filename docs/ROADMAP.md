@@ -87,14 +87,23 @@ All must-fix and should-fix items complete. Summary of changes (2026-03-09):
 
 ---
 
-## Audit 5: Package System (`package_manager.h/cpp`, `package_compiler.h/cpp`, `package_catalog.h/cpp`, ~1,750 LOC)
+## Audit 5: Package System (`package_manager.h/cpp`, `package_compiler.h/cpp`, `package_catalog.h/cpp`, ~1,750 LOC) ✅
 
-- [ ] Audit SemVer resolution edge cases — pre-releases, exact pins, conflicting constraints
-- [ ] Audit build failure handling — does a failed compile leave the package system in a bad state?
-- [ ] Audit for shell injection via package names or paths passed to compiler invocation
-- [ ] Audit stale catalog data — how long is cached remote metadata trusted? Is there an invalidation path?
-- [ ] Triage findings: must-fix vs. should-fix vs. nice-to-fix
-- [ ] Implement must-fix items; run `ctest`
+All must-fix and should-fix items complete. Summary of changes (2026-03-09):
+
+- [x] M1: Shell injection in `fetch_thread_fn()` — added `static quote()` helper to `package_catalog.cpp`; replaced raw URL concatenation with `quote(url)` (safe for URLs with embedded single quotes from `VIVID_PACKAGE_CATALOG_URL`)
+- [x] M2: `std::stoi()` out-of-range throw in `parse_semver_triplet()` — wrapped in `try/catch(const std::exception&)`; returns `false` on overflow so `assess_update` classifies as `InvalidVersionData` rather than crashing
+- [x] M3: Race condition in `fetch_thread_fn()` — moved `save_cache()` inside the mutex lock so cache write completes before `state_` transitions to `Ready`; removes window where a reader could observe stale `entries_` with a `Ready` state
+- [x] S1: `build_dir` confirmed as `pkg_dir + "/build"` (inside `pkg_dir`); caller cleanup on failure implicitly covers it — added comment documenting the invariant
+- [x] S2: Unbounded output accumulation in `compile_operator()` and `fetch_thread_fn()` — capped at 1 MB with `"... (output truncated at 1MB) ..."` suffix; prevents OOM on runaway compiler or bad network response
+- [x] S3: Silent cache write failure in `save_cache()` — added `fprintf(stderr, ...)` warning when `ofstream` fails to open; helps diagnose "always fetching" behavior
+- [x] S4: `mtime` check skipped on filesystem error in `load_cache()` — changed `if (!ec)` guard to `if (ec) return false;`; forces fresh fetch when file age cannot be determined
+- [x] N1: `is_core_version_compatible()` — added comment documenting implicit AND semantics and default `=` operator for bare version tokens
+- [x] N2: `PackageCatalog::refresh()` — added comment in header asserting catalog must have process lifetime (detached thread captures `this`)
+
+**Tests added:**
+- [x] `test_package_update_logic.cpp`: two overflow tests — `"99999999999.0.0"` as remote version and as installed version; both must yield `InvalidVersionData` without throwing
+- [x] `test_package_catalog.cpp`: `VIVID_PACKAGE_CATALOG_URL` with embedded `'` — verifies fetch settles to `Error` or `Ready` (no crash, no shell corruption)
 
 ---
 

@@ -164,7 +164,8 @@ static bool parse_semver_triplet(const std::string& raw, std::array<int, 3>& out
         for (char c : parts[i]) {
             if (!std::isdigit(static_cast<unsigned char>(c))) return false;
         }
-        out[i] = std::stoi(parts[i]);
+        try { out[i] = std::stoi(parts[i]); }
+        catch (const std::exception&) { return false; }
     }
     return true;
 }
@@ -197,6 +198,12 @@ static bool eval_constraint_cmp(int cmp, const std::string& op) {
     return false;
 }
 
+// Evaluate whether core_version satisfies a vivid_core constraint range.
+// Semantics:
+//   - Space-separated tokens are evaluated as implicit AND (all must pass).
+//   - Supported operator prefixes: >=, <=, ==, >, <, =.
+//   - A bare version token (no prefix) defaults to exact equality (= operator).
+//   - Empty range string means "no constraint" and always returns true.
 static bool is_core_version_compatible(const std::string& core_version,
                                        const std::string& vivid_core_range,
                                        bool& constraint_valid) {
@@ -745,6 +752,8 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
 }
 
 bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& result) {
+    // build_dir is always inside pkg_dir; callers that remove pkg_dir on failure
+    // implicitly clean up build_dir — no separate remove_all needed.
     std::string build_dir = pkg_dir + "/build";
 
     if (result.info.build_type == "cmake") {

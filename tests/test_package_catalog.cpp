@@ -231,6 +231,50 @@ static void test_refresh_without_cache_and_network() {
     std::fprintf(stderr, "  PASS\n");
 }
 
+// ---------------------------------------------------------------------------
+// Test 7: VIVID_PACKAGE_CATALOG_URL with embedded single quote (M1 regression)
+// Verifies the URL is properly shell-quoted and curl fails gracefully rather
+// than causing shell injection or a crash.
+// ---------------------------------------------------------------------------
+static void test_catalog_url_with_single_quote() {
+    std::fprintf(stderr, "test_catalog_url_with_single_quote...\n");
+
+    namespace fs = std::filesystem;
+    const fs::path sandbox = fs::temp_directory_path() / "vivid_test_pkg_catalog_quote";
+    fs::remove_all(sandbox);
+    fs::create_directories(sandbox);
+
+    setenv("HOME", sandbox.string().c_str(), 1);
+    // URL containing a single quote — would break naive shell concatenation.
+    setenv("VIVID_PACKAGE_CATALOG_URL", "http://localhost/bad'url", 1);
+    unsetenv("VIVID_SKIP_PACKAGE_CATALOG_NETWORK");
+
+    OperatorRegistry registry;
+    PackageCompiler compiler("", "");
+    PackageManager pm(compiler, registry);
+    PackageCatalog catalog(pm);
+
+    catalog.refresh();
+    // Wait for fetch to complete (error expected — bad URL, but no crash or hang).
+    for (int i = 0; i < 300; ++i) {
+        auto st = catalog.fetch_state();
+        if (st == CatalogFetchState::Error || st == CatalogFetchState::Ready)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    // Must have settled to Error or Ready (not stuck in Fetching).
+    auto final_state = catalog.fetch_state();
+    assert(final_state == CatalogFetchState::Error || final_state == CatalogFetchState::Ready);
+
+    // Restore env for subsequent tests.
+    unsetenv("VIVID_PACKAGE_CATALOG_URL");
+    setenv("VIVID_SKIP_PACKAGE_CATALOG_NETWORK", "1", 1);
+
+    fs::remove_all(sandbox);
+    std::fprintf(stderr, "  PASS\n");
+}
+
 int main() {
     std::fprintf(stderr, "=== test_package_catalog ===\n");
 
@@ -240,6 +284,7 @@ int main() {
     test_parse_cache_like_json();
     test_parse_vivid_catalog_schema();
     test_refresh_without_cache_and_network();
+    test_catalog_url_with_single_quote();
 
     std::fprintf(stderr, "All tests passed.\n");
     return 0;

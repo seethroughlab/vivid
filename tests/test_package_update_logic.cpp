@@ -71,6 +71,21 @@ int main() {
               "missing installed version classified as invalid");
     }
 
+    // M2 regression: version component that overflows std::stoi must not throw.
+    {
+        auto r = PackageManager::assess_update(installed, "99999999999.0.0", ">=0.1.0 <2.0.0", "0.9.0");
+        check(r.classification == PackageUpdateClass::InvalidVersionData,
+              "overflow version component classified as invalid (no exception)");
+    }
+
+    {
+        PackageInfo overflow_installed = installed;
+        overflow_installed.version = "99999999999.0.0";
+        auto r = PackageManager::assess_update(overflow_installed, "1.3.0", ">=0.1.0 <2.0.0", "0.9.0");
+        check(r.classification == PackageUpdateClass::InvalidVersionData,
+              "overflow installed version classified as invalid (no exception)");
+    }
+
     std::fprintf(stderr, "%s (%d failures)\n",
                  failures == 0 ? "ALL PASSED" : "SOME FAILED",
                  failures);
