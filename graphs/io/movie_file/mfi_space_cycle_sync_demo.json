@@ -68,6 +68,20 @@
     "aout": {
       "type": "audio_out"
     },
+    "bname": {
+      "type": "Basename"
+    },
+    "label": {
+      "type": "Text",
+      "params": {
+        "size": 0.06,
+        "bg_a": 0.5,
+        "y": -0.9
+      }
+    },
+    "comp": {
+      "type": "Composite"
+    },
     "vout": {
       "type": "video_out"
     }
@@ -114,7 +128,23 @@
       "to": "aout/right"
     },
     {
+      "from": "pick/file",
+      "to": "bname/path"
+    },
+    {
+      "from": "bname/name",
+      "to": "label/text_in"
+    },
+    {
+      "from": "label/texture",
+      "to": "comp/a"
+    },
+    {
       "from": "movie_video/texture",
+      "to": "comp/b"
+    },
+    {
+      "from": "comp/texture",
       "to": "vout/input"
     }
   ]
