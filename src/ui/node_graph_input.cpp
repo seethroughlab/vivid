@@ -2069,6 +2069,33 @@ void NodeGraphUI::handle_graph_click() {
     if (editing_resolution_) confirm_resolution_edit();
     editing_wire_remap_ = false;
 
+    // Check expand/collapse affordance rows before port hit testing
+    for (const auto& ar : expand_affordance_rects_) {
+        if (mouse_.x >= ar.x && mouse_.x <= ar.x + ar.w &&
+            mouse_.y >= ar.y && mouse_.y <= ar.y + ar.h) {
+            if (outputs_expanded_.count(ar.node_id))
+                outputs_expanded_.erase(ar.node_id);
+            else
+                outputs_expanded_.insert(ar.node_id);
+            // Recompute this node's height and port positions immediately
+            for (auto& rect : node_rects_) {
+                if (rect.node_id != ar.node_id) continue;
+                const auto* ns = snap_.find_node(ar.node_id);
+                if (!ns) break;
+                bool has_ct = custom_thumb_nodes_.count(ar.node_id) > 0;
+                float body_h = domain_body_height(rect.domain, has_ct);
+                uint32_t n_inputs  = count_visible_input_ports(*ns);
+                uint32_t n_outputs = count_visible_output_ports(*ns);
+                uint32_t port_rows = std::max(n_inputs, n_outputs);
+                rect.h = kAccentBarH + body_h + kNodePadY + kLineH * 2
+                         + port_rows * kLineH + kNodePadY;
+                recompute_ports(rect, *ns);
+                break;
+            }
+            return;
+        }
+    }
+
     // Port hit test first (ports are on node edges, inside node AABB)
     PortHit ph = hit_test_port(mouse_.x, mouse_.y);
     if (ph.node_idx >= 0) {

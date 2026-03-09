@@ -80,6 +80,7 @@ static std::string build_semantic_hint(const ParamInfo& pd) {
 // Drawing
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_graph(Renderer2D& tr) {
+    expand_affordance_rects_.clear();
     for (size_t i = 0; i < node_rects_.size(); ++i) {
         const auto& r = node_rects_[i];
         bool selected = selected_node_ids_.count(r.node_id) > 0;
@@ -278,6 +279,24 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
             float lw = tr.text_width(p.name.c_str(), zoom_);
             tr.draw_text(spx - lw - g_to_s(4), spy - s_line_h * 0.5f, p.name.c_str(),
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], dot_alpha, zoom_);
+        }
+
+        // Expand/collapse affordance row for nodes with >3 outputs
+        if (r.outputs_expandable) {
+            float aspy = gy_to_sy(r.affordance_gy);
+            char buf[48];
+            if (r.outputs_expanded)
+                snprintf(buf, sizeof(buf), "\xe2\x96\xb4 hide");
+            else
+                snprintf(buf, sizeof(buf), "\xe2\x96\xb8 %u more\xe2\x80\xa6",
+                         r.hidden_output_count);
+            float lw  = tr.text_width(buf, zoom_);
+            float spx = gx_to_sx(r.x + r.w);
+            float tx  = spx - lw - g_to_s(4);
+            tr.draw_text(tx, aspy - s_line_h * 0.5f, buf,
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.45f, zoom_);
+            expand_affordance_rects_.push_back({tx, aspy - s_line_h * 0.5f,
+                                                lw + g_to_s(8), s_line_h, r.node_id});
         }
     }
 }

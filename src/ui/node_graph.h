@@ -100,6 +100,11 @@ struct NodeRect {
     float x = 0, y = 0, w = 0, h = 0;
     struct PortPos { std::string name; float x, y; bool is_param = false; };
     std::vector<PortPos> inputs, outputs;
+    // Multi-output expand affordance
+    bool     outputs_expandable  = false;
+    uint32_t hidden_output_count = 0;
+    bool     outputs_expanded    = false;
+    float    affordance_gy       = 0; // graph-space Y center of affordance row
 };
 
 class NodeGraphUI {
@@ -642,6 +647,11 @@ private:
     int context_wire_idx_ = -1;     // >= 0 if wire menu
     bool context_bg_menu_ = false;  // true if background menu (no node/wire)
     int hovered_wire_idx_ = -1;
+
+    // Multi-output expand state (keyed by node_id)
+    std::unordered_set<std::string> outputs_expanded_;
+    struct ExpandAffordanceRect { float x, y, w, h; std::string node_id; };
+    std::vector<ExpandAffordanceRect> expand_affordance_rects_;
 
     // Group collapse state
     std::unordered_map<std::string, bool> group_collapsed_;

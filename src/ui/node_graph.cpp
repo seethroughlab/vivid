@@ -108,13 +108,18 @@ uint32_t NodeGraphUI::count_visible_input_ports(const NodeSnapshot& ns) const {
 }
 
 uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns) const {
+    bool few_outputs = ns.output_port_indices.size() <= 3;
+    bool expanded    = outputs_expanded_.count(ns.node_id) > 0;
+    bool show_all    = few_outputs || expanded;
+
     uint32_t count = 0;
     for (const auto& [name, idx] : ns.output_port_indices) {
-        // Always show if connected, or if there are few outputs (<=3)
-        if (ns.output_port_indices.size() <= 3 ||
-            port_has_connection(snap_.connections, ns.node_id, name, true))
+        if (show_all || port_has_connection(snap_.connections, ns.node_id, name, true))
             count++;
     }
+    // Affordance row always reserves one row for nodes with >3 outputs
+    if (!few_outputs)
+        count++;
     // Param sources — visible only if connected as source
     for (const auto& [name, idx] : ns.param_indices) {
         if (ns.output_port_indices.count(name)) continue;
@@ -137,6 +142,8 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
     auto sorted_inputs = sorted_ports(ns.input_port_indices);
     auto sorted_outputs_vec = sorted_ports(ns.output_port_indices);
     bool few_outputs = ns.output_port_indices.size() <= 3;
+    bool expanded    = outputs_expanded_.count(ns.node_id) > 0;
+    bool show_all    = few_outputs || expanded;
 
     float port_start_y = rect.y + kAccentBarH + body_h + kNodePadY + kLineH * 2;
 
@@ -160,16 +167,27 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
         ++pi;
     }
 
-    // Output ports — always visible if <=3, otherwise only if connected
+    // Output ports — show all when few or expanded, otherwise only connected
     size_t oi = 0;
     for (const auto& [idx, name] : sorted_outputs_vec) {
-        if (!few_outputs &&
-            !port_has_connection(snap_.connections, ns.node_id, name, true))
+        bool connected = port_has_connection(snap_.connections, ns.node_id, name, true);
+        if (!show_all && !connected)
             continue;
         float py = port_start_y + oi * kLineH + kLineH * 0.5f;
-        rect.outputs.push_back({name, rect.x + rect.w, py,
-                                !few_outputs}); // is_param=true for hidden-by-default outputs
+        rect.outputs.push_back({name, rect.x + rect.w, py, false});
         ++oi;
+    }
+
+    // Affordance row: present for all nodes with >3 outputs (collapsed or expanded)
+    rect.outputs_expandable  = !few_outputs;
+    rect.outputs_expanded    = expanded;
+    rect.hidden_output_count = 0;
+    rect.affordance_gy       = 0;
+    if (!few_outputs) {
+        uint32_t total = static_cast<uint32_t>(ns.output_port_indices.size());
+        rect.hidden_output_count = expanded ? 0 : total - static_cast<uint32_t>(oi);
+        rect.affordance_gy = port_start_y + oi * kLineH + kLineH * 0.5f;
+        ++oi; // reserve the row so param sources appear below
     }
 
     // Param sources — visible only if connected as a source
