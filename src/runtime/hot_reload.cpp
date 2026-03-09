@@ -6,11 +6,19 @@
 #include <unistd.h>
 #include <array>
 #include <filesystem>
+#include <stdexcept>
 
 namespace vivid {
 
 static std::string quote(const std::string& s) {
-    return "'" + s + "'";
+    // Single-quote for shell; escape embedded single quotes as '\''
+    std::string out = "'";
+    for (char c : s) {
+        if (c == '\'') out += "'\\''";
+        else out += c;
+    }
+    out += "'";
+    return out;
 }
 
 HotReloader::HotReloader() = default;
@@ -99,6 +107,7 @@ void HotReloader::compile_thread() {
         std::fprintf(stderr, "[vivid] Hot-reload: compiling %s...\n", target.c_str());
 
         ReloadResult result;
+        try {
         // Package targets use format "pkg:<package>:<operator>" — route to PackageCompiler.
         if (target.substr(0, 4) == "pkg:" && package_compile_fn_) {
             result = package_compile_fn_(target);
@@ -110,7 +119,9 @@ void HotReloader::compile_thread() {
             bool compile_ok = false;
 
             FILE* pipe = popen(cmd.c_str(), "r");
-            if (pipe) {
+            if (!pipe) {
+                output = "popen failed (system error)";
+            } else {
                 std::array<char, 256> buf;
                 while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
                     output += buf.data();
@@ -160,6 +171,19 @@ void HotReloader::compile_thread() {
                     std::fprintf(stderr, "[vivid] Hot-reload: %s compiled successfully\n", target.c_str());
                 }
             }
+        }
+        } catch (const std::exception& e) {
+            result.success = false;
+            result.error_output = std::string("Internal error: ") + e.what();
+            result.target_name = target;
+            std::fprintf(stderr, "[vivid] Hot-reload: exception in compile_thread for %s: %s\n",
+                         target.c_str(), e.what());
+        } catch (...) {
+            result.success = false;
+            result.error_output = "Internal error: unknown exception";
+            result.target_name = target;
+            std::fprintf(stderr, "[vivid] Hot-reload: unknown exception in compile_thread for %s\n",
+                         target.c_str());
         }
 
         {

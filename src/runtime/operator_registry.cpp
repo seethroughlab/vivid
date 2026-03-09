@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <algorithm>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <unordered_set>
 #include <filesystem>
@@ -51,6 +52,7 @@ static std::unordered_set<std::string> parse_skip_plugins_env() {
 }
 
 static uint32_t runtime_abi_override() {
+    // Testing only — do not set in production
     const char* env = std::getenv("VIVID_MOCK_RUNTIME_ABI");
     if (!env || !*env) return VIVID_OPERATOR_ABI_VERSION;
     char* end = nullptr;
@@ -129,23 +131,50 @@ bool OperatorRegistry::scan(const char* directory) {
     });
 }
 
-// Deep-copy a VividOperatorDescriptor into a DeferredEntry with fully owned storage
-static DeferredEntry deep_copy_descriptor(const VividOperatorDescriptor* src,
-                                           const std::string& dylib_path) {
+// Deep-copy a VividOperatorDescriptor into a DeferredEntry with fully owned storage.
+// Returns std::nullopt if the descriptor is malformed (null params/ports with non-zero counts).
+static std::optional<DeferredEntry> deep_copy_descriptor(const VividOperatorDescriptor* src,
+                                                          const std::string& dylib_path) {
     DeferredEntry entry;
     entry.dylib_path = dylib_path;
 
+    // Sanity-check and cap param_count to prevent runaway allocation.
+    if (src->param_count > 256) {
+        std::fprintf(stderr, "[vivid] descriptor for '%s' claims %u params — clamping to 256\n",
+                     src->name ? src->name : "(null)", src->param_count);
+    }
+    const uint32_t param_count = std::min(src->param_count, 256u);
+    if (param_count > 0 && !src->params) {
+        std::fprintf(stderr,
+                     "[vivid] descriptor for '%s' has param_count=%u but null params ptr — skipping\n",
+                     src->name ? src->name : "(null)", param_count);
+        return std::nullopt;
+    }
+
+    // Sanity-check and cap port_count.
+    if (src->port_count > 64) {
+        std::fprintf(stderr, "[vivid] descriptor for '%s' claims %u ports — clamping to 64\n",
+                     src->name ? src->name : "(null)", src->port_count);
+    }
+    const uint32_t port_count = std::min(src->port_count, 64u);
+    if (port_count > 0 && !src->ports) {
+        std::fprintf(stderr,
+                     "[vivid] descriptor for '%s' has port_count=%u but null ports ptr — skipping\n",
+                     src->name ? src->name : "(null)", port_count);
+        return std::nullopt;
+    }
+
     // Copy param descriptors with owned strings
-    entry.params.resize(src->param_count);
-    entry.param_names.resize(src->param_count);
-    entry.default_strings.resize(src->param_count);
-    entry.semantic_tags.resize(src->param_count);
-    entry.semantic_shapes.resize(src->param_count);
-    entry.semantic_units.resize(src->param_count);
-    entry.semantic_intents.resize(src->param_count);
-    entry.choice_labels.resize(src->param_count);
-    entry.choice_label_ptrs.resize(src->param_count);
-    for (uint32_t i = 0; i < src->param_count; ++i) {
+    entry.params.resize(param_count);
+    entry.param_names.resize(param_count);
+    entry.default_strings.resize(param_count);
+    entry.semantic_tags.resize(param_count);
+    entry.semantic_shapes.resize(param_count);
+    entry.semantic_units.resize(param_count);
+    entry.semantic_intents.resize(param_count);
+    entry.choice_labels.resize(param_count);
+    entry.choice_label_ptrs.resize(param_count);
+    for (uint32_t i = 0; i < param_count; ++i) {
         const auto& sp = src->params[i];
         auto& dp = entry.params[i];
         entry.param_names[i] = sp.name ? sp.name : "";
@@ -208,9 +237,9 @@ static DeferredEntry deep_copy_descriptor(const VividOperatorDescriptor* src,
     }
 
     // Copy port descriptors with owned strings
-    entry.ports.resize(src->port_count);
-    entry.port_names.resize(src->port_count);
-    for (uint32_t i = 0; i < src->port_count; ++i) {
+    entry.ports.resize(port_count);
+    entry.port_names.resize(port_count);
+    for (uint32_t i = 0; i < port_count; ++i) {
         const auto& sp = src->ports[i];
         auto& dp = entry.ports[i];
         entry.port_names[i] = sp.name ? sp.name : "";
@@ -220,13 +249,12 @@ static DeferredEntry deep_copy_descriptor(const VividOperatorDescriptor* src,
     }
 
     // Build the owned descriptor
-    std::string name_str = src->name ? src->name : "";
     entry.desc.name = nullptr;  // set after emplace (points to stable map key)
     entry.desc.domain = src->domain;
-    entry.desc.param_count = src->param_count;
-    entry.desc.params = entry.params.data();
-    entry.desc.port_count = src->port_count;
-    entry.desc.ports = entry.ports.data();
+    entry.desc.param_count = param_count;
+    entry.desc.params = entry.params.empty() ? nullptr : entry.params.data();
+    entry.desc.port_count = port_count;
+    entry.desc.ports = entry.ports.empty() ? nullptr : entry.ports.data();
     entry.desc.time_dependent = src->time_dependent;
 
     return entry;
@@ -242,7 +270,8 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         }
         void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (!handle) {
-            std::fprintf(stderr, "[vivid] probe dlopen failed: %s\n", dlerror());
+            const char* dl_err = dlerror();
+            std::fprintf(stderr, "[vivid] probe dlopen failed: %s\n", dl_err ? dl_err : "unknown error");
             return;
         }
 
@@ -290,12 +319,13 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         }
 
         // Deep-copy descriptor into owned storage
-        DeferredEntry de = deep_copy_descriptor(desc, path);
+        auto de_opt = deep_copy_descriptor(desc, path);
         // Keep probe handles alive for process lifetime. Some plugins execute
         // problematic teardown paths during dlclose() and can stall startup.
         deferred_probe_handles_.push_back(handle);
+        if (!de_opt) return;  // malformed descriptor — skip operator
 
-        auto [it, inserted] = deferred_.emplace(type_name, std::move(de));
+        auto [it, inserted] = deferred_.emplace(type_name, std::move(*de_opt));
         // Point desc.name at the map key (stable after emplace)
         it->second.desc.name = it->first.c_str();
 
@@ -442,6 +472,9 @@ const VividOperatorDescriptor* OperatorRegistry::probe_descriptor(const std::str
 void OperatorRegistry::register_builtin(const std::string& type_name,
                                         VividDescriptorFn desc_fn, VividCreateFn create_fn,
                                         VividDestroyFn destroy_fn, VividProcessFn process_fn) {
+    if (loaders_.count(type_name)) {
+        std::fprintf(stderr, "[vivid] warning: re-registering operator type '%s'\n", type_name.c_str());
+    }
     auto loader = std::make_unique<OperatorLoader>();
     loader->init_builtin(desc_fn, create_fn, destroy_fn, process_fn);
     std::fprintf(stderr, "[vivid] Registry: registered built-in %s\n", type_name.c_str());
@@ -478,6 +511,9 @@ OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
 
 void OperatorRegistry::register_user_filter(const std::string& name,
                                             std::shared_ptr<DataDrivenFilterConfig> config) {
+    if (loaders_.count(name)) {
+        std::fprintf(stderr, "[vivid] warning: re-registering operator type '%s'\n", name.c_str());
+    }
     auto loader = std::make_unique<OperatorLoader>();
     loader->init_data_driven(std::move(config));
     std::fprintf(stderr, "[vivid] Registry: registered user filter %s\n", name.c_str());
@@ -582,8 +618,10 @@ bool OperatorRegistry::reload_operator(const std::string& type_name, const std::
 
     // OperatorLoader::load() calls unload() (dlclose) then dlopen on new path
     if (!it->second->load(new_dylib_path.c_str())) {
-        std::fprintf(stderr, "[vivid] Registry: failed to reload '%s' from %s\n",
-            type_name.c_str(), new_dylib_path.c_str());
+        std::fprintf(stderr,
+            "[vivid] hot-reload failed for '%s' — loader is now unloaded; "
+            "operator disabled until next successful reload\n",
+            type_name.c_str());
         return false;
     }
 

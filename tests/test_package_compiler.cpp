@@ -67,7 +67,7 @@ struct TestPkgOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0];
     }
 };
@@ -174,7 +174,7 @@ struct TestVendorOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process(VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0];
     }
 };
@@ -199,6 +199,111 @@ VIVID_REGISTER(TestVendorOp)
         auto no_vendor_result = compiler.compile_operator(
             pkg_dir, "control/test_vendor_op", false);
         check(!no_vendor_result.success, "compile without vendor include fails");
+    }
+
+    // --- Test 6: Path with single quote (quote() escaping) ---
+    std::fprintf(stderr, "\n--- Compile from path containing single quote ---\n");
+    {
+        // Create a package directory whose path contains an apostrophe.
+        // std::filesystem uses OS calls directly, so this works fine even though
+        // shells require escaping.
+        std::string apos_pkg_dir = build_dir + "/.test_o'brien_package";
+        fs::remove_all(apos_pkg_dir);
+        fs::create_directories(apos_pkg_dir + "/operators/control/test_apos_op");
+        fs::create_directories(apos_pkg_dir + "/build");
+
+        {
+            std::ofstream ofs(apos_pkg_dir + "/operators/control/test_apos_op/test_apos_op.cpp");
+            ofs << R"cpp(
+#include "operator_api/operator.h"
+
+struct TestAposOp : vivid::OperatorBase {
+    static constexpr const char* kName   = "TestAposOp";
+    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
+    static constexpr bool kTimeDependent = false;
+
+    void collect_params(std::vector<vivid::ParamBase*>&) override {}
+
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+    }
+
+    void process(VividProcessContext* ctx) override {
+        ctx->output_values[0] = 1.0f;
+    }
+};
+
+VIVID_REGISTER(TestAposOp)
+)cpp";
+        }
+
+        auto apos_result = compiler.compile_operator(apos_pkg_dir, "control/test_apos_op", false);
+        check(apos_result.success, "compile succeeds when package path contains apostrophe");
+        if (!apos_result.success)
+            std::fprintf(stderr, "  Error: %s\n", apos_result.error_output.c_str());
+        if (apos_result.success)
+            check(fs::exists(apos_result.dylib_path), "apostrophe-path dylib exists on disk");
+
+        fs::remove_all(apos_pkg_dir);
+    }
+
+    // --- Test 7: Failed compile does not leave partial output (safe-swap) ---
+    std::fprintf(stderr, "\n--- Failed compile does not leave partial output ---\n");
+    {
+        // Pre-populate the build dir with a known-good dylib.
+        std::string safe_pkg_dir = build_dir + "/.test_safeswap_package";
+        fs::remove_all(safe_pkg_dir);
+        fs::create_directories(safe_pkg_dir + "/operators/control/test_safeswap_op");
+        fs::create_directories(safe_pkg_dir + "/build");
+
+        {
+            std::ofstream ofs(safe_pkg_dir + "/operators/control/test_safeswap_op/test_safeswap_op.cpp");
+            ofs << R"cpp(
+#include "operator_api/operator.h"
+struct TestSafeSwapOp : vivid::OperatorBase {
+    static constexpr const char* kName   = "TestSafeSwapOp";
+    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
+    static constexpr bool kTimeDependent = false;
+    void collect_params(std::vector<vivid::ParamBase*>&) override {}
+    void collect_ports(std::vector<VividPortDescriptor>&) override {}
+    void process(VividProcessContext*) override {}
+};
+VIVID_REGISTER(TestSafeSwapOp)
+)cpp";
+        }
+
+        // First compile: should succeed and produce a good dylib.
+        auto good_result = compiler.compile_operator(safe_pkg_dir, "control/test_safeswap_op", false);
+        check(good_result.success, "initial compile for safe-swap test succeeds");
+
+        if (good_result.success) {
+            // Record the size of the good dylib.
+            std::error_code ec;
+            auto good_size = fs::file_size(good_result.dylib_path, ec);
+            check(!ec && good_size > 0, "good dylib has non-zero size");
+
+            // Overwrite source with broken code.
+            {
+                std::ofstream ofs(safe_pkg_dir + "/operators/control/test_safeswap_op/test_safeswap_op.cpp");
+                ofs << "#error intentional compile error\n";
+            }
+
+            auto bad_result = compiler.compile_operator(safe_pkg_dir, "control/test_safeswap_op", false);
+            check(!bad_result.success, "compile of broken source fails");
+
+            // The good dylib should still be intact.
+            std::error_code ec2;
+            auto after_size = fs::file_size(good_result.dylib_path, ec2);
+            check(!ec2, "good dylib still exists after failed recompile");
+            check(!ec2 && after_size == good_size,
+                  "good dylib is unchanged after failed recompile (safe-swap)");
+
+            // No leftover .tmp file.
+            check(!fs::exists(good_result.dylib_path + ".tmp"),
+                  "no .tmp artifact left after failed compile");
+        }
+
+        fs::remove_all(safe_pkg_dir);
     }
 
     // Cleanup

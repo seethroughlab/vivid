@@ -31,7 +31,7 @@ static VividOperatorDescriptor s_builtin_desc =
 static const VividOperatorDescriptor* builtin_descriptor() { return &s_builtin_desc; }
 static void* builtin_create() { return new int(42); }
 static void  builtin_destroy(void* p) { delete static_cast<int*>(p); }
-static void  builtin_process(void*, const VividProcessContext*) {}
+static void  builtin_process(void*, VividProcessContext*) {}
 
 int main() {
     std::string build_dir = ".";
@@ -529,6 +529,60 @@ int main() {
         // Loader is cleanly unloaded; no new instances can be created
         void* new_inst = loader.create_instance();
         check(new_inst == nullptr, "create_instance returns null after unload");
+    }
+
+    // Test 31: destroy_instance(nullptr) on a data-driven loader is a safe no-op
+    {
+        std::fprintf(stderr, "\n--- destroy_instance(nullptr) on data-driven loader ---\n");
+        auto config = std::make_shared<vivid::DataDrivenFilterConfig>();
+        config->name = "NullSafetyFilter";
+        config->shader_path = "/tmp/null_safety.wgsl";
+
+        vivid::OperatorLoader loader;
+        loader.init_data_driven(std::move(config));
+        check(loader.is_loaded(), "data-driven: is_loaded after init");
+
+        // Must not crash or dereference nullptr
+        loader.destroy_instance(nullptr);
+        check(true, "data-driven: destroy_instance(nullptr) does not crash");
+    }
+
+    // Test 32: process(nullptr, ctx) on a data-driven loader is a safe no-op
+    {
+        std::fprintf(stderr, "\n--- process(nullptr, ctx) on data-driven loader ---\n");
+        auto config = std::make_shared<vivid::DataDrivenFilterConfig>();
+        config->name = "NullSafetyFilter2";
+        config->shader_path = "/tmp/null_safety2.wgsl";
+
+        vivid::OperatorLoader loader;
+        loader.init_data_driven(std::move(config));
+
+        VividProcessContext ctx{};
+        // Must not crash or dereference nullptr
+        loader.process(nullptr, &ctx);
+        check(true, "data-driven: process(nullptr, ctx) does not crash");
+    }
+
+    // Test 33: hot-reload failure emits disabled-operator warning
+    // (Verifies reload_operator returns false and the loader is left unloaded,
+    //  matching the warning emitted to stderr.)
+    {
+        std::fprintf(stderr, "\n--- hot-reload failure leaves loader unloaded ---\n");
+        vivid::OperatorRegistry reg;
+        reg.scan(staging.c_str());
+
+        // Attempt reload with a path that will never open
+        bool ok = reg.reload_operator("TestOp", "/nonexistent/does_not_exist.dylib");
+        check(!ok, "hot-reload bad path returns false");
+
+        // The loader remains in the registry but is now unloaded
+        auto* loader = reg.find("TestOp");
+        check(loader != nullptr, "hot-reload: loader still in registry after failure");
+        if (loader) {
+            check(!loader->is_loaded(), "hot-reload: loader is unloaded after failure");
+            check(loader->create_instance() == nullptr,
+                  "hot-reload: create_instance returns null on unloaded loader");
+        }
     }
 
     // Cleanup

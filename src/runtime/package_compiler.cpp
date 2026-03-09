@@ -10,9 +10,14 @@
 
 namespace vivid {
 
-// Shell-quote a path to handle spaces and special characters
+// Shell-quote a string to handle spaces and special characters (including single quotes)
 static std::string quote(const std::string& s) {
-    return "'" + s + "'";
+    std::string escaped;
+    for (char c : s) {
+        if (c == '\'') escaped += "'\\''";
+        else escaped += c;
+    }
+    return "'" + escaped + "'";
 }
 
 PackageCompiler::PackageCompiler(const std::string& vivid_src_dir,
@@ -52,6 +57,7 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
     std::filesystem::create_directories(build_dir);
 
     std::string output_path = build_dir + "/" + name + kPluginSuffix;
+    std::string temp_output = output_path + ".tmp";
     result.dylib_path = output_path;
 
     // Build compiler command
@@ -119,7 +125,7 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
         }
     }
 
-    cmd += " -o " + quote(output_path) + " " + quote(source_path) + " 2>&1";
+    cmd += " -o " + quote(temp_output) + " " + quote(source_path) + " 2>&1";
 
     std::fprintf(stderr, "[vivid] PackageCompiler: %s\n", cmd.c_str());
 
@@ -141,11 +147,21 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
     if (status != 0) {
         result.success = false;
         result.error_output = output;
+        std::error_code ec;
+        std::filesystem::remove(temp_output, ec);
         std::fprintf(stderr, "[vivid] PackageCompiler: FAILED %s:\n%s",
                      name.c_str(), output.c_str());
     } else {
-        result.success = true;
-        std::fprintf(stderr, "[vivid] PackageCompiler: compiled %s\n", name.c_str());
+        std::error_code ec;
+        std::filesystem::rename(temp_output, output_path, ec);
+        if (ec) {
+            result.success = false;
+            result.error_output = "Failed to finalize output: " + ec.message();
+            std::filesystem::remove(temp_output, ec);
+        } else {
+            result.success = true;
+            std::fprintf(stderr, "[vivid] PackageCompiler: compiled %s\n", name.c_str());
+        }
     }
 
     return result;
@@ -204,6 +220,8 @@ TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
     if (status != 0) {
         result.success = false;
         result.error_output = output;
+        std::error_code ec;
+        std::filesystem::remove(output_path, ec);
         std::fprintf(stderr, "[vivid] PackageCompiler::compile_test: FAILED %s:\n%s",
                      stem.c_str(), output.c_str());
     } else {
