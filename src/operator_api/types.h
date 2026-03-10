@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 7u
+#define VIVID_OPERATOR_ABI_VERSION 8u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -44,9 +44,12 @@ typedef enum VividPortType {
     VIVID_PORT_DATA           = 6,  // package-defined opaque pointer type
     VIVID_PORT_CONTROL_STRING = 7,
     VIVID_PORT_CONTROL_STRING_SPREAD = 8,
-    VIVID_PORT_GPU_BUFFER  = 9,
-    VIVID_PORT_GPU_MESH    = 10,
-    VIVID_PORT_GPU_COMPUTE = 11,
+    VIVID_PORT_GPU_BUFFER    = 9,
+    VIVID_PORT_GPU_MESH      = 10,
+    VIVID_PORT_GPU_COMPUTE   = 11,
+    VIVID_PORT_MEDIA_STREAM  = 12, // first-class media stream (MediaStreamV1*)
+    VIVID_PORT_MEDIA_CLOCK   = 13, // clock-only port (MediaClockV1*)  — reserved, no operators yet
+    VIVID_PORT_MIDI          = 14, // MIDI buffer (VividMidiBuffer*)    — reserved, no operators yet
 } VividPortType;
 
 typedef enum VividPortDirection {
@@ -96,6 +99,8 @@ typedef struct VividOperatorDescriptor {
     uint32_t                  port_count;
     const VividPortDescriptor*  ports;
     int                       time_dependent;  // 1 if operator reads ctx->time, 0 otherwise
+    int                       has_process_audio; // 1 if operator inherits AudioOperatorBase
+    int                       has_process_gpu;   // 1 if operator inherits GpuOperatorBase
 } VividOperatorDescriptor;
 
 // ---------------------------------------------------------------------------
@@ -162,7 +167,32 @@ typedef struct VividSharedHandleService {
 } VividSharedHandleService;
 
 // ---------------------------------------------------------------------------
-// Process context — passed each tick
+// Audio process context — passed to audio operators on the audio thread
+// ---------------------------------------------------------------------------
+
+typedef struct VividAudioContext {
+    double    time;
+    double    delta_time;
+    uint64_t  frame;
+    float*    param_values;
+    // Audio-specific
+    float**   input_buffers;    // [port_idx][sample]
+    float**   output_buffers;   // [port_idx][sample]
+    uint32_t  buffer_size;      // 256
+    uint32_t  sample_rate;      // 48000
+    // Cross-domain inputs from control
+    VividSpreadPort*  input_spreads;
+    VividSpreadPort*  output_spreads;
+    void**            input_data;
+    uint32_t          input_data_count;
+    const char**      input_string_values;
+    const char**      file_param_values;
+    uint32_t          file_param_count;
+    const VividSharedHandleService* shared_handles;
+} VividAudioContext;
+
+// ---------------------------------------------------------------------------
+// Control process context — passed to control operators on the main thread
 // ---------------------------------------------------------------------------
 
 typedef struct VividProcessContext {
@@ -173,8 +203,6 @@ typedef struct VividProcessContext {
     float*    param_values;   // indexed by param descriptor order
     float*    input_values;   // indexed by input port order (VIVID_PORT_INPUT only)
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
-    void*     gpu;            // VividGpuState* for GPU operators, NULL otherwise
-    void*     audio;          // VividAudioState* for audio operators, NULL otherwise
     // NOTE: input_spreads[i] is indexed by SPREAD-PORT ORDINAL — the i-th
     // VIVID_PORT_CONTROL_SPREAD input port, not the global input port index.
     // Same convention applies to output_spreads, input_data, input_string_values,
@@ -191,7 +219,7 @@ typedef struct VividProcessContext {
     VividStringSpreadPort* output_string_spreads;  // [string_spread_port_ordinal], NULL if none
     const char** file_param_values;   // indexed by file param order, NULL if none
     uint32_t     file_param_count;
-    void*     input;          // VividInputState* for GPU operators when UI hidden, NULL otherwise
+    void*     input;          // VividInputState* for interactive operators, NULL otherwise
     const VividSharedHandleService* shared_handles; // runtime-owned process-wide handle service
 
     // ---- Operator write-back: operator sets these during process() ---------
@@ -202,6 +230,9 @@ typedef struct VividProcessContext {
     uint32_t  preferred_tex_height;
 } VividProcessContext;
 
+// Forward declaration — full definition in gpu_operator.h (requires WebGPU types)
+struct VividGpuContext;
+
 // ---------------------------------------------------------------------------
 // Function pointer typedefs (dlopen entry points)
 // ---------------------------------------------------------------------------
@@ -211,6 +242,8 @@ typedef uint32_t (*VividAbiVersionFn)(void);
 typedef void*  (*VividCreateFn)(void);
 typedef void   (*VividDestroyFn)(void* instance);
 typedef void   (*VividProcessFn)(void* instance, VividProcessContext* ctx);
+typedef void   (*VividProcessAudioFn)(void* instance, VividAudioContext* ctx);
+typedef void   (*VividProcessGpuFn)(void* instance, struct VividGpuContext* ctx);
 
 // ---------------------------------------------------------------------------
 // Thumbnail context — optional custom thumbnail rendering

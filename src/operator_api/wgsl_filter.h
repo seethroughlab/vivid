@@ -22,54 +22,51 @@ namespace vivid {
 // shader, texture bindings, hot-reload) is handled here.
 // =============================================================================
 
-struct WgslFilterBase : OperatorBase {
+struct WgslFilterBase : GpuOperatorBase {
 
     explicit WgslFilterBase(const char* shader_filename)
         : shader_filename_(shader_filename) {}
 
 protected:
     // Override the shader path entirely (for data-driven filters).
-    // Must be called before the first process() frame.
+    // Must be called before the first process_gpu() frame.
     void set_shader_path_override(const std::string& path) {
         shader_path_override_ = path;
     }
 
 public:
-    // --- OperatorBase overrides -------------------------------------------
+    // --- GpuOperatorBase overrides ------------------------------------------
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"input", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) return;
-
+    void process_gpu(const VividGpuContext* ctx) override {
         if (!initialized_) {
-            if (!lazy_init(gpu)) return;
+            if (!lazy_init(ctx)) return;
         }
 
         // Shader hot-reload: check file every 30 frames
         reload_counter_++;
         if (reload_counter_ >= 30) {
             reload_counter_ = 0;
-            check_hot_reload(gpu);
+            check_hot_reload(ctx);
         }
 
         // Update uniform buffer
-        fill_uniforms(gpu, ctx);
-        wgpuQueueWriteBuffer(gpu->queue, uniform_buf_.get(), 0,
+        fill_uniforms(ctx);
+        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_.get(), 0,
                              uniform_data_.data(), uniform_size_);
 
         // Resolve N input textures, using fallback for disconnected
         std::vector<WGPUTextureView> input_texs(tex_input_count_);
         for (uint32_t i = 0; i < tex_input_count_; ++i) {
             WGPUTextureView v = nullptr;
-            if (gpu->input_texture_views && i < gpu->input_texture_count)
-                v = gpu->input_texture_views[i];
+            if (ctx->input_texture_views && i < ctx->input_texture_count)
+                v = ctx->input_texture_views[i];
             if (!v) {
-                if (!fallback_view_) create_fallback(gpu);
+                if (!fallback_view_) create_fallback(ctx);
                 v = fallback_view_.get();
             }
             input_texs[i] = v;
@@ -77,12 +74,12 @@ public:
 
         // Recreate bind group if any input texture changed
         if (input_texs != cached_input_texs_) {
-            bind_group_.reset(create_bind_group(gpu, input_texs));
+            bind_group_.reset(create_bind_group(ctx, input_texs));
             cached_input_texs_ = input_texs;
         }
 
-        vivid::gpu::run_pass(gpu->command_encoder, pipeline_.get(), bind_group_.get(),
-                             gpu->output_texture_view, "WgslFilter Pass");
+        vivid::gpu::run_pass(ctx->command_encoder, pipeline_.get(), bind_group_.get(),
+                             ctx->output_texture_view, "WgslFilter Pass");
     }
 
     ~WgslFilterBase() override = default;
@@ -191,11 +188,11 @@ private:
         uniform_data_.resize(uniform_size_, 0);
     }
 
-    void fill_uniforms(VividGpuState* gpu, const VividProcessContext* ctx) {
+    void fill_uniforms(const VividGpuContext* ctx) {
         std::memset(uniform_data_.data(), 0, uniform_size_);
         float* f = reinterpret_cast<float*>(uniform_data_.data());
-        f[0] = static_cast<float>(gpu->output_width);
-        f[1] = static_cast<float>(gpu->output_height);
+        f[0] = static_cast<float>(ctx->output_width);
+        f[1] = static_cast<float>(ctx->output_height);
         f[2] = static_cast<float>(ctx->time);
         uint32_t* u = reinterpret_cast<uint32_t*>(uniform_data_.data());
         u[3] = static_cast<uint32_t>(ctx->frame);
@@ -224,14 +221,14 @@ private:
     // -----------------------------------------------------------------------
     // Resolve shader path from operators_src_dir + shader_filename
     // -----------------------------------------------------------------------
-    bool resolve_shader_path(VividGpuState* gpu) {
+    bool resolve_shader_path(const VividGpuContext* ctx) {
         // Data-driven filters supply their own path
         if (!shader_path_override_.empty()) {
             shader_path_ = shader_path_override_;
             return true;
         }
 
-        if (!gpu->operators_src_dir) return false;
+        if (!ctx->operators_src_dir) return false;
 
         // Derive stem from filename: "posterize.wgsl" → "posterize"
         std::string fname = shader_filename_;
@@ -239,7 +236,7 @@ private:
         auto dot = stem.rfind('.');
         if (dot != std::string::npos) stem = stem.substr(0, dot);
 
-        shader_path_ = std::string(gpu->operators_src_dir) +
+        shader_path_ = std::string(ctx->operators_src_dir) +
                         "/gpu/" + stem + "/" + fname;
         return true;
     }
@@ -272,7 +269,7 @@ private:
     // -----------------------------------------------------------------------
     // Bind group creation (recreated when input texture changes)
     // -----------------------------------------------------------------------
-    WGPUBindGroup create_bind_group(VividGpuState* gpu,
+    WGPUBindGroup create_bind_group(const VividGpuContext* ctx,
                                     const std::vector<WGPUTextureView>& textures) {
         std::vector<WGPUBindGroupEntry> entries(2 + textures.size(), WGPUBindGroupEntry{});
         entries[0].binding = 0;
@@ -291,25 +288,25 @@ private:
         desc.layout = bind_layout_.get();
         desc.entryCount = static_cast<uint32_t>(entries.size());
         desc.entries = entries.data();
-        return wgpuDeviceCreateBindGroup(gpu->device, &desc);
+        return wgpuDeviceCreateBindGroup(ctx->device, &desc);
     }
 
     // -----------------------------------------------------------------------
     // Fallback 1x1 texture for disconnected inputs
     // -----------------------------------------------------------------------
-    void create_fallback(VividGpuState* gpu) {
+    void create_fallback(const VividGpuContext* ctx) {
         WGPUTextureDescriptor td{};
         td.label = vivid_sv("WgslFilter Fallback");
         td.size = { 1, 1, 1 };
         td.mipLevelCount = 1;
         td.sampleCount = 1;
         td.dimension = WGPUTextureDimension_2D;
-        td.format = gpu->output_format;
+        td.format = ctx->output_format;
         td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-        fallback_tex_.reset(wgpuDeviceCreateTexture(gpu->device, &td));
+        fallback_tex_.reset(wgpuDeviceCreateTexture(ctx->device, &td));
 
         WGPUTextureViewDescriptor vd{};
-        vd.format = gpu->output_format;
+        vd.format = ctx->output_format;
         vd.dimension = WGPUTextureViewDimension_2D;
         vd.mipLevelCount = 1;
         vd.arrayLayerCount = 1;
@@ -324,13 +321,13 @@ private:
         layout.bytesPerRow = 8;
         layout.rowsPerImage = 1;
         WGPUExtent3D extent = { 1, 1, 1 };
-        wgpuQueueWriteTexture(gpu->queue, &dest, zero, sizeof(zero), &layout, &extent);
+        wgpuQueueWriteTexture(ctx->queue, &dest, zero, sizeof(zero), &layout, &extent);
     }
 
     // -----------------------------------------------------------------------
     // lazy_init — first-frame setup
     // -----------------------------------------------------------------------
-    bool lazy_init(VividGpuState* gpu) {
+    bool lazy_init(const VividGpuContext* ctx) {
         // Count GPU_TEXTURE input ports
         std::vector<VividPortDescriptor> ports;
         collect_ports(ports);
@@ -345,7 +342,7 @@ private:
         compute_uniform_size();
 
         // Resolve shader file path
-        if (!resolve_shader_path(gpu)) {
+        if (!resolve_shader_path(ctx)) {
             std::fprintf(stderr, "[wgsl_filter] No operators_src_dir, cannot locate %s\n",
                          shader_filename_.c_str());
             return false;
@@ -363,15 +360,15 @@ private:
         last_mtime_ = file_mtime(shader_path_);
 
         // Compile shader
-        WGPUShaderModule sm = compile_shader(gpu->device, preamble, fragment_src);
+        WGPUShaderModule sm = compile_shader(ctx->device, preamble, fragment_src);
         if (!sm) {
             std::fprintf(stderr, "[wgsl_filter] Shader compile failed: %s\n", shader_path_.c_str());
             return false;
         }
         shader_.reset(sm);
 
-        uniform_buf_.reset(vivid::gpu::create_uniform_buffer(gpu->device, uniform_size_, "WgslFilter Uniforms"));
-        sampler_.reset(vivid::gpu::create_linear_sampler(gpu->device, "WgslFilter Sampler"));
+        uniform_buf_.reset(vivid::gpu::create_uniform_buffer(ctx->device, uniform_size_, "WgslFilter Uniforms"));
+        sampler_.reset(vivid::gpu::create_linear_sampler(ctx->device, "WgslFilter Sampler"));
 
         // Bind group layout: uniform(0) + sampler(1) + N textures(2..)
         std::vector<WGPUBindGroupLayoutEntry> bgl_entries(2 + tex_input_count_, WGPUBindGroupLayoutEntry{});
@@ -396,7 +393,7 @@ private:
         bgl_desc.label = vivid_sv("WgslFilter BGL");
         bgl_desc.entryCount = static_cast<uint32_t>(bgl_entries.size());
         bgl_desc.entries = bgl_entries.data();
-        bind_layout_.reset(wgpuDeviceCreateBindGroupLayout(gpu->device, &bgl_desc));
+        bind_layout_.reset(wgpuDeviceCreateBindGroupLayout(ctx->device, &bgl_desc));
 
         // Pipeline layout
         WGPUBindGroupLayout raw_layout = bind_layout_.get();
@@ -404,10 +401,10 @@ private:
         pl_desc.label = vivid_sv("WgslFilter Pipeline Layout");
         pl_desc.bindGroupLayoutCount = 1;
         pl_desc.bindGroupLayouts = &raw_layout;
-        pipe_layout_.reset(wgpuDeviceCreatePipelineLayout(gpu->device, &pl_desc));
+        pipe_layout_.reset(wgpuDeviceCreatePipelineLayout(ctx->device, &pl_desc));
 
         // Render pipeline
-        WGPURenderPipeline rp = create_pipeline(gpu->device, shader_.get(), gpu->output_format);
+        WGPURenderPipeline rp = create_pipeline(ctx->device, shader_.get(), ctx->output_format);
         if (!rp) {
             std::fprintf(stderr, "[wgsl_filter] Pipeline creation failed: %s\n", shader_path_.c_str());
             return false;
@@ -415,12 +412,12 @@ private:
         pipeline_.reset(rp);
 
         // Generators have 0 input textures, so the "changed" check in
-        // process() would never trigger — create the bind group now.
+        // process_gpu() would never trigger — create the bind group now.
         if (tex_input_count_ == 0)
-            bind_group_.reset(create_bind_group(gpu, cached_input_texs_));
+            bind_group_.reset(create_bind_group(ctx, cached_input_texs_));
 
-        cached_device_ = gpu->device;
-        cached_format_ = gpu->output_format;
+        cached_device_ = ctx->device;
+        cached_format_ = ctx->output_format;
         initialized_ = true;
 
         std::fprintf(stderr, "[wgsl_filter] Initialized: %s (%u params, %u byte uniforms)\n",
@@ -431,7 +428,7 @@ private:
     // -----------------------------------------------------------------------
     // Hot-reload — check mtime and recompile on change
     // -----------------------------------------------------------------------
-    void check_hot_reload(VividGpuState* gpu) {
+    void check_hot_reload(const VividGpuContext* ctx) {
         if (shader_path_.empty()) return;
 
         time_t mt = file_mtime(shader_path_);
@@ -451,7 +448,7 @@ private:
         std::string fragment_src = std::move(pp.output);
 
         std::string preamble = generate_preamble();
-        WGPUShaderModule sm = compile_shader(gpu->device, preamble, fragment_src);
+        WGPUShaderModule sm = compile_shader(ctx->device, preamble, fragment_src);
         if (!sm) {
             shader_error_ = true;
             shader_error_msg_ = "Compile error: " + shader_path_;
@@ -461,7 +458,7 @@ private:
             return;
         }
 
-        WGPURenderPipeline rp = create_pipeline(gpu->device, sm, gpu->output_format);
+        WGPURenderPipeline rp = create_pipeline(ctx->device, sm, ctx->output_format);
         if (!rp) {
             wgpuShaderModuleRelease(sm);
             shader_error_ = true;

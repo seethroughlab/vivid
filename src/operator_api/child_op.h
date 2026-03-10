@@ -156,8 +156,6 @@ public:
         child_ctx.param_values = param_values_.data();
         child_ctx.input_values = input_values_.empty() ? nullptr : input_values_.data();
         child_ctx.output_values = output_values_.empty() ? nullptr : output_values_.data();
-        child_ctx.gpu          = parent_ctx->gpu;
-        child_ctx.audio        = parent_ctx->audio;
         child_ctx.input_spreads  = c_input_spreads_.empty() ? nullptr : c_input_spreads_.data();
         child_ctx.output_spreads = c_output_spreads_.empty() ? nullptr : c_output_spreads_.data();
         // File params are not supported for child operators — they are set via

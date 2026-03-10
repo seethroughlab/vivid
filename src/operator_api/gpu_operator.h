@@ -4,7 +4,23 @@
 #include <webgpu/webgpu.h>
 #include <cstring>
 
-struct VividGpuState {
+// ---------------------------------------------------------------------------
+// VividGpuContext — typed context for GPU operators (main thread, ~60 Hz)
+//
+// Replaces the old VividGpuState + VividProcessContext pair.
+// Contains both common per-tick fields and GPU-specific resources.
+// ---------------------------------------------------------------------------
+
+struct VividGpuContext {
+    // ---- Common per-tick fields (same as VividProcessContext) ----------------
+    double    time;
+    double    delta_time;
+    uint64_t  frame;
+    float*    param_values;
+    float*    input_values;
+    float*    output_values;
+
+    // ---- GPU-specific resources ---------------------------------------------
     WGPUDevice         device;
     WGPUQueue          queue;
     WGPUCommandEncoder command_encoder;
@@ -14,8 +30,6 @@ struct VividGpuState {
     uint32_t           output_height;
     WGPUTextureFormat  output_format;
     // Auxiliary texture outputs (2nd, 3rd... GPU_TEXTURE output ports), scheduler-allocated.
-    // Index matches aux_texture_output_port_indices order in NodeState.
-    // Usage: if (g->aux_output_texture_count > 0) render_into(g->aux_output_texture_views[0]);
     WGPUTextureView*   aux_output_texture_views = nullptr;
     uint32_t           aux_output_texture_count = 0;
 
@@ -24,7 +38,6 @@ struct VividGpuState {
     uint32_t           input_texture_count;
 
     // Raw texture handles for inputs (parallel to input_texture_views).
-    // Needed for copy/readback operations. May be nullptr if not resolved.
     WGPUTexture*       input_textures;
     uint32_t*          input_texture_widths;
     uint32_t*          input_texture_heights;
@@ -33,9 +46,9 @@ struct VividGpuState {
     const char*        operators_src_dir;
 
     // Opaque data I/O (package-defined types, e.g. 3D scene fragments)
-    void**    output_data       = nullptr;  // [data_output_port_idx], operator writes during process()
+    void**    output_data       = nullptr;
     uint32_t  output_data_count = 0;
-    void**    input_data        = nullptr;  // resolved from upstream
+    void**    input_data        = nullptr;
     uint32_t  input_data_count  = 0;
 
     // GPU buffer ports
@@ -55,10 +68,32 @@ struct VividGpuState {
     uint32_t             output_compute_count = 0;
     VividComputeBuffer** input_compute        = nullptr;
     uint32_t             input_compute_count  = 0;
+
+    // ---- Cross-domain inputs from control -----------------------------------
+    VividSpreadPort*   input_spreads;
+    VividSpreadPort*   output_spreads;
+    const char**       input_string_values;
+    const char**       output_string_values;
+    VividStringSpreadPort* input_string_spreads;
+    VividStringSpreadPort* output_string_spreads;
+    const char**       file_param_values;
+    uint32_t           file_param_count;
+
+    // Input events
+    const VividInputState* input;
+    const VividSharedHandleService* shared_handles;
+
+    // ---- Operator write-back ------------------------------------------------
+    uint32_t           preferred_tex_width;
+    uint32_t           preferred_tex_height;
 };
 
-static inline VividGpuState* vivid_gpu(VividProcessContext* ctx) {
-    return static_cast<VividGpuState*>(ctx->gpu);
+// Request a texture resize for the next frame. The preferred_tex_* fields are
+// write-back fields (operator → runtime), explicitly mutable through const ctx.
+static inline void vivid_request_output_size(const VividGpuContext* ctx,
+                                              uint32_t w, uint32_t h) {
+    const_cast<VividGpuContext*>(ctx)->preferred_tex_width  = w;
+    const_cast<VividGpuContext*>(ctx)->preferred_tex_height = h;
 }
 
 static inline WGPUStringView vivid_sv(const char* s) {

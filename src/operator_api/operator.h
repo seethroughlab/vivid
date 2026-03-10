@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <cstring>
 #include <cmath>
+#include <type_traits>
 
 namespace vivid {
 
@@ -196,22 +197,67 @@ Param<T>& semantic_intent(Param<T>& p, const char* intent) {
 }
 
 // ---------------------------------------------------------------------------
-// OperatorBase — abstract base class for operators
+// OperatorBase — abstract base class for operators (no process method)
 // ---------------------------------------------------------------------------
 
 struct OperatorBase {
     virtual ~OperatorBase() = default;
     virtual void collect_params(std::vector<ParamBase*>& out) = 0;
     virtual void collect_ports(std::vector<VividPortDescriptor>& out) = 0;
-    virtual void process(VividProcessContext* ctx) = 0;
     virtual void draw_thumbnail(const VividThumbnailContext*) {}  // optional override
     virtual void main_thread_update(double time) {}               // optional override
+};
+
+// ---------------------------------------------------------------------------
+// Per-domain typed base classes — operators inherit the one matching their ports
+// ---------------------------------------------------------------------------
+
+struct ControlOperatorBase : OperatorBase {
+    virtual void process(const VividProcessContext* ctx) = 0;
+};
+
+struct AudioOperatorBase : OperatorBase {
+    virtual void process_audio(const VividAudioContext* ctx) = 0;
+};
+
+// GpuOperatorBase: forward-declared VividGpuContext* (defined in gpu_operator.h).
+// GPU operators must #include "operator_api/gpu_operator.h" for the full definition.
+struct GpuOperatorBase : OperatorBase {
+    virtual void process_gpu(const VividGpuContext* ctx) = 0;
 };
 
 } // namespace vivid
 
 // ---------------------------------------------------------------------------
+// Domain inference helper — used by VIVID_REGISTER
+// ---------------------------------------------------------------------------
+
+namespace vivid::detail {
+
+inline VividDomain infer_domain(const std::vector<VividPortDescriptor>& ports) {
+    for (const auto& p : ports) {
+        switch (p.type) {
+            case VIVID_PORT_GPU_TEXTURE:
+            case VIVID_PORT_GPU_BUFFER:
+            case VIVID_PORT_GPU_MESH:
+            case VIVID_PORT_GPU_COMPUTE:
+                return VIVID_DOMAIN_GPU;
+            case VIVID_PORT_AUDIO_FLOAT:
+                return VIVID_DOMAIN_AUDIO;
+            default:
+                break;
+        }
+    }
+    return VIVID_DOMAIN_CONTROL;
+}
+
+} // namespace vivid::detail
+
+// ---------------------------------------------------------------------------
 // VIVID_REGISTER(ClassName) — generates extern "C" entry points
+//
+// Infers domain from port types; detects base class via std::is_base_of;
+// emits typed entry points (vivid_process, vivid_process_audio, vivid_process_gpu).
 // ---------------------------------------------------------------------------
 
 #define VIVID_REGISTER(ClassName)                                             \
@@ -220,6 +266,35 @@ struct _VividInstance {                                                        \
     ClassName op;                                                              \
     std::vector<vivid::ParamBase*> param_ptrs;                                \
 };                                                                            \
+                                                                              \
+/* Helper: sync param values from ctx fields into operator Param<> members */ \
+static void _vivid_sync_params(_VividInstance* inst, float* param_values,      \
+                               const char** file_param_values,                 \
+                               uint32_t file_param_count) {                    \
+    auto& param_ptrs = inst->param_ptrs;                                      \
+    uint32_t file_idx = 0;                                                    \
+    for (size_t i = 0; i < param_ptrs.size(); ++i) {                          \
+        if (param_ptrs[i]->type == VIVID_PARAM_FILE ||                        \
+            param_ptrs[i]->type == VIVID_PARAM_TEXT) {                        \
+            if (file_param_values && file_idx < file_param_count) {           \
+                if (file_param_values[file_idx]) {                            \
+                    if (param_ptrs[i]->type == VIVID_PARAM_FILE) {            \
+                        auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(\
+                            param_ptrs[i]);                                   \
+                        fp->str_value = file_param_values[file_idx];          \
+                    } else {                                                   \
+                        auto* tp = static_cast<vivid::Param<vivid::TextValue>*>(\
+                            param_ptrs[i]);                                   \
+                        tp->str_value = file_param_values[file_idx];          \
+                    }                                                          \
+                }                                                              \
+            }                                                                 \
+            file_idx++;                                                       \
+        } else {                                                              \
+            param_ptrs[i]->value = param_values[i];                           \
+        }                                                                     \
+    }                                                                         \
+}                                                                             \
                                                                               \
 static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     static VividOperatorDescriptor desc{};                                    \
@@ -289,7 +364,17 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         }                                                                     \
         tmp.collect_ports(s_ports);                                           \
         desc.name           = ClassName::kName;                               \
-        desc.domain         = ClassName::kDomain;                             \
+        desc.has_process_audio =                                              \
+            std::is_base_of_v<vivid::AudioOperatorBase, ClassName> ? 1 : 0;   \
+        desc.has_process_gpu =                                                \
+            std::is_base_of_v<vivid::GpuOperatorBase, ClassName> ? 1 : 0;     \
+        /* Base class takes priority over port inference for domain */         \
+        if (desc.has_process_audio)                                           \
+            desc.domain = VIVID_DOMAIN_AUDIO;                                 \
+        else if (desc.has_process_gpu)                                        \
+            desc.domain = VIVID_DOMAIN_GPU;                                   \
+        else                                                                  \
+            desc.domain = vivid::detail::infer_domain(s_ports);               \
         desc.param_count    = static_cast<uint32_t>(s_params.size());         \
         desc.params         = s_params.data();                                \
         desc.port_count     = static_cast<uint32_t>(s_ports.size());          \
@@ -317,60 +402,57 @@ extern "C" void vivid_destroy(void* instance) {                               \
     delete static_cast<_VividInstance*>(instance);                             \
 }                                                                             \
                                                                               \
+template<typename _Op>                                                        \
+static void _vivid_dispatch_control(void* instance,                            \
+                                     VividProcessContext* ctx) {                \
+    if constexpr (std::is_base_of_v<vivid::ControlOperatorBase, _Op>) {       \
+        auto* inst = static_cast<_VividInstance*>(instance);                   \
+        _vivid_sync_params(inst, ctx->param_values,                           \
+                           ctx->file_param_values, ctx->file_param_count);    \
+        static_cast<_Op&>(inst->op).process(ctx);                             \
+    }                                                                         \
+}                                                                             \
+template<typename _Op>                                                        \
+static void _vivid_dispatch_audio(void* instance,                              \
+                                   VividAudioContext* ctx) {                    \
+    if constexpr (std::is_base_of_v<vivid::AudioOperatorBase, _Op>) {         \
+        auto* inst = static_cast<_VividInstance*>(instance);                   \
+        _vivid_sync_params(inst, ctx->param_values,                           \
+                           ctx->file_param_values, ctx->file_param_count);    \
+        static_cast<_Op&>(inst->op).process_audio(ctx);                       \
+    }                                                                         \
+}                                                                             \
+template<typename _Op, typename _Ctx>                                         \
+static void _vivid_dispatch_gpu(void* instance, _Ctx* ctx) {                   \
+    if constexpr (std::is_base_of_v<vivid::GpuOperatorBase, _Op>) {           \
+        auto* inst = static_cast<_VividInstance*>(instance);                   \
+        _vivid_sync_params(inst, ctx->param_values,                           \
+                           ctx->file_param_values, ctx->file_param_count);    \
+        static_cast<_Op&>(inst->op).process_gpu(ctx);                         \
+    }                                                                         \
+}                                                                             \
+                                                                              \
 extern "C" void vivid_process(void* instance,                                 \
                               VividProcessContext* ctx) {                      \
-    auto* inst = static_cast<_VividInstance*>(instance);                       \
-    auto& param_ptrs = inst->param_ptrs;                                      \
-    uint32_t file_idx = 0;                                                    \
-    for (size_t i = 0; i < param_ptrs.size(); ++i) {                          \
-        if (param_ptrs[i]->type == VIVID_PARAM_FILE ||                        \
-            param_ptrs[i]->type == VIVID_PARAM_TEXT) {                        \
-            if (ctx->file_param_values && file_idx < ctx->file_param_count) { \
-                if (ctx->file_param_values[file_idx]) {                       \
-                    if (param_ptrs[i]->type == VIVID_PARAM_FILE) {            \
-                        auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(\
-                            param_ptrs[i]);                                   \
-                        fp->str_value = ctx->file_param_values[file_idx];     \
-                    } else {                                                   \
-                        auto* tp = static_cast<vivid::Param<vivid::TextValue>*>(\
-                            param_ptrs[i]);                                   \
-                        tp->str_value = ctx->file_param_values[file_idx];     \
-                    }                                                          \
-                }                                                              \
-            }                                                                 \
-            file_idx++;                                                       \
-        } else {                                                              \
-            param_ptrs[i]->value = ctx->param_values[i];                      \
-        }                                                                     \
-    }                                                                         \
-    inst->op.process(ctx);                                                    \
+    _vivid_dispatch_control<ClassName>(instance, ctx);                         \
+}                                                                             \
+                                                                              \
+extern "C" void vivid_process_audio(void* instance,                            \
+                                    VividAudioContext* ctx) {                   \
+    _vivid_dispatch_audio<ClassName>(instance, ctx);                           \
+}                                                                             \
+                                                                              \
+extern "C" void vivid_process_gpu(void* instance,                              \
+                                  VividGpuContext* ctx) {                       \
+    _vivid_dispatch_gpu<ClassName>(instance, ctx);                             \
 }                                                                             \
                                                                               \
 extern "C" void vivid_main_thread_update(void* instance, double time,         \
                                          const char** file_param_values,       \
                                          uint32_t file_param_count) {          \
     auto* inst = static_cast<_VividInstance*>(instance);                       \
-    auto& param_ptrs = inst->param_ptrs;                                      \
-    uint32_t file_idx = 0;                                                    \
-    for (size_t i = 0; i < param_ptrs.size(); ++i) {                          \
-        if (param_ptrs[i]->type == VIVID_PARAM_FILE ||                        \
-            param_ptrs[i]->type == VIVID_PARAM_TEXT) {                        \
-            if (file_param_values && file_idx < file_param_count) {           \
-                if (file_param_values[file_idx]) {                            \
-                    if (param_ptrs[i]->type == VIVID_PARAM_FILE) {            \
-                        auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(\
-                            param_ptrs[i]);                                   \
-                        fp->str_value = file_param_values[file_idx];          \
-                    } else {                                                   \
-                        auto* tp = static_cast<vivid::Param<vivid::TextValue>*>(\
-                            param_ptrs[i]);                                   \
-                        tp->str_value = file_param_values[file_idx];          \
-                    }                                                          \
-                }                                                              \
-            }                                                                 \
-            file_idx++;                                                       \
-        }                                                                     \
-    }                                                                         \
+    _vivid_sync_params(inst, nullptr,                                         \
+                       file_param_values, file_param_count);                   \
     inst->op.main_thread_update(time);                                        \
 }
 
