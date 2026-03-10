@@ -86,6 +86,39 @@ int main() {
               "overflow installed version classified as invalid (no exception)");
     }
 
+    // classify_version_delta tests
+    {
+        using vivid::PackageUpdateClass;
+        auto cvd = vivid::PackageManager::classify_version_delta;
+
+        check(cvd("1.0.0", "1.0.0") == PackageUpdateClass::UpToDate,
+              "cvd: identical versions → UpToDate");
+
+        check(cvd("1.0.0", "1.1.0") == PackageUpdateClass::CompatibleUpdate,
+              "cvd: minor bump same major → CompatibleUpdate");
+
+        check(cvd("1.0.0", "1.0.1") == PackageUpdateClass::CompatibleUpdate,
+              "cvd: patch bump same major → CompatibleUpdate");
+
+        check(cvd("1.1.0", "1.0.0") == PackageUpdateClass::CompatibleUpdate,
+              "cvd: same major downgrade → CompatibleUpdate");
+
+        check(cvd("1.0.0", "2.0.0") == PackageUpdateClass::IncompatibleUpdate,
+              "cvd: major bump up → IncompatibleUpdate");
+
+        check(cvd("2.0.0", "1.0.0") == PackageUpdateClass::IncompatibleUpdate,
+              "cvd: major downgrade → IncompatibleUpdate");
+
+        check(cvd("", "1.0.0") == PackageUpdateClass::InvalidVersionData,
+              "cvd: empty saved → InvalidVersionData");
+
+        check(cvd("1.0.0", "") == PackageUpdateClass::InvalidVersionData,
+              "cvd: empty installed → InvalidVersionData");
+
+        check(cvd("not-a-version", "1.0.0") == PackageUpdateClass::InvalidVersionData,
+              "cvd: bad saved semver → InvalidVersionData");
+    }
+
     std::fprintf(stderr, "%s (%d failures)\n",
                  failures == 0 ? "ALL PASSED" : "SOME FAILED",
                  failures);

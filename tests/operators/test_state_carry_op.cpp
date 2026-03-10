@@ -2,9 +2,8 @@
 // Exposes one float param and one text param with the same node IDs across graphs.
 #include "operator_api/operator.h"
 
-struct TestStateCarryOp : vivid::OperatorBase {
+struct TestStateCarryOp : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "TestStateCarryOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> scale{"scale", 1.0f, 0.0f, 100.0f};
@@ -19,7 +18,7 @@ struct TestStateCarryOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0];
     }
 };

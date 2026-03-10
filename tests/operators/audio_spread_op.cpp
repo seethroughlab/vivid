@@ -2,12 +2,10 @@
 // Reads CONTROL_SPREAD input, copies to CONTROL_SPREAD output,
 // generates DC audio output = sum of spread values.
 #include "operator_api/operator.h"
-#include "operator_api/audio_operator.h"
 #include <cstring>
 
-struct AudioSpreadOp : vivid::OperatorBase {
+struct AudioSpreadOp : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "AudioSpreadOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = false;
 
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
@@ -18,10 +16,7 @@ struct AudioSpreadOp : vivid::OperatorBase {
         out.push_back({"echo",   VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        auto* audio = vivid_audio(ctx);
-        if (!audio) return;
-
+    void process_audio(const VividAudioContext* ctx) override {
         // Sum spread input values
         float sum = 0.0f;
         if (ctx->input_spreads) {
@@ -43,8 +38,8 @@ struct AudioSpreadOp : vivid::OperatorBase {
         }
 
         // Write DC audio output = sum
-        float* out = audio->output_buffers[0];  // "out" output (port 0)
-        for (uint32_t i = 0; i < audio->buffer_size; ++i) {
+        float* out = ctx->output_buffers[0];  // "out" output (port 0)
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             out[i] = sum;
         }
     }

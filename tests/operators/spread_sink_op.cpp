@@ -2,9 +2,8 @@
 // Used by test_spread_broadcast to observe the resulting spread after broadcasting.
 #include "operator_api/operator.h"
 
-struct SpreadSinkOp : vivid::OperatorBase {
+struct SpreadSinkOp : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "SpreadSinkOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {}
@@ -14,7 +13,7 @@ struct SpreadSinkOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->input_values[0];
 
         // Copy input spread to output spread

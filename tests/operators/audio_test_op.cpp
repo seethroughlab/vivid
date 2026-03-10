@@ -1,11 +1,9 @@
 // Audio test operator: output[i] = input[i] + level
 // With no input connected, input is zeroed, so output = level (constant DC).
 #include "operator_api/operator.h"
-#include "operator_api/audio_operator.h"
 
-struct AudioTestOp : vivid::OperatorBase {
+struct AudioTestOp : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "AudioTestOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> level{"level", 0.5f, 0.0f, 10.0f};
@@ -19,15 +17,12 @@ struct AudioTestOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        auto* audio = vivid_audio(ctx);
-        if (!audio) return;
-
-        const float* in  = audio->input_buffers[0];
-        float*       out = audio->output_buffers[0];
+    void process_audio(const VividAudioContext* ctx) override {
+        const float* in  = ctx->input_buffers[0];
+        float*       out = ctx->output_buffers[0];
         float lv = ctx->param_values[0];
 
-        for (uint32_t i = 0; i < audio->buffer_size; ++i) {
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             out[i] = in[i] + lv;
         }
     }

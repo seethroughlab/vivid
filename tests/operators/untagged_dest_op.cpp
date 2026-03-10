@@ -1,8 +1,7 @@
 #include "operator_api/operator.h"
 
-struct UntaggedDestOp : vivid::OperatorBase {
+struct UntaggedDestOp : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "UntaggedDestOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> value{"value", 0.25f, 0.0f, 1.0f};
@@ -15,7 +14,7 @@ struct UntaggedDestOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0];
     }
 };

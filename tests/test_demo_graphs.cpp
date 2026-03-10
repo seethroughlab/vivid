@@ -125,7 +125,7 @@ static void tick_gpu(vivid::Scheduler& sched, HeadlessGpu& gpu,
     enc_desc.label = vivid::to_sv("Tick Encoder");
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(gpu.device, &enc_desc);
 
-    VividGpuState gpu_state{};
+    VividGpuContext gpu_state{};
     gpu_state.device          = gpu.device;
     gpu_state.queue           = gpu.queue;
     gpu_state.command_encoder = encoder;

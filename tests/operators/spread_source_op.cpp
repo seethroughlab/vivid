@@ -1,9 +1,8 @@
 // Spread source: generates spread data [base*1, base*2, ..., base*count]
 #include "operator_api/operator.h"
 
-struct SpreadSourceOp : vivid::OperatorBase {
+struct SpreadSourceOp : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "SpreadSourceOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> base{"base", 1.0f, 0.0f, 100.0f};
@@ -18,7 +17,7 @@ struct SpreadSourceOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         float b = ctx->param_values[0];
         int   n = static_cast<int>(ctx->param_values[1]);
 

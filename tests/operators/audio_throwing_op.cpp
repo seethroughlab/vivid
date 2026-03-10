@@ -1,12 +1,10 @@
-// Audio test operator that throws an exception on first process() call.
+// Audio test operator that throws an exception on first process_audio() call.
 // Used to test audio thread exception handling.
 #include "operator_api/operator.h"
-#include "operator_api/audio_operator.h"
 #include <stdexcept>
 
-struct AudioThrowingOp : vivid::OperatorBase {
+struct AudioThrowingOp : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "AudioThrowingOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> level{"level", 0.5f, 0.0f, 10.0f};
@@ -20,7 +18,7 @@ struct AudioThrowingOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process_audio(const VividAudioContext*) override {
         throw std::runtime_error("AudioThrowingOp: intentional test exception");
     }
 };

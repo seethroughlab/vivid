@@ -1,8 +1,7 @@
 #include "operator_api/operator.h"
 
-struct SecDestOp : vivid::OperatorBase {
+struct SecDestOp : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "SecDestOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> sec{"sec", 0.5f, 0.0f, 2.0f};
@@ -21,7 +20,7 @@ struct SecDestOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0];
     }
 };

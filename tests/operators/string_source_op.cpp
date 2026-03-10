@@ -4,9 +4,8 @@
 #include <string>
 #include <vector>
 
-struct StringSourceOp : vivid::OperatorBase {
+struct StringSourceOp : vivid::ControlOperatorBase {
     static constexpr const char* kName = "StringSourceOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<vivid::TextValue> value{"value", "alpha"};
@@ -25,7 +24,7 @@ struct StringSourceOp : vivid::OperatorBase {
         out.push_back({"list", VIVID_PORT_CONTROL_STRING_SPREAD, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         if (ctx->output_string_values) ctx->output_string_values[0] = value.str_value.c_str();
         if (ctx->output_string_spreads && ctx->output_string_spreads[1].data) {
             auto& sp = ctx->output_string_spreads[1];

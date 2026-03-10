@@ -1404,6 +1404,100 @@ int main() {
         }
     }
 
+    // --- Tests 39–45: M10 versioning ---
+
+    // Test 39: absent schema_version → backward compat, treated as 1
+    {
+        const char* json = R"({"nodes": {"a": {"type": "Foo"}}, "connections": []})";
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "absent schema_version loads ok");
+        check(g.schema_version == 1, "absent schema_version defaults to 1");
+    }
+
+    // Test 40: schema_version = 1 (current) → loads successfully
+    {
+        const char* json = R"({"schema_version": 1, "nodes": {"a": {"type": "Foo"}}, "connections": []})";
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "schema_version 1 loads ok");
+        check(g.schema_version == 1, "schema_version 1 stored");
+    }
+
+    // Test 41: schema_version from the future → hard reject
+    {
+        const char* json = R"({"schema_version": 99, "nodes": {}, "connections": []})";
+        vivid::Graph g;
+        check(!g.load_from_string(json, 0), "future schema_version rejected");
+    }
+
+    // Test 42: vivid_version stored on load
+    {
+        const char* json = R"({"vivid_version": "1.2.3", "nodes": {"a": {"type": "Foo"}}, "connections": []})";
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "graph with vivid_version loads ok");
+        check(g.vivid_version == "1.2.3", "vivid_version stored");
+    }
+
+    // Test 43: pkg sub-object round-trips through save/load
+    {
+        const char* json = R"({
+            "nodes": {
+                "kick1": {
+                    "type": "audio/drum_kick",
+                    "pkg": {"name": "vivid-drums", "version": "0.2.0"}
+                }
+            },
+            "connections": []
+        })";
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "graph with pkg node loads ok");
+        const auto* n = g.find_node("kick1");
+        check(n != nullptr, "node kick1 found");
+        if (n) {
+            check(n->pkg_name == "vivid-drums", "pkg_name loaded");
+            check(n->pkg_version == "0.2.0",    "pkg_version loaded");
+        }
+
+        std::string out;
+        check(g.save_to_string(out), "save_to_string succeeds");
+        check(out.find("\"vivid-drums\"") != std::string::npos, "pkg name in saved JSON");
+        check(out.find("\"0.2.0\"") != std::string::npos,       "pkg version in saved JSON");
+        check(out.find("schema_version") != std::string::npos,  "schema_version in saved JSON");
+        check(out.find("vivid_version") != std::string::npos,   "vivid_version in saved JSON");
+
+        vivid::Graph g2;
+        check(g2.load_from_string(out.c_str(), out.size()), "reloaded from saved JSON");
+        const auto* n2 = g2.find_node("kick1");
+        if (n2) {
+            check(n2->pkg_name == "vivid-drums", "pkg_name preserved after round-trip");
+            check(n2->pkg_version == "0.2.0",    "pkg_version preserved after round-trip");
+        }
+    }
+
+    // Test 44: node without pkg has empty provenance fields
+    {
+        const char* json = R"({"nodes": {"a": {"type": "Foo"}}, "connections": []})";
+        vivid::Graph g;
+        check(g.load_from_string(json, 0), "graph without pkg loads ok");
+        const auto* n = g.find_node("a");
+        if (n) {
+            check(n->pkg_name.empty(),    "pkg_name empty for core node");
+            check(n->pkg_version.empty(), "pkg_version empty for core node");
+        }
+    }
+
+    // Test 45: load_diagnostics cleared on each load
+    {
+        const char* json = R"({"nodes": {"a": {"type": "Foo"}}, "connections": []})";
+        vivid::Graph g;
+        vivid::Graph::LoadDiagnostic d;
+        d.node_id = "x"; d.pkg_name = "p";
+        d.saved_version = "1.0.0"; d.installed_version = "2.0.0";
+        d.classification = "incompatible_update";
+        g.load_diagnostics.push_back(d);
+        check(g.load_from_string(json, 0), "reload succeeds");
+        check(g.load_diagnostics.empty(), "load_diagnostics cleared on load");
+    }
+
     // --- Cleanup temp files ---
     std::remove("/tmp/vivid_test_valid.json");
     std::remove("/tmp/vivid_test_layout.json");

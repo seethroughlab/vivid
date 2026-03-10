@@ -401,6 +401,38 @@ int main() {
         }
     }
 
+    // Test 15: vivid_version parsed into UIStyle
+    {
+        std::fprintf(stderr, "\n=== Test 15: vivid_version parsed ===\n");
+        const char* json = R"({"vivid_version": "0.1.0", "name": "Test"})";
+        auto style = vivid::ui::parse_theme_json(json, std::strlen(json));
+        check(style.has_value(), "theme with vivid_version parses ok");
+        if (style)
+            check(style->vivid_version == "0.1.0", "vivid_version stored in UIStyle");
+    }
+
+    // Test 16: absent vivid_version → empty field, no crash
+    {
+        std::fprintf(stderr, "\n=== Test 16: absent vivid_version → empty ===\n");
+        const char* json = R"({"name": "No Version"})";
+        auto style = vivid::ui::parse_theme_json(json, std::strlen(json));
+        check(style.has_value(), "theme without vivid_version parses ok");
+        if (style)
+            check(style->vivid_version.empty(), "vivid_version empty when absent");
+    }
+
+    // Test 17: major version mismatch → warning only, no rejection
+    {
+        std::fprintf(stderr, "\n=== Test 17: major version mismatch warning ===\n");
+        const char* json = R"({"vivid_version": "99.0.0", "name": "Future Theme"})";
+        auto style = vivid::ui::parse_theme_json(json, std::strlen(json));
+        check(style.has_value(), "theme with mismatched major still loads");
+        if (style) {
+            check(style->vivid_version == "99.0.0", "mismatched vivid_version stored");
+            check(style->name == "Future Theme",    "name still parsed after version warning");
+        }
+    }
+
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
         failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);
     return failures == 0 ? 0 : 1;

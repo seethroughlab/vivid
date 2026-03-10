@@ -65,8 +65,8 @@ int main() {
               "video_out info has domain VIVID_DOMAIN_GPU");
         check(v_info_new->ports.size() == 1,
               "video_out info has 1 port");
-        check(v_info_new->params.size() == 1,
-              "video_out info has 1 param");
+        check(v_info_new->params.size() == 3,
+              "video_out info has 3 params");
         check(!v_info_new->params.empty() && v_info_new->params[0].name == "fit_mode",
               "video_out info param[0] name is 'fit_mode'");
     }

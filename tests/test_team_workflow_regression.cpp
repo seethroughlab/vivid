@@ -169,9 +169,8 @@ int main(int argc, char* argv[]) {
                     std::ofstream ofs(
                         core_root / "operators" / "control" / "testop" / "testop.cpp");
                     ofs << "#include \"operator_api/operator.h\"\n"
-                           "struct TestOp : vivid::OperatorBase {\n"
+                           "struct TestOp : vivid::ControlOperatorBase {\n"
                            "  static constexpr const char* kName = \"TestOp\";\n"
-                           "  static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;\n"
                            "  static constexpr bool kTimeDependent = false;\n"
                            "  vivid::Param<float> scale{\"scale\", 1.0f, 0.0f, 10.0f};\n"
                            "  void collect_params(std::vector<vivid::ParamBase*>& out) override "
@@ -179,7 +178,7 @@ int main(int argc, char* argv[]) {
                            "  void collect_ports(std::vector<VividPortDescriptor>& out) override {\n"
                            "    out.push_back({\"out\", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});\n"
                            "  }\n"
-                           "  void process(VividProcessContext* ctx) override "
+                           "  void process(const VividProcessContext* ctx) override "
                            "{ ctx->output_values[0] = ctx->param_values[0] * 2.0f; }\n"
                            "};\n"
                            "VIVID_REGISTER(TestOp)\n";

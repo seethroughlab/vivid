@@ -67,7 +67,7 @@ int main() {
                 check(std::strcmp(desc->ports[0].name, "input") == 0,
                       "video_out port[0] is 'input'");
             }
-            check(desc->param_count == 1, "video_out has 1 param (fit_mode)");
+            check(desc->param_count == 3, "video_out has 3 params (fit_mode, fullscreen, display_target)");
             if (desc->param_count >= 1) {
                 check(std::strcmp(desc->params[0].name, "fit_mode") == 0,
                       "video_out param[0] is 'fit_mode'");

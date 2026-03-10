@@ -1,9 +1,8 @@
 // Control-domain passthrough with spread support: output = input * gain
 #include "operator_api/operator.h"
 
-struct ControlPassOp : vivid::OperatorBase {
+struct ControlPassOp : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "ControlPassOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> gain{"gain", 1.0f, 0.0f, 100.0f};
@@ -17,7 +16,7 @@ struct ControlPassOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         float g = ctx->param_values[0];
         float in = ctx->input_values[0];
         ctx->output_values[0] = in * g;

@@ -3,9 +3,8 @@
 // "scale" is preserved from v1; "offset" is new and should get its default.
 #include "operator_api/operator.h"
 
-struct TestOp : vivid::OperatorBase {
+struct TestOp : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "TestOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> scale{"scale", 1.0f, 0.0f, 100.0f};
@@ -20,7 +19,7 @@ struct TestOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0] * 3.0f + ctx->param_values[1];
     }
 };

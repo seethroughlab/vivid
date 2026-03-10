@@ -38,9 +38,8 @@ struct FillUniforms {
     float color[4];
 };
 
-struct GpuFillOp : vivid::OperatorBase {
+struct GpuFillOp : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "GpuFillOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> r {"r", 1.0f, 0.0f, 1.0f};
@@ -57,12 +56,9 @@ struct GpuFillOp : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) return;
-
+    void process_gpu(const VividGpuContext* ctx) override {
         if (!pipeline_) {
-            if (!lazy_init(gpu)) {
+            if (!lazy_init(ctx)) {
                 std::fprintf(stderr, "[gpu_fill_op] lazy_init FAILED\n");
                 return;
             }
@@ -73,10 +69,10 @@ struct GpuFillOp : vivid::OperatorBase {
         u.color[1] = g.value;
         u.color[2] = b.value;
         u.color[3] = 1.0f;
-        wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
+        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
-        vivid::gpu::run_pass(gpu->command_encoder, pipeline_, bind_group_,
-                             gpu->output_texture_view, "GpuFill Pass");
+        vivid::gpu::run_pass(ctx->command_encoder, pipeline_, bind_group_,
+                             ctx->output_texture_view, "GpuFill Pass");
     }
 
     ~GpuFillOp() override {
@@ -96,11 +92,11 @@ private:
     WGPUShaderModule    shader_      = nullptr;
     WGPUPipelineLayout  pipe_layout_ = nullptr;
 
-    bool lazy_init(VividGpuState* gpu) {
-        shader_ = vivid::gpu::create_shader(gpu->device, kFillFragment, "GpuFill Shader");
+    bool lazy_init(const VividGpuContext* ctx) {
+        shader_ = vivid::gpu::create_shader(ctx->device, kFillFragment, "GpuFill Shader");
         if (!shader_) return false;
 
-        uniform_buf_ = vivid::gpu::create_uniform_buffer(gpu->device, sizeof(FillUniforms), "GpuFill Uniforms");
+        uniform_buf_ = vivid::gpu::create_uniform_buffer(ctx->device, sizeof(FillUniforms), "GpuFill Uniforms");
 
         WGPUBindGroupLayoutEntry bgl_entry{};
         bgl_entry.binding = 0;
@@ -112,13 +108,13 @@ private:
         bgl_desc.label = vivid_sv("GpuFill BGL");
         bgl_desc.entryCount = 1;
         bgl_desc.entries = &bgl_entry;
-        bind_layout_ = wgpuDeviceCreateBindGroupLayout(gpu->device, &bgl_desc);
+        bind_layout_ = wgpuDeviceCreateBindGroupLayout(ctx->device, &bgl_desc);
 
         WGPUPipelineLayoutDescriptor pl_desc{};
         pl_desc.label = vivid_sv("GpuFill Pipeline Layout");
         pl_desc.bindGroupLayoutCount = 1;
         pl_desc.bindGroupLayouts = &bind_layout_;
-        pipe_layout_ = wgpuDeviceCreatePipelineLayout(gpu->device, &pl_desc);
+        pipe_layout_ = wgpuDeviceCreatePipelineLayout(ctx->device, &pl_desc);
 
         WGPUBindGroupEntry bg_entry{};
         bg_entry.binding = 0;
@@ -131,9 +127,9 @@ private:
         bg_desc.layout = bind_layout_;
         bg_desc.entryCount = 1;
         bg_desc.entries = &bg_entry;
-        bind_group_ = wgpuDeviceCreateBindGroup(gpu->device, &bg_desc);
+        bind_group_ = wgpuDeviceCreateBindGroup(ctx->device, &bg_desc);
 
-        pipeline_ = vivid::gpu::create_pipeline(gpu->device, shader_, pipe_layout_, gpu->output_format, "GpuFill Pipeline");
+        pipeline_ = vivid::gpu::create_pipeline(ctx->device, shader_, pipe_layout_, ctx->output_format, "GpuFill Pipeline");
         if (!pipeline_) return false;
 
         return true;

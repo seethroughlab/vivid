@@ -83,7 +83,7 @@ int main() {
         // Verify template content
         std::string src = read_file(cpp_path);
         check(src.find("struct MyOp") != std::string::npos, "struct name is MyOp (PascalCase)");
-        check(src.find("VIVID_DOMAIN_CONTROL") != std::string::npos, "domain is control");
+        check(src.find("ControlOperatorBase") != std::string::npos, "inherits ControlOperatorBase");
         check(src.find("VIVID_REGISTER(MyOp)") != std::string::npos, "VIVID_REGISTER present");
         check(src.find("semantic_tag(amount, \"probability_01\")") != std::string::npos,
               "control template includes semantic_tag example");
@@ -126,8 +126,8 @@ int main() {
 
         std::string src = read_file(cpp_path);
         check(src.find("struct MySynth") != std::string::npos, "struct name is MySynth");
-        check(src.find("VIVID_DOMAIN_AUDIO") != std::string::npos, "domain is audio");
-        check(src.find("audio_operator.h") != std::string::npos, "includes audio header");
+        check(src.find("AudioOperatorBase") != std::string::npos, "inherits AudioOperatorBase");
+        check(src.find("process_audio") != std::string::npos, "has process_audio method");
         check(src.find("semantic_tag(gain, \"amplitude_linear\")") != std::string::npos,
               "audio template includes semantic_tag example");
         check(src.find("semantic_shape(gain, \"scalar\")") != std::string::npos,
@@ -164,7 +164,7 @@ int main() {
 
         std::string src = read_file(cpp_path);
         check(src.find("struct CoolFx") != std::string::npos, "struct name is CoolFx");
-        check(src.find("VIVID_DOMAIN_GPU") != std::string::npos, "domain is gpu");
+        check(src.find("WgslFilterBase") != std::string::npos, "inherits WgslFilterBase");
         check(src.find("EXTRA_LIBS webgpu") == std::string::npos,
               "template source doesn't contain cmake flags");
         check(src.find("semantic_tag(amount, \"probability_01\")") != std::string::npos,

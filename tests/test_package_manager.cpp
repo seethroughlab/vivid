@@ -62,9 +62,8 @@ int main(int argc, char* argv[]) {
 #include "operator_api/operator.h"
 #include "mock_vendor.h"
 
-struct TestMgrOp : vivid::OperatorBase {
+struct TestMgrOp : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "TestMgrOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> gain{"gain", 1.0f, 0.0f, 10.0f};
@@ -77,7 +76,7 @@ struct TestMgrOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0] * MOCK_VENDOR_SCALE;
     }
 };
@@ -209,8 +208,8 @@ VIVID_REGISTER(TestMgrOp)
         ofs << R"cpp(
 #include "operator_api/operator.h"
 using namespace vivid;
-struct BadCompile : OperatorBase {
-    void process(VividProcessContext* ctx) override {
+struct BadCompile : ControlOperatorBase {
+    void process(const VividProcessContext* ctx) override {
         int x = ; // intentional syntax error
         (void)x;
     }
@@ -314,9 +313,8 @@ VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
         ofs << R"cpp(
 #include "operator_api/operator.h"
 
-struct TestCmakeOp : vivid::OperatorBase {
+struct TestCmakeOp : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "TestCmakeOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> value{"value", 0.5f, 0.0f, 1.0f};
@@ -329,7 +327,7 @@ struct TestCmakeOp : vivid::OperatorBase {
         out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0] * 2.0f;
     }
 };
@@ -347,6 +345,7 @@ project(test-cmake-package)
 
 add_library(test_cmake_op MODULE src/test_cmake_op.cpp)
 target_include_directories(test_cmake_op PRIVATE ${VIVID_SRC_DIR}/src)
+target_compile_features(test_cmake_op PRIVATE cxx_std_17)
 set_target_properties(test_cmake_op PROPERTIES
     PREFIX ""
     SUFFIX "${VIVID_PLUGIN_SUFFIX}"

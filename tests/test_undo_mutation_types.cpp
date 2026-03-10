@@ -297,9 +297,8 @@ int main(int argc, char* argv[]) {
         {
             std::ofstream ofs(core_ops / "control" / "testop" / "testop.cpp");
             ofs << "#include \"operator_api/operator.h\"\n"
-                   "struct TestOp : vivid::OperatorBase {\n"
+                   "struct TestOp : vivid::ControlOperatorBase {\n"
                    "  static constexpr const char* kName = \"TestOp\";\n"
-                   "  static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;\n"
                    "  static constexpr bool kTimeDependent = false;\n"
                    "  vivid::Param<float> scale{\"scale\", 1.0f, 0.0f, 10.0f};\n"
                    "  void collect_params(std::vector<vivid::ParamBase*>& out) override { out.push_back(&scale); }\n"

@@ -4,9 +4,8 @@
 #include <string>
 #include <vector>
 
-struct StringSinkOp : vivid::OperatorBase {
+struct StringSinkOp : vivid::ControlOperatorBase {
     static constexpr const char* kName = "StringSinkOp";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     std::string last_;
@@ -24,7 +23,7 @@ struct StringSinkOp : vivid::OperatorBase {
         out.push_back({"count", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         last_.clear();
         if (ctx->input_string_values && ctx->input_string_values[0]) last_ = ctx->input_string_values[0];
 
