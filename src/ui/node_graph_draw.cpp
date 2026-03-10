@@ -1,6 +1,7 @@
 #include "ui/node_graph.h"
 #include "ui/node_graph_constants.h"
 #include "ui/node_graph_util.h"
+#include "ui/overlay_layouts.h"
 #include "ui/renderer_2d.h"
 #include "ui/thumbnail_cache.h"
 #include "ui/thumbnail_renderer.h"
@@ -2398,7 +2399,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         // Outputs first (signal output ports)
         auto sorted_outs = sorted_ports(ns.output_port_indices);
         for (const auto& [idx, name] : sorted_outs) {
-            VividPortType pt = VIVID_PORT_CONTROL_FLOAT;
+            VividPortType pt = VIVID_PORT_FLOAT;
             for (const auto& p : ns.op_info->ports)
                 if (p.name == name && p.direction == VIVID_PORT_OUTPUT) { pt = p.type; break; }
             result.ports.push_back({name, pt, true, false, false});
@@ -2420,13 +2421,13 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         for (const auto& [idx, name] : sorted_params) {
             const ParamInfo* pd = ns.find_param(name);
             if (pd && (pd->type == VIVID_PARAM_FILE || pd->type == VIVID_PARAM_TEXT)) continue;
-            result.params.push_back({name, VIVID_PORT_CONTROL_FLOAT, true, true, true});
+            result.params.push_back({name, VIVID_PORT_FLOAT, true, true, true});
         }
         return result;
     };
     auto type_suffix = [](VividPortType t) -> const char* {
-        if (t == VIVID_PORT_CONTROL_STRING) return " \"";
-        if (t == VIVID_PORT_CONTROL_STRING_SPREAD) return " [\"]";
+        if (t == VIVID_PORT_STRING) return " \"";
+        if (t == VIVID_PORT_STRING_SPREAD) return " [\"]";
         return "";
     };
 
@@ -3152,91 +3153,310 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
 }
 
 // -----------------------------------------------------------------------
-// Create operator popup
+// Create operator modal
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     if (!create_popup_open_) return;
 
     float wf = static_cast<float>(win_w_);
     float hf = static_cast<float>(win_h_);
+    bool blink_on = (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0);
+    bool show_composite = (create_domain_sel_ == 0);
+    bool hide_port_param = create_composite_;
 
-    // Scrim overlay
+    auto layout = compute_create_operator_layout(
+        win_w_, win_h_,
+        hide_port_param ? 0 : static_cast<int>(create_inputs_.size()),
+        hide_port_param ? 0 : static_cast<int>(create_outputs_.size()),
+        hide_port_param ? 0 : static_cast<int>(create_params_.size()),
+        show_composite);
+
+    // Scrim
     tr.draw_rect(0, 0, wf, hf,
                  style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
 
-    // Centered panel
-    float pw = kCreatePopupW, ph = kCreatePopupH;
-    float px = (wf - pw) * 0.5f;
-    float py = (hf - ph) * 0.5f;
-
-    tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
+    // Panel
+    tr.draw_rounded_rect(layout.px, layout.py, layout.pw, layout.ph, style_.corner_radius,
                          style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
-    // Accent bar at top
-    tr.draw_rect(px, py, pw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
+    tr.draw_rect(layout.px, layout.py, layout.pw, 2,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
 
-    float cx = px + 16.0f;
-    float cy = py + 12.0f;
+    float cx = layout.cx;
+    float inner_w = layout.inner_w;
+    float cy = layout.py + kCreateModalPadY;
 
-    // Title
+    // 1. Title
     tr.draw_text(cx, cy, "New Operator",
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     cy += 24.0f;
 
-    // Domain selector buttons
+    // 2. Domain selector buttons
     const char* domain_labels[] = { "control", "audio", "gpu" };
     const std::array<float, 3>* domain_colors[] = { &kControlAccent, &kAudioAccent, &kGpuAccent };
     float btn_gap = 8.0f;
     float total_btn_w = 3 * kCreateDomainBtnW + 2 * btn_gap;
-    float bx = px + (pw - total_btn_w) * 0.5f;
+    float bx = layout.px + (layout.pw - total_btn_w) * 0.5f;
 
     for (int i = 0; i < 3; ++i) {
         float btn_x = bx + i * (kCreateDomainBtnW + btn_gap);
         const auto& dc = *domain_colors[i];
         if (i == create_domain_sel_) {
-            // Selected: filled with domain color
             tr.draw_rect(btn_x, cy, kCreateDomainBtnW, kCreateDomainBtnH,
                          dc[0], dc[1], dc[2], 0.9f);
             tr.draw_text(btn_x + 8, cy + 3, domain_labels[i], 0.0f, 0.0f, 0.0f);
         } else {
-            // Unselected: outline style
             tr.draw_rect(btn_x, cy, kCreateDomainBtnW, kCreateDomainBtnH,
                          style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
-            tr.draw_text(btn_x + 8, cy + 3, domain_labels[i],
-                         dc[0], dc[1], dc[2]);
+            tr.draw_text(btn_x + 8, cy + 3, domain_labels[i], dc[0], dc[1], dc[2]);
         }
     }
     cy += kCreateDomainBtnH + 10.0f;
 
-    // Name text field
-    float field_w = pw - 32.0f;
-    tr.draw_rect(cx, cy, field_w, 22.0f,
-                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-    // Active indicator
-    tr.draw_rect(cx, cy, field_w, 1,
-                 style_.accent[0], style_.accent[1], style_.accent[2]);
-
-    // Blinking cursor
-    std::string display = create_name_buf_;
-    if (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0)
-        display += "_";
-    else
-        display += " ";
-
-    if (display.size() <= 1 && create_name_buf_.empty()) {
-        // Placeholder
-        tr.draw_text(cx + 4, cy + 3, "operator_name",
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
-    } else {
-        tr.draw_text(cx + 4, cy + 3, display.c_str(),
-                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    // 3. Composite checkbox (control domain only)
+    if (show_composite) {
+        draw_checkbox(tr, style_, cx, cy + 2, 16.0f, create_composite_);
+        tr.draw_text(cx + 22, cy + 2, "Composite (ChildOp template)",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        cy += 24.0f + kCreateModalRowGap;
     }
-    cy += 24.0f;
 
-    // Error text
+    // 4. Name field
+    if (create_active_field_ == 0) {
+        draw_editing_text_field(tr, style_, cx, cy, inner_w, 22.0f,
+                               create_name_buf_, blink_on);
+        if (create_name_buf_.empty()) {
+            tr.draw_text(cx + 4, cy + 2, "operator_name",
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+        }
+    } else {
+        tr.draw_rect(cx, cy, inner_w, 22.0f,
+                     style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+        if (create_name_buf_.empty()) {
+            tr.draw_text(cx + 4, cy + 2, "operator_name",
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+        } else {
+            tr.draw_text(cx + 4, cy + 2, create_name_buf_.c_str(),
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
+    }
+    cy += kCreateModalFieldH + kCreateModalRowGap;
+
+    const auto& port_types = port_types_for_domain(create_domain_sel_);
+
+    if (!hide_port_param) {
+        // Helper lambda for drawing port rows
+        auto draw_port_section = [&](const char* title, std::vector<CreatePortRow>& rows,
+                                     int field_offset, int max_rows) {
+            cy += kCreateModalSectionGap;
+            // Section header + "+ Add" link
+            tr.draw_text(cx, cy, title,
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            float add_w = tr.text_width("+ Add") + 4;
+            float add_x = cx + inner_w - add_w;
+            if (static_cast<int>(rows.size()) < max_rows) {
+                tr.draw_text(add_x, cy, "+ Add",
+                             style_.accent[0], style_.accent[1], style_.accent[2]);
+            }
+            cy += 18.0f + 4.0f;
+
+            float name_w = 120.0f;
+            float remove_w = 20.0f;
+            float type_w = inner_w - name_w - remove_w - 8.0f;
+
+            for (size_t i = 0; i < rows.size(); ++i) {
+                int field_idx = field_offset + static_cast<int>(i);
+                float row_y = cy;
+
+                // Port name field
+                if (create_active_field_ == field_idx) {
+                    draw_editing_text_field(tr, style_, cx, row_y, name_w, 22.0f,
+                                           rows[i].name, blink_on);
+                } else {
+                    tr.draw_rect(cx, row_y, name_w, 22.0f,
+                                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+                    if (rows[i].name.empty()) {
+                        tr.draw_text(cx + 4, row_y + 2, "name",
+                                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+                    } else {
+                        tr.draw_text(cx + 4, row_y + 2, rows[i].name.c_str(),
+                                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+                    }
+                }
+
+                // Type dropdown (drawn as button showing current type)
+                float type_x = cx + name_w + 4.0f;
+                int clamped_sel = std::min(rows[i].type_sel, static_cast<int>(port_types.size()) - 1);
+                if (clamped_sel < 0) clamped_sel = 0;
+                tr.draw_rect(type_x, row_y, type_w, 22.0f,
+                             style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.7f);
+                if (!port_types.empty()) {
+                    tr.draw_text(type_x + 4, row_y + 2, port_types[clamped_sel].label,
+                                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+                }
+
+                // Remove [x] button
+                float rem_x = cx + inner_w - remove_w;
+                tr.draw_rect(rem_x, row_y, remove_w, 22.0f,
+                             style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.5f);
+                tr.draw_text(rem_x + 5, row_y + 2, "x",
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+                cy += kCreatePortRowH;
+            }
+        };
+
+        // 5. Input Ports
+        int input_field_offset = 1;  // field 0 = name
+        draw_port_section("Input Ports", create_inputs_, input_field_offset, kCreateMaxPortRows);
+
+        // 6. Output Ports
+        int output_field_offset = 1 + static_cast<int>(create_inputs_.size());
+        draw_port_section("Output Ports", create_outputs_, output_field_offset, kCreateMaxPortRows);
+
+        // 7. Parameters
+        cy += kCreateModalSectionGap;
+        tr.draw_text(cx, cy, "Parameters",
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        if (static_cast<int>(create_params_.size()) < kCreateMaxParamRows) {
+            float add_w = tr.text_width("+ Add") + 4;
+            float add_x = cx + inner_w - add_w;
+            tr.draw_text(add_x, cy, "+ Add",
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+        }
+        cy += 18.0f + 4.0f;
+
+        int param_field_offset = 1 + static_cast<int>(create_inputs_.size())
+                                   + static_cast<int>(create_outputs_.size());
+
+        for (size_t i = 0; i < create_params_.size(); ++i) {
+            auto& p = create_params_[i];
+            int field_idx = param_field_offset + static_cast<int>(i);
+            float row_y = cy;
+            float name_w = 100.0f;
+            float type_w = 60.0f;
+            float remove_w = 20.0f;
+
+            // Param name
+            if (create_active_field_ == field_idx) {
+                draw_editing_text_field(tr, style_, cx, row_y, name_w, 22.0f,
+                                       p.name, blink_on);
+            } else {
+                tr.draw_rect(cx, row_y, name_w, 22.0f,
+                             style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+                if (p.name.empty()) {
+                    tr.draw_text(cx + 4, row_y + 2, "param",
+                                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+                } else {
+                    tr.draw_text(cx + 4, row_y + 2, p.name.c_str(),
+                                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+                }
+            }
+
+            // Param type dropdown
+            float type_x = cx + name_w + 4.0f;
+            int ts = std::min(p.type_sel, kParamTypeCount - 1);
+            tr.draw_rect(type_x, row_y, type_w, 22.0f,
+                         style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.7f);
+            tr.draw_text(type_x + 4, row_y + 2, param_type_labels[ts],
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+            // Extra fields depending on type
+            float extra_x = type_x + type_w + 4.0f;
+            float extra_w = inner_w - name_w - type_w - remove_w - 16.0f;
+            if (ts == 0 || ts == 1) {
+                // float/int: show default, min, max
+                float fw = (extra_w - 8.0f) / 3.0f;
+                char buf[32];
+                // Default
+                std::snprintf(buf, sizeof(buf), ts == 0 ? "%.1f" : "%d",
+                              ts == 0 ? p.default_val : static_cast<float>(static_cast<int>(p.default_val)));
+                tr.draw_rect(extra_x, row_y, fw, 22.0f,
+                             style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+                tr.draw_text(extra_x + 2, row_y + 2, buf,
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+                // Min
+                std::snprintf(buf, sizeof(buf), ts == 0 ? "%.1f" : "%d",
+                              ts == 0 ? p.min_val : static_cast<float>(static_cast<int>(p.min_val)));
+                tr.draw_rect(extra_x + fw + 4, row_y, fw, 22.0f,
+                             style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+                tr.draw_text(extra_x + fw + 6, row_y + 2, buf,
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+                // Max
+                std::snprintf(buf, sizeof(buf), ts == 0 ? "%.1f" : "%d",
+                              ts == 0 ? p.max_val : static_cast<float>(static_cast<int>(p.max_val)));
+                tr.draw_rect(extra_x + 2 * (fw + 4), row_y, fw, 22.0f,
+                             style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
+                tr.draw_text(extra_x + 2 * (fw + 4) + 2, row_y + 2, buf,
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+            } else if (ts == 2) {
+                // bool: default toggle
+                draw_checkbox(tr, style_, extra_x, row_y + 2, 16.0f, p.default_val != 0.0f);
+            }
+            // file/text: no extra fields
+
+            // Remove button
+            float rem_x = cx + inner_w - remove_w;
+            tr.draw_rect(rem_x, row_y, remove_w, 22.0f,
+                         style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.5f);
+            tr.draw_text(rem_x + 5, row_y + 2, "x",
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+            cy += kCreateParamRowH;
+        }
+    }
+
+    // 8. Destination radio buttons
+    cy += kCreateModalSectionGap;
+    const char* dest_labels[] = { "Auto", "Project", "Core" };
+    float dest_x = cx;
+    bool project_available = commands_.has_project_clone_destination();
+    for (int i = 0; i < 3; ++i) {
+        bool selected = (create_destination_ == i);
+        bool disabled = (i == 1 && !project_available);
+        float dw = tr.text_width(dest_labels[i]) + 24.0f;
+        // Radio circle
+        float circle_x = dest_x + 2;
+        float circle_y = cy + 4;
+        tr.draw_rect(circle_x, circle_y, 12.0f, 12.0f,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+        if (selected) {
+            tr.draw_rect(circle_x + 3, circle_y + 3, 6.0f, 6.0f,
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+        }
+        float alpha = disabled ? 0.3f : 1.0f;
+        tr.draw_text(dest_x + 18, cy + 2, dest_labels[i],
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], alpha);
+        dest_x += dw + 12.0f;
+    }
+    cy += 22.0f + kCreateModalRowGap;
+
+    // 9. Error area
     if (!create_error_.empty()) {
         tr.draw_text(cx, cy, create_error_.c_str(),
                      kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
     }
+    cy += 18.0f + kCreateModalRowGap;
+
+    // 10. Button row: [Create Empty] left, [Create] [Cancel] right
+    float btn_y = cy;
+    // Create Empty (left-aligned)
+    tr.draw_rect(cx, btn_y, kCreateModalBtnW, kCreateModalBtnH,
+                 style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
+    tr.draw_text(cx + 8, btn_y + 5, "Create Empty",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+    // Cancel (right-aligned)
+    float cancel_x = cx + inner_w - kCreateModalBtnW;
+    tr.draw_rect(cancel_x, btn_y, kCreateModalBtnW, kCreateModalBtnH,
+                 style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
+    tr.draw_text(cancel_x + 28, btn_y + 5, "Cancel",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+    // Create (right of Create Empty... actually to the left of Cancel)
+    float create_x = cancel_x - kCreateModalBtnW - 8.0f;
+    tr.draw_rect(create_x, btn_y, kCreateModalBtnW, kCreateModalBtnH,
+                 style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+    tr.draw_text(create_x + 28, btn_y + 5, "Create", 0.0f, 0.0f, 0.0f);
 }
 
 // -----------------------------------------------------------------------

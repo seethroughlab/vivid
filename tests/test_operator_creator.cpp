@@ -12,6 +12,20 @@ static std::string read_file(const std::string& path) {
     return {std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>()};
 }
 
+// Helper to create tmp dir with cmake markers for all domains
+static void write_full_cmake(const std::string& dir) {
+    std::ofstream ofs(dir + "/CMakeLists.txt");
+    ofs << "# --- Control operators ---\n"
+        << "\n"
+        << "# --- GPU operator plugins ---\n"
+        << "\n"
+        << "# --- Movie File In\n"
+        << "\n"
+        << "# --- Audio operator plugins ---\n"
+        << "\n"
+        << "# --- Movie File Audio In\n";
+}
+
 int main() {
     vivid::OperatorRegistry reg;  // empty registry — no collisions
 
@@ -53,23 +67,7 @@ int main() {
         std::string tmp = "/tmp/vivid_test_creator_control";
         fs::remove_all(tmp);
         fs::create_directories(tmp);
-
-        // Create a fake CMakeLists.txt with the insertion markers
-        {
-            std::ofstream ofs(tmp + "/CMakeLists.txt");
-            ofs << "# --- Control operators ---\n"
-                << "add_vivid_operator(lfo operators/control/lfo/lfo.cpp)\n"
-                << "\n"
-                << "# --- GPU operator plugins ---\n"
-                << "add_vivid_operator(noise operators/gpu/noise/noise.cpp)\n"
-                << "\n"
-                << "# --- Movie File In\n"
-                << "\n"
-                << "# --- Audio operator plugins ---\n"
-                << "add_vivid_operator(gain operators/audio/gain/gain.cpp)\n"
-                << "\n"
-                << "# --- Movie File Audio In\n";
-        }
+        write_full_cmake(tmp);
 
         auto result = vivid::OperatorCreator::create("my_op", VIVID_DOMAIN_CONTROL, tmp);
         check(result.success, "create control op succeeds");
@@ -346,6 +344,294 @@ int main() {
         std::string cmake = read_file(tmp + "/CMakeLists.txt");
         check(cmake.find("team_gain") != std::string::npos,
               "package CMake ops list includes new target");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 12: "empty" variant — control domain
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 12: empty variant control ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_empty_ctrl";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        auto result = vivid::OperatorCreator::create("bare_ctrl", VIVID_DOMAIN_CONTROL, tmp, "empty");
+        check(result.success, "create empty control succeeds");
+
+        std::string src = read_file(result.cpp_path);
+        check(src.find("struct BareCtrl") != std::string::npos, "struct BareCtrl");
+        check(src.find("ControlOperatorBase") != std::string::npos, "inherits ControlOperatorBase");
+        check(src.find("collect_ports") != std::string::npos, "has collect_ports");
+        check(src.find("process") != std::string::npos, "has process");
+        // Empty variant should NOT have Param declarations or collect_params
+        check(src.find("Param<") == std::string::npos, "no Param declarations");
+        check(src.find("collect_params") == std::string::npos, "no collect_params");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 13: "empty" variant — audio domain
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 13: empty variant audio ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_empty_audio";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        auto result = vivid::OperatorCreator::create("bare_audio", VIVID_DOMAIN_AUDIO, tmp, "empty");
+        check(result.success, "create empty audio succeeds");
+
+        std::string src = read_file(result.cpp_path);
+        check(src.find("struct BareAudio") != std::string::npos, "struct BareAudio");
+        check(src.find("AudioOperatorBase") != std::string::npos, "inherits AudioOperatorBase");
+        check(src.find("process_audio") != std::string::npos, "has process_audio");
+        check(src.find("Param<") == std::string::npos, "no Param declarations");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 14: "empty" variant — gpu domain
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 14: empty variant gpu ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_empty_gpu";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        auto result = vivid::OperatorCreator::create("bare_gpu", VIVID_DOMAIN_GPU, tmp, "empty");
+        check(result.success, "create empty gpu succeeds");
+
+        std::string src = read_file(result.cpp_path);
+        check(src.find("struct BareGpu") != std::string::npos, "struct BareGpu");
+        check(src.find("WgslFilterBase") != std::string::npos, "inherits WgslFilterBase");
+        check(src.find("Param<") == std::string::npos, "no Param declarations");
+        // Should have .wgsl
+        std::string wgsl = tmp + "/operators/gpu/bare_gpu/bare_gpu.wgsl";
+        check(fs::exists(wgsl), "empty gpu has wgsl file");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 15: CreateOperatorRequest with custom input + output ports
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 15: Custom ports ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_custom_ports";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "multi_port";
+        req.domain = VIVID_DOMAIN_CONTROL;
+        req.ports = {
+            {"signal",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
+            {"modulator", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
+            {"result",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT},
+            {"error",     VIVID_PORT_CONTROL_INT,   VIVID_PORT_OUTPUT},
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(result.success, "create with custom ports succeeds");
+
+        std::string src = read_file(result.cpp_path);
+        check(src.find("\"signal\"") != std::string::npos, "input port 'signal'");
+        check(src.find("\"modulator\"") != std::string::npos, "input port 'modulator'");
+        check(src.find("\"result\"") != std::string::npos, "output port 'result'");
+        check(src.find("\"error\"") != std::string::npos, "output port 'error'");
+        check(src.find("VIVID_PORT_INPUT") != std::string::npos, "has VIVID_PORT_INPUT");
+        check(src.find("VIVID_PORT_OUTPUT") != std::string::npos, "has VIVID_PORT_OUTPUT");
+        check(src.find("VIVID_PORT_FLOAT") != std::string::npos, "has float port type (int maps to float)");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 16: CreateOperatorRequest with custom params
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 16: Custom params ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_custom_params";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "param_test";
+        req.domain = VIVID_DOMAIN_CONTROL;
+        req.params = {
+            {"speed",  VIVID_PARAM_FLOAT, 1.0f, 0.0f, 10.0f},
+            {"count",  VIVID_PARAM_INT,   4.0f, 1.0f, 8.0f},
+            {"active", VIVID_PARAM_BOOL,  1.0f, 0.0f, 1.0f},
+            {"source", VIVID_PARAM_FILE,  0.0f, 0.0f, 0.0f},
+            {"label",  VIVID_PARAM_TEXT,  0.0f, 0.0f, 0.0f, "hello"},
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(result.success, "create with custom params succeeds");
+
+        std::string src = read_file(result.cpp_path);
+        check(src.find("Param<float> speed") != std::string::npos, "Param<float> speed");
+        check(src.find("Param<int> count") != std::string::npos, "Param<int> count");
+        check(src.find("Param<bool> active") != std::string::npos, "Param<bool> active");
+        check(src.find("Param<vivid::FilePath> source") != std::string::npos, "Param<FilePath> source");
+        check(src.find("Param<vivid::TextValue> label") != std::string::npos, "Param<TextValue> label");
+        // Check float param has min/max
+        check(src.find("1f, 0f, 10f") != std::string::npos ||
+              src.find("1.0f, 0.0f, 10.0f") != std::string::npos ||
+              src.find("\"speed\", 1") != std::string::npos,
+              "float param has value range");
+        // Bool default
+        check(src.find("\"active\", true") != std::string::npos, "bool param default true");
+        // Text default
+        check(src.find("\"label\", \"hello\"") != std::string::npos, "text param default");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 17: Custom ports + params together
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 17: Mixed ports + params ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_mixed";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "mixed_op";
+        req.domain = VIVID_DOMAIN_CONTROL;
+        req.ports = {
+            {"in_a", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
+            {"in_b", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT},
+            {"out",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT},
+        };
+        req.params = {
+            {"gain", VIVID_PARAM_FLOAT, 1.0f, 0.0f, 2.0f},
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(result.success, "create mixed succeeds");
+
+        std::string src = read_file(result.cpp_path);
+        check(src.find("\"in_a\"") != std::string::npos, "port in_a");
+        check(src.find("\"in_b\"") != std::string::npos, "port in_b");
+        check(src.find("VIVID_PORT_SPREAD") != std::string::npos, "spread port type");
+        check(src.find("Param<float> gain") != std::string::npos, "custom param gain");
+        check(src.find("collect_params") != std::string::npos, "has collect_params");
+        check(src.find("collect_ports") != std::string::npos, "has collect_ports");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 18: Port validation — duplicate names rejected
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 18: Duplicate port names ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_dup_ports";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "dup_port_op";
+        req.domain = VIVID_DOMAIN_CONTROL;
+        req.ports = {
+            {"input", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
+            {"input", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT},  // duplicate name
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(!result.success, "duplicate port names rejected");
+        check(result.error.find("duplicate") != std::string::npos, "error mentions duplicate");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 19: Port validation — empty name rejected
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 19: Empty port name ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_empty_port_name";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "empty_name_op";
+        req.domain = VIVID_DOMAIN_CONTROL;
+        req.ports = {
+            {"", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(!result.success, "empty port name rejected");
+        check(result.error.find("empty") != std::string::npos, "error mentions empty");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 20: GPU op with mixed-type inputs
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 20: GPU mixed-type inputs ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_gpu_mixed";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "gpu_mixer";
+        req.domain = VIVID_DOMAIN_GPU;
+        req.ports = {
+            {"texture_in", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT},
+            {"texture_out", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT},
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(result.success, "gpu mixed-type create succeeds");
+
+        std::string src = read_file(result.cpp_path);
+        check(src.find("\"texture_in\"") != std::string::npos, "texture_in port");
+        check(src.find("\"texture_out\"") != std::string::npos, "texture_out port");
+        check(src.find("VIVID_PORT_TEXTURE") != std::string::npos, "texture type");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 21: Legacy overload with extra_outputs backward compat
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 21: Legacy extra_outputs ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_legacy_outputs";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        std::vector<vivid::OutputPortSpec> extra = {
+            {"sidechain", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT},
+        };
+
+        auto result = vivid::OperatorCreator::create("legacy_out", VIVID_DOMAIN_CONTROL, tmp, "", false, extra);
+        check(result.success, "legacy extra outputs succeeds");
+
+        std::string src = read_file(result.cpp_path);
+        check(src.find("\"sidechain\"") != std::string::npos, "extra output sidechain");
+        check(src.find("\"input\"") != std::string::npos, "default input port");
+        check(src.find("\"output\"") != std::string::npos, "default output port");
 
         fs::remove_all(tmp);
     }

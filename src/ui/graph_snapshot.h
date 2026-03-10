@@ -41,7 +41,7 @@ struct ParamInfo {
 // Owned copy of port metadata
 struct PortInfo {
     std::string name;
-    VividPortType type = VIVID_PORT_CONTROL_FLOAT;
+    VividPortType type = VIVID_PORT_FLOAT;
     VividPortDirection direction = VIVID_PORT_INPUT;
 };
 

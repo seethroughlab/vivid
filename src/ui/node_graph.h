@@ -321,9 +321,11 @@ private:
     void update_clone_confirm();
     void draw_clone_confirm(Renderer2D& tr);
 
-    // --- Create operator popup ---
+    // --- Create operator modal ---
     void update_create_popup();
     void draw_create_popup(Renderer2D& tr);
+    void submit_create_operator(bool empty_variant);
+    void reset_create_domain_defaults();
 
     // --- Preset name popup ---
     void draw_preset_name_popup(Renderer2D& tr);
@@ -635,8 +637,8 @@ private:
     // Insert-on-wire state (chooser opened from wire context menu)
     bool chooser_insert_wire_ = false;
     ConnectionSnapshot chooser_insert_conn_;
-    VividPortType insert_wire_source_type_ = VIVID_PORT_CONTROL_FLOAT;
-    VividPortType insert_wire_dest_type_ = VIVID_PORT_CONTROL_FLOAT;
+    VividPortType insert_wire_source_type_ = VIVID_PORT_FLOAT;
+    VividPortType insert_wire_dest_type_ = VIVID_PORT_FLOAT;
 
     // Right-click context menu state
     bool context_menu_open_ = false;
@@ -686,11 +688,30 @@ private:
     bool clone_confirm_project_available_ = false;
     int clone_confirm_destination_ = 0; // 0=Project Package, 1=Core
 
-    // Create operator popup state
+    // Create operator modal state
     bool create_popup_open_ = false;
-    int create_domain_sel_ = 0;       // 0=control, 1=audio, 2=gpu
+    int create_domain_sel_ = 0;           // 0=control, 1=audio, 2=gpu
     std::string create_name_buf_;
     std::string create_error_;
+    bool create_composite_ = false;        // variant checkbox, control-only
+    int create_destination_ = 0;           // 0=auto, 1=project, 2=core
+
+    // Active text field tracking: 0=name, 1..N=input port names,
+    //   N+1..M=output port names, M+1..=param names
+    int create_active_field_ = 0;
+
+    struct CreatePortRow { std::string name; int type_sel = 0; };
+    std::vector<CreatePortRow> create_inputs_;
+    std::vector<CreatePortRow> create_outputs_;
+
+    struct CreateParamRow {
+        std::string name;
+        int type_sel = 0;     // index into {float, int, bool, file, text}
+        float default_val = 0.0f;
+        float min_val = 0.0f;
+        float max_val = 1.0f;
+    };
+    std::vector<CreateParamRow> create_params_;
 
     // Preferences panel state
     bool prefs_open_ = false;

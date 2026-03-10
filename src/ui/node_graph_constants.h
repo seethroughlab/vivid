@@ -103,11 +103,24 @@ static constexpr float kChooserHeaderH = 28.0f;
 static constexpr float kChooserItemH = 22.0f;
 static constexpr float kChooserY = 80.0f;
 
-// Create operator popup
-static constexpr float kCreatePopupW = 340.0f;
-static constexpr float kCreatePopupH = 130.0f;
-static constexpr float kCreateDomainBtnW = 80.0f;
+// Create operator modal
+static constexpr float kCreateModalW = 480.0f;
+static constexpr float kCreateModalPadX = 20.0f;
+static constexpr float kCreateModalPadY = 16.0f;
+static constexpr float kCreateModalFieldH = 24.0f;
+static constexpr float kCreateModalRowGap = 8.0f;
+static constexpr float kCreateModalSectionGap = 14.0f;
+static constexpr float kCreateModalBtnW = 100.0f;
+static constexpr float kCreateModalBtnH = 26.0f;
+static constexpr float kCreatePortRowH = 28.0f;
+static constexpr float kCreateParamRowH = 28.0f;
+static constexpr int   kCreateMaxPortRows = 8;   // per direction
+static constexpr int   kCreateMaxParamRows = 12;
+static constexpr float kCreateDomainBtnW = 100.0f;
 static constexpr float kCreateDomainBtnH = 22.0f;
+// Legacy alias
+static constexpr float kCreatePopupW = kCreateModalW;
+static constexpr float kCreatePopupH = 130.0f;  // kept for any remaining references
 
 // Context menu
 static constexpr float kCtxMenuW = 155.0f;

@@ -451,6 +451,49 @@ public:
         return true;
     }
 
+    bool create_operator(const VividCreateOperatorRequest& request) override {
+        if (operators_dir_.empty() || !registry_) return false;
+
+        const std::string core_src_dir = std::filesystem::path(operators_dir_).parent_path().string();
+        const std::vector<vivid::PackageInfo> packages = package_manager_
+            ? package_manager_->list()
+            : std::vector<vivid::PackageInfo>{};
+
+        std::string dest_str = request.destination.empty() ? "auto" : request.destination;
+        vivid::OperatorDestination dest;
+        std::string resolve_error;
+        if (!vivid::resolve_operator_destination(dest_str, core_src_dir, packages, settings_,
+                                                 dest, resolve_error)) {
+            std::fprintf(stderr, "[vivid] Create operator destination error: %s\n",
+                         resolve_error.c_str());
+            return false;
+        }
+        if (!dest.warning.empty()) {
+            std::fprintf(stderr, "[vivid] %s\n", dest.warning.c_str());
+        }
+        if (dest.package_layout && dest.package_name.empty()) {
+            std::fprintf(stderr,
+                         "[vivid] Project destination '%s' is not an active package; using core destination\n",
+                         dest.root.c_str());
+            dest = {};
+            dest.root = core_src_dir;
+        }
+
+        auto cr = vivid::OperatorCreator::create(request, dest.root, dest.package_layout);
+        if (!cr.success) return false;
+
+        if (hot_reloader_) {
+            if (dest.package_layout && !dest.package_name.empty()) {
+                hot_reloader_->queue_rebuild("pkg:" + dest.package_name + ":" + cr.target_name);
+            } else {
+                hot_reloader_->queue_rebuild(cr.target_name);
+            }
+        }
+
+        vivid::OperatorCreator::open_in_editor(cr.cpp_path);
+        return true;
+    }
+
     void capture_snapshot() override {
         if (!capture_coordinator_) return;
         // Fire-and-forget — PNG is saved to disk

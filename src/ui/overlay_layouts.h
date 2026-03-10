@@ -30,6 +30,9 @@ struct OverlayPanelLayout {
     float tabs3_y = 0.0f;
 };
 
+OverlayPanelLayout compute_create_operator_layout(uint32_t win_w, uint32_t win_h,
+                                                   int input_count, int output_count,
+                                                   int param_count, bool show_composite);
 OverlayPanelLayout compute_package_browser_layout(uint32_t win_w, uint32_t win_h, size_t entry_count);
 OverlayPanelLayout compute_example_browser_layout(uint32_t win_w, uint32_t win_h, size_t entry_count);
 OverlayPanelLayout compute_graph_meta_editor_layout(uint32_t win_w, uint32_t win_h);

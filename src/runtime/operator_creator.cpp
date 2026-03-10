@@ -68,35 +68,144 @@ static const char* domain_subdir(VividDomain d) {
 }
 
 // ---------------------------------------------------------------------------
-// Templates
+// Param codegen helpers
+// ---------------------------------------------------------------------------
+
+static std::string param_type_cpp(VividParamType t) {
+    switch (t) {
+        case VIVID_PARAM_FLOAT: return "float";
+        case VIVID_PARAM_INT:   return "int";
+        case VIVID_PARAM_BOOL:  return "bool";
+        case VIVID_PARAM_FILE:  return "vivid::FilePath";
+        case VIVID_PARAM_TEXT:  return "vivid::TextValue";
+        default:                return "float";
+    }
+}
+
+static void emit_param_declaration(std::ostringstream& s, const VividParamSpec& p) {
+    s << "    vivid::Param<" << param_type_cpp(p.type) << "> " << p.name << "{\"" << p.name << "\"";
+    switch (p.type) {
+        case VIVID_PARAM_FLOAT:
+            s << ", " << p.default_value << "f, " << p.min_value << "f, " << p.max_value << "f";
+            break;
+        case VIVID_PARAM_INT:
+            s << ", " << static_cast<int>(p.default_value)
+              << ", " << static_cast<int>(p.min_value)
+              << ", " << static_cast<int>(p.max_value);
+            break;
+        case VIVID_PARAM_BOOL:
+            s << ", " << (p.default_value != 0.0f ? "true" : "false");
+            break;
+        case VIVID_PARAM_FILE:
+            // No extra args
+            break;
+        case VIVID_PARAM_TEXT:
+            s << ", \"" << p.default_string << "\"";
+            break;
+    }
+    s << "};\n";
+}
+
+// ---------------------------------------------------------------------------
+// Port collection helpers
+// ---------------------------------------------------------------------------
+
+static void emit_collect_ports(std::ostringstream& s,
+                               const std::vector<VividPortSpec>& ports) {
+    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
+    for (const auto& p : ports) {
+        const char* dir = (p.direction == VIVID_PORT_INPUT) ? "VIVID_PORT_INPUT" : "VIVID_PORT_OUTPUT";
+        s << "        out.push_back({\"" << p.name << "\", " << port_type_name(p.type) << ", " << dir << "});\n";
+    }
+    s << "    }\n";
+}
+
+static void emit_collect_params(std::ostringstream& s,
+                                const std::vector<VividParamSpec>& params) {
+    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
+    for (const auto& p : params)
+        s << "        out.push_back(&" << p.name << ");\n";
+    s << "    }\n";
+}
+
+// Count ports by direction
+static int count_ports(const std::vector<VividPortSpec>& ports, VividPortDirection dir) {
+    int n = 0;
+    for (const auto& p : ports)
+        if (p.direction == dir) ++n;
+    return n;
+}
+
+// ---------------------------------------------------------------------------
+// Templates — standard (with configurable ports + params)
 // ---------------------------------------------------------------------------
 
 static std::string control_template(const std::string& name, const std::string& struct_name,
-                                     const std::vector<OutputPortSpec>& extra_outputs) {
+                                     const std::vector<VividPortSpec>& ports,
+                                     const std::vector<VividParamSpec>& params) {
+    // Determine if using custom ports/params or defaults
+    bool custom_ports  = !ports.empty();
+    bool custom_params = !params.empty();
+
+    // Build effective port list
+    std::vector<VividPortSpec> effective_ports;
+    if (custom_ports) {
+        effective_ports = ports;
+    } else {
+        effective_ports.push_back({"input",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
+        effective_ports.push_back({"output", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+    }
+
+    // Build effective param list
+    std::vector<VividParamSpec> effective_params;
+    if (custom_params) {
+        effective_params = params;
+    } else {
+        effective_params.push_back({"amount", VIVID_PARAM_FLOAT, 1.0f, 0.0f, 1.0f});
+    }
+
+    int num_inputs  = count_ports(effective_ports, VIVID_PORT_INPUT);
+    int num_outputs = count_ports(effective_ports, VIVID_PORT_OUTPUT);
+
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
     s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = false;\n\n";
-    s << "    vivid::Param<float> amount{\"amount\", 1.0f, 0.0f, 1.0f};\n\n";
-    s << "    " << struct_name << "() {\n";
-    s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
-    s << "        vivid::semantic_tag(amount, \"probability_01\");\n";
-    s << "        vivid::semantic_shape(amount, \"scalar\");\n";
-    s << "    }\n\n";
-    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
-    s << "        out.push_back(&amount);\n";
-    s << "    }\n\n";
-    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"output\", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});\n";
-    for (const auto& ep : extra_outputs)
-        s << "        out.push_back({\"" << ep.name << "\", " << port_type_name(ep.type) << ", VIVID_PORT_OUTPUT});\n";
-    s << "    }\n\n";
+
+    // Param declarations
+    for (const auto& p : effective_params)
+        emit_param_declaration(s, p);
+    s << "\n";
+
+    if (!custom_params) {
+        // Default: include semantic metadata example
+        s << "    " << struct_name << "() {\n";
+        s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
+        s << "        vivid::semantic_tag(amount, \"probability_01\");\n";
+        s << "        vivid::semantic_shape(amount, \"scalar\");\n";
+        s << "    }\n\n";
+    }
+
+    emit_collect_params(s, effective_params);
+    s << "\n";
+    emit_collect_ports(s, effective_ports);
+    s << "\n";
+
+    // process()
     s << "    void process(const VividProcessContext* ctx) override {\n";
-    s << "        ctx->output_values[0] = ctx->input_values[0] * amount.value;\n";
-    for (size_t i = 0; i < extra_outputs.size(); ++i)
-        s << "        ctx->output_values[" << (i + 1) << "] = 0.0f;  // TODO: fill " << extra_outputs[i].name << "\n";
+    if (num_inputs > 0 && num_outputs > 0) {
+        if (custom_params) {
+            s << "        ctx->output_values[0] = ctx->input_values[0];\n";
+        } else {
+            s << "        ctx->output_values[0] = ctx->input_values[0] * amount.value;\n";
+        }
+        for (int i = 1; i < num_outputs; ++i)
+            s << "        ctx->output_values[" << i << "] = 0.0f;  // TODO\n";
+    } else if (num_outputs > 0) {
+        for (int i = 0; i < num_outputs; ++i)
+            s << "        ctx->output_values[" << i << "] = 0.0f;  // TODO\n";
+    }
     s << "    }\n";
     s << "};\n\n";
     s << "VIVID_REGISTER(" << struct_name << ")\n";
@@ -104,37 +213,79 @@ static std::string control_template(const std::string& name, const std::string& 
 }
 
 static std::string audio_template(const std::string& name, const std::string& struct_name,
-                                   const std::vector<OutputPortSpec>& extra_outputs) {
+                                   const std::vector<VividPortSpec>& ports,
+                                   const std::vector<VividParamSpec>& params) {
+    bool custom_ports  = !ports.empty();
+    bool custom_params = !params.empty();
+
+    std::vector<VividPortSpec> effective_ports;
+    if (custom_ports) {
+        effective_ports = ports;
+    } else {
+        effective_ports.push_back({"input",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});
+        effective_ports.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
+    }
+
+    std::vector<VividParamSpec> effective_params;
+    if (custom_params) {
+        effective_params = params;
+    } else {
+        effective_params.push_back({"gain", VIVID_PARAM_FLOAT, 1.0f, 0.0f, 2.0f});
+    }
+
+    int num_input_bufs  = 0;
+    int num_output_bufs = 0;
+    for (const auto& p : effective_ports) {
+        if (p.type == VIVID_PORT_AUDIO) {
+            if (p.direction == VIVID_PORT_INPUT) ++num_input_bufs;
+            else ++num_output_bufs;
+        }
+    }
+
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
     s << "struct " << struct_name << " : vivid::AudioOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
-    s << "    vivid::Param<float> gain{\"gain\", 1.0f, 0.0f, 2.0f};\n\n";
-    s << "    " << struct_name << "() {\n";
-    s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
-    s << "        vivid::semantic_tag(gain, \"amplitude_linear\");\n";
-    s << "        vivid::semantic_shape(gain, \"scalar\");\n";
-    s << "    }\n\n";
-    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
-    s << "        out.push_back(&gain);\n";
-    s << "    }\n\n";
-    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"output\", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});\n";
-    for (const auto& ep : extra_outputs)
-        s << "        out.push_back({\"" << ep.name << "\", " << port_type_name(ep.type) << ", VIVID_PORT_OUTPUT});\n";
-    s << "    }\n\n";
+
+    for (const auto& p : effective_params)
+        emit_param_declaration(s, p);
+    s << "\n";
+
+    if (!custom_params) {
+        s << "    " << struct_name << "() {\n";
+        s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
+        s << "        vivid::semantic_tag(gain, \"amplitude_linear\");\n";
+        s << "        vivid::semantic_shape(gain, \"scalar\");\n";
+        s << "    }\n\n";
+    }
+
+    emit_collect_params(s, effective_params);
+    s << "\n";
+    emit_collect_ports(s, effective_ports);
+    s << "\n";
+
     s << "    void process_audio(const VividAudioContext* ctx) override {\n";
-    s << "        float* in  = ctx->input_buffers[0];\n";
-    s << "        float* out = ctx->output_buffers[0];\n";
-    for (size_t i = 0; i < extra_outputs.size(); ++i)
-        s << "        float* out" << (i + 1) << " = ctx->output_buffers[" << (i + 1) << "];  // " << extra_outputs[i].name << "\n";
-    s << "        float g = gain.value;\n\n";
-    s << "        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
-    s << "            out[i] = in[i] * g;\n";
-    for (size_t i = 0; i < extra_outputs.size(); ++i)
-        s << "        // TODO: fill out" << (i + 1) << " (" << extra_outputs[i].name << ")\n";
+    if (num_input_bufs > 0)
+        s << "        float* in  = ctx->input_buffers[0];\n";
+    if (num_output_bufs > 0)
+        s << "        float* out = ctx->output_buffers[0];\n";
+    for (int i = 1; i < num_output_bufs; ++i)
+        s << "        float* out" << i << " = ctx->output_buffers[" << i << "];  // TODO\n";
+
+    if (!custom_params && num_input_bufs > 0 && num_output_bufs > 0) {
+        s << "        float g = gain.value;\n\n";
+        s << "        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
+        s << "            out[i] = in[i] * g;\n";
+    } else if (num_input_bufs > 0 && num_output_bufs > 0) {
+        s << "\n        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
+        s << "            out[i] = in[i];\n";
+    } else if (num_output_bufs > 0) {
+        s << "\n        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
+        s << "            out[i] = 0.0f;  // TODO\n";
+    }
+    for (int i = 1; i < num_output_bufs; ++i)
+        s << "        // TODO: fill out" << i << "\n";
     s << "    }\n";
     s << "};\n\n";
     s << "VIVID_REGISTER(" << struct_name << ")\n";
@@ -142,35 +293,62 @@ static std::string audio_template(const std::string& name, const std::string& st
 }
 
 static std::string gpu_template(const std::string& name, const std::string& struct_name,
-                                 const std::vector<OutputPortSpec>& extra_outputs) {
+                                 const std::vector<VividPortSpec>& ports,
+                                 const std::vector<VividParamSpec>& params) {
+    bool custom_ports  = !ports.empty();
+    bool custom_params = !params.empty();
+
+    std::vector<VividPortSpec> effective_ports;
+    if (custom_ports) {
+        effective_ports = ports;
+    } else {
+        effective_ports.push_back({"input",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
+        effective_ports.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
+    }
+
+    std::vector<VividParamSpec> effective_params;
+    if (custom_params) {
+        effective_params = params;
+    } else {
+        effective_params.push_back({"amount", VIVID_PARAM_FLOAT, 1.0f, 0.0f, 1.0f});
+    }
+
+    int num_extra_outputs = count_ports(effective_ports, VIVID_PORT_OUTPUT) - 1;
+
     std::ostringstream s;
     s << "#include \"operator_api/wgsl_filter.h\"\n\n";
     s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
-    s << "    vivid::Param<float> amount{\"amount\", 1.0f, 0.0f, 1.0f};\n\n";
+
+    for (const auto& p : effective_params)
+        emit_param_declaration(s, p);
+    s << "\n";
+
     s << "    " << struct_name << "() : WgslFilterBase(\"" << name << ".wgsl\") {\n";
-    s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
-    s << "        vivid::semantic_tag(amount, \"probability_01\");\n";
-    s << "        vivid::semantic_shape(amount, \"scalar\");\n";
+    if (!custom_params) {
+        s << "        // Semantic metadata is optional but recommended for MCP/LLM workflows.\n";
+        s << "        vivid::semantic_tag(amount, \"probability_01\");\n";
+        s << "        vivid::semantic_shape(amount, \"scalar\");\n";
+    }
     s << "    }\n\n";
-    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"texture\", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});\n";
-    for (const auto& ep : extra_outputs)
-        s << "        out.push_back({\"" << ep.name << "\", " << port_type_name(ep.type) << ", VIVID_PORT_OUTPUT});\n";
-    s << "    }\n\n";
-    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n";
-    s << "        out.push_back(&amount);\n";
-    s << "    }\n";
-    if (!extra_outputs.empty()) {
+
+    emit_collect_ports(s, effective_ports);
+    s << "\n";
+    emit_collect_params(s, effective_params);
+
+    if (num_extra_outputs > 0) {
         s << "\n    // Extra output textures are available via g->aux_output_texture_views[0.."
-          << (extra_outputs.size() - 1) << "] in a custom process() override.\n";
+          << (num_extra_outputs - 1) << "] in a custom process() override.\n";
     }
     s << "};\n\n";
     s << "VIVID_REGISTER(" << struct_name << ")\n";
     return s.str();
 }
+
+// ---------------------------------------------------------------------------
+// Composite template (unchanged — fixed ports/params)
+// ---------------------------------------------------------------------------
 
 static std::string composite_control_template(const std::string& name, const std::string& struct_name) {
     std::ostringstream s;
@@ -222,6 +400,65 @@ static std::string composite_control_template(const std::string& name, const std
     s << "        smoother_.process(ctx);\n\n";
     s << "        float mod = smoother_.output(\"value\");\n";
     s << "        ctx->output_values[0] = input * (amount.value + lfo_depth.value * mod);\n";
+    s << "    }\n";
+    s << "};\n\n";
+    s << "VIVID_REGISTER(" << struct_name << ")\n";
+    return s.str();
+}
+
+// ---------------------------------------------------------------------------
+// Empty templates — minimal skeleton with domain-default ports, no params
+// ---------------------------------------------------------------------------
+
+static std::string empty_control_template(const std::string& struct_name) {
+    std::ostringstream s;
+    s << "#include \"operator_api/operator.h\"\n\n";
+    s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
+    s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
+    s << "    static constexpr bool kTimeDependent = false;\n\n";
+    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
+    s << "        out.push_back({\"input\",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});\n";
+    s << "        out.push_back({\"output\", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});\n";
+    s << "    }\n\n";
+    s << "    void process(const VividProcessContext* ctx) override {\n";
+    s << "        ctx->output_values[0] = ctx->input_values[0];\n";
+    s << "    }\n";
+    s << "};\n\n";
+    s << "VIVID_REGISTER(" << struct_name << ")\n";
+    return s.str();
+}
+
+static std::string empty_audio_template(const std::string& struct_name) {
+    std::ostringstream s;
+    s << "#include \"operator_api/operator.h\"\n\n";
+    s << "struct " << struct_name << " : vivid::AudioOperatorBase {\n";
+    s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
+    s << "    static constexpr bool kTimeDependent = true;\n\n";
+    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
+    s << "        out.push_back({\"input\",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});\n";
+    s << "        out.push_back({\"output\", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});\n";
+    s << "    }\n\n";
+    s << "    void process_audio(const VividAudioContext* ctx) override {\n";
+    s << "        float* in  = ctx->input_buffers[0];\n";
+    s << "        float* out = ctx->output_buffers[0];\n";
+    s << "        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
+    s << "            out[i] = in[i];\n";
+    s << "    }\n";
+    s << "};\n\n";
+    s << "VIVID_REGISTER(" << struct_name << ")\n";
+    return s.str();
+}
+
+static std::string empty_gpu_template(const std::string& name, const std::string& struct_name) {
+    std::ostringstream s;
+    s << "#include \"operator_api/wgsl_filter.h\"\n\n";
+    s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
+    s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
+    s << "    static constexpr bool kTimeDependent = true;\n\n";
+    s << "    " << struct_name << "() : WgslFilterBase(\"" << name << ".wgsl\") {}\n\n";
+    s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
+    s << "        out.push_back({\"input\",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});\n";
+    s << "        out.push_back({\"texture\", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});\n";
     s << "    }\n";
     s << "};\n\n";
     s << "VIVID_REGISTER(" << struct_name << ")\n";
@@ -355,37 +592,53 @@ std::string OperatorCreator::validate_name(const std::string& name, const Operat
     return {};  // valid
 }
 
-CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomain domain,
+CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& request,
                                               const std::string& src_dir,
-                                              const std::string& variant,
-                                              bool package_layout,
-                                              const std::vector<OutputPortSpec>& extra_outputs) {
+                                              bool package_layout) {
     CreateOperatorResult result{};
-    const char* dsub = domain_subdir(domain);
+    const char* dsub = domain_subdir(request.domain);
     if (!dsub) {
         result.error = "invalid domain";
         return result;
     }
 
     // Validate variant
-    if (!variant.empty() && variant != "composite") {
-        result.error = "unknown variant '" + variant + "' (supported: composite)";
+    if (!request.variant.empty() && request.variant != "composite" && request.variant != "empty") {
+        result.error = "unknown variant '" + request.variant + "' (supported: composite, empty)";
         return result;
     }
-    if (variant == "composite" && domain != VIVID_DOMAIN_CONTROL) {
+    if (request.variant == "composite" && request.domain != VIVID_DOMAIN_CONTROL) {
         result.error = "composite variant is only supported for control domain";
         return result;
     }
 
-    std::string struct_name = to_pascal_case(name);
+    // Validate port names: no duplicates, no empty
+    {
+        std::vector<std::string> port_names;
+        for (const auto& p : request.ports) {
+            if (p.name.empty()) {
+                result.error = "port names must not be empty";
+                return result;
+            }
+            for (const auto& existing : port_names) {
+                if (existing == p.name) {
+                    result.error = "duplicate port name '" + p.name + "'";
+                    return result;
+                }
+            }
+            port_names.push_back(p.name);
+        }
+    }
+
+    std::string struct_name = to_pascal_case(request.name);
     std::string op_dir;
     std::string cpp_path;
     if (package_layout) {
         op_dir = src_dir + "/src";
-        cpp_path = op_dir + "/" + name + ".cpp";
+        cpp_path = op_dir + "/" + request.name + ".cpp";
     } else {
-        op_dir = src_dir + "/operators/" + dsub + "/" + name;
-        cpp_path = op_dir + "/" + name + ".cpp";
+        op_dir = src_dir + "/operators/" + dsub + "/" + request.name;
+        cpp_path = op_dir + "/" + request.name + ".cpp";
     }
 
     // Check filesystem collision
@@ -406,13 +659,20 @@ CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomai
 
     // Generate source from template
     std::string source;
-    if (variant == "composite") {
-        source = composite_control_template(name, struct_name);
+    if (request.variant == "empty") {
+        switch (request.domain) {
+            case VIVID_DOMAIN_CONTROL: source = empty_control_template(struct_name); break;
+            case VIVID_DOMAIN_AUDIO:   source = empty_audio_template(struct_name);   break;
+            case VIVID_DOMAIN_GPU:     source = empty_gpu_template(request.name, struct_name); break;
+            default: break;
+        }
+    } else if (request.variant == "composite") {
+        source = composite_control_template(request.name, struct_name);
     } else {
-        switch (domain) {
-            case VIVID_DOMAIN_CONTROL: source = control_template(name, struct_name, extra_outputs); break;
-            case VIVID_DOMAIN_AUDIO:   source = audio_template(name, struct_name, extra_outputs);   break;
-            case VIVID_DOMAIN_GPU:     source = gpu_template(name, struct_name, extra_outputs);     break;
+        switch (request.domain) {
+            case VIVID_DOMAIN_CONTROL: source = control_template(request.name, struct_name, request.ports, request.params); break;
+            case VIVID_DOMAIN_AUDIO:   source = audio_template(request.name, struct_name, request.ports, request.params);   break;
+            case VIVID_DOMAIN_GPU:     source = gpu_template(request.name, struct_name, request.ports, request.params);     break;
             default: break;
         }
     }
@@ -427,8 +687,8 @@ CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomai
     }
 
     // GPU operators also need a .wgsl shader file
-    if (domain == VIVID_DOMAIN_GPU) {
-        std::string wgsl_path = op_dir + "/" + name + ".wgsl";
+    if (request.domain == VIVID_DOMAIN_GPU) {
+        std::string wgsl_path = op_dir + "/" + request.name + ".wgsl";
         std::ofstream ofs(wgsl_path);
         if (!ofs) {
             result.error = "cannot write " + wgsl_path;
@@ -439,15 +699,15 @@ CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomai
 
     // Patch CMakeLists.txt
     std::string extra_libs;
-    if (variant == "composite")
+    if (request.variant == "composite")
         extra_libs = "vivid_composable_ops";
 
     std::string cmake_err;
     bool patch_ok = false;
     if (package_layout)
-        patch_ok = patch_package_cmake(src_dir, name, cmake_err);
+        patch_ok = patch_package_cmake(src_dir, request.name, cmake_err);
     else
-        patch_ok = patch_cmake(src_dir, name, domain, extra_libs, cmake_err);
+        patch_ok = patch_cmake(src_dir, request.name, request.domain, extra_libs, cmake_err);
     if (!patch_ok) {
         result.error = cmake_err;
         return result;
@@ -455,8 +715,43 @@ CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomai
 
     result.success = true;
     result.cpp_path = cpp_path;
-    result.target_name = name;
+    result.target_name = request.name;
     return result;
+}
+
+CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomain domain,
+                                              const std::string& src_dir,
+                                              const std::string& variant,
+                                              bool package_layout,
+                                              const std::vector<VividPortSpec>& extra_outputs) {
+    VividCreateOperatorRequest req;
+    req.name = name;
+    req.domain = domain;
+    req.variant = variant;
+
+    // Convert extra_outputs to full port list (legacy: these are *extra* outputs
+    // beyond the single default, so we don't set req.ports — let the template
+    // use defaults + append the extras). For backward compat, when extra_outputs
+    // is non-empty, build a full port list with the domain default input + output
+    // plus the extras.
+    if (!extra_outputs.empty()) {
+        // Add domain-default input
+        VividPortType default_type = VIVID_PORT_FLOAT;
+        std::string default_in_name = "input";
+        std::string default_out_name = "output";
+        if (domain == VIVID_DOMAIN_AUDIO) {
+            default_type = VIVID_PORT_AUDIO;
+        } else if (domain == VIVID_DOMAIN_GPU) {
+            default_type = VIVID_PORT_TEXTURE;
+            default_out_name = "texture";
+        }
+        req.ports.push_back({default_in_name, default_type, VIVID_PORT_INPUT});
+        req.ports.push_back({default_out_name, default_type, VIVID_PORT_OUTPUT});
+        for (const auto& ep : extra_outputs)
+            req.ports.push_back({ep.name, ep.type, VIVID_PORT_OUTPUT});
+    }
+
+    return create(req, src_dir, package_layout);
 }
 
 void OperatorCreator::open_in_editor(const std::string& path) {

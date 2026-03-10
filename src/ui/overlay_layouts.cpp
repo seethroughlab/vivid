@@ -4,6 +4,44 @@
 
 namespace vivid::ui {
 
+OverlayPanelLayout compute_create_operator_layout(uint32_t win_w, uint32_t win_h,
+                                                   int input_count, int output_count,
+                                                   int param_count, bool show_composite) {
+    OverlayPanelLayout l;
+    l.wf = static_cast<float>(win_w);
+    l.hf = static_cast<float>(win_h);
+    l.pw = kCreateModalW;
+
+    // Calculate content height:
+    //   pad_y + title(24) + domain_btns(22+10) + [composite_row(24+8)] + name_field(24+8)
+    //   + section_gap + "Input Ports" header(18+4) + input_rows * row_h
+    //   + section_gap + "Output Ports" header(18+4) + output_rows * row_h
+    //   + section_gap + "Parameters" header(18+4) + param_rows * row_h
+    //   + section_gap + destination_row(22+8)
+    //   + error_area(18+8) + button_row(26) + pad_y
+    float h = kCreateModalPadY;
+    h += 24.0f;  // title
+    h += kCreateDomainBtnH + 10.0f;  // domain buttons
+    if (show_composite) h += 24.0f + kCreateModalRowGap;  // composite checkbox row
+    h += kCreateModalFieldH + kCreateModalRowGap;  // name field
+    h += kCreateModalSectionGap + 18.0f + 4.0f;  // "Input Ports" header
+    h += std::max(1, input_count) * kCreatePortRowH;
+    h += kCreateModalSectionGap + 18.0f + 4.0f;  // "Output Ports" header
+    h += std::max(1, output_count) * kCreatePortRowH;
+    h += kCreateModalSectionGap + 18.0f + 4.0f;  // "Parameters" header
+    h += param_count * kCreateParamRowH;
+    h += kCreateModalSectionGap + 22.0f + kCreateModalRowGap;  // destination
+    h += 18.0f + kCreateModalRowGap;  // error area
+    h += kCreateModalBtnH + kCreateModalPadY;  // buttons + bottom pad
+
+    l.ph = std::min(h, l.hf - 40.0f);
+    l.px = (l.wf - l.pw) * 0.5f;
+    l.py = (l.hf - l.ph) * 0.5f;
+    l.cx = l.px + kCreateModalPadX;
+    l.inner_w = l.pw - 2.0f * kCreateModalPadX;
+    return l;
+}
+
 OverlayPanelLayout compute_package_browser_layout(uint32_t win_w, uint32_t win_h, size_t entry_count) {
     OverlayPanelLayout l;
     l.wf = static_cast<float>(win_w);

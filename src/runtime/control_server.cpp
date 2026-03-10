@@ -2045,8 +2045,100 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 std::fprintf(stderr, "[vivid] %s\n", resolved.warning.c_str());
             }
 
-            auto cr = OperatorCreator::create(name, domain, resolved.root, variant,
-                                              resolved.package_layout);
+            // Build a full CreateOperatorRequest
+            VividCreateOperatorRequest req;
+            req.name = name;
+            req.domain = domain;
+            req.variant = variant;
+            req.destination = destination;
+
+            // Parse optional "inputs" array: [{"name": "x", "type": "float"}, ...]
+            auto parse_port_type = [&](const std::string& type_str, VividDomain d, VividPortType& out) -> std::string {
+                if (d == VIVID_DOMAIN_CONTROL) {
+                    if      (type_str == "float")         out = VIVID_PORT_CONTROL_FLOAT;
+                    else if (type_str == "int")           out = VIVID_PORT_CONTROL_INT;
+                    else if (type_str == "bool")          out = VIVID_PORT_CONTROL_BOOL;
+                    else if (type_str == "spread")        out = VIVID_PORT_CONTROL_SPREAD;
+                    else if (type_str == "string")        out = VIVID_PORT_CONTROL_STRING;
+                    else if (type_str == "string_spread") out = VIVID_PORT_CONTROL_STRING_SPREAD;
+                    else return "unknown control port type '" + type_str + "'";
+                } else if (d == VIVID_DOMAIN_AUDIO) {
+                    if (type_str == "float") out = VIVID_PORT_AUDIO_FLOAT;
+                    else return "unknown audio port type '" + type_str + "'";
+                } else if (d == VIVID_DOMAIN_GPU) {
+                    if      (type_str == "texture") out = VIVID_PORT_GPU_TEXTURE;
+                    else if (type_str == "buffer")  out = VIVID_PORT_GPU_BUFFER;
+                    else if (type_str == "mesh")    out = VIVID_PORT_GPU_MESH;
+                    else if (type_str == "compute") out = VIVID_PORT_GPU_COMPUTE;
+                    else if (type_str == "data")    out = VIVID_PORT_DATA;
+                    else return "unknown GPU port type '" + type_str + "'";
+                }
+                return {};
+            };
+
+            auto parse_ports = [&](const char* key, VividPortDirection dir) -> std::string {
+                yyjson_val* arr = yyjson_obj_get(root, key);
+                if (!arr) return {};
+                if (!yyjson_is_arr(arr)) return std::string(key) + " must be an array";
+                yyjson_val* elem;
+                size_t idx, max;
+                yyjson_arr_foreach(arr, idx, max, elem) {
+                    yyjson_val* pn = yyjson_obj_get(elem, "name");
+                    yyjson_val* pt = yyjson_obj_get(elem, "type");
+                    if (!pn || !yyjson_is_str(pn))
+                        return std::string(key) + "[" + std::to_string(idx) + "] missing 'name'";
+                    std::string ptype = "float";
+                    if (pt && yyjson_is_str(pt)) ptype = yyjson_get_str(pt);
+                    VividPortType vt;
+                    std::string err = parse_port_type(ptype, domain, vt);
+                    if (!err.empty()) return err;
+                    req.ports.push_back({yyjson_get_str(pn), vt, dir});
+                }
+                return {};
+            };
+
+            std::string port_err = parse_ports("inputs", VIVID_PORT_INPUT);
+            if (!port_err.empty()) return json_err(port_err);
+            port_err = parse_ports("outputs", VIVID_PORT_OUTPUT);
+            if (!port_err.empty()) return json_err(port_err);
+
+            // Parse optional "params" array:
+            // [{"name": "speed", "type": "float", "default": 1.0, "min": 0.0, "max": 10.0}]
+            yyjson_val* params_arr = yyjson_obj_get(root, "params");
+            if (params_arr) {
+                if (!yyjson_is_arr(params_arr))
+                    return json_err("params must be an array");
+                yyjson_val* pelem;
+                size_t pidx, pmax;
+                yyjson_arr_foreach(params_arr, pidx, pmax, pelem) {
+                    yyjson_val* pn = yyjson_obj_get(pelem, "name");
+                    if (!pn || !yyjson_is_str(pn))
+                        return json_err("params[" + std::to_string(pidx) + "] missing 'name'");
+                    VividParamSpec ps;
+                    ps.name = yyjson_get_str(pn);
+                    yyjson_val* pt = yyjson_obj_get(pelem, "type");
+                    if (pt && yyjson_is_str(pt)) {
+                        std::string ts = yyjson_get_str(pt);
+                        if      (ts == "float") ps.type = VIVID_PARAM_FLOAT;
+                        else if (ts == "int")   ps.type = VIVID_PARAM_INT;
+                        else if (ts == "bool")  ps.type = VIVID_PARAM_BOOL;
+                        else if (ts == "file")  ps.type = VIVID_PARAM_FILE;
+                        else if (ts == "text")  ps.type = VIVID_PARAM_TEXT;
+                        else return json_err("unknown param type '" + ts + "'");
+                    }
+                    yyjson_val* dv = yyjson_obj_get(pelem, "default");
+                    if (dv && yyjson_is_num(dv)) ps.default_value = static_cast<float>(yyjson_get_real(dv));
+                    yyjson_val* mn = yyjson_obj_get(pelem, "min");
+                    if (mn && yyjson_is_num(mn)) ps.min_value = static_cast<float>(yyjson_get_real(mn));
+                    yyjson_val* mx = yyjson_obj_get(pelem, "max");
+                    if (mx && yyjson_is_num(mx)) ps.max_value = static_cast<float>(yyjson_get_real(mx));
+                    yyjson_val* ds = yyjson_obj_get(pelem, "default_string");
+                    if (ds && yyjson_is_str(ds)) ps.default_string = yyjson_get_str(ds);
+                    req.params.push_back(ps);
+                }
+            }
+
+            auto cr = OperatorCreator::create(req, resolved.root, resolved.package_layout);
             if (!cr.success) return json_err(cr.error);
 
             if (hot_reloader) {

@@ -148,4 +148,35 @@ inline bool port_type_compatible(VividPortType a, VividPortType b) {
     return is_control_type(a) && is_control_type(b);
 }
 
+// --- Create operator modal helpers ---
+
+struct PortTypeEntry {
+    const char*   label;
+    VividPortType type;
+};
+
+inline const std::vector<PortTypeEntry>& port_types_for_domain(int domain_sel) {
+    static const std::vector<PortTypeEntry> control_types = {
+        {"float",         VIVID_PORT_FLOAT},
+        {"spread",        VIVID_PORT_SPREAD},
+        {"string",        VIVID_PORT_STRING},
+        {"string_spread", VIVID_PORT_STRING_SPREAD},
+    };
+    static const std::vector<PortTypeEntry> audio_types = {
+        {"audio", VIVID_PORT_AUDIO},
+    };
+    static const std::vector<PortTypeEntry> gpu_types = {
+        {"texture", VIVID_PORT_TEXTURE},
+        {"handle",  VIVID_PORT_HANDLE},
+    };
+    switch (domain_sel) {
+        case 1:  return audio_types;
+        case 2:  return gpu_types;
+        default: return control_types;
+    }
+}
+
+inline const char* param_type_labels[] = { "float", "int", "bool", "file", "text" };
+inline constexpr int kParamTypeCount = 5;
+
 } // namespace vivid::ui

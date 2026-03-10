@@ -1,5 +1,6 @@
 #pragma once
 
+#include "operator_api/create_request.h"
 #include <string>
 #include <cstdint>
 
@@ -37,6 +38,10 @@ public:
     virtual bool can_create_operator() const { return false; }
     virtual std::string validate_operator_name(const std::string& name) { return "not available"; }
     virtual bool create_operator(const std::string& name, int domain) { return false; }
+    virtual bool create_operator(const VividCreateOperatorRequest& request) {
+        // Default shim: delegate to legacy 2-arg overload
+        return create_operator(request.name, static_cast<int>(request.domain));
+    }
     virtual void set_string_param(const std::string& node_id, const std::string& param,
                                   const std::string& value) = 0;
 

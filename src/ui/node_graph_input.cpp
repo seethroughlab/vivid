@@ -1,6 +1,7 @@
 #include "ui/node_graph.h"
 #include "ui/node_graph_constants.h"
 #include "ui/node_graph_util.h"
+#include "ui/overlay_layouts.h"
 #include "ui/file_dialog.h"
 #include "common/string_util.h"
 #include <GLFW/glfw3.h>
@@ -246,11 +247,30 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             return;
         }
         if (create_popup_open_) {
-            append_paste_filtered(create_name_buf_, clip, [](unsigned char c) {
+            // Route paste to active field
+            auto filter = [](unsigned char c) {
                 if (std::isupper(c)) c = static_cast<unsigned char>(std::tolower(c));
                 return std::islower(c) || std::isdigit(c) || c == '_';
-            });
-            create_error_ = commands_.validate_operator_name(create_name_buf_);
+            };
+            if (create_active_field_ == 0) {
+                append_paste_filtered(create_name_buf_, clip, filter);
+                create_error_ = commands_.validate_operator_name(create_name_buf_);
+            } else {
+                int idx = create_active_field_ - 1;
+                if (idx < static_cast<int>(create_inputs_.size())) {
+                    append_paste_filtered(create_inputs_[idx].name, clip, filter);
+                } else {
+                    idx -= static_cast<int>(create_inputs_.size());
+                    if (idx < static_cast<int>(create_outputs_.size())) {
+                        append_paste_filtered(create_outputs_[idx].name, clip, filter);
+                    } else {
+                        idx -= static_cast<int>(create_outputs_.size());
+                        if (idx < static_cast<int>(create_params_.size())) {
+                            append_paste_filtered(create_params_[idx].name, clip, filter);
+                        }
+                    }
+                }
+            }
             return;
         }
         if (chooser_open_) {
@@ -710,30 +730,68 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
     }
 
     if (create_popup_open_) {
+        // Count total text fields for Tab cycling
+        int total_fields = 1 + static_cast<int>(create_inputs_.size())
+                             + static_cast<int>(create_outputs_.size())
+                             + static_cast<int>(create_params_.size());
+
+        // Helper to get the active string buffer for current field
+        auto active_buf = [&]() -> std::string* {
+            if (create_active_field_ == 0) return &create_name_buf_;
+            int idx = create_active_field_ - 1;
+            if (idx < static_cast<int>(create_inputs_.size()))
+                return &create_inputs_[idx].name;
+            idx -= static_cast<int>(create_inputs_.size());
+            if (idx < static_cast<int>(create_outputs_.size()))
+                return &create_outputs_[idx].name;
+            idx -= static_cast<int>(create_outputs_.size());
+            if (idx < static_cast<int>(create_params_.size()))
+                return &create_params_[idx].name;
+            return nullptr;
+        };
+
         switch (key) {
             case GLFW_KEY_ESCAPE:
                 create_popup_open_ = false;
                 break;
             case GLFW_KEY_LEFT:
-                if (create_domain_sel_ > 0) create_domain_sel_--;
-                break;
-            case GLFW_KEY_RIGHT:
-                if (create_domain_sel_ < 2) create_domain_sel_++;
-                break;
-            case GLFW_KEY_BACKSPACE:
-                if (!create_name_buf_.empty()) {
-                    create_name_buf_.pop_back();
-                    create_error_ = create_name_buf_.empty() ? "" :
-                        commands_.validate_operator_name(create_name_buf_);
+                if (create_active_field_ == 0) {
+                    if (create_domain_sel_ > 0) {
+                        create_domain_sel_--;
+                        reset_create_domain_defaults();
+                    }
                 }
                 break;
+            case GLFW_KEY_RIGHT:
+                if (create_active_field_ == 0) {
+                    if (create_domain_sel_ < 2) {
+                        create_domain_sel_++;
+                        reset_create_domain_defaults();
+                    }
+                }
+                break;
+            case GLFW_KEY_TAB:
+                if (total_fields > 0) {
+                    if (mods & GLFW_MOD_SHIFT)
+                        create_active_field_ = (create_active_field_ - 1 + total_fields) % total_fields;
+                    else
+                        create_active_field_ = (create_active_field_ + 1) % total_fields;
+                }
+                break;
+            case GLFW_KEY_BACKSPACE: {
+                std::string* buf = active_buf();
+                if (buf && !buf->empty()) {
+                    buf->pop_back();
+                    if (create_active_field_ == 0) {
+                        create_error_ = buf->empty() ? "" :
+                            commands_.validate_operator_name(*buf);
+                    }
+                }
+                break;
+            }
             case GLFW_KEY_ENTER:
                 if (!create_name_buf_.empty() && create_error_.empty()) {
-                    if (commands_.create_operator(create_name_buf_, create_domain_sel_)) {
-                        create_popup_open_ = false;
-                    } else {
-                        create_error_ = "creation failed";
-                    }
+                    submit_create_operator(false);
                 }
                 break;
         }
@@ -1040,13 +1098,30 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
     }
     if (create_popup_open_) {
         char ch = static_cast<char>(codepoint);
-        // Accept lowercase, digits, underscores; auto-lowercase uppercase
         if (std::isupper(static_cast<unsigned char>(ch)))
             ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
         if (std::islower(static_cast<unsigned char>(ch)) ||
             std::isdigit(static_cast<unsigned char>(ch)) || ch == '_') {
-            create_name_buf_ += ch;
-            create_error_ = commands_.validate_operator_name(create_name_buf_);
+            // Route to active text field
+            if (create_active_field_ == 0) {
+                create_name_buf_ += ch;
+                create_error_ = commands_.validate_operator_name(create_name_buf_);
+            } else {
+                int idx = create_active_field_ - 1;
+                if (idx < static_cast<int>(create_inputs_.size())) {
+                    create_inputs_[idx].name += ch;
+                } else {
+                    idx -= static_cast<int>(create_inputs_.size());
+                    if (idx < static_cast<int>(create_outputs_.size())) {
+                        create_outputs_[idx].name += ch;
+                    } else {
+                        idx -= static_cast<int>(create_outputs_.size());
+                        if (idx < static_cast<int>(create_params_.size())) {
+                            create_params_[idx].name += ch;
+                        }
+                    }
+                }
+            }
         }
         return;
     }
@@ -1116,40 +1191,349 @@ void NodeGraphUI::update_clone_confirm() {
 // -----------------------------------------------------------------------
 // Create operator popup interaction (called from update())
 // -----------------------------------------------------------------------
+// Helper: build VividCreateOperatorRequest from modal state and submit
+void NodeGraphUI::submit_create_operator(bool empty_variant) {
+    VividCreateOperatorRequest req;
+    req.name = create_name_buf_;
+    req.domain = static_cast<VividDomain>(create_domain_sel_);
+
+    if (empty_variant) {
+        req.variant = "empty";
+    } else if (create_composite_) {
+        req.variant = "composite";
+    }
+
+    // Destination
+    const char* dest_strs[] = { "auto", "project", "core" };
+    req.destination = dest_strs[create_destination_];
+
+    // Ports (only when not composite and not empty)
+    if (!empty_variant && !create_composite_) {
+        const auto& ptypes = port_types_for_domain(create_domain_sel_);
+        for (const auto& row : create_inputs_) {
+            int ts = std::min(row.type_sel, static_cast<int>(ptypes.size()) - 1);
+            if (ts < 0) ts = 0;
+            req.ports.push_back({row.name, ptypes[ts].type, VIVID_PORT_INPUT});
+        }
+        for (const auto& row : create_outputs_) {
+            int ts = std::min(row.type_sel, static_cast<int>(ptypes.size()) - 1);
+            if (ts < 0) ts = 0;
+            req.ports.push_back({row.name, ptypes[ts].type, VIVID_PORT_OUTPUT});
+        }
+
+        // Params
+        for (const auto& p : create_params_) {
+            VividParamSpec ps;
+            ps.name = p.name;
+            ps.type = static_cast<VividParamType>(p.type_sel);
+            ps.default_value = p.default_val;
+            ps.min_value = p.min_val;
+            ps.max_value = p.max_val;
+            req.params.push_back(ps);
+        }
+    }
+
+    if (commands_.create_operator(req)) {
+        create_popup_open_ = false;
+    } else {
+        create_error_ = "creation failed";
+    }
+}
+
+// Helper: reset port defaults when domain changes
+void NodeGraphUI::reset_create_domain_defaults() {
+    create_composite_ = false;
+    if (create_domain_sel_ == 0) {
+        // Control: float in/out
+        create_inputs_  = {{"input", 0}};
+        create_outputs_ = {{"output", 0}};
+    } else if (create_domain_sel_ == 1) {
+        // Audio: float in/out (index 0 in audio types)
+        create_inputs_  = {{"input", 0}};
+        create_outputs_ = {{"output", 0}};
+    } else {
+        // GPU: texture in/out (index 0 in gpu types)
+        create_inputs_  = {{"input", 0}};
+        create_outputs_ = {{"texture", 0}};
+    }
+    create_params_.clear();
+}
+
 void NodeGraphUI::update_create_popup() {
     if (!create_popup_open_ || !mouse_.left_clicked) return;
 
-    float wf = static_cast<float>(win_w_);
-    float hf = static_cast<float>(win_h_);
-    float pw = kCreatePopupW, ph = kCreatePopupH;
-    float px = (wf - pw) * 0.5f;
-    float py = (hf - ph) * 0.5f;
+    bool show_composite = (create_domain_sel_ == 0);
+    bool hide_port_param = create_composite_;
 
-    // Click outside popup → close
-    if (mouse_.x < px || mouse_.x > px + pw ||
-        mouse_.y < py || mouse_.y > py + ph) {
+    auto layout = compute_create_operator_layout(
+        win_w_, win_h_,
+        hide_port_param ? 0 : static_cast<int>(create_inputs_.size()),
+        hide_port_param ? 0 : static_cast<int>(create_outputs_.size()),
+        hide_port_param ? 0 : static_cast<int>(create_params_.size()),
+        show_composite);
+
+    // Click outside → close
+    if (!overlay_contains(layout, mouse_.x, mouse_.y)) {
         create_popup_open_ = false;
         mouse_.left_clicked = false;
         mouse_.left_released = false;
         return;
     }
 
-    // Check domain button clicks
+    float cx = layout.cx;
+    float inner_w = layout.inner_w;
+    float cy = layout.py + kCreateModalPadY;
+
+    // Title
+    cy += 24.0f;
+
+    // Domain buttons
     float btn_gap = 8.0f;
     float total_btn_w = 3 * kCreateDomainBtnW + 2 * btn_gap;
-    float bx = px + (pw - total_btn_w) * 0.5f;
-    float btn_cy = py + 36.0f;  // matches draw: 12 + 24
-
+    float bx = layout.px + (layout.pw - total_btn_w) * 0.5f;
     for (int i = 0; i < 3; ++i) {
         float btn_x = bx + i * (kCreateDomainBtnW + btn_gap);
         if (mouse_.x >= btn_x && mouse_.x <= btn_x + kCreateDomainBtnW &&
-            mouse_.y >= btn_cy && mouse_.y <= btn_cy + kCreateDomainBtnH) {
-            create_domain_sel_ = i;
-            break;
+            mouse_.y >= cy && mouse_.y <= cy + kCreateDomainBtnH) {
+            if (create_domain_sel_ != i) {
+                create_domain_sel_ = i;
+                reset_create_domain_defaults();
+            }
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+    }
+    cy += kCreateDomainBtnH + 10.0f;
+
+    // Composite checkbox
+    if (show_composite) {
+        if (mouse_.x >= cx && mouse_.x <= cx + 200 &&
+            mouse_.y >= cy && mouse_.y <= cy + 20) {
+            create_composite_ = !create_composite_;
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+        cy += 24.0f + kCreateModalRowGap;
+    }
+
+    // Name field click → activate field 0
+    if (mouse_.x >= cx && mouse_.x <= cx + inner_w &&
+        mouse_.y >= cy && mouse_.y <= cy + 22.0f) {
+        create_active_field_ = 0;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+    cy += kCreateModalFieldH + kCreateModalRowGap;
+
+    const auto& port_types = port_types_for_domain(create_domain_sel_);
+
+    if (!hide_port_param) {
+        // Helper for port section click handling
+        auto handle_port_section = [&](std::vector<CreatePortRow>& rows,
+                                       int field_offset, int max_rows) {
+            cy += kCreateModalSectionGap;
+            // "+ Add" link
+            float add_w = 40.0f;
+            float add_x = cx + inner_w - add_w;
+            if (static_cast<int>(rows.size()) < max_rows &&
+                mouse_.x >= add_x && mouse_.x <= add_x + add_w &&
+                mouse_.y >= cy && mouse_.y <= cy + 18.0f) {
+                rows.push_back({"", 0});
+                mouse_.left_clicked = false;
+                mouse_.left_released = false;
+                return true;
+            }
+            cy += 18.0f + 4.0f;
+
+            float name_w = 120.0f;
+            float remove_w = 20.0f;
+            float type_w = inner_w - name_w - remove_w - 8.0f;
+
+            for (size_t i = 0; i < rows.size(); ++i) {
+                float row_y = cy;
+
+                // Name field click
+                if (mouse_.x >= cx && mouse_.x <= cx + name_w &&
+                    mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
+                    create_active_field_ = field_offset + static_cast<int>(i);
+                    mouse_.left_clicked = false;
+                    mouse_.left_released = false;
+                    return true;
+                }
+
+                // Type dropdown click — cycle through types
+                float type_x = cx + name_w + 4.0f;
+                if (mouse_.x >= type_x && mouse_.x <= type_x + type_w &&
+                    mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
+                    rows[i].type_sel = (rows[i].type_sel + 1) % static_cast<int>(port_types.size());
+                    mouse_.left_clicked = false;
+                    mouse_.left_released = false;
+                    return true;
+                }
+
+                // Remove button
+                float rem_x = cx + inner_w - remove_w;
+                if (mouse_.x >= rem_x && mouse_.x <= rem_x + remove_w &&
+                    mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
+                    rows.erase(rows.begin() + static_cast<long>(i));
+                    if (create_active_field_ >= field_offset)
+                        create_active_field_ = 0;  // reset to name field
+                    mouse_.left_clicked = false;
+                    mouse_.left_released = false;
+                    return true;
+                }
+
+                cy += kCreatePortRowH;
+            }
+            return false;
+        };
+
+        // Input ports
+        int input_field_offset = 1;
+        if (handle_port_section(create_inputs_, input_field_offset, kCreateMaxPortRows))
+            return;
+
+        // Output ports
+        int output_field_offset = 1 + static_cast<int>(create_inputs_.size());
+        if (handle_port_section(create_outputs_, output_field_offset, kCreateMaxPortRows))
+            return;
+
+        // Parameters section
+        cy += kCreateModalSectionGap;
+        float add_w = 40.0f;
+        float add_x = cx + inner_w - add_w;
+        if (static_cast<int>(create_params_.size()) < kCreateMaxParamRows &&
+            mouse_.x >= add_x && mouse_.x <= add_x + add_w &&
+            mouse_.y >= cy && mouse_.y <= cy + 18.0f) {
+            create_params_.push_back({});
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+        cy += 18.0f + 4.0f;
+
+        int param_field_offset = 1 + static_cast<int>(create_inputs_.size())
+                                   + static_cast<int>(create_outputs_.size());
+
+        for (size_t i = 0; i < create_params_.size(); ++i) {
+            auto& p = create_params_[i];
+            float row_y = cy;
+            float name_w = 100.0f;
+            float type_w = 60.0f;
+            float remove_w = 20.0f;
+
+            // Name click
+            if (mouse_.x >= cx && mouse_.x <= cx + name_w &&
+                mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
+                create_active_field_ = param_field_offset + static_cast<int>(i);
+                mouse_.left_clicked = false;
+                mouse_.left_released = false;
+                return;
+            }
+
+            // Type dropdown click — cycle
+            float type_x = cx + name_w + 4.0f;
+            if (mouse_.x >= type_x && mouse_.x <= type_x + type_w &&
+                mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
+                p.type_sel = (p.type_sel + 1) % kParamTypeCount;
+                // Reset default values on type change
+                if (p.type_sel == 0) { p.default_val = 0.0f; p.min_val = 0.0f; p.max_val = 1.0f; }
+                else if (p.type_sel == 1) { p.default_val = 0.0f; p.min_val = 0.0f; p.max_val = 10.0f; }
+                else if (p.type_sel == 2) { p.default_val = 0.0f; }
+                mouse_.left_clicked = false;
+                mouse_.left_released = false;
+                return;
+            }
+
+            // Bool default toggle
+            int ts = p.type_sel;
+            if (ts == 2) {
+                float extra_x = type_x + type_w + 4.0f;
+                if (mouse_.x >= extra_x && mouse_.x <= extra_x + 16 &&
+                    mouse_.y >= row_y + 2 && mouse_.y <= row_y + 18) {
+                    p.default_val = (p.default_val == 0.0f) ? 1.0f : 0.0f;
+                    mouse_.left_clicked = false;
+                    mouse_.left_released = false;
+                    return;
+                }
+            }
+
+            // Remove button
+            float rem_x = cx + inner_w - remove_w;
+            if (mouse_.x >= rem_x && mouse_.x <= rem_x + remove_w &&
+                mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
+                create_params_.erase(create_params_.begin() + static_cast<long>(i));
+                if (create_active_field_ >= param_field_offset)
+                    create_active_field_ = 0;
+                mouse_.left_clicked = false;
+                mouse_.left_released = false;
+                return;
+            }
+
+            cy += kCreateParamRowH;
         }
     }
 
-    // Consume click inside popup
+    // Destination radio buttons
+    cy += kCreateModalSectionGap;
+    bool project_available = commands_.has_project_clone_destination();
+    float dest_x = cx;
+    const char* dest_labels[] = { "Auto", "Project", "Core" };
+    for (int i = 0; i < 3; ++i) {
+        float dw = 60.0f;  // approximate
+        if (mouse_.x >= dest_x && mouse_.x <= dest_x + dw &&
+            mouse_.y >= cy && mouse_.y <= cy + 22.0f) {
+            if (i != 1 || project_available) {
+                create_destination_ = i;
+            }
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+        dest_x += dw + 12.0f;
+    }
+    cy += 22.0f + kCreateModalRowGap;
+
+    // Error area
+    cy += 18.0f + kCreateModalRowGap;
+
+    // Button row
+    float btn_y = cy;
+    // Create Empty
+    if (mouse_.x >= cx && mouse_.x <= cx + kCreateModalBtnW &&
+        mouse_.y >= btn_y && mouse_.y <= btn_y + kCreateModalBtnH) {
+        if (!create_name_buf_.empty() && create_error_.empty()) {
+            submit_create_operator(true);
+        }
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+    // Cancel
+    float cancel_x = cx + inner_w - kCreateModalBtnW;
+    if (mouse_.x >= cancel_x && mouse_.x <= cancel_x + kCreateModalBtnW &&
+        mouse_.y >= btn_y && mouse_.y <= btn_y + kCreateModalBtnH) {
+        create_popup_open_ = false;
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+    // Create
+    float create_x = cancel_x - kCreateModalBtnW - 8.0f;
+    if (mouse_.x >= create_x && mouse_.x <= create_x + kCreateModalBtnW &&
+        mouse_.y >= btn_y && mouse_.y <= btn_y + kCreateModalBtnH) {
+        if (!create_name_buf_.empty() && create_error_.empty()) {
+            submit_create_operator(false);
+        }
+        mouse_.left_clicked = false;
+        mouse_.left_released = false;
+        return;
+    }
+
+    // Consume click inside modal
     mouse_.left_clicked = false;
     mouse_.left_released = false;
 }

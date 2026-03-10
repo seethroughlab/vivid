@@ -1595,7 +1595,7 @@ int main(int argc, char* argv[]) {
                             parse_ok = false; break;
                         }
                     }
-                    extra_outputs.push_back({pname, vt});
+                    extra_outputs.push_back({pname, vt, VIVID_PORT_OUTPUT});
                 }
                 if (!parse_ok) return 1;
             }
