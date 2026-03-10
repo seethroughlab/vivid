@@ -296,16 +296,35 @@ add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_L
                    FACTORY_PRESETS operators/gpu/noise/factory_presets.json)
 add_vivid_operator(shape          operators/gpu/shape/shape.cpp          EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/gpu/shape/factory_presets.json)
-add_vivid_operator(bars           operators/gpu/bars/bars.cpp            EXTRA_LIBS webgpu)
 add_vivid_operator(composite      operators/gpu/composite/composite.cpp  EXTRA_LIBS webgpu)
 add_vivid_operator(texture_analysis operators/gpu/texture_analysis/texture_analysis.cpp EXTRA_LIBS webgpu)
 add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp                             EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/gpu/bloom/factory_presets.json)
 add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp                       EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/gpu/feedback/factory_presets.json)
-add_vivid_operator(instance             operators/gpu/instance/instance.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 add_vivid_operator(text                  operators/gpu/text/text.cpp                               EXTRA_LIBS webgpu stb_truetype)
+# --- TextureLoader (static image → GPU texture, no video machinery) ---
+add_library(texture_loader MODULE
+    operators/gpu/texture_loader/texture_loader.cpp
+    operators/shared/movie_decode/texture_upload.cpp
+)
+target_link_libraries(texture_loader PRIVATE vivid_operator_api webgpu)
+set_target_properties(texture_loader PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+target_include_directories(texture_loader PRIVATE ${CMAKE_SOURCE_DIR}/deps/stb)
+if(APPLE)
+    add_custom_command(TARGET texture_loader POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:texture_loader>
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
+        COMMENT "Updating texture_loader in Vivid.app bundle"
+    )
+endif()
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+    "  \"texture_loader\": { \"sources\": [\"operators/gpu/texture_loader/texture_loader.cpp\", \"operators/shared/movie_decode/texture_upload.cpp\"], \"extra_libs\": [\"webgpu\"], \"include_dirs\": [\"deps/stb\"] }")
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS texture_loader)
 # --- MovieVideoOut (frame-pull from MediaSession) ---
 add_library(movie_video_out MODULE
     operators/gpu/movie_video_out/movie_video_out.cpp
@@ -634,7 +653,7 @@ set_source_files_properties(src/runtime/av_exporter.mm PROPERTIES COMPILE_FLAGS 
 configure_file(graphs/intro/demo.json ${CMAKE_BINARY_DIR}/graph.json COPYONLY)
 
 # Copy all graphs recursively into build/graphs
-file(GLOB_RECURSE DEMO_GRAPHS RELATIVE ${CMAKE_SOURCE_DIR}/graphs graphs/*.json)
+file(GLOB_RECURSE DEMO_GRAPHS CONFIGURE_DEPENDS RELATIVE ${CMAKE_SOURCE_DIR}/graphs graphs/*.json)
 foreach(g ${DEMO_GRAPHS})
     configure_file(${CMAKE_SOURCE_DIR}/graphs/${g} ${CMAKE_BINARY_DIR}/graphs/${g} COPYONLY)
 endforeach()
@@ -668,7 +687,7 @@ if(APPLE)
         PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 
     # Demo graphs → Resources/graphs/(recursive)
-    file(GLOB_RECURSE _BUNDLE_GRAPHS RELATIVE ${CMAKE_SOURCE_DIR}/graphs graphs/*.json)
+    file(GLOB_RECURSE _BUNDLE_GRAPHS CONFIGURE_DEPENDS RELATIVE ${CMAKE_SOURCE_DIR}/graphs graphs/*.json)
     foreach(g ${_BUNDLE_GRAPHS})
         set(src_path ${CMAKE_SOURCE_DIR}/graphs/${g})
         get_filename_component(rel_dir ${g} DIRECTORY)
@@ -1131,7 +1150,7 @@ add_executable(test_gpu_operators
 )
 target_include_directories(test_gpu_operators PRIVATE src)
 target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api yyjson webgpu)
-add_dependencies(test_gpu_operators gpu_fill_op shape instance)
+add_dependencies(test_gpu_operators gpu_fill_op shape)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # 3D tests are in the vivid-3d package (see ../vivid-3d/)
@@ -1221,8 +1240,8 @@ add_dependencies(test_demo_graphs
     euclidean stack alternate pat_transform
     modulated_gain spread_noise
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
-    noise shape bars composite
-    bloom feedback instance movie_loaded texture_analysis
+    noise shape composite
+    bloom feedback movie_loaded texture_analysis
     # audio
     oscillator gain spread_adsr spread_lfo
     reverb delay bitcrush distortion
