@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
 #include "operator_api/media_stream.h"
+#include "operator_api/type_id.h"
 #include "../../shared/movie_decode/texture_upload.h"
 #include "../../shared/media_session/media_session.h"
 
@@ -78,7 +79,7 @@ struct MovieVideoOut : vivid::GpuOperatorBase {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"media_stream", VIVID_PORT_MEDIA_STREAM, VIVID_PORT_INPUT});
+        out.push_back(VIVID_HANDLE_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1));
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 

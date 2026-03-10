@@ -2,6 +2,7 @@
 #include "operator_api/audio_operator.h"
 #include "operator_api/media_clock.h"
 #include "operator_api/media_stream.h"
+#include "operator_api/type_id.h"
 #include "../../shared/media_session/media_session.h"
 #include "../../shared/movie_audio/avf_audio_extractor.h"
 
@@ -158,7 +159,7 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"media_stream", VIVID_PORT_MEDIA_STREAM, VIVID_PORT_INPUT});
+        out.push_back(VIVID_HANDLE_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1));
         out.push_back({"left",  VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"right", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
     }

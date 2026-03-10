@@ -3,6 +3,7 @@
 #include "operator_api/gpu_common.h"
 #include "operator_api/media_clock.h"
 #include "operator_api/media_stream.h"
+#include "operator_api/type_id.h"
 #include "../../shared/movie_decode/video_decoder.h"
 #include "../../shared/movie_decode/decoder_factory.h"
 #include "../../shared/movie_decode/texture_upload.h"
@@ -183,7 +184,7 @@ struct MovieLoaded : vivid::GpuOperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
         out.push_back({"time", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"speed", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"media_clock", VIVID_PORT_MEDIA_STREAM, VIVID_PORT_OUTPUT});
+        out.push_back(VIVID_HANDLE_PORT("media_clock", VIVID_PORT_OUTPUT, vivid::MediaStreamV1));
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
