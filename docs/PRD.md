@@ -318,15 +318,15 @@ The type system serves three consumers: the graph runtime (bridge selection), th
 
 **Control Port Types**
 
-`Control::Float`, `Control::Int`, `Control::Bool`, `Control::String`, `Control::Event` (discrete trigger with optional payload), `Control::Buffer` (arbitrary blobs — JSON, point clouds, FFT spectra). These update at no fixed rate.
+`VIVID_PORT_CONTROL_FLOAT`, `VIVID_PORT_CONTROL_INT`, `VIVID_PORT_CONTROL_BOOL`, `VIVID_PORT_CONTROL_STRING`, `VIVID_PORT_CONTROL_SPREAD` (variable-length float array with broadcast semantics), `VIVID_PORT_CONTROL_STRING_SPREAD` (variable-length string array). These update at no fixed rate.
 
 **Audio Port Types**
 
-`Audio::Mono`, `Audio::Stereo`, `Audio::Multichannel(n)`. Implicitly carry sample rate and block size. Always continuous — producing a buffer every callback, even if silence.
+`VIVID_PORT_AUDIO_FLOAT` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
 
 **GPU Port Types**
 
-`GPU::Texture2D`, `GPU::Texture3D`, `GPU::Buffer`, `GPU::Mesh`. Each carries format metadata: resolution, pixel format, color space for textures; vertex layout, index count for meshes. Meshes are GPU domain data — their purpose and consumption is GPU rendering, even when vertex generation happens on the CPU (procedural geometry). CPU-side construction is an implementation detail of the operator, not a domain classification. If mesh properties need to feed back into the graph (vertex count, bounding box), they use the same GPU→Control async readback bridge that texture analysis uses.
+`VIVID_PORT_GPU_TEXTURE` (2D RGBA8 texture with per-node configurable resolution, default 800×600), `VIVID_PORT_GPU_BUFFER` (typed GPU storage buffer), `VIVID_PORT_GPU_MESH` (vertex/index data with attribute layout), `VIVID_PORT_GPU_COMPUTE` (compute dispatch buffer). Cross-domain types include `VIVID_PORT_DATA` (opaque pointer), `VIVID_PORT_MEDIA_STREAM` (decoded media), `VIVID_PORT_MEDIA_CLOCK` (reserved), and `VIVID_PORT_MIDI` (reserved).
 
 **Semantic Tags (Advisory)**
 
@@ -337,18 +337,29 @@ Port types can carry optional semantic tags: `normalized` (0–1), `bipolar` (-1
 Each operator is a self-contained compilation unit — a shared library with a known C ABI interface. The graph runtime introspects inputs, outputs, and parameter declarations:
 
 ```cpp
-#include "vivid/operator.h"
+#include "operator_api/operator.h"
 
-struct MyFilter : vivid::ImageOp {
-    Param<float> intensity{"intensity", 0.5, 0.0, 1.0};
+struct MyEffect : vivid::ControlOperatorBase {
+    static constexpr const char* kName = "MyEffect";
+    static constexpr bool kTimeDependent = false;
 
-    void process(const Image& in, Image& out) override { ... }
+    vivid::Param<float> intensity{"intensity", 0.5f, 0.0f, 1.0f};
+
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out = {&intensity};
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out = {{"input",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
+               {"output", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT}};
+    }
+    void process(const VividProcessContext* ctx) override {
+        ctx->output_values[0] = ctx->input_values[0] * intensity.value;
+    }
 };
-
-VIVID_REGISTER(MyFilter)
+VIVID_REGISTER(MyEffect)
 ```
 
-This contract is the most important API surface in the system. Because the LLM generates most operators on demand rather than wiring together pre-built ones, every friction point in writing an operator — unclear types, boilerplate, implicit conventions — is a direct tax on the core workflow. The simpler this contract, the better everything downstream works: auto-generated UI knobs, confident LLM generation, fast compilation of small self-contained units, and reliable hot-reload.
+This contract is the most important API surface in the system. Three domain-specific base classes exist: `vivid::ControlOperatorBase` (`process()`), `vivid::AudioOperatorBase` (`process_audio()`), and `vivid::GpuOperatorBase` (`process_gpu()`). The `VIVID_REGISTER` macro generates `extern "C"` entry points and infers domain from the base class. Because the LLM generates most operators on demand rather than wiring together pre-built ones, every friction point in writing an operator — unclear types, boilerplate, implicit conventions — is a direct tax on the core workflow. The simpler this contract, the better everything downstream works: auto-generated UI knobs, confident LLM generation, fast compilation of small self-contained units, and reliable hot-reload.
 
 ### 5.8 Hot-Reload Behavior
 
@@ -367,7 +378,7 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **Broadcasting:** when two Spreads of different lengths connect to the same operator, the shorter one repeats (wraps) to match the longer. A Spread of 3 colors applied to a Spread of 512 particles cycles through the 3 colors.
 - **Cross-domain:** a Spread of Control values (e.g., 512 FFT bins) can connect directly to a GPU operator's parameter, producing 512 visual elements driven by audio. No explicit bridging required — the existing Control→GPU bridge handles the data; Spreads handle the cardinality.
 - **LLM-friendly:** describing Spread-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on Spreads.
-- **Port types:** `Spread<Control::Float>`, `Spread<GPU::Texture2D>`, `Spread<Audio::Mono>` are all valid. The Spread is orthogonal to the domain type system.
+- **Port types:** `Spread<VIVID_PORT_CONTROL_FLOAT>`, `Spread<VIVID_PORT_GPU_TEXTURE>`, `Spread<VIVID_PORT_AUDIO_FLOAT>` are all valid. The Spread is orthogonal to the domain type system.
 
 ### 5.10 Simulation Zones: Frame-to-Frame State
 
@@ -394,16 +405,29 @@ The JSON graph is the single source of truth for the entire system. Every operat
 
 ```json
 {
-  "version": "0.1.0",
-  "name": "audio_reactive_particles",
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "audio_reactive_demo",
+    "title": "Audio Reactive Demo",
+    "tags": ["audio", "reactive"],
+    "domains": ["gpu", "audio"]
+  },
   "nodes": {
-    "clock1": { "type": "Clock", "domain": "control" },
-    "fft1": { "type": "FFTAnalysis", "domain": "audio", "params": { "bins": 512 } },
-    "particles1": { "type": "Particles", "domain": "gpu", "params": { "count": 5000, "size": 2.4 } }
+    "clock1": {
+      "type": "Clock",
+      "params": { "bpm": 120.0 },
+      "layout": { "x": 30.0, "y": 200.0 }
+    },
+    "noise1": {
+      "type": "Noise",
+      "params": { "speed": 1.0 }
+    },
+    "vout": { "type": "video_out" }
   },
   "connections": [
-    { "from": "clock1/beat", "to": "fft1/trigger" },
-    { "from": "fft1/spectrum", "to": "particles1/scale" }
+    { "from": "clock1/beat_phase", "to": "noise1/speed" },
+    { "from": "noise1/texture", "to": "vout/input" }
   ]
 }
 ```
@@ -414,7 +438,7 @@ The JSON graph is the single source of truth for the entire system. Every operat
 - **Params carry current values only:** parameter metadata (min, max, default, semantic tags) is declared in the operator's C++ code and introspected at load time. The JSON stores only the user's current values. This keeps the JSON compact and avoids dual source-of-truth.
 - **Connections are source/target pairs:** `"from": "node/port"` and `"to": "node/port"`. The operator declares its ports; the JSON just names them.
 - **Spread-aware:** a connection from `fft1/spectrum` (`Spread<float>` of 512) to `particles1/scale` (`float`) implicitly fans out. The JSON doesn't need to represent this — the runtime infers cardinality from port types.
-- **Domain is metadata:** the `"domain"` field is informational for the UI (accent colors, preview treatment) and the runtime (thread scheduling). It does not affect how connections are expressed.
+- **No per-node domain field:** domain is inferred from port types and base class at load time, not stored in the JSON. Nodes carry optional `"layout"` positions and optional `"pkg"` provenance for package version tracking.
 
 ### 5.12 Platform Target
 
@@ -432,14 +456,20 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 
 **Decision:** Seven dependencies, most of which are small C libraries. CMake manages the build. No external package manager required.
 
-- **Dawn** (latest stable): GPU abstraction (WebGPU over Metal/Vulkan/DX12). Google's C++ WebGPU implementation. Provides the rendering backend for both the creative output and the interface. ~17MB pre-built.
-- **GLFW** (3.4): window creation, input events, Metal surface. ~200KB source, compiled by CMake.
-- **miniaudio** (0.11.x): audio device I/O. Single-header C library. Handles device enumeration, playback, and capture. Vivid's audio operators provide all DSP; miniaudio only manages the hardware interface.
-- **stb_truetype**: font rasterization for UI text rendering. Single-header C library.
-- **yyjson**: JSON parsing for graph files, project files, and WebSocket messages. ~40KB, fast, C API. Chosen over cJSON for performance on large graph files.
-- **stb_image**: image loading for textures and assets (PNG, JPEG, BMP). Single-header C library.
+Key dependencies (managed via git submodules, vendored source, or CMake FetchContent):
 
-Not included in Phase 1: WebSocket library (Phase 3), HTTP client (for Anthropic API — use libcurl or curl subprocess), tinyfiledialogs (added when save/load is implemented).
+- **wgpu-native** (pinned fork): GPU abstraction (WebGPU over Metal). Uses eliemichel's WebGPU-distribution adapter with a Seethrough Lab fork for Metal interop.
+- **GLFW** (3.4) + **glfw3webgpu**: window creation, input events, WebGPU surface bridge.
+- **miniaudio** (0.11.x): audio device I/O. Single-header C library.
+- **stb_truetype** + **stb_image**: font rasterization and image loading. Single-header C libraries.
+- **yyjson**: JSON parsing for graph files and project files. ~40KB source.
+- **RtMidi**: MIDI I/O (CoreMIDI backend on macOS).
+- **oscpack**: OSC message serialization and UDP transport.
+- **Syphon**: GPU texture sharing between applications (macOS-only).
+- **Snappy**: fast compression for HAP video codec.
+- **IXWebSocket**: HTTP server powering the control server / MCP endpoint.
+- **CLI11**: command-line argument parsing.
+- **Sparkle**: macOS app auto-update framework.
 
 **Compiler requirement:** Xcode Command Line Tools on macOS (`xcode-select --install`). Provides clang, libc++, and Metal framework headers.
 
@@ -496,6 +526,8 @@ vivid/
 │     └─ operators/              # Project-local operators
 └─ docs/
 ```
+
+> **Note:** The actual directory structure has evolved significantly. See `docs/ARCHITECTURE.md` §5.15 for the current layout. Key differences: `src/interface/` is now `src/ui/`, the runtime directory contains ~40 modules (not the 10 shown above), and the project includes top-level directories for `tests/`, `filters/`, `mcp/`, `catalog/`, `fonts/`, `assets/`, `platform/`, and `scripts/`.
 
 Each operator is a directory containing its .cpp source and, for GPU operators, its .wgsl shader(s). This structure supports hot-reload (watch one directory per operator), scaffolding (create a directory with boilerplate), and the library system (§5.17).
 
@@ -579,6 +611,8 @@ Native rendering gives zero-copy texture thumbnails (every intermediate texture 
 
 Vivid's experimentation interfaces are inherently stateful — a patchbay intersection remembers its mapping curve, a session grid cell knows its variation and playback state, a parameter knob tracks its MIDI mapping and drag state. Retained mode handles this naturally. Immediate mode would require maintaining all interaction state in parallel data structures, manually synchronized with draw calls every frame.
 
+> **Implementation note:** The actual UI uses a hybrid approach. The node graph is the primary interface, rendered directly via WebGPU using `renderer_2d.cpp` for 2D drawing primitives. There is no separate retained-mode widget library — the node graph, inspector, and overlays are purpose-built drawing code in `src/ui/node_graph.cpp` (~5000 lines) with overlay layout logic in `overlay_layouts.cpp`.
+
 ### 6.3 Toolkit: Custom Purpose-Built Widgets
 
 **Decision:** Build a purpose-built retained-mode widget set directly on the existing Dawn/WebGPU rendering context. Not a general-purpose UI framework — just the 10–15 widget types Vivid's experimentation interfaces actually need.
@@ -589,6 +623,8 @@ The custom approach gives zero-copy texture thumbnails trivially (same GPU conte
 
 - **Core:** Panel, Button, Slider, Knob, Dropdown, TextInput, Toggle
 - **Specialized:** NodeGraph, PatchbayMatrix, SessionGrid, TexturePreview, Waveform/Meter
+
+> **Implementation note:** No general-purpose widget library was built. The UI is purpose-built around the node graph with `renderer_2d.cpp` providing WebGPU 2D drawing (rounded rects, text, lines, bezier curves) and `node_graph.cpp` handling all interaction (node dragging, wire creation, selection, zoom/pan). Inspector panels are overlay layouts, not standalone widgets.
 
 ### 6.4 Application Layout
 
@@ -602,6 +638,8 @@ The visibility hierarchy driving this layout:
 - **External:** operator code editing happens in the user's IDE, not inside Vivid.
 
 The main workspace tabs are the key interaction pattern: the node graph builds structure (add nodes, connect, see topology), the patchbay maps cross-domain relationships, and the session grid manages variations. Three primary lenses on the same underlying data.
+
+> **Implementation note:** The actual layout centers on the node graph as the primary workspace. The inspector is an overlay panel (not a separate pane). Patchbay matrix and session grid are not yet implemented. The output preview is the selected GPU node's texture, displayed in the node graph itself via live thumbnails. Transport/clock information appears as an overlay. File dialogs use native macOS sheets (`src/ui/file_dialog.mm`).
 
 ### 6.5 Node Thumbnails
 
@@ -641,45 +679,21 @@ The main workspace tabs are the key interaction pattern: the node graph builds s
 
 ---
 
-## 7. Phased Roadmap
+## 7. Roadmap
 
-Each phase is independently useful and shippable.
+The original 25-phase roadmap has been superseded by milestone-based planning in `docs/ROADMAP.md`. The current roadmap tracks Milestones 1–14, with Milestones 2–10 complete and Milestones 11–14 in progress or planned.
 
-The roadmap has 25 phases across 6 tiers. Each phase ends with a binary verification: it works or it doesn't. Phases are small enough to complete in days to a couple weeks, not months. Every phase builds toward the North Star Demo.
+**Completed highlights:** Three-domain data flow, Spreads, hot-reload, MCP server, MIDI/OSC input, data-driven WGSL filter framework, package ecosystem (install/link/scaffold/publish), movie playback (MovieLoaded trio), standalone export, operator versioning, first-class GPU port types (buffer/mesh/compute), multiple output ports.
+
+**In progress:** Core stability verification (M1 exit gate), operator creation modal (M11), solo mode (M12), semantic tag rollout (M13), launch prep (M14).
+
+**Deferred past 1.0:** Subpatches, simulation zones, multi-window, Windows/Linux, bundled compiler, WebSocket API, built-in chat panel.
 
 ### The North Star Demo
 
 You open Vivid and add a Clock operator. You ask the LLM to generate a chord progression — it scaffolds a MIDI pattern node. You connect the Clock to the pattern, add a Polysynth, and immediately hear chords playing. You plug in a MIDI controller, map knobs to synth parameters, and experiment with different timbres. You add an LFO to automate one parameter, and an Envelope operator for per-note amplitude shaping. Then you create a Spread of rectangles on screen and connect the Polysynth's per-voice envelope output to the rectangle colors. The result: you hear chords and see rectangles changing color in sync with the music.
 
 This scenario exercises every layer of Vivid's architecture: three-domain data flow, Spreads, cross-domain bridges, MIDI input, polyphonic audio, LLM-assisted operator creation, and audio-driven visuals.
-
-### Tier 1: Can It Run? (Phases 1–3)
-
-**Phase 1 — Window:** CMake + Dawn + GLFW. Verify: window opens cleared to #16191D. **Phase 2 — First Operator:** Operator contract (operator.h). Build LFO as .dylib, load via dlopen. **Phase 3 — Graph + Data Flow:** Graph loader (yyjson), parameter store, synchronous scheduler. Values flow through connections.
-
-### Tier 2: Can You See and Hear It? (Phases 4–7)
-
-**Phase 4 — GPU Rendering:** GPU operator pipeline via Dawn. First operator: Noise with WGSL shader. **Phase 5 — Control Drives Visuals:** Control→GPU bridge. LFO drives Noise scale. First cross-domain data flow. **Phase 6 — Audio Output:** miniaudio device, audio scheduling, Oscillator + Gain operators. **Phase 7 — Audio Drives Visuals:** Audio→Control bridge. Audio RMS drives visual brightness. The thesis moment: audio → control → GPU round-trip.
-
-### Tier 3: Can You Use It? (Phases 8–12)
-
-**Phase 8 — Hot-Reload:** File watching, recompile via system clang, dlclose/dlopen swap. Parameters survive. **Phase 9 — REPL:** Text input, Runtime API, graph manipulation commands. **Phase 10 — MIDI Input:** MIDI controller CC → Control-domain values, note-on/note-off events, CC learn mode. Hardware enters the graph. **Phase 11 — Minimal UI:** Retained-mode renderer, node graph viewer + inspector with sliders. No draggable editing. **Phase 12 — Live Thumbnails:** Zero-copy GPU thumbnails on GPU nodes, waveforms on audio nodes, values on control nodes.
-
-### Tier 4: Can It Do the Thing? (Phases 13–17)
-
-**Phase 13 — Spreads:** Spread type, FFT analysis, bar visualization. Proves Spreads work end-to-end across all three domains. The FFT and Bars operators are infrastructure test cases, not product deliverables — they validate the plumbing that every future LLM-generated operator will use. **Phase 14 — Polyphonic Audio:** NotePattern operator (chord progressions), Polysynth with voice allocation and per-voice ADSR, standalone Envelope operator. Polysynth produces a Spread of envelope values — the critical output for driving visuals. These operators prove the architecture handles the hardest audio case (polyphony with dynamic voice count) and establish the patterns the LLM will follow when generating audio operators on demand. **Phase 15 — The North Star Demo:** Rects GPU operator driven by envelope Spread. Full pipeline: Clock → chords → Polysynth → audio + envelope Spread → rectangle colors. MIDI knobs control timbre. LFO modulates filter. Audio and visuals are peers. **Phase 16 — MCP Server:** stdio JSON-RPC exposing Runtime API. Claude Code can inspect and modify running instance. **Phase 17 — Built-in Chat:** Anthropic API integration. Verification: build the North Star Demo entirely by conversation — "make me a chord progression in C minor." The LLM generates the operators it needs on the fly.
-
-### Tier 5: Experimentation Interfaces (Phases 18–21)
-
-**Phase 18 — Patchbay:** Cross-domain connection matrix. **Phase 19 — Session Grid:** Parameter snapshot navigation. **Phase 20 — Pattern Algebra:** Composable temporal operators. **Phase 21 — State Machines:** Named states with transitions.
-
-### Tier 6: Production Readiness (Phases 22–25)
-
-**Phase 22 — Export/Standalone Builds.** **Phase 23 — Operator Sharing Ecosystem:** publish, install, and discover LLM-generated operators that proved useful beyond their original project. **Phase 24 — LLM Perception System.** **Phase 25 — WebSocket API.**
-
-**Explicitly Deferred:** Subpatches, Simulation Zones, draggable graph editing, multi-window, accessibility, library version pinning, project file format, bundled compiler, OSC input.
-
-The guiding principle: the LLM populates the exploration space; the user navigates it. Vivid's value is the environment, not the operators. In the age of LLM-assisted development, writing code that does exactly what you want is cheap — what's expensive is making experimentation and discovery possible and productive. Every architectural decision should be evaluated against this principle. If a decision makes it harder for the LLM to generate operators and options, or harder for the user to evaluate and combine them in real-time, it's the wrong decision.
 
 ---
 
@@ -689,6 +703,8 @@ The guiding principle: the LLM populates the exploration space; the user navigat
 
 When a user drags a wire between nodes in different domains, should the system block and offer to insert a bridge node (explicit), auto-insert a visually distinct bridge node (semi-explicit), or silently handle bridging (implicit)? To be resolved during prototyping.
 
+> **Resolved:** Cross-domain connections are implicit. The runtime handles bridging automatically based on port types and semantic tags. No explicit bridge nodes are inserted.
+
 **Semantic Tag Depth**
 
 How many semantic tags to define initially, and whether to formalize a standard set or let it grow organically as operators are built.
@@ -697,13 +713,19 @@ How many semantic tags to define initially, and whether to formalize a standard 
 
 Whether GPU operators are primarily C++ host code dispatching compute shaders / WGSL, or C++ all the way down. Affects the operator API and what the build system compiles.
 
+> **Resolved:** GPU operators are C++ host code (`GpuOperatorBase::process_gpu()`) dispatching WGSL shaders via WebGPU. Additionally, a data-driven WGSL filter framework allows pure-WGSL filters with no C++ code (see ARCHITECTURE.md §5.18).
+
 **Graph Serialization Format**
 
 The declarative graph representation enabling LLM-driven patching. Needs to capture node types, connections, parameter values, and semantic tags. This is the single source of truth for the entire system.
 
+> **Resolved:** JSON with `schema_version`, `vivid_version`, `meta` block, `nodes`, `connections`, and optional `variations`/`midi_mappings`/`filters` arrays. See ARCHITECTURE.md §5.11.
+
 **Control Operator Sufficiency**
 
 The decision to handle all automation and logic as visible Control operators (no scripting layer) requires a sufficient set of seed control operators for the LLM to use as examples and building blocks. What is the minimum viable seed set? LFO, Clock, Math, and Envelope are likely sufficient — the LLM generates specialized control operators (Sequencer, Pattern, Gate, Random, Smooth/Lerp) on demand when needed. The question is whether any common automation patterns are awkward to express as node graphs even with LLM-generated operators.
+
+> **Resolved:** 30+ control operators shipped including LFO, Clock, Math, Envelope, Gate, Random, Smooth, Euclidean, MIDI Input, OSC In/Out, Keyboard, Mouse, Logic, FFT Analysis, PatTransform, Stack, Alternate, StepCounter, and more.
 
 **WebSocket API Scope**
 
@@ -786,9 +808,13 @@ Is a Vivid project a single .json file, or a directory containing the graph JSON
 
 What happens when an operator's hot-reload fails to compile? When an operator segfaults? When an audio operator misses its deadline? When a GPU shader fails validation? The graph must keep running. Strategies: per-operator error isolation, fallback to last-known-good, visual error indicators on failed nodes, audio silence on missed deadlines.
 
+> **Largely resolved:** `crash_guard.h` provides per-operator crash isolation. Shader compilation errors fall back to last-known-good pipeline with visual error indicators. Hot-reload compilation failures keep the previous .dylib loaded. Audio operators that miss deadlines produce silence.
+
 **Spread Visual Representation**
 
 How do Spreads appear in the graph? Wire thickness proportional to cardinality? A small badge showing count? Color intensity? How does the user know they're looking at a Spread of 512 vs. a Spread of 1? This is a UX design problem to be resolved through prototyping.
+
+> **Resolved:** Spread wires display a small badge showing the spread count. The inspector shows spread data as a list of values. Wire thickness does not vary by cardinality.
 
 **Simulation Zone Visual Representation**
 

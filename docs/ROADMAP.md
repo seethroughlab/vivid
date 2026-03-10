@@ -105,7 +105,7 @@ layers. Three gaps remain before the capability is fully general.
 
 ---
 
-## Milestone 10: Versioning Strategy
+## Milestone 10: Versioning Strategy ✓
 
 ABI versioning exists but does not cover the full compatibility surface across graphs, themes, and
 operators. Define the scheme before 1.0 locks the serialization format.
@@ -133,17 +133,16 @@ operators. Define the scheme before 1.0 locks the serialization format.
 
 ### Graph Serialization
 
-- [ ] Define `GRAPH_SCHEMA_VERSION 1` compile-time constant (in `graph.h` or near
-  `VIVID_CORE_VERSION` in `main.cpp`)
-- [ ] Add `schema_version` (int) and `vivid_version` (string) to the graph JSON root; write them
+- [x] Define `GRAPH_SCHEMA_VERSION 1` compile-time constant (in `graph.h`)
+- [x] Add `schema_version` (int) and `vivid_version` (string) to the graph JSON root; write them
   at save time, read at load time; hard-reject if `schema_version > GRAPH_SCHEMA_VERSION`; treat
   absent `schema_version` as `1` for backward compat
-- [ ] Add optional `"pkg": {"name": "...", "version": "..."}` sub-object to each node entry;
+- [x] Add optional `"pkg": {"name": "...", "version": "..."}` sub-object to each node entry;
   omit for core operators, WGSL filters, and operators with no package manifest; populate at
   save time by querying `OperatorRegistry::package_for_type` + `PackageManager::list()`
-- [ ] Extend `NodeDef` in `graph.h` with `pkg_name` / `pkg_version` fields; extend `Graph` with
+- [x] Extend `NodeDef` in `graph.h` with `pkg_name` / `pkg_version` fields; extend `Graph` with
   `schema_version` / `vivid_version` fields
-- [ ] Update demo graphs in `graphs/` to include root-level `schema_version` and `vivid_version`
+- [x] Update demo graphs in `graphs/` to include root-level `schema_version` and `vivid_version`
   (node `"pkg"` fields omit — demos use core operators only)
 
 **Graph JSON shape (additions only):**
@@ -163,23 +162,22 @@ operators. Define the scheme before 1.0 locks the serialization format.
 
 ### Package Version Mismatch Diagnostics
 
-- [ ] Define `GraphLoadDiagnostic` struct (node_id, pkg_name, saved_version, installed_version,
-  `PackageUpdateClass` classification) in `graph.h` or a companion header
-- [ ] After `Graph::load`, iterate nodes with non-empty `pkg_name`; cross-reference against
-  `PackageManager::list()`; classify via `assess_update()`; emit `IncompatibleUpdate` as a UI
-  toast/inspector warning, `CompatibleUpdate` as stderr-only
-- [ ] Reuse `parse_semver_triplet` / `compare_semver` / `assess_update` from
-  `package_manager.cpp:135-222` — no new SemVer parsing code
-- [ ] Expose diagnostics via MCP / control-server `get_diagnostics` so LLM-assisted workflows
-  can surface version warnings
+- [x] Define `Graph::LoadDiagnostic` struct (node_id, pkg_name, saved_version, installed_version,
+  classification string) in `graph.h` as a nested struct; stored in `graph.load_diagnostics`
+- [x] After `Graph::load`, iterate nodes with non-empty `pkg_name`; cross-reference against
+  `PackageManager::list()`; classify via `classify_version_delta()`; emit `IncompatibleUpdate` as
+  stderr warning, `CompatibleUpdate` as stderr-only; done in `run_graph_package_diagnostics` lambda
+- [x] Added `PackageManager::classify_version_delta(saved, installed)` static helper using
+  existing `parse_semver_triplet` / `compare_semver` — no duplicate SemVer parsing
+- [x] Expose diagnostics via MCP `get_graph_load_diagnostics` control-server endpoint
 
 ### Theme Versioning
 
-- [ ] Add `"vivid_version": "0.1.0"` to all 8 embedded theme JSON constants in `theme_loader.cpp`
-- [ ] Parse `"vivid_version"` in `parse_theme_root`; store it in `UIStyle`; if major component
+- [x] Add `"vivid_version": "0.1.0"` to all 8 embedded theme JSON constants in `theme_loader.cpp`
+- [x] Parse `"vivid_version"` in `parse_theme_root`; store it in `UIStyle`; if major component
   differs from `VIVID_CORE_VERSION`, emit a single stderr warning
-- [ ] Stamp `VIVID_CORE_VERSION` into `"vivid_version"` when `ensure_default_themes` writes
-  theme files to disk
+- [x] Stamp embedded via constants (already contains vivid_version); `ensure_default_themes`
+  writes them verbatim — no extra write code needed
 
 **Theme JSON shape (addition only):**
 ```json

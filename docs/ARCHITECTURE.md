@@ -51,32 +51,51 @@ Control is push-based — events propagate forward immediately. Audio and GPU ar
 The type system serves three consumers: the graph runtime (bridge selection), the UI (valid connection enforcement), and the LLM (compatibility reasoning).
 
 ### Control Port Types
-Control::Float, Control::Int, Control::Bool, Control::String, Control::Event (discrete trigger with optional payload), Control::Buffer (arbitrary blobs — JSON, point clouds, FFT spectra). These update at no fixed rate.
+`VIVID_PORT_CONTROL_FLOAT`, `VIVID_PORT_CONTROL_INT`, `VIVID_PORT_CONTROL_BOOL`, `VIVID_PORT_CONTROL_STRING`, `VIVID_PORT_CONTROL_SPREAD` (variable-length float array with broadcast semantics), `VIVID_PORT_CONTROL_STRING_SPREAD` (variable-length string array). These update at no fixed rate.
 
 ### Audio Port Types
-Audio::Mono, Audio::Stereo, Audio::Multichannel(n). Implicitly carry sample rate and block size. Always continuous — producing a buffer every callback, even if silence.
+`VIVID_PORT_AUDIO_FLOAT` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
 
 ### GPU Port Types
-GPU::Texture2D, GPU::Texture3D, GPU::Buffer, GPU::Mesh. Each carries format metadata: resolution, pixel format, color space for textures; vertex layout, index count for meshes. Meshes are GPU domain data — their purpose and consumption is GPU rendering, even when vertex generation happens on the CPU (procedural geometry). CPU-side construction is an implementation detail of the operator, not a domain classification. If mesh properties need to feed back into the graph (vertex count, bounding box), they use the same GPU→Control async readback bridge that texture analysis uses.
+`VIVID_PORT_GPU_TEXTURE` (2D RGBA8 texture with per-node configurable resolution, default 800×600), `VIVID_PORT_GPU_BUFFER` (typed GPU storage buffer), `VIVID_PORT_GPU_MESH` (vertex/index data with attribute layout), `VIVID_PORT_GPU_COMPUTE` (compute dispatch buffer). The buffer, mesh, and compute types were added in Milestone 8 with ABI-stable C structs (`VividGpuBuffer`, `VividMesh`, `VividComputeBuffer` in `src/operator_api/gpu_types.h`).
 
 ### Semantic Tags (Advisory)
 Port types can carry optional semantic tags: normalized (0–1), bipolar (-1 to 1), frequency_hz, decibels, midi_note, etc. **Tags are advisory hints, not enforced by the runtime.** When connecting ports with mismatched ranges, the graph editor suggests inserting a visible Remap node with the mapping pre-configured. No silent auto-mapping.
+
+### Cross-Domain Port Types
+
+`VIVID_PORT_DATA` — opaque pointer for package-defined types (identified by a `data_type` string, e.g. `"gpu_scene"`). `VIVID_PORT_MEDIA_STREAM` — first-class media stream carrying decoded video frames (`MediaStreamV1*`). `VIVID_PORT_MEDIA_CLOCK` — clock-only media synchronization port (`MediaClockV1*`, reserved — no operators yet). `VIVID_PORT_MIDI` — MIDI event buffer (`VividMidiBuffer*`, reserved — no operators yet).
 
 ## 5.7 Operator API Contract
 
 Each operator is a self-contained compilation unit — a shared library (`.dylib`) with a known interface. The runtime and operators share C++ types via common headers, but the hot-reload boundary uses `extern "C"` functions for `dlopen` stability:
 
 ```cpp
-#include "vivid/operator.h"
+#include "operator_api/operator.h"
 
-struct MyFilter : vivid::ImageOp {
-    Param<float> intensity{"intensity", 0.5, 0.0, 1.0};
-    void process(const Image& in, Image& out) override { ... }
+struct MyEffect : vivid::ControlOperatorBase {
+    static constexpr const char* kName = "MyEffect";
+    static constexpr bool kTimeDependent = false;
+
+    vivid::Param<float> intensity{"intensity", 0.5f, 0.0f, 1.0f};
+    vivid::Param<int>   mode{"mode", 0, {"Normal", "Inverted"}};
+
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out = {&intensity, &mode};
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        out = {{"input",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
+               {"output", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT}};
+    }
+    void process(const VividProcessContext* ctx) override {
+        float in = ctx->input_values[0];
+        ctx->output_values[0] = in * intensity.value;
+    }
 };
-VIVID_REGISTER(MyFilter)
+VIVID_REGISTER(MyEffect)
 ```
 
-The `VIVID_REGISTER` macro generates `extern "C"` functions (`vivid_descriptor`, `vivid_create`, `vivid_destroy`, `vivid_process`) that the runtime calls through `dlopen`. The C++ types (`Param<float>`, `Image`, base classes) are shared via headers — operators are full C++ code, not C code with C++ wrappers.
+Three domain-specific base classes exist: `vivid::ControlOperatorBase` (implements `process(const VividProcessContext*)`), `vivid::AudioOperatorBase` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuOperatorBase` (implements `process_gpu(const VividGpuContext*)`). The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It infers the operator's domain from its base class (falling back to port-type inference for `OperatorBase` subclasses), and emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION` (currently 8) for compatibility checking at load time.
 
 For statically linked export builds (§5.16), the `extern "C"` boundary is unnecessary — everything links together as one C++ binary. The macro handles both cases.
 
@@ -161,10 +180,12 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **Broadcasting:** when two Spreads of different lengths connect to the same operator, the shorter one repeats (wraps) to match the longer. A Spread of 3 colors applied to a Spread of 512 particles cycles through the 3 colors.
 - **Cross-domain:** a Spread of Control values (e.g., 512 FFT bins) can connect directly to a GPU operator's parameter, producing 512 visual elements driven by audio. No explicit bridging required — the existing Control→GPU bridge handles the data; Spreads handle the cardinality.
 - **LLM-friendly:** describing Spread-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on Spreads.
-- **Port types:** Spread\<Control::Float\>, Spread\<GPU::Texture2D\>, Spread\<Audio::Mono\> are all valid. The Spread is orthogonal to the domain type system.
+- **Port types:** `Spread<VIVID_PORT_CONTROL_FLOAT>`, `Spread<VIVID_PORT_GPU_TEXTURE>`, `Spread<VIVID_PORT_AUDIO_FLOAT>` are all valid. The Spread is orthogonal to the domain type system.
 - **Cross-domain bridge implementation:** Control↔Audio uses `SpreadSnapshot` (fixed 64-element struct) inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. Control→GPU uses WebGPU storage buffers: the operator uploads Spread data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
 
 ## 5.10 Simulation Zones: Frame-to-Frame State
+
+> **Status: Deferred past 1.0.** The design below is retained as planned architecture. In the current implementation, GPU video feedback is handled by the `operators/gpu/feedback/` operator, which maintains its own previous-frame texture buffer internally. General-purpose Simulation Zones are not yet implemented.
 
 **Decision: Simulation Zones provide explicit, visible frame-to-frame feedback.** A Simulation Zone is a marked region of the graph whose output at frame N becomes an additional input at frame N+1. This is the mechanism for all persistent, evolving state: particle motion, video feedback, envelope followers, accumulators, counters.
 
@@ -189,28 +210,47 @@ The JSON graph is the single source of truth for the entire system. Every operat
 
 ```json
 {
-  "version": "0.1.0",
-  "name": "audio_reactive_particles",
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "audio_reactive_demo",
+    "title": "Audio Reactive Demo",
+    "description": "FFT-driven visual effects.",
+    "tags": ["audio", "reactive"],
+    "difficulty": "intermediate",
+    "domains": ["gpu", "audio"]
+  },
   "nodes": {
     "clock1": {
       "type": "Clock",
-      "domain": "control"
+      "params": { "bpm": 120.0 },
+      "layout": { "x": 30.0, "y": 200.0 }
     },
     "fft1": {
       "type": "FFTAnalysis",
-      "domain": "audio",
-      "params": { "bins": 512 }
+      "params": {}
     },
-    "particles1": {
-      "type": "Particles",
-      "domain": "gpu",
-      "params": { "count": 5000, "size": 2.4 }
+    "noise1": {
+      "type": "Noise",
+      "params": { "speed": 1.0 },
+      "layout": { "x": 430.0, "y": 200.0 }
+    },
+    "vout": {
+      "type": "video_out"
     }
   },
   "connections": [
-    { "from": "clock1/beat", "to": "fft1/trigger" },
-    { "from": "fft1/spectrum", "to": "particles1/scale" }
-  ]
+    { "from": "clock1/beat_phase", "to": "fft1/trigger" },
+    {
+      "from": "fft1/rms",
+      "to": "noise1/scale",
+      "from_min": 0.0, "from_max": 1.0,
+      "to_min": 1.0, "to_max": 8.0,
+      "clamp": true
+    },
+    { "from": "noise1/texture", "to": "vout/input" }
+  ],
+  "viewport": { "pan_x": 0.0, "pan_y": 0.0, "zoom": 1.0 }
 }
 ```
 
@@ -220,7 +260,11 @@ The JSON graph is the single source of truth for the entire system. Every operat
 - **Params carry current values only:** parameter metadata (min, max, default, semantic tags) is declared in the operator's C++ code and introspected at load time. The JSON stores only the user's current values. This keeps the JSON compact and avoids dual source-of-truth.
 - **Connections are source/target pairs:** "from": "node/port" and "to": "node/port". The operator declares its ports; the JSON just names them.
 - **Spread-aware:** a connection from fft1/spectrum (Spread\<float\> of 512) to particles1/scale (float) implicitly fans out. The JSON doesn't need to represent this — the runtime infers cardinality from port types.
-- **Domain is metadata:** the "domain" field is informational for the UI (accent colors, preview treatment) and the runtime (thread scheduling). It does not affect how connections are expressed.
+- **No per-node domain field:** domain is inferred from port types and base class at load time, not stored in the JSON. The `meta.domains` array at the graph level is informational only (for catalog/search).
+- **Layout is optional:** each node can carry `"layout": {"x": ..., "y": ...}` for node positions. Nodes without layout use auto-placement.
+- **Connection remapping:** connections can carry `from_min`/`from_max`/`to_min`/`to_max`/`clamp` fields for inline value rescaling. Connections without these fields pass values through unchanged.
+- **Package provenance:** nodes from installed packages carry `"pkg": {"name": "...", "version": "..."}` for version mismatch diagnostics at load time. Core operators omit this.
+- **Parameter lock flags:** nodes can carry `"param_lock_flags": {"param_name": flags}` to protect individual parameters from variation recall (`PARAM_LOCK_PRESETS`) or wire-driven changes (`PARAM_LOCK_WIRES`).
 
 ## 5.12 Platform Target
 
@@ -240,14 +284,22 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 
 | Dependency | Purpose | Size | Integration |
 |---|---|---|---|
-| **Dawn** (latest stable) | GPU abstraction (WebGPU over Metal/Vulkan/DX12) | ~17MB binary | Pre-built static lib or FetchContent |
-| **GLFW** (3.4) | Window creation, input events, Metal surface | ~200KB source | git submodule, compiled by CMake |
-| **miniaudio** (0.11.x) | Audio device I/O (not DSP) | single header | included directly |
-| **stb_truetype** | Font rasterization for UI text | single header | included directly |
-| **yyjson** | JSON parsing (graph files, project files) | ~40KB source | git submodule or included directly |
-| **stb_image** | Image loading (PNG, JPEG, BMP) | single header | included directly |
+| **wgpu-native** (pinned fork) | GPU abstraction (WebGPU over Metal) | ~17MB binary | FetchContent (Rust/Cargo build) |
+| **GLFW** (3.4) | Window creation, input events, Metal surface | ~200KB source | git submodule |
+| **glfw3webgpu** | GLFW↔WebGPU surface bridge | ~5KB source | git submodule |
+| **miniaudio** (0.11.x) | Audio device I/O (not DSP) | single header | vendored |
+| **stb_truetype** | Font rasterization for UI text | single header | vendored |
+| **stb_image** | Image loading (PNG, JPEG, BMP) | single header | vendored |
+| **yyjson** | JSON parsing (graph files, project files) | ~40KB source | vendored |
+| **RtMidi** | MIDI I/O (CoreMIDI on macOS) | ~50KB source | vendored |
+| **oscpack** | OSC message serialization and UDP transport | ~30KB source | vendored |
+| **Syphon** | GPU texture sharing between applications (macOS) | ~100KB source | vendored |
+| **Snappy** | Fast compression (used by HAP video codec) | ~50KB source | FetchContent |
+| **IXWebSocket** | HTTP server for control server / MCP endpoint | ~200KB source | FetchContent |
+| **CLI11** | Command-line argument parsing | header-only | FetchContent |
+| **Sparkle** (macOS) | App auto-update framework | framework | system framework |
 
-**Not included in Phase 1:** WebSocket library (Phase 3), HTTP client (for Anthropic API — use libcurl or curl subprocess), tinyfiledialogs (added when save/load is implemented).
+**Note on Dawn:** The original plan called for Google's Dawn WebGPU implementation. The actual integration uses wgpu-native (a Rust-based WebGPU backend) via eliemichel's WebGPU-distribution adapter layer, with a pinned fork (`seethroughlab/wgpu-native`) providing Metal interop symbols for Syphon texture sharing.
 
 **Compiler requirement:** Xcode Command Line Tools on macOS (`xcode-select --install`). Provides clang, libc++, and Metal framework headers.
 
@@ -257,51 +309,79 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 
 ```
 vivid/
-├── CMakeLists.txt            # Top-level build
-├── deps/                     # Third-party (submodules or FetchContent)
-│   ├── dawn/  ├── glfw/  ├── miniaudio/  ├── stb/  └── yyjson/
+├── CMakeLists.txt              # Top-level build
+├── deps/                       # Third-party (submodules and vendored)
+│   ├── glfw/  ├── glfw3webgpu/  ├── miniaudio/  ├── stb/
+│   ├── yyjson/  ├── rtmidi/  ├── oscpack/  ├── syphon/  └── hap/
 ├── src/
-│   ├── runtime/              # Core engine
-│   │   ├── main.cpp          # Entry point, window, main loop
-│   │   ├── graph.cpp/.h      # JSON graph loading, node management
-│   │   ├── scheduler.cpp/.h  # Frame scheduling, domain threads
-│   │   ├── spreads.cpp/.h    # Spread type, broadcasting
-│   │   ├── simulation.cpp/.h # Simulation Zone state
-│   │   ├── bridges.cpp/.h    # Control↔GPU, Control↔Audio
-│   │   ├── params.cpp/.h     # Parameter store
-│   │   ├── gpu_context.cpp/.h # Dawn device, queue, surface
-│   │   ├── audio_context.cpp/.h # miniaudio device, buffers
-│   │   ├── hot_reload.cpp/.h # File watch, compile, swap
-│   │   ├── runtime_api.cpp/.h # Internal API (used by REPL, MCP, chat)
-│   │   └── export.cpp/.h     # Standalone build logic
-│   ├── interface/            # UI layer
-│   │   ├── widgets/          # Panel, Button, Slider, Knob, etc.
-│   │   ├── layout.cpp/.h     # Application layout
-│   │   ├── input.cpp/.h      # GLFW event → widget events
-│   │   ├── renderer.cpp/.h   # Widget → Dawn/WebGPU draw calls
-│   │   ├── theme.cpp/.h      # Visual style (§6.6)
-│   │   └── text.cpp/.h       # Text rendering (stb_truetype)
-│   └── operator_api/         # Shared headers for operator contract
-│       ├── operator.h        # Base classes, Param<T>, VIVID_REGISTER
-│       ├── spread.h          # Spread types
-│       └── types.h           # Shared type definitions
-├── operators/                # Built-in operators (each a directory)
-│   ├── gpu/
-│   │   ├── noise/    { noise.cpp, noise.wgsl }
-│   │   ├── blur/     { blur.cpp, blur.wgsl }
-│   │   └── ...
-│   ├── audio/
-│   │   ├── oscillator/  { oscillator.cpp }
-│   │   └── ...
-│   └── control/
-│       ├── lfo/      { lfo.cpp }
-│       └── ...
-├── projects/                 # Example projects
-│   └── demo_reactive/
-│       ├── graph.json
-│       ├── assertions.json
-│       └── operators/        # Project-local operators
-└── docs/
+│   ├── runtime/                # Core engine
+│   │   ├── main.cpp            # Entry point, window, main loop
+│   │   ├── graph.cpp/.h        # JSON graph loading, node management, serialization
+│   │   ├── scheduler.cpp/.h    # Frame scheduling, domain dispatch, wire resolution
+│   │   ├── audio_engine.cpp/.h # miniaudio device, audio callback, ParamSnapshot bridge
+│   │   ├── gpu_context.cpp/.h  # WebGPU device, queue, surface
+│   │   ├── hot_reload.cpp/.h   # File watch, compile, dlclose/dlopen swap
+│   │   ├── file_watcher.cpp/.h # kqueue-based file system monitoring
+│   │   ├── operator_registry.cpp/.h   # Operator type registry, WGSL preset scanning
+│   │   ├── operator_loader.cpp/.h     # dlopen/dlclose, ABI version checking
+│   │   ├── operator_creator.cpp/.h    # Scaffold + compile new operators
+│   │   ├── control_server.cpp/.h      # HTTP/MCP endpoint (OSC, MIDI, REST, MCP tools)
+│   │   ├── runtime_api.cpp/.h  # Internal API surface for MCP and chat
+│   │   ├── package_manager.cpp/.h     # Install, link, unlink, rebuild packages
+│   │   ├── package_compiler.cpp/.h    # Per-operator .dylib compilation
+│   │   ├── package_scaffolder.cpp/.h  # Package template generation
+│   │   ├── package_catalog.cpp/.h     # Catalog index and discovery
+│   │   ├── undo_manager.cpp/.h # Graph mutation undo/redo
+│   │   ├── settings.cpp/.h     # User preferences persistence
+│   │   ├── system_midi.cpp/.h  # RtMidi wrapper, MIDI device enumeration
+│   │   ├── crash_guard.h       # Per-operator crash isolation
+│   │   └── ...                 # (+ metal_interop, syphon_output, av_exporter, etc.)
+│   ├── ui/                     # UI layer
+│   │   ├── node_graph.cpp/.h   # Node graph editor (draw, input, layout)
+│   │   ├── renderer_2d.cpp/.h  # WebGPU 2D drawing primitives
+│   │   ├── theme_loader.cpp/.h # JSON theme loading, embedded defaults
+│   │   ├── ui_style.cpp/.h     # Visual style constants and runtime style
+│   │   ├── thumbnail_renderer.cpp/.h  # Zero-copy GPU node thumbnails
+│   │   ├── overlay_layouts.cpp/.h     # Inspector, transport, overlays
+│   │   └── file_dialog.mm/.h   # Native macOS file open/save dialogs
+│   ├── operator_api/           # Public headers for operator contract
+│   │   ├── operator.h          # Base classes, Param<T>, VIVID_REGISTER macro
+│   │   ├── types.h             # C ABI: enums, descriptors, contexts
+│   │   ├── audio_operator.h    # AudioOperatorBase, VividAudioContext
+│   │   ├── gpu_operator.h      # GpuOperatorBase, VividGpuContext, VividGpuState
+│   │   ├── gpu_types.h         # VividGpuBuffer, VividMesh, VividComputeBuffer
+│   │   ├── child_op.h          # ChildOp<T> for control-domain composition
+│   │   ├── wgsl_filter.h       # WgslFilterBase for data-driven GPU filters
+│   │   ├── data_driven_filter.h # DataDrivenFilter with dynamic param/port collection
+│   │   ├── audio_dsp.h         # WhiteNoise, PinkNoise, waveform(), detect_trigger()
+│   │   ├── media_stream.h      # MediaStreamV1 cross-domain media type
+│   │   ├── media_clock.h       # MediaClockV1 synchronization type
+│   │   └── midi_types.h        # VividMidiBuffer type (reserved)
+│   ├── cli/                    # CLI tool and MCP server
+│   │   └── mcp_server.cpp      # MCP tool handlers (~4000 lines)
+│   └── export/                 # Standalone export build
+│       └── standalone_main.cpp
+├── operators/                  # Built-in operators (each a directory)
+│   ├── gpu/                    # noise, shape, text, bloom, composite, feedback,
+│   │                           # movie_loaded, movie_video_out, webcam_in,
+│   │                           # syphon_in, syphon_out, texture_analysis, time_machine, ...
+│   ├── audio/                  # oscillator, gain, delay, reverb, distortion, bitcrush,
+│   │                           # spread_adsr, spread_lfo, movie_audio_out, ...
+│   └── control/                # lfo, clock, envelope, math, random, smooth, gate,
+│                               # euclidean, keyboard, mouse, midi_input, osc_in, osc_out,
+│                               # fft_analysis, pat_transform, stack, alternate,
+│                               # step_counter, folder_list, string_select, logic, ...
+├── filters/                    # Data-driven WGSL filters (auto-discovered, no C++)
+├── graphs/                     # Demo graphs organized by category
+│   ├── intro/   ├── filters/   ├── gpu/   ├── audio/   └── io/
+├── tests/                      # CTest suite
+├── mcp/                        # Python MCP server (vivid_mcp.py)
+├── catalog/                    # Package catalog index
+├── fonts/                      # Bundled fonts
+├── assets/                     # Demo assets (videos, images)
+├── platform/                   # Platform-specific resources (Info.plist, icons)
+├── scripts/                    # Build and utility scripts
+└── docs/                       # Documentation (PRD, ARCHITECTURE, ROADMAP)
 ```
 
 Each operator is a directory containing its .cpp source and, for GPU operators, its .wgsl shader(s). This structure supports hot-reload (watch one directory per operator), scaffolding (create a directory with boilerplate), and the library system (§5.17).
@@ -402,6 +482,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 ## 5.19 State Machines & Subgraphs
 
+> **Status: Infrastructure exists, operator not yet implemented.** The graph schema supports state-preset mappings (`StatePresetMapping` in `graph.h`), and the UI can detect StateMachine nodes for preset-per-state wiring. However, the StateMachine operator itself has not been implemented. The design below is retained as planned architecture.
+
 ### StateMachine Operator
 
 The `StateMachine` is a control-domain metadata emitter that drives macro-level structure — song sections, installation modes, live performance cues. It counts bars by detecting `beat_phase` wraps (the same technique used by NotePattern, ChordProgression, and Arpeggiator), tracks the current state index, and outputs control signals. It is not a state owner — it emits metadata that downstream operators consume.
@@ -461,6 +543,8 @@ This system is the core experimentation mechanism: save what works, explore free
 
 ## 5.21 Pattern Algebra
 
+> **Status: Partially implemented.** `Euclidean`, `PatTransform`, `Stack`, and `Alternate` are shipped as built-in operators. `PatternSeq` (step sequencer), `NotePattern`, `ChordProgression`, and `Arpeggiator` are not yet implemented — they were extracted to domain packages (`vivid-sequencers`) during Milestone 2.
+
 **Decision: Patterns are standard control-domain operators with Spread ports, not a DSL.** Composition happens through normal graph wiring. The Spread type system (§5.9) provides implicit vectorization — a pattern transformer operates on all elements transparently.
 
 **Three operator roles:**
@@ -479,3 +563,25 @@ Euclidean → PatTransform → Stack → Arpeggiator
 Every intermediate result is a Spread visible on a wire. Every step is a discrete operator with inspectable parameters. The LLM can reason about pattern composition using the same vocabulary it uses for any other graph operation.
 
 **Why not a DSL:** A pattern language would require its own parser, type system, and error reporting — and would be opaque to the graph editor and LLM. By making patterns ordinary operators, they inherit Spread broadcasting, cross-domain bridging, serialization, hot-reload, ChildOp embedding, and inspector UI for free. The cost is verbosity (a chain of 4 operators vs. a one-line expression), but the graph editor makes this visual, not textual.
+
+## 5.22 MCP / LLM Integration
+
+Vivid exposes its full runtime API through two integration surfaces:
+
+**Control Server** (`src/runtime/control_server.cpp`) — an HTTP server (powered by IXWebSocket) running on `localhost:7777` that handles OSC messages, MIDI input, and a REST/MCP JSON-RPC endpoint. MCP tools exposed include: graph inspection and mutation, operator scaffolding and compilation, parameter read/write, capture (screenshot, audio), analysis (texture metrics, audio metrics), assertion evaluation, package management, and undo/redo. The control server is the primary interface for Claude Code and other MCP-capable LLMs.
+
+**Python MCP Server** (`mcp/vivid_mcp.py`) — a Python wrapper that connects to the control server and re-exposes its tools as a standard MCP stdio server. This allows any MCP client (Claude Desktop, custom agents) to interact with a running Vivid instance without direct HTTP calls.
+
+**Runtime API** (`src/runtime/runtime_api.cpp/.h`) — the internal C++ API that both the control server and the built-in chat interface call into. All graph mutations, operator creation, capture, and analysis operations are implemented here. The Runtime API operates on the same in-process data structures as the scheduler and graph — no serialization overhead.
+
+## 5.23 Media Pipeline
+
+Vivid's media pipeline handles video file playback with synchronized audio through a trio of operators:
+
+- **`MovieLoaded`** (`operators/gpu/movie_loaded/`) — decodes video frames from a file using AVFoundation (macOS). Supports HAP (via Snappy decompression + BC GPU upload), HAPQ (YCoCg color space), HAP-alpha, H.264, and HEVC codecs. Outputs a `VIVID_PORT_GPU_TEXTURE` (decoded frames) and a `VIVID_PORT_MEDIA_STREAM` (media clock for audio sync). Playback modes include loop, ping-pong, and one-shot. Frame decoding runs on a dedicated dispatch queue; the GPU operator receives textures via a double-buffered handoff.
+
+- **`MovieAudioOut`** (`operators/audio/movie_audio_out/`) — receives a `VIVID_PORT_MEDIA_STREAM` input from MovieLoaded and outputs decoded audio as `VIVID_PORT_AUDIO_FLOAT` left/right channels. Audio decoding uses AVFoundation's `AVAssetReader` with a lock-free ring buffer bridging the decode thread to the real-time audio callback. Sync is maintained via media clock timestamps — the audio operator tracks the video operator's playback position and resyncs on loop boundaries.
+
+- **`MovieVideoOut`** (`operators/gpu/movie_video_out/`) — the reverse path: encodes GPU textures + audio buffers into a video file via `AVAssetWriter`. Used for recording/export.
+
+The `VIVID_PORT_MEDIA_STREAM` type carries a `MediaStreamV1*` pointer through the graph's `VIVID_PORT_DATA` plumbing, enabling cross-domain media synchronization without special-case runtime code. The `VIVID_PORT_MEDIA_CLOCK` type is reserved for future clock-only synchronization (e.g., external timecode sources).

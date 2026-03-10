@@ -1,4 +1,6 @@
 {
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
     "nodes": {
         "vid": {
             "type": "MovieLoaded",

@@ -1,4 +1,6 @@
 {
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
   "meta": {
     "id": "osc_av_loopback_demo",
     "title": "Osc Av Loopback",

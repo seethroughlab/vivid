@@ -1,4 +1,6 @@
 {
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
   "meta": {
     "id": "syphon_in_demo",
     "title": "Syphon In",
