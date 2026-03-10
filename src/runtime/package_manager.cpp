@@ -440,6 +440,23 @@ PackageUpdateAssessment PackageManager::assess_update(const PackageInfo& install
     return out;
 }
 
+PackageUpdateClass PackageManager::classify_version_delta(const std::string& saved_version,
+                                                          const std::string& installed_version) {
+    if (saved_version.empty() || installed_version.empty())
+        return PackageUpdateClass::InvalidVersionData;
+    std::array<int, 3> sv{}, iv{};
+    bool sv_pre = false, iv_pre = false;
+    if (!parse_semver_triplet(saved_version, sv, sv_pre) ||
+        !parse_semver_triplet(installed_version, iv, iv_pre))
+        return PackageUpdateClass::InvalidVersionData;
+    int cmp = 0;
+    if (!compare_semver(saved_version, installed_version, cmp))
+        return PackageUpdateClass::InvalidVersionData;
+    if (cmp == 0) return PackageUpdateClass::UpToDate;
+    if (sv[0] != iv[0]) return PackageUpdateClass::IncompatibleUpdate;
+    return PackageUpdateClass::CompatibleUpdate;
+}
+
 void PackageManager::set_resolver(PackageResolver resolver) {
     resolver_ = std::move(resolver);
 }

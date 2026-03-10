@@ -54,6 +54,9 @@ static const char* port_type_name(VividPortType t) {
         case VIVID_PORT_CONTROL_SPREAD:       return "VIVID_PORT_CONTROL_SPREAD";
         case VIVID_PORT_GPU_TEXTURE:          return "VIVID_PORT_GPU_TEXTURE";
         case VIVID_PORT_DATA:                 return "VIVID_PORT_DATA";
+        case VIVID_PORT_MEDIA_STREAM:         return "VIVID_PORT_MEDIA_STREAM";
+        case VIVID_PORT_MEDIA_CLOCK:          return "VIVID_PORT_MEDIA_CLOCK";
+        case VIVID_PORT_MIDI:                 return "VIVID_PORT_MIDI";
         case VIVID_PORT_CONTROL_STRING:       return "VIVID_PORT_CONTROL_STRING";
         case VIVID_PORT_CONTROL_STRING_SPREAD:return "VIVID_PORT_CONTROL_STRING_SPREAD";
         default:                              return "VIVID_PORT_CONTROL_FLOAT";
@@ -77,9 +80,8 @@ static std::string control_template(const std::string& name, const std::string& 
                                      const std::vector<OutputPortSpec>& extra_outputs) {
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
-    s << "struct " << struct_name << " : vivid::OperatorBase {\n";
+    s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;\n";
     s << "    static constexpr bool kTimeDependent = false;\n\n";
     s << "    vivid::Param<float> amount{\"amount\", 1.0f, 0.0f, 1.0f};\n\n";
     s << "    " << struct_name << "() {\n";
@@ -109,11 +111,9 @@ static std::string control_template(const std::string& name, const std::string& 
 static std::string audio_template(const std::string& name, const std::string& struct_name,
                                    const std::vector<OutputPortSpec>& extra_outputs) {
     std::ostringstream s;
-    s << "#include \"operator_api/operator.h\"\n";
-    s << "#include \"operator_api/audio_operator.h\"\n\n";
-    s << "struct " << struct_name << " : vivid::OperatorBase {\n";
+    s << "#include \"operator_api/operator.h\"\n\n";
+    s << "struct " << struct_name << " : vivid::AudioOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
     s << "    vivid::Param<float> gain{\"gain\", 1.0f, 0.0f, 2.0f};\n\n";
     s << "    " << struct_name << "() {\n";
@@ -130,15 +130,13 @@ static std::string audio_template(const std::string& name, const std::string& st
     for (const auto& ep : extra_outputs)
         s << "        out.push_back({\"" << ep.name << "\", " << port_type_name(ep.type) << ", VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
-    s << "    void process(const VividProcessContext* ctx) override {\n";
-    s << "        auto* audio = vivid_audio(ctx);\n";
-    s << "        if (!audio) return;\n\n";
-    s << "        float* in  = audio->input_buffers[0];\n";
-    s << "        float* out = audio->output_buffers[0];\n";
+    s << "    void process_audio(const VividAudioContext* ctx) override {\n";
+    s << "        float* in  = ctx->input_buffers[0];\n";
+    s << "        float* out = ctx->output_buffers[0];\n";
     for (size_t i = 0; i < extra_outputs.size(); ++i)
-        s << "        float* out" << (i + 1) << " = audio->output_buffers[" << (i + 1) << "];  // " << extra_outputs[i].name << "\n";
+        s << "        float* out" << (i + 1) << " = ctx->output_buffers[" << (i + 1) << "];  // " << extra_outputs[i].name << "\n";
     s << "        float g = gain.value;\n\n";
-    s << "        for (uint32_t i = 0; i < audio->buffer_size; i++)\n";
+    s << "        for (uint32_t i = 0; i < ctx->buffer_size; i++)\n";
     s << "            out[i] = in[i] * g;\n";
     for (size_t i = 0; i < extra_outputs.size(); ++i)
         s << "        // TODO: fill out" << (i + 1) << " (" << extra_outputs[i].name << ")\n";
@@ -154,7 +152,6 @@ static std::string gpu_template(const std::string& name, const std::string& stru
     s << "#include \"operator_api/wgsl_filter.h\"\n\n";
     s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
     s << "    vivid::Param<float> amount{\"amount\", 1.0f, 0.0f, 1.0f};\n\n";
     s << "    " << struct_name << "() : WgslFilterBase(\"" << name << ".wgsl\") {\n";
@@ -185,9 +182,8 @@ static std::string composite_control_template(const std::string& name, const std
     s << "#include \"operator_api/child_op.h\"\n";
     s << "#include \"control/lfo/lfo.h\"\n";
     s << "#include \"control/smooth/smooth.h\"\n\n";
-    s << "struct " << struct_name << " : vivid::OperatorBase {\n";
+    s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
-    s << "    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
     s << "    vivid::Param<float> amount   {\"amount\",    1.0f, 0.0f, 10.0f};\n";
     s << "    vivid::Param<float> lfo_rate {\"lfo_rate\",  2.0f, 0.01f, 20.0f};\n";

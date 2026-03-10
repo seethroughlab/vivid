@@ -152,9 +152,10 @@ struct Wire {
     bool is_data_wire    = false; // true → carries VIVID_PORT_DATA
     bool is_string_wire = false;  // true → carries CONTROL_STRING
     bool is_string_spread_wire = false; // true → carries CONTROL_STRING_SPREAD
-    bool is_buffer_wire  = false; // true → carries VIVID_PORT_GPU_BUFFER
-    bool is_mesh_wire    = false; // true → carries VIVID_PORT_GPU_MESH
-    bool is_compute_wire = false; // true → carries VIVID_PORT_GPU_COMPUTE
+    bool is_buffer_wire       = false; // true → carries VIVID_PORT_GPU_BUFFER
+    bool is_mesh_wire         = false; // true → carries VIVID_PORT_GPU_MESH
+    bool is_compute_wire      = false; // true → carries VIVID_PORT_GPU_COMPUTE
+    bool is_media_stream_wire = false; // true → carries VIVID_PORT_MEDIA_STREAM
     float from_min = 0.0f, from_max = 1.0f;
     float to_min   = 0.0f, to_max  = 1.0f;
     bool  clamp    = false;

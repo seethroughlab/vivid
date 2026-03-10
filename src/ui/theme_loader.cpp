@@ -8,6 +8,10 @@
 #include <fstream>
 #include <spawn.h>
 
+#ifndef VIVID_CORE_VERSION
+#define VIVID_CORE_VERSION "0.1.0"
+#endif
+
 extern "C" char** environ;
 #include <set>
 
@@ -21,6 +25,7 @@ namespace vivid::ui {
 // ~0.002 per channel, imperceptible).
 
 static const char kDarkSteelJson[] = R"j({
+    "vivid_version": "0.1.0",
     "name": "Dark Steel",
     "corner_radius": 0,
     "node_bg": "#1f2126",
@@ -46,6 +51,7 @@ static const char kDarkSteelJson[] = R"j({
 })j";
 
 static const char kMidnightJson[] = R"j({
+    "vivid_version": "0.1.0",
     "name": "Midnight",
     "corner_radius": 4,
     "node_bg": "#171a29",
@@ -71,6 +77,7 @@ static const char kMidnightJson[] = R"j({
 })j";
 
 static const char kSlateJson[] = R"j({
+    "vivid_version": "0.1.0",
     "name": "Slate",
     "corner_radius": 6,
     "node_bg": "#262421",
@@ -96,6 +103,7 @@ static const char kSlateJson[] = R"j({
 })j";
 
 static const char kEmeraldJson[] = R"j({
+    "vivid_version": "0.1.0",
     "name": "Emerald",
     "corner_radius": 3,
     "node_bg": "#1a2420",
@@ -121,6 +129,7 @@ static const char kEmeraldJson[] = R"j({
 })j";
 
 static const char kCrimsonJson[] = R"j({
+    "vivid_version": "0.1.0",
     "name": "Crimson",
     "corner_radius": 2,
     "node_bg": "#241a1c",
@@ -146,6 +155,7 @@ static const char kCrimsonJson[] = R"j({
 })j";
 
 static const char kVaporJson[] = R"j({
+    "vivid_version": "0.1.0",
     "name": "Vapor",
     "corner_radius": 5,
     "node_bg": "#1e1826",
@@ -171,6 +181,7 @@ static const char kVaporJson[] = R"j({
 })j";
 
 static const char kCarbonJson[] = R"j({
+    "vivid_version": "0.1.0",
     "name": "Carbon",
     "corner_radius": 0,
     "node_bg": "#151515",
@@ -196,6 +207,7 @@ static const char kCarbonJson[] = R"j({
 })j";
 
 static const char kMonokaiJson[] = R"j({
+    "vivid_version": "0.1.0",
     "name": "Monokai",
     "corner_radius": 4,
     "node_bg": "#272822",
@@ -386,6 +398,17 @@ static UIStyle default_style() {
 // JSON parsing
 // -----------------------------------------------------------------------
 
+// Returns the major version component (first integer before '.'), or -1 on parse failure.
+static int major_version_of(const std::string& semver) {
+    if (semver.empty()) return -1;
+    const char* s = semver.c_str();
+    if (*s == 'v' || *s == 'V') ++s;
+    char* end = nullptr;
+    long v = std::strtol(s, &end, 10);
+    if (end == s || v < 0) return -1;
+    return static_cast<int>(v);
+}
+
 static std::optional<UIStyle> parse_theme_root(yyjson_val* root) {
     if (!root || !yyjson_is_obj(root)) return std::nullopt;
 
@@ -393,6 +416,16 @@ static std::optional<UIStyle> parse_theme_root(yyjson_val* root) {
     UIStyle s = default_style();
 
     yyjson_val* v;
+    if ((v = yyjson_obj_get(root, "vivid_version")) && yyjson_is_str(v)) {
+        s.vivid_version = yyjson_get_str(v);
+        int theme_major = major_version_of(s.vivid_version);
+        int core_major  = major_version_of(VIVID_CORE_VERSION);
+        if (theme_major >= 0 && core_major >= 0 && theme_major != core_major) {
+            std::fprintf(stderr,
+                "[theme] Major version mismatch: theme vivid_version=%s, core=%s\n",
+                s.vivid_version.c_str(), VIVID_CORE_VERSION);
+        }
+    }
     if ((v = yyjson_obj_get(root, "name")) && yyjson_is_str(v))
         s.name = yyjson_get_str(v);
     if ((v = yyjson_obj_get(root, "corner_radius")) && yyjson_is_num(v))

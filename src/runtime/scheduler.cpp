@@ -181,7 +181,8 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
                 ns.texture_input_port_indices.push_back(input_idx);
-            } else if (desc->ports[i].type == VIVID_PORT_DATA) {
+            } else if (desc->ports[i].type == VIVID_PORT_DATA ||
+                       desc->ports[i].type == VIVID_PORT_MEDIA_STREAM) {
                 ns.data_input_port_indices.push_back(input_idx);
             } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING) {
                 ns.string_input_port_indices.push_back(input_idx);
@@ -204,7 +205,8 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
                     ns.aux_gpu_texture_views.push_back(nullptr);
                 }
                 ++gpu_tex_out_count;
-            } else if (desc->ports[i].type == VIVID_PORT_DATA) {
+            } else if (desc->ports[i].type == VIVID_PORT_DATA ||
+                       desc->ports[i].type == VIVID_PORT_MEDIA_STREAM) {
                 ns.has_data_output = true;
                 ns.data_output_port_indices.push_back(out_idx);
             } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING) {
@@ -586,7 +588,7 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                 continue;  // skip this wire
             }
 
-            // GPU buffer / mesh / compute wire classification (enum-backed, exact match required)
+            // GPU buffer / mesh / compute / media_stream wire classification (enum-backed, exact match)
             if (!from_ns.missing_operator && !to_ns.missing_operator) {
                 if (from_port_type == VIVID_PORT_GPU_BUFFER && to_port_type == VIVID_PORT_GPU_BUFFER) {
                     w.is_buffer_wire = true;
@@ -594,10 +596,13 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                     w.is_mesh_wire = true;
                 } else if (from_port_type == VIVID_PORT_GPU_COMPUTE && to_port_type == VIVID_PORT_GPU_COMPUTE) {
                     w.is_compute_wire = true;
+                } else if (from_port_type == VIVID_PORT_MEDIA_STREAM && to_port_type == VIVID_PORT_MEDIA_STREAM) {
+                    w.is_media_stream_wire = true;
                 } else if (from_port_type == VIVID_PORT_GPU_BUFFER || to_port_type == VIVID_PORT_GPU_BUFFER ||
-                           from_port_type == VIVID_PORT_GPU_MESH   || to_port_type == VIVID_PORT_GPU_MESH   ||
-                           from_port_type == VIVID_PORT_GPU_COMPUTE || to_port_type == VIVID_PORT_GPU_COMPUTE) {
-                    std::fprintf(stderr, "[vivid] Scheduler: GPU type mismatch on wire %s/%s -> %s/%s\n",
+                           from_port_type == VIVID_PORT_GPU_MESH    || to_port_type == VIVID_PORT_GPU_MESH   ||
+                           from_port_type == VIVID_PORT_GPU_COMPUTE || to_port_type == VIVID_PORT_GPU_COMPUTE ||
+                           from_port_type == VIVID_PORT_MEDIA_STREAM || to_port_type == VIVID_PORT_MEDIA_STREAM) {
+                    std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s\n",
                         conn.from_node.c_str(), conn.from_port.c_str(),
                         conn.to_node.c_str(), conn.to_port.c_str());
                     continue;  // skip this wire
@@ -746,7 +751,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         // (skip texture-type wires — those are resolved separately)
         for (const auto& w : wires_) {
             if (w.to_node_idx == ni) {
-                if (w.is_texture_wire || w.is_data_wire) continue;
+                if (w.is_texture_wire || w.is_data_wire || w.is_media_stream_wire) continue;
                 if (w.targets_file_param) {
                     // String wire into a file/text param
                     const std::string& src = w.sources_file_param
@@ -854,47 +859,52 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ns.c_output_string_values[p] = ns.output_string_values[p].c_str();
         }
 
-        // Build process context and tick
-        VividProcessContext ctx{};
-        ctx.time          = time;
-        ctx.delta_time    = delta_time;
-        ctx.frame         = frame;
-        ctx.param_values  = ns.param_values.data();
-        ctx.input_values  = ns.input_values.data();
-        ctx.output_values = ns.output_values.data();
-        ctx.input_spreads  = ns.c_in_spreads.data();
-        ctx.output_spreads = ns.c_out_spreads.data();
-        ctx.input_data = nullptr;
-        ctx.input_data_count = 0;
         // Clear and expose the DATA output buffer (operator writes into it)
         std::fill(ns.output_data_buf.begin(), ns.output_data_buf.end(), nullptr);
-        ctx.output_data = ns.output_data_buf.empty() ? nullptr : ns.output_data_buf.data();
-        ctx.output_data_count = static_cast<uint32_t>(ns.output_data_buf.size());
-        ctx.input_string_values = ns.c_input_string_values.empty()
-                                    ? nullptr : ns.c_input_string_values.data();
-        ctx.output_string_values = ns.c_output_string_values.empty()
-                                    ? nullptr : ns.c_output_string_values.data();
-        ctx.input_string_spreads = ns.c_in_string_spreads.empty()
-                                    ? nullptr : ns.c_in_string_spreads.data();
-        ctx.output_string_spreads = ns.c_out_string_spreads.empty()
-                                    ? nullptr : ns.c_out_string_spreads.data();
-        ctx.file_param_values = ns.file_param_ptrs.empty()
-                                    ? nullptr : ns.file_param_ptrs.data();
-        ctx.file_param_count  = static_cast<uint32_t>(ns.file_param_ptrs.size());
-        ctx.shared_handles = vivid::shared_handle_service();
 
-        // GPU state: build per-node VividGpuState with this node's texture
-        VividGpuState per_node_gpu{};
+        const auto prev_output_spreads = ns.output_spreads;
+        const auto prev_output_strings = ns.output_string_values;
+        const auto prev_output_string_spreads = ns.output_string_spreads;
+
         if (ns.is_gpu && gpu_state) {
-            auto* base_gpu = static_cast<VividGpuState*>(gpu_state);
-            per_node_gpu.device          = base_gpu->device;
-            per_node_gpu.queue           = base_gpu->queue;
-            per_node_gpu.command_encoder = base_gpu->command_encoder;
-            per_node_gpu.output_format   = base_gpu->output_format;
-            per_node_gpu.output_texture      = ns.gpu_texture;
-            per_node_gpu.output_texture_view = ns.gpu_texture_view;
-            per_node_gpu.output_width    = ns.gpu_tex_width;
-            per_node_gpu.output_height   = ns.gpu_tex_height;
+            // ── GPU path: build VividGpuContext (unified context) ─────────────
+            auto* base_gpu = static_cast<VividGpuContext*>(gpu_state);
+            VividGpuContext gpu_ctx{};
+
+            // Common per-tick fields
+            gpu_ctx.time          = time;
+            gpu_ctx.delta_time    = delta_time;
+            gpu_ctx.frame         = frame;
+            gpu_ctx.param_values  = ns.param_values.data();
+            gpu_ctx.input_values  = ns.input_values.data();
+            gpu_ctx.output_values = ns.output_values.data();
+            gpu_ctx.input_spreads  = ns.c_in_spreads.data();
+            gpu_ctx.output_spreads = ns.c_out_spreads.data();
+            gpu_ctx.input_string_values = ns.c_input_string_values.empty()
+                                        ? nullptr : ns.c_input_string_values.data();
+            gpu_ctx.output_string_values = ns.c_output_string_values.empty()
+                                        ? nullptr : ns.c_output_string_values.data();
+            gpu_ctx.input_string_spreads = ns.c_in_string_spreads.empty()
+                                        ? nullptr : ns.c_in_string_spreads.data();
+            gpu_ctx.output_string_spreads = ns.c_out_string_spreads.empty()
+                                        ? nullptr : ns.c_out_string_spreads.data();
+            gpu_ctx.file_param_values = ns.file_param_ptrs.empty()
+                                        ? nullptr : ns.file_param_ptrs.data();
+            gpu_ctx.file_param_count  = static_cast<uint32_t>(ns.file_param_ptrs.size());
+            gpu_ctx.input = input;
+            gpu_ctx.shared_handles = vivid::shared_handle_service();
+            gpu_ctx.preferred_tex_width  = 0;
+            gpu_ctx.preferred_tex_height = 0;
+
+            // GPU-specific resources
+            gpu_ctx.device          = base_gpu->device;
+            gpu_ctx.queue           = base_gpu->queue;
+            gpu_ctx.command_encoder = base_gpu->command_encoder;
+            gpu_ctx.output_format   = base_gpu->output_format;
+            gpu_ctx.output_texture      = ns.gpu_texture;
+            gpu_ctx.output_texture_view = ns.gpu_texture_view;
+            gpu_ctx.output_width    = ns.gpu_tex_width;
+            gpu_ctx.output_height   = ns.gpu_tex_height;
 
             // Resolve texture inputs from upstream nodes
             size_t tex_count = ns.texture_input_port_indices.size();
@@ -932,20 +942,20 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                     }
                 }
             }
-            per_node_gpu.input_texture_views = ns.resolved_tex_inputs.empty()
+            gpu_ctx.input_texture_views = ns.resolved_tex_inputs.empty()
                                                 ? nullptr : ns.resolved_tex_inputs.data();
-            per_node_gpu.input_texture_count = static_cast<uint32_t>(tex_count);
-            per_node_gpu.input_textures        = ns.resolved_tex_raw.empty()
+            gpu_ctx.input_texture_count = static_cast<uint32_t>(tex_count);
+            gpu_ctx.input_textures        = ns.resolved_tex_raw.empty()
                                                     ? nullptr : ns.resolved_tex_raw.data();
-            per_node_gpu.input_texture_widths   = ns.resolved_tex_widths.empty()
+            gpu_ctx.input_texture_widths   = ns.resolved_tex_widths.empty()
                                                     ? nullptr : ns.resolved_tex_widths.data();
-            per_node_gpu.input_texture_heights  = ns.resolved_tex_heights.empty()
+            gpu_ctx.input_texture_heights  = ns.resolved_tex_heights.empty()
                                                     ? nullptr : ns.resolved_tex_heights.data();
-            per_node_gpu.operators_src_dir = operators_src_dir_.empty()
+            gpu_ctx.operators_src_dir = operators_src_dir_.empty()
                                                 ? nullptr : operators_src_dir_.c_str();
-            per_node_gpu.aux_output_texture_views = ns.aux_gpu_texture_views.empty()
+            gpu_ctx.aux_output_texture_views = ns.aux_gpu_texture_views.empty()
                 ? nullptr : ns.aux_gpu_texture_views.data();
-            per_node_gpu.aux_output_texture_count =
+            gpu_ctx.aux_output_texture_count =
                 static_cast<uint32_t>(ns.aux_gpu_texture_views.size());
 
             // Resolve data inputs from upstream nodes
@@ -956,7 +966,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                 uint32_t port_idx = ns.data_input_port_indices[di];
                 for (const auto& w : wires_) {
                     if (w.to_node_idx == ni && !w.targets_param &&
-                        w.to_port_idx == port_idx && w.is_data_wire) {
+                        w.to_port_idx == port_idx &&
+                        (w.is_data_wire || w.is_media_stream_wire)) {
                         const auto& upstream = nodes_[w.from_node_idx];
                         // Find which DATA output slot corresponds to this wire's source port
                         void* resolved = nullptr;
@@ -972,13 +983,11 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                     }
                 }
             }
-            per_node_gpu.input_data = ns.resolved_data_inputs.empty()
+            gpu_ctx.input_data = ns.resolved_data_inputs.empty()
                                           ? nullptr : ns.resolved_data_inputs.data();
-            per_node_gpu.input_data_count = static_cast<uint32_t>(data_count);
-            per_node_gpu.output_data = ctx.output_data;
-            per_node_gpu.output_data_count = ctx.output_data_count;
-            ctx.input_data = per_node_gpu.input_data;
-            ctx.input_data_count = per_node_gpu.input_data_count;
+            gpu_ctx.input_data_count = static_cast<uint32_t>(data_count);
+            gpu_ctx.output_data = ns.output_data_buf.empty() ? nullptr : ns.output_data_buf.data();
+            gpu_ctx.output_data_count = static_cast<uint32_t>(ns.output_data_buf.size());
 
             // Resolve GPU buffer inputs from upstream nodes
             for (size_t bi = 0; bi < ns.buffer_input_port_indices.size(); ++bi) {
@@ -997,10 +1006,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                     break;
                 }
             }
-            per_node_gpu.output_buffers      = ns.output_buffer_buf.empty() ? nullptr : ns.output_buffer_buf.data();
-            per_node_gpu.output_buffer_count = static_cast<uint32_t>(ns.output_buffer_buf.size());
-            per_node_gpu.input_buffers       = ns.resolved_buffer_inputs.empty() ? nullptr : ns.resolved_buffer_inputs.data();
-            per_node_gpu.input_buffer_count  = static_cast<uint32_t>(ns.resolved_buffer_inputs.size());
+            gpu_ctx.output_buffers      = ns.output_buffer_buf.empty() ? nullptr : ns.output_buffer_buf.data();
+            gpu_ctx.output_buffer_count = static_cast<uint32_t>(ns.output_buffer_buf.size());
+            gpu_ctx.input_buffers       = ns.resolved_buffer_inputs.empty() ? nullptr : ns.resolved_buffer_inputs.data();
+            gpu_ctx.input_buffer_count  = static_cast<uint32_t>(ns.resolved_buffer_inputs.size());
 
             // Resolve GPU mesh inputs from upstream nodes
             for (size_t mi = 0; mi < ns.mesh_input_port_indices.size(); ++mi) {
@@ -1019,10 +1028,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                     break;
                 }
             }
-            per_node_gpu.output_meshes     = ns.output_mesh_buf.empty() ? nullptr : ns.output_mesh_buf.data();
-            per_node_gpu.output_mesh_count = static_cast<uint32_t>(ns.output_mesh_buf.size());
-            per_node_gpu.input_meshes      = ns.resolved_mesh_inputs.empty() ? nullptr : ns.resolved_mesh_inputs.data();
-            per_node_gpu.input_mesh_count  = static_cast<uint32_t>(ns.resolved_mesh_inputs.size());
+            gpu_ctx.output_meshes     = ns.output_mesh_buf.empty() ? nullptr : ns.output_mesh_buf.data();
+            gpu_ctx.output_mesh_count = static_cast<uint32_t>(ns.output_mesh_buf.size());
+            gpu_ctx.input_meshes      = ns.resolved_mesh_inputs.empty() ? nullptr : ns.resolved_mesh_inputs.data();
+            gpu_ctx.input_mesh_count  = static_cast<uint32_t>(ns.resolved_mesh_inputs.size());
 
             // Resolve GPU compute inputs from upstream nodes
             for (size_t ci = 0; ci < ns.compute_input_port_indices.size(); ++ci) {
@@ -1041,71 +1050,128 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                     break;
                 }
             }
-            per_node_gpu.output_compute       = ns.output_compute_buf.empty() ? nullptr : ns.output_compute_buf.data();
-            per_node_gpu.output_compute_count = static_cast<uint32_t>(ns.output_compute_buf.size());
-            per_node_gpu.input_compute        = ns.resolved_compute_inputs.empty() ? nullptr : ns.resolved_compute_inputs.data();
-            per_node_gpu.input_compute_count  = static_cast<uint32_t>(ns.resolved_compute_inputs.size());
+            gpu_ctx.output_compute       = ns.output_compute_buf.empty() ? nullptr : ns.output_compute_buf.data();
+            gpu_ctx.output_compute_count = static_cast<uint32_t>(ns.output_compute_buf.size());
+            gpu_ctx.input_compute        = ns.resolved_compute_inputs.empty() ? nullptr : ns.resolved_compute_inputs.data();
+            gpu_ctx.input_compute_count  = static_cast<uint32_t>(ns.resolved_compute_inputs.size());
 
-            ctx.gpu = &per_node_gpu;
-        } else {
-            ctx.gpu = nullptr;
-        }
-
-        // Forward input state to all operators (they ignore it if they don't care)
-        ctx.input = input ? const_cast<void*>(static_cast<const void*>(input)) : nullptr;
-        const auto prev_output_spreads = ns.output_spreads;
-        const auto prev_output_strings = ns.output_string_values;
-        const auto prev_output_string_spreads = ns.output_string_spreads;
-
-        try {
-            if (ns.missing_operator || !ns.loader) {
+            try {
+                if (ns.missing_operator || !ns.loader) {
+                    std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
+                    for (auto& sp : ns.output_spreads) sp.clear();
+                    for (auto& sp : ns.output_string_spreads) sp.clear();
+                    std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
+                } else {
+                    CrashGuard guard(ns.node_id.c_str());
+                    ns.loader->process_gpu(ns.instance, &gpu_ctx);
+                }
+            } catch (const std::exception& e) {
+                ns.errored = true;
+                ns.error_message = e.what();
                 std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
                 for (auto& sp : ns.output_spreads) sp.clear();
                 for (auto& sp : ns.output_string_spreads) sp.clear();
                 std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
-            } else {
-                CrashGuard guard(ns.node_id.c_str());
-                ns.loader->process(ns.instance, &ctx);
+                std::fprintf(stderr, "[vivid] operator '%s' threw: %s\n",
+                             ns.node_id.c_str(), e.what());
+            } catch (...) {
+                ns.errored = true;
+                ns.error_message = "Unknown exception";
+                std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
+                for (auto& sp : ns.output_spreads) sp.clear();
+                for (auto& sp : ns.output_string_spreads) sp.clear();
+                std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
+                std::fprintf(stderr, "[vivid] operator '%s' threw unknown exception\n",
+                             ns.node_id.c_str());
             }
-        } catch (const std::exception& e) {
-            ns.errored = true;
-            ns.error_message = e.what();
-            std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
-            for (auto& sp : ns.output_spreads) sp.clear();
-            for (auto& sp : ns.output_string_spreads) sp.clear();
-            std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
-            std::fprintf(stderr, "[vivid] operator '%s' threw: %s\n",
-                         ns.node_id.c_str(), e.what());
-        } catch (...) {
-            ns.errored = true;
-            ns.error_message = "Unknown exception";
-            std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
-            for (auto& sp : ns.output_spreads) sp.clear();
-            for (auto& sp : ns.output_string_spreads) sp.clear();
-            std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
-            std::fprintf(stderr, "[vivid] operator '%s' threw unknown exception\n",
-                         ns.node_id.c_str());
+
+            // Check if the GPU operator requested a texture resize
+            if (gpu_ctx.preferred_tex_width > 0 && gpu_ctx.preferred_tex_height > 0 &&
+                (gpu_ctx.preferred_tex_width != ns.gpu_tex_width ||
+                 gpu_ctx.preferred_tex_height != ns.gpu_tex_height)) {
+                ns.gpu_tex_width  = gpu_ctx.preferred_tex_width;
+                ns.gpu_tex_height = gpu_ctx.preferred_tex_height;
+                ns.generation++;
+                needs_gpu_realloc_ = true;
+            }
+        } else {
+            // ── Control path: build VividProcessContext ───────────────────────
+            VividProcessContext ctx{};
+            ctx.time          = time;
+            ctx.delta_time    = delta_time;
+            ctx.frame         = frame;
+            ctx.param_values  = ns.param_values.data();
+            ctx.input_values  = ns.input_values.data();
+            ctx.output_values = ns.output_values.data();
+            ctx.input_spreads  = ns.c_in_spreads.data();
+            ctx.output_spreads = ns.c_out_spreads.data();
+            ctx.input_data = nullptr;
+            ctx.input_data_count = 0;
+            ctx.output_data = ns.output_data_buf.empty() ? nullptr : ns.output_data_buf.data();
+            ctx.output_data_count = static_cast<uint32_t>(ns.output_data_buf.size());
+            ctx.input_string_values = ns.c_input_string_values.empty()
+                                        ? nullptr : ns.c_input_string_values.data();
+            ctx.output_string_values = ns.c_output_string_values.empty()
+                                        ? nullptr : ns.c_output_string_values.data();
+            ctx.input_string_spreads = ns.c_in_string_spreads.empty()
+                                        ? nullptr : ns.c_in_string_spreads.data();
+            ctx.output_string_spreads = ns.c_out_string_spreads.empty()
+                                        ? nullptr : ns.c_out_string_spreads.data();
+            ctx.file_param_values = ns.file_param_ptrs.empty()
+                                        ? nullptr : ns.file_param_ptrs.data();
+            ctx.file_param_count  = static_cast<uint32_t>(ns.file_param_ptrs.size());
+            ctx.shared_handles = vivid::shared_handle_service();
+            ctx.input = input ? const_cast<void*>(static_cast<const void*>(input)) : nullptr;
+
+            try {
+                if (ns.missing_operator || !ns.loader) {
+                    std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
+                    for (auto& sp : ns.output_spreads) sp.clear();
+                    for (auto& sp : ns.output_string_spreads) sp.clear();
+                    std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
+                } else {
+                    CrashGuard guard(ns.node_id.c_str());
+                    ns.loader->process(ns.instance, &ctx);
+                }
+            } catch (const std::exception& e) {
+                ns.errored = true;
+                ns.error_message = e.what();
+                std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
+                for (auto& sp : ns.output_spreads) sp.clear();
+                for (auto& sp : ns.output_string_spreads) sp.clear();
+                std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
+                std::fprintf(stderr, "[vivid] operator '%s' threw: %s\n",
+                             ns.node_id.c_str(), e.what());
+            } catch (...) {
+                ns.errored = true;
+                ns.error_message = "Unknown exception";
+                std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
+                for (auto& sp : ns.output_spreads) sp.clear();
+                for (auto& sp : ns.output_string_spreads) sp.clear();
+                std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
+                std::fprintf(stderr, "[vivid] operator '%s' threw unknown exception\n",
+                             ns.node_id.c_str());
+            }
+
+            // Check if the control operator requested a texture resize
+            if (ctx.preferred_tex_width > 0 && ctx.preferred_tex_height > 0 &&
+                (ctx.preferred_tex_width != ns.gpu_tex_width ||
+                 ctx.preferred_tex_height != ns.gpu_tex_height)) {
+                ns.gpu_tex_width  = ctx.preferred_tex_width;
+                ns.gpu_tex_height = ctx.preferred_tex_height;
+                ns.generation++;
+                needs_gpu_realloc_ = true;
+            }
         }
 
         // Capture opaque data outputs.
-        // Both ctx.output_data and per_node_gpu.output_data point to output_data_buf.data(),
-        // so the operator's writes are already in ns.output_data_buf — just copy.
+        // The operator's writes are already in ns.output_data_buf — just copy.
         ns.gpu_data_outputs = ns.output_data_buf;
 
         // Capture GPU buffer/mesh/compute outputs (operator wrote pointers into the buf arrays)
         ns.gpu_buffer_outputs  = ns.output_buffer_buf;
         ns.gpu_mesh_outputs    = ns.output_mesh_buf;
         ns.gpu_compute_outputs = ns.output_compute_buf;
-
-        // Check if the operator requested a texture resize
-        if (ctx.preferred_tex_width > 0 && ctx.preferred_tex_height > 0 &&
-            (ctx.preferred_tex_width != ns.gpu_tex_width ||
-             ctx.preferred_tex_height != ns.gpu_tex_height)) {
-            ns.gpu_tex_width  = ctx.preferred_tex_width;
-            ns.gpu_tex_height = ctx.preferred_tex_height;
-            ns.generation++;
-            needs_gpu_realloc_ = true;
-        }
 
         // Read back output spreads
         for (uint32_t p = 0; p < ns.output_port_count; ++p) {

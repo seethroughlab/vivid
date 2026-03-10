@@ -111,7 +111,8 @@ struct CrossDomainDataWire {
     uint32_t source_output_port_idx;
     uint32_t audio_node_idx;
     uint32_t audio_port_idx;
-    std::string data_type;
+    VividPortType port_type = VIVID_PORT_DATA; // VIVID_PORT_DATA or VIVID_PORT_MEDIA_STREAM
+    std::string data_type;                     // populated only for VIVID_PORT_DATA (string-tagged)
 };
 
 struct DataInputSnapshot {

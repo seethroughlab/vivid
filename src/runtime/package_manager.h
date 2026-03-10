@@ -115,6 +115,12 @@ public:
                                                  const std::string& remote_vivid_core,
                                                  const std::string& core_version);
 
+    // Classify the delta between a saved package version and the installed version.
+    // Returns UpToDate, CompatibleUpdate (same major), IncompatibleUpdate (major changed),
+    // RemoteOlderOrEqual (installed older than saved), or InvalidVersionData on parse failure.
+    static PackageUpdateClass classify_version_delta(const std::string& saved_version,
+                                                     const std::string& installed_version);
+
 private:
     // Discover package candidates across all scopes and resolve winners by precedence.
     static std::vector<PackageInfo> resolve_packages(bool emit_warnings);

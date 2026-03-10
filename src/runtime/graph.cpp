@@ -5,6 +5,10 @@
 #include <cstring>
 #include <algorithm>
 
+#ifndef VIVID_CORE_VERSION
+#define VIVID_CORE_VERSION "0.1.0"
+#endif
+
 namespace vivid {
 
 static bool split_address(const char* addr, std::string& node, std::string& port) {
@@ -67,10 +71,26 @@ bool Graph::parse_doc(yyjson_doc* doc) {
     variations_.clear();
     node_presets_.clear();
     state_preset_mappings_.clear();
+    load_diagnostics.clear();
     active_variation_ = -1;
     quantize_clock_node_.clear();
 
     yyjson_val* root = yyjson_doc_get_root(doc);
+
+    // Schema version — hard-reject if from the future
+    auto* sv_val = yyjson_obj_get(root, "schema_version");
+    schema_version = sv_val ? static_cast<int>(yyjson_get_int(sv_val)) : 1;
+    if (schema_version > GRAPH_SCHEMA_VERSION) {
+        std::fprintf(stderr, "[vivid] Graph: schema_version %d > %d — refusing to load.\n",
+                     schema_version, GRAPH_SCHEMA_VERSION);
+        return false;
+    }
+
+    auto* vv_val = yyjson_obj_get(root, "vivid_version");
+    if (vv_val && yyjson_is_str(vv_val))
+        vivid_version = yyjson_get_str(vv_val);
+    else
+        vivid_version.clear();
 
     // Parse filters (before nodes, since nodes may reference user filter types)
     yyjson_val* filters_obj = yyjson_obj_get(root, "filters");
@@ -137,6 +157,15 @@ bool Graph::parse_doc(yyjson_doc* doc) {
                 return false;
             }
             node.type = yyjson_get_str(type_val);
+
+            // Optional package provenance
+            auto* pkg_obj = yyjson_obj_get(val, "pkg");
+            if (pkg_obj && yyjson_is_obj(pkg_obj)) {
+                auto* pn = yyjson_obj_get(pkg_obj, "name");
+                auto* pv = yyjson_obj_get(pkg_obj, "version");
+                node.pkg_name    = (pn && yyjson_is_str(pn)) ? yyjson_get_str(pn) : "";
+                node.pkg_version = (pv && yyjson_is_str(pv)) ? yyjson_get_str(pv) : "";
+            }
 
             yyjson_val* params_obj = yyjson_obj_get(val, "params");
             if (params_obj && yyjson_is_obj(params_obj)) {
@@ -805,6 +834,10 @@ static yyjson_mut_doc* build_graph_json_doc(const Graph& graph) {
     yyjson_mut_val* root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
 
+    // Schema metadata
+    yyjson_mut_obj_add_int(doc, root, "schema_version", GRAPH_SCHEMA_VERSION);
+    yyjson_mut_obj_add_str(doc, root, "vivid_version", VIVID_CORE_VERSION);
+
     // Filters
     if (!graph.filters().empty()) {
         yyjson_mut_val* filters_obj = yyjson_mut_obj(doc);
@@ -841,6 +874,13 @@ static yyjson_mut_doc* build_graph_json_doc(const Graph& graph) {
     for (const auto& node : graph.nodes()) {
         yyjson_mut_val* node_obj = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_str(doc, node_obj, "type", node.type.c_str());
+
+        if (!node.pkg_name.empty()) {
+            auto* pkg_sub = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_strcpy(doc, pkg_sub, "name",    node.pkg_name.c_str());
+            yyjson_mut_obj_add_strcpy(doc, pkg_sub, "version", node.pkg_version.c_str());
+            yyjson_mut_obj_add_val(doc, node_obj, "pkg", pkg_sub);
+        }
 
         if (!node.params.empty() || !node.string_params.empty()) {
             yyjson_mut_val* params_obj = yyjson_mut_obj(doc);

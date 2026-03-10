@@ -262,7 +262,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Build GPU state
-        VividGpuState gpu_state{};
+        VividGpuContext gpu_state{};
         gpu_state.device          = gpu.device();
         gpu_state.queue           = gpu.queue();
         gpu_state.command_encoder = tick_encoder;

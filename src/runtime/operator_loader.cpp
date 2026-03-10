@@ -16,6 +16,8 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , create_fn_(other.create_fn_)
     , destroy_fn_(other.destroy_fn_)
     , process_fn_(other.process_fn_)
+    , process_audio_fn_(other.process_audio_fn_)
+    , process_gpu_fn_(other.process_gpu_fn_)
     , draw_thumb_fn_(other.draw_thumb_fn_)
     , main_update_fn_(other.main_update_fn_)
     , dd_config_(std::move(other.dd_config_))
@@ -29,13 +31,15 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , dd_ports_(std::move(other.dd_ports_))
     , dd_desc_(other.dd_desc_)
 {
-    other.handle_        = nullptr;
-    other.desc_fn_       = nullptr;
-    other.create_fn_     = nullptr;
-    other.destroy_fn_    = nullptr;
-    other.process_fn_    = nullptr;
-    other.draw_thumb_fn_ = nullptr;
-    other.main_update_fn_ = nullptr;
+    other.handle_           = nullptr;
+    other.desc_fn_          = nullptr;
+    other.create_fn_        = nullptr;
+    other.destroy_fn_       = nullptr;
+    other.process_fn_       = nullptr;
+    other.process_audio_fn_ = nullptr;
+    other.process_gpu_fn_   = nullptr;
+    other.draw_thumb_fn_    = nullptr;
+    other.main_update_fn_   = nullptr;
     other.dd_desc_ = {};
     // Fixup descriptor pointers to our own storage
     if (dd_config_) {
@@ -46,30 +50,34 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
 OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
     if (this != &other) {
         unload();
-        handle_        = other.handle_;
-        desc_fn_       = other.desc_fn_;
-        create_fn_     = other.create_fn_;
-        destroy_fn_    = other.destroy_fn_;
-        process_fn_    = other.process_fn_;
-        draw_thumb_fn_ = other.draw_thumb_fn_;
-        main_update_fn_ = other.main_update_fn_;
-        dd_config_     = std::move(other.dd_config_);
-        dd_name_       = std::move(other.dd_name_);
-        dd_param_names_ = std::move(other.dd_param_names_);
+        handle_           = other.handle_;
+        desc_fn_          = other.desc_fn_;
+        create_fn_        = other.create_fn_;
+        destroy_fn_       = other.destroy_fn_;
+        process_fn_       = other.process_fn_;
+        process_audio_fn_ = other.process_audio_fn_;
+        process_gpu_fn_   = other.process_gpu_fn_;
+        draw_thumb_fn_    = other.draw_thumb_fn_;
+        main_update_fn_   = other.main_update_fn_;
+        dd_config_        = std::move(other.dd_config_);
+        dd_name_          = std::move(other.dd_name_);
+        dd_param_names_   = std::move(other.dd_param_names_);
         dd_group_strings_ = std::move(other.dd_group_strings_);
         dd_choice_labels_ = std::move(other.dd_choice_labels_);
-        dd_choice_ptrs_ = std::move(other.dd_choice_ptrs_);
-        dd_params_     = std::move(other.dd_params_);
-        dd_port_names_ = std::move(other.dd_port_names_);
-        dd_ports_      = std::move(other.dd_ports_);
-        dd_desc_       = other.dd_desc_;
-        other.handle_        = nullptr;
-        other.desc_fn_       = nullptr;
-        other.create_fn_     = nullptr;
-        other.destroy_fn_    = nullptr;
-        other.process_fn_    = nullptr;
-        other.draw_thumb_fn_ = nullptr;
-        other.main_update_fn_ = nullptr;
+        dd_choice_ptrs_   = std::move(other.dd_choice_ptrs_);
+        dd_params_        = std::move(other.dd_params_);
+        dd_port_names_    = std::move(other.dd_port_names_);
+        dd_ports_         = std::move(other.dd_ports_);
+        dd_desc_          = other.dd_desc_;
+        other.handle_           = nullptr;
+        other.desc_fn_          = nullptr;
+        other.create_fn_        = nullptr;
+        other.destroy_fn_       = nullptr;
+        other.process_fn_       = nullptr;
+        other.process_audio_fn_ = nullptr;
+        other.process_gpu_fn_   = nullptr;
+        other.draw_thumb_fn_    = nullptr;
+        other.main_update_fn_   = nullptr;
         other.dd_desc_ = {};
         // Fixup descriptor pointers to our own storage
         if (dd_config_) {
@@ -107,14 +115,21 @@ bool OperatorLoader::load(const char* path) {
     desc_fn_    = reinterpret_cast<VividDescriptorFn>(dlsym(handle_, "vivid_descriptor"));
     create_fn_  = reinterpret_cast<VividCreateFn>(dlsym(handle_, "vivid_create"));
     destroy_fn_ = reinterpret_cast<VividDestroyFn>(dlsym(handle_, "vivid_destroy"));
-    process_fn_ = reinterpret_cast<VividProcessFn>(dlsym(handle_, "vivid_process"));
+
+    // Per-domain process entry points
+    process_fn_       = reinterpret_cast<VividProcessFn>(dlsym(handle_, "vivid_process"));
+    process_audio_fn_ = reinterpret_cast<VividProcessAudioFn>(dlsym(handle_, "vivid_process_audio"));
+    process_gpu_fn_   = reinterpret_cast<VividProcessGpuFn>(dlsym(handle_, "vivid_process_gpu"));
 
     if (!desc_fn_)    std::fprintf(stderr, "[vivid] Missing symbol: vivid_descriptor\n");
     if (!create_fn_)  std::fprintf(stderr, "[vivid] Missing symbol: vivid_create\n");
     if (!destroy_fn_) std::fprintf(stderr, "[vivid] Missing symbol: vivid_destroy\n");
-    if (!process_fn_) std::fprintf(stderr, "[vivid] Missing symbol: vivid_process\n");
+    // At least one process entry point must exist
+    if (!process_fn_ && !process_audio_fn_ && !process_gpu_fn_)
+        std::fprintf(stderr, "[vivid] Missing symbol: no process entry point found\n");
 
-    if (!desc_fn_ || !create_fn_ || !destroy_fn_ || !process_fn_) {
+    if (!desc_fn_ || !create_fn_ || !destroy_fn_ ||
+        (!process_fn_ && !process_audio_fn_ && !process_gpu_fn_)) {
         unload();
         return false;
     }
@@ -217,6 +232,8 @@ void OperatorLoader::init_data_driven(std::shared_ptr<DataDrivenFilterConfig> co
     dd_desc_.param_count = static_cast<uint32_t>(dd_params_.size());
     dd_desc_.port_count = static_cast<uint32_t>(dd_ports_.size());
     dd_desc_.time_dependent = dd_config_->time_dependent ? 1 : 0;
+    dd_desc_.has_process_audio = 0;
+    dd_desc_.has_process_gpu = 1;
     // Re-point all const char* after vectors are final (push_back may have reallocated)
     fixup_dd_pointers();
 }
@@ -245,13 +262,15 @@ void OperatorLoader::unload() {
             const char* dl_err = dlerror();
             std::fprintf(stderr, "[vivid] dlclose failed: %s\n", dl_err ? dl_err : "unknown error");
         }
-        handle_        = nullptr;
-        desc_fn_       = nullptr;
-        create_fn_     = nullptr;
-        destroy_fn_    = nullptr;
-        process_fn_    = nullptr;
-        draw_thumb_fn_ = nullptr;
-        main_update_fn_ = nullptr;
+        handle_           = nullptr;
+        desc_fn_          = nullptr;
+        create_fn_        = nullptr;
+        destroy_fn_       = nullptr;
+        process_fn_       = nullptr;
+        process_audio_fn_ = nullptr;
+        process_gpu_fn_   = nullptr;
+        draw_thumb_fn_    = nullptr;
+        main_update_fn_   = nullptr;
     }
     if (dd_config_) {
         dd_config_.reset();
@@ -288,13 +307,25 @@ void OperatorLoader::destroy_instance(void* instance) const {
 }
 
 void OperatorLoader::process(void* instance, VividProcessContext* ctx) const {
-    if (dd_config_) {
-        if (!instance) return;
-        static_cast<WgslFilterBase*>(instance)->process(ctx);
-        return;
-    }
     if (process_fn_ && instance) {
         process_fn_(instance, ctx);
+    }
+}
+
+void OperatorLoader::process_audio(void* instance, VividAudioContext* ctx) const {
+    if (process_audio_fn_ && instance) {
+        process_audio_fn_(instance, ctx);
+    }
+}
+
+void OperatorLoader::process_gpu(void* instance, VividGpuContext* ctx) const {
+    if (dd_config_) {
+        if (!instance) return;
+        static_cast<WgslFilterBase*>(instance)->process_gpu(ctx);
+        return;
+    }
+    if (process_gpu_fn_ && instance) {
+        process_gpu_fn_(instance, ctx);
     }
 }
 

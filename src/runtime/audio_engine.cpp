@@ -53,7 +53,8 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
             ns.has_string_input_ports = true;
         }
         if (desc->ports[i].direction == VIVID_PORT_INPUT &&
-            desc->ports[i].type == VIVID_PORT_DATA) {
+            (desc->ports[i].type == VIVID_PORT_DATA ||
+             desc->ports[i].type == VIVID_PORT_MEDIA_STREAM)) {
             ns.has_data_input_ports = true;
         }
     }
@@ -238,45 +239,58 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     cross_string_wires_.push_back(sw);
                 } else if (ip_it != to_ns.input_port_indices.end() &&
                            ip_it->second < to_ns.input_port_types.size() &&
-                           cp_it->second < ctrl_ns.output_port_types.size() &&
-                           to_ns.input_port_types[ip_it->second] == VIVID_PORT_DATA &&
-                           ctrl_ns.output_port_types[cp_it->second] == VIVID_PORT_DATA) {
-                    const char* src_dt = nullptr;
-                    const char* dst_dt = nullptr;
-                    if (ctrl_ns.loader && ctrl_ns.loader->descriptor()) {
-                        const auto* sd = ctrl_ns.loader->descriptor();
-                        uint32_t oi = 0;
-                        for (uint32_t pi = 0; pi < sd->port_count; ++pi) {
-                            if (sd->ports[pi].direction == VIVID_PORT_OUTPUT) {
-                                if (oi == cp_it->second) {
-                                    src_dt = sd->ports[pi].data_type;
-                                    break;
-                                }
-                                oi++;
-                            }
-                        }
-                    }
-                    if (to_ns.loader && to_ns.loader->descriptor()) {
-                        const auto* dd = to_ns.loader->descriptor();
-                        uint32_t ii = 0;
-                        for (uint32_t pi = 0; pi < dd->port_count; ++pi) {
-                            if (dd->ports[pi].direction == VIVID_PORT_INPUT) {
-                                if (ii == ip_it->second) {
-                                    dst_dt = dd->ports[pi].data_type;
-                                    break;
-                                }
-                                ii++;
-                            }
-                        }
-                    }
-                    if (src_dt && dst_dt && std::strcmp(src_dt, dst_dt) == 0) {
+                           cp_it->second < ctrl_ns.output_port_types.size()) {
+                    const VividPortType src_pt = ctrl_ns.output_port_types[cp_it->second];
+                    const VividPortType dst_pt = to_ns.input_port_types[ip_it->second];
+                    if (src_pt == VIVID_PORT_MEDIA_STREAM && dst_pt == VIVID_PORT_MEDIA_STREAM) {
+                        // First-class media stream cross-domain wire — no string tag needed
                         CrossDomainDataWire dw;
                         dw.source_node_id = conn.from_node;
                         dw.source_output_port_idx = cp_it->second;
                         dw.audio_node_idx = ti;
                         dw.audio_port_idx = ip_it->second;
-                        dw.data_type = src_dt;
+                        dw.port_type = VIVID_PORT_MEDIA_STREAM;
                         cross_data_wires_.push_back(std::move(dw));
+                    } else if (src_pt == VIVID_PORT_DATA && dst_pt == VIVID_PORT_DATA) {
+                        // Legacy string-tagged DATA wire
+                        const char* src_dt = nullptr;
+                        const char* dst_dt = nullptr;
+                        if (ctrl_ns.loader && ctrl_ns.loader->descriptor()) {
+                            const auto* sd = ctrl_ns.loader->descriptor();
+                            uint32_t oi = 0;
+                            for (uint32_t pi = 0; pi < sd->port_count; ++pi) {
+                                if (sd->ports[pi].direction == VIVID_PORT_OUTPUT) {
+                                    if (oi == cp_it->second) {
+                                        src_dt = sd->ports[pi].data_type;
+                                        break;
+                                    }
+                                    oi++;
+                                }
+                            }
+                        }
+                        if (to_ns.loader && to_ns.loader->descriptor()) {
+                            const auto* dd = to_ns.loader->descriptor();
+                            uint32_t ii = 0;
+                            for (uint32_t pi = 0; pi < dd->port_count; ++pi) {
+                                if (dd->ports[pi].direction == VIVID_PORT_INPUT) {
+                                    if (ii == ip_it->second) {
+                                        dst_dt = dd->ports[pi].data_type;
+                                        break;
+                                    }
+                                    ii++;
+                                }
+                            }
+                        }
+                        if (src_dt && dst_dt && std::strcmp(src_dt, dst_dt) == 0) {
+                            CrossDomainDataWire dw;
+                            dw.source_node_id = conn.from_node;
+                            dw.source_output_port_idx = cp_it->second;
+                            dw.audio_node_idx = ti;
+                            dw.audio_port_idx = ip_it->second;
+                            dw.port_type = VIVID_PORT_DATA;
+                            dw.data_type = src_dt;
+                            cross_data_wires_.push_back(std::move(dw));
+                        }
                     }
                 }
             }
@@ -556,21 +570,25 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
 
     // Cross-domain data wires: copy typed opaque payload snapshots.
     for (const auto& dw : cross_data_wires_) {
-        const size_t payload_size = data_type_size(dw.data_type);
+        const size_t payload_size =
+            (dw.port_type == VIVID_PORT_MEDIA_STREAM) ? sizeof(MediaStreamV1)
+                                                       : data_type_size(dw.data_type);
         for (const auto& src_ns : scheduler.nodes()) {
             if (src_ns.node_id != dw.source_node_id) continue;
             auto& dst = snap.data_inputs[dw.audio_node_idx][dw.audio_port_idx];
             dst.clear();
             if (payload_size == 0 || payload_size > DataInputSnapshot::kMaxBytes) break;
-            // Find the DATA output slot for this wire's source port
+            // Find the DATA/MEDIA_STREAM output slot for this wire's source port
             void* data_ptr = nullptr;
-            if (dw.source_output_port_idx < src_ns.output_port_types.size() &&
-                src_ns.output_port_types[dw.source_output_port_idx] == VIVID_PORT_DATA) {
-                for (uint32_t s = 0; s < src_ns.data_output_port_indices.size(); ++s) {
-                    if (src_ns.data_output_port_indices[s] == dw.source_output_port_idx &&
-                        s < src_ns.gpu_data_outputs.size()) {
-                        data_ptr = src_ns.gpu_data_outputs[s];
-                        break;
+            if (dw.source_output_port_idx < src_ns.output_port_types.size()) {
+                const VividPortType src_pt = src_ns.output_port_types[dw.source_output_port_idx];
+                if (src_pt == VIVID_PORT_DATA || src_pt == VIVID_PORT_MEDIA_STREAM) {
+                    for (uint32_t s = 0; s < src_ns.data_output_port_indices.size(); ++s) {
+                        if (src_ns.data_output_port_indices[s] == dw.source_output_port_idx &&
+                            s < src_ns.gpu_data_outputs.size()) {
+                            data_ptr = src_ns.gpu_data_outputs[s];
+                            break;
+                        }
                     }
                 }
             }
@@ -827,17 +845,11 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                 }
             }
 
-            // Build pointer arrays for VividAudioState (pre-allocated)
+            // Build pointer arrays for VividAudioContext (pre-allocated)
             for (uint32_t p = 0; p < ns.input_port_count; ++p)
                 ns.in_ptrs[p] = ns.input_buffers[p].data();
             for (uint32_t p = 0; p < ns.output_port_count; ++p)
                 ns.out_ptrs[p] = ns.output_buffers[p].data();
-
-            VividAudioState audio_state{};
-            audio_state.input_buffers = ns.in_ptrs.data();
-            audio_state.output_buffers = ns.out_ptrs.data();
-            audio_state.buffer_size = chunk;
-            audio_state.sample_rate = kSampleRate;
 
             // Set up spread ports for nodes that have them
             if (ns.has_spread_ports) {
@@ -849,39 +861,36 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                 }
             }
 
-            double time = static_cast<double>(audio_frame_ + frames_written) / kSampleRate;
-
-            VividProcessContext ctx{};
-            ctx.time = time;
-            ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
-            ctx.frame = audio_frame_ + frames_written;
-            ctx.param_values = ns.param_values.data();
-            ctx.input_values = nullptr;
-            ctx.output_values = nullptr;
-            ctx.gpu = nullptr;
-            ctx.audio = &audio_state;
-            ctx.input_spreads = ns.has_spread_ports ? ns.spread_in_ports.data() : nullptr;
-            ctx.output_spreads = ns.has_spread_ports ? ns.spread_out_ports.data() : nullptr;
             if (ns.has_string_input_ports) {
                 for (uint32_t p = 0; p < ns.input_port_count; ++p) {
                     ns.c_input_string_values[p] = ns.input_string_values[p].c_str();
                 }
             }
-            ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
-            ctx.output_string_values = nullptr;
-            ctx.input_string_spreads = nullptr;
-            ctx.output_string_spreads = nullptr;
-            ctx.input_data = ns.has_data_input_ports ? ns.input_data_values.data() : nullptr;
-            ctx.input_data_count = ns.input_port_count;
-            ctx.output_data = nullptr;
-            ctx.file_param_values = nullptr;
-            ctx.file_param_count = 0;
-            ctx.shared_handles = vivid::shared_handle_service();
+
+            double time = static_cast<double>(audio_frame_ + frames_written) / kSampleRate;
+
+            VividAudioContext audio_ctx{};
+            audio_ctx.time = time;
+            audio_ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
+            audio_ctx.frame = audio_frame_ + frames_written;
+            audio_ctx.param_values = ns.param_values.data();
+            audio_ctx.input_buffers = ns.in_ptrs.data();
+            audio_ctx.output_buffers = ns.out_ptrs.data();
+            audio_ctx.buffer_size = chunk;
+            audio_ctx.sample_rate = kSampleRate;
+            audio_ctx.input_spreads = ns.has_spread_ports ? ns.spread_in_ports.data() : nullptr;
+            audio_ctx.output_spreads = ns.has_spread_ports ? ns.spread_out_ports.data() : nullptr;
+            audio_ctx.input_data = ns.has_data_input_ports ? ns.input_data_values.data() : nullptr;
+            audio_ctx.input_data_count = ns.input_port_count;
+            audio_ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
+            audio_ctx.file_param_values = nullptr;
+            audio_ctx.file_param_count = 0;
+            audio_ctx.shared_handles = vivid::shared_handle_service();
 
             if (!ns.errored) {
                 try {
                     CrashGuard guard(ns.node_id.c_str());
-                    ns.loader->process(ns.instance, &ctx);
+                    ns.loader->process_audio(ns.instance, &audio_ctx);
                 } catch (const std::exception& e) {
                     ns.errored = true;
                     std::snprintf(ns.error_message, sizeof(ns.error_message), "%s", e.what());

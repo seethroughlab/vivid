@@ -71,6 +71,9 @@ static const char* port_type_str(VividPortType t) {
         case VIVID_PORT_CONTROL_SPREAD: return "control_spread";
         case VIVID_PORT_GPU_TEXTURE:    return "gpu_texture";
         case VIVID_PORT_DATA:          return "data";
+        case VIVID_PORT_MEDIA_STREAM:  return "media_stream";
+        case VIVID_PORT_MEDIA_CLOCK:   return "media_clock";
+        case VIVID_PORT_MIDI:          return "midi";
         case VIVID_PORT_CONTROL_STRING: return "control_string";
         case VIVID_PORT_CONTROL_STRING_SPREAD: return "control_string_spread";
         case VIVID_PORT_GPU_BUFFER:  return "gpu_buffer";
@@ -849,6 +852,32 @@ static std::string handle_run_diagnostics(Graph& graph, Scheduler& scheduler, Op
     return s;
 }
 
+static std::string handle_get_graph_load_diagnostics(const Graph& graph) {
+    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
+    yyjson_mut_val* root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    yyjson_mut_obj_add_bool(doc, root, "ok", true);
+
+    yyjson_mut_val* diags_arr = yyjson_mut_arr(doc);
+    for (const auto& d : graph.load_diagnostics) {
+        yyjson_mut_val* dv = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, dv, "node_id",           d.node_id.c_str());
+        yyjson_mut_obj_add_strcpy(doc, dv, "pkg_name",          d.pkg_name.c_str());
+        yyjson_mut_obj_add_strcpy(doc, dv, "saved_version",     d.saved_version.c_str());
+        yyjson_mut_obj_add_strcpy(doc, dv, "installed_version", d.installed_version.c_str());
+        yyjson_mut_obj_add_strcpy(doc, dv, "classification",    d.classification.c_str());
+        yyjson_mut_arr_add_val(diags_arr, dv);
+    }
+
+    yyjson_mut_val* result = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_val(doc, result, "graph_load_diagnostics", diags_arr);
+    yyjson_mut_obj_add_val(doc, root, "result", result);
+
+    std::string s = json_serialize(doc);
+    yyjson_mut_doc_free(doc);
+    return s;
+}
+
 struct CheckValue {
     enum class Kind { Missing, Number, Bool, String };
     Kind kind = Kind::Missing;
@@ -1456,6 +1485,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, scheduler);
     if (method == "run_diagnostics") return handle_run_diagnostics(graph, scheduler, registry);
     if (method == "list_types")    return handle_list_types(registry);
+    if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
 
     // Parse body JSON (may be empty for some commands)
     yyjson_doc* doc = yyjson_read(body.c_str(), body.size(), 0);
@@ -1618,6 +1648,19 @@ static std::string dispatch(const std::string& method, const std::string& body,
             }
         }
     } else if (method == "save_graph") {
+        // Annotate nodes with package provenance before saving
+        if (package_manager) {
+            auto packages = package_manager->list();
+            std::unordered_map<std::string, std::string> pkg_ver_map;
+            for (const auto& p : packages) pkg_ver_map[p.name] = p.version;
+            for (auto& node : graph.nodes_mut()) {
+                const auto* pkg = registry.package_for_type(node.type);
+                if (pkg) {
+                    node.pkg_name    = *pkg;
+                    node.pkg_version = pkg_ver_map.count(*pkg) ? pkg_ver_map[*pkg] : "";
+                }
+            }
+        }
         if (root) {
             yyjson_val* path = yyjson_obj_get(root, "path");
             if (path && yyjson_is_str(path))

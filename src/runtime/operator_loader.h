@@ -28,7 +28,11 @@ public:
     const VividOperatorDescriptor* descriptor() const;
     void* create_instance() const;
     void  destroy_instance(void* instance) const;
+
+    // Per-domain dispatch
     void  process(void* instance, VividProcessContext* ctx) const;
+    void  process_audio(void* instance, VividAudioContext* ctx) const;
+    void  process_gpu(void* instance, VividGpuContext* ctx) const;
 
     bool has_draw_thumbnail() const { return draw_thumb_fn_ != nullptr; }
     void draw_thumbnail(void* instance, const VividThumbnailContext* ctx) const;
@@ -41,13 +45,15 @@ public:
     bool is_data_driven() const { return dd_config_ != nullptr; }
 
 private:
-    void*                  handle_         = nullptr;
-    VividDescriptorFn      desc_fn_        = nullptr;
-    VividCreateFn          create_fn_      = nullptr;
-    VividDestroyFn         destroy_fn_     = nullptr;
-    VividProcessFn         process_fn_     = nullptr;
-    VividDrawThumbnailFn   draw_thumb_fn_  = nullptr;
-    VividMainThreadUpdateFn main_update_fn_ = nullptr;
+    void*                  handle_             = nullptr;
+    VividDescriptorFn      desc_fn_            = nullptr;
+    VividCreateFn          create_fn_          = nullptr;
+    VividDestroyFn         destroy_fn_         = nullptr;
+    VividProcessFn         process_fn_         = nullptr;
+    VividProcessAudioFn    process_audio_fn_   = nullptr;
+    VividProcessGpuFn      process_gpu_fn_     = nullptr;
+    VividDrawThumbnailFn   draw_thumb_fn_      = nullptr;
+    VividMainThreadUpdateFn main_update_fn_    = nullptr;
 
     void fixup_dd_pointers();  // re-point all C string pointers after move
 

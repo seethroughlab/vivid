@@ -9,6 +9,7 @@ namespace vivid::ui {
 struct UIStyle {
     std::string name;
     std::string id;
+    std::string vivid_version;  // from theme JSON "vivid_version"; empty if absent
 
     // Corner radius (0 = sharp, 4-6 = rounded)
     float corner_radius = 0.0f;

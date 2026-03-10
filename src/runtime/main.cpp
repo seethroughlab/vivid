@@ -1999,6 +1999,59 @@ int main(int argc, char* argv[]) {
         discover_examples_with_packages(graphs_root, &pkg_manager);
     graph_file = resolve_graph_input_path(graph_file, graphs_root, discovered_examples);
 
+    // Helper: populate graph.load_diagnostics by comparing saved pkg versions to installed.
+    // Must be called after a successful graph.load().
+    auto run_graph_package_diagnostics = [&](vivid::Graph& g) {
+        g.load_diagnostics.clear();
+        auto packages = pkg_manager.list();
+        std::unordered_map<std::string, std::string> installed_map;
+        for (const auto& p : packages) installed_map[p.name] = p.version;
+        for (const auto& node : g.nodes()) {
+            if (node.pkg_name.empty()) continue;
+            auto it = installed_map.find(node.pkg_name);
+            if (it == installed_map.end() || it->second.empty()) continue;
+            const std::string& installed_ver = it->second;
+            auto cls = vivid::PackageManager::classify_version_delta(node.pkg_version, installed_ver);
+            if (cls == vivid::PackageUpdateClass::CompatibleUpdate ||
+                cls == vivid::PackageUpdateClass::IncompatibleUpdate) {
+                vivid::Graph::LoadDiagnostic diag;
+                diag.node_id           = node.id;
+                diag.pkg_name          = node.pkg_name;
+                diag.saved_version     = node.pkg_version;
+                diag.installed_version = installed_ver;
+                diag.classification    = (cls == vivid::PackageUpdateClass::IncompatibleUpdate)
+                                         ? "incompatible_update" : "compatible_update";
+                g.load_diagnostics.push_back(std::move(diag));
+                if (cls == vivid::PackageUpdateClass::IncompatibleUpdate) {
+                    std::fprintf(stderr,
+                        "[graph] Package version mismatch (incompatible): "
+                        "node '%s' saved with %s@%s, installed %s\n",
+                        node.id.c_str(), node.pkg_name.c_str(),
+                        node.pkg_version.c_str(), installed_ver.c_str());
+                } else {
+                    std::fprintf(stderr,
+                        "[graph] Package update: node '%s' %s saved=%s installed=%s\n",
+                        node.id.c_str(), node.pkg_name.c_str(),
+                        node.pkg_version.c_str(), installed_ver.c_str());
+                }
+            }
+        }
+    };
+
+    // Helper: annotate graph nodes with their package provenance (called before save).
+    auto annotate_graph_packages = [&](vivid::Graph& g) {
+        auto packages = pkg_manager.list();
+        std::unordered_map<std::string, std::string> pkg_ver_map;
+        for (const auto& p : packages) pkg_ver_map[p.name] = p.version;
+        for (auto& node : g.nodes_mut()) {
+            const auto* pkg = registry.package_for_type(node.type);
+            if (pkg) {
+                node.pkg_name    = *pkg;
+                node.pkg_version = pkg_ver_map.count(*pkg) ? pkg_ver_map[*pkg] : "";
+            }
+        }
+    };
+
     // --- Load graph ---
     vivid::Graph graph;
     vivid::Scheduler scheduler;
@@ -2008,6 +2061,7 @@ int main(int argc, char* argv[]) {
     std::string working_filters_dir;
 
     if (graph.load(graph_file.c_str())) {
+        run_graph_package_diagnostics(graph);
         // Register user filters from graph before building the scheduler
         if (!graph.filters().empty()) {
             auto gp = std::filesystem::path(graph.source_path());
@@ -2609,6 +2663,7 @@ int main(int argc, char* argv[]) {
             std::fprintf(stderr, "[vivid] %s: failed to load %s\n", label, resolved.c_str());
             return false;
         }
+        run_graph_package_diagnostics(graph);
         registry.load_for_graph(graph);
         auto result = runtime_api.reload(has_gpu_ops, has_audio);
         if (result.ok) {
@@ -2655,6 +2710,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
+            annotate_graph_packages(graph);
             auto result = runtime_api.save();
             std::fprintf(stderr, "[vivid] Save: %s\n", result.message.c_str());
         };
@@ -3093,16 +3149,11 @@ int main(int argc, char* argv[]) {
         if (graph_loaded) {
 
             // Base GPU state (per-node textures are set by scheduler)
-            VividGpuState gpu_state{};
-            gpu_state.device              = gpu.device();
-            gpu_state.queue               = gpu.queue();
-            gpu_state.command_encoder     = tick_encoder;
-            gpu_state.output_texture_view = nullptr;  // per-node
-            gpu_state.output_width        = 0;
-            gpu_state.output_height       = 0;
-            gpu_state.output_format       = kOffscreenFormat;
-            gpu_state.input_texture_views = nullptr;
-            gpu_state.input_texture_count = 0;
+            VividGpuContext gpu_state{};
+            gpu_state.device          = gpu.device();
+            gpu_state.queue           = gpu.queue();
+            gpu_state.command_encoder = tick_encoder;
+            gpu_state.output_format   = kOffscreenFormat;
 
             // --- Hot-reload polling ---
             if (hot_reload_enabled) {

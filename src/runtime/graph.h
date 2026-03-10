@@ -7,6 +7,10 @@
 
 struct yyjson_doc;
 
+// Bumped when the graph JSON format changes in a backward-incompatible way.
+// Graphs saved with schema_version > GRAPH_SCHEMA_VERSION are hard-rejected.
+#define GRAPH_SCHEMA_VERSION 1
+
 namespace vivid {
 
 struct NodeDef {
@@ -25,6 +29,10 @@ struct NodeDef {
 
     // Per-parameter lock flags (sparse — only non-zero entries stored)
     std::unordered_map<std::string, uint8_t> param_lock_flags;
+
+    // Package provenance (empty for core operators)
+    std::string pkg_name;
+    std::string pkg_version;
 };
 
 struct ConnectionDef {
@@ -166,6 +174,23 @@ public:
     float viewport_zoom  = NAN;
     bool has_viewport() const { return !std::isnan(viewport_pan_x); }
     void set_viewport(float px, float py, float z) { viewport_pan_x = px; viewport_pan_y = py; viewport_zoom = z; }
+
+    // Schema metadata (populated on load, written on save)
+    int schema_version = 0;      // 0 = absent from file (treated as 1); set by parse_doc
+    std::string vivid_version;   // VIVID_CORE_VERSION at save time
+
+    // Package version diagnostics from last load
+    struct LoadDiagnostic {
+        std::string node_id;
+        std::string pkg_name;
+        std::string saved_version;
+        std::string installed_version;
+        std::string classification;  // "compatible_update" | "incompatible_update"
+    };
+    std::vector<LoadDiagnostic> load_diagnostics;
+
+    // Mutable node access (for pre-save package annotation)
+    std::vector<NodeDef>& nodes_mut() { return nodes_; }
 
     // Serialization
     bool save(const char* path) const;
