@@ -2595,8 +2595,8 @@ struct ControlServer::Impl {
 ControlServer::ControlServer() = default;
 ControlServer::~ControlServer() { stop(); }
 
-void ControlServer::set_src_dir(const std::string& src_dir) { assert(!impl_); src_dir_ = src_dir; }
-void ControlServer::set_hot_reloader(HotReloader* hr) { assert(!impl_); hot_reloader_ = hr; }
+void ControlServer::set_src_dir(const std::string& src_dir) { src_dir_ = src_dir; }
+void ControlServer::set_hot_reloader(HotReloader* hr) { hot_reloader_ = hr; }
 void ControlServer::set_capture_coordinator(CaptureCoordinator* cc) { assert(!impl_); capture_coordinator_ = cc; }
 void ControlServer::set_package_manager(PackageManager* pm) { assert(!impl_); package_manager_ = pm; }
 void ControlServer::set_package_compiler(PackageCompiler* pc) { assert(!impl_); package_compiler_ = pc; }
