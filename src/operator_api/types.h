@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 8u
+#define VIVID_OPERATOR_ABI_VERSION 9u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -34,23 +34,34 @@ typedef enum VividDisplayHint {
     VIVID_DISPLAY_COLOR   = 3,   // color swatch + popup (triple consecutive r/g/b params)
 } VividDisplayHint;
 
+// Channel kinds — reflect runtime routing mechanisms.
+// ABI v9: collapsed from 15 values to 7.
 typedef enum VividPortType {
-    VIVID_PORT_CONTROL_FLOAT  = 0,
-    VIVID_PORT_CONTROL_INT    = 1,
-    VIVID_PORT_CONTROL_BOOL   = 2,
-    VIVID_PORT_AUDIO_FLOAT    = 3,
-    VIVID_PORT_CONTROL_SPREAD = 4,
-    VIVID_PORT_GPU_TEXTURE    = 5,
-    VIVID_PORT_DATA           = 6,  // package-defined opaque pointer type
-    VIVID_PORT_CONTROL_STRING = 7,
-    VIVID_PORT_CONTROL_STRING_SPREAD = 8,
-    VIVID_PORT_GPU_BUFFER    = 9,
-    VIVID_PORT_GPU_MESH      = 10,
-    VIVID_PORT_GPU_COMPUTE   = 11,
-    VIVID_PORT_MEDIA_STREAM  = 12, // first-class media stream (MediaStreamV1*)
-    VIVID_PORT_MEDIA_CLOCK   = 13, // clock-only port (MediaClockV1*)  — reserved, no operators yet
-    VIVID_PORT_MIDI          = 14, // MIDI buffer (VividMidiBuffer*)    — reserved, no operators yet
+    VIVID_PORT_FLOAT          = 0,  // float value (control_float/int/bool all route identically)
+    VIVID_PORT_AUDIO          = 1,  // audio sample buffer
+    VIVID_PORT_SPREAD         = 2,  // variable-length float array
+    VIVID_PORT_STRING         = 3,  // UTF-8 string
+    VIVID_PORT_STRING_SPREAD  = 4,  // variable-length string array
+    VIVID_PORT_TEXTURE        = 5,  // WGPUTextureView
+    VIVID_PORT_HANDLE         = 6,  // typed opaque pointer (void*), type-safe via handle_type_id
 } VividPortType;
+
+// Backward-compatible aliases (deprecated, remove in v10)
+#define VIVID_PORT_CONTROL_FLOAT         VIVID_PORT_FLOAT
+#define VIVID_PORT_CONTROL_INT           VIVID_PORT_FLOAT
+#define VIVID_PORT_CONTROL_BOOL          VIVID_PORT_FLOAT
+#define VIVID_PORT_AUDIO_FLOAT           VIVID_PORT_AUDIO
+#define VIVID_PORT_CONTROL_SPREAD        VIVID_PORT_SPREAD
+#define VIVID_PORT_GPU_TEXTURE           VIVID_PORT_TEXTURE
+#define VIVID_PORT_CONTROL_STRING        VIVID_PORT_STRING
+#define VIVID_PORT_CONTROL_STRING_SPREAD VIVID_PORT_STRING_SPREAD
+#define VIVID_PORT_DATA                  VIVID_PORT_HANDLE
+#define VIVID_PORT_GPU_BUFFER            VIVID_PORT_HANDLE
+#define VIVID_PORT_GPU_MESH              VIVID_PORT_HANDLE
+#define VIVID_PORT_GPU_COMPUTE           VIVID_PORT_HANDLE
+#define VIVID_PORT_MEDIA_STREAM          VIVID_PORT_HANDLE
+#define VIVID_PORT_MEDIA_CLOCK           VIVID_PORT_HANDLE
+#define VIVID_PORT_MIDI                  VIVID_PORT_HANDLE
 
 typedef enum VividPortDirection {
     VIVID_PORT_INPUT  = 0,
@@ -88,7 +99,7 @@ typedef struct VividPortDescriptor {
     const char*        name;
     VividPortType      type;
     VividPortDirection direction;
-    const char*        data_type;  // non-NULL when type == VIVID_PORT_DATA (e.g. "gpu_scene")
+    uint32_t           handle_type_id;  // non-zero when type == VIVID_PORT_HANDLE (FNV-1a of C++ type)
 } VividPortDescriptor;
 
 typedef struct VividOperatorDescriptor {
@@ -183,8 +194,8 @@ typedef struct VividAudioContext {
     // Cross-domain inputs from control
     VividSpreadPort*  input_spreads;
     VividSpreadPort*  output_spreads;
-    void**            input_data;
-    uint32_t          input_data_count;
+    void**            input_handles;
+    uint32_t          input_handle_count;
     const char**      input_string_values;
     const char**      file_param_values;
     uint32_t          file_param_count;
@@ -203,16 +214,12 @@ typedef struct VividProcessContext {
     float*    param_values;   // indexed by param descriptor order
     float*    input_values;   // indexed by input port order (VIVID_PORT_INPUT only)
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
-    // NOTE: input_spreads[i] is indexed by SPREAD-PORT ORDINAL — the i-th
-    // VIVID_PORT_CONTROL_SPREAD input port, not the global input port index.
-    // Same convention applies to output_spreads, input_data, input_string_values,
-    // input_string_spreads, and output_data below.
     VividSpreadPort* input_spreads;   // [spread_port_ordinal], NULL if none
     VividSpreadPort* output_spreads;  // [spread_port_ordinal], NULL if none
-    void**     input_data;            // [data_port_ordinal], NULL if none
-    uint32_t   input_data_count;      // number of DATA input ports
-    void**     output_data;           // [data_port_ordinal], NULL if none
-    uint32_t   output_data_count;     // number of DATA output ports
+    void**     input_handles;         // [handle_port_ordinal], NULL if none
+    uint32_t   input_handle_count;    // number of HANDLE input ports
+    void**     output_handles;        // [handle_port_ordinal], NULL if none
+    uint32_t   output_handle_count;   // number of HANDLE output ports
     const char** input_string_values;   // [string_port_ordinal]
     const char** output_string_values;  // [string_port_ordinal]
     VividStringSpreadPort* input_string_spreads;   // [string_spread_port_ordinal], NULL if none

@@ -174,9 +174,9 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
 
     static MediaClockSnapshot read_media_clock(const VividAudioContext* ctx) {
         MediaClockSnapshot s{};
-        if (!ctx || !ctx->input_data) return s;
-        if (ctx->input_data_count <= kInputPortMediaStream) return s;
-        void* ptr = ctx->input_data[kInputPortMediaStream];
+        if (!ctx || !ctx->input_handles) return s;
+        if (ctx->input_handle_count <= kInputPortMediaStream) return s;
+        void* ptr = ctx->input_handles[kInputPortMediaStream];
         if (!ptr) return s;
         const auto* stream = static_cast<const vivid::MediaStreamV1*>(ptr);
         s.clock = stream->clock;

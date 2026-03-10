@@ -64,21 +64,13 @@ static const char* param_type_str(VividParamType t) {
 
 static const char* port_type_str(VividPortType t) {
     switch (t) {
-        case VIVID_PORT_CONTROL_FLOAT:  return "control_float";
-        case VIVID_PORT_CONTROL_INT:    return "control_int";
-        case VIVID_PORT_CONTROL_BOOL:   return "control_bool";
-        case VIVID_PORT_AUDIO_FLOAT:    return "audio_float";
-        case VIVID_PORT_CONTROL_SPREAD: return "control_spread";
-        case VIVID_PORT_GPU_TEXTURE:    return "gpu_texture";
-        case VIVID_PORT_DATA:          return "data";
-        case VIVID_PORT_MEDIA_STREAM:  return "media_stream";
-        case VIVID_PORT_MEDIA_CLOCK:   return "media_clock";
-        case VIVID_PORT_MIDI:          return "midi";
-        case VIVID_PORT_CONTROL_STRING: return "control_string";
-        case VIVID_PORT_CONTROL_STRING_SPREAD: return "control_string_spread";
-        case VIVID_PORT_GPU_BUFFER:  return "gpu_buffer";
-        case VIVID_PORT_GPU_MESH:    return "gpu_mesh";
-        case VIVID_PORT_GPU_COMPUTE: return "gpu_compute";
+        case VIVID_PORT_FLOAT:         return "float";
+        case VIVID_PORT_AUDIO:         return "audio";
+        case VIVID_PORT_SPREAD:        return "spread";
+        case VIVID_PORT_STRING:        return "string";
+        case VIVID_PORT_STRING_SPREAD: return "string_spread";
+        case VIVID_PORT_TEXTURE:       return "texture";
+        case VIVID_PORT_HANDLE:        return "handle";
         default: return "unknown";
     }
 }
@@ -302,8 +294,8 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_val* p = yyjson_mut_obj(doc);
                 yyjson_mut_obj_add_strcpy(doc, p, "name", pd.name);
                 yyjson_mut_obj_add_str(doc, p, "type", port_type_str(pd.type));
-                if (pd.type == VIVID_PORT_DATA && pd.data_type)
-                    yyjson_mut_obj_add_strcpy(doc, p, "data_type", pd.data_type);
+                if (pd.type == VIVID_PORT_HANDLE && pd.handle_type_id != 0)
+                    yyjson_mut_obj_add_uint(doc, p, "handle_type_id", pd.handle_type_id);
 
                 if (pd.direction == VIVID_PORT_OUTPUT && ns) {
                     auto oi = ns->output_port_indices.find(pd.name);
@@ -1451,8 +1443,8 @@ static std::string handle_list_types(OperatorRegistry& registry) {
             yyjson_mut_val* p = yyjson_mut_obj(doc);
             yyjson_mut_obj_add_strcpy(doc, p, "name", pd.name);
             yyjson_mut_obj_add_str(doc, p, "type", port_type_str(pd.type));
-            if (pd.type == VIVID_PORT_DATA && pd.data_type)
-                yyjson_mut_obj_add_strcpy(doc, p, "data_type", pd.data_type);
+            if (pd.type == VIVID_PORT_HANDLE && pd.handle_type_id != 0)
+                yyjson_mut_obj_add_uint(doc, p, "handle_type_id", pd.handle_type_id);
             if (pd.direction == VIVID_PORT_INPUT)
                 yyjson_mut_arr_add_val(inputs_arr, p);
             else
@@ -2415,8 +2407,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             yyjson_mut_val* p = yyjson_mut_obj(rdoc);
                             yyjson_mut_obj_add_strcpy(rdoc, p, "name", portd.name);
                             yyjson_mut_obj_add_str(rdoc, p, "type", port_type_str(portd.type));
-                            if (portd.type == VIVID_PORT_DATA && portd.data_type)
-                                yyjson_mut_obj_add_strcpy(rdoc, p, "data_type", portd.data_type);
+                            if (portd.type == VIVID_PORT_HANDLE && portd.handle_type_id != 0)
+                                yyjson_mut_obj_add_uint(rdoc, p, "handle_type_id", portd.handle_type_id);
                             if (portd.direction == VIVID_PORT_INPUT)
                                 yyjson_mut_arr_add_val(inputs_arr, p);
                             else

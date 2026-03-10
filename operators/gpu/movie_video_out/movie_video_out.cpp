@@ -93,8 +93,8 @@ struct MovieVideoOut : vivid::GpuOperatorBase {
         // Read MediaStreamV1 from data input port
         vivid::media::MediaSession* session = nullptr;
         uint64_t generation = 0;
-        if (ctx->input_data && ctx->input_data_count > 0 && ctx->input_data[0]) {
-            const auto* stream = static_cast<const vivid::MediaStreamV1*>(ctx->input_data[0]);
+        if (ctx->input_handles && ctx->input_handle_count > 0 && ctx->input_handles[0]) {
+            const auto* stream = static_cast<const vivid::MediaStreamV1*>(ctx->input_handles[0]);
             if (stream->session_ptr) {
                 session = reinterpret_cast<vivid::media::MediaSession*>(stream->session_ptr);
                 generation = stream->source_generation;

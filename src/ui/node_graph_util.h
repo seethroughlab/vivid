@@ -135,28 +135,16 @@ inline void draw_checkbox(
 // --- Port type compatibility ---
 
 inline bool is_control_type(VividPortType t) {
-    return t == VIVID_PORT_CONTROL_FLOAT || t == VIVID_PORT_CONTROL_INT ||
-           t == VIVID_PORT_CONTROL_BOOL  || t == VIVID_PORT_CONTROL_SPREAD ||
-           t == VIVID_PORT_CONTROL_STRING || t == VIVID_PORT_CONTROL_STRING_SPREAD;
+    return t == VIVID_PORT_FLOAT || t == VIVID_PORT_SPREAD ||
+           t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_SPREAD;
 }
 
 inline bool is_numeric_type(VividPortType t) {
-    return t == VIVID_PORT_CONTROL_FLOAT || t == VIVID_PORT_CONTROL_INT ||
-           t == VIVID_PORT_CONTROL_SPREAD || t == VIVID_PORT_AUDIO_FLOAT;
+    return t == VIVID_PORT_FLOAT || t == VIVID_PORT_SPREAD || t == VIVID_PORT_AUDIO;
 }
 
 inline bool port_type_compatible(VividPortType a, VividPortType b) {
-    if (a == VIVID_PORT_GPU_TEXTURE)          return b == VIVID_PORT_GPU_TEXTURE;
-    if (a == VIVID_PORT_DATA)                 return b == VIVID_PORT_DATA;
-    if (a == VIVID_PORT_MEDIA_STREAM)         return b == VIVID_PORT_MEDIA_STREAM;
-    if (a == VIVID_PORT_MEDIA_CLOCK)          return b == VIVID_PORT_MEDIA_CLOCK;
-    if (a == VIVID_PORT_MIDI)                 return b == VIVID_PORT_MIDI;
-    if (a == VIVID_PORT_CONTROL_STRING)       return b == VIVID_PORT_CONTROL_STRING;
-    if (a == VIVID_PORT_CONTROL_STRING_SPREAD) return b == VIVID_PORT_CONTROL_STRING_SPREAD;
-    if (a == VIVID_PORT_AUDIO_FLOAT)          return b == VIVID_PORT_AUDIO_FLOAT;
-    if (a == VIVID_PORT_GPU_BUFFER)           return b == VIVID_PORT_GPU_BUFFER;
-    if (a == VIVID_PORT_GPU_MESH)             return b == VIVID_PORT_GPU_MESH;
-    if (a == VIVID_PORT_GPU_COMPUTE)          return b == VIVID_PORT_GPU_COMPUTE;
+    if (a == b) return true;
     return is_control_type(a) && is_control_type(b);
 }
 

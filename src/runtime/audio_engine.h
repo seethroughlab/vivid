@@ -42,7 +42,7 @@ struct AudioNodeState {
     std::vector<VividPortType> output_port_types;
     bool has_spread_ports = false;
     bool has_string_input_ports = false;
-    bool has_data_input_ports = false;
+    bool has_handle_input_ports = false;
 
     // --- Per-tick buffers (pre-allocated, no audio-thread allocation) ---
     std::vector<float> param_values;
@@ -58,7 +58,7 @@ struct AudioNodeState {
     std::vector<VividSpreadPort> spread_out_ports;
     std::vector<std::string> input_string_values;    // [input_port_idx]
     std::vector<const char*> c_input_string_values;  // [input_port_idx]
-    std::vector<void*> input_data_values;            // [input_port_idx]
+    std::vector<void*> input_handle_values;            // [input_port_idx]
 
     // --- Error state (audio thread only; propagated via AnalysisSnapshot) ---
     bool errored = false;
@@ -106,35 +106,33 @@ struct CrossDomainStringWire {
     uint32_t audio_port_idx;           // unified input port index
 };
 
-struct CrossDomainDataWire {
+struct CrossDomainHandleWire {
     std::string source_node_id;
     uint32_t source_output_port_idx;
     uint32_t audio_node_idx;
     uint32_t audio_port_idx;
-    VividPortType port_type = VIVID_PORT_DATA; // VIVID_PORT_DATA or VIVID_PORT_MEDIA_STREAM
-    std::string data_type;                     // populated only for VIVID_PORT_DATA (string-tagged)
+    uint32_t handle_type_id = 0;  // from VividPortDescriptor, for snapshot sizing
 };
 
-struct DataInputSnapshot {
+struct HandleInputSnapshot {
     bool valid = false;
-    char data_type[64] = {};
+    uint32_t handle_type_id = 0;
     uint32_t byte_size = 0;
     static constexpr uint32_t kMaxBytes = 256;
     uint8_t bytes[kMaxBytes] = {};
 
     template <typename T>
-    void set(const char* type_name, const T& value) {
+    void set(uint32_t type_id, const T& value) {
         valid = true;
-        std::strncpy(data_type, type_name ? type_name : "", sizeof(data_type) - 1);
-        data_type[sizeof(data_type) - 1] = '\0';
+        handle_type_id = type_id;
         byte_size = static_cast<uint32_t>(sizeof(T));
-        static_assert(sizeof(T) <= kMaxBytes, "DataInputSnapshot payload too large");
+        static_assert(sizeof(T) <= kMaxBytes, "HandleInputSnapshot payload too large");
         std::memcpy(bytes, &value, sizeof(T));
     }
 
     void clear() {
         valid = false;
-        data_type[0] = '\0';
+        handle_type_id = 0;
         byte_size = 0;
     }
 };
@@ -143,7 +141,7 @@ struct ParamSnapshot {
     std::vector<std::vector<float>> node_params;  // [audio_node_idx][param_idx]
     std::vector<std::vector<SpreadSnapshot>> spread_inputs; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<std::string>> input_string_values; // [audio_node_idx][input_port_idx]
-    std::vector<std::vector<DataInputSnapshot>> data_inputs; // [audio_node_idx][input_port_idx]
+    std::vector<std::vector<HandleInputSnapshot>> handle_inputs; // [audio_node_idx][input_port_idx]
 };
 
 struct AnalysisSnapshot {
@@ -232,7 +230,7 @@ private:
     std::vector<CrossDomainWire> cross_wires_;
     std::vector<CrossDomainSpreadWire> cross_spread_wires_;
     std::vector<CrossDomainStringWire> cross_string_wires_;
-    std::vector<CrossDomainDataWire> cross_data_wires_;
+    std::vector<CrossDomainHandleWire> cross_handle_wires_;
 
     // Double-buffered param bridge (control→audio)
     ParamSnapshot snapshots_[2];

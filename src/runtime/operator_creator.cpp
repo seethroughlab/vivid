@@ -47,19 +47,14 @@ static bool is_valid_identifier(const std::string& name) {
 
 static const char* port_type_name(VividPortType t) {
     switch (t) {
-        case VIVID_PORT_CONTROL_FLOAT:        return "VIVID_PORT_CONTROL_FLOAT";
-        case VIVID_PORT_CONTROL_INT:          return "VIVID_PORT_CONTROL_INT";
-        case VIVID_PORT_CONTROL_BOOL:         return "VIVID_PORT_CONTROL_BOOL";
-        case VIVID_PORT_AUDIO_FLOAT:          return "VIVID_PORT_AUDIO_FLOAT";
-        case VIVID_PORT_CONTROL_SPREAD:       return "VIVID_PORT_CONTROL_SPREAD";
-        case VIVID_PORT_GPU_TEXTURE:          return "VIVID_PORT_GPU_TEXTURE";
-        case VIVID_PORT_DATA:                 return "VIVID_PORT_DATA";
-        case VIVID_PORT_MEDIA_STREAM:         return "VIVID_PORT_MEDIA_STREAM";
-        case VIVID_PORT_MEDIA_CLOCK:          return "VIVID_PORT_MEDIA_CLOCK";
-        case VIVID_PORT_MIDI:                 return "VIVID_PORT_MIDI";
-        case VIVID_PORT_CONTROL_STRING:       return "VIVID_PORT_CONTROL_STRING";
-        case VIVID_PORT_CONTROL_STRING_SPREAD:return "VIVID_PORT_CONTROL_STRING_SPREAD";
-        default:                              return "VIVID_PORT_CONTROL_FLOAT";
+        case VIVID_PORT_FLOAT:         return "VIVID_PORT_FLOAT";
+        case VIVID_PORT_AUDIO:         return "VIVID_PORT_AUDIO";
+        case VIVID_PORT_SPREAD:        return "VIVID_PORT_SPREAD";
+        case VIVID_PORT_STRING:        return "VIVID_PORT_STRING";
+        case VIVID_PORT_STRING_SPREAD: return "VIVID_PORT_STRING_SPREAD";
+        case VIVID_PORT_TEXTURE:       return "VIVID_PORT_TEXTURE";
+        case VIVID_PORT_HANDLE:        return "VIVID_PORT_HANDLE";
+        default:                       return "VIVID_PORT_FLOAT";
     }
 }
 
@@ -93,8 +88,8 @@ static std::string control_template(const std::string& name, const std::string& 
     s << "        out.push_back(&amount);\n";
     s << "    }\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"output\", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});\n";
+    s << "        out.push_back({\"input\",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});\n";
+    s << "        out.push_back({\"output\", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});\n";
     for (const auto& ep : extra_outputs)
         s << "        out.push_back({\"" << ep.name << "\", " << port_type_name(ep.type) << ", VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
@@ -125,8 +120,8 @@ static std::string audio_template(const std::string& name, const std::string& st
     s << "        out.push_back(&gain);\n";
     s << "    }\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",  VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"output\", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});\n";
+    s << "        out.push_back({\"input\",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});\n";
+    s << "        out.push_back({\"output\", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});\n";
     for (const auto& ep : extra_outputs)
         s << "        out.push_back({\"" << ep.name << "\", " << port_type_name(ep.type) << ", VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
@@ -160,8 +155,8 @@ static std::string gpu_template(const std::string& name, const std::string& stru
     s << "        vivid::semantic_shape(amount, \"scalar\");\n";
     s << "    }\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",   VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"texture\", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});\n";
+    s << "        out.push_back({\"input\",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});\n";
+    s << "        out.push_back({\"texture\", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});\n";
     for (const auto& ep : extra_outputs)
         s << "        out.push_back({\"" << ep.name << "\", " << port_type_name(ep.type) << ", VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
@@ -211,8 +206,8 @@ static std::string composite_control_template(const std::string& name, const std
     s << "        out.push_back(&smooth_time);\n";
     s << "    }\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
-    s << "        out.push_back({\"input\",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT});\n";
-    s << "        out.push_back({\"output\", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});\n";
+    s << "        out.push_back({\"input\",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});\n";
+    s << "        out.push_back({\"output\", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
     s << "    void process(const VividProcessContext* ctx) override {\n";
     s << "        float input = ctx->input_values[0];\n\n";

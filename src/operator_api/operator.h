@@ -237,12 +237,9 @@ namespace vivid::detail {
 inline VividDomain infer_domain(const std::vector<VividPortDescriptor>& ports) {
     for (const auto& p : ports) {
         switch (p.type) {
-            case VIVID_PORT_GPU_TEXTURE:
-            case VIVID_PORT_GPU_BUFFER:
-            case VIVID_PORT_GPU_MESH:
-            case VIVID_PORT_GPU_COMPUTE:
+            case VIVID_PORT_TEXTURE:
                 return VIVID_DOMAIN_GPU;
-            case VIVID_PORT_AUDIO_FLOAT:
+            case VIVID_PORT_AUDIO:
                 return VIVID_DOMAIN_AUDIO;
             default:
                 break;

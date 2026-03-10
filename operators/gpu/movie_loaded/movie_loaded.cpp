@@ -630,8 +630,8 @@ private:
             media_stream_.schema_version = 1;
             media_stream_.flags = 0;
             media_stream_.clock = media_clock_;
-            if (ctx->output_data && ctx->output_data_count > 0)
-                ctx->output_data[0] = &media_stream_;
+            if (ctx->output_handles && ctx->output_handle_count > 0)
+                ctx->output_handles[0] = &media_stream_;
         }
     }
 

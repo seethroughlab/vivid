@@ -88,39 +88,19 @@ struct NodeState {
     std::vector<WGPUTexture>     aux_gpu_textures;
     std::vector<WGPUTextureView> aux_gpu_texture_views;
 
-    // ── Opaque data ports (package-defined types, e.g. 3D scene fragments) ────
-    std::vector<void*> gpu_data_outputs;          // [data_output_slot_idx], captured each tick
-    std::vector<void*> output_data_buf;           // pre-allocated buffer passed to operator via ctx
-    std::vector<uint32_t> data_input_port_indices;
-    std::vector<uint32_t> data_output_port_indices; // which output port indices are DATA type
+    // ── Handle ports (unified: buffer, mesh, compute, data, media_stream) ────
+    std::vector<uint32_t> handle_input_port_indices;
+    std::vector<void*>    resolved_handle_inputs;
+    std::vector<uint32_t> handle_output_port_indices;
+    std::vector<void*>    handle_outputs;       // captured each tick (operator's write-back)
+    std::vector<void*>    output_handle_buf;    // pre-allocated buffer passed to operator via ctx
+
     std::vector<uint32_t> string_input_port_indices;
     std::vector<uint32_t> string_spread_input_port_indices;
-    std::vector<void*> resolved_data_inputs;
     bool has_texture_output = false;
-    bool has_data_output = false;
+    bool has_handle_output = false;
     bool has_string_output = false;
     bool has_string_spread_output = false;
-
-    // ── GPU buffer ports ──────────────────────────────────────────────────────
-    std::vector<uint32_t>        buffer_input_port_indices;
-    std::vector<VividGpuBuffer*> resolved_buffer_inputs;
-    std::vector<uint32_t>        buffer_output_port_indices;
-    std::vector<VividGpuBuffer*> gpu_buffer_outputs;
-    std::vector<VividGpuBuffer*> output_buffer_buf;
-
-    // ── GPU mesh ports ────────────────────────────────────────────────────────
-    std::vector<uint32_t>     mesh_input_port_indices;
-    std::vector<VividMesh*>   resolved_mesh_inputs;
-    std::vector<uint32_t>     mesh_output_port_indices;
-    std::vector<VividMesh*>   gpu_mesh_outputs;
-    std::vector<VividMesh*>   output_mesh_buf;
-
-    // ── GPU compute ports ─────────────────────────────────────────────────────
-    std::vector<uint32_t>            compute_input_port_indices;
-    std::vector<VividComputeBuffer*> resolved_compute_inputs;
-    std::vector<uint32_t>            compute_output_port_indices;
-    std::vector<VividComputeBuffer*> gpu_compute_outputs;
-    std::vector<VividComputeBuffer*> output_compute_buf;
 
     // ── File (string) params — separate from float param_values ──────────────
     std::vector<std::string> file_param_storage;     // owned strings
@@ -148,14 +128,10 @@ struct Wire {
     bool targets_file_param = false; // true → string wire into file_param_storage
     uint32_t from_file_param_idx = 0; // index into file_param_storage (when sources_file_param)
     uint32_t to_file_param_idx = 0;   // index into file_param_storage (when targets_file_param)
-    bool is_texture_wire = false; // true → carries GPU_TEXTURE data
-    bool is_data_wire    = false; // true → carries VIVID_PORT_DATA
-    bool is_string_wire = false;  // true → carries CONTROL_STRING
-    bool is_string_spread_wire = false; // true → carries CONTROL_STRING_SPREAD
-    bool is_buffer_wire       = false; // true → carries VIVID_PORT_GPU_BUFFER
-    bool is_mesh_wire         = false; // true → carries VIVID_PORT_GPU_MESH
-    bool is_compute_wire      = false; // true → carries VIVID_PORT_GPU_COMPUTE
-    bool is_media_stream_wire = false; // true → carries VIVID_PORT_MEDIA_STREAM
+    bool is_texture_wire = false; // true → carries VIVID_PORT_TEXTURE
+    bool is_handle_wire  = false; // true → carries VIVID_PORT_HANDLE (data, buffer, mesh, etc.)
+    bool is_string_wire = false;  // true → carries VIVID_PORT_STRING
+    bool is_string_spread_wire = false; // true → carries VIVID_PORT_STRING_SPREAD
     float from_min = 0.0f, from_max = 1.0f;
     float to_min   = 0.0f, to_max  = 1.0f;
     bool  clamp    = false;

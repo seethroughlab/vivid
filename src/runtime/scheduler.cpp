@@ -156,19 +156,13 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
 
     // Identify special input ports and sink/output capabilities
     ns.texture_input_port_indices.clear();
-    ns.data_input_port_indices.clear();
-    ns.data_output_port_indices.clear();
+    ns.handle_input_port_indices.clear();
+    ns.handle_output_port_indices.clear();
     ns.string_input_port_indices.clear();
     ns.string_spread_input_port_indices.clear();
-    ns.buffer_input_port_indices.clear();
-    ns.buffer_output_port_indices.clear();
-    ns.mesh_input_port_indices.clear();
-    ns.mesh_output_port_indices.clear();
-    ns.compute_input_port_indices.clear();
-    ns.compute_output_port_indices.clear();
     ns.is_gpu_sink = false;
     ns.has_texture_output = false;
-    ns.has_data_output = false;
+    ns.has_handle_output = false;
     ns.has_string_output = false;
     ns.has_string_spread_output = false;
     ns.aux_texture_output_port_indices.clear();
@@ -179,46 +173,46 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     uint32_t gpu_tex_out_count = 0;
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
-            if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
-                ns.texture_input_port_indices.push_back(input_idx);
-            } else if (desc->ports[i].type == VIVID_PORT_DATA ||
-                       desc->ports[i].type == VIVID_PORT_MEDIA_STREAM) {
-                ns.data_input_port_indices.push_back(input_idx);
-            } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING) {
-                ns.string_input_port_indices.push_back(input_idx);
-            } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING_SPREAD) {
-                ns.string_spread_input_port_indices.push_back(input_idx);
-            } else if (desc->ports[i].type == VIVID_PORT_GPU_BUFFER) {
-                ns.buffer_input_port_indices.push_back(input_idx);
-            } else if (desc->ports[i].type == VIVID_PORT_GPU_MESH) {
-                ns.mesh_input_port_indices.push_back(input_idx);
-            } else if (desc->ports[i].type == VIVID_PORT_GPU_COMPUTE) {
-                ns.compute_input_port_indices.push_back(input_idx);
+            switch (desc->ports[i].type) {
+                case VIVID_PORT_TEXTURE:
+                    ns.texture_input_port_indices.push_back(input_idx);
+                    break;
+                case VIVID_PORT_HANDLE:
+                    ns.handle_input_port_indices.push_back(input_idx);
+                    break;
+                case VIVID_PORT_STRING:
+                    ns.string_input_port_indices.push_back(input_idx);
+                    break;
+                case VIVID_PORT_STRING_SPREAD:
+                    ns.string_spread_input_port_indices.push_back(input_idx);
+                    break;
+                default:
+                    break;
             }
             input_idx++;
         } else {
-            if (desc->ports[i].type == VIVID_PORT_GPU_TEXTURE) {
-                ns.has_texture_output = true;
-                if (gpu_tex_out_count > 0) {  // 2nd+ texture output → aux
-                    ns.aux_texture_output_port_indices.push_back(static_cast<int32_t>(out_idx));
-                    ns.aux_gpu_textures.push_back(nullptr);
-                    ns.aux_gpu_texture_views.push_back(nullptr);
-                }
-                ++gpu_tex_out_count;
-            } else if (desc->ports[i].type == VIVID_PORT_DATA ||
-                       desc->ports[i].type == VIVID_PORT_MEDIA_STREAM) {
-                ns.has_data_output = true;
-                ns.data_output_port_indices.push_back(out_idx);
-            } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING) {
-                ns.has_string_output = true;
-            } else if (desc->ports[i].type == VIVID_PORT_CONTROL_STRING_SPREAD) {
-                ns.has_string_spread_output = true;
-            } else if (desc->ports[i].type == VIVID_PORT_GPU_BUFFER) {
-                ns.buffer_output_port_indices.push_back(out_idx);
-            } else if (desc->ports[i].type == VIVID_PORT_GPU_MESH) {
-                ns.mesh_output_port_indices.push_back(out_idx);
-            } else if (desc->ports[i].type == VIVID_PORT_GPU_COMPUTE) {
-                ns.compute_output_port_indices.push_back(out_idx);
+            switch (desc->ports[i].type) {
+                case VIVID_PORT_TEXTURE:
+                    ns.has_texture_output = true;
+                    if (gpu_tex_out_count > 0) {  // 2nd+ texture output → aux
+                        ns.aux_texture_output_port_indices.push_back(static_cast<int32_t>(out_idx));
+                        ns.aux_gpu_textures.push_back(nullptr);
+                        ns.aux_gpu_texture_views.push_back(nullptr);
+                    }
+                    ++gpu_tex_out_count;
+                    break;
+                case VIVID_PORT_HANDLE:
+                    ns.has_handle_output = true;
+                    ns.handle_output_port_indices.push_back(out_idx);
+                    break;
+                case VIVID_PORT_STRING:
+                    ns.has_string_output = true;
+                    break;
+                case VIVID_PORT_STRING_SPREAD:
+                    ns.has_string_spread_output = true;
+                    break;
+                default:
+                    break;
             }
             out_idx++;
         }
@@ -226,26 +220,13 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     if (ns.is_gpu) {
         ns.is_gpu_sink = !ns.texture_input_port_indices.empty()
                       && !ns.has_texture_output
-                      && !ns.has_data_output;
+                      && !ns.has_handle_output;
     }
 
-    // Pre-allocate DATA output buffer (one slot per DATA output port)
-    uint32_t data_out_count = static_cast<uint32_t>(ns.data_output_port_indices.size());
-    ns.output_data_buf.assign(data_out_count, nullptr);
-    ns.gpu_data_outputs.assign(data_out_count, nullptr);
-
-    // Pre-allocate GPU buffer/mesh/compute output buffers
-    ns.output_buffer_buf.assign(ns.buffer_output_port_indices.size(), nullptr);
-    ns.gpu_buffer_outputs.assign(ns.buffer_output_port_indices.size(), nullptr);
-    ns.resolved_buffer_inputs.assign(ns.buffer_input_port_indices.size(), nullptr);
-
-    ns.output_mesh_buf.assign(ns.mesh_output_port_indices.size(), nullptr);
-    ns.gpu_mesh_outputs.assign(ns.mesh_output_port_indices.size(), nullptr);
-    ns.resolved_mesh_inputs.assign(ns.mesh_input_port_indices.size(), nullptr);
-
-    ns.output_compute_buf.assign(ns.compute_output_port_indices.size(), nullptr);
-    ns.gpu_compute_outputs.assign(ns.compute_output_port_indices.size(), nullptr);
-    ns.resolved_compute_inputs.assign(ns.compute_input_port_indices.size(), nullptr);
+    // Pre-allocate handle output buffers (one slot per HANDLE output port)
+    ns.output_handle_buf.assign(ns.handle_output_port_indices.size(), nullptr);
+    ns.handle_outputs.assign(ns.handle_output_port_indices.size(), nullptr);
+    ns.resolved_handle_inputs.assign(ns.handle_input_port_indices.size(), nullptr);
 }
 
 bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
@@ -543,9 +524,9 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                 }
             }
 
-            // Validate data wire: both ends must be VIVID_PORT_DATA with matching data_type
+            // Validate handle wire: both ends must be VIVID_PORT_HANDLE with matching handle_type_id
             if (!from_ns.missing_operator && !to_ns.missing_operator &&
-                from_port_type == VIVID_PORT_DATA && to_port_type == VIVID_PORT_DATA) {
+                from_port_type == VIVID_PORT_HANDLE && to_port_type == VIVID_PORT_HANDLE) {
                 const VividPortDescriptor* from_pd = nullptr;
                 const VividPortDescriptor* to_pd = nullptr;
                 {
@@ -567,46 +548,26 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                         }
                     }
                 }
-                const char* from_dt = from_pd ? from_pd->data_type : nullptr;
-                const char* to_dt   = to_pd   ? to_pd->data_type   : nullptr;
-                if (from_dt && to_dt && std::strcmp(from_dt, to_dt) == 0) {
-                    w.is_data_wire = true;
-                } else {
-                    std::fprintf(stderr, "[vivid] Scheduler: data type mismatch on wire %s/%s -> %s/%s "
-                        "('%s' vs '%s')\n",
+                uint32_t from_htid = from_pd ? from_pd->handle_type_id : 0;
+                uint32_t to_htid   = to_pd   ? to_pd->handle_type_id   : 0;
+                // Allow connection if either end has handle_type_id == 0 (untyped/legacy)
+                // or if both IDs match exactly.
+                if (from_htid != 0 && to_htid != 0 && from_htid != to_htid) {
+                    std::fprintf(stderr, "[vivid] Scheduler: handle type mismatch on wire %s/%s -> %s/%s "
+                        "(0x%08x vs 0x%08x)\n",
                         conn.from_node.c_str(), conn.from_port.c_str(),
                         conn.to_node.c_str(), conn.to_port.c_str(),
-                        from_dt ? from_dt : "null", to_dt ? to_dt : "null");
+                        from_htid, to_htid);
                     continue;
                 }
+                w.is_handle_wire = true;
             } else if (!from_ns.missing_operator && !to_ns.missing_operator &&
-                       (from_port_type == VIVID_PORT_DATA || to_port_type == VIVID_PORT_DATA)) {
+                       (from_port_type == VIVID_PORT_HANDLE || to_port_type == VIVID_PORT_HANDLE)) {
                 std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
-                    "(DATA on only one end)\n",
+                    "(HANDLE on only one end)\n",
                     conn.from_node.c_str(), conn.from_port.c_str(),
                     conn.to_node.c_str(), conn.to_port.c_str());
                 continue;  // skip this wire
-            }
-
-            // GPU buffer / mesh / compute / media_stream wire classification (enum-backed, exact match)
-            if (!from_ns.missing_operator && !to_ns.missing_operator) {
-                if (from_port_type == VIVID_PORT_GPU_BUFFER && to_port_type == VIVID_PORT_GPU_BUFFER) {
-                    w.is_buffer_wire = true;
-                } else if (from_port_type == VIVID_PORT_GPU_MESH && to_port_type == VIVID_PORT_GPU_MESH) {
-                    w.is_mesh_wire = true;
-                } else if (from_port_type == VIVID_PORT_GPU_COMPUTE && to_port_type == VIVID_PORT_GPU_COMPUTE) {
-                    w.is_compute_wire = true;
-                } else if (from_port_type == VIVID_PORT_MEDIA_STREAM && to_port_type == VIVID_PORT_MEDIA_STREAM) {
-                    w.is_media_stream_wire = true;
-                } else if (from_port_type == VIVID_PORT_GPU_BUFFER || to_port_type == VIVID_PORT_GPU_BUFFER ||
-                           from_port_type == VIVID_PORT_GPU_MESH    || to_port_type == VIVID_PORT_GPU_MESH   ||
-                           from_port_type == VIVID_PORT_GPU_COMPUTE || to_port_type == VIVID_PORT_GPU_COMPUTE ||
-                           from_port_type == VIVID_PORT_MEDIA_STREAM || to_port_type == VIVID_PORT_MEDIA_STREAM) {
-                    std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s\n",
-                        conn.from_node.c_str(), conn.from_port.c_str(),
-                        conn.to_node.c_str(), conn.to_port.c_str());
-                    continue;  // skip this wire
-                }
             }
         } else {
             // Check if target is a file/text param first
@@ -751,7 +712,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         // (skip texture-type wires — those are resolved separately)
         for (const auto& w : wires_) {
             if (w.to_node_idx == ni) {
-                if (w.is_texture_wire || w.is_data_wire || w.is_media_stream_wire) continue;
+                if (w.is_texture_wire || w.is_handle_wire) continue;
                 if (w.targets_file_param) {
                     // String wire into a file/text param
                     const std::string& src = w.sources_file_param
@@ -859,8 +820,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ns.c_output_string_values[p] = ns.output_string_values[p].c_str();
         }
 
-        // Clear and expose the DATA output buffer (operator writes into it)
-        std::fill(ns.output_data_buf.begin(), ns.output_data_buf.end(), nullptr);
+        // Clear and expose the handle output buffer (operator writes into it)
+        std::fill(ns.output_handle_buf.begin(), ns.output_handle_buf.end(), nullptr);
 
         const auto prev_output_spreads = ns.output_spreads;
         const auto prev_output_strings = ns.output_string_values;
@@ -958,102 +919,29 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             gpu_ctx.aux_output_texture_count =
                 static_cast<uint32_t>(ns.aux_gpu_texture_views.size());
 
-            // Resolve data inputs from upstream nodes
-            size_t data_count = ns.data_input_port_indices.size();
-            ns.resolved_data_inputs.clear();
-            ns.resolved_data_inputs.resize(data_count, nullptr);
-            for (size_t di = 0; di < data_count; ++di) {
-                uint32_t port_idx = ns.data_input_port_indices[di];
+            // Resolve handle inputs from upstream nodes (unified: data, buffer, mesh, compute, media_stream)
+            for (size_t hi = 0; hi < ns.handle_input_port_indices.size(); ++hi) {
+                uint32_t port_idx = ns.handle_input_port_indices[hi];
+                ns.resolved_handle_inputs[hi] = nullptr;
                 for (const auto& w : wires_) {
-                    if (w.to_node_idx == ni && !w.targets_param &&
-                        w.to_port_idx == port_idx &&
-                        (w.is_data_wire || w.is_media_stream_wire)) {
-                        const auto& upstream = nodes_[w.from_node_idx];
-                        // Find which DATA output slot corresponds to this wire's source port
-                        void* resolved = nullptr;
-                        for (uint32_t s = 0; s < upstream.data_output_port_indices.size(); ++s) {
-                            if (upstream.data_output_port_indices[s] == w.from_port_idx) {
-                                if (s < upstream.gpu_data_outputs.size())
-                                    resolved = upstream.gpu_data_outputs[s];
-                                break;
-                            }
-                        }
-                        ns.resolved_data_inputs[di] = resolved;
-                        break;
-                    }
-                }
-            }
-            gpu_ctx.input_data = ns.resolved_data_inputs.empty()
-                                          ? nullptr : ns.resolved_data_inputs.data();
-            gpu_ctx.input_data_count = static_cast<uint32_t>(data_count);
-            gpu_ctx.output_data = ns.output_data_buf.empty() ? nullptr : ns.output_data_buf.data();
-            gpu_ctx.output_data_count = static_cast<uint32_t>(ns.output_data_buf.size());
-
-            // Resolve GPU buffer inputs from upstream nodes
-            for (size_t bi = 0; bi < ns.buffer_input_port_indices.size(); ++bi) {
-                uint32_t port_idx = ns.buffer_input_port_indices[bi];
-                ns.resolved_buffer_inputs[bi] = nullptr;
-                for (const auto& w : wires_) {
-                    if (!w.is_buffer_wire || w.to_node_idx != ni || w.targets_param) continue;
+                    if (!w.is_handle_wire || w.to_node_idx != ni || w.targets_param) continue;
                     if (w.to_port_idx != port_idx) continue;
-                    const auto& from_ns = nodes_[w.from_node_idx];
-                    for (size_t si = 0; si < from_ns.buffer_output_port_indices.size(); ++si) {
-                        if (from_ns.buffer_output_port_indices[si] == w.from_port_idx) {
-                            ns.resolved_buffer_inputs[bi] = from_ns.gpu_buffer_outputs[si];
+                    const auto& upstream = nodes_[w.from_node_idx];
+                    for (uint32_t s = 0; s < upstream.handle_output_port_indices.size(); ++s) {
+                        if (upstream.handle_output_port_indices[s] == w.from_port_idx) {
+                            if (s < upstream.handle_outputs.size())
+                                ns.resolved_handle_inputs[hi] = upstream.handle_outputs[s];
                             break;
                         }
                     }
                     break;
                 }
             }
-            gpu_ctx.output_buffers      = ns.output_buffer_buf.empty() ? nullptr : ns.output_buffer_buf.data();
-            gpu_ctx.output_buffer_count = static_cast<uint32_t>(ns.output_buffer_buf.size());
-            gpu_ctx.input_buffers       = ns.resolved_buffer_inputs.empty() ? nullptr : ns.resolved_buffer_inputs.data();
-            gpu_ctx.input_buffer_count  = static_cast<uint32_t>(ns.resolved_buffer_inputs.size());
-
-            // Resolve GPU mesh inputs from upstream nodes
-            for (size_t mi = 0; mi < ns.mesh_input_port_indices.size(); ++mi) {
-                uint32_t port_idx = ns.mesh_input_port_indices[mi];
-                ns.resolved_mesh_inputs[mi] = nullptr;
-                for (const auto& w : wires_) {
-                    if (!w.is_mesh_wire || w.to_node_idx != ni || w.targets_param) continue;
-                    if (w.to_port_idx != port_idx) continue;
-                    const auto& from_ns = nodes_[w.from_node_idx];
-                    for (size_t si = 0; si < from_ns.mesh_output_port_indices.size(); ++si) {
-                        if (from_ns.mesh_output_port_indices[si] == w.from_port_idx) {
-                            ns.resolved_mesh_inputs[mi] = from_ns.gpu_mesh_outputs[si];
-                            break;
-                        }
-                    }
-                    break;
-                }
-            }
-            gpu_ctx.output_meshes     = ns.output_mesh_buf.empty() ? nullptr : ns.output_mesh_buf.data();
-            gpu_ctx.output_mesh_count = static_cast<uint32_t>(ns.output_mesh_buf.size());
-            gpu_ctx.input_meshes      = ns.resolved_mesh_inputs.empty() ? nullptr : ns.resolved_mesh_inputs.data();
-            gpu_ctx.input_mesh_count  = static_cast<uint32_t>(ns.resolved_mesh_inputs.size());
-
-            // Resolve GPU compute inputs from upstream nodes
-            for (size_t ci = 0; ci < ns.compute_input_port_indices.size(); ++ci) {
-                uint32_t port_idx = ns.compute_input_port_indices[ci];
-                ns.resolved_compute_inputs[ci] = nullptr;
-                for (const auto& w : wires_) {
-                    if (!w.is_compute_wire || w.to_node_idx != ni || w.targets_param) continue;
-                    if (w.to_port_idx != port_idx) continue;
-                    const auto& from_ns = nodes_[w.from_node_idx];
-                    for (size_t si = 0; si < from_ns.compute_output_port_indices.size(); ++si) {
-                        if (from_ns.compute_output_port_indices[si] == w.from_port_idx) {
-                            ns.resolved_compute_inputs[ci] = from_ns.gpu_compute_outputs[si];
-                            break;
-                        }
-                    }
-                    break;
-                }
-            }
-            gpu_ctx.output_compute       = ns.output_compute_buf.empty() ? nullptr : ns.output_compute_buf.data();
-            gpu_ctx.output_compute_count = static_cast<uint32_t>(ns.output_compute_buf.size());
-            gpu_ctx.input_compute        = ns.resolved_compute_inputs.empty() ? nullptr : ns.resolved_compute_inputs.data();
-            gpu_ctx.input_compute_count  = static_cast<uint32_t>(ns.resolved_compute_inputs.size());
+            gpu_ctx.input_handles      = ns.resolved_handle_inputs.empty()
+                                                  ? nullptr : ns.resolved_handle_inputs.data();
+            gpu_ctx.input_handle_count = static_cast<uint32_t>(ns.resolved_handle_inputs.size());
+            gpu_ctx.output_handles      = ns.output_handle_buf.empty() ? nullptr : ns.output_handle_buf.data();
+            gpu_ctx.output_handle_count = static_cast<uint32_t>(ns.output_handle_buf.size());
 
             try {
                 if (ns.missing_operator || !ns.loader) {
@@ -1105,10 +993,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ctx.output_values = ns.output_values.data();
             ctx.input_spreads  = ns.c_in_spreads.data();
             ctx.output_spreads = ns.c_out_spreads.data();
-            ctx.input_data = nullptr;
-            ctx.input_data_count = 0;
-            ctx.output_data = ns.output_data_buf.empty() ? nullptr : ns.output_data_buf.data();
-            ctx.output_data_count = static_cast<uint32_t>(ns.output_data_buf.size());
+            ctx.input_handles = nullptr;
+            ctx.input_handle_count = 0;
+            ctx.output_handles = ns.output_handle_buf.empty() ? nullptr : ns.output_handle_buf.data();
+            ctx.output_handle_count = static_cast<uint32_t>(ns.output_handle_buf.size());
             ctx.input_string_values = ns.c_input_string_values.empty()
                                         ? nullptr : ns.c_input_string_values.data();
             ctx.output_string_values = ns.c_output_string_values.empty()
@@ -1164,14 +1052,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             }
         }
 
-        // Capture opaque data outputs.
-        // The operator's writes are already in ns.output_data_buf — just copy.
-        ns.gpu_data_outputs = ns.output_data_buf;
-
-        // Capture GPU buffer/mesh/compute outputs (operator wrote pointers into the buf arrays)
-        ns.gpu_buffer_outputs  = ns.output_buffer_buf;
-        ns.gpu_mesh_outputs    = ns.output_mesh_buf;
-        ns.gpu_compute_outputs = ns.output_compute_buf;
+        // Capture handle outputs (operator wrote pointers into the buf array)
+        ns.handle_outputs = ns.output_handle_buf;
 
         // Read back output spreads
         for (uint32_t p = 0; p < ns.output_port_count; ++p) {
