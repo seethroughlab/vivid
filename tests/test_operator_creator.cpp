@@ -433,10 +433,10 @@ int main() {
         req.name = "multi_port";
         req.domain = VIVID_DOMAIN_CONTROL;
         req.ports = {
-            {"signal",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
-            {"modulator", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
-            {"result",    VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT},
-            {"error",     VIVID_PORT_CONTROL_INT,   VIVID_PORT_OUTPUT},
+            {"signal",    VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
+            {"modulator", VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
+            {"result",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT},
+            {"error",     VIVID_PORT_FLOAT,   VIVID_PORT_OUTPUT},
         };
 
         auto result = vivid::OperatorCreator::create(req, tmp);
@@ -511,9 +511,9 @@ int main() {
         req.name = "mixed_op";
         req.domain = VIVID_DOMAIN_CONTROL;
         req.ports = {
-            {"in_a", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
-            {"in_b", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT},
-            {"out",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT},
+            {"in_a", VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
+            {"in_b", VIVID_PORT_SPREAD, VIVID_PORT_INPUT},
+            {"out",  VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT},
         };
         req.params = {
             {"gain", VIVID_PARAM_FLOAT, 1.0f, 0.0f, 2.0f},
@@ -547,8 +547,8 @@ int main() {
         req.name = "dup_port_op";
         req.domain = VIVID_DOMAIN_CONTROL;
         req.ports = {
-            {"input", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
-            {"input", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT},  // duplicate name
+            {"input", VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
+            {"input", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT},  // duplicate name
         };
 
         auto result = vivid::OperatorCreator::create(req, tmp);
@@ -572,7 +572,7 @@ int main() {
         req.name = "empty_name_op";
         req.domain = VIVID_DOMAIN_CONTROL;
         req.ports = {
-            {"", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
+            {"", VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
         };
 
         auto result = vivid::OperatorCreator::create(req, tmp);
@@ -596,8 +596,8 @@ int main() {
         req.name = "gpu_mixer";
         req.domain = VIVID_DOMAIN_GPU;
         req.ports = {
-            {"texture_in", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT},
-            {"texture_out", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT},
+            {"texture_in", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT},
+            {"texture_out", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT},
         };
 
         auto result = vivid::OperatorCreator::create(req, tmp);
@@ -622,7 +622,7 @@ int main() {
         write_full_cmake(tmp);
 
         std::vector<vivid::OutputPortSpec> extra = {
-            {"sidechain", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT},
+            {"sidechain", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT},
         };
 
         auto result = vivid::OperatorCreator::create("legacy_out", VIVID_DOMAIN_CONTROL, tmp, "", false, extra);

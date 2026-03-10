@@ -14,8 +14,8 @@ struct AudioThrowingOp : vivid::AudioOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"in",  VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"out", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"in",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});
+        out.push_back({"out", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
     }
 
     void process_audio(const VividAudioContext*) override {

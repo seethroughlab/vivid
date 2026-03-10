@@ -63,7 +63,7 @@ struct TestPkgOp : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"out", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {
@@ -169,7 +169,7 @@ struct TestVendorOp : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"out", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {
@@ -222,7 +222,7 @@ struct TestAposOp : vivid::ControlOperatorBase {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"out", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {

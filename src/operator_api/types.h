@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 9u
+#define VIVID_OPERATOR_ABI_VERSION 1u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -35,7 +35,6 @@ typedef enum VividDisplayHint {
 } VividDisplayHint;
 
 // Channel kinds — reflect runtime routing mechanisms.
-// ABI v9: collapsed from 15 values to 7.
 typedef enum VividPortType {
     VIVID_PORT_FLOAT          = 0,  // float value (control_float/int/bool all route identically)
     VIVID_PORT_AUDIO          = 1,  // audio sample buffer
@@ -45,23 +44,6 @@ typedef enum VividPortType {
     VIVID_PORT_TEXTURE        = 5,  // WGPUTextureView
     VIVID_PORT_HANDLE         = 6,  // typed opaque pointer (void*), type-safe via handle_type_id
 } VividPortType;
-
-// Backward-compatible aliases (deprecated, remove in v10)
-#define VIVID_PORT_CONTROL_FLOAT         VIVID_PORT_FLOAT
-#define VIVID_PORT_CONTROL_INT           VIVID_PORT_FLOAT
-#define VIVID_PORT_CONTROL_BOOL          VIVID_PORT_FLOAT
-#define VIVID_PORT_AUDIO_FLOAT           VIVID_PORT_AUDIO
-#define VIVID_PORT_CONTROL_SPREAD        VIVID_PORT_SPREAD
-#define VIVID_PORT_GPU_TEXTURE           VIVID_PORT_TEXTURE
-#define VIVID_PORT_CONTROL_STRING        VIVID_PORT_STRING
-#define VIVID_PORT_CONTROL_STRING_SPREAD VIVID_PORT_STRING_SPREAD
-#define VIVID_PORT_DATA                  VIVID_PORT_HANDLE
-#define VIVID_PORT_GPU_BUFFER            VIVID_PORT_HANDLE
-#define VIVID_PORT_GPU_MESH              VIVID_PORT_HANDLE
-#define VIVID_PORT_GPU_COMPUTE           VIVID_PORT_HANDLE
-#define VIVID_PORT_MEDIA_STREAM          VIVID_PORT_HANDLE
-#define VIVID_PORT_MEDIA_CLOCK           VIVID_PORT_HANDLE
-#define VIVID_PORT_MIDI                  VIVID_PORT_HANDLE
 
 typedef enum VividPortDirection {
     VIVID_PORT_INPUT  = 0,

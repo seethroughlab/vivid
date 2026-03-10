@@ -38,8 +38,8 @@ public:
     // --- GpuOperatorBase overrides ------------------------------------------
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
-        out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
+        out.push_back({"input", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
+        out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -333,7 +333,7 @@ private:
         collect_ports(ports);
         tex_input_count_ = 0;
         for (auto& p : ports)
-            if (p.direction == VIVID_PORT_INPUT && p.type == VIVID_PORT_GPU_TEXTURE)
+            if (p.direction == VIVID_PORT_INPUT && p.type == VIVID_PORT_TEXTURE)
                 tex_input_count_++;
         cached_input_texs_.resize(tex_input_count_, nullptr);
 

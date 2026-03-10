@@ -18,11 +18,11 @@ struct StringSelect : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"files", VIVID_PORT_CONTROL_STRING_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"index", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"file", VIVID_PORT_CONTROL_STRING, VIVID_PORT_OUTPUT});
-        out.push_back({"valid", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"resolved_index", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"files", VIVID_PORT_STRING_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"index", VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
+        out.push_back({"file", VIVID_PORT_STRING, VIVID_PORT_OUTPUT});
+        out.push_back({"valid", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"resolved_index", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {

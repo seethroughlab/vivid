@@ -109,8 +109,8 @@ public:
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         if (config_->inputs_specified) {
             for (size_t i = 0; i < port_names_.size(); ++i)
-                out.push_back({port_names_[i].c_str(), VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
-            out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
+                out.push_back({port_names_[i].c_str(), VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
+            out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
         } else {
             // Default: 1 input + 1 output (same as WgslFilterBase)
             WgslFilterBase::collect_ports(out);

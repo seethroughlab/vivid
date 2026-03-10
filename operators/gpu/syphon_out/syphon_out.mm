@@ -26,7 +26,7 @@ struct SyphonOut : vivid::GpuOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
+        out.push_back({"input", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {

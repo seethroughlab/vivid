@@ -20,8 +20,8 @@ struct FFTAnalysis : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"waveform", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"spectrum", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});
+        out.push_back({"waveform", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"spectrum", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {

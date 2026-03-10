@@ -318,8 +318,8 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                 ns.input_port_indices[in_names[i]] = i;
             for (uint32_t i = 0; i < ns.output_port_count; ++i)
                 ns.output_port_indices[out_names[i]] = i;
-            ns.input_port_types.assign(ns.input_port_count, VIVID_PORT_CONTROL_FLOAT);
-            ns.output_port_types.assign(ns.output_port_count, VIVID_PORT_CONTROL_FLOAT);
+            ns.input_port_types.assign(ns.input_port_count, VIVID_PORT_FLOAT);
+            ns.output_port_types.assign(ns.output_port_count, VIVID_PORT_FLOAT);
 
             ns.input_values.assign(ns.input_port_count, 0.0f);
             ns.output_values.assign(ns.output_port_count, 0.0f);
@@ -415,7 +415,7 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         auto& from_ns = nodes_[fi];
         auto& to_ns   = nodes_[ti];
 
-        VividPortType from_port_type = VIVID_PORT_CONTROL_FLOAT;
+        VividPortType from_port_type = VIVID_PORT_FLOAT;
         bool source_is_param = false;
         uint32_t from_port_idx = 0;
 
@@ -449,9 +449,9 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             // Check actual param type — file/text params carry string data
             auto fp_src_it = from_ns.file_param_indices.find(conn.from_port);
             if (fp_src_it != from_ns.file_param_indices.end()) {
-                from_port_type = VIVID_PORT_CONTROL_STRING;
+                from_port_type = VIVID_PORT_STRING;
             } else {
-                from_port_type = VIVID_PORT_CONTROL_FLOAT;
+                from_port_type = VIVID_PORT_FLOAT;
             }
         }
 
@@ -459,7 +459,7 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         w.from_node_idx = fi;
         w.from_port_idx = from_port_idx;
         w.sources_param = source_is_param;
-        if (source_is_param && from_port_type == VIVID_PORT_CONTROL_STRING) {
+        if (source_is_param && from_port_type == VIVID_PORT_STRING) {
             auto fp_src_it2 = from_ns.file_param_indices.find(conn.from_port);
             w.sources_file_param = true;
             w.from_file_param_idx = fp_src_it2->second;
@@ -472,7 +472,7 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             w.targets_param = false;
 
             // Determine destination port type
-            VividPortType to_port_type = VIVID_PORT_CONTROL_FLOAT;
+            VividPortType to_port_type = VIVID_PORT_FLOAT;
             const VividOperatorDescriptor* to_op_desc = nullptr;
             if (to_ns.loader && to_ns.loader->descriptor()) {
                 to_op_desc = to_ns.loader->descriptor();
@@ -489,18 +489,18 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             }
 
             if (!from_ns.missing_operator && !to_ns.missing_operator) {
-                if (from_port_type == VIVID_PORT_CONTROL_STRING &&
-                    to_port_type == VIVID_PORT_CONTROL_STRING) {
+                if (from_port_type == VIVID_PORT_STRING &&
+                    to_port_type == VIVID_PORT_STRING) {
                     w.is_string_wire = true;
                     string_in_fanin[ti][w.to_port_idx]++;
-                } else if (from_port_type == VIVID_PORT_CONTROL_STRING_SPREAD &&
-                           to_port_type == VIVID_PORT_CONTROL_STRING_SPREAD) {
+                } else if (from_port_type == VIVID_PORT_STRING_SPREAD &&
+                           to_port_type == VIVID_PORT_STRING_SPREAD) {
                     w.is_string_spread_wire = true;
                     string_spread_in_fanin[ti][w.to_port_idx]++;
-                } else if (from_port_type == VIVID_PORT_CONTROL_STRING ||
-                           from_port_type == VIVID_PORT_CONTROL_STRING_SPREAD ||
-                           to_port_type == VIVID_PORT_CONTROL_STRING ||
-                           to_port_type == VIVID_PORT_CONTROL_STRING_SPREAD) {
+                } else if (from_port_type == VIVID_PORT_STRING ||
+                           from_port_type == VIVID_PORT_STRING_SPREAD ||
+                           to_port_type == VIVID_PORT_STRING ||
+                           to_port_type == VIVID_PORT_STRING_SPREAD) {
                     std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
                         "(string port types must match exactly)\n",
                         conn.from_node.c_str(), conn.from_port.c_str(),
@@ -511,11 +511,11 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
 
             // Validate texture wire: both ends must be GPU_TEXTURE
             if (!from_ns.missing_operator && !to_ns.missing_operator) {
-                if (from_port_type == VIVID_PORT_GPU_TEXTURE &&
-                    to_port_type == VIVID_PORT_GPU_TEXTURE) {
+                if (from_port_type == VIVID_PORT_TEXTURE &&
+                    to_port_type == VIVID_PORT_TEXTURE) {
                     w.is_texture_wire = true;
-                } else if (from_port_type == VIVID_PORT_GPU_TEXTURE ||
-                           to_port_type == VIVID_PORT_GPU_TEXTURE) {
+                } else if (from_port_type == VIVID_PORT_TEXTURE ||
+                           to_port_type == VIVID_PORT_TEXTURE) {
                     std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
                         "(GPU_TEXTURE on only one end)\n",
                         conn.from_node.c_str(), conn.from_port.c_str(),
@@ -574,7 +574,7 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             auto fp_it2 = to_ns.file_param_indices.find(conn.to_port);
             if (fp_it2 != to_ns.file_param_indices.end()) {
                 // String param target — validate source is string-compatible
-                if (from_port_type != VIVID_PORT_CONTROL_STRING) {
+                if (from_port_type != VIVID_PORT_STRING) {
                     std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
                         "(float source cannot wire to string param)\n",
                         conn.from_node.c_str(), conn.from_port.c_str(),

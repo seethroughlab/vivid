@@ -9,8 +9,8 @@ struct SpreadSinkOp : vivid::ControlOperatorBase {
     void collect_params(std::vector<vivid::ParamBase*>& out) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"in",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"out", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"in",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
+        out.push_back({"out", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {

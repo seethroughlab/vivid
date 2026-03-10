@@ -357,8 +357,8 @@ struct Noise : vivid::GpuOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
-        out.push_back({"output", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
+        out.push_back({"output", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {

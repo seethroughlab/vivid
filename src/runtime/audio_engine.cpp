@@ -45,11 +45,11 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
             ns.output_port_indices[desc->ports[i].name] = ns.output_port_count++;
             ns.output_port_types.push_back(desc->ports[i].type);
         }
-        if (desc->ports[i].type == VIVID_PORT_CONTROL_SPREAD) {
+        if (desc->ports[i].type == VIVID_PORT_SPREAD) {
             ns.has_spread_ports = true;
         }
         if (desc->ports[i].direction == VIVID_PORT_INPUT &&
-            desc->ports[i].type == VIVID_PORT_CONTROL_STRING) {
+            desc->ports[i].type == VIVID_PORT_STRING) {
             ns.has_string_input_ports = true;
         }
         if (desc->ports[i].direction == VIVID_PORT_INPUT &&
@@ -164,9 +164,9 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                 tp_it != to_ns.input_port_indices.end()) {
                 // Type-check: both CONTROL_SPREAD → AudioSpreadWire, else AudioWire
                 bool from_spread = fp_it->second < from_ns.output_port_types.size() &&
-                                   from_ns.output_port_types[fp_it->second] == VIVID_PORT_CONTROL_SPREAD;
+                                   from_ns.output_port_types[fp_it->second] == VIVID_PORT_SPREAD;
                 bool to_spread = tp_it->second < to_ns.input_port_types.size() &&
-                                 to_ns.input_port_types[tp_it->second] == VIVID_PORT_CONTROL_SPREAD;
+                                 to_ns.input_port_types[tp_it->second] == VIVID_PORT_SPREAD;
 
                 if (from_spread && to_spread) {
                     AudioSpreadWire sw;
@@ -217,7 +217,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                 auto ip_it = to_ns.input_port_indices.find(conn.to_port);
                 if (ip_it != to_ns.input_port_indices.end() &&
                     ip_it->second < to_ns.input_port_types.size() &&
-                    to_ns.input_port_types[ip_it->second] == VIVID_PORT_CONTROL_SPREAD) {
+                    to_ns.input_port_types[ip_it->second] == VIVID_PORT_SPREAD) {
                     CrossDomainSpreadWire sw;
                     sw.control_node_id = conn.from_node;
                     sw.control_spread_port_idx = cp_it->second;
@@ -228,8 +228,8 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                 } else if (ip_it != to_ns.input_port_indices.end() &&
                            ip_it->second < to_ns.input_port_types.size() &&
                            cp_it->second < ctrl_ns.output_port_types.size() &&
-                           to_ns.input_port_types[ip_it->second] == VIVID_PORT_CONTROL_STRING &&
-                           ctrl_ns.output_port_types[cp_it->second] == VIVID_PORT_CONTROL_STRING) {
+                           to_ns.input_port_types[ip_it->second] == VIVID_PORT_STRING &&
+                           ctrl_ns.output_port_types[cp_it->second] == VIVID_PORT_STRING) {
                     CrossDomainStringWire sw;
                     sw.control_node_id = conn.from_node;
                     sw.control_output_port_idx = cp_it->second;
@@ -384,7 +384,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     // Build spread output mappings for CONTROL_SPREAD output ports
                     for (uint32_t op = 0; op < nodes_[ai].output_port_count; ++op) {
                         if (op < nodes_[ai].output_port_types.size() &&
-                            nodes_[ai].output_port_types[op] == VIVID_PORT_CONTROL_SPREAD) {
+                            nodes_[ai].output_port_types[op] == VIVID_PORT_SPREAD) {
                             // Find matching port name in scheduler node
                             const auto* desc = nodes_[ai].loader->descriptor();
                             uint32_t out_idx = 0;

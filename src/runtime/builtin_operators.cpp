@@ -7,9 +7,9 @@
 // ============================================================================
 
 static const VividPortDescriptor audio_out_ports[] = {
-    { "input", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_INPUT },
-    { "left",  VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_INPUT },
-    { "right", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_INPUT },
+    { "input", VIVID_PORT_AUDIO, VIVID_PORT_INPUT },
+    { "left",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT },
+    { "right", VIVID_PORT_AUDIO, VIVID_PORT_INPUT },
 };
 
 static const char* audio_out_device_labels[] = { "Default" };
@@ -39,7 +39,7 @@ static void  audio_out_process(void*, VividProcessContext*) { /* no-op */ }
 // ============================================================================
 
 static const VividPortDescriptor video_out_ports[] = {
-    { "input", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT },
+    { "input", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT },
 };
 
 static const char* video_out_fit_labels[] = { "Fit", "Fill", "Stretch" };

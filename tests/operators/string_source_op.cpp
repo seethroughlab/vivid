@@ -20,8 +20,8 @@ struct StringSourceOp : vivid::ControlOperatorBase {
     void collect_params(std::vector<vivid::ParamBase*>& out) override { out.push_back(&value); }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"out", VIVID_PORT_CONTROL_STRING, VIVID_PORT_OUTPUT});
-        out.push_back({"list", VIVID_PORT_CONTROL_STRING_SPREAD, VIVID_PORT_OUTPUT});
+        out.push_back({"out", VIVID_PORT_STRING, VIVID_PORT_OUTPUT});
+        out.push_back({"list", VIVID_PORT_STRING_SPREAD, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {

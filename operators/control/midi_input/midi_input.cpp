@@ -25,16 +25,16 @@ struct MidiInput : vivid::ControlOperatorBase {
 
     // Output ports: scalar note/vel/gate/trigger/pitch_bend/mod_wheel/cc_value + spread notes/velocities/gates
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"note",       VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [0]
-        out.push_back({"velocity",   VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [1]
-        out.push_back({"gate",       VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [2]
-        out.push_back({"trigger",    VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [3]
-        out.push_back({"pitch_bend", VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [4]
-        out.push_back({"mod_wheel",  VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [5]
-        out.push_back({"cc_value",   VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // [6]
-        out.push_back({"notes",      VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // [7]
-        out.push_back({"velocities", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // [8]
-        out.push_back({"gates",      VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // [9]
+        out.push_back({"note",       VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // [0]
+        out.push_back({"velocity",   VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // [1]
+        out.push_back({"gate",       VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // [2]
+        out.push_back({"trigger",    VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // [3]
+        out.push_back({"pitch_bend", VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // [4]
+        out.push_back({"mod_wheel",  VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // [5]
+        out.push_back({"cc_value",   VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // [6]
+        out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [7]
+        out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [8]
+        out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [9]
     }
 
     MidiInput() {

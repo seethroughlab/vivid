@@ -1567,28 +1567,28 @@ int main(int argc, char* argv[]) {
                         }
                     }
                     // Map type string -> VividPortType
-                    VividPortType vt = VIVID_PORT_CONTROL_FLOAT;
+                    VividPortType vt = VIVID_PORT_FLOAT;
                     if (domain == VIVID_DOMAIN_CONTROL) {
-                        if      (ptype == "float")  vt = VIVID_PORT_CONTROL_FLOAT;
-                        else if (ptype == "int")    vt = VIVID_PORT_CONTROL_INT;
-                        else if (ptype == "bool")   vt = VIVID_PORT_CONTROL_BOOL;
-                        else if (ptype == "spread") vt = VIVID_PORT_CONTROL_SPREAD;
-                        else if (ptype == "string") vt = VIVID_PORT_CONTROL_STRING;
+                        if      (ptype == "float")  vt = VIVID_PORT_FLOAT;
+                        else if (ptype == "int")    vt = VIVID_PORT_FLOAT;
+                        else if (ptype == "bool")   vt = VIVID_PORT_FLOAT;
+                        else if (ptype == "spread") vt = VIVID_PORT_SPREAD;
+                        else if (ptype == "string") vt = VIVID_PORT_STRING;
                         else {
                             std::fprintf(stderr, "Scaffold failed: unknown type '%s' for control domain "
                                          "(valid: float, int, bool, spread, string)\n", ptype.c_str());
                             parse_ok = false; break;
                         }
                     } else if (domain == VIVID_DOMAIN_AUDIO) {
-                        if (ptype == "float") vt = VIVID_PORT_AUDIO_FLOAT;
+                        if (ptype == "float") vt = VIVID_PORT_AUDIO;
                         else {
                             std::fprintf(stderr, "Scaffold failed: unknown type '%s' for audio domain "
                                          "(valid: float)\n", ptype.c_str());
                             parse_ok = false; break;
                         }
                     } else if (domain == VIVID_DOMAIN_GPU) {
-                        if      (ptype == "texture") vt = VIVID_PORT_GPU_TEXTURE;
-                        else if (ptype == "data")    vt = VIVID_PORT_DATA;
+                        if      (ptype == "texture") vt = VIVID_PORT_TEXTURE;
+                        else if (ptype == "data")    vt = VIVID_PORT_HANDLE;
                         else {
                             std::fprintf(stderr, "Scaffold failed: unknown type '%s' for gpu domain "
                                          "(valid: texture, data)\n", ptype.c_str());

@@ -70,7 +70,7 @@ The `MovieLoaded` / `MovieVideoOut` / `MovieAudioOut` trio is shipped and the im
 **Status:** Complete.
 
 - **New ABI-stable structs** (`src/operator_api/gpu_types.h`): `VividGpuBuffer`, `VividComputeBuffer`, `VividVertexAttribute`, `VividMesh` — C-compatible, include-safe, no `data_type` string matching.
-- **Three new `VividPortType` enum values**: `VIVID_PORT_GPU_BUFFER = 9`, `VIVID_PORT_GPU_MESH = 10`, `VIVID_PORT_GPU_COMPUTE = 11` (`src/operator_api/types.h`).
+- **Three new `VividPortType` enum values**: `VIVID_PORT_HANDLE` now covers GPU buffer, mesh, and compute types (type-safe via `handle_type_id`).
 - **`VividGpuState` extended** (`src/operator_api/gpu_operator.h`): six new pointer/count pairs for buffer, mesh, and compute I/O — operators access typed inputs and write typed outputs through the same `ctx->gpu` handle they already use.
 - **Scheduler wiring** (`src/runtime/scheduler.h` / `scheduler.cpp`): `NodeState` carries per-type port-index vectors and resolved-input vectors; `Wire` carries three new flags (`is_buffer_wire`, `is_mesh_wire`, `is_compute_wire`); `build()` classifies wires with enum-level mismatch rejection; `tick()` resolves inputs from upstream `NodeState` and commits outputs after `process()`.
 - **UI compatibility** (`src/ui/node_graph_util.h`): `port_type_compatible()` enforces exact-match for all three new types — cross-type connections are rejected at drag time.
@@ -86,7 +86,7 @@ layers. Three gaps remain before the capability is fully general.
 
 **ABI (version bump 4→5 shipped):**
 - [x] Extend `VividProcessContext.output_data` from single `void*` to indexed `void**` array
-      to support operators with more than one `VIVID_PORT_DATA` output
+      to support operators with more than one `VIVID_PORT_HANDLE` output
 - [x] Update scheduler `NodeState` and tick dispatch accordingly (`gpu_data_outputs`,
       `data_output_port_indices`, `output_data_buf`)
 

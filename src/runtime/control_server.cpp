@@ -579,7 +579,7 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                     }
                 }
 
-                if (pd.type == VIVID_PORT_GPU_TEXTURE && ns.gpu_tex_width > 0 && ns.gpu_tex_height > 0) {
+                if (pd.type == VIVID_PORT_TEXTURE && ns.gpu_tex_width > 0 && ns.gpu_tex_height > 0) {
                     yyjson_mut_obj_add_int(doc, out, "width", ns.gpu_tex_width);
                     yyjson_mut_obj_add_int(doc, out, "height", ns.gpu_tex_height);
                 }
@@ -2055,22 +2055,22 @@ static std::string dispatch(const std::string& method, const std::string& body,
             // Parse optional "inputs" array: [{"name": "x", "type": "float"}, ...]
             auto parse_port_type = [&](const std::string& type_str, VividDomain d, VividPortType& out) -> std::string {
                 if (d == VIVID_DOMAIN_CONTROL) {
-                    if      (type_str == "float")         out = VIVID_PORT_CONTROL_FLOAT;
-                    else if (type_str == "int")           out = VIVID_PORT_CONTROL_INT;
-                    else if (type_str == "bool")          out = VIVID_PORT_CONTROL_BOOL;
-                    else if (type_str == "spread")        out = VIVID_PORT_CONTROL_SPREAD;
-                    else if (type_str == "string")        out = VIVID_PORT_CONTROL_STRING;
-                    else if (type_str == "string_spread") out = VIVID_PORT_CONTROL_STRING_SPREAD;
+                    if      (type_str == "float")         out = VIVID_PORT_FLOAT;
+                    else if (type_str == "int")           out = VIVID_PORT_FLOAT;
+                    else if (type_str == "bool")          out = VIVID_PORT_FLOAT;
+                    else if (type_str == "spread")        out = VIVID_PORT_SPREAD;
+                    else if (type_str == "string")        out = VIVID_PORT_STRING;
+                    else if (type_str == "string_spread") out = VIVID_PORT_STRING_SPREAD;
                     else return "unknown control port type '" + type_str + "'";
                 } else if (d == VIVID_DOMAIN_AUDIO) {
-                    if (type_str == "float") out = VIVID_PORT_AUDIO_FLOAT;
+                    if (type_str == "float") out = VIVID_PORT_AUDIO;
                     else return "unknown audio port type '" + type_str + "'";
                 } else if (d == VIVID_DOMAIN_GPU) {
-                    if      (type_str == "texture") out = VIVID_PORT_GPU_TEXTURE;
-                    else if (type_str == "buffer")  out = VIVID_PORT_GPU_BUFFER;
-                    else if (type_str == "mesh")    out = VIVID_PORT_GPU_MESH;
-                    else if (type_str == "compute") out = VIVID_PORT_GPU_COMPUTE;
-                    else if (type_str == "data")    out = VIVID_PORT_DATA;
+                    if      (type_str == "texture") out = VIVID_PORT_TEXTURE;
+                    else if (type_str == "buffer")  out = VIVID_PORT_HANDLE;
+                    else if (type_str == "mesh")    out = VIVID_PORT_HANDLE;
+                    else if (type_str == "compute") out = VIVID_PORT_HANDLE;
+                    else if (type_str == "data")    out = VIVID_PORT_HANDLE;
                     else return "unknown GPU port type '" + type_str + "'";
                 }
                 return {};

@@ -316,17 +316,15 @@ Backup approach: If six explicit per-pair bridges prove to share enough machiner
 
 The type system serves three consumers: the graph runtime (bridge selection), the UI (valid connection enforcement), and the LLM (compatibility reasoning).
 
-**Control Port Types**
+Seven canonical port types reflect the runtime's routing mechanisms:
 
-`VIVID_PORT_CONTROL_FLOAT`, `VIVID_PORT_CONTROL_INT`, `VIVID_PORT_CONTROL_BOOL`, `VIVID_PORT_CONTROL_STRING`, `VIVID_PORT_CONTROL_SPREAD` (variable-length float array with broadcast semantics), `VIVID_PORT_CONTROL_STRING_SPREAD` (variable-length string array). These update at no fixed rate.
-
-**Audio Port Types**
-
-`VIVID_PORT_AUDIO_FLOAT` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
-
-**GPU Port Types**
-
-`VIVID_PORT_GPU_TEXTURE` (2D RGBA8 texture with per-node configurable resolution, default 800×600), `VIVID_PORT_GPU_BUFFER` (typed GPU storage buffer), `VIVID_PORT_GPU_MESH` (vertex/index data with attribute layout), `VIVID_PORT_GPU_COMPUTE` (compute dispatch buffer). Cross-domain types include `VIVID_PORT_DATA` (opaque pointer), `VIVID_PORT_MEDIA_STREAM` (decoded media), `VIVID_PORT_MEDIA_CLOCK` (reserved), and `VIVID_PORT_MIDI` (reserved).
+- `VIVID_PORT_FLOAT` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
+- `VIVID_PORT_AUDIO` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
+- `VIVID_PORT_SPREAD` — variable-length float array with broadcast semantics.
+- `VIVID_PORT_STRING` — UTF-8 string.
+- `VIVID_PORT_STRING_SPREAD` — variable-length string array.
+- `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 800×600).
+- `VIVID_PORT_HANDLE` — typed opaque pointer (`void*`), type-safe via `handle_type_id`. Used for GPU buffers, meshes, compute dispatches, media streams, MIDI, and package-defined types.
 
 **Semantic Tags (Advisory)**
 
@@ -349,8 +347,8 @@ struct MyEffect : vivid::ControlOperatorBase {
         out = {&intensity};
     }
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out = {{"input",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
-               {"output", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT}};
+        out = {{"input",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
+               {"output", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT}};
     }
     void process(const VividProcessContext* ctx) override {
         ctx->output_values[0] = ctx->input_values[0] * intensity.value;
@@ -378,7 +376,7 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **Broadcasting:** when two Spreads of different lengths connect to the same operator, the shorter one repeats (wraps) to match the longer. A Spread of 3 colors applied to a Spread of 512 particles cycles through the 3 colors.
 - **Cross-domain:** a Spread of Control values (e.g., 512 FFT bins) can connect directly to a GPU operator's parameter, producing 512 visual elements driven by audio. No explicit bridging required — the existing Control→GPU bridge handles the data; Spreads handle the cardinality.
 - **LLM-friendly:** describing Spread-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on Spreads.
-- **Port types:** `Spread<VIVID_PORT_CONTROL_FLOAT>`, `Spread<VIVID_PORT_GPU_TEXTURE>`, `Spread<VIVID_PORT_AUDIO_FLOAT>` are all valid. The Spread is orthogonal to the domain type system.
+- **Port types:** `Spread<VIVID_PORT_FLOAT>`, `Spread<VIVID_PORT_TEXTURE>`, `Spread<VIVID_PORT_AUDIO>` are all valid. The Spread is orthogonal to the domain type system.
 
 ### 5.10 Simulation Zones: Frame-to-Frame State
 

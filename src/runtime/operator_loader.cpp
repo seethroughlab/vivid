@@ -217,16 +217,16 @@ void OperatorLoader::init_data_driven(std::shared_ptr<DataDrivenFilterConfig> co
         for (const auto& inp : dd_config_->inputs) {
             dd_port_names_.push_back(inp.name);
             dd_ports_.push_back({dd_port_names_.back().c_str(),
-                                  VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
+                                  VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
         }
     } else {
         dd_port_names_.push_back("input");
         dd_ports_.push_back({dd_port_names_.back().c_str(),
-                              VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
+                              VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
     }
     dd_port_names_.push_back("texture");
     dd_ports_.push_back({dd_port_names_.back().c_str(),
-                          VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
+                          VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
 
     dd_desc_.domain = VIVID_DOMAIN_GPU;
     dd_desc_.param_count = static_cast<uint32_t>(dd_params_.size());

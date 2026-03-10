@@ -21,8 +21,8 @@ struct PatTransform : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"pattern", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});   // in spread[0]
-        out.push_back({"pattern", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // out spread[0]
+        out.push_back({"pattern", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[0]
+        out.push_back({"pattern", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // out spread[0]
     }
 
     void process(const VividProcessContext* ctx) override {

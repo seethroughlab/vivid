@@ -58,8 +58,8 @@ struct FolderList : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"files", VIVID_PORT_CONTROL_STRING_SPREAD, VIVID_PORT_OUTPUT});
-        out.push_back({"count", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"files", VIVID_PORT_STRING_SPREAD, VIVID_PORT_OUTPUT});
+        out.push_back({"count", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {

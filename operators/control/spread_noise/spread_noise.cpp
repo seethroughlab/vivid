@@ -25,7 +25,7 @@ struct SpreadNoise : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"values", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // 0
+        out.push_back({"values", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // 0
     }
 
     void process(const VividProcessContext* ctx) override {

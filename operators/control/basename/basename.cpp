@@ -11,8 +11,8 @@ struct Basename : vivid::ControlOperatorBase {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"path", VIVID_PORT_CONTROL_STRING, VIVID_PORT_INPUT});
-        out.push_back({"name", VIVID_PORT_CONTROL_STRING, VIVID_PORT_OUTPUT});
+        out.push_back({"path", VIVID_PORT_STRING, VIVID_PORT_INPUT});
+        out.push_back({"name", VIVID_PORT_STRING, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {

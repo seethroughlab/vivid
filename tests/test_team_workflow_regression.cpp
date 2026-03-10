@@ -176,7 +176,7 @@ int main(int argc, char* argv[]) {
                            "  void collect_params(std::vector<vivid::ParamBase*>& out) override "
                            "{ out.push_back(&scale); }\n"
                            "  void collect_ports(std::vector<VividPortDescriptor>& out) override {\n"
-                           "    out.push_back({\"out\", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});\n"
+                           "    out.push_back({\"out\", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});\n"
                            "  }\n"
                            "  void process(const VividProcessContext* ctx) override "
                            "{ ctx->output_values[0] = ctx->param_values[0] * 2.0f; }\n"

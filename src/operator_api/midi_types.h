@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 // ---------------------------------------------------------------------------
-// MIDI port types for VIVID_PORT_MIDI
+// MIDI port types for VIVID_PORT_HANDLE
 // ---------------------------------------------------------------------------
 
 // A single timestamped MIDI message within a frame window.

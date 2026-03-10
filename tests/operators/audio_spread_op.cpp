@@ -11,9 +11,9 @@ struct AudioSpreadOp : vivid::AudioOperatorBase {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"values", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"out",    VIVID_PORT_AUDIO_FLOAT,    VIVID_PORT_OUTPUT});
-        out.push_back({"echo",   VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});
+        out.push_back({"values", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"out",    VIVID_PORT_AUDIO,    VIVID_PORT_OUTPUT});
+        out.push_back({"echo",   VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
     }
 
     void process_audio(const VividAudioContext* ctx) override {

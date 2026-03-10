@@ -50,21 +50,18 @@ Control is push-based — events propagate forward immediately. Audio and GPU ar
 
 The type system serves three consumers: the graph runtime (bridge selection), the UI (valid connection enforcement), and the LLM (compatibility reasoning).
 
-### Control Port Types
-`VIVID_PORT_CONTROL_FLOAT`, `VIVID_PORT_CONTROL_INT`, `VIVID_PORT_CONTROL_BOOL`, `VIVID_PORT_CONTROL_STRING`, `VIVID_PORT_CONTROL_SPREAD` (variable-length float array with broadcast semantics), `VIVID_PORT_CONTROL_STRING_SPREAD` (variable-length string array). These update at no fixed rate.
+Seven canonical port types reflect the runtime's routing mechanisms:
 
-### Audio Port Types
-`VIVID_PORT_AUDIO_FLOAT` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
-
-### GPU Port Types
-`VIVID_PORT_GPU_TEXTURE` (2D RGBA8 texture with per-node configurable resolution, default 800×600), `VIVID_PORT_GPU_BUFFER` (typed GPU storage buffer), `VIVID_PORT_GPU_MESH` (vertex/index data with attribute layout), `VIVID_PORT_GPU_COMPUTE` (compute dispatch buffer). The buffer, mesh, and compute types were added in Milestone 8 with ABI-stable C structs (`VividGpuBuffer`, `VividMesh`, `VividComputeBuffer` in `src/operator_api/gpu_types.h`).
+- `VIVID_PORT_FLOAT` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
+- `VIVID_PORT_AUDIO` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
+- `VIVID_PORT_SPREAD` — variable-length float array with broadcast semantics.
+- `VIVID_PORT_STRING` — UTF-8 string.
+- `VIVID_PORT_STRING_SPREAD` — variable-length string array.
+- `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 800×600).
+- `VIVID_PORT_HANDLE` — typed opaque pointer (`void*`), type-safe via `handle_type_id` (FNV-1a hash of the C++ type name). Used for GPU buffers, meshes, compute dispatches, media streams, MIDI, and package-defined types.
 
 ### Semantic Tags (Advisory)
 Port types can carry optional semantic tags: normalized (0–1), bipolar (-1 to 1), frequency_hz, decibels, midi_note, etc. **Tags are advisory hints, not enforced by the runtime.** When connecting ports with mismatched ranges, the graph editor suggests inserting a visible Remap node with the mapping pre-configured. No silent auto-mapping.
-
-### Cross-Domain Port Types
-
-`VIVID_PORT_DATA` — opaque pointer for package-defined types (identified by a `data_type` string, e.g. `"gpu_scene"`). `VIVID_PORT_MEDIA_STREAM` — first-class media stream carrying decoded video frames (`MediaStreamV1*`). `VIVID_PORT_MEDIA_CLOCK` — clock-only media synchronization port (`MediaClockV1*`, reserved — no operators yet). `VIVID_PORT_MIDI` — MIDI event buffer (`VividMidiBuffer*`, reserved — no operators yet).
 
 ## 5.7 Operator API Contract
 
@@ -84,8 +81,8 @@ struct MyEffect : vivid::ControlOperatorBase {
         out = {&intensity, &mode};
     }
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out = {{"input",  VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_INPUT},
-               {"output", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT}};
+        out = {{"input",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
+               {"output", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT}};
     }
     void process(const VividProcessContext* ctx) override {
         float in = ctx->input_values[0];
@@ -95,7 +92,7 @@ struct MyEffect : vivid::ControlOperatorBase {
 VIVID_REGISTER(MyEffect)
 ```
 
-Three domain-specific base classes exist: `vivid::ControlOperatorBase` (implements `process(const VividProcessContext*)`), `vivid::AudioOperatorBase` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuOperatorBase` (implements `process_gpu(const VividGpuContext*)`). The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It infers the operator's domain from its base class (falling back to port-type inference for `OperatorBase` subclasses), and emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION` (currently 8) for compatibility checking at load time.
+Three domain-specific base classes exist: `vivid::ControlOperatorBase` (implements `process(const VividProcessContext*)`), `vivid::AudioOperatorBase` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuOperatorBase` (implements `process_gpu(const VividGpuContext*)`). The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It infers the operator's domain from its base class (falling back to port-type inference for `OperatorBase` subclasses), and emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION` (currently 1) for compatibility checking at load time.
 
 For statically linked export builds (§5.16), the `extern "C"` boundary is unnecessary — everything links together as one C++ binary. The macro handles both cases.
 
@@ -180,7 +177,7 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **Broadcasting:** when two Spreads of different lengths connect to the same operator, the shorter one repeats (wraps) to match the longer. A Spread of 3 colors applied to a Spread of 512 particles cycles through the 3 colors.
 - **Cross-domain:** a Spread of Control values (e.g., 512 FFT bins) can connect directly to a GPU operator's parameter, producing 512 visual elements driven by audio. No explicit bridging required — the existing Control→GPU bridge handles the data; Spreads handle the cardinality.
 - **LLM-friendly:** describing Spread-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on Spreads.
-- **Port types:** `Spread<VIVID_PORT_CONTROL_FLOAT>`, `Spread<VIVID_PORT_GPU_TEXTURE>`, `Spread<VIVID_PORT_AUDIO_FLOAT>` are all valid. The Spread is orthogonal to the domain type system.
+- **Port types:** `Spread<VIVID_PORT_FLOAT>`, `Spread<VIVID_PORT_TEXTURE>`, `Spread<VIVID_PORT_AUDIO>` are all valid. The Spread is orthogonal to the domain type system.
 - **Cross-domain bridge implementation:** Control↔Audio uses `SpreadSnapshot` (fixed 64-element struct) inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. Control→GPU uses WebGPU storage buffers: the operator uploads Spread data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
 
 ## 5.10 Simulation Zones: Frame-to-Frame State
@@ -578,10 +575,10 @@ Vivid exposes its full runtime API through two integration surfaces:
 
 Vivid's media pipeline handles video file playback with synchronized audio through a trio of operators:
 
-- **`MovieLoaded`** (`operators/gpu/movie_loaded/`) — decodes video frames from a file using AVFoundation (macOS). Supports HAP (via Snappy decompression + BC GPU upload), HAPQ (YCoCg color space), HAP-alpha, H.264, and HEVC codecs. Outputs a `VIVID_PORT_GPU_TEXTURE` (decoded frames) and a `VIVID_PORT_MEDIA_STREAM` (media clock for audio sync). Playback modes include loop, ping-pong, and one-shot. Frame decoding runs on a dedicated dispatch queue; the GPU operator receives textures via a double-buffered handoff.
+- **`MovieLoaded`** (`operators/gpu/movie_loaded/`) — decodes video frames from a file using AVFoundation (macOS). Supports HAP (via Snappy decompression + BC GPU upload), HAPQ (YCoCg color space), HAP-alpha, H.264, and HEVC codecs. Outputs a `VIVID_PORT_TEXTURE` (decoded frames) and a `VIVID_PORT_HANDLE` (media stream for audio sync). Playback modes include loop, ping-pong, and one-shot. Frame decoding runs on a dedicated dispatch queue; the GPU operator receives textures via a double-buffered handoff.
 
-- **`MovieAudioOut`** (`operators/audio/movie_audio_out/`) — receives a `VIVID_PORT_MEDIA_STREAM` input from MovieLoaded and outputs decoded audio as `VIVID_PORT_AUDIO_FLOAT` left/right channels. Audio decoding uses AVFoundation's `AVAssetReader` with a lock-free ring buffer bridging the decode thread to the real-time audio callback. Sync is maintained via media clock timestamps — the audio operator tracks the video operator's playback position and resyncs on loop boundaries.
+- **`MovieAudioOut`** (`operators/audio/movie_audio_out/`) — receives a `VIVID_PORT_HANDLE` (media stream) input from MovieLoaded and outputs decoded audio as `VIVID_PORT_AUDIO` left/right channels. Audio decoding uses AVFoundation's `AVAssetReader` with a lock-free ring buffer bridging the decode thread to the real-time audio callback. Sync is maintained via media clock timestamps — the audio operator tracks the video operator's playback position and resyncs on loop boundaries.
 
 - **`MovieVideoOut`** (`operators/gpu/movie_video_out/`) — the reverse path: encodes GPU textures + audio buffers into a video file via `AVAssetWriter`. Used for recording/export.
 
-The `VIVID_PORT_MEDIA_STREAM` type carries a `MediaStreamV1*` pointer through the graph's `VIVID_PORT_DATA` plumbing, enabling cross-domain media synchronization without special-case runtime code. The `VIVID_PORT_MEDIA_CLOCK` type is reserved for future clock-only synchronization (e.g., external timecode sources).
+The media stream type carries a `MediaStreamV1*` pointer through the graph's `VIVID_PORT_HANDLE` plumbing, enabling cross-domain media synchronization without special-case runtime code.
