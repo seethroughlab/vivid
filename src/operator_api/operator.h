@@ -287,7 +287,7 @@ static void _vivid_sync_params(_VividInstance* inst, float* param_values,      \
                 }                                                              \
             }                                                                 \
             file_idx++;                                                       \
-        } else {                                                              \
+        } else if (param_values) {                                            \
             param_ptrs[i]->value = param_values[i];                           \
         }                                                                     \
     }                                                                         \
