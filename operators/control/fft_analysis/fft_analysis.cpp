@@ -7,9 +7,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-struct FFTAnalysis : vivid::OperatorBase {
+struct FFTAnalysis : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "FFTAnalysis";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int> window   {"window",   1, {"none", "hann", "hamming"}};
@@ -25,7 +24,7 @@ struct FFTAnalysis : vivid::OperatorBase {
         out.push_back({"spectrum", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         // Read input spread
         if (!ctx->input_spreads || ctx->input_spreads[0].length == 0) {
             ctx->output_values[0] = 0.0f;

@@ -2,9 +2,8 @@
 
 #include <string>
 
-struct Basename : vivid::OperatorBase {
+struct Basename : vivid::ControlOperatorBase {
     static constexpr const char* kName = "Basename";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     std::string result_;
@@ -16,7 +15,7 @@ struct Basename : vivid::OperatorBase {
         out.push_back({"name", VIVID_PORT_CONTROL_STRING, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         result_.clear();
 
         if (ctx->input_string_values) {

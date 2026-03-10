@@ -5,9 +5,8 @@
 #include <cstring>
 #include <algorithm>
 
-struct SpreadLFO : vivid::OperatorBase {
+struct SpreadLFO : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "SpreadLFO";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> frequency {"frequency",  1.0f,  0.01f, 100.0f};
@@ -36,17 +35,14 @@ struct SpreadLFO : vivid::OperatorBase {
         out.push_back({"values", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        auto* audio = vivid_audio(ctx);
-        if (!audio) return;
-
+    void process_audio(const VividAudioContext* ctx) override {
         float freq = frequency.value;
         float amp = amplitude.value;
         float off = offset.value;
         int wave = waveform.int_value();
         int lfo_mode = mode.int_value();
-        double sample_rate = static_cast<double>(audio->sample_rate);
-        uint32_t frames = audio->buffer_size;
+        double sample_rate = static_cast<double>(ctx->sample_rate);
+        uint32_t frames = ctx->buffer_size;
 
         // Read gates spread input for slot count and retrigger
         uint32_t len = 0;

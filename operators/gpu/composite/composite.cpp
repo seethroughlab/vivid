@@ -90,9 +90,8 @@ struct CompositeUniforms {
 // Composite Operator
 // =============================================================================
 
-struct Composite : vivid::OperatorBase {
+struct Composite : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "Composite";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int>   blend_mode {"blend_mode", 0, {"Normal", "Add", "Multiply", "Screen", "Overlay"}};
@@ -117,12 +116,9 @@ struct Composite : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) return;
-
+    void process_gpu(const VividGpuContext* ctx) override {
         if (!pipeline_) {
-            if (!lazy_init(gpu)) {
+            if (!lazy_init(ctx)) {
                 std::fprintf(stderr, "[composite] lazy_init FAILED\n");
                 return;
             }
@@ -131,14 +127,14 @@ struct Composite : vivid::OperatorBase {
         // Get input texture views
         WGPUTextureView tex_a = nullptr;
         WGPUTextureView tex_b = nullptr;
-        if (gpu->input_texture_views && gpu->input_texture_count >= 1)
-            tex_a = gpu->input_texture_views[0];
-        if (gpu->input_texture_views && gpu->input_texture_count >= 2)
-            tex_b = gpu->input_texture_views[1];
+        if (ctx->input_texture_views && ctx->input_texture_count >= 1)
+            tex_a = ctx->input_texture_views[0];
+        if (ctx->input_texture_views && ctx->input_texture_count >= 2)
+            tex_b = ctx->input_texture_views[1];
 
         // Create fallback 1x1 transparent texture if needed
-        if (!tex_a && !fallback_view_) create_fallback(gpu);
-        if (!tex_b && !fallback_view_) create_fallback(gpu);
+        if (!tex_a && !fallback_view_) create_fallback(ctx);
+        if (!tex_b && !fallback_view_) create_fallback(ctx);
         if (!tex_a) tex_a = fallback_view_;
         if (!tex_b) tex_b = fallback_view_;
 
@@ -146,7 +142,7 @@ struct Composite : vivid::OperatorBase {
         CompositeUniforms u{};
         u.blend_mode = blend_mode.int_value();
         u.opacity    = opacity.value;
-        wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
+        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
         // Recreate bind group only when texture inputs change
         if (tex_a != cached_tex_a_ || tex_b != cached_tex_b_) {
@@ -170,13 +166,13 @@ struct Composite : vivid::OperatorBase {
             bg_desc.layout = bind_layout_;
             bg_desc.entryCount = 4;
             bg_desc.entries = bg_entries;
-            cached_bind_group_ = wgpuDeviceCreateBindGroup(gpu->device, &bg_desc);
+            cached_bind_group_ = wgpuDeviceCreateBindGroup(ctx->device, &bg_desc);
             cached_tex_a_ = tex_a;
             cached_tex_b_ = tex_b;
         }
 
-        vivid::gpu::run_pass(gpu->command_encoder, pipeline_, cached_bind_group_,
-                             gpu->output_texture_view, "Composite Pass",
+        vivid::gpu::run_pass(ctx->command_encoder, pipeline_, cached_bind_group_,
+                             ctx->output_texture_view, "Composite Pass",
                              WGPUColor{0, 0, 0, 0});
     }
 
@@ -205,7 +201,7 @@ private:
     WGPUTextureView     cached_tex_a_  = nullptr;
     WGPUTextureView     cached_tex_b_  = nullptr;
 
-    void create_fallback(VividGpuState* gpu) {
+    void create_fallback(const VividGpuContext* gpu) {
         WGPUTextureDescriptor td{};
         td.label = vivid_sv("Composite Fallback");
         td.size = { 1, 1, 1 };
@@ -238,7 +234,7 @@ private:
         wgpuQueueWriteTexture(gpu->queue, &dest_info, zero, sizeof(zero), &layout, &extent);
     }
 
-    bool lazy_init(VividGpuState* gpu) {
+    bool lazy_init(const VividGpuContext* gpu) {
         shader_ = vivid::gpu::create_shader(gpu->device, kCompositeFragment, "Composite Shader");
         if (!shader_) return false;
 

@@ -198,9 +198,8 @@ struct BloomUniforms {
 // Bloom Operator
 // =============================================================================
 
-struct Bloom : vivid::OperatorBase {
+struct Bloom : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "Bloom";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> threshold {"threshold", 0.8f, 0.0f, 1.0f};
@@ -234,12 +233,9 @@ struct Bloom : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) return;
-
+    void process_gpu(const VividGpuContext* ctx) override {
         if (!threshold_pipeline_) {
-            if (!lazy_init(gpu)) {
+            if (!lazy_init(ctx)) {
                 std::fprintf(stderr, "[bloom] lazy_init FAILED\n");
                 return;
             }
@@ -247,17 +243,17 @@ struct Bloom : vivid::OperatorBase {
 
         // Get input texture view
         WGPUTextureView input_tex = nullptr;
-        if (gpu->input_texture_views && gpu->input_texture_count >= 1)
-            input_tex = gpu->input_texture_views[0];
+        if (ctx->input_texture_views && ctx->input_texture_count >= 1)
+            input_tex = ctx->input_texture_views[0];
 
-        if (!input_tex && !fallback_view_) create_fallback(gpu);
+        if (!input_tex && !fallback_view_) create_fallback(ctx);
         if (!input_tex) input_tex = fallback_view_;
 
         // Recreate intermediates if resolution changed
-        if (gpu->output_width != cached_width_ || gpu->output_height != cached_height_) {
-            recreate_intermediates(gpu);
-            cached_width_  = gpu->output_width;
-            cached_height_ = gpu->output_height;
+        if (ctx->output_width != cached_width_ || ctx->output_height != cached_height_) {
+            recreate_intermediates(ctx);
+            cached_width_  = ctx->output_width;
+            cached_height_ = ctx->output_height;
         }
 
         // Write uniforms once per frame
@@ -265,13 +261,13 @@ struct Bloom : vivid::OperatorBase {
         u.threshold = threshold.value;
         u.intensity = intensity.value;
         u.radius    = radius.value;
-        u.texel_w   = 1.0f / static_cast<float>(gpu->output_width);
-        u.texel_h   = 1.0f / static_cast<float>(gpu->output_height);
-        wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
+        u.texel_w   = 1.0f / static_cast<float>(ctx->output_width);
+        u.texel_h   = 1.0f / static_cast<float>(ctx->output_height);
+        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
         // Rebuild bind groups if input texture changed or intermediates recreated
         if (input_tex != cached_input_tex_ || bind_groups_dirty_) {
-            rebuild_bind_groups(gpu, input_tex);
+            rebuild_bind_groups(ctx, input_tex);
             cached_input_tex_ = input_tex;
             bind_groups_dirty_ = false;
         }
@@ -279,17 +275,17 @@ struct Bloom : vivid::OperatorBase {
         static constexpr WGPUColor kClearTransparent{0, 0, 0, 0};
 
         // Pass 1: Threshold — input → inter_a
-        vivid::gpu::run_pass(gpu->command_encoder, threshold_pipeline_, threshold_bg_, inter_view_a_, "Bloom Threshold", kClearTransparent);
+        vivid::gpu::run_pass(ctx->command_encoder, threshold_pipeline_, threshold_bg_, inter_view_a_, "Bloom Threshold", kClearTransparent);
 
         // Pass 2: Blur passes — ping-pong between inter_a and inter_b
         int n = passes.int_value();
         for (int i = 0; i < n; ++i) {
-            vivid::gpu::run_pass(gpu->command_encoder, blur_h_pipeline_, blur_h_bg_, inter_view_b_, "Bloom Blur H", kClearTransparent);
-            vivid::gpu::run_pass(gpu->command_encoder, blur_v_pipeline_, blur_v_bg_, inter_view_a_, "Bloom Blur V", kClearTransparent);
+            vivid::gpu::run_pass(ctx->command_encoder, blur_h_pipeline_, blur_h_bg_, inter_view_b_, "Bloom Blur H", kClearTransparent);
+            vivid::gpu::run_pass(ctx->command_encoder, blur_v_pipeline_, blur_v_bg_, inter_view_a_, "Bloom Blur V", kClearTransparent);
         }
 
         // Pass 3: Composite — original + blurred → output
-        vivid::gpu::run_pass(gpu->command_encoder, composite_pipeline_, composite_bg_, gpu->output_texture_view, "Bloom Composite", kClearTransparent);
+        vivid::gpu::run_pass(ctx->command_encoder, composite_pipeline_, composite_bg_, ctx->output_texture_view, "Bloom Composite", kClearTransparent);
     }
 
     ~Bloom() override {
@@ -368,7 +364,7 @@ private:
     // Create 1x1 transparent fallback texture
     // -------------------------------------------------------------------------
 
-    void create_fallback(VividGpuState* gpu) {
+    void create_fallback(const VividGpuContext* gpu) {
         WGPUTextureDescriptor td{};
         td.label         = vivid_sv("Bloom Fallback");
         td.size          = { 1, 1, 1 };
@@ -404,7 +400,7 @@ private:
     // Create/recreate intermediate ping-pong textures
     // -------------------------------------------------------------------------
 
-    void recreate_intermediates(VividGpuState* gpu) {
+    void recreate_intermediates(const VividGpuContext* gpu) {
         vivid::gpu::release(inter_tex_a_);
         vivid::gpu::release(inter_view_a_);
         vivid::gpu::release(inter_tex_b_);
@@ -442,7 +438,7 @@ private:
     // Rebuild all four bind groups
     // -------------------------------------------------------------------------
 
-    void rebuild_bind_groups(VividGpuState* gpu, WGPUTextureView input_tex) {
+    void rebuild_bind_groups(const VividGpuContext* gpu, WGPUTextureView input_tex) {
         vivid::gpu::release(threshold_bg_);
         vivid::gpu::release(blur_h_bg_);
         vivid::gpu::release(blur_v_bg_);
@@ -531,7 +527,7 @@ private:
     // One-time GPU resource initialization
     // -------------------------------------------------------------------------
 
-    bool lazy_init(VividGpuState* gpu) {
+    bool lazy_init(const VividGpuContext* gpu) {
         // Shader modules
         threshold_shader_ = vivid::gpu::create_shader(gpu->device, kThresholdFragment, "Bloom Threshold Shader");
         blur_h_shader_    = vivid::gpu::create_shader(gpu->device, kBlurHFragment,     "Bloom Blur H Shader");

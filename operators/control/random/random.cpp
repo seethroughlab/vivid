@@ -2,9 +2,8 @@
 #include <cmath>
 #include <algorithm>
 
-struct Random : vivid::OperatorBase {
+struct Random : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "Random";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> min_val     {"min",          0.0f, -10000.0f, 10000.0f};
@@ -42,7 +41,7 @@ struct Random : vivid::OperatorBase {
         out.push_back({"value",   VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         if (!seeded_) {
             rng_state_ = static_cast<uint32_t>(seed.int_value());
             if (rng_state_ == 0) rng_state_ = 1;

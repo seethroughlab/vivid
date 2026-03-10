@@ -1,8 +1,8 @@
 #include "operator_api/operator.h"
+#include "operator_api/gpu_operator.h"
 
-struct SyphonIn : vivid::OperatorBase {
+struct SyphonIn : vivid::GpuOperatorBase {
     static constexpr const char* kName = "SyphonIn";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<bool> active{"active", false};
@@ -19,7 +19,7 @@ struct SyphonIn : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext*) override {}
+    void process_gpu(const VividGpuContext*) override {}
 };
 
 VIVID_REGISTER(SyphonIn)

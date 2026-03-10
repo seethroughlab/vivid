@@ -108,9 +108,8 @@ struct TimeMachineUniforms {
 // TimeMachine Operator
 // =============================================================================
 
-struct TimeMachine : vivid::OperatorBase {
+struct TimeMachine : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "TimeMachine";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> depth  {"depth",  1.0f, 0.0f, 1.0f};
@@ -129,12 +128,9 @@ struct TimeMachine : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) return;
-
+    void process_gpu(const VividGpuContext* ctx) override {
         if (!pipeline_) {
-            if (!lazy_init(gpu)) {
+            if (!lazy_init(ctx)) {
                 std::fprintf(stderr, "[time_machine] lazy_init FAILED\n");
                 return;
             }
@@ -143,34 +139,34 @@ struct TimeMachine : vivid::OperatorBase {
         // Resolve input textures with fallbacks
         WGPUTextureView source_tex = nullptr;
         WGPUTextureView map_tex    = nullptr;
-        if (gpu->input_texture_views) {
-            if (gpu->input_texture_count >= 1) source_tex = gpu->input_texture_views[0];
-            if (gpu->input_texture_count >= 2) map_tex    = gpu->input_texture_views[1];
+        if (ctx->input_texture_views) {
+            if (ctx->input_texture_count >= 1) source_tex = ctx->input_texture_views[0];
+            if (ctx->input_texture_count >= 2) map_tex    = ctx->input_texture_views[1];
         }
 
         if (!source_tex) {
-            if (!src_fallback_view_) create_src_fallback(gpu);
+            if (!src_fallback_view_) create_src_fallback(ctx);
             source_tex = src_fallback_view_;
         }
         if (!map_tex) {
-            if (!map_fallback_view_) create_map_fallback(gpu);
+            if (!map_fallback_view_) create_map_fallback(ctx);
             map_tex = map_fallback_view_;
         }
 
         int frame_count = frames.int_value();
 
         // Recreate cache if resolution or frame count changed
-        if (gpu->output_width != cached_width_ || gpu->output_height != cached_height_ ||
+        if (ctx->output_width != cached_width_ || ctx->output_height != cached_height_ ||
             frame_count != cached_frames_) {
-            recreate_cache(gpu, frame_count);
-            cached_width_  = gpu->output_width;
-            cached_height_ = gpu->output_height;
+            recreate_cache(ctx, frame_count);
+            cached_width_  = ctx->output_width;
+            cached_height_ = ctx->output_height;
             cached_frames_ = frame_count;
         }
 
         // Rebuild bind groups if inputs changed
         if (source_tex != cached_source_tex_ || map_tex != cached_map_tex_ || bind_groups_dirty_) {
-            rebuild_bind_groups(gpu, source_tex, map_tex);
+            rebuild_bind_groups(ctx, source_tex, map_tex);
             cached_source_tex_ = source_tex;
             cached_map_tex_    = map_tex;
             bind_groups_dirty_ = false;
@@ -179,7 +175,7 @@ struct TimeMachine : vivid::OperatorBase {
         static constexpr WGPUColor kClearTransparent{0, 0, 0, 0};
 
         // Pass 1: Blit source into cache layer at write_index_
-        vivid::gpu::run_pass(gpu->command_encoder, blit_pipeline_, blit_bg_,
+        vivid::gpu::run_pass(ctx->command_encoder, blit_pipeline_, blit_bg_,
                              layer_views_[write_index_], "TimeMachine Blit", kClearTransparent);
 
         // After blit we have one more valid frame in the buffer
@@ -192,11 +188,11 @@ struct TimeMachine : vivid::OperatorBase {
         u.frame_count = static_cast<uint32_t>(frame_count);
         u.write_index = write_index_;
         u.filled      = new_filled;
-        wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
+        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
         // Pass 2: Slit-scan — sample cache via displacement map → output
-        vivid::gpu::run_pass(gpu->command_encoder, pipeline_, main_bg_,
-                             gpu->output_texture_view, "TimeMachine SlitScan", kClearTransparent);
+        vivid::gpu::run_pass(ctx->command_encoder, pipeline_, main_bg_,
+                             ctx->output_texture_view, "TimeMachine SlitScan", kClearTransparent);
 
         // Advance ring buffer
         write_index_ = (write_index_ + 1) % static_cast<uint32_t>(frame_count);
@@ -273,7 +269,7 @@ private:
     // Create 1x1 black fallback texture (source — black when disconnected)
     // -------------------------------------------------------------------------
 
-    void create_src_fallback(VividGpuState* gpu) {
+    void create_src_fallback(const VividGpuContext* gpu) {
         WGPUTextureDescriptor td{};
         td.label         = vivid_sv("TimeMachine Src Fallback");
         td.size          = {1, 1, 1};
@@ -307,7 +303,7 @@ private:
     // Create 1x1 white fallback texture (map — passthrough when disconnected)
     // -------------------------------------------------------------------------
 
-    void create_map_fallback(VividGpuState* gpu) {
+    void create_map_fallback(const VividGpuContext* gpu) {
         WGPUTextureDescriptor td{};
         td.label         = vivid_sv("TimeMachine Map Fallback");
         td.size          = {1, 1, 1};
@@ -354,7 +350,7 @@ private:
     // Create/recreate the cache texture array and per-layer views
     // -------------------------------------------------------------------------
 
-    void recreate_cache(VividGpuState* gpu, int frame_count) {
+    void recreate_cache(const VividGpuContext* gpu, int frame_count) {
         release_cache();
 
         WGPUTextureDescriptor td{};
@@ -404,7 +400,7 @@ private:
     // Rebuild bind groups when inputs or cache change
     // -------------------------------------------------------------------------
 
-    void rebuild_bind_groups(VividGpuState* gpu, WGPUTextureView source_tex, WGPUTextureView map_tex) {
+    void rebuild_bind_groups(const VividGpuContext* gpu, WGPUTextureView source_tex, WGPUTextureView map_tex) {
         vivid::gpu::release(blit_bg_);
         vivid::gpu::release(main_bg_);
 
@@ -450,7 +446,7 @@ private:
     // One-time GPU resource initialization
     // -------------------------------------------------------------------------
 
-    bool lazy_init(VividGpuState* gpu) {
+    bool lazy_init(const VividGpuContext* gpu) {
         // Shader modules
         blit_shader_ = vivid::gpu::create_shader(gpu->device, kBlitFragment, "TimeMachine Blit Shader");
         main_shader_ = vivid::gpu::create_shader(gpu->device, kSlitScanFragment, "TimeMachine SlitScan Shader");

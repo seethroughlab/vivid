@@ -2,9 +2,8 @@
 #include <algorithm>
 #include <cmath>
 
-struct Alternate : vivid::OperatorBase {
+struct Alternate : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "Alternate";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int> cycle {"cycle", 2, {"Beat","2 Beats","Bar","2 Bars","4 Bars"}};
@@ -23,7 +22,7 @@ struct Alternate : vivid::OperatorBase {
         out.push_back({"index",      VIVID_PORT_CONTROL_FLOAT,  VIVID_PORT_OUTPUT});  // out float[0]
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         float beat_phase = ctx->input_values[0];
         int c = std::clamp(static_cast<int>(ctx->param_values[0]), 0, 4);
 

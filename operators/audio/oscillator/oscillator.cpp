@@ -3,9 +3,8 @@
 #include "operator_api/audio_dsp.h"
 #include <cmath>
 
-struct Oscillator : vivid::OperatorBase {
+struct Oscillator : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "Oscillator";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> frequency{"frequency", 440.0f, 20.0f, 20000.0f};
@@ -33,16 +32,13 @@ struct Oscillator : vivid::OperatorBase {
         out.push_back({"output", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        auto* audio = vivid_audio(ctx);
-        if (!audio) return;
-
-        float* out = audio->output_buffers[0];
-        double phase_inc = static_cast<double>(frequency.value) / audio->sample_rate;
+    void process_audio(const VividAudioContext* ctx) override {
+        float* out = ctx->output_buffers[0];
+        double phase_inc = static_cast<double>(frequency.value) / ctx->sample_rate;
         float amp = amplitude.value;
         int wave = waveform.int_value();
 
-        for (uint32_t i = 0; i < audio->buffer_size; i++) {
+        for (uint32_t i = 0; i < ctx->buffer_size; i++) {
             double sample = audio_dsp::waveform(phase_, wave);
             out[i] = static_cast<float>(sample) * amp;
             phase_ += phase_inc;

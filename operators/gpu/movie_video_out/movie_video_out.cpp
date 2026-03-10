@@ -71,24 +71,20 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
-struct MovieVideoOut : vivid::OperatorBase {
+struct MovieVideoOut : vivid::GpuOperatorBase {
     static constexpr const char* kName = "MovieVideoOut";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = true;
 
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"media_stream", VIVID_PORT_DATA, VIVID_PORT_INPUT, "media_stream_v1"});
+        out.push_back({"media_stream", VIVID_PORT_MEDIA_STREAM, VIVID_PORT_INPUT});
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) return;
-
+    void process_gpu(const VividGpuContext* ctx) override {
         if (!pipeline_) {
-            if (!lazy_init(gpu)) {
+            if (!lazy_init(ctx)) {
                 std::fprintf(stderr, "[movie_video_out] lazy_init failed\n");
                 return;
             }
@@ -124,14 +120,14 @@ struct MovieVideoOut : vivid::OperatorBase {
                 bool compressed = (f.compression_mode == vivid::media::VideoFrameCompressionMode::CompressedBC);
                 auto fmt = static_cast<WGPUTextureFormat>(f.format);
 
-                ensure_texture(gpu, f.width, f.height, fmt, compressed);
+                ensure_texture(ctx, f.width, f.height, fmt, compressed);
 
                 if (compressed) {
-                    movie_upload_compressed(gpu->queue, texture_,
+                    movie_upload_compressed(ctx->queue, texture_,
                                             f.bytes.data(), f.bytes.size(),
                                             f.width, f.height, fmt);
                 } else {
-                    movie_upload_bgra(gpu->queue, texture_,
+                    movie_upload_bgra(ctx->queue, texture_,
                                       f.bytes.data(), f.width, f.height);
                 }
 
@@ -141,20 +137,19 @@ struct MovieVideoOut : vivid::OperatorBase {
 
         // Set preferred texture dimensions
         if (texture_.width > 0 && texture_.height > 0) {
-            ctx->preferred_tex_width = texture_.width;
-            ctx->preferred_tex_height = texture_.height;
+            vivid_request_output_size(ctx, texture_.width, texture_.height);
         }
 
         // Render: blit owned texture to output, or clear to black
         if (texture_.view && texture_.bind_group) {
             WGPURenderPipeline active = use_ycocg_ ? pipeline_ycocg_ : pipeline_;
-            vivid::gpu::run_pass(gpu->command_encoder, active, texture_.bind_group,
-                                 gpu->output_texture_view, "MovieVideoOut Blit");
-        } else if (gpu->output_texture_view) {
+            vivid::gpu::run_pass(ctx->command_encoder, active, texture_.bind_group,
+                                 ctx->output_texture_view, "MovieVideoOut Blit");
+        } else if (ctx->output_texture_view) {
             // Clear to black without drawing (no bind group available).
             // Guard: sinks may have a null output_texture_view.
             WGPURenderPassColorAttachment color_att{};
-            color_att.view = gpu->output_texture_view;
+            color_att.view = ctx->output_texture_view;
             color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
             color_att.loadOp = WGPULoadOp_Clear;
             color_att.storeOp = WGPUStoreOp_Store;
@@ -165,7 +160,7 @@ struct MovieVideoOut : vivid::OperatorBase {
             rp_desc.colorAttachmentCount = 1;
             rp_desc.colorAttachments = &color_att;
 
-            WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpu->command_encoder, &rp_desc);
+            WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(ctx->command_encoder, &rp_desc);
             wgpuRenderPassEncoderEnd(pass);
             wgpuRenderPassEncoderRelease(pass);
         }
@@ -195,7 +190,7 @@ private:
     uint64_t            last_seen_generation_ = 0;
     bool                use_ycocg_ = false;
 
-    void ensure_texture(VividGpuState* gpu,
+    void ensure_texture(const VividGpuContext* gpu,
                         uint32_t w,
                         uint32_t h,
                         WGPUTextureFormat format,
@@ -209,7 +204,7 @@ private:
                                w, h, format, compressed);
     }
 
-    bool lazy_init(VividGpuState* gpu) {
+    bool lazy_init(const VividGpuContext* gpu) {
         if (!gpu || !gpu->device) return false;
 
         sampler_ = vivid::gpu::create_linear_sampler(gpu->device, "MovieVideoOut Sampler");

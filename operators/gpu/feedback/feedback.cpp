@@ -81,9 +81,8 @@ struct FeedbackUniforms {
 // Feedback Operator
 // =============================================================================
 
-struct Feedback : vivid::OperatorBase {
+struct Feedback : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "Feedback";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> decay    {"decay",    0.95f, 0.0f, 1.0f};
@@ -132,12 +131,9 @@ struct Feedback : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) return;
-
+    void process_gpu(const VividGpuContext* ctx) override {
         if (!composite_pipeline_) {
-            if (!lazy_init(gpu)) {
+            if (!lazy_init(ctx)) {
                 std::fprintf(stderr, "[feedback] lazy_init FAILED\n");
                 return;
             }
@@ -145,17 +141,17 @@ struct Feedback : vivid::OperatorBase {
 
         // Get input texture view
         WGPUTextureView input_tex = nullptr;
-        if (gpu->input_texture_views && gpu->input_texture_count >= 1)
-            input_tex = gpu->input_texture_views[0];
+        if (ctx->input_texture_views && ctx->input_texture_count >= 1)
+            input_tex = ctx->input_texture_views[0];
 
-        if (!input_tex && !fallback_view_) create_fallback(gpu);
+        if (!input_tex && !fallback_view_) create_fallback(ctx);
         if (!input_tex) input_tex = fallback_view_;
 
         // Recreate feedback texture if resolution changed
-        if (gpu->output_width != cached_width_ || gpu->output_height != cached_height_) {
-            recreate_feedback_texture(gpu);
-            cached_width_  = gpu->output_width;
-            cached_height_ = gpu->output_height;
+        if (ctx->output_width != cached_width_ || ctx->output_height != cached_height_) {
+            recreate_feedback_texture(ctx);
+            cached_width_  = ctx->output_width;
+            cached_height_ = ctx->output_height;
         }
 
         // Write uniforms once per frame
@@ -166,11 +162,11 @@ struct Feedback : vivid::OperatorBase {
         u.offset_y   = offset_y.value;
         u.zoom       = zoom.value;
         u.rotate_rad = rotate.value * (3.14159265358979323846f / 180.0f);
-        wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
+        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
         // Rebuild bind group if input texture or feedback texture changed
         if (input_tex != cached_input_tex_ || bind_groups_dirty_) {
-            rebuild_bind_groups(gpu, input_tex);
+            rebuild_bind_groups(ctx, input_tex);
             cached_input_tex_ = input_tex;
             bind_groups_dirty_ = false;
         }
@@ -178,16 +174,16 @@ struct Feedback : vivid::OperatorBase {
         static constexpr WGPUColor kClearTransparent{0, 0, 0, 0};
 
         // Pass 1: Composite — input + feedback buffer → output texture
-        vivid::gpu::run_pass(gpu->command_encoder, composite_pipeline_, composite_bg_,
-                             gpu->output_texture_view, "Feedback Composite", kClearTransparent);
+        vivid::gpu::run_pass(ctx->command_encoder, composite_pipeline_, composite_bg_,
+                             ctx->output_texture_view, "Feedback Composite", kClearTransparent);
 
         // Copy output → feedback buffer (for next frame) via direct texture copy
         WGPUTexelCopyTextureInfo src{};
-        src.texture = gpu->output_texture;
+        src.texture = ctx->output_texture;
         WGPUTexelCopyTextureInfo dst{};
         dst.texture = fb_tex_;
-        WGPUExtent3D size = { gpu->output_width, gpu->output_height, 1 };
-        wgpuCommandEncoderCopyTextureToTexture(gpu->command_encoder, &src, &dst, &size);
+        WGPUExtent3D size = { ctx->output_width, ctx->output_height, 1 };
+        wgpuCommandEncoderCopyTextureToTexture(ctx->command_encoder, &src, &dst, &size);
     }
 
     ~Feedback() override {
@@ -240,7 +236,7 @@ private:
     // Create 1x1 transparent fallback texture
     // -------------------------------------------------------------------------
 
-    void create_fallback(VividGpuState* gpu) {
+    void create_fallback(const VividGpuContext* gpu) {
         WGPUTextureDescriptor td{};
         td.label         = vivid_sv("Feedback Fallback");
         td.size          = { 1, 1, 1 };
@@ -276,7 +272,7 @@ private:
     // Create/recreate persistent feedback texture
     // -------------------------------------------------------------------------
 
-    void recreate_feedback_texture(VividGpuState* gpu) {
+    void recreate_feedback_texture(const VividGpuContext* gpu) {
         vivid::gpu::release(fb_tex_);
         vivid::gpu::release(fb_view_);
 
@@ -307,7 +303,7 @@ private:
     // Rebuild bind group
     // -------------------------------------------------------------------------
 
-    void rebuild_bind_groups(VividGpuState* gpu, WGPUTextureView input_tex) {
+    void rebuild_bind_groups(const VividGpuContext* gpu, WGPUTextureView input_tex) {
         vivid::gpu::release(composite_bg_);
 
         // Composite: uniform + sampler + inputTex + feedbackTex
@@ -334,7 +330,7 @@ private:
     // One-time GPU resource initialization
     // -------------------------------------------------------------------------
 
-    bool lazy_init(VividGpuState* gpu) {
+    bool lazy_init(const VividGpuContext* gpu) {
         // Shader module
         composite_shader_ = vivid::gpu::create_shader(gpu->device, kFeedbackCompositeFragment, "Feedback Composite Shader");
         if (!composite_shader_)

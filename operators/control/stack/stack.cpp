@@ -1,9 +1,8 @@
 #include "operator_api/operator.h"
 #include <algorithm>
 
-struct Stack : vivid::OperatorBase {
+struct Stack : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "Stack";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int> mode {"mode", 0, {"Concat","Interleave"}};
@@ -20,7 +19,7 @@ struct Stack : vivid::OperatorBase {
         out.push_back({"output", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // out spread[0]
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         if (!ctx->input_spreads || !ctx->output_spreads) return;
 
         auto& out = ctx->output_spreads[0];

@@ -3,9 +3,8 @@
 #include "operator_api/operator.h"
 #include <cmath>
 
-struct Smooth : vivid::OperatorBase {
+struct Smooth : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "Smooth";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> rise_time{"rise_time", 0.1f, 0.0f, 10.0f};
@@ -21,7 +20,7 @@ struct Smooth : vivid::OperatorBase {
         out.push_back({"value", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         float target = ctx->input_values[0];
 
         if (first_frame_) {

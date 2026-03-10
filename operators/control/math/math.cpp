@@ -2,9 +2,8 @@
 #include <cmath>
 #include <algorithm>
 
-struct Math : vivid::OperatorBase {
+struct Math : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "Math";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int> operation{"operation", 0, {"add", "multiply", "min", "max"}};
@@ -19,7 +18,7 @@ struct Math : vivid::OperatorBase {
         out.push_back({"result", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         float a = ctx->input_values[0];
         float b = ctx->input_values[1];
         float result = 0.0f;

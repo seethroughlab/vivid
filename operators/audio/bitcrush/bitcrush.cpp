@@ -7,9 +7,8 @@
 // Bitcrusher: bit-depth reduction + sample-rate reduction (mono)
 // ---------------------------------------------------------------------------
 
-struct Bitcrush : vivid::OperatorBase {
+struct Bitcrush : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "Bitcrush";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> bits{"bits",  8.0f, 1.0f, 16.0f};
@@ -44,16 +43,13 @@ struct Bitcrush : vivid::OperatorBase {
         out.push_back({"output", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        auto* audio = vivid_audio(ctx);
-        if (!audio) return;
-
-        float* in  = audio->input_buffers[0];
-        float* out = audio->output_buffers[0];
-        uint32_t frames = audio->buffer_size;
+    void process_audio(const VividAudioContext* ctx) override {
+        float* in  = ctx->input_buffers[0];
+        float* out = ctx->output_buffers[0];
+        uint32_t frames = ctx->buffer_size;
 
         float target_rate = rate.value;
-        float sr = static_cast<float>(audio->sample_rate);
+        float sr = static_cast<float>(ctx->sample_rate);
         float ratio = sr / target_rate;
         if (ratio < 1.0f) ratio = 1.0f;
 

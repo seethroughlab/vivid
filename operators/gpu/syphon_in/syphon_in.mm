@@ -16,9 +16,8 @@ extern "C" void* wgpuDeviceGetNativeMetalDevice(WGPUDevice device);
 extern "C" void* wgpuQueueGetNativeMetalCommandQueue(WGPUQueue queue);
 extern "C" void* wgpuTextureGetNativeMetalTexture(WGPUTexture texture);
 
-struct SyphonIn : vivid::OperatorBase {
+struct SyphonIn : vivid::GpuOperatorBase {
     static constexpr const char* kName = "SyphonIn";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = true;
 
     SyphonIn()
@@ -38,18 +37,17 @@ struct SyphonIn : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu || !gpu->device || !gpu->queue || !gpu->output_texture) return;
+    void process_gpu(const VividGpuContext* ctx) override {
+        if (!ctx->device || !ctx->queue || !ctx->output_texture) return;
 
         if (!active.bool_value()) {
             disconnect_client();
             return;
         }
 
-        id<MTLDevice> metal_device = (__bridge id<MTLDevice>)wgpuDeviceGetNativeMetalDevice(gpu->device);
-        id<MTLCommandQueue> metal_queue = (__bridge id<MTLCommandQueue>)wgpuQueueGetNativeMetalCommandQueue(gpu->queue);
-        id<MTLTexture> output_texture = (__bridge id<MTLTexture>)wgpuTextureGetNativeMetalTexture(gpu->output_texture);
+        id<MTLDevice> metal_device = (__bridge id<MTLDevice>)wgpuDeviceGetNativeMetalDevice(ctx->device);
+        id<MTLCommandQueue> metal_queue = (__bridge id<MTLCommandQueue>)wgpuQueueGetNativeMetalCommandQueue(ctx->queue);
+        id<MTLTexture> output_texture = (__bridge id<MTLTexture>)wgpuTextureGetNativeMetalTexture(ctx->output_texture);
         if (!metal_device || !metal_queue || !output_texture) return;
 
         const std::string wanted_server = resolve_wanted_server_name();
@@ -64,8 +62,9 @@ struct SyphonIn : vivid::OperatorBase {
         if (!source_texture) return;
         consumed_event_counter_ = pending;
 
-        ctx->preferred_tex_width = static_cast<uint32_t>(source_texture.width);
-        ctx->preferred_tex_height = static_cast<uint32_t>(source_texture.height);
+        vivid_request_output_size(ctx,
+                                  static_cast<uint32_t>(source_texture.width),
+                                  static_cast<uint32_t>(source_texture.height));
 
         if (!ensure_pipeline(metal_device, output_texture.pixelFormat)) return;
 

@@ -72,9 +72,8 @@ struct TextUniforms {
 // Text Operator
 // =============================================================================
 
-struct Text : vivid::OperatorBase {
+struct Text : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "Text";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<vivid::TextValue> text {"text", ""};
@@ -116,12 +115,9 @@ struct Text : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) return;
-
+    void process_gpu(const VividGpuContext* ctx) override {
         if (!pipeline_) {
-            if (!lazy_init(gpu)) {
+            if (!lazy_init(ctx)) {
                 std::fprintf(stderr, "[text] lazy_init FAILED\n");
                 return;
             }
@@ -131,11 +127,11 @@ struct Text : vivid::OperatorBase {
         std::string current_text = text.str_value;
 
         // Check if glyph texture needs re-bake
-        uint32_t w = gpu->output_width;
-        uint32_t h = gpu->output_height;
+        uint32_t w = ctx->output_width;
+        uint32_t h = ctx->output_height;
         if (current_text != last_text_ || size.value != last_size_ ||
             w != last_w_ || h != last_h_) {
-            bake_glyphs(gpu, w, h, current_text);
+            bake_glyphs(ctx, w, h, current_text);
             last_text_ = current_text;
             last_size_ = size.value;
             last_w_ = w;
@@ -152,10 +148,10 @@ struct Text : vivid::OperatorBase {
         u.bg_b = bg_b.value;
         u.bg_a = bg_a.value;
 
-        wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
+        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
-        vivid::gpu::run_pass(gpu->command_encoder, pipeline_, bind_group_,
-                             gpu->output_texture_view, "Text Pass");
+        vivid::gpu::run_pass(ctx->command_encoder, pipeline_, bind_group_,
+                             ctx->output_texture_view, "Text Pass");
     }
 
     ~Text() override {
@@ -243,7 +239,7 @@ private:
         return true;
     }
 
-    void bake_glyphs(VividGpuState* gpu, uint32_t w, uint32_t h, const std::string& str) {
+    void bake_glyphs(const VividGpuContext* gpu, uint32_t w, uint32_t h, const std::string& str) {
         if (!load_font()) return;
 
         // Compute pixel height from size param (fraction of output height)
@@ -392,7 +388,7 @@ private:
         bind_group_ = wgpuDeviceCreateBindGroup(device_, &bg_desc);
     }
 
-    bool lazy_init(VividGpuState* gpu) {
+    bool lazy_init(const VividGpuContext* gpu) {
         device_ = gpu->device;
         queue_  = gpu->queue;
 

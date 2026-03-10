@@ -7,9 +7,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-struct LFO : vivid::OperatorBase {
+struct LFO : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "LFO";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> frequency{"frequency", 1.0f, 0.01f, 20.0f};
@@ -43,7 +42,7 @@ struct LFO : vivid::OperatorBase {
         out.push_back({"value", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         float phase_in = ctx->input_values[0];
         double phase;
         if (phase_in != 0.0f) {

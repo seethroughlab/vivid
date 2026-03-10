@@ -5,9 +5,8 @@
 #include <string>
 #include <vector>
 
-struct StringSelect : vivid::OperatorBase {
+struct StringSelect : vivid::ControlOperatorBase {
     static constexpr const char* kName = "StringSelect";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<bool> wrap{"wrap", true};
@@ -26,7 +25,7 @@ struct StringSelect : vivid::OperatorBase {
         out.push_back({"resolved_index", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         selected_.clear();
         int resolved = -1;
         bool valid = false;

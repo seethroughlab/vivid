@@ -34,9 +34,8 @@ static std::vector<std::string> parse_extensions(const std::string& csv) {
 }
 } // namespace
 
-struct FolderList : vivid::OperatorBase {
+struct FolderList : vivid::ControlOperatorBase {
     static constexpr const char* kName = "FolderList";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<vivid::FilePath> folder{"folder", ""};
@@ -63,7 +62,7 @@ struct FolderList : vivid::OperatorBase {
         out.push_back({"count", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         const bool should_refresh =
             folder.str_value != last_folder_ ||
             extensions.str_value != last_exts_ ||

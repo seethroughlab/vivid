@@ -24,9 +24,8 @@ struct OnePole {
     }
 };
 
-struct Distortion : vivid::OperatorBase {
+struct Distortion : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "Distortion";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> drive{"drive", 3.0f, 1.0f, 10.0f};
@@ -65,13 +64,10 @@ struct Distortion : vivid::OperatorBase {
         out.push_back({"output", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        auto* audio = vivid_audio(ctx);
-        if (!audio) return;
-
-        float* in  = audio->input_buffers[0];
-        float* out = audio->output_buffers[0];
-        uint32_t frames = audio->buffer_size;
+    void process_audio(const VividAudioContext* ctx) override {
+        float* in  = ctx->input_buffers[0];
+        float* out = ctx->output_buffers[0];
+        uint32_t frames = ctx->buffer_size;
 
         float d   = drive.value;
         float lev = level.value;
@@ -79,7 +75,7 @@ struct Distortion : vivid::OperatorBase {
         float dry = 1.0f - wet;
 
         float cutoff = 1000.0f + tone.value * 9000.0f;
-        tone_filter_.set_cutoff(cutoff, static_cast<float>(audio->sample_rate));
+        tone_filter_.set_cutoff(cutoff, static_cast<float>(ctx->sample_rate));
 
         float norm = 1.0f / std::tanh(d);
 

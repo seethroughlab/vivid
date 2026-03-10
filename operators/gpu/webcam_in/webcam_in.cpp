@@ -72,9 +72,8 @@ static float fps_for_preset(int preset) {
 // WebcamIn Operator
 // =============================================================================
 
-struct WebcamIn : vivid::OperatorBase {
+struct WebcamIn : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "WebcamIn";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<bool> active    {"active", true};
@@ -138,13 +137,10 @@ struct WebcamIn : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) return;
-
+    void process_gpu(const VividGpuContext* ctx) override {
         // One-time GPU pipeline setup
         if (!pipeline_) {
-            if (!lazy_init(gpu)) {
+            if (!lazy_init(ctx)) {
                 std::fprintf(stderr, "[webcam_in] lazy_init FAILED\n");
                 return;
             }
@@ -203,9 +199,9 @@ struct WebcamIn : vivid::OperatorBase {
                 uint32_t h = capture_->height();
                 if (pixels && w > 0 && h > 0) {
                     if (w != staging_width_ || h != staging_height_) {
-                        recreate_staging(gpu, w, h);
+                        recreate_staging(ctx, w, h);
                     }
-                    upload_pixels(gpu, pixels, w, h);
+                    upload_pixels(ctx, pixels, w, h);
                     has_frame_ = true;
                 }
             }
@@ -213,15 +209,14 @@ struct WebcamIn : vivid::OperatorBase {
 
         // Tell runtime our preferred output size
         if (staging_width_ > 0 && staging_height_ > 0) {
-            ctx->preferred_tex_width  = staging_width_;
-            ctx->preferred_tex_height = staging_height_;
+            vivid_request_output_size(ctx, staging_width_, staging_height_);
         }
 
         // Blit staging → output (or clear to black)
         if (has_frame_ && staging_view_ && bind_group_) {
-            blit(gpu);
+            blit(ctx);
         } else {
-            clear_output(gpu);
+            clear_output(ctx);
         }
     }
 
@@ -275,7 +270,7 @@ private:
 
     // --- GPU helpers (same pattern as MovieLoaded) ---
 
-    void recreate_staging(VividGpuState* gpu, uint32_t w, uint32_t h) {
+    void recreate_staging(const VividGpuContext* gpu, uint32_t w, uint32_t h) {
         vivid::gpu::release(staging_tex_);
         vivid::gpu::release(staging_view_);
         vivid::gpu::release(bind_group_);
@@ -317,7 +312,7 @@ private:
         bind_group_ = wgpuDeviceCreateBindGroup(gpu->device, &bg_desc);
     }
 
-    void upload_pixels(VividGpuState* gpu, const uint8_t* pixels, uint32_t w, uint32_t h) {
+    void upload_pixels(const VividGpuContext* gpu, const uint8_t* pixels, uint32_t w, uint32_t h) {
         if (!staging_tex_) return;
 
         uint32_t src_row_bytes = w * 4;
@@ -350,12 +345,12 @@ private:
         }
     }
 
-    void blit(VividGpuState* gpu) {
+    void blit(const VividGpuContext* gpu) {
         vivid::gpu::run_pass(gpu->command_encoder, pipeline_, bind_group_,
                              gpu->output_texture_view, "WebcamIn Blit");
     }
 
-    void clear_output(VividGpuState* gpu) {
+    void clear_output(const VividGpuContext* gpu) {
         if (!gpu->output_texture_view) return;
         WGPURenderPassColorAttachment color_att{};
         color_att.view = gpu->output_texture_view;
@@ -376,7 +371,7 @@ private:
         wgpuRenderPassEncoderRelease(pass);
     }
 
-    bool lazy_init(VividGpuState* gpu) {
+    bool lazy_init(const VividGpuContext* gpu) {
         shader_ = vivid::gpu::create_shader(gpu->device, kBlitFragment, "WebcamIn Shader");
         if (!shader_) return false;
 

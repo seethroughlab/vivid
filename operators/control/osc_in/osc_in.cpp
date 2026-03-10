@@ -13,9 +13,8 @@
 #include <thread>
 #include <vector>
 
-struct OscIn : vivid::OperatorBase {
+struct OscIn : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "OscIn";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int> listen_port{"listen_port", 9000, 1, 65535};
@@ -50,7 +49,7 @@ struct OscIn : vivid::OperatorBase {
         stop_listener();
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         ensure_listener();
 
         float out_value = last_value_;

@@ -3,9 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
-struct StepCounter : vivid::OperatorBase {
+struct StepCounter : vivid::ControlOperatorBase {
     static constexpr const char* kName = "StepCounter";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int> initial{"initial", 0, -1000000, 1000000};
@@ -26,7 +25,7 @@ struct StepCounter : vivid::OperatorBase {
         out.push_back({"wrapped", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         if (!initialized_) {
             step_ = initial.int_value();
             initialized_ = true;

@@ -2,9 +2,8 @@
 #include <algorithm>
 #include <cstdint>
 
-struct PatTransform : vivid::OperatorBase {
+struct PatTransform : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "PatTransform";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<bool>  reverse     {"reverse",     false};
@@ -26,7 +25,7 @@ struct PatTransform : vivid::OperatorBase {
         out.push_back({"pattern", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // out spread[0]
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         if (!ctx->input_spreads || !ctx->output_spreads) return;
 
         auto& in  = ctx->input_spreads[0];

@@ -1,8 +1,7 @@
 #include "operator_api/operator.h"
 
-struct Logic : vivid::OperatorBase {
+struct Logic : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "Logic";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int> operation{"operation", 0, {"AND", "OR", "XOR", "NOT", "NAND", "NOR"}};
@@ -17,7 +16,7 @@ struct Logic : vivid::OperatorBase {
         out.push_back({"result", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         bool a = ctx->input_values[0] > 0.5f;
         bool b = ctx->input_values[1] > 0.5f;
         bool result = false;

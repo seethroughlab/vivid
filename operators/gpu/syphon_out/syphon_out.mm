@@ -12,9 +12,8 @@ extern "C" void* wgpuDeviceGetNativeMetalDevice(WGPUDevice device);
 extern "C" void* wgpuQueueGetNativeMetalCommandQueue(WGPUQueue queue);
 extern "C" void* wgpuTextureGetNativeMetalTexture(WGPUTexture texture);
 
-struct SyphonOut : vivid::OperatorBase {
+struct SyphonOut : vivid::GpuOperatorBase {
     static constexpr const char* kName = "SyphonOut";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<bool> active{"active", true};
@@ -30,20 +29,19 @@ struct SyphonOut : vivid::OperatorBase {
         out.push_back({"input", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_INPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu || !gpu->device || !gpu->queue) return;
+    void process_gpu(const VividGpuContext* ctx) override {
+        if (!ctx->device || !ctx->queue) return;
 
         if (!active.bool_value()) {
             stop_server();
             return;
         }
-        if (!gpu->input_textures || gpu->input_texture_count < 1) return;
-        WGPUTexture in_tex = gpu->input_textures[0];
+        if (!ctx->input_textures || ctx->input_texture_count < 1) return;
+        WGPUTexture in_tex = ctx->input_textures[0];
         if (!in_tex) return;
 
-        id<MTLDevice> metal_device = (__bridge id<MTLDevice>)wgpuDeviceGetNativeMetalDevice(gpu->device);
-        id<MTLCommandQueue> metal_queue = (__bridge id<MTLCommandQueue>)wgpuQueueGetNativeMetalCommandQueue(gpu->queue);
+        id<MTLDevice> metal_device = (__bridge id<MTLDevice>)wgpuDeviceGetNativeMetalDevice(ctx->device);
+        id<MTLCommandQueue> metal_queue = (__bridge id<MTLCommandQueue>)wgpuQueueGetNativeMetalCommandQueue(ctx->queue);
         id<MTLTexture> metal_texture = (__bridge id<MTLTexture>)wgpuTextureGetNativeMetalTexture(in_tex);
         if (!metal_device || !metal_queue || !metal_texture) return;
         const uint32_t in_w = static_cast<uint32_t>(metal_texture.width);

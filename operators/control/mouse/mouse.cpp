@@ -1,9 +1,8 @@
 #include "operator_api/operator.h"
 #include "operator_api/input_state.h"
 
-struct Mouse : vivid::OperatorBase {
+struct Mouse : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "Mouse";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = true;
 
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
@@ -16,7 +15,7 @@ struct Mouse : vivid::OperatorBase {
         out.push_back({"middle", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         const VividInputState* input = vivid_input(ctx);
         if (!input) {
             ctx->output_values[0] = 0.0f;

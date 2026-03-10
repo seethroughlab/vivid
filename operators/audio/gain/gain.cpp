@@ -1,9 +1,8 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
 
-struct Gain : vivid::OperatorBase {
+struct Gain : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "Gain";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> gain{"gain", 1.0f, 0.0f, 2.0f};
@@ -23,15 +22,12 @@ struct Gain : vivid::OperatorBase {
         out.push_back({"output", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        auto* audio = vivid_audio(ctx);
-        if (!audio) return;
-
-        float* in  = audio->input_buffers[0];
-        float* out = audio->output_buffers[0];
+    void process_audio(const VividAudioContext* ctx) override {
+        float* in  = ctx->input_buffers[0];
+        float* out = ctx->output_buffers[0];
         float g = gain.value;
 
-        for (uint32_t i = 0; i < audio->buffer_size; i++)
+        for (uint32_t i = 0; i < ctx->buffer_size; i++)
             out[i] = in[i] * g;
     }
 };

@@ -138,9 +138,8 @@ private:
 // MovieAudioOut operator
 // =============================================================================
 
-struct MovieAudioOut : vivid::OperatorBase {
+struct MovieAudioOut : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "MovieAudioOut";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> volume {"volume", 1.0f, 0.0f, 2.0f};
@@ -159,7 +158,7 @@ struct MovieAudioOut : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"media_stream", VIVID_PORT_DATA, VIVID_PORT_INPUT, "media_stream_v1"});
+        out.push_back({"media_stream", VIVID_PORT_MEDIA_STREAM, VIVID_PORT_INPUT});
         out.push_back({"left",  VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"right", VIVID_PORT_AUDIO_FLOAT, VIVID_PORT_OUTPUT});
     }
@@ -173,7 +172,7 @@ struct MovieAudioOut : vivid::OperatorBase {
 
     static constexpr uint32_t kInputPortMediaStream = 0;
 
-    static MediaClockSnapshot read_media_clock(const VividProcessContext* ctx) {
+    static MediaClockSnapshot read_media_clock(const VividAudioContext* ctx) {
         MediaClockSnapshot s{};
         if (!ctx || !ctx->input_data) return s;
         if (ctx->input_data_count <= kInputPortMediaStream) return s;
@@ -470,10 +469,7 @@ struct MovieAudioOut : vivid::OperatorBase {
     }
 
     // Audio thread — simplified: just read from ring, apply volume
-    void process(VividProcessContext* ctx) override {
-        auto* audio = vivid_audio(ctx);
-        if (!audio) return;
-
+    void process_audio(const VividAudioContext* ctx) override {
         const MediaClockSnapshot clock = read_media_clock(ctx);
         if (ctx && ctx->shared_handles) {
             shared_handles_.store(ctx->shared_handles, std::memory_order_release);
@@ -494,12 +490,12 @@ struct MovieAudioOut : vivid::OperatorBase {
             }
         }
 
-        float* L = audio->output_buffers[0];
-        float* R = audio->output_buffers[1];
-        uint32_t n = audio->buffer_size;
+        float* L = ctx->output_buffers[0];
+        float* R = ctx->output_buffers[1];
+        uint32_t n = ctx->buffer_size;
         auto* active_session = active_session_ptr_.load(std::memory_order_acquire);
         if (active_session) {
-            active_session->audio_ring_sample_rate.store(static_cast<float>(audio->sample_rate), std::memory_order_release);
+            active_session->audio_ring_sample_rate.store(static_cast<float>(ctx->sample_rate), std::memory_order_release);
             active_session->audio_ring_speed.store(
                 clock.valid ? static_cast<float>(clock.clock.speed)
                             : static_cast<float>(transport_speed_.load(std::memory_order_acquire)),

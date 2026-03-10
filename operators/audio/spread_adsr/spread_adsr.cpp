@@ -6,9 +6,8 @@
 
 namespace adsr = vivid::adsr;
 
-struct SpreadADSR : vivid::OperatorBase {
+struct SpreadADSR : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "SpreadADSR";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> attack  {"attack",   0.01f,  0.001f, 2.0f};
@@ -34,16 +33,13 @@ struct SpreadADSR : vivid::OperatorBase {
         out.push_back({"envelopes", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        auto* audio = vivid_audio(ctx);
-        if (!audio) return;
-
+    void process_audio(const VividAudioContext* ctx) override {
         float att = attack.value;
         float dec = decay.value;
         float sus = sustain.value;
         float rel = release.value;
-        float dt = 1.0f / static_cast<float>(audio->sample_rate);
-        uint32_t frames = audio->buffer_size;
+        float dt = 1.0f / static_cast<float>(ctx->sample_rate);
+        uint32_t frames = ctx->buffer_size;
 
         // Read gates spread input
         uint32_t len = 0;

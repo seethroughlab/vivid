@@ -38,9 +38,8 @@ struct DelayLine {
 
 static constexpr float kMaxDelaySeconds = 2.0f;
 
-struct Delay : vivid::OperatorBase {
+struct Delay : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "Delay";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> time    {"time",     250.0f, 0.0f, 2000.0f};
@@ -97,17 +96,14 @@ struct Delay : vivid::OperatorBase {
         return y;
     }
 
-    void process(VividProcessContext* ctx) override {
-        auto* audio = vivid_audio(ctx);
-        if (!audio) return;
+    void process_audio(const VividAudioContext* ctx) override {
+        lazy_init(ctx->sample_rate);
 
-        lazy_init(audio->sample_rate);
+        float* in  = ctx->input_buffers[0];
+        float* out = ctx->output_buffers[0];
+        uint32_t frames = ctx->buffer_size;
 
-        float* in  = audio->input_buffers[0];
-        float* out = audio->output_buffers[0];
-        uint32_t frames = audio->buffer_size;
-
-        int delay_samples = static_cast<int>(time.value * 0.001f * audio->sample_rate);
+        int delay_samples = static_cast<int>(time.value * 0.001f * ctx->sample_rate);
         if (delay_samples < 1) delay_samples = 1;
         if (delay_samples >= delay_.size) delay_samples = delay_.size - 1;
 

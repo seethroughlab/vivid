@@ -6,9 +6,8 @@
 // SpreadNoise — animated hash-based 1D value noise spread
 // =============================================================================
 
-struct SpreadNoise : vivid::OperatorBase {
+struct SpreadNoise : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "SpreadNoise";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int>   count     {"count",     125, 1, 1024};
@@ -29,7 +28,7 @@ struct SpreadNoise : vivid::OperatorBase {
         out.push_back({"values", VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});  // 0
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         float dt = static_cast<float>(ctx->delta_time);
         float spd = ctx->param_values[1];     // speed
         float amp = ctx->param_values[2];     // amplitude

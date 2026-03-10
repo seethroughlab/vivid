@@ -325,9 +325,8 @@ struct NoiseUniforms {
 // Noise Operator
 // =============================================================================
 
-struct Noise : vivid::OperatorBase {
+struct Noise : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "Noise";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> scale      {"scale",       4.0f,  0.1f, 100.0f};
@@ -362,15 +361,9 @@ struct Noise : vivid::OperatorBase {
         out.push_back({"output", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) {
-            if (ctx->frame % 60 == 0) std::fprintf(stderr, "[noise] gpu is NULL\n");
-            return;
-        }
-
+    void process_gpu(const VividGpuContext* ctx) override {
         if (!pipeline_) {
-            if (!lazy_init(gpu)) {
+            if (!lazy_init(ctx)) {
                 std::fprintf(stderr, "[noise] lazy_init FAILED\n");
                 return;
             }
@@ -378,8 +371,8 @@ struct Noise : vivid::OperatorBase {
 
         // Update uniforms
         NoiseUniforms u{};
-        u.resolution[0] = static_cast<float>(gpu->output_width);
-        u.resolution[1] = static_cast<float>(gpu->output_height);
+        u.resolution[0] = static_cast<float>(ctx->output_width);
+        u.resolution[1] = static_cast<float>(ctx->output_height);
         u.time          = static_cast<float>(ctx->time);
         u.scale         = scale.value;
         u.speed         = speed.value;
@@ -393,10 +386,10 @@ struct Noise : vivid::OperatorBase {
         u.colorNoise    = channels.int_value();
         u.centerOrigin  = center_origin.int_value();
 
-        wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
+        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
-        vivid::gpu::run_pass(gpu->command_encoder, pipeline_, bind_group_,
-                             gpu->output_texture_view, "Noise Pass");
+        vivid::gpu::run_pass(ctx->command_encoder, pipeline_, bind_group_,
+                             ctx->output_texture_view, "Noise Pass");
     }
 
     ~Noise() override {
@@ -416,7 +409,7 @@ private:
     WGPUShaderModule    shader_      = nullptr;
     WGPUPipelineLayout  pipe_layout_ = nullptr;
 
-    bool lazy_init(VividGpuState* gpu) {
+    bool lazy_init(const VividGpuContext* gpu) {
         shader_ = vivid::gpu::create_shader(gpu->device, kNoiseFragment, "Noise Shader");
         if (!shader_) return false;
 

@@ -66,9 +66,8 @@ struct AllPassDelay {
 static constexpr int kCombLengths[8]    = {1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617};
 static constexpr int kAllPassLengths[4] = {556, 441, 341, 225};
 
-struct Reverb : vivid::OperatorBase {
+struct Reverb : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "Reverb";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_AUDIO;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> room_size{"room_size", 0.5f, 0.0f, 1.0f};
@@ -114,15 +113,12 @@ struct Reverb : vivid::OperatorBase {
         init_rate_   = sr;
     }
 
-    void process(VividProcessContext* ctx) override {
-        auto* audio = vivid_audio(ctx);
-        if (!audio) return;
+    void process_audio(const VividAudioContext* ctx) override {
+        lazy_init(ctx->sample_rate);
 
-        lazy_init(audio->sample_rate);
-
-        float* in  = audio->input_buffers[0];
-        float* out = audio->output_buffers[0];
-        uint32_t frames = audio->buffer_size;
+        float* in  = ctx->input_buffers[0];
+        float* out = ctx->output_buffers[0];
+        uint32_t frames = ctx->buffer_size;
 
         float fb    = room_size.value * 0.28f + 0.7f; // map 0-1 → 0.7-0.98
         float damp1 = damping.value;

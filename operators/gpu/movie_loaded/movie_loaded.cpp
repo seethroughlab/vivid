@@ -128,9 +128,8 @@ static void log_load_event(const char* event,
                  details.c_str());
 }
 
-struct MovieLoaded : vivid::OperatorBase {
+struct MovieLoaded : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "MovieLoaded";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<vivid::FilePath> file {"file"};
@@ -184,18 +183,16 @@ struct MovieLoaded : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
         out.push_back({"time", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"speed", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"media_clock", VIVID_PORT_DATA, VIVID_PORT_OUTPUT, "media_stream_v1"});
+        out.push_back({"media_clock", VIVID_PORT_MEDIA_STREAM, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process_gpu(const VividGpuContext* ctx) override {
         if (ctx && ctx->shared_handles) {
             shared_handles_ = ctx->shared_handles;
         }
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) return;
 
         if (!pipeline_) {
-            if (!lazy_init(gpu)) {
+            if (!lazy_init(ctx)) {
                 std::fprintf(stderr, "[movie_loaded] lazy_init FAILED\n");
                 return;
             }
@@ -208,20 +205,20 @@ struct MovieLoaded : vivid::OperatorBase {
             last_path_ = effective_path;
             on_source_changed();
             if (is_video_extension(last_path_)) {
-                request_video_load(last_path_, wgpuDeviceHasFeature(gpu->device,
+                request_video_load(last_path_, wgpuDeviceHasFeature(ctx->device,
                     WGPUFeatureName_TextureCompressionBC));
             } else {
                 cancel_pending_video_load();
                 decoder_.reset();
                 if (last_path_.empty()) {
-                    show_placeholder(gpu);
+                    show_placeholder(ctx);
                 } else {
-                    load_image(gpu);
+                    load_image(ctx);
                 }
             }
         }
 
-        apply_ready_load_result(gpu);
+        apply_ready_load_result(ctx);
         publish_transport_state_if_changed();
 
         if (decoder_ && decoder_->is_open() && !placeholder_active_) {
@@ -279,8 +276,8 @@ struct MovieLoaded : vivid::OperatorBase {
                                                   static_cast<uint32_t>(fmt),
                                                   true,
                                                   decoder_->requires_ycocg_decode());
-                            ensure_texture(gpu, w, h, fmt, true);
-                            movie_upload_compressed(gpu->queue, texture_, data, data_size, w, h, fmt);
+                            ensure_texture(ctx, w, h, fmt, true);
+                            movie_upload_compressed(ctx->queue, texture_, data, data_size, w, h, fmt);
                         }
                     } else {
                         const uint8_t* pixels = decoder_->pixel_data();
@@ -289,8 +286,8 @@ struct MovieLoaded : vivid::OperatorBase {
                             enqueue_video_payload(pixels, bytes, w, h,
                                                   static_cast<uint32_t>(WGPUTextureFormat_BGRA8Unorm),
                                                   false, false);
-                            ensure_texture(gpu, w, h, WGPUTextureFormat_BGRA8Unorm, false);
-                            movie_upload_bgra(gpu->queue, texture_, pixels, w, h);
+                            ensure_texture(ctx, w, h, WGPUTextureFormat_BGRA8Unorm, false);
+                            movie_upload_bgra(ctx->queue, texture_, pixels, w, h);
                         }
                     }
                 }
@@ -298,8 +295,7 @@ struct MovieLoaded : vivid::OperatorBase {
         }
 
         if (texture_.width > 0 && texture_.height > 0) {
-            ctx->preferred_tex_width = texture_.width;
-            ctx->preferred_tex_height = texture_.height;
+            vivid_request_output_size(ctx, texture_.width, texture_.height);
         }
 
         if (texture_.view && texture_.bind_group) {
@@ -308,10 +304,10 @@ struct MovieLoaded : vivid::OperatorBase {
                 decoder_->requires_ycocg_decode() && pipeline_ycocg_) {
                 active = pipeline_ycocg_;
             }
-            vivid::gpu::run_pass(gpu->command_encoder, active, texture_.bind_group,
-                                 gpu->output_texture_view, "MovieLoaded Blit");
+            vivid::gpu::run_pass(ctx->command_encoder, active, texture_.bind_group,
+                                 ctx->output_texture_view, "MovieLoaded Blit");
         } else {
-            clear_output(gpu);
+            clear_output(ctx);
         }
 
         update_and_publish_media_clock(ctx);
@@ -387,7 +383,7 @@ private:
     double last_video_sync_seek_mono_s_ = -1000.0;
     uint64_t last_video_sync_seek_generation_ = 0;
 
-    void ensure_texture(VividGpuState* gpu,
+    void ensure_texture(const VividGpuContext* gpu,
                         uint32_t w,
                         uint32_t h,
                         WGPUTextureFormat format,
@@ -401,14 +397,14 @@ private:
                                w, h, format, compressed);
     }
 
-    void show_placeholder(VividGpuState* gpu) {
+    void show_placeholder(const VividGpuContext* gpu) {
         auto frame = make_movie_missing_placeholder();
         ensure_texture(gpu, frame.width, frame.height, WGPUTextureFormat_BGRA8Unorm, false);
         movie_upload_bgra(gpu->queue, texture_, frame.bgra.data(), frame.width, frame.height);
         placeholder_active_ = true;
     }
 
-    void load_image(VividGpuState* gpu) {
+    void load_image(const VividGpuContext* gpu) {
         int w = 0, h = 0, channels = 0;
         uint8_t* data = stbi_load(last_path_.c_str(), &w, &h, &channels, 4);
         if (!data) {
@@ -446,7 +442,7 @@ private:
         loader_has_request_ = false;
     }
 
-    void apply_ready_load_result(VividGpuState* gpu) {
+    void apply_ready_load_result(const VividGpuContext* gpu) {
         std::optional<LoadResult> ready;
         {
             std::lock_guard<std::mutex> lock(loader_mu_);
@@ -547,7 +543,7 @@ private:
         vivid::media::media_session_enqueue_video_frame(*session_, std::move(payload));
     }
 
-    void update_and_publish_media_clock(const VividProcessContext* ctx) {
+    void update_and_publish_media_clock(const VividGpuContext* ctx) {
         const double duration_s = decoder_ ? std::max(0.0, static_cast<double>(decoder_->duration())) : 0.0;
         const double decoder_local_time_s = decoder_ ? std::max(0.0, static_cast<double>(decoder_->current_time())) : 0.0;
         const bool loop_enabled = (play_mode.int_value() == 0);
@@ -703,7 +699,7 @@ private:
         loader_thread_.join();
     }
 
-    void clear_output(VividGpuState* gpu) {
+    void clear_output(const VividGpuContext* gpu) {
         if (!gpu->output_texture_view) return;
         WGPURenderPassColorAttachment color_att{};
         color_att.view = gpu->output_texture_view;
@@ -723,7 +719,7 @@ private:
         wgpuRenderPassEncoderRelease(pass);
     }
 
-    bool lazy_init(VividGpuState* gpu) {
+    bool lazy_init(const VividGpuContext* gpu) {
         shader_ = vivid::gpu::create_shader(gpu->device, kBlitFragment, "MovieLoaded Shader");
         shader_ycocg_ = vivid::gpu::create_shader(gpu->device, kBlitFragmentYCoCg, "MovieLoaded YCoCg Shader");
         if (!shader_ || !shader_ycocg_) return false;

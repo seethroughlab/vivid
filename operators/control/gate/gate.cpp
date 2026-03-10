@@ -1,8 +1,7 @@
 #include "operator_api/operator.h"
 
-struct Gate : vivid::OperatorBase {
+struct Gate : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "Gate";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> threshold{"threshold", 0.5f, 0.0f, 1.0f};
@@ -29,7 +28,7 @@ struct Gate : vivid::OperatorBase {
         out.push_back({"open",   VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         float signal = ctx->input_values[0];
         bool is_open = ctx->input_values[1] > threshold.value;
         if (invert.bool_value()) is_open = !is_open;

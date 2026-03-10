@@ -6,9 +6,8 @@
 #include <cstring>
 #include <cstdio>
 
-struct MidiInput : vivid::OperatorBase {
+struct MidiInput : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "MidiInput";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = true;
 
     // Params (order matters — indices used for CC learn write-back)
@@ -42,7 +41,7 @@ struct MidiInput : vivid::OperatorBase {
         std::memset(cc_values_, 0, sizeof(cc_values_));
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         ensure_midi_initialized();
         int desired_device = device.int_value();
 

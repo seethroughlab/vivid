@@ -9,9 +9,8 @@
 //
 // output = input * (base_gain + lfo_depth * smoothed_lfo)
 
-struct ModulatedGain : vivid::OperatorBase {
+struct ModulatedGain : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "ModulatedGain";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> base_gain {"base_gain",  1.0f, 0.0f, 10.0f};
@@ -52,7 +51,7 @@ struct ModulatedGain : vivid::OperatorBase {
         out.push_back({"value", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         float input = ctx->input_values[0];
 
         // Drive the internal LFO

@@ -50,9 +50,8 @@ static float half_to_float(uint16_t h) {
 
 static constexpr uint32_t kCropSize = 16;  // 16×16 center crop
 
-struct TextureAnalysis : vivid::OperatorBase {
+struct TextureAnalysis : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "TextureAnalysis";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int> skip_frames{"skip_frames", 1, {"Every frame", "Every 2nd", "Every 4th", "Every 8th"}};
@@ -72,32 +71,28 @@ struct TextureAnalysis : vivid::OperatorBase {
         out.push_back({"edge_density", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) return;
-
+    void process_gpu(const VividGpuContext* ctx) override {
         // --- Deferred readback: consume staging buffer from previous frame ---
         if (readback_pending_) {
-            consume_staging(gpu);
+            consume_staging(ctx);
             readback_pending_ = false;
         }
 
         // Resolve input texture from the gpu state
         WGPUTexture input_tex = nullptr;
         uint32_t input_w = 0, input_h = 0;
-        if (gpu->input_textures && gpu->input_texture_count > 0) {
-            input_tex = gpu->input_textures[0];
-            input_w = gpu->input_texture_widths ? gpu->input_texture_widths[0] : 0;
-            input_h = gpu->input_texture_heights ? gpu->input_texture_heights[0] : 0;
+        if (ctx->input_textures && ctx->input_texture_count > 0) {
+            input_tex = ctx->input_textures[0];
+            input_w = ctx->input_texture_widths ? ctx->input_texture_widths[0] : 0;
+            input_h = ctx->input_texture_heights ? ctx->input_texture_heights[0] : 0;
         }
 
         // --- Passthrough: copy input texture → output texture ---
         if (input_tex && input_w > 0 && input_h > 0) {
             // Request same size as input for passthrough
-            ctx->preferred_tex_width  = input_w;
-            ctx->preferred_tex_height = input_h;
+            vivid_request_output_size(ctx, input_w, input_h);
 
-            if (input_w == gpu->output_width && input_h == gpu->output_height) {
+            if (input_w == ctx->output_width && input_h == ctx->output_height) {
                 WGPUTexelCopyTextureInfo src{};
                 src.texture = input_tex;
                 src.mipLevel = 0;
@@ -105,13 +100,13 @@ struct TextureAnalysis : vivid::OperatorBase {
                 src.aspect = WGPUTextureAspect_All;
 
                 WGPUTexelCopyTextureInfo dst{};
-                dst.texture = gpu->output_texture;
+                dst.texture = ctx->output_texture;
                 dst.mipLevel = 0;
                 dst.origin = { 0, 0, 0 };
                 dst.aspect = WGPUTextureAspect_All;
 
-                WGPUExtent3D size = { gpu->output_width, gpu->output_height, 1 };
-                wgpuCommandEncoderCopyTextureToTexture(gpu->command_encoder, &src, &dst, &size);
+                WGPUExtent3D size = { ctx->output_width, ctx->output_height, 1 };
+                wgpuCommandEncoderCopyTextureToTexture(ctx->command_encoder, &src, &dst, &size);
             }
         }
 
@@ -135,7 +130,7 @@ struct TextureAnalysis : vivid::OperatorBase {
         uint32_t crop_x = (input_w - crop_w) / 2;
         uint32_t crop_y = (input_h - crop_h) / 2;
 
-        enqueue_readback(gpu, input_tex, crop_x, crop_y, crop_w, crop_h);
+        enqueue_readback(ctx, input_tex, crop_x, crop_y, crop_w, crop_h);
         write_outputs(ctx);
     }
 
@@ -160,7 +155,7 @@ private:
     uint32_t readback_crop_w_ = 0;
     uint32_t readback_crop_h_ = 0;
 
-    void write_outputs(const VividProcessContext* ctx) {
+    void write_outputs(const VividGpuContext* ctx) {
         // Output port indices match collect_ports() order:
         // texture(0), brightness(1), contrast(2), red(3), green(4), blue(5), edge_density(6)
         ctx->output_values[1] = brightness_;
@@ -173,7 +168,7 @@ private:
 
     // Record the texture→staging copy on the shared tick encoder.
     // The actual readback happens next frame in consume_staging().
-    void enqueue_readback(VividGpuState* gpu, WGPUTexture input_tex,
+    void enqueue_readback(const VividGpuContext* gpu, WGPUTexture input_tex,
                           uint32_t crop_x, uint32_t crop_y,
                           uint32_t crop_w, uint32_t crop_h) {
         // RGBA16Float = 8 bytes per pixel
@@ -219,7 +214,7 @@ private:
 
     // Map the staging buffer (written by the previous frame's tick encoder),
     // decode pixels, and compute analysis metrics.
-    void consume_staging(VividGpuState* gpu) {
+    void consume_staging(const VividGpuContext* gpu) {
         static constexpr uint32_t kBpp = 8;
         static constexpr uint32_t kGpuRowAlign = 256;
         uint32_t crop_w = readback_crop_w_;

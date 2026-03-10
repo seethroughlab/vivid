@@ -2,9 +2,8 @@
 #include <algorithm>
 #include <cmath>
 
-struct Euclidean : vivid::OperatorBase {
+struct Euclidean : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "Euclidean";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int>   hits        {"hits",        3, 0, 32};
@@ -29,7 +28,7 @@ struct Euclidean : vivid::OperatorBase {
         out.push_back({"pattern",    VIVID_PORT_CONTROL_SPREAD, VIVID_PORT_OUTPUT});   // spread[0]
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         float beat_phase = ctx->input_values[0];
         int h   = std::clamp(static_cast<int>(ctx->param_values[0]), 0, 32);
         int n   = std::clamp(static_cast<int>(ctx->param_values[1]), 1, 32);

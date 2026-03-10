@@ -111,9 +111,8 @@ struct ShapeUniforms {
 // Shape Operator
 // =============================================================================
 
-struct Shape : vivid::OperatorBase {
+struct Shape : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "Shape";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_GPU;
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> radius   {"radius",   0.3f,  0.01f, 1.0f};
@@ -160,15 +159,9 @@ struct Shape : vivid::OperatorBase {
         out.push_back({"texture", VIVID_PORT_GPU_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
-        VividGpuState* gpu = vivid_gpu(ctx);
-        if (!gpu) {
-            if (ctx->frame % 60 == 0) std::fprintf(stderr, "[shape] gpu is NULL\n");
-            return;
-        }
-
+    void process_gpu(const VividGpuContext* ctx) override {
         if (!pipeline_) {
-            if (!lazy_init(gpu)) {
+            if (!lazy_init(ctx)) {
                 std::fprintf(stderr, "[shape] lazy_init FAILED\n");
                 return;
             }
@@ -176,8 +169,8 @@ struct Shape : vivid::OperatorBase {
 
         // Update uniforms
         ShapeUniforms u{};
-        u.resolution[0] = static_cast<float>(gpu->output_width);
-        u.resolution[1] = static_cast<float>(gpu->output_height);
+        u.resolution[0] = static_cast<float>(ctx->output_width);
+        u.resolution[1] = static_cast<float>(ctx->output_height);
         u.radius      = radius.value;
         u.sides       = static_cast<float>(sides.int_value());
         u.star_factor = star.value;
@@ -187,10 +180,10 @@ struct Shape : vivid::OperatorBase {
         u.color_g     = g.value;
         u.color_b     = b.value;
 
-        wgpuQueueWriteBuffer(gpu->queue, uniform_buf_, 0, &u, sizeof(u));
+        wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
-        vivid::gpu::run_pass(gpu->command_encoder, pipeline_, bind_group_,
-                             gpu->output_texture_view, "Shape Pass");
+        vivid::gpu::run_pass(ctx->command_encoder, pipeline_, bind_group_,
+                             ctx->output_texture_view, "Shape Pass");
     }
 
     ~Shape() override {
@@ -210,7 +203,7 @@ private:
     WGPUShaderModule    shader_      = nullptr;
     WGPUPipelineLayout  pipe_layout_ = nullptr;
 
-    bool lazy_init(VividGpuState* gpu) {
+    bool lazy_init(const VividGpuContext* gpu) {
         std::string frag = std::string(vivid::gpu::WGSL_CONSTANTS) + kShapeFragment;
         shader_ = vivid::gpu::create_shader(gpu->device, frag.c_str(), "Shape Shader");
         if (!shader_) return false;

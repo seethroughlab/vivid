@@ -5,9 +5,8 @@
 #include <cstring>
 #include <vector>
 
-struct Envelope : vivid::OperatorBase {
+struct Envelope : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "Envelope";
-    static constexpr VividDomain kDomain = VIVID_DOMAIN_CONTROL;
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> attack   {"attack",    0.001f, 0.0f,   0.5f};
@@ -76,7 +75,7 @@ struct Envelope : vivid::OperatorBase {
         out.push_back({"value", VIVID_PORT_CONTROL_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(VividProcessContext* ctx) override {
+    void process(const VividProcessContext* ctx) override {
         float gate_in  = ctx->input_values[0];
         float phase_in = ctx->input_values[1];
 
