@@ -31,6 +31,8 @@ struct PackageInfo {
     std::string vivid_core;                 // optional SemVer range for core compatibility
     std::string description;
     std::string author;
+    std::string category;
+    std::vector<std::string> tags;
     std::vector<std::string> operators;      // "audio/drum_kick", etc.
     std::vector<std::string> gpu_operators;  // operators needing Dawn
     std::string path;                        // absolute path on disk

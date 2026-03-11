@@ -572,6 +572,21 @@ bool PackageManager::parse_manifest(const std::string& package_dir, PackageInfo&
     yyjson_val* author_v = yyjson_obj_get(root, "author");
     info.author = (author_v && yyjson_is_str(author_v)) ? yyjson_get_str(author_v) : "";
 
+    // category (optional string)
+    yyjson_val* cat_v = yyjson_obj_get(root, "category");
+    info.category = (cat_v && yyjson_is_str(cat_v)) ? yyjson_get_str(cat_v) : "";
+
+    // tags (optional string array)
+    yyjson_val* tags_v = yyjson_obj_get(root, "tags");
+    if (tags_v && yyjson_is_arr(tags_v)) {
+        size_t ti, tmax;
+        yyjson_val* tv;
+        yyjson_arr_foreach(tags_v, ti, tmax, tv) {
+            if (yyjson_is_str(tv))
+                info.tags.push_back(yyjson_get_str(tv));
+        }
+    }
+
     // dependencies (optional object)
     yyjson_val* deps_v = yyjson_obj_get(root, "dependencies");
     if (deps_v && yyjson_is_obj(deps_v)) {

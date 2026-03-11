@@ -95,7 +95,7 @@ int main() {
             []() {},
             []() {
                 return std::vector<PackageBrowserEntry>{
-                    PackageBrowserEntry{"vivid-demo", "demo", "0.1.0", "dev", "utility", {}, false}
+                    PackageBrowserEntry{"vivid-demo", "demo", "0.1.0", "dev", "", {}, false}
                 };
             },
             []() { return PackageBrowserFetchState::Ready; },

@@ -249,6 +249,8 @@ VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
   "vivid_core": ">=0.1.0 <2.0.0",
   "description": "Package with all manifest fields",
   "author": "Jane Doe",
+  "category": "audio",
+  "tags": ["audio", "synthesis", "effects"],
   "operators": [],
   "gpu_operators": [],
   "dependencies": {
@@ -280,6 +282,13 @@ VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
         check(found_pkg != nullptr, "expanded package in list");
         if (found_pkg) {
             check(found_pkg->author == "Jane Doe", "author parsed");
+            check(found_pkg->category == "audio", "category parsed");
+            check(found_pkg->tags.size() == 3, "3 tags parsed");
+            if (found_pkg->tags.size() == 3) {
+                check(found_pkg->tags[0] == "audio", "tag 0");
+                check(found_pkg->tags[1] == "synthesis", "tag 1");
+                check(found_pkg->tags[2] == "effects", "tag 2");
+            }
             check(found_pkg->vivid_core == ">=0.1.0 <2.0.0", "vivid_core parsed");
             check(found_pkg->dependencies.packages.size() == 2, "2 dependency packages");
             check(found_pkg->dependencies.packages[0] == "vivid-core", "dep package 0");

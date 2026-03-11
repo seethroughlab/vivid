@@ -2210,16 +2210,29 @@ int main(int argc, char* argv[]) {
                 ui_e.description = e.description;
                 ui_e.version = e.version;
                 ui_e.author = e.author;
-                ui_e.category = e.category;
-                ui_e.tags = e.tags;
                 auto it = installed_map.find(e.name);
                 if (it != installed_map.end()) {
                     ui_e.installed = true;
                     ui_e.linked = it->second.linked;
+                    ui_e.category = it->second.category;
+                    ui_e.tags = it->second.tags;
+                    installed_map.erase(it);
                 } else {
                     ui_e.installed = false;
                     ui_e.linked = false;
                 }
+                out.push_back(std::move(ui_e));
+            }
+            for (const auto& [name, info] : installed_map) {
+                vivid::ui::PackageBrowserEntry ui_e;
+                ui_e.name = info.name;
+                ui_e.description = info.description;
+                ui_e.version = info.version;
+                ui_e.author = info.author;
+                ui_e.category = info.category;
+                ui_e.tags = info.tags;
+                ui_e.installed = true;
+                ui_e.linked = info.linked;
                 out.push_back(std::move(ui_e));
             }
             return out;

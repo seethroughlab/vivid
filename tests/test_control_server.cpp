@@ -153,9 +153,7 @@ int main(int argc, char* argv[]) {
             "      \"version\": \"1.2.0\",\n"
             "      \"vivid_core\": \">=0.1.0 <2.0.0\",\n"
             "      \"author\": \"test\",\n"
-            "      \"url\": \"https://example.com/catalog-test-pkg.git\",\n"
-            "      \"category\": \"control\",\n"
-            "      \"tags\": [\"test\", \"catalog\"]\n"
+            "      \"url\": \"https://example.com/catalog-test-pkg.git\"\n"
             "    }\n"
             "  ]\n"
             "}\n";

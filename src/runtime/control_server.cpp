@@ -2744,14 +2744,9 @@ bool ControlServer::start(int port) {
                         yyjson_mut_obj_add_strcpy(rdoc, obj, "vivid_core", e.vivid_core.c_str());
                     yyjson_mut_obj_add_strcpy(rdoc, obj, "author", e.author.c_str());
                     yyjson_mut_obj_add_strcpy(rdoc, obj, "url", e.url.c_str());
-                    yyjson_mut_obj_add_strcpy(rdoc, obj, "category", e.category.c_str());
                     yyjson_mut_obj_add_bool(rdoc, obj, "installed", e.installed);
                     if (e.installed)
                         yyjson_mut_obj_add_strcpy(rdoc, obj, "installed_version", e.installed_version.c_str());
-                    yyjson_mut_val* tags = yyjson_mut_arr(rdoc);
-                    for (const auto& tag : e.tags)
-                        yyjson_mut_arr_add_strcpy(rdoc, tags, tag.c_str());
-                    yyjson_mut_obj_add_val(rdoc, obj, "tags", tags);
                     yyjson_mut_arr_add_val(arr, obj);
                 }
                 yyjson_mut_obj_add_val(rdoc, rroot, "packages", arr);

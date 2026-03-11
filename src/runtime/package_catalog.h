@@ -17,8 +17,6 @@ struct CatalogEntry {
     std::string vivid_core;
     std::string author;
     std::string url;
-    std::string category;
-    std::vector<std::string> tags;
     // Computed from local state
     bool installed = false;
     std::string installed_version;
