@@ -1,350 +1,339 @@
-# Port Type Registry — Design Exploration
+# Port Type Registry — One-Shot ABI Break Spec
 
-## Defining Ports — Package Creator Experience
+This document replaces the earlier phased HANDLE-migration plan.
 
-This section shows what port definition looks like from a package author's perspective — the current API and how it evolves through the phases below.
+The new assumption is explicit:
 
-### Today
+- We do not need backward compatibility with the old `VIVID_PORT_HANDLE` model.
+- We do not need intermediate states where old and new systems coexist.
+- We do need one internally coherent final model before implementation starts.
 
-Every operator implements `collect_ports()`, pushing `VividPortDescriptor` structs into a vector. The struct has four fields (`types.h`):
+The goal is to make package-defined port types first-class while keeping runtime transport rules explicit and safe.
+
+## Final Decision
+
+`VIVID_PORT_HANDLE` is removed entirely.
+
+`VividPortType` becomes extensible, so each custom C++ payload type gets its own port type id. But type identity alone is not enough for the runtime. The runtime must also know how values of that type move through the system.
+
+So the final model has two orthogonal concepts:
+
+- `type_id`: what the payload is
+- `transport`: how the payload moves
+
+This is the key correction to the earlier design. The old document treated custom types as if they all shared one transport mechanism. That is not true in the current codebase, and it would not be true in a clean redesign either.
+
+## Final Model
+
+### Built-in vs custom types
+
+Built-in port types remain fixed constants:
+
+```cpp
+typedef uint32_t VividPortType;
+
+#define VIVID_PORT_FLOAT          0
+#define VIVID_PORT_AUDIO          1
+#define VIVID_PORT_SPREAD         2
+#define VIVID_PORT_STRING         3
+#define VIVID_PORT_STRING_SPREAD  4
+#define VIVID_PORT_TEXTURE        5
+```
+
+Custom types use hashed ids in the high-bit range:
+
+```cpp
+template<typename T>
+constexpr VividPortType vivid_port_type() {
+    return vivid_type_id<T>() | 0x80000000u;
+}
+
+inline bool vivid_is_custom_port_type(VividPortType t) {
+    return (t & 0x80000000u) != 0;
+}
+```
+
+### Transport class
+
+Every port descriptor must also declare a transport class:
+
+```cpp
+typedef enum VividPortTransport {
+    VIVID_PORT_TRANSPORT_SCALAR         = 0, // float-like main-thread copy
+    VIVID_PORT_TRANSPORT_AUDIO_BUFFER   = 1, // audio sample buffers
+    VIVID_PORT_TRANSPORT_SPREAD         = 2, // float spread copy
+    VIVID_PORT_TRANSPORT_STRING         = 3, // string copy
+    VIVID_PORT_TRANSPORT_STRING_SPREAD  = 4, // string spread copy
+    VIVID_PORT_TRANSPORT_TEXTURE        = 5, // GPU texture/view routing
+    VIVID_PORT_TRANSPORT_CUSTOM_VALUE   = 6, // memcpy-by-value snapshot
+    VIVID_PORT_TRANSPORT_CUSTOM_REF     = 7  // opaque shared-handle/reference
+} VividPortTransport;
+```
+
+This is the runtime truth that replaces the overloaded HANDLE bucket.
+
+Examples:
+
+- `float` uses `SCALAR`
+- `texture` uses `TEXTURE`
+- `MediaStreamV1` should use `CUSTOM_REF`
+- a small POD scene fragment might use `CUSTOM_VALUE`
+
+### Final descriptor shape
 
 ```cpp
 typedef struct VividPortDescriptor {
-    const char*        name;
-    VividPortType      type;
-    VividPortDirection direction;
-    uint32_t           handle_type_id;  // non-zero when type == VIVID_PORT_HANDLE
+    const char*            name;
+    VividPortType          type;
+    VividPortDirection     direction;
+    VividPortTransport     transport;
+    uint32_t               payload_size;  // 0 for non-custom built-ins
+    const char*            type_name;     // "vivid::MediaStreamV1", NULL for built-ins
 } VividPortDescriptor;
 ```
 
-For the 6 built-in non-handle types, `handle_type_id` is implicitly zero:
+This is intentionally the final ABI shape. There is no temporary alias field such as `handle_type_id`.
+
+## Authoring API
+
+### Built-in ports
+
+Built-in ports remain simple:
 
 ```cpp
-// Float ports (clock.h — Clock operator)
-void collect_ports(std::vector<VividPortDescriptor>& out) override {
-    out.push_back({"beat_phase", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-    out.push_back({"beat_ms",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-    out.push_back({"bar_phase",  VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-}
-
-// Audio ports (gain.cpp)
-out.push_back({"input",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});
-out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
-
-// Texture ports (texture_loader.cpp)
-out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
-
-// String ports (string_select.cpp)
-out.push_back({"file", VIVID_PORT_STRING, VIVID_PORT_OUTPUT});
-
-// Spread ports (spread_adsr.cpp)
-out.push_back({"gates",     VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
-out.push_back({"envelopes", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
-
-// String-spread ports (folder_list.cpp)
-out.push_back({"files", VIVID_PORT_STRING_SPREAD, VIVID_PORT_OUTPUT});
+out.push_back({"phase", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_SCALAR, 0, nullptr});
+out.push_back({"input", VIVID_PORT_AUDIO, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr});
+out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_TEXTURE, 0, nullptr});
 ```
 
-Handle ports use the `VIVID_HANDLE_PORT` macro (`type_id.h`) which fills in the `handle_type_id` via `vivid_type_id<T>()`:
+### Custom ports
+
+Custom ports use a new macro:
 
 ```cpp
-#define VIVID_HANDLE_PORT(port_name, dir, CppType) \
-    VividPortDescriptor { (port_name), VIVID_PORT_HANDLE, (dir), vivid_type_id<CppType>() }
-
-// Handle port (movie_loaded.cpp — outputs a MediaStreamV1 handle alongside a texture)
-void collect_ports(std::vector<VividPortDescriptor>& out) override {
-    out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
-    out.push_back({"time",    VIVID_PORT_FLOAT,   VIVID_PORT_OUTPUT});
-    out.push_back({"speed",   VIVID_PORT_FLOAT,   VIVID_PORT_OUTPUT});
-    out.push_back(VIVID_HANDLE_PORT("media_clock", VIVID_PORT_OUTPUT, vivid::MediaStreamV1));
-}
+#define VIVID_CUSTOM_PORT(port_name, dir, CppType, TransportKind) \
+    VividPortDescriptor { \
+        (port_name), \
+        vivid_port_type<CppType>(), \
+        (dir), \
+        (TransportKind), \
+        sizeof(CppType), \
+        #CppType \
+    }
 ```
 
-### After Phases 1+2
-
-`VividPortDescriptor` gains two trailing fields: `handle_payload_size` and `handle_type_name`. The `VIVID_HANDLE_PORT` macro emits both automatically — non-handle ports are unchanged:
+Examples:
 
 ```cpp
-#define VIVID_HANDLE_PORT(port_name, dir, CppType) \
-    VividPortDescriptor { (port_name), VIVID_PORT_HANDLE, (dir), \
-                          vivid_type_id<CppType>(), sizeof(CppType), #CppType }
+out.push_back(VIVID_CUSTOM_PORT("media_stream",
+                                VIVID_PORT_OUTPUT,
+                                vivid::MediaStreamV1,
+                                VIVID_PORT_TRANSPORT_CUSTOM_REF));
 
-// Package author code — identical call site, macro does the work:
-out.push_back(VIVID_HANDLE_PORT("media_clock", VIVID_PORT_OUTPUT, vivid::MediaStreamV1));
-// Expands to: { "media_clock", VIVID_PORT_HANDLE, VIVID_PORT_OUTPUT,
-//               0xA3F2..., 56, "vivid::MediaStreamV1" }
+out.push_back(VIVID_CUSTOM_PORT("scene_out",
+                                VIVID_PORT_OUTPUT,
+                                mypkg::SceneFragmentV1,
+                                VIVID_PORT_TRANSPORT_CUSTOM_VALUE));
 ```
 
-The runtime uses `handle_payload_size` for generic cross-domain copy (no more hardcoded `sizeof` branches) and `handle_type_name` for UI tooltips and MCP/LLM-facing port descriptions.
+There is no `VIVID_HANDLE_PORT` compatibility macro.
 
-### After Phase 3
+## Payload Rules
 
-Packages that define custom handle types export an optional `vivid_register_types` function. The package manager calls it after `dlopen`, before any operator is instantiated. Packages without custom types simply omit it — fully backward compatible.
+Custom payload types must declare which transport they expect. That determines the validity rules.
+
+### `CUSTOM_VALUE`
+
+For `VIVID_PORT_TRANSPORT_CUSTOM_VALUE`:
+
+- must be POD / trivially copyable
+- must not require destructors
+- may cross control/audio/GPU boundaries only through fixed-size copies
+- must fit the configured snapshot limit for any boundary it crosses
+
+Default rule:
+
+- if a `CUSTOM_VALUE` type is ever consumed by audio, it must be `<= 256` bytes
+
+Important: this is not a global rule for all custom types. It is a rule for audio-bridgeable value types.
+
+### `CUSTOM_REF`
+
+For `VIVID_PORT_TRANSPORT_CUSTOM_REF`:
+
+- payload is an opaque runtime-managed reference/handle
+- cross-thread delivery uses handle snapshots, not raw struct copies
+- audio thread may resolve or consume only via pre-approved lock-free/runtime-safe access patterns
+
+This is the right category for things like media sessions and future shared runtime resources.
+
+## Registration
+
+Packages that define custom types must export a registration function. This is not optional in the final model for packages that use custom types.
 
 ```cpp
-// In your package's main .cpp, alongside the existing vivid_get_descriptor() export:
+typedef struct VividPortTypeInfo {
+    uint32_t                type_id;
+    const char*             type_name;
+    const char*             package_name;
+    uint32_t                payload_size;
+    uint32_t                abi_version;
+    VividPortTransport      transport;
+    const char*             description;
+} VividPortTypeInfo;
 
-#include "operator_api/type_id.h"
-#include "my_scene_fragment.h"
+void vivid_register_port_type(const VividPortTypeInfo* info);
+const VividPortTypeInfo* vivid_lookup_port_type(uint32_t type_id);
+uint32_t vivid_list_port_types(const VividPortTypeInfo** out, uint32_t max);
+```
 
-extern "C" void vivid_register_types(VividRegistrationContext* ctx) {
-    static const VividHandleTypeInfo info = {
-        .type_id      = vivid_type_id<mypkg::SceneFragmentV1>(),
-        .type_name    = "mypkg::SceneFragmentV1",
-        .package_name = "my_3d_package",
-        .payload_size = sizeof(mypkg::SceneFragmentV1),
-        .abi_version  = 1,
-        .description  = "Scene fragment carrying transform + mesh reference"
+Package export:
+
+```cpp
+extern "C" void vivid_register_types(void) {
+    static const VividPortTypeInfo info = {
+        vivid_port_type<mypkg::SceneFragmentV1>(),
+        "mypkg::SceneFragmentV1",
+        "my_3d_package",
+        sizeof(mypkg::SceneFragmentV1),
+        1,
+        VIVID_PORT_TRANSPORT_CUSTOM_VALUE,
+        "Scene fragment carrying transform and mesh/material ids"
     };
-    vivid_register_handle_type(&info);
+    vivid_register_port_type(&info);
 }
 ```
 
-Operators still define ports with the same `VIVID_HANDLE_PORT` macro — registration is separate from port declaration:
+Collision rules:
+
+- same `type_id`, different `payload_size`: reject package
+- same `type_id`, different `transport`: reject package
+- same `type_id`, different `abi_version`: reject package
+- same everything: accept as shared type definition
+
+## Runtime Rules
+
+### Scheduler
+
+The scheduler must validate both:
+
+- `from_port.type == to_port.type`
+- `from_port.transport == to_port.transport`
+
+The old HANDLE-specific path disappears completely.
+
+This means the scheduler becomes simpler conceptually, but not because transport disappears. It becomes simpler because transport is explicit instead of hidden inside one special enum case plus `handle_type_id`.
+
+### Audio bridge
+
+The audio engine must stop hardcoding `MediaStreamV1`.
+
+There are now two generic cases:
+
+- `CUSTOM_VALUE`: copy `payload_size` bytes into a fixed snapshot buffer
+- `CUSTOM_REF`: copy a runtime-managed handle/reference token into an audio-safe snapshot structure
+
+This means the current `HandleInputSnapshot` concept should be replaced by something transport-aware, not just renamed.
+
+Suggested shape:
 
 ```cpp
-out.push_back(VIVID_HANDLE_PORT("scene_out", VIVID_PORT_OUTPUT, mypkg::SceneFragmentV1));
-```
-
-### Defining a custom handle type
-
-Handle payloads must satisfy these requirements:
-
-- **POD / trivially copyable** — the runtime `memcpy`s them across domain boundaries
-- **≤ 256 bytes** — must fit in `HandleInputSnapshot::kMaxBytes` for audio-domain delivery
-- **Version suffix** — use `V1`, `V2`, etc.; bump on breaking layout changes
-- **Namespace** — `vivid::` for core types, `<package>::` for community types
-
-Minimal example:
-
-```cpp
-// my_scene_fragment.h
-#pragma once
-#include <cstdint>
-
-namespace mypkg {
-
-struct SceneFragmentV1 {
-    float    transform[16];   // 4×4 column-major
-    uint32_t mesh_id;
-    uint32_t material_id;
-    float    opacity;
+struct CustomPortSnapshot {
+    bool valid = false;
+    VividPortType type = 0;
+    VividPortTransport transport = VIVID_PORT_TRANSPORT_CUSTOM_VALUE;
+    uint32_t byte_size = 0;
+    static constexpr uint32_t kMaxBytes = 256;
+    uint8_t bytes[kMaxBytes] = {};
 };
-
-static_assert(sizeof(SceneFragmentV1) <= 256, "must fit in HandleInputSnapshot");
-static_assert(__is_trivially_copyable(SceneFragmentV1), "must be POD for cross-domain memcpy");
-
-} // namespace mypkg
 ```
 
----
+If a type is `CUSTOM_VALUE` and `payload_size > kMaxBytes`, it is not audio-bridgeable and graph build should fail for control->audio or gpu->audio crossings.
 
-## Context
+### Control server / MCP / UI
 
-Vivid has 7 built-in port types that represent fundamentally different runtime routing mechanisms (float copy, audio buffers, GPU textures, etc.). The `VIVID_PORT_HANDLE` type is the extensibility point — it carries a `void*` with a `handle_type_id` (FNV-1a hash) for type safety at connection time.
+All introspection must expose:
 
-Currently, handle type safety is nominal (name-hash only), and the runtime has no knowledge of handle payloads beyond the hash. With community-contributed packages exchanging custom handle data without dev-time coordination, we need:
+- `type`
+- `type_name`
+- `transport`
+- `payload_size`
 
-- **Discoverability** — tooling/LLM can enumerate available handle types and their semantics
-- **Collision detection** — two packages defining `MeshBuffer` with different layouts are caught
-- **Compatibility rules** — structured type A can connect to type B if a conversion exists
-- **UI presentation** — custom type names, colors, tooltips in the graph editor
-- **Cross-domain safety** — the audio engine can copy any handle type generically (today it hardcodes `sizeof(MediaStreamV1)`)
+The current `"handle"` string is removed from public introspection.
 
-### Key insight
+The graph editor should present custom ports by `type_name`, not by a generic `"handle"` category.
 
-Custom port types don't need new routing mechanisms — they need **typed data passing with metadata**, which is exactly what HANDLE already does. The registry is not about adding values to the `VividPortType` enum. It's about enriching what HANDLE can express.
+## Scope of the ABI Break
 
----
+This should be done as one deliberate ABI break, not as multiple transitional phases.
 
-## Current State (reference)
+That means changing all of these together:
 
-### Where port types are handled in the runtime
+- `src/operator_api/types.h`
+- `src/operator_api/type_id.h`
+- `src/runtime/scheduler.h`
+- `src/runtime/scheduler.cpp`
+- `src/runtime/audio_engine.h`
+- `src/runtime/audio_engine.cpp`
+- `src/runtime/control_server.cpp`
+- `src/runtime/operator_registry.h`
+- `src/runtime/operator_registry.cpp`
+- `src/ui/node_graph_util.h`
+- `src/runtime/operator_creator.cpp`
+- any core operators currently using HANDLE-era ports
 
-| Subsystem | File | What it does with port types |
-|-----------|------|------------------------------|
-| Scheduler init | `scheduler.cpp:176-218` | Classifies ports into per-type index vectors |
-| Wire resolution | `scheduler.cpp:400-590` | Type matching, handle_type_id validation |
-| Tick processing | `scheduler.cpp:711-940` | Type-specific routing (texture, handle, string, float) |
-| Audio bridging | `audio_engine.cpp:559-573` | Cross-domain memcpy into 256-byte HandleInputSnapshot |
-| UI compatibility | `node_graph_util.h:135-149` | `port_type_compatible()` — hardcoded rules |
-| UI visuals | `node_graph_constants.h:137-144` | Domain colors (not per-port-type) |
-| MCP/tooling | `graph_snapshot.h:42-56` | PortInfo exposes type + direction |
-| Package loading | `operator_registry.h:17-31` | Caches VividPortDescriptor including handle_type_id |
+The goal is that after the rewrite:
 
-### Current handle types defined
+- no runtime code refers to `VIVID_PORT_HANDLE`
+- no runtime code refers to `handle_type_id`
+- no runtime code uses `input_handles` / `output_handles` naming for the generic custom-type path
 
-| Type | Header | Status | Size |
-|------|--------|--------|------|
-| `vivid::MediaStreamV1` | `media_stream.h` | Active (movie ops) | ~56 bytes |
-| `vivid::MediaClockV1` | `media_clock.h` | Active (embedded in MediaStreamV1) | ~40 bytes |
-| `VividGpuBuffer` | `gpu_types.h` | Scaffolding | ~24 bytes |
-| `VividMesh` | `gpu_types.h` | Scaffolding | ~64 bytes |
-| `VividMidiBuffer` | `midi_types.h` | Scaffolding | ~520 bytes |
+## Migration Policy
 
-### Constraints
+There is no compatibility layer.
 
-- Cross-domain handle payloads must fit in `HandleInputSnapshot::kMaxBytes = 256`
-- Audio thread: no heap allocation, no blocking
-- `dlopen` boundary: no C++ RTTI, no virtual dispatch across libraries
-- FNV-1a hash includes full namespace (`vivid::MediaStreamV1` ≠ `mypkg::MediaStreamV1`)
+Specifically:
 
----
+- old plugins/operators must be rebuilt
+- old package binaries are invalid until rebuilt
+- any old graph metadata that still refers to HANDLE-era editor labels can be updated directly
 
-## Phased Design
+This is acceptable because Vivid is still pre-release and the cleaner design is worth the break.
 
-### Phase 0: Documentation & Convention (no code changes)
+## What This Enables
 
-**Goal:** Establish handle type authoring conventions before building machinery.
+- Package-defined types become first-class and introspectable.
+- The runtime can distinguish value types from reference/session types without a HANDLE special-case.
+- Audio-domain safety becomes generic instead of hardcoded to known types.
+- UI and MCP can talk about real types instead of a catch-all `"handle"` bucket.
+- Future conversion logic can be added on top of a coherent base.
 
-- Document the handle type contract in `docs/HANDLE-TYPES.md`:
-  - All handle payloads must be POD/trivially-copyable (for cross-domain memcpy)
-  - Max 256 bytes for audio-domain consumption
-  - Version suffix convention (`V1`, `V2`) for breaking changes
-  - Namespace convention: `vivid::` for core, `<package>::` for community
-- Add a "Handle Type Catalog" section listing all defined types with their sizes and purposes
-- Establish that `type_id.h` is the single header packages include for handle type support
+## Deferred
 
-**Open question:** Should we require packages to place handle type headers in a well-known location (e.g. `include/handle_types/`) for cross-package consumption?
+These are explicitly not part of the one-shot rewrite:
 
-### Phase 1: Generic Cross-Domain Handle Copy
-
-**Goal:** Remove the hardcoded `sizeof(MediaStreamV1)` from the audio engine.
-
-**Problem:** `audio_engine.cpp:559-573` branches on `handle_type_id == vivid_type_id<MediaStreamV1>()` to determine copy size. Every new handle type needs a new branch.
-
-**Approach A — Store sizeof in VividPortDescriptor:**
-- Add `uint32_t handle_payload_size` to `VividPortDescriptor` (ABI change — bump to v2?)
-- The `VIVID_HANDLE_PORT` macro already knows the type, so it can emit `sizeof(CppType)`
-- Audio engine reads `handle_payload_size` from the descriptor instead of branching
-- Pro: No runtime state, no registration. Cons: ABI field addition.
-
-**Approach B — Embedded header (discussed earlier, deferred):**
-- `VividHandleHeader` as first field with `struct_size`
-- Audio engine reads size from the payload itself
-- Pro: Validates actual data. Con: Requires all handle types to adopt the header.
-
-**Approach C — Type registry lookup:**
-- Packages register `{ type_id, sizeof, name }` at load time
-- Audio engine queries registry by `handle_type_id` to get size
-- Pro: Centralizes metadata. Con: Registration machinery.
-
-**Recommendation:** Approach A is the smallest change that solves the immediate problem. Approach C is the long-term answer (Phase 3). They're compatible — the descriptor field works now, the registry subsumes it later.
-
-### Phase 2: Handle Type Metadata in the Scheduler
-
-**Goal:** The scheduler and UI know handle type names (not just numeric IDs).
-
-**Changes:**
-- Extend `VividPortDescriptor` with `const char* handle_type_name` (nullable, set by macro)
-- Update `VIVID_HANDLE_PORT` to also emit the stringified type name:
-  ```cpp
-  #define VIVID_HANDLE_PORT(port_name, dir, CppType) \
-      VividPortDescriptor { (port_name), VIVID_PORT_HANDLE, (dir), \
-                            vivid_type_id<CppType>(), sizeof(CppType), #CppType }
-  ```
-- `node_graph_util.h` — `port_type_compatible()` can show type name in tooltip on mismatch
-- `graph_snapshot.h` — `PortInfo` gains `handle_type_name` for MCP/LLM exposure
-- MCP tools can report "this port expects a `vivid::MediaStreamV1`" instead of "this port expects handle 0xA3F2B1C4"
-
-**ABI impact:** Adds fields to `VividPortDescriptor`. Must be done together with Phase 1 if we want a single ABI bump.
-
-### Phase 3: Handle Type Registry
-
-**Goal:** Packages register handle types at load time. The runtime has a queryable catalog of all available handle types.
-
-**Registry API (C, in `type_id.h` or new `handle_registry.h`):**
-```cpp
-typedef struct VividHandleTypeInfo {
-    uint32_t     type_id;         // FNV-1a hash
-    const char*  type_name;       // "vivid::MediaStreamV1"
-    const char*  package_name;    // "vivid_core" / "vivid_3d"
-    uint32_t     payload_size;    // sizeof(T)
-    uint32_t     abi_version;     // package-defined, bumped on breaking changes
-    const char*  description;     // human/LLM-readable
-} VividHandleTypeInfo;
-
-// Called by packages at load time (from vivid_register or init)
-void vivid_register_handle_type(const VividHandleTypeInfo* info);
-
-// Called by runtime/tooling to query
-const VividHandleTypeInfo* vivid_lookup_handle_type(uint32_t type_id);
-uint32_t vivid_list_handle_types(const VividHandleTypeInfo** out, uint32_t max);
-```
-
-**Registration timing:**
-- Packages already have a load entry point via `dlopen` → `vivid_get_descriptor()`
-- Add an optional `vivid_register_types(VividRegistrationContext*)` export that the package manager calls after `dlopen` but before any operator is instantiated
-- If the export doesn't exist, the package has no custom types (backward compatible)
-
-**Collision detection:**
-- If two packages register the same `type_id` with different `payload_size` or `abi_version`, the runtime logs an error and refuses to load the second package
-- Same `type_id` + same `payload_size` + same `abi_version` = assumed compatible (shared type header)
-
-**What the registry enables:**
-- Audio engine queries `payload_size` by `type_id` — no hardcoded branches
-- UI shows type names and descriptions on hover
-- MCP/LLM can enumerate handle types: "available handle types: MediaStreamV1 (media playback state), VividMesh (GPU mesh data), ..."
-- Graph editor can filter connection suggestions by handle type compatibility
-- Future: conversion functions between compatible handle types
-
-### Phase 4: Handle Type Compatibility & Conversion (future)
-
-**Goal:** Allow compatible-but-not-identical handle types to connect with automatic conversion.
-
-This is the furthest-out phase. Examples:
-- `MediaStreamV1` → `MediaStreamV2` with a registered upgrade function
-- `PackageA::Mesh` → `PackageB::Mesh` if both register as implementing a common "mesh" interface
-
-**Mechanism:** Registry entries gain an optional `convert_from` table:
-```cpp
-typedef struct VividHandleConversion {
-    uint32_t from_type_id;
-    void (*convert)(const void* src, void* dst);  // must be trivial, no allocation
-} VividHandleConversion;
-```
-
-**Deferred** — only worth building when the ecosystem has enough types to need it.
-
----
-
-## ABI Impact Summary
-
-| Phase | ABI change? | What changes |
-|-------|-------------|--------------|
-| 0 | No | Documentation only |
-| 1 | Yes (minor) | Add `handle_payload_size` to `VividPortDescriptor` |
-| 2 | Yes (minor) | Add `handle_type_name` to `VividPortDescriptor` |
-| 3 | Yes | New `vivid_register_types` export, registry API |
-| 4 | Yes | Conversion table API |
-
-Phases 1+2 should be combined into a single ABI bump. Phase 3 is additive (new optional export). Phase 4 extends Phase 3's API.
-
----
+- automatic conversion between custom types
+- inheritance/interface-style type compatibility
+- per-graph type environments
+- backward compatibility shims for old HANDLE plugins
 
 ## Open Questions
 
-1. **Should Phases 1+2 bump to ABI v2, or can we add trailing fields to VividPortDescriptor without a version bump?** Trailing fields in a C struct are safe if old code doesn't read them, but the runtime reads all fields. Probably needs a bump.
+1. Should `CUSTOM_REF` snapshots carry raw handle ids, or a small opaque runtime token type separate from handle ids?
+2. Should the 256-byte `CUSTOM_VALUE` audio snapshot limit remain fixed, or become a compile-time constant exposed in one header?
+3. Should custom-type headers be expected in a standard package location such as `include/port_types/` for cross-package reuse?
+4. Should the registry be loaded at package scan time or only when a package is activated/instantiated?
 
-2. **Should the registry be process-global or per-graph?** Process-global is simpler and matches how packages are loaded. Per-graph would allow different graphs to have different type environments, but adds complexity for no clear benefit.
+## Key Correction From The Earlier Draft
 
-3. **Should `vivid_register_types` be required or optional?** Optional (backward compatible) — packages without custom handle types don't export it. The runtime discovers types from operator descriptors as a fallback.
+The earlier draft was right to eliminate HANDLE as a type identity mechanism.
 
-4. **HandleInputSnapshot is 256 bytes — is that enough for community types?** VividMidiBuffer is already ~520 bytes (64 messages × 8 bytes). If it needs audio-domain delivery, the limit must increase or become configurable. This should be addressed before Phase 3.
+It was wrong to imply that custom types no longer need explicit transport semantics.
 
-5. **Should handle types support inheritance/interfaces?** E.g. "this type implements the Mesh interface." Probably not in v1 of the registry — keep it flat. Conversion functions (Phase 4) cover the use case without type hierarchy complexity.
+The clean design is:
 
----
+- remove HANDLE
+- keep type ids first-class
+- make transport class explicit
 
-## Key Files
-
-- `src/operator_api/types.h` — VividPortDescriptor struct (ABI surface)
-- `src/operator_api/type_id.h` — vivid_type_id, VIVID_HANDLE_PORT macro
-- `src/runtime/scheduler.cpp` — wire validation, handle delivery
-- `src/runtime/scheduler.h` — NodeState, Wire structs
-- `src/runtime/audio_engine.h` — HandleInputSnapshot (256-byte buffer)
-- `src/runtime/audio_engine.cpp` — cross-domain handle copy (hardcoded sizeof)
-- `src/runtime/package_manager.h` — package loading
-- `src/runtime/operator_registry.h` — operator probing/caching
-- `src/ui/node_graph_util.h` — port_type_compatible()
-- `src/ui/graph_snapshot.h` — PortInfo (MCP/tooling exposure)
+That is the model this document now specifies.

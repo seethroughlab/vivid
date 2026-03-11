@@ -160,8 +160,7 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back(VIVID_HANDLE_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1));
-        out.push_back({"left",  VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
-        out.push_back({"right", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});
+        out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, 0, 2});
     }
 
     struct MediaClockSnapshot {
@@ -492,7 +491,7 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
         }
 
         float* L = ctx->output_buffers[0];
-        float* R = ctx->output_buffers[1];
+        float* R = ctx->output_buffers[0] + ctx->buffer_size;  // planar channel 1
         uint32_t n = ctx->buffer_size;
         auto* active_session = active_session_ptr_.load(std::memory_order_acquire);
         if (active_session) {

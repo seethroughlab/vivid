@@ -97,12 +97,8 @@
             "to": "movie_video/media_stream"
         },
         {
-            "from": "movie_audio/left",
-            "to": "aout/left"
-        },
-        {
-            "from": "movie_audio/right",
-            "to": "aout/right"
+            "from": "movie_audio/output",
+            "to": "aout/input"
         },
         {
             "from": "pick/file",

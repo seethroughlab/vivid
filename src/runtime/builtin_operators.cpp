@@ -8,8 +8,6 @@
 
 static const VividPortDescriptor audio_out_ports[] = {
     { "input", VIVID_PORT_AUDIO, VIVID_PORT_INPUT },
-    { "left",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT },
-    { "right", VIVID_PORT_AUDIO, VIVID_PORT_INPUT },
 };
 
 static const char* audio_out_device_labels[] = { "Default" };
@@ -24,7 +22,7 @@ static const VividOperatorDescriptor audio_out_desc = {
     VIVID_DOMAIN_AUDIO,
     1,                  // param_count
     audio_out_params,
-    3,                  // port_count
+    1,                  // port_count
     audio_out_ports,
     1,                  // time_dependent
 };

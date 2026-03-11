@@ -29,22 +29,18 @@ int main() {
     auto* video_loader = registry.find_loaded("video_out");
     check(video_loader != nullptr, "video_out is registered in the registry");
 
-    // 3. audio_out descriptor: domain = AUDIO, 3 input ports, 1 param
+    // 3. audio_out descriptor: domain = AUDIO, 1 input port (multi-channel), 1 param
     if (audio_loader) {
         const auto* desc = audio_loader->descriptor();
         check(desc != nullptr, "audio_out descriptor is non-null");
         if (desc) {
             check(desc->domain == VIVID_DOMAIN_AUDIO,
                   "audio_out domain is VIVID_DOMAIN_AUDIO");
-            check(desc->port_count == 3,
-                  "audio_out has 3 ports (input, left, right)");
-            if (desc->port_count >= 3) {
+            check(desc->port_count == 1,
+                  "audio_out has 1 port (input)");
+            if (desc->port_count >= 1) {
                 check(std::strcmp(desc->ports[0].name, "input") == 0,
                       "audio_out port[0] is 'input'");
-                check(std::strcmp(desc->ports[1].name, "left") == 0,
-                      "audio_out port[1] is 'left'");
-                check(std::strcmp(desc->ports[2].name, "right") == 0,
-                      "audio_out port[2] is 'right'");
             }
             check(desc->param_count == 1, "audio_out has 1 param (device)");
             if (desc->param_count >= 1) {

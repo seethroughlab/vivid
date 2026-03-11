@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 1u
+#define VIVID_OPERATOR_ABI_VERSION 2u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -82,6 +82,7 @@ typedef struct VividPortDescriptor {
     VividPortType      type;
     VividPortDirection direction;
     uint32_t           handle_type_id;  // non-zero when type == VIVID_PORT_HANDLE (FNV-1a of C++ type)
+    uint8_t            channels;        // 0=auto, 1=mono, 2=stereo, 6=5.1, etc.
 } VividPortDescriptor;
 
 typedef struct VividOperatorDescriptor {
@@ -169,10 +170,13 @@ typedef struct VividAudioContext {
     uint64_t  frame;
     float*    param_values;
     // Audio-specific
-    float**   input_buffers;    // [port_idx][sample]
-    float**   output_buffers;   // [port_idx][sample]
+    float**   input_buffers;    // [port_idx][sample] — planar multi-channel: ch c at [c * buffer_size]
+    float**   output_buffers;   // [port_idx][sample] — planar multi-channel: ch c at [c * buffer_size]
     uint32_t  buffer_size;      // 256
     uint32_t  sample_rate;      // 48000
+    // Per-port channel counts (resolved by runtime)
+    const uint8_t* input_channel_counts;   // [port_idx] — NULL when all mono
+    const uint8_t* output_channel_counts;  // [port_idx] — NULL when all mono
     // Cross-domain inputs from control
     VividSpreadPort*  input_spreads;
     VividSpreadPort*  output_spreads;

@@ -51,7 +51,7 @@
         },
         {"from": "vid/media_clock", "to": "audio/media_stream"},
                 {
-            "from": "audio/left",
+            "from": "audio/output",
             "to": "rev/input"
         },
         {

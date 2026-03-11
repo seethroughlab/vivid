@@ -53,8 +53,8 @@ int main() {
     if (a_info_new) {
         check(a_info_new->domain == VIVID_DOMAIN_AUDIO,
               "audio_out info has domain VIVID_DOMAIN_AUDIO");
-        check(a_info_new->ports.size() == 3,
-              "audio_out info has 3 ports");
+        check(a_info_new->ports.size() == 1,
+              "audio_out info has 1 port");
         check(a_info_new->params.size() == 1,
               "audio_out info has 1 param");
         check(!a_info_new->params.empty() && a_info_new->params[0].name == "device",

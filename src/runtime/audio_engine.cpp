@@ -37,13 +37,18 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
     ns.has_string_input_ports = false;
     ns.has_handle_input_ports = false;
 
+    ns.descriptor_input_channels.clear();
+    ns.descriptor_output_channels.clear();
+
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             ns.input_port_indices[desc->ports[i].name] = ns.input_port_count++;
             ns.input_port_types.push_back(desc->ports[i].type);
+            ns.descriptor_input_channels.push_back(desc->ports[i].channels);
         } else {
             ns.output_port_indices[desc->ports[i].name] = ns.output_port_count++;
             ns.output_port_types.push_back(desc->ports[i].type);
+            ns.descriptor_output_channels.push_back(desc->ports[i].channels);
         }
         if (desc->ports[i].type == VIVID_PORT_SPREAD) {
             ns.has_spread_ports = true;
@@ -57,6 +62,11 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
             ns.has_handle_input_ports = true;
         }
     }
+
+    // Channel counts default to 1; build() will run negotiation and resize if needed
+    ns.input_channel_counts.assign(ns.input_port_count, 1);
+    ns.output_channel_counts.assign(ns.output_port_count, 1);
+    ns.is_mono_autodup = false;
 
     ns.input_buffers.resize(ns.input_port_count, std::vector<float>(kBufferSize, 0.0f));
     ns.output_buffers.resize(ns.output_port_count, std::vector<float>(kBufferSize, 0.0f));
@@ -323,6 +333,206 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     }
     for (auto& dw : cross_handle_wires_) {
         dw.audio_node_idx = old_to_new[dw.audio_node_idx];
+    }
+
+    // -----------------------------------------------------------------------
+    // Channel negotiation (Phase 2): resolve per-port channel counts
+    // -----------------------------------------------------------------------
+    // Pass 1: Set explicit channels from descriptors
+    for (uint32_t i = 0; i < n; ++i) {
+        auto& ns = nodes_[i];
+        for (uint32_t p = 0; p < ns.input_port_count; ++p) {
+            uint8_t dc = (p < ns.descriptor_input_channels.size()) ? ns.descriptor_input_channels[p] : 0;
+            if (dc > 0) ns.input_channel_counts[p] = dc;
+            // else stays 1, will be overridden by wire propagation
+        }
+        for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+            uint8_t dc = (p < ns.descriptor_output_channels.size()) ? ns.descriptor_output_channels[p] : 0;
+            if (dc > 0) ns.output_channel_counts[p] = dc;
+        }
+    }
+
+    // Pass 2: Propagate via wires (topo order ensures sources are resolved first)
+    // Source output channel count flows to destination input; auto outputs inherit from inputs
+    for (uint32_t i = 0; i < n; ++i) {
+        auto& ns = nodes_[i];
+
+        // For auto (descriptor=0) output ports: inherit max of input channels
+        uint8_t max_input_ch = 1;
+        for (uint32_t p = 0; p < ns.input_port_count; ++p) {
+            if (ns.input_port_types[p] == VIVID_PORT_AUDIO && ns.input_channel_counts[p] > max_input_ch)
+                max_input_ch = ns.input_channel_counts[p];
+        }
+        for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+            uint8_t dc = (p < ns.descriptor_output_channels.size()) ? ns.descriptor_output_channels[p] : 0;
+            if (dc == 0 && ns.output_port_types[p] == VIVID_PORT_AUDIO) {
+                ns.output_channel_counts[p] = max_input_ch;
+            }
+        }
+
+        // Propagate this node's output channel counts to downstream inputs
+        for (auto& w : wires_) {
+            if (w.from_node_idx == i) {
+                uint8_t src_ch = ns.output_channel_counts[w.from_port_idx];
+                auto& to_ns = nodes_[w.to_node_idx];
+                uint8_t dc = (w.to_port_idx < to_ns.descriptor_input_channels.size())
+                             ? to_ns.descriptor_input_channels[w.to_port_idx] : 0;
+                if (dc == 0) {
+                    // Auto input: take max of current and incoming
+                    if (src_ch > to_ns.input_channel_counts[w.to_port_idx])
+                        to_ns.input_channel_counts[w.to_port_idx] = src_ch;
+                }
+            }
+        }
+    }
+
+    // Pass 3: Detect auto-dup nodes (mono operators in multi-channel chains)
+    for (uint32_t i = 0; i < n; ++i) {
+        auto& ns = nodes_[i];
+        // Check if ALL audio ports have explicit channels <= 1 in descriptor
+        bool all_mono_declared = true;
+        for (uint32_t p = 0; p < ns.input_port_count; ++p) {
+            if (ns.input_port_types[p] != VIVID_PORT_AUDIO) continue;
+            uint8_t dc = (p < ns.descriptor_input_channels.size()) ? ns.descriptor_input_channels[p] : 0;
+            if (dc > 1) { all_mono_declared = false; break; }
+        }
+        if (all_mono_declared) {
+            for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+                if (ns.output_port_types[p] != VIVID_PORT_AUDIO) continue;
+                uint8_t dc = (p < ns.descriptor_output_channels.size()) ? ns.descriptor_output_channels[p] : 0;
+                if (dc > 1) { all_mono_declared = false; break; }
+            }
+        }
+
+        // Find max wire channel count touching this node
+        uint8_t max_wire_ch = 1;
+        for (const auto& w : wires_) {
+            if (w.to_node_idx == i) {
+                uint8_t src_ch = nodes_[w.from_node_idx].output_channel_counts[w.from_port_idx];
+                if (src_ch > max_wire_ch) max_wire_ch = src_ch;
+            }
+        }
+
+        if (all_mono_declared && max_wire_ch > 1) {
+            ns.is_mono_autodup = true;
+            // Mono processing stays at 1 channel per port internally
+            for (uint32_t p = 0; p < ns.input_port_count; ++p)
+                if (ns.input_port_types[p] == VIVID_PORT_AUDIO)
+                    ns.input_channel_counts[p] = 1;
+            for (uint32_t p = 0; p < ns.output_port_count; ++p)
+                if (ns.output_port_types[p] == VIVID_PORT_AUDIO)
+                    ns.output_channel_counts[p] = 1;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Multi-channel buffer allocation (Phase 3)
+    // -----------------------------------------------------------------------
+    for (uint32_t i = 0; i < n; ++i) {
+        auto& ns = nodes_[i];
+        if (ns.is_mono_autodup) {
+            // Find the wire channel count for auto-dup sizing
+            uint8_t wire_ch = 1;
+            for (const auto& w : wires_) {
+                if (w.to_node_idx == i) {
+                    uint8_t src_ch = nodes_[w.from_node_idx].output_channel_counts[w.from_port_idx];
+                    if (src_ch > wire_ch) wire_ch = src_ch;
+                }
+            }
+            // Multi-channel input/output buffers for deinterleave/interleave
+            for (uint32_t p = 0; p < ns.input_port_count; ++p) {
+                if (ns.input_port_types[p] == VIVID_PORT_AUDIO)
+                    ns.input_buffers[p].resize(wire_ch * kBufferSize, 0.0f);
+            }
+            for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+                if (ns.output_port_types[p] == VIVID_PORT_AUDIO)
+                    ns.output_buffers[p].resize(wire_ch * kBufferSize, 0.0f);
+            }
+        } else {
+            for (uint32_t p = 0; p < ns.input_port_count; ++p) {
+                if (ns.input_port_types[p] == VIVID_PORT_AUDIO)
+                    ns.input_buffers[p].resize(ns.input_channel_counts[p] * kBufferSize, 0.0f);
+            }
+            for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+                if (ns.output_port_types[p] == VIVID_PORT_AUDIO)
+                    ns.output_buffers[p].resize(ns.output_channel_counts[p] * kBufferSize, 0.0f);
+            }
+        }
+    }
+
+    // Resolve wire channel counts (Phase 5)
+    for (auto& w : wires_) {
+        auto& from_ns = nodes_[w.from_node_idx];
+        auto& to_ns = nodes_[w.to_node_idx];
+        w.from_channels = from_ns.is_mono_autodup
+            ? [&]() -> uint8_t { // auto-dup: wire carries the upstream channel count
+                for (const auto& uw : wires_) {
+                    if (uw.to_node_idx == w.from_node_idx) {
+                        uint8_t sc = nodes_[uw.from_node_idx].output_channel_counts[uw.from_port_idx];
+                        if (sc > 1) return sc;
+                    }
+                }
+                return from_ns.output_channel_counts[w.from_port_idx];
+            }()
+            : from_ns.output_channel_counts[w.from_port_idx];
+        w.to_channels = to_ns.is_mono_autodup
+            ? w.from_channels  // auto-dup input accepts whatever comes in
+            : to_ns.input_channel_counts[w.to_port_idx];
+    }
+
+    // -----------------------------------------------------------------------
+    // Auto-duplication setup (Phase 4)
+    // -----------------------------------------------------------------------
+    auto_dup_groups_.clear();
+    node_to_dup_group_.clear();
+    for (uint32_t i = 0; i < n; ++i) {
+        auto& ns = nodes_[i];
+        if (!ns.is_mono_autodup) continue;
+
+        // Determine channel count from incoming wires
+        uint8_t ch = 1;
+        for (const auto& w : wires_) {
+            if (w.to_node_idx == i) {
+                uint8_t src_ch = nodes_[w.from_node_idx].output_channel_counts[w.from_port_idx];
+                // For auto-dup source nodes, look at their wire channel count
+                if (nodes_[w.from_node_idx].is_mono_autodup) src_ch = w.from_channels;
+                if (src_ch > ch) ch = src_ch;
+            }
+        }
+        if (ch <= 1) {
+            ns.is_mono_autodup = false;
+            continue;
+        }
+
+        AutoDupGroup group;
+        group.node_idx = i;
+        group.channel_count = ch;
+        group.instances.resize(ch);
+        group.instances[0] = ns.instance;  // primary
+
+        // Create additional instances for channels 1..N-1
+        for (uint8_t c = 1; c < ch; ++c) {
+            group.instances[c] = ns.loader->create_instance();
+        }
+
+        // Allocate per-channel mono buffers
+        group.per_ch_inputs.resize(ch);
+        group.per_ch_outputs.resize(ch);
+        group.per_ch_in_ptrs.resize(ch);
+        group.per_ch_out_ptrs.resize(ch);
+        for (uint8_t c = 0; c < ch; ++c) {
+            group.per_ch_inputs[c].resize(ns.input_port_count, std::vector<float>(kBufferSize, 0.0f));
+            group.per_ch_outputs[c].resize(ns.output_port_count, std::vector<float>(kBufferSize, 0.0f));
+            group.per_ch_in_ptrs[c].resize(ns.input_port_count);
+            group.per_ch_out_ptrs[c].resize(ns.output_port_count);
+            for (uint32_t p = 0; p < ns.input_port_count; ++p)
+                group.per_ch_in_ptrs[c][p] = group.per_ch_inputs[c][p].data();
+            for (uint32_t p = 0; p < ns.output_port_count; ++p)
+                group.per_ch_out_ptrs[c][p] = group.per_ch_outputs[c][p].data();
+        }
+
+        node_to_dup_group_[i] = static_cast<uint32_t>(auto_dup_groups_.size());
+        auto_dup_groups_.push_back(std::move(group));
     }
 
     // Initialize param snapshots
@@ -696,7 +906,8 @@ bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry
         return false;
     }
 
-    for (auto& ns : nodes_) {
+    for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
+        auto& ns = nodes_[ni];
         const auto* old_desc = ns.loader->descriptor();
         if (!old_desc || std::string(old_desc->name) != type_name) continue;
 
@@ -704,6 +915,18 @@ bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry
         std::unordered_map<std::string, float> saved_params;
         for (const auto& [name, idx] : ns.param_indices) {
             saved_params[name] = ns.param_values[idx];
+        }
+
+        // Destroy auto-dup extra instances first
+        auto dup_it = node_to_dup_group_.find(ni);
+        if (dup_it != node_to_dup_group_.end()) {
+            auto& group = auto_dup_groups_[dup_it->second];
+            for (uint8_t c = 1; c < group.channel_count; ++c) {
+                if (group.instances[c]) {
+                    ns.loader->destroy_instance(group.instances[c]);
+                    group.instances[c] = nullptr;
+                }
+            }
         }
 
         // Destroy old instance
@@ -716,6 +939,15 @@ bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry
         ns.loader = new_loader;
         ns.instance = new_loader->create_instance();
         init_audio_node_state(ns, new_desc, &saved_params);
+
+        // Recreate auto-dup extra instances
+        if (dup_it != node_to_dup_group_.end()) {
+            auto& group = auto_dup_groups_[dup_it->second];
+            group.instances[0] = ns.instance;
+            for (uint8_t c = 1; c < group.channel_count; ++c) {
+                group.instances[c] = new_loader->create_instance();
+            }
+        }
 
         // Clear error state on reload — give the new code a fresh start
         ns.errored = false;
@@ -751,6 +983,19 @@ void AudioEngine::shutdown() {
         delete device_;
         device_ = nullptr;
     }
+
+    // Destroy extra auto-dup instances (skip [0] — that's the primary, destroyed below)
+    for (auto& group : auto_dup_groups_) {
+        auto& ns = nodes_[group.node_idx];
+        for (uint8_t c = 1; c < group.channel_count; ++c) {
+            if (group.instances[c]) {
+                ns.loader->destroy_instance(group.instances[c]);
+                group.instances[c] = nullptr;
+            }
+        }
+    }
+    auto_dup_groups_.clear();
+    node_to_dup_group_.clear();
 
     for (auto& ns : nodes_) {
         if (ns.instance) {
@@ -819,17 +1064,53 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
         for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
             auto& ns = nodes_[ni];
 
-            // Zero input buffers
+            // Zero input buffers (full multi-channel extent)
             for (auto& buf : ns.input_buffers)
-                std::memset(buf.data(), 0, chunk * sizeof(float));
+                std::memset(buf.data(), 0, buf.size() * sizeof(float));
 
-            // Copy upstream audio outputs into this node's inputs
+            // Copy upstream audio outputs into this node's inputs (multi-channel aware)
             for (const auto& w : wires_) {
                 if (w.to_node_idx == ni) {
                     const float* src = nodes_[w.from_node_idx].output_buffers[w.from_port_idx].data();
                     float* dst = ns.input_buffers[w.to_port_idx].data();
-                    for (uint32_t s = 0; s < chunk; ++s)
-                        dst[s] += src[s] * w.scale;  // additive mixing with scaling
+                    uint8_t fc = w.from_channels;
+                    uint8_t tc = w.to_channels;
+                    float scale = w.scale;
+
+                    if (fc == tc) {
+                        // N→N: copy all channels
+                        for (uint8_t c = 0; c < fc; ++c) {
+                            const float* sc = src + c * kBufferSize;
+                            float* dc = dst + c * kBufferSize;
+                            for (uint32_t s = 0; s < chunk; ++s)
+                                dc[s] += sc[s] * scale;
+                        }
+                    } else if (fc == 1 && tc > 1) {
+                        // 1→N: upmix mono to all channels
+                        for (uint8_t c = 0; c < tc; ++c) {
+                            float* dc = dst + c * kBufferSize;
+                            for (uint32_t s = 0; s < chunk; ++s)
+                                dc[s] += src[s] * scale;
+                        }
+                    } else if (fc > 1 && tc == 1) {
+                        // N→1: downmix — average all channels
+                        float inv_n = 1.0f / static_cast<float>(fc);
+                        for (uint32_t s = 0; s < chunk; ++s) {
+                            float sum = 0.0f;
+                            for (uint8_t c = 0; c < fc; ++c)
+                                sum += src[c * kBufferSize + s];
+                            dst[s] += sum * inv_n * scale;
+                        }
+                    } else {
+                        // N→M: copy min(fc,tc) channels, zero-pad or truncate
+                        uint8_t common = std::min(fc, tc);
+                        for (uint8_t c = 0; c < common; ++c) {
+                            const float* sc = src + c * kBufferSize;
+                            float* dc = dst + c * kBufferSize;
+                            for (uint32_t s = 0; s < chunk; ++s)
+                                dc[s] += sc[s] * scale;
+                        }
+                    }
                 }
             }
 
@@ -857,43 +1138,119 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
 
             double time = static_cast<double>(audio_frame_ + frames_written) / kSampleRate;
 
-            VividAudioContext audio_ctx{};
-            audio_ctx.time = time;
-            audio_ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
-            audio_ctx.frame = audio_frame_ + frames_written;
-            audio_ctx.param_values = ns.param_values.data();
-            audio_ctx.input_buffers = ns.in_ptrs.data();
-            audio_ctx.output_buffers = ns.out_ptrs.data();
-            audio_ctx.buffer_size = chunk;
-            audio_ctx.sample_rate = kSampleRate;
-            audio_ctx.input_spreads = ns.has_spread_ports ? ns.spread_in_ports.data() : nullptr;
-            audio_ctx.output_spreads = ns.has_spread_ports ? ns.spread_out_ports.data() : nullptr;
-            audio_ctx.input_handles = ns.has_handle_input_ports ? ns.input_handle_values.data() : nullptr;
-            audio_ctx.input_handle_count = ns.input_port_count;
-            audio_ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
-            audio_ctx.file_param_values = nullptr;
-            audio_ctx.file_param_count = 0;
-            audio_ctx.shared_handles = vivid::shared_handle_service();
+            // Check if this is an auto-dup node
+            auto dup_it = node_to_dup_group_.find(ni);
+            if (dup_it != node_to_dup_group_.end()) {
+                // ---- Auto-duplication processing (Phase 4) ----
+                auto& group = auto_dup_groups_[dup_it->second];
+                uint8_t ch = group.channel_count;
 
-            if (!ns.errored) {
-                try {
-                    CrashGuard guard(ns.node_id.c_str());
-                    ns.loader->process_audio(ns.instance, &audio_ctx);
-                } catch (const std::exception& e) {
-                    ns.errored = true;
-                    std::snprintf(ns.error_message, sizeof(ns.error_message), "%s", e.what());
+                // Deinterleave: copy channel c from multi-channel input → per_ch_inputs[c]
+                for (uint8_t c = 0; c < ch; ++c) {
+                    for (uint32_t p = 0; p < ns.input_port_count; ++p) {
+                        if (ns.input_port_types[p] == VIVID_PORT_AUDIO) {
+                            const float* mc = ns.input_buffers[p].data() + c * kBufferSize;
+                            std::memcpy(group.per_ch_inputs[c][p].data(), mc, chunk * sizeof(float));
+                        } else {
+                            // Non-audio ports: copy same data to all channels
+                            std::memcpy(group.per_ch_inputs[c][p].data(),
+                                        ns.input_buffers[p].data(), chunk * sizeof(float));
+                        }
+                    }
+                }
+
+                // Process each channel instance
+                for (uint8_t c = 0; c < ch; ++c) {
+                    VividAudioContext audio_ctx{};
+                    audio_ctx.time = time;
+                    audio_ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
+                    audio_ctx.frame = audio_frame_ + frames_written;
+                    audio_ctx.param_values = ns.param_values.data();
+                    audio_ctx.input_buffers = group.per_ch_in_ptrs[c].data();
+                    audio_ctx.output_buffers = group.per_ch_out_ptrs[c].data();
+                    audio_ctx.buffer_size = chunk;
+                    audio_ctx.sample_rate = kSampleRate;
+                    audio_ctx.input_channel_counts = nullptr;  // mono view
+                    audio_ctx.output_channel_counts = nullptr;
+                    audio_ctx.input_spreads = ns.has_spread_ports ? ns.spread_in_ports.data() : nullptr;
+                    audio_ctx.output_spreads = ns.has_spread_ports ? ns.spread_out_ports.data() : nullptr;
+                    audio_ctx.input_handles = ns.has_handle_input_ports ? ns.input_handle_values.data() : nullptr;
+                    audio_ctx.input_handle_count = ns.input_port_count;
+                    audio_ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
+                    audio_ctx.file_param_values = nullptr;
+                    audio_ctx.file_param_count = 0;
+                    audio_ctx.shared_handles = vivid::shared_handle_service();
+
+                    if (!ns.errored) {
+                        try {
+                            CrashGuard guard(ns.node_id.c_str());
+                            ns.loader->process_audio(group.instances[c], &audio_ctx);
+                        } catch (const std::exception& e) {
+                            ns.errored = true;
+                            std::snprintf(ns.error_message, sizeof(ns.error_message), "%s", e.what());
+                        } catch (...) {
+                            ns.errored = true;
+                            std::snprintf(ns.error_message, sizeof(ns.error_message), "Unknown exception");
+                        }
+                    }
+                }
+
+                if (ns.errored) {
                     for (auto& buf : ns.output_buffers)
-                        std::memset(buf.data(), 0, chunk * sizeof(float));
-                } catch (...) {
-                    ns.errored = true;
-                    std::snprintf(ns.error_message, sizeof(ns.error_message), "Unknown exception");
+                        std::memset(buf.data(), 0, buf.size() * sizeof(float));
+                } else {
+                    // Interleave: copy per_ch_outputs[c] → channel c of multi-channel output
+                    for (uint8_t c = 0; c < ch; ++c) {
+                        for (uint32_t p = 0; p < ns.output_port_count; ++p) {
+                            if (ns.output_port_types[p] == VIVID_PORT_AUDIO) {
+                                float* mc = ns.output_buffers[p].data() + c * kBufferSize;
+                                std::memcpy(mc, group.per_ch_outputs[c][p].data(), chunk * sizeof(float));
+                            }
+                        }
+                    }
+                }
+            } else {
+                // ---- Normal (non-dup) processing ----
+                VividAudioContext audio_ctx{};
+                audio_ctx.time = time;
+                audio_ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
+                audio_ctx.frame = audio_frame_ + frames_written;
+                audio_ctx.param_values = ns.param_values.data();
+                audio_ctx.input_buffers = ns.in_ptrs.data();
+                audio_ctx.output_buffers = ns.out_ptrs.data();
+                audio_ctx.buffer_size = chunk;
+                audio_ctx.sample_rate = kSampleRate;
+                audio_ctx.input_channel_counts = ns.input_channel_counts.data();
+                audio_ctx.output_channel_counts = ns.output_channel_counts.data();
+                audio_ctx.input_spreads = ns.has_spread_ports ? ns.spread_in_ports.data() : nullptr;
+                audio_ctx.output_spreads = ns.has_spread_ports ? ns.spread_out_ports.data() : nullptr;
+                audio_ctx.input_handles = ns.has_handle_input_ports ? ns.input_handle_values.data() : nullptr;
+                audio_ctx.input_handle_count = ns.input_port_count;
+                audio_ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
+                audio_ctx.file_param_values = nullptr;
+                audio_ctx.file_param_count = 0;
+                audio_ctx.shared_handles = vivid::shared_handle_service();
+
+                if (!ns.errored) {
+                    try {
+                        CrashGuard guard(ns.node_id.c_str());
+                        ns.loader->process_audio(ns.instance, &audio_ctx);
+                    } catch (const std::exception& e) {
+                        ns.errored = true;
+                        std::snprintf(ns.error_message, sizeof(ns.error_message), "%s", e.what());
+                        for (auto& buf : ns.output_buffers)
+                            std::memset(buf.data(), 0, chunk * sizeof(float));
+                    } catch (...) {
+                        ns.errored = true;
+                        std::snprintf(ns.error_message, sizeof(ns.error_message), "Unknown exception");
+                        for (auto& buf : ns.output_buffers)
+                            std::memset(buf.data(), 0, chunk * sizeof(float));
+                    }
+                } else {
+                    // Errored nodes produce silence
                     for (auto& buf : ns.output_buffers)
                         std::memset(buf.data(), 0, chunk * sizeof(float));
                 }
-            } else {
-                // Errored nodes produce silence
-                for (auto& buf : ns.output_buffers)
-                    std::memset(buf.data(), 0, chunk * sizeof(float));
             }
 
             // Read back spread output lengths
@@ -921,27 +1278,42 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
         if (sink_node_idx_ >= 0) {
             auto& sink = nodes_[sink_node_idx_];
             if (sink.output_port_count > 0) {
-                // Traditional sink (last node with outputs) — mono to both channels
-                const float* src = sink.output_buffers[0].data();
-                for (uint32_t s = 0; s < chunk; ++s) {
-                    dst[s * 2]     = src[s];
-                    dst[s * 2 + 1] = src[s];
-                }
-            } else if (sink.input_port_count >= 3) {
-                // audio_out node with stereo: input(0) + left(1) + right(2)
-                const float* input_buf = sink.input_buffers[0].data();
-                const float* left_buf  = sink.input_buffers[1].data();
-                const float* right_buf = sink.input_buffers[2].data();
-                for (uint32_t s = 0; s < chunk; ++s) {
-                    dst[s * 2]     = input_buf[s] + left_buf[s];
-                    dst[s * 2 + 1] = input_buf[s] + right_buf[s];
+                // Traditional sink (last node with outputs) — check channel count
+                uint8_t ch = sink.output_channel_counts.empty() ? 1 : sink.output_channel_counts[0];
+                // Auto-dup resets channel counts to 1, but buffer retains multi-channel layout
+                if (sink.is_mono_autodup)
+                    ch = static_cast<uint8_t>(sink.output_buffers[0].size() / kBufferSize);
+                const float* buf = sink.output_buffers[0].data();
+                if (ch >= 2) {
+                    for (uint32_t s = 0; s < chunk; ++s) {
+                        dst[s * 2]     = buf[s];
+                        dst[s * 2 + 1] = buf[kBufferSize + s];
+                    }
+                } else {
+                    for (uint32_t s = 0; s < chunk; ++s) {
+                        dst[s * 2]     = buf[s];
+                        dst[s * 2 + 1] = buf[s];
+                    }
                 }
             } else if (sink.input_port_count > 0) {
-                // Fallback: mono input only
-                const float* src = sink.input_buffers[0].data();
-                for (uint32_t s = 0; s < chunk; ++s) {
-                    dst[s * 2]     = src[s];
-                    dst[s * 2 + 1] = src[s];
+                // audio_out sink node — read from input port 0
+                uint8_t ch = sink.input_channel_counts.empty() ? 1 : sink.input_channel_counts[0];
+                // Auto-dup resets channel counts to 1, but buffer retains multi-channel layout
+                if (sink.is_mono_autodup)
+                    ch = static_cast<uint8_t>(sink.input_buffers[0].size() / kBufferSize);
+                const float* buf = sink.input_buffers[0].data();
+                if (ch >= 2) {
+                    // Planar stereo: L at [0..255], R at [256..511]
+                    for (uint32_t s = 0; s < chunk; ++s) {
+                        dst[s * 2]     = buf[s];
+                        dst[s * 2 + 1] = buf[kBufferSize + s];
+                    }
+                } else {
+                    // Mono → duplicate to both device channels
+                    for (uint32_t s = 0; s < chunk; ++s) {
+                        dst[s * 2]     = buf[s];
+                        dst[s * 2 + 1] = buf[s];
+                    }
                 }
             } else {
                 std::memset(dst, 0, chunk * 2 * sizeof(float));

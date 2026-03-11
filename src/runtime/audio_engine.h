@@ -44,6 +44,13 @@ struct AudioNodeState {
     bool has_string_input_ports = false;
     bool has_handle_input_ports = false;
 
+    // Multi-channel negotiation (resolved during build())
+    std::vector<uint8_t> input_channel_counts;   // resolved per input port
+    std::vector<uint8_t> output_channel_counts;  // resolved per output port
+    std::vector<uint8_t> descriptor_input_channels;  // from VividPortDescriptor
+    std::vector<uint8_t> descriptor_output_channels; // from VividPortDescriptor
+    bool is_mono_autodup = false;  // all declared ports mono, but wired to multi-channel
+
     // --- Per-tick buffers (pre-allocated, no audio-thread allocation) ---
     std::vector<float> param_values;
     std::vector<std::vector<float>> input_buffers;   // [port][sample]
@@ -70,6 +77,8 @@ struct AudioWire {
     uint32_t from_node_idx, from_port_idx;
     uint32_t to_node_idx, to_port_idx;
     float scale = 1.0f;
+    uint8_t from_channels = 1;  // resolved source channel count
+    uint8_t to_channels = 1;    // resolved destination channel count
 };
 
 // Wire for CONTROL_SPREAD data between audio-domain nodes
@@ -182,6 +191,18 @@ struct RecordingTap {
     std::atomic<bool> active{false};    // main thread toggles
 };
 
+// Auto-duplication group: runs a mono operator N times for N-channel wires
+struct AutoDupGroup {
+    uint32_t node_idx;
+    uint8_t  channel_count;          // e.g. 2 for stereo
+    std::vector<void*> instances;    // [channel] → operator instance (instances[0] = primary)
+    // Per-instance mono buffers for process() calls
+    std::vector<std::vector<std::vector<float>>> per_ch_inputs;  // [ch][port][sample]
+    std::vector<std::vector<std::vector<float>>> per_ch_outputs; // [ch][port][sample]
+    std::vector<std::vector<float*>> per_ch_in_ptrs;  // [ch][port]
+    std::vector<std::vector<float*>> per_ch_out_ptrs;  // [ch][port]
+};
+
 class AudioEngine {
 public:
     AudioEngine();
@@ -247,6 +268,10 @@ private:
     // Per-node ring buffer for raw waveform sample accumulation
     std::vector<std::array<float, 1024>> waveform_rings_;
     std::vector<uint32_t> waveform_ring_pos_;
+
+    // Auto-duplication for mono operators in multi-channel chains
+    std::vector<AutoDupGroup> auto_dup_groups_;
+    std::unordered_map<uint32_t, uint32_t> node_to_dup_group_;
 
     // Sink node (audio_out or last node with outputs as fallback)
     int sink_node_idx_ = -1;

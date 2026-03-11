@@ -70,12 +70,8 @@
     },
     {"from": "vid/media_clock", "to": "audio/media_stream"},
     {
-      "from": "audio/left",
-      "to": "aout/left"
-    },
-    {
-      "from": "audio/right",
-      "to": "aout/right"
+      "from": "audio/output",
+      "to": "aout/input"
     }
   ]
 }
