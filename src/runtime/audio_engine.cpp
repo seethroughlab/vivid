@@ -988,8 +988,11 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
     int write_idx = 1 - analysis_active_.load(std::memory_order_acquire);
     auto& analysis = analysis_snapshots_[write_idx];
     for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
-        if (nodes_[ni].output_port_count > 0) {
-            const float* buf = nodes_[ni].output_buffers[0].data();
+        // For the sink node (audio_out), analyze from input buffers since it has no outputs.
+        const bool is_sink = (static_cast<int>(ni) == sink_node_idx_);
+        if (nodes_[ni].output_port_count > 0 || (is_sink && nodes_[ni].input_port_count > 0)) {
+            const float* buf = is_sink ? nodes_[ni].input_buffers[0].data()
+                                       : nodes_[ni].output_buffers[0].data();
             float sum_sq = 0.0f, pk = 0.0f;
             for (uint32_t s = 0; s < frame_count; ++s) {
                 sum_sq += buf[s] * buf[s];
