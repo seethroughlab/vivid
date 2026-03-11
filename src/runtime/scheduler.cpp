@@ -401,12 +401,12 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         auto from_it = node_index.find(conn.from_node);
         auto to_it   = node_index.find(conn.to_node);
         if (from_it == node_index.end()) {
-            std::fprintf(stderr, "[vivid] Scheduler: unknown source node '%s'\n", conn.from_node.c_str());
-            return false;
+            std::fprintf(stderr, "[vivid] Scheduler: unknown source node '%s' — skipping wire\n", conn.from_node.c_str());
+            continue;
         }
         if (to_it == node_index.end()) {
-            std::fprintf(stderr, "[vivid] Scheduler: unknown target node '%s'\n", conn.to_node.c_str());
-            return false;
+            std::fprintf(stderr, "[vivid] Scheduler: unknown target node '%s' — skipping wire\n", conn.to_node.c_str());
+            continue;
         }
 
         uint32_t fi = from_it->second;
@@ -440,9 +440,9 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             // Fallback: try param
             auto pp_it = from_ns.param_indices.find(conn.from_port);
             if (pp_it == from_ns.param_indices.end()) {
-                std::fprintf(stderr, "[vivid] Scheduler: node '%s' has no output port or parameter '%s'\n",
+                std::fprintf(stderr, "[vivid] Scheduler: node '%s' has no output port or parameter '%s' — skipping wire\n",
                     conn.from_node.c_str(), conn.from_port.c_str());
-                return false;
+                continue;
             }
             from_port_idx = pp_it->second;
             source_is_param = true;
@@ -591,9 +591,9 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
             } else {
                 auto pp_it = to_ns.param_indices.find(conn.to_port);
                 if (pp_it == to_ns.param_indices.end()) {
-                    std::fprintf(stderr, "[vivid] Scheduler: node '%s' has no input port or parameter '%s'\n",
+                    std::fprintf(stderr, "[vivid] Scheduler: node '%s' has no input port or parameter '%s' — skipping wire\n",
                         conn.to_node.c_str(), conn.to_port.c_str());
-                    return false;
+                    continue;
                 }
                 w.to_port_idx = pp_it->second;
                 w.targets_param = true;
