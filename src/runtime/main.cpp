@@ -2191,6 +2191,7 @@ int main(int argc, char* argv[]) {
     PkgActionState      pkg_action_state{PkgActionState::Idle};
     std::string         pkg_action_error_msg;
     bool                pkg_action_needs_refresh{false};
+    std::thread         pkg_action_thread;
 
     vivid::ui::PackageBrowserCallbacks pkg_browser_cbs;
     pkg_browser_cbs.refresh = [&pkg_catalog]() {
@@ -2259,7 +2260,8 @@ int main(int argc, char* argv[]) {
     };
     pkg_browser_cbs.install = [&pkg_catalog,
                                &pkg_action_mutex, &pkg_action_state,
-                               &pkg_action_error_msg, &pkg_action_needs_refresh](
+                               &pkg_action_error_msg, &pkg_action_needs_refresh,
+                               &pkg_action_thread](
                                    const std::string& name, std::string&) -> bool {
         {
             std::lock_guard<std::mutex> lk(pkg_action_mutex);
@@ -2268,7 +2270,8 @@ int main(int argc, char* argv[]) {
             pkg_action_error_msg.clear();
             pkg_action_needs_refresh = false;
         }
-        std::thread([&pkg_catalog, name,
+        if (pkg_action_thread.joinable()) pkg_action_thread.join();
+        pkg_action_thread = std::thread([&pkg_catalog, name,
                      &pkg_action_mutex, &pkg_action_state,
                      &pkg_action_error_msg, &pkg_action_needs_refresh]() {
             auto r = pkg_catalog.install(name);
@@ -2276,12 +2279,13 @@ int main(int argc, char* argv[]) {
             pkg_action_error_msg = r.success ? "" : r.error;
             pkg_action_needs_refresh = r.success;
             pkg_action_state = r.success ? PkgActionState::Done : PkgActionState::Error;
-        }).detach();
+        });
         return true;
     };
     pkg_browser_cbs.uninstall = [&pkg_catalog,
                                  &pkg_action_mutex, &pkg_action_state,
-                                 &pkg_action_error_msg, &pkg_action_needs_refresh](
+                                 &pkg_action_error_msg, &pkg_action_needs_refresh,
+                                 &pkg_action_thread](
                                      const std::string& name, std::string&) -> bool {
         {
             std::lock_guard<std::mutex> lk(pkg_action_mutex);
@@ -2290,7 +2294,8 @@ int main(int argc, char* argv[]) {
             pkg_action_error_msg.clear();
             pkg_action_needs_refresh = false;
         }
-        std::thread([&pkg_catalog, name,
+        if (pkg_action_thread.joinable()) pkg_action_thread.join();
+        pkg_action_thread = std::thread([&pkg_catalog, name,
                      &pkg_action_mutex, &pkg_action_state,
                      &pkg_action_error_msg, &pkg_action_needs_refresh]() {
             bool ok = pkg_catalog.uninstall(name);
@@ -2298,12 +2303,13 @@ int main(int argc, char* argv[]) {
             pkg_action_error_msg = ok ? "" : "Failed to uninstall " + name;
             pkg_action_needs_refresh = ok;
             pkg_action_state = ok ? PkgActionState::Done : PkgActionState::Error;
-        }).detach();
+        });
         return true;
     };
     pkg_browser_cbs.unlink = [&pkg_manager,
                               &pkg_action_mutex, &pkg_action_state,
-                              &pkg_action_error_msg, &pkg_action_needs_refresh](
+                              &pkg_action_error_msg, &pkg_action_needs_refresh,
+                              &pkg_action_thread](
                                   const std::string& name, std::string&) -> bool {
         {
             std::lock_guard<std::mutex> lk(pkg_action_mutex);
@@ -2312,7 +2318,8 @@ int main(int argc, char* argv[]) {
             pkg_action_error_msg.clear();
             pkg_action_needs_refresh = false;
         }
-        std::thread([&pkg_manager, name,
+        if (pkg_action_thread.joinable()) pkg_action_thread.join();
+        pkg_action_thread = std::thread([&pkg_manager, name,
                      &pkg_action_mutex, &pkg_action_state,
                      &pkg_action_error_msg, &pkg_action_needs_refresh]() {
             bool ok = pkg_manager.unlink(name);
@@ -2320,12 +2327,13 @@ int main(int argc, char* argv[]) {
             pkg_action_error_msg = ok ? "" : "Failed to unlink " + name;
             pkg_action_needs_refresh = ok;
             pkg_action_state = ok ? PkgActionState::Done : PkgActionState::Error;
-        }).detach();
+        });
         return true;
     };
     pkg_browser_cbs.link = [&pkg_manager,
                             &pkg_action_mutex, &pkg_action_state,
-                            &pkg_action_error_msg, &pkg_action_needs_refresh](
+                            &pkg_action_error_msg, &pkg_action_needs_refresh,
+                            &pkg_action_thread](
                                 const std::string& path, std::string&) -> bool {
         {
             std::lock_guard<std::mutex> lk(pkg_action_mutex);
@@ -2334,7 +2342,8 @@ int main(int argc, char* argv[]) {
             pkg_action_error_msg.clear();
             pkg_action_needs_refresh = false;
         }
-        std::thread([&pkg_manager, path,
+        if (pkg_action_thread.joinable()) pkg_action_thread.join();
+        pkg_action_thread = std::thread([&pkg_manager, path,
                      &pkg_action_mutex, &pkg_action_state,
                      &pkg_action_error_msg, &pkg_action_needs_refresh]() {
             auto r = pkg_manager.link(path);
@@ -2343,7 +2352,7 @@ int main(int argc, char* argv[]) {
             // Refresh examples if the symlink was created (graphs/ dir may exist even if compile failed)
             pkg_action_needs_refresh = r.success || !r.info.path.empty();
             pkg_action_state = r.success ? PkgActionState::Done : PkgActionState::Error;
-        }).detach();
+        });
         return true;
     };
     graph_ui.set_package_browser_callbacks(std::move(pkg_browser_cbs));
@@ -3446,6 +3455,7 @@ int main(int argc, char* argv[]) {
 #endif
 
     // --- Shutdown ---
+    if (pkg_action_thread.joinable()) pkg_action_thread.join();
     system_midi.close();
     control_server.stop();
     if (hot_reload_enabled) {
