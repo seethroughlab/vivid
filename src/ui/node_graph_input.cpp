@@ -940,6 +940,11 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         if (key == GLFW_KEY_B && action == GLFW_PRESS) {
             bezier_wires_ = !bezier_wires_;
         }
+        // Cmd+Shift+P: toggle package browser
+        if (key == GLFW_KEY_P && action == GLFW_PRESS && mod_key && (mods & GLFW_MOD_SHIFT)) {
+            toggle_package_browser();
+            return;
+        }
         // P toggles param wire visibility
         if (key == GLFW_KEY_P && action == GLFW_PRESS) {
             show_param_wires_ = !show_param_wires_;

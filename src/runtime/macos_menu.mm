@@ -224,7 +224,8 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         NSMenuItem* browseItem = [[NSMenuItem alloc]
             initWithTitle:@"Browse Packages..."
                    action:@selector(menuAction:)
-            keyEquivalent:@""];
+            keyEquivalent:@"P"];
+        browseItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
         browseItem.target = sDelegate;
         browseItem.tag = kMenuTagBrowsePackages;
         [fileMenu addItem:browseItem];
