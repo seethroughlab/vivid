@@ -68,6 +68,9 @@ Desktop.ini
 TODO.md
 __pycache__
 
+# Generated catalog
+catalog/packages.json
+
 # Personal/local docs
 docs/crash.txt
 docs/private/
