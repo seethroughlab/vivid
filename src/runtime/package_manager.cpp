@@ -1176,6 +1176,7 @@ void PackageManager::scan_installed() {
         std::string build_dir = info.path + "/build";
         registry_.scan_deferred(build_dir.c_str());
         registry_.register_package(info.name, build_dir);
+        registry_.scan_factory_presets(info.path + "/factory_presets");
         count++;
         std::fprintf(stderr, "[vivid] PackageManager: loaded package %s [%s] (%zu operators)\n",
                      info.name.c_str(),
