@@ -426,6 +426,18 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
         }
     }
 
+    if (total > kPkgBrowserMaxVisible) {
+        float sb_x = cx + inner_w - 4;
+        float sb_h = layout.visible_count * kPkgBrowserItemH;
+        float thumb_h = std::max(20.0f, sb_h * kPkgBrowserMaxVisible / static_cast<float>(total));
+        float thumb_y = cy + (sb_h - thumb_h) * example_browser_scroll_ /
+                        static_cast<float>(total - kPkgBrowserMaxVisible);
+        tr.draw_rect(sb_x, cy, 4, sb_h,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.3f);
+        tr.draw_rect(sb_x, thumb_y, 4, thumb_h,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
+    }
+
     if (!example_action_error_.empty()) {
         tr.draw_text(cx, layout.status_y, example_action_error_.c_str(),
                      kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
