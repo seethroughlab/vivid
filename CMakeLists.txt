@@ -1635,3 +1635,23 @@ add_executable(test_operator_info_cache
 target_include_directories(test_operator_info_cache PRIVATE src tests)
 target_link_libraries(test_operator_info_cache PRIVATE vivid_operator_api webgpu yyjson)
 add_test(NAME test_operator_info_cache COMMAND test_operator_info_cache WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# --- reset target: wipe user data directories (opt-in) ---
+if(APPLE)
+    set(VIVID_CONFIG_DIR "$ENV{HOME}/Library/Application Support/Vivid")
+elseif(WIN32)
+    set(VIVID_CONFIG_DIR "$ENV{APPDATA}/Vivid")
+else()
+    if(DEFINED ENV{XDG_CONFIG_HOME})
+        set(VIVID_CONFIG_DIR "$ENV{XDG_CONFIG_HOME}/vivid")
+    else()
+        set(VIVID_CONFIG_DIR "$ENV{HOME}/.config/vivid")
+    endif()
+endif()
+set(VIVID_WORKSPACE_DIR "$ENV{HOME}/Documents/Vivid")
+
+add_custom_target(reset
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${VIVID_CONFIG_DIR}" "${VIVID_WORKSPACE_DIR}"
+    COMMENT "Removing Vivid user data: ${VIVID_CONFIG_DIR} and ${VIVID_WORKSPACE_DIR}"
+    VERBATIM
+)
