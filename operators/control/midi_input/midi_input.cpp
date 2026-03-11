@@ -39,6 +39,15 @@ struct MidiInput : vivid::ControlOperatorBase {
 
     MidiInput() {
         std::memset(cc_values_, 0, sizeof(cc_values_));
+
+        vivid::semantic_tag(channel, "index");
+        vivid::semantic_shape(channel, "int");
+
+        vivid::semantic_tag(cc_number, "index");
+        vivid::semantic_shape(cc_number, "int");
+
+        vivid::semantic_tag(learn, "enabled");
+        vivid::semantic_shape(learn, "bool");
     }
 
     void process(const VividProcessContext* ctx) override {

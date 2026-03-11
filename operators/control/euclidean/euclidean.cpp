@@ -12,6 +12,20 @@ struct Euclidean : vivid::ControlOperatorBase {
     vivid::Param<float> gate_length {"gate_length", 0.5f, 0.01f, 1.0f};
     vivid::Param<int>   rate        {"rate",        2, {"1/1","1/2","1/4","1/8","1/16","1/32","1/4T","1/8T","1/16T"}};
 
+    Euclidean() {
+        vivid::semantic_tag(hits, "count");
+        vivid::semantic_shape(hits, "int");
+
+        vivid::semantic_tag(steps, "count");
+        vivid::semantic_shape(steps, "int");
+
+        vivid::semantic_tag(rotation, "index");
+        vivid::semantic_shape(rotation, "int");
+
+        vivid::semantic_tag(gate_length, "phase_01");
+        vivid::semantic_shape(gate_length, "scalar");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&hits);        // 0
         out.push_back(&steps);       // 1

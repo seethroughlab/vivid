@@ -22,5 +22,8 @@ jobs:
       - name: Build smoke test
         run: cmake --build build --target test_demo_graphs -j$(sysctl -n hw.logicalcpu)
 
+      - name: Validate semantic tags
+        run: ./scripts/validate_semantic_tags.sh
+
       - name: Run smoke tests
         run: cd build && ctest -L SMOKE --output-on-failure

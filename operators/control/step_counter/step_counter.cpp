@@ -9,6 +9,11 @@ struct StepCounter : vivid::ControlOperatorBase {
 
     vivid::Param<int> initial{"initial", 0, -1000000, 1000000};
 
+    StepCounter() {
+        vivid::semantic_tag(initial, "index");
+        vivid::semantic_shape(initial, "int");
+    }
+
     float prev_trigger_ = 0.0f;
     bool initialized_ = false;
     int step_ = 0;

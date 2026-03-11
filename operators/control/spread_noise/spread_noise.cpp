@@ -16,6 +16,17 @@ struct SpreadNoise : vivid::ControlOperatorBase {
     vivid::Param<float> offset    {"offset",    0.0f, -100.0f, 100.0f};
     vivid::Param<int>   seed      {"seed",      42, 0, 99999};
 
+    SpreadNoise() {
+        vivid::semantic_tag(count, "count");
+        vivid::semantic_shape(count, "int");
+
+        vivid::semantic_tag(amplitude, "amplitude_linear");
+        vivid::semantic_shape(amplitude, "scalar");
+
+        vivid::semantic_tag(seed, "seed");
+        vivid::semantic_shape(seed, "int");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&count);
         out.push_back(&speed);

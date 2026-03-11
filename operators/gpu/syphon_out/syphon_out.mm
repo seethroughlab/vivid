@@ -20,6 +20,11 @@ struct SyphonOut : vivid::GpuOperatorBase {
     vivid::Param<vivid::TextValue> server_name{"server_name", "Vivid Output"};
     double last_log_time_ = -1000.0;
 
+    SyphonOut() {
+        vivid::semantic_tag(active, "enabled");
+        vivid::semantic_shape(active, "bool");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&active);
         out.push_back(&server_name);

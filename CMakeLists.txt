@@ -1636,6 +1636,11 @@ target_include_directories(test_operator_info_cache PRIVATE src tests)
 target_link_libraries(test_operator_info_cache PRIVATE vivid_operator_api webgpu yyjson)
 add_test(NAME test_operator_info_cache COMMAND test_operator_info_cache WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Semantic tag vocabulary validation (script-only, no binary)
+add_test(NAME test_semantic_tags
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/validate_semantic_tags.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 # --- reset target: wipe user data directories (opt-in) ---
 if(APPLE)
     set(VIVID_CONFIG_DIR "$ENV{HOME}/Library/Application Support/Vivid")

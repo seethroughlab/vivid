@@ -11,6 +11,11 @@ struct StringSelect : vivid::ControlOperatorBase {
 
     vivid::Param<bool> wrap{"wrap", true};
 
+    StringSelect() {
+        vivid::semantic_tag(wrap, "enabled");
+        vivid::semantic_shape(wrap, "bool");
+    }
+
     std::string selected_;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {

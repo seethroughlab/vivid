@@ -43,6 +43,11 @@ struct FolderList : vivid::ControlOperatorBase {
     vivid::Param<bool> recursive{"recursive", false};
     vivid::Param<int> sort_mode{"sort_mode", 0, {"NameAsc", "NameDesc"}};
 
+    FolderList() {
+        vivid::semantic_tag(recursive, "enabled");
+        vivid::semantic_shape(recursive, "bool");
+    }
+
     std::string last_folder_;
     std::string last_exts_;
     bool last_recursive_ = false;

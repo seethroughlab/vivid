@@ -116,6 +116,14 @@ struct TimeMachine : vivid::GpuOperatorBase {
     vivid::Param<int>   frames {"frames", 30,   2,    120};
     vivid::Param<float> offset {"offset", 0.0f, 0.0f, 1.0f};
 
+    TimeMachine() {
+        vivid::semantic_tag(depth, "phase_01");
+        vivid::semantic_shape(depth, "scalar");
+
+        vivid::semantic_tag(frames, "count");
+        vivid::semantic_shape(frames, "int");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&depth);
         out.push_back(&frames);

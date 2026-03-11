@@ -10,6 +10,16 @@ struct Smooth : vivid::ControlOperatorBase {
     vivid::Param<float> rise_time{"rise_time", 0.1f, 0.0f, 10.0f};
     vivid::Param<float> fall_time{"fall_time", 0.1f, 0.0f, 10.0f};
 
+    Smooth() {
+        vivid::semantic_tag(rise_time, "time_seconds");
+        vivid::semantic_shape(rise_time, "scalar");
+        vivid::semantic_unit(rise_time, "s");
+
+        vivid::semantic_tag(fall_time, "time_seconds");
+        vivid::semantic_shape(fall_time, "scalar");
+        vivid::semantic_unit(fall_time, "s");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&rise_time);
         out.push_back(&fall_time);

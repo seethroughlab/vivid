@@ -56,6 +56,11 @@ struct TextureAnalysis : vivid::GpuOperatorBase {
 
     vivid::Param<int> skip_frames{"skip_frames", 1, {"Every frame", "Every 2nd", "Every 4th", "Every 8th"}};
 
+    TextureAnalysis() {
+        vivid::semantic_tag(skip_frames, "count");
+        vivid::semantic_shape(skip_frames, "enum");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&skip_frames);
     }

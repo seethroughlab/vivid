@@ -15,6 +15,23 @@ struct SpreadADSR : vivid::AudioOperatorBase {
     vivid::Param<float> sustain {"sustain",  0.7f,   0.0f,   1.0f};
     vivid::Param<float> release {"release",  0.3f,   0.001f, 10.0f};
 
+    SpreadADSR() {
+        vivid::semantic_tag(attack, "time_seconds");
+        vivid::semantic_shape(attack, "scalar");
+        vivid::semantic_unit(attack, "s");
+
+        vivid::semantic_tag(decay, "time_seconds");
+        vivid::semantic_shape(decay, "scalar");
+        vivid::semantic_unit(decay, "s");
+
+        vivid::semantic_tag(sustain, "amplitude_linear");
+        vivid::semantic_shape(sustain, "scalar");
+
+        vivid::semantic_tag(release, "time_seconds");
+        vivid::semantic_shape(release, "scalar");
+        vivid::semantic_unit(release, "s");
+    }
+
     static constexpr int kMaxSlots = 16;
 
     adsr::State slots_[kMaxSlots] = {};

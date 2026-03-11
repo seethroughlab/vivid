@@ -14,6 +14,11 @@ struct FFTAnalysis : vivid::ControlOperatorBase {
     vivid::Param<int> window   {"window",   1, {"none", "hann", "hamming"}};
     vivid::Param<int> fft_size {"fft_size", 512, 256, 1024};
 
+    FFTAnalysis() {
+        vivid::semantic_tag(fft_size, "count");
+        vivid::semantic_shape(fft_size, "int");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&window);
         out.push_back(&fft_size);

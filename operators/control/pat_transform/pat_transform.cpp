@@ -12,6 +12,17 @@ struct PatTransform : vivid::ControlOperatorBase {
     vivid::Param<float> offset      {"offset",      0.0f, -10000.0f, 10000.0f};
     vivid::Param<float> probability {"probability", 1.0f, 0.0f, 1.0f};
 
+    PatTransform() {
+        vivid::semantic_tag(reverse, "enabled");
+        vivid::semantic_shape(reverse, "bool");
+
+        vivid::semantic_tag(rotate, "index");
+        vivid::semantic_shape(rotate, "int");
+
+        vivid::semantic_tag(probability, "probability_01");
+        vivid::semantic_shape(probability, "scalar");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&reverse);      // 0
         out.push_back(&rotate);       // 1

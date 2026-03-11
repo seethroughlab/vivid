@@ -21,7 +21,10 @@ struct SyphonIn : vivid::GpuOperatorBase {
     static constexpr bool kTimeDependent = true;
 
     SyphonIn()
-        : server("server", 0, build_server_choices(list_servers())) {}
+        : server("server", 0, build_server_choices(list_servers())) {
+        vivid::semantic_tag(active, "enabled");
+        vivid::semantic_shape(active, "bool");
+    }
 
     vivid::Param<bool> active{"active", true};
     vivid::Param<int> server;

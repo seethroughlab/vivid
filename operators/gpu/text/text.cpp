@@ -88,6 +88,35 @@ struct Text : vivid::GpuOperatorBase {
     vivid::Param<float> x    {"x",    0.0f, -1.0f, 1.0f};
     vivid::Param<float> y    {"y",    0.0f, -1.0f, 1.0f};
 
+    Text() {
+        vivid::semantic_tag(r, "color_rgba");
+        vivid::semantic_shape(r, "scalar");
+
+        vivid::semantic_tag(g, "color_rgba");
+        vivid::semantic_shape(g, "scalar");
+
+        vivid::semantic_tag(b, "color_rgba");
+        vivid::semantic_shape(b, "scalar");
+
+        vivid::semantic_tag(bg_r, "color_rgba");
+        vivid::semantic_shape(bg_r, "scalar");
+
+        vivid::semantic_tag(bg_g, "color_rgba");
+        vivid::semantic_shape(bg_g, "scalar");
+
+        vivid::semantic_tag(bg_b, "color_rgba");
+        vivid::semantic_shape(bg_b, "scalar");
+
+        vivid::semantic_tag(bg_a, "color_rgba");
+        vivid::semantic_shape(bg_a, "scalar");
+
+        vivid::semantic_tag(x, "position_xy");
+        vivid::semantic_shape(x, "scalar");
+
+        vivid::semantic_tag(y, "position_xy");
+        vivid::semantic_shape(y, "scalar");
+    }
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         display_hint(r, VIVID_DISPLAY_COLOR);
         display_hint(g, VIVID_DISPLAY_COLOR);
