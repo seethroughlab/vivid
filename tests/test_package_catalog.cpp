@@ -30,9 +30,7 @@ static void test_parse_valid_json() {
                 "version": "1.0.0",
                 "vivid_core": ">=0.1.0 <2.0.0",
                 "author": "Jeff",
-                "url": "https://github.com/vivid-project/vivid-drums",
-                "category": "audio",
-                "tags": ["drums", "synthesis"]
+                "url": "https://github.com/vivid-project/vivid-drums"
             },
             {
                 "name": "codex-test-glitch",
@@ -40,9 +38,7 @@ static void test_parse_valid_json() {
                 "version": "0.2.0",
                 "vivid_core": ">=0.1.0 <2.0.0",
                 "author": "Alice",
-                "url": "https://github.com/vivid-project/vivid-glitch",
-                "category": "gpu",
-                "tags": ["glitch", "visual"]
+                "url": "https://github.com/vivid-project/vivid-glitch"
             }
         ]
     })";
@@ -58,10 +54,6 @@ static void test_parse_valid_json() {
             assert(e.version == "1.0.0");
             assert(e.vivid_core == ">=0.1.0 <2.0.0");
             assert(e.author == "Jeff");
-            assert(e.category == "audio");
-            assert(e.tags.size() == 2);
-            assert(e.tags[0] == "drums");
-            assert(e.tags[1] == "synthesis");
             assert(!e.installed);
             found_drums = true;
         }
@@ -70,7 +62,6 @@ static void test_parse_valid_json() {
             assert(e.version == "0.2.0");
             assert(e.vivid_core == ">=0.1.0 <2.0.0");
             assert(e.author == "Alice");
-            assert(e.category == "gpu");
             found_glitch = true;
         }
     }
@@ -110,9 +101,7 @@ static void test_parse_cache_like_json() {
                 "version": "2.0.0",
                 "vivid_core": ">=0.1.0 <2.0.0",
                 "author": "Tester",
-                "url": "https://example.com/test-pkg",
-                "category": "control",
-                "tags": ["test"]
+                "url": "https://example.com/test-pkg"
             }
         ]
     })";
@@ -127,59 +116,12 @@ static void test_parse_cache_like_json() {
     assert(e.version == "2.0.0");
     assert(e.vivid_core == ">=0.1.0 <2.0.0");
     assert(e.author == "Tester");
-    assert(e.category == "control");
-    assert(e.tags.size() == 1);
-    assert(e.tags[0] == "test");
 
     std::fprintf(stderr, "  PASS\n");
 }
 
 // ---------------------------------------------------------------------------
-// Test 4: parse new catalog schema fields used by vivid/catalog/packages.json
-// ---------------------------------------------------------------------------
-static void test_parse_vivid_catalog_schema() {
-    std::fprintf(stderr, "test_parse_vivid_catalog_schema...\n");
-
-    const char* json = R"({
-        "schema_version": 1,
-        "packages": [
-            {
-                "name": "test-schema-pkg",
-                "description_short": "Short description only",
-                "version": "0.3.1",
-                "vivid_core": ">=0.1.0 <2.0.0",
-                "author": "SchemaTester",
-                "install_url": "https://example.com/test-schema-pkg.git",
-                "repo_url": "https://example.com/test-schema-pkg",
-                "category": "control",
-                "tags": ["schema", "compat"]
-            }
-        ]
-    })";
-
-    std::vector<CatalogEntry> entries;
-    assert(PackageCatalog::parse_index_json(json, entries));
-    assert(entries.size() == 1);
-
-    const auto& e = entries[0];
-    assert(e.name == "test-schema-pkg");
-    // description_short should backfill description when description is absent.
-    assert(e.description == "Short description only");
-    // install_url should be preferred/fallback-compatible for install source.
-    assert(e.url == "https://example.com/test-schema-pkg.git");
-    assert(e.version == "0.3.1");
-    assert(e.vivid_core == ">=0.1.0 <2.0.0");
-    assert(e.author == "SchemaTester");
-    assert(e.category == "control");
-    assert(e.tags.size() == 2);
-    assert(e.tags[0] == "schema");
-    assert(e.tags[1] == "compat");
-
-    std::fprintf(stderr, "  PASS\n");
-}
-
-// ---------------------------------------------------------------------------
-// Test 5: initial state
+// Test 4: initial state
 // ---------------------------------------------------------------------------
 static void test_initial_state() {
     std::fprintf(stderr, "test_initial_state...\n");
@@ -197,7 +139,7 @@ static void test_initial_state() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 6: refresh failure path when network fetch is disabled and no cache exists
+// Test 5: refresh failure path when network fetch is disabled and no cache exists
 // ---------------------------------------------------------------------------
 static void test_refresh_without_cache_and_network() {
     std::fprintf(stderr, "test_refresh_without_cache_and_network...\n");
@@ -232,7 +174,7 @@ static void test_refresh_without_cache_and_network() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 7: VIVID_PACKAGE_CATALOG_URL with embedded single quote (M1 regression)
+// Test 6: VIVID_PACKAGE_CATALOG_URL with embedded single quote (M1 regression)
 // Verifies the URL is properly shell-quoted and curl fails gracefully rather
 // than causing shell injection or a crash.
 // ---------------------------------------------------------------------------
@@ -282,7 +224,6 @@ int main() {
     test_parse_valid_json();
     test_parse_invalid_json();
     test_parse_cache_like_json();
-    test_parse_vivid_catalog_schema();
     test_refresh_without_cache_and_network();
     test_catalog_url_with_single_quote();
 

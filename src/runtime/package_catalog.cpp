@@ -252,10 +252,6 @@ bool PackageCatalog::parse_index_json(const std::string& json_str,
 
         v = yyjson_obj_get(val, "description");
         if (v && yyjson_is_str(v)) e.description = yyjson_get_str(v);
-        if (e.description.empty()) {
-            v = yyjson_obj_get(val, "description_short");
-            if (v && yyjson_is_str(v)) e.description = yyjson_get_str(v);
-        }
 
         v = yyjson_obj_get(val, "version");
         if (v && yyjson_is_str(v)) e.version = yyjson_get_str(v);
@@ -266,25 +262,8 @@ bool PackageCatalog::parse_index_json(const std::string& json_str,
         v = yyjson_obj_get(val, "author");
         if (v && yyjson_is_str(v)) e.author = yyjson_get_str(v);
 
-        v = yyjson_obj_get(val, "install_url");
+        v = yyjson_obj_get(val, "url");
         if (v && yyjson_is_str(v)) e.url = yyjson_get_str(v);
-        if (e.url.empty()) {
-            v = yyjson_obj_get(val, "url");
-            if (v && yyjson_is_str(v)) e.url = yyjson_get_str(v);
-        }
-
-        v = yyjson_obj_get(val, "category");
-        if (v && yyjson_is_str(v)) e.category = yyjson_get_str(v);
-
-        yyjson_val* tags = yyjson_obj_get(val, "tags");
-        if (tags && yyjson_is_arr(tags)) {
-            size_t ti, tmax;
-            yyjson_val* tv;
-            yyjson_arr_foreach(tags, ti, tmax, tv) {
-                if (yyjson_is_str(tv))
-                    e.tags.push_back(yyjson_get_str(tv));
-            }
-        }
 
         out.push_back(std::move(e));
     }
@@ -366,12 +345,6 @@ void PackageCatalog::save_cache(const std::vector<CatalogEntry>& entries) {
             yyjson_mut_obj_add_strcpy(doc, obj, "vivid_core", e.vivid_core.c_str());
         yyjson_mut_obj_add_strcpy(doc, obj, "author", e.author.c_str());
         yyjson_mut_obj_add_strcpy(doc, obj, "url", e.url.c_str());
-        yyjson_mut_obj_add_strcpy(doc, obj, "category", e.category.c_str());
-
-        yyjson_mut_val* tags = yyjson_mut_arr(doc);
-        for (const auto& tag : e.tags)
-            yyjson_mut_arr_add_strcpy(doc, tags, tag.c_str());
-        yyjson_mut_obj_add_val(doc, obj, "tags", tags);
 
         yyjson_mut_arr_add_val(arr, obj);
     }
