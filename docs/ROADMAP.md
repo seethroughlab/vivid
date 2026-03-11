@@ -8,13 +8,13 @@ Windows and Linux support is deferred past 1.0.
 
 ## Milestone 1: Core Stability & Testing
 
-**Status:** In progress — movie playback architecture and project-local operator ownership complete; remaining items are exit-gate verification and manual QA.
+**Status:** Exit gate closed — architecture integrity, cross-domain correctness, and CI proof confirmed. Remaining items are manual QA (hot-reload, operator creation + MCP E2E).
 
 ### Movie Playback Exit Gate
 
 The `MovieLoaded` / `MovieVideoOut` / `MovieAudioOut` trio is shipped and the implementation phases are complete. The following acceptance criteria need a final sign-off before the exit gate closes.
 
-- [ ] Architecture integrity: no media-specific runtime service; operator stack is package-portable
+- [x] Architecture integrity: no media-specific runtime service; operator stack is package-portable
 - [x] Sync stability: thresholds validated by `test_movie_long_loop_sync` and runtime instrumentation
 
   | Metric | Green (pass) | Yellow (warn) | Red (fail) |
@@ -27,15 +27,15 @@ The `MovieLoaded` / `MovieVideoOut` / `MovieAudioOut` trio is shipped and the im
   Validated codecs: HAP, HAPQ, HAP-alpha, H.264, HEVC.
 
 - [x] Threading correctness: RT-safe audio callback, crash-free teardown, stale-command rejection tested
-- [ ] Cross-domain data correctness: `media_stream_v1` / `media_clock_v1` verified across control/audio/GPU domains
+- [x] Cross-domain data correctness: `media_stream_v1` / `media_clock_v1` verified across control/audio/GPU domains
 - [x] Codec/regression behavior: HAP BC path, AVF fallback, HAPQ YCoCg all functional
 - [x] Migration outcome: legacy operators removed; canonical demos use `MovieLoaded` trio
-- [ ] **Exit gate closed** (all six confirmed)
+- [x] **Exit gate closed** (all six confirmed)
 
 ### Automated Coverage Gaps
 
 - [ ] MIDI input tests *(hardware-dependent; likely deferred to post-1.0 virtual MIDI loopback suite)*
-- [ ] CI proof: MovieLoaded + long-loop tests passing in default macOS CTest run
+- [x] CI proof: MovieLoaded + long-loop tests passing in default macOS CTest run
 
 ### Manual Verification: Hot-Reload
 
@@ -218,10 +218,10 @@ Replace the minimal "create operator" flow with a modal that surfaces all scaffo
 
 ## Milestone 13: Semantic Parameter Tags Rollout
 
-Implementation largely complete; remaining work is adoption breadth and CI gate.
+**Status:** Complete — semantic tags applied across all domains; validation script integrated into CTest and CI.
 
-- [ ] Finish broader seed-tag adoption (core + sibling operators not fully tagged)
-- [ ] Close final CI rollout gate: no graph/load/runtime regressions
+- [x] Finish broader seed-tag adoption (core + sibling operators not fully tagged)
+- [x] Close final CI rollout gate: no graph/load/runtime regressions
 
 ---
 
