@@ -160,6 +160,13 @@ public:
                                WGPUTextureFormat format,
                                WGPUTextureUsage extra_usage = 0);
     int find_gpu_sink() const;  // returns first GPU sink node index, or -1
+    int find_effective_gpu_sink() const;  // solo-aware: returns soloed node if it has texture output
+
+    // Solo mode — session-only, not serialized
+    void set_solo(int node_idx);  // -1 to clear
+    int solo_node_idx() const { return solo_node_idx_; }
+    bool is_solo_active() const { return solo_node_idx_ >= 0; }
+    const std::vector<bool>& solo_active_set() const { return solo_active_set_; }
     void inject_external_output(uint32_t node_idx, uint32_t port_idx, float value);
     void inject_external_spread(uint32_t node_idx, uint32_t port_idx,
                                 const float* data, uint32_t length);
@@ -190,6 +197,10 @@ private:
     std::filesystem::path graph_base_dir_;
     WGPUDevice gpu_device_ = nullptr;
     bool needs_gpu_realloc_ = false;
+
+    // Solo mode state (session-only)
+    int solo_node_idx_ = -1;
+    std::vector<bool> solo_active_set_;
 };
 
 } // namespace vivid

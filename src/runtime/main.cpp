@@ -735,6 +735,16 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.error_message = ns.error_message;
         sn.missing_operator = ns.missing_operator;
 
+        // Solo state
+        if (scheduler.is_solo_active()) {
+            const auto& solo_set = scheduler.solo_active_set();
+            std::string solo_id = (scheduler.solo_node_idx() >= 0 &&
+                                   scheduler.solo_node_idx() < static_cast<int>(sched_nodes.size()))
+                                  ? sched_nodes[scheduler.solo_node_idx()].node_id : "";
+            sn.soloed = (ns.node_id == solo_id);
+            sn.solo_dimmed = (i < solo_set.size() && !solo_set[i]);
+        }
+
         // Layout from graph
         const auto* ndef = graph.find_node(ns.node_id);
         if (ndef && ndef->has_layout()) {
@@ -849,6 +859,10 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         snap.graph_dirty = runtime_api->graph_dirty();
         snap.queued_variation = runtime_api->pending_variation_idx();
     }
+
+    // Solo state
+    if (scheduler.is_solo_active() && runtime_api)
+        snap.solo_node_id = runtime_api->solo_node_id();
 
     // Recording state
     if (capture_coordinator) {
@@ -2114,7 +2128,7 @@ int main(int argc, char* argv[]) {
     if (has_gpu_ops) {
         scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
     }
-    int video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
+    int video_out_idx = has_gpu_ops ? scheduler.find_effective_gpu_sink() : -1;
 
     // --- Audio engine ---
     vivid::AudioEngine audio_engine;
@@ -3010,7 +3024,7 @@ int main(int argc, char* argv[]) {
             if (has_gpu_ops) {
                 scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
             }
-            video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
+            video_out_idx = has_gpu_ops ? scheduler.find_effective_gpu_sink() : -1;
             capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
             // Evict thumbnail cache entries for removed nodes
             {
@@ -3025,7 +3039,7 @@ int main(int argc, char* argv[]) {
             runtime_api.clear_gpu_realloc();
             scheduler.clear_gpu_realloc();
             scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
-            video_out_idx = has_gpu_ops ? scheduler.find_gpu_sink() : -1;
+            video_out_idx = has_gpu_ops ? scheduler.find_effective_gpu_sink() : -1;
         }
         if (!graph_loaded && !scheduler.nodes().empty()) {
             graph_loaded = true;
@@ -3342,7 +3356,7 @@ int main(int argc, char* argv[]) {
                         has_gpu_ops = scheduler.has_gpu_operators();
                         if (has_gpu_ops) {
                             scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
-                            video_out_idx = scheduler.find_gpu_sink();
+                            video_out_idx = scheduler.find_effective_gpu_sink();
                         } else {
                             video_out_idx = -1;
                         }

@@ -130,6 +130,10 @@ public:
     CommandResult apply_snapshot_json(const std::string& graph_json,
                                       bool& has_gpu_ops, bool& has_audio);
 
+    // Solo mode (session-only, not serialized)
+    CommandResult set_solo(const std::string& node_id);  // empty string = clear solo
+    std::string solo_node_id() const;
+
     bool has_pending() const { return pending_topology_change_; }
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }

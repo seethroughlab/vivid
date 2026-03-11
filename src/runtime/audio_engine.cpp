@@ -801,6 +801,32 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
         }
     }
 
+    // Solo mode: map scheduler solo state to audio engine indices
+    if (scheduler.is_solo_active()) {
+        const auto& sched_solo = scheduler.solo_active_set();
+        snap.solo_active_set.resize(nodes_.size(), false);
+        for (const auto& m : analysis_mappings_) {
+            if (m.scheduler_node_idx < sched_solo.size())
+                snap.solo_active_set[m.audio_engine_idx] = sched_solo[m.scheduler_node_idx];
+        }
+        // Also check nodes that are in the audio engine but not in analysis_mappings_
+        // (unlikely, but be safe): use the node_id_to_index_ map
+        for (size_t i = 0; i < nodes_.size(); ++i) {
+            // If already set by analysis mapping, skip
+            if (snap.solo_active_set[i]) continue;
+            // Find this audio node's scheduler index
+            for (size_t si = 0; si < scheduler.nodes().size(); ++si) {
+                if (scheduler.nodes()[si].node_id == nodes_[i].node_id) {
+                    if (si < sched_solo.size())
+                        snap.solo_active_set[i] = sched_solo[si];
+                    break;
+                }
+            }
+        }
+    } else {
+        snap.solo_active_set.clear();
+    }
+
     active_.store(write_idx, std::memory_order_release);
 }
 
@@ -1067,6 +1093,16 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
             // Zero input buffers (full multi-channel extent)
             for (auto& buf : ns.input_buffers)
                 std::memset(buf.data(), 0, buf.size() * sizeof(float));
+
+            // Solo mode: skip non-active audio nodes (sink always runs)
+            if (!snap.solo_active_set.empty() &&
+                ni < static_cast<uint32_t>(snap.solo_active_set.size()) &&
+                !snap.solo_active_set[ni] &&
+                static_cast<int>(ni) != sink_node_idx_) {
+                for (auto& buf : ns.output_buffers)
+                    std::memset(buf.data(), 0, buf.size() * sizeof(float));
+                continue;
+            }
 
             // Copy upstream audio outputs into this node's inputs (multi-channel aware)
             for (const auto& w : wires_) {

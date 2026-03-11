@@ -69,6 +69,9 @@ public:
     virtual void remove_state_preset(const std::string& sm_node, int state_idx,
                                      const std::string& target_node) {}
 
+    // Solo mode (session-only UI affordance)
+    virtual void set_solo(const std::string& node_id) {}
+
     // Capture/recording operations (defaults are no-ops for headless/test sinks)
     virtual void capture_snapshot() {}
     virtual void start_recording(const std::string& path, const std::string& codec, double fps) {}

@@ -86,6 +86,10 @@ struct NodeSnapshot {
     std::string error_message;
     bool missing_operator = false;
 
+    // Solo state (session-only)
+    bool soloed = false;        // this node is the solo target
+    bool solo_dimmed = false;   // solo is active and this node is NOT in the active set
+
     // Layout position from graph
     float layout_x = 0.0f;
     float layout_y = 0.0f;
@@ -189,6 +193,9 @@ struct GraphSnapshot {
     bool graph_dirty = false;
     int queued_variation = -1;
     std::string quantize_clock_node;
+
+    // Solo state
+    std::string solo_node_id;  // empty = no solo active
 
     // Recording state (from CaptureCoordinator)
     bool is_recording = false;

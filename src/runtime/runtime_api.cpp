@@ -1255,6 +1255,29 @@ void RuntimeAPI::tick_state_presets() {
     }
 }
 
+// --- Solo mode ---
+
+CommandResult RuntimeAPI::set_solo(const std::string& node_id) {
+    if (node_id.empty()) {
+        scheduler_.set_solo(-1);
+        return {true, "solo cleared"};
+    }
+    const auto& nodes = scheduler_.nodes();
+    for (uint32_t i = 0; i < static_cast<uint32_t>(nodes.size()); ++i) {
+        if (nodes[i].node_id == node_id) {
+            scheduler_.set_solo(static_cast<int>(i));
+            return {true, "soloed " + node_id};
+        }
+    }
+    return {false, "node not found: " + node_id};
+}
+
+std::string RuntimeAPI::solo_node_id() const {
+    int idx = scheduler_.solo_node_idx();
+    if (idx < 0 || idx >= static_cast<int>(scheduler_.nodes().size())) return {};
+    return scheduler_.nodes()[idx].node_id;
+}
+
 // --- Persistence ---
 
 CommandResult RuntimeAPI::save() {

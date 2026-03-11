@@ -151,6 +151,7 @@ struct ParamSnapshot {
     std::vector<std::vector<SpreadSnapshot>> spread_inputs; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<std::string>> input_string_values; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<HandleInputSnapshot>> handle_inputs; // [audio_node_idx][input_port_idx]
+    std::vector<bool> solo_active_set;  // empty = no solo; [audio_node_idx] = active
 };
 
 struct AnalysisSnapshot {

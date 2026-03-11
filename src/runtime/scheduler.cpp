@@ -232,6 +232,8 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
 bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
     nodes_.clear();
     wires_.clear();
+    solo_node_idx_ = -1;
+    solo_active_set_.clear();
 
     // Extract graph base directory for resolving relative file paths
     graph_base_dir_ = std::filesystem::path(graph.source_path()).parent_path();
@@ -699,6 +701,13 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             for (auto& sp : ns.output_spreads) sp.clear();
             for (auto& sp : ns.output_string_spreads) sp.clear();
             std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
+            continue;
+        }
+
+        // Solo mode: skip nodes outside the active set
+        if (solo_node_idx_ >= 0 && !solo_active_set_.empty() && !solo_active_set_[ni]) {
+            std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
+            for (auto& sp : ns.output_spreads) sp.clear();
             continue;
         }
 
@@ -1441,6 +1450,41 @@ int Scheduler::find_gpu_sink() const {
         if (nodes_[i].is_gpu_sink) return static_cast<int>(i);
     }
     return -1;
+}
+
+int Scheduler::find_effective_gpu_sink() const {
+    if (solo_node_idx_ >= 0 &&
+        solo_node_idx_ < static_cast<int>(nodes_.size()) &&
+        nodes_[solo_node_idx_].has_texture_output) {
+        return solo_node_idx_;
+    }
+    return find_gpu_sink();
+}
+
+void Scheduler::set_solo(int node_idx) {
+    if (node_idx == solo_node_idx_) return;
+    if (node_idx < 0 || node_idx >= static_cast<int>(nodes_.size())) {
+        solo_node_idx_ = -1;
+        solo_active_set_.clear();
+        return;
+    }
+    solo_node_idx_ = node_idx;
+    solo_active_set_.assign(nodes_.size(), false);
+
+    // BFS: mark solo node and all transitive upstream dependencies
+    std::vector<uint32_t> queue;
+    queue.push_back(static_cast<uint32_t>(node_idx));
+    solo_active_set_[node_idx] = true;
+    while (!queue.empty()) {
+        uint32_t cur = queue.back();
+        queue.pop_back();
+        for (uint32_t up : nodes_[cur].upstream_nodes) {
+            if (!solo_active_set_[up]) {
+                solo_active_set_[up] = true;
+                queue.push_back(up);
+            }
+        }
+    }
 }
 
 void Scheduler::shutdown() {

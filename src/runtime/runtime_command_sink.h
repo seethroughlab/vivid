@@ -494,6 +494,10 @@ public:
         return true;
     }
 
+    void set_solo(const std::string& node_id) override {
+        api_.set_solo(node_id);
+    }
+
     void capture_snapshot() override {
         if (!capture_coordinator_) return;
         // Fire-and-forget — PNG is saved to disk
