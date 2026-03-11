@@ -2183,6 +2183,13 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     yyjson_mut_obj_add_int(rdoc, res, "operator_count",
                         static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
                     result = json_ok(rdoc, res);
+                    // Auto-reload graph if it has missing operators
+                    for (const auto& ns : scheduler.nodes()) {
+                        if (ns.missing_operator) {
+                            api.reload(has_gpu_ops, has_audio);
+                            break;
+                        }
+                    }
                 } else {
                     result = json_err(ir.error);
                 }
@@ -2226,6 +2233,13 @@ static std::string dispatch(const std::string& method, const std::string& body,
                         static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
                     yyjson_mut_obj_add_bool(rdoc, res, "linked", true);
                     result = json_ok(rdoc, res);
+                    // Auto-reload graph if it has missing operators
+                    for (const auto& ns : scheduler.nodes()) {
+                        if (ns.missing_operator) {
+                            api.reload(has_gpu_ops, has_audio);
+                            break;
+                        }
+                    }
                 } else {
                     result = json_err(ir.error);
                 }
@@ -2266,6 +2280,13 @@ static std::string dispatch(const std::string& method, const std::string& body,
                         static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
                     yyjson_mut_obj_add_bool(rdoc, res, "linked", ir.info.linked);
                     result = json_ok(rdoc, res);
+                    // Auto-reload graph if it has missing operators
+                    for (const auto& ns : scheduler.nodes()) {
+                        if (ns.missing_operator) {
+                            api.reload(has_gpu_ops, has_audio);
+                            break;
+                        }
+                    }
                 } else {
                     result = json_err(ir.error);
                 }
