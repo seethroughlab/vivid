@@ -196,23 +196,23 @@ operators. Define the scheme before 1.0 locks the serialization format.
 
 ## Milestone 11: Operator Creation Modal
 
-Replace the minimal "create operator" flow with a modal that surfaces all scaffolding options upfront. Depends on M9 (output port API shape settled) and M8 (domain label finalized).
+**Status:** Complete — full-options modal shipped with domain selection, dynamic port/param rows, composite variant, destination chooser, and "Create Empty" path.
 
-- [ ] Design full-options modal: domain selection, port types + count, param scaffolding (name/type/default), destination (project package vs. core)
-- [ ] Include "create empty" path for advanced users who want a blank slate without the wizard
-- [ ] Decide whether the modal is the canonical entry point for both GUI-triggered and MCP-triggered scaffold, or whether the two paths diverge intentionally
+- [x] Design full-options modal: domain selection, port types + count, param scaffolding (name/type/default), destination (project package vs. core)
+- [x] Include "create empty" path for advanced users who want a blank slate without the wizard
+- [x] GUI and MCP scaffold paths intentionally diverge: GUI uses the interactive modal, MCP uses the `scaffold_operator` JSON API directly — both call `OperatorCreator::create()` on the backend
 
 ---
 
 ## Milestone 12: Solo Mode
 
-"Solo" in a multi-domain graph has non-obvious cross-domain interactions. Design must be decided before implementation.
+**Status:** Complete — solo mode implemented across scheduler, audio engine, GPU sink override, and UI.
 
-- [ ] Define GPU solo semantics: bypass upstream compositing and render only that operator to preview? What happens to downstream operators?
-- [ ] Define audio solo semantics: mute all other audio outputs, or route only that operator to the audio device?
-- [ ] Define cross-domain behavior: if a GPU operator is soloed but depends on an audio operator for modulation, does the audio chain still run?
-- [ ] Decide scope: session-only UI affordance vs. graph-level concept (serialized with the graph)
-- [ ] Implement
+- [x] Define GPU solo semantics: soloed node becomes the effective GPU sink; its output texture feeds the display. Downstream nodes are skipped. If the soloed node has no texture output, GPU rendering continues normally.
+- [x] Define audio solo semantics: mute all audio nodes NOT in the solo upstream set. The audio_out sink still runs but receives silence from non-solo paths. If a non-audio node is soloed, audio continues normally.
+- [x] Define cross-domain behavior: compute the transitive upstream closure of the soloed node across ALL domains. If a GPU node depends on a control LFO, that LFO still runs. If it transitively depends on an audio analysis node, the audio chain up to that point still runs.
+- [x] Decide scope: session-only UI affordance. Not serialized with the graph. Cleared on graph reload.
+- [x] Implement: scheduler `set_solo()` with BFS upstream closure, tick() skip logic, `find_effective_gpu_sink()`, audio engine solo bridging via `ParamSnapshot`, RuntimeAPI `set_solo()`/`solo_node_id()`, context menu Solo/Unsolo item, 'S' keyboard shortcut, gold border + dimmed visual indicators, `set_solo`/`get_solo` control server endpoints
 
 ---
 
