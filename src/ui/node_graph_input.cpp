@@ -952,6 +952,14 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         if (key == GLFW_KEY_M && action == GLFW_PRESS) {
             toggle_midi_map_mode();
         }
+        // S: toggle solo on selected node
+        if (key == GLFW_KEY_S && action == GLFW_PRESS && !mod_key) {
+            if (selected_node_ids_.size() == 1) {
+                const auto& sel_id = *selected_node_ids_.begin();
+                bool is_soloed = (!snap_.solo_node_id.empty() && snap_.solo_node_id == sel_id);
+                commands_.set_solo(is_soloed ? "" : sel_id);
+            }
+        }
         // Delete selected nodes (Delete or Backspace)
         if ((key == GLFW_KEY_DELETE || key == GLFW_KEY_BACKSPACE) && action == GLFW_PRESS) {
             delete_selected();
@@ -1558,6 +1566,9 @@ void NodeGraphUI::update_context_menu() {
             item_count = 2;  // + "Clone & Edit"
         if (context_wire_idx_ >= 0)
             item_count = 2;  // + "Insert Node"
+        // Solo item for node context menus
+        bool show_solo = !context_node_id_.empty() && !context_bg_menu_;
+        if (show_solo) item_count++;
 
         float menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
         if (mouse_.x >= context_menu_x_ && mouse_.x <= context_menu_x_ + kCtxMenuW &&
@@ -1574,7 +1585,12 @@ void NodeGraphUI::update_context_menu() {
                     layout_nodes(/*force=*/true);
                 }
             } else if (!context_node_id_.empty()) {
-                if (clicked_item == 0) {
+                // Build the item index map to match draw order
+                int delete_idx = 0;
+                int clone_idx = context_node_has_shader_ ? 1 : -1;
+                int solo_idx = context_node_has_shader_ ? 2 : 1;
+
+                if (clicked_item == delete_idx) {
                     // "Delete Node(s)"
                     if (selected_node_ids_.count(context_node_id_) && selected_node_ids_.size() > 1) {
                         auto ids_copy = selected_node_ids_;
@@ -1585,9 +1601,13 @@ void NodeGraphUI::update_context_menu() {
                         commands_.remove_node(context_node_id_);
                         selected_node_ids_.erase(context_node_id_);
                     }
-                } else if (clicked_item == 1 && context_node_has_shader_) {
+                } else if (clicked_item == clone_idx && context_node_has_shader_) {
                     // "Clone & Edit"
                     open_clone_confirm_dialog(context_node_type_);
+                } else if (clicked_item == solo_idx) {
+                    // "Solo" / "Unsolo"
+                    bool is_soloed = (!snap_.solo_node_id.empty() && snap_.solo_node_id == context_node_id_);
+                    commands_.set_solo(is_soloed ? "" : context_node_id_);
                 }
             } else if (context_wire_idx_ >= 0) {
                 const auto& conns = snap_.connections;

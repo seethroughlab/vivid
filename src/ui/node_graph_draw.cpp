@@ -99,6 +99,15 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float sr = g_to_s(style_.corner_radius);
         tr.draw_rounded_rect(sx, sy, sw, sh, sr, bg[0], bg[1], bg[2]);
 
+        // Solo dimming: reduce alpha of non-active nodes
+        bool node_soloed = (i < snap_.nodes.size() && snap_.nodes[i].soloed);
+        bool node_solo_dimmed = (i < snap_.nodes.size() && snap_.nodes[i].solo_dimmed);
+        if (node_solo_dimmed) {
+            // Overdraw a dark semi-transparent layer on top of the node background
+            tr.draw_rounded_rect(sx, sy, sw, sh, g_to_s(style_.corner_radius),
+                                 0.0f, 0.0f, 0.0f, 0.65f);
+        }
+
         // Red border on errored or missing nodes (2px)
         if (node_bad) {
             float bw = g_to_s(2.0f);
@@ -106,6 +115,15 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
             tr.draw_rect(sx, sy + sh - bw, sw, bw, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]); // bottom
             tr.draw_rect(sx, sy, bw, sh, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);           // left
             tr.draw_rect(sx + sw - bw, sy, bw, sh, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]); // right
+        }
+
+        // Gold border on soloed node (3px)
+        if (node_soloed) {
+            float bw = g_to_s(3.0f);
+            tr.draw_rect(sx, sy, sw, bw, kSoloAccent[0], kSoloAccent[1], kSoloAccent[2]);           // top
+            tr.draw_rect(sx, sy + sh - bw, sw, bw, kSoloAccent[0], kSoloAccent[1], kSoloAccent[2]); // bottom
+            tr.draw_rect(sx, sy, bw, sh, kSoloAccent[0], kSoloAccent[1], kSoloAccent[2]);           // left
+            tr.draw_rect(sx + sw - bw, sy, bw, sh, kSoloAccent[0], kSoloAccent[1], kSoloAccent[2]); // right
         }
 
         // Accent bar at top
@@ -3016,6 +3034,9 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
             item_count = 2;
         if (context_wire_idx_ >= 0)
             item_count = 2;
+        // Solo item for node context menus
+        bool show_solo = !context_node_id_.empty() && !context_bg_menu_;
+        if (show_solo) item_count++;
 
         float menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
         float mx = context_menu_x_, my = context_menu_y_;
@@ -3025,20 +3046,25 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
 
         // Item labels
         std::string delete_label;
-        const char* labels[3];
+        const char* labels[4];
+        int label_idx = 0;
         if (context_bg_menu_) {
-            labels[0] = "Re-layout All";
+            labels[label_idx++] = "Re-layout All";
         } else if (!context_node_id_.empty()) {
             if (selected_node_ids_.count(context_node_id_) && selected_node_ids_.size() > 1) {
                 delete_label = "Delete " + std::to_string(selected_node_ids_.size()) + " Nodes";
-                labels[0] = delete_label.c_str();
+                labels[label_idx++] = delete_label.c_str();
             } else {
-                labels[0] = "Delete Node";
+                labels[label_idx++] = "Delete Node";
             }
-            labels[1] = "Clone & Edit";
+            if (context_node_has_shader_)
+                labels[label_idx++] = "Clone & Edit";
+            // Solo/Unsolo
+            bool is_soloed = (!snap_.solo_node_id.empty() && snap_.solo_node_id == context_node_id_);
+            labels[label_idx++] = is_soloed ? "Unsolo" : "Solo";
         } else {
-            labels[0] = "Delete Wire";
-            labels[1] = "Insert Node";
+            labels[label_idx++] = "Delete Wire";
+            labels[label_idx++] = "Insert Node";
         }
 
         for (int i = 0; i < item_count; ++i) {

@@ -41,6 +41,7 @@ static constexpr std::array<float, 3> kGpuAccent     = { 0.306f, 0.804f, 0.769f 
 static constexpr std::array<float, 3> kAudioAccent   = { 0.941f, 0.627f, 0.188f };     // #F0A030 amber
 static constexpr std::array<float, 3> kControlAccent = { 0.753f, 0.784f, 0.816f };     // #C0C8D0 gray
 static constexpr std::array<float, 3> kErrorAccent   = { 0.90f, 0.25f, 0.25f };       // red
+static constexpr std::array<float, 3> kSoloAccent    = { 1.0f, 0.85f, 0.2f };         // gold/amber
 
 // Inspector widget sizes
 static constexpr float kAdsrPreviewH = 80.0f;

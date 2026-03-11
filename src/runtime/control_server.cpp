@@ -2581,6 +2581,25 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 }
             }
         }
+    } else if (method == "set_solo") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid = yyjson_obj_get(root, "node_id");
+            std::string node_id_str;
+            if (nid && yyjson_is_str(nid))
+                node_id_str = yyjson_get_str(nid);
+            result = command_result_to_json(api.set_solo(node_id_str));
+        }
+    } else if (method == "get_solo") {
+        std::string solo_id = api.solo_node_id();
+        yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+        yyjson_mut_val* rroot = yyjson_mut_obj(rdoc);
+        yyjson_mut_doc_set_root(rdoc, rroot);
+        yyjson_mut_obj_add_bool(rdoc, rroot, "ok", true);
+        yyjson_mut_obj_add_strcpy(rdoc, rroot, "node_id", solo_id.c_str());
+        yyjson_mut_obj_add_bool(rdoc, rroot, "active", !solo_id.empty());
+        result = json_serialize(rdoc);
+        yyjson_mut_doc_free(rdoc);
     } else {
         result = json_err("unknown method '" + method + "'");
     }
