@@ -1340,16 +1340,20 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
 void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uint32_t default_h,
                                       WGPUTextureFormat format,
                                       WGPUTextureUsage extra_usage) {
+    gpu_device_ = device;
     // Iterate nodes in topological order (they're already sorted)
     for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
         auto& ns = nodes_[ni];
         if (!ns.is_gpu) continue;
 
-        // Release existing textures (primary and aux)
+        // Release existing primary textures.  Aux texture views/textures are NOT
+        // released here — operators may have written their own views (with a
+        // different format) into aux slots, so the scheduler must not free them.
+        // Operators manage aux resource lifetimes in their own destructors.
         if (ns.gpu_texture_view) { wgpuTextureViewRelease(ns.gpu_texture_view); ns.gpu_texture_view = nullptr; }
         if (ns.gpu_texture) { wgpuTextureRelease(ns.gpu_texture); ns.gpu_texture = nullptr; }
-        for (auto& v : ns.aux_gpu_texture_views) { if (v) { wgpuTextureViewRelease(v); v = nullptr; } }
-        for (auto& t : ns.aux_gpu_textures)      { if (t) { wgpuTextureRelease(t); t = nullptr; } }
+        for (auto& v : ns.aux_gpu_texture_views) v = nullptr;
+        for (auto& t : ns.aux_gpu_textures)      t = nullptr;
 
         // GPU sinks and scene-only nodes don't produce their own textures
         if (ns.is_gpu_sink || !ns.has_texture_output) {
@@ -1423,29 +1427,9 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
             continue;
         }
 
-        // Allocate aux textures (same size and format as primary)
-        for (size_t ai = 0; ai < ns.aux_texture_output_port_indices.size(); ++ai) {
-            std::string aux_label = "Node Aux Texture [" + ns.node_id + "/" + std::to_string(ai) + "]";
-            WGPUTextureDescriptor aux_desc = tex_desc;
-            aux_desc.label = to_sv(aux_label.c_str());
-            ns.aux_gpu_textures[ai] = wgpuDeviceCreateTexture(device, &aux_desc);
-            if (!ns.aux_gpu_textures[ai]) {
-                std::fprintf(stderr, "[vivid] GPU aux texture alloc failed for node '%s' slot %zu\n",
-                             ns.node_id.c_str(), ai);
-                continue;
-            }
-
-            std::string aux_view_label = "Node Aux View [" + ns.node_id + "/" + std::to_string(ai) + "]";
-            WGPUTextureViewDescriptor aux_view_desc = view_desc;
-            aux_view_desc.label = to_sv(aux_view_label.c_str());
-            ns.aux_gpu_texture_views[ai] = wgpuTextureCreateView(ns.aux_gpu_textures[ai], &aux_view_desc);
-            if (!ns.aux_gpu_texture_views[ai]) {
-                std::fprintf(stderr, "[vivid] GPU aux texture view creation failed for node '%s' slot %zu\n",
-                             ns.node_id.c_str(), ai);
-                wgpuTextureRelease(ns.aux_gpu_textures[ai]);
-                ns.aux_gpu_textures[ai] = nullptr;
-            }
-        }
+        // Aux texture slots are left null — operators create their own aux
+        // textures with the correct format (e.g. R32Float for depth output)
+        // and write the views into ctx->aux_output_texture_views during tick.
 
         std::fprintf(stderr, "[vivid] Allocated %ux%u texture for node '%s'\n",
                      w, h, ns.node_id.c_str());
@@ -1461,11 +1445,12 @@ int Scheduler::find_gpu_sink() const {
 
 void Scheduler::shutdown() {
     for (auto& ns : nodes_) {
-        // Release per-node GPU textures (primary and aux)
+        // Release per-node primary GPU textures.  Aux views/textures are
+        // operator-owned and released by destroy_instance below.
         if (ns.gpu_texture_view) { wgpuTextureViewRelease(ns.gpu_texture_view); ns.gpu_texture_view = nullptr; }
         if (ns.gpu_texture) { wgpuTextureRelease(ns.gpu_texture); ns.gpu_texture = nullptr; }
-        for (auto& v : ns.aux_gpu_texture_views) { if (v) { wgpuTextureViewRelease(v); v = nullptr; } }
-        for (auto& t : ns.aux_gpu_textures)      { if (t) { wgpuTextureRelease(t); t = nullptr; } }
+        for (auto& v : ns.aux_gpu_texture_views) v = nullptr;
+        for (auto& t : ns.aux_gpu_textures)      t = nullptr;
 
         if (ns.instance) {
             if (ns.loader)
@@ -1475,6 +1460,17 @@ void Scheduler::shutdown() {
     }
     nodes_.clear();
     wires_.clear();
+
+    // Flush deferred wgpu-core resource cleanup.  After destroying operator
+    // instances and releasing per-node textures, storage slots for pipelines,
+    // bind groups, etc. are only reclaimed during device.maintain().  Resource
+    // releases cascade (pipeline → shader module → layout) and each maintain
+    // pass only processes one batch, so we poll multiple times to fully drain
+    // the suspected → last_resources → cleanup chain.
+    if (gpu_device_) {
+        wgpuDevicePoll(gpu_device_, true, nullptr);
+        gpu_device_ = nullptr;
+    }
 }
 
 } // namespace vivid

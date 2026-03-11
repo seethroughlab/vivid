@@ -4,6 +4,7 @@
 #include "runtime/graph.h"
 #include "operator_api/gpu_types.h"
 #include <webgpu/webgpu.h>
+#include <webgpu/wgpu.h>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -187,6 +188,7 @@ private:
     std::vector<Wire> wires_;
     std::string operators_src_dir_;
     std::filesystem::path graph_base_dir_;
+    WGPUDevice gpu_device_ = nullptr;
     bool needs_gpu_realloc_ = false;
 };
 
