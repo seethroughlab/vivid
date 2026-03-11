@@ -60,6 +60,22 @@ Seven canonical port types reflect the runtime's routing mechanisms:
 - `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 800×600).
 - `VIVID_PORT_HANDLE` — typed opaque pointer (`void*`), type-safe via `handle_type_id` (FNV-1a hash of the C++ type name). Used for GPU buffers, meshes, compute dispatches, media streams, MIDI, and package-defined types.
 
+### Handle Ports and Type Safety
+
+`VIVID_PORT_HANDLE` carries a `void*` pointer paired with a compile-time `handle_type_id` — a 32-bit FNV-1a hash that identifies the concrete C++ type. This lets operators exchange arbitrary typed data (GPU buffers, media streams, meshes, MIDI state) through the graph while the scheduler enforces type safety at connection time.
+
+The type ID is computed by `vivid_type_id<T>()` (defined in `src/operator_api/type_id.h`), which hashes `__PRETTY_FUNCTION__` (`__FUNCSIG__` on MSVC) for the template instantiation. Because the hash includes the fully-qualified type name, it produces a stable, deterministic ID across separate translation units and `dlopen` boundaries.
+
+The `VIVID_HANDLE_PORT` convenience macro (same header) declares a handle port in a single line:
+
+```cpp
+VIVID_HANDLE_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1)
+// expands to:
+// VividPortDescriptor { "media_stream", VIVID_PORT_HANDLE, VIVID_PORT_INPUT, vivid_type_id<vivid::MediaStreamV1>() }
+```
+
+When the user draws a connection in the graph editor, the scheduler compares `handle_type_id` values on both ends. Mismatched IDs (e.g. connecting a `MediaStreamV1` output to a `MeshBufferV1` input) are rejected — the connection is never created. This prevents silent `void*` misinterpretation without requiring a centralized type registry.
+
 ### Semantic Tags (Advisory)
 Port types can carry optional semantic tags: normalized (0–1), bipolar (-1 to 1), frequency_hz, decibels, midi_note, etc. **Tags are advisory hints, not enforced by the runtime.** When connecting ports with mismatched ranges, the graph editor suggests inserting a visible Remap node with the mapping pre-configured. No silent auto-mapping.
 
@@ -111,7 +127,7 @@ Control operators can embed other operators as persistent member variables using
 #include "control/lfo/lfo.h"
 #include "control/smooth/smooth.h"
 
-struct MyOp : vivid::OperatorBase {
+struct MyOp : vivid::ControlOperatorBase {
     vivid::ChildOp<LFO>    lfo_;
     vivid::ChildOp<Smooth> smoother_;
 
@@ -177,7 +193,7 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **Broadcasting:** when two Spreads of different lengths connect to the same operator, the shorter one repeats (wraps) to match the longer. A Spread of 3 colors applied to a Spread of 512 particles cycles through the 3 colors.
 - **Cross-domain:** a Spread of Control values (e.g., 512 FFT bins) can connect directly to a GPU operator's parameter, producing 512 visual elements driven by audio. No explicit bridging required — the existing Control→GPU bridge handles the data; Spreads handle the cardinality.
 - **LLM-friendly:** describing Spread-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on Spreads.
-- **Port types:** `Spread<VIVID_PORT_FLOAT>`, `Spread<VIVID_PORT_TEXTURE>`, `Spread<VIVID_PORT_AUDIO>` are all valid. The Spread is orthogonal to the domain type system.
+- **Port types:** `VIVID_PORT_SPREAD` is a dedicated port type for variable-length float arrays. Texture and audio ports don't have a spread variant — multiple instances use multiple ports. String arrays use the separate `VIVID_PORT_STRING_SPREAD` type.
 - **Cross-domain bridge implementation:** Control↔Audio uses `SpreadSnapshot` (fixed 64-element struct) inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. Control→GPU uses WebGPU storage buffers: the operator uploads Spread data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
 
 ## 5.10 Simulation Zones: Frame-to-Frame State
