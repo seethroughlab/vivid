@@ -1365,6 +1365,7 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
         for (auto& t : ns.aux_gpu_textures)      t = nullptr;
 
         // GPU sinks and scene-only nodes don't produce their own textures
+        ns.gpu_tex_inherited = false;
         if (ns.is_gpu_sink || !ns.has_texture_output) {
             ns.gpu_tex_width  = 0;
             ns.gpu_tex_height = 0;
@@ -1375,31 +1376,32 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
         uint32_t w = ns.gpu_tex_width;
         uint32_t h = ns.gpu_tex_height;
 
-        if (w == 0 || h == 0) {
-            // Try to inherit from first connected upstream GPU node
-            bool inherited = false;
-            if (!ns.texture_input_port_indices.empty()) {
-                uint32_t first_tex_port = ns.texture_input_port_indices[0];
-                for (const auto& wire : wires_) {
-                    if (wire.to_node_idx == ni && !wire.targets_param &&
-                        wire.to_port_idx == first_tex_port && wire.is_texture_wire) {
-                        const auto& upstream = nodes_[wire.from_node_idx];
-                        if (upstream.gpu_tex_width > 0 && upstream.gpu_tex_height > 0) {
-                            w = upstream.gpu_tex_width;
-                            h = upstream.gpu_tex_height;
-                            inherited = true;
-                        }
-                        break;
+        // Nodes with texture inputs always inherit from upstream (filters).
+        // Nodes without texture inputs keep their own size (generators).
+        if (!ns.texture_input_port_indices.empty()) {
+            uint32_t first_tex_port = ns.texture_input_port_indices[0];
+            for (const auto& wire : wires_) {
+                if (wire.to_node_idx == ni && !wire.targets_param &&
+                    wire.to_port_idx == first_tex_port && wire.is_texture_wire) {
+                    const auto& upstream = nodes_[wire.from_node_idx];
+                    if (upstream.gpu_tex_width > 0 && upstream.gpu_tex_height > 0) {
+                        w = upstream.gpu_tex_width;
+                        h = upstream.gpu_tex_height;
+                        ns.gpu_tex_inherited = true;
                     }
+                    break;
                 }
             }
-            if (!inherited) {
-                w = default_w;
-                h = default_h;
-            }
-            ns.gpu_tex_width  = w;
-            ns.gpu_tex_height = h;
         }
+
+        // Fall back to default if still unresolved
+        if (w == 0 || h == 0) {
+            w = default_w;
+            h = default_h;
+        }
+
+        ns.gpu_tex_width  = w;
+        ns.gpu_tex_height = h;
 
         // Create texture
         WGPUTextureDescriptor tex_desc{};

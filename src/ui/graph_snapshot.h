@@ -80,6 +80,7 @@ struct NodeSnapshot {
 
     uint32_t gpu_tex_width = 0;
     uint32_t gpu_tex_height = 0;
+    bool gpu_tex_inherited = false;
 
     // Error state (from scheduler)
     bool errored = false;

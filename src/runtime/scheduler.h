@@ -75,6 +75,7 @@ struct NodeState {
     WGPUTextureView  gpu_texture_view = nullptr;
     uint32_t         gpu_tex_width    = 0;
     uint32_t         gpu_tex_height   = 0;
+    bool             gpu_tex_inherited = false;
     std::vector<uint32_t> texture_input_port_indices;   // which input ports are GPU_TEXTURE
     std::vector<WGPUTextureView> resolved_tex_inputs;   // filled before process()
     std::vector<WGPUTexture>     resolved_tex_raw;       // raw texture handles (parallel)

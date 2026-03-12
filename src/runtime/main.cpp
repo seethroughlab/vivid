@@ -731,6 +731,7 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
             sn.file_param_values[name] = ns.file_param_storage[idx];
         sn.gpu_tex_width = ns.gpu_tex_width;
         sn.gpu_tex_height = ns.gpu_tex_height;
+        sn.gpu_tex_inherited = ns.gpu_tex_inherited;
         sn.errored = ns.errored;
         sn.error_message = ns.error_message;
         sn.missing_operator = ns.missing_operator;

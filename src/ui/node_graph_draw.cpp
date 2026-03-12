@@ -2243,6 +2243,11 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
         tr.draw_text(h_val_x, py, h_str.c_str(), 0.5f, 0.52f, 0.55f);
     }
 
+    if (!is_generator && node.gpu_tex_inherited) {
+        float label_x = h_val_x + kResInputW + 4.0f;
+        tr.draw_text(label_x, py, "(from input)", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    }
+
     py += kLineH;
 }
 
