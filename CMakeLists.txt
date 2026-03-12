@@ -282,6 +282,7 @@ add_vivid_operator(pat_transform     operators/control/pat_transform/pat_transfo
 add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_gain.cpp
                                     EXTRA_LIBS vivid_composable_ops)
 add_vivid_operator(spread_noise    operators/control/spread_noise/spread_noise.cpp)
+add_vivid_operator(physics_sim     operators/control/physics_sim/physics_sim.cpp)
 add_vivid_operator(osc_in            operators/control/osc_in/osc_in.cpp      EXTRA_LIBS oscpack)
 add_vivid_operator(osc_out           operators/control/osc_out/osc_out.cpp     EXTRA_LIBS oscpack)
 add_vivid_operator(mouse             operators/control/mouse/mouse.cpp)
@@ -302,6 +303,7 @@ add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp           
                    FACTORY_PRESETS operators/gpu/bloom/factory_presets.json)
 add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp                       EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/gpu/feedback/factory_presets.json)
+add_vivid_operator(metaball              operators/gpu/metaball/metaball.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 add_vivid_operator(text                  operators/gpu/text/text.cpp                               EXTRA_LIBS webgpu stb_truetype)
 # --- TextureLoader (static image → GPU texture, no video machinery) ---
