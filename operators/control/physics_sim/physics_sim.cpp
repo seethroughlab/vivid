@@ -13,7 +13,7 @@ struct PhysicsSim : vivid::ControlOperatorBase {
     vivid::Param<int>   count      {"count",      8,     1,    16};
     vivid::Param<float> speed      {"speed",      1.0f,  0.0f, 5.0f};
     vivid::Param<int>   bounce_mode{"bounce_mode",1,     0,    1};
-    vivid::Param<float> gravity    {"gravity",    0.0f, -1.0f, 1.0f};
+    vivid::Param<float> gravity    {"gravity",    0.0f, -20.0f, 20.0f};
     vivid::Param<float> damping    {"damping",    0.99f, 0.9f, 1.0f};
     vivid::Param<float> repulsion  {"repulsion",  0.3f,  0.0f, 1.0f};
     vivid::Param<float> min_radius {"min_radius", 0.05f, 0.02f, 0.2f};
@@ -59,7 +59,8 @@ struct PhysicsSim : vivid::ControlOperatorBase {
 
         // Read float inputs
         float force_input  = (ctx->input_values) ? ctx->input_values[0] : 0.0f;
-        float energy_input = (ctx->input_values) ? ctx->input_values[1] : 1.0f;
+        float energy_raw   = (ctx->input_values) ? ctx->input_values[1] : 0.0f;
+        float energy_input = (energy_raw > 0.001f) ? energy_raw : 1.0f;
 
         // Initialize particles if count changed or first run
         if (!initialized_ || n != prev_count_) {
@@ -165,8 +166,8 @@ private:
             uint32_t seed = i * 1337 + 42;
             px_[i] = hash_float(seed);
             py_[i] = hash_float(seed + 1);
-            vx_[i] = (hash_float(seed + 2) - 0.5f) * 0.2f;
-            vy_[i] = (hash_float(seed + 3) - 0.5f) * 0.2f;
+            vx_[i] = (hash_float(seed + 2) - 0.5f) * 2.0f;
+            vy_[i] = (hash_float(seed + 3) - 0.5f) * 2.0f;
             radii_[i] = r_min + (r_max - r_min) * hash_float(seed + 4);
         }
     }

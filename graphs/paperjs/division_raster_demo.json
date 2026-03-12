@@ -1,47 +1,58 @@
 {
-  "schema_version": 1,
-  "vivid_version": "0.1.0",
-  "meta": {
-    "id": "paperjs_division_raster",
-    "title": "Division Raster",
-    "description": "Faithful port of Paper.js DivisionRaster — rectangular grid of average-colored cells with visible gaps, animated cell size.",
-    "tags": ["demo", "paperjs", "raster", "mosaic"],
-    "difficulty": "beginner",
-    "domains": ["gpu", "control"],
-    "requires_packages": [],
-    "featured_rank": 15
-  },
-  "nodes": {
-    "source": {
-      "type": "TextureLoader",
-      "params": {
-        "file": ""
-      }
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "nodes": {
+        "source": {
+            "type": "TextureLoader",
+            "params": {
+                "file": "../../assets/building.jpg"
+            },
+            "layout": {
+                "x": 11.522796630859375,
+                "y": 323.3677978515625
+            }
+        },
+        "raster": {
+            "type": "RasterGrid",
+            "params": {
+                "gap": 1.7710503339767456,
+                "cell_size": 32.0
+            },
+            "layout": {
+                "x": 238.33203125,
+                "y": 400.4794921875
+            }
+        },
+        "lfo_size": {
+            "type": "LFO",
+            "params": {
+                "waveform": 0.0,
+                "offset": 48.0,
+                "amplitude": 40.0,
+                "frequency": 0.05000000074505806
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
     },
-    "raster": {
-      "type": "RasterGrid",
-      "params": {
-        "cell_size": 32.0,
-        "gap": 2.0
-      }
-    },
-    "lfo_size": {
-      "type": "LFO",
-      "params": {
-        "frequency": 0.05,
-        "amplitude": 40.0,
-        "offset": 48.0,
-        "waveform": 0
-      }
-    },
-    "vout": {
-      "type": "video_out",
-      "params": {}
+    "connections": [
+        {
+            "from": "lfo_size/value",
+            "to": "raster/cell_size"
+        },
+        {
+            "from": "raster/texture",
+            "to": "vout/input"
+        },
+        {
+            "from": "source/texture",
+            "to": "raster/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": -19.261760711669922,
+        "pan_y": -46.733428955078125,
+        "zoom": 1.094900131225586
     }
-  },
-  "connections": [
-    {"from": "source/texture",   "to": "raster/source"},
-    {"from": "lfo_size/value",   "to": "raster/cell_size"},
-    {"from": "raster/texture",   "to": "vout/input"}
-  ]
 }

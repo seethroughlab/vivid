@@ -18,7 +18,7 @@
         "count": 10,
         "speed": 1.0,
         "bounce_mode": 1,
-        "gravity": 0.5,
+        "gravity": 5.0,
         "damping": 0.99,
         "repulsion": 0.0,
         "min_radius": 0.06,
