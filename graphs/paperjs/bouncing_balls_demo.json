@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "paperjs_bouncing_balls",
+    "title": "Bouncing Balls",
+    "description": "Faithful port of Paper.js BouncingBalls — discrete circles with radial gradients, gravity, and bounce.",
+    "tags": ["demo", "paperjs", "physics", "circles"],
+    "difficulty": "intermediate",
+    "domains": ["gpu", "control"],
+    "requires_packages": [],
+    "featured_rank": 15
+  },
+  "nodes": {
+    "physics": {
+      "type": "PhysicsSim",
+      "params": {
+        "count": 10,
+        "speed": 1.0,
+        "bounce_mode": 1,
+        "gravity": 0.5,
+        "damping": 0.99,
+        "repulsion": 0.0,
+        "min_radius": 0.06,
+        "max_radius": 0.16
+      }
+    },
+    "metaball": {
+      "type": "Metaball",
+      "params": {
+        "count": 10,
+        "threshold": 1.0,
+        "softness": 0.01,
+        "glow": 0.0,
+        "color_mode": 1,
+        "r": 1.0,
+        "g": 1.0,
+        "b": 1.0,
+        "render_mode": 1
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    {"from": "physics/pos_x",      "to": "metaball/pos_x"},
+    {"from": "physics/pos_y",      "to": "metaball/pos_y"},
+    {"from": "physics/radii",      "to": "metaball/radii"},
+    {"from": "metaball/texture",   "to": "vout/input"}
+  ]
+}

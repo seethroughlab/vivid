@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "star_spin_demo",
+    "title": "Star Spin",
+    "description": "Audio-reactive spinning star with feedback trails and bloom.",
+    "tags": ["demo", "feedback", "audio-reactive"],
+    "difficulty": "intermediate",
+    "domains": ["audio", "gpu", "control"],
+    "requires_packages": [],
+    "featured_rank": 10
+  },
+  "nodes": {
+    "osc": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 110.0,
+        "amplitude": 0.6,
+        "waveform": 1
+      }
+    },
+    "gain": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.8
+      }
+    },
+    "aout": {
+      "type": "audio_out",
+      "params": {}
+    },
+    "lfo_rot": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.15,
+        "amplitude": 3.14,
+        "offset": 0.0
+      }
+    },
+    "lfo_size": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.08,
+        "amplitude": 0.12,
+        "offset": 0.2,
+        "waveform": 0
+      }
+    },
+    "math_zoom": {
+      "type": "Math",
+      "params": {
+        "operation": 0,
+        "b": 1.01
+      }
+    },
+    "star": {
+      "type": "Shape",
+      "params": {
+        "sides": 5,
+        "star": 0.5,
+        "radius": 0.2,
+        "softness": 0.005,
+        "r": 1.0,
+        "g": 0.7,
+        "b": 0.2
+      }
+    },
+    "feedback": {
+      "type": "Feedback",
+      "params": {
+        "decay": 0.92,
+        "mix": 0.85,
+        "zoom": 1.02,
+        "rotate": 3.0
+      }
+    },
+    "bloom": {
+      "type": "Bloom",
+      "params": {
+        "threshold": 0.2,
+        "intensity": 1.2,
+        "radius": 1.5,
+        "passes": 4
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    {"from": "osc/output",      "to": "gain/input"},
+    {"from": "gain/output",     "to": "aout/input"},
+    {"from": "lfo_rot/value",   "to": "star/rotation"},
+    {"from": "lfo_size/value",  "to": "star/radius"},
+    {"from": "gain/rms",        "to": "math_zoom/a"},
+    {"from": "math_zoom/result","to": "feedback/zoom"},
+    {"from": "star/texture",    "to": "feedback/input"},
+    {"from": "feedback/texture","to": "bloom/input"},
+    {"from": "bloom/texture",   "to": "vout/input"}
+  ]
+}

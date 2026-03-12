@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "voronoi_mosaic_demo",
+    "title": "Voronoi Mosaic",
+    "description": "Image subdivision into Voronoi cells — each cell shows the average color from the source. Audio-reactive cell density.",
+    "tags": ["demo", "voronoi", "mosaic", "audio-reactive"],
+    "difficulty": "intermediate",
+    "domains": ["audio", "gpu", "control"],
+    "requires_packages": [],
+    "featured_rank": 13
+  },
+  "nodes": {
+    "tex": {
+      "type": "TextureLoader",
+      "params": {}
+    },
+    "osc": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 220.0,
+        "amplitude": 0.5
+      }
+    },
+    "gain": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.8
+      }
+    },
+    "aout": {
+      "type": "audio_out",
+      "params": {}
+    },
+    "lfo_scale": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.12,
+        "amplitude": 10.0,
+        "offset": 12.0,
+        "waveform": 0
+      }
+    },
+    "math_edge": {
+      "type": "Math",
+      "params": {
+        "operation": 1,
+        "b": 0.05
+      }
+    },
+    "voronoi": {
+      "type": "Voronoi",
+      "params": {
+        "scale": 12.0,
+        "edge_width": 0.01,
+        "speed": 0.3,
+        "jitter": 0.8,
+        "mode": 3
+      }
+    },
+    "bloom": {
+      "type": "Bloom",
+      "params": {
+        "threshold": 0.5,
+        "intensity": 0.6,
+        "radius": 1.0,
+        "passes": 3
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    {"from": "osc/output",       "to": "gain/input"},
+    {"from": "gain/output",      "to": "aout/input"},
+    {"from": "tex/texture",      "to": "voronoi/source"},
+    {"from": "lfo_scale/value",  "to": "voronoi/scale"},
+    {"from": "gain/rms",         "to": "math_edge/a"},
+    {"from": "math_edge/result", "to": "voronoi/edge_width"},
+    {"from": "voronoi/texture",  "to": "bloom/input"},
+    {"from": "bloom/texture",    "to": "vout/input"}
+  ]
+}

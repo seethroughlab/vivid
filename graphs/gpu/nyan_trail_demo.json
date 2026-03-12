@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "nyan_trail_demo",
+    "title": "Nyan Trail",
+    "description": "Rainbow-cycling shape with feedback trail — a colorful nyan-style effect.",
+    "tags": ["demo", "feedback", "rainbow"],
+    "difficulty": "intermediate",
+    "domains": ["gpu", "control"],
+    "requires_packages": [],
+    "featured_rank": 11
+  },
+  "nodes": {
+    "shape": {
+      "type": "Shape",
+      "params": {
+        "sides": 64,
+        "radius": 0.06,
+        "softness": 0.01,
+        "r": 1.0,
+        "g": 1.0,
+        "b": 1.0
+      }
+    },
+    "lfo_hue": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.8,
+        "amplitude": 180.0,
+        "offset": 180.0
+      }
+    },
+    "lfo_y": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.3,
+        "amplitude": 0.15,
+        "offset": 0.0,
+        "waveform": 0
+      }
+    },
+    "hsv": {
+      "type": "HSV",
+      "params": {
+        "saturation": 0.8,
+        "value": 0.0
+      }
+    },
+    "feedback": {
+      "type": "Feedback",
+      "params": {
+        "decay": 0.96,
+        "mix": 0.9,
+        "offset_x": -0.01,
+        "offset_y": 0.0,
+        "zoom": 1.0,
+        "rotate": 0.0
+      }
+    },
+    "bloom": {
+      "type": "Bloom",
+      "params": {
+        "threshold": 0.15,
+        "intensity": 1.0,
+        "radius": 1.2,
+        "passes": 3
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    {"from": "shape/texture",    "to": "hsv/source"},
+    {"from": "lfo_hue/value",    "to": "hsv/hue_shift"},
+    {"from": "lfo_y/value",      "to": "feedback/offset_y"},
+    {"from": "hsv/texture",      "to": "feedback/input"},
+    {"from": "feedback/texture", "to": "bloom/input"},
+    {"from": "bloom/texture",    "to": "vout/input"}
+  ]
+}

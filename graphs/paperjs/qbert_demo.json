@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "paperjs_qbert",
+    "title": "Q*bert",
+    "description": "Faithful port of Paper.js Qbertify — hexagonal grid with isometric 3D shading over source image.",
+    "tags": ["demo", "paperjs", "hex", "mosaic"],
+    "difficulty": "beginner",
+    "domains": ["gpu", "control"],
+    "requires_packages": [],
+    "featured_rank": 15
+  },
+  "nodes": {
+    "source": {
+      "type": "TextureLoader",
+      "params": {
+        "file": ""
+      }
+    },
+    "hex": {
+      "type": "HexGrid",
+      "params": {
+        "cell_size": 24.0,
+        "top_bright": 1.5,
+        "side_bright": 0.5,
+        "gap": 1.0
+      }
+    },
+    "lfo_size": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.04,
+        "amplitude": 20.0,
+        "offset": 30.0,
+        "waveform": 0
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    {"from": "source/texture",  "to": "hex/source"},
+    {"from": "lfo_size/value",  "to": "hex/cell_size"},
+    {"from": "hex/texture",     "to": "vout/input"}
+  ]
+}

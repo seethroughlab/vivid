@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "audio_metaballs_demo",
+    "title": "Audio Metaballs",
+    "description": "Audio-reactive metaballs driven by a physics simulation. Bass energy expands blobs, loudness drives particle forces.",
+    "tags": ["demo", "metaball", "physics", "audio-reactive"],
+    "difficulty": "advanced",
+    "domains": ["audio", "gpu", "control"],
+    "requires_packages": [],
+    "featured_rank": 5
+  },
+  "nodes": {
+    "osc": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 110.0,
+        "amplitude": 0.7,
+        "waveform": 1
+      }
+    },
+    "gain": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.8
+      }
+    },
+    "aout": {
+      "type": "audio_out",
+      "params": {}
+    },
+    "math_force": {
+      "type": "Math",
+      "params": {
+        "operation": 1,
+        "b": 3.0
+      }
+    },
+    "lfo_energy": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.08,
+        "amplitude": 0.5,
+        "offset": 1.0,
+        "waveform": 0
+      }
+    },
+    "physics": {
+      "type": "PhysicsSim",
+      "params": {
+        "count": 10,
+        "speed": 1.0,
+        "bounce_mode": 1,
+        "gravity": 0.0,
+        "damping": 0.99,
+        "repulsion": 0.3,
+        "min_radius": 0.05,
+        "max_radius": 0.12
+      }
+    },
+    "math_thresh": {
+      "type": "Math",
+      "params": {
+        "operation": 0,
+        "b": 0.8
+      }
+    },
+    "metaball": {
+      "type": "Metaball",
+      "params": {
+        "count": 10,
+        "threshold": 1.0,
+        "softness": 0.01,
+        "glow": 0.8,
+        "color_mode": 1,
+        "r": 0.2,
+        "g": 0.6,
+        "b": 1.0
+      }
+    },
+    "bloom": {
+      "type": "Bloom",
+      "params": {
+        "threshold": 0.2,
+        "intensity": 1.5,
+        "radius": 1.8,
+        "passes": 4
+      }
+    },
+    "feedback": {
+      "type": "Feedback",
+      "params": {
+        "decay": 0.85,
+        "mix": 0.6,
+        "zoom": 1.0,
+        "rotate": 0.0
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    {"from": "osc/output",          "to": "gain/input"},
+    {"from": "gain/output",         "to": "aout/input"},
+    {"from": "gain/rms",            "to": "math_force/a"},
+    {"from": "math_force/result",   "to": "physics/force"},
+    {"from": "lfo_energy/value",    "to": "physics/energy"},
+    {"from": "physics/pos_x",       "to": "metaball/pos_x"},
+    {"from": "physics/pos_y",       "to": "metaball/pos_y"},
+    {"from": "physics/radii",       "to": "metaball/radii"},
+    {"from": "gain/rms",            "to": "math_thresh/a"},
+    {"from": "math_thresh/result",  "to": "metaball/threshold"},
+    {"from": "metaball/texture",    "to": "bloom/input"},
+    {"from": "bloom/texture",       "to": "feedback/input"},
+    {"from": "feedback/texture",    "to": "vout/input"}
+  ]
+}

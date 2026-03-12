@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "voronoi_cells_demo",
+    "title": "Voronoi Cells",
+    "description": "Abstract colorful Voronoi tessellation that shifts and pulses.",
+    "tags": ["demo", "voronoi", "generative"],
+    "difficulty": "beginner",
+    "domains": ["gpu", "control"],
+    "requires_packages": [],
+    "featured_rank": 12
+  },
+  "nodes": {
+    "voronoi": {
+      "type": "Voronoi",
+      "params": {
+        "scale": 8.0,
+        "edge_width": 0.02,
+        "speed": 0.5,
+        "jitter": 1.0,
+        "mode": 0
+      }
+    },
+    "lfo_scale": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.1,
+        "amplitude": 6.0,
+        "offset": 10.0,
+        "waveform": 0
+      }
+    },
+    "lfo_speed": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.05,
+        "amplitude": 1.5,
+        "offset": 0.8,
+        "waveform": 0
+      }
+    },
+    "bloom": {
+      "type": "Bloom",
+      "params": {
+        "threshold": 0.4,
+        "intensity": 0.8,
+        "radius": 1.2,
+        "passes": 3
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    {"from": "lfo_scale/value",  "to": "voronoi/scale"},
+    {"from": "lfo_speed/value",  "to": "voronoi/speed"},
+    {"from": "voronoi/texture",  "to": "bloom/input"},
+    {"from": "bloom/texture",    "to": "vout/input"}
+  ]
+}
