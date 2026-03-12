@@ -3063,6 +3063,12 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
             req.promise.set_value(command_result_to_json(r));
             continue;
         }
+        if (req.method == "new_graph") {
+            auto r = api.new_graph(has_gpu_ops, has_audio);
+            impl_->undo_history.clear();
+            req.promise.set_value(command_result_to_json(r));
+            continue;
+        }
         if (req.method == "redo") {
             std::string snapshot_json;
             if (!impl_->undo_history.redo(snapshot_json)) {

@@ -316,6 +316,13 @@ async def load_graph() -> str:
 
 
 @mcp.tool()
+async def new_graph() -> str:
+    """Reset to a new empty graph with default audio_out and video_out sink nodes.
+    Clears all nodes, connections, variations, and undo history."""
+    return await _post("new_graph")
+
+
+@mcp.tool()
 async def undo() -> str:
     """Undo the last graph mutation made through MCP/control-server commands."""
     return await _post("undo")

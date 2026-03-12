@@ -5,6 +5,7 @@
 // Tag values for menu items
 enum MenuTag : NSInteger {
     kMenuTagAbout = 1,
+    kMenuTagNew,
     kMenuTagOpen,
     kMenuTagOpenExample,
     kMenuTagSave,
@@ -40,6 +41,7 @@ enum MenuTag : NSInteger {
 - (void)menuAction:(NSMenuItem*)sender {
     switch (sender.tag) {
         case kMenuTagAbout:             if (_callbacks.on_about) _callbacks.on_about(); break;
+        case kMenuTagNew:               if (_callbacks.on_new) _callbacks.on_new(); break;
         case kMenuTagOpen:              if (_callbacks.on_open) _callbacks.on_open(); break;
         case kMenuTagOpenExample:       if (_callbacks.on_open_example) _callbacks.on_open_example(); break;
         case kMenuTagSave:              if (_callbacks.on_save) _callbacks.on_save(); break;
@@ -181,6 +183,16 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
 
         // --- Create "File" menu and insert at index 1 ---
         NSMenu* fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
+
+        NSMenuItem* newItem = [[NSMenuItem alloc]
+            initWithTitle:@"New"
+                   action:@selector(menuAction:)
+            keyEquivalent:@"n"];
+        newItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+        newItem.target = sDelegate;
+        newItem.tag = kMenuTagNew;
+        [fileMenu addItem:newItem];
+        [fileMenu addItem:[NSMenuItem separatorItem]];
 
         NSMenuItem* openItem = [[NSMenuItem alloc]
             initWithTitle:@"Open..."

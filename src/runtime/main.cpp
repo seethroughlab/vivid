@@ -720,6 +720,7 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.is_generator = ns.texture_input_port_indices.empty() && !ns.is_gpu_sink;
         sn.input_port_indices = ns.input_port_indices;
         sn.output_port_indices = ns.output_port_indices;
+        sn.analysis_output_port_indices = ns.analysis_output_port_indices;
         sn.param_indices = ns.param_indices;
         sn.param_values = ns.param_values;
         sn.param_lock_flags = ns.param_lock_flags;
@@ -732,8 +733,10 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.gpu_tex_width = ns.gpu_tex_width;
         sn.gpu_tex_height = ns.gpu_tex_height;
         sn.gpu_tex_inherited = ns.gpu_tex_inherited;
-        sn.errored = ns.errored;
-        sn.error_message = ns.error_message;
+        sn.errored       = ns.errored || ns.gpu_shader_error;
+        sn.error_message = ns.errored          ? ns.error_message
+                         : ns.gpu_shader_error ? ns.gpu_shader_error_msg
+                         : "";
         sn.missing_operator = ns.missing_operator;
 
         // Solo state
@@ -782,7 +785,8 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         auto ni_it = snap.node_index.find(conns[i].from_node);
         if (ni_it != snap.node_index.end()) {
             const auto& src = snap.nodes[ni_it->second];
-            if (src.output_port_indices.count(conns[i].from_port) == 0) {
+            if (src.output_port_indices.count(conns[i].from_port) == 0 &&
+                src.analysis_output_port_indices.count(conns[i].from_port) == 0) {
                 if (src.param_indices.count(conns[i].from_port) == 0)
                     continue; // not a valid port or parameter — skip
                 from_is_param = true;
@@ -1346,7 +1350,7 @@ int main(int argc, char* argv[]) {
 #endif
 
     // --- CLI argument parsing ---
-    std::string graph_file = "graph.json";
+    std::string graph_file;
     std::string screenshot_path;
     int screenshot_delay = 5;
     bool headless = false;
@@ -2096,7 +2100,16 @@ int main(int argc, char* argv[]) {
     // Working directory for user filter shaders: {graph_dir}/{graph_stem}_filters/
     std::string working_filters_dir;
 
-    if (graph.load(graph_file.c_str())) {
+    bool initial_load_ok = false;
+    if (graph_file.empty()) {
+        // No file given: start with default graph (audio_out + video_out)
+        initial_load_ok = graph.load_from_string(vivid::kDefaultGraphJson, 0, false);
+    } else {
+        initial_load_ok = graph.load(graph_file.c_str());
+        if (!initial_load_ok)
+            std::fprintf(stderr, "[vivid] Graph load failed (non-fatal, continuing)\n");
+    }
+    if (initial_load_ok) {
         run_graph_package_diagnostics(graph);
         // Register user filters from graph before building the scheduler
         if (!graph.filters().empty()) {
@@ -2140,8 +2153,6 @@ int main(int argc, char* argv[]) {
         } else {
             std::fprintf(stderr, "[vivid] Scheduler build failed (non-fatal, continuing)\n");
         }
-    } else {
-        std::fprintf(stderr, "[vivid] Graph load failed (non-fatal, continuing)\n");
     }
 
     bool has_gpu_ops = graph_loaded && scheduler.has_gpu_operators();
@@ -2732,6 +2743,16 @@ int main(int argc, char* argv[]) {
         return result.ok;
     };
 
+    auto new_graph_runtime = [&]() {
+        auto result = runtime_api.new_graph(has_gpu_ops, has_audio);
+        if (result.ok) {
+            graph_loaded = true;
+            command_sink.reset_undo_history();
+        }
+        std::fprintf(stderr, "[vivid] New Graph: %s\n", result.message.c_str());
+        return result.ok;
+    };
+
     graph_ui.set_example_open_callback([&](const std::string& rel_path) {
         load_graph_runtime(rel_path, "Open Example");
     });
@@ -2748,6 +2769,7 @@ int main(int argc, char* argv[]) {
         vivid::MenuCallbacks menu_cbs;
 
         menu_cbs.on_about = [&]() { graph_ui.open_about(); };
+        menu_cbs.on_new = [&]() { new_graph_runtime(); };
         menu_cbs.on_preferences = [&]() {
             graph_ui.toggle_preferences();
         };

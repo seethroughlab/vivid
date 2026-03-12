@@ -9,6 +9,7 @@ namespace vivid {
 // Bound functions may freely access main-thread-only state (graph, scheduler, UI).
 struct MenuCallbacks {
     std::function<void()> on_about;
+    std::function<void()> on_new;
     std::function<void()> on_open;
     std::function<void()> on_open_example;
     std::function<void()> on_save;

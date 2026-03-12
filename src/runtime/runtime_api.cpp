@@ -1388,6 +1388,35 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
     return {true, "reloaded from " + path};
 }
 
+CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {
+    if (has_audio) { audio_engine_.shutdown(); has_audio = false; }
+    scheduler_.shutdown();
+
+    if (!graph_.load_from_string(kDefaultGraphJson, 0, false)) {
+        has_gpu_ops = false;
+        return {false, "failed to load default graph"};
+    }
+    if (!scheduler_.build(graph_, registry_)) {
+        has_gpu_ops = false;
+        return {false, "scheduler build failed for new graph"};
+    }
+
+    has_gpu_ops = scheduler_.has_gpu_operators();
+    if (has_gpu_ops) needs_gpu_realloc_ = true;
+
+    if (scheduler_.has_audio_operators()) {
+        if (audio_engine_.build(graph_, registry_, scheduler_) && audio_engine_.start())
+            has_audio = true;
+    }
+
+    active_graph_source_path_.clear();
+    pending_topology_change_ = false;
+    active_crossfades_.clear();
+    reload_serial_++;
+    capture_saved_snapshot();
+    return {true, "new graph"};
+}
+
 CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
                                               bool& has_gpu_ops, bool& has_audio) {
     std::string previous_graph_json;
