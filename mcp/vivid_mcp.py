@@ -40,6 +40,11 @@ Connections must match types: `gpu_texture` → `gpu_texture`, `data` → `data`
 Control operators can embed other operators internally using ChildOp<T>. Use `scaffold_operator`
 with `variant="composite"` to generate a template. Useful for internal modulation (e.g. LFO driving
 a gain stage) without exposing child operators as graph nodes. Control domain only.
+
+## Custom Operators
+If you need to create a custom operator, use `scaffold_operator` to generate the template.
+For deeper operator development guidance (API docs, DSP utilities, GPU shader patterns),
+the dedicated operator development MCP server provides comprehensive resources.
 """)
 
 
