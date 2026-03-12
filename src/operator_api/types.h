@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 2u
+#define VIVID_OPERATOR_ABI_VERSION 3u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -83,6 +83,7 @@ typedef struct VividPortDescriptor {
     VividPortDirection direction;
     uint32_t           handle_type_id;  // non-zero when type == VIVID_PORT_HANDLE (FNV-1a of C++ type)
     uint8_t            channels;        // 0=auto, 1=mono, 2=stereo, 6=5.1, etc.
+    float              default_value;   // default for VIVID_PORT_FLOAT inputs (e.g. 1.0 for gain CV)
 } VividPortDescriptor;
 
 typedef struct VividOperatorDescriptor {
@@ -183,6 +184,7 @@ typedef struct VividAudioContext {
     void**            input_handles;
     uint32_t          input_handle_count;
     const char**      input_string_values;
+    float*            input_float_values;   // [float_input_ordinal] — CV inputs from control domain
     const char**      file_param_values;
     uint32_t          file_param_count;
     const VividSharedHandleService* shared_handles;

@@ -59,6 +59,11 @@ struct AudioNodeState {
     std::vector<float*> in_ptrs;
     std::vector<float*> out_ptrs;
 
+    // --- Float CV inputs (cross-domain bridge, VIVID_PORT_FLOAT inputs on audio ops) ---
+    std::vector<float> float_input_defaults;  // per FLOAT input port, from descriptor default_value
+    std::vector<float> float_input_values;    // reset to defaults each control tick, then overwritten by wires
+    uint32_t float_input_count = 0;
+
     // --- Spread / string / data inputs (cross-domain bridge) ---
     std::vector<SpreadSnapshot> spread_inputs;       // [input_port_idx]
     std::vector<SpreadSnapshot> spread_outputs;      // [output_port_idx]
@@ -114,6 +119,15 @@ struct CrossDomainStringWire {
     uint32_t control_output_port_idx;  // scheduler output port index
     uint32_t audio_node_idx;
     uint32_t audio_port_idx;           // unified input port index
+};
+
+// Cross-domain wire: control float output → audio FLOAT input port
+struct CrossDomainFloatPortWire {
+    std::string control_node_id;
+    uint32_t    control_output_port_idx;
+    uint32_t    audio_node_idx;
+    uint32_t    audio_float_port_idx;  // ordinal among FLOAT-only inputs
+    float       scale = 1.0f;
 };
 
 struct CrossDomainHandleWire {
@@ -254,6 +268,7 @@ private:
     std::vector<CrossDomainSpreadWire> cross_spread_wires_;
     std::vector<CrossDomainStringWire> cross_string_wires_;
     std::vector<CrossDomainHandleWire> cross_handle_wires_;
+    std::vector<CrossDomainFloatPortWire> cross_float_wires_;
 
     // Double-buffered param bridge (control→audio)
     ParamSnapshot snapshots_[2];

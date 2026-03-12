@@ -18,14 +18,16 @@ struct Gain : vivid::AudioOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT,  0, 1});
-        out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, 0, 1});
+        out.push_back({"input",        VIVID_PORT_AUDIO, VIVID_PORT_INPUT,  0, 1, 0.0f});
+        out.push_back({"output",       VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, 0, 1, 0.0f});
+        out.push_back({"amplitude_cv", VIVID_PORT_FLOAT, VIVID_PORT_INPUT,  0, 0, 1.0f});
     }
 
     void process_audio(const VividAudioContext* ctx) override {
         float* in  = ctx->input_buffers[0];
         float* out = ctx->output_buffers[0];
-        float g = gain.value;
+        float amp_cv_val = ctx->input_float_values ? ctx->input_float_values[0] : 1.0f;
+        float g = gain.value * amp_cv_val;
 
         for (uint32_t i = 0; i < ctx->buffer_size; i++)
             out[i] = in[i] * g;

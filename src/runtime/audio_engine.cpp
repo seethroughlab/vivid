@@ -90,6 +90,18 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
     ns.c_input_string_values.assign(ns.input_port_count, nullptr);
     ns.input_handle_values.assign(ns.input_port_count, nullptr);
 
+    // Float CV input defaults (from descriptor default_value for FLOAT input ports)
+    ns.float_input_defaults.clear();
+    ns.float_input_count = 0;
+    for (uint32_t i = 0; i < desc->port_count; ++i) {
+        if (desc->ports[i].direction == VIVID_PORT_INPUT &&
+            desc->ports[i].type == VIVID_PORT_FLOAT) {
+            ns.float_input_defaults.push_back(desc->ports[i].default_value);
+            ns.float_input_count++;
+        }
+    }
+    ns.float_input_values = ns.float_input_defaults;
+
     // Pre-allocate pointer arrays (avoids audio-thread allocation)
     ns.in_ptrs.resize(ns.input_port_count);
     ns.out_ptrs.resize(ns.output_port_count);
@@ -122,6 +134,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     cross_spread_wires_.clear();
     cross_string_wires_.clear();
     cross_handle_wires_.clear();
+    cross_float_wires_.clear();
 
     // Map node id → audio node index
     std::unordered_map<std::string, uint32_t> audio_node_index;
@@ -290,6 +303,21 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                         hw.handle_type_id = from_htid ? from_htid : to_htid;
                         cross_handle_wires_.push_back(std::move(hw));
                     }
+                } else if (ip_it != to_ns.input_port_indices.end() &&
+                           ip_it->second < to_ns.input_port_types.size() &&
+                           to_ns.input_port_types[ip_it->second] == VIVID_PORT_FLOAT) {
+                    // Control float output → audio FLOAT input port (CV modulation)
+                    uint32_t float_ord = 0;
+                    for (uint32_t pi = 0; pi < ip_it->second; ++pi) {
+                        if (to_ns.input_port_types[pi] == VIVID_PORT_FLOAT) float_ord++;
+                    }
+                    CrossDomainFloatPortWire fw;
+                    fw.control_node_id         = conn.from_node;
+                    fw.control_output_port_idx = cp_it->second;
+                    fw.audio_node_idx          = ti;
+                    fw.audio_float_port_idx    = float_ord;
+                    fw.scale                   = remap_to_scale(conn);
+                    cross_float_wires_.push_back(fw);
                 }
             }
         }
@@ -333,6 +361,9 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     }
     for (auto& dw : cross_handle_wires_) {
         dw.audio_node_idx = old_to_new[dw.audio_node_idx];
+    }
+    for (auto& fw : cross_float_wires_) {
+        fw.audio_node_idx = old_to_new[fw.audio_node_idx];
     }
 
     // -----------------------------------------------------------------------
@@ -804,6 +835,21 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
         }
     }
 
+    // Float CV wires: reset to defaults, then apply live control → FLOAT port wires
+    for (auto& ns : nodes_)
+        ns.float_input_values = ns.float_input_defaults;
+    for (const auto& fw : cross_float_wires_) {
+        for (const auto& ctrl_ns : scheduler.nodes()) {
+            if (ctrl_ns.node_id == fw.control_node_id) {
+                float val = ctrl_ns.output_values[fw.control_output_port_idx] * fw.scale;
+                auto& ns = nodes_[fw.audio_node_idx];
+                if (fw.audio_float_port_idx < ns.float_input_values.size())
+                    ns.float_input_values[fw.audio_float_port_idx] = val;
+                break;
+            }
+        }
+    }
+
     // Solo mode: map scheduler solo state to audio engine indices
     if (scheduler.is_solo_active()) {
         const auto& sched_solo = scheduler.solo_active_set();
@@ -1039,6 +1085,7 @@ void AudioEngine::shutdown() {
     cross_spread_wires_.clear();
     cross_string_wires_.clear();
     cross_handle_wires_.clear();
+    cross_float_wires_.clear();
 
     std::fprintf(stderr, "[vivid] AudioEngine: shutdown\n");
 }
@@ -1216,6 +1263,7 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                     audio_ctx.input_handles = ns.has_handle_input_ports ? ns.input_handle_values.data() : nullptr;
                     audio_ctx.input_handle_count = ns.input_port_count;
                     audio_ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
+                    audio_ctx.input_float_values = ns.float_input_values.empty() ? nullptr : ns.float_input_values.data();
                     audio_ctx.file_param_values = nullptr;
                     audio_ctx.file_param_count = 0;
                     audio_ctx.shared_handles = vivid::shared_handle_service();
@@ -1266,6 +1314,7 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                 audio_ctx.input_handles = ns.has_handle_input_ports ? ns.input_handle_values.data() : nullptr;
                 audio_ctx.input_handle_count = ns.input_port_count;
                 audio_ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
+                audio_ctx.input_float_values = ns.float_input_values.empty() ? nullptr : ns.float_input_values.data();
                 audio_ctx.file_param_values = nullptr;
                 audio_ctx.file_param_count = 0;
                 audio_ctx.shared_handles = vivid::shared_handle_service();
