@@ -68,6 +68,7 @@ struct NodeSnapshot {
 
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
+    std::unordered_map<std::string, uint32_t> analysis_output_port_indices; // rms/peak/waveform
     std::unordered_map<std::string, uint32_t> param_indices;
 
     std::vector<float> param_values;

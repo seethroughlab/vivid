@@ -126,6 +126,11 @@ uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns) const {
         if (port_has_connection(snap_.connections, ns.node_id, name, true))
             count++;
     }
+    // Analysis ports (rms/peak/waveform) — visible only if connected
+    for (const auto& [name, idx] : ns.analysis_output_port_indices) {
+        if (port_has_connection(snap_.connections, ns.node_id, name, true))
+            count++;
+    }
     return count;
 }
 
@@ -200,6 +205,19 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
             continue;
         float py = port_start_y + oi * kLineH + kLineH * 0.5f;
         rect.outputs.push_back({name, rect.x + rect.w, py, true});
+        ++oi;
+    }
+
+    // Analysis ports (rms/peak/waveform) — visible only if connected
+    std::vector<std::pair<uint32_t, std::string>> analysis_ports;
+    for (const auto& [name, idx] : ns.analysis_output_port_indices)
+        analysis_ports.push_back({idx, name});
+    std::sort(analysis_ports.begin(), analysis_ports.end());
+    for (const auto& [idx, name] : analysis_ports) {
+        if (!port_has_connection(snap_.connections, ns.node_id, name, true))
+            continue;
+        float py = port_start_y + oi * kLineH + kLineH * 0.5f;
+        rect.outputs.push_back({name, rect.x + rect.w, py, false});
         ++oi;
     }
 }
@@ -903,6 +921,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_pan_release();
     clear_frame_flags();
     update_wire_hover();
+    update_node_hover();
     update_sparklines();
 }
 
@@ -1250,6 +1269,20 @@ void NodeGraphUI::clear_frame_flags() {
     mouse_.left_clicked = false;
     mouse_.left_released = false;
     mouse_.right_clicked = false;
+}
+
+void NodeGraphUI::update_node_hover() {
+    hovered_node_id_.clear();
+    if (dragging_wire_ || panning_ || box_selecting_ || dragging_node_idx_ >= 0 ||
+        context_menu_open_ || chooser_open_ || dropdown_open_) return;
+    float gx = sx_to_gx(mouse_.x);
+    float gy = sy_to_gy(mouse_.y);
+    for (const auto& nr : node_rects_) {
+        if (gx >= nr.x && gx <= nr.x + nr.w && gy >= nr.y && gy <= nr.y + nr.h) {
+            hovered_node_id_ = nr.node_id;
+            break;
+        }
+    }
 }
 
 void NodeGraphUI::update_wire_hover() {

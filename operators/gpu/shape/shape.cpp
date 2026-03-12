@@ -160,9 +160,13 @@ struct Shape : vivid::GpuOperatorBase {
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
+        if (init_failed_) {
+            vivid_report_gpu_error(ctx, shader_error_msg_.c_str());
+            return;
+        }
         if (!pipeline_) {
             if (!lazy_init(ctx)) {
-                std::fprintf(stderr, "[shape] lazy_init FAILED\n");
+                init_failed_ = true;
                 return;
             }
         }
@@ -202,11 +206,32 @@ private:
     WGPUBuffer          uniform_buf_ = nullptr;
     WGPUShaderModule    shader_      = nullptr;
     WGPUPipelineLayout  pipe_layout_ = nullptr;
+    bool                init_failed_      = false;  // set on shader error; cleared on reload
+    std::string         shader_error_msg_;
 
     bool lazy_init(const VividGpuContext* gpu) {
+        // Error scope guards shader creation — see noise.cpp for full explanation.
+        wgpuDevicePushErrorScope(gpu->device, WGPUErrorFilter_Validation);
         std::string frag = std::string(vivid::gpu::WGSL_CONSTANTS) + kShapeFragment;
         shader_ = vivid::gpu::create_shader(gpu->device, frag.c_str(), "Shape Shader");
-        if (!shader_) return false;
+        {
+            WGPUPopErrorScopeCallbackInfo cb{};
+            cb.mode = WGPUCallbackMode_AllowSpontaneous;
+            cb.callback = [](WGPUPopErrorScopeStatus, WGPUErrorType type,
+                              WGPUStringView msg, void* ud, void*) {
+                if (type != WGPUErrorType_NoError) {
+                    auto* self = static_cast<Shape*>(ud);
+                    self->shader_error_msg_ = msg.data
+                        ? std::string(msg.data, msg.length) : "unknown WGSL error";
+                    std::fprintf(stderr, "[shape] WGSL error — keeping black output. %s\n",
+                                 self->shader_error_msg_.c_str());
+                }
+            };
+            cb.userdata1 = this;
+            wgpuDevicePopErrorScope(gpu->device, cb);
+        }
+        // wgpu-native fires error-scope callbacks synchronously during popErrorScope.
+        if (!shader_error_msg_.empty() || !shader_) return false;
 
         uniform_buf_ = vivid::gpu::create_uniform_buffer(gpu->device, sizeof(ShapeUniforms), "Shape Uniforms");
 

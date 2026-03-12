@@ -70,6 +70,8 @@ struct VividGpuContext {
     // ---- Operator write-back ------------------------------------------------
     uint32_t           preferred_tex_width;
     uint32_t           preferred_tex_height;
+    bool               operator_errored    = false;   // written by operator on shader/init failure
+    const char*        operator_error_msg  = nullptr; // must point to long-lived storage
 };
 
 // Request a texture resize for the next frame. The preferred_tex_* fields are
@@ -78,6 +80,13 @@ static inline void vivid_request_output_size(const VividGpuContext* ctx,
                                               uint32_t w, uint32_t h) {
     const_cast<VividGpuContext*>(ctx)->preferred_tex_width  = w;
     const_cast<VividGpuContext*>(ctx)->preferred_tex_height = h;
+}
+
+// Report a GPU shader/init error. msg must point to storage that outlives the
+// process_gpu() call (e.g. a std::string member of the operator struct).
+static inline void vivid_report_gpu_error(const VividGpuContext* ctx, const char* msg) {
+    const_cast<VividGpuContext*>(ctx)->operator_errored   = true;
+    const_cast<VividGpuContext*>(ctx)->operator_error_msg = msg;
 }
 
 static inline WGPUStringView vivid_sv(const char* s) {

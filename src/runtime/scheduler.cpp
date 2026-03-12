@@ -86,11 +86,11 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     ns.is_audio = (desc->domain == VIVID_DOMAIN_AUDIO);
     ns.prev_output_values.assign(ns.output_port_count, 0.0f);
 
-    // Implicit analysis ports for audio-domain nodes
+    // Implicit analysis ports for audio-domain nodes (kept separate from signal outputs)
     if (ns.is_audio) {
-        ns.output_port_indices["rms"] = ns.output_port_count++;
-        ns.output_port_indices["peak"] = ns.output_port_count++;
-        ns.output_port_indices["waveform"] = ns.output_port_count++;
+        ns.analysis_output_port_indices["rms"]      = ns.output_port_count++;
+        ns.analysis_output_port_indices["peak"]     = ns.output_port_count++;
+        ns.analysis_output_port_indices["waveform"] = ns.output_port_count++;
         ns.output_values.resize(ns.output_port_count, 0.0f);
         ns.prev_output_values.resize(ns.output_port_count, 0.0f);
         ns.output_spreads.resize(ns.output_port_count);
@@ -695,6 +695,12 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         // Skip audio-domain nodes — they run on the audio thread
         if (ns.is_audio) continue;
 
+        // Clear transient GPU shader error each tick (does not permanently block)
+        if (ns.is_gpu) {
+            ns.gpu_shader_error = false;
+            ns.gpu_shader_error_msg.clear();
+        }
+
         // Skip errored nodes — zero outputs and move on
         if (ns.errored) {
             std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
@@ -980,6 +986,16 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
                 std::fill(ns.output_string_values.begin(), ns.output_string_values.end(), "");
                 std::fprintf(stderr, "[vivid] operator '%s' threw unknown exception\n",
                              ns.node_id.c_str());
+            }
+
+            // Check if the GPU operator reported a shader/init error.
+            // Use transient gpu_shader_error (not ns.errored) so processing
+            // continues each frame instead of being permanently blocked.
+            if (gpu_ctx.operator_errored) {
+                ns.gpu_shader_error     = true;
+                ns.gpu_shader_error_msg = gpu_ctx.operator_error_msg
+                                          ? gpu_ctx.operator_error_msg
+                                          : "GPU shader error";
             }
 
             // Check if the GPU operator requested a texture resize

@@ -44,7 +44,15 @@ public:
 
     void process_gpu(const VividGpuContext* ctx) override {
         if (!initialized_) {
-            if (!lazy_init(ctx)) return;
+            if (!lazy_init(ctx)) {
+                if (shader_error_) vivid_report_gpu_error(ctx, shader_error_msg_.c_str());
+                return;
+            }
+        }
+
+        if (has_shader_error()) {
+            vivid_report_gpu_error(ctx, shader_error_msg_.c_str());
+            return;
         }
 
         // Shader hot-reload: check file every 30 frames

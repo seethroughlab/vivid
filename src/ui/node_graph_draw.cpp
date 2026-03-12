@@ -86,8 +86,9 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         const auto& r = node_rects_[i];
         bool selected = selected_node_ids_.count(r.node_id) > 0;
         const float* bg = selected ? style_.node_sel_bg.data() : style_.node_bg.data();
-        bool node_errored = (i < snap_.nodes.size() && snap_.nodes[i].errored);
-        bool node_missing = (i < snap_.nodes.size() && snap_.nodes[i].missing_operator);
+        const NodeSnapshot* sn = snap_.find_node(r.node_id);
+        bool node_errored = sn && sn->errored;
+        bool node_missing = sn && sn->missing_operator;
         bool node_bad     = node_errored || node_missing;
         const float* dcol = node_bad ? kErrorAccent.data() : domain_color(r.domain);
 
@@ -100,8 +101,8 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         tr.draw_rounded_rect(sx, sy, sw, sh, sr, bg[0], bg[1], bg[2]);
 
         // Solo dimming: reduce alpha of non-active nodes
-        bool node_soloed = (i < snap_.nodes.size() && snap_.nodes[i].soloed);
-        bool node_solo_dimmed = (i < snap_.nodes.size() && snap_.nodes[i].solo_dimmed);
+        bool node_soloed     = sn && sn->soloed;
+        bool node_solo_dimmed = sn && sn->solo_dimmed;
         if (node_solo_dimmed) {
             // Overdraw a dark semi-transparent layer on top of the node background
             tr.draw_rounded_rect(sx, sy, sw, sh, g_to_s(style_.corner_radius),
@@ -155,11 +156,10 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
 
             // Find sparkline data for this node's first output
             std::string spark_key;
-            if (i < snap_.nodes.size()) {
-                const auto& ns = snap_.nodes[i];
-                auto sorted_outs = sorted_ports(ns.output_port_indices);
+            if (sn) {
+                auto sorted_outs = sorted_ports(sn->output_port_indices);
                 if (!sorted_outs.empty())
-                    spark_key = ns.node_id + "/" + sorted_outs[0].second;
+                    spark_key = sn->node_id + "/" + sorted_outs[0].second;
             }
 
             auto it = sparklines_.find(spark_key);
@@ -506,6 +506,66 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
     // Value text
     if (!value_str.empty()) {
         tr.draw_text(px + pad, py + pad + line_h, value_str.c_str(), style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+}
+
+void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
+    if (hovered_node_id_.empty()) return;
+
+    const NodeSnapshot* hovered_ns = snap_.find_node(hovered_node_id_);
+    if (!hovered_ns || !hovered_ns->errored || hovered_ns->error_message.empty()) return;
+
+    static constexpr float kMaxTooltipW = 500.0f;
+    static constexpr int   kMaxLines    = 8;
+
+    // Split error message on newlines
+    std::vector<std::string> lines;
+    {
+        std::string tmp;
+        for (char c : hovered_ns->error_message) {
+            if (c == '\n') { if (!tmp.empty() || !lines.empty()) lines.push_back(tmp); tmp.clear(); }
+            else            tmp += c;
+        }
+        if (!tmp.empty()) lines.push_back(tmp);
+    }
+    if (lines.empty()) return;
+
+    // Cap number of lines
+    if (static_cast<int>(lines.size()) > kMaxLines) {
+        lines.resize(kMaxLines);
+        lines.back() += " \xe2\x80\xa6"; // UTF-8 ellipsis
+    }
+
+    // Truncate each line to kMaxTooltipW
+    float max_line_w = 0.f;
+    for (auto& line : lines) {
+        while (!line.empty() && tr.text_width(line.c_str()) > kMaxTooltipW)
+            line.resize(line.size() - 1);
+        max_line_w = std::max(max_line_w, tr.text_width(line.c_str()));
+    }
+
+    float pad    = 8.0f;
+    float line_h = 16.0f;
+    float header_w = tr.text_width("Shader Error:");
+    float popup_w  = std::max(header_w, max_line_w) + pad * 2;
+    float popup_h  = line_h * (1 + static_cast<float>(lines.size())) + pad * 2;
+
+    float px = mouse_.x + 14;
+    float py = mouse_.y + 14;
+    if (px + popup_w > graph_right()) px = mouse_.x - popup_w - 6;
+    if (py + popup_h > static_cast<float>(win_h_)) py = mouse_.y - popup_h - 6;
+
+    // Background
+    tr.draw_rect(px, py, popup_w, popup_h,
+                 style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.95f);
+    // Red accent line at top
+    tr.draw_rect(px, py, popup_w, 2.0f, 1.0f, 0.3f, 0.3f, 0.9f);
+    // "Shader Error:" header in red
+    tr.draw_text(px + pad, py + pad, "Shader Error:", 1.0f, 0.3f, 0.3f);
+    // One line per message line
+    for (int k = 0; k < static_cast<int>(lines.size()); ++k) {
+        tr.draw_text(px + pad, py + pad + line_h * (1 + k), lines[k].c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     }
 }
 
@@ -2971,6 +3031,9 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
 void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     // Inspector — drawn in overlay pass so it paints over GPU thumbnails
     draw_inspector(tr, win_w_, win_h_);
+
+    // Error tooltip — drawn after inspector so it appears above GPU thumbnails
+    draw_node_error_tooltip(tr);
 
     // Operator chooser — drawn here (overlay pass) so it appears above GPU thumbnails
     draw_chooser(tr);

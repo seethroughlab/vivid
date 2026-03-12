@@ -922,6 +922,12 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 else commands_.undo();
                 return;
             }
+            if (key == GLFW_KEY_A) {
+                selected_node_ids_.clear();
+                for (const auto& r : node_rects_)
+                    selected_node_ids_.insert(r.node_id);
+                return;
+            }
         }
         // Tab opens the chooser (only if cursor is in graph area)
         if (key == GLFW_KEY_TAB && action == GLFW_PRESS &&

@@ -42,6 +42,7 @@ struct NodeState {
     std::vector<VividPortType> output_port_types;
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
+    std::unordered_map<std::string, uint32_t> analysis_output_port_indices; // rms/peak/waveform
     std::unordered_map<std::string, uint32_t> param_indices;
 
     // ── Generation-based cooking (per-tick evaluation memoization) ────────────
@@ -113,6 +114,11 @@ struct NodeState {
     // ── Error state — set by try/catch in tick(), cleared on reload ───────────
     bool errored = false;
     std::string error_message;
+
+    // Transient GPU shader error — cleared each tick, set by gpu_ctx.operator_errored.
+    // Unlike ns.errored, this does NOT permanently block processing.
+    bool        gpu_shader_error     = false;
+    std::string gpu_shader_error_msg;
 
     // Per-instance loader for WGSLFilter nodes (owns the loader; ns.loader points here)
     std::unique_ptr<OperatorLoader> owned_loader;

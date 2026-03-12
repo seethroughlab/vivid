@@ -326,7 +326,7 @@ struct NoiseUniforms {
 // =============================================================================
 
 struct Noise : vivid::GpuOperatorBase {
-    static constexpr const char* kName   = "Noise";
+    static constexpr const char* kName   = "NoiseTexture";
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> scale      {"scale",       4.0f,  0.1f, 100.0f};
@@ -358,13 +358,16 @@ struct Noise : vivid::GpuOperatorBase {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
-        out.push_back({"output", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
+        if (init_failed_) {
+            vivid_report_gpu_error(ctx, shader_error_msg_.c_str());
+            return;
+        }
         if (!pipeline_) {
             if (!lazy_init(ctx)) {
-                std::fprintf(stderr, "[noise] lazy_init FAILED\n");
+                init_failed_ = true;
                 return;
             }
         }
@@ -408,10 +411,36 @@ private:
     WGPUBuffer          uniform_buf_ = nullptr;
     WGPUShaderModule    shader_      = nullptr;
     WGPUPipelineLayout  pipe_layout_ = nullptr;
+    bool                init_failed_       = false;
+    std::string         shader_error_msg_;
 
     bool lazy_init(const VividGpuContext* gpu) {
+        // Use an error scope around shader creation: wgpu-native returns a non-null
+        // "error object" handle when WGSL compilation fails, not nullptr.  If we proceed
+        // to create a pipeline with that invalid handle and then call run_pass(), wgpu-native
+        // panics on wgpuQueueSubmit.  The error scope lets us detect the failure before
+        // touching the pipeline path.
+        wgpuDevicePushErrorScope(gpu->device, WGPUErrorFilter_Validation);
         shader_ = vivid::gpu::create_shader(gpu->device, kNoiseFragment, "Noise Shader");
-        if (!shader_) return false;
+        {
+            WGPUPopErrorScopeCallbackInfo cb{};
+            cb.mode = WGPUCallbackMode_AllowSpontaneous;
+            cb.callback = [](WGPUPopErrorScopeStatus, WGPUErrorType type,
+                              WGPUStringView msg, void* ud, void*) {
+                if (type != WGPUErrorType_NoError) {
+                    auto* self = static_cast<Noise*>(ud);
+                    self->shader_error_msg_ = msg.data
+                        ? std::string(msg.data, msg.length) : "unknown WGSL error";
+                    std::fprintf(stderr, "[noise] WGSL error — keeping black output. %s\n",
+                                 self->shader_error_msg_.c_str());
+                }
+            };
+            cb.userdata1 = this;
+            wgpuDevicePopErrorScope(gpu->device, cb);
+        }
+        // wgpu-native fires error-scope callbacks synchronously during popErrorScope,
+        // so no explicit device poll is needed here.
+        if (!shader_error_msg_.empty() || !shader_) return false;
 
         uniform_buf_ = vivid::gpu::create_uniform_buffer(gpu->device, sizeof(NoiseUniforms), "Noise Uniforms");
 

@@ -266,6 +266,7 @@ private:
     void draw_preview_wire(Renderer2D& tr);
     void draw_box_select(Renderer2D& tr);
     void draw_wire_tooltip(Renderer2D& tr);
+    void draw_node_error_tooltip(Renderer2D& tr);
     void draw_inspector_scrollbar(Renderer2D& tr);
     void draw_midi_map_banner(Renderer2D& tr);
     void draw_core_update_banner(Renderer2D& tr);
@@ -378,6 +379,7 @@ private:
     void update_pan_release();
     void clear_frame_flags();
     void update_wire_hover();
+    void update_node_hover();
     void update_sparklines();
     void update_scrollbar_drag();
     void update_box_select();
@@ -649,6 +651,7 @@ private:
     int context_wire_idx_ = -1;     // >= 0 if wire menu
     bool context_bg_menu_ = false;  // true if background menu (no node/wire)
     int hovered_wire_idx_ = -1;
+    std::string hovered_node_id_;
 
     // Multi-output expand state (keyed by node_id)
     std::unordered_set<std::string> outputs_expanded_;
