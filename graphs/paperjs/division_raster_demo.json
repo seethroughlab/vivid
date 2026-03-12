@@ -13,10 +13,10 @@
             }
         },
         "raster": {
-            "type": "RasterGrid",
+            "type": "DivisionRaster",
             "params": {
-                "gap": 1.7710503339767456,
-                "cell_size": 32.0
+                "gap": 0.5060763955116272,
+                "depth": 6.0
             },
             "layout": {
                 "x": 238.33203125,
@@ -27,19 +27,31 @@
             "type": "LFO",
             "params": {
                 "waveform": 0.0,
-                "offset": 48.0,
-                "amplitude": 40.0,
+                "offset": 0.0,
+                "amplitude": 1.0,
                 "frequency": 0.05000000074505806
+            },
+            "layout": {
+                "x": 30.0,
+                "y": 544.5
             }
         },
         "vout": {
-            "type": "video_out"
+            "type": "video_out",
+            "layout": {
+                "x": 903.37890625,
+                "y": 419.609375
+            }
         }
     },
     "connections": [
         {
             "from": "lfo_size/value",
-            "to": "raster/cell_size"
+            "to": "raster/depth",
+            "from_min": -1.0,
+            "from_max": 1.0,
+            "to_min": 2.0,
+            "to_max": 15.0
         },
         {
             "from": "raster/texture",
@@ -51,8 +63,8 @@
         }
     ],
     "viewport": {
-        "pan_x": -19.261760711669922,
-        "pan_y": -46.733428955078125,
-        "zoom": 1.094900131225586
+        "pan_x": 69.42027282714844,
+        "pan_y": 108.05429077148438,
+        "zoom": 0.8154693245887756
     }
 }
