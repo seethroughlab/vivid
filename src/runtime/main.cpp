@@ -931,7 +931,21 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
 
     auto ready = hr.poll_ready();
     for (const auto& result : ready) {
-        if (!result.success) continue;
+        if (!result.success) {
+            // Propagate compile errors to all nodes of this type so the UI can surface them.
+            // Nodes keep running (old dylib still live); errored=true is NOT set.
+            const std::string* type_name_ptr = registry.type_name_for_target(result.target_name);
+            if (type_name_ptr) {
+                const std::string& err = result.error_output.empty()
+                    ? "Build failed (no output captured)" : result.error_output;
+                for (auto& ns : scheduler.nodes_mut()) {
+                    if (ns.type_name == *type_name_ptr) {
+                        ns.error_message = err;
+                    }
+                }
+            }
+            continue;
+        }
 
         const std::string* type_name_ptr = registry.type_name_for_target(result.target_name);
         if (!type_name_ptr) {

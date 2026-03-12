@@ -88,57 +88,83 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
 }
 
 bool OperatorLoader::load(const char* path) {
-    unload();
-
-    handle_ = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-    if (!handle_) {
+    // Attempt to open the new dylib before touching current state (atomic swap).
+    void* new_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (!new_handle) {
         const char* dl_err = dlerror();
         std::fprintf(stderr, "[vivid] dlopen failed: %s\n", dl_err ? dl_err : "unknown error");
-        return false;
+        return false;  // Old dylib still live
     }
 
-    // Resolve all four entry points
-    auto abi_fn = reinterpret_cast<VividAbiVersionFn>(dlsym(handle_, "vivid_abi_version"));
+    // Resolve required symbols from new handle
+    auto abi_fn = reinterpret_cast<VividAbiVersionFn>(dlsym(new_handle, "vivid_abi_version"));
     if (!abi_fn) {
         std::fprintf(stderr, "[vivid] Missing symbol: vivid_abi_version (stale/incompatible plugin)\n");
-        unload();
+        dlclose(new_handle);
         return false;
     }
     const uint32_t abi = abi_fn();
     if (abi != VIVID_OPERATOR_ABI_VERSION) {
         std::fprintf(stderr, "[vivid] Incompatible plugin ABI: got %u, expected %u\n",
                      abi, VIVID_OPERATOR_ABI_VERSION);
-        unload();
+        dlclose(new_handle);
         return false;
     }
 
-    desc_fn_    = reinterpret_cast<VividDescriptorFn>(dlsym(handle_, "vivid_descriptor"));
-    create_fn_  = reinterpret_cast<VividCreateFn>(dlsym(handle_, "vivid_create"));
-    destroy_fn_ = reinterpret_cast<VividDestroyFn>(dlsym(handle_, "vivid_destroy"));
+    auto new_desc_fn    = reinterpret_cast<VividDescriptorFn>(dlsym(new_handle, "vivid_descriptor"));
+    auto new_create_fn  = reinterpret_cast<VividCreateFn>(dlsym(new_handle, "vivid_create"));
+    auto new_destroy_fn = reinterpret_cast<VividDestroyFn>(dlsym(new_handle, "vivid_destroy"));
 
     // Per-domain process entry points
-    process_fn_       = reinterpret_cast<VividProcessFn>(dlsym(handle_, "vivid_process"));
-    process_audio_fn_ = reinterpret_cast<VividProcessAudioFn>(dlsym(handle_, "vivid_process_audio"));
-    process_gpu_fn_   = reinterpret_cast<VividProcessGpuFn>(dlsym(handle_, "vivid_process_gpu"));
+    auto new_process_fn       = reinterpret_cast<VividProcessFn>(dlsym(new_handle, "vivid_process"));
+    auto new_process_audio_fn = reinterpret_cast<VividProcessAudioFn>(dlsym(new_handle, "vivid_process_audio"));
+    auto new_process_gpu_fn   = reinterpret_cast<VividProcessGpuFn>(dlsym(new_handle, "vivid_process_gpu"));
 
-    if (!desc_fn_)    std::fprintf(stderr, "[vivid] Missing symbol: vivid_descriptor\n");
-    if (!create_fn_)  std::fprintf(stderr, "[vivid] Missing symbol: vivid_create\n");
-    if (!destroy_fn_) std::fprintf(stderr, "[vivid] Missing symbol: vivid_destroy\n");
+    if (!new_desc_fn)    std::fprintf(stderr, "[vivid] Missing symbol: vivid_descriptor\n");
+    if (!new_create_fn)  std::fprintf(stderr, "[vivid] Missing symbol: vivid_create\n");
+    if (!new_destroy_fn) std::fprintf(stderr, "[vivid] Missing symbol: vivid_destroy\n");
     // At least one process entry point must exist
-    if (!process_fn_ && !process_audio_fn_ && !process_gpu_fn_)
+    if (!new_process_fn && !new_process_audio_fn && !new_process_gpu_fn)
         std::fprintf(stderr, "[vivid] Missing symbol: no process entry point found\n");
 
-    if (!desc_fn_ || !create_fn_ || !destroy_fn_ ||
-        (!process_fn_ && !process_audio_fn_ && !process_gpu_fn_)) {
-        unload();
-        return false;
+    if (!new_desc_fn || !new_create_fn || !new_destroy_fn ||
+        (!new_process_fn && !new_process_audio_fn && !new_process_gpu_fn)) {
+        dlclose(new_handle);
+        return false;  // Old dylib still live
     }
 
-    // Optional: custom thumbnail drawing
-    draw_thumb_fn_ = reinterpret_cast<VividDrawThumbnailFn>(dlsym(handle_, "vivid_draw_thumbnail"));
+    // All symbols resolved — commit the swap: release old dylib, install new state
+    if (handle_) {
+        if (dlclose(handle_) != 0) {
+            const char* dl_err = dlerror();
+            std::fprintf(stderr, "[vivid] dlclose failed: %s\n", dl_err ? dl_err : "unknown error");
+        }
+    }
+    // Clear any data-driven state (we are now loading a native dylib)
+    if (dd_config_) {
+        dd_config_.reset();
+        dd_name_.clear();
+        dd_param_names_.clear();
+        dd_group_strings_.clear();
+        dd_choice_labels_.clear();
+        dd_choice_ptrs_.clear();
+        dd_params_.clear();
+        dd_port_names_.clear();
+        dd_ports_.clear();
+        dd_desc_ = {};
+    }
 
-    // Optional: main-thread update hook (for audio operators with file I/O)
-    main_update_fn_ = reinterpret_cast<VividMainThreadUpdateFn>(dlsym(handle_, "vivid_main_thread_update"));
+    handle_           = new_handle;
+    desc_fn_          = new_desc_fn;
+    create_fn_        = new_create_fn;
+    destroy_fn_       = new_destroy_fn;
+    process_fn_       = new_process_fn;
+    process_audio_fn_ = new_process_audio_fn;
+    process_gpu_fn_   = new_process_gpu_fn;
+
+    // Optional entry points
+    draw_thumb_fn_  = reinterpret_cast<VividDrawThumbnailFn>(dlsym(new_handle, "vivid_draw_thumbnail"));
+    main_update_fn_ = reinterpret_cast<VividMainThreadUpdateFn>(dlsym(new_handle, "vivid_main_thread_update"));
 
     return true;
 }

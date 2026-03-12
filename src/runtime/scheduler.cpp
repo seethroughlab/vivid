@@ -1316,7 +1316,7 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
 
     if (saved.empty()) return true;  // no instances to reload
 
-    // 2. Destroy old instances (using old dylib's vivid_destroy)
+    // 2. Destroy old instances while the old dylib is still loaded (safe to call old destroy)
     for (const auto& sp : saved) {
         auto& ns = nodes_[sp.node_idx];
         if (ns.instance) {
@@ -1325,9 +1325,28 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
         }
     }
 
-    // 3. Reload the dylib (dlclose old, dlopen new)
+    // 3. Reload the dylib (atomic swap in OperatorLoader::load() — old dylib remains live on failure)
     if (!registry.reload_operator(type_name, new_dylib_path)) {
         std::fprintf(stderr, "[vivid] Scheduler: dylib reload failed for '%s'\n", type_name.c_str());
+        // Old dylib is still loaded (Fix 1). Recreate instances using old loader so nodes keep running.
+        OperatorLoader* old_loader = registry.find(type_name);
+        if (old_loader && old_loader->is_loaded()) {
+            const auto* old_desc = old_loader->descriptor();
+            if (old_desc) {
+                for (const auto& sp : saved) {
+                    auto& ns = nodes_[sp.node_idx];
+                    ns.instance = old_loader->create_instance();
+                    init_node_state(ns, old_desc, &sp.values,
+                                    sp.string_values.empty() ? nullptr : &sp.string_values);
+                    for (const auto& [pname, flags] : sp.lock_flags) {
+                        auto pi = ns.param_indices.find(pname);
+                        if (pi != ns.param_indices.end())
+                            ns.param_lock_flags[pi->second] = flags;
+                    }
+                    ns.generation++;
+                }
+            }
+        }
         return false;
     }
 
