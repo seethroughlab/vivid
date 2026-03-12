@@ -49,6 +49,56 @@ struct PinkNoise {
 };
 
 // ---------------------------------------------------------------------------
+// Brown (red) noise: leaky random walk → −6 dB/octave
+// ---------------------------------------------------------------------------
+struct BrownNoise {
+    WhiteNoise white;
+    float state = 0.0f;
+
+    float next() {
+        state += white.next() * 0.02f;   // small random step
+        state *= 0.998f;                  // leaky integrator prevents DC drift
+        if (state >  1.0f) state =  1.0f; // hard clip (rare at these parameters)
+        if (state < -1.0f) state = -1.0f;
+        return state;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Blue noise: first-order finite difference of white → +3 dB/octave
+// Variance of (w[n] - w[n-1]) = 2σ², so scale by 1/√2 to normalize.
+// ---------------------------------------------------------------------------
+struct BlueNoise {
+    WhiteNoise white;
+    float prev = 0.0f;
+
+    float next() {
+        float w   = white.next();
+        float out = (w - prev) * 0.7071f;
+        prev = w;
+        return out;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Violet (purple) noise: second-order finite difference → +6 dB/octave
+// Uses the recurrence: out = w[n] - 2·w[n-1] + w[n-2], scaled by 0.5.
+// ---------------------------------------------------------------------------
+struct VioletNoise {
+    WhiteNoise white;
+    float prev1 = 0.0f;
+    float prev2 = 0.0f;
+
+    float next() {
+        float w   = white.next();
+        float out = (w - 2.0f * prev1 + prev2) * 0.5f;
+        prev2 = prev1;
+        prev1 = w;
+        return out;
+    }
+};
+
+// ---------------------------------------------------------------------------
 // Phase-wrap trigger detection (delta < -0.5)
 // ---------------------------------------------------------------------------
 inline bool detect_trigger(float phase, float prev_phase) {

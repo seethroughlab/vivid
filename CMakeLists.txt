@@ -516,6 +516,9 @@ add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp
                    FACTORY_PRESETS operators/audio/bitcrush/factory_presets.json)
 add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp
                    FACTORY_PRESETS operators/audio/distortion/factory_presets.json)
+add_vivid_operator(filter         operators/audio/filter/filter.cpp)
+add_vivid_operator(audio_noise    operators/audio/noise/noise.cpp)
+add_vivid_operator(mixer          operators/audio/mixer/mixer.cpp)
 
 # --- MovieAudioOut (audio output from media stream) ---
 if(APPLE)
@@ -1250,7 +1253,7 @@ add_dependencies(test_demo_graphs
     bloom feedback movie_loaded texture_analysis
     # audio
     oscillator gain spread_adsr spread_lfo
-    reverb delay bitcrush distortion
+    reverb delay bitcrush distortion filter audio_noise mixer
     movie_audio_out
     webcam_in time_machine
 )
