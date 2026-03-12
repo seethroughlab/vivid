@@ -771,31 +771,46 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         snap.node_index[ns.node_id] = i;
     }
 
-    // Connections
-    snap.connections.resize(conns.size());
+    // Connections — skip wires where an endpoint is neither a port nor a parameter
+    snap.connections.reserve(conns.size());
     for (size_t i = 0; i < conns.size(); ++i) {
-        snap.connections[i].from_node = conns[i].from_node;
-        snap.connections[i].from_port = conns[i].from_port;
-        snap.connections[i].to_node   = conns[i].to_node;
-        snap.connections[i].to_port   = conns[i].to_port;
-        snap.connections[i].from_min  = conns[i].from_min;
-        snap.connections[i].from_max  = conns[i].from_max;
-        snap.connections[i].to_min    = conns[i].to_min;
-        snap.connections[i].to_max    = conns[i].to_max;
-        snap.connections[i].clamp     = conns[i].clamp;
+        bool from_is_param = false;
+        bool to_is_param   = false;
+
         // Determine if source is a param (not an output port)
         auto ni_it = snap.node_index.find(conns[i].from_node);
         if (ni_it != snap.node_index.end()) {
             const auto& src = snap.nodes[ni_it->second];
-            snap.connections[i].from_is_param =
-                (src.output_port_indices.count(conns[i].from_port) == 0);
+            if (src.output_port_indices.count(conns[i].from_port) == 0) {
+                if (src.param_indices.count(conns[i].from_port) == 0)
+                    continue; // not a valid port or parameter — skip
+                from_is_param = true;
+            }
         }
+
+        // Determine if destination is a param (not an input port)
         auto dest_it = snap.node_index.find(conns[i].to_node);
         if (dest_it != snap.node_index.end()) {
             const auto& dest = snap.nodes[dest_it->second];
-            snap.connections[i].to_is_param =
-                (dest.input_port_indices.count(conns[i].to_port) == 0);
+            if (dest.input_port_indices.count(conns[i].to_port) == 0) {
+                if (dest.param_indices.count(conns[i].to_port) == 0)
+                    continue; // not a valid port or parameter — skip
+                to_is_param = true;
+            }
         }
+
+        auto& c = snap.connections.emplace_back();
+        c.from_node    = conns[i].from_node;
+        c.from_port    = conns[i].from_port;
+        c.to_node      = conns[i].to_node;
+        c.to_port      = conns[i].to_port;
+        c.from_min     = conns[i].from_min;
+        c.from_max     = conns[i].from_max;
+        c.to_min       = conns[i].to_min;
+        c.to_max       = conns[i].to_max;
+        c.clamp        = conns[i].clamp;
+        c.from_is_param = from_is_param;
+        c.to_is_param   = to_is_param;
     }
 
     // Audio analysis
