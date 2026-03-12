@@ -330,7 +330,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
 
     for (int ci = 0; ci < static_cast<int>(conns.size()); ++ci) {
         const auto& c = conns[ci];
-        if (c.from_is_param && !show_param_wires_) continue;
+        if ((c.from_is_param || c.to_is_param) && !show_param_wires_) continue;
         auto fi = id_to_rect.find(c.from_node);
         auto ti = id_to_rect.find(c.to_node);
         if (fi == id_to_rect.end() || ti == id_to_rect.end()) continue;
@@ -366,7 +366,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         float cb = std::min(1.0f, dcol[2] * brightness);
         float a = (hov || sel) ? 0.95f : 0.8f;
 
-        bool is_param_wire = c.from_is_param;
+        bool is_param_wire = c.from_is_param || c.to_is_param;
         float wire_th;
         if (is_param_wire)
             wire_th = std::max(1.0f, style_.wire_param_thickness * zoom_);

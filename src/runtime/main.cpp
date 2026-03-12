@@ -790,6 +790,12 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
             snap.connections[i].from_is_param =
                 (src.output_port_indices.count(conns[i].from_port) == 0);
         }
+        auto dest_it = snap.node_index.find(conns[i].to_node);
+        if (dest_it != snap.node_index.end()) {
+            const auto& dest = snap.nodes[dest_it->second];
+            snap.connections[i].to_is_param =
+                (dest.input_port_indices.count(conns[i].to_port) == 0);
+        }
     }
 
     // Audio analysis

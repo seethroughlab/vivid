@@ -562,7 +562,7 @@ int NodeGraphUI::hit_test_wire(float sx, float sy) const {
 
     for (int ci = 0; ci < static_cast<int>(conns.size()); ++ci) {
         const auto& c = conns[ci];
-        if (c.from_is_param && !show_param_wires_) continue;
+        if ((c.from_is_param || c.to_is_param) && !show_param_wires_) continue;
         auto fi = id_to_rect.find(c.from_node);
         auto ti = id_to_rect.find(c.to_node);
         if (fi == id_to_rect.end() || ti == id_to_rect.end()) continue;
@@ -854,7 +854,8 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     // Deselect a param wire that becomes hidden
     if (!show_param_wires_ && selected_wire_idx_ >= 0 &&
         selected_wire_idx_ < (int)snap_.connections.size() &&
-        snap_.connections[selected_wire_idx_].from_is_param) {
+        (snap_.connections[selected_wire_idx_].from_is_param ||
+         snap_.connections[selected_wire_idx_].to_is_param)) {
         selected_wire_idx_ = -1;
     }
 
@@ -934,9 +935,16 @@ void NodeGraphUI::check_relayout() {
     } else if (cur_conns != last_conn_count_) {
         // Connection changed — recompute ports and heights for all nodes
         // (connected params/outputs may have appeared or disappeared)
-        for (size_t i = 0; i < node_rects_.size() && i < snap_.nodes.size(); ++i) {
-            auto& rect = node_rects_[i];
-            const auto& ns = snap_.nodes[i];
+        std::unordered_map<std::string, size_t> rect_by_id;
+        for (size_t i = 0; i < node_rects_.size(); ++i)
+            rect_by_id[node_rects_[i].node_id] = i;
+
+        for (const auto& ns : snap_.nodes) {
+            auto it = rect_by_id.find(ns.node_id);
+            if (it == rect_by_id.end()) continue;
+            auto& rect = node_rects_[it->second];
+            rect.domain = ns.domain;
+            rect.type_name = ns.type_name;
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
             float body_h = domain_body_height(ns.domain, has_ct);
             uint32_t n_inputs = count_visible_input_ports(ns);
