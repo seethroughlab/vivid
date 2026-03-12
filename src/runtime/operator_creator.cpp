@@ -416,6 +416,7 @@ static std::string empty_control_template(const std::string& struct_name) {
     s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = false;\n\n";
+    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
     s << "        out.push_back({\"input\",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});\n";
     s << "        out.push_back({\"output\", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});\n";
@@ -434,6 +435,7 @@ static std::string empty_audio_template(const std::string& struct_name) {
     s << "struct " << struct_name << " : vivid::AudioOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
+    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
     s << "        out.push_back({\"input\",  VIVID_PORT_AUDIO, VIVID_PORT_INPUT});\n";
     s << "        out.push_back({\"output\", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT});\n";
@@ -456,6 +458,7 @@ static std::string empty_gpu_template(const std::string& name, const std::string
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
     s << "    " << struct_name << "() : WgslFilterBase(\"" << name << ".wgsl\") {}\n\n";
+    s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
     s << "        out.push_back({\"input\",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});\n";
     s << "        out.push_back({\"texture\", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});\n";

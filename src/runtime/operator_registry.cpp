@@ -127,6 +127,12 @@ bool OperatorRegistry::scan(const char* directory) {
         std::string target_name(name, stem_len);
         target_to_type_[target_name] = type_name;
 
+        if (loaders_.count(type_name)) {
+            std::fprintf(stderr,
+                "[vivid] warning: operator type '%s' already registered; "
+                "overwriting with %s. Check for duplicate kName across operators.\n",
+                type_name.c_str(), name);
+        }
         loaders_[type_name] = std::move(loader);
     });
 }
@@ -326,6 +332,13 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         if (!de_opt) return;  // malformed descriptor — skip operator
 
         auto [it, inserted] = deferred_.emplace(type_name, std::move(*de_opt));
+        if (!inserted) {
+            std::fprintf(stderr,
+                "[vivid] warning: deferred operator type '%s' already registered; "
+                "ignoring %s. Check for duplicate kName across operators.\n",
+                type_name.c_str(), name);
+            return;
+        }
         // Point desc.name at the map key (stable after emplace)
         it->second.desc.name = it->first.c_str();
 

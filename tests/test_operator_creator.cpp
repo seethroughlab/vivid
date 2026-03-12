@@ -366,9 +366,9 @@ int main() {
         check(src.find("ControlOperatorBase") != std::string::npos, "inherits ControlOperatorBase");
         check(src.find("collect_ports") != std::string::npos, "has collect_ports");
         check(src.find("process") != std::string::npos, "has process");
-        // Empty variant should NOT have Param declarations or collect_params
+        // Empty variant should NOT have Param declarations, but must have empty collect_params
         check(src.find("Param<") == std::string::npos, "no Param declarations");
-        check(src.find("collect_params") == std::string::npos, "no collect_params");
+        check(src.find("collect_params") != std::string::npos, "has empty collect_params override");
 
         fs::remove_all(tmp);
     }
@@ -391,6 +391,7 @@ int main() {
         check(src.find("AudioOperatorBase") != std::string::npos, "inherits AudioOperatorBase");
         check(src.find("process_audio") != std::string::npos, "has process_audio");
         check(src.find("Param<") == std::string::npos, "no Param declarations");
+        check(src.find("collect_params") != std::string::npos, "has empty collect_params override");
 
         fs::remove_all(tmp);
     }
@@ -412,6 +413,7 @@ int main() {
         check(src.find("struct BareGpu") != std::string::npos, "struct BareGpu");
         check(src.find("WgslFilterBase") != std::string::npos, "inherits WgslFilterBase");
         check(src.find("Param<") == std::string::npos, "no Param declarations");
+        check(src.find("collect_params") != std::string::npos, "has empty collect_params override");
         // Should have .wgsl
         std::string wgsl = tmp + "/operators/gpu/bare_gpu/bare_gpu.wgsl";
         check(fs::exists(wgsl), "empty gpu has wgsl file");
