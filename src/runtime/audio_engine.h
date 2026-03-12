@@ -5,6 +5,7 @@
 #include "operator_api/audio_operator.h"
 #include "operator_api/media_clock.h"
 #include "operator_api/media_stream.h"
+#include "operator_api/midi_types.h"
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -127,7 +128,7 @@ struct HandleInputSnapshot {
     bool valid = false;
     uint32_t handle_type_id = 0;
     uint32_t byte_size = 0;
-    static constexpr uint32_t kMaxBytes = 256;
+    static constexpr uint32_t kMaxBytes = 576;
     uint8_t bytes[kMaxBytes] = {};
 
     template <typename T>

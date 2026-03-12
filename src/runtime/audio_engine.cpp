@@ -789,6 +789,9 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
                     // MediaStreamV1: byte-copy the struct across the thread boundary
                     std::memcpy(dst.bytes, data_ptr, sizeof(MediaStreamV1));
                     dst.byte_size = static_cast<uint32_t>(sizeof(MediaStreamV1));
+                } else if (hw.handle_type_id == vivid_type_id<VividMidiBuffer>()) {
+                    std::memcpy(dst.bytes, data_ptr, sizeof(VividMidiBuffer));
+                    dst.byte_size = static_cast<uint32_t>(sizeof(VividMidiBuffer));
                 } else {
                     // Other handle types: store the pointer directly
                     std::memcpy(dst.bytes, &data_ptr, sizeof(void*));

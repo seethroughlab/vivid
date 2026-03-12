@@ -413,6 +413,11 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
                         fill_thread_started_ = true;
                     }
                     fill_thread_.notify();
+                    // Video-only files: no audio to preroll, unblock MovieLoaded immediately
+                    if (!fresh->has_audio()) {
+                        active_session_->audio_preroll_ready.store(1, std::memory_order_release);
+                        std::fprintf(stderr, "[MAO main] NO_AUDIO — preroll→1 (unblock video)\n");
+                    }
                     // Drain stale resync — fresh load already positions at t=0.
                     pending_resync_time_.store(-1.0, std::memory_order_release);
                 } else {
