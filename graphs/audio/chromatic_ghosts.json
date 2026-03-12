@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "chromatic_ghosts",
+    "title": "Chromatic Ghosts",
+    "description": "IDM glitch drone: three polyrhythmic Euclidean rhythms (5/8, 3/4, 7/16) drive a random-pitch lead, square bass, and stuttery pink noise through a resonant filter, bitcrusher, and dotted-8th delay at 140 BPM. Lo-fi blocky monochrome visuals with block displacement and aggressive beat-triggered glitch.",
+    "tags": [
+      "audio",
+      "synthesis",
+      "idm",
+      "glitch",
+      "euclidean",
+      "polyrhythm",
+      "demo"
+    ],
+    "difficulty": "intermediate",
+    "domains": [
+      "audio",
+      "control",
+      "gpu"
+    ],
+    "requires_packages": ["vivid-glitch"],
+    "featured_rank": 23
+  },
+  "nodes": {
+    "clock": {
+      "type": "Clock",
+      "params": {
+        "bpm": 140.0
+      }
+    },
+    "euclid_lead": {
+      "type": "Euclidean",
+      "params": {
+        "hits": 5,
+        "steps": 8,
+        "rotation": 0,
+        "gate_length": 0.3,
+        "rate": 3
+      }
+    },
+    "euclid_bass": {
+      "type": "Euclidean",
+      "params": {
+        "hits": 3,
+        "steps": 8,
+        "rotation": 3,
+        "gate_length": 0.5,
+        "rate": 2
+      }
+    },
+    "euclid_noise": {
+      "type": "Euclidean",
+      "params": {
+        "hits": 7,
+        "steps": 16,
+        "rotation": 5,
+        "gate_length": 0.15,
+        "rate": 4
+      }
+    },
+    "rand_pitch": {
+      "type": "Random",
+      "params": {
+        "min": 0.0,
+        "max": 12.0,
+        "distribution": 0,
+        "free_run": false
+      }
+    },
+    "osc_lead": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 220.0,
+        "amplitude": 0.5,
+        "waveform": 1
+      }
+    },
+    "osc_bass": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 110.0,
+        "amplitude": 0.5,
+        "waveform": 2
+      }
+    },
+    "env_bass": {
+      "type": "Envelope",
+      "params": {
+        "attack": 0.01,
+        "decay": 0.15,
+        "sustain": 0.4,
+        "release": 0.3,
+        "amplitude": 1.0
+      }
+    },
+    "gain_bass": {
+      "type": "Gain",
+      "params": {
+        "gain": 1.0
+      }
+    },
+    "noise": {
+      "type": "Noise",
+      "params": {
+        "color": 1,
+        "amplitude": 0.15
+      }
+    },
+    "gain_noise": {
+      "type": "Gain",
+      "params": {
+        "gain": 1.0
+      }
+    },
+    "lfo_filter": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.33,
+        "amplitude": 8.0,
+        "offset": 4.0,
+        "waveform": 1
+      }
+    },
+    "mixer": {
+      "type": "Mixer",
+      "params": {
+        "gain_1": 1.0,
+        "gain_2": 0.8,
+        "gain_3": 0.6
+      }
+    },
+    "filter": {
+      "type": "Filter",
+      "params": {
+        "cutoff": 300.0,
+        "resonance": 1.4,
+        "mode": 0
+      }
+    },
+    "bitcrush": {
+      "type": "Bitcrush",
+      "params": {
+        "bits": 7.0,
+        "rate": 16000.0,
+        "mix": 0.65
+      }
+    },
+    "delay": {
+      "type": "Delay",
+      "params": {
+        "time": 321.0,
+        "feedback": 0.4,
+        "mix": 0.35
+      }
+    },
+    "gain_out": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.7
+      }
+    },
+    "out": {
+      "type": "audio_out",
+      "params": {}
+    },
+    "lfo_hue": {
+      "type": "LFO",
+      "params": { "frequency": 0.04, "amplitude": 180.0, "offset": 180.0, "waveform": 1 }
+    },
+    "noise_vis": {
+      "type": "NoiseTexture",
+      "params": { "speed": 1.2, "scale": 5.0, "octaves": 4, "channels": 0 }
+    },
+    "text_vis": {
+      "type": "Text",
+      "params": { "text": "GHOSTS", "size": 0.16, "r": 1.0, "g": 1.0, "b": 1.0,
+                  "bg_r": 0.0, "bg_g": 0.0, "bg_b": 0.0, "x": -0.6, "y": 0.74 }
+    },
+    "comp_text": {
+      "type": "Composite",
+      "params": { "blend_mode": 1 }
+    },
+    "pixelate": {
+      "type": "Pixelate",
+      "params": { "size_x": 8.0, "size_y": 8.0 }
+    },
+    "posterize": {
+      "type": "Posterize",
+      "params": { "levels": 3.0 }
+    },
+    "hsv_vis": {
+      "type": "HSV",
+      "params": { "hue_shift": 0.0, "saturation": -0.4, "value": 0.0 }
+    },
+    "block_disp": {
+      "type": "Block Displacement",
+      "params": {
+        "grid_x": 8, "grid_y": 8, "chance": 0.12, "direction": 0,
+        "duplicate": 0.08, "seed": 42, "mix": 0.9
+      }
+    },
+    "vis_glitch": {
+      "type": "Visual Glitch",
+      "params": {
+        "shift_chance": 0.2, "block_chance": 0.3, "scan_chance": 0.2,
+        "static_chance": 0.2, "pixelate_chance": 0.1, "invert_chance": 0.0,
+        "intensity": 0.7, "duration": 0.06, "mix": 0.8
+      }
+    },
+    "scanlines": {
+      "type": "Scanlines",
+      "params": { "spacing": 2.0, "thickness": 0.4, "intensity": 0.35 }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    { "from": "clock/beat_phase",      "to": "euclid_lead/beat_phase"  },
+    { "from": "clock/beat_phase",      "to": "euclid_bass/beat_phase"  },
+    { "from": "clock/beat_phase",      "to": "euclid_noise/beat_phase" },
+    { "from": "euclid_lead/trigger",   "to": "rand_pitch/trigger"      },
+    { "from": "euclid_lead/gate",      "to": "osc_lead/amp_cv"         },
+    { "from": "rand_pitch/value",      "to": "osc_lead/freq_cv"        },
+    { "from": "euclid_bass/gate",      "to": "env_bass/gate"           },
+    { "from": "env_bass/value",        "to": "gain_bass/amplitude_cv"  },
+    { "from": "osc_bass/output",       "to": "gain_bass/input"         },
+    { "from": "noise/output",          "to": "gain_noise/input"        },
+    { "from": "euclid_noise/gate",     "to": "gain_noise/amplitude_cv" },
+    { "from": "lfo_filter/value",      "to": "filter/cutoff_cv"        },
+    { "from": "osc_lead/output",       "to": "mixer/input_1"           },
+    { "from": "gain_bass/output",      "to": "mixer/input_2"           },
+    { "from": "gain_noise/output",     "to": "mixer/input_3"           },
+    { "from": "mixer/output",          "to": "filter/input"            },
+    { "from": "filter/output",         "to": "bitcrush/input"          },
+    { "from": "bitcrush/output",       "to": "delay/input"             },
+    { "from": "delay/output",          "to": "gain_out/input"          },
+    { "from": "gain_out/output",       "to": "out/input"               },
+    { "from": "gain_out/rms",          "to": "noise_vis/scale" },
+    { "from": "noise_vis/texture",     "to": "comp_text/a" },
+    { "from": "text_vis/texture",      "to": "comp_text/b" },
+    { "from": "comp_text/texture",     "to": "pixelate/input" },
+    { "from": "pixelate/texture",      "to": "posterize/input" },
+    { "from": "posterize/texture",     "to": "hsv_vis/input" },
+    { "from": "lfo_hue/value",         "to": "hsv_vis/hue_shift" },
+    { "from": "hsv_vis/texture",       "to": "block_disp/input" },
+    { "from": "gain_out/rms",          "to": "block_disp/amount" },
+    { "from": "block_disp/texture",    "to": "vis_glitch/input" },
+    { "from": "clock/beat_phase",      "to": "vis_glitch/phase" },
+    { "from": "vis_glitch/texture",    "to": "scanlines/input" },
+    { "from": "scanlines/texture",     "to": "vout/input" }
+  ]
+}
