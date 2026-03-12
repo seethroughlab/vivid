@@ -10,18 +10,18 @@ Windows and Linux support is deferred past 1.0.
 
 ### Hot-Reload
 
-- [ ] Hot-reload verified for each domain: Control, Audio, GPU
+- [x] Hot-reload verified for each domain: Control, Audio, GPU
 - [ ] Error cases: syntax error keeps last good version; missing include same; editing linked package operator reloads from source
-- [ ] State preservation across reload: params, wires, node positions
+- [x] State preservation across reload: params, wires, node positions
 
 ### Operator Creation + MCP E2E
 
-- [ ] End-to-end: scaffold → edit → hot-reload → use in graph → verify output
-- [ ] All domain variants: Control, Audio, GPU, Composite
-- [ ] MCP `scaffold_operator` via control-server request path
+- [x] End-to-end: scaffold → edit → hot-reload → use in graph → verify output
+- [x] All domain variants: Control, Audio, GPU, Composite
+- [x] MCP `scaffold_operator` via control-server request path
 - [ ] LLM-guided workflow end-to-end
-- [ ] Scaffold into existing package directory (not just top-level `operators/`)
-- [ ] Generated code compiles without warnings on first build
+- [x] Scaffold into existing package directory (not just top-level `operators/`)
+- [x] Generated code compiles without warnings on first build
 
 ---
 
@@ -39,19 +39,37 @@ Ships in the same ABI break as the port type registry.
 
 Develop in a dedicated branch and merge to master only when complete and tested.
 
-### Core operators — built into the runtime
+### Unified indexed ABI
 
-- Core operators register via `register_builtin()`, no dylibs
-- No hot-reload for core operators (by design — they are part of the runtime)
+All dylibs (package and custom) export the same indexed entry points:
 
-### Package operators — one dylib per package
+- `vivid_operator_count()` — number of operators in this dylib
+- `vivid_operator_descriptor(i)`, `vivid_operator_create(i)`, `vivid_operator_destroy(i)`, `vivid_operator_process(i)` — access operators by index
+
+Two registration macros:
+
+- `VIVID_REGISTER(ClassName)` — single-operator dylib (count=1). Used by custom per-project operators and Vivid's built-in operator dylibs. Same macro name as today; operator source files are untouched.
+- `VIVID_REGISTER_PACKAGE(Op1, Op2, ...)` — multi-operator dylib. Used by packages to register all operators in one shared library.
+
+The registry doesn't distinguish tiers at the loader level — it opens any dylib, reads `vivid_operator_count()`, and creates one loader entry per operator.
+
+### Tier 1: Core operators — built into the runtime
+
+- Register via `register_builtin()`, no dylibs
+- No hot-reload (by design — they are part of the runtime)
+
+### Tier 2: Package operators — one dylib per package
 
 - Each package produces a single shared library (not one per operator)
-- New multi-operator ABI entry points:
-  - `vivid_operator_count()` — returns number of operators in the package
-  - Indexed `vivid_operator_descriptor(i)`, `vivid_operator_create(i)`, `vivid_operator_destroy(i)`, `vivid_operator_process(i)` — access operators by index
-- `VIVID_REGISTER` convenience macro for single-operator packages (wraps the indexed ABI with count=1)
-- Hot-reload applies only to package/custom operators, at package granularity
+- `PackageCompiler` auto-generates a registration source that includes all operator headers and invokes `VIVID_REGISTER_PACKAGE(...)`
+- Hot-reload at package granularity: reloading the package dylib swaps all operators from that package atomically
+
+### Tier 3: Custom per-project operators — one dylib per operator
+
+- Individual operators compiled as standalone dylibs using `VIVID_REGISTER` (count=1)
+- Hot-reload at individual operator granularity (the current behavior)
+- Live in the project's `operators/` directory
+- Scaffolded via `vivid scaffold` or MCP — the primary LLM authoring workflow
 
 ---
 

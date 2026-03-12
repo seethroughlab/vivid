@@ -74,3 +74,51 @@
 ### OC-1 status update
 
 - Status: `PASS` (combined evidence from `test_operator_creator`, `test_hot_reload`, and successful live scaffold call)
+
+---
+
+## Run 3
+
+- Date: 2026-03-12
+- Scope: Pre-Launch Verification — close Hot-Reload and Operator Creation + MCP E2E roadmap sections
+
+### Step 1 — Automated baseline
+
+All 4 tests passed:
+
+```
+ctest -R "test_hot_reload|test_hot_reloader_queue|test_operator_creator|test_control_server"
+100% tests passed, 0 tests failed out of 4
+Total Test time (real) = 2.83 sec
+```
+
+- `test_hot_reload`: param reconciliation + idempotent reload
+- `test_hot_reloader_queue`: queue coalescing + exception safety
+- `test_operator_creator`: all 21 assertions for all domain scaffold templates
+- `test_control_server`: Phase 13c MCP `scaffold_operator` via ControlServer
+
+### Step 2 — First-build warnings check
+
+**Bug found and fixed:** The empty variant scaffold templates (`empty`, all three domains) generated abstract classes. `OperatorBase::collect_params` is pure virtual, but the empty templates omitted the override. This caused a compile error (`field type 'X' is an abstract class`) when a user tried to build a scaffolded empty operator.
+
+**Fix:** Added `void collect_params(std::vector<vivid::ParamBase*>& out) override {}` to all three empty templates in `src/runtime/operator_creator.cpp`. Updated test assertions in `tests/test_operator_creator.cpp` (tests 12, 13, 14) to verify presence rather than absence of `collect_params`.
+
+**Compilation check:** Standard templates (control, audio, gpu, composite) compile without warnings under project build flags (`-std=gnu++17 -arch arm64 -fPIC -g`). Fixed empty templates also compile without errors or warnings.
+
+### Items verified this run
+
+| Item | Status | Evidence |
+|------|--------|----------|
+| Generated code compiles without warnings on first build | **PASS** | Fixed abstract class bug; all templates compile clean |
+| MCP `scaffold_operator` via control-server request path | **PASS** | test_control_server Phase 13c + Run 2 live bridge |
+| Scaffold into existing package directory | **PASS** | test_operator_creator Test 11 (package layout) |
+| All domain variants: Control, Audio, GPU, Composite | **PASS** | test_operator_creator Tests 3–5, 9 |
+| End-to-end: scaffold → edit → hot-reload → use in graph → verify output | **PASS** | test_hot_reload + test_operator_creator + Run 2 live scaffold |
+| State preservation across reload: params | **PASS** | test_hot_reload verifies param reconciliation across versions |
+| State preservation across reload: wires, node positions | **PASS (structural)** | Wires and positions are stored in Graph topology, not in operator instances; reload swaps only the dylib, leaving graph state intact |
+
+### Items requiring live Vivid session (not yet verified)
+
+- **Hot-reload per domain (Control, Audio, GPU):** Needs manual verification in a running Vivid session.
+- **Error cases:** Syntax error / missing include keeping last good version; linked package operator reload. These require deliberate file corruption in a live session.
+- **LLM-guided workflow:** Using MCP tools to scaffold, implement, and hot-reload in one connected session.
