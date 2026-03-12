@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/package_compiler.h"
+#include "runtime/tool_discovery.h"
 #include <functional>
 #include <set>
 #include <string>

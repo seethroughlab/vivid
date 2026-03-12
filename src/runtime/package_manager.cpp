@@ -1,4 +1,5 @@
 #include "runtime/package_manager.h"
+#include "runtime/tool_discovery.h"
 #include "runtime/operator_registry.h"
 #include "runtime/platform.h"
 #include "yyjson.h"
@@ -240,38 +241,6 @@ static bool is_core_version_compatible(const std::string& core_version,
     return true;
 }
 
-static bool tool_forced_missing(const std::string& tool) {
-    const char* env = std::getenv("VIVID_MOCK_MISSING_TOOL");
-    if (!env || !*env) return false;
-    std::string s(env);
-    size_t pos = 0;
-    while (pos < s.size()) {
-        size_t next = s.find(',', pos);
-        std::string item = s.substr(pos, next == std::string::npos ? std::string::npos : next - pos);
-        while (!item.empty() && item.front() == ' ') item.erase(item.begin());
-        while (!item.empty() && item.back() == ' ') item.pop_back();
-        if (item == tool) return true;
-        if (next == std::string::npos) break;
-        pos = next + 1;
-    }
-    return false;
-}
-
-static std::string find_tool(const char* tool) {
-    if (tool_forced_missing(tool)) return {};
-    std::string cmd = "PATH=$PATH:/opt/homebrew/bin:/usr/local/bin command -v ";
-    cmd += tool;
-    cmd += " 2>/dev/null";
-    FILE* f = popen(cmd.c_str(), "r");
-    if (!f) return {};
-    char buf[512] = {};
-    fgets(buf, sizeof(buf), f);
-    pclose(f);
-    std::string s = buf;
-    while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
-    return s;
-}
-
 static bool command_exists(const char* tool) {
     return !find_tool(tool).empty();
 }
@@ -359,18 +328,6 @@ std::vector<PackageInfo> PackageManager::resolve_packages(bool emit_warnings) {
     return resolved;
 }
 
-static std::string missing_tool_error(const char* tool) {
-    std::string msg = "Missing required build tool: ";
-    msg += tool;
-    if (std::string(tool) == "clang++") {
-        msg += ". Install Xcode Command Line Tools with `xcode-select --install`.";
-    } else if (std::string(tool) == "cmake") {
-        msg += ". Install CMake (e.g. `brew install cmake`).";
-    } else if (std::string(tool) == "git") {
-        msg += ". Install Git (included with Xcode Command Line Tools).";
-    }
-    return msg;
-}
 
 static std::string abi_mismatch_error_for_package(const std::string& package_name,
                                                   const std::vector<AbiMismatchDiagnostic>& mismatches) {
@@ -800,12 +757,13 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
             return result;
         }
     } else {
-        if (!command_exists("git")) {
+        std::string git_exe = find_tool("git");
+        if (git_exe.empty()) {
             result.error = missing_tool_error("git");
             return result;
         }
         // Git clone (quote URL and path for spaces and special characters)
-        std::string cmd = "git clone --depth 1 " + quote(normalized_url) + " " + quote(staging_dir) + " 2>&1";
+        std::string cmd = quote(git_exe) + " clone --depth 1 " + quote(normalized_url) + " " + quote(staging_dir) + " 2>&1";
         std::fprintf(stderr, "[vivid] PackageManager: %s\n", cmd.c_str());
 
         std::string output;

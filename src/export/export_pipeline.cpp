@@ -1,5 +1,6 @@
 #include "export/export_pipeline.h"
 #include "runtime/operator_registry.h"
+#include "runtime/tool_discovery.h"
 #include "runtime/graph.h"
 #include "operator_api/data_driven_filter.h"
 #include "yyjson.h"
@@ -513,10 +514,16 @@ bool ExportPipeline::copy_standalone_main() {
 }
 
 bool ExportPipeline::build() {
+    std::string cmake_exe = find_tool("cmake");
+    if (cmake_exe.empty()) {
+        std::fprintf(stderr, "[export] %s\n", missing_tool_error("cmake").c_str());
+        return false;
+    }
+
     std::string build_path = export_dir_ + "/build";
 
     // Configure
-    std::string configure_cmd = "cmake -S " + quote(export_dir_) + " -B " + quote(build_path) +
+    std::string configure_cmd = quote(cmake_exe) + " -S " + quote(export_dir_) + " -B " + quote(build_path) +
                                 " -DCMAKE_BUILD_TYPE=Release 2>&1";
     std::fprintf(stderr, "[export] Configuring: %s\n", configure_cmd.c_str());
     int rc = std::system(configure_cmd.c_str());
@@ -526,7 +533,7 @@ bool ExportPipeline::build() {
     }
 
     // Build
-    std::string build_cmd = "cmake --build " + quote(build_path) + " --config Release 2>&1";
+    std::string build_cmd = quote(cmake_exe) + " --build " + quote(build_path) + " --config Release 2>&1";
     std::fprintf(stderr, "[export] Building: %s\n", build_cmd.c_str());
     rc = std::system(build_cmd.c_str());
     if (rc != 0) {

@@ -1,4 +1,5 @@
 #include "runtime/hot_reload.h"
+#include "runtime/tool_discovery.h"
 #include "runtime/platform.h"
 #include <cstdio>
 #include <cstdlib>
@@ -113,8 +114,16 @@ void HotReloader::compile_thread() {
             result = package_compile_fn_(target);
             result.target_name = target;
         } else {
+            // Resolve cmake path before running build.
+            std::string cmake_exe = find_tool("cmake");
+            if (cmake_exe.empty()) {
+                result.target_name = target;
+                result.success = false;
+                result.error_output = missing_tool_error("cmake");
+                std::fprintf(stderr, "[vivid] Hot-reload: %s\n", result.error_output.c_str());
+            } else {
             // Run cmake --build and capture output.
-            std::string cmd = "cmake --build " + quote(build_dir_) + " --target " + quote(target) + " 2>&1";
+            std::string cmd = quote(cmake_exe) + " --build " + quote(build_dir_) + " --target " + quote(target) + " 2>&1";
             std::string output;
             bool compile_ok = false;
 
@@ -171,6 +180,7 @@ void HotReloader::compile_thread() {
                     std::fprintf(stderr, "[vivid] Hot-reload: %s compiled successfully\n", target.c_str());
                 }
             }
+            } // cmake found
         }
         } catch (const std::exception& e) {
             result.success = false;

@@ -587,8 +587,10 @@ add_executable(vivid
     src/runtime/audio_engine.cpp
     src/runtime/file_watcher.cpp
     src/runtime/hot_reload.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/screenshot.cpp
@@ -604,6 +606,7 @@ add_executable(vivid
     src/runtime/macos_frame_timer.cpp
     src/export/export_pipeline.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/package_manager.cpp
     src/runtime/package_scaffolder.cpp
     src/runtime/package_test_runner.cpp
@@ -901,6 +904,7 @@ add_executable(test_control_server
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/control_server.cpp
@@ -937,6 +941,7 @@ add_executable(test_perception_introspection
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/control_server.cpp
@@ -1259,6 +1264,7 @@ set_tests_properties(test_demo_graphs PROPERTIES LABELS "SMOKE" TIMEOUT 120)
 add_executable(test_package_compiler
     tests/test_package_compiler.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1276,6 +1282,7 @@ add_executable(test_package_catalog
     src/runtime/package_catalog.cpp
     src/runtime/package_manager.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1292,6 +1299,7 @@ add_executable(test_package_manager
     tests/test_package_manager.cpp
     src/runtime/package_manager.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1308,6 +1316,7 @@ add_executable(test_package_scope_resolver
     tests/test_package_scope_resolver.cpp
     src/runtime/package_manager.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1324,6 +1333,7 @@ add_executable(test_package_scope_registry
     tests/test_package_scope_registry.cpp
     src/runtime/package_manager.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1350,6 +1360,7 @@ add_executable(test_package_update_logic
     tests/test_package_update_logic.cpp
     src/runtime/package_manager.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1378,6 +1389,7 @@ add_executable(test_package_test_runner
     src/runtime/package_test_runner.cpp
     src/runtime/package_manager.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1436,6 +1448,7 @@ add_test(NAME test_file_watcher COMMAND test_file_watcher WORKING_DIRECTORY ${CM
 add_executable(test_hot_reloader_queue
     tests/test_hot_reloader_queue.cpp
     src/runtime/hot_reload.cpp
+    src/runtime/tool_discovery.cpp
 )
 target_include_directories(test_hot_reloader_queue PRIVATE src tests)
 add_test(NAME test_hot_reloader_queue COMMAND test_hot_reloader_queue WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1561,6 +1574,7 @@ add_executable(test_undo_mutation_types
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/operator_creator.cpp
@@ -1593,6 +1607,7 @@ add_executable(test_team_workflow_regression
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
     src/runtime/package_manager.cpp
     src/runtime/undo_manager.cpp
     src/runtime/operator_creator.cpp

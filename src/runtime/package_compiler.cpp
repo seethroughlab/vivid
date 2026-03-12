@@ -1,4 +1,5 @@
 #include "runtime/package_compiler.h"
+#include "runtime/tool_discovery.h"
 #include "runtime/platform.h"
 #include <array>
 #include <cstdio>
@@ -60,6 +61,14 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
     std::string temp_output = output_path + ".tmp";
     result.dylib_path = output_path;
 
+    // Resolve compiler path
+    std::string compiler_exe = find_tool("clang++");
+    if (compiler_exe.empty()) {
+        result.success = false;
+        result.error_output = missing_tool_error("clang++");
+        return result;
+    }
+
     // Build compiler command
     // -I <vivid_src>/src  — for operator_api/ headers
     // -I <package>/operators/<domain>  — for package-local shared headers
@@ -67,7 +76,7 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
     if (!domain.empty())
         domain_include = package_dir + "/operators/" + domain;
 
-    std::string cmd = "clang++ -std=c++17 -shared -fPIC -O2"
+    std::string cmd = quote(compiler_exe) + " -std=c++17 -shared -fPIC -O2"
         " -I " + quote(vivid_src_dir_ + "/src") +
         " -I " + quote(domain_include);
 
@@ -197,8 +206,16 @@ TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
     std::string output_path = build_dir + "/" + stem;
     result.executable_path = output_path;
 
+    // Resolve compiler path
+    std::string compiler_exe = find_tool("clang++");
+    if (compiler_exe.empty()) {
+        result.success = false;
+        result.error_output = missing_tool_error("clang++");
+        return result;
+    }
+
     // Build compiler command — executable, not shared library
-    std::string cmd = "clang++ -std=c++17 -O0 -g"
+    std::string cmd = quote(compiler_exe) + " -std=c++17 -O0 -g"
         " -I " + quote(vivid_src_dir_ + "/src") +
         " -I " + quote(package_dir + "/operators");
 
