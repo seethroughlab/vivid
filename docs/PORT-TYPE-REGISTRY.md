@@ -267,6 +267,8 @@ The graph editor should present custom ports by `type_name`, not by a generic `"
 
 This should be done as one deliberate ABI break, not as multiple transitional phases.
 
+The multi-operator dylib ABI change (one dylib per package instead of one per operator) should also ship in this same break. See the "Operator Loading Consolidation" section in ROADMAP.md for details.
+
 That means changing all of these together:
 
 - `src/operator_api/types.h`
