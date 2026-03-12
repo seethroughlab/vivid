@@ -35,7 +35,7 @@
       }
     },
     "noise": {
-      "type": "Noise",
+      "type": "NoiseTexture",
       "params": {
         "scale": 3.0,
         "speed": 0.5,

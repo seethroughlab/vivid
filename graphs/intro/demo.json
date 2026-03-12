@@ -30,7 +30,7 @@
       }
     },
     "noise1": {
-      "type": "Noise",
+      "type": "NoiseTexture",
       "params": {
         "speed": 1.0
       }

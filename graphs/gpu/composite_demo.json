@@ -50,7 +50,7 @@
       ]
     },
     "noise1": {
-      "type": "Noise",
+      "type": "NoiseTexture",
       "params": {
         "speed": 0.5,
         "scale": 6.0,

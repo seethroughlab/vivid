@@ -29,7 +29,7 @@
       }
     },
     "map": {
-      "type": "Noise",
+      "type": "NoiseTexture",
       "params": {
         "scale": 2.0,
         "speed": 0.8,

@@ -20,7 +20,7 @@
   },
   "nodes": {
     "noise1": {
-      "type": "Noise",
+      "type": "NoiseTexture",
       "params": {
         "speed": 0.2
       }
