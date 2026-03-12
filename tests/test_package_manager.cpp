@@ -712,6 +712,119 @@ set_target_properties(test_cmake_op PROPERTIES
         fs::remove_all(trav_pkg_dir);
     }
 
+    // --- Test: URL normalization ---
+    std::fprintf(stderr, "\n--- URL normalization ---\n");
+    {
+        auto n = vivid::PackageManager::normalize_github_url;
+
+        check(n("user/repo") == "https://github.com/user/repo.git",
+              "shorthand user/repo expands");
+        check(n("github.com/user/repo") == "https://github.com/user/repo.git",
+              "missing protocol added");
+        check(n("https://github.com/user/repo/tree/main") == "https://github.com/user/repo.git",
+              "browser /tree/ path stripped");
+        check(n("https://github.com/user/repo.git") == "https://github.com/user/repo.git",
+              "already correct URL unchanged");
+        check(n("https://gitlab.com/user/repo") == "https://gitlab.com/user/repo",
+              "non-GitHub URL unchanged");
+        check(n("my.server/path") == "my.server/path",
+              "dots prevent shorthand expansion");
+        check(n("../relative/path") == "../relative/path",
+              "leading dots preserved");
+        check(n("  user/repo  ") == "https://github.com/user/repo.git",
+              "whitespace trimmed before expansion");
+        check(n("https://github.com/user/repo/tree/main/src/subdir") == "https://github.com/user/repo.git",
+              "browser path with subdirectory stripped");
+    }
+
+    // --- Test: Detailed manifest error messages ---
+    std::fprintf(stderr, "\n--- Detailed manifest error messages ---\n");
+    {
+        // No manifest
+        std::string no_manifest_dir = build_dir + "/.test_no_manifest";
+        fs::remove_all(no_manifest_dir);
+        fs::create_directories(no_manifest_dir);
+        auto r1 = pm.install(no_manifest_dir);
+        check(!r1.success, "no manifest install fails");
+        check(r1.error.find("not found") != std::string::npos,
+              "error mentions 'not found'");
+        fs::remove_all(no_manifest_dir);
+
+        // Invalid JSON
+        std::string bad_json_dir = build_dir + "/.test_bad_json";
+        fs::remove_all(bad_json_dir);
+        fs::create_directories(bad_json_dir);
+        {
+            std::ofstream ofs(bad_json_dir + "/vivid-package.json");
+            ofs << "{ not valid json }}}";
+        }
+        auto r2 = pm.install(bad_json_dir);
+        check(!r2.success, "invalid JSON install fails");
+        check(r2.error.find("invalid JSON") != std::string::npos,
+              "error mentions 'invalid JSON'");
+        fs::remove_all(bad_json_dir);
+
+        // Missing name
+        std::string no_name_dir = build_dir + "/.test_no_name";
+        fs::remove_all(no_name_dir);
+        fs::create_directories(no_name_dir);
+        {
+            std::ofstream ofs(no_name_dir + "/vivid-package.json");
+            ofs << R"({"version": "1.0.0"})";
+        }
+        auto r3 = pm.install(no_name_dir);
+        check(!r3.success, "missing name install fails");
+        check(r3.error.find("missing required field") != std::string::npos,
+              "error mentions 'missing required field'");
+        fs::remove_all(no_name_dir);
+
+        // name is integer
+        std::string int_name_dir = build_dir + "/.test_int_name";
+        fs::remove_all(int_name_dir);
+        fs::create_directories(int_name_dir);
+        {
+            std::ofstream ofs(int_name_dir + "/vivid-package.json");
+            ofs << R"({"name": 42})";
+        }
+        auto r4 = pm.install(int_name_dir);
+        check(!r4.success, "integer name install fails");
+        check(r4.error.find("must be a string") != std::string::npos,
+              "error mentions 'must be a string'");
+        fs::remove_all(int_name_dir);
+    }
+
+    // --- Test: Diagnostic hints ---
+    std::fprintf(stderr, "\n--- Diagnostic hints ---\n");
+    {
+        // Dir with package.json but no vivid-package.json → "Node.js"
+        std::string node_dir = build_dir + "/.test_node_pkg";
+        fs::remove_all(node_dir);
+        fs::create_directories(node_dir);
+        {
+            std::ofstream ofs(node_dir + "/package.json");
+            ofs << R"({"name": "some-npm-thing"})";
+        }
+        auto r1 = pm.install(node_dir);
+        check(!r1.success, "Node.js project install fails");
+        check(r1.error.find("Node.js") != std::string::npos,
+              "error mentions Node.js");
+        fs::remove_all(node_dir);
+
+        // Dir with subdirectory containing vivid-package.json
+        std::string subdir_dir = build_dir + "/.test_subdir_pkg";
+        fs::remove_all(subdir_dir);
+        fs::create_directories(subdir_dir + "/my-plugin");
+        {
+            std::ofstream ofs(subdir_dir + "/my-plugin/vivid-package.json");
+            ofs << R"({"name": "my-plugin", "version": "1.0.0"})";
+        }
+        auto r2 = pm.install(subdir_dir);
+        check(!r2.success, "subdirectory manifest install fails");
+        check(r2.error.find("my-plugin") != std::string::npos,
+              "error mentions subdirectory name");
+        fs::remove_all(subdir_dir);
+    }
+
     // Cleanup
     fs::remove_all(mock_pkg_dir);
     fs::remove_all(bad_pkg_dir);

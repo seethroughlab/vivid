@@ -117,6 +117,10 @@ public:
                                                  const std::string& remote_vivid_core,
                                                  const std::string& core_version);
 
+    // Normalize a GitHub URL for git clone.
+    // Expands shorthand (user/repo), adds protocol, strips browser paths, ensures .git suffix.
+    static std::string normalize_github_url(const std::string& url);
+
     // Classify the delta between a saved package version and the installed version.
     // Returns UpToDate, CompatibleUpdate (same major), IncompatibleUpdate (major changed),
     // RemoteOlderOrEqual (installed older than saved), or InvalidVersionData on parse failure.
@@ -127,8 +131,9 @@ private:
     // Discover package candidates across all scopes and resolve winners by precedence.
     static std::vector<PackageInfo> resolve_packages(bool emit_warnings);
 
-    // Parse vivid-package.json into PackageInfo
-    static bool parse_manifest(const std::string& package_dir, PackageInfo& info);
+    // Parse vivid-package.json into PackageInfo.
+    // Returns empty string on success, or a human-readable error message.
+    static std::string parse_manifest(const std::string& package_dir, PackageInfo& info);
 
     // Internal install with dependency chain tracking for circular detection
     InstallResult install_with_chain(const std::string& url,

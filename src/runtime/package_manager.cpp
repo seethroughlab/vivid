@@ -294,10 +294,11 @@ std::vector<PackageInfo> PackageManager::resolve_packages(bool emit_warnings) {
             if (dir_name.size() > 9 && dir_name.compare(0, 9, ".staging_") == 0) continue;
 
             PackageInfo info;
-            if (!parse_manifest(entry.path().string(), info)) {
+            auto manifest_err = parse_manifest(entry.path().string(), info);
+            if (!manifest_err.empty()) {
                 if (emit_warnings) {
-                    std::fprintf(stderr, "[vivid] PackageManager: warning: invalid manifest in %s (scope=%s)\n",
-                                 entry.path().string().c_str(), sr.scope.c_str());
+                    std::fprintf(stderr, "[vivid] PackageManager: warning: %s in %s (scope=%s)\n",
+                                 manifest_err.c_str(), entry.path().string().c_str(), sr.scope.c_str());
                 }
                 continue;
             }
@@ -481,29 +482,41 @@ std::string PackageManager::packages_dir() {
     return get_config_dir() + "/packages";
 }
 
-bool PackageManager::parse_manifest(const std::string& package_dir, PackageInfo& info) {
+std::string PackageManager::parse_manifest(const std::string& package_dir, PackageInfo& info) {
     std::string manifest_path = package_dir + "/vivid-package.json";
     std::ifstream ifs(manifest_path);
-    if (!ifs) return false;
+    if (!ifs) return "vivid-package.json not found";
 
     std::ostringstream ss;
     ss << ifs.rdbuf();
     std::string json_str = ss.str();
 
-    yyjson_doc* doc = yyjson_read(json_str.c_str(), json_str.size(), 0);
-    if (!doc) return false;
+    yyjson_read_err read_err;
+    yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(json_str.c_str()),
+                                        json_str.size(), 0, nullptr, &read_err);
+    if (!doc) {
+        std::string msg = "vivid-package.json contains invalid JSON at byte ";
+        msg += std::to_string(read_err.pos);
+        msg += ": ";
+        msg += read_err.msg ? read_err.msg : "unknown error";
+        return msg;
+    }
 
     yyjson_val* root = yyjson_doc_get_root(doc);
-    if (!root) { yyjson_doc_free(doc); return false; }
+    if (!root || !yyjson_is_obj(root)) { yyjson_doc_free(doc); return "vivid-package.json has no root object"; }
 
     yyjson_val* name_v = yyjson_obj_get(root, "name");
     yyjson_val* ver_v  = yyjson_obj_get(root, "version");
     yyjson_val* desc_v = yyjson_obj_get(root, "description");
     yyjson_val* core_v = yyjson_obj_get(root, "vivid_core");
 
-    if (!name_v || !yyjson_is_str(name_v)) {
+    if (!name_v) {
         yyjson_doc_free(doc);
-        return false;
+        return "vivid-package.json is missing required field 'name'";
+    }
+    if (!yyjson_is_str(name_v)) {
+        yyjson_doc_free(doc);
+        return "'name' field in vivid-package.json must be a string";
     }
 
     info.name = yyjson_get_str(name_v);
@@ -545,7 +558,7 @@ bool PackageManager::parse_manifest(const std::string& package_dir, PackageInfo&
                 std::string op_name = yyjson_get_str(val);
                 if (!is_valid_op_name(op_name)) {
                     yyjson_doc_free(doc);
-                    return false;
+                    return "Invalid operator name '" + op_name + "': contains invalid characters or path traversal";
                 }
                 info.operators.push_back(std::move(op_name));
             }
@@ -561,7 +574,7 @@ bool PackageManager::parse_manifest(const std::string& package_dir, PackageInfo&
                 std::string op_name = yyjson_get_str(val);
                 if (!is_valid_op_name(op_name)) {
                     yyjson_doc_free(doc);
-                    return false;
+                    return "Invalid operator name '" + op_name + "': contains invalid characters or path traversal";
                 }
                 info.gpu_operators.push_back(std::move(op_name));
             }
@@ -641,7 +654,107 @@ bool PackageManager::parse_manifest(const std::string& package_dir, PackageInfo&
     }
 
     yyjson_doc_free(doc);
-    return true;
+    return {};  // empty string = success
+}
+
+// Scan a directory for recognizable project files when vivid-package.json is absent.
+// Returns a diagnostic hint string (empty if nothing recognizable found).
+static std::string diagnose_non_package_dir(const std::string& dir) {
+    namespace fs = std::filesystem;
+    if (!fs::exists(dir) || !fs::is_directory(dir)) return {};
+
+    // Check for vivid-package.json in subdirectories
+    std::error_code ec;
+    for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        if (ec) break;
+        if (!entry.is_directory()) continue;
+        if (fs::exists(entry.path() / "vivid-package.json")) {
+            return "Found vivid-package.json in subdirectory: " +
+                   entry.path().filename().string() + "/";
+        }
+    }
+
+    if (fs::exists(fs::path(dir) / "package.json"))
+        return "This appears to be a Node.js project, not a Vivid package";
+    if (fs::exists(fs::path(dir) / "Cargo.toml"))
+        return "This appears to be a Rust project, not a Vivid package";
+    if (fs::exists(fs::path(dir) / "setup.py") || fs::exists(fs::path(dir) / "pyproject.toml"))
+        return "This appears to be a Python project, not a Vivid package";
+    if (fs::exists(fs::path(dir) / "CMakeLists.txt"))
+        return "Has CMakeLists.txt but no vivid-package.json";
+
+    // Check for loose .cpp files
+    for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        if (ec) break;
+        if (entry.path().extension() == ".cpp") {
+            return "Contains C++ source but no vivid-package.json. "
+                   "Use `vivid scaffold-package` to create one.";
+        }
+    }
+
+    return {};
+}
+
+std::string PackageManager::normalize_github_url(const std::string& url) {
+    // Trim whitespace and trailing slashes
+    std::string s = trim_copy(url);
+    while (!s.empty() && s.back() == '/') s.pop_back();
+    if (s.empty()) return s;
+
+    // Skip if it starts with . or / (relative/absolute path)
+    if (s[0] == '.' || s[0] == '/') return s;
+
+    // Shorthand expansion: user/repo → https://github.com/user/repo.git
+    // Only if exactly one slash, no dots (avoids my.server/path), no protocol prefix
+    if (s.find("://") == std::string::npos && s.find(':') == std::string::npos) {
+        auto slash_count = std::count(s.begin(), s.end(), '/');
+        bool has_dot = s.find('.') != std::string::npos;
+        if (slash_count == 1 && !has_dot) {
+            std::string expanded = "https://github.com/" + s + ".git";
+            std::fprintf(stderr, "[vivid] PackageManager: expanded '%s' → '%s'\n",
+                         url.c_str(), expanded.c_str());
+            return expanded;
+        }
+    }
+
+    // Missing protocol: github.com/... → https://github.com/...
+    if (s.rfind("github.com/", 0) == 0) {
+        s = "https://" + s;
+        std::fprintf(stderr, "[vivid] PackageManager: added protocol: '%s'\n", s.c_str());
+    }
+
+    // Strip /tree/<ref>/... from GitHub browser URLs
+    if (s.find("github.com/") != std::string::npos) {
+        auto tree_pos = s.find("/tree/");
+        if (tree_pos != std::string::npos) {
+            // Check if there's a subdirectory path after /tree/<ref>/
+            auto after_tree = s.substr(tree_pos + 6);  // skip "/tree/"
+            auto ref_slash = after_tree.find('/');
+            if (ref_slash != std::string::npos) {
+                std::string subdir = after_tree.substr(ref_slash + 1);
+                if (!subdir.empty()) {
+                    std::fprintf(stderr, "[vivid] PackageManager: warning: stripping subdirectory path '%s' from URL "
+                                 "(vivid install operates on whole repositories)\n", subdir.c_str());
+                }
+            }
+            s = s.substr(0, tree_pos);
+            std::fprintf(stderr, "[vivid] PackageManager: stripped browser path: '%s'\n", s.c_str());
+        }
+
+        // Also strip /blob/<ref>/...
+        auto blob_pos = s.find("/blob/");
+        if (blob_pos != std::string::npos) {
+            s = s.substr(0, blob_pos);
+            std::fprintf(stderr, "[vivid] PackageManager: stripped browser path: '%s'\n", s.c_str());
+        }
+
+        // Ensure .git suffix for github.com URLs
+        if (s.size() >= 4 && s.substr(s.size() - 4) != ".git") {
+            s += ".git";
+        }
+    }
+
+    return s;
 }
 
 InstallResult PackageManager::install(const std::string& url) {
@@ -669,13 +782,18 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
     // Clean up any leftover staging dir
     std::filesystem::remove_all(staging_dir);
 
+    // Normalize GitHub URLs (skip if path exists on disk)
+    std::string normalized_url = url;
+    if (!std::filesystem::exists(url))
+        normalized_url = normalize_github_url(url);
+
     // Check if URL is a local path
-    bool is_local = std::filesystem::exists(url);
+    bool is_local = std::filesystem::exists(normalized_url);
 
     if (is_local) {
         // Copy local directory
         std::error_code ec;
-        std::filesystem::copy(url, staging_dir,
+        std::filesystem::copy(normalized_url, staging_dir,
             std::filesystem::copy_options::recursive, ec);
         if (ec) {
             result.error = "Failed to copy local package: " + ec.message();
@@ -687,7 +805,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
             return result;
         }
         // Git clone (quote URL and path for spaces and special characters)
-        std::string cmd = "git clone --depth 1 " + quote(url) + " " + quote(staging_dir) + " 2>&1";
+        std::string cmd = "git clone --depth 1 " + quote(normalized_url) + " " + quote(staging_dir) + " 2>&1";
         std::fprintf(stderr, "[vivid] PackageManager: %s\n", cmd.c_str());
 
         std::string output;
@@ -709,8 +827,11 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
     }
 
     // Parse manifest to get canonical package name
-    if (!parse_manifest(staging_dir, result.info)) {
-        result.error = "Invalid or missing vivid-package.json in package";
+    auto manifest_err = parse_manifest(staging_dir, result.info);
+    if (!manifest_err.empty()) {
+        std::string hint = diagnose_non_package_dir(staging_dir);
+        result.error = manifest_err;
+        if (!hint.empty()) result.error += "\n" + hint;
         std::filesystem::remove_all(staging_dir);
         return result;
     }
@@ -921,8 +1042,9 @@ InstallResult PackageManager::link(const std::string& path) {
     }
 
     // Parse manifest to get canonical package name
-    if (!parse_manifest(canonical.string(), result.info)) {
-        result.error = "Invalid vivid-package.json in " + canonical.string();
+    auto link_manifest_err = parse_manifest(canonical.string(), result.info);
+    if (!link_manifest_err.empty()) {
+        result.error = link_manifest_err + " (in " + canonical.string() + ")";
         return result;
     }
 
@@ -972,9 +1094,9 @@ bool PackageManager::unlink(const std::string& name) {
         return false;
     }
 
-    // Unregister operators from registry
+    // Unregister operators from registry (best-effort; error discarded)
     PackageInfo info;
-    if (parse_manifest(pkg_dir, info)) {
+    if (parse_manifest(pkg_dir, info).empty()) {
         auto unregister_op = [&](const std::string& op_path) {
             auto slash = op_path.rfind('/');
             std::string target = (slash != std::string::npos) ? op_path.substr(slash + 1) : op_path;
@@ -1013,8 +1135,9 @@ InstallResult PackageManager::rebuild(const std::string& name) {
         return result;
     }
 
-    if (!parse_manifest(pkg_dir, result.info)) {
-        result.error = "Invalid vivid-package.json in " + name;
+    auto rebuild_manifest_err = parse_manifest(pkg_dir, result.info);
+    if (!rebuild_manifest_err.empty()) {
+        result.error = rebuild_manifest_err + " (in " + name + ")";
         return result;
     }
 
@@ -1058,7 +1181,7 @@ bool PackageManager::uninstall(const std::string& name) {
     for (auto& entry : std::filesystem::directory_iterator(packages_dir())) {
         if (!entry.is_directory()) continue;
         PackageInfo dep_info;
-        if (!parse_manifest(entry.path().string(), dep_info)) continue;
+        if (!parse_manifest(entry.path().string(), dep_info).empty()) continue;
         if (dep_info.name == name) continue;
         for (const auto& dep : dep_info.dependencies.packages) {
             if (dep == name) {
@@ -1073,7 +1196,7 @@ bool PackageManager::uninstall(const std::string& name) {
     // segment is the cmake target name (dylib stem). We need to look up the actual
     // descriptor type name from the target→type mapping.
     PackageInfo info;
-    if (parse_manifest(pkg_dir, info)) {
+    if (parse_manifest(pkg_dir, info).empty()) {
         auto unregister_op = [&](const std::string& op_path) {
             auto slash = op_path.rfind('/');
             std::string target = (slash != std::string::npos) ? op_path.substr(slash + 1) : op_path;
