@@ -736,7 +736,7 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.errored       = ns.errored || ns.gpu_shader_error;
         sn.error_message = ns.errored          ? ns.error_message
                          : ns.gpu_shader_error ? ns.gpu_shader_error_msg
-                         : "";
+                         : ns.error_message;   // compile/build error (node still running)
         sn.missing_operator = ns.missing_operator;
 
         // Solo state

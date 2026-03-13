@@ -89,7 +89,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         const NodeSnapshot* sn = snap_.find_node(r.node_id);
         bool node_errored = sn && sn->errored;
         bool node_missing = sn && sn->missing_operator;
-        bool node_bad     = node_errored || node_missing;
+        bool node_bad     = node_errored || node_missing || (sn && !sn->error_message.empty());
         const float* dcol = node_bad ? kErrorAccent.data() : domain_color(r.domain);
 
         // Transform graph-space rect to screen space
@@ -513,7 +513,7 @@ void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
     if (hovered_node_id_.empty()) return;
 
     const NodeSnapshot* hovered_ns = snap_.find_node(hovered_node_id_);
-    if (!hovered_ns || !hovered_ns->errored || hovered_ns->error_message.empty()) return;
+    if (!hovered_ns || hovered_ns->error_message.empty()) return;
 
     static constexpr float kMaxTooltipW = 500.0f;
     static constexpr int   kMaxLines    = 8;
@@ -546,7 +546,7 @@ void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
 
     float pad    = 8.0f;
     float line_h = 16.0f;
-    float header_w = tr.text_width("Shader Error:");
+    float header_w = tr.text_width("Error:");
     float popup_w  = std::max(header_w, max_line_w) + pad * 2;
     float popup_h  = line_h * (1 + static_cast<float>(lines.size())) + pad * 2;
 
@@ -560,8 +560,8 @@ void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
                  style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.95f);
     // Red accent line at top
     tr.draw_rect(px, py, popup_w, 2.0f, 1.0f, 0.3f, 0.3f, 0.9f);
-    // "Shader Error:" header in red
-    tr.draw_text(px + pad, py + pad, "Shader Error:", 1.0f, 0.3f, 0.3f);
+    // "Error:" header in red
+    tr.draw_text(px + pad, py + pad, "Error:", 1.0f, 0.3f, 0.3f);
     // One line per message line
     for (int k = 0; k < static_cast<int>(lines.size()); ++k) {
         tr.draw_text(px + pad, py + pad + line_h * (1 + k), lines[k].c_str(),
@@ -779,8 +779,8 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
 
     draw_inspector_header(tr, *sel_node, px, py);
 
-    // Error banner for errored nodes
-    if (sel_node->errored) {
+    // Error banner for errored nodes (includes compile errors where errored=false)
+    if (!sel_node->error_message.empty()) {
         tr.draw_text(px, py, ("ERROR: " + sel_node->error_message).c_str(),
                      kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);
         py += kLineH + 4;
