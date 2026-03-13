@@ -29,4 +29,10 @@ typedef struct VividMidiBuffer {
 
 #ifdef __cplusplus
 }
+
+#include "operator_api/type_id.h"
+VIVID_DECLARE_CUSTOM_REF_TYPE(VividMidiBuffer,
+                              "seethroughlab.vivid.midi_buffer_v1",
+                              "VividMidiBuffer",
+                              false);
 #endif

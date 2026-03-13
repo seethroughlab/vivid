@@ -45,4 +45,14 @@ typedef struct VividMesh {
 
 #ifdef __cplusplus
 }
+
+#include "operator_api/type_id.h"
+VIVID_DECLARE_CUSTOM_REF_TYPE(VividComputeBuffer,
+                              "seethroughlab.vivid.compute_buffer_v1",
+                              "VividComputeBuffer",
+                              false);
+VIVID_DECLARE_CUSTOM_REF_TYPE(VividMesh,
+                              "seethroughlab.vivid.mesh_v1",
+                              "VividMesh",
+                              false);
 #endif

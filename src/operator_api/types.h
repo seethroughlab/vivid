@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 4u
+#define VIVID_OPERATOR_ABI_VERSION 5u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -96,6 +96,7 @@ typedef struct VividPortDescriptor {
     const char*        type_name;    // C++ type name, NULL for built-ins
     uint8_t            channels;     // 0=auto, 1=mono, 2=stereo, etc.
     float              default_value;// default for VIVID_PORT_FLOAT inputs
+    const char*        stable_type_id; // stable namespaced id for custom types, NULL for built-ins
 } VividPortDescriptor;
 
 typedef struct VividOperatorDescriptor {
