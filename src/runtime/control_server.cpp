@@ -527,6 +527,12 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_val* in = yyjson_mut_obj(doc);
                 yyjson_mut_obj_add_strcpy(doc, in, "name", pd.name);
                 yyjson_mut_obj_add_str(doc, in, "kind", port_type_str(pd.type));
+                yyjson_mut_obj_add_str(doc, in, "transport", transport_str(pd.transport));
+                if (pd.type_name)
+                    yyjson_mut_obj_add_strcpy(doc, in, "type_name", pd.type_name);
+                if (pd.payload_size > 0)
+                    yyjson_mut_obj_add_int(doc, in, "payload_size",
+                        static_cast<int64_t>(pd.payload_size));
                 yyjson_mut_obj_add_int(doc, in, "connected_wires",
                     static_cast<int64_t>(incoming_port_wires[ns.node_id][pd.name]));
 
@@ -570,6 +576,12 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_val* out = yyjson_mut_obj(doc);
                 yyjson_mut_obj_add_strcpy(doc, out, "name", pd.name);
                 yyjson_mut_obj_add_str(doc, out, "kind", port_type_str(pd.type));
+                yyjson_mut_obj_add_str(doc, out, "transport", transport_str(pd.transport));
+                if (pd.type_name)
+                    yyjson_mut_obj_add_strcpy(doc, out, "type_name", pd.type_name);
+                if (pd.payload_size > 0)
+                    yyjson_mut_obj_add_int(doc, out, "payload_size",
+                        static_cast<int64_t>(pd.payload_size));
                 yyjson_mut_obj_add_int(doc, out, "connected_wires",
                     static_cast<int64_t>(outgoing_port_wires[ns.node_id][pd.name]));
 

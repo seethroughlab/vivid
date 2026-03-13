@@ -324,7 +324,7 @@ Seven canonical port types reflect the runtime's routing mechanisms:
 - `VIVID_PORT_STRING` — UTF-8 string.
 - `VIVID_PORT_STRING_SPREAD` — variable-length string array.
 - `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 800×600).
-- `VIVID_PORT_HANDLE` — typed opaque pointer (`void*`), type-safe via `handle_type_id`. Used for GPU buffers, meshes, compute dispatches, media streams, MIDI, and package-defined types.
+- `VIVID_CUSTOM_PORT(id)` — custom port types using either `CUSTOM_REF` (opaque pointer) or `CUSTOM_VALUE` (inline blob) transport. Type-safe via named type registry with `transport`, `type_name`, and `payload_size`. Used for GPU buffers, meshes, compute dispatches, media streams, MIDI, and package-defined types.
 
 **Semantic Tags (Advisory)**
 
