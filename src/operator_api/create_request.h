@@ -7,8 +7,10 @@
 struct VividPortSpec {
     std::string        name;
     VividPortType      type;
-    VividPortDirection direction = VIVID_PORT_OUTPUT;
-    uint32_t           handle_type_id = 0;  // non-zero when type == VIVID_PORT_HANDLE
+    VividPortDirection direction   = VIVID_PORT_OUTPUT;
+    VividPortTransport transport   = VIVID_PORT_TRANSPORT_SCALAR; // relevant only for custom types
+    uint32_t           payload_size = 0;                          // 0 for built-in types
+    std::string        type_name;                                  // empty for built-in types
 };
 
 struct VividParamSpec {

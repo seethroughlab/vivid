@@ -50,7 +50,7 @@ Control is push-based — events propagate forward immediately. Audio and GPU ar
 
 The type system serves three consumers: the graph runtime (bridge selection), the UI (valid connection enforcement), and the LLM (compatibility reasoning).
 
-Seven canonical port types reflect the runtime's routing mechanisms:
+Six built-in port types reflect the runtime's routing mechanisms:
 
 - `VIVID_PORT_FLOAT` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
 - `VIVID_PORT_AUDIO` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
@@ -58,23 +58,25 @@ Seven canonical port types reflect the runtime's routing mechanisms:
 - `VIVID_PORT_STRING` — UTF-8 string.
 - `VIVID_PORT_STRING_SPREAD` — variable-length string array.
 - `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 800×600).
-- `VIVID_PORT_HANDLE` — typed opaque pointer (`void*`), type-safe via `handle_type_id` (FNV-1a hash of the C++ type name). Used for GPU buffers, meshes, compute dispatches, media streams, MIDI, and package-defined types.
 
-### Handle Ports and Type Safety
+### Custom Port Types and the Port Type Registry
 
-`VIVID_PORT_HANDLE` carries a `void*` pointer paired with a compile-time `handle_type_id` — a 32-bit FNV-1a hash that identifies the concrete C++ type. This lets operators exchange arbitrary typed data (GPU buffers, media streams, meshes, MIDI state) through the graph while the scheduler enforces type safety at connection time.
+Operators can define custom port types for exchanging arbitrary typed data (GPU buffers, media streams, meshes, compute dispatches) through the graph. Custom type IDs are generated at compile time via `vivid_port_type<T>()`, which combines `vivid_type_id<T>()` (FNV-1a hash of the C++ type name via `__PRETTY_FUNCTION__`) with a high-bit marker (`| 0x80000000u`). Because the hash includes the fully-qualified type name, it produces a stable, deterministic ID across separate translation units and `dlopen` boundaries.
 
-The type ID is computed by `vivid_type_id<T>()` (defined in `src/operator_api/type_id.h`), which hashes `__PRETTY_FUNCTION__` (`__FUNCSIG__` on MSVC) for the template instantiation. Because the hash includes the fully-qualified type name, it produces a stable, deterministic ID across separate translation units and `dlopen` boundaries.
+Each custom type has an associated `VividPortTransport` that describes how the payload crosses domain boundaries:
 
-The `VIVID_HANDLE_PORT` convenience macro (same header) declares a handle port in a single line:
+- `VIVID_PORT_TRANSPORT_CUSTOM_VALUE` — small structs (≤256 bytes) copied by value through a snapshot buffer.
+- `VIVID_PORT_TRANSPORT_CUSTOM_REF` — opaque pointer routed via the shared handle registry. Used for large or non-copyable objects like media streams.
+
+The `VIVID_CUSTOM_PORT` macro declares a custom port in a single line:
 
 ```cpp
-VIVID_HANDLE_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1)
-// expands to:
-// VividPortDescriptor { "media_stream", VIVID_PORT_HANDLE, VIVID_PORT_INPUT, vivid_type_id<vivid::MediaStreamV1>() }
+VIVID_CUSTOM_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1, VIVID_PORT_TRANSPORT_CUSTOM_REF)
 ```
 
-When the user draws a connection in the graph editor, the scheduler compares `handle_type_id` values on both ends. Mismatched IDs (e.g. connecting a `MediaStreamV1` output to a `MeshBufferV1` input) are rejected — the connection is never created. This prevents silent `void*` misinterpretation without requiring a centralized type registry.
+Operator dylibs register their custom types by exporting `vivid_describe_custom_types()`, which returns a static array of `VividPortTypeInfo` records. The `VIVID_DESCRIBE_REF_TYPE(T)` convenience macro handles this for single-type `CUSTOM_REF` operators. The runtime calls this export after `dlopen` and registers each type in the global port type registry. Re-registering the same type with identical fields is idempotent; mismatched fields trigger a fatal error.
+
+When the user draws a connection in the graph editor, the scheduler compares custom type IDs on both ends. Mismatched IDs (e.g. connecting a `MediaStreamV1` output to a `MeshBufferV1` input) are rejected — the connection is never created. This prevents silent `void*` misinterpretation.
 
 ### Semantic Tags (Advisory)
 Port types can carry optional semantic tags: normalized (0–1), bipolar (-1 to 1), frequency_hz, decibels, midi_note, etc. **Tags are advisory hints, not enforced by the runtime.** When connecting ports with mismatched ranges, the graph editor suggests inserting a visible Remap node with the mapping pre-configured. No silent auto-mapping.
@@ -591,10 +593,10 @@ Vivid exposes its full runtime API through two integration surfaces:
 
 Vivid's media pipeline handles video file playback with synchronized audio through a trio of operators:
 
-- **`MovieLoaded`** (`operators/gpu/movie_loaded/`) — decodes video frames from a file using AVFoundation (macOS). Supports HAP (via Snappy decompression + BC GPU upload), HAPQ (YCoCg color space), HAP-alpha, H.264, and HEVC codecs. Outputs a `VIVID_PORT_TEXTURE` (decoded frames) and a `VIVID_PORT_HANDLE` (media stream for audio sync). Playback modes include loop, ping-pong, and one-shot. Frame decoding runs on a dedicated dispatch queue; the GPU operator receives textures via a double-buffered handoff.
+- **`MovieLoaded`** (`operators/gpu/movie_loaded/`) — decodes video frames from a file using AVFoundation (macOS). Supports HAP (via Snappy decompression + BC GPU upload), HAPQ (YCoCg color space), HAP-alpha, H.264, and HEVC codecs. Outputs a `VIVID_PORT_TEXTURE` (decoded frames) and a custom `CUSTOM_REF` port carrying `MediaStreamV1` for audio sync. Playback modes include loop, ping-pong, and one-shot. Frame decoding runs on a dedicated dispatch queue; the GPU operator receives textures via a double-buffered handoff.
 
-- **`MovieAudioOut`** (`operators/audio/movie_audio_out/`) — receives a `VIVID_PORT_HANDLE` (media stream) input from MovieLoaded and outputs decoded audio as `VIVID_PORT_AUDIO` left/right channels. Audio decoding uses AVFoundation's `AVAssetReader` with a lock-free ring buffer bridging the decode thread to the real-time audio callback. Sync is maintained via media clock timestamps — the audio operator tracks the video operator's playback position and resyncs on loop boundaries.
+- **`MovieAudioOut`** (`operators/audio/movie_audio_out/`) — receives a `CUSTOM_REF` media stream input from MovieLoaded and outputs decoded audio as `VIVID_PORT_AUDIO` left/right channels. Audio decoding uses AVFoundation's `AVAssetReader` with a lock-free ring buffer bridging the decode thread to the real-time audio callback. Sync is maintained via media clock timestamps — the audio operator tracks the video operator's playback position and resyncs on loop boundaries.
 
 - **`MovieVideoOut`** (`operators/gpu/movie_video_out/`) — the reverse path: encodes GPU textures + audio buffers into a video file via `AVAssetWriter`. Used for recording/export.
 
-The media stream type carries a `MediaStreamV1*` pointer through the graph's `VIVID_PORT_HANDLE` plumbing, enabling cross-domain media synchronization without special-case runtime code.
+The media stream type carries a `MediaStreamV1*` pointer through the graph's custom port (`CUSTOM_REF` transport) plumbing, enabling cross-domain media synchronization without special-case runtime code.

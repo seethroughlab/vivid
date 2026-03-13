@@ -26,7 +26,7 @@ struct Noise : vivid::AudioOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, 0, 0, 0.0f});
+        out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
     }
 
     void process_audio(const VividAudioContext* ctx) override {

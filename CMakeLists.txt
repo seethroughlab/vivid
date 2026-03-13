@@ -191,6 +191,11 @@ endif()
 # --- Operator API (header-only interface library) ---
 add_library(vivid_operator_api INTERFACE)
 target_include_directories(vivid_operator_api INTERFACE src deps/glfw/deps)
+# Allow operator dylibs to call back into runtime symbols (e.g. vivid_register_port_type)
+# that live in the main executable. -undefined dynamic_lookup defers resolution to load time.
+if(APPLE)
+    target_link_options(vivid_operator_api INTERFACE -undefined dynamic_lookup)
+endif()
 
 # --- Composable operator headers (for ChildOp<T> consumers) ---
 add_library(vivid_composable_ops INTERFACE)
@@ -583,6 +588,7 @@ add_executable(vivid
     src/runtime/fullscreen_blit.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
@@ -886,6 +892,7 @@ add_executable(test_runtime_api
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/system_midi.cpp
@@ -903,6 +910,7 @@ add_executable(test_control_server
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
@@ -940,6 +948,7 @@ add_executable(test_perception_introspection
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
@@ -984,6 +993,7 @@ add_executable(test_audio_engine
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/system_midi.cpp
@@ -1002,6 +1012,7 @@ add_executable(test_audio_robustness
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
 )
 target_include_directories(test_audio_robustness PRIVATE src)
@@ -1172,6 +1183,7 @@ add_executable(test_cross_domain_spread
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
 )
 target_include_directories(test_cross_domain_spread PRIVATE src)
@@ -1204,6 +1216,7 @@ add_executable(test_audio_spread_wire
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
 )
 target_include_directories(test_audio_spread_wire PRIVATE src)
@@ -1236,6 +1249,7 @@ add_executable(test_demo_graphs
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
     src/runtime/builtin_operators.cpp
 )
@@ -1413,6 +1427,7 @@ add_executable(test_capture_coordinator
     tests/test_capture_coordinator.cpp
     src/runtime/capture_coordinator.cpp
     src/runtime/av_exporter.mm
+    src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
@@ -1573,6 +1588,7 @@ add_executable(test_undo_mutation_types
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
@@ -1606,6 +1622,7 @@ add_executable(test_team_workflow_regression
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp

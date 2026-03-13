@@ -16,6 +16,7 @@
 #include "runtime/settings.h"
 #include "runtime/operator_destination_policy.h"
 #include "operator_api/types.h"
+#include "operator_api/type_id.h"
 #include "yyjson.h"
 #include <ixwebsocket/IXHttpServer.h>
 #include <cassert>
@@ -70,7 +71,22 @@ static const char* port_type_str(VividPortType t) {
         case VIVID_PORT_STRING:        return "string";
         case VIVID_PORT_STRING_SPREAD: return "string_spread";
         case VIVID_PORT_TEXTURE:       return "texture";
-        case VIVID_PORT_HANDLE:        return "handle";
+        default:
+            if (vivid_is_custom_port_type(t)) return "custom";
+            return "unknown";
+    }
+}
+
+static const char* transport_str(VividPortTransport t) {
+    switch (t) {
+        case VIVID_PORT_TRANSPORT_SCALAR:        return "scalar";
+        case VIVID_PORT_TRANSPORT_AUDIO_BUFFER:  return "audio_buffer";
+        case VIVID_PORT_TRANSPORT_SPREAD:        return "spread";
+        case VIVID_PORT_TRANSPORT_STRING:        return "string";
+        case VIVID_PORT_TRANSPORT_STRING_SPREAD: return "string_spread";
+        case VIVID_PORT_TRANSPORT_TEXTURE:       return "texture";
+        case VIVID_PORT_TRANSPORT_CUSTOM_VALUE:  return "custom_value";
+        case VIVID_PORT_TRANSPORT_CUSTOM_REF:    return "custom_ref";
         default: return "unknown";
     }
 }
@@ -294,8 +310,11 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_val* p = yyjson_mut_obj(doc);
                 yyjson_mut_obj_add_strcpy(doc, p, "name", pd.name);
                 yyjson_mut_obj_add_str(doc, p, "type", port_type_str(pd.type));
-                if (pd.type == VIVID_PORT_HANDLE && pd.handle_type_id != 0)
-                    yyjson_mut_obj_add_uint(doc, p, "handle_type_id", pd.handle_type_id);
+                yyjson_mut_obj_add_str(doc, p, "transport", transport_str(pd.transport));
+                if (pd.type_name)
+                    yyjson_mut_obj_add_strcpy(doc, p, "type_name", pd.type_name);
+                if (pd.payload_size > 0)
+                    yyjson_mut_obj_add_uint(doc, p, "payload_size", pd.payload_size);
 
                 if (pd.direction == VIVID_PORT_OUTPUT && ns) {
                     auto oi = ns->output_port_indices.find(pd.name);
@@ -1443,8 +1462,11 @@ static std::string handle_list_types(OperatorRegistry& registry) {
             yyjson_mut_val* p = yyjson_mut_obj(doc);
             yyjson_mut_obj_add_strcpy(doc, p, "name", pd.name);
             yyjson_mut_obj_add_str(doc, p, "type", port_type_str(pd.type));
-            if (pd.type == VIVID_PORT_HANDLE && pd.handle_type_id != 0)
-                yyjson_mut_obj_add_uint(doc, p, "handle_type_id", pd.handle_type_id);
+            yyjson_mut_obj_add_str(doc, p, "transport", transport_str(pd.transport));
+            if (pd.type_name)
+                yyjson_mut_obj_add_strcpy(doc, p, "type_name", pd.type_name);
+            if (pd.payload_size > 0)
+                yyjson_mut_obj_add_uint(doc, p, "payload_size", pd.payload_size);
             if (pd.direction == VIVID_PORT_INPUT)
                 yyjson_mut_arr_add_val(inputs_arr, p);
             else
@@ -2066,11 +2088,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     if (type_str == "float") out = VIVID_PORT_AUDIO;
                     else return "unknown audio port type '" + type_str + "'";
                 } else if (d == VIVID_DOMAIN_GPU) {
-                    if      (type_str == "texture") out = VIVID_PORT_TEXTURE;
-                    else if (type_str == "buffer")  out = VIVID_PORT_HANDLE;
-                    else if (type_str == "mesh")    out = VIVID_PORT_HANDLE;
-                    else if (type_str == "compute") out = VIVID_PORT_HANDLE;
-                    else if (type_str == "data")    out = VIVID_PORT_HANDLE;
+                    if (type_str == "texture") out = VIVID_PORT_TEXTURE;
                     else return "unknown GPU port type '" + type_str + "'";
                 }
                 return {};
@@ -2520,8 +2538,11 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             yyjson_mut_val* p = yyjson_mut_obj(rdoc);
                             yyjson_mut_obj_add_strcpy(rdoc, p, "name", portd.name);
                             yyjson_mut_obj_add_str(rdoc, p, "type", port_type_str(portd.type));
-                            if (portd.type == VIVID_PORT_HANDLE && portd.handle_type_id != 0)
-                                yyjson_mut_obj_add_uint(rdoc, p, "handle_type_id", portd.handle_type_id);
+                            yyjson_mut_obj_add_str(rdoc, p, "transport", transport_str(portd.transport));
+                            if (portd.type_name)
+                                yyjson_mut_obj_add_strcpy(rdoc, p, "type_name", portd.type_name);
+                            if (portd.payload_size > 0)
+                                yyjson_mut_obj_add_uint(rdoc, p, "payload_size", portd.payload_size);
                             if (portd.direction == VIVID_PORT_INPUT)
                                 yyjson_mut_arr_add_val(inputs_arr, p);
                             else

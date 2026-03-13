@@ -23,7 +23,7 @@
         "mfi1": {
             "type": "MovieLoaded",
             "params": {
-                "file": "../../assets/photo.jpg"
+                "file": "../../assets/sword.mp4"
             },
             "layout": {
                 "x": 30.0,

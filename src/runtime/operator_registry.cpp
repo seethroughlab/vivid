@@ -245,6 +245,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(const VividOperatorDesc
     // Copy port descriptors with owned strings
     entry.ports.resize(port_count);
     entry.port_names.resize(port_count);
+    entry.port_type_names.resize(port_count);
     for (uint32_t i = 0; i < port_count; ++i) {
         const auto& sp = src->ports[i];
         auto& dp = entry.ports[i];
@@ -252,6 +253,13 @@ static std::optional<DeferredEntry> deep_copy_descriptor(const VividOperatorDesc
         dp.name = entry.port_names[i].c_str();
         dp.type = sp.type;
         dp.direction = sp.direction;
+        dp.transport = sp.transport;
+        dp.payload_size = sp.payload_size;
+        dp.channels = sp.channels;
+        dp.default_value = sp.default_value;
+        entry.port_type_names[i] = sp.type_name ? sp.type_name : "";
+        dp.type_name = entry.port_type_names[i].empty() ? nullptr
+                                                        : entry.port_type_names[i].c_str();
     }
 
     // Build the owned descriptor

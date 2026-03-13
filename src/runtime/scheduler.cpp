@@ -4,6 +4,7 @@
 #include "common/gpu_util.h"
 #include "common/topo_sort.h"
 #include "operator_api/gpu_operator.h"
+#include "operator_api/type_id.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -156,13 +157,12 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
 
     // Identify special input ports and sink/output capabilities
     ns.texture_input_port_indices.clear();
-    ns.handle_input_port_indices.clear();
-    ns.handle_output_port_indices.clear();
+    ns.custom_input_port_indices.clear();
+    ns.custom_output_port_indices.clear();
     ns.string_input_port_indices.clear();
     ns.string_spread_input_port_indices.clear();
     ns.is_gpu_sink = false;
     ns.has_texture_output = false;
-    ns.has_handle_output = false;
     ns.has_string_output = false;
     ns.has_string_spread_output = false;
     ns.aux_texture_output_port_indices.clear();
@@ -177,9 +177,6 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
                 case VIVID_PORT_TEXTURE:
                     ns.texture_input_port_indices.push_back(input_idx);
                     break;
-                case VIVID_PORT_HANDLE:
-                    ns.handle_input_port_indices.push_back(input_idx);
-                    break;
                 case VIVID_PORT_STRING:
                     ns.string_input_port_indices.push_back(input_idx);
                     break;
@@ -187,6 +184,8 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
                     ns.string_spread_input_port_indices.push_back(input_idx);
                     break;
                 default:
+                    if (vivid_is_custom_port_type(desc->ports[i].type))
+                        ns.custom_input_port_indices.push_back(input_idx);
                     break;
             }
             input_idx++;
@@ -201,10 +200,6 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
                     }
                     ++gpu_tex_out_count;
                     break;
-                case VIVID_PORT_HANDLE:
-                    ns.has_handle_output = true;
-                    ns.handle_output_port_indices.push_back(out_idx);
-                    break;
                 case VIVID_PORT_STRING:
                     ns.has_string_output = true;
                     break;
@@ -212,6 +207,8 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
                     ns.has_string_spread_output = true;
                     break;
                 default:
+                    if (vivid_is_custom_port_type(desc->ports[i].type))
+                        ns.custom_output_port_indices.push_back(out_idx);
                     break;
             }
             out_idx++;
@@ -220,13 +217,14 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
     if (ns.is_gpu) {
         ns.is_gpu_sink = !ns.texture_input_port_indices.empty()
                       && !ns.has_texture_output
-                      && !ns.has_handle_output;
+                      && ns.custom_output_port_indices.empty();
     }
 
-    // Pre-allocate handle output buffers (one slot per HANDLE output port)
-    ns.output_handle_buf.assign(ns.handle_output_port_indices.size(), nullptr);
-    ns.handle_outputs.assign(ns.handle_output_port_indices.size(), nullptr);
-    ns.resolved_handle_inputs.assign(ns.handle_input_port_indices.size(), nullptr);
+    // Pre-allocate custom output buffers (one slot per custom-type output port)
+    ns.custom_output_buf.assign(ns.custom_output_port_indices.size(), nullptr);
+    ns.custom_outputs.assign(ns.custom_output_port_indices.size(), nullptr);
+    ns.resolved_custom_inputs.assign(ns.custom_input_port_indices.size(), nullptr);
+
 }
 
 bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
@@ -526,9 +524,9 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                 }
             }
 
-            // Validate handle wire: both ends must be VIVID_PORT_HANDLE with matching handle_type_id
+            // Validate custom wire: both ends must be custom port types with matching type + transport
             if (!from_ns.missing_operator && !to_ns.missing_operator &&
-                from_port_type == VIVID_PORT_HANDLE && to_port_type == VIVID_PORT_HANDLE) {
+                vivid_is_custom_port_type(from_port_type) && vivid_is_custom_port_type(to_port_type)) {
                 const VividPortDescriptor* from_pd = nullptr;
                 const VividPortDescriptor* to_pd = nullptr;
                 {
@@ -550,23 +548,19 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                         }
                     }
                 }
-                uint32_t from_htid = from_pd ? from_pd->handle_type_id : 0;
-                uint32_t to_htid   = to_pd   ? to_pd->handle_type_id   : 0;
-                // Allow connection if either end has handle_type_id == 0 (untyped/legacy)
-                // or if both IDs match exactly.
-                if (from_htid != 0 && to_htid != 0 && from_htid != to_htid) {
-                    std::fprintf(stderr, "[vivid] Scheduler: handle type mismatch on wire %s/%s -> %s/%s "
-                        "(0x%08x vs 0x%08x)\n",
+                if (!from_pd || !to_pd || from_pd->type != to_pd->type ||
+                                           from_pd->transport != to_pd->transport) {
+                    std::fprintf(stderr, "[vivid] Scheduler: custom port type/transport mismatch on wire "
+                        "%s/%s -> %s/%s\n",
                         conn.from_node.c_str(), conn.from_port.c_str(),
-                        conn.to_node.c_str(), conn.to_port.c_str(),
-                        from_htid, to_htid);
+                        conn.to_node.c_str(), conn.to_port.c_str());
                     continue;
                 }
-                w.is_handle_wire = true;
+                w.is_custom_wire = true;
             } else if (!from_ns.missing_operator && !to_ns.missing_operator &&
-                       (from_port_type == VIVID_PORT_HANDLE || to_port_type == VIVID_PORT_HANDLE)) {
+                       (vivid_is_custom_port_type(from_port_type) != vivid_is_custom_port_type(to_port_type))) {
                 std::fprintf(stderr, "[vivid] Scheduler: type mismatch on wire %s/%s -> %s/%s "
-                    "(HANDLE on only one end)\n",
+                    "(custom port on only one end)\n",
                     conn.from_node.c_str(), conn.from_port.c_str(),
                     conn.to_node.c_str(), conn.to_port.c_str());
                 continue;  // skip this wire
@@ -727,7 +721,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         // (skip texture-type wires — those are resolved separately)
         for (const auto& w : wires_) {
             if (w.to_node_idx == ni) {
-                if (w.is_texture_wire || w.is_handle_wire) continue;
+                if (w.is_texture_wire || w.is_custom_wire) continue;
                 if (w.targets_file_param) {
                     // String wire into a file/text param
                     const std::string& src = w.sources_file_param
@@ -835,8 +829,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ns.c_output_string_values[p] = ns.output_string_values[p].c_str();
         }
 
-        // Clear and expose the handle output buffer (operator writes into it)
-        std::fill(ns.output_handle_buf.begin(), ns.output_handle_buf.end(), nullptr);
+        // Clear and expose the custom output buffer (operator writes into it)
+        std::fill(ns.custom_output_buf.begin(), ns.custom_output_buf.end(), nullptr);
 
         const auto prev_output_spreads = ns.output_spreads;
         const auto prev_output_strings = ns.output_string_values;
@@ -934,29 +928,29 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             gpu_ctx.aux_output_texture_count =
                 static_cast<uint32_t>(ns.aux_gpu_texture_views.size());
 
-            // Resolve handle inputs from upstream nodes (unified: data, buffer, mesh, compute, media_stream)
-            for (size_t hi = 0; hi < ns.handle_input_port_indices.size(); ++hi) {
-                uint32_t port_idx = ns.handle_input_port_indices[hi];
-                ns.resolved_handle_inputs[hi] = nullptr;
+            // Resolve custom inputs from upstream nodes
+            for (size_t hi = 0; hi < ns.custom_input_port_indices.size(); ++hi) {
+                uint32_t port_idx = ns.custom_input_port_indices[hi];
+                ns.resolved_custom_inputs[hi] = nullptr;
                 for (const auto& w : wires_) {
-                    if (!w.is_handle_wire || w.to_node_idx != ni || w.targets_param) continue;
+                    if (!w.is_custom_wire || w.to_node_idx != ni || w.targets_param) continue;
                     if (w.to_port_idx != port_idx) continue;
                     const auto& upstream = nodes_[w.from_node_idx];
-                    for (uint32_t s = 0; s < upstream.handle_output_port_indices.size(); ++s) {
-                        if (upstream.handle_output_port_indices[s] == w.from_port_idx) {
-                            if (s < upstream.handle_outputs.size())
-                                ns.resolved_handle_inputs[hi] = upstream.handle_outputs[s];
+                    for (uint32_t s = 0; s < upstream.custom_output_port_indices.size(); ++s) {
+                        if (upstream.custom_output_port_indices[s] == w.from_port_idx) {
+                            if (s < upstream.custom_outputs.size())
+                                ns.resolved_custom_inputs[hi] = upstream.custom_outputs[s];
                             break;
                         }
                     }
                     break;
                 }
             }
-            gpu_ctx.input_handles      = ns.resolved_handle_inputs.empty()
-                                                  ? nullptr : ns.resolved_handle_inputs.data();
-            gpu_ctx.input_handle_count = static_cast<uint32_t>(ns.resolved_handle_inputs.size());
-            gpu_ctx.output_handles      = ns.output_handle_buf.empty() ? nullptr : ns.output_handle_buf.data();
-            gpu_ctx.output_handle_count = static_cast<uint32_t>(ns.output_handle_buf.size());
+            gpu_ctx.custom_inputs      = ns.resolved_custom_inputs.empty()
+                                                  ? nullptr : ns.resolved_custom_inputs.data();
+            gpu_ctx.custom_input_count = static_cast<uint32_t>(ns.resolved_custom_inputs.size());
+            gpu_ctx.custom_outputs      = ns.custom_output_buf.empty() ? nullptr : ns.custom_output_buf.data();
+            gpu_ctx.custom_output_count = static_cast<uint32_t>(ns.custom_output_buf.size());
 
             try {
                 if (ns.missing_operator || !ns.loader) {
@@ -1018,10 +1012,10 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ctx.output_values = ns.output_values.data();
             ctx.input_spreads  = ns.c_in_spreads.data();
             ctx.output_spreads = ns.c_out_spreads.data();
-            ctx.input_handles = nullptr;
-            ctx.input_handle_count = 0;
-            ctx.output_handles = ns.output_handle_buf.empty() ? nullptr : ns.output_handle_buf.data();
-            ctx.output_handle_count = static_cast<uint32_t>(ns.output_handle_buf.size());
+            ctx.custom_inputs = nullptr;
+            ctx.custom_input_count = 0;
+            ctx.custom_outputs = ns.custom_output_buf.empty() ? nullptr : ns.custom_output_buf.data();
+            ctx.custom_output_count = static_cast<uint32_t>(ns.custom_output_buf.size());
             ctx.input_string_values = ns.c_input_string_values.empty()
                                         ? nullptr : ns.c_input_string_values.data();
             ctx.output_string_values = ns.c_output_string_values.empty()
@@ -1077,8 +1071,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             }
         }
 
-        // Capture handle outputs (operator wrote pointers into the buf array)
-        ns.handle_outputs = ns.output_handle_buf;
+        // Capture custom outputs (operator wrote pointers into the buf array)
+        ns.custom_outputs = ns.custom_output_buf;
 
         // Read back output spreads
         for (uint32_t p = 0; p < ns.output_port_count; ++p) {

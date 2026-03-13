@@ -1641,11 +1641,10 @@ int main(int argc, char* argv[]) {
                             parse_ok = false; break;
                         }
                     } else if (domain == VIVID_DOMAIN_GPU) {
-                        if      (ptype == "texture") vt = VIVID_PORT_TEXTURE;
-                        else if (ptype == "data")    vt = VIVID_PORT_HANDLE;
+                        if (ptype == "texture") vt = VIVID_PORT_TEXTURE;
                         else {
                             std::fprintf(stderr, "Scaffold failed: unknown type '%s' for gpu domain "
-                                         "(valid: texture, data)\n", ptype.c_str());
+                                         "(valid: texture)\n", ptype.c_str());
                             parse_ok = false; break;
                         }
                     }

@@ -45,13 +45,13 @@ struct VividGpuContext {
     // Path to operators/ source tree (for WGSL filter hot-reload)
     const char*        operators_src_dir;
 
-    // Handle I/O — unified typed-pointer ports (buffer, mesh, compute, data, media_stream).
-    // Operators cast from void* using their known type. Type safety is enforced at wire
-    // validation time via handle_type_id on VividPortDescriptor.
-    void**    output_handles       = nullptr;
-    uint32_t  output_handle_count  = 0;
-    void**    input_handles        = nullptr;
-    uint32_t  input_handle_count   = 0;
+    // Custom-transport I/O — opaque ports with VIVID_PORT_TRANSPORT_CUSTOM_VALUE/REF.
+    // Operators cast from void* using their known type. Type safety is enforced at
+    // wire validation time via type_name on VividPortDescriptor.
+    void**    custom_outputs       = nullptr;
+    uint32_t  custom_output_count  = 0;
+    void**    custom_inputs        = nullptr;
+    uint32_t  custom_input_count   = 0;
 
     // ---- Cross-domain inputs from control -----------------------------------
     VividSpreadPort*   input_spreads;

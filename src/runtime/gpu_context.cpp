@@ -130,13 +130,17 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
                          message.data ? message.data : "");
         };
 
-    // Uncaptured error callback
+    // Uncaptured error callback — capture last error for crash diagnostics
     device_desc.uncapturedErrorCallbackInfo.callback =
-        [](WGPUDevice const*, WGPUErrorType type, WGPUStringView message, void*, void*) {
+        [](WGPUDevice const*, WGPUErrorType type, WGPUStringView message, void* ud1, void*) {
+            auto* self = static_cast<GpuContext*>(ud1);
+            self->last_error_ = std::string(message.data ? message.data : "", message.length);
+            self->last_error_type_ = type;
             std::fprintf(stderr, "[vivid] WebGPU error (%d): %.*s\n",
                          static_cast<int>(type), static_cast<int>(message.length),
                          message.data ? message.data : "");
         };
+    device_desc.uncapturedErrorCallbackInfo.userdata1 = this;
 
     device_ = request_device_sync(adapter_, &device_desc);
     if (!device_) {
@@ -256,21 +260,49 @@ bool GpuContext::begin_frame(FrameState& frame) {
     return true;
 }
 
-void GpuContext::end_frame(const FrameState& frame) {
+bool GpuContext::end_frame(const FrameState& frame) {
     WGPUCommandBufferDescriptor cmd_desc{};
     cmd_desc.nextInChain = nullptr;
     cmd_desc.label = to_sv("Frame Commands");
     WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(frame.encoder, &cmd_desc);
 
+    if (!cmd) {
+        // Encoder was in an error state (e.g. surface texture invalidated mid-frame).
+        // Discard the frame instead of crashing in wgpuQueueSubmit.
+        std::fprintf(stderr, "[vivid] Command encoder finish failed — dropping frame"
+                     " (last error: %s)\n", last_error_.c_str());
+        wgpuCommandEncoderRelease(frame.encoder);
+        wgpuTextureViewRelease(frame.view);
+        wgpuTextureRelease(frame.texture);
+        return false;
+    }
+
+    // Push an error scope to capture validation errors before they hit the fatal path
+    wgpuDevicePushErrorScope(device_, WGPUErrorFilter_Validation);
+
     wgpuQueueSubmit(queue_, 1, &cmd);
     wgpuCommandBufferRelease(cmd);
     wgpuCommandEncoderRelease(frame.encoder);
+
+    // Pop error scope (fire-and-forget — the callback logs any error)
+    WGPUPopErrorScopeCallbackInfo pop_cb{};
+    pop_cb.mode = WGPUCallbackMode_AllowSpontaneous;
+    pop_cb.callback = [](WGPUPopErrorScopeStatus status, WGPUErrorType type,
+                         WGPUStringView message, void*, void*) {
+        if (status == WGPUPopErrorScopeStatus_Success && type != WGPUErrorType_NoError) {
+            std::fprintf(stderr, "[vivid] GPU validation error in frame submit (%d): %.*s\n",
+                         static_cast<int>(type), static_cast<int>(message.length),
+                         message.data ? message.data : "");
+        }
+    };
+    wgpuDevicePopErrorScope(device_, pop_cb);
 
     // Present BEFORE releasing the surface texture/view
     wgpuSurfacePresent(surface_);
 
     wgpuTextureViewRelease(frame.view);
     wgpuTextureRelease(frame.texture);
+    return true;
 }
 
 void GpuContext::discard_frame(const FrameState& frame) {

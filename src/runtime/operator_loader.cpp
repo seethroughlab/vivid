@@ -1,5 +1,6 @@
 #include "runtime/operator_loader.h"
 #include "operator_api/data_driven_filter.h"
+#include "operator_api/port_type_registry.h"
 #include <dlfcn.h>
 #include <cstdio>
 #include <utility>
@@ -165,6 +166,18 @@ bool OperatorLoader::load(const char* path) {
     // Optional entry points
     draw_thumb_fn_  = reinterpret_cast<VividDrawThumbnailFn>(dlsym(new_handle, "vivid_draw_thumbnail"));
     main_update_fn_ = reinterpret_cast<VividMainThreadUpdateFn>(dlsym(new_handle, "vivid_main_thread_update"));
+
+    // Optional: register custom port types declared by this dylib (pull model).
+    // The operator exports a static array of VividPortTypeInfo; the runtime
+    // registers each entry. This avoids operators calling runtime symbols
+    // across the dlopen boundary.
+    if (auto* desc_fn = reinterpret_cast<VividDescribeCustomTypesFn>(
+            dlsym(new_handle, "vivid_describe_custom_types"))) {
+        uint32_t count = 0;
+        const VividPortTypeInfo* infos = desc_fn(&count);
+        for (uint32_t i = 0; i < count; ++i)
+            vivid_register_port_type(&infos[i]);
+    }
 
     return true;
 }

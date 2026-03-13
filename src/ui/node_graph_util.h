@@ -167,7 +167,6 @@ inline const std::vector<PortTypeEntry>& port_types_for_domain(int domain_sel) {
     };
     static const std::vector<PortTypeEntry> gpu_types = {
         {"texture", VIVID_PORT_TEXTURE},
-        {"handle",  VIVID_PORT_HANDLE},
     };
     switch (domain_sel) {
         case 1:  return audio_types;

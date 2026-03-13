@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 3u
+#define VIVID_OPERATOR_ABI_VERSION 4u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -34,21 +34,31 @@ typedef enum VividDisplayHint {
     VIVID_DISPLAY_COLOR   = 3,   // color swatch + popup (triple consecutive r/g/b params)
 } VividDisplayHint;
 
-// Channel kinds — reflect runtime routing mechanisms.
-typedef enum VividPortType {
-    VIVID_PORT_FLOAT          = 0,  // float value (control_float/int/bool all route identically)
-    VIVID_PORT_AUDIO          = 1,  // audio sample buffer
-    VIVID_PORT_SPREAD         = 2,  // variable-length float array
-    VIVID_PORT_STRING         = 3,  // UTF-8 string
-    VIVID_PORT_STRING_SPREAD  = 4,  // variable-length string array
-    VIVID_PORT_TEXTURE        = 5,  // WGPUTextureView
-    VIVID_PORT_HANDLE         = 6,  // typed opaque pointer (void*), type-safe via handle_type_id
-} VividPortType;
+// Channel kinds — reflect the logical data type on a port.
+typedef uint32_t VividPortType;
+
+#define VIVID_PORT_FLOAT          0u  // float value (control_float/int/bool all route identically)
+#define VIVID_PORT_AUDIO          1u  // audio sample buffer
+#define VIVID_PORT_SPREAD         2u  // variable-length float array
+#define VIVID_PORT_STRING         3u  // UTF-8 string
+#define VIVID_PORT_STRING_SPREAD  4u  // variable-length string array
+#define VIVID_PORT_TEXTURE        5u  // WGPUTextureView
 
 typedef enum VividPortDirection {
     VIVID_PORT_INPUT  = 0,
     VIVID_PORT_OUTPUT = 1,
 } VividPortDirection;
+
+typedef enum VividPortTransport {
+    VIVID_PORT_TRANSPORT_SCALAR        = 0, // float-like main-thread copy
+    VIVID_PORT_TRANSPORT_AUDIO_BUFFER  = 1, // audio sample buffers
+    VIVID_PORT_TRANSPORT_SPREAD        = 2, // float spread copy
+    VIVID_PORT_TRANSPORT_STRING        = 3, // string copy
+    VIVID_PORT_TRANSPORT_STRING_SPREAD = 4, // string spread copy
+    VIVID_PORT_TRANSPORT_TEXTURE       = 5, // GPU texture/view routing
+    VIVID_PORT_TRANSPORT_CUSTOM_VALUE  = 6, // memcpy-by-value snapshot
+    VIVID_PORT_TRANSPORT_CUSTOM_REF    = 7, // opaque shared-handle/reference
+} VividPortTransport;
 
 // ---------------------------------------------------------------------------
 // Descriptors
@@ -81,9 +91,11 @@ typedef struct VividPortDescriptor {
     const char*        name;
     VividPortType      type;
     VividPortDirection direction;
-    uint32_t           handle_type_id;  // non-zero when type == VIVID_PORT_HANDLE (FNV-1a of C++ type)
-    uint8_t            channels;        // 0=auto, 1=mono, 2=stereo, 6=5.1, etc.
-    float              default_value;   // default for VIVID_PORT_FLOAT inputs (e.g. 1.0 for gain CV)
+    VividPortTransport transport;
+    uint32_t           payload_size; // 0 for built-in types
+    const char*        type_name;    // C++ type name, NULL for built-ins
+    uint8_t            channels;     // 0=auto, 1=mono, 2=stereo, etc.
+    float              default_value;// default for VIVID_PORT_FLOAT inputs
 } VividPortDescriptor;
 
 typedef struct VividOperatorDescriptor {
@@ -181,8 +193,8 @@ typedef struct VividAudioContext {
     // Cross-domain inputs from control
     VividSpreadPort*  input_spreads;
     VividSpreadPort*  output_spreads;
-    void**            input_handles;
-    uint32_t          input_handle_count;
+    void**            custom_inputs;       // [custom_input_ordinal] — opaque custom-type inputs
+    uint32_t          custom_input_count;  // number of custom-transport input ports
     const char**      input_string_values;
     float*            input_float_values;   // [float_input_ordinal] — CV inputs from control domain
     const char**      file_param_values;
@@ -202,12 +214,12 @@ typedef struct VividProcessContext {
     float*    param_values;   // indexed by param descriptor order
     float*    input_values;   // indexed by input port order (VIVID_PORT_INPUT only)
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
-    VividSpreadPort* input_spreads;   // [spread_port_ordinal], NULL if none
-    VividSpreadPort* output_spreads;  // [spread_port_ordinal], NULL if none
-    void**     input_handles;         // [handle_port_ordinal], NULL if none
-    uint32_t   input_handle_count;    // number of HANDLE input ports
-    void**     output_handles;        // [handle_port_ordinal], NULL if none
-    uint32_t   output_handle_count;   // number of HANDLE output ports
+    VividSpreadPort* input_spreads;    // [spread_port_ordinal], NULL if none
+    VividSpreadPort* output_spreads;   // [spread_port_ordinal], NULL if none
+    void**     custom_inputs;          // [custom_input_ordinal], NULL if none
+    uint32_t   custom_input_count;     // number of custom-transport input ports
+    void**     custom_outputs;         // [custom_output_ordinal], NULL if none
+    uint32_t   custom_output_count;    // number of custom-transport output ports
     const char** input_string_values;   // [string_port_ordinal]
     const char** output_string_values;  // [string_port_ordinal]
     VividStringSpreadPort* input_string_spreads;   // [string_spread_port_ordinal], NULL if none

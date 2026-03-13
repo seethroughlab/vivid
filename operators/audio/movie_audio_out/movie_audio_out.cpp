@@ -159,8 +159,8 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back(VIVID_HANDLE_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1));
-        out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, 0, 2});
+        out.push_back(VIVID_CUSTOM_REF_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1));
+        out.push_back({"output", VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 2, 0.0f});
     }
 
     struct MediaClockSnapshot {
@@ -174,9 +174,9 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
 
     static MediaClockSnapshot read_media_clock(const VividAudioContext* ctx) {
         MediaClockSnapshot s{};
-        if (!ctx || !ctx->input_handles) return s;
-        if (ctx->input_handle_count <= kInputPortMediaStream) return s;
-        void* ptr = ctx->input_handles[kInputPortMediaStream];
+        if (!ctx || !ctx->custom_inputs) return s;
+        if (ctx->custom_input_count <= kInputPortMediaStream) return s;
+        void* ptr = ctx->custom_inputs[kInputPortMediaStream];
         if (!ptr) return s;
         const auto* stream = static_cast<const vivid::MediaStreamV1*>(ptr);
         s.clock = stream->clock;
@@ -652,3 +652,6 @@ private:
 };
 
 VIVID_REGISTER(MovieAudioOut)
+
+#include "operator_api/port_type_registry.h"
+VIVID_DESCRIBE_REF_TYPE(vivid::MediaStreamV1)

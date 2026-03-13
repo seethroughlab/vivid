@@ -184,7 +184,7 @@ struct MovieLoaded : vivid::GpuOperatorBase {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
         out.push_back({"time", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
         out.push_back({"speed", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back(VIVID_HANDLE_PORT("media_clock", VIVID_PORT_OUTPUT, vivid::MediaStreamV1));
+        out.push_back(VIVID_CUSTOM_REF_PORT("media_clock", VIVID_PORT_OUTPUT, vivid::MediaStreamV1));
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -227,7 +227,11 @@ struct MovieLoaded : vivid::GpuOperatorBase {
             decoder_->set_speed(speed.value);
 
             // Check whether audio preroll is complete before decoding/syncing.
-            const bool preroll_ready = !session_ ||
+            // When no audio consumer is connected (audio_frames_read == 0),
+            // skip the preroll gate so video plays standalone.
+            const bool has_audio_consumer = session_ &&
+                session_->audio_frames_read.load(std::memory_order_acquire) > 0;
+            const bool preroll_ready = !has_audio_consumer ||
                 session_->audio_preroll_ready.load(std::memory_order_acquire) != 0;
 
             if (session_ && preroll_ready) {
@@ -631,8 +635,8 @@ private:
             media_stream_.schema_version = 1;
             media_stream_.flags = 0;
             media_stream_.clock = media_clock_;
-            if (ctx->output_handles && ctx->output_handle_count > 0)
-                ctx->output_handles[0] = &media_stream_;
+            if (ctx->custom_outputs && ctx->custom_output_count > 0)
+                ctx->custom_outputs[0] = &media_stream_;
         }
     }
 
@@ -759,3 +763,6 @@ private:
 };
 
 VIVID_REGISTER(MovieLoaded)
+
+#include "operator_api/port_type_registry.h"
+VIVID_DESCRIBE_REF_TYPE(vivid::MediaStreamV1)

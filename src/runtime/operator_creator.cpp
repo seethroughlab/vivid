@@ -53,7 +53,6 @@ static const char* port_type_name(VividPortType t) {
         case VIVID_PORT_STRING:        return "VIVID_PORT_STRING";
         case VIVID_PORT_STRING_SPREAD: return "VIVID_PORT_STRING_SPREAD";
         case VIVID_PORT_TEXTURE:       return "VIVID_PORT_TEXTURE";
-        case VIVID_PORT_HANDLE:        return "VIVID_PORT_HANDLE";
         default:                       return "VIVID_PORT_FLOAT";
     }
 }

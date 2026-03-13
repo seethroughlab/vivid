@@ -43,7 +43,7 @@ struct AudioNodeState {
     std::vector<VividPortType> output_port_types;
     bool has_spread_ports = false;
     bool has_string_input_ports = false;
-    bool has_handle_input_ports = false;
+    bool has_custom_input_ports = false;
 
     // Multi-channel negotiation (resolved during build())
     std::vector<uint8_t> input_channel_counts;   // resolved per input port
@@ -71,7 +71,7 @@ struct AudioNodeState {
     std::vector<VividSpreadPort> spread_out_ports;
     std::vector<std::string> input_string_values;    // [input_port_idx]
     std::vector<const char*> c_input_string_values;  // [input_port_idx]
-    std::vector<void*> input_handle_values;            // [input_port_idx]
+    std::vector<void*> custom_input_values;              // [input_port_idx]
 
     // --- Error state (audio thread only; propagated via AnalysisSnapshot) ---
     bool errored = false;
@@ -130,33 +130,27 @@ struct CrossDomainFloatPortWire {
     float       scale = 1.0f;
 };
 
-struct CrossDomainHandleWire {
+struct CrossDomainCustomWire {
     std::string source_node_id;
     uint32_t source_output_port_idx;
     uint32_t audio_node_idx;
     uint32_t audio_port_idx;
-    uint32_t handle_type_id = 0;  // from VividPortDescriptor, for snapshot sizing
+    uint32_t type_id = 0;
+    VividPortTransport transport = VIVID_PORT_TRANSPORT_CUSTOM_REF;
+    uint32_t payload_size = 0;         // needed for CUSTOM_VALUE memcpy
 };
 
-struct HandleInputSnapshot {
+struct CustomPortSnapshot {
     bool valid = false;
-    uint32_t handle_type_id = 0;
+    uint32_t type_id = 0;
+    VividPortTransport transport = VIVID_PORT_TRANSPORT_CUSTOM_REF;
     uint32_t byte_size = 0;
-    static constexpr uint32_t kMaxBytes = 576;
+    static constexpr uint32_t kMaxBytes = 256;
     uint8_t bytes[kMaxBytes] = {};
-
-    template <typename T>
-    void set(uint32_t type_id, const T& value) {
-        valid = true;
-        handle_type_id = type_id;
-        byte_size = static_cast<uint32_t>(sizeof(T));
-        static_assert(sizeof(T) <= kMaxBytes, "HandleInputSnapshot payload too large");
-        std::memcpy(bytes, &value, sizeof(T));
-    }
 
     void clear() {
         valid = false;
-        handle_type_id = 0;
+        type_id = 0;
         byte_size = 0;
     }
 };
@@ -165,7 +159,7 @@ struct ParamSnapshot {
     std::vector<std::vector<float>> node_params;  // [audio_node_idx][param_idx]
     std::vector<std::vector<SpreadSnapshot>> spread_inputs; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<std::string>> input_string_values; // [audio_node_idx][input_port_idx]
-    std::vector<std::vector<HandleInputSnapshot>> handle_inputs; // [audio_node_idx][input_port_idx]
+    std::vector<std::vector<CustomPortSnapshot>> custom_inputs; // [audio_node_idx][input_port_idx]
     std::vector<bool> solo_active_set;  // empty = no solo; [audio_node_idx] = active
 };
 
@@ -267,7 +261,7 @@ private:
     std::vector<CrossDomainWire> cross_wires_;
     std::vector<CrossDomainSpreadWire> cross_spread_wires_;
     std::vector<CrossDomainStringWire> cross_string_wires_;
-    std::vector<CrossDomainHandleWire> cross_handle_wires_;
+    std::vector<CrossDomainCustomWire> cross_custom_wires_;
     std::vector<CrossDomainFloatPortWire> cross_float_wires_;
 
     // Double-buffered param bridge (control→audio)

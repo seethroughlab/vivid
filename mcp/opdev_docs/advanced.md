@@ -46,35 +46,42 @@ struct ModulatedGain : vivid::ControlOperatorBase {
 | `output_spread_length(name)` | Read child spread output length |
 | `op()` | Direct access to underlying operator instance |
 
-## Handle Ports
+## Custom Port Types
 
-Typed opaque pointers for passing complex data between operators (e.g. MIDI buffers, media streams, 3D scene fragments).
+Typed opaque data for passing complex payloads between operators (e.g. media streams, 3D scene fragments). Two transports are available:
+
+- `VIVID_PORT_TRANSPORT_CUSTOM_VALUE` — small structs (≤256 bytes) copied by value
+- `VIVID_PORT_TRANSPORT_CUSTOM_REF` — opaque pointer via shared handle registry (any size)
 
 ```cpp
 #include "operator_api/type_id.h"
+#include "operator_api/port_type_registry.h"
 
 // Producer
 void collect_ports(std::vector<VividPortDescriptor>& out) override {
-    out.push_back(VIVID_HANDLE_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
+    out.push_back(VIVID_CUSTOM_PORT("media_stream", VIVID_PORT_OUTPUT, vivid::MediaStreamV1, VIVID_PORT_TRANSPORT_CUSTOM_REF));
 }
 
 void process(const VividProcessContext* ctx) override {
-    auto* buf = static_cast<VividMidiBuffer*>(ctx->output_handles[0]);
-    // write MIDI messages...
+    auto* stream = static_cast<vivid::MediaStreamV1*>(ctx->custom_outputs[0]);
+    // write stream data...
 }
 
 // Consumer
 void collect_ports(std::vector<VividPortDescriptor>& out) override {
-    out.push_back(VIVID_HANDLE_PORT("midi_in", VIVID_PORT_INPUT, VividMidiBuffer));
+    out.push_back(VIVID_CUSTOM_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1, VIVID_PORT_TRANSPORT_CUSTOM_REF));
 }
 
 void process(const VividProcessContext* ctx) override {
-    auto* buf = static_cast<const VividMidiBuffer*>(ctx->input_handles[0]);
-    if (buf) { /* read messages */ }
+    auto* stream = static_cast<const vivid::MediaStreamV1*>(ctx->custom_inputs[0]);
+    if (stream) { /* read stream */ }
 }
+
+// Register the type (at file scope)
+VIVID_DESCRIBE_REF_TYPE(vivid::MediaStreamV1)
 ```
 
-Type safety: `vivid_type_id<T>()` produces a compile-time FNV-1a hash of the C++ type. The runtime rejects connections between incompatible handle types.
+Type safety: `vivid_port_type<T>()` produces a compile-time FNV-1a hash of the C++ type with a high-bit marker. The runtime rejects connections between incompatible custom types.
 
 ## MIDI Types
 

@@ -91,17 +91,16 @@ struct NodeState {
     std::vector<WGPUTexture>     aux_gpu_textures;
     std::vector<WGPUTextureView> aux_gpu_texture_views;
 
-    // ── Handle ports (unified: buffer, mesh, compute, data, media_stream) ────
-    std::vector<uint32_t> handle_input_port_indices;
-    std::vector<void*>    resolved_handle_inputs;
-    std::vector<uint32_t> handle_output_port_indices;
-    std::vector<void*>    handle_outputs;       // captured each tick (operator's write-back)
-    std::vector<void*>    output_handle_buf;    // pre-allocated buffer passed to operator via ctx
+    // ── Custom ports (operator-defined types with high bit set in VividPortType) ──
+    std::vector<uint32_t> custom_input_port_indices;
+    std::vector<void*>    resolved_custom_inputs;
+    std::vector<uint32_t> custom_output_port_indices;
+    std::vector<void*>    custom_outputs;       // captured each tick (operator's write-back)
+    std::vector<void*>    custom_output_buf;    // pre-allocated buffer passed to operator via ctx
 
     std::vector<uint32_t> string_input_port_indices;
     std::vector<uint32_t> string_spread_input_port_indices;
     bool has_texture_output = false;
-    bool has_handle_output = false;
     bool has_string_output = false;
     bool has_string_spread_output = false;
 
@@ -137,7 +136,7 @@ struct Wire {
     uint32_t from_file_param_idx = 0; // index into file_param_storage (when sources_file_param)
     uint32_t to_file_param_idx = 0;   // index into file_param_storage (when targets_file_param)
     bool is_texture_wire = false; // true → carries VIVID_PORT_TEXTURE
-    bool is_handle_wire  = false; // true → carries VIVID_PORT_HANDLE (data, buffer, mesh, etc.)
+    bool is_custom_wire  = false; // true → carries a custom port type (high bit set)
     bool is_string_wire = false;  // true → carries VIVID_PORT_STRING
     bool is_string_spread_wire = false; // true → carries VIVID_PORT_STRING_SPREAD
     float from_min = 0.0f, from_max = 1.0f;

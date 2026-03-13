@@ -3,6 +3,7 @@
 #include <webgpu/webgpu.h>
 #include <GLFW/glfw3.h>
 #include <cstdint>
+#include <string>
 
 namespace vivid {
 
@@ -24,7 +25,7 @@ public:
     bool init(GLFWwindow* window, uint32_t width, uint32_t height);
     void resize(uint32_t width, uint32_t height);
     bool begin_frame(FrameState& frame);
-    void end_frame(const FrameState& frame);
+    bool end_frame(const FrameState& frame);
     void discard_frame(const FrameState& frame);
     void shutdown();
 
@@ -47,6 +48,10 @@ private:
     bool bc_texture_compression_enabled_ = false;
     uint32_t width_ = 0;
     uint32_t height_ = 0;
+
+    // Last error captured from the uncaptured error callback (for crash diagnostics)
+    std::string last_error_;
+    WGPUErrorType last_error_type_ = WGPUErrorType_NoError;
 };
 
 } // namespace vivid

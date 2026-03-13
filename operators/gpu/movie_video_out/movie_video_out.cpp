@@ -79,7 +79,7 @@ struct MovieVideoOut : vivid::GpuOperatorBase {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back(VIVID_HANDLE_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1));
+        out.push_back(VIVID_CUSTOM_REF_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1));
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
@@ -94,8 +94,8 @@ struct MovieVideoOut : vivid::GpuOperatorBase {
         // Read MediaStreamV1 from data input port
         vivid::media::MediaSession* session = nullptr;
         uint64_t generation = 0;
-        if (ctx->input_handles && ctx->input_handle_count > 0 && ctx->input_handles[0]) {
-            const auto* stream = static_cast<const vivid::MediaStreamV1*>(ctx->input_handles[0]);
+        if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0]) {
+            const auto* stream = static_cast<const vivid::MediaStreamV1*>(ctx->custom_inputs[0]);
             if (stream->session_ptr) {
                 session = reinterpret_cast<vivid::media::MediaSession*>(stream->session_ptr);
                 generation = stream->source_generation;
@@ -246,3 +246,6 @@ private:
 };
 
 VIVID_REGISTER(MovieVideoOut)
+
+#include "operator_api/port_type_registry.h"
+VIVID_DESCRIBE_REF_TYPE(vivid::MediaStreamV1)

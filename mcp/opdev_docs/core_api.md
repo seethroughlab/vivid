@@ -51,24 +51,51 @@ Params are declared as member variables. The runtime syncs `ctx->param_values` i
 
 ## Port Types
 
-| Enum | Wire Type | Usage |
-|------|-----------|-------|
+### Built-in Types
+
+| Constant | Wire Type | Usage |
+|----------|-----------|-------|
 | `VIVID_PORT_FLOAT` | `control_float` | Scalar control signals |
 | `VIVID_PORT_AUDIO` | `audio_float` | Audio sample buffers |
 | `VIVID_PORT_TEXTURE` | `gpu_texture` | GPU textures |
 | `VIVID_PORT_SPREAD` | spread | Variable-length float arrays |
 | `VIVID_PORT_STRING` | string | UTF-8 strings |
 | `VIVID_PORT_STRING_SPREAD` | string spread | Variable-length string arrays |
-| `VIVID_PORT_HANDLE` | handle | Typed opaque pointers (use `VIVID_HANDLE_PORT` macro) |
 
-Port descriptor fields:
+### Custom Types
+
+Operators can define custom port types for exchanging arbitrary typed data (media streams, meshes, compute buffers, etc.) through the graph. Custom type IDs are generated at compile time via `vivid_port_type<T>()`.
+
+Two transport modes are available:
+
+| Transport | Constant | Usage |
+|-----------|----------|-------|
+| **CUSTOM_VALUE** | `VIVID_PORT_TRANSPORT_CUSTOM_VALUE` | Small structs copied by value (≤256 bytes) |
+| **CUSTOM_REF** | `VIVID_PORT_TRANSPORT_CUSTOM_REF` | Opaque pointer via shared handle registry (any size) |
+
+Declare custom ports with the `VIVID_CUSTOM_PORT` macro:
+```cpp
+VIVID_CUSTOM_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1, VIVID_PORT_TRANSPORT_CUSTOM_REF)
+```
+
+Register custom types by adding `VIVID_DESCRIBE_REF_TYPE(T)` at file scope (for `CUSTOM_REF` types):
+```cpp
+VIVID_DESCRIBE_REF_TYPE(vivid::MediaStreamV1)
+```
+
+Custom inputs/outputs are accessed via `ctx->custom_inputs[i]` and `ctx->custom_outputs[i]`.
+
+### Port Descriptor
+
 ```cpp
 VividPortDescriptor {
     const char* name,
     VividPortType type,
     VividPortDirection direction,  // VIVID_PORT_INPUT or VIVID_PORT_OUTPUT
-    uint32_t handle_type_id,       // non-zero for HANDLE ports (FNV-1a of C++ type)
-    uint8_t channels                // audio: 0=auto, 1=mono, 2=stereo
+    VividPortTransport transport,  // how the payload is conveyed
+    uint32_t payload_size,         // sizeof(T) for custom types
+    const char* type_name,         // human-readable type name for custom types
+    uint8_t channels               // audio: 0=auto, 1=mono, 2=stereo
 };
 ```
 
@@ -111,4 +138,4 @@ vivid::layout_row(param, 2, 0);                        // 2 columns, this is col
 
 ## ABI Version
 
-Current ABI version: `VIVID_OPERATOR_ABI_VERSION = 2`. The runtime checks this on load.
+Current ABI version: `VIVID_OPERATOR_ABI_VERSION = 4`. The runtime checks this on load.
