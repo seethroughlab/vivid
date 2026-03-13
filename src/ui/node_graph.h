@@ -642,6 +642,13 @@ private:
     VividPortType insert_wire_source_type_ = VIVID_PORT_FLOAT;
     VividPortType insert_wire_dest_type_ = VIVID_PORT_FLOAT;
 
+    // Connect-from-wire-drag state (chooser opened via Tab during wire drag)
+    bool chooser_wire_connect_ = false;
+    std::string wire_connect_node_id_;
+    std::string wire_connect_port_;
+    bool wire_connect_from_output_ = true;
+    VividPortType wire_connect_type_ = VIVID_PORT_FLOAT;
+
     // Right-click context menu state
     bool context_menu_open_ = false;
     float context_menu_x_ = 0, context_menu_y_ = 0;  // screen space

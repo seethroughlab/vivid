@@ -938,6 +938,18 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 chooser_filter_.clear();
                 chooser_sel_ = 0;
                 chooser_scroll_ = 0;
+                // If dragging a wire, enter wire-connect mode
+                if (dragging_wire_) {
+                    wire_connect_node_id_ = wire_from_node_id_;
+                    wire_connect_port_ = wire_from_port_;
+                    wire_connect_from_output_ = wire_from_is_output_;
+                    wire_connect_type_ = resolve_port_type(snap_, wire_from_node_id_,
+                                                           wire_from_port_, wire_from_is_output_);
+                    chooser_wire_connect_ = true;
+                    dragging_wire_ = false;
+                } else {
+                    chooser_wire_connect_ = false;
+                }
                 rebuild_chooser_items();
                 chooser_open_ = true;
             }
@@ -983,6 +995,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         case GLFW_KEY_ESCAPE:
             chooser_open_ = false;
             chooser_insert_wire_ = false;
+            chooser_wire_connect_ = false;
             break;
 
         case GLFW_KEY_ENTER: {
@@ -991,6 +1004,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 confirm_chooser_selection(chooser_items_[chooser_sel_]);
             } else {
                 chooser_insert_wire_ = false;
+                chooser_wire_connect_ = false;
                 chooser_open_ = false;
             }
             break;
@@ -1875,6 +1889,7 @@ bool NodeGraphUI::handle_chooser_click() {
         }
     }
     chooser_insert_wire_ = false;
+    chooser_wire_connect_ = false;
     chooser_open_ = false;
     mouse_.left_clicked = false;
     mouse_.left_released = false;

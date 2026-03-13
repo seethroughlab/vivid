@@ -704,6 +704,15 @@ static bool can_insert_on_wire(const OperatorInfo& op, VividPortType src, VividP
     return false;
 }
 
+static bool has_compatible_port(const OperatorInfo& op, VividPortType wire_type,
+                                VividPortDirection required_dir) {
+    for (const auto& p : op.ports) {
+        if (p.direction == required_dir && port_type_compatible(wire_type, p.type))
+            return true;
+    }
+    return false;
+}
+
 static const ParamInfo* find_param_semantic_for_endpoint(const OperatorInfo& op,
                                                          const std::string& endpoint_name) {
     for (const auto& p : op.params) {
@@ -781,11 +790,19 @@ void NodeGraphUI::rebuild_chooser_items() {
             if (!can_insert_on_wire(*cat_it->second, insert_wire_source_type_, insert_wire_dest_type_))
                 continue;
         }
+        // When connecting from a wire drag, filter to operators with a compatible port
+        if (chooser_wire_connect_) {
+            auto cat_it = snap_.operator_catalog.find(name);
+            if (cat_it == snap_.operator_catalog.end() || !cat_it->second) continue;
+            VividPortDirection need = wire_connect_from_output_ ? VIVID_PORT_INPUT : VIVID_PORT_OUTPUT;
+            if (!has_compatible_port(*cat_it->second, wire_connect_type_, need))
+                continue;
+        }
         chooser_items_.push_back(name);
     }
 
     // Prepend "New Operator" sentinel when available
-    if (commands_.can_create_operator() && !chooser_insert_wire_) {
+    if (commands_.can_create_operator() && !chooser_insert_wire_ && !chooser_wire_connect_) {
         std::string sentinel = "+ New Operator...";
         // Only show if it matches the current filter
         std::string lower_sentinel = sentinel;
@@ -817,6 +834,7 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
         create_params_.clear();
         chooser_open_ = false;
         chooser_insert_wire_ = false;
+        chooser_wire_connect_ = false;
         return;
     }
 
@@ -857,8 +875,31 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
         }
     }
 
+    if (chooser_wire_connect_) {
+        auto cat_it = snap_.operator_catalog.find(type);
+        if (cat_it != snap_.operator_catalog.end() && cat_it->second) {
+            const auto& op = *cat_it->second;
+            std::string sem_tag = semantic_tag_for_snapshot_endpoint(
+                snap_, wire_connect_node_id_, wire_connect_port_);
+            if (wire_connect_from_output_) {
+                // Dragged from an output — find compatible input on the new node
+                std::string in_port = find_compatible_port(op, wire_connect_type_, VIVID_PORT_INPUT, sem_tag);
+                if (!in_port.empty())
+                    commands_.connect(wire_connect_node_id_ + "/" + wire_connect_port_,
+                                      id + "/" + in_port);
+            } else {
+                // Dragged from an input — find compatible output on the new node
+                std::string out_port = find_compatible_port(op, wire_connect_type_, VIVID_PORT_OUTPUT, sem_tag);
+                if (!out_port.empty())
+                    commands_.connect(id + "/" + out_port,
+                                      wire_connect_node_id_ + "/" + wire_connect_port_);
+            }
+        }
+    }
+
     selected_node_ids_ = { id };
     chooser_insert_wire_ = false;
+    chooser_wire_connect_ = false;
     chooser_open_ = false;
 }
 
