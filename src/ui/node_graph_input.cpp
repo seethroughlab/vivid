@@ -153,6 +153,14 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
 // Keyboard input
 // -----------------------------------------------------------------------
 void NodeGraphUI::on_key(int key, int action, int mods) {
+    // Buffer key events for custom inspector when it wants keyboard focus
+    if (custom_inspector_wants_keyboard_) {
+        if (action == GLFW_PRESS || action == GLFW_REPEAT || action == GLFW_RELEASE) {
+            insp_key_events_.push_back({key, action, mods});
+        }
+        return;
+    }
+
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
     const bool mod_key = (mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER)) != 0;
 
@@ -1039,6 +1047,12 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
 }
 
 void NodeGraphUI::on_char(unsigned int codepoint) {
+    // Buffer char events for custom inspector when it wants keyboard focus
+    if (custom_inspector_wants_keyboard_) {
+        insp_char_events_.push_back(codepoint);
+        return;
+    }
+
     if (graph_meta_editor_open_) {
         if (codepoint >= 32 && codepoint < 127 &&
             graph_meta_active_field_ >= 0 &&
@@ -2090,10 +2104,6 @@ bool NodeGraphUI::handle_inspector_click() {
         if (check_param_rect(value_text_rects_)) return true;
         if (check_param_rect(bool_rects_)) return true;
         if (check_param_rect(dropdown_rects_)) return true;
-        if (check_param_rect(drum_grid_rects_)) return true;
-        if (check_param_rect(drum_mod_a_rects_)) return true;
-        if (check_param_rect(drum_mod_b_rects_)) return true;
-
         return true; // Consume all inspector clicks in MIDI map mode
     }
 
@@ -2403,45 +2413,6 @@ bool NodeGraphUI::handle_inspector_click() {
         std::string path = vivid::ui::open_file_dialog();
         if (!path.empty()) {
             commands_.set_string_param(fr.node_id, fr.param_name, path);
-        }
-        return true;
-    }
-
-    // Check drum tab click
-    int dti = hit_test_rect(drum_tab_rects_, mouse_.x, mouse_.y);
-    if (dti >= 0) {
-        drum_grid_tab_ = dti;
-        return true;
-    }
-
-    // Check drum mod cell drag start (Mod A / Mod B tabs)
-    int dma = hit_test_rect(drum_mod_a_rects_, mouse_.x, mouse_.y);
-    if (dma >= 0) {
-        active_drum_mod_idx_ = dma;
-        active_drum_mod_node_id_ = drum_mod_a_rects_[dma].node_id;
-        active_drum_mod_param_name_ = drum_mod_a_rects_[dma].param_name;
-        return true;
-    }
-    int dmb = hit_test_rect(drum_mod_b_rects_, mouse_.x, mouse_.y);
-    if (dmb >= 0) {
-        active_drum_mod_idx_ = dmb;
-        active_drum_mod_node_id_ = drum_mod_b_rects_[dmb].node_id;
-        active_drum_mod_param_name_ = drum_mod_b_rects_[dmb].param_name;
-        return true;
-    }
-
-    // Check drum grid cell toggle (Pattern tab)
-    int dgi = hit_test_rect(drum_grid_rects_, mouse_.x, mouse_.y);
-    if (dgi >= 0) {
-        const auto& dr = drum_grid_rects_[dgi];
-        const auto* ns = snap_.find_node(dr.node_id);
-        if (ns) {
-            auto it = ns->param_indices.find(dr.param_name);
-            if (it != ns->param_indices.end()) {
-                float cur = ns->param_values[it->second];
-                commands_.set_param(dr.node_id, dr.param_name,
-                               cur > 0.5f ? 0.0f : 1.0f);
-            }
         }
         return true;
     }

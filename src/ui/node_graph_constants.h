@@ -44,8 +44,6 @@ static constexpr std::array<float, 3> kErrorAccent   = { 0.90f, 0.25f, 0.25f }; 
 static constexpr std::array<float, 3> kSoloAccent    = { 1.0f, 0.85f, 0.2f };         // gold/amber
 
 // Inspector widget sizes
-static constexpr float kAdsrPreviewH = 80.0f;
-static constexpr float kNotePatternPreviewH = 60.0f;
 static constexpr float kSliderH = 10.0f;
 static constexpr float kCheckboxSize = 14.0f;
 static constexpr float kDropdownH = 18.0f;

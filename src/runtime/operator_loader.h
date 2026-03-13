@@ -37,6 +37,10 @@ public:
     bool has_draw_thumbnail() const { return draw_thumb_fn_ != nullptr; }
     void draw_thumbnail(void* instance, const VividThumbnailContext* ctx) const;
 
+    bool has_draw_inspector() const { return draw_insp_fn_ != nullptr; }
+    uint32_t inspector_mode() const;
+    void draw_inspector(void* instance, VividInspectorContext* ctx) const;
+
     bool has_main_thread_update() const { return main_update_fn_ != nullptr; }
     void main_thread_update(void* instance, double time,
                             const char** file_param_values, uint32_t file_param_count) const;
@@ -54,6 +58,8 @@ private:
     VividProcessGpuFn      process_gpu_fn_     = nullptr;
     VividDrawThumbnailFn   draw_thumb_fn_      = nullptr;
     VividMainThreadUpdateFn main_update_fn_    = nullptr;
+    VividDrawInspectorFn   draw_insp_fn_      = nullptr;
+    VividInspectorModeFn   insp_mode_fn_      = nullptr;
 
     void fixup_dd_pointers();  // re-point all C string pointers after move
 

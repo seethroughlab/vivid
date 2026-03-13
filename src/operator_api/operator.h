@@ -205,6 +205,7 @@ struct OperatorBase {
     virtual void collect_params(std::vector<ParamBase*>& out) = 0;
     virtual void collect_ports(std::vector<VividPortDescriptor>& out) = 0;
     virtual void draw_thumbnail(const VividThumbnailContext*) {}  // optional override
+    virtual void draw_inspector(VividInspectorContext*) {}        // optional override
     virtual void main_thread_update(double time) {}               // optional override
 };
 
@@ -462,4 +463,29 @@ extern "C" void vivid_main_thread_update(void* instance, double time,         \
 extern "C" void vivid_draw_thumbnail(void* instance,                           \
                                      const VividThumbnailContext* ctx) {        \
     static_cast<_VividInstance*>(instance)->op.draw_thumbnail(ctx);             \
+}
+
+// ---------------------------------------------------------------------------
+// VIVID_INSPECTOR(ClassName) — exports vivid_draw_inspector + vivid_inspector_mode
+// Place alongside VIVID_REGISTER for operators that override draw_inspector.
+// VIVID_INSPECTOR  = STANDARD mode (core draws params first, operator draws below)
+// VIVID_INSPECTOR_FULL_MODE = FULL mode (operator handles entire inspector)
+// ---------------------------------------------------------------------------
+
+#define VIVID_INSPECTOR(ClassName)                                             \
+extern "C" uint32_t vivid_inspector_mode() {                                   \
+    return VIVID_INSPECTOR_STANDARD;                                           \
+}                                                                              \
+extern "C" void vivid_draw_inspector(void* instance,                           \
+                                     VividInspectorContext* ctx) {              \
+    static_cast<_VividInstance*>(instance)->op.draw_inspector(ctx);             \
+}
+
+#define VIVID_INSPECTOR_FULL_MODE(ClassName)                                   \
+extern "C" uint32_t vivid_inspector_mode() {                                   \
+    return VIVID_INSPECTOR_FULL;                                               \
+}                                                                              \
+extern "C" void vivid_draw_inspector(void* instance,                           \
+                                     VividInspectorContext* ctx) {              \
+    static_cast<_VividInstance*>(instance)->op.draw_inspector(ctx);             \
 }

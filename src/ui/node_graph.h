@@ -145,7 +145,8 @@ public:
             || pkg_browser_open_
             || example_browser_open_
             || graph_meta_editor_open_
-            || about_open_;
+            || about_open_
+            || custom_inspector_wants_keyboard_;
     }
     bool wire_inspector_visible() const;
     bool has_selection() const { return !selected_node_ids_.empty() || wire_inspector_visible(); }
@@ -179,6 +180,13 @@ public:
                          uint32_t w, uint32_t h);
 
     const std::vector<NodeRect>& node_rects() const { return node_rects_; }
+
+    // Custom inspector callback — set by main.cpp to invoke operator's draw_inspector
+    using CustomInspectorCallback = std::function<void(
+        const std::string& node_id, VividInspectorContext* ctx)>;
+    void set_custom_inspector_callback(CustomInspectorCallback cb) {
+        custom_inspector_cb_ = std::move(cb);
+    }
 
     void set_custom_thumbnail_nodes(std::unordered_set<std::string> ids) {
         custom_thumb_nodes_ = std::move(ids);
@@ -257,9 +265,7 @@ private:
     void draw_one_inspector_param_simple(Renderer2D& tr, const NodeSnapshot& node,
                                          float px, float& py, uint32_t pi);
     void draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
-    void draw_inspector_adsr_preview(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
-    void draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
-    void draw_inspector_drum_grid(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_state_presets(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_chooser(Renderer2D& tr);
@@ -373,7 +379,6 @@ private:
     void update_slider_drag();
     void update_xy_pad_drag();
     void update_color_drag();
-    void update_drum_mod_drag();
     void update_chooser_hover();
     void update_context_menu();
     void update_pan_release();
@@ -502,11 +507,6 @@ private:
     struct GroupHeaderRect { float x, y, w, h; std::string type_name; std::string group_name; };
     std::vector<GroupHeaderRect> group_header_rects_;
 
-    // Drum mod cell drag state
-    int active_drum_mod_idx_ = -1;
-    std::string active_drum_mod_node_id_;
-    std::string active_drum_mod_param_name_;
-
     // Slider text-edit state (click value text to type a value)
     bool editing_param_ = false;
     std::string edit_node_id_;
@@ -517,11 +517,12 @@ private:
     std::vector<InspectorRect> value_text_rects_;
     std::vector<InspectorRect> dropdown_rects_;
     std::vector<InspectorRect> file_button_rects_;
-    std::vector<InspectorRect> drum_grid_rects_;
-    std::vector<InspectorRect> drum_mod_a_rects_;
-    std::vector<InspectorRect> drum_mod_b_rects_;
-    std::vector<InspectorRect> drum_tab_rects_;
-    int drum_grid_tab_ = 0;   // 0=Pattern, 1=ModA, 2=ModB
+
+    // Custom inspector state
+    CustomInspectorCallback custom_inspector_cb_;
+    bool custom_inspector_wants_keyboard_ = false;
+    std::vector<VividInspectorKeyEvent> insp_key_events_;
+    std::vector<uint32_t> insp_char_events_;
 
     struct ResolutionRect { float x, y, w, h; std::string node_id; bool is_width; };
     std::vector<ResolutionRect> resolution_rects_;

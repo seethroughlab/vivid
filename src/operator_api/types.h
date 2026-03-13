@@ -271,6 +271,83 @@ typedef struct VividThumbnailContext {
 
 typedef void (*VividDrawThumbnailFn)(void* instance, const VividThumbnailContext* ctx);
 
+// ---------------------------------------------------------------------------
+// Inspector context — optional custom inspector rendering (draw_inspector)
+// ---------------------------------------------------------------------------
+
+typedef enum VividInspectorMode {
+    VIVID_INSPECTOR_STANDARD = 0,  // core draws standard params first, operator draws below
+    VIVID_INSPECTOR_FULL     = 1,  // operator handles entire inspector (no standard params)
+} VividInspectorMode;
+
+typedef struct VividColor { float r, g, b, a; } VividColor;
+
+typedef struct VividInspectorDrawAPI {
+    void* opaque;  // Renderer2D* — operators must not dereference
+    void  (*draw_rect)(void*, float x, float y, float w, float h, VividColor);
+    void  (*draw_rounded_rect)(void*, float x, float y, float w, float h, float radius, VividColor);
+    void  (*draw_text)(void*, float x, float y, const char* text, VividColor, float scale);
+    void  (*draw_line)(void*, float x1, float y1, float x2, float y2, float thickness, VividColor);
+    float (*text_width)(void*, const char* text, float scale);
+    float (*line_height)(void*);
+    void  (*push_clip_rect)(void*, float x, float y, float w, float h);
+    void  (*pop_clip_rect)(void*);
+} VividInspectorDrawAPI;
+
+typedef struct VividInspectorCommandAPI {
+    void* opaque;  // scoped to node_id by the core
+    void (*set_param)(void*, const char* param_name, float value);
+    void (*set_string_param)(void*, const char* param_name, const char* value);
+} VividInspectorCommandAPI;
+
+typedef struct VividInspectorTheme {
+    VividColor bg, accent, dim_text, bright_text, separator;
+    VividColor dark_bg, slider_fill, slider_track;
+    float corner_radius;
+} VividInspectorTheme;
+
+typedef struct VividInspectorMouse {
+    float x, y;           // relative to inspector content area origin
+    float prev_x, prev_y;
+    int left_down, left_clicked, left_released, right_clicked, shift_down;
+} VividInspectorMouse;
+
+typedef struct VividInspectorKeyEvent {
+    int key;     // GLFW key code
+    int action;  // 0=release, 1=press, 2=repeat
+    int mods;    // bitmask
+} VividInspectorKeyEvent;
+
+typedef struct VividInspectorContext {
+    // Layout (absolute screen coords, scroll-adjusted)
+    float content_x, content_y, content_width;
+
+    // Drawing & commands
+    VividInspectorDrawAPI    draw;
+    VividInspectorCommandAPI commands;
+    VividInspectorTheme      theme;
+
+    // Operator state (read-only)
+    const float*       param_values;       uint32_t param_count;
+    const float*       output_values;      uint32_t output_count;
+    const char* const* string_param_values; uint32_t string_param_count;
+
+    // Input
+    VividInspectorMouse             mouse;
+    const VividInspectorKeyEvent*   key_events;      uint32_t key_event_count;
+    const uint32_t*                 char_events;     uint32_t char_event_count;
+
+    double time;
+
+    // Return: operator writes total height consumed
+    float consumed_height;
+    // Return: operator writes 1 if it wants keyboard focus
+    int   wants_keyboard;
+} VividInspectorContext;
+
+typedef void     (*VividDrawInspectorFn)(void* instance, VividInspectorContext* ctx);
+typedef uint32_t (*VividInspectorModeFn)(void);
+
 // Optional main-thread update hook for operators that need non-audio-thread work
 // (e.g. AVFoundation decoding, file I/O, ring buffer pre-fill)
 typedef void (*VividMainThreadUpdateFn)(void* instance, double time,

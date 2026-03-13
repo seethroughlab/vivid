@@ -159,6 +159,7 @@ public:
     const std::vector<NodeState>& nodes() const { return nodes_; }
     std::vector<NodeState>& nodes_mut() { return nodes_; }
     const std::vector<Wire>& wires() const { return wires_; }
+    const NodeState* find_node(const std::string& id) const;
     NodeState* find_node_mut(const std::string& id);
     bool has_gpu_operators() const;
     bool has_audio_operators() const;

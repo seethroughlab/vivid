@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
 #include "operator_api/adsr.h"
+#include "operator_api/adsr_inspector.h"
 #include <cmath>
 #include <algorithm>
 
@@ -37,6 +38,15 @@ struct SpreadADSR : vivid::AudioOperatorBase {
     adsr::State slots_[kMaxSlots] = {};
     float prev_gates_[kMaxSlots] = {};
     uint32_t prev_len_ = 0;
+
+    void draw_inspector(VividInspectorContext* ctx) override {
+        // Param order: attack=0, decay=1, sustain=2, release=3
+        float a = (ctx->param_count > 0) ? ctx->param_values[0] : 0.01f;
+        float d = (ctx->param_count > 1) ? ctx->param_values[1] : 0.2f;
+        float s = (ctx->param_count > 2) ? ctx->param_values[2] : 0.7f;
+        float r = (ctx->param_count > 3) ? ctx->param_values[3] : 0.3f;
+        vivid::adsr_inspector::draw(ctx, a, d, s, r, false);
+    }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&attack);
@@ -116,3 +126,4 @@ struct SpreadADSR : vivid::AudioOperatorBase {
 };
 
 VIVID_REGISTER(SpreadADSR)
+VIVID_INSPECTOR(SpreadADSR)

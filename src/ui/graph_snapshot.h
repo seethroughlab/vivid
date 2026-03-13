@@ -51,6 +51,8 @@ struct OperatorInfo {
     VividDomain domain = VIVID_DOMAIN_CONTROL;
     bool has_shader = false;
     bool is_user = false;
+    bool has_custom_inspector = false;
+    uint32_t inspector_mode = 0;
     std::vector<ParamInfo> params;
     std::vector<PortInfo> ports;
 };

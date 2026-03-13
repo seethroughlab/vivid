@@ -577,10 +577,6 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     value_text_rects_.clear();
     dropdown_rects_.clear();
     file_button_rects_.clear();
-    drum_grid_rects_.clear();
-    drum_mod_a_rects_.clear();
-    drum_mod_b_rects_.clear();
-    drum_tab_rects_.clear();
     resolution_rects_.clear();
     preset_dropdown_rects_.clear();
     preset_save_rects_.clear();
@@ -786,10 +782,13 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         py += kLineH + 4;
     }
 
-    draw_inspector_params(tr, *sel_node, px, py);
-    draw_inspector_adsr_preview(tr, *sel_node, px, py);
-    draw_inspector_note_pattern(tr, *sel_node, px, py);
-    draw_inspector_drum_grid(tr, *sel_node, px, py);
+    if (sel_node->op_info && sel_node->op_info->has_custom_inspector) {
+        if (sel_node->op_info->inspector_mode == VIVID_INSPECTOR_STANDARD)
+            draw_inspector_params(tr, *sel_node, px, py);
+        draw_custom_inspector(tr, *sel_node, px, py);
+    } else {
+        draw_inspector_params(tr, *sel_node, px, py);
+    }
     draw_inspector_resolution(tr, *sel_node, px, py);
     draw_inspector_state_presets(tr, *sel_node, px, py);
     draw_inspector_outputs(tr, *sel_node, px, py);
@@ -1841,409 +1840,143 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
     }
 }
 
-void NodeGraphUI::draw_inspector_adsr_preview(Renderer2D& tr, const NodeSnapshot& node,
-                                               float px, float& py) {
-    // Only draw if all 4 ADSR params exist
-    auto a_it = node.param_indices.find("attack");
-    auto d_it = node.param_indices.find("decay");
-    auto s_it = node.param_indices.find("sustain");
-    auto r_it = node.param_indices.find("release");
-    if (a_it == node.param_indices.end() || d_it == node.param_indices.end() ||
-        s_it == node.param_indices.end() || r_it == node.param_indices.end())
-        return;
 
-    float atk = node.param_values[a_it->second];
-    float dec = node.param_values[d_it->second];
-    float sus = node.param_values[s_it->second];
-    float rel = node.param_values[r_it->second];
 
-    // Clamp to sane minimums
-    if (atk < 0.0001f) atk = 0.0001f;
-    if (dec < 0.001f)  dec = 0.001f;
-    if (rel < 0.001f)  rel = 0.001f;
-    sus = std::max(0.0f, std::min(1.0f, sus));
+// ---------------------------------------------------------------------------
+// Custom inspector — thunks bridging VividInspectorDrawAPI to Renderer2D
+// ---------------------------------------------------------------------------
 
-    // Check env_bypass state
-    bool bypassed = false;
-    auto bp_it = node.param_indices.find("env_bypass");
-    if (bp_it != node.param_indices.end())
-        bypassed = node.param_values[bp_it->second] > 0.5f;
-
-    float alpha_mult = bypassed ? 0.35f : 1.0f;
-
-    // Layout
-    float w = kInspContentW;
-    float h = kAdsrPreviewH;
-    float pad = 6.0f;
-
-    py += 4;
-
-    // Dark background
-    tr.draw_rect(px, py, w, h, style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
-
-    // Curve geometry (same math as Envelope::draw_thumbnail)
-    float sustain_width = 0.3f * (atk + dec + rel);
-    float total_time = atk + dec + sustain_width + rel;
-
-    auto env_at = [&](float t) -> float {
-        if (t <= atk)
-            return t / atk;
-        t -= atk;
-        if (t <= dec)
-            return 1.0f - (1.0f - sus) * (t / dec);
-        t -= dec;
-        if (t <= sustain_width)
-            return sus;
-        t -= sustain_width;
-        if (t <= rel)
-            return sus * (1.0f - t / rel);
-        return 0.0f;
-    };
-
-    auto time_to_x = [&](float t) -> float {
-        return px + pad + (t / total_time) * (w - 2.0f * pad);
-    };
-    auto env_to_y = [&](float e) -> float {
-        return py + pad + (1.0f - e) * (h - 2.0f * pad);
-    };
-
-    // Filled region below curve (3px-wide translucent rects)
-    float plot_w = w - 2.0f * pad;
-    int cols = static_cast<int>(plot_w / 3.0f);
-    float col_w = plot_w / static_cast<float>(cols);
-    float bottom_y = env_to_y(0.0f);
-
-    for (int i = 0; i < cols; ++i) {
-        float fx = px + pad + static_cast<float>(i) * col_w;
-        float t = (static_cast<float>(i) / static_cast<float>(cols)) * total_time;
-        float e = env_at(t);
-        float ey = env_to_y(e);
-        float fill_h = bottom_y - ey;
-        if (fill_h > 0.0f) {
-            tr.draw_rect(fx, ey, col_w, fill_h,
-                         style_.accent[0], style_.accent[1], style_.accent[2], 0.15f * alpha_mult);
-        }
-    }
-
-    // Curve line segments (~1 point per 2px)
-    int segments = std::max(4, cols / 2);
-    float prev_x = time_to_x(0.0f);
-    float prev_y = env_to_y(env_at(0.0f));
-    for (int i = 1; i <= segments; ++i) {
-        float t = (static_cast<float>(i) / static_cast<float>(segments)) * total_time;
-        float cx = time_to_x(t);
-        float cy = env_to_y(env_at(t));
-        tr.draw_line(prev_x, prev_y, cx, cy, 1.5f,
-                     style_.accent[0], style_.accent[1], style_.accent[2], 0.9f * alpha_mult);
-        prev_x = cx;
-        prev_y = cy;
-    }
-
-    // Vertical dashed markers at attack/decay/release boundaries
-    float marker_times[3] = { atk, atk + dec, atk + dec + sustain_width };
-    for (float mt : marker_times) {
-        float mx = time_to_x(mt);
-        float top_y = py + pad;
-        // Draw dashes (4px on, 4px off)
-        for (float dy = top_y; dy < bottom_y; dy += 8.0f) {
-            float dash_end = std::min(dy + 4.0f, bottom_y);
-            tr.draw_line(mx, dy, mx, dash_end, 1.0f,
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.3f * alpha_mult);
-        }
-    }
-
-    // "bypassed" label when env_bypass is on
-    if (bypassed) {
-        tr.draw_text(px + w - tr.text_width("bypassed") - 4, py + 2, "bypassed",
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
-    }
-
-    py += h + 4;
+static void insp_draw_rect(void* o, float x, float y, float w, float h, VividColor c) {
+    static_cast<Renderer2D*>(o)->draw_rect(x, y, w, h, c.r, c.g, c.b, c.a);
+}
+static void insp_draw_rounded_rect(void* o, float x, float y, float w, float h, float radius, VividColor c) {
+    static_cast<Renderer2D*>(o)->draw_rounded_rect(x, y, w, h, radius, c.r, c.g, c.b, c.a);
+}
+static void insp_draw_text(void* o, float x, float y, const char* text, VividColor c, float scale) {
+    static_cast<Renderer2D*>(o)->draw_text(x, y, text, c.r, c.g, c.b, c.a, scale);
+}
+static void insp_draw_line(void* o, float x1, float y1, float x2, float y2, float thickness, VividColor c) {
+    static_cast<Renderer2D*>(o)->draw_line(x1, y1, x2, y2, thickness, c.r, c.g, c.b, c.a);
+}
+static float insp_text_width(void* o, const char* text, float scale) {
+    return static_cast<Renderer2D*>(o)->text_width(text, scale);
+}
+static float insp_line_height(void* o) {
+    return static_cast<Renderer2D*>(o)->line_height();
+}
+static void insp_push_clip_rect(void* o, float x, float y, float w, float h) {
+    static_cast<Renderer2D*>(o)->push_clip_rect(x, y, w, h);
+}
+static void insp_pop_clip_rect(void* o) {
+    static_cast<Renderer2D*>(o)->pop_clip_rect();
 }
 
-void NodeGraphUI::draw_inspector_note_pattern(Renderer2D& tr, const NodeSnapshot& node,
-                                               float px, float& py) {
-    // Only draw if this is a NotePattern (has steps, root_0, type_0)
-    auto steps_it = node.param_indices.find("steps");
-    auto root0_it = node.param_indices.find("root_0");
-    auto type0_it = node.param_indices.find("type_0");
-    if (steps_it == node.param_indices.end() ||
-        root0_it == node.param_indices.end() ||
-        type0_it == node.param_indices.end())
-        return;
+// Command thunk context
+struct InspCmdCtx {
+    UICommandSink* sink;
+    std::string node_id;
+};
+static void insp_set_param(void* o, const char* p, float v) {
+    auto* c = static_cast<InspCmdCtx*>(o);
+    c->sink->set_param(c->node_id, p, v);
+}
+static void insp_set_string_param(void* o, const char* p, const char* v) {
+    auto* c = static_cast<InspCmdCtx*>(o);
+    c->sink->set_string_param(c->node_id, p, v);
+}
 
-    int num_steps = static_cast<int>(node.param_values[steps_it->second]);
-    num_steps = std::max(1, std::min(8, num_steps));
+void NodeGraphUI::draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node,
+                                        float px, float& py) {
+    if (!custom_inspector_cb_) return;
 
-    // Look up per-step param indices by name (don't assume contiguous)
-    uint32_t root_idx[8]{}, type_idx[8]{};
-    for (int s = 0; s < 8; ++s) {
-        auto ri = node.param_indices.find("root_" + std::to_string(s));
-        auto ti = node.param_indices.find("type_" + std::to_string(s));
-        root_idx[s] = (ri != node.param_indices.end()) ? ri->second : 0;
-        type_idx[s] = (ti != node.param_indices.end()) ? ti->second : 0;
-    }
+    InspCmdCtx cmd_ctx{&commands_, node.node_id};
 
-    // Note names and chord abbreviations
-    static const char* kNoteNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
-    static const char* kChordAbbr[] = {"M","m","dim","aug","7","m7","M7"};
-
-    // 7-color palette for chord types (matches thumbnail)
-    static constexpr std::array<float, 3> kTypeColors[7] = {
-        {0.39f, 0.63f, 0.86f},   // Major  — blue
-        {0.63f, 0.39f, 0.78f},   // Minor  — purple
-        {0.78f, 0.39f, 0.39f},   // Dim    — red
-        {0.86f, 0.71f, 0.31f},   // Aug    — gold
-        {0.31f, 0.71f, 0.63f},   // Dom7   — teal
-        {0.55f, 0.47f, 0.78f},   // Min7   — lavender
-        {0.31f, 0.55f, 0.86f},   // Maj7   — sky blue
+    auto to_vc = [](const std::array<float,3>& a, float alpha = 1.0f) -> VividColor {
+        return {a[0], a[1], a[2], alpha};
     };
 
-    // Detect current step from first output note
-    int current_step = -1;
-    auto notes_it = node.output_port_indices.find("notes");
-    if (notes_it != node.output_port_indices.end()) {
-        uint32_t pidx = notes_it->second;
-        float out_note = 0.0f;
-        if (pidx < node.output_spreads.size() && !node.output_spreads[pidx].empty())
-            out_note = node.output_spreads[pidx][0];
-        else if (pidx < node.output_values.size())
-            out_note = node.output_values[pidx];
+    VividInspectorContext ctx{};
+    ctx.content_x = px;
+    ctx.content_y = py;
+    ctx.content_width = kInspContentW;
 
-        auto oct_it = node.param_indices.find("octave");
-        int oct = (oct_it != node.param_indices.end()) ? static_cast<int>(node.param_values[oct_it->second]) : 4;
+    // Draw API
+    ctx.draw.opaque = &tr;
+    ctx.draw.draw_rect = insp_draw_rect;
+    ctx.draw.draw_rounded_rect = insp_draw_rounded_rect;
+    ctx.draw.draw_text = insp_draw_text;
+    ctx.draw.draw_line = insp_draw_line;
+    ctx.draw.text_width = insp_text_width;
+    ctx.draw.line_height = insp_line_height;
+    ctx.draw.push_clip_rect = insp_push_clip_rect;
+    ctx.draw.pop_clip_rect = insp_pop_clip_rect;
 
-        for (int s = 0; s < num_steps; ++s) {
-            int root = static_cast<int>(node.param_values[root_idx[s]]);
-            float expected = static_cast<float>(root + oct * 12);
-            if (std::fabs(out_note - expected) < 0.5f) {
-                current_step = s;
-                break;
+    // Command API
+    ctx.commands.opaque = &cmd_ctx;
+    ctx.commands.set_param = insp_set_param;
+    ctx.commands.set_string_param = insp_set_string_param;
+
+    // Theme
+    ctx.theme.bg = to_vc(style_.inspector_bg);
+    ctx.theme.accent = to_vc(style_.accent);
+    ctx.theme.dim_text = to_vc(style_.dim_text);
+    ctx.theme.bright_text = to_vc(style_.bright_text);
+    ctx.theme.separator = to_vc(style_.separator);
+    ctx.theme.dark_bg = to_vc(style_.dark_bg);
+    ctx.theme.slider_fill = to_vc(style_.slider_fill);
+    ctx.theme.slider_track = to_vc(style_.slider_track);
+    ctx.theme.corner_radius = style_.corner_radius;
+
+    // Operator state
+    ctx.param_values = node.param_values.data();
+    ctx.param_count = static_cast<uint32_t>(node.param_values.size());
+    ctx.output_values = node.output_values.data();
+    ctx.output_count = static_cast<uint32_t>(node.output_values.size());
+
+    // String param values — build C string array from map
+    // Collect file_param_values in param order
+    std::vector<const char*> string_ptrs;
+    if (node.op_info) {
+        for (const auto& pi : node.op_info->params) {
+            if (pi.type == VIVID_PARAM_FILE || pi.type == VIVID_PARAM_TEXT) {
+                auto it = node.file_param_values.find(pi.name);
+                string_ptrs.push_back(it != node.file_param_values.end()
+                                      ? it->second.c_str() : "");
             }
         }
     }
+    ctx.string_param_values = string_ptrs.empty() ? nullptr : string_ptrs.data();
+    ctx.string_param_count = static_cast<uint32_t>(string_ptrs.size());
 
-    float w = kInspContentW;
-    float h = kNotePatternPreviewH;
-    float cell_w = w / static_cast<float>(num_steps);
+    // Mouse input — translate to inspector-relative coordinates
+    ctx.mouse.x = mouse_.x - px;
+    ctx.mouse.y = mouse_.y - py;
+    ctx.mouse.prev_x = mouse_.prev_x - px;
+    ctx.mouse.prev_y = mouse_.prev_y - py;
+    ctx.mouse.left_down = mouse_.left_down ? 1 : 0;
+    ctx.mouse.left_clicked = mouse_.left_clicked ? 1 : 0;
+    ctx.mouse.left_released = mouse_.left_released ? 1 : 0;
+    ctx.mouse.right_clicked = mouse_.right_clicked ? 1 : 0;
+    ctx.mouse.shift_down = mouse_.shift_down ? 1 : 0;
 
-    py += 4;
+    // Key/char events
+    ctx.key_events = insp_key_events_.empty() ? nullptr : insp_key_events_.data();
+    ctx.key_event_count = static_cast<uint32_t>(insp_key_events_.size());
+    ctx.char_events = insp_char_events_.empty() ? nullptr : insp_char_events_.data();
+    ctx.char_event_count = static_cast<uint32_t>(insp_char_events_.size());
 
-    // Dark background
-    tr.draw_rect(px, py, w, h, style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
+    ctx.time = 0.0;  // could be wired to glfwGetTime if needed
+    ctx.consumed_height = 0.0f;
+    ctx.wants_keyboard = 0;
 
-    for (int s = 0; s < num_steps; ++s) {
-        int root = static_cast<int>(node.param_values[root_idx[s]]);
-        int chord_type = static_cast<int>(node.param_values[type_idx[s]]);
-        root = std::max(0, std::min(11, root));
-        chord_type = std::max(0, std::min(6, chord_type));
+    custom_inspector_cb_(node.node_id, &ctx);
 
-        float cx = px + s * cell_w;
-        bool is_current = (s == current_step);
+    py += ctx.consumed_height;
+    custom_inspector_wants_keyboard_ = ctx.wants_keyboard != 0;
 
-        // Current step highlight
-        if (is_current) {
-            tr.draw_rect(cx, py, cell_w, h, style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.6f);
-        }
-
-        // Note name centered
-        const char* note = kNoteNames[root];
-        float nw = tr.text_width(note);
-        float text_x = cx + (cell_w - nw) * 0.5f;
-        float text_y = py + 6;
-        float bright = is_current ? 1.0f : 0.85f;
-        tr.draw_text(text_x, text_y, note, bright, bright, bright);
-
-        // Chord abbreviation below in dim color
-        const char* chord = kChordAbbr[chord_type];
-        float cw = tr.text_width(chord);
-        float chord_x = cx + (cell_w - cw) * 0.5f;
-        float chord_y = text_y + kLineH;
-        const auto& tc = kTypeColors[chord_type];
-        tr.draw_text(chord_x, chord_y, chord, tc[0], tc[1], tc[2], is_current ? 1.0f : 0.7f);
-
-        // Colored bar at bottom
-        float bar_h = 4.0f;
-        float bar_y = py + h - bar_h - 2.0f;
-        tr.draw_rect(cx + 2, bar_y, cell_w - 4, bar_h, tc[0], tc[1], tc[2], is_current ? 0.9f : 0.6f);
-
-        // Cell divider
-        if (s > 0) {
-            tr.draw_rect(cx, py, 1, h, style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
-        }
-    }
-
-    py += h + 4;
-}
-
-void NodeGraphUI::draw_inspector_drum_grid(Renderer2D& tr, const NodeSnapshot& node,
-                                           float px, float& py) {
-    // Only draw if this is a DrumSequencer (has kick_0, snare_0, hat_0)
-    auto kick0_it = node.param_indices.find("kick_0");
-    auto snare0_it = node.param_indices.find("snare_0");
-    auto hat0_it = node.param_indices.find("hat_0");
-    if (kick0_it == node.param_indices.end() ||
-        snare0_it == node.param_indices.end() ||
-        hat0_it == node.param_indices.end())
-        return;
-
-    // Read steps param
-    auto steps_it = node.param_indices.find("steps");
-    int num_steps = 16;
-    if (steps_it != node.param_indices.end())
-        num_steps = std::max(1, std::min(16, static_cast<int>(node.param_values[steps_it->second])));
-
-    // Detect current step from "step" output port
-    int current_step = -1;
-    auto step_out_it = node.output_port_indices.find("step");
-    if (step_out_it != node.output_port_indices.end()) {
-        uint32_t pidx = step_out_it->second;
-        if (pidx < node.output_values.size())
-            current_step = static_cast<int>(node.output_values[pidx]);
-    }
-
-    // Drum row config: prefix, label, color
-    static const char* kDrumPrefix[] = {"kick_", "snare_", "hat_", "oh_", "clap_", "tom_"};
-    static const char* kDrumLabel[]  = {"KK", "SN", "CH", "OH", "CP", "TM"};
-    static constexpr std::array<float, 3> kDrumColors[6] = {
-        {0.86f, 0.31f, 0.31f},  // kick — red
-        {0.86f, 0.75f, 0.24f},  // snare — gold
-        {0.24f, 0.78f, 0.71f},  // hat — teal
-        {0.31f, 0.51f, 0.86f},  // oh — blue
-        {0.63f, 0.35f, 0.78f},  // clap — purple
-        {0.31f, 0.78f, 0.39f},  // tom — green
-    };
-
-    // Layout
-    float panel_w = kInspContentW;
-    float label_w = 28.0f;
-    float grid_w = panel_w - label_w;
-    float cell_w = grid_w / 16.0f;
-    float cell_h = 14.0f;
-    float cell_pad = 2.0f;
-    float grid_h = 6.0f * cell_h;
-
-    py += 4;
-
-    // --- Tab bar ---
-    static const char* kTabLabels[] = {"Pattern", "Mod A", "Mod B"};
-    float tab_w = 80.0f;
-    float tab_h = 18.0f;
-    float tab_y = py;
-
-    for (int t = 0; t < 3; ++t) {
-        float tx = px + t * tab_w;
-        bool active = (drum_grid_tab_ == t);
-
-        // Tab background
-        if (active) {
-            tr.draw_rect(tx, tab_y, tab_w, tab_h,
-                         style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
-            // Accent underline
-            tr.draw_rect(tx, tab_y + tab_h - 2, tab_w, 2,
-                         style_.accent[0], style_.accent[1], style_.accent[2], 1.0f);
-        }
-
-        float text_alpha = active ? 1.0f : 0.5f;
-        tr.draw_text(tx + 8, tab_y + 3, kTabLabels[t],
-                     style_.dim_text[0] * (active ? 1.5f : 1.0f),
-                     style_.dim_text[1] * (active ? 1.5f : 1.0f),
-                     style_.dim_text[2] * (active ? 1.5f : 1.0f),
-                     text_alpha);
-
-        drum_tab_rects_.push_back({tx, tab_y, tab_w, tab_h,
-                                   single_selected_id(), std::to_string(t)});
-    }
-
-    py += tab_h + 2;
-
-    float total_h = grid_h + 8.0f;
-
-    // Dark background for grid area
-    tr.draw_rect(px, py, panel_w, total_h, style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.9f);
-
-    float grid_x = px + label_w;
-    float grid_y = py + 4.0f;
-
-    // Current step column highlight (full height)
-    if (current_step >= 0 && current_step < num_steps) {
-        float hx = grid_x + current_step * cell_w;
-        tr.draw_rect(hx, grid_y, cell_w, grid_h,
-                     style_.accent[0], style_.accent[1], style_.accent[2], 0.15f);
-    }
-
-    // Beat group separators (every 4 steps)
-    for (int b = 1; b < 4; ++b) {
-        float sx = grid_x + b * 4 * cell_w;
-        tr.draw_rect(sx - 0.5f, grid_y, 1.0f, grid_h,
-                     style_.separator[0], style_.separator[1], style_.separator[2], 0.6f);
-    }
-
-    // Mod param prefixes for Mod A / Mod B
-    static const char* kModAPrefix[] = {"kick_ma_", "snare_ma_", "hat_ma_", "oh_ma_", "clap_ma_", "tom_ma_"};
-    static const char* kModBPrefix[] = {"kick_mb_", "snare_mb_", "hat_mb_", "oh_mb_", "clap_mb_", "tom_mb_"};
-
-    for (int drum = 0; drum < 6; ++drum) {
-        float row_y = grid_y + drum * cell_h;
-
-        // Row label
-        tr.draw_text(px + 2, row_y + 1, kDrumLabel[drum],
-                     kDrumColors[drum][0], kDrumColors[drum][1], kDrumColors[drum][2], 0.8f);
-
-        for (int s = 0; s < 16; ++s) {
-            float cx = grid_x + s * cell_w;
-            bool beyond_steps = (s >= num_steps);
-
-            // Check trigger state (used by all tabs)
-            std::string trig_name = std::string(kDrumPrefix[drum]) + std::to_string(s);
-            auto trig_it = node.param_indices.find(trig_name);
-            bool trigger_active = false;
-            if (trig_it != node.param_indices.end())
-                trigger_active = node.param_values[trig_it->second] > 0.5f;
-
-            if (drum_grid_tab_ == 0) {
-                // --- Pattern tab: boolean toggle grid ---
-                if (trigger_active) {
-                    float alpha = beyond_steps ? 0.25f : 0.9f;
-                    tr.draw_rect(cx + cell_pad, row_y + cell_pad,
-                                 cell_w - 2 * cell_pad, cell_h - 2 * cell_pad,
-                                 kDrumColors[drum][0], kDrumColors[drum][1], kDrumColors[drum][2], alpha);
-                }
-
-                drum_grid_rects_.push_back({cx, row_y, cell_w, cell_h,
-                                            single_selected_id(), trig_name});
-            } else {
-                // --- Mod A or Mod B tab: vertical fill bar grid ---
-                const char** mod_prefix = (drum_grid_tab_ == 1) ? kModAPrefix : kModBPrefix;
-                auto& mod_rects = (drum_grid_tab_ == 1) ? drum_mod_a_rects_ : drum_mod_b_rects_;
-
-                std::string mod_name = std::string(mod_prefix[drum]) + std::to_string(s);
-                auto mod_it = node.param_indices.find(mod_name);
-                float mod_val = 0.5f;
-                if (mod_it != node.param_indices.end())
-                    mod_val = node.param_values[mod_it->second];
-
-                float base_alpha = beyond_steps ? 0.25f : (trigger_active ? 0.8f : 0.3f);
-
-                // Dark track background
-                tr.draw_rect(cx + cell_pad, row_y + cell_pad,
-                             cell_w - 2 * cell_pad, cell_h - 2 * cell_pad,
-                             0.1f, 0.1f, 0.12f, base_alpha);
-
-                // Fill bar from bottom
-                float inner_h = cell_h - 2 * cell_pad;
-                float fill_h = mod_val * inner_h;
-                tr.draw_rect(cx + cell_pad, row_y + cell_pad + inner_h - fill_h,
-                             cell_w - 2 * cell_pad, fill_h,
-                             kDrumColors[drum][0], kDrumColors[drum][1], kDrumColors[drum][2], base_alpha);
-
-                mod_rects.push_back({cx, row_y, cell_w, cell_h,
-                                     single_selected_id(), mod_name});
-            }
-        }
-    }
-
-    py += total_h + 4;
+    // Drain event buffers after draw
+    insp_key_events_.clear();
+    insp_char_events_.clear();
 }
 
 void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node,

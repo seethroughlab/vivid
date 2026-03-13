@@ -1261,6 +1261,13 @@ void Scheduler::inject_external_spread(uint32_t node_idx, uint32_t port_idx,
     ns.generation++;
 }
 
+const NodeState* Scheduler::find_node(const std::string& id) const {
+    for (const auto& ns : nodes_) {
+        if (ns.node_id == id) return &ns;
+    }
+    return nullptr;
+}
+
 NodeState* Scheduler::find_node_mut(const std::string& id) {
     for (auto& ns : nodes_) {
         if (ns.node_id == id) return &ns;

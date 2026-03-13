@@ -21,6 +21,8 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , process_gpu_fn_(other.process_gpu_fn_)
     , draw_thumb_fn_(other.draw_thumb_fn_)
     , main_update_fn_(other.main_update_fn_)
+    , draw_insp_fn_(other.draw_insp_fn_)
+    , insp_mode_fn_(other.insp_mode_fn_)
     , dd_config_(std::move(other.dd_config_))
     , dd_name_(std::move(other.dd_name_))
     , dd_param_names_(std::move(other.dd_param_names_))
@@ -41,6 +43,8 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     other.process_gpu_fn_   = nullptr;
     other.draw_thumb_fn_    = nullptr;
     other.main_update_fn_   = nullptr;
+    other.draw_insp_fn_     = nullptr;
+    other.insp_mode_fn_     = nullptr;
     other.dd_desc_ = {};
     // Fixup descriptor pointers to our own storage
     if (dd_config_) {
@@ -60,6 +64,8 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         process_gpu_fn_   = other.process_gpu_fn_;
         draw_thumb_fn_    = other.draw_thumb_fn_;
         main_update_fn_   = other.main_update_fn_;
+        draw_insp_fn_     = other.draw_insp_fn_;
+        insp_mode_fn_     = other.insp_mode_fn_;
         dd_config_        = std::move(other.dd_config_);
         dd_name_          = std::move(other.dd_name_);
         dd_param_names_   = std::move(other.dd_param_names_);
@@ -79,6 +85,8 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         other.process_gpu_fn_   = nullptr;
         other.draw_thumb_fn_    = nullptr;
         other.main_update_fn_   = nullptr;
+        other.draw_insp_fn_     = nullptr;
+        other.insp_mode_fn_     = nullptr;
         other.dd_desc_ = {};
         // Fixup descriptor pointers to our own storage
         if (dd_config_) {
@@ -166,6 +174,8 @@ bool OperatorLoader::load(const char* path) {
     // Optional entry points
     draw_thumb_fn_  = reinterpret_cast<VividDrawThumbnailFn>(dlsym(new_handle, "vivid_draw_thumbnail"));
     main_update_fn_ = reinterpret_cast<VividMainThreadUpdateFn>(dlsym(new_handle, "vivid_main_thread_update"));
+    draw_insp_fn_   = reinterpret_cast<VividDrawInspectorFn>(dlsym(new_handle, "vivid_draw_inspector"));
+    insp_mode_fn_   = reinterpret_cast<VividInspectorModeFn>(dlsym(new_handle, "vivid_inspector_mode"));
 
     // Optional: register custom port types declared by this dylib (pull model).
     // The operator exports a static array of VividPortTypeInfo; the runtime
@@ -324,6 +334,8 @@ void OperatorLoader::unload() {
         process_gpu_fn_   = nullptr;
         draw_thumb_fn_    = nullptr;
         main_update_fn_   = nullptr;
+        draw_insp_fn_     = nullptr;
+        insp_mode_fn_     = nullptr;
     }
     if (dd_config_) {
         dd_config_.reset();
@@ -393,6 +405,16 @@ void OperatorLoader::main_thread_update(void* instance, double time,
                                          uint32_t file_param_count) const {
     if (main_update_fn_ && instance) {
         main_update_fn_(instance, time, file_param_values, file_param_count);
+    }
+}
+
+uint32_t OperatorLoader::inspector_mode() const {
+    return insp_mode_fn_ ? insp_mode_fn_() : VIVID_INSPECTOR_STANDARD;
+}
+
+void OperatorLoader::draw_inspector(void* instance, VividInspectorContext* ctx) const {
+    if (draw_insp_fn_ && instance) {
+        draw_insp_fn_(instance, ctx);
     }
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "operator_api/operator.h"
+#include "operator_api/adsr_inspector.h"
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -180,6 +181,15 @@ struct Envelope : vivid::ControlOperatorBase {
         }
 
         ctx->output_values[0] = env_value_ * amplitude.value + offset.value;
+    }
+
+    void draw_inspector(VividInspectorContext* ctx) override {
+        // Param order: attack=0, decay=1, sustain=2, release=3
+        float a = (ctx->param_count > 0) ? ctx->param_values[0] : 0.001f;
+        float d = (ctx->param_count > 1) ? ctx->param_values[1] : 0.2f;
+        float s = (ctx->param_count > 2) ? ctx->param_values[2] : 0.7f;
+        float r = (ctx->param_count > 3) ? ctx->param_values[3] : 0.3f;
+        vivid::adsr_inspector::draw(ctx, a, d, s, r, false);
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {

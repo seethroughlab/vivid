@@ -2504,6 +2504,14 @@ int main(int argc, char* argv[]) {
         graph_ui.set_style_options(std::move(styles), style_sel, std::move(themes));
     }
 
+    // Wire up custom inspector callback
+    graph_ui.set_custom_inspector_callback(
+        [&scheduler](const std::string& node_id, VividInspectorContext* ctx) {
+            const auto* ns = scheduler.find_node(node_id);
+            if (!ns || !ns->loader || !ns->instance) return;
+            ns->loader->draw_inspector(ns->instance, ctx);
+        });
+
     // Set up GLFW input callbacks
     WindowUserData window_user_data;
     window_user_data.graph_ui = &graph_ui;

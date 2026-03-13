@@ -78,6 +78,9 @@ public:
                 info->has_shader = std::filesystem::exists(wgsl_path);
             }
             info->is_user = registry.is_user_filter(type_name) || registry.is_user_operator(type_name);
+            info->has_custom_inspector = loader->has_draw_inspector();
+            info->inspector_mode = loader->has_draw_inspector()
+                                   ? loader->inspector_mode() : 0;
         }
 
         cache_[type_name] = info;
