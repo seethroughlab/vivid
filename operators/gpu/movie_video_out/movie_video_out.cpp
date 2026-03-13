@@ -7,6 +7,7 @@
 #include "../../shared/media_session/media_session.h"
 
 #include <cstdio>
+#include <cstring>
 
 static const char* kBlitFragment = R"(
 
@@ -96,8 +97,14 @@ struct MovieVideoOut : vivid::GpuOperatorBase {
         uint64_t generation = 0;
         if (ctx->custom_inputs && ctx->custom_input_count > 0 && ctx->custom_inputs[0]) {
             const auto* stream = static_cast<const vivid::MediaStreamV1*>(ctx->custom_inputs[0]);
-            if (stream->session_ptr) {
-                session = reinterpret_cast<vivid::media::MediaSession*>(stream->session_ptr);
+            if (ctx->shared_handles && stream->handle_id != 0) {
+                auto entry = ctx->shared_handles->resolve(stream->handle_id);
+                if (entry.valid && entry.payload != nullptr &&
+                    entry.type && std::strcmp(entry.type, "media_stream_v1") == 0) {
+                    session = static_cast<vivid::media::MediaSession*>(entry.payload);
+                }
+            }
+            if (session) {
                 generation = stream->source_generation;
             }
         }

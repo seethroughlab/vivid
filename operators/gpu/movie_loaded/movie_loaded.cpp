@@ -581,11 +581,11 @@ private:
             const double am = session_->audio_read_head_media_time.load(std::memory_order_relaxed);
             std::fprintf(stderr,
                 "[movie_loaded] CLOCK  audio_master=%d  read_frames=%llu  audio_mono=%.4f  "
-                "decoder_local=%.4f  local=%.4f  gen=%u\n",
+                "decoder_local=%.4f  local=%.4f  gen=%llu\n",
                 using_audio_master ? 1 : 0,
                 static_cast<unsigned long long>(rf), am,
                 decoder_local_time_s, local_time_s,
-                media_clock_.source_generation);
+                static_cast<unsigned long long>(media_clock_.source_generation));
         }
 
         if (!using_audio_master) {
@@ -630,7 +630,6 @@ private:
 
         if (ctx) {
             media_stream_.handle_id = handle_id_;
-            media_stream_.session_ptr = reinterpret_cast<uint64_t>(session_.get());
             media_stream_.source_generation = media_clock_.source_generation;
             media_stream_.schema_version = 1;
             media_stream_.flags = 0;

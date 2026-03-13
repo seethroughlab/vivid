@@ -167,7 +167,6 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
         bool valid = false;
         vivid::MediaClockV1 clock{};
         uint64_t handle_id = 0;
-        uint64_t session_ptr = 0;
     };
 
     static constexpr uint32_t kInputPortMediaStream = 0;
@@ -181,7 +180,6 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
         const auto* stream = static_cast<const vivid::MediaStreamV1*>(ptr);
         s.clock = stream->clock;
         s.handle_id = stream->handle_id;
-        s.session_ptr = stream->session_ptr;
         s.valid = true;
         return s;
     }
@@ -196,21 +194,26 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
         deferred_session_releases_.clear();
 
         // Attach/detach shared media-stream handle (from MovieLoaded output data).
-        const uint64_t pending_session_ptr = pending_stream_ptr_.exchange(0, std::memory_order_acq_rel);
-        if (pending_session_ptr != 0) {
-            // Verify the session is still valid via shared handles
-            const uint64_t handle = pending_stream_handle_.load(std::memory_order_acquire);
-            bool valid = false;
-            if (hs && handle != 0) {
-                auto entry = hs->resolve(handle);
-                valid = entry.valid && entry.payload == reinterpret_cast<void*>(pending_session_ptr);
+        const uint64_t pending_handle = pending_stream_handle_.load(std::memory_order_acquire);
+        if (pending_handle != active_stream_handle_) {
+            if (hs && active_stream_handle_ != 0) {
+                hs->release(active_stream_handle_);
+                active_stream_handle_ = 0;
             }
-            if (valid) {
-                active_session_ = reinterpret_cast<vivid::media::MediaSession*>(pending_session_ptr);
-                active_session_ptr_.store(active_session_, std::memory_order_release);
-                active_stream_handle_ = handle;
-            } else {
-                // Session was destroyed — null everything out
+
+            vivid::media::MediaSession* resolved_session = nullptr;
+            if (hs && pending_handle != 0 && hs->retain(pending_handle)) {
+                auto entry = hs->resolve(pending_handle);
+                if (entry.valid && entry.payload != nullptr &&
+                    entry.type && std::strcmp(entry.type, "media_stream_v1") == 0) {
+                    resolved_session = static_cast<vivid::media::MediaSession*>(entry.payload);
+                    active_stream_handle_ = pending_handle;
+                } else {
+                    hs->release(pending_handle);
+                }
+            }
+
+            if (!resolved_session) {
                 fill_thread_.update_session(nullptr);
                 fill_thread_.update_extractor(nullptr);
                 extractor_.store(nullptr, std::memory_order_release);
@@ -220,36 +223,26 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
                 session_extractor_.reset();
                 active_session_ = nullptr;
                 active_session_ptr_.store(nullptr, std::memory_order_release);
+            } else {
+                active_session_ = resolved_session;
+                active_session_ptr_.store(active_session_, std::memory_order_release);
             }
-        } else {
-            const uint64_t pending_handle = pending_stream_handle_.load(std::memory_order_acquire);
-            if (pending_handle != active_stream_handle_) {
-                if (hs && active_stream_handle_ != 0) {
-                    hs->release(active_stream_handle_);
-                    active_stream_handle_ = 0;
+        }
+
+        if (active_session_ && hs && active_stream_handle_ != 0) {
+            auto entry = hs->resolve(active_stream_handle_);
+            if (!entry.valid || entry.payload != active_session_) {
+                fill_thread_.update_session(nullptr);
+                fill_thread_.update_extractor(nullptr);
+                extractor_.store(nullptr, std::memory_order_release);
+                if (session_extractor_) {
+                    deferred_session_releases_.push_back(std::move(session_extractor_));
                 }
-                if (hs && pending_handle != 0 &&
-                    hs->retain(pending_handle)) {
-                    active_stream_handle_ = pending_handle;
-                }
-            }
-            // Validate existing session is still alive via its handle.
-            // The session may have been destroyed by MovieLoaded since last frame.
-            if (active_session_ && hs && active_stream_handle_ != 0) {
-                auto entry = hs->resolve(active_stream_handle_);
-                if (!entry.valid || entry.payload != active_session_) {
-                    fill_thread_.update_session(nullptr);
-                    fill_thread_.update_extractor(nullptr);
-                    extractor_.store(nullptr, std::memory_order_release);
-                    if (session_extractor_) {
-                        deferred_session_releases_.push_back(std::move(session_extractor_));
-                    }
-                    session_extractor_.reset();
-                    active_session_ = nullptr;
-                    active_session_ptr_.store(nullptr, std::memory_order_release);
-                    hs->release(active_stream_handle_);
-                    active_stream_handle_ = 0;
-                }
+                session_extractor_.reset();
+                active_session_ = nullptr;
+                active_session_ptr_.store(nullptr, std::memory_order_release);
+                hs->release(active_stream_handle_);
+                active_stream_handle_ = 0;
             }
         }
 
@@ -481,7 +474,6 @@ struct MovieAudioOut : vivid::AudioOperatorBase {
         }
         if (clock.valid) {
             pending_stream_handle_.store(clock.handle_id, std::memory_order_release);
-            pending_stream_ptr_.store(clock.session_ptr, std::memory_order_release);
         }
         clock_connected_.store(clock.valid ? 1u : 0u, std::memory_order_release);
         if (clock.valid) {
@@ -636,7 +628,6 @@ private:
     uint64_t callback_counter_ = 0;
     std::atomic<const VividSharedHandleService*> shared_handles_{nullptr};
     std::atomic<uint64_t> pending_stream_handle_{0};
-    std::atomic<uint64_t> pending_stream_ptr_{0};
     uint64_t active_stream_handle_ = 0;
     vivid::media::MediaSession* active_session_ = nullptr;
     std::atomic<vivid::media::MediaSession*> active_session_ptr_{nullptr};
