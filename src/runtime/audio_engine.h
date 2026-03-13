@@ -137,7 +137,7 @@ struct CrossDomainCustomWire {
     uint32_t audio_port_idx;
     uint32_t type_id = 0;
     VividPortTransport transport = VIVID_PORT_TRANSPORT_CUSTOM_REF;
-    uint32_t payload_size = 0;         // needed for CUSTOM_VALUE memcpy
+    uint32_t payload_size = 0;         // bounded snapshot size for audio-safe custom payloads
 };
 
 struct CustomPortSnapshot {

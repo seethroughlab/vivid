@@ -274,9 +274,18 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                             std::fprintf(stderr, "[vivid] AudioEngine: custom port type 0x%x not registered; wire rejected\n", from_ptype);
                             continue;
                         }
-                        if (info.transport == VIVID_PORT_TRANSPORT_CUSTOM_VALUE &&
+                        if (!info.audio_safe) {
+                            std::fprintf(stderr,
+                                         "[vivid] AudioEngine: custom port type '%s' [%s] is not audio-safe; wire rejected\n",
+                                         info.type_name, info.stable_type_id);
+                            continue;
+                        }
+                        if ((info.transport == VIVID_PORT_TRANSPORT_CUSTOM_VALUE ||
+                             info.transport == VIVID_PORT_TRANSPORT_CUSTOM_REF) &&
                             info.payload_size > CustomPortSnapshot::kMaxBytes) {
-                            std::fprintf(stderr, "[vivid] AudioEngine: CUSTOM_VALUE payload (%u bytes) exceeds max (%u); wire rejected\n",
+                            std::fprintf(stderr,
+                                         "[vivid] AudioEngine: custom payload '%s' [%s] (%u bytes) exceeds max (%u); wire rejected\n",
+                                         info.type_name, info.stable_type_id,
                                          info.payload_size, CustomPortSnapshot::kMaxBytes);
                             continue;
                         }
@@ -805,11 +814,10 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
             if (data_ptr) {
                 dst.type_id   = hw.type_id;
                 dst.transport = hw.transport;
-                // Always snapshot the full source struct so the audio side
-                // sees the same type the GPU/control operator wrote.
-                // For CUSTOM_REF ports this includes handle_id, session_ptr,
-                // clock, etc. — the consumer casts custom_inputs[i] to the
-                // original struct type and reads all fields.
+                // Audio crossing uses bounded POD snapshots for both
+                // CUSTOM_VALUE payloads and audio-safe CUSTOM_REF ref-token
+                // payloads. CUSTOM_REF is still a ref-token contract here,
+                // not direct shared-object access on the audio thread.
                 const uint32_t copy_size = std::min(hw.payload_size,
                                                      CustomPortSnapshot::kMaxBytes);
                 std::memcpy(dst.bytes, data_ptr, copy_size);
@@ -1113,10 +1121,10 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                 if (!in.valid) {
                     ns.custom_input_values[p] = nullptr;
                 } else {
-                    // Both CUSTOM_VALUE and CUSTOM_REF: the snapshot
-                    // contains the full source struct.  Point the
-                    // consumer at the snapshot bytes so it can cast to
-                    // the original type (e.g. MediaStreamV1).
+                    // The audio operator reads a stable snapshot view of the
+                    // custom payload bytes for this callback. For CUSTOM_REF
+                    // ports, this is a small ref-token struct, not direct
+                    // access to the underlying shared object.
                     ns.custom_input_values[p] = static_cast<void*>(
                         const_cast<uint8_t*>(in.bytes));
                 }
