@@ -57,6 +57,69 @@ static const char* port_type_name(VividPortType t) {
     }
 }
 
+static bool is_custom_port_spec(const VividPortSpec& p) {
+    return !p.stable_type_id.empty();
+}
+
+static std::string custom_port_decl(const VividPortSpec& p) {
+    const char* dir = (p.direction == VIVID_PORT_INPUT) ? "VIVID_PORT_INPUT" : "VIVID_PORT_OUTPUT";
+    if (p.transport == VIVID_PORT_TRANSPORT_CUSTOM_VALUE)
+        return "        out.push_back(VIVID_CUSTOM_VALUE_PORT(\"" + p.name + "\", " + dir + ", " + p.type_name + "));\n";
+    return "        out.push_back(VIVID_CUSTOM_REF_PORT(\"" + p.name + "\", " + dir + ", " + p.type_name + "));\n";
+}
+
+static void emit_custom_type_support(std::ostringstream& s,
+                                     const std::vector<VividPortSpec>& ports) {
+    std::vector<VividPortSpec> custom_types;
+    for (const auto& p : ports) {
+        if (!is_custom_port_spec(p)) continue;
+        bool seen = false;
+        for (const auto& existing : custom_types) {
+            if (existing.type_name == p.type_name &&
+                existing.stable_type_id == p.stable_type_id) {
+                seen = true;
+                break;
+            }
+        }
+        if (!seen) custom_types.push_back(p);
+    }
+    if (custom_types.empty()) return;
+
+    s << "#include \"operator_api/type_id.h\"\n";
+    s << "#include \"operator_api/port_type_registry.h\"\n";
+    s << "#include <cstdint>\n\n";
+
+    for (const auto& p : custom_types) {
+        s << "struct " << p.type_name << " {\n";
+        if (p.payload_size > 0) {
+            s << "    uint8_t bytes[" << p.payload_size << "] = {};\n";
+        } else {
+            s << "    uint8_t bytes[16] = {};\n";
+        }
+        s << "};\n";
+        if (p.transport == VIVID_PORT_TRANSPORT_CUSTOM_VALUE) {
+            s << "VIVID_DECLARE_CUSTOM_VALUE_TYPE(" << p.type_name << ", \""
+              << p.stable_type_id << "\", \"" << p.type_name << "\", "
+              << (p.audio_safe ? "true" : "false") << ");\n\n";
+        } else {
+            s << "VIVID_DECLARE_CUSTOM_REF_TYPE(" << p.type_name << ", \""
+              << p.stable_type_id << "\", \"" << p.type_name << "\", "
+              << (p.audio_safe ? "true" : "false") << ");\n\n";
+        }
+    }
+
+    s << "extern \"C\" const VividPortTypeInfo* vivid_describe_custom_types(uint32_t* count) {\n";
+    s << "    static const VividPortTypeInfo kInfos[] = {\n";
+    for (size_t i = 0; i < custom_types.size(); ++i) {
+        s << "        vivid_custom_type_info<" << custom_types[i].type_name << ">()";
+        s << (i + 1 < custom_types.size() ? ",\n" : "\n");
+    }
+    s << "    };\n";
+    s << "    *count = static_cast<uint32_t>(sizeof(kInfos) / sizeof(kInfos[0]));\n";
+    s << "    return kInfos;\n";
+    s << "}\n\n";
+}
+
 static const char* domain_subdir(VividDomain d) {
     switch (d) {
         case VIVID_DOMAIN_CONTROL: return "control";
@@ -113,8 +176,12 @@ static void emit_collect_ports(std::ostringstream& s,
                                const std::vector<VividPortSpec>& ports) {
     s << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n";
     for (const auto& p : ports) {
-        const char* dir = (p.direction == VIVID_PORT_INPUT) ? "VIVID_PORT_INPUT" : "VIVID_PORT_OUTPUT";
-        s << "        out.push_back({\"" << p.name << "\", " << port_type_name(p.type) << ", " << dir << "});\n";
+        if (is_custom_port_spec(p)) {
+            s << custom_port_decl(p);
+        } else {
+            const char* dir = (p.direction == VIVID_PORT_INPUT) ? "VIVID_PORT_INPUT" : "VIVID_PORT_OUTPUT";
+            s << "        out.push_back({\"" << p.name << "\", " << port_type_name(p.type) << ", " << dir << "});\n";
+        }
     }
     s << "    }\n";
 }
@@ -168,6 +235,7 @@ static std::string control_template(const std::string& name, const std::string& 
 
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
+    emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = false;\n\n";
@@ -243,6 +311,7 @@ static std::string audio_template(const std::string& name, const std::string& st
 
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
+    emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::AudioOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
@@ -316,6 +385,7 @@ static std::string gpu_template(const std::string& name, const std::string& stru
 
     std::ostringstream s;
     s << "#include \"operator_api/wgsl_filter.h\"\n\n";
+    emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
@@ -621,6 +691,21 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
             if (p.name.empty()) {
                 result.error = "port names must not be empty";
                 return result;
+            }
+            if (is_custom_port_spec(p)) {
+                if (p.type_name.empty()) {
+                    result.error = "custom port '" + p.name + "' must define type_name";
+                    return result;
+                }
+                if (p.stable_type_id.empty()) {
+                    result.error = "custom port '" + p.name + "' must define stable_type_id";
+                    return result;
+                }
+                if (p.transport != VIVID_PORT_TRANSPORT_CUSTOM_REF &&
+                    p.transport != VIVID_PORT_TRANSPORT_CUSTOM_VALUE) {
+                    result.error = "custom port '" + p.name + "' must use CUSTOM_REF or CUSTOM_VALUE transport";
+                    return result;
+                }
             }
             for (const auto& existing : port_names) {
                 if (existing == p.name) {

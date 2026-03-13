@@ -11,6 +11,8 @@ struct VividPortSpec {
     VividPortTransport transport   = VIVID_PORT_TRANSPORT_SCALAR; // relevant only for custom types
     uint32_t           payload_size = 0;                          // 0 for built-in types
     std::string        type_name;                                  // empty for built-in types
+    std::string        stable_type_id;                             // required for custom types
+    bool               audio_safe = false;                         // relevant only for custom types
 };
 
 struct VividParamSpec {

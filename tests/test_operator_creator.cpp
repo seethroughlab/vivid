@@ -457,6 +457,42 @@ int main() {
     }
 
     // =================================================================
+    // Test 15b: CreateOperatorRequest with custom typed ports
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 15b: Custom typed ports ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_custom_typed_ports";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "typed_port";
+        req.domain = VIVID_DOMAIN_CONTROL;
+        req.ports = {
+            {"stream_in", 0, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
+                32, "TestStreamToken", "tests.vivid.test_stream_token_v1", true},
+            {"stream_out", 0, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
+                32, "TestStreamToken", "tests.vivid.test_stream_token_v1", true},
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(result.success, "create with custom typed ports succeeds");
+
+        std::string src = read_file(result.cpp_path);
+        check(src.find("VIVID_DECLARE_CUSTOM_REF_TYPE(TestStreamToken") != std::string::npos,
+              "custom type declaration emitted");
+        check(src.find("tests.vivid.test_stream_token_v1") != std::string::npos,
+              "stable custom type id emitted");
+        check(src.find("VIVID_CUSTOM_REF_PORT(\"stream_in\"") != std::string::npos,
+              "custom ref input port emitted");
+        check(src.find("vivid_describe_custom_types") != std::string::npos,
+              "custom type registration boilerplate emitted");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
     // Test 16: CreateOperatorRequest with custom params
     // =================================================================
     {
