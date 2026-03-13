@@ -3,6 +3,7 @@
 #include <mutex>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 // ---------------------------------------------------------------------------
 // File-static global registry — process-wide singleton
@@ -15,21 +16,21 @@ static std::unordered_map<uint32_t, VividPortTypeInfo> s_registry;
 // vivid_register_port_type
 // ---------------------------------------------------------------------------
 
-void vivid_register_port_type(const VividPortTypeInfo* info) {
-    if (!info || !info->type_name) {
-        std::fprintf(stderr, "[port_type_registry] vivid_register_port_type: NULL info or type_name\n");
-        std::abort();
+int vivid_register_port_type(const VividPortTypeInfo* info) {
+    if (!info || !info->type_name || !info->stable_type_id) {
+        std::fprintf(stderr, "[port_type_registry] vivid_register_port_type: NULL info, type_name, or stable_type_id\n");
+        return 0;
     }
     if (!(info->type_id & 0x80000000u)) {
         std::fprintf(stderr, "[port_type_registry] vivid_register_port_type: type_id 0x%08x "
                              "does not have high bit set (not a custom type)\n", info->type_id);
-        std::abort();
+        return 0;
     }
     if (info->abi_version != VIVID_PORT_TYPE_ABI_VERSION) {
         std::fprintf(stderr, "[port_type_registry] vivid_register_port_type: abi_version mismatch "
                              "for '%s' (got %u, want %u)\n",
                              info->type_name, info->abi_version, VIVID_PORT_TYPE_ABI_VERSION);
-        std::abort();
+        return 0;
     }
 
     std::lock_guard<std::mutex> lock(s_mu);
@@ -39,15 +40,19 @@ void vivid_register_port_type(const VividPortTypeInfo* info) {
         const VividPortTypeInfo& existing = it->second;
         if (existing.transport    != info->transport    ||
             existing.payload_size != info->payload_size ||
-            existing.abi_version  != info->abi_version) {
+            existing.abi_version  != info->abi_version ||
+            existing.audio_safe   != info->audio_safe ||
+            std::strcmp(existing.stable_type_id, info->stable_type_id) != 0) {
             std::fprintf(stderr, "[port_type_registry] vivid_register_port_type: "
-                                 "conflicting registration for type_id 0x%08x ('%s' vs '%s')\n",
-                                 info->type_id, existing.type_name, info->type_name);
-            std::abort();
+                                 "conflicting registration for type_id 0x%08x ('%s' [%s] vs '%s' [%s])\n",
+                                 info->type_id, existing.type_name, existing.stable_type_id,
+                                 info->type_name, info->stable_type_id);
+            return 0;
         }
-        return; // identical re-registration — idempotent
+        return 1; // identical re-registration — idempotent
     }
     s_registry[info->type_id] = *info;
+    return 1;
 }
 
 // ---------------------------------------------------------------------------

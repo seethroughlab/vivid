@@ -246,6 +246,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(const VividOperatorDesc
     entry.ports.resize(port_count);
     entry.port_names.resize(port_count);
     entry.port_type_names.resize(port_count);
+    entry.port_stable_type_ids.resize(port_count);
     for (uint32_t i = 0; i < port_count; ++i) {
         const auto& sp = src->ports[i];
         auto& dp = entry.ports[i];
@@ -260,6 +261,9 @@ static std::optional<DeferredEntry> deep_copy_descriptor(const VividOperatorDesc
         entry.port_type_names[i] = sp.type_name ? sp.type_name : "";
         dp.type_name = entry.port_type_names[i].empty() ? nullptr
                                                         : entry.port_type_names[i].c_str();
+        entry.port_stable_type_ids[i] = sp.stable_type_id ? sp.stable_type_id : "";
+        dp.stable_type_id = entry.port_stable_type_ids[i].empty() ? nullptr
+                                                                  : entry.port_stable_type_ids[i].c_str();
     }
 
     // Build the owned descriptor
@@ -637,11 +641,10 @@ bool OperatorRegistry::reload_operator(const std::string& type_name, const std::
         return false;
     }
 
-    // OperatorLoader::load() calls unload() (dlclose) then dlopen on new path
+    // OperatorLoader::load() swaps atomically: on failure the previous loader remains live.
     if (!it->second->load(new_dylib_path.c_str())) {
         std::fprintf(stderr,
-            "[vivid] hot-reload failed for '%s' — loader is now unloaded; "
-            "operator disabled until next successful reload\n",
+            "[vivid] hot-reload failed for '%s' — previous loader kept active\n",
             type_name.c_str());
         return false;
     }

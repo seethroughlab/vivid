@@ -23,14 +23,19 @@ extern "C" {
 
 // ABI version embedded in every record. Increment when VividPortTypeInfo
 // gains new fields.
-#define VIVID_PORT_TYPE_ABI_VERSION 1u
+#define VIVID_PORT_TYPE_ABI_VERSION 2u
 
 // Metadata record for one registered custom port type.
 typedef struct VividPortTypeInfo {
-    uint32_t           type_id;       // vivid_port_type<T>() — high bit set
+    uint32_t           type_id;       // VIVID_CUSTOM_TYPE_ID("...") — high bit set
     VividPortTransport transport;     // how the payload is conveyed
     uint32_t           payload_size;  // sizeof(T); must match on both sides of a wire
     const char*        type_name;     // human-readable label; never NULL
+    const char*        stable_type_id;// stable namespaced id; never NULL
+    uint8_t            audio_safe;    // 1 if valid for audio snapshot crossing
+    uint8_t            reserved0;
+    uint8_t            reserved1;
+    uint8_t            reserved2;
     uint32_t           abi_version;   // set to VIVID_PORT_TYPE_ABI_VERSION
     const char*        package_name;  // optional; owning package (e.g. "vivid_media"); may be NULL
     const char*        description;   // optional; human-readable description; may be NULL
@@ -39,8 +44,8 @@ typedef struct VividPortTypeInfo {
 // Register a custom port type with the runtime.
 // info must remain valid for the lifetime of the dylib (use static storage).
 // Re-registering the same type_id with identical fields is idempotent.
-// Re-registering with mismatched fields is a fatal error.
-void vivid_register_port_type(const VividPortTypeInfo* info);
+// Re-registering with mismatched fields fails and returns 0.
+int vivid_register_port_type(const VividPortTypeInfo* info);
 
 // Look up a registered type by its type_id token.
 // Returns 1 and writes *out on success; returns 0 if not found.
@@ -73,17 +78,30 @@ void vivid_list_port_types(VividPortTypeInfo* buf, uint32_t* count);
 typedef const VividPortTypeInfo* (*VividDescribeCustomTypesFn)(uint32_t* count);
 
 #ifdef __cplusplus
+#include "operator_api/type_id.h"
+
+template<typename T>
+constexpr VividPortTypeInfo vivid_custom_type_info(const char* package_name = nullptr,
+                                                   const char* description = nullptr) {
+    return VividPortTypeInfo {
+        vivid_port_type<T>(),
+        vivid_custom_type_traits<T>::transport,
+        static_cast<uint32_t>(sizeof(T)),
+        vivid_display_type_name<T>(),
+        vivid_stable_type_id<T>(),
+        vivid_custom_type_audio_safe<T>() ? 1u : 0u,
+        0u, 0u, 0u,
+        VIVID_PORT_TYPE_ABI_VERSION,
+        package_name,
+        description
+    };
+}
+
 // Emit vivid_describe_custom_types for a single CUSTOM_REF type.
 // Usage (at file scope): VIVID_DESCRIBE_REF_TYPE(MyType)
 #define VIVID_DESCRIBE_REF_TYPE(T) \
     extern "C" const VividPortTypeInfo* vivid_describe_custom_types(uint32_t* count) { \
-        static const VividPortTypeInfo kInfo = { \
-            vivid_port_type<T>(), \
-            VIVID_PORT_TRANSPORT_CUSTOM_REF, \
-            static_cast<uint32_t>(sizeof(T)), \
-            #T, VIVID_PORT_TYPE_ABI_VERSION, \
-            nullptr, nullptr \
-        }; \
+        static const VividPortTypeInfo kInfo = vivid_custom_type_info<T>(); \
         *count = 1; return &kInfo; \
     }
 
@@ -92,12 +110,8 @@ typedef const VividPortTypeInfo* (*VividDescribeCustomTypesFn)(uint32_t* count);
 #define VIVID_DESCRIBE_REF_TYPES2(T1, T2) \
     extern "C" const VividPortTypeInfo* vivid_describe_custom_types(uint32_t* count) { \
         static const VividPortTypeInfo kInfos[2] = { \
-            { vivid_port_type<T1>(), VIVID_PORT_TRANSPORT_CUSTOM_REF, \
-              static_cast<uint32_t>(sizeof(T1)), #T1, VIVID_PORT_TYPE_ABI_VERSION, \
-              nullptr, nullptr }, \
-            { vivid_port_type<T2>(), VIVID_PORT_TRANSPORT_CUSTOM_REF, \
-              static_cast<uint32_t>(sizeof(T2)), #T2, VIVID_PORT_TYPE_ABI_VERSION, \
-              nullptr, nullptr } \
+            vivid_custom_type_info<T1>(), \
+            vivid_custom_type_info<T2>() \
         }; \
         *count = 2; return kInfos; \
     }

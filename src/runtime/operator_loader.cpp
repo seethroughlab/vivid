@@ -175,8 +175,22 @@ bool OperatorLoader::load(const char* path) {
             dlsym(new_handle, "vivid_describe_custom_types"))) {
         uint32_t count = 0;
         const VividPortTypeInfo* infos = desc_fn(&count);
-        for (uint32_t i = 0; i < count; ++i)
-            vivid_register_port_type(&infos[i]);
+        for (uint32_t i = 0; i < count; ++i) {
+            if (!vivid_register_port_type(&infos[i])) {
+                std::fprintf(stderr, "[vivid] Failed to register custom port type for plugin: %s\n", path);
+                dlclose(new_handle);
+                handle_ = nullptr;
+                desc_fn_ = nullptr;
+                create_fn_ = nullptr;
+                destroy_fn_ = nullptr;
+                process_fn_ = nullptr;
+                process_audio_fn_ = nullptr;
+                process_gpu_fn_ = nullptr;
+                draw_thumb_fn_ = nullptr;
+                main_update_fn_ = nullptr;
+                return false;
+            }
+        }
     }
 
     return true;
