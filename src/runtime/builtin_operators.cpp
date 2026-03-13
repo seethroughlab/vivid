@@ -1,6 +1,9 @@
 #include "runtime/builtin_operators.h"
 #include "runtime/operator_registry.h"
 #include "operator_api/types.h"
+#include "operator_api/midi_types.h"
+#include "operator_api/port_type_registry.h"
+#include "operator_api/type_id.h"
 
 // ============================================================================
 // audio_out — explicit audio sink node
@@ -71,7 +74,19 @@ static void  video_out_process(void*, VividProcessContext*) { /* no-op */ }
 // Registration
 // ============================================================================
 
+static void register_core_custom_types() {
+    VividPortTypeInfo midi_info = {};
+    midi_info.type_id      = vivid_port_type<VividMidiBuffer>();
+    midi_info.transport    = VIVID_PORT_TRANSPORT_CUSTOM_REF;
+    midi_info.payload_size = sizeof(VividMidiBuffer);
+    midi_info.type_name    = "VividMidiBuffer";
+    midi_info.abi_version  = VIVID_PORT_TYPE_ABI_VERSION;
+    vivid_register_port_type(&midi_info);
+}
+
 void register_builtin_operators(vivid::OperatorRegistry& registry) {
+    register_core_custom_types();
+
     registry.register_builtin("audio_out",
         audio_out_descriptor, audio_out_create, audio_out_destroy, audio_out_process);
     registry.register_builtin("video_out",
