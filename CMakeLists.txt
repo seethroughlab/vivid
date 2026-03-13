@@ -1525,6 +1525,15 @@ add_test(NAME test_media_clock
     COMMAND test_media_clock
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_port_type_registry
+    tests/test_port_type_registry.cpp
+    src/runtime/port_type_registry.cpp
+)
+target_include_directories(test_port_type_registry PRIVATE src tests ${CMAKE_SOURCE_DIR})
+add_test(NAME test_port_type_registry
+    COMMAND test_port_type_registry
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_media_session_queue
     tests/test_media_session_queue.cpp
 )

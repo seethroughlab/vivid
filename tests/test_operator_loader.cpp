@@ -340,12 +340,11 @@ int main() {
         reg.scan(staging.c_str());
         check(!reg.reload_operator("TestOp", "/nonexistent/bad.dylib"), "reload bad path fails");
 
-        // After failed reload, loader is in unloaded state
-        // (load() calls unload() first, then dlopen fails)
+        // After failed reload, the previous loader remains active.
         auto* loader = reg.find("TestOp");
         check(loader != nullptr, "reload bad: loader still in registry");
         if (loader) {
-            check(!loader->is_loaded(), "reload bad: loader is unloaded");
+            check(loader->is_loaded(), "reload bad: loader remains loaded");
         }
     }
 
@@ -563,11 +562,9 @@ int main() {
         check(true, "data-driven: process(nullptr, ctx) does not crash");
     }
 
-    // Test 33: hot-reload failure emits disabled-operator warning
-    // (Verifies reload_operator returns false and the loader is left unloaded,
-    //  matching the warning emitted to stderr.)
+    // Test 33: hot-reload failure keeps the previous loader active
     {
-        std::fprintf(stderr, "\n--- hot-reload failure leaves loader unloaded ---\n");
+        std::fprintf(stderr, "\n--- hot-reload failure keeps prior loader active ---\n");
         vivid::OperatorRegistry reg;
         reg.scan(staging.c_str());
 
@@ -575,13 +572,15 @@ int main() {
         bool ok = reg.reload_operator("TestOp", "/nonexistent/does_not_exist.dylib");
         check(!ok, "hot-reload bad path returns false");
 
-        // The loader remains in the registry but is now unloaded
+        // The loader remains in the registry and the previous instance remains active.
         auto* loader = reg.find("TestOp");
         check(loader != nullptr, "hot-reload: loader still in registry after failure");
         if (loader) {
-            check(!loader->is_loaded(), "hot-reload: loader is unloaded after failure");
-            check(loader->create_instance() == nullptr,
-                  "hot-reload: create_instance returns null on unloaded loader");
+            check(loader->is_loaded(), "hot-reload: loader remains loaded after failure");
+            void* instance = loader->create_instance();
+            check(instance != nullptr,
+                  "hot-reload: create_instance still works after failure");
+            loader->destroy_instance(instance);
         }
     }
 
