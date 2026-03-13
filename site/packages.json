@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-03-11",
+  "packages": [
+    {
+      "name": "vivid-3d",
+      "description": "3D rendering operators for Vivid",
+      "version": "0.1.0",
+      "vivid_core": ">=0.1.0 <2.0.0",
+      "author": "seethroughlab",
+      "url": "https://github.com/seethroughlab/vivid-3d.git"
+    },
+    {
+      "name": "vivid-glitch",
+      "description": "Creative audio and visual glitch effects — stutter, tape stop, datamosh, VHS, and more",
+      "version": "2.0.0",
+      "vivid_core": ">=0.1.0 <2.0.0",
+      "author": "Jeff",
+      "url": "https://github.com/seethroughlab/vivid-glitch.git"
+    },
+    {
+      "name": "vivid-cef",
+      "description": "CEF browser operator — render HTML/CSS/JS/WebGL as GPU textures",
+      "version": "0.1.0",
+      "vivid_core": "",
+      "author": "Jeff",
+      "url": "https://github.com/seethroughlab/vivid-cef.git"
+    }
+  ]
+}

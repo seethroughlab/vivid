@@ -22,9 +22,9 @@ static std::string quote(const std::string& s) {
 }
 
 static constexpr const char* kCatalogPrimaryURL =
-    "https://raw.githubusercontent.com/seethroughlab/vivid/master/catalog/packages.json";
+    "https://raw.githubusercontent.com/seethroughlab/vivid/master/site/packages.json";
 static constexpr const char* kCatalogFallbackURL1 =
-    "https://raw.githubusercontent.com/seethroughlab/vivid/main/catalog/packages.json";
+    "https://raw.githubusercontent.com/seethroughlab/vivid/main/site/packages.json";
 static constexpr const char* kCatalogFallbackURL2 =
     "https://raw.githubusercontent.com/seethroughlab/package-index/main/packages.json";
 

@@ -4,7 +4,7 @@ on:
   push:
     branches: [master]
     paths:
-      - "catalog/**"
+      - "site/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           rm -rf _site
           mkdir -p _site
-          cp -R catalog/* _site/
+          cp -R site/* _site/
           echo "vivid.seethroughlab.com" > _site/CNAME
 
       - name: Upload Pages artifact

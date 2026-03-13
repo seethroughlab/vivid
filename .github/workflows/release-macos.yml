@@ -213,7 +213,7 @@ jobs:
             ${{ steps.artifact.outputs.zip }}
             ${{ steps.appcast.outputs.path }}
 
-      - name: Update catalog/appcast.xml on master
+      - name: Update site/appcast.xml on master
         if: ${{ github.event_name == 'push' }}
         shell: bash
         run: |
@@ -221,11 +221,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout master
-          cp build/appcast.xml catalog/appcast.xml
-          if git diff --quiet -- catalog/appcast.xml; then
+          cp build/appcast.xml site/appcast.xml
+          if git diff --quiet -- site/appcast.xml; then
             echo "No appcast change"
             exit 0
           fi
-          git add catalog/appcast.xml
+          git add site/appcast.xml
           git commit -m "release: update appcast for ${{ steps.ver.outputs.tag }}"
           git push origin HEAD:master

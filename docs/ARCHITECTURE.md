@@ -391,7 +391,7 @@ vivid/
 │   ├── intro/   ├── filters/   ├── gpu/   ├── audio/   └── io/
 ├── tests/                      # CTest suite
 ├── mcp/                        # Python MCP server (vivid_mcp.py)
-├── catalog/                    # Package catalog index
+├── site/                       # Website & package catalog
 ├── fonts/                      # Bundled fonts
 ├── assets/                     # Demo assets (videos, images)
 ├── platform/                   # Platform-specific resources (Info.plist, icons)

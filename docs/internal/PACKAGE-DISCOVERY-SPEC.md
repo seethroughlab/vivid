@@ -31,7 +31,7 @@ Fallback website host:
 
 ### Catalog source
 
-- Curated JSON file in `vivid` repo, e.g. `catalog/packages.json`.
+- Curated JSON file in `vivid` repo, e.g. `site/packages.json`.
 - Updated via PRs only (no open write API for 1.0).
 
 ### Runtime surface
@@ -43,7 +43,7 @@ Fallback website host:
 
 ### Website surface
 
-- Static site generated from `catalog/packages.json`.
+- Static site generated from `site/packages.json`.
 - Render package cards with:
   - name
   - short description
@@ -112,7 +112,7 @@ Initial required rollout targets:
 
 ## Rollout Plan
 
-1. Add `catalog/packages.json` to `vivid` with current package set.
+1. Add `site/packages.json` to `vivid` with current package set.
 2. Add `preview_image_url` entries for all sibling repos.
 3. Add static catalog website (GitHub Pages in `vivid`; fallback `seethroughlab.github.io`).
 4. Add runtime action to open discovery site.

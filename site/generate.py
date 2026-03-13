@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate catalog/packages.json from repos.json + vivid-package.json manifests.
+"""Generate site/packages.json from repos.json + vivid-package.json manifests.
 
 By default, fetches manifests from GitHub. Use --local to read from sibling
 directories (../vivid-{name}/vivid-package.json) instead.

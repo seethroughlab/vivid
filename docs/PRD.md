@@ -525,7 +525,7 @@ vivid/
 └─ docs/
 ```
 
-> **Note:** The actual directory structure has evolved significantly. See `docs/ARCHITECTURE.md` §5.15 for the current layout. Key differences: `src/interface/` is now `src/ui/`, the runtime directory contains ~40 modules (not the 10 shown above), and the project includes top-level directories for `tests/`, `filters/`, `mcp/`, `catalog/`, `fonts/`, `assets/`, `platform/`, and `scripts/`.
+> **Note:** The actual directory structure has evolved significantly. See `docs/ARCHITECTURE.md` §5.15 for the current layout. Key differences: `src/interface/` is now `src/ui/`, the runtime directory contains ~40 modules (not the 10 shown above), and the project includes top-level directories for `tests/`, `filters/`, `mcp/`, `site/`, `fonts/`, `assets/`, `platform/`, and `scripts/`.
 
 Each operator is a directory containing its .cpp source and, for GPU operators, its .wgsl shader(s). This structure supports hot-reload (watch one directory per operator), scaffolding (create a directory with boilerplate), and the library system (§5.17).
 
