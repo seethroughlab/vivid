@@ -313,6 +313,8 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_obj_add_str(doc, p, "transport", transport_str(pd.transport));
                 if (pd.type_name)
                     yyjson_mut_obj_add_strcpy(doc, p, "type_name", pd.type_name);
+                if (pd.stable_type_id)
+                    yyjson_mut_obj_add_strcpy(doc, p, "stable_type_id", pd.stable_type_id);
                 if (pd.payload_size > 0)
                     yyjson_mut_obj_add_uint(doc, p, "payload_size", pd.payload_size);
 
@@ -530,6 +532,8 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_obj_add_str(doc, in, "transport", transport_str(pd.transport));
                 if (pd.type_name)
                     yyjson_mut_obj_add_strcpy(doc, in, "type_name", pd.type_name);
+                if (pd.stable_type_id)
+                    yyjson_mut_obj_add_strcpy(doc, in, "stable_type_id", pd.stable_type_id);
                 if (pd.payload_size > 0)
                     yyjson_mut_obj_add_int(doc, in, "payload_size",
                         static_cast<int64_t>(pd.payload_size));
@@ -579,6 +583,8 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                 yyjson_mut_obj_add_str(doc, out, "transport", transport_str(pd.transport));
                 if (pd.type_name)
                     yyjson_mut_obj_add_strcpy(doc, out, "type_name", pd.type_name);
+                if (pd.stable_type_id)
+                    yyjson_mut_obj_add_strcpy(doc, out, "stable_type_id", pd.stable_type_id);
                 if (pd.payload_size > 0)
                     yyjson_mut_obj_add_int(doc, out, "payload_size",
                         static_cast<int64_t>(pd.payload_size));
@@ -1477,6 +1483,8 @@ static std::string handle_list_types(OperatorRegistry& registry) {
             yyjson_mut_obj_add_str(doc, p, "transport", transport_str(pd.transport));
             if (pd.type_name)
                 yyjson_mut_obj_add_strcpy(doc, p, "type_name", pd.type_name);
+            if (pd.stable_type_id)
+                yyjson_mut_obj_add_strcpy(doc, p, "stable_type_id", pd.stable_type_id);
             if (pd.payload_size > 0)
                 yyjson_mut_obj_add_uint(doc, p, "payload_size", pd.payload_size);
             if (pd.direction == VIVID_PORT_INPUT)
@@ -2553,6 +2561,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             yyjson_mut_obj_add_str(rdoc, p, "transport", transport_str(portd.transport));
                             if (portd.type_name)
                                 yyjson_mut_obj_add_strcpy(rdoc, p, "type_name", portd.type_name);
+                            if (portd.stable_type_id)
+                                yyjson_mut_obj_add_strcpy(rdoc, p, "stable_type_id", portd.stable_type_id);
                             if (portd.payload_size > 0)
                                 yyjson_mut_obj_add_uint(rdoc, p, "payload_size", portd.payload_size);
                             if (portd.direction == VIVID_PORT_INPUT)

@@ -75,12 +75,7 @@ static void  video_out_process(void*, VividProcessContext*) { /* no-op */ }
 // ============================================================================
 
 static void register_core_custom_types() {
-    VividPortTypeInfo midi_info = {};
-    midi_info.type_id      = vivid_port_type<VividMidiBuffer>();
-    midi_info.transport    = VIVID_PORT_TRANSPORT_CUSTOM_REF;
-    midi_info.payload_size = sizeof(VividMidiBuffer);
-    midi_info.type_name    = "VividMidiBuffer";
-    midi_info.abi_version  = VIVID_PORT_TYPE_ABI_VERSION;
+    const VividPortTypeInfo midi_info = vivid_custom_type_info<VividMidiBuffer>();
     vivid_register_port_type(&midi_info);
 }
 
