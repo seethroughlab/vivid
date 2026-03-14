@@ -2910,6 +2910,22 @@ bool ControlServer::start(int port) {
                         yyjson_mut_obj_add_strcpy(rdoc, obj, "vivid_core", e.vivid_core.c_str());
                     yyjson_mut_obj_add_strcpy(rdoc, obj, "author", e.author.c_str());
                     yyjson_mut_obj_add_strcpy(rdoc, obj, "url", e.url.c_str());
+                    if (!e.category.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "category", e.category.c_str());
+                    if (!e.description_short.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "description_short", e.description_short.c_str());
+                    if (!e.status.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "status", e.status.c_str());
+                    if (!e.status_note.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "status_note", e.status_note.c_str());
+                    if (!e.preview_image_url.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "preview_image_url", e.preview_image_url.c_str());
+                    if (!e.repo_url.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "repo_url", e.repo_url.c_str());
+                    if (!e.homepage_url.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "homepage_url", e.homepage_url.c_str());
+                    if (!e.install_url.empty())
+                        yyjson_mut_obj_add_strcpy(rdoc, obj, "install_url", e.install_url.c_str());
                     yyjson_mut_obj_add_bool(rdoc, obj, "installed", e.installed);
                     if (e.installed)
                         yyjson_mut_obj_add_strcpy(rdoc, obj, "installed_version", e.installed_version.c_str());

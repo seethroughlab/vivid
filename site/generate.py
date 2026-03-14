@@ -84,6 +84,18 @@ def main() -> None:
         entry["repo_url"] = url.removesuffix(".git")
         entry["install_url"] = url
 
+        # Auto-derive preview_image_url if not explicitly set in repos.json
+        if not entry.get("preview_image_url"):
+            derived_url = f"https://raw.githubusercontent.com/seethroughlab/{name}/master/docs/images/preview.png"
+            if args.local:
+                preview_path = SCRIPT_DIR.parent.parent / name / "docs" / "images" / "preview.png"
+                if preview_path.exists():
+                    entry["preview_image_url"] = derived_url
+                else:
+                    print(f"  note: {name} has no docs/images/preview.png, skipping thumbnail", file=sys.stderr)
+            else:
+                entry["preview_image_url"] = derived_url
+
         packages.append(entry)
 
     catalog = {

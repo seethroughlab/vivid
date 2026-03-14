@@ -13,7 +13,21 @@
       "url": "https://github.com/seethroughlab/vivid-3d.git",
       "status": "experimental",
       "repo_url": "https://github.com/seethroughlab/vivid-3d",
-      "install_url": "https://github.com/seethroughlab/vivid-3d.git"
+      "install_url": "https://github.com/seethroughlab/vivid-3d.git",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-3d/master/docs/images/preview.png"
+    },
+    {
+      "name": "vivid-drums",
+      "description": "Drum synthesis package library for Vivid",
+      "version": "0.1.0",
+      "vivid_core": ">=0.1.0 <2.0.0",
+      "author": "seethroughlab",
+      "category": "audio",
+      "description_short": "",
+      "url": "https://github.com/seethroughlab/vivid-drums.git",
+      "repo_url": "https://github.com/seethroughlab/vivid-drums",
+      "install_url": "https://github.com/seethroughlab/vivid-drums.git",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-drums/master/docs/images/preview.png"
     },
     {
       "name": "vivid-glitch",
@@ -25,7 +39,8 @@
       "description_short": "",
       "url": "https://github.com/seethroughlab/vivid-glitch.git",
       "repo_url": "https://github.com/seethroughlab/vivid-glitch",
-      "install_url": "https://github.com/seethroughlab/vivid-glitch.git"
+      "install_url": "https://github.com/seethroughlab/vivid-glitch.git",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-glitch/master/docs/images/preview.png"
     },
     {
       "name": "vivid-cef",
@@ -38,7 +53,72 @@
       "url": "https://github.com/seethroughlab/vivid-cef.git",
       "status": "experimental",
       "repo_url": "https://github.com/seethroughlab/vivid-cef",
-      "install_url": "https://github.com/seethroughlab/vivid-cef.git"
+      "install_url": "https://github.com/seethroughlab/vivid-cef.git",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-cef/master/docs/images/preview.png"
+    },
+    {
+      "name": "vivid-physics2d",
+      "description": "2D physics simulation operators for Vivid",
+      "version": "0.1.0",
+      "vivid_core": ">=0.1.0 <2.0.0",
+      "author": "Jeff",
+      "category": "control",
+      "description_short": "",
+      "url": "https://github.com/seethroughlab/vivid-physics2d.git",
+      "status": "experimental",
+      "repo_url": "https://github.com/seethroughlab/vivid-physics2d",
+      "install_url": "https://github.com/seethroughlab/vivid-physics2d.git"
+    },
+    {
+      "name": "vivid-plexus",
+      "description": "Plexus GPU + audio package library for Vivid",
+      "version": "0.1.0",
+      "vivid_core": ">=0.1.0 <2.0.0",
+      "author": "seethroughlab",
+      "category": "hybrid",
+      "description_short": "",
+      "url": "https://github.com/seethroughlab/vivid-plexus.git",
+      "repo_url": "https://github.com/seethroughlab/vivid-plexus",
+      "install_url": "https://github.com/seethroughlab/vivid-plexus.git",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-plexus/master/docs/images/preview.png"
+    },
+    {
+      "name": "vivid-sampler",
+      "description": "Sample playback operators for Vivid",
+      "version": "0.1.0",
+      "vivid_core": ">=0.1.0 <2.0.0",
+      "author": "seethroughlab",
+      "category": "audio",
+      "description_short": "",
+      "url": "https://github.com/seethroughlab/vivid-sampler.git",
+      "repo_url": "https://github.com/seethroughlab/vivid-sampler",
+      "install_url": "https://github.com/seethroughlab/vivid-sampler.git"
+    },
+    {
+      "name": "vivid-sequencers",
+      "description": "Sequencing control package library for Vivid",
+      "version": "0.1.0",
+      "vivid_core": ">=0.1.0 <2.0.0",
+      "author": "seethroughlab",
+      "category": "control",
+      "description_short": "",
+      "url": "https://github.com/seethroughlab/vivid-sequencers.git",
+      "repo_url": "https://github.com/seethroughlab/vivid-sequencers",
+      "install_url": "https://github.com/seethroughlab/vivid-sequencers.git",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-sequencers/master/docs/images/preview.png"
+    },
+    {
+      "name": "vivid-wavetable",
+      "description": "WavetableSynth package library for Vivid",
+      "version": "0.1.0",
+      "vivid_core": ">=0.1.0 <2.0.0",
+      "author": "seethroughlab",
+      "category": "audio",
+      "description_short": "",
+      "url": "https://github.com/seethroughlab/vivid-wavetable.git",
+      "repo_url": "https://github.com/seethroughlab/vivid-wavetable",
+      "install_url": "https://github.com/seethroughlab/vivid-wavetable.git",
+      "preview_image_url": "https://raw.githubusercontent.com/seethroughlab/vivid-wavetable/master/docs/images/preview.png"
     }
   ]
 }

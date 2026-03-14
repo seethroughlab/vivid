@@ -5,6 +5,10 @@
     "status": "experimental"
   },
   {
+    "name": "vivid-drums",
+    "url": "https://github.com/seethroughlab/vivid-drums.git"
+  },
+  {
     "name": "vivid-glitch",
     "url": "https://github.com/seethroughlab/vivid-glitch.git"
   },
@@ -12,5 +16,26 @@
     "name": "vivid-cef",
     "url": "https://github.com/seethroughlab/vivid-cef.git",
     "status": "experimental"
+  },
+  {
+    "name": "vivid-physics2d",
+    "url": "https://github.com/seethroughlab/vivid-physics2d.git",
+    "status": "experimental"
+  },
+  {
+    "name": "vivid-plexus",
+    "url": "https://github.com/seethroughlab/vivid-plexus.git"
+  },
+  {
+    "name": "vivid-sampler",
+    "url": "https://github.com/seethroughlab/vivid-sampler.git"
+  },
+  {
+    "name": "vivid-sequencers",
+    "url": "https://github.com/seethroughlab/vivid-sequencers.git"
+  },
+  {
+    "name": "vivid-wavetable",
+    "url": "https://github.com/seethroughlab/vivid-wavetable.git"
   }
 ]
