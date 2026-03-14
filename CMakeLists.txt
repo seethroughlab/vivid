@@ -587,6 +587,7 @@ add_executable(vivid
     src/runtime/main.cpp
     src/runtime/gpu_context.cpp
     src/runtime/fullscreen_blit.cpp
+    src/runtime/output_window.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/port_type_registry.cpp
@@ -1284,6 +1285,25 @@ add_test(NAME test_demo_graphs
     COMMAND test_demo_graphs ${CMAKE_BINARY_DIR}/graphs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_demo_graphs PROPERTIES LABELS "SMOKE" TIMEOUT 120)
+
+# Audio-domain sequencer integration test
+add_executable(test_audio_domain_sequencer
+    tests/test_audio_domain_sequencer.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/builtin_operators.cpp
+)
+target_include_directories(test_audio_domain_sequencer PRIVATE src)
+target_link_libraries(test_audio_domain_sequencer PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu rtmidi)
+add_test(NAME test_audio_domain_sequencer
+    COMMAND test_audio_domain_sequencer
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler
