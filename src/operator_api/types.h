@@ -32,6 +32,7 @@ typedef enum VividDisplayHint {
     VIVID_DISPLAY_KNOB    = 1,   // circular knob widget
     VIVID_DISPLAY_XY_PAD  = 2,   // 2D axis pad (pair consecutive x/y params)
     VIVID_DISPLAY_COLOR   = 3,   // color swatch + popup (triple consecutive r/g/b params)
+    VIVID_DISPLAY_HIDDEN  = 4,   // param exists but is not drawn by standard inspector
 } VividDisplayHint;
 
 // Channel kinds — reflect the logical data type on a port.

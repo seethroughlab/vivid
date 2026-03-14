@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <unordered_set>
 
 #ifndef VIVID_CORE_VERSION
 #define VIVID_CORE_VERSION "0.1.0"
@@ -142,12 +141,22 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
             tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
                          sw - g_to_s(4), s_body_h - g_to_s(4),
                          kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.15f);
-            // Centered "MISSING" label
+            // Centered "MISSING" label (shifted up to make room for sub-label)
             const char* label = "MISSING";
             float lw = tr.text_width(label, zoom_);
             float lx = sx + (sw - lw) * 0.5f;
-            float ly = s_body_y + (s_body_h - tr.line_height() * zoom_) * 0.5f;
+            float ly = s_body_y + (s_body_h - tr.line_height() * zoom_) * 0.5f - g_to_s(6);
             tr.draw_text(lx, ly, label, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.8f, zoom_);
+            // Sub-label with reason
+            if (sn && !sn->error_message.empty()) {
+                const char* sub = sn->error_message.find("ABI mismatch") != std::string::npos
+                                  ? "ABI mismatch" : "not installed";
+                float sub_scale = zoom_ * 0.75f;
+                float sub_w = tr.text_width(sub, sub_scale);
+                float sub_x = sx + (sw - sub_w) * 0.5f;
+                float sub_y = ly + tr.line_height() * zoom_ + g_to_s(2);
+                tr.draw_text(sub_x, sub_y, sub, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.5f, sub_scale);
+            }
         } else if (r.domain == VIVID_DOMAIN_CONTROL && !has_ct) {
             // Sparkline
             tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
@@ -1661,126 +1670,7 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                                         float px, float& py) {
     const auto& op = *node.op_info;
 
-    // Detect DrumSequencer: has "kick_0" + "snare_0" + "hat_0"
-    auto kick0_it = node.param_indices.find("kick_0");
-    auto snare0_it = node.param_indices.find("snare_0");
-    auto hat0_it = node.param_indices.find("hat_0");
-    bool is_drum_seq = (kick0_it != node.param_indices.end() &&
-                        snare0_it != node.param_indices.end() &&
-                        hat0_it != node.param_indices.end());
-
-    if (is_drum_seq) {
-        // Draw steps and swing normally, skip all 96 grid params
-        auto ds_steps_it = node.param_indices.find("steps");
-        auto ds_swing_it = node.param_indices.find("swing");
-        if (ds_steps_it != node.param_indices.end())
-            draw_one_inspector_param_simple(tr, node, px, py, ds_steps_it->second);
-        if (ds_swing_it != node.param_indices.end())
-            draw_one_inspector_param_simple(tr, node, px, py, ds_swing_it->second);
-
-        // Build skip set for the 96 grid params + 192 mod params
-        std::unordered_set<uint32_t> grid_params;
-        static const char* kDrumPrefixes[] = {"kick_", "snare_", "hat_", "oh_", "clap_", "tom_"};
-        static const char* kModSuffixes[] = {"", "ma_", "mb_"};
-        for (const char* prefix : kDrumPrefixes) {
-            for (const char* mod : kModSuffixes) {
-                for (int s = 0; s < 16; ++s) {
-                    std::string name = std::string(prefix) + mod + std::to_string(s);
-                    auto it = node.param_indices.find(name);
-                    if (it != node.param_indices.end())
-                        grid_params.insert(it->second);
-                }
-            }
-        }
-        if (ds_steps_it != node.param_indices.end())
-            grid_params.insert(ds_steps_it->second);
-        if (ds_swing_it != node.param_indices.end())
-            grid_params.insert(ds_swing_it->second);
-
-        // Draw remaining params, skipping grid params
-        for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
-            if (grid_params.count(pi)) continue;
-            draw_one_inspector_param_simple(tr, node, px, py, pi);
-        }
-        return;
-    }
-
-    // Detect NotePattern: has "steps" + "root_0".."root_7" + "type_0".."type_7"
-    auto steps_it = node.param_indices.find("steps");
-    auto root0_it = node.param_indices.find("root_0");
-    auto type0_it = node.param_indices.find("type_0");
-    bool is_note_pattern = (steps_it != node.param_indices.end() &&
-                            root0_it != node.param_indices.end() &&
-                            type0_it != node.param_indices.end());
-
-    if (is_note_pattern) {
-        int num_steps = static_cast<int>(node.param_values[steps_it->second]);
-        num_steps = std::max(1, std::min(8, num_steps));
-
-        // Look up per-step param indices by name (don't assume contiguous)
-        uint32_t root_idx[8]{}, type_idx[8]{};
-        for (int s = 0; s < 8; ++s) {
-            auto ri = node.param_indices.find("root_" + std::to_string(s));
-            auto ti = node.param_indices.find("type_" + std::to_string(s));
-            root_idx[s] = (ri != node.param_indices.end()) ? ri->second : 0;
-            type_idx[s] = (ti != node.param_indices.end()) ? ti->second : 0;
-        }
-
-        // Build set of step-indexed param indices to skip in the tail
-        std::unordered_set<uint32_t> step_params;
-        for (int s = 0; s < 8; ++s) {
-            step_params.insert(root_idx[s]);
-            step_params.insert(type_idx[s]);
-        }
-
-        // Draw "steps" slider first
-        draw_one_inspector_param_simple(tr, node, px, py, steps_it->second);
-
-        // Draw grouped steps: "Step N" header + root_N dropdown + type_N dropdown
-        for (int s = 0; s < num_steps; ++s) {
-            // Step header
-            char header[16];
-            std::snprintf(header, sizeof(header), "Step %d", s + 1);
-            py += 4;
-            tr.draw_text(px, py, header, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-            py += kLineH;
-
-            // Draw root (key) and type (mode) side by side
-            {
-                float gap = 8.0f;
-                float half_w = (kInspContentW - gap) / 2.0f;
-
-                auto draw_half_dropdown = [&](uint32_t pi, float dx, float dw) {
-                    const auto& pd = op.params[pi];
-                    float val = node.param_values[pi];
-                    int idx = static_cast<int>(val);
-                    const char* label = (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
-                                        ? pd.choice_labels[idx].c_str() : "?";
-                    tr.draw_rect(dx, py, dw, kDropdownH,
-                                 style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-                    tr.draw_text(dx + 6, py + 1, label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-                    float arrow_x = dx + dw - 16;
-                    tr.draw_text(arrow_x, py + 1, "\xE2\x96\xBE",
-                                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-                    dropdown_rects_.push_back({dx, py, dw, kDropdownH,
-                                               single_selected_id(), pd.name});
-                };
-
-                draw_half_dropdown(root_idx[s], px, half_w);
-                draw_half_dropdown(type_idx[s], px + half_w + gap, half_w);
-                py += kDropdownH + 6;
-            }
-        }
-
-        // Draw remaining params (octave, beats_per_step, gate_length, velocity)
-        // skipping steps (already drawn) and all root_*/type_* params
-        step_params.insert(steps_it->second);
-        for (uint32_t pi = 0; pi < static_cast<uint32_t>(op.params.size()); ++pi) {
-            if (step_params.count(pi)) continue;
-            draw_one_inspector_param_simple(tr, node, px, py, pi);
-        }
-    } else {
-        // Default: layout-aware rendering with group headers
+    {
         InspectorLayout layout;
         layout.base_x = px; layout.x = px; layout.y = py;
         layout.full_w = kInspContentW; layout.col_w = kInspContentW;
@@ -1790,6 +1680,8 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
         uint32_t param_count = static_cast<uint32_t>(op.params.size());
         for (uint32_t pi = 0; pi < param_count; ) {
             const auto& pd = op.params[pi];
+
+            if (pd.display_hint == VIVID_DISPLAY_HIDDEN) { ++pi; continue; }
 
             if (pd.group != current_group) {
                 layout.flush_row();
@@ -1954,9 +1846,9 @@ void NodeGraphUI::draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node
     ctx.mouse.prev_x = mouse_.prev_x - px;
     ctx.mouse.prev_y = mouse_.prev_y - py;
     ctx.mouse.left_down = mouse_.left_down ? 1 : 0;
-    ctx.mouse.left_clicked = mouse_.left_clicked ? 1 : 0;
-    ctx.mouse.left_released = mouse_.left_released ? 1 : 0;
-    ctx.mouse.right_clicked = mouse_.right_clicked ? 1 : 0;
+    ctx.mouse.left_clicked = insp_mouse_left_clicked_ ? 1 : 0;
+    ctx.mouse.left_released = insp_mouse_left_released_ ? 1 : 0;
+    ctx.mouse.right_clicked = insp_mouse_right_clicked_ ? 1 : 0;
     ctx.mouse.shift_down = mouse_.shift_down ? 1 : 0;
 
     // Key/char events

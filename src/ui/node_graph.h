@@ -521,6 +521,10 @@ private:
     // Custom inspector state
     CustomInspectorCallback custom_inspector_cb_;
     bool custom_inspector_wants_keyboard_ = false;
+    // Saved click/release events for custom inspector (persisted across update→draw boundary)
+    bool insp_mouse_left_clicked_ = false;
+    bool insp_mouse_left_released_ = false;
+    bool insp_mouse_right_clicked_ = false;
     std::vector<VividInspectorKeyEvent> insp_key_events_;
     std::vector<uint32_t> insp_char_events_;
 

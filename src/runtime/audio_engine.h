@@ -273,6 +273,13 @@ private:
     std::atomic<int> analysis_active_{0};
     std::vector<AudioToControlMapping> analysis_mappings_;
 
+    // Param propagation mapping: all audio nodes → scheduler nodes (control→audio)
+    struct ParamMapping {
+        uint32_t audio_engine_idx;
+        uint32_t scheduler_node_idx;
+    };
+    std::vector<ParamMapping> param_mappings_;
+
     // Node ID → audio engine index mapping (built during build())
     std::unordered_map<std::string, int> node_id_to_index_;
 

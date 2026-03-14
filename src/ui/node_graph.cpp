@@ -959,6 +959,10 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     handle_right_click();
     handle_left_click();     // dispatches to sub-handlers
     update_pan_release();
+    // Preserve click events for custom inspector draw phase
+    insp_mouse_left_clicked_ = mouse_.left_clicked;
+    insp_mouse_left_released_ = mouse_.left_released;
+    insp_mouse_right_clicked_ = mouse_.right_clicked;
     clear_frame_flags();
     update_wire_hover();
     update_node_hover();

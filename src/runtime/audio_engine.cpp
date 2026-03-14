@@ -600,11 +600,16 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     waveform_ring_pos_.resize(n, 0);
     for (auto& ring : waveform_rings_) ring.fill(0.0f);
 
-    // Build analysis mappings: match audio nodes to scheduler nodes
+    // Build param mappings: ALL audio nodes → scheduler nodes (for push_params)
+    param_mappings_.clear();
     analysis_mappings_.clear();
     for (uint32_t ai = 0; ai < n; ++ai) {
         for (uint32_t si = 0; si < static_cast<uint32_t>(scheduler.nodes().size()); ++si) {
             if (scheduler.nodes()[si].node_id == nodes_[ai].node_id) {
+                // Every audio node needs param propagation from scheduler
+                param_mappings_.push_back({ai, si});
+
+                // Analysis mappings only for nodes with rms/peak/waveform ports
                 auto rms_it = scheduler.nodes()[si].output_port_indices.find("rms");
                 auto peak_it = scheduler.nodes()[si].output_port_indices.find("peak");
                 auto wave_it = scheduler.nodes()[si].output_port_indices.find("waveform");
@@ -667,8 +672,8 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     for (uint32_t i = 0; i < n; ++i) {
         std::fprintf(stderr, "%s%s", (i == 0 ? " " : " -> "), nodes_[i].node_id.c_str());
     }
-    std::fprintf(stderr, " (sink=%d, %zu analysis mappings)\n",
-        sink_node_idx_, analysis_mappings_.size());
+    std::fprintf(stderr, " (sink=%d, %zu param mappings, %zu analysis mappings)\n",
+        sink_node_idx_, param_mappings_.size(), analysis_mappings_.size());
 
     return true;
 }
@@ -729,7 +734,7 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
     }
 
     // Overlay: scheduler's param values (where set_param/inspector writes)
-    for (const auto& m : analysis_mappings_) {
+    for (const auto& m : param_mappings_) {
         const auto& sched_ns = scheduler.nodes()[m.scheduler_node_idx];
         for (const auto& [pname, ae_idx] : nodes_[m.audio_engine_idx].param_indices) {
             auto sit = sched_ns.param_indices.find(pname);
@@ -847,23 +852,9 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
     if (scheduler.is_solo_active()) {
         const auto& sched_solo = scheduler.solo_active_set();
         snap.solo_active_set.resize(nodes_.size(), false);
-        for (const auto& m : analysis_mappings_) {
+        for (const auto& m : param_mappings_) {
             if (m.scheduler_node_idx < sched_solo.size())
                 snap.solo_active_set[m.audio_engine_idx] = sched_solo[m.scheduler_node_idx];
-        }
-        // Also check nodes that are in the audio engine but not in analysis_mappings_
-        // (unlikely, but be safe): use the node_id_to_index_ map
-        for (size_t i = 0; i < nodes_.size(); ++i) {
-            // If already set by analysis mapping, skip
-            if (snap.solo_active_set[i]) continue;
-            // Find this audio node's scheduler index
-            for (size_t si = 0; si < scheduler.nodes().size(); ++si) {
-                if (scheduler.nodes()[si].node_id == nodes_[i].node_id) {
-                    if (si < sched_solo.size())
-                        snap.solo_active_set[i] = sched_solo[si];
-                    break;
-                }
-            }
         }
     } else {
         snap.solo_active_set.clear();

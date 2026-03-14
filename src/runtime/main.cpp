@@ -738,6 +738,17 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
                          : ns.gpu_shader_error ? ns.gpu_shader_error_msg
                          : ns.error_message;   // compile/build error (node still running)
         sn.missing_operator = ns.missing_operator;
+        if (ns.missing_operator) {
+            if (registry.has_abi_mismatch_diagnostics()) {
+                sn.error_message = "Operator \"" + sn.type_name + "\" not found.\n"
+                    "ABI mismatch detected — plugins were built against a different Vivid version.\n"
+                    "Run 'vivid package rebuild' to recompile, then reload.";
+            } else {
+                sn.error_message = "Operator \"" + sn.type_name + "\" not found.\n"
+                    "The package providing this operator may not be installed or linked.\n"
+                    "Install/link the package, then reload the graph.";
+            }
+        }
 
         // Solo state
         if (scheduler.is_solo_active()) {
