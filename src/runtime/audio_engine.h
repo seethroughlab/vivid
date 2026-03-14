@@ -183,12 +183,6 @@ struct AudioToControlMapping {
     uint32_t peak_port_idx;       // "peak" output port index in scheduler
     uint32_t waveform_port_idx;   // "waveform" output port index in scheduler
 
-    // Spread output mappings: audio spread output → scheduler spread output
-    struct SpreadOutputMapping {
-        uint32_t audio_port_idx;      // output port in audio engine node
-        uint32_t scheduler_port_idx;  // output port in scheduler node
-    };
-    std::vector<SpreadOutputMapping> spread_output_mappings;
 };
 
 // Lock-free SPSC ring buffer for recording the final stereo mix.
@@ -277,6 +271,12 @@ private:
     struct ParamMapping {
         uint32_t audio_engine_idx;
         uint32_t scheduler_node_idx;
+        // Spread output mappings: audio spread output → scheduler spread output
+        struct SpreadOutputMapping {
+            uint32_t audio_port_idx;
+            uint32_t scheduler_port_idx;
+        };
+        std::vector<SpreadOutputMapping> spread_output_mappings;
     };
     std::vector<ParamMapping> param_mappings_;
 

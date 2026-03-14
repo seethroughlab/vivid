@@ -607,7 +607,32 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         for (uint32_t si = 0; si < static_cast<uint32_t>(scheduler.nodes().size()); ++si) {
             if (scheduler.nodes()[si].node_id == nodes_[ai].node_id) {
                 // Every audio node needs param propagation from scheduler
-                param_mappings_.push_back({ai, si});
+                ParamMapping pm;
+                pm.audio_engine_idx = ai;
+                pm.scheduler_node_idx = si;
+
+                // Build spread output mappings for CONTROL_SPREAD output ports
+                for (uint32_t op = 0; op < nodes_[ai].output_port_count; ++op) {
+                    if (op < nodes_[ai].output_port_types.size() &&
+                        nodes_[ai].output_port_types[op] == VIVID_PORT_SPREAD) {
+                        const auto* desc = nodes_[ai].loader->descriptor();
+                        uint32_t out_idx = 0;
+                        for (uint32_t pi = 0; pi < desc->port_count; ++pi) {
+                            if (desc->ports[pi].direction == VIVID_PORT_OUTPUT) {
+                                if (out_idx == op) {
+                                    auto sched_it = scheduler.nodes()[si].output_port_indices.find(desc->ports[pi].name);
+                                    if (sched_it != scheduler.nodes()[si].output_port_indices.end()) {
+                                        pm.spread_output_mappings.push_back({op, sched_it->second});
+                                    }
+                                    break;
+                                }
+                                out_idx++;
+                            }
+                        }
+                    }
+                }
+
+                param_mappings_.push_back(std::move(pm));
 
                 // Analysis mappings only for nodes with rms/peak/waveform ports
                 auto rms_it = scheduler.nodes()[si].output_port_indices.find("rms");
@@ -622,28 +647,6 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     m.rms_port_idx = rms_it->second;
                     m.peak_port_idx = peak_it->second;
                     m.waveform_port_idx = wave_it->second;
-
-                    // Build spread output mappings for CONTROL_SPREAD output ports
-                    for (uint32_t op = 0; op < nodes_[ai].output_port_count; ++op) {
-                        if (op < nodes_[ai].output_port_types.size() &&
-                            nodes_[ai].output_port_types[op] == VIVID_PORT_SPREAD) {
-                            // Find matching port name in scheduler node
-                            const auto* desc = nodes_[ai].loader->descriptor();
-                            uint32_t out_idx = 0;
-                            for (uint32_t pi = 0; pi < desc->port_count; ++pi) {
-                                if (desc->ports[pi].direction == VIVID_PORT_OUTPUT) {
-                                    if (out_idx == op) {
-                                        auto sched_it = scheduler.nodes()[si].output_port_indices.find(desc->ports[pi].name);
-                                        if (sched_it != scheduler.nodes()[si].output_port_indices.end()) {
-                                            m.spread_output_mappings.push_back({op, sched_it->second});
-                                        }
-                                        break;
-                                    }
-                                    out_idx++;
-                                }
-                            }
-                        }
-                    }
 
                     analysis_mappings_.push_back(m);
                 }
@@ -886,41 +889,44 @@ void AudioEngine::update_sources(double time, const Scheduler& scheduler) {
 
 void AudioEngine::inject_analysis(Scheduler& scheduler) {
     const auto& snap = analysis_snapshots_[analysis_active_.load(std::memory_order_acquire)];
-    for (const auto& m : analysis_mappings_) {
+
+    // Error state + spread outputs: all audio nodes
+    for (const auto& pm : param_mappings_) {
         // Propagate audio error state to scheduler node for UI display
-        if (m.audio_engine_idx < snap.errored.size() && snap.errored[m.audio_engine_idx]) {
-            auto& sched_ns = scheduler.nodes_mut()[m.scheduler_node_idx];
+        if (pm.audio_engine_idx < snap.errored.size() && snap.errored[pm.audio_engine_idx]) {
+            auto& sched_ns = scheduler.nodes_mut()[pm.scheduler_node_idx];
             sched_ns.errored = true;
-            sched_ns.error_message = snap.error_msgs[m.audio_engine_idx].data();
+            sched_ns.error_message = snap.error_msgs[pm.audio_engine_idx].data();
         } else {
-            auto& sched_ns = scheduler.nodes_mut()[m.scheduler_node_idx];
-            // Only clear if the scheduler itself didn't set the error
+            auto& sched_ns = scheduler.nodes_mut()[pm.scheduler_node_idx];
             if (sched_ns.is_audio) {
                 sched_ns.errored = false;
                 sched_ns.error_message.clear();
             }
         }
+        // Inject CONTROL_SPREAD outputs from audio nodes back to scheduler
+        for (const auto& sm : pm.spread_output_mappings) {
+            if (pm.audio_engine_idx < snap.spread_outputs.size() &&
+                sm.audio_port_idx < snap.spread_outputs[pm.audio_engine_idx].size()) {
+                const auto& ss = snap.spread_outputs[pm.audio_engine_idx][sm.audio_port_idx];
+                if (ss.length > 0) {
+                    scheduler.inject_external_spread(pm.scheduler_node_idx, sm.scheduler_port_idx,
+                                                     ss.data, ss.length);
+                }
+            }
+        }
+    }
 
+    // Analysis data (rms/peak/waveform): only nodes with analysis ports
+    for (const auto& m : analysis_mappings_) {
         scheduler.inject_external_output(m.scheduler_node_idx, m.rms_port_idx,
                                          snap.rms[m.audio_engine_idx]);
         scheduler.inject_external_output(m.scheduler_node_idx, m.peak_port_idx,
                                          snap.peak[m.audio_engine_idx]);
-        // Inject waveform as spread
         if (m.audio_engine_idx < snap.waveform.size()) {
             scheduler.inject_external_spread(m.scheduler_node_idx, m.waveform_port_idx,
                                              snap.waveform[m.audio_engine_idx].data(),
                                              AnalysisSnapshot::kWaveformSamples);
-        }
-        // Inject CONTROL_SPREAD outputs from audio nodes back to scheduler
-        for (const auto& sm : m.spread_output_mappings) {
-            if (m.audio_engine_idx < snap.spread_outputs.size() &&
-                sm.audio_port_idx < snap.spread_outputs[m.audio_engine_idx].size()) {
-                const auto& ss = snap.spread_outputs[m.audio_engine_idx][sm.audio_port_idx];
-                if (ss.length > 0) {
-                    scheduler.inject_external_spread(m.scheduler_node_idx, sm.scheduler_port_idx,
-                                                     ss.data, ss.length);
-                }
-            }
         }
     }
 }
