@@ -45,7 +45,7 @@ vivid/
 ├── CMakeLists.txt
 ├── AGENTS.md
 ├── deps/                     # Third-party (git submodules + FetchContent)
-│   ├── glfw/  ├── glfw3webgpu/  ├── miniaudio/  ├── rtmidi/  ├── stb/  └── yyjson/
+│   ├── glfw/  ├── glfw3webgpu/  ├── hap/  ├── miniaudio/  ├── oscpack/  ├── rtmidi/  ├── stb/  ├── syphon/  └── yyjson/
 ├── src/
 │   ├── runtime/              # Core engine (~30 modules)
 │   │   ├── main.cpp          # Entry point, GLFW loop, input dispatch
@@ -93,31 +93,44 @@ vivid/
 │       ├── child_op.h                # ChildOp<T> for composite operators
 │       ├── data_driven_filter.h      # WGSL filter base class
 │       ├── gpu_common.h              # Shared GPU types
+│       ├── gpu_types.h               # GPU type definitions
 │       ├── input_state.h             # Interactive input events/state
-│       └── wgsl_filter.h             # Self-describing WGSL filter support
+│       ├── port_type_registry.h      # Port type registry API
+│       ├── type_id.h                 # Stable type IDs
+│       ├── create_request.h          # Operator create request
+│       ├── drum_dsp.h                # Drum synthesis DSP helpers
+│       ├── media_clock.h             # Media clock synchronization
+│       ├── media_stream.h            # Media stream types
+│       ├── midi_types.h              # MIDI type definitions
+│       ├── wgsl_filter.h             # Self-describing WGSL filter support
+│       └── wgsl_preprocessor.h       # WGSL shader preprocessor
 ├── operators/                # Seed operators (each a single-file directory)
-│   ├── gpu/                  # 14 operators: noise, shape, bars, composite, bloom,
-│   │                         #   feedback, instance, plexus, time_machine, text,
-│   │                         #   texture_analysis, movie_loaded, movie_video_out, webcam_in
-│   ├── audio/                # 18 operators: oscillator, gain, delay, reverb,
-│   │                         #   bitcrush, distortion, drum_kick/snare/hihat/clap/tom/cymbal,
-│   │                         #   drum_common, wavetable_synth, spread_adsr, spread_lfo,
-│   │                         #   plexus_synth, movie_audio_out
-│   └── control/              # 23 operators: lfo, clock, math, envelope, midi_input,
-│                             #   fft_analysis, note_pattern, chord_progression,
-│                             #   arpeggiator, sequencer, drum_sequencer, euclidean,
-│                             #   pattern_seq, stack, alternate, pat_transform,
-│                             #   note_duration, gate, logic, random, smooth,
-│                             #   modulated_gain, state_machine
-├── filters/                  # 19 self-describing WGSL shader presets
-├── graphs/                   # 48 demo/example graph JSON files
+│   ├── gpu/                  # 15 operators: noise, shape, composite, bloom, feedback,
+│   │                         #   metaball, texture_loader, time_machine, text,
+│   │                         #   texture_analysis, movie_loaded, movie_video_out,
+│   │                         #   webcam_in, syphon_in, syphon_out
+│   ├── audio/                # 12 operators: oscillator, gain, delay, reverb,
+│   │                         #   bitcrush, distortion, filter, mixer, noise,
+│   │                         #   spread_adsr, spread_lfo, movie_audio_out
+│   ├── control/              # 24 operators: lfo, clock, math, envelope, midi_input,
+│   │                         #   fft_analysis, euclidean, pat_transform, stack,
+│   │                         #   alternate, gate, logic, random, smooth,
+│   │                         #   modulated_gain, spread_noise, mouse, keyboard,
+│   │                         #   basename, folder_list, osc_in, osc_out,
+│   │                         #   step_counter, string_select
+│   └── shared/               # Shared operator modules (media_session, movie_audio, movie_decode)
+├── filters/                  # 25 self-describing WGSL shader presets
+├── graphs/                   # 47 demo/example graph JSON files
 ├── mcp/                      # MCP server (Python bridge to control server)
 │   ├── vivid_mcp.py
+│   ├── vivid_opdev_mcp.py
+│   ├── opdev_docs/
 │   └── requirements.txt
+├── site/                     # Website (landing page, package catalog)
 ├── platform/                 # Platform-specific resources
 │   └── macos/                # Info.plist.in, Vivid.icns
 ├── fonts/                    # JetBrainsMono-Regular.ttf
-├── tests/                    # 27 integration/unit tests
+├── tests/                    # 57 integration/unit tests
 ├── media/                    # Sample audio/video/image assets
 └── docs/                     # Design documents
 ```

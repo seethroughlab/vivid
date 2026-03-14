@@ -6,60 +6,32 @@ For package authoring templates/checklists, see `../vivid-package-template/READM
 
 ## Available Package Libraries
 
-### vivid-wavetable
+### vivid-3d
 
-- `WavetableSynth`
-- Repo: `https://github.com/seethroughlab/vivid-wavetable`
+3D operator suite (SDF, meshes, particles, lighting, materials, and more).
 
-### vivid-drums
+- Repo: `https://github.com/seethroughlab/vivid-3d`
 
-- `DrumKick`
-- `DrumSnare`
-- `DrumHiHat`
-- `DrumClap`
-- `DrumCymbal`
-- `DrumTom`
-- Repo: `https://github.com/seethroughlab/vivid-drums`
+### vivid-glitch
 
-### vivid-plexus
+Glitch audio/GPU operator suite.
 
-- `Plexus`
-- `PlexusSynth`
-- Repo: `https://github.com/seethroughlab/vivid-plexus`
+- Repo: `https://github.com/seethroughlab/vivid-glitch`
 
-### vivid-sequencers
+### vivid-cef
 
-- `Sequencer`
-- `DrumSequencer`
-- `PatternSeq`
-- `NotePattern`
-- `NoteDuration`
-- `Arpeggiator`
-- `ChordProgression`
-- `StateMachine`
-- Repo: `https://github.com/seethroughlab/vivid-sequencers`
+Chromium Embedded Framework browser source operator.
 
-### Additional package libraries
-
-- `vivid-3d`: `https://github.com/seethroughlab/vivid-3d`
-- `vivid-glitch`: `https://github.com/seethroughlab/vivid-glitch`
+- Repo: `https://github.com/seethroughlab/vivid-cef`
 
 ## Install Packages
 
 From a built vivid-core checkout:
 
 ```bash
-./build/vivid install https://github.com/seethroughlab/vivid-wavetable.git
-./build/vivid install https://github.com/seethroughlab/vivid-drums.git
-./build/vivid install https://github.com/seethroughlab/vivid-plexus.git
-./build/vivid install https://github.com/seethroughlab/vivid-sequencers.git
-```
-
-Optional package libraries:
-
-```bash
 ./build/vivid install https://github.com/seethroughlab/vivid-3d.git
 ./build/vivid install https://github.com/seethroughlab/vivid-glitch.git
+./build/vivid install https://github.com/seethroughlab/vivid-cef.git
 ```
 
 ## Local Development Workflow
@@ -68,9 +40,9 @@ Optional package libraries:
 # Scaffold a new package from template
 ./build/vivid scaffold-package vivid-my-package --template single
 
-./build/vivid link ../vivid-sequencers
-./build/vivid rebuild vivid-sequencers
-./build/vivid uninstall vivid-sequencers
+./build/vivid link ../vivid-3d
+./build/vivid rebuild vivid-3d
+./build/vivid uninstall vivid-3d
 ```
 
 Use the same pattern for other package names.

@@ -58,19 +58,15 @@ Save MCP request/response artifacts to docs/archive/LLM-WORKFLOW-SESSION.md.
 
 ---
 
-## Port Type Registry
+## Port Type Registry — COMPLETED
 
-One-shot ABI break replacing `VIVID_PORT_HANDLE` with extensible `VividPortType` + explicit `VividPortTransport`. See [PORT-TYPE-REGISTRY.md](PORT-TYPE-REGISTRY.md) for the full spec.
-
-Develop in a dedicated branch and merge to master only when complete and tested.
+Shipped: transport-based port types (`VividPortType` + `VividPortTransport`), `vivid_describe_custom_types()` for package-defined types, stable type IDs, `audio_safe` flag, ABI v5. Merged to master.
 
 ---
 
 ## Operator Loading Consolidation
 
-Ships in the same ABI break as the port type registry.
-
-Develop in a dedicated branch and merge to master only when complete and tested.
+Future work. The `register_builtin()` pathway and atomic dylib swap are in place, but the indexed multi-op ABI (`vivid_operator_count()` / `VIVID_REGISTER_PACKAGE`) is still planned.
 
 ### Unified indexed ABI
 

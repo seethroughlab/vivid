@@ -41,10 +41,10 @@ Expected result: recalling the variation restores the same parameter state.
 Install one package library (from the app package manager UI or CLI):
 
 ```bash
-vivid install https://github.com/seethroughlab/vivid-wavetable.git
+vivid install https://github.com/seethroughlab/vivid-glitch.git
 ```
 
-Restart or refresh operator palette as needed, then add `WavetableSynth` to your graph.
+Restart or refresh operator palette as needed, then add a glitch operator to your graph.
 
 Package library reference:
 - [PACKAGE-LIBRARIES.md](PACKAGE-LIBRARIES.md)
@@ -120,7 +120,7 @@ If you are developing Vivid itself (not just using release builds):
 - C++17 toolchain (Clang recommended on macOS)
 
 ```bash
-git clone --recursive https://github.com/jeffcrouse/vivid.git
+git clone --recursive https://github.com/seethroughlab/vivid.git
 cd vivid
 cmake -B build
 cmake --build build

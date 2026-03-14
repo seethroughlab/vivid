@@ -21,9 +21,9 @@ Built in C++ with WebGPU (Dawn). Designed from the ground up for LLM-assisted cr
 
 - **Audio-visual parity** — Audio and GPU operators live in the same graph, connected by the same wires
 - **Three execution domains** — GPU (textures), Audio (sample-rate buffers), and Control (per-frame values) evaluated in dependency order
-- **Core operator set + package ecosystem** — Core operators ship in vivid; specialized families (wavetable, drums, plexus, sequencers, 3D, glitch) live in sibling package repos
+- **Core operator set + package ecosystem** — Core operators ship in vivid; specialized families (3D, glitch, CEF) live in sibling package repos
 - **Spreads** — Implicit vectorization: a single wire carries N values, enabling polyphony and instancing without manual fan-out
-- **19 data-driven WGSL filters** — Self-describing GPU shaders loaded at runtime from `.wgsl` files with embedded metadata
+- **25 data-driven WGSL filters** — Self-describing GPU shaders loaded at runtime from `.wgsl` files with embedded metadata
 - **Hot-reload everything** — Edit a graph JSON, a WGSL filter, or recompile an operator dylib — changes apply instantly without restart
 - **JSON graph as single source of truth** — Every graph is a plain JSON file: nodes, connections, parameters, layout
 - **Live thumbnails on every node** — GPU nodes show texture previews; audio nodes show waveforms; control nodes show value readouts
@@ -33,30 +33,27 @@ Built in C++ with WebGPU (Dawn). Designed from the ground up for LLM-assisted cr
 ## Core Operators (Built-In)
 
 ### GPU
-Shape, Noise, Bars, Composite, Bloom, Feedback, Instance, Time Machine, Text, Texture Analysis, Movie File In, Webcam In
+Shape, Noise, Composite, Bloom, Feedback, Metaball, Texture Loader, Time Machine, Text, Texture Analysis, Movie File In, Movie Video Out, Webcam In, Syphon In, Syphon Out
 
 ### GPU Filters (WGSL)
-HSV, Levels, Blur, Edge, Mirror, Pixelate, Posterize, Gradient, Chromatic Aberration, Scanlines, CRT Effect, Transform, Displace, Dither, Halftone, Tile, Ramp, Solid Color, Switch
+HSV, Levels, Blur, Edge, Mirror, Pixelate, Posterize, Gradient, Chromatic Aberration, Scanlines, CRT Effect, Transform, Displace, Dither, Halftone, Tile, Ramp, Solid Color, Switch, Division Raster, Hex Grid, Radial Rainbow, Raster Grid, Spirograph, Voronoi
 
 ### Audio
-**Synthesis:** Oscillator, Gain
-**Effects:** Reverb, Delay, Bitcrush, Distortion
+**Synthesis:** Oscillator, Gain, Noise
+**Effects:** Reverb, Delay, Bitcrush, Distortion, Filter, Mixer
 **Spread:** Spread ADSR, Spread LFO
-**Input:** Movie File Audio In
+**Output:** Movie Audio Out
 
 ### Control
-Clock, LFO, Math, Envelope, MIDI Input, FFT Analysis, Logic, Gate, Random, Smooth, Euclidean, Stack, Alternate, Pattern Transform, Modulated Gain, Spread Noise, Mouse, Keyboard
+Clock, LFO, Math, Envelope, MIDI Input, FFT Analysis, Logic, Gate, Random, Smooth, Euclidean, Stack, Alternate, Pattern Transform, Modulated Gain, Spread Noise, Mouse, Keyboard, Basename, Folder List, OSC In, OSC Out, Step Counter, String Select
 
 ## Package Operators
 
 Install additional package libraries:
 
-- `vivid-wavetable`: `WavetableSynth`
-- `vivid-drums`: `DrumKick`, `DrumSnare`, `DrumHiHat`, `DrumClap`, `DrumCymbal`, `DrumTom`
-- `vivid-plexus`: `Plexus`, `PlexusSynth`
-- `vivid-sequencers`: `Sequencer`, `DrumSequencer`, `PatternSeq`, `NotePattern`, `NoteDuration`, `Arpeggiator`, `ChordProgression`, `StateMachine`
 - `vivid-3d`: 3D operator suite
 - `vivid-glitch`: glitch audio/GPU suite
+- `vivid-cef`: Chromium Embedded Framework browser source
 
 See [docs/PACKAGE-LIBRARIES.md](docs/PACKAGE-LIBRARIES.md) for install/link/rebuild commands and package details.
 
@@ -72,14 +69,14 @@ Canonical onboarding guide:
 ### Release Build (Recommended)
 
 Download the latest macOS release build:
-- <https://github.com/jeffcrouse/vivid/releases>
+- <https://github.com/seethroughlab/vivid/releases>
 
 Open `Vivid.app`, then use **File -> Open Example...** and load `av_demo`.
 
 ### Build From Source (Developers)
 
 ```bash
-git clone --recursive https://github.com/jeffcrouse/vivid.git
+git clone --recursive https://github.com/seethroughlab/vivid.git
 cd vivid
 cmake -B build
 cmake --build build
@@ -95,7 +92,7 @@ cmake --build build
 - Developer/source-build only: CMake 3.20+ and C++17 compiler (Clang or GCC)
 - Linux/Windows builds may work from source but are not currently first-class targets
 
-Dependencies are vendored or fetched automatically: WebGPU (Dawn), GLFW, miniaudio, RtMidi, yyjson, stb_image_write, stb_truetype, IXWebSocket, CLI11.
+Dependencies are vendored or fetched automatically: WebGPU (Dawn), GLFW, miniaudio, RtMidi, yyjson, stb_image_write, stb_truetype, IXWebSocket, CLI11, oscpack, hap.
 
 ## Architecture
 
