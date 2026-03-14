@@ -144,11 +144,22 @@ static std::string param_type_cpp(VividParamType t) {
     }
 }
 
+// Format a float literal so it always has a decimal point (e.g. "1.0f", not "1f").
+static std::string float_literal(float v) {
+    std::ostringstream fs;
+    fs << v;
+    std::string r = fs.str();
+    if (r.find('.') == std::string::npos && r.find('e') == std::string::npos)
+        r += ".0";
+    r += 'f';
+    return r;
+}
+
 static void emit_param_declaration(std::ostringstream& s, const VividParamSpec& p) {
     s << "    vivid::Param<" << param_type_cpp(p.type) << "> " << p.name << "{\"" << p.name << "\"";
     switch (p.type) {
         case VIVID_PARAM_FLOAT:
-            s << ", " << p.default_value << "f, " << p.min_value << "f, " << p.max_value << "f";
+            s << ", " << float_literal(p.default_value) << ", " << float_literal(p.min_value) << ", " << float_literal(p.max_value);
             break;
         case VIVID_PARAM_INT:
             s << ", " << static_cast<int>(p.default_value)
@@ -550,15 +561,15 @@ static std::string gpu_shader_template() {
 // ---------------------------------------------------------------------------
 
 // Insertion markers: each domain's operators are added before the next section's comment.
-// Control → before "# --- GPU operator plugins ---"
-// GPU     → before "# --- Movie File In"
-// Audio   → before "# --- Movie File Audio In"
+// Control → before "# --- GPU operator plugins"
+// GPU     → before "# --- SyphonOut operator"
+// Audio   → before "# --- Operators meta-target"
 
 static std::string cmake_insertion_marker(VividDomain domain) {
     switch (domain) {
-        case VIVID_DOMAIN_CONTROL: return "# --- GPU operator plugins ---";
-        case VIVID_DOMAIN_GPU:     return "# --- Movie File In";
-        case VIVID_DOMAIN_AUDIO:   return "# --- Movie File Audio In";
+        case VIVID_DOMAIN_CONTROL: return "# --- GPU operator plugins";
+        case VIVID_DOMAIN_GPU:     return "# --- SyphonOut operator";
+        case VIVID_DOMAIN_AUDIO:   return "# --- Operators meta-target";
         default: return "";
     }
 }

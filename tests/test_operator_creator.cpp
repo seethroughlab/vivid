@@ -19,11 +19,11 @@ static void write_full_cmake(const std::string& dir) {
         << "\n"
         << "# --- GPU operator plugins ---\n"
         << "\n"
-        << "# --- Movie File In\n"
+        << "# --- SyphonOut operator ---\n"
         << "\n"
         << "# --- Audio operator plugins ---\n"
         << "\n"
-        << "# --- Movie File Audio In\n";
+        << "# --- Operators meta-target ---\n";
 }
 
 int main() {
@@ -113,7 +113,7 @@ int main() {
             std::ofstream ofs(tmp + "/CMakeLists.txt");
             ofs << "# --- Audio operator plugins ---\n"
                 << "\n"
-                << "# --- Movie File Audio In\n";
+                << "# --- Operators meta-target ---\n";
         }
 
         auto result = vivid::OperatorCreator::create("my_synth", VIVID_DOMAIN_AUDIO, tmp);
@@ -147,7 +147,7 @@ int main() {
             std::ofstream ofs(tmp + "/CMakeLists.txt");
             ofs << "# --- GPU operator plugins ---\n"
                 << "\n"
-                << "# --- Movie File In\n";
+                << "# --- SyphonOut operator ---\n";
         }
 
         auto result = vivid::OperatorCreator::create("cool_fx", VIVID_DOMAIN_GPU, tmp);
@@ -304,7 +304,7 @@ int main() {
             std::ofstream ofs(tmp + "/CMakeLists.txt");
             ofs << "# --- GPU operator plugins ---\n"
                 << "\n"
-                << "# --- Movie File In\n";
+                << "# --- SyphonOut operator ---\n";
         }
 
         auto result = vivid::OperatorCreator::create("bad_comp", VIVID_DOMAIN_GPU, tmp, "composite");
