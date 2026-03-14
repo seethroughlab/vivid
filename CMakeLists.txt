@@ -684,6 +684,9 @@ endforeach()
 # Copy font to build directory
 configure_file(fonts/JetBrainsMono-Regular.ttf ${CMAKE_BINARY_DIR}/JetBrainsMono-Regular.ttf COPYONLY)
 
+# Copy default graph template to build directory
+configure_file(resources/default_graph.json ${CMAKE_BINARY_DIR}/default_graph.json COPYONLY)
+
 # Copy self-describing .wgsl filter presets to build directory
 file(GLOB WGSL_PRESETS filters/*.wgsl)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/filters)
@@ -753,6 +756,11 @@ if(APPLE)
         set_source_files_properties(${f}
             PROPERTIES MACOSX_PACKAGE_LOCATION Resources/factory_presets)
     endforeach()
+
+    # Default graph template → Resources/
+    target_sources(vivid PRIVATE resources/default_graph.json)
+    set_source_files_properties(resources/default_graph.json
+        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 
     # operator_api headers → Resources/sdk/src/operator_api/
     file(GLOB _BUNDLE_API_HEADERS src/operator_api/*.h)
@@ -1412,6 +1420,7 @@ add_executable(test_package_test_runner
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
     src/runtime/builtin_operators.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/platform.cpp
 )
 target_include_directories(test_package_test_runner PRIVATE src)
@@ -1661,6 +1670,7 @@ add_test(NAME test_team_workflow_regression
 add_executable(test_builtin_operators
     tests/test_builtin_operators.cpp
     src/runtime/builtin_operators.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/operator_registry.cpp
     src/runtime/operator_loader.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1676,6 +1686,7 @@ add_executable(test_operator_info_cache
     src/runtime/operator_loader.cpp
     src/runtime/builtin_operators.cpp
     src/runtime/wgsl_header_parser.cpp
+    src/runtime/port_type_registry.cpp
 )
 target_include_directories(test_operator_info_cache PRIVATE src tests)
 target_link_libraries(test_operator_info_cache PRIVATE vivid_operator_api webgpu yyjson)

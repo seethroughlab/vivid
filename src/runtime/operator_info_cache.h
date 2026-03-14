@@ -14,7 +14,22 @@ public:
             const std::string& type_name, vivid::OperatorRegistry& registry,
             vivid::OperatorLoader* fallback_loader = nullptr) {
         auto it = cache_.find(type_name);
-        if (it != cache_.end()) return it->second;
+        if (it != cache_.end()) {
+            // Lazy upgrade: if inspector info was missing because the operator
+            // wasn't fully loaded when first cached, re-check now.
+            if (!it->second->has_custom_inspector) {
+                auto* loader = registry.find_loaded(type_name);
+                if (!loader && fallback_loader) loader = fallback_loader;
+                if (loader && loader->has_draw_inspector()) {
+                    auto upgraded = std::make_shared<vivid::ui::OperatorInfo>(*it->second);
+                    upgraded->has_custom_inspector = true;
+                    upgraded->inspector_mode = loader->inspector_mode();
+                    cache_[type_name] = upgraded;
+                    return upgraded;
+                }
+            }
+            return it->second;
+        }
 
         // Try fully-loaded first (without triggering lazy load)
         const VividOperatorDescriptor* desc = nullptr;
