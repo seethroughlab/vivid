@@ -134,6 +134,7 @@ public:
             || context_menu_open_
             || editing_midi_range_
             || clone_confirm_open_
+            || save_confirm_open_
             || prefs_open_
             || param_picker_open_
             || color_editing_hex_
@@ -327,6 +328,20 @@ private:
     void open_clone_confirm_dialog(const std::string& type_name);
     void update_clone_confirm();
     void draw_clone_confirm(Renderer2D& tr);
+
+    // --- Save confirmation dialog (dirty check before New/New Project) ---
+public:
+    enum class SaveConfirmAction { kNewGraph, kNewProject };
+    void open_save_confirm_dialog(SaveConfirmAction action);
+    // Callbacks set by main.cpp: invoked when the user resolves the save-confirm dialog
+    std::function<void()> on_save_confirm_save;      // "Save" clicked
+    std::function<void()> on_save_confirm_dont_save;  // "Don't Save" clicked (action)
+    std::function<void()> on_save_confirm_cancel;      // "Cancel" clicked
+    bool save_confirm_open() const { return save_confirm_open_; }
+    SaveConfirmAction save_confirm_action() const { return save_confirm_action_; }
+private:
+    void update_save_confirm();
+    void draw_save_confirm(Renderer2D& tr);
 
     // --- Create operator modal ---
     void update_create_popup();
@@ -702,6 +717,10 @@ private:
     std::string clone_confirm_type_;
     bool clone_confirm_project_available_ = false;
     int clone_confirm_destination_ = 0; // 0=Project Package, 1=Core
+
+    // Save confirmation dialog state
+    bool save_confirm_open_ = false;
+    SaveConfirmAction save_confirm_action_ = SaveConfirmAction::kNewGraph;
 
     // Create operator modal state
     bool create_popup_open_ = false;

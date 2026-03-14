@@ -10,6 +10,7 @@ namespace vivid {
 struct MenuCallbacks {
     std::function<void()> on_about;
     std::function<void()> on_new;
+    std::function<void()> on_new_project;
     std::function<void()> on_open;
     std::function<void()> on_open_example;
     std::function<void()> on_save;

@@ -44,4 +44,21 @@ std::string save_file_dialog(const std::string& default_name) {
     }
 }
 
+std::string save_directory_dialog(const std::string& default_name) {
+    @autoreleasepool {
+        NSSavePanel* panel = [NSSavePanel savePanel];
+        [panel setCanCreateDirectories:YES];
+        // Treat the entered name as a directory (no extension)
+        [panel setExtensionHidden:YES];
+        if (!default_name.empty()) {
+            [panel setNameFieldStringValue:
+                [NSString stringWithUTF8String:default_name.c_str()]];
+        }
+        if ([panel runModal] == NSModalResponseOK) {
+            return std::string([[[panel URL] path] UTF8String]);
+        }
+        return {};
+    }
+}
+
 } // namespace vivid::ui

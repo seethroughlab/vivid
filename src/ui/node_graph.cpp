@@ -34,6 +34,11 @@ void NodeGraphUI::open_clone_confirm_dialog(const std::string& type_name) {
     clone_confirm_open_ = true;
 }
 
+void NodeGraphUI::open_save_confirm_dialog(SaveConfirmAction action) {
+    save_confirm_action_ = action;
+    save_confirm_open_ = true;
+}
+
 float NodeGraphUI::graph_right() const {
     return has_selection() ? inspector_x() : static_cast<float>(win_w_);
 }
@@ -953,6 +958,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_graph_meta_editor(); // may consume left_clicked
     update_about();             // may consume left_clicked
     update_preferences();    // may consume left_clicked
+    update_save_confirm();   // may consume left_clicked
     update_clone_confirm();  // may consume left_clicked
     update_create_popup();   // may consume left_clicked
     update_context_menu();   // may consume left_clicked

@@ -5,7 +5,9 @@
 #include "runtime/operator_registry.h"
 #include "runtime/system_midi.h"
 #include "common/path_util.h"
+#include "runtime/platform.h"
 #include <cstdio>
+#include <filesystem>
 #include <sstream>
 #include <cmath>
 
@@ -1392,9 +1394,44 @@ CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {
     if (has_audio) { audio_engine_.shutdown(); has_audio = false; }
     scheduler_.shutdown();
 
-    if (!graph_.load_from_string(kDefaultGraphJson, 0, false)) {
+    auto read_file = [](const std::string& path, std::string& out) -> bool {
+        auto f = std::fopen(path.c_str(), "rb");
+        if (!f) return false;
+        std::fseek(f, 0, SEEK_END);
+        auto sz = std::ftell(f);
+        std::fseek(f, 0, SEEK_SET);
+        out.resize(sz);
+        std::fread(out.data(), 1, sz, f);
+        std::fclose(f);
+        return true;
+    };
+
+    bool loaded = false;
+    std::string buf;
+
+    // 1. Try user template
+    std::string user_path = get_config_dir() + "/default_graph.json";
+    if (read_file(user_path, buf)) {
+        loaded = graph_.load_from_string(buf.c_str(), buf.size(), false);
+        if (!loaded)
+            std::fprintf(stderr, "[vivid] Warning: custom default_graph.json is malformed, falling back to bundled default\n");
+    }
+
+    // 2. Try bundled template
+    if (!loaded && !resources_dir_.empty()) {
+        std::string bundled_path = resources_dir_ + "/default_graph.json";
+        if (read_file(bundled_path, buf)) {
+            loaded = graph_.load_from_string(buf.c_str(), buf.size(), false);
+            if (!loaded)
+                std::fprintf(stderr, "[vivid] Warning: bundled default_graph.json is malformed\n");
+        } else {
+            std::fprintf(stderr, "[vivid] Warning: bundled default_graph.json not found at %s\n", bundled_path.c_str());
+        }
+    }
+
+    if (!loaded) {
         has_gpu_ops = false;
-        return {false, "failed to load default graph"};
+        return {false, "failed to load default graph template"};
     }
     if (!scheduler_.build(graph_, registry_)) {
         has_gpu_ops = false;
@@ -1415,6 +1452,37 @@ CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {
     reload_serial_++;
     capture_saved_snapshot();
     return {true, "new graph"};
+}
+
+CommandResult RuntimeAPI::new_project(const std::string& dir_path,
+                                       bool& has_gpu_ops, bool& has_audio) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+
+    // Create directory — fail if it already exists and is non-empty
+    if (fs::exists(dir_path, ec)) {
+        if (!fs::is_directory(dir_path, ec))
+            return {false, "path exists and is not a directory: " + dir_path};
+        if (!fs::is_empty(dir_path, ec))
+            return {false, "directory already exists and is non-empty: " + dir_path};
+    } else {
+        if (!fs::create_directories(dir_path, ec))
+            return {false, "failed to create directory: " + dir_path + " (" + ec.message() + ")"};
+    }
+
+    // Write default graph JSON to dir_path/graph.json
+    std::string graph_path = (fs::path(dir_path) / "graph.json").string();
+
+    // Use new_graph internals
+    auto result = new_graph(has_gpu_ops, has_audio);
+    if (!result.ok) return result;
+
+    // Save the fresh graph to the project path and set source_path
+    auto save_result = save_as(graph_path);
+    if (!save_result.ok) return save_result;
+
+    active_graph_source_path_ = fs::path(graph_path).lexically_normal().string();
+    return {true, "new project at " + dir_path};
 }
 
 CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,

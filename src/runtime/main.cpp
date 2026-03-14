@@ -2126,8 +2126,15 @@ int main(int argc, char* argv[]) {
 
     bool initial_load_ok = false;
     if (graph_file.empty()) {
-        // No file given: start with default graph (audio_out + video_out)
-        initial_load_ok = graph.load_from_string(vivid::kDefaultGraphJson, 0, false);
+        // No file given: load default graph template (user override → bundled fallback)
+        auto user_template = std::filesystem::path(vivid::get_config_dir()) / "default_graph.json";
+        auto bundled_template = resources_dir / "default_graph.json";
+        if (std::filesystem::exists(user_template))
+            initial_load_ok = graph.load(user_template.string().c_str());
+        if (!initial_load_ok)
+            initial_load_ok = graph.load(bundled_template.string().c_str());
+        if (!initial_load_ok)
+            std::fprintf(stderr, "[vivid] Error: could not load default graph template\n");
     } else {
         initial_load_ok = graph.load(graph_file.c_str());
         if (!initial_load_ok)
@@ -2204,6 +2211,7 @@ int main(int argc, char* argv[]) {
 
     // --- RuntimeAPI ---
     vivid::RuntimeAPI runtime_api(graph, scheduler, audio_engine, registry, &system_midi);
+    runtime_api.set_resources_dir(resources_dir.string());
 
     // --- Control server (MCP HTTP bridge) ---
     vivid::CaptureCoordinator capture_coordinator;
@@ -2800,17 +2808,10 @@ int main(int argc, char* argv[]) {
     {
         vivid::MenuCallbacks menu_cbs;
 
-        menu_cbs.on_about = [&]() { graph_ui.open_about(); };
-        menu_cbs.on_new = [&]() { new_graph_runtime(); };
-        menu_cbs.on_preferences = [&]() {
-            graph_ui.toggle_preferences();
-        };
-
-        menu_cbs.on_save = [&]() {
-            // Capture viewport before saving
+        // Helper: save current graph (capturing viewport + filter shaders)
+        auto do_save = [&]() {
             if (graph_ui.visible())
                 graph.set_viewport(graph_ui.pan_x(), graph_ui.pan_y(), graph_ui.zoom());
-            // Read back working filter shaders before saving
             if (!working_filters_dir.empty()) {
                 for (const auto& fd : graph.filters()) {
                     std::string wpath = working_filters_dir + "/" + fd.name + ".wgsl";
@@ -2825,6 +2826,89 @@ int main(int argc, char* argv[]) {
             annotate_graph_packages(graph);
             auto result = runtime_api.save();
             std::fprintf(stderr, "[vivid] Save: %s\n", result.message.c_str());
+            return result.ok;
+        };
+
+        // Helper: open save-as dialog and save, returns true if saved
+        auto do_save_as_dialog = [&]() -> bool {
+            std::string path = vivid::ui::save_file_dialog();
+            if (path.empty()) return false;
+            if (graph_ui.visible())
+                graph.set_viewport(graph_ui.pan_x(), graph_ui.pan_y(), graph_ui.zoom());
+            annotate_graph_packages(graph);
+            auto result = runtime_api.save_as(path);
+            std::fprintf(stderr, "[vivid] Save As: %s\n", result.message.c_str());
+            return result.ok;
+        };
+
+        // Helper: execute the pending action after save-confirm resolves
+        auto execute_pending_action = [&](vivid::ui::NodeGraphUI::SaveConfirmAction action) {
+            if (action == vivid::ui::NodeGraphUI::SaveConfirmAction::kNewGraph) {
+                new_graph_runtime();
+            } else {
+                // kNewProject — open directory save dialog then create project
+                std::string dir = vivid::ui::save_directory_dialog("MyProject");
+                if (dir.empty()) return;
+                auto result = runtime_api.new_project(dir, has_gpu_ops, has_audio);
+                if (result.ok) {
+                    graph_loaded = true;
+                    command_sink.reset_undo_history();
+                }
+                std::fprintf(stderr, "[vivid] New Project: %s\n", result.message.c_str());
+            }
+        };
+
+        // Save-confirm dialog callbacks
+        graph_ui.on_save_confirm_cancel = [&]() {
+            // do nothing — dialog already closed
+        };
+        graph_ui.on_save_confirm_dont_save = [&]() {
+            execute_pending_action(graph_ui.save_confirm_action());
+        };
+        graph_ui.on_save_confirm_save = [&]() {
+            auto action = graph_ui.save_confirm_action();
+            bool saved;
+            if (graph.source_path().empty())
+                saved = do_save_as_dialog();
+            else
+                saved = do_save();
+            if (saved)
+                execute_pending_action(action);
+        };
+
+        menu_cbs.on_about = [&]() { graph_ui.open_about(); };
+        menu_cbs.on_new = [&]() {
+            if (runtime_api.graph_dirty()) {
+                graph_ui.open_save_confirm_dialog(
+                    vivid::ui::NodeGraphUI::SaveConfirmAction::kNewGraph);
+            } else {
+                new_graph_runtime();
+            }
+        };
+        menu_cbs.on_new_project = [&]() {
+            if (runtime_api.graph_dirty()) {
+                graph_ui.open_save_confirm_dialog(
+                    vivid::ui::NodeGraphUI::SaveConfirmAction::kNewProject);
+            } else {
+                std::string dir = vivid::ui::save_directory_dialog("MyProject");
+                if (dir.empty()) return;
+                auto result = runtime_api.new_project(dir, has_gpu_ops, has_audio);
+                if (result.ok) {
+                    graph_loaded = true;
+                    command_sink.reset_undo_history();
+                }
+                std::fprintf(stderr, "[vivid] New Project: %s\n", result.message.c_str());
+            }
+        };
+        menu_cbs.on_preferences = [&]() {
+            graph_ui.toggle_preferences();
+        };
+
+        menu_cbs.on_save = [&]() {
+            if (graph.source_path().empty())
+                do_save_as_dialog();
+            else
+                do_save();
         };
 
         menu_cbs.on_open = [&]() {

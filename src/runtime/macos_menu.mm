@@ -6,6 +6,7 @@
 enum MenuTag : NSInteger {
     kMenuTagAbout = 1,
     kMenuTagNew,
+    kMenuTagNewProject,
     kMenuTagOpen,
     kMenuTagOpenExample,
     kMenuTagSave,
@@ -42,6 +43,7 @@ enum MenuTag : NSInteger {
     switch (sender.tag) {
         case kMenuTagAbout:             if (_callbacks.on_about) _callbacks.on_about(); break;
         case kMenuTagNew:               if (_callbacks.on_new) _callbacks.on_new(); break;
+        case kMenuTagNewProject:        if (_callbacks.on_new_project) _callbacks.on_new_project(); break;
         case kMenuTagOpen:              if (_callbacks.on_open) _callbacks.on_open(); break;
         case kMenuTagOpenExample:       if (_callbacks.on_open_example) _callbacks.on_open_example(); break;
         case kMenuTagSave:              if (_callbacks.on_save) _callbacks.on_save(); break;
@@ -192,6 +194,15 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         newItem.target = sDelegate;
         newItem.tag = kMenuTagNew;
         [fileMenu addItem:newItem];
+
+        NSMenuItem* newProjectItem = [[NSMenuItem alloc]
+            initWithTitle:@"New Project..."
+                   action:@selector(menuAction:)
+            keyEquivalent:@"N"];
+        newProjectItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+        newProjectItem.target = sDelegate;
+        newProjectItem.tag = kMenuTagNewProject;
+        [fileMenu addItem:newProjectItem];
         [fileMenu addItem:[NSMenuItem separatorItem]];
 
         NSMenuItem* openItem = [[NSMenuItem alloc]

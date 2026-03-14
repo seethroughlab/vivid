@@ -806,6 +806,17 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;
     }
 
+    if (save_confirm_open_) {
+        if (key == GLFW_KEY_ESCAPE) {
+            save_confirm_open_ = false;
+            if (on_save_confirm_cancel) on_save_confirm_cancel();
+        } else if (key == GLFW_KEY_ENTER) {
+            save_confirm_open_ = false;
+            if (on_save_confirm_save) on_save_confirm_save();
+        }
+        return;
+    }
+
     if (clone_confirm_open_) {
         if (key == GLFW_KEY_ESCAPE) {
             clone_confirm_open_ = false;
@@ -1231,6 +1242,51 @@ void NodeGraphUI::update_clone_confirm() {
         clone_confirm_open_ = false;
     }
     // Click inside dialog but not on buttons — consume but do nothing
+    mouse_.left_clicked = false;
+    mouse_.left_released = false;
+}
+
+// -----------------------------------------------------------------------
+// Save confirmation dialog interaction (called from update())
+// -----------------------------------------------------------------------
+void NodeGraphUI::update_save_confirm() {
+    if (!save_confirm_open_) return;
+
+    // Handle keyboard
+    // (Escape already handled in on_key)
+
+    if (!mouse_.left_clicked) return;
+
+    // Dialog geometry (centered on screen)
+    float dw = 360.0f, dh = 90.0f;
+    float dx = (static_cast<float>(win_w_) - dw) * 0.5f;
+    float dy = (static_cast<float>(win_h_) - dh) * 0.5f;
+
+    float btn_w = 80.0f, btn_h = 22.0f;
+    float btn_y = dy + dh - btn_h - 8.0f;
+    float total_btn_w = btn_w * 3 + 12.0f * 2;
+    float btn_start_x = dx + (dw - total_btn_w) * 0.5f;
+    float cancel_x = btn_start_x;
+    float dont_save_x = btn_start_x + btn_w + 12.0f;
+    float save_x = btn_start_x + (btn_w + 12.0f) * 2;
+
+    if (mouse_.x >= cancel_x && mouse_.x <= cancel_x + btn_w &&
+        mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
+        save_confirm_open_ = false;
+        if (on_save_confirm_cancel) on_save_confirm_cancel();
+    } else if (mouse_.x >= dont_save_x && mouse_.x <= dont_save_x + btn_w &&
+               mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
+        save_confirm_open_ = false;
+        if (on_save_confirm_dont_save) on_save_confirm_dont_save();
+    } else if (mouse_.x >= save_x && mouse_.x <= save_x + btn_w &&
+               mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h) {
+        save_confirm_open_ = false;
+        if (on_save_confirm_save) on_save_confirm_save();
+    } else if (mouse_.x < dx || mouse_.x > dx + dw ||
+               mouse_.y < dy || mouse_.y > dy + dh) {
+        save_confirm_open_ = false;
+        if (on_save_confirm_cancel) on_save_confirm_cancel();
+    }
     mouse_.left_clicked = false;
     mouse_.left_released = false;
 }

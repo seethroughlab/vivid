@@ -2773,6 +2773,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     }
 
     draw_color_popup(tr);
+    draw_save_confirm(tr);
     draw_clone_confirm(tr);
     draw_create_popup(tr);
     draw_preset_name_popup(tr);
@@ -2781,6 +2782,73 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     draw_example_browser(tr);
     draw_graph_meta_editor(tr);
     draw_about(tr);
+}
+
+// -----------------------------------------------------------------------
+// Save confirmation dialog (unsaved changes before New / New Project)
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_save_confirm(Renderer2D& tr) {
+    if (!save_confirm_open_) return;
+
+    // Scrim over entire window
+    tr.draw_rect(0, 0, static_cast<float>(win_w_), static_cast<float>(win_h_),
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+
+    // Dialog panel (centered)
+    float dw = 360.0f, dh = 90.0f;
+    float dx = (static_cast<float>(win_w_) - dw) * 0.5f;
+    float dy = (static_cast<float>(win_h_) - dh) * 0.5f;
+
+    // Background
+    tr.draw_rounded_rect(dx, dy, dw, dh, style_.corner_radius,
+                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    // Accent bar at top
+    tr.draw_rect(dx, dy, dw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    // Label text
+    tr.draw_text(dx + 12, dy + 12, "Save changes before closing?",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+
+    // Three buttons: Cancel | Don't Save | Save
+    float btn_w = 80.0f, btn_h = 22.0f;
+    float btn_y = dy + dh - btn_h - 8.0f;
+    float total_btn_w = btn_w * 3 + 12.0f * 2;
+    float btn_start_x = dx + (dw - total_btn_w) * 0.5f;
+    float cancel_x = btn_start_x;
+    float dont_save_x = btn_start_x + btn_w + 12.0f;
+    float save_x = btn_start_x + (btn_w + 12.0f) * 2;
+
+    // Cancel button
+    bool cancel_hover = mouse_.x >= cancel_x && mouse_.x <= cancel_x + btn_w &&
+                        mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h;
+    tr.draw_rect(cancel_x, btn_y, btn_w, btn_h,
+                 cancel_hover ? style_.button_hover[0] : style_.button_bg[0],
+                 cancel_hover ? style_.button_hover[1] : style_.button_bg[1],
+                 cancel_hover ? style_.button_hover[2] : style_.button_bg[2], 0.9f);
+    tr.draw_text(cancel_x + 16, btn_y + 3, "Cancel",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+    // Don't Save button
+    bool dont_hover = mouse_.x >= dont_save_x && mouse_.x <= dont_save_x + btn_w &&
+                      mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h;
+    tr.draw_rect(dont_save_x, btn_y, btn_w, btn_h,
+                 dont_hover ? style_.button_hover[0] : style_.button_bg[0],
+                 dont_hover ? style_.button_hover[1] : style_.button_bg[1],
+                 dont_hover ? style_.button_hover[2] : style_.button_bg[2], 0.9f);
+    tr.draw_text(dont_save_x + 4, btn_y + 3, "Don't Save",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+    // Save button (accent)
+    bool save_hover = mouse_.x >= save_x && mouse_.x <= save_x + btn_w &&
+                      mouse_.y >= btn_y && mouse_.y <= btn_y + btn_h;
+    if (save_hover)
+        tr.draw_rect(save_x, btn_y, btn_w, btn_h,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 1.0f);
+    else
+        tr.draw_rect(save_x, btn_y, btn_w, btn_h,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
+    tr.draw_text(save_x + 24, btn_y + 3, "Save",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 }
 
 // -----------------------------------------------------------------------

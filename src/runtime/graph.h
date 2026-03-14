@@ -211,9 +211,4 @@ private:
     std::vector<StatePresetMapping> state_preset_mappings_;
 };
 
-// Minimal default graph — two sink nodes, no connections.
-// Used when launching without a file and for File > New.
-inline constexpr const char* kDefaultGraphJson =
-    R"({"schema_version":1,"vivid_version":"0.1.0","nodes":{"audio_out":{"type":"audio_out","params":{}},"video_out":{"type":"video_out","params":{}}},"connections":[]})";
-
 } // namespace vivid

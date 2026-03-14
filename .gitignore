@@ -72,7 +72,7 @@ __pycache__
 catalog/packages.json
 
 # Personal/local docs
-docs/crash.txt
+crash.txt
 docs/private/
 docs/personal/
 docs/*.local.md
