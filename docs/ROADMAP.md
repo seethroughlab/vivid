@@ -31,12 +31,12 @@ opened and validated before the old one is released; on failure the old dylib st
 - `poll_hot_reload()` — propagate `result.error_output` to `ns.error_message` for all
   nodes of the affected type on compile failure (`main.cpp`)
 
-- [ ] Syntax error: edit .cpp to introduce a syntax error → hot-reload fires → node keeps
+- [x] Syntax error: edit .cpp to introduce a syntax error → hot-reload fires → node keeps
       producing output (old dylib running) → error visible in `health.message` via MCP →
       fix error → next reload clears error and updates behavior
-- [ ] Missing include: same steps with `#include "nonexistent_header.h"` inserted
-- [ ] dlopen failure: cmake succeeds but dylib is broken → node keeps running with old code
-- [ ] Linked package reload from source: `link_package()` a local package → edit an
+- [x] Missing include: same steps with `#include "nonexistent_header.h"` inserted
+- [x] dlopen failure: cmake succeeds but dylib is broken → node keeps running with old code
+- [x] Linked package reload from source: `link_package()` a local package → edit an
       operator's .cpp in the source tree → call `rebuild_package()` via MCP → node
       hot-reloads from the edited source
 
@@ -45,15 +45,15 @@ opened and validated before the old one is released; on failure the old dylib st
 Connect Claude to a running Vivid session via MCP and drive the full authoring loop.
 Save MCP request/response artifacts to docs/archive/LLM-WORKFLOW-SESSION.md.
 
-- [ ] Compose from existing operators: LLM calls `list_types`, builds a graph using only
+- [x] Compose from existing operators: LLM calls `list_types`, builds a graph using only
       built-in operators, verifies live output with `inspect_graph`
-- [ ] Scaffold a new operator: LLM calls `scaffold_operator`, source files appear on disk,
+- [x] Scaffold a new operator: LLM calls `scaffold_operator`, source files appear on disk,
       CMakeLists.txt is patched, build succeeds, operator appears in `list_types`
-- [ ] Implement and hot-reload: LLM edits the generated .cpp to produce identifiable
+- [x] Implement and hot-reload: LLM edits the generated .cpp to produce identifiable
       behavior; saves file; hot-reload fires; `inspect_graph` confirms output changed
-- [ ] Wire into graph and verify: LLM adds the new node, connects it, calls
+- [x] Wire into graph and verify: LLM adds the new node, connects it, calls
       `run_diagnostics` or `run_checks` to confirm correct output
-- [ ] Save session: LLM calls `save_variation` and `save_graph`; artifacts written to
+- [x] Save session: LLM calls `save_variation` and `save_graph`; artifacts written to
       docs/archive/LLM-WORKFLOW-SESSION.md
 
 ---
@@ -64,41 +64,9 @@ Shipped: transport-based port types (`VividPortType` + `VividPortTransport`), `v
 
 ---
 
-## Operator Loading Consolidation
+## ~~Operator Loading Consolidation~~ — Shelved
 
-Future work. The `register_builtin()` pathway and atomic dylib swap are in place, but the indexed multi-op ABI (`vivid_operator_count()` / `VIVID_REGISTER_PACKAGE`) is still planned.
-
-### Unified indexed ABI
-
-All dylibs (package and custom) export the same indexed entry points:
-
-- `vivid_operator_count()` — number of operators in this dylib
-- `vivid_operator_descriptor(i)`, `vivid_operator_create(i)`, `vivid_operator_destroy(i)`, `vivid_operator_process(i)` — access operators by index
-
-Two registration macros:
-
-- `VIVID_REGISTER(ClassName)` — single-operator dylib (count=1). Used by custom per-project operators and Vivid's built-in operator dylibs. Same macro name as today; operator source files are untouched.
-- `VIVID_REGISTER_PACKAGE(Op1, Op2, ...)` — multi-operator dylib. Used by packages to register all operators in one shared library.
-
-The registry doesn't distinguish tiers at the loader level — it opens any dylib, reads `vivid_operator_count()`, and creates one loader entry per operator.
-
-### Tier 1: Core operators — built into the runtime
-
-- Register via `register_builtin()`, no dylibs
-- No hot-reload (by design — they are part of the runtime)
-
-### Tier 2: Package operators — one dylib per package
-
-- Each package produces a single shared library (not one per operator)
-- `PackageCompiler` auto-generates a registration source that includes all operator headers and invokes `VIVID_REGISTER_PACKAGE(...)`
-- Hot-reload at package granularity: reloading the package dylib swaps all operators from that package atomically
-
-### Tier 3: Custom per-project operators — one dylib per operator
-
-- Individual operators compiled as standalone dylibs using `VIVID_REGISTER` (count=1)
-- Hot-reload at individual operator granularity (the current behavior)
-- Live in the project's `operators/` directory
-- Scaffolded via `vivid scaffold` or MCP — the primary LLM authoring workflow
+Evaluated and decided against. The indexed multi-op ABI (`VIVID_REGISTER_PACKAGE`, `vivid_operator_count()`) would consolidate per-package operators into single dylibs, but the rebuild-time regression (especially for vivid-3d with 21 ops + WebGPU + Manifold) outweighs the scan-time savings. The current one-dylib-per-operator model with `VIVID_REGISTER` works well enough and preserves fast per-operator hot-reload.
 
 ---
 
@@ -117,7 +85,6 @@ Project-local operator ownership (clone/scaffold destination policy, package CMa
 - Simulation zones (frame-to-frame feedback)
 - Multi-window / multi-monitor
 - Windows / Linux
-- Bundled compiler
 - WebSocket API — external process integration over WebSocket; enables non-MCP clients to control Vivid programmatically
 - Project file format (single JSON vs. directory with assets)
 - Library version pinning
