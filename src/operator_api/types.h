@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 5u
+#define VIVID_OPERATOR_ABI_VERSION 6u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -98,6 +98,7 @@ typedef struct VividPortDescriptor {
     uint8_t            channels;     // 0=auto, 1=mono, 2=stereo, etc.
     float              default_value;// default for VIVID_PORT_FLOAT inputs
     const char*        stable_type_id; // stable namespaced id for custom types, NULL for built-ins
+    const char*        semantic_tag;   // e.g. "beat_phase", "gate", "trigger", "midi", NULL if unset
 } VividPortDescriptor;
 
 typedef struct VividOperatorDescriptor {

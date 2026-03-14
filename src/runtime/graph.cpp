@@ -293,6 +293,85 @@ bool Graph::parse_doc(yyjson_doc* doc) {
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Port rename migration: "phase" -> "beat_phase" for operators that
+    // renamed their input port in the unified triggering convention.
+    // -----------------------------------------------------------------------
+    {
+        static const struct { const char* type; const char* old_port; const char* new_port; } kPortRenames[] = {
+            {"Envelope",       "phase", "beat_phase"},
+            {"LFO",            "phase", "beat_phase"},
+            {"Sequencer",      "phase", "beat_phase"},
+            {"DrumSequencer",  "phase", "beat_phase"},
+        };
+
+        // Build node-id -> type lookup
+        std::unordered_map<std::string, std::string> node_type_map;
+        for (const auto& n : nodes_)
+            node_type_map[n.id] = n.type;
+
+        for (auto& conn : connections_) {
+            // Check to_port (input side)
+            auto it = node_type_map.find(conn.to_node);
+            if (it != node_type_map.end()) {
+                for (const auto& r : kPortRenames) {
+                    if (it->second == r.type && conn.to_port == r.old_port) {
+                        std::fprintf(stderr, "[vivid] Graph migration: renamed port %s/%s -> %s/%s\n",
+                                     conn.to_node.c_str(), r.old_port, conn.to_node.c_str(), r.new_port);
+                        conn.to_port = r.new_port;
+                        break;
+                    }
+                }
+            }
+            // Check from_port (output side)
+            auto it2 = node_type_map.find(conn.from_node);
+            if (it2 != node_type_map.end()) {
+                for (const auto& r : kPortRenames) {
+                    if (it2->second == r.type && conn.from_port == r.old_port) {
+                        std::fprintf(stderr, "[vivid] Graph migration: renamed port %s/%s -> %s/%s\n",
+                                     conn.from_node.c_str(), r.old_port, conn.from_node.c_str(), r.new_port);
+                        conn.from_port = r.new_port;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Drum phase param removal migration: connections targeting the removed
+    // "phase" param on drum operators are dropped with a warning.
+    // Users should wire through PhaseToMidi -> midi_in instead.
+    // -----------------------------------------------------------------------
+    {
+        static const char* kDrumTypes[] = {
+            "DrumKick", "DrumSnare", "DrumHiHat", "DrumClap", "DrumCymbal", "DrumTom"
+        };
+
+        std::unordered_map<std::string, std::string> node_type_map;
+        for (const auto& n : nodes_)
+            node_type_map[n.id] = n.type;
+
+        connections_.erase(
+            std::remove_if(connections_.begin(), connections_.end(),
+                [&](const ConnectionDef& conn) {
+                    auto it = node_type_map.find(conn.to_node);
+                    if (it == node_type_map.end() || conn.to_port != "phase")
+                        return false;
+                    for (const char* dt : kDrumTypes) {
+                        if (it->second == dt) {
+                            std::fprintf(stderr,
+                                "[vivid] Graph migration: removed connection to %s/%s "
+                                "(phase param removed — use PhaseToMidi -> midi_in)\n",
+                                conn.to_node.c_str(), conn.to_port.c_str());
+                            return true;
+                        }
+                    }
+                    return false;
+                }),
+            connections_.end());
+    }
+
     // Parse MIDI mappings
     yyjson_val* midi_arr = yyjson_obj_get(root, "midi_mappings");
     if (midi_arr && yyjson_is_arr(midi_arr)) {

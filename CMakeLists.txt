@@ -295,6 +295,7 @@ add_vivid_operator(folder_list       operators/control/folder_list/folder_list.c
 add_vivid_operator(string_select     operators/control/string_select/string_select.cpp)
 add_vivid_operator(basename          operators/control/basename/basename.cpp)
 add_vivid_operator(step_counter      operators/control/step_counter/step_counter.cpp)
+add_vivid_operator(phase_to_midi     operators/control/phase_to_midi/phase_to_midi.cpp)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu

@@ -1,4 +1,6 @@
 #include "operator_api/operator.h"
+#include "operator_api/midi_types.h"
+#include "operator_api/type_id.h"
 #include "RtMidi.h"
 #include <mutex>
 #include <vector>
@@ -35,6 +37,7 @@ struct MidiInput : vivid::ControlOperatorBase {
         out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [7]
         out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [8]
         out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [9]
+        out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));  // [10]
     }
 
     MidiInput() {
@@ -134,6 +137,27 @@ struct MidiInput : vivid::ControlOperatorBase {
             }
         }
 
+        // Write MIDI buffer passthrough (all channel-filtered events)
+        midi_out_buf_.count = 0;
+        for (const auto& msg : events) {
+            if (msg.size() < 1) continue;
+            unsigned char status = msg[0];
+            int msg_chan = (status & 0x0F) + 1;
+            if (chan_filter != 0 && msg_chan != chan_filter) continue;
+            if (midi_out_buf_.count < VIVID_MIDI_BUFFER_CAPACITY && msg.size() >= 3) {
+                auto& m = midi_out_buf_.messages[midi_out_buf_.count];
+                m.status = msg[0];
+                m.data1  = msg[1];
+                m.data2  = msg[2];
+                m.reserved = 0;
+                m.frame_offset_samples = 0;
+                midi_out_buf_.count++;
+            }
+        }
+        if (ctx->custom_outputs && ctx->custom_output_count > 0) {
+            ctx->custom_outputs[0] = &midi_out_buf_;
+        }
+
         // Write scalar outputs
         int cc_idx = cc_number.int_value();
         if (cc_idx < 0) cc_idx = 0;
@@ -187,6 +211,7 @@ private:
 
     HeldNote held_buffer_[kMaxHeld] = {};
     int held_count_ = 0;
+    VividMidiBuffer midi_out_buf_ = {};
 
     void ensure_midi_initialized() {
         if (midi_init_attempted_) return;
