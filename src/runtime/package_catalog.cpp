@@ -265,6 +265,30 @@ bool PackageCatalog::parse_index_json(const std::string& json_str,
         v = yyjson_obj_get(val, "url");
         if (v && yyjson_is_str(v)) e.url = yyjson_get_str(v);
 
+        v = yyjson_obj_get(val, "category");
+        if (v && yyjson_is_str(v)) e.category = yyjson_get_str(v);
+
+        v = yyjson_obj_get(val, "description_short");
+        if (v && yyjson_is_str(v)) e.description_short = yyjson_get_str(v);
+
+        v = yyjson_obj_get(val, "status");
+        if (v && yyjson_is_str(v)) e.status = yyjson_get_str(v);
+
+        v = yyjson_obj_get(val, "status_note");
+        if (v && yyjson_is_str(v)) e.status_note = yyjson_get_str(v);
+
+        v = yyjson_obj_get(val, "preview_image_url");
+        if (v && yyjson_is_str(v)) e.preview_image_url = yyjson_get_str(v);
+
+        v = yyjson_obj_get(val, "repo_url");
+        if (v && yyjson_is_str(v)) e.repo_url = yyjson_get_str(v);
+
+        v = yyjson_obj_get(val, "homepage_url");
+        if (v && yyjson_is_str(v)) e.homepage_url = yyjson_get_str(v);
+
+        v = yyjson_obj_get(val, "install_url");
+        if (v && yyjson_is_str(v)) e.install_url = yyjson_get_str(v);
+
         out.push_back(std::move(e));
     }
 
@@ -345,6 +369,22 @@ void PackageCatalog::save_cache(const std::vector<CatalogEntry>& entries) {
             yyjson_mut_obj_add_strcpy(doc, obj, "vivid_core", e.vivid_core.c_str());
         yyjson_mut_obj_add_strcpy(doc, obj, "author", e.author.c_str());
         yyjson_mut_obj_add_strcpy(doc, obj, "url", e.url.c_str());
+        if (!e.category.empty())
+            yyjson_mut_obj_add_strcpy(doc, obj, "category", e.category.c_str());
+        if (!e.description_short.empty())
+            yyjson_mut_obj_add_strcpy(doc, obj, "description_short", e.description_short.c_str());
+        if (!e.status.empty())
+            yyjson_mut_obj_add_strcpy(doc, obj, "status", e.status.c_str());
+        if (!e.status_note.empty())
+            yyjson_mut_obj_add_strcpy(doc, obj, "status_note", e.status_note.c_str());
+        if (!e.preview_image_url.empty())
+            yyjson_mut_obj_add_strcpy(doc, obj, "preview_image_url", e.preview_image_url.c_str());
+        if (!e.repo_url.empty())
+            yyjson_mut_obj_add_strcpy(doc, obj, "repo_url", e.repo_url.c_str());
+        if (!e.homepage_url.empty())
+            yyjson_mut_obj_add_strcpy(doc, obj, "homepage_url", e.homepage_url.c_str());
+        if (!e.install_url.empty())
+            yyjson_mut_obj_add_strcpy(doc, obj, "install_url", e.install_url.c_str());
 
         yyjson_mut_arr_add_val(arr, obj);
     }

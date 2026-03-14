@@ -16,7 +16,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPOS_JSON = SCRIPT_DIR / "repos.json"
 OUTPUT_JSON = SCRIPT_DIR / "packages.json"
 
-MANIFEST_FIELDS = ["name", "description", "version", "vivid_core", "author"]
+MANIFEST_FIELDS = [
+    "name", "description", "version", "vivid_core", "author",
+    "category", "description_short",
+]
+
+REPO_META_FIELDS = ["status", "status_note", "preview_image_url", "homepage_url"]
 
 RAW_URL_TEMPLATE = (
     "https://raw.githubusercontent.com/seethroughlab/{name}/master/vivid-package.json"
@@ -68,6 +73,17 @@ def main() -> None:
             continue
         entry = {field: manifest.get(field, "") for field in MANIFEST_FIELDS}
         entry["url"] = repo["url"]
+
+        # Merge catalog metadata from repos.json
+        for field in REPO_META_FIELDS:
+            if field in repo:
+                entry[field] = repo[field]
+
+        # Derive repo_url (strip .git suffix) and install_url
+        url = repo["url"]
+        entry["repo_url"] = url.removesuffix(".git")
+        entry["install_url"] = url
+
         packages.append(entry)
 
     catalog = {

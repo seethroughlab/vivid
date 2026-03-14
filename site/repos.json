@@ -1,5 +1,16 @@
 [
-  {"name": "vivid-3d", "url": "https://github.com/seethroughlab/vivid-3d.git"},
-  {"name": "vivid-glitch", "url": "https://github.com/seethroughlab/vivid-glitch.git"},
-  {"name": "vivid-cef", "url": "https://github.com/seethroughlab/vivid-cef.git"}
+  {
+    "name": "vivid-3d",
+    "url": "https://github.com/seethroughlab/vivid-3d.git",
+    "status": "experimental"
+  },
+  {
+    "name": "vivid-glitch",
+    "url": "https://github.com/seethroughlab/vivid-glitch.git"
+  },
+  {
+    "name": "vivid-cef",
+    "url": "https://github.com/seethroughlab/vivid-cef.git",
+    "status": "experimental"
+  }
 ]
