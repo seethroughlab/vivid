@@ -2309,8 +2309,75 @@ static std::string dispatch(const std::string& method, const std::string& body,
             if (!name_v || !yyjson_is_str(name_v))
                 result = json_err("missing 'name'");
             else {
-                auto ir = package_manager->rebuild(yyjson_get_str(name_v));
+                const std::string pkg_name = yyjson_get_str(name_v);
+
+                // Collect type names of running operators from this package so we
+                // can safely destroy their instances before the old dylib is unloaded.
+                // rebuild() calls unregister_package_operator() which erases the
+                // loader (triggering dlclose); without destroying instances first,
+                // the next process() tick would call into unloaded code and crash.
+                struct SavedInstance {
+                    uint32_t node_idx;
+                    std::string type_name;
+                    std::unordered_map<std::string, float> param_values;
+                    std::unordered_map<std::string, std::string> string_values;
+                    std::unordered_map<std::string, uint8_t> lock_flags;
+                };
+                std::vector<SavedInstance> saved;
+
+                for (uint32_t i = 0; i < static_cast<uint32_t>(scheduler.nodes().size()); ++i) {
+                    const auto& ns = scheduler.nodes()[i];
+                    if (!ns.loader || !ns.instance) continue;
+                    const auto* pkg = registry.package_for_type(ns.type_name);
+                    if (!pkg || *pkg != pkg_name) continue;
+
+                    SavedInstance si;
+                    si.node_idx = i;
+                    si.type_name = ns.type_name;
+                    for (const auto& [name, idx] : ns.param_indices) {
+                        si.param_values[name] = ns.param_values[idx];
+                        if (ns.param_lock_flags[idx] != 0)
+                            si.lock_flags[name] = ns.param_lock_flags[idx];
+                    }
+                    for (const auto& [name, idx] : ns.file_param_indices)
+                        si.string_values[name] = ns.file_param_storage[idx];
+                    saved.push_back(std::move(si));
+                }
+
+                // Destroy instances while old dylib is still loaded
+                for (const auto& si : saved) {
+                    auto& ns = scheduler.nodes_mut()[si.node_idx];
+                    if (ns.instance) {
+                        ns.loader->destroy_instance(ns.instance);
+                        ns.instance = nullptr;
+                    }
+                }
+
+                auto ir = package_manager->rebuild(pkg_name);
                 if (ir.success) {
+                    // Recreate instances from new loaders
+                    for (const auto& si : saved) {
+                        auto& ns = scheduler.nodes_mut()[si.node_idx];
+                        OperatorLoader* new_loader = registry.find(si.type_name);
+                        if (new_loader && new_loader->is_loaded()) {
+                            ns.loader = new_loader;
+                            ns.instance = new_loader->create_instance();
+                            const auto* desc = new_loader->descriptor();
+                            if (desc) {
+                                scheduler.reinit_node(ns, desc, &si.param_values,
+                                    si.string_values.empty() ? nullptr : &si.string_values);
+                                for (const auto& [pname, flags] : si.lock_flags) {
+                                    auto pi = ns.param_indices.find(pname);
+                                    if (pi != ns.param_indices.end())
+                                        ns.param_lock_flags[pi->second] = flags;
+                                }
+                            }
+                            ns.errored = false;
+                            ns.error_message.clear();
+                            ns.generation++;
+                        }
+                    }
+
                     yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
                     yyjson_mut_val* res = yyjson_mut_obj(rdoc);
                     yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());
@@ -2326,6 +2393,22 @@ static std::string dispatch(const std::string& method, const std::string& body,
                         }
                     }
                 } else {
+                    // Rebuild failed — try to recreate instances from old loaders
+                    // (if unregister didn't happen yet or loaders still exist)
+                    for (const auto& si : saved) {
+                        auto& ns = scheduler.nodes_mut()[si.node_idx];
+                        OperatorLoader* loader = registry.find(si.type_name);
+                        if (loader && loader->is_loaded()) {
+                            ns.loader = loader;
+                            ns.instance = loader->create_instance();
+                            const auto* desc = loader->descriptor();
+                            if (desc) {
+                                scheduler.reinit_node(ns, desc, &si.param_values,
+                                    si.string_values.empty() ? nullptr : &si.string_values);
+                            }
+                            ns.generation++;
+                        }
+                    }
                     result = json_err(ir.error);
                 }
             }
@@ -3108,6 +3191,22 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
         }
         if (req.method == "new_graph") {
             auto r = api.new_graph(has_gpu_ops, has_audio);
+            impl_->undo_history.clear();
+            req.promise.set_value(command_result_to_json(r));
+            continue;
+        }
+        if (req.method == "new_project") {
+            yyjson_doc* doc = yyjson_read(req.body.c_str(), req.body.size(), 0);
+            yyjson_val* root = doc ? yyjson_doc_get_root(doc) : nullptr;
+            yyjson_val* path_v = root ? yyjson_obj_get(root, "path") : nullptr;
+            if (!path_v || !yyjson_is_str(path_v)) {
+                if (doc) yyjson_doc_free(doc);
+                req.promise.set_value(json_err("new_project requires 'path' parameter"));
+                continue;
+            }
+            std::string path = yyjson_get_str(path_v);
+            yyjson_doc_free(doc);
+            auto r = api.new_project(path, has_gpu_ops, has_audio);
             impl_->undo_history.clear();
             req.promise.set_value(command_result_to_json(r));
             continue;

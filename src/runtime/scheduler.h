@@ -183,6 +183,13 @@ public:
                          const std::string& new_dylib_path);
     std::string type_name(uint32_t node_idx) const;
 
+    // Public wrapper for init_node_state — used by control_server for package rebuild
+    void reinit_node(NodeState& ns, const VividOperatorDescriptor* desc,
+                     const std::unordered_map<std::string, float>* param_overrides,
+                     const std::unordered_map<std::string, std::string>* string_overrides = nullptr) {
+        init_node_state(ns, desc, param_overrides, string_overrides);
+    }
+
     bool gpu_sink_source_size(int sink_idx, uint32_t& w, uint32_t& h) const;
     WGPUTexture gpu_sink_source_texture(int sink_idx) const;
     bool is_audio_type(const std::string& type_name) const;
