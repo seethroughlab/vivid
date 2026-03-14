@@ -64,6 +64,15 @@ struct AudioNodeState {
     std::vector<float> float_input_values;    // reset to defaults each control tick, then overwritten by wires
     uint32_t float_input_count = 0;
 
+    // --- Float outputs (audio-domain FLOAT output ports — scalar values) ---
+    std::vector<float> float_output_values;   // [float_output_ordinal] — written by process_audio
+    uint32_t float_output_count = 0;
+
+    // --- Custom outputs (audio-domain custom output ports) ---
+    std::vector<void*> custom_output_ptrs;    // [custom_output_ordinal] — set by process_audio
+    uint32_t custom_output_count = 0;
+    bool has_custom_output_ports = false;
+
     // --- Spread / string / data inputs (cross-domain bridge) ---
     std::vector<SpreadSnapshot> spread_inputs;       // [input_port_idx]
     std::vector<SpreadSnapshot> spread_outputs;      // [output_port_idx]
@@ -85,6 +94,20 @@ struct AudioWire {
     float scale = 1.0f;
     uint8_t from_channels = 1;  // resolved source channel count
     uint8_t to_channels = 1;    // resolved destination channel count
+};
+
+// Wire for FLOAT output → FLOAT input between audio-domain nodes (scalar, once per buffer)
+struct AudioFloatPortWire {
+    uint32_t from_node_idx, from_float_port_idx;
+    uint32_t to_node_idx, to_float_port_idx;
+    float scale = 1.0f;
+};
+
+// Wire for custom-type output → custom-type input between audio-domain nodes
+struct AudioCustomWire {
+    uint32_t from_node_idx, from_port_idx;
+    uint32_t to_node_idx, to_port_idx;
+    uint32_t type_id = 0;
 };
 
 // Wire for CONTROL_SPREAD data between audio-domain nodes
@@ -169,6 +192,7 @@ struct AnalysisSnapshot {
     std::vector<float> peak;  // [audio_node_idx]
     std::vector<std::array<float, kWaveformSamples>> waveform; // [audio_node_idx]
     std::vector<std::vector<SpreadSnapshot>> spread_outputs; // [audio_node_idx][output_port_idx]
+    std::vector<std::vector<float>> float_outputs; // [audio_node_idx][float_output_ordinal]
 
     // Error state propagation (audio thread → main thread)
     // Fixed-size char arrays avoid heap allocation on the audio thread.
@@ -251,6 +275,8 @@ private:
 
     std::vector<AudioNodeState> nodes_;
     std::vector<AudioWire> wires_;
+    std::vector<AudioFloatPortWire> audio_float_wires_;
+    std::vector<AudioCustomWire> audio_custom_wires_;
     std::vector<AudioSpreadWire> audio_spread_wires_;
     std::vector<CrossDomainWire> cross_wires_;
     std::vector<CrossDomainSpreadWire> cross_spread_wires_;
@@ -277,6 +303,12 @@ private:
             uint32_t scheduler_port_idx;
         };
         std::vector<SpreadOutputMapping> spread_output_mappings;
+        // Float output mappings: audio float output → scheduler output
+        struct FloatOutputMapping {
+            uint32_t audio_float_ordinal;  // index into float_output_values
+            uint32_t scheduler_port_idx;
+        };
+        std::vector<FloatOutputMapping> float_output_mappings;
     };
     std::vector<ParamMapping> param_mappings_;
 

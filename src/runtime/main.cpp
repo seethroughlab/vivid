@@ -1,5 +1,6 @@
 #include "runtime/gpu_context.h"
 #include "runtime/fullscreen_blit.h"
+#include "runtime/output_window.h"
 #include "ui/thumbnail_cache.h"
 #include "ui/thumbnail_renderer.h"
 #include "runtime/operator_registry.h"
@@ -1995,6 +1996,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // --- Output window (separate display for video_out) ---
+    vivid::OutputWindow output_window;
+
     // --- Thumbnail cache + renderer ---
     vivid::ui::ThumbnailCache thumb_cache;
     thumb_cache.init(gpu.device(), gpu.queue(), kThumbW, kThumbH);
@@ -3213,14 +3217,14 @@ int main(int argc, char* argv[]) {
         }
 #endif
 
-        // Drive fullscreen/display selection from video_out sink params when present.
+        // Drive output window from video_out "launch" param.
         if (has_gpu_ops && video_out_idx >= 0 &&
             static_cast<size_t>(video_out_idx) < scheduler.nodes().size()) {
             const auto& vo_ns = scheduler.nodes()[video_out_idx];
-            auto fs_it = vo_ns.param_indices.find("fullscreen");
-            if (fs_it != vo_ns.param_indices.end() &&
-                fs_it->second < vo_ns.param_values.size()) {
-                const bool want_fullscreen = vo_ns.param_values[fs_it->second] >= 0.5f;
+            auto launch_it = vo_ns.param_indices.find("launch");
+            if (launch_it != vo_ns.param_indices.end() &&
+                launch_it->second < vo_ns.param_values.size()) {
+                const bool want_launch = vo_ns.param_values[launch_it->second] >= 0.5f;
                 int target = 0; // Current monitor
                 auto dt_it = vo_ns.param_indices.find("display_target");
                 if (dt_it != vo_ns.param_indices.end() &&
@@ -3230,29 +3234,24 @@ int main(int argc, char* argv[]) {
                     if (target > 2) target = 2;
                 }
 
-                if (want_fullscreen) {
+                if (want_launch) {
                     GLFWmonitor* target_monitor = monitor_for_target(target, window);
-                    if (!display_state.fullscreen) {
-                        enter_fullscreen(target_monitor);
+                    if (!output_window.is_open()) {
+                        output_window.open(gpu.instance(), gpu.adapter(), gpu.device(), gpu.queue(), target_monitor);
                     } else if (target != display_state.sink_target &&
                                monitor_connected(target_monitor)) {
-                        int mx = 0, my = 0;
-                        glfwGetMonitorPos(target_monitor, &mx, &my);
-                        const GLFWvidmode* mode = glfwGetVideoMode(target_monitor);
-                        if (!mode) return true;
-                        const int mw = mode->width;
-                        const int mh = mode->height;
-                        glfwSetWindowPos(window, mx, my);
-                        glfwSetWindowSize(window, mw, mh);
-                        display_state.fullscreen_monitor = target_monitor;
-                        display_state.surface_reconfigure_pending = true;
-                        display_state.surface_settle_frames = 2;
-                        std::fprintf(stderr, "[vivid] Switched fullscreen target monitor (%dx%d at %d,%d)\n",
-                                     mw, mh, mx, my);
+                        output_window.move_to_monitor(target_monitor);
                     }
-                } else if (display_state.fullscreen) {
-                    exit_fullscreen();
+                } else if (output_window.is_open()) {
+                    output_window.close();
                 }
+
+                // Handle ESC / window close on output window
+                if (output_window.should_close()) {
+                    output_window.close();
+                    scheduler.nodes_mut()[video_out_idx].param_values[launch_it->second] = 0.0f;
+                }
+
                 display_state.sink_target = target;
             }
         }
@@ -3547,6 +3546,11 @@ int main(int argc, char* argv[]) {
                                   static_cast<uint32_t>(fb_width),
                                   static_cast<uint32_t>(fb_height),
                                   fit_mode, ui_vis);
+
+                    // Present to output window (separate surface, own encoder)
+                    if (output_window.is_open()) {
+                        output_window.present(display_tex, src_w, src_h, fit_mode);
+                    }
                 } else {
                     emit_clear_pass(frame.encoder, frame.view, clear);
                 }
@@ -3650,6 +3654,7 @@ int main(int argc, char* argv[]) {
     thumb_cache.shutdown();
     thumb_blit.shutdown();
     blit.shutdown();
+    output_window.close();
     gpu.shutdown();
 
     // Save window geometry for next launch

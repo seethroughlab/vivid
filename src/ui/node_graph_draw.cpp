@@ -2553,8 +2553,19 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
             tr.draw_rect(dot_x, dot_y, 6, 6, dcol[0], dcol[1], dcol[2]);
 
+            // Domain tag
+            const char* tag = "[C]";
+            if (cat_it != snap_.operator_catalog.end()) {
+                switch (cat_it->second->domain) {
+                    case VIVID_DOMAIN_AUDIO:   tag = "[A]"; break;
+                    case VIVID_DOMAIN_GPU:     tag = "[G]"; break;
+                    default:                   tag = "[C]"; break;
+                }
+            }
+            tr.draw_text(px + 20, item_y + 3, tag, dcol[0], dcol[1], dcol[2]);
+
             // Type name
-            tr.draw_text(px + 22, item_y + 3, name.c_str(), 0.85f, 0.87f, 0.90f);
+            tr.draw_text(px + 42, item_y + 3, name.c_str(), 0.85f, 0.87f, 0.90f);
         }
     }
 

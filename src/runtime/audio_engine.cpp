@@ -37,6 +37,7 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
     ns.has_spread_ports = false;
     ns.has_string_input_ports = false;
     ns.has_custom_input_ports = false;
+    ns.has_custom_output_ports = false;
 
     ns.descriptor_input_channels.clear();
     ns.descriptor_output_channels.clear();
@@ -61,6 +62,10 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
         if (desc->ports[i].direction == VIVID_PORT_INPUT &&
             vivid_is_custom_port_type(desc->ports[i].type)) {
             ns.has_custom_input_ports = true;
+        }
+        if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
+            vivid_is_custom_port_type(desc->ports[i].type)) {
+            ns.has_custom_output_ports = true;
         }
     }
 
@@ -103,6 +108,28 @@ void AudioEngine::init_audio_node_state(AudioNodeState& ns, const VividOperatorD
     }
     ns.float_input_values = ns.float_input_defaults;
 
+    // Float output ports (VIVID_PORT_FLOAT outputs on audio operators)
+    ns.float_output_values.clear();
+    ns.float_output_count = 0;
+    for (uint32_t i = 0; i < desc->port_count; ++i) {
+        if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
+            desc->ports[i].type == VIVID_PORT_FLOAT) {
+            ns.float_output_count++;
+        }
+    }
+    ns.float_output_values.resize(ns.float_output_count, 0.0f);
+
+    // Custom output ports (audio-domain custom outputs)
+    ns.custom_output_ptrs.clear();
+    ns.custom_output_count = 0;
+    for (uint32_t i = 0; i < desc->port_count; ++i) {
+        if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
+            vivid_is_custom_port_type(desc->ports[i].type)) {
+            ns.custom_output_count++;
+        }
+    }
+    ns.custom_output_ptrs.resize(ns.custom_output_count, nullptr);
+
     // Pre-allocate pointer arrays (avoids audio-thread allocation)
     ns.in_ptrs.resize(ns.input_port_count);
     ns.out_ptrs.resize(ns.output_port_count);
@@ -130,6 +157,8 @@ AudioEngine::~AudioEngine() {
 bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Scheduler& scheduler) {
     nodes_.clear();
     wires_.clear();
+    audio_float_wires_.clear();
+    audio_custom_wires_.clear();
     audio_spread_wires_.clear();
     cross_wires_.clear();
     cross_spread_wires_.clear();
@@ -186,13 +215,13 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
             auto tp_it = to_ns.input_port_indices.find(conn.to_port);
             if (fp_it != from_ns.output_port_indices.end() &&
                 tp_it != to_ns.input_port_indices.end()) {
-                // Type-check: both CONTROL_SPREAD → AudioSpreadWire, else AudioWire
-                bool from_spread = fp_it->second < from_ns.output_port_types.size() &&
-                                   from_ns.output_port_types[fp_it->second] == VIVID_PORT_SPREAD;
-                bool to_spread = tp_it->second < to_ns.input_port_types.size() &&
-                                 to_ns.input_port_types[tp_it->second] == VIVID_PORT_SPREAD;
+                // Type-check: route to specialized wire types
+                VividPortType from_ptype = fp_it->second < from_ns.output_port_types.size()
+                    ? from_ns.output_port_types[fp_it->second] : VIVID_PORT_AUDIO;
+                VividPortType to_ptype = tp_it->second < to_ns.input_port_types.size()
+                    ? to_ns.input_port_types[tp_it->second] : VIVID_PORT_AUDIO;
 
-                if (from_spread && to_spread) {
+                if (from_ptype == VIVID_PORT_SPREAD && to_ptype == VIVID_PORT_SPREAD) {
                     AudioSpreadWire sw;
                     sw.from_node_idx = fi;
                     sw.from_port_idx = fp_it->second;
@@ -200,6 +229,44 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     sw.to_port_idx = tp_it->second;
                     sw.scale = remap_to_scale(conn);
                     audio_spread_wires_.push_back(sw);
+                } else if (from_ptype == VIVID_PORT_FLOAT && to_ptype == VIVID_PORT_FLOAT) {
+                    // FLOAT→FLOAT: scalar value wire between audio nodes
+                    // Compute ordinals among FLOAT-only ports
+                    uint32_t from_float_ord = 0;
+                    for (uint32_t pi = 0; pi < fp_it->second; ++pi) {
+                        if (from_ns.output_port_types[pi] == VIVID_PORT_FLOAT) from_float_ord++;
+                    }
+                    uint32_t to_float_ord = 0;
+                    for (uint32_t pi = 0; pi < tp_it->second; ++pi) {
+                        if (to_ns.input_port_types[pi] == VIVID_PORT_FLOAT) to_float_ord++;
+                    }
+                    AudioFloatPortWire fw;
+                    fw.from_node_idx = fi;
+                    fw.from_float_port_idx = from_float_ord;
+                    fw.to_node_idx = ti;
+                    fw.to_float_port_idx = to_float_ord;
+                    fw.scale = remap_to_scale(conn);
+                    audio_float_wires_.push_back(fw);
+                } else if (vivid_is_custom_port_type(from_ptype) &&
+                           vivid_is_custom_port_type(to_ptype) &&
+                           from_ptype == to_ptype) {
+                    // Custom→Custom: opaque type wire between audio nodes
+                    // Compute ordinals among custom-only ports
+                    uint32_t from_custom_ord = 0;
+                    for (uint32_t pi = 0; pi < fp_it->second; ++pi) {
+                        if (vivid_is_custom_port_type(from_ns.output_port_types[pi])) from_custom_ord++;
+                    }
+                    uint32_t to_custom_ord = 0;
+                    for (uint32_t pi = 0; pi < tp_it->second; ++pi) {
+                        if (vivid_is_custom_port_type(to_ns.input_port_types[pi])) to_custom_ord++;
+                    }
+                    AudioCustomWire cw;
+                    cw.from_node_idx = fi;
+                    cw.from_port_idx = from_custom_ord;
+                    cw.to_node_idx = ti;
+                    cw.to_port_idx = to_custom_ord;
+                    cw.type_id = from_ptype;
+                    audio_custom_wires_.push_back(cw);
                 } else {
                     AudioWire w;
                     w.from_node_idx = fi;
@@ -341,6 +408,14 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     for (auto& w : wires_) {
         w.from_node_idx = old_to_new[w.from_node_idx];
         w.to_node_idx = old_to_new[w.to_node_idx];
+    }
+    for (auto& fw : audio_float_wires_) {
+        fw.from_node_idx = old_to_new[fw.from_node_idx];
+        fw.to_node_idx = old_to_new[fw.to_node_idx];
+    }
+    for (auto& cw : audio_custom_wires_) {
+        cw.from_node_idx = old_to_new[cw.from_node_idx];
+        cw.to_node_idx = old_to_new[cw.to_node_idx];
     }
     for (auto& sw : audio_spread_wires_) {
         sw.from_node_idx = old_to_new[sw.from_node_idx];
@@ -582,10 +657,12 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         snap.peak.resize(n, 0.0f);
         snap.waveform.resize(n);
         snap.spread_outputs.resize(n);
+        snap.float_outputs.resize(n);
         snap.errored.resize(n, false);
         snap.error_msgs.resize(n);
         for (uint32_t i = 0; i < n; ++i) {
             snap.spread_outputs[i].resize(nodes_[i].output_port_count);
+            snap.float_outputs[i].resize(nodes_[i].float_output_count, 0.0f);
         }
     }
 
@@ -628,6 +705,22 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                                 }
                                 out_idx++;
                             }
+                        }
+                    }
+                }
+
+                // Build float output mappings: audio FLOAT outputs → scheduler outputs
+                {
+                    const auto* adesc = nodes_[ai].loader->descriptor();
+                    uint32_t float_ord = 0;
+                    for (uint32_t pi = 0; pi < adesc->port_count; ++pi) {
+                        if (adesc->ports[pi].direction == VIVID_PORT_OUTPUT &&
+                            adesc->ports[pi].type == VIVID_PORT_FLOAT) {
+                            auto sched_it = scheduler.nodes()[si].output_port_indices.find(adesc->ports[pi].name);
+                            if (sched_it != scheduler.nodes()[si].output_port_indices.end()) {
+                                pm.float_output_mappings.push_back({float_ord, sched_it->second});
+                            }
+                            float_ord++;
                         }
                     }
                 }
@@ -904,6 +997,15 @@ void AudioEngine::inject_analysis(Scheduler& scheduler) {
                 sched_ns.error_message.clear();
             }
         }
+        // Inject FLOAT outputs from audio nodes back to scheduler
+        for (const auto& fm : pm.float_output_mappings) {
+            if (pm.audio_engine_idx < snap.float_outputs.size() &&
+                fm.audio_float_ordinal < snap.float_outputs[pm.audio_engine_idx].size()) {
+                scheduler.inject_external_output(pm.scheduler_node_idx, fm.scheduler_port_idx,
+                                                  snap.float_outputs[pm.audio_engine_idx][fm.audio_float_ordinal]);
+            }
+        }
+
         // Inject CONTROL_SPREAD outputs from audio nodes back to scheduler
         for (const auto& sm : pm.spread_output_mappings) {
             if (pm.audio_engine_idx < snap.spread_outputs.size() &&
@@ -1070,6 +1172,8 @@ void AudioEngine::shutdown() {
     }
     nodes_.clear();
     wires_.clear();
+    audio_float_wires_.clear();
+    audio_custom_wires_.clear();
     audio_spread_wires_.clear();
     cross_wires_.clear();
     cross_spread_wires_.clear();
@@ -1224,6 +1328,10 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
 
             double time = static_cast<double>(audio_frame_ + frames_written) / kSampleRate;
 
+            // Reset float output values and custom output pointers
+            std::fill(ns.float_output_values.begin(), ns.float_output_values.end(), 0.0f);
+            std::fill(ns.custom_output_ptrs.begin(), ns.custom_output_ptrs.end(), nullptr);
+
             // Check if this is an auto-dup node
             auto dup_it = node_to_dup_group_.find(ni);
             if (dup_it != node_to_dup_group_.end()) {
@@ -1264,6 +1372,9 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                     audio_ctx.custom_input_count = static_cast<uint32_t>(ns.custom_input_values.size());
                     audio_ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
                     audio_ctx.input_float_values = ns.float_input_values.empty() ? nullptr : ns.float_input_values.data();
+                    audio_ctx.output_float_values = ns.float_output_values.empty() ? nullptr : ns.float_output_values.data();
+                    audio_ctx.custom_outputs = ns.custom_output_ptrs.empty() ? nullptr : ns.custom_output_ptrs.data();
+                    audio_ctx.custom_output_count = ns.custom_output_count;
                     audio_ctx.file_param_values = nullptr;
                     audio_ctx.file_param_count = 0;
                     audio_ctx.shared_handles = vivid::shared_handle_service();
@@ -1315,6 +1426,9 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                 audio_ctx.custom_input_count = static_cast<uint32_t>(ns.custom_input_values.size());
                 audio_ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
                 audio_ctx.input_float_values = ns.float_input_values.empty() ? nullptr : ns.float_input_values.data();
+                audio_ctx.output_float_values = ns.float_output_values.empty() ? nullptr : ns.float_output_values.data();
+                audio_ctx.custom_outputs = ns.custom_output_ptrs.empty() ? nullptr : ns.custom_output_ptrs.data();
+                audio_ctx.custom_output_count = ns.custom_output_count;
                 audio_ctx.file_param_values = nullptr;
                 audio_ctx.file_param_count = 0;
                 audio_ctx.shared_handles = vivid::shared_handle_service();
@@ -1357,6 +1471,27 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                     dst.length = src.length;
                     if (src.length > 0)
                         std::memcpy(dst.data, src.data, src.length * sizeof(float));
+                }
+            }
+
+            // Route float outputs to downstream audio nodes via audio float port wires
+            for (const auto& fw : audio_float_wires_) {
+                if (fw.from_node_idx == ni) {
+                    float val = ns.float_output_values[fw.from_float_port_idx] * fw.scale;
+                    auto& to_ns = nodes_[fw.to_node_idx];
+                    if (fw.to_float_port_idx < to_ns.float_input_values.size())
+                        to_ns.float_input_values[fw.to_float_port_idx] = val;
+                }
+            }
+
+            // Route custom outputs to downstream audio nodes via audio custom wires
+            for (const auto& cw : audio_custom_wires_) {
+                if (cw.from_node_idx == ni) {
+                    auto& to_ns = nodes_[cw.to_node_idx];
+                    if (cw.from_port_idx < ns.custom_output_ptrs.size() &&
+                        cw.to_port_idx < to_ns.custom_input_values.size()) {
+                        to_ns.custom_input_values[cw.to_port_idx] = ns.custom_output_ptrs[cw.from_port_idx];
+                    }
                 }
             }
         }
@@ -1482,6 +1617,14 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
         if (nodes_[ni].has_spread_ports) {
             for (uint32_t p = 0; p < nodes_[ni].output_port_count; ++p) {
                 analysis.spread_outputs[ni][p] = nodes_[ni].spread_outputs[p];
+            }
+        }
+
+        // Copy float outputs to analysis snapshot
+        if (nodes_[ni].float_output_count > 0) {
+            auto& fo = analysis.float_outputs[ni];
+            for (uint32_t p = 0; p < nodes_[ni].float_output_count && p < fo.size(); ++p) {
+                fo[p] = nodes_[ni].float_output_values[p];
             }
         }
 

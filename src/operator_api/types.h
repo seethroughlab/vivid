@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 6u
+#define VIVID_OPERATOR_ABI_VERSION 7u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -200,6 +200,9 @@ typedef struct VividAudioContext {
     uint32_t          custom_input_count;  // number of custom-transport input ports
     const char**      input_string_values;
     float*            input_float_values;   // [float_input_ordinal] — CV inputs from control domain
+    float*            output_float_values;  // [float_output_ordinal] — scalar float outputs
+    void**            custom_outputs;       // [custom_output_ordinal] — opaque custom-type outputs
+    uint32_t          custom_output_count;  // number of custom-transport output ports
     const char**      file_param_values;
     uint32_t          file_param_count;
     const VividSharedHandleService* shared_handles;

@@ -49,7 +49,7 @@ static const char* video_out_display_labels[] = { "Current", "Primary", "Seconda
 static VividParamDescriptor video_out_params[] = {
     { "fit_mode", VIVID_PARAM_INT, 0, 0, 2,
       video_out_fit_labels, 3 },
-    { "fullscreen", VIVID_PARAM_BOOL, 0, 0, 1,
+    { "launch", VIVID_PARAM_BOOL, 0, 0, 1,
       nullptr, 0 },
     { "display_target", VIVID_PARAM_INT, 0, 0, 2,
       video_out_display_labels, 3 },

@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstring>
 
-struct Clock : vivid::ControlOperatorBase {
+struct Clock : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "Clock";
     static constexpr bool kTimeDependent = true;
 
@@ -30,16 +30,17 @@ struct Clock : vivid::ControlOperatorBase {
         out.push_back({"bar_phase",  VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_audio(const VividAudioContext* ctx) override {
+        double delta_time = static_cast<double>(ctx->buffer_size) / ctx->sample_rate;
         double beats_per_sec = static_cast<double>(bpm.value) / 60.0;
         double bars_per_sec = beats_per_sec / static_cast<double>(beats_per_bar.value);
-        phase_ += ctx->delta_time * beats_per_sec;
+        phase_ += delta_time * beats_per_sec;
         phase_ -= std::floor(phase_);
-        bar_phase_ += ctx->delta_time * bars_per_sec;
+        bar_phase_ += delta_time * bars_per_sec;
         bar_phase_ -= std::floor(bar_phase_);
-        ctx->output_values[0] = static_cast<float>(phase_);
-        ctx->output_values[1] = 60000.0f / bpm.value;
-        ctx->output_values[2] = static_cast<float>(bar_phase_);
+        ctx->output_float_values[0] = static_cast<float>(phase_);
+        ctx->output_float_values[1] = 60000.0f / bpm.value;
+        ctx->output_float_values[2] = static_cast<float>(bar_phase_);
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {

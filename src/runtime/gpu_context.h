@@ -29,6 +29,8 @@ public:
     void discard_frame(const FrameState& frame);
     void shutdown();
 
+    WGPUInstance instance() const { return instance_; }
+    WGPUAdapter adapter() const { return adapter_; }
     WGPUDevice device() const { return device_; }
     WGPUQueue queue() const { return queue_; }
     WGPUTextureFormat surface_format() const { return surface_format_; }
