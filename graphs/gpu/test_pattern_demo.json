@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "test_pattern_demo",
+    "title": "Test Pattern",
+    "description": "Calibration test patterns cycling through all available pattern types.",
+    "tags": ["demo", "projection-mapping", "calibration", "test-pattern"],
+    "difficulty": "beginner",
+    "domains": ["gpu", "control"],
+    "requires_packages": [],
+    "featured_rank": 33
+  },
+  "nodes": {
+    "pattern": {
+      "type": "Test Pattern",
+      "params": {
+        "pattern": 0,
+        "density": 16.0,
+        "line_width": 2.0,
+        "r": 1.0,
+        "g": 1.0,
+        "b": 1.0
+      },
+      "resolution": [800, 600]
+    },
+    "lfo_pattern": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.1,
+        "amplitude": 2.5,
+        "offset": 2.5,
+        "waveform": 2
+      }
+    },
+    "vout": {
+      "type": "video_out"
+    }
+  },
+  "connections": [
+    {"from": "lfo_pattern/value", "to": "pattern/pattern"},
+    {"from": "pattern/texture",   "to": "vout/input"}
+  ]
+}

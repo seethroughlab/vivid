@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "color_space_demo",
+    "title": "Color Space Convert",
+    "description": "Color space conversion from sRGB to DCI-P3 showing gamut difference.",
+    "tags": ["demo", "color-science", "color-space"],
+    "difficulty": "beginner",
+    "domains": ["gpu"],
+    "requires_packages": [],
+    "featured_rank": 35
+  },
+  "nodes": {
+    "vid": {
+      "type": "MovieLoaded",
+      "params": {
+        "play_mode": 0.0,
+        "speed": 1.0,
+        "file": "../../assets/camera.mp4"
+      }
+    },
+    "audio": {
+      "type": "MovieAudioOut",
+      "params": {
+        "file": "../../assets/camera.mp4"
+      }
+    },
+    "color_space": {
+      "type": "Color Space",
+      "params": {
+        "source": 0,
+        "target": 1
+      }
+    },
+    "vout": {
+      "type": "video_out"
+    },
+    "aout": {
+      "type": "audio_out"
+    }
+  },
+  "connections": [
+    {"from": "vid/texture",         "to": "color_space/input"},
+    {"from": "color_space/texture", "to": "vout/input"},
+    {"from": "vid/media_clock",     "to": "audio/media_stream"},
+    {"from": "audio/output",        "to": "aout/input"}
+  ]
+}

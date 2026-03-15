@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "lut_apply_demo",
+    "title": "LUT Apply",
+    "description": "3D LUT color grading with animated intensity showing before/after.",
+    "tags": ["demo", "color-science", "lut", "color-grading"],
+    "difficulty": "beginner",
+    "domains": ["gpu", "control"],
+    "requires_packages": [],
+    "featured_rank": 34
+  },
+  "nodes": {
+    "vid": {
+      "type": "MovieLoaded",
+      "params": {
+        "play_mode": 0.0,
+        "speed": 1.0,
+        "file": "../../assets/camera.mp4"
+      }
+    },
+    "audio": {
+      "type": "MovieAudioOut",
+      "params": {
+        "file": "../../assets/camera.mp4"
+      }
+    },
+    "lut": {
+      "type": "LUT Apply",
+      "params": {
+        "file": "../../assets/warm_tone.cube",
+        "intensity": 1.0
+      }
+    },
+    "lfo_intensity": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.15,
+        "amplitude": 0.5,
+        "offset": 0.5,
+        "waveform": 0
+      }
+    },
+    "vout": {
+      "type": "video_out"
+    },
+    "aout": {
+      "type": "audio_out"
+    }
+  },
+  "connections": [
+    {"from": "vid/texture",          "to": "lut/input"},
+    {"from": "lfo_intensity/value",  "to": "lut/intensity"},
+    {"from": "lut/texture",          "to": "vout/input"},
+    {"from": "vid/media_clock",      "to": "audio/media_stream"},
+    {"from": "audio/output",         "to": "aout/input"}
+  ]
+}
