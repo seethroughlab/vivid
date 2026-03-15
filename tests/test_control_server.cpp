@@ -129,11 +129,26 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(build_dir + "/untagged_dest_op.dylib",
         staging + "/untagged_dest_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/export_custom_port_op.dylib",
+        staging + "/export_custom_port_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/test_op_bad_custom_type.dylib",
+        staging + "/test_op_bad_custom_type.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+
+    std::string abi_probe_dir = build_dir + "/.test_cs_abi_probe";
+    std::filesystem::create_directories(abi_probe_dir);
+    std::filesystem::copy_file(build_dir + "/test_op_v1.dylib",
+        abi_probe_dir + "/test_op_v1.dylib",
+        std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: ControlServer ===\n\n");
 
     // --- Runtime setup ---
     vivid::OperatorRegistry registry;
+    setenv("VIVID_MOCK_RUNTIME_ABI", "999", 1);
+    check(registry.scan_deferred(abi_probe_dir.c_str()), "registry.scan_deferred() for ABI diagnostics");
+    unsetenv("VIVID_MOCK_RUNTIME_ABI");
     check(registry.scan(staging.c_str()), "registry.scan()");
 
     vivid::Graph graph;
@@ -676,6 +691,7 @@ int main(int argc, char* argv[]) {
                     yyjson_val* sec_type = nullptr;
                     yyjson_val* unknown_type = nullptr;
                     yyjson_val* untagged_type = nullptr;
+                    yyjson_val* custom_type = nullptr;
                     size_t i = 0, max = 0;
                     yyjson_val* t = nullptr;
                     yyjson_arr_foreach(types, i, max, t) {
@@ -692,6 +708,8 @@ int main(int argc, char* argv[]) {
                             unknown_type = t;
                         } else if (tn == "UntaggedDestOp") {
                             untagged_type = t;
+                        } else if (tn == "ExportCustomPortOp") {
+                            custom_type = t;
                         }
                     }
                     check(t0 != nullptr, "contains TestOp");
@@ -745,6 +763,116 @@ int main(int argc, char* argv[]) {
                         yyjson_val* tag = p0 ? yyjson_obj_get(p0, "semantic_tag") : nullptr;
                         check(tag == nullptr, "UntaggedDestOp param omits semantic_tag");
                     }
+
+                    check(custom_type != nullptr, "contains ExportCustomPortOp");
+                    if (custom_type) {
+                        yyjson_val* outputs_obj = yyjson_obj_get(custom_type, "outputs");
+                        yyjson_val* p0 = (outputs_obj && yyjson_arr_size(outputs_obj) > 0)
+                                       ? yyjson_arr_get_first(outputs_obj) : nullptr;
+                        yyjson_val* type = p0 ? yyjson_obj_get(p0, "type") : nullptr;
+                        yyjson_val* transport = p0 ? yyjson_obj_get(p0, "transport") : nullptr;
+                        yyjson_val* type_name = p0 ? yyjson_obj_get(p0, "type_name") : nullptr;
+                        yyjson_val* stable_type_id = p0 ? yyjson_obj_get(p0, "stable_type_id") : nullptr;
+                        yyjson_val* payload_size = p0 ? yyjson_obj_get(p0, "payload_size") : nullptr;
+                        yyjson_val* registered = p0 ? yyjson_obj_get(p0, "custom_type_registered") : nullptr;
+                        yyjson_val* audio_safe = p0 ? yyjson_obj_get(p0, "audio_safe") : nullptr;
+                        check(type && yyjson_is_str(type) &&
+                                  std::string(yyjson_get_str(type)) == "custom",
+                              "list_types custom port exposes custom type kind");
+                        check(transport && yyjson_is_str(transport) &&
+                                  std::string(yyjson_get_str(transport)) == "custom_ref",
+                              "list_types custom port exposes transport");
+                        check(type_name && yyjson_is_str(type_name) &&
+                                  std::string(yyjson_get_str(type_name)) == "MediaStreamV1",
+                              "list_types custom port exposes type_name");
+                        check(stable_type_id && yyjson_is_str(stable_type_id) &&
+                                  std::string(yyjson_get_str(stable_type_id)) ==
+                                      "seethroughlab.vivid.media_stream_v1",
+                              "list_types custom port exposes stable_type_id");
+                        check(payload_size && yyjson_is_uint(payload_size) &&
+                                  yyjson_get_uint(payload_size) > 0,
+                              "list_types custom port exposes payload_size");
+                        check(registered && yyjson_is_bool(registered) &&
+                                  yyjson_get_bool(registered),
+                              "list_types custom port reports registry presence");
+                        check(audio_safe && yyjson_is_bool(audio_safe) &&
+                                  yyjson_get_bool(audio_safe),
+                              "list_types custom port exposes audio_safe");
+                    }
+                }
+            }
+        }
+
+        // Phase 2b: get_registry_diagnostics
+        std::fprintf(stderr, "\n--- get_registry_diagnostics ---\n");
+        {
+            auto r = post(client, base_url, "get_registry_diagnostics");
+            check(r.ok, "get_registry_diagnostics ok");
+            if (r.root) {
+                yyjson_val* result = yyjson_obj_get(r.root, "result");
+                yyjson_val* schema = result ? yyjson_obj_get(result, "schema_version") : nullptr;
+                yyjson_val* custom_types = result ? yyjson_obj_get(result, "custom_port_types") : nullptr;
+                yyjson_val* abi_mismatches = result ? yyjson_obj_get(result, "abi_mismatch_diagnostics") : nullptr;
+                yyjson_val* loader_failures = result ? yyjson_obj_get(result, "loader_failure_diagnostics") : nullptr;
+                check(schema && yyjson_is_int(schema) && yyjson_get_int(schema) == 1,
+                      "registry diagnostics schema_version=1");
+                check(custom_types && yyjson_is_arr(custom_types) && yyjson_arr_size(custom_types) > 0,
+                      "registry diagnostics exposes custom_port_types");
+                check(abi_mismatches && yyjson_is_arr(abi_mismatches) && yyjson_arr_size(abi_mismatches) > 0,
+                      "registry diagnostics exposes ABI mismatch diagnostics");
+                check(loader_failures && yyjson_is_arr(loader_failures) && yyjson_arr_size(loader_failures) > 0,
+                      "registry diagnostics exposes loader failure diagnostics");
+                if (custom_types && yyjson_is_arr(custom_types)) {
+                    bool found_media_stream = false;
+                    size_t i = 0, max = 0;
+                    yyjson_val* item = nullptr;
+                    yyjson_arr_foreach(custom_types, i, max, item) {
+                        yyjson_val* stable_id = yyjson_obj_get(item, "stable_type_id");
+                        if (!stable_id || !yyjson_is_str(stable_id)) continue;
+                        if (std::string(yyjson_get_str(stable_id)) !=
+                                "seethroughlab.vivid.media_stream_v1") continue;
+                        found_media_stream = true;
+                        yyjson_val* transport = yyjson_obj_get(item, "transport");
+                        yyjson_val* audio_safe = yyjson_obj_get(item, "audio_safe");
+                        check(transport && yyjson_is_str(transport) &&
+                                  std::string(yyjson_get_str(transport)) == "custom_ref",
+                              "registry diagnostics preserves custom port transport");
+                        check(audio_safe && yyjson_is_bool(audio_safe) &&
+                                  yyjson_get_bool(audio_safe),
+                              "registry diagnostics preserves audio_safe");
+                        break;
+                    }
+                    check(found_media_stream, "registry diagnostics includes MediaStreamV1");
+                }
+                if (abi_mismatches && yyjson_is_arr(abi_mismatches) && yyjson_arr_size(abi_mismatches) > 0) {
+                    yyjson_val* first = yyjson_arr_get_first(abi_mismatches);
+                    yyjson_val* plugin_abi = first ? yyjson_obj_get(first, "plugin_abi") : nullptr;
+                    yyjson_val* runtime_abi = first ? yyjson_obj_get(first, "runtime_abi") : nullptr;
+                    check(plugin_abi && yyjson_is_uint(plugin_abi), "ABI diagnostic includes plugin_abi");
+                    check(runtime_abi && yyjson_is_uint(runtime_abi) &&
+                              yyjson_get_uint(runtime_abi) == 999,
+                          "ABI diagnostic includes mocked runtime ABI");
+                }
+                if (loader_failures && yyjson_is_arr(loader_failures) && yyjson_arr_size(loader_failures) > 0) {
+                    bool found_bad_custom = false;
+                    size_t i = 0, max = 0;
+                    yyjson_val* item = nullptr;
+                    yyjson_arr_foreach(loader_failures, i, max, item) {
+                        yyjson_val* plugin_name = yyjson_obj_get(item, "plugin_name");
+                        if (!plugin_name || !yyjson_is_str(plugin_name)) continue;
+                        if (std::string(yyjson_get_str(plugin_name)) != "test_op_bad_custom_type.dylib")
+                            continue;
+                        found_bad_custom = true;
+                        yyjson_val* code = yyjson_obj_get(item, "code");
+                        yyjson_val* message = yyjson_obj_get(item, "message");
+                        check(code && yyjson_is_str(code) &&
+                                  std::string(yyjson_get_str(code)) == "custom_type_registration_failed",
+                              "loader failure diagnostic exposes structured code");
+                        check(message && yyjson_is_str(message) &&
+                                  std::string(yyjson_get_str(message)).find("register") != std::string::npos,
+                              "loader failure diagnostic exposes useful message");
+                    }
+                    check(found_bad_custom, "registry diagnostics include bad custom-type loader failure");
                 }
             }
         }

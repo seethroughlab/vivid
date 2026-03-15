@@ -1,6 +1,7 @@
 #include "runtime/operator_loader.h"
 #include "runtime/operator_registry.h"
 #include "operator_api/data_driven_filter.h"
+#include "operator_api/type_id.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -39,9 +40,18 @@ int main() {
     // Setup staging directories
     std::string staging       = build_dir + "/.test_loader_staging";
     std::string staging_mixed = build_dir + "/.test_loader_mixed";
+    std::string staging_custom = build_dir + "/.test_loader_custom";
+    std::string staging_bad_custom = build_dir + "/.test_loader_bad_custom";
     std::string staging_empty = build_dir + "/.test_loader_empty";
+    std::filesystem::remove_all(staging);
+    std::filesystem::remove_all(staging_mixed);
+    std::filesystem::remove_all(staging_custom);
+    std::filesystem::remove_all(staging_bad_custom);
+    std::filesystem::remove_all(staging_empty);
     std::filesystem::create_directories(staging);
     std::filesystem::create_directories(staging_mixed);
+    std::filesystem::create_directories(staging_custom);
+    std::filesystem::create_directories(staging_bad_custom);
     std::filesystem::create_directories(staging_empty);
 
     // Copy test plugins
@@ -56,6 +66,15 @@ int main() {
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/audio_test_op.dylib",
         staging_mixed + "/audio_test_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/export_custom_port_op.dylib",
+        staging_custom + "/export_custom_port_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/export_custom_port_op.dylib",
+        staging_bad_custom + "/export_custom_port_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/test_op_bad_custom_type.dylib",
+        staging_bad_custom + "/test_op_bad_custom_type.dylib",
         std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: OperatorLoader + OperatorRegistry ===\n\n");
@@ -398,6 +417,55 @@ int main() {
                       "probe preserves output port semantic_tag");
             }
         }
+    }
+
+    // Test 22d: deferred probe preserves custom port metadata
+    {
+        vivid::OperatorRegistry reg;
+        check(reg.scan_deferred(staging_custom.c_str()), "scan_deferred custom-port directory");
+        const auto* desc = reg.probe_descriptor("ExportCustomPortOp");
+        check(desc != nullptr, "probe_descriptor ExportCustomPortOp");
+        if (desc) {
+            check(desc->port_count == 1, "custom port probe preserves port count");
+            if (desc->port_count == 1) {
+                const auto& port = desc->ports[0];
+                check(port.type == VIVID_CUSTOM_TYPE_ID("seethroughlab.vivid.media_stream_v1"),
+                      "probe preserves custom port type id");
+                check(port.transport == VIVID_PORT_TRANSPORT_CUSTOM_REF,
+                      "probe preserves custom port transport");
+                check(port.payload_size > 0,
+                      "probe preserves custom port payload_size");
+                check(port.type_name != nullptr &&
+                          std::strcmp(port.type_name, "MediaStreamV1") == 0,
+                      "probe preserves custom port type_name");
+                check(port.stable_type_id != nullptr &&
+                          std::strcmp(port.stable_type_id, "seethroughlab.vivid.media_stream_v1") == 0,
+                      "probe preserves custom port stable_type_id");
+            }
+        }
+    }
+
+    // Test 22e: scan records malformed custom-type registration failures
+    {
+        vivid::OperatorRegistry reg;
+        check(reg.scan(staging_bad_custom.c_str()), "scan bad custom-type staging succeeds overall");
+        check(reg.find("ExportCustomPortOp") != nullptr, "good custom-type plugin still loads");
+        check(reg.find("BadCustomTypeOp") == nullptr, "bad custom-type plugin is not registered");
+        check(reg.has_loader_failure_diagnostics(), "loader failure diagnostics present");
+        auto failures = reg.loader_failure_diagnostics_for_dir(staging_bad_custom);
+        check(!failures.empty(), "loader failure diagnostics filtered by dir");
+        bool found_bad_custom = false;
+        for (const auto& diag : failures) {
+            if (diag.plugin_name == "test_op_bad_custom_type.dylib") {
+                found_bad_custom = true;
+                check(diag.code == "custom_type_registration_failed",
+                      "bad custom-type plugin reports structured registration failure code");
+                check(diag.message.find("custom port type") != std::string::npos ||
+                          diag.message.find("register") != std::string::npos,
+                      "bad custom-type plugin reports useful registration failure message");
+            }
+        }
+        check(found_bad_custom, "loader failure diagnostics include bad custom-type plugin");
     }
 
     // Test 23: User filter register/unregister cycle

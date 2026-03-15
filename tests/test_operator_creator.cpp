@@ -562,6 +562,112 @@ int main() {
     }
 
     // =================================================================
+    // Test 16c: Custom typed ports require valid stable_type_id
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 16c: Custom typed ports require valid stable_type_id ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_custom_typed_ports_bad_stable_id";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "typed_port_bad_stable_id";
+        req.domain = VIVID_DOMAIN_CONTROL;
+        req.ports = {
+            {"stream_in", 0, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
+                16, "TestStreamToken", "Tests.Vivid.BadId", true},
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(!result.success, "create with invalid stable_type_id fails");
+        check(result.error.find("stable_type_id") != std::string::npos,
+              "error mentions stable_type_id validation");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 16d: Custom typed ports require valid C++ type_name
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 16d: Custom typed ports require valid type_name ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_custom_typed_ports_bad_type_name";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "typed_port_bad_type_name";
+        req.domain = VIVID_DOMAIN_CONTROL;
+        req.ports = {
+            {"stream_in", 0, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
+                16, "bad-type-name", "tests.vivid.test_stream_token_v1", true},
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(!result.success, "create with invalid type_name fails");
+        check(result.error.find("type_name") != std::string::npos,
+              "error mentions type_name validation");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 16e: Custom typed ports must not reuse stable ids with conflicting metadata
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 16e: Custom typed ports require consistent metadata ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_custom_typed_ports_conflict";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "typed_port_conflict";
+        req.domain = VIVID_DOMAIN_CONTROL;
+        req.ports = {
+            {"stream_in", 0, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
+                16, "TestStreamToken", "tests.vivid.test_stream_token_v1", true},
+            {"stream_out", 0, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
+                32, "TestStreamToken", "tests.vivid.test_stream_token_v1", true},
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(!result.success, "create with conflicting stable_type_id metadata fails");
+        check(result.error.find("stable_type_id") != std::string::npos,
+              "error mentions conflicting stable_type_id metadata");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
+    // Test 16f: Built-in ports reject stray custom metadata
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 16f: Built-in ports reject custom metadata ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_builtin_port_custom_metadata";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "builtin_port_bad_metadata";
+        req.domain = VIVID_DOMAIN_CONTROL;
+        req.ports = {
+            {"value_in", VIVID_PORT_FLOAT, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
+                16, "IgnoredType", "", true},
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(!result.success, "built-in port with custom metadata fails");
+        check(result.error.find("custom port metadata") != std::string::npos,
+              "error mentions custom port metadata on built-in port");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
     // Test 17: Custom ports + params together
     // =================================================================
     {

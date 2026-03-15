@@ -876,6 +876,7 @@ add_vivid_operator(test_op_v1     tests/operators/test_op_v1.cpp)
 add_vivid_operator(test_op_v2     tests/operators/test_op_v2.cpp)
 add_vivid_operator(test_op_incompatible_port tests/operators/test_op_incompatible_port.cpp)
 add_vivid_operator(test_op_null_desc tests/operators/test_op_null_desc.cpp)
+add_vivid_operator(test_op_bad_custom_type tests/operators/test_op_bad_custom_type.cpp)
 add_vivid_operator(audio_reload_v1 tests/operators/audio_reload_v1.cpp)
 add_vivid_operator(audio_reload_v2 tests/operators/audio_reload_v2.cpp)
 add_vivid_operator(audio_reload_incompatible tests/operators/audio_reload_incompatible.cpp)
@@ -986,7 +987,7 @@ target_link_libraries(test_control_server PRIVATE
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
 add_dependencies(test_control_server test_op_v1 semantic_ms_source_op semantic_s_dest_op
-    semantic_unknown_source_op untagged_dest_op)
+    semantic_unknown_source_op untagged_dest_op export_custom_port_op test_op_bad_custom_type)
 add_test(NAME test_control_server COMMAND test_control_server ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1232,7 +1233,7 @@ add_executable(test_operator_loader
 )
 target_include_directories(test_operator_loader PRIVATE src)
 target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu yyjson)
-add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc control_pass_op audio_test_op)
+add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # GPU operator plugin for testing (solid color fill)
