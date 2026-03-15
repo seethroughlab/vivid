@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "compressor_demo",
+    "title": "Compressor with Sidechain Ducking",
+    "description": "A square-wave bass and noise mixed through a compressor with sidechain ducking from a kick-like oscillator. Clock-triggered envelopes create dynamic input levels so compression is clearly audible.",
+    "tags": ["audio", "compressor", "dynamics", "sidechain", "demo"],
+    "difficulty": "beginner",
+    "domains": ["audio", "control"],
+    "requires_packages": [],
+    "featured_rank": 30
+  },
+  "nodes": {
+    "clock": {
+      "type": "Clock",
+      "params": {
+        "bpm": 120.0
+      }
+    },
+    "env": {
+      "type": "Envelope",
+      "params": {
+        "attack": 0.005,
+        "decay": 0.15,
+        "sustain": 0.7,
+        "release": 0.3,
+        "amplitude": 1.0
+      }
+    },
+    "osc": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 110.0,
+        "amplitude": 0.8,
+        "waveform": 2
+      }
+    },
+    "noise": {
+      "type": "Noise",
+      "params": {
+        "color": 0,
+        "amplitude": 0.3
+      }
+    },
+    "mixer": {
+      "type": "Mixer",
+      "params": {
+        "gain_1": 1.0,
+        "gain_2": 1.0
+      }
+    },
+    "kick_osc": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 55.0,
+        "amplitude": 0.9,
+        "waveform": 0
+      }
+    },
+    "kick_env": {
+      "type": "Envelope",
+      "params": {
+        "attack": 0.001,
+        "decay": 0.08,
+        "sustain": 0.0,
+        "release": 0.05,
+        "amplitude": 1.0
+      }
+    },
+    "kick_gain": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.9
+      }
+    },
+    "compressor": {
+      "type": "Compressor",
+      "params": {
+        "threshold": -15.0,
+        "ratio": 8.0,
+        "attack": 1.0,
+        "release": 50.0,
+        "knee": 6.0,
+        "makeup": 6.0
+      }
+    },
+    "gain": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.7
+      }
+    },
+    "out": {
+      "type": "audio_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    { "from": "clock/beat_phase",  "to": "env/phase"          },
+    { "from": "clock/beat_phase",  "to": "kick_env/phase"     },
+    { "from": "env/value",         "to": "osc/amplitude_cv"   },
+    { "from": "osc/output",        "to": "mixer/input_1"      },
+    { "from": "noise/output",      "to": "mixer/input_2"      },
+    { "from": "mixer/output",      "to": "compressor/input"   },
+    { "from": "kick_osc/output",   "to": "kick_gain/input"    },
+    { "from": "kick_env/value",    "to": "kick_gain/amplitude_cv" },
+    { "from": "kick_gain/output",  "to": "compressor/sidechain" },
+    { "from": "compressor/output", "to": "gain/input"         },
+    { "from": "gain/output",       "to": "out/input"          }
+  ]
+}

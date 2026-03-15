@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "vocoder_demo",
+    "title": "Vocoder: Noise into Saw",
+    "description": "White noise as the modulator shapes a saw-wave carrier through a 24-band vocoder. An LFO on envelope speed varies how quickly the bands track, producing a talking-robot texture.",
+    "tags": ["audio", "vocoder", "spectral", "demo"],
+    "difficulty": "beginner",
+    "domains": ["audio", "control"],
+    "requires_packages": [],
+    "featured_rank": 30
+  },
+  "nodes": {
+    "noise": {
+      "type": "Noise",
+      "params": {
+        "color": 0,
+        "amplitude": 0.7
+      }
+    },
+    "carrier_osc": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 110.0,
+        "amplitude": 0.7,
+        "waveform": 1
+      }
+    },
+    "lfo_speed": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.1,
+        "amplitude": 20.0,
+        "waveform": 0
+      }
+    },
+    "vocoder": {
+      "type": "Vocoder",
+      "params": {
+        "bands": 24,
+        "envelope_speed": 30.0,
+        "mix": 1.0
+      }
+    },
+    "gain": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.7
+      }
+    },
+    "out": {
+      "type": "audio_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    { "from": "noise/output",       "to": "vocoder/modulator"  },
+    { "from": "carrier_osc/output", "to": "vocoder/carrier"    },
+    { "from": "lfo_speed/value",    "to": "vocoder/speed_cv"   },
+    { "from": "vocoder/output",     "to": "gain/input"         },
+    { "from": "gain/output",        "to": "out/input"          }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "parametric_eq_demo",
+    "title": "Parametric EQ Sculpted Noise",
+    "description": "White noise sculpted by a 3-band parametric EQ with a sweeping low-mid peak, a cut at 1 kHz, and a boost at 5 kHz. An LFO sweeps band 1 frequency for an audible filter-sweep effect.",
+    "tags": ["audio", "eq", "filter", "parametric", "demo"],
+    "difficulty": "beginner",
+    "domains": ["audio", "control"],
+    "requires_packages": [],
+    "featured_rank": 30
+  },
+  "nodes": {
+    "noise": {
+      "type": "Noise",
+      "params": {
+        "color": 0,
+        "amplitude": 0.5
+      }
+    },
+    "lfo": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.12,
+        "amplitude": 300.0,
+        "waveform": 0
+      }
+    },
+    "eq": {
+      "type": "ParametricEQ",
+      "params": {
+        "band_count": 3,
+        "freq_1": 200.0,
+        "gain_1": 12.0,
+        "q_1": 4.0,
+        "type_1": 0,
+        "freq_2": 1000.0,
+        "gain_2": -6.0,
+        "q_2": 2.0,
+        "type_2": 0,
+        "freq_3": 5000.0,
+        "gain_3": 8.0,
+        "q_3": 3.0,
+        "type_3": 0
+      }
+    },
+    "gain": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.6
+      }
+    },
+    "out": {
+      "type": "audio_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    { "from": "noise/output",  "to": "eq/input"       },
+    { "from": "lfo/value",     "to": "eq/freq_1_cv"   },
+    { "from": "eq/output",     "to": "gain/input"     },
+    { "from": "gain/output",   "to": "out/input"      }
+  ]
+}

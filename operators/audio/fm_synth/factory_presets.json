@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "Bell Tone",
+      "params": { "carrier_freq": 440.0, "mod_ratio": 1.4, "mod_index": 5.0, "attack": 0.001, "decay": 1.5, "sustain": 0.0, "release": 0.5, "amplitude": 0.5 }
+    },
+    {
+      "name": "Electric Piano",
+      "params": { "carrier_freq": 440.0, "mod_ratio": 1.0, "mod_index": 1.5, "attack": 0.005, "decay": 0.8, "sustain": 0.3, "release": 0.4, "amplitude": 0.5 }
+    },
+    {
+      "name": "Metallic Lead",
+      "params": { "carrier_freq": 440.0, "mod_ratio": 3.0, "mod_index": 8.0, "attack": 0.01, "decay": 0.3, "sustain": 0.6, "release": 0.2, "amplitude": 0.5 }
+    },
+    {
+      "name": "Deep Bass",
+      "params": { "carrier_freq": 110.0, "mod_ratio": 1.0, "mod_index": 2.0, "attack": 0.01, "decay": 0.4, "sustain": 0.8, "release": 0.3, "amplitude": 0.6 }
+    },
+    {
+      "name": "IDM Clang",
+      "params": { "carrier_freq": 440.0, "mod_ratio": 7.5, "mod_index": 12.0, "attack": 0.001, "decay": 0.5, "sustain": 0.1, "release": 0.3, "amplitude": 0.4 }
+    }
+  ]
+}

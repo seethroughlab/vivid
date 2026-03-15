@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "ping_pong_delay_demo",
+    "title": "Ping-Pong Delay Plucks",
+    "description": "Short pluck-like sine notes triggered by a clock bounce back and forth in stereo through a ping-pong delay with low-pass filtering on the repeats.",
+    "tags": ["audio", "delay", "ping-pong", "stereo", "demo"],
+    "difficulty": "beginner",
+    "domains": ["audio", "control"],
+    "requires_packages": [],
+    "featured_rank": 30
+  },
+  "nodes": {
+    "clock": {
+      "type": "Clock",
+      "params": {
+        "bpm": 80.0
+      }
+    },
+    "env": {
+      "type": "Envelope",
+      "params": {
+        "attack": 0.001,
+        "decay": 0.1,
+        "sustain": 0.0,
+        "release": 0.05,
+        "amplitude": 1.0
+      }
+    },
+    "osc": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 440.0,
+        "amplitude": 0.7,
+        "waveform": 0
+      }
+    },
+    "pre_gain": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.8
+      }
+    },
+    "delay": {
+      "type": "PingPongDelay",
+      "params": {
+        "time": 333.0,
+        "feedback": 0.55,
+        "spread": 1.0,
+        "filter": 1,
+        "filter_freq": 4000.0,
+        "mix": 0.5
+      }
+    },
+    "out": {
+      "type": "audio_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    { "from": "clock/beat_phase",  "to": "env/phase"              },
+    { "from": "env/value",         "to": "osc/amplitude_cv"       },
+    { "from": "osc/output",        "to": "pre_gain/input"         },
+    { "from": "pre_gain/output",   "to": "delay/input"            },
+    { "from": "delay/output",      "to": "out/input"              }
+  ]
+}

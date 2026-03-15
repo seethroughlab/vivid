@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "Classic Robot",
+      "params": { "bands": 16, "envelope_speed": 30.0, "mix": 1.0 }
+    },
+    {
+      "name": "Breathy Talk",
+      "params": { "bands": 24, "envelope_speed": 80.0, "mix": 1.0 }
+    },
+    {
+      "name": "IDM Texture",
+      "params": { "bands": 8, "envelope_speed": 10.0, "mix": 1.0 }
+    },
+    {
+      "name": "Smooth Vocal",
+      "params": { "bands": 20, "envelope_speed": 120.0, "mix": 0.9 }
+    },
+    {
+      "name": "Lo-Fi Voice",
+      "params": { "bands": 6, "envelope_speed": 20.0, "mix": 1.0 }
+    }
+  ]
+}

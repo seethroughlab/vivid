@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "Ambient Sustain",
+      "params": { "freeze": 0.0, "blend": 0.85, "smoothing": 0.6, "fft_size": 2, "phase_mode": 0 }
+    },
+    {
+      "name": "Metallic Drone",
+      "params": { "freeze": 0.0, "blend": 1.0, "smoothing": 0.1, "fft_size": 2, "phase_mode": 1 }
+    },
+    {
+      "name": "Diffuse Pad",
+      "params": { "freeze": 0.0, "blend": 0.9, "smoothing": 0.8, "fft_size": 2, "phase_mode": 2 }
+    },
+    {
+      "name": "Glitch Stutter",
+      "params": { "freeze": 0.0, "blend": 1.0, "smoothing": 0.0, "fft_size": 0, "phase_mode": 0 }
+    },
+    {
+      "name": "Soft Smear",
+      "params": { "freeze": 0.0, "blend": 0.5, "smoothing": 0.95, "fft_size": 1, "phase_mode": 0 }
+    }
+  ]
+}

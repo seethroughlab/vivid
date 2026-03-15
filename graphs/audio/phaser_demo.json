@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "phaser_demo",
+    "title": "Phaser Sweep",
+    "description": "A saw oscillator through an 8-stage phaser with high feedback. An LFO modulates the sweep rate for constantly shifting phase cancellation.",
+    "tags": ["audio", "phaser", "modulation", "demo"],
+    "difficulty": "beginner",
+    "domains": ["audio", "control"],
+    "requires_packages": [],
+    "featured_rank": 30
+  },
+  "nodes": {
+    "osc": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 165.0,
+        "amplitude": 0.7,
+        "waveform": 1
+      }
+    },
+    "lfo": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.1,
+        "amplitude": 0.3,
+        "waveform": 0
+      }
+    },
+    "phaser": {
+      "type": "Phaser",
+      "params": {
+        "rate": 0.4,
+        "depth": 0.8,
+        "stages": 3,
+        "feedback": 0.6,
+        "mix": 0.7
+      }
+    },
+    "gain": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.7
+      }
+    },
+    "out": {
+      "type": "audio_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    { "from": "osc/output",    "to": "phaser/input"   },
+    { "from": "lfo/value",     "to": "phaser/rate_cv"  },
+    { "from": "phaser/output", "to": "gain/input"     },
+    { "from": "gain/output",   "to": "out/input"      }
+  ]
+}

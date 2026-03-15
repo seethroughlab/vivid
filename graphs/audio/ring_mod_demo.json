@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "ring_mod_demo",
+    "title": "Ring Modulator Metallic Warble",
+    "description": "A saw oscillator ring-modulated with a sine carrier whose frequency is swept by an LFO, producing a metallic, warbling texture that evolves over time.",
+    "tags": ["audio", "ring-mod", "modulation", "metallic", "demo"],
+    "difficulty": "beginner",
+    "domains": ["audio", "control"],
+    "requires_packages": [],
+    "featured_rank": 30
+  },
+  "nodes": {
+    "osc": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 165.0,
+        "amplitude": 0.7,
+        "waveform": 1
+      }
+    },
+    "lfo": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.15,
+        "amplitude": 150.0,
+        "waveform": 0
+      }
+    },
+    "ring": {
+      "type": "RingMod",
+      "params": {
+        "carrier_freq": 300.0,
+        "carrier_waveform": 0,
+        "mix": 0.7
+      }
+    },
+    "gain": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.7
+      }
+    },
+    "out": {
+      "type": "audio_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    { "from": "osc/output",   "to": "ring/input"    },
+    { "from": "lfo/value",    "to": "ring/freq_cv"   },
+    { "from": "ring/output",  "to": "gain/input"    },
+    { "from": "gain/output",  "to": "out/input"     }
+  ]
+}

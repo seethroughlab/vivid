@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "Gentle Shimmer",
+      "params": { "rate": 0.3, "depth": 0.3, "voices": 2, "mix": 0.35 }
+    },
+    {
+      "name": "Thick Pad",
+      "params": { "rate": 0.4, "depth": 0.6, "voices": 5, "mix": 0.55 }
+    },
+    {
+      "name": "Dreamy Wash",
+      "params": { "rate": 0.15, "depth": 0.8, "voices": 6, "mix": 0.6 }
+    },
+    {
+      "name": "Fast Vibrato",
+      "params": { "rate": 4.0, "depth": 0.4, "voices": 1, "mix": 0.7 }
+    },
+    {
+      "name": "Detune Spread",
+      "params": { "rate": 0.8, "depth": 0.7, "voices": 4, "mix": 0.5 }
+    }
+  ]
+}

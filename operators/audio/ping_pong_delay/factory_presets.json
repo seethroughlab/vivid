@@ -1,0 +1,24 @@
+{
+  "presets": [
+    {
+      "name": "Classic Ping-Pong",
+      "params": { "time": 375.0, "feedback": 0.45, "spread": 1.0, "filter": 1, "filter_freq": 4000.0, "mix": 0.4 }
+    },
+    {
+      "name": "Ambient Space",
+      "params": { "time": 800.0, "feedback": 0.7, "spread": 0.8, "filter": 1, "filter_freq": 2500.0, "mix": 0.35 }
+    },
+    {
+      "name": "EDM Rhythmic",
+      "params": { "time": 250.0, "feedback": 0.35, "spread": 1.0, "filter": 0, "filter_freq": 3000.0, "mix": 0.5 }
+    },
+    {
+      "name": "IDM Scatter",
+      "params": { "time": 170.0, "feedback": 0.6, "spread": 0.7, "filter": 2, "filter_freq": 1200.0, "mix": 0.45 }
+    },
+    {
+      "name": "Mono Delay",
+      "params": { "time": 500.0, "feedback": 0.5, "spread": 0.0, "filter": 1, "filter_freq": 3500.0, "mix": 0.4 }
+    }
+  ]
+}
