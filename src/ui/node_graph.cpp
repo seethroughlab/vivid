@@ -1161,6 +1161,10 @@ void NodeGraphUI::update_pan() {
     if (panning_) {
         pan_x_ = pan_start_px_ + (mouse_.x - pan_start_mx_);
         pan_y_ = pan_start_py_ + (mouse_.y - pan_start_my_);
+        // Keep targets synced during direct pan
+        pan_target_x_ = pan_x_;
+        pan_target_y_ = pan_y_;
+        zoom_target_ = zoom_;
     }
 }
 

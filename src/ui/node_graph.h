@@ -206,7 +206,10 @@ public:
     float pan_x() const { return pan_x_; }
     float pan_y() const { return pan_y_; }
     float zoom() const { return zoom_; }
-    void set_viewport(float px, float py, float z) { pan_x_ = px; pan_y_ = py; zoom_ = z; }
+    void set_viewport(float px, float py, float z) {
+        pan_x_ = px; pan_y_ = py; zoom_ = z;
+        pan_target_x_ = px; pan_target_y_ = py; zoom_target_ = z;
+    }
 
     bool bezier_wires() const { return bezier_wires_; }
     void set_bezier_wires(bool v) { bezier_wires_ = v; }
