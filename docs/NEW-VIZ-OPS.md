@@ -4,7 +4,7 @@ Proposed operator packages and capabilities to expand Vivid's visual platform, o
 
 ---
 
-## Group 1 — Projection Mapping (`vivid-map`)
+## Group 1 — Projection Mapping (`vivid-map`) COMPLETED
 
 Table stakes for installation and live show deployment. Without this, Vivid can't serve the professional AV market.
 
@@ -207,7 +207,7 @@ Iterated function system renderer for fractal flame visuals.
 
 ---
 
-## Group 6 — Color Science (`vivid-color` or core)
+## Group 6 — Color Science (`vivid-color` or core)  - COMPLETE
 
 Professional color management for broadcast and installation work.
 
@@ -234,7 +234,7 @@ Waveform monitor, vectorscope, and histogram overlays.
 
 ---
 
-## Group 7 — Typography & Vector (`vivid-type`)
+## Group 7 — Typography & Vector (`vivid-type`) - COMPLETE
 
 Kinetic typography is a major live-visual category currently underserved.
 

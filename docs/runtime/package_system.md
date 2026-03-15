@@ -147,6 +147,11 @@ bool uninstall(const std::string& name);
 `install()` → clone/copy to packages dir → `parse_manifest()` → resolve deps → `compile_package()` → `registry.scan()`.
 `InstallResult` fields: `success`, `error`, `info`, `compile_results`, `installed_deps`.
 
+If a package mutation affects the active graph, the runtime now rebuilds through transactional
+snapshot-apply paths instead of mutating the live scheduler or audio engine in place. This keeps
+install/link/rebuild/unlink flows consistent with the same restore-on-failure guarantees used by
+`RuntimeAPI`.
+
 ### Link / Unlink (Development)
 ```cpp
 InstallResult link(const std::string& path);   // symlink local dir into packages dir
@@ -181,8 +186,15 @@ Package-level output also includes:
 
 - summary counts
 - `notes` for contract guidance such as:
-  - package has no manifest tests
-  - some manifest `tests.cpp` entries are outside the generic runner contract and should stay in package-local CMake / CTest
+- package has no manifest tests
+- some manifest `tests.cpp` entries are outside the generic runner contract and should stay in package-local CMake / CTest
+
+This split is intentional:
+
+- manifest tests are the lightweight, core-owned package contract surface
+- package-local CMake / CTest remains the canonical home for heavier repo-specific coverage
+- unsupported manifest `tests.cpp` shapes fail early and explicitly instead of silently depending
+  on whatever build environment happens to exist locally
 
 Representative stable result codes include:
 

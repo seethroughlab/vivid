@@ -5,7 +5,7 @@
 This document tracks the live whole-project audit after the exploration phases.
 It is separate from the code-review preparation notes:
 
-- `docs/CODE_REVIEW.md` explains how to explore the codebase.
+- `docs/internal/CODE_REVIEW.md` explains how to explore the codebase.
 - `docs/internal/CODE-REVIEW-PHASE*.md` capture the orientation passes.
 - This file tracks the actual audit sequence, findings status, and what is next.
 
@@ -308,7 +308,7 @@ Validation:
 
 Status:
 
-- in progress
+- complete
 
 Current focus:
 
@@ -365,11 +365,17 @@ Additional hardening landed:
   and custom-type registration failures
 - Added malformed custom-type registration fixture coverage via `test_op_bad_custom_type`
 
+Phase 4 completion note:
+
+- loader and registry diagnostics now expose the main custom-port / malformed-plugin failure
+  surfaces through tooling-facing runtime APIs
+- custom-port authoring validation is stricter both at scaffold time and at load time
+
 ### Phase 5: Runtime Docs As Living Engineering Contract
 
 Status:
 
-- in progress
+- complete
 
 Current focus:
 
@@ -383,7 +389,16 @@ Hardening landed so far:
 - Updated `docs/runtime/operator_loader.md` with structured loader failure and registry diagnostics
 - Updated `docs/runtime/hot_reload.md` with the current rollback-safe reload contract
 - Updated `docs/runtime/runtime_api.md` with transactional reload/snapshot guarantees
+- Updated `docs/runtime/audio_engine.md` with cross-domain snapshot and audio-safe custom-port guarantees
+- Updated `docs/runtime/package_system.md` with the hardened package mutation/test contract
+- Updated `docs/runtime/architecture.md` with transactional rebuild and conservative hot-reload guarantees
 - Added the runtime-doc maintenance rule to `AGENTS.md`
+
+Phase 5 completion note:
+
+- the runtime doc set now reflects the hardened behavior for the main runtime seams touched during
+  the audit and hardening phases
+- `AGENTS.md` now makes runtime doc maintenance part of the normal development contract
 
 ### Phase 6: Long-Run Reliability And Stress Validation
 
@@ -427,6 +442,8 @@ Files changed during this phase:
 
 - `src/runtime/runtime_api.cpp`
 - `src/runtime/package_manager.cpp`
+- `src/runtime/package_compiler.cpp`
+- `src/runtime/tool_discovery.cpp` via test-target linkage
 - `tests/test_runtime_stress.cpp`
 - `tests/test_hot_reload_stress.cpp`
 - `tests/test_package_stress.cpp`

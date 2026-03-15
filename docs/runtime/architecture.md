@@ -62,6 +62,12 @@ via a `pending_topology_change_` flag. They are only applied between frames via
 
 This ensures the scheduler and audio engine are never mutated while `tick()` is running.
 
+The same transactional expectation now applies to graph-wide rebuild flows:
+
+- `reload()` restores the previous graph/runtime state if load or rebuild fails
+- `apply_snapshot_json()` restores the previous graph/runtime state if parse or rebuild fails
+- package mutation flows that affect the active graph rebuild through the same transactional path
+
 ## Hot Reload Path
 
 1. File watcher (or MCP `rebuild_package`) triggers `hot_reloader.queue_rebuild(target_name)`
@@ -70,9 +76,17 @@ This ensures the scheduler and audio engine are never mutated while `tick()` is 
 4. Main thread: `scheduler.reload_operator(type_name, registry, new_path)` — swap dylib, preserve params
 5. `audio_engine.reload_operator(type_name, registry)` — same for audio nodes
 
+Hot reload is intentionally conservative after the audit hardening work:
+
+- success requires both scheduler-side and audio-side reload to succeed
+- incompatible descriptor changes are rejected rather than partially reusing stale runtime metadata
+- malformed plugins and custom-type registration failures are surfaced through registry diagnostics
+
 ## Key Invariants
 
 - `Scheduler::nodes_` and `AudioEngine::nodes_` are **parallel but independent** builds from the same `Graph`.
 - Audio thread reads `ParamSnapshot` atomically; never touches `Scheduler::nodes_` directly.
 - GPU textures are allocated once at build time and reallocated on window resize or node addition via `needs_gpu_realloc_`.
 - `OperatorRegistry::find()` may trigger a lazy dlopen for deferred entries.
+- UI-facing graph views should remain faithful to graph truth, including broken connections, rather
+  than silently dropping unresolved edges from snapshots

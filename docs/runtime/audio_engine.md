@@ -142,3 +142,12 @@ When a mono audio operator is wired to a stereo chain, the engine auto-duplicate
 - **Never** read `Scheduler::nodes_` from the audio thread
 - All audio-thread buffers are pre-allocated; no `new`/`delete` in `audio_callback()`
 - Error messages use `char[256]` arrays (not `std::string`) to avoid heap allocation
+
+## Recent Hardening Guarantees
+
+- control-to-audio `FLOAT` inputs are now snapshotted through `ParamSnapshot` just like other
+  cross-domain audio inputs; they are no longer written live into `AudioNodeState` from the main thread
+- hot reload on audio operators is rollback-safe for compatible descriptor changes and explicitly
+  rejects incompatible descriptor edits
+- custom ports crossing into audio are treated as bounded audio-safe snapshots only; the audio
+  thread does not dereference runtime-owned objects directly
