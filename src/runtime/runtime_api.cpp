@@ -1586,6 +1586,7 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
 
     pending_topology_change_ = false;
     active_crossfades_.clear();
+    reload_serial_++;
     refresh_graph_dirty_from_saved_snapshot();
     return {true, "applied graph snapshot"};
 }

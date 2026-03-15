@@ -863,9 +863,14 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
 }
 
 bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& result) {
+    std::error_code canonical_ec;
+    std::string compile_pkg_dir = std::filesystem::canonical(pkg_dir, canonical_ec).string();
+    if (canonical_ec || compile_pkg_dir.empty())
+        compile_pkg_dir = pkg_dir;
+
     // build_dir is always inside pkg_dir; callers that remove pkg_dir on failure
     // implicitly clean up build_dir — no separate remove_all needed.
-    std::string build_dir = pkg_dir + "/build";
+    std::string build_dir = compile_pkg_dir + "/build";
 
     if (result.info.build_type == "cmake") {
         std::string cmake_exe = find_tool("cmake");
@@ -882,7 +887,7 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         // Configure
         std::string cmake_cmd = quote(cmake_exe)
             + " -B " + quote(build_dir) +
-            " -S " + quote(pkg_dir) +
+            " -S " + quote(compile_pkg_dir) +
             " -DVIVID_SRC_DIR=" + quote(src_dir) +
             " -DVIVID_BUILD_DIR=" + quote(vivid_build) +
             " -DVIVID_PLUGIN_SUFFIX=" + kPluginSuffix +
@@ -937,16 +942,11 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
             }
         }
     } else {
-        if (!command_exists("clang++")) {
-            result.error = missing_tool_error("clang++");
-            return false;
-        }
         // Default: clang++ compilation via PackageCompiler
         std::vector<std::string> vendor_includes;
         for (const auto& vd : result.info.dependencies.vendor)
-            vendor_includes.push_back(pkg_dir + "/" + vd.include);
-
-        result.compile_results = compiler_.compile_all(pkg_dir,
+            vendor_includes.push_back(compile_pkg_dir + "/" + vd.include);
+        result.compile_results = compiler_.compile_all(compile_pkg_dir,
             result.info.operators, result.info.gpu_operators, vendor_includes);
 
         bool all_ok = true;

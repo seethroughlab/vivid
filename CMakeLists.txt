@@ -879,6 +879,7 @@ add_vivid_operator(test_op_null_desc tests/operators/test_op_null_desc.cpp)
 add_vivid_operator(test_op_bad_custom_type tests/operators/test_op_bad_custom_type.cpp)
 add_vivid_operator(audio_reload_v1 tests/operators/audio_reload_v1.cpp)
 add_vivid_operator(audio_reload_v2 tests/operators/audio_reload_v2.cpp)
+add_vivid_operator(audio_reload_v3 tests/operators/audio_reload_v3.cpp)
 add_vivid_operator(audio_reload_incompatible tests/operators/audio_reload_incompatible.cpp)
 add_vivid_operator(export_custom_port_op tests/operators/export_custom_port_op.cpp)
 add_vivid_operator(test_state_carry_op tests/operators/test_state_carry_op.cpp)
@@ -1236,6 +1237,79 @@ target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu yyj
 add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_runtime_stress
+    tests/test_runtime_stress.cpp
+    src/runtime/builtin_operators.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+)
+target_include_directories(test_runtime_stress PRIVATE src)
+target_link_libraries(test_runtime_stress PRIVATE vivid_operator_api yyjson miniaudio webgpu)
+add_dependencies(test_runtime_stress test_op_v1 test_state_carry_op)
+add_test(NAME test_runtime_stress COMMAND test_runtime_stress ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_hot_reload_stress
+    tests/test_hot_reload_stress.cpp
+    src/runtime/builtin_operators.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+)
+target_include_directories(test_hot_reload_stress PRIVATE src)
+target_link_libraries(test_hot_reload_stress PRIVATE vivid_operator_api yyjson miniaudio webgpu)
+add_dependencies(test_hot_reload_stress audio_reload_v1 audio_reload_v2 audio_reload_v3 audio_reload_incompatible)
+add_test(NAME test_hot_reload_stress COMMAND test_hot_reload_stress ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_package_stress
+    tests/test_package_stress.cpp
+    src/runtime/builtin_operators.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/tool_discovery.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/platform.cpp
+    src/runtime/wgsl_header_parser.cpp
+)
+target_include_directories(test_package_stress PRIVATE src)
+target_link_libraries(test_package_stress PRIVATE vivid_operator_api yyjson miniaudio webgpu)
+add_test(NAME test_package_stress COMMAND test_package_stress ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_mixed_runtime_stability
+    tests/test_mixed_runtime_stability.cpp
+    src/runtime/builtin_operators.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+)
+target_include_directories(test_mixed_runtime_stability PRIVATE src)
+target_link_libraries(test_mixed_runtime_stability PRIVATE vivid_operator_api yyjson miniaudio webgpu)
+add_dependencies(test_mixed_runtime_stability gpu_fill_op)
+add_test(NAME test_mixed_runtime_stability COMMAND test_mixed_runtime_stability ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # GPU operator plugin for testing (solid color fill)
 add_vivid_operator(gpu_fill_op      tests/operators/gpu_fill_op.cpp      EXTRA_LIBS webgpu)
 
@@ -1320,6 +1394,20 @@ configure_file(tests/graphs/test_audio_robustness.json ${CMAKE_BINARY_DIR}/test_
 configure_file(tests/graphs/test_spread_broadcast.json ${CMAKE_BINARY_DIR}/test_spread_broadcast.json COPYONLY)
 configure_file(tests/graphs/test_cross_domain_spread.json ${CMAKE_BINARY_DIR}/test_cross_domain_spread.json COPYONLY)
 configure_file(tests/graphs/test_audio_spread_wire.json ${CMAKE_BINARY_DIR}/test_audio_spread_wire.json COPYONLY)
+configure_file(tests/graphs/test_mixed_runtime_stability.json ${CMAKE_BINARY_DIR}/test_mixed_runtime_stability.json COPYONLY)
+
+add_custom_target(phase6_stress
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -R
+            "test_runtime_stress|test_hot_reload_stress|test_package_stress|test_mixed_runtime_stability"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    DEPENDS test_runtime_stress test_hot_reload_stress test_package_stress test_mixed_runtime_stability
+)
+
+add_custom_target(phase6_soak
+    COMMAND $<TARGET_FILE:test_mixed_runtime_stability> ${CMAKE_BINARY_DIR} soak
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    DEPENDS test_mixed_runtime_stability
+)
 
 # Demo graph smoke test (loads every demo graph, builds scheduler, ticks 5 frames)
 add_executable(test_demo_graphs
