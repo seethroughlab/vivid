@@ -985,7 +985,8 @@ target_link_libraries(test_control_server PRIVATE
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
 add_dependencies(test_control_server test_op_v1 semantic_ms_source_op semantic_s_dest_op
     semantic_unknown_source_op untagged_dest_op)
-add_test(NAME test_control_server COMMAND test_control_server WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_control_server COMMAND test_control_server ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Perception introspection matrix test (domain snapshots + deterministic health)
 add_executable(test_perception_introspection

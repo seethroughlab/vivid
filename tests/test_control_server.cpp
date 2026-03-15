@@ -91,6 +91,13 @@ static yyjson_val* introspect_node_by_id(yyjson_val* root, const char* node_id) 
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
+    build_dir = std::filesystem::absolute(build_dir).string();
+
+    const auto original_cwd = std::filesystem::current_path();
+    const auto isolated_cwd = std::filesystem::path(build_dir) / ".test_cs_cwd";
+    std::filesystem::remove_all(isolated_cwd);
+    std::filesystem::create_directories(isolated_cwd);
+    std::filesystem::current_path(isolated_cwd);
 
     std::string graph_path = build_dir + "/test_runtime_api.json";
     constexpr int kPort = 19876;
@@ -1309,6 +1316,13 @@ int main(int argc, char* argv[]) {
             auto rc = post(client, base_url, "scaffold_operator",
                 R"({"name":"mcp_core_fallback","domain":"control","destination":"auto"})");
             check(rc.ok, "scaffold_operator auto fallback ok");
+            if (!rc.ok && rc.root) {
+                yyjson_val* err_v = yyjson_obj_get(rc.root, "error");
+                if (err_v && yyjson_is_str(err_v)) {
+                    std::fprintf(stderr, "  INFO: scaffold_operator auto fallback error: %s\n",
+                                 yyjson_get_str(err_v));
+                }
+            }
             if (rc.root) {
                 yyjson_val* result = yyjson_obj_get(rc.root, "result");
                 yyjson_val* is_pkg = result ? yyjson_obj_get(result, "destination_is_package") : nullptr;
@@ -1583,6 +1597,8 @@ int main(int argc, char* argv[]) {
     client_thread.join();
     server.stop();
     scheduler.shutdown();
+    std::filesystem::current_path(original_cwd);
+    std::filesystem::remove_all(isolated_cwd);
     std::filesystem::remove_all(staging);
     std::filesystem::remove_all(test_home);
 
