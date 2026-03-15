@@ -470,8 +470,6 @@ private:
             decoder_->set_loop(play_mode.int_value() == 0);
             decoder_->set_speed(speed.value);
             placeholder_active_ = false;
-            // New decoder/source instance became authoritative.
-            on_source_changed();
             log_load_event("load_success", ready->path, ready->generation, ready->diagnostics);
         } else {
             log_load_event("load_failed", ready->path, ready->generation, ready->diagnostics);

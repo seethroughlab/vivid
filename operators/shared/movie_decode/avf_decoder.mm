@@ -204,8 +204,9 @@ struct AVFDecoder::Impl {
         @autoreleasepool {
             if (!opened || !video_output || !player) return false;
 
-            // Recover from transient paused state (seen after seeks/loops).
-            if (current_speed_ > 0.0f && player.rate == 0.0f) {
+            // Recover from transient paused/stalled state (seen after seeks/loops).
+            if (current_speed_ > 0.0f &&
+                player.timeControlStatus != AVPlayerTimeControlStatusPlaying) {
                 [player play];
                 player.rate = current_speed_;
             }
@@ -287,10 +288,12 @@ struct AVFDecoder::Impl {
             if (!player || !opened) return;
             bool force = loop_observer && loop_observer.loopFired;
             if (force) loop_observer.loopFired = NO;
-            float actual_rate = player.rate;
-            if (std::abs(actual_rate - speed) > 1e-6f || force) {
-                current_speed_ = speed;
+            current_speed_ = speed;
+            if (speed > 0.0f) {
+                [player play];
                 player.rate = speed;
+            } else {
+                [player pause];
             }
             if (loop_observer) loop_observer.desiredRate = speed;
         }
@@ -330,6 +333,7 @@ struct AVFDecoder::Impl {
                 toleranceBefore:kCMTimeZero
                  toleranceAfter:kCMTimeZero];
             if (current_speed_ > 0.0f) {
+                [player play];
                 player.rate = current_speed_;
             }
         }
