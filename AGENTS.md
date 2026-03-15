@@ -36,7 +36,25 @@ Read the relevant doc for your task:
 | Runtime, graph, operators, build | `docs/ARCHITECTURE.md` |
 | UI, widgets, layout, visual style | `docs/INTERFACE.md` |
 | LLM chat, MCP server, perception | `docs/LLM-INTEGRATION.md` |
-| Implementing a roadmap phase | §Legacy Reference below |
+| Implementing a roadmap phase | `docs/LEGACY-REFERENCE.md` |
+| Runtime core development | `docs/runtime/architecture.md` then subsystem doc below |
+
+## Runtime Core Development
+
+When working on `src/runtime/`, read the architecture doc first, then the relevant subsystem doc:
+
+| Subsystem | Doc | Key source files |
+|-----------|-----|-----------------|
+| Overall architecture | `docs/runtime/architecture.md` | `src/runtime/main.cpp` |
+| Graph data model | `docs/runtime/graph.md` | `graph.h/cpp` |
+| Scheduler / execution | `docs/runtime/scheduler.md` | `scheduler.h/cpp` |
+| Audio engine | `docs/runtime/audio_engine.md` | `audio_engine.h/cpp` |
+| HTTP control server | `docs/runtime/control_server.md` | `control_server.h/cpp` |
+| Operator loading / ABI | `docs/runtime/operator_loader.md` | `operator_loader.h/cpp`, `operator_registry.h/cpp` |
+| RuntimeAPI (C++ commands) | `docs/runtime/runtime_api.md` | `runtime_api.h/cpp` |
+| Package system | `docs/runtime/package_system.md` | `package_manager.h/cpp`, `package_compiler.h/cpp` |
+| Hot reload | `docs/runtime/hot_reload.md` | `hot_reload.h/cpp` |
+| GPU / WebGPU | `docs/runtime/gpu.md` | `gpu_context.h/cpp` |
 
 ## Project Structure
 
@@ -83,27 +101,7 @@ vivid/
 │   │   ├── export_pipeline.cpp/.h
 │   │   ├── standalone_main.cpp
 │   │   └── standalone.cmake.in
-│   └── operator_api/         # Public operator contract headers
-│       ├── operator.h                # Base operator + VIVID_REGISTER macro
-│       ├── types.h                   # VividParam, VividOutput, enums
-│       ├── gpu_operator.h            # GPU operator base (WebGPU helpers)
-│       ├── audio_operator.h          # Audio operator base
-│       ├── audio_dsp.h               # DSP utilities (filters, envelopes)
-│       ├── adsr.h                    # ADSR envelope helper
-│       ├── child_op.h                # ChildOp<T> for composite operators
-│       ├── data_driven_filter.h      # WGSL filter base class
-│       ├── gpu_common.h              # Shared GPU types
-│       ├── gpu_types.h               # GPU type definitions
-│       ├── input_state.h             # Interactive input events/state
-│       ├── port_type_registry.h      # Port type registry API
-│       ├── type_id.h                 # Stable type IDs
-│       ├── create_request.h          # Operator create request
-│       ├── drum_dsp.h                # Drum synthesis DSP helpers
-│       ├── media_clock.h             # Media clock synchronization
-│       ├── media_stream.h            # Media stream types
-│       ├── midi_types.h              # MIDI type definitions
-│       ├── wgsl_filter.h             # Self-describing WGSL filter support
-│       └── wgsl_preprocessor.h       # WGSL shader preprocessor
+│   └── operator_api/         # Public operator contract headers (operator.h, types.h, gpu/audio bases, DSP utils, MIDI/media types)
 ├── operators/                # Seed operators (each a single-file directory)
 │   ├── gpu/                  # 15 operators: noise, shape, composite, bloom, feedback,
 │   │                         #   metaball, texture_loader, time_machine, text,
@@ -133,6 +131,7 @@ vivid/
 ├── tests/                    # 57 integration/unit tests
 ├── media/                    # Sample audio/video/image assets
 └── docs/                     # Design documents
+    └── runtime/              # Runtime subsystem internals (architecture, graph, scheduler, …)
 ```
 
 ## Key Conventions
@@ -202,47 +201,3 @@ Dark steel background, monospace type, sharp corners. Domain identity through ac
 - Don't add dependencies without checking `docs/ARCHITECTURE.md` §Dependency Manifest
 - Don't make audio and GPU communicate directly — route through Control
 
-## Legacy Reference
-
-The `legacy` branch (777 commits) is a mature, monolithic C++ implementation that covers nearly every feature on the roadmap. The current master is a clean rewrite with a different architecture (C ABI + dlopen operators, JSON graph, Dawn/WebGPU), so legacy code should never be copied verbatim. Instead, read it for **patterns and design decisions** — bind group caching, RGBA16Float intermediates, generation-based cooking, RAII handles — that would otherwise be rediscovered through debugging.
-
-### Reading legacy without switching branches
-
-```bash
-git show legacy:<path>                    # View a single file
-git ls-tree --name-only legacy <dir>/     # List a directory
-git grep <pattern> legacy -- '<glob>'     # Search across files
-```
-
-### Phase → Legacy File Mapping
-
-All paths are relative to the legacy branch root. Core engine files live under `modules/vivid-core/` unless a full module path is shown.
-
-| Phase | Legacy files to consult |
-|-------|------------------------|
-| 5: Control→GPU | `include/vivid/param.h`, `include/vivid/param_registry.h`, `src/context.cpp` |
-| 6: Audio Output | `src/audio_output.cpp`, `src/audio_graph.cpp`, `include/vivid/audio_output.h`, `include/vivid/audio_graph.h` |
-| 7: Audio→Control | `src/audio_analysis.cpp`, `src/av_analysis.cpp`, `include/vivid/audio_analysis.h` |
-| 8: Hot-Reload | `src/hot_reload.cpp`, `include/vivid/hot_reload.h`, `src/shader_preprocessor.cpp` |
-| 9: REPL | `src/cli/runtime_api.cpp`, `src/cli/cli.cpp` |
-| 10: MIDI | `modules/vivid-midi/src/midi_in.cpp`, `modules/vivid-midi/src/midi_out.cpp` |
-| 11: UI Node Graph | `src/gui/node_graph.cpp`, `src/gui/gui.cpp`, `src/gui/panel_manager.cpp` |
-| 12: Thumbnails | `src/gui/scratch_texture.cpp`, `include/vivid/operator_viz.h` |
-| 13: Spreads | `include/vivid/dsp_utils.h`, `src/effects/gpu_particles.cpp` |
-| 14: Polyphonic Audio | `modules/vivid-audio/src/poly_synth.cpp`, `modules/vivid-audio/src/envelope.cpp`, `modules/vivid-audio/src/sequencer.cpp` |
-| 15: Instance Operator | `src/effects/gpu_particles.cpp` (instanced rendering pattern) |
-| 16: MCP Server | `src/cli/mcp_server.cpp`, `docs/MCP-TOOLS.md` |
-| 17: Chat Panel | `modules/vivid-imgui/`, `src/cli/runtime_api.cpp` |
-| 20: Patterns | `modules/vivid-audio/src/sequencer.cpp`, `modules/vivid-audio/src/euclidean.cpp`, `modules/vivid-audio/src/arpeggiator.cpp` |
-| 22: Export | `src/cli/main_production.cpp`, `include/vivid/video_exporter.h`, `include/vivid/snapshot.h` |
-| 23: Operator Library | `include/vivid/module_manager.h`, `include/vivid/module_registry.h`, `docs/MODULES.md` |
-| 24: LLM Perception | `src/cli/analysis_hints.cpp`, `src/cli/assertion.cpp`, `docs/ANALYSIS-TOOLS.md` |
-| 25: WebSocket API | `src/cli/runtime_api.cpp`, `docs/WEBSOCKET_API.md` |
-
-### Legacy docs worth reading
-
-- `docs/CREATING-OPERATORS.md` — operator lifecycle, param registration, GPU resource patterns
-- `docs/RECIPES.md` — complete audio-visual chain examples
-- `docs/MCP-TOOLS.md` — MCP tool catalog (Phase 16 target)
-- `docs/MODULES.md` — module system design (Phase 23 target)
-- `docs/ANALYSIS-TOOLS.md` — perception/introspection (Phase 24 target)

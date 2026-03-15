@@ -76,3 +76,6 @@ crash.txt
 docs/private/
 docs/personal/
 docs/*.local.md
+DawnCache
+GPUCache
+DawnCache
