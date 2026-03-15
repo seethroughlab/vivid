@@ -75,6 +75,33 @@ static std::string guess_package_name_from_plugin_path(const std::string& plugin
     return {};
 }
 
+template<typename DiagnosticT>
+static std::vector<DiagnosticT> diagnostics_for_dir(
+        const std::unordered_map<std::string, DiagnosticT>& diagnostics_by_path,
+        const std::string& directory) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path dir = fs::weakly_canonical(fs::path(directory), ec);
+    if (ec) dir = fs::path(directory).lexically_normal();
+    const std::string dir_s = dir.string();
+    const std::string dir_slash = dir_s.empty() ? dir_s : (dir_s + "/");
+
+    std::vector<DiagnosticT> out;
+    for (const auto& [path, diag] : diagnostics_by_path) {
+        fs::path path_norm = fs::weakly_canonical(fs::path(path), ec);
+        if (ec) {
+            ec.clear();
+            path_norm = fs::path(path).lexically_normal();
+        }
+        const std::string path_s = path_norm.string();
+        if (path_s == dir_s || path_s.rfind(dir_slash, 0) == 0) out.push_back(diag);
+    }
+    std::sort(out.begin(), out.end(), [](const DiagnosticT& a, const DiagnosticT& b) {
+        return a.plugin_path < b.plugin_path;
+    });
+    return out;
+}
+
 // Iterate plugin files in a directory, calling fn(path, filename, stem_len) for each
 // matching file (correct suffix, not lib*-prefixed).
 template<typename Fn>
@@ -114,11 +141,14 @@ static bool scan_plugin_dir(const char* directory, Fn&& fn) {
 bool OperatorRegistry::scan(const char* directory) {
     return scan_plugin_dir(directory, [&](const std::string& path, const char* name, size_t stem_len) {
         auto loader = std::make_unique<OperatorLoader>();
-        if (!loader->load(path.c_str()))
+        if (!loader->load(path.c_str())) {
+            record_loader_failure(path, name, loader->last_error());
             return;
+        }
 
         const VividOperatorDescriptor* desc = loader->descriptor();
         if (!desc || !desc->name) return;
+        loader_failure_by_path_.erase(path);
 
         std::string type_name = desc->name;
         std::fprintf(stderr, "[vivid] Registry: loaded %s from %s\n", type_name.c_str(), name);
@@ -531,7 +561,11 @@ OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
     if (dit == deferred_.end()) return nullptr;
 
     auto loader = std::make_unique<OperatorLoader>();
-    if (!loader->load(dit->second.dylib_path.c_str())) return nullptr;
+    if (!loader->load(dit->second.dylib_path.c_str())) {
+        const std::filesystem::path p(dit->second.dylib_path);
+        record_loader_failure(dit->second.dylib_path, p.filename().string(), loader->last_error());
+        return nullptr;
+    }
 
     const std::string loaded_path = dit->second.dylib_path;
     register_target_mapping(loaded_path, resolved);
@@ -539,6 +573,7 @@ OperatorLoader* OperatorRegistry::find(const std::string& type_name) {
     loaders_[resolved] = std::move(loader);
     deferred_.erase(dit);
     abi_mismatch_by_path_.erase(loaded_path);
+    loader_failure_by_path_.erase(loaded_path);
     std::fprintf(stderr, "[vivid] Registry: loaded %s (lazy)\n", resolved.c_str());
     return ptr;
 }
@@ -580,8 +615,11 @@ const std::string* OperatorRegistry::user_operator_source(const std::string& nam
 
 bool OperatorRegistry::register_loaded_operator(const std::string& dylib_path) {
     auto loader = std::make_unique<OperatorLoader>();
-    if (!loader->load(dylib_path.c_str()))
+    if (!loader->load(dylib_path.c_str())) {
+        const std::filesystem::path p(dylib_path);
+        record_loader_failure(dylib_path, p.filename().string(), loader->last_error());
         return false;
+    }
 
     const VividOperatorDescriptor* desc = loader->descriptor();
     if (!desc || !desc->name) {
@@ -596,6 +634,7 @@ bool OperatorRegistry::register_loaded_operator(const std::string& dylib_path) {
     register_target_mapping(dylib_path, type_name);
     loaders_[type_name] = std::move(loader);
     abi_mismatch_by_path_.erase(dylib_path);
+    loader_failure_by_path_.erase(dylib_path);
     return true;
 }
 
@@ -652,12 +691,15 @@ bool OperatorRegistry::reload_operator(const std::string& type_name, const std::
 
     // OperatorLoader::load() swaps atomically: on failure the previous loader remains live.
     if (!it->second->load(new_dylib_path.c_str())) {
+        const std::filesystem::path p(new_dylib_path);
+        record_loader_failure(new_dylib_path, p.filename().string(), it->second->last_error());
         std::fprintf(stderr,
             "[vivid] hot-reload failed for '%s' — previous loader kept active\n",
             type_name.c_str());
         return false;
     }
 
+    loader_failure_by_path_.erase(new_dylib_path);
     return true;
 }
 
@@ -710,31 +752,42 @@ std::vector<AbiMismatchDiagnostic> OperatorRegistry::abi_mismatch_diagnostics() 
 
 std::vector<AbiMismatchDiagnostic> OperatorRegistry::abi_mismatch_diagnostics_for_dir(
         const std::string& directory) const {
-    namespace fs = std::filesystem;
-    std::error_code ec;
-    fs::path dir = fs::weakly_canonical(fs::path(directory), ec);
-    if (ec) dir = fs::path(directory).lexically_normal();
-    const std::string dir_s = dir.string();
-    const std::string dir_slash = dir_s.empty() ? dir_s : (dir_s + "/");
+    return diagnostics_for_dir(abi_mismatch_by_path_, directory);
+}
 
-    std::vector<AbiMismatchDiagnostic> out;
-    for (const auto& [path, diag] : abi_mismatch_by_path_) {
-        fs::path path_norm = fs::weakly_canonical(fs::path(path), ec);
-        if (ec) {
-            ec.clear();
-            path_norm = fs::path(path).lexically_normal();
-        }
-        const std::string path_s = path_norm.string();
-        if (path_s == dir_s || path_s.rfind(dir_slash, 0) == 0) out.push_back(diag);
-    }
-    std::sort(out.begin(), out.end(), [](const AbiMismatchDiagnostic& a, const AbiMismatchDiagnostic& b) {
+bool OperatorRegistry::has_abi_mismatch_diagnostics() const {
+    return !abi_mismatch_by_path_.empty();
+}
+
+std::vector<LoaderFailureDiagnostic> OperatorRegistry::loader_failure_diagnostics() const {
+    std::vector<LoaderFailureDiagnostic> out;
+    out.reserve(loader_failure_by_path_.size());
+    for (const auto& [_, diag] : loader_failure_by_path_) out.push_back(diag);
+    std::sort(out.begin(), out.end(), [](const LoaderFailureDiagnostic& a, const LoaderFailureDiagnostic& b) {
         return a.plugin_path < b.plugin_path;
     });
     return out;
 }
 
-bool OperatorRegistry::has_abi_mismatch_diagnostics() const {
-    return !abi_mismatch_by_path_.empty();
+std::vector<LoaderFailureDiagnostic> OperatorRegistry::loader_failure_diagnostics_for_dir(
+        const std::string& directory) const {
+    return diagnostics_for_dir(loader_failure_by_path_, directory);
+}
+
+bool OperatorRegistry::has_loader_failure_diagnostics() const {
+    return !loader_failure_by_path_.empty();
+}
+
+void OperatorRegistry::record_loader_failure(const std::string& plugin_path,
+                                             const std::string& plugin_name,
+                                             const OperatorLoader::LastError& error) {
+    LoaderFailureDiagnostic diag;
+    diag.plugin_path = plugin_path;
+    diag.plugin_name = plugin_name;
+    diag.package_name = guess_package_name_from_plugin_path(plugin_path);
+    diag.code = error.code.empty() ? "load_failed" : error.code;
+    diag.message = error.message.empty() ? "operator load failed" : error.message;
+    loader_failure_by_path_[plugin_path] = std::move(diag);
 }
 
 // --- Factory presets ---

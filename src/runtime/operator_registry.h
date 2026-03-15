@@ -41,6 +41,14 @@ struct AbiMismatchDiagnostic {
     uint32_t runtime_abi = 0;
 };
 
+struct LoaderFailureDiagnostic {
+    std::string plugin_path;
+    std::string plugin_name;
+    std::string package_name;  // empty when unknown
+    std::string code;
+    std::string message;
+};
+
 class OperatorRegistry {
 public:
     bool scan(const char* directory);
@@ -100,8 +108,15 @@ public:
     std::vector<AbiMismatchDiagnostic> abi_mismatch_diagnostics() const;
     std::vector<AbiMismatchDiagnostic> abi_mismatch_diagnostics_for_dir(const std::string& directory) const;
     bool has_abi_mismatch_diagnostics() const;
+    std::vector<LoaderFailureDiagnostic> loader_failure_diagnostics() const;
+    std::vector<LoaderFailureDiagnostic> loader_failure_diagnostics_for_dir(const std::string& directory) const;
+    bool has_loader_failure_diagnostics() const;
 
 private:
+    void record_loader_failure(const std::string& plugin_path,
+                               const std::string& plugin_name,
+                               const OperatorLoader::LastError& error);
+
     // Helper: extract target name from dylib path and register loader
     void register_target_mapping(const std::string& dylib_path, const std::string& type_name);
 
@@ -118,6 +133,7 @@ private:
     std::unordered_map<std::string, std::string> type_to_package_;  // type_name → package_name
     std::unordered_map<std::string, std::vector<OperatorPreset>> factory_presets_;  // type_name → presets
     std::unordered_map<std::string, AbiMismatchDiagnostic> abi_mismatch_by_path_;   // plugin path -> mismatch info
+    std::unordered_map<std::string, LoaderFailureDiagnostic> loader_failure_by_path_; // plugin path -> load failure
 };
 
 } // namespace vivid
