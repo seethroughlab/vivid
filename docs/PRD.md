@@ -126,16 +126,6 @@ The graph is the canonical structural view: operators as nodes, connections as w
 
 Discovery potential: low (structural, not parametric). Latency: instant for connections, 50–200ms for adding operators.
 
-#### The Patchbay / Connection Matrix
-
-A matrix where rows are outputs and columns are inputs (or vice versa). Each intersection is a potential connection. Clicking an intersection creates the connection; the intersection cell can hold a mapping curve, scaling factor, or modulation amount. This is how the user discovers unexpected audio→visual mappings.
-
-The patchbay operates on operators that already exist in the graph. It is for rapidly exploring how they interact, not for creating new operators. The LLM populates the matrix with configurations — "here are 8 different mapping setups ranging from subtle to aggressive."
-
-Interaction model takes inspiration from Bitwig's modulation routing, where any modulator can be dragged onto any parameter and the modulation range is displayed as a visual overlay directly on the target control. In Vivid, this extends across the audio-visual boundary: when a patchbay intersection is active, the target parameter's control shows the modulation range and current value in real time.
-
-Discovery potential: very high (N×M possible connections). Latency: instant.
-
 #### The Session / Variation Grid
 
 A grid where columns are different configurations of the same structural patch, and rows might represent audio variations, visual variations, or complete A/V states. The user can click through columns to audition, drag to reorder, and ask the LLM to "fill this row with 8 variations of the particle behavior." Think Ableton Session View but for audiovisual configurations rather than clip launching.
@@ -182,7 +172,7 @@ The resolution is not to treat audio and visual exploration identically, but to 
 
 The most productive cross-domain exploration comes from holding one domain stable while freely exploring the other. Which domain to anchor is the creator's choice:
 
-- **Audio-first:** select or compose an audio element, then rapidly explore visual responses against it. The audio loops; visual changes are instant. The patchbay and session grid are at their most powerful here.
+- **Audio-first:** select or compose an audio element, then rapidly explore visual responses against it. The audio loops; visual changes are instant. The variation/session surface and parameter exploration tools are at their most powerful here.
 - **Visual-first:** build a visual scene, then explore how different audio elements interact with it. This is common for installations where the visual identity is primary and audio is a reactive layer.
 
 The interface assists whichever domain is being explored: when exploring audio, it offers rich metadata, short-loop auditioning, and A/B comparison to compensate for audio's slower evaluation. When exploring visuals, it offers spatial grids, instant switching, and LLM-generated mapping variations.
@@ -240,7 +230,7 @@ Build toward visual graph equivalence on top of the same JSON representation. Ev
 
 **Routing layer — LLM as architect.** "Build me a patch with 3 audio analysis bands driving 3 visual layers with independent particle systems." The LLM generates graph structure as JSON that the user then explores. This is the scaffolding role — often combined with operator authoring when the scaffold requires new operators that don't yet exist.
 
-**Experimentation layer — LLM as variation generator.** "Generate 8 different connection matrix configurations." "Fill this session column with particle behavior variations." The user evaluates and selects. The LLM produces breadth; the user provides taste.
+**Experimentation layer — LLM as variation generator.** "Generate 8 different particle behavior variations." "Fill this session column with alternate mappings and parameter moods." The user evaluates and selects. The LLM produces breadth; the user provides taste.
 
 **Reflective layer — LLM as critic and analyst.** "What's happening harmonically in the audio right now?" "The visual rhythm isn't syncing with the beat — what's wrong?" The LLM observes the current state and helps the user understand and refine.
 
@@ -607,7 +597,7 @@ Native rendering gives zero-copy texture thumbnails (every intermediate texture 
 
 **Decision: Retained-mode UI, not immediate mode.** In immediate mode (Dear ImGui), the application redraws the entire UI every frame with no persistent widget objects. In retained mode, widgets are objects that persist between frames and manage their own state: a slider knows it's being dragged, a panel knows which child has focus, a list knows its scroll position.
 
-Vivid's experimentation interfaces are inherently stateful — a patchbay intersection remembers its mapping curve, a session grid cell knows its variation and playback state, a parameter knob tracks its MIDI mapping and drag state. Retained mode handles this naturally. Immediate mode would require maintaining all interaction state in parallel data structures, manually synchronized with draw calls every frame.
+Vivid's experimentation interfaces are inherently stateful — a session grid cell knows its variation and playback state, a parameter control tracks its MIDI mapping and drag state, and a node remembers selection, pinning, and inline editing state. Retained mode handles this naturally. Immediate mode would require maintaining all interaction state in parallel data structures, manually synchronized with draw calls every frame.
 
 > **Implementation note:** The actual UI uses a hybrid approach. The node graph is the primary interface, rendered directly via WebGPU using `renderer_2d.cpp` for 2D drawing primitives. There is no separate retained-mode widget library — the node graph, inspector, and overlays are purpose-built drawing code in `src/ui/node_graph.cpp` (~5000 lines) with overlay layout logic in `overlay_layouts.cpp`.
 
@@ -620,7 +610,7 @@ Alternatives evaluated and rejected: Dear ImGui (already in the repo, good for p
 The custom approach gives zero-copy texture thumbnails trivially (same GPU context), total control over look and interaction, no external dependencies, and purpose-built widgets the LLM can generate. The scope is bounded: rows, columns, fixed/flex sizing, scroll containers, and absolute positioning for the node graph. The required widget set:
 
 - **Core:** Panel, Button, Slider, Knob, Dropdown, TextInput, Toggle
-- **Specialized:** NodeGraph, PatchbayMatrix, SessionGrid, TexturePreview, Waveform/Meter
+- **Specialized:** NodeGraph, SessionGrid, TexturePreview, Waveform/Meter
 
 > **Implementation note:** No general-purpose widget library was built. The UI is purpose-built around the node graph with `renderer_2d.cpp` providing WebGPU 2D drawing (rounded rects, text, lines, bezier curves) and `node_graph.cpp` handling all interaction (node dragging, wire creation, selection, zoom/pan). Inspector panels are overlay layouts, not standalone widgets.
 
@@ -631,13 +621,13 @@ The custom approach gives zero-copy texture thumbnails trivially (same GPU conte
 The visibility hierarchy driving this layout:
 
 - **Always visible:** output preview (the perception-action loop), active parameters (context-sensitive to selection), transport/clock.
-- **Primary workspace (one at a time, instant switching):** node graph, patchbay matrix, session grid. These are different lenses on the same patch. Switching feels like changing a view, not navigating to a different screen.
+- **Primary workspace:** node graph as the central editor, with variation/session surfaces layered around it. Switching should feel like changing exploration mode, not navigating to a different application.
 - **On-demand (collapsible):** LLM chat, live REPL, pattern editor, state machine editor. Brought up when needed, don't consume space during direct manipulation.
 - **External:** operator code editing happens in the user's IDE, not inside Vivid.
 
-The main workspace tabs are the key interaction pattern: the node graph builds structure (add nodes, connect, see topology), the patchbay maps cross-domain relationships, and the session grid manages variations. Three primary lenses on the same underlying data.
+The main workspace interaction pattern is centered on the node graph for structure and wiring, with the session/variation surface managing branching and alternate states. Parameter exploration and modulation overlays should live close to the graph rather than requiring a separate connection matrix view.
 
-> **Implementation note:** The actual layout centers on the node graph as the primary workspace. The inspector is an overlay panel (not a separate pane). Patchbay matrix and session grid are not yet implemented. The output preview is the selected GPU node's texture, displayed in the node graph itself via live thumbnails. Transport/clock information appears as an overlay. File dialogs use native macOS sheets (`src/ui/file_dialog.mm`).
+> **Implementation note:** The actual layout centers on the node graph as the primary workspace. The inspector is an overlay panel (not a separate pane). The session-grid vision is only partially implemented today via the variation strip. The output preview is the selected GPU node's texture, displayed in the node graph itself via live thumbnails. Transport/clock information appears as an overlay. File dialogs use native macOS sheets (`src/ui/file_dialog.mm`).
 
 ### 6.5 Node Thumbnails
 

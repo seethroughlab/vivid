@@ -14,7 +14,7 @@ Native rendering gives zero-copy texture thumbnails (every intermediate texture 
 
 **Decision: Retained-mode UI, not immediate mode.** In immediate mode (Dear ImGui), the application redraws the entire UI every frame with no persistent widget objects. In retained mode, widgets are objects that persist between frames and manage their own state: a slider knows it's being dragged, a panel knows which child has focus, a list knows its scroll position.
 
-Vivid's experimentation interfaces are inherently stateful — a patchbay intersection remembers its mapping curve, a session grid cell knows its variation and playback state, a parameter knob tracks its MIDI mapping and drag state. Retained mode handles this naturally. Immediate mode would require maintaining all interaction state in parallel data structures, manually synchronized with draw calls every frame.
+Vivid's experimentation interfaces are inherently stateful — a session grid cell knows its variation and playback state, a parameter knob tracks its MIDI mapping and drag state, and graph interaction state persists across frames. Retained mode handles this naturally. Immediate mode would require maintaining all interaction state in parallel data structures, manually synchronized with draw calls every frame.
 
 ## 6.3 Toolkit: Custom Purpose-Built Widgets
 
@@ -26,7 +26,7 @@ The custom approach gives zero-copy texture thumbnails trivially (same GPU conte
 
 **Required widget set:**
 - Core: Panel, Button, Slider, Knob, Dropdown, TextInput, Toggle
-- Specialized: NodeGraph, PatchbayMatrix, SessionGrid, TexturePreview, Waveform/Meter
+- Specialized: NodeGraph, SessionGrid, TexturePreview, Waveform/Meter
 
 ## 6.4 Application Layout
 
@@ -35,11 +35,11 @@ The custom approach gives zero-copy texture thumbnails trivially (same GPU conte
 The visibility hierarchy driving this layout:
 
 - **Always visible:** output preview (the perception-action loop), active parameters (context-sensitive to selection), transport/clock.
-- **Primary workspace (one at a time, instant switching):** node graph, patchbay matrix, session grid. These are different lenses on the same patch. Switching feels like changing a view, not navigating to a different screen.
+- **Primary workspace:** node graph as the central structural editor, with session/variation surfaces layered around it. Switching should feel like changing exploration mode, not navigating to a different screen.
 - **On-demand (collapsible):** LLM chat, live REPL, pattern editor, state machine editor. Brought up when needed, don't consume space during direct manipulation.
 - **External:** operator code editing happens in the user's IDE, not inside Vivid.
 
-The main workspace tabs are the key interaction pattern: the node graph builds structure (add nodes, connect, see topology), the patchbay maps cross-domain relationships, and the session grid manages variations. Three primary lenses on the same underlying data.
+The main workspace interaction pattern centers on the node graph for structure and wiring, with the session/variation surface managing branching and alternate states. Parameter exploration and modulation overlays should stay close to the graph rather than requiring a separate connection matrix view.
 
 ## 6.5 Node Thumbnails
 
