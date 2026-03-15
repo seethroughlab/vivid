@@ -45,6 +45,35 @@ static bool is_valid_identifier(const std::string& name) {
     return true;
 }
 
+static bool is_valid_cpp_type_name(const std::string& name) {
+    if (name.empty()) return false;
+    if (!(std::isalpha(static_cast<unsigned char>(name[0])) || name[0] == '_'))
+        return false;
+    for (char c : name) {
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_'))
+            return false;
+    }
+    return true;
+}
+
+static bool is_valid_stable_type_id_literal(const std::string& stable_type_id) {
+    if (stable_type_id.empty()) return false;
+    if (stable_type_id.front() == '.' || stable_type_id.back() == '.')
+        return false;
+    bool saw_namespace_sep = false;
+    for (char c : stable_type_id) {
+        if (c == '.') {
+            saw_namespace_sep = true;
+            continue;
+        }
+        if (c == '_') continue;
+        if (std::islower(static_cast<unsigned char>(c))) continue;
+        if (std::isdigit(static_cast<unsigned char>(c))) continue;
+        return false;
+    }
+    return saw_namespace_sep;
+}
+
 static const char* port_type_name(VividPortType t) {
     switch (t) {
         case VIVID_PORT_FLOAT:         return "VIVID_PORT_FLOAT";
@@ -59,6 +88,14 @@ static const char* port_type_name(VividPortType t) {
 
 static bool is_custom_port_spec(const VividPortSpec& p) {
     return !p.stable_type_id.empty();
+}
+
+static bool has_custom_port_fields(const VividPortSpec& p) {
+    return !p.type_name.empty() ||
+           p.payload_size > 0 ||
+           p.audio_safe ||
+           p.transport == VIVID_PORT_TRANSPORT_CUSTOM_REF ||
+           p.transport == VIVID_PORT_TRANSPORT_CUSTOM_VALUE;
 }
 
 static std::string custom_port_decl(const VividPortSpec& p) {
@@ -698,6 +735,7 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
     // Validate port names: no duplicates, no empty
     {
         std::vector<std::string> port_names;
+        std::vector<VividPortSpec> custom_ports;
         for (const auto& p : request.ports) {
             if (p.name.empty()) {
                 result.error = "port names must not be empty";
@@ -708,8 +746,16 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
                     result.error = "custom port '" + p.name + "' must define type_name";
                     return result;
                 }
+                if (!is_valid_cpp_type_name(p.type_name)) {
+                    result.error = "custom port '" + p.name + "' must define a valid C++ type_name";
+                    return result;
+                }
                 if (p.stable_type_id.empty()) {
                     result.error = "custom port '" + p.name + "' must define stable_type_id";
+                    return result;
+                }
+                if (!is_valid_stable_type_id_literal(p.stable_type_id)) {
+                    result.error = "custom port '" + p.name + "' must use a lowercase namespaced stable_type_id";
                     return result;
                 }
                 if (p.transport != VIVID_PORT_TRANSPORT_CUSTOM_REF &&
@@ -721,6 +767,30 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
                     result.error = "custom port '" + p.name + "' must define payload_size > 0";
                     return result;
                 }
+                for (const auto& existing : custom_ports) {
+                    if (existing.stable_type_id == p.stable_type_id &&
+                        (existing.type_name != p.type_name ||
+                         existing.transport != p.transport ||
+                         existing.payload_size != p.payload_size ||
+                         existing.audio_safe != p.audio_safe)) {
+                        result.error = "custom ports with stable_type_id '" + p.stable_type_id +
+                                       "' must agree on type_name, transport, payload_size, and audio_safe";
+                        return result;
+                    }
+                    if (existing.type_name == p.type_name &&
+                        (existing.stable_type_id != p.stable_type_id ||
+                         existing.transport != p.transport ||
+                         existing.payload_size != p.payload_size ||
+                         existing.audio_safe != p.audio_safe)) {
+                        result.error = "custom ports with type_name '" + p.type_name +
+                                       "' must agree on stable_type_id, transport, payload_size, and audio_safe";
+                        return result;
+                    }
+                }
+                custom_ports.push_back(p);
+            } else if (has_custom_port_fields(p)) {
+                result.error = "built-in port '" + p.name + "' must not define custom port metadata";
+                return result;
             }
             for (const auto& existing : port_names) {
                 if (existing == p.name) {
