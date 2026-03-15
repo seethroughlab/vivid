@@ -28,6 +28,7 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `introspect_nodes` | — | Compact per-node state summary |
 | `run_diagnostics` | — | Graph-level diagnostics (port mismatches, etc.) |
 | `get_graph_load_diagnostics` | — | Package version mismatch info from last load |
+| `get_registry_diagnostics` | — | Registered custom port types + loader ABI mismatch diagnostics |
 | `get_graph_errors` | — | Per-node error state |
 | `list_types` | — | All registered operator types with params/ports |
 | `list_nodes` | — | All nodes (id, type) |
@@ -205,3 +206,31 @@ Representative `code` values:
 
 - no manifest tests declared
 - manifest `tests.cpp` entries that should stay in package-local CMake / CTest
+
+## Custom Port Introspection
+
+For custom ports, `list_types` now exposes registry-backed metadata in addition to
+descriptor fields:
+
+- `custom_type_registered`
+- `audio_safe`
+- `registry_package_name` (when known)
+- `registry_description` (when known)
+
+`get_registry_diagnostics` is the process-wide view for package/tooling debugging. It returns:
+
+- `custom_port_types`
+  - stable registered custom port metadata from the runtime registry
+- `abi_mismatch_diagnostics`
+  - plugins skipped during probing because plugin ABI and runtime ABI did not match
+- `loader_failure_diagnostics`
+  - plugins that failed full load after probing, including malformed descriptor and
+    custom-type registration failures
+
+Representative `loader_failure_diagnostics` fields:
+
+- `plugin_path`
+- `plugin_name`
+- `package_name` (optional)
+- `code`
+- `message`

@@ -65,11 +65,15 @@ Called from main loop after `poll_ready()` returns results:
 if (r.success) {
     std::string type_name = registry.type_name_for_target(r.target_name);
     audio_engine.pause();
-    scheduler.reload_operator(type_name, registry, r.staged_dylib_path);
-    audio_engine.reload_operator(type_name, registry);
+    bool scheduler_ok = scheduler.reload_operator(type_name, registry, r.staged_dylib_path);
+    bool audio_ok = scheduler_ok ? audio_engine.reload_operator(type_name, registry) : false;
     audio_engine.resume();
 }
 ```
+
+Success is only treated as real success when both scheduler-side and audio-side reloads succeed.
+Failed reloads leave the previous loader active when possible and surface diagnostics through
+`OperatorRegistry`.
 
 ## `Scheduler::reload_operator()`
 
@@ -82,10 +86,20 @@ For all `NodeState` entries with matching `type_name`:
 Param preservation: values from the old instance are passed as `param_overrides` to `init_node_state()`,
 so params that exist in the new descriptor retain their values. New params get their default values.
 
+Hot reload only supports descriptor-compatible edits. Port layout changes or incompatible parameter
+shape changes are rejected explicitly rather than partially reusing the previous runtime metadata.
+
 ## `AudioEngine::reload_operator()`
 
 Same pattern, but for `AudioNodeState` entries.
 Requires the engine to be paused (audio callback stopped) to avoid data races.
+
+The audio reload path preserves the existing instance when the replacement dylib fails validation,
+and targeted regression tests cover:
+
+- compatible reload with preserved params
+- rejected incompatible descriptor reload
+- safe rollback to the previous audio operator after rejection
 
 ## File Watcher Integration
 

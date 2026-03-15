@@ -86,6 +86,13 @@ CommandResult apply_snapshot_json(const std::string& graph_json, ...);
 `capture_saved_snapshot()` stores the current serialized form; `refresh_graph_dirty_from_saved_snapshot()`
 recomputes the dirty flag without modifying anything.
 
+Recent hardening guarantees in this area:
+
+- `save_as()` retargets the live graph/source identity instead of only writing bytes
+- `reload()` is restore-on-failure: it snapshots the current graph first and rolls back if load or rebuild fails
+- `apply_snapshot_json()` is transactional for graph/runtime rebuild purposes and preserves source-path identity
+- package/runtime refresh flows that rebuild the graph route through the same transactional restore logic
+
 ## Variations
 
 ```cpp

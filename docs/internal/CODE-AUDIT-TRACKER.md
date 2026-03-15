@@ -304,6 +304,87 @@ Validation:
 
 - `ctest --test-dir build --output-on-failure -R "test_graph_snapshot_contract|test_ui_overlay_interactions|test_control_server"`
 
+### Phase 4: Strengthen Loader / ABI / Custom-Port Tooling
+
+Status:
+
+- in progress
+
+Current focus:
+
+1. Surface custom-port registry metadata directly through tooling-facing introspection.
+2. Make loader ABI diagnostics inspectable over the control server instead of stderr-only.
+3. Keep custom-port authoring/debugging grounded in one consistent runtime contract.
+
+Hardening landed so far:
+
+- Added registry-backed custom port metadata to `list_types` output:
+  - `custom_type_registered`
+  - `audio_safe`
+  - `registry_package_name`
+  - `registry_description`
+- Added `get_registry_diagnostics` control-server endpoint with:
+  - `custom_port_types`
+  - `abi_mismatch_diagnostics`
+- Added control-server regression coverage using a real custom-port plugin and deferred ABI mismatch probe data
+- Added deferred-probe regression coverage for custom-port descriptors:
+  - `type`
+  - `transport`
+  - `payload_size`
+  - `type_name`
+  - `stable_type_id`
+- Hardened loader-test staging setup so plugin fixture state is deterministic across repeated runs
+- Tightened `OperatorCreator` custom-port validation for:
+  - valid C++ `type_name`
+  - valid lowercase namespaced `stable_type_id`
+  - conflicting reuse of `stable_type_id` across ports
+  - conflicting reuse of `type_name` across ports
+  - built-in ports carrying stray custom-port metadata
+- Added internal custom-port authoring contract doc
+
+Files changed during this phase so far:
+
+- `src/runtime/control_server.cpp`
+- `src/runtime/operator_creator.cpp`
+- `tests/test_control_server.cpp`
+- `tests/test_operator_loader.cpp`
+- `tests/test_operator_creator.cpp`
+- `docs/runtime/control_server.md`
+- `docs/internal/CUSTOM-PORT-AUTHORING.md`
+- `CMakeLists.txt`
+
+Validation:
+
+- `ctest --test-dir build --output-on-failure -R "test_operator_creator|test_control_server|test_operator_loader|test_port_type_registry"`
+
+Additional hardening landed:
+
+- Structured loader failure codes are now preserved on `OperatorLoader` and promoted to
+  registry-level diagnostics
+- `get_registry_diagnostics` now includes `loader_failure_diagnostics` for malformed descriptor
+  and custom-type registration failures
+- Added malformed custom-type registration fixture coverage via `test_op_bad_custom_type`
+
+### Phase 5: Runtime Docs As Living Engineering Contract
+
+Status:
+
+- in progress
+
+Current focus:
+
+1. Refresh runtime subsystem docs to match the post-audit hardening behavior.
+2. Keep runtime-facing control-server and loader diagnostics documented where tooling actually reads them.
+3. Add an explicit rule in `AGENTS.md` that runtime behavior changes should update the matching `docs/runtime/` contract.
+
+Hardening landed so far:
+
+- Updated `docs/runtime/control_server.md` with `loader_failure_diagnostics`
+- Updated `docs/runtime/operator_loader.md` with structured loader failure and registry diagnostics
+- Updated `docs/runtime/hot_reload.md` with the current rollback-safe reload contract
+- Updated `docs/runtime/runtime_api.md` with transactional reload/snapshot guarantees
+- Added the runtime-doc maintenance rule to `AGENTS.md`
+
 ### Control Server And Package Workflow Audit
 
 Reviewed:

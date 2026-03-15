@@ -14,6 +14,7 @@ void init_data_driven(shared_ptr<DataDrivenFilterConfig> config); // WGSL filter
 void unload();                                   // dlclose
 bool is_loaded() const;
 bool is_data_driven() const;
+const LastError& last_error() const;
 ```
 
 ### ABI Check (performed inside `load()`)
@@ -21,6 +22,20 @@ bool is_data_driven() const;
 On load, the runtime calls `vivid_abi_version()` from the dylib and compares it to
 `VIVID_OPERATOR_ABI_VERSION` (currently **7**). Mismatching ABI → load failure, diagnostic stored in
 `OperatorRegistry::abi_mismatch_by_path_`.
+
+For full loads, `OperatorLoader` also captures a structured `LastError` on failure so callers can
+surface a stable machine-readable code instead of relying on stderr text.
+
+Representative `LastError::code` values:
+
+- `dlopen_failed`
+- `missing_abi_symbol`
+- `abi_mismatch`
+- `missing_required_symbols`
+- `null_descriptor`
+- `invalid_descriptor_name`
+- `hot_reload_incompatible_descriptor`
+- `custom_type_registration_failed`
 
 The `VIVID_REGISTER(ClassName)` macro at the end of every operator .cpp generates:
 ```cpp
@@ -117,6 +132,30 @@ bool reload_operator(const std::string& type_name, const std::string& new_dylib_
 ```
 Replaces the `OperatorLoader` for `type_name` with a new one loaded from `new_dylib_path`.
 Called by `Scheduler::reload_operator()` and `AudioEngine::reload_operator()`.
+
+Hot reload is intentionally shape-conservative. The reload path preserves the previous loader when
+the replacement dylib fails to load, and it rejects descriptor-incompatible edits rather than
+reusing stale wire/port metadata.
+
+### Loader Failure Diagnostics
+
+```cpp
+std::vector<LoaderFailureDiagnostic> loader_failure_diagnostics() const;
+std::vector<LoaderFailureDiagnostic> loader_failure_diagnostics_for_dir(const std::string& dir) const;
+bool has_loader_failure_diagnostics() const;
+```
+
+`LoaderFailureDiagnostic` fields:
+
+- `plugin_path`
+- `plugin_name`
+- `package_name`
+- `code`
+- `message`
+
+These diagnostics are populated from `OperatorLoader::last_error()` when a plugin fails a full
+load or reload after probing. They complement ABI-mismatch diagnostics, which only cover plugins
+rejected before a full load is attempted.
 
 ### Factory Presets
 
