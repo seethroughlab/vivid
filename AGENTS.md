@@ -56,6 +56,10 @@ When working on `src/runtime/`, read the architecture doc first, then the releva
 | Hot reload | `docs/runtime/hot_reload.md` | `hot_reload.h/cpp` |
 | GPU / WebGPU | `docs/runtime/gpu.md` | `gpu_context.h/cpp` |
 
+When changing runtime behavior in `src/runtime/`, update the matching `docs/runtime/*.md` file in
+the same change unless the behavior is clearly internal-only. Treat those runtime docs as living
+engineering contracts, not optional follow-up notes.
+
 ## Project Structure
 
 ```
@@ -200,4 +204,3 @@ Dark steel background, monospace type, sharp corners. Domain identity through ac
 - Don't use immediate-mode UI — the interface is retained-mode with custom widgets
 - Don't add dependencies without checking `docs/ARCHITECTURE.md` §Dependency Manifest
 - Don't make audio and GPU communicate directly — route through Control
-
