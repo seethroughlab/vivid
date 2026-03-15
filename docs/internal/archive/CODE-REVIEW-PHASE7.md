@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This note is the Phase 7 synthesis artifact for the Vivid code review process described in [CODE_REVIEW.md](/Users/jeff/Developer/vivid/docs/CODE_REVIEW.md).
+This note is the Phase 7 synthesis artifact for the Vivid code review process described in [CODE_REVIEW.md](/Users/jeff/Developer/vivid/docs/internal/CODE_REVIEW.md).
 
 The goal of this phase is to consolidate the earlier exploration passes into one review-preparation map that can guide the actual code review campaign. This is still preparation rather than audit. It records:
 

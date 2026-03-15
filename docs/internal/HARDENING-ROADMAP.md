@@ -266,7 +266,7 @@ These are important, but they are not the primary focus of this hardening roadma
 Use this roadmap together with:
 
 - `docs/internal/CODE-AUDIT-TRACKER.md`
-- `docs/CODE_REVIEW.md`
+- `docs/internal/CODE_REVIEW.md`
 - `docs/internal/CODE-REVIEW-PHASE*.md`
 
 The tracker records what happened.

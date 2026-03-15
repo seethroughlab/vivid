@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This note is the Phase 6 test-suite artifact for the Vivid code review process described in [CODE_REVIEW.md](/Users/jeff/Developer/vivid/docs/CODE_REVIEW.md).
+This note is the Phase 6 test-suite artifact for the Vivid code review process described in [CODE_REVIEW.md](/Users/jeff/Developer/vivid/docs/internal/CODE_REVIEW.md).
 
 The goal of this phase is to understand the current shape of the automated and manual test surfaces before judging adequacy. This is still exploration rather than audit. It records:
 

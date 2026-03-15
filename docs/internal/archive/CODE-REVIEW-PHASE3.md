@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This note is the Phase 3 operator-contract artifact for the Vivid code review process described in [CODE_REVIEW.md](/Users/jeff/Developer/vivid/docs/CODE_REVIEW.md).
+This note is the Phase 3 operator-contract artifact for the Vivid code review process described in [CODE_REVIEW.md](/Users/jeff/Developer/vivid/docs/internal/CODE_REVIEW.md).
 
 The goal of this phase is to understand the operator authoring contract first, then identify representative seed operators that define current patterns. This is still exploration rather than audit. It records:
 

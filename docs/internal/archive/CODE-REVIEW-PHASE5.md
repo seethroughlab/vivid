@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This note is the Phase 5 cross-cutting-systems artifact for the Vivid code review process described in [CODE_REVIEW.md](/Users/jeff/Developer/vivid/docs/CODE_REVIEW.md).
+This note is the Phase 5 cross-cutting-systems artifact for the Vivid code review process described in [CODE_REVIEW.md](/Users/jeff/Developer/vivid/docs/internal/CODE_REVIEW.md).
 
 The goal of this phase is to map the systems that cut across the runtime, UI, operator surface, packaging, and external tooling rather than belonging to a single vertical subsystem. This is still exploration rather than audit. It records:
 

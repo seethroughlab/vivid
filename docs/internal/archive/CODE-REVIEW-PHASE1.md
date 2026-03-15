@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This note is the Phase 1 orientation artifact for the Vivid code review process described in [CODE_REVIEW.md](/Users/jeff/Developer/vivid/docs/CODE_REVIEW.md).
+This note is the Phase 1 orientation artifact for the Vivid code review process described in [CODE_REVIEW.md](/Users/jeff/Developer/vivid/docs/internal/CODE_REVIEW.md).
 
 The purpose of this phase is to build a reliable top-level map of the current `vivid` repo before any real audit begins. This document does not make quality judgments, does not propose fixes, and does not rank risks. It records:
 
