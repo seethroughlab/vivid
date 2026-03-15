@@ -1290,6 +1290,9 @@ CommandResult RuntimeAPI::save() {
 
 CommandResult RuntimeAPI::save_as(const std::string& path) {
     if (graph_.save(path.c_str())) {
+        const std::string normalized = normalized_graph_identity_path(path);
+        graph_.set_source_path(path);
+        active_graph_source_path_ = normalized;
         capture_saved_snapshot();
         return {true, "saved to " + path};
     }
@@ -1301,6 +1304,12 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
     if (path.empty()) return {false, "no source path to reload from"};
     const bool preserve_runtime_state =
         normalized_graph_identity_path(path) == active_graph_source_path_;
+    std::string previous_graph_json;
+    if (!graph_.save_to_string(previous_graph_json)) {
+        return {false, "failed to serialize current graph before reload"};
+    }
+    const std::string previous_source_path = graph_.source_path();
+    const std::string previous_active_graph_source_path = active_graph_source_path_;
 
     // Preserve live state only for same-graph reloads (e.g. hot reload).
     // Graph switches should always start from file-defined values.
@@ -1322,6 +1331,38 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
         }
     }
 
+    auto restore_previous_state = [&](const std::string& reason) -> CommandResult {
+        if (!graph_.load_from_string(previous_graph_json.c_str(), previous_graph_json.size(), true)) {
+            has_gpu_ops = false;
+            has_audio = false;
+            return {false, reason + " (and failed to restore previous graph)"};
+        }
+        graph_.set_source_path(previous_source_path);
+
+        if (!scheduler_.build(graph_, registry_)) {
+            has_gpu_ops = false;
+            has_audio = false;
+            return {false, reason + " (and failed to rebuild previous graph)"};
+        }
+
+        has_gpu_ops = scheduler_.has_gpu_operators();
+        if (has_gpu_ops) needs_gpu_realloc_ = true;
+
+        has_audio = false;
+        if (scheduler_.has_audio_operators()) {
+            if (audio_engine_.build(graph_, registry_, scheduler_)) {
+                if (audio_engine_.start()) {
+                    has_audio = true;
+                }
+            }
+        }
+
+        active_graph_source_path_ = previous_active_graph_source_path;
+        pending_topology_change_ = false;
+        active_crossfades_.clear();
+        return {false, reason};
+    };
+
     bool had_audio = has_audio;
     if (had_audio) {
         audio_engine_.shutdown();
@@ -1330,15 +1371,11 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
     scheduler_.shutdown();
 
     if (!graph_.load(path.c_str())) {
-        has_gpu_ops = false;
-        has_audio = false;
-        return {false, "failed to reload " + path};
+        return restore_previous_state("failed to reload " + path);
     }
 
     if (!scheduler_.build(graph_, registry_)) {
-        has_gpu_ops = false;
-        has_audio = false;
-        return {false, "rebuild failed after reload"};
+        return restore_previous_state("rebuild failed after reload");
     }
 
     if (preserve_runtime_state) {
@@ -1480,8 +1517,6 @@ CommandResult RuntimeAPI::new_project(const std::string& dir_path,
     // Save the fresh graph to the project path and set source_path
     auto save_result = save_as(graph_path);
     if (!save_result.ok) return save_result;
-
-    active_graph_source_path_ = fs::path(graph_path).lexically_normal().string();
     return {true, "new project at " + dir_path};
 }
 

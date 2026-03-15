@@ -8,6 +8,7 @@
 #include "common/string_util.h"
 #include "common/system_info.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 
@@ -16,6 +17,8 @@
 #endif
 
 namespace vivid::ui {
+
+static constexpr uint64_t kMcpStaleMs = 30000;
 
 using vivid::format_float;
 using vivid::format_int;
@@ -95,9 +98,16 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float sx = gx_to_sx(r.x), sy = gy_to_sy(r.y);
         float sw = g_to_s(r.w), sh = g_to_s(r.h);
 
-        // Node background
+        // Node background (brighten on hover)
+        bool node_hovered = (r.node_id == hovered_node_id_);
         float sr = g_to_s(style_.corner_radius);
-        tr.draw_rounded_rect(sx, sy, sw, sh, sr, bg[0], bg[1], bg[2]);
+        float br = bg[0], bgr = bg[1], bb = bg[2];
+        if (node_hovered && !selected) {
+            br += kNodeHoverBrighten;
+            bgr += kNodeHoverBrighten;
+            bb += kNodeHoverBrighten;
+        }
+        tr.draw_rounded_rect(sx, sy, sw, sh, sr, br, bgr, bb);
 
         // Solo dimming: reduce alpha of non-active nodes
         bool node_soloed     = sn && sn->soloed;
@@ -108,18 +118,18 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                                  0.0f, 0.0f, 0.0f, 0.65f);
         }
 
-        // Red border on errored or missing nodes (2px)
+        // Red border on errored or missing nodes
         if (node_bad) {
-            float bw = g_to_s(2.0f);
+            float bw = g_to_s(kErrorBorderW);
             tr.draw_rect(sx, sy, sw, bw, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);           // top
             tr.draw_rect(sx, sy + sh - bw, sw, bw, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]); // bottom
             tr.draw_rect(sx, sy, bw, sh, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]);           // left
             tr.draw_rect(sx + sw - bw, sy, bw, sh, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2]); // right
         }
 
-        // Gold border on soloed node (3px)
+        // Gold border on soloed node
         if (node_soloed) {
-            float bw = g_to_s(3.0f);
+            float bw = g_to_s(kSoloBorderW);
             tr.draw_rect(sx, sy, sw, bw, kSoloAccent[0], kSoloAccent[1], kSoloAccent[2]);           // top
             tr.draw_rect(sx, sy + sh - bw, sw, bw, kSoloAccent[0], kSoloAccent[1], kSoloAccent[2]); // bottom
             tr.draw_rect(sx, sy, bw, sh, kSoloAccent[0], kSoloAccent[1], kSoloAccent[2]);           // left
@@ -210,7 +220,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                         float bx = spark_x + si * bar_w;
                         float by = spark_y + spark_h - bh;
                         tr.draw_rect(bx, by, std::max(1.0f, bar_w - 0.5f), bh,
-                                     dcol[0], dcol[1], dcol[2], 0.7f);
+                                     dcol[0], dcol[1], dcol[2], kSparklineBarAlpha);
                     }
                 }
             }
@@ -233,7 +243,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
 
                     // Center line
                     tr.draw_rect(wave_x, center_y, wave_w, 1,
-                                 dcol[0], dcol[1], dcol[2], 0.2f);
+                                 dcol[0], dcol[1], dcol[2], kWaveformCenterAlpha);
 
                     // Waveform bars — downsample 1024 source samples to
                     // ~256 visual bars (max-amplitude per bucket) to cut
@@ -254,7 +264,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                         float bx = wave_x + bi * bar_w;
                         float by = (amp >= 0) ? center_y - bh : center_y;
                         tr.draw_rect(bx, by, std::max(0.5f, bar_w - 0.3f), bh,
-                                     dcol[0], dcol[1], dcol[2], 0.8f);
+                                     dcol[0], dcol[1], dcol[2], kWaveformBarAlpha);
                     }
 
                     // Peak meter strip at bottom
@@ -285,21 +295,28 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         for (const auto& p : r.inputs) {
             if (p.is_param && !show_param_wires_) continue;
             float spx = gx_to_sx(p.x), spy = gy_to_sy(p.y);
-            float dot_scale = p.is_param ? 0.7f : 1.0f;
-            float dot_alpha = p.is_param ? 0.6f : 1.0f;
+            bool port_hov = (hovered_port_.node_id == r.node_id &&
+                             hovered_port_.port_name == p.name && !hovered_port_.is_output);
+            float dot_scale = p.is_param ? kParamDotScale : 1.0f;
+            float dot_alpha = p.is_param ? kParamDotAlpha : 1.0f;
+            if (port_hov) { dot_scale *= kPortHoverScale; dot_alpha = kPortHoverAlpha; }
             float sd = s_dot * dot_scale;
             tr.draw_rect(spx - sd, spy - sd * 0.5f,
                          sd, sd,
                          dcol[0], dcol[1], dcol[2], dot_alpha);
             tr.draw_text(spx + g_to_s(4), spy - s_line_h * 0.5f, p.name.c_str(),
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], dot_alpha, zoom_);
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2],
+                         port_hov ? 1.0f : (p.is_param ? kParamDotAlpha : 1.0f), zoom_);
         }
         // Output port dots and labels (use domain color)
         for (const auto& p : r.outputs) {
             if (p.is_param && !show_param_wires_) continue;
             float spx = gx_to_sx(p.x), spy = gy_to_sy(p.y);
-            float dot_scale = p.is_param ? 0.7f : 1.0f;
-            float dot_alpha = p.is_param ? 0.6f : 1.0f;
+            bool port_hov = (hovered_port_.node_id == r.node_id &&
+                             hovered_port_.port_name == p.name && hovered_port_.is_output);
+            float dot_scale = p.is_param ? kParamDotScale : 1.0f;
+            float dot_alpha = p.is_param ? kParamDotAlpha : 1.0f;
+            if (port_hov) { dot_scale *= kPortHoverScale; dot_alpha = kPortHoverAlpha; }
             float sd = s_dot * dot_scale;
             tr.draw_rect(spx, spy - sd * 0.5f,
                          sd, sd,
@@ -374,6 +391,12 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         float cg = std::min(1.0f, dcol[1] * brightness);
         float cb = std::min(1.0f, dcol[2] * brightness);
         float a = (hov || sel) ? 0.95f : 0.8f;
+        if (c.invalid) {
+            cr = 1.0f;
+            cg = 0.38f;
+            cb = 0.32f;
+            a = (hov || sel) ? 1.0f : 0.9f;
+        }
 
         bool is_param_wire = c.from_is_param || c.to_is_param;
         float wire_th;
@@ -382,8 +405,9 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         else
             wire_th = std::max(1.0f, (hov ? style_.wire_hover_thickness : style_.wire_thickness) * zoom_);
 
-        if (is_param_wire) {
+        if (is_param_wire || c.invalid) {
             float a_param = (hov || sel) ? 0.6f : 0.35f;
+            if (c.invalid) a_param = a;
             draw_dashed_wire(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th, cr, cg, cb, a_param);
         } else {
         bool cross_domain = from_rect.domain != to_rect.domain;
@@ -419,11 +443,11 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
                     }
                     if (has_spread) {
                         float mx = (ssx + sex) * 0.5f;
-                        float my = (ssy + sey) * 0.5f - 6.0f * zoom_;
+                        float my = (ssy + sey) * 0.5f - kWireBadgeYOff * zoom_;
                         char badge[16];
                         std::snprintf(badge, sizeof(badge), "\xc3\x97%zu", spread_len);
                         tr.draw_text(mx, my, badge, cr, cg, cb, 0.6f, zoom_);
-                        badge_offset = 12.0f * zoom_;
+                        badge_offset = kWireBadgeSpacing * zoom_;
                     }
                 }
             }
@@ -432,8 +456,13 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         // Remap "R" badge at wire midpoint when remap is non-default
         if (c.has_remap()) {
             float mx = (ssx + sex) * 0.5f;
-            float my = (ssy + sey) * 0.5f - 6.0f * zoom_ - badge_offset;
+            float my = (ssy + sey) * 0.5f - kWireBadgeYOff * zoom_ - badge_offset;
             tr.draw_text(mx, my, "R", cr, cg, cb, 0.7f, zoom_);
+        }
+        if (c.invalid) {
+            float mx = (ssx + sex) * 0.5f;
+            float my = (ssy + sey) * 0.5f + kWireBadgeYOff * zoom_;
+            tr.draw_text(mx, my, "!", cr, cg, cb, 0.8f, zoom_);
         }
     }
 }
@@ -453,7 +482,9 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
 
     // Build value line
     std::string value_str;
-    if (src_ns) {
+    if (c.invalid) {
+        value_str = c.invalid_reason.empty() ? "Broken connection" : c.invalid_reason;
+    } else if (src_ns) {
         auto it = src_ns->output_port_indices.find(c.from_port);
         if (it != src_ns->output_port_indices.end()) {
             uint32_t pidx = it->second;
@@ -487,16 +518,16 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
     // Measure text and compute popup dimensions
     float label_w = tr.text_width(label.c_str());
     float value_w = value_str.empty() ? 0.0f : tr.text_width(value_str.c_str());
-    float pad = 8.0f;
+    float pad = kTooltipPad;
     float popup_w = std::max(label_w, value_w) + pad * 2;
-    float line_h = 16.0f;
+    float line_h = kTooltipLineH;
     float popup_h = (value_str.empty() ? line_h : line_h * 2) + pad * 2;
 
     // Position near cursor, offset down-right, clamped to graph bounds
-    float px = mouse_.x + 14;
-    float py = mouse_.y + 14;
-    if (px + popup_w > graph_right()) px = mouse_.x - popup_w - 6;
-    if (py + popup_h > static_cast<float>(win_h_)) py = mouse_.y - popup_h - 6;
+    float px = mouse_.x + kTooltipCursorOff;
+    float py = mouse_.y + kTooltipCursorOff;
+    if (px + popup_w > graph_right()) px = mouse_.x - popup_w - kTooltipClampMargin;
+    if (py + popup_h > static_cast<float>(win_h_)) py = mouse_.y - popup_h - kTooltipClampMargin;
 
     // Find domain color for accent from source node rect
     const float* dcol = nullptr;
@@ -505,10 +536,12 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
     }
 
     // Background
-    tr.draw_rect(px, py, popup_w, popup_h, style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.95f);
+    tr.draw_rect(px, py, popup_w, popup_h, style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], kTooltipBgAlpha);
     // Accent line at top
-    if (dcol) {
-        tr.draw_rect(px, py, popup_w, 2.0f, dcol[0], dcol[1], dcol[2], 0.9f);
+    if (c.invalid) {
+        tr.draw_rect(px, py, popup_w, kTooltipAccentH, 1.0f, 0.38f, 0.32f, kTooltipBgAlpha);
+    } else if (dcol) {
+        tr.draw_rect(px, py, popup_w, kTooltipAccentH, dcol[0], dcol[1], dcol[2], 0.9f);
     }
     // Label text
     tr.draw_text(px + pad, py + pad, label.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
@@ -553,22 +586,22 @@ void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
         max_line_w = std::max(max_line_w, tr.text_width(line.c_str()));
     }
 
-    float pad    = 8.0f;
-    float line_h = 16.0f;
+    float pad    = kTooltipPad;
+    float line_h = kTooltipLineH;
     float header_w = tr.text_width("Error:");
     float popup_w  = std::max(header_w, max_line_w) + pad * 2;
     float popup_h  = line_h * (1 + static_cast<float>(lines.size())) + pad * 2;
 
-    float px = mouse_.x + 14;
-    float py = mouse_.y + 14;
-    if (px + popup_w > graph_right()) px = mouse_.x - popup_w - 6;
-    if (py + popup_h > static_cast<float>(win_h_)) py = mouse_.y - popup_h - 6;
+    float px = mouse_.x + kTooltipCursorOff;
+    float py = mouse_.y + kTooltipCursorOff;
+    if (px + popup_w > graph_right()) px = mouse_.x - popup_w - kTooltipClampMargin;
+    if (py + popup_h > static_cast<float>(win_h_)) py = mouse_.y - popup_h - kTooltipClampMargin;
 
     // Background
     tr.draw_rect(px, py, popup_w, popup_h,
-                 style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.95f);
+                 style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], kTooltipBgAlpha);
     // Red accent line at top
-    tr.draw_rect(px, py, popup_w, 2.0f, 1.0f, 0.3f, 0.3f, 0.9f);
+    tr.draw_rect(px, py, popup_w, kTooltipAccentH, 1.0f, 0.3f, 0.3f, 0.9f);
     // "Error:" header in red
     tr.draw_text(px + pad, py + pad, "Error:", 1.0f, 0.3f, 0.3f);
     // One line per message line
@@ -619,6 +652,11 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         std::string label = c.from_node + "/" + c.from_port + " \xE2\x86\x92 " + c.to_node + "/" + c.to_port;
         tr.draw_text(px, py, label.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
         py += 20;
+        if (c.invalid) {
+            std::string broken = c.invalid_reason.empty() ? "Broken connection" : c.invalid_reason;
+            tr.draw_text(px, py, broken.c_str(), 1.0f, 0.45f, 0.38f, 0.85f);
+            py += 20;
+        }
 
         // Remap fields
         static const char* field_labels[4] = { "From Min", "From Max", "To Min", "To Max" };
@@ -644,9 +682,14 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             tr.draw_rect(fx, py + fh - 1, fw, 1, style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
 
             if (editing_this) {
-                std::string remap_display = edit_buffer_ + (cursor_blink_on() ? "_" : " ");
-                tr.draw_text(fx + 4, py + 2, remap_display.c_str(),
+                tr.draw_text(fx + 4, py + 2, edit_buffer_.c_str(),
                              style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+                if (cursor_blink_on()) {
+                    int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(edit_buffer_.size())));
+                    float cx = fx + 4 + tr.text_width(edit_buffer_.substr(0, cpos).c_str());
+                    tr.draw_rect(cx, py + 1, 1.0f, fh - 2,
+                                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+                }
             } else {
                 char buf[32];
                 std::snprintf(buf, sizeof(buf), "%.3g", vals[f]);
@@ -802,6 +845,23 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_inspector_state_presets(tr, *sel_node, px, py);
     draw_inspector_outputs(tr, *sel_node, px, py);
 
+    // Inspector widget hover highlights
+    if (hovered_slider_idx_ >= 0 && hovered_slider_idx_ < static_cast<int>(slider_rects_.size())) {
+        const auto& r = slider_rects_[hovered_slider_idx_];
+        tr.draw_rect(r.x, r.y, r.w, r.h,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], kWidgetHoverAlpha);
+    }
+    if (hovered_bool_idx_ >= 0 && hovered_bool_idx_ < static_cast<int>(bool_rects_.size())) {
+        const auto& r = bool_rects_[hovered_bool_idx_];
+        tr.draw_rect(r.x - 2, r.y - 2, r.w + 4, r.h + 4,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], kWidgetHoverAlpha);
+    }
+    if (hovered_dropdown_idx_ >= 0 && hovered_dropdown_idx_ < static_cast<int>(dropdown_rects_.size())) {
+        const auto& r = dropdown_rects_[hovered_dropdown_idx_];
+        tr.draw_rect(r.x, r.y, r.w, r.h,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], kWidgetHoverAlpha);
+    }
+
     tr.pop_clip_rect();
 
     // Compute content height from final py (relative to viewport top)
@@ -825,7 +885,7 @@ void NodeGraphUI::draw_inspector_scrollbar(Renderer2D& tr) {
 
     // Track background
     tr.draw_rect(track_x, track_y, kInspScrollbarW, track_h,
-                 style_.scrollbar_track[0], style_.scrollbar_track[1], style_.scrollbar_track[2], 0.5f);
+                 style_.scrollbar_track[0], style_.scrollbar_track[1], style_.scrollbar_track[2], kScrollbarTrackAlpha);
 
     // Thumb size proportional to viewport/content ratio
     float ratio = viewport_h / insp_content_h_;
@@ -839,7 +899,7 @@ void NodeGraphUI::draw_inspector_scrollbar(Renderer2D& tr) {
     // Thumb
     bool hovered = mouse_.x >= track_x && mouse_.x <= track_x + kInspScrollbarW &&
                    mouse_.y >= thumb_y && mouse_.y <= thumb_y + thumb_h;
-    float thumb_alpha = (hovered || insp_scrollbar_dragging_) ? 0.8f : 0.5f;
+    float thumb_alpha = (hovered || insp_scrollbar_dragging_) ? kScrollbarThumbHovered : kScrollbarThumbIdle;
     tr.draw_rect(track_x, thumb_y, kInspScrollbarW, thumb_h,
                  style_.scrollbar_thumb[0], style_.scrollbar_thumb[1], style_.scrollbar_thumb[2], thumb_alpha);
 }
@@ -1266,7 +1326,7 @@ void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
 
     if (color_editing_hex_) {
         draw_editing_text_field(tr, style_, sv_x, hex_y, hex_w_full, hex_h,
-                                color_hex_buffer_, cursor_blink_on());
+                                color_hex_buffer_, text_edit_, cursor_blink_on());
     } else {
         tr.draw_rect(sv_x, hex_y, hex_w_full, hex_h,
                      style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
@@ -1290,7 +1350,7 @@ void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
         if (color_editing_rgb_ == ch) {
             std::string buf = std::string(rgb_labels[ch]) + " " + color_rgb_buffer_;
             draw_editing_text_field(tr, style_, fx, rgb_y, field_w, rgb_h,
-                                    buf, cursor_blink_on(), 3.0f, 2.0f);
+                                    buf, text_edit_, cursor_blink_on(), 3.0f, 2.0f);
         } else {
             tr.draw_rect(fx, rgb_y, field_w, rgb_h,
                          style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
@@ -1442,7 +1502,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float field_h = kDropdownH;
         if (is_editing_this) {
             draw_editing_text_field(tr, style_, px, py, panel_w, field_h,
-                                    edit_buffer_, cursor_blink_on(), 6.0f, 1.0f);
+                                    edit_buffer_, text_edit_, cursor_blink_on(), 6.0f, 1.0f);
         } else {
             tr.draw_rect(px, py, panel_w, field_h,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
@@ -1485,7 +1545,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float edit_x = px + panel_w - edit_w;
         float edit_h = kLineH;
         draw_editing_text_field(tr, style_, edit_x, val_y, edit_w, edit_h,
-                                edit_buffer_, cursor_blink_on(), 2.0f, 0.0f);
+                                edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
     } else {
         if (is_connected)
             tr.draw_text(val_x, py, val_str.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
@@ -1584,7 +1644,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float min_x = px + 28;
         if (is_editing_min) {
             draw_editing_text_field(tr, style_, min_x, row_y, field_w, kMidiRangeH - 2,
-                                    edit_buffer_, cursor_blink_on(), 2.0f, 0.0f);
+                                    edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
         } else {
             tr.draw_rect(min_x, row_y, field_w, kMidiRangeH - 2,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
@@ -1600,7 +1660,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float max_x = max_label_x + 30;
         if (is_editing_max) {
             draw_editing_text_field(tr, style_, max_x, row_y, field_w, kMidiRangeH - 2,
-                                    edit_buffer_, cursor_blink_on(), 2.0f, 0.0f);
+                                    edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
         } else {
             tr.draw_rect(max_x, row_y, field_w, kMidiRangeH - 2,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
@@ -1891,8 +1951,8 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
     bool editing_h = editing_resolution_ &&
                      edit_res_node_id_ == single_selected_id() && !edit_res_is_width_;
 
-    std::string w_str = editing_w ? (edit_buffer_ + (cursor_blink_on() ? "_" : " ")) : format_uint(node.gpu_tex_width);
-    std::string h_str = editing_h ? (edit_buffer_ + (cursor_blink_on() ? "_" : " ")) : format_uint(node.gpu_tex_height);
+    std::string w_str = editing_w ? edit_buffer_ : format_uint(node.gpu_tex_width);
+    std::string h_str = editing_h ? edit_buffer_ : format_uint(node.gpu_tex_height);
 
     float val_x = px + 4;
 
@@ -1904,6 +1964,12 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
                      editing_w ? 1.0f : 0.8f,
                      editing_w ? 1.0f : 0.82f,
                      editing_w ? 1.0f : 0.85f);
+        if (editing_w && cursor_blink_on()) {
+            int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(edit_buffer_.size())));
+            float cur_x = val_x + tr.text_width(edit_buffer_.substr(0, cpos).c_str());
+            tr.draw_rect(cur_x, py, 1.0f, kLineH,
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
         resolution_rects_.push_back({val_x, py, kResInputW, kLineH,
                                      single_selected_id(), true});
     } else {
@@ -1922,6 +1988,12 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
                      editing_h ? 1.0f : 0.8f,
                      editing_h ? 1.0f : 0.82f,
                      editing_h ? 1.0f : 0.85f);
+        if (editing_h && cursor_blink_on()) {
+            int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(edit_buffer_.size())));
+            float cur_x = h_val_x + tr.text_width(edit_buffer_.substr(0, cpos).c_str());
+            tr.draw_rect(cur_x, py, 1.0f, kLineH,
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
         resolution_rects_.push_back({h_val_x, py, kResInputW, kLineH,
                                      single_selected_id(), false});
     } else {
@@ -2489,12 +2561,28 @@ void NodeGraphUI::draw_box_select(Renderer2D& tr) {
     // Convert graph-space rect to screen-space
     float cur_gx = sx_to_gx(mouse_.x);
     float cur_gy = sy_to_gy(mouse_.y);
-    float sx0 = gx_to_sx(std::min(box_start_gx_, cur_gx));
-    float sy0 = gy_to_sy(std::min(box_start_gy_, cur_gy));
-    float sx1 = gx_to_sx(std::max(box_start_gx_, cur_gx));
-    float sy1 = gy_to_sy(std::max(box_start_gy_, cur_gy));
+    float gx0 = std::min(box_start_gx_, cur_gx);
+    float gy0 = std::min(box_start_gy_, cur_gy);
+    float gx1 = std::max(box_start_gx_, cur_gx);
+    float gy1 = std::max(box_start_gy_, cur_gy);
+    float sx0 = gx_to_sx(gx0);
+    float sy0 = gy_to_sy(gy0);
+    float sx1 = gx_to_sx(gx1);
+    float sy1 = gy_to_sy(gy1);
     float sw = sx1 - sx0;
     float sh = sy1 - sy0;
+
+    // Highlight nodes inside the selection rectangle
+    for (const auto& nr : node_rects_) {
+        if (nr.x + nr.w >= gx0 && nr.x <= gx1 &&
+            nr.y + nr.h >= gy0 && nr.y <= gy1) {
+            float nsx = gx_to_sx(nr.x), nsy = gy_to_sy(nr.y);
+            float nsw = g_to_s(nr.w), nsh = g_to_s(nr.h);
+            tr.draw_rounded_rect(nsx, nsy, nsw, nsh, g_to_s(style_.corner_radius),
+                                 style_.accent[0], style_.accent[1], style_.accent[2], kBoxSelectNodeAlpha);
+        }
+    }
+
     // Semi-transparent fill
     tr.draw_rect(sx0, sy0, sw, sh, style_.accent[0], style_.accent[1], style_.accent[2], 0.12f);
     // Border
@@ -2583,7 +2671,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
 
         // Track background
         tr.draw_rect(track_x, track_y, kInspScrollbarW, track_h,
-                     style_.scrollbar_track[0], style_.scrollbar_track[1], style_.scrollbar_track[2], 0.5f);
+                     style_.scrollbar_track[0], style_.scrollbar_track[1], style_.scrollbar_track[2], kScrollbarTrackAlpha);
 
         // Thumb
         float ratio = static_cast<float>(kChooserMaxVisible) / static_cast<float>(total_items);
@@ -2592,7 +2680,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
         float scroll_ratio = (max_scroll > 0) ? static_cast<float>(chooser_scroll_) / static_cast<float>(max_scroll) : 0.0f;
         float thumb_y = track_y + scroll_ratio * (track_h - thumb_h);
         tr.draw_rect(track_x, thumb_y, kInspScrollbarW, thumb_h,
-                     style_.scrollbar_thumb[0], style_.scrollbar_thumb[1], style_.scrollbar_thumb[2], 0.6f);
+                     style_.scrollbar_thumb[0], style_.scrollbar_thumb[1], style_.scrollbar_thumb[2], kScrollbarThumbIdle);
     }
 }
 
@@ -2793,6 +2881,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     draw_example_browser(tr);
     draw_graph_meta_editor(tr);
     draw_about(tr);
+    draw_mcp_setup_dialog(tr);
 }
 
 // -----------------------------------------------------------------------
@@ -3021,7 +3110,7 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     // 4. Name field
     if (create_active_field_ == 0) {
         draw_editing_text_field(tr, style_, cx, cy, inner_w, 22.0f,
-                               create_name_buf_, blink_on);
+                               create_name_buf_, text_edit_, blink_on);
         if (create_name_buf_.empty()) {
             tr.draw_text(cx + 4, cy + 2, "operator_name",
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
@@ -3068,7 +3157,7 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
                 // Port name field
                 if (create_active_field_ == field_idx) {
                     draw_editing_text_field(tr, style_, cx, row_y, name_w, 22.0f,
-                                           rows[i].name, blink_on);
+                                           rows[i].name, text_edit_, blink_on);
                 } else {
                     tr.draw_rect(cx, row_y, name_w, 22.0f,
                                  style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
@@ -3137,7 +3226,7 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
             // Param name
             if (create_active_field_ == field_idx) {
                 draw_editing_text_field(tr, style_, cx, row_y, name_w, 22.0f,
-                                       p.name, blink_on);
+                                       p.name, text_edit_, blink_on);
             } else {
                 tr.draw_rect(cx, row_y, name_w, 22.0f,
                              style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
@@ -3293,17 +3382,17 @@ void NodeGraphUI::draw_preset_name_popup(Renderer2D& tr) {
     tr.draw_rect(cx, cy, field_w, 1,
                  style_.accent[0], style_.accent[1], style_.accent[2]);
 
-    std::string display = preset_name_buffer_;
-    if (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0)
-        display += "_";
-    else
-        display += " ";
-
     if (preset_name_buffer_.empty()) {
         tr.draw_text(cx + 4, cy + 3, "preset_name",
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
     } else {
-        tr.draw_text(cx + 4, cy + 3, display.c_str(),
+        tr.draw_text(cx + 4, cy + 3, preset_name_buffer_.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+    if (cursor_blink_on()) {
+        int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(preset_name_buffer_.size())));
+        float cur_x = cx + 4 + tr.text_width(preset_name_buffer_.substr(0, cpos).c_str());
+        tr.draw_rect(cur_x, cy + 1, 1.0f, 20.0f,
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     }
 }
@@ -3394,11 +3483,16 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
                          style_.accent[0], style_.accent[1], style_.accent[2]);
         }
         std::string display = prefs_custom_command_;
-        if (prefs_editing_custom_) display += (cursor_blink_on() ? "_" : " ");
-        if (display.empty()) display = "/usr/local/bin/code {file}";
+        if (display.empty() && !prefs_editing_custom_) display = "/usr/local/bin/code {file}";
         float text_alpha = prefs_custom_command_.empty() && !prefs_editing_custom_ ? 0.4f : 1.0f;
         tr.draw_text(cx + 22, cy + 2, display.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], text_alpha);
+        if (prefs_editing_custom_ && cursor_blink_on()) {
+            int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(prefs_custom_command_.size())));
+            float cur_x = cx + 22 + tr.text_width(prefs_custom_command_.substr(0, cpos).c_str());
+            tr.draw_rect(cur_x, cy + 1, 1.0f, kPrefsRowH - 4,
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
         cy += kPrefsRowH + 2;
     }
 
@@ -3467,6 +3561,180 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
     float cancel_tw = tr.text_width("Cancel");
     tr.draw_text(cancel_x + (kPrefsBtnW - cancel_tw) * 0.5f, cy + 4, "Cancel",
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+}
+
+// -----------------------------------------------------------------------
+// MCP setup dialog
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_mcp_setup_dialog(Renderer2D& tr) {
+    if (!mcp_setup_open_) return;
+
+    auto now_ms = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+
+    float wf = static_cast<float>(win_w_);
+    float hf = static_cast<float>(win_h_);
+
+    // Scrim
+    tr.draw_rect(0, 0, wf, hf,
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+
+    constexpr float kDlgW      = 480.0f;
+    constexpr float kDlgPadX   = 20.0f;
+    constexpr float kDlgPadY   = 16.0f;
+    constexpr float kRowH      = 20.0f;
+    constexpr float kCodeH     = 56.0f;   // height of a code block
+    constexpr float kSep       = 10.0f;
+    constexpr float kBtnH      = 24.0f;
+    constexpr float kBtnW      = 72.0f;
+    constexpr float kCopyBtnW  = 36.0f;
+
+    // Panel height: title + 2 server sections + Done button
+    float section_h = kRowH + kRowH + kCodeH + kSep; // status + description + code + gap
+    float dlg_h = kDlgPadY + kRowH + kSep            // title
+                + section_h * 2                       // two servers
+                + kBtnH + kDlgPadY;                   // Done + padding
+    float dlg_x = (wf - kDlgW) * 0.5f;
+    float dlg_y = (hf - dlg_h) * 0.5f;
+
+    tr.draw_rounded_rect(dlg_x, dlg_y, kDlgW, dlg_h, style_.corner_radius,
+                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    tr.draw_rect(dlg_x, dlg_y, kDlgW, 2,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    float cx = dlg_x + kDlgPadX;
+    float cy = dlg_y + kDlgPadY;
+    float inner_w = kDlgW - 2 * kDlgPadX;
+
+    // Title + close [✕]
+    tr.draw_text(cx, cy, "MCP Servers",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    const char* close_x = "\xe2\x9c\x95";
+    float close_tw = tr.text_width(close_x);
+    float close_bx = dlg_x + kDlgW - kDlgPadX - close_tw;
+    mcp_dialog_button_rects_.clear();
+    bool close_hov = mouse_.x >= close_bx - 4 && mouse_.x <= close_bx + close_tw + 4 &&
+                     mouse_.y >= cy - 2 && mouse_.y <= cy + kRowH + 2;
+    tr.draw_text(close_bx, cy,
+                 close_x,
+                 close_hov ? style_.bright_text[0] : style_.dim_text[0],
+                 close_hov ? style_.bright_text[1] : style_.dim_text[1],
+                 close_hov ? style_.bright_text[2] : style_.dim_text[2]);
+    mcp_dialog_button_rects_.push_back({close_bx - 4, cy - 2, close_tw + 8, kRowH + 4, 3 /*close*/});
+    cy += kRowH + kSep;
+
+    // Build JSON snippets
+    std::string mcp_py_path = mcp_dir_.empty() ? "<path_to_vivid>/mcp/vivid_mcp.py"
+                                                : mcp_dir_ + "/vivid_mcp.py";
+    std::string opdev_py_path = mcp_dir_.empty() ? "<path_to_vivid>/mcp/vivid_opdev_mcp.py"
+                                                 : mcp_dir_ + "/vivid_opdev_mcp.py";
+
+    const std::string vivid_json =
+        "{\"vivid\":{\"command\":\"python\",\"args\":[\"" + mcp_py_path + "\"],\"type\":\"stdio\"}}";
+    const std::string opdev_json =
+        "{\"opdev\":{\"command\":\"python\",\"args\":[\"" + opdev_py_path + "\"],\"type\":\"stdio\"}}";
+
+    struct ServerDef {
+        const char*  label;
+        const char*  desc;
+        const std::string* json_snippet;
+        uint64_t     last_ping_ms;
+        int          copy_action;  // 0=copy_vivid, 1=copy_opdev
+    };
+    bool vivid_connected = (snap_.mcp_main_last_ping_ms  > 0 && now_ms - snap_.mcp_main_last_ping_ms  < kMcpStaleMs);
+    bool opdev_connected = (snap_.mcp_opdev_last_ping_ms > 0 && now_ms - snap_.mcp_opdev_last_ping_ms < kMcpStaleMs);
+
+    ServerDef servers[2] = {
+        { "Graph Server",   "Controls the Vivid node graph via AI.",  &vivid_json, snap_.mcp_main_last_ping_ms,  0 },
+        { "Operator Dev",   "Helps build custom operators.",           &opdev_json, snap_.mcp_opdev_last_ping_ms, 1 },
+    };
+    bool connected[2] = { vivid_connected, opdev_connected };
+
+    for (int i = 0; i < 2; ++i) {
+        const auto& s = servers[i];
+        bool conn = connected[i];
+
+        // Status dot + server name + status text
+        float dot_diam = 7.0f;
+        float dot_cx = cx + dot_diam * 0.5f;
+        float dot_cy = cy + kRowH * 0.5f;
+        float dot_r = conn ? 0.30f : 0.40f;
+        float dot_g = conn ? 0.85f : 0.40f;
+        float dot_b = conn ? 0.40f : 0.45f;
+        tr.draw_rounded_rect(dot_cx - dot_diam * 0.5f, dot_cy - dot_diam * 0.5f,
+                             dot_diam, dot_diam, dot_diam * 0.5f, dot_r, dot_g, dot_b, 0.9f);
+        tr.draw_text(cx + dot_diam + 5.0f, cy,
+                     s.label,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        const char* status_str = conn ? "connected" : "not connected";
+        float status_x = dlg_x + kDlgW - kDlgPadX - tr.text_width(status_str);
+        tr.draw_text(status_x, cy, status_str,
+                     conn ? dot_r : style_.dim_text[0],
+                     conn ? dot_g : style_.dim_text[1],
+                     conn ? dot_b : style_.dim_text[2]);
+        cy += kRowH;
+
+        // Description
+        tr.draw_text(cx, cy, s.desc,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        cy += kRowH;
+
+        // Code block
+        float code_x = cx;
+        float code_w = inner_w - kCopyBtnW - 6.0f;
+        tr.draw_rect(code_x, cy, code_w, kCodeH, 0.06f, 0.07f, 0.08f, 0.95f);
+
+        // Word-wrap JSON into the code block (monospace — just clip at ~64 chars per line)
+        const std::string& jsnip = *s.json_snippet;
+        // Draw first ~60 chars, then remainder on next line
+        float code_ty = cy + 6.0f;
+        float code_tx = code_x + 6.0f;
+        size_t line_chars = 56;
+        if (jsnip.size() <= line_chars) {
+            tr.draw_text(code_tx, code_ty, jsnip.c_str(),
+                         0.75f, 0.85f, 0.95f);
+        } else {
+            // Split at a sensible boundary (after the first comma inside)
+            size_t split = jsnip.rfind(',', line_chars);
+            if (split == std::string::npos) split = line_chars;
+            std::string l1 = jsnip.substr(0, split + 1);
+            std::string l2 = "  " + jsnip.substr(split + 1);
+            tr.draw_text(code_tx, code_ty,      l1.c_str(), 0.75f, 0.85f, 0.95f);
+            tr.draw_text(code_tx, code_ty + 18, l2.c_str(), 0.75f, 0.85f, 0.95f);
+        }
+
+        // Copy button
+        float copy_bx = code_x + code_w + 6.0f;
+        float copy_by = cy + (kCodeH - kBtnH) * 0.5f;
+        bool copy_hov = mouse_.x >= copy_bx && mouse_.x <= copy_bx + kCopyBtnW &&
+                        mouse_.y >= copy_by && mouse_.y <= copy_by + kBtnH;
+        tr.draw_rounded_rect(copy_bx, copy_by, kCopyBtnW, kBtnH, style_.corner_radius,
+                             copy_hov ? style_.button_hover[0] : style_.button_bg[0],
+                             copy_hov ? style_.button_hover[1] : style_.button_bg[1],
+                             copy_hov ? style_.button_hover[2] : style_.button_bg[2], 0.9f);
+        const char* copy_lbl = "\xe2\x8e\x98";  // ⎘ copy symbol
+        float copy_lbl_w = tr.text_width(copy_lbl);
+        tr.draw_text(copy_bx + (kCopyBtnW - copy_lbl_w) * 0.5f,
+                     copy_by + (kBtnH - tr.line_height()) * 0.5f,
+                     copy_lbl,
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        mcp_dialog_button_rects_.push_back({copy_bx, copy_by, kCopyBtnW, kBtnH, s.copy_action});
+        cy += kCodeH + kSep;
+    }
+
+    // Done button
+    float done_x = dlg_x + kDlgW - kDlgPadX - kBtnW;
+    bool done_hov = mouse_.x >= done_x && mouse_.x <= done_x + kBtnW &&
+                    mouse_.y >= cy     && mouse_.y <= cy + kBtnH;
+    tr.draw_rounded_rect(done_x, cy, kBtnW, kBtnH, style_.corner_radius,
+                         done_hov ? style_.button_hover[0] : style_.button_bg[0],
+                         done_hov ? style_.button_hover[1] : style_.button_bg[1],
+                         done_hov ? style_.button_hover[2] : style_.button_bg[2], 0.9f);
+    float done_tw = tr.text_width("Done");
+    tr.draw_text(done_x + (kBtnW - done_tw) * 0.5f, cy + (kBtnH - tr.line_height()) * 0.5f, "Done",
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    mcp_dialog_button_rects_.push_back({done_x, cy, kBtnW, kBtnH, 2 /*done*/});
 }
 
 // -----------------------------------------------------------------------
@@ -3648,6 +3916,76 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
                          undo_label, tur, tug, tub);
             perf_button_rects_.push_back({rx, btn_y, btn_w, kPerfBtnH, 2, can_undo});
             rx -= kPerfBtnMargin;
+        }
+
+        // MCP status dots — [● MCP] [● DEV]
+        mcp_dot_rects_.clear();
+        {
+            // Current steady_clock time for staleness check (30 s threshold)
+            auto now_ms = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count());
+
+            struct McpDotDef { const char* label; uint64_t last_ping_ms; int idx; };
+            McpDotDef dots[2] = {
+                { "MCP", snap_.mcp_main_last_ping_ms,  0 },
+                { "DEV", snap_.mcp_opdev_last_ping_ms, 1 },
+            };
+
+            // Place rightmost dot first (DEV), then MCP, going left
+            for (int di = 1; di >= 0; --di) {
+                const auto& dot = dots[di];
+                bool connected = (dot.last_ping_ms > 0 &&
+                                  now_ms - dot.last_ping_ms < kMcpStaleMs);
+                float dot_r   = connected ? 0.30f : 0.40f;
+                float dot_g   = connected ? 0.85f : 0.40f;
+                float dot_b   = connected ? 0.40f : 0.45f;
+
+                float lbl_w = tr.text_width(dot.label);
+                float dot_diam = 7.0f;
+                float pill_w = kPerfBtnPadX + dot_diam + 3.0f + lbl_w + kPerfBtnPadX;
+                rx -= pill_w;
+
+                bool hovered = mouse_.x >= rx && mouse_.x <= rx + pill_w &&
+                               mouse_.y >= btn_y && mouse_.y <= btn_y + kPerfBtnH;
+                float bg_a = hovered ? 0.28f : 0.14f;
+                tr.draw_rounded_rect(rx, btn_y, pill_w, kPerfBtnH, 3.0f,
+                                     0.30f, 0.32f, 0.35f, bg_a);
+
+                float dot_cx = rx + kPerfBtnPadX + dot_diam * 0.5f;
+                float dot_cy = btn_y + kPerfBtnH * 0.5f;
+                tr.draw_rounded_rect(dot_cx - dot_diam * 0.5f, dot_cy - dot_diam * 0.5f,
+                                     dot_diam, dot_diam, dot_diam * 0.5f,
+                                     dot_r, dot_g, dot_b, 0.9f);
+                tr.draw_text(rx + kPerfBtnPadX + dot_diam + 3.0f,
+                             btn_y + (kPerfBtnH - tr.line_height()) * 0.5f,
+                             dot.label, kDimText[0], kDimText[1], kDimText[2]);
+
+                mcp_dot_rects_.push_back({rx, btn_y, pill_w, kPerfBtnH, dot.idx});
+                rx -= kPerfBtnMargin;
+            }
+
+            // Tooltip for hovered dot
+            for (const auto& dr : mcp_dot_rects_) {
+                if (mouse_.x >= dr.x && mouse_.x <= dr.x + dr.w &&
+                    mouse_.y >= dr.y && mouse_.y <= dr.y + dr.h) {
+                    uint64_t ping_ms = (dr.idx == 0) ? snap_.mcp_main_last_ping_ms
+                                                     : snap_.mcp_opdev_last_ping_ms;
+                    bool connected = (ping_ms > 0 && now_ms - ping_ms < kMcpStaleMs);
+                    const char* srv = (dr.idx == 0) ? "vivid" : "opdev";
+                    const char* status = connected ? "connected" : "not connected";
+                    char tip[64];
+                    std::snprintf(tip, sizeof(tip), "%s \xe2\x80\x94 %s", srv, status);
+                    float tip_w = tr.text_width(tip) + 12.0f;
+                    float tip_x = dr.x + dr.w * 0.5f - tip_w * 0.5f;
+                    float tip_y = kPerfBarH + 4.0f;
+                    tr.draw_rounded_rect(tip_x - 2.0f, tip_y, tip_w, tr.line_height() + 6.0f,
+                                         3.0f, 0.10f, 0.11f, 0.13f, 0.95f);
+                    tr.draw_text(tip_x + 4.0f, tip_y + 3.0f, tip,
+                                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+                    break;
+                }
+            }
         }
 
         // Unsaved graph badge (non-interactive)
@@ -4037,9 +4375,14 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
         // Variation name
         if (session_editing_name_ && session_edit_idx_ == i) {
             // Edit mode: draw text buffer with cursor
-            std::string display = session_edit_buffer_ + (cursor_blink_on() ? "_" : " ");
-            tr.draw_text(cx + 6, cy + 4, display.c_str(),
+            tr.draw_text(cx + 6, cy + 4, session_edit_buffer_.c_str(),
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            if (cursor_blink_on()) {
+                int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(session_edit_buffer_.size())));
+                float cur_x = cx + 6 + tr.text_width(session_edit_buffer_.substr(0, cpos).c_str());
+                tr.draw_rect(cur_x, cy + 3, 1.0f, kSessionCellH - 6,
+                             style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            }
         } else {
             std::string label = snap_.variations[i].name;
             if (active && snap_.variation_dirty) label += " *";

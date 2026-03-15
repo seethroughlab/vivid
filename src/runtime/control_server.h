@@ -1,7 +1,10 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_map>
+#include <cstdint>
 
 namespace vivid {
 
@@ -39,6 +42,10 @@ public:
     void set_app_update_manager(AppUpdateManager* aum);
     void set_settings(const Settings* settings);
 
+    // Returns the wall-clock ms timestamp of the last /mcp_ping from a given
+    // server name ("vivid" or "opdev").  Returns 0 if never pinged.
+    uint64_t mcp_last_ping_ms(const std::string& name) const;
+
     // Call from main loop each frame. Drains pending HTTP requests,
     // dispatches commands against the runtime, and signals responses.
     // has_gpu_ops/has_audio are updated by reload commands.
@@ -50,6 +57,11 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
+
+    // MCP ping timestamps — updated from the HTTP thread, read from the main thread.
+    mutable std::mutex mcp_ping_mutex_;
+    std::unordered_map<std::string, uint64_t> mcp_last_ping_ms_;
+
     std::string src_dir_;
     HotReloader* hot_reloader_ = nullptr;
     CaptureCoordinator* capture_coordinator_ = nullptr;

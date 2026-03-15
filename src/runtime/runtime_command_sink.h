@@ -35,6 +35,17 @@ public:
         auto r = api_.add_node(type, id);
         if (r.ok) capture_undo_snapshot();
     }
+    bool try_add_node(const std::string& type, const std::string& id,
+                      std::string* error = nullptr) override {
+        auto r = api_.add_node(type, id);
+        if (!r.ok) {
+            if (error) *error = r.message;
+            return false;
+        }
+        capture_undo_snapshot();
+        if (error) error->clear();
+        return true;
+    }
     void remove_node(const std::string& id) override {
         auto r = api_.remove_node(id);
         if (r.ok) capture_undo_snapshot();

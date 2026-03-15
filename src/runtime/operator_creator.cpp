@@ -717,6 +717,10 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
                     result.error = "custom port '" + p.name + "' must use CUSTOM_REF or CUSTOM_VALUE transport";
                     return result;
                 }
+                if (p.payload_size == 0) {
+                    result.error = "custom port '" + p.name + "' must define payload_size > 0";
+                    return result;
+                }
             }
             for (const auto& existing : port_names) {
                 if (existing == p.name) {

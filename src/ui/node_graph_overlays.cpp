@@ -82,6 +82,7 @@ void NodeGraphUI::open_graph_meta_editor(const GraphMetaEditData& data) {
         &graph_meta_data_.requires_packages_csv,
         &graph_meta_data_.featured_rank
     };
+    text_edit_.reset(static_cast<int>(graph_meta_fields_[graph_meta_active_field_]->size()));
 }
 
 void NodeGraphUI::set_graph_meta_save_callback(

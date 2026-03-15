@@ -3,9 +3,56 @@
 #include "operator_api/port_type_registry.h"
 #include <dlfcn.h>
 #include <cstdio>
+#include <cstring>
 #include <utility>
 
 namespace vivid {
+
+namespace {
+bool hot_reload_param_layout_compatible(const VividOperatorDescriptor* old_desc,
+                                        const VividOperatorDescriptor* new_desc) {
+    if (!old_desc || !new_desc) return false;
+    if (old_desc->param_count > new_desc->param_count) return false;
+    for (uint32_t i = 0; i < old_desc->param_count; ++i) {
+        const auto& old_param = old_desc->params[i];
+        const auto& new_param = new_desc->params[i];
+        if (!old_param.name || !new_param.name) return false;
+        if (std::strcmp(old_param.name, new_param.name) != 0) return false;
+        if (old_param.type != new_param.type) return false;
+    }
+    return true;
+}
+
+bool hot_reload_port_layout_compatible(const VividOperatorDescriptor* old_desc,
+                                       const VividOperatorDescriptor* new_desc) {
+    if (!old_desc || !new_desc) return false;
+    if (old_desc->port_count != new_desc->port_count) return false;
+    for (uint32_t i = 0; i < old_desc->port_count; ++i) {
+        const auto& old_port = old_desc->ports[i];
+        const auto& new_port = new_desc->ports[i];
+        if (!old_port.name || !new_port.name) return false;
+        if (std::strcmp(old_port.name, new_port.name) != 0) return false;
+        if (old_port.type != new_port.type) return false;
+        if (old_port.direction != new_port.direction) return false;
+        if (old_port.transport != new_port.transport) return false;
+        if (old_port.payload_size != new_port.payload_size) return false;
+        if (old_port.channels != new_port.channels) return false;
+        const char* old_stable = old_port.stable_type_id ? old_port.stable_type_id : "";
+        const char* new_stable = new_port.stable_type_id ? new_port.stable_type_id : "";
+        if (std::strcmp(old_stable, new_stable) != 0) return false;
+    }
+    return true;
+}
+
+bool hot_reload_descriptor_compatible(const VividOperatorDescriptor* old_desc,
+                                      const VividOperatorDescriptor* new_desc) {
+    if (!old_desc || !new_desc) return true;
+    if (old_desc->domain != new_desc->domain) return false;
+    if (!hot_reload_param_layout_compatible(old_desc, new_desc)) return false;
+    if (!hot_reload_port_layout_compatible(old_desc, new_desc)) return false;
+    return true;
+}
+} // namespace
 
 OperatorLoader::~OperatorLoader() {
     unload();
@@ -142,6 +189,41 @@ bool OperatorLoader::load(const char* path) {
         return false;  // Old dylib still live
     }
 
+    const VividOperatorDescriptor* current_desc = descriptor();
+    const VividOperatorDescriptor* new_desc = new_desc_fn();
+    if (!new_desc) {
+        std::fprintf(stderr, "[vivid] vivid_descriptor returned null for %s\n", path);
+        dlclose(new_handle);
+        return false;
+    }
+    if (!new_desc->name || !*new_desc->name) {
+        std::fprintf(stderr, "[vivid] vivid_descriptor returned missing/empty name for %s\n", path);
+        dlclose(new_handle);
+        return false;
+    }
+    if (!hot_reload_descriptor_compatible(current_desc, new_desc)) {
+        std::fprintf(stderr,
+                     "[vivid] Hot-reload rejected: descriptor shape changed incompatibly; "
+                     "rebuild graph/runtime instead.\n");
+        dlclose(new_handle);
+        return false;
+    }
+
+    // Pre-register custom port types before committing the loader swap. This
+    // preserves the previous loader on registration failure.
+    if (auto* describe_types = reinterpret_cast<VividDescribeCustomTypesFn>(
+            dlsym(new_handle, "vivid_describe_custom_types"))) {
+        uint32_t count = 0;
+        const VividPortTypeInfo* infos = describe_types(&count);
+        for (uint32_t i = 0; i < count; ++i) {
+            if (!vivid_register_port_type(&infos[i])) {
+                std::fprintf(stderr, "[vivid] Failed to register custom port type for plugin: %s\n", path);
+                dlclose(new_handle);
+                return false;
+            }
+        }
+    }
+
     // All symbols resolved — commit the swap: release old dylib, install new state
     if (handle_) {
         if (dlclose(handle_) != 0) {
@@ -176,32 +258,6 @@ bool OperatorLoader::load(const char* path) {
     main_update_fn_ = reinterpret_cast<VividMainThreadUpdateFn>(dlsym(new_handle, "vivid_main_thread_update"));
     draw_insp_fn_   = reinterpret_cast<VividDrawInspectorFn>(dlsym(new_handle, "vivid_draw_inspector"));
     insp_mode_fn_   = reinterpret_cast<VividInspectorModeFn>(dlsym(new_handle, "vivid_inspector_mode"));
-
-    // Optional: register custom port types declared by this dylib (pull model).
-    // The operator exports a static array of VividPortTypeInfo; the runtime
-    // registers each entry. This avoids operators calling runtime symbols
-    // across the dlopen boundary.
-    if (auto* desc_fn = reinterpret_cast<VividDescribeCustomTypesFn>(
-            dlsym(new_handle, "vivid_describe_custom_types"))) {
-        uint32_t count = 0;
-        const VividPortTypeInfo* infos = desc_fn(&count);
-        for (uint32_t i = 0; i < count; ++i) {
-            if (!vivid_register_port_type(&infos[i])) {
-                std::fprintf(stderr, "[vivid] Failed to register custom port type for plugin: %s\n", path);
-                dlclose(new_handle);
-                handle_ = nullptr;
-                desc_fn_ = nullptr;
-                create_fn_ = nullptr;
-                destroy_fn_ = nullptr;
-                process_fn_ = nullptr;
-                process_audio_fn_ = nullptr;
-                process_gpu_fn_ = nullptr;
-                draw_thumb_fn_ = nullptr;
-                main_update_fn_ = nullptr;
-                return false;
-            }
-        }
-    }
 
     return true;
 }

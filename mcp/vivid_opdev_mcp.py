@@ -410,5 +410,31 @@ async def run_diagnostics(include_payload: bool = False) -> str:
     return raw
 
 
+def _start_heartbeat() -> None:
+    """Start a daemon thread that pings /mcp_ping every 15 s."""
+    import threading
+    import time
+
+    def _loop():
+        while True:
+            try:
+                import urllib.request
+                data = b'{"server":"opdev"}'
+                req = urllib.request.Request(
+                    f"{VIVID_URL}/mcp_ping",
+                    data=data,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                urllib.request.urlopen(req, timeout=2)
+            except Exception:
+                pass
+            time.sleep(15)
+
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+
+
 if __name__ == "__main__":
+    _start_heartbeat()
     mcp.run()

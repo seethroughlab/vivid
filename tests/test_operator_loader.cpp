@@ -54,6 +54,9 @@ int main() {
     std::filesystem::copy_file(build_dir + "/control_pass_op.dylib",
         staging_mixed + "/control_pass_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/audio_test_op.dylib",
+        staging_mixed + "/audio_test_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: OperatorLoader + OperatorRegistry ===\n\n");
 
@@ -105,6 +108,14 @@ int main() {
         check(!loader.load(bad_path.c_str()), "load invalid file fails");
         check(!loader.is_loaded(), "not loaded after invalid");
         std::filesystem::remove(bad_path);
+    }
+
+    // Test 4b: load plugin with null descriptor fails cleanly
+    {
+        vivid::OperatorLoader loader;
+        std::string path = build_dir + "/test_op_null_desc.dylib";
+        check(!loader.load(path.c_str()), "load null-descriptor plugin fails");
+        check(!loader.is_loaded(), "null-descriptor plugin not loaded");
     }
 
     // Test 5: instance lifecycle
@@ -260,10 +271,11 @@ int main() {
         vivid::OperatorRegistry reg;
         reg.scan(staging_mixed.c_str());
         auto names = reg.type_names();
-        check(names.size() == 2, "mixed dir: 2 types");
-        if (names.size() == 2) {
-            check(names[0] == "ControlPassOp", "sorted[0] = ControlPassOp");
-            check(names[1] == "TestOp", "sorted[1] = TestOp");
+        check(names.size() == 3, "mixed dir: 3 types");
+        if (names.size() == 3) {
+            check(names[0] == "AudioTestOp",   "sorted[0] = AudioTestOp");
+            check(names[1] == "ControlPassOp", "sorted[1] = ControlPassOp");
+            check(names[2] == "TestOp",        "sorted[2] = TestOp");
         }
     }
 
@@ -345,6 +357,46 @@ int main() {
         check(loader != nullptr, "reload bad: loader still in registry");
         if (loader) {
             check(loader->is_loaded(), "reload bad: loader remains loaded");
+        }
+    }
+
+    // Test 22b: reload_operator null descriptor keeps previous loader active
+    {
+        vivid::OperatorRegistry reg;
+        reg.scan(staging.c_str());
+        check(!reg.reload_operator("TestOp", build_dir + "/test_op_null_desc.dylib"),
+              "reload null-descriptor plugin fails");
+
+        auto* loader = reg.find("TestOp");
+        check(loader != nullptr, "reload null-desc: loader still in registry");
+        if (loader) {
+            const auto* desc = loader->descriptor();
+            check(desc != nullptr, "reload null-desc: descriptor still valid");
+            if (desc) {
+                check(std::strcmp(desc->name, "TestOp") == 0,
+                      "reload null-desc: previous loader remains active");
+            }
+        }
+    }
+
+    // Test 22c: deferred probe preserves process flags and port semantic metadata
+    {
+        vivid::OperatorRegistry reg;
+        check(reg.scan_deferred(staging_mixed.c_str()), "scan_deferred mixed directory");
+        const auto* desc = reg.probe_descriptor("AudioTestOp");
+        check(desc != nullptr, "probe_descriptor AudioTestOp");
+        if (desc) {
+            check(desc->has_process_audio == 1, "probe preserves has_process_audio");
+            check(desc->has_process_gpu == 0, "probe preserves has_process_gpu");
+            check(desc->port_count == 2, "probe preserves audio port count");
+            if (desc->port_count >= 2) {
+                check(desc->ports[0].semantic_tag != nullptr &&
+                          std::strcmp(desc->ports[0].semantic_tag, "audio_signal_in") == 0,
+                      "probe preserves input port semantic_tag");
+                check(desc->ports[1].semantic_tag != nullptr &&
+                          std::strcmp(desc->ports[1].semantic_tag, "audio_signal_out") == 0,
+                      "probe preserves output port semantic_tag");
+            }
         }
     }
 

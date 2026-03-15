@@ -183,6 +183,7 @@ int main(int argc, char* argv[]) {
         std::string save_path = build_dir + "/test_api_saved.json";
         auto r1 = api.save_as(save_path);
         check(r1.ok, "save_as");
+        check(graph.source_path() == save_path, "save_as updates graph source_path");
 
         // Verify the saved file can be loaded
         vivid::Graph g2;
@@ -386,6 +387,52 @@ int main(int argc, char* argv[]) {
         check(r.message.find("no source path") != std::string::npos, "error mentions no source path");
     }
 
+    // --- Regression: reload failure restores previous runtime state ---
+    {
+        const std::string tmp_path = build_dir + "/test_reload_failure_restore.json";
+        const std::string invalid_json = R"({ "nodes": { "broken": { "type": "TestOp", )";
+
+        check(api.save_as(tmp_path).ok, "reload failure regression: save current graph");
+        check(api.set_param("a", "scale", 33.0f).ok,
+              "reload failure regression: mutate live param before failure");
+        scheduler.tick(0.0, 0.016, 3);
+
+        {
+            std::ofstream ofs(tmp_path, std::ios::trunc);
+            ofs << invalid_json;
+        }
+
+        bool hgpu = false, haudio = false;
+        auto rr = api.reload(hgpu, haudio);
+        check(!rr.ok, "reload failure regression: reload fails on malformed file");
+        check(graph.source_path() == tmp_path,
+              "reload failure regression: graph source_path preserved after failure");
+        check(graph.nodes().size() == 2,
+              "reload failure regression: graph restored after failed reload");
+        check(scheduler.nodes().size() == 2,
+              "reload failure regression: scheduler restored after failed reload");
+
+        const vivid::NodeState* a_node = nullptr;
+        for (const auto& ns : scheduler.nodes()) {
+            if (ns.node_id == "a") {
+                a_node = &ns;
+                break;
+            }
+        }
+        check(a_node != nullptr, "reload failure regression: node a still exists");
+        if (a_node) {
+            auto pi = a_node->param_indices.find("scale");
+            check(pi != a_node->param_indices.end(),
+                  "reload failure regression: scale param still exists");
+            if (pi != a_node->param_indices.end()) {
+                check_float(a_node->param_values[pi->second], 33.0f,
+                            "reload failure regression: live param restored after failed reload");
+            }
+        }
+
+        std::filesystem::remove(tmp_path);
+    }
+
     // --- Regression: graph switch must not restore runtime state by node ID ---
     std::fprintf(stderr, "\n--- reload graph switch regression ---\n");
     {
@@ -462,6 +509,146 @@ int main(int argc, char* argv[]) {
         std::filesystem::remove(graph_b_path);
     }
 
+    // --- Regression: apply_snapshot_json malformed input restores graph + source identity ---
+    std::fprintf(stderr, "\n--- apply_snapshot_json malformed regression ---\n");
+    {
+        const std::string tmp_path = build_dir + "/test_apply_snapshot_restore.json";
+        const std::string invalid_json = R"({ "nodes": { "broken": { "type": "TestOp" )";
+
+        check(api.save_as(tmp_path).ok, "snapshot malformed regression: save current graph");
+        check(!api.graph_dirty(), "snapshot malformed regression: clean after save");
+        check(api.set_param("a", "scale", 44.0f).ok,
+              "snapshot malformed regression: mutate live param before failure");
+        check(api.graph_dirty(), "snapshot malformed regression: dirty after mutation");
+
+        bool hgpu = false, haudio = false;
+        auto r = api.apply_snapshot_json(invalid_json, hgpu, haudio);
+        check(!r.ok, "snapshot malformed regression: apply fails");
+        check(graph.source_path() == tmp_path,
+              "snapshot malformed regression: source_path preserved");
+        check(graph.nodes().size() == 2,
+              "snapshot malformed regression: graph restored after failed apply");
+        check(scheduler.nodes().size() == 2,
+              "snapshot malformed regression: scheduler restored after failed apply");
+        check(api.graph_dirty(),
+              "snapshot malformed regression: dirty state preserved after failed apply");
+
+        const vivid::NodeState* a_node = nullptr;
+        for (const auto& ns : scheduler.nodes()) {
+            if (ns.node_id == "a") {
+                a_node = &ns;
+                break;
+            }
+        }
+        check(a_node != nullptr, "snapshot malformed regression: node a still exists");
+        if (a_node) {
+            auto pi = a_node->param_indices.find("scale");
+            check(pi != a_node->param_indices.end(),
+                  "snapshot malformed regression: scale param still exists");
+            if (pi != a_node->param_indices.end()) {
+                check_float(a_node->param_values[pi->second], 44.0f,
+                            "snapshot malformed regression: live param restored");
+            }
+        }
+
+        std::filesystem::remove(tmp_path);
+    }
+
+    // --- Regression: failed snapshot apply preserves dirty graph in undo-style flow ---
+    {
+        vivid::Graph g_dirty;
+        check(g_dirty.add_node("a", "TestOp"), "undo-style snapshot regression: add node a");
+        vivid::Scheduler s_dirty;
+        check(s_dirty.build(g_dirty, registry), "undo-style snapshot regression: build scheduler");
+        vivid::AudioEngine ae_dirty;
+        vivid::RuntimeAPI api_dirty(g_dirty, s_dirty, ae_dirty, registry);
+
+        check(api_dirty.set_param("a", "scale", 12.0f).ok,
+              "undo-style snapshot regression: mutate unsaved graph");
+        check(api_dirty.graph_dirty(),
+              "undo-style snapshot regression: unsaved mutation marks graph dirty");
+
+        std::string before_json;
+        check(g_dirty.save_to_string(before_json),
+              "undo-style snapshot regression: serialize current graph");
+
+        bool hgpu = false, haudio = false;
+        auto r = api_dirty.apply_snapshot_json("{ not valid json", hgpu, haudio);
+        check(!r.ok, "undo-style snapshot regression: malformed apply fails");
+        check(api_dirty.graph_dirty(),
+              "undo-style snapshot regression: dirty state preserved after failed apply");
+
+        std::string after_json;
+        check(g_dirty.save_to_string(after_json),
+              "undo-style snapshot regression: serialize restored graph");
+        check(before_json == after_json,
+              "undo-style snapshot regression: graph content unchanged after failed apply");
+        check(g_dirty.source_path().empty(),
+              "undo-style snapshot regression: unsaved graph remains unsaved");
+
+        s_dirty.shutdown();
+    }
+
+    // --- Regression: apply_snapshot_json preserves source_path for saved and unsaved graphs ---
+    std::fprintf(stderr, "\n--- apply_snapshot_json source_path regression ---\n");
+    {
+        const std::string saved_path = build_dir + "/test_apply_snapshot_source_path.json";
+
+        vivid::Graph g_saved;
+        check(g_saved.add_node("a", "TestOp"), "snapshot source_path regression: add node a");
+        vivid::Scheduler s_saved;
+        check(s_saved.build(g_saved, registry), "snapshot source_path regression: build saved scheduler");
+        vivid::AudioEngine ae_saved;
+        vivid::RuntimeAPI api_saved(g_saved, s_saved, ae_saved, registry);
+
+        check(api_saved.save_as(saved_path).ok, "snapshot source_path regression: save saved graph");
+        check(g_saved.source_path() == saved_path,
+              "snapshot source_path regression: saved graph source_path set");
+
+        const std::string saved_snapshot = R"({
+  "nodes": {
+    "a": { "type": "TestOp", "params": { "scale": 9.0 } }
+  }
+}
+)";
+        bool hgpu_saved = false, haudio_saved = false;
+        auto saved_apply = api_saved.apply_snapshot_json(saved_snapshot, hgpu_saved, haudio_saved);
+        check(saved_apply.ok, "snapshot source_path regression: apply succeeds for saved graph");
+        check(g_saved.source_path() == saved_path,
+              "snapshot source_path regression: saved graph source_path preserved");
+        check(api_saved.graph_dirty(),
+              "snapshot source_path regression: saved graph becomes dirty after changed apply");
+
+        vivid::Graph g_unsaved;
+        check(g_unsaved.add_node("a", "TestOp"), "snapshot source_path regression: add node a to unsaved graph");
+        vivid::Scheduler s_unsaved;
+        check(s_unsaved.build(g_unsaved, registry), "snapshot source_path regression: build unsaved scheduler");
+        vivid::AudioEngine ae_unsaved;
+        vivid::RuntimeAPI api_unsaved(g_unsaved, s_unsaved, ae_unsaved, registry);
+
+        const std::string unsaved_snapshot = R"({
+  "nodes": {
+    "a": { "type": "TestOp", "params": { "scale": 5.0 } },
+    "b": { "type": "TestOp", "params": { "scale": 6.0 } }
+  },
+  "connections": [
+    { "from": "a/out", "to": "b/scale" }
+  ]
+}
+)";
+        bool hgpu_unsaved = false, haudio_unsaved = false;
+        auto unsaved_apply = api_unsaved.apply_snapshot_json(unsaved_snapshot, hgpu_unsaved, haudio_unsaved);
+        check(unsaved_apply.ok, "snapshot source_path regression: apply succeeds for unsaved graph");
+        check(g_unsaved.source_path().empty(),
+              "snapshot source_path regression: unsaved graph source_path remains empty");
+        check(api_unsaved.graph_dirty(),
+              "snapshot source_path regression: unsaved graph remains dirty after apply");
+
+        s_saved.shutdown();
+        s_unsaved.shutdown();
+        std::filesystem::remove(saved_path);
+    }
+
     // --- Test set_node_layout persists through save/reload ---
     std::fprintf(stderr, "\n--- persistence ---\n");
     {
@@ -474,8 +661,13 @@ int main(int argc, char* argv[]) {
         vivid::AudioEngine ae2;
         vivid::RuntimeAPI api2(g2, s2, ae2, registry);
 
+        auto save_as_result = api2.save_as(tmp_path);
+        check(save_as_result.ok, "save_as on unsaved graph succeeds");
+        check(g2.source_path() == tmp_path, "save_as retargets graph source_path");
+
         api2.set_node_layout("a", 42.0f, 99.0f);
-        api2.save_as(tmp_path);
+        auto save_result = api2.save();
+        check(save_result.ok, "save() uses retargeted source_path after save_as");
 
         // Reload and verify
         vivid::Graph g3;

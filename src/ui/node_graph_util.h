@@ -2,6 +2,7 @@
 
 #include "ui/renderer_2d.h"
 #include "ui/ui_style.h"
+#include "ui/text_edit.h"
 #include "operator_api/types.h"
 #include <algorithm>
 #include <cmath>
@@ -76,21 +77,42 @@ inline void draw_popup_bg(Renderer2D& tr, const UIStyle& style,
 // Draws the active editing state of a text field:
 //   - 1px accent border (outset by 1px on all sides)
 //   - input_field_bg filled rect
-//   - buffer text with blinking cursor
+//   - selection highlight behind selected text
+//   - cursor bar at insertion point
 // Call this only in the is_editing branch. The caller handles non-editing display.
 inline void draw_editing_text_field(
     Renderer2D& tr, const UIStyle& style,
     float x, float y, float w, float h,
-    const std::string& buffer, bool blink_on,
+    const std::string& buffer, const TextEditState& text_edit,
+    bool blink_on,
     float pad_left = 4.0f, float pad_top = 2.0f)
 {
     tr.draw_rect(x - 1, y - 1, w + 2, h + 2,
                  style.accent[0], style.accent[1], style.accent[2]);
     tr.draw_rect(x, y, w, h,
                  style.input_field_bg[0], style.input_field_bg[1], style.input_field_bg[2]);
-    std::string display = buffer + (blink_on ? "_" : " ");
-    tr.draw_text(x + pad_left, y + pad_top, display.c_str(),
+
+    // Draw selection highlight
+    if (text_edit.has_selection()) {
+        int lo = text_edit.sel_min();
+        int hi = text_edit.sel_max();
+        float sel_x0 = x + pad_left + tr.text_width(buffer.substr(0, lo).c_str());
+        float sel_x1 = x + pad_left + tr.text_width(buffer.substr(0, hi).c_str());
+        tr.draw_rect(sel_x0, y + 1, sel_x1 - sel_x0, h - 2,
+                     style.accent[0], style.accent[1], style.accent[2], 0.3f);
+    }
+
+    // Draw text
+    tr.draw_text(x + pad_left, y + pad_top, buffer.c_str(),
                  style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+
+    // Draw cursor bar
+    if (blink_on) {
+        int cpos = std::max(0, std::min(text_edit.cursor, static_cast<int>(buffer.size())));
+        float cursor_x = x + pad_left + tr.text_width(buffer.substr(0, cpos).c_str());
+        tr.draw_rect(cursor_x, y + 1, 1.0f, h - 2,
+                     style.bright_text[0], style.bright_text[1], style.bright_text[2]);
+    }
 }
 
 // --- Tab button ---

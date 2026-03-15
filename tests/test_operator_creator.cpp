@@ -536,6 +536,32 @@ int main() {
     }
 
     // =================================================================
+    // Test 16b: Custom typed ports require payload_size
+    // =================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 16b: Custom typed ports require payload_size ===\n");
+        std::string tmp = "/tmp/vivid_test_creator_custom_typed_ports_invalid";
+        fs::remove_all(tmp);
+        fs::create_directories(tmp);
+        write_full_cmake(tmp);
+
+        VividCreateOperatorRequest req;
+        req.name = "typed_port_invalid";
+        req.domain = VIVID_DOMAIN_CONTROL;
+        req.ports = {
+            {"stream_in", 0, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
+                0, "TestStreamToken", "tests.vivid.test_stream_token_v1", true},
+        };
+
+        auto result = vivid::OperatorCreator::create(req, tmp);
+        check(!result.success, "create with zero-size custom port fails");
+        check(result.error.find("payload_size") != std::string::npos,
+              "error mentions payload_size");
+
+        fs::remove_all(tmp);
+    }
+
+    // =================================================================
     // Test 17: Custom ports + params together
     // =================================================================
     {

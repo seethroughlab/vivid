@@ -131,6 +131,10 @@ struct ConnectionSnapshot {
     bool  clamp    = false;
     bool from_is_param = false;  // true if source is a param (not an output port)
     bool to_is_param   = false;  // true if destination is a param (not an input port)
+    bool invalid = false;
+    bool from_endpoint_missing = false;
+    bool to_endpoint_missing = false;
+    std::string invalid_reason;
 
     bool has_remap() const {
         return from_min != 0.0f || from_max != 1.0f ||
@@ -206,6 +210,10 @@ struct GraphSnapshot {
     bool is_recording = false;
     uint64_t recording_frame_count = 0;
     double recording_duration_sec = 0.0;
+
+    // MCP server last-ping timestamps (steady_clock ms; 0 = never pinged)
+    uint64_t mcp_main_last_ping_ms  = 0;  // "vivid" graph server
+    uint64_t mcp_opdev_last_ping_ms = 0;  // "opdev" operator-dev server
 
     const NodeSnapshot* find_node(const std::string& id) const {
         auto it = node_index.find(id);

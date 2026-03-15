@@ -640,11 +640,13 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     // Initialize param snapshots
     for (auto& snap : snapshots_) {
         snap.node_params.resize(n);
+        snap.float_input_values.resize(n);
         snap.spread_inputs.resize(n);
         snap.input_string_values.resize(n);
         snap.custom_inputs.resize(n);
         for (uint32_t i = 0; i < n; ++i) {
             snap.node_params[i] = nodes_[i].param_values;
+            snap.float_input_values[i] = nodes_[i].float_input_defaults;
             snap.spread_inputs[i].resize(nodes_[i].input_port_count);
             snap.input_string_values[i].assign(nodes_[i].input_port_count, "");
             snap.custom_inputs[i].resize(nodes_[i].input_port_count);
@@ -728,12 +730,12 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                 param_mappings_.push_back(std::move(pm));
 
                 // Analysis mappings only for nodes with rms/peak/waveform ports
-                auto rms_it = scheduler.nodes()[si].output_port_indices.find("rms");
-                auto peak_it = scheduler.nodes()[si].output_port_indices.find("peak");
-                auto wave_it = scheduler.nodes()[si].output_port_indices.find("waveform");
-                if (rms_it != scheduler.nodes()[si].output_port_indices.end() &&
-                    peak_it != scheduler.nodes()[si].output_port_indices.end() &&
-                    wave_it != scheduler.nodes()[si].output_port_indices.end()) {
+                auto rms_it = scheduler.nodes()[si].analysis_output_port_indices.find("rms");
+                auto peak_it = scheduler.nodes()[si].analysis_output_port_indices.find("peak");
+                auto wave_it = scheduler.nodes()[si].analysis_output_port_indices.find("waveform");
+                if (rms_it != scheduler.nodes()[si].analysis_output_port_indices.end() &&
+                    peak_it != scheduler.nodes()[si].analysis_output_port_indices.end() &&
+                    wave_it != scheduler.nodes()[si].analysis_output_port_indices.end()) {
                     AudioToControlMapping m;
                     m.audio_engine_idx = ai;
                     m.scheduler_node_idx = si;
@@ -822,6 +824,7 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
     // Base: audio engine's own param values (initial defaults)
     for (size_t i = 0; i < nodes_.size(); ++i) {
         snap.node_params[i] = nodes_[i].param_values;
+        snap.float_input_values[i] = nodes_[i].float_input_defaults;
         for (auto& s : snap.spread_inputs[i]) s.length = 0;
         snap.input_string_values[i].assign(nodes_[i].input_port_count, "");
         for (auto& di : snap.custom_inputs[i]) {
@@ -929,16 +932,14 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
         }
     }
 
-    // Float CV wires: reset to defaults, then apply live control → FLOAT port wires
-    for (auto& ns : nodes_)
-        ns.float_input_values = ns.float_input_defaults;
+    // Float CV wires: snapshot defaults, then apply live control → FLOAT port wires
     for (const auto& fw : cross_float_wires_) {
         for (const auto& ctrl_ns : scheduler.nodes()) {
             if (ctrl_ns.node_id == fw.control_node_id) {
                 float val = ctrl_ns.output_values[fw.control_output_port_idx] * fw.scale;
-                auto& ns = nodes_[fw.audio_node_idx];
-                if (fw.audio_float_port_idx < ns.float_input_values.size())
-                    ns.float_input_values[fw.audio_float_port_idx] = val;
+                auto& dst = snap.float_input_values[fw.audio_node_idx];
+                if (fw.audio_float_port_idx < dst.size())
+                    dst[fw.audio_float_port_idx] = val;
                 break;
             }
         }
@@ -1125,11 +1126,13 @@ bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry
     uint32_t n = static_cast<uint32_t>(nodes_.size());
     for (auto& snap : snapshots_) {
         snap.node_params.resize(n);
+        snap.float_input_values.resize(n);
         snap.spread_inputs.resize(n);
         snap.input_string_values.resize(n);
         snap.custom_inputs.resize(n);
         for (uint32_t i = 0; i < n; ++i) {
             snap.node_params[i] = nodes_[i].param_values;
+            snap.float_input_values[i] = nodes_[i].float_input_defaults;
             snap.spread_inputs[i].resize(nodes_[i].input_port_count);
             snap.input_string_values[i].assign(nodes_[i].input_port_count, "");
             snap.custom_inputs[i].resize(nodes_[i].input_port_count);
@@ -1201,6 +1204,12 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
         if (i < snap.node_params.size()) {
             for (size_t p = 0; p < ns.param_values.size() && p < snap.node_params[i].size(); ++p) {
                 ns.param_values[p] = snap.node_params[i][p];
+            }
+        }
+        if (i < snap.float_input_values.size()) {
+            for (size_t p = 0; p < ns.float_input_values.size() &&
+                               p < snap.float_input_values[i].size(); ++p) {
+                ns.float_input_values[p] = snap.float_input_values[i][p];
             }
         }
         // Apply spread inputs from param snapshot
@@ -1672,6 +1681,17 @@ uint64_t AudioEngine::pop_recorded_samples(float* dst, uint64_t max_samples) {
     }
     recording_tap_.read_pos.store(rp + to_read, std::memory_order_release);
     return to_read;
+}
+
+float AudioEngine::float_input_value_for_test(int node_idx, int port_idx) const {
+    if (node_idx < 0 || node_idx >= static_cast<int>(nodes_.size())) return 0.0f;
+    const auto& fv = nodes_[node_idx].float_input_values;
+    if (port_idx < 0 || port_idx >= static_cast<int>(fv.size())) return 0.0f;
+    return fv[port_idx];
+}
+
+void AudioEngine::process_audio_for_test(float* output, uint32_t frame_count) {
+    audio_callback(output, frame_count);
 }
 
 } // namespace vivid

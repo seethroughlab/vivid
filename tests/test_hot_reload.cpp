@@ -35,6 +35,7 @@ int main(int argc, char* argv[]) {
 
     std::string v1_path = build_dir + "/test_op_v1.dylib";
     std::string v2_path = build_dir + "/test_op_v2.dylib";
+    std::string bad_port_path = build_dir + "/test_op_incompatible_port.dylib";
     std::string graph_path = build_dir + "/test_reload.json";
 
     // --- Step 1: Create staging directory with v1 ---
@@ -121,6 +122,22 @@ int main(int argc, char* argv[]) {
     check_float(nodes[0].param_values[1], 10.0f, "offset still preserved");
     scheduler.tick(0.0, 0.016, 2);
     check_float(nodes[0].output_values[0], 25.0f, "output unchanged after re-reload");
+
+    // --- Step 9: Incompatible port layout change is rejected ---
+    std::fprintf(stderr, "\n--- Reject incompatible port layout ---\n");
+    std::string staged_bad = staging + "/test_op_bad_reload_0.dylib";
+    std::filesystem::copy_file(bad_port_path, staged_bad,
+        std::filesystem::copy_options::overwrite_existing);
+    uint64_t gen_before_bad = nodes[0].generation;
+    check(!scheduler.reload_operator("TestOp", registry, staged_bad),
+          "reload rejects incompatible port layout");
+    check_float(nodes[0].param_values[0], 5.0f, "scale preserved after rejected reload");
+    check_float(nodes[0].param_values[1], 10.0f, "offset preserved after rejected reload");
+    scheduler.tick(0.0, 0.016, 3);
+    check_float(nodes[0].output_values[0], 25.0f,
+                "previous operator remains active after rejected reload");
+    check(nodes[0].generation > gen_before_bad,
+          "generation bumped when old operator instance is restored after rejected reload");
 
     // --- Cleanup ---
     scheduler.shutdown();

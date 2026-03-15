@@ -2,6 +2,7 @@
 
 #include <mutex>
 #include <string>
+#include <thread>
 
 namespace vivid {
 
@@ -21,6 +22,7 @@ struct AppUpdateInfo {
 class AppUpdateManager {
 public:
     explicit AppUpdateManager(std::string current_version);
+    ~AppUpdateManager();
 
     // Background fetch (non-blocking). No-op if already fetching.
     void refresh();
@@ -57,6 +59,7 @@ private:
     std::string error_;
     AppUpdateInfo latest_;
     std::string skipped_version_;
+    std::thread worker_;
 };
 
 }  // namespace vivid

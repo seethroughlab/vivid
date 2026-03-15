@@ -699,7 +699,8 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         OperatorInfoCache& op_cache,
         vivid::SystemMidiListener* system_midi = nullptr,
         const vivid::RuntimeAPI* runtime_api = nullptr,
-        vivid::CaptureCoordinator* capture_coordinator = nullptr) {
+        vivid::CaptureCoordinator* capture_coordinator = nullptr,
+        const vivid::ControlServer* control_server = nullptr) {
     vivid::ui::GraphSnapshot snap;
 
     const auto& sched_nodes = scheduler.nodes();
@@ -787,11 +788,15 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         snap.node_index[ns.node_id] = i;
     }
 
-    // Connections — skip wires where an endpoint is neither a port nor a parameter
+    // Connections — preserve graph truth even when an endpoint no longer resolves.
     snap.connections.reserve(conns.size());
     for (size_t i = 0; i < conns.size(); ++i) {
         bool from_is_param = false;
         bool to_is_param   = false;
+        bool invalid = false;
+        bool from_endpoint_missing = false;
+        bool to_endpoint_missing = false;
+        std::string invalid_reason;
 
         // Determine if source is a param (not an output port)
         auto ni_it = snap.node_index.find(conns[i].from_node);
@@ -799,10 +804,18 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
             const auto& src = snap.nodes[ni_it->second];
             if (src.output_port_indices.count(conns[i].from_port) == 0 &&
                 src.analysis_output_port_indices.count(conns[i].from_port) == 0) {
-                if (src.param_indices.count(conns[i].from_port) == 0)
-                    continue; // not a valid port or parameter — skip
-                from_is_param = true;
+                if (src.param_indices.count(conns[i].from_port) == 0) {
+                    invalid = true;
+                    from_endpoint_missing = true;
+                    invalid_reason = "missing source endpoint";
+                } else {
+                    from_is_param = true;
+                }
             }
+        } else {
+            invalid = true;
+            from_endpoint_missing = true;
+            invalid_reason = "missing source node";
         }
 
         // Determine if destination is a param (not an input port)
@@ -810,10 +823,24 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         if (dest_it != snap.node_index.end()) {
             const auto& dest = snap.nodes[dest_it->second];
             if (dest.input_port_indices.count(conns[i].to_port) == 0) {
-                if (dest.param_indices.count(conns[i].to_port) == 0)
-                    continue; // not a valid port or parameter — skip
-                to_is_param = true;
+                if (dest.param_indices.count(conns[i].to_port) == 0) {
+                    invalid = true;
+                    to_endpoint_missing = true;
+                    if (invalid_reason.empty())
+                        invalid_reason = "missing destination endpoint";
+                    else
+                        invalid_reason += "; missing destination endpoint";
+                } else {
+                    to_is_param = true;
+                }
             }
+        } else {
+            invalid = true;
+            to_endpoint_missing = true;
+            if (invalid_reason.empty())
+                invalid_reason = "missing destination node";
+            else
+                invalid_reason += "; missing destination node";
         }
 
         auto& c = snap.connections.emplace_back();
@@ -828,6 +855,10 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         c.clamp        = conns[i].clamp;
         c.from_is_param = from_is_param;
         c.to_is_param   = to_is_param;
+        c.invalid = invalid;
+        c.from_endpoint_missing = from_endpoint_missing;
+        c.to_endpoint_missing = to_endpoint_missing;
+        c.invalid_reason = invalid_reason;
     }
 
     // Audio analysis
@@ -909,6 +940,12 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
             snap.recording_frame_count = capture_coordinator->recording_frame_count();
             snap.recording_duration_sec = capture_coordinator->recording_duration_sec();
         }
+    }
+
+    // MCP server ping timestamps
+    if (control_server) {
+        snap.mcp_main_last_ping_ms  = control_server->mcp_last_ping_ms("vivid");
+        snap.mcp_opdev_last_ping_ms = control_server->mcp_last_ping_ms("opdev");
     }
 
     return snap;
@@ -994,11 +1031,21 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
         }
 
         if (scheduler.reload_operator(tn, registry, result.staged_dylib_path)) {
+            bool audio_reload_ok = true;
             if (is_audio_op && has_audio) {
-                audio_engine.reload_operator(tn, registry);
+                audio_reload_ok = audio_engine.reload_operator(tn, registry);
             }
-            if (op_cache) op_cache->invalidate(tn);
-            std::fprintf(stderr, "[vivid] Hot-reload: %s reloaded successfully\n", tn.c_str());
+            if (!audio_reload_ok) {
+                std::fprintf(stderr, "[vivid] Hot-reload: %s audio reload FAILED\n", tn.c_str());
+            } else {
+                for (auto& ns : scheduler.nodes_mut()) {
+                    if (ns.type_name == tn) {
+                        ns.error_message.clear();
+                    }
+                }
+                if (op_cache) op_cache->invalidate(tn);
+                std::fprintf(stderr, "[vivid] Hot-reload: %s reloaded successfully\n", tn.c_str());
+            }
         } else {
             std::fprintf(stderr, "[vivid] Hot-reload: %s reload FAILED\n", tn.c_str());
         }
@@ -1528,6 +1575,7 @@ int main(int argc, char* argv[]) {
         vivid::ExportOptions opts;
         opts.graph_path = export_graph_path;
         opts.output_name = export_output;
+        opts.output_path = export_output;
         opts.output_dir = export_output_dir;
         opts.headless = export_headless;
         opts.control_server = export_control_server;
@@ -2233,6 +2281,41 @@ int main(int argc, char* argv[]) {
     if (!src_dir.empty())
         control_server.set_src_dir(src_dir);
 
+    auto rebuild_live_runtime_from_graph = [&]() -> bool {
+        if (has_audio) {
+            audio_engine.shutdown();
+            has_audio = false;
+        }
+        scheduler.shutdown();
+
+        if (!scheduler.build(graph, registry)) {
+            std::fprintf(stderr, "[vivid] Runtime rebuild failed after registry refresh\n");
+            graph_loaded = false;
+            has_gpu_ops = false;
+            video_out_idx = -1;
+            capture_coordinator.set_audio_engine(nullptr);
+            return false;
+        }
+
+        graph_loaded = !scheduler.nodes().empty();
+        has_gpu_ops = scheduler.has_gpu_operators();
+        if (has_gpu_ops) {
+            scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
+            video_out_idx = scheduler.find_effective_gpu_sink();
+        } else {
+            video_out_idx = -1;
+        }
+
+        if (scheduler.has_audio_operators()) {
+            if (audio_engine.build(graph, registry, scheduler) && audio_engine.start()) {
+                has_audio = true;
+            }
+        }
+
+        capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
+        return true;
+    };
+
     vivid::ui::Renderer2D text_renderer;
     bool text_renderer_ok = false;
     {
@@ -2263,6 +2346,11 @@ int main(int argc, char* argv[]) {
     graph_ui.set_dpi_scale(dpi_scale);
     graph_ui.set_bezier_wires(settings.bezier_wires);
     graph_ui.set_show_param_wires(settings.show_param_wires);
+    {
+        // Resolve mcp/ directory: <bundle>/Contents/Resources/mcp or <exe_dir>/mcp
+        auto mcp_dir = resources_dir / "mcp";
+        graph_ui.set_mcp_dir(mcp_dir.string());
+    }
     auto refresh_discovered_examples = [&]() {
         discovered_examples = discover_examples_with_packages(graphs_root, &pkg_manager);
         graph_ui.set_examples(discovered_examples);
@@ -2276,50 +2364,58 @@ int main(int argc, char* argv[]) {
     bool                pkg_action_needs_refresh{false};
     std::thread         pkg_action_thread;
 
+    std::vector<vivid::ui::PackageBrowserEntry> pkg_browser_entries_cache;
+    auto refresh_package_browser_entries_cache = [&]() {
+        {
+            std::lock_guard<std::mutex> lk(pkg_action_mutex);
+            if (pkg_action_state == PkgActionState::Running)
+                return;
+        }
+        std::vector<vivid::ui::PackageBrowserEntry> out;
+        std::unordered_map<std::string, vivid::PackageInfo> installed_map;
+        for (const auto& p : pkg_manager.list()) {
+            installed_map[p.name] = p;
+        }
+        auto entries = pkg_catalog.entries();
+        out.reserve(entries.size() + installed_map.size());
+        for (const auto& e : entries) {
+            vivid::ui::PackageBrowserEntry ui_e;
+            ui_e.name = e.name;
+            ui_e.description = e.description;
+            ui_e.version = e.version;
+            ui_e.author = e.author;
+            auto it = installed_map.find(e.name);
+            if (it != installed_map.end()) {
+                ui_e.installed = true;
+                ui_e.linked = it->second.linked;
+                ui_e.category = it->second.category;
+                ui_e.tags = it->second.tags;
+                installed_map.erase(it);
+            }
+            out.push_back(std::move(ui_e));
+        }
+        for (const auto& [name, info] : installed_map) {
+            vivid::ui::PackageBrowserEntry ui_e;
+            ui_e.name = info.name;
+            ui_e.description = info.description;
+            ui_e.version = info.version;
+            ui_e.author = info.author;
+            ui_e.category = info.category;
+            ui_e.tags = info.tags;
+            ui_e.installed = true;
+            ui_e.linked = info.linked;
+            out.push_back(std::move(ui_e));
+        }
+        pkg_browser_entries_cache = std::move(out);
+    };
+    refresh_package_browser_entries_cache();
+
     vivid::ui::PackageBrowserCallbacks pkg_browser_cbs;
     pkg_browser_cbs.refresh = [&pkg_catalog]() {
         pkg_catalog.refresh();
     };
-    pkg_browser_cbs.list_entries = [&pkg_catalog, &pkg_manager]() {
-            std::vector<vivid::ui::PackageBrowserEntry> out;
-            std::unordered_map<std::string, vivid::PackageInfo> installed_map;
-            for (const auto& p : pkg_manager.list()) {
-                installed_map[p.name] = p;
-            }
-            auto entries = pkg_catalog.entries();
-            out.reserve(entries.size());
-            for (const auto& e : entries) {
-                vivid::ui::PackageBrowserEntry ui_e;
-                ui_e.name = e.name;
-                ui_e.description = e.description;
-                ui_e.version = e.version;
-                ui_e.author = e.author;
-                auto it = installed_map.find(e.name);
-                if (it != installed_map.end()) {
-                    ui_e.installed = true;
-                    ui_e.linked = it->second.linked;
-                    ui_e.category = it->second.category;
-                    ui_e.tags = it->second.tags;
-                    installed_map.erase(it);
-                } else {
-                    ui_e.installed = false;
-                    ui_e.linked = false;
-                }
-                out.push_back(std::move(ui_e));
-            }
-            for (const auto& [name, info] : installed_map) {
-                vivid::ui::PackageBrowserEntry ui_e;
-                ui_e.name = info.name;
-                ui_e.description = info.description;
-                ui_e.version = info.version;
-                ui_e.author = info.author;
-                ui_e.category = info.category;
-                ui_e.tags = info.tags;
-                ui_e.installed = true;
-                ui_e.linked = info.linked;
-                out.push_back(std::move(ui_e));
-            }
-            return out;
+    pkg_browser_cbs.list_entries = [&pkg_browser_entries_cache]() {
+            return pkg_browser_entries_cache;
     };
     pkg_browser_cbs.fetch_state = [&pkg_catalog]() {
         switch (pkg_catalog.fetch_state()) {
@@ -2946,6 +3042,7 @@ int main(int argc, char* argv[]) {
             vivid::ExportOptions opts;
             opts.graph_path = graph.source_path();
             opts.output_name = output_name;
+            opts.output_path = output_path;
             opts.output_dir = output_dir;
 
             vivid::ExportPipeline pipeline(build_paths.source_dir, build_paths.build_dir);
@@ -3511,15 +3608,15 @@ int main(int argc, char* argv[]) {
                     if (needs_refresh) {
                         refresh_discovered_examples();
                         registry.load_for_graph(graph);
-                        scheduler.build(graph, registry);  // Rebind nodes after operators added/removed
-                        has_gpu_ops = scheduler.has_gpu_operators();
-                        if (has_gpu_ops) {
-                            scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
-                            video_out_idx = scheduler.find_effective_gpu_sink();
-                        } else {
-                            video_out_idx = -1;
+                        if (rebuild_live_runtime_from_graph()) {
+                            std::unordered_set<std::string> active_ids;
+                            for (const auto& ns : scheduler.nodes()) {
+                                active_ids.insert(ns.node_id);
+                            }
+                            thumb_cache.retain_only(active_ids);
                         }
                     }
+                    refresh_package_browser_entries_cache();
                     graph_ui.notify_pkg_action_complete(needs_refresh, err);
                 }
             }
@@ -3564,7 +3661,7 @@ int main(int argc, char* argv[]) {
                 auto snapshot = build_graph_snapshot(
                     graph, scheduler, has_audio ? &audio_engine : nullptr,
                     registry, op_info_cache, &system_midi, &runtime_api,
-                    &capture_coordinator);
+                    &capture_coordinator, &control_server);
 
                 graph_ui.update(snapshot);
                 graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));

@@ -6,6 +6,7 @@
 #include "ui/ui_command_sink.h"
 #include "ui/ui_style.h"
 #include "ui/theme_loader.h"
+#include "ui/text_edit.h"
 #include "operator_api/types.h"
 #include <webgpu/webgpu.h>
 #include <string>
@@ -107,6 +108,12 @@ struct NodeRect {
     float    affordance_gy       = 0; // graph-space Y center of affordance row
 };
 
+// Frame-rate-independent lerp: moves current toward target at the given speed.
+inline float lerp_toward(float current, float target, float speed, float dt) {
+    float t = 1.0f - std::exp(-speed * dt);
+    return current + (target - current) * t;
+}
+
 class NodeGraphUI {
 public:
     NodeGraphUI(UICommandSink& commands);
@@ -118,9 +125,9 @@ public:
     void on_key(int key, int action, int mods);
     void on_char(unsigned int codepoint);
 
-    // Returns true during the "on" phase of a blinking cursor (30-frame half-period)
+    // Returns true during the "on" phase of a blinking cursor (0.5s half-period)
     bool cursor_blink_on() const {
-        return (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0);
+        return static_cast<int>(cursor_blink_time_ * 2.0f) % 2 == 0;
     }
 
     // Returns true when a popup is open and wants keyboard focus
@@ -147,6 +154,7 @@ public:
             || example_browser_open_
             || graph_meta_editor_open_
             || about_open_
+            || mcp_setup_open_
             || custom_inspector_wants_keyboard_;
     }
     bool wire_inspector_visible() const;
@@ -168,7 +176,7 @@ public:
     bool midi_map_mode() const { return midi_map_mode_; }
 
     // Called by main loop each frame with delta time
-    void set_dt(float dt) { dt_ = dt; }
+    void set_dt(float dt) { dt_ = dt; cursor_blink_time_ += dt; }
 
     // Per-frame
     void update(const GraphSnapshot& snapshot);
@@ -233,6 +241,9 @@ public:
                                           std::function<void()> later_cb);
     void open_about() { about_open_ = true; about_scroll_ = 0.0f; }
 
+    // Set the directory containing the MCP Python scripts (used in setup dialog)
+    void set_mcp_dir(const std::string& dir) { mcp_dir_ = dir; }
+
 private:
     // --- Layout ---
     void layout_nodes(bool force = false);
@@ -291,6 +302,7 @@ private:
                              float x, float y, float w, float h,
                              float r, float g, float b, float a);
     void draw_perf_expanded(Renderer2D& tr);
+    void draw_mcp_setup_dialog(Renderer2D& tr);
 
     // --- Chooser ---
     void rebuild_chooser_items();
@@ -483,6 +495,23 @@ private:
     float pan_start_mx_ = 0, pan_start_my_ = 0;
     float pan_start_px_ = 0, pan_start_py_ = 0;
 
+    // Animated zoom/pan (lerp targets for scroll-zoom; direct pan bypasses easing)
+    float zoom_target_ = 1.0f;
+    float pan_target_x_ = 0.0f, pan_target_y_ = 0.0f;
+
+    // Popup fade animation (0 = fully hidden, 1 = fully visible)
+    float popup_opacity_ = 0.0f;
+    // Which popup was open last frame (to detect open/close transitions)
+    bool popup_was_open_ = false;
+
+    // Node hover animation (smooth alpha transition)
+    float node_hover_alpha_ = 0.0f;
+    std::string node_hover_anim_id_;  // which node the animation tracks
+
+    // Selection glow pulse
+    float selection_glow_ = 0.0f;
+    bool selection_glow_rising_ = true;
+
     // Slider drag state
     int active_slider_idx_ = -1;
     std::string active_slider_node_id_;
@@ -521,6 +550,9 @@ private:
 
     struct GroupHeaderRect { float x, y, w, h; std::string type_name; std::string group_name; };
     std::vector<GroupHeaderRect> group_header_rects_;
+
+    // Shared text-edit cursor/selection state (only one field active at a time)
+    TextEditState text_edit_;
 
     // Slider text-edit state (click value text to type a value)
     bool editing_param_ = false;
@@ -679,6 +711,19 @@ private:
     bool context_bg_menu_ = false;  // true if background menu (no node/wire)
     int hovered_wire_idx_ = -1;
     std::string hovered_node_id_;
+
+    // Port hover state (updated each frame)
+    struct HoveredPort {
+        std::string node_id;
+        std::string port_name;
+        bool is_output = false;
+    };
+    HoveredPort hovered_port_;
+
+    // Inspector widget hover (index into the respective rect vector, -1 = none)
+    int hovered_slider_idx_ = -1;
+    int hovered_bool_idx_ = -1;
+    int hovered_dropdown_idx_ = -1;
 
     // Multi-output expand state (keyed by node_id)
     std::unordered_set<std::string> outputs_expanded_;
@@ -860,6 +905,7 @@ private:
     PerfRingBuffer memory_history_;
 
     float dt_ = 0.0f;
+    float cursor_blink_time_ = 0.0f;  // accumulated time for cursor blink
     float smoothed_fps_ = 0.0f;
     float smoothed_ms_ = 0.0f;
     float display_fps_ = 0.0f;
@@ -870,6 +916,14 @@ private:
     bool perf_mem_hovered_ = false;
     float perf_mem_graph_x_ = 0.0f;
     float perf_mem_graph_y_ = 0.0f;
+
+    // --- MCP status dots in perf bar ---
+    std::string mcp_dir_;  // directory containing vivid_mcp.py / vivid_opdev_mcp.py
+    bool mcp_setup_open_ = false;
+    struct McpDotRect { float x, y, w, h; int idx; };  // idx: 0=vivid, 1=opdev
+    std::vector<McpDotRect> mcp_dot_rects_;
+    struct McpDialogButtonRect { float x, y, w, h; int action; };  // action: 0=copy_vivid, 1=copy_opdev, 2=done, 3=close
+    std::vector<McpDialogButtonRect> mcp_dialog_button_rects_;
 
     // --- Record/Snapshot buttons in perf bar ---
     bool record_dropdown_open_ = false;

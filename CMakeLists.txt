@@ -872,6 +872,8 @@ enable_testing()
 # Test operator plugins (two versions of the same operator)
 add_vivid_operator(test_op_v1     tests/operators/test_op_v1.cpp)
 add_vivid_operator(test_op_v2     tests/operators/test_op_v2.cpp)
+add_vivid_operator(test_op_incompatible_port tests/operators/test_op_incompatible_port.cpp)
+add_vivid_operator(test_op_null_desc tests/operators/test_op_null_desc.cpp)
 add_vivid_operator(test_state_carry_op tests/operators/test_state_carry_op.cpp)
 add_vivid_operator(string_source_op tests/operators/string_source_op.cpp)
 add_vivid_operator(string_sink_op tests/operators/string_sink_op.cpp)
@@ -891,7 +893,7 @@ add_executable(test_hot_reload
 )
 target_include_directories(test_hot_reload PRIVATE src)
 target_link_libraries(test_hot_reload PRIVATE vivid_operator_api yyjson webgpu)
-add_dependencies(test_hot_reload test_op_v1 test_op_v2)
+add_dependencies(test_hot_reload test_op_v1 test_op_v2 test_op_incompatible_port)
 add_test(NAME test_hot_reload COMMAND test_hot_reload WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # RuntimeAPI integration test (no GPU, no audio, no window)
@@ -989,6 +991,7 @@ add_test(NAME test_perception_introspection COMMAND test_perception_introspectio
 
 # Test operator plugins
 add_vivid_operator(audio_test_op      tests/operators/audio_test_op.cpp)
+add_vivid_operator(audio_float_cv_op  tests/operators/audio_float_cv_op.cpp)
 add_vivid_operator(audio_throwing_op  tests/operators/audio_throwing_op.cpp)
 add_vivid_operator(control_pass_op    tests/operators/control_pass_op.cpp)
 add_vivid_operator(spread_source_op   tests/operators/spread_source_op.cpp)
@@ -1013,6 +1016,23 @@ target_link_libraries(test_audio_engine PRIVATE
     vivid_operator_api yyjson miniaudio webgpu rtmidi)
 add_dependencies(test_audio_engine test_op_v1 audio_test_op)
 add_test(NAME test_audio_engine COMMAND test_audio_engine WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_audio_float_snapshot
+    tests/test_audio_float_snapshot.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/audio_engine.cpp
+)
+target_include_directories(test_audio_float_snapshot PRIVATE src)
+target_link_libraries(test_audio_float_snapshot PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu)
+add_dependencies(test_audio_float_snapshot test_op_v1 audio_float_cv_op)
+add_test(NAME test_audio_float_snapshot COMMAND test_audio_float_snapshot
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Audio thread robustness test (exception handling in audio callback)
 add_executable(test_audio_robustness
@@ -1149,6 +1169,11 @@ add_executable(test_string_util tests/test_string_util.cpp)
 target_include_directories(test_string_util PRIVATE src tests)
 add_test(NAME test_string_util COMMAND test_string_util WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Text editing unit test (header-only, no dependencies)
+add_executable(test_text_edit tests/test_text_edit.cpp)
+target_include_directories(test_text_edit PRIVATE src)
+add_test(NAME test_text_edit COMMAND test_text_edit WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # audio_dsp operator API compatibility test
 add_executable(test_audio_dsp_api tests/test_audio_dsp_api.cpp)
 target_include_directories(test_audio_dsp_api PRIVATE src)
@@ -1163,7 +1188,7 @@ add_executable(test_operator_loader
 )
 target_include_directories(test_operator_loader PRIVATE src)
 target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu yyjson)
-add_dependencies(test_operator_loader test_op_v1 test_op_v2 control_pass_op)
+add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc control_pass_op audio_test_op)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # GPU operator plugin for testing (solid color fill)

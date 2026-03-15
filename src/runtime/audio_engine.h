@@ -180,6 +180,7 @@ struct CustomPortSnapshot {
 
 struct ParamSnapshot {
     std::vector<std::vector<float>> node_params;  // [audio_node_idx][param_idx]
+    std::vector<std::vector<float>> float_input_values; // [audio_node_idx][float_input_ordinal]
     std::vector<std::vector<SpreadSnapshot>> spread_inputs; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<std::string>> input_string_values; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<CustomPortSnapshot>> custom_inputs; // [audio_node_idx][input_port_idx]
@@ -261,6 +262,10 @@ public:
 
     uint32_t underrun_count() const { return underrun_count_.load(std::memory_order_relaxed); }
     bool last_buffer_underrun() const { return last_buffer_underrun_.load(std::memory_order_relaxed); }
+
+    // Test-only accessors — expose internal state for white-box snapshot contract tests.
+    float float_input_value_for_test(int node_idx, int port_idx) const;
+    void  process_audio_for_test(float* output, uint32_t frame_count);
 
     static constexpr uint32_t kBufferSize = 256;
     static constexpr uint32_t kSampleRate = 48000;

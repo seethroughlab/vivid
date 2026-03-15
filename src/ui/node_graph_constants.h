@@ -288,4 +288,48 @@ static constexpr float kPkgBrowserTabH = 22.0f;
 // Patch panel (2-node connection view)
 static constexpr float kPatchJackHitRadius = 8.0f;
 
+// Tooltip styling
+static constexpr float kTooltipPad         = 8.0f;
+static constexpr float kTooltipLineH       = 16.0f;
+static constexpr float kTooltipCursorOff   = 14.0f;
+static constexpr float kTooltipClampMargin = 6.0f;
+static constexpr float kTooltipBgAlpha     = 0.95f;
+static constexpr float kTooltipAccentH     = 2.0f;
+
+// Port dot rendering (param ports are smaller/dimmer)
+static constexpr float kParamDotScale = 0.7f;
+static constexpr float kParamDotAlpha = 0.6f;
+
+// Sparkline/waveform bar alpha
+static constexpr float kSparklineBarAlpha = 0.7f;
+static constexpr float kWaveformBarAlpha  = 0.8f;
+static constexpr float kWaveformCenterAlpha = 0.2f;
+
+// Wire badge offsets
+static constexpr float kWireBadgeYOff    = 6.0f;   // graph-space Y offset from midpoint
+static constexpr float kWireBadgeSpacing = 12.0f;   // graph-space spacing between stacked badges
+
+// Scrollbar thumb alpha
+static constexpr float kScrollbarTrackAlpha    = 0.5f;
+static constexpr float kScrollbarThumbIdle     = 0.5f;
+static constexpr float kScrollbarThumbHovered  = 0.8f;
+
+// Error/solo border widths (graph-space pixels)
+static constexpr float kErrorBorderW = 2.0f;
+static constexpr float kSoloBorderW  = 3.0f;
+
+// Animation speeds (lerp per second — higher = snappier)
+static constexpr float kZoomLerpSpeed       = 12.0f;
+static constexpr float kPanLerpSpeed        = 12.0f;
+static constexpr float kPopupFadeSpeed      = 10.0f;   // opacity 0→1 in ~0.1s
+static constexpr float kHoverFadeSpeed      = 14.0f;   // hover alpha transition
+static constexpr float kSelectionGlowSpeed  =  4.0f;   // selection glow pulse
+
+// Hover feedback
+static constexpr float kNodeHoverBrighten    = 0.06f;  // additive RGB brightening on hovered node
+static constexpr float kPortHoverScale       = 1.5f;   // port dot scale multiplier on hover
+static constexpr float kPortHoverAlpha       = 1.0f;   // port dot alpha on hover (overrides param dim)
+static constexpr float kWidgetHoverAlpha     = 0.12f;  // overlay alpha for hovered inspector widgets
+static constexpr float kBoxSelectNodeAlpha   = 0.15f;  // highlight alpha for nodes inside box select
+
 } // namespace vivid::ui

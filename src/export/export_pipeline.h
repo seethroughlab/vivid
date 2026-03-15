@@ -1,5 +1,7 @@
 #pragma once
 
+#include "operator_api/port_type_registry.h"
+
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -12,6 +14,7 @@ class Graph;
 struct ExportOptions {
     std::string graph_path;
     std::string output_name;       // output binary name (no extension)
+    std::string output_path;       // final binary destination (default: output_name in cwd)
     std::string output_dir;        // directory for export build tree (default: <output_name>_export)
     bool headless = false;
     bool control_server = false;
@@ -56,8 +59,10 @@ private:
         std::string target;       // cmake target name
         std::string type_name;    // operator type name
         ManifestEntry manifest;
+        bool has_custom_types = false;
     };
     std::vector<ResolvedOperator> resolved_ops_;
+    std::vector<VividPortTypeInfo> required_custom_types_;
     std::vector<std::string> wgsl_preset_names_;
     bool needs_webgpu_ = false;
     bool needs_rtmidi_ = false;

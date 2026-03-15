@@ -389,9 +389,14 @@ void CaptureCoordinator::process_pending(WGPUDevice device, WGPUQueue queue,
                     response = capture_json_err("not recording");
                 } else {
                     std::string path = exporter_->output_path();
-                    exporter_->finish();
+                    bool ok = exporter_->finish();
                     if (audio_) audio_->stop_recording_tap();
-                    response = R"({"ok":true,"path":")" + json_escape(path) + "\"}";
+                    if (ok) {
+                        response = R"({"ok":true,"path":")" + json_escape(path) + "\"}";
+                    } else {
+                        response = R"({"ok":false,"error":"failed to finalize recording","path":")" +
+                                   json_escape(path) + "\"}";
+                    }
                 }
                 break;
             }

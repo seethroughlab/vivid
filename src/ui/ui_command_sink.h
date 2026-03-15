@@ -11,6 +11,12 @@ public:
     virtual ~UICommandSink() = default;
     virtual void set_param(const std::string& node_id, const std::string& param, float value) = 0;
     virtual void add_node(const std::string& type, const std::string& id) = 0;
+    virtual bool try_add_node(const std::string& type, const std::string& id,
+                              std::string* error = nullptr) {
+        add_node(type, id);
+        if (error) error->clear();
+        return true;
+    }
     virtual void remove_node(const std::string& id) = 0;
     virtual void connect(const std::string& from, const std::string& to) = 0;
     virtual void disconnect(const std::string& from, const std::string& to) = 0;

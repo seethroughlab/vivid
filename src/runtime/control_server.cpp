@@ -202,6 +202,15 @@ static bool response_is_ok(const std::string& response_json) {
     return ok;
 }
 
+static bool capture_live_graph_snapshot(Graph& graph, std::string& out_json,
+                                        std::string& out_error) {
+    if (!graph.save_to_string(out_json)) {
+        out_error = "failed to serialize current graph before package mutation";
+        return false;
+    }
+    return true;
+}
+
 static bool is_undo_tracked_method(const std::string& method) {
     return method == "add_node" ||
            method == "remove_node" ||
@@ -2224,7 +2233,10 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     // Auto-reload graph if it has missing operators
                     for (const auto& ns : scheduler.nodes()) {
                         if (ns.missing_operator) {
-                            api.reload(has_gpu_ops, has_audio);
+                            auto rr = api.reload(has_gpu_ops, has_audio);
+                            if (!rr.ok) {
+                                result = json_err("package installed but runtime refresh failed: " + rr.message);
+                            }
                             break;
                         }
                     }
@@ -2243,10 +2255,19 @@ static std::string dispatch(const std::string& method, const std::string& body,
             if (!name_v || !yyjson_is_str(name_v))
                 result = json_err("missing 'name'");
             else {
-                if (package_manager->uninstall(yyjson_get_str(name_v)))
-                    result = json_ok_msg("uninstalled");
-                else
+                std::string snapshot_json;
+                std::string snapshot_error;
+                if (!capture_live_graph_snapshot(graph, snapshot_json, snapshot_error)) {
+                    result = json_err(snapshot_error);
+                } else if (package_manager->uninstall(yyjson_get_str(name_v))) {
+                    auto rr = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
+                    if (!rr.ok)
+                        result = json_err("package uninstalled but runtime refresh failed: " + rr.message);
+                    else
+                        result = json_ok_msg("uninstalled");
+                } else {
                     result = json_err("failed to uninstall package");
+                }
             }
         }
     } else if (method == "link_package") {
@@ -2274,7 +2295,10 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     // Auto-reload graph if it has missing operators
                     for (const auto& ns : scheduler.nodes()) {
                         if (ns.missing_operator) {
-                            api.reload(has_gpu_ops, has_audio);
+                            auto rr = api.reload(has_gpu_ops, has_audio);
+                            if (!rr.ok) {
+                                result = json_err("package linked but runtime refresh failed: " + rr.message);
+                            }
                             break;
                         }
                     }
@@ -2293,10 +2317,19 @@ static std::string dispatch(const std::string& method, const std::string& body,
             if (!name_v || !yyjson_is_str(name_v))
                 result = json_err("missing 'name'");
             else {
-                if (package_manager->unlink(yyjson_get_str(name_v)))
-                    result = json_ok_msg("unlinked");
-                else
+                std::string snapshot_json;
+                std::string snapshot_error;
+                if (!capture_live_graph_snapshot(graph, snapshot_json, snapshot_error)) {
+                    result = json_err(snapshot_error);
+                } else if (package_manager->unlink(yyjson_get_str(name_v))) {
+                    auto rr = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
+                    if (!rr.ok)
+                        result = json_err("package unlinked but runtime refresh failed: " + rr.message);
+                    else
+                        result = json_ok_msg("unlinked");
+                } else {
                     result = json_err("failed to unlink package");
+                }
             }
         }
     } else if (method == "rebuild_package") {
@@ -2310,106 +2343,28 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 result = json_err("missing 'name'");
             else {
                 const std::string pkg_name = yyjson_get_str(name_v);
-
-                // Collect type names of running operators from this package so we
-                // can safely destroy their instances before the old dylib is unloaded.
-                // rebuild() calls unregister_package_operator() which erases the
-                // loader (triggering dlclose); without destroying instances first,
-                // the next process() tick would call into unloaded code and crash.
-                struct SavedInstance {
-                    uint32_t node_idx;
-                    std::string type_name;
-                    std::unordered_map<std::string, float> param_values;
-                    std::unordered_map<std::string, std::string> string_values;
-                    std::unordered_map<std::string, uint8_t> lock_flags;
-                };
-                std::vector<SavedInstance> saved;
-
-                for (uint32_t i = 0; i < static_cast<uint32_t>(scheduler.nodes().size()); ++i) {
-                    const auto& ns = scheduler.nodes()[i];
-                    if (!ns.loader || !ns.instance) continue;
-                    const auto* pkg = registry.package_for_type(ns.type_name);
-                    if (!pkg || *pkg != pkg_name) continue;
-
-                    SavedInstance si;
-                    si.node_idx = i;
-                    si.type_name = ns.type_name;
-                    for (const auto& [name, idx] : ns.param_indices) {
-                        si.param_values[name] = ns.param_values[idx];
-                        if (ns.param_lock_flags[idx] != 0)
-                            si.lock_flags[name] = ns.param_lock_flags[idx];
-                    }
-                    for (const auto& [name, idx] : ns.file_param_indices)
-                        si.string_values[name] = ns.file_param_storage[idx];
-                    saved.push_back(std::move(si));
-                }
-
-                // Destroy instances while old dylib is still loaded
-                for (const auto& si : saved) {
-                    auto& ns = scheduler.nodes_mut()[si.node_idx];
-                    if (ns.instance) {
-                        ns.loader->destroy_instance(ns.instance);
-                        ns.instance = nullptr;
-                    }
-                }
-
-                auto ir = package_manager->rebuild(pkg_name);
-                if (ir.success) {
-                    // Recreate instances from new loaders
-                    for (const auto& si : saved) {
-                        auto& ns = scheduler.nodes_mut()[si.node_idx];
-                        OperatorLoader* new_loader = registry.find(si.type_name);
-                        if (new_loader && new_loader->is_loaded()) {
-                            ns.loader = new_loader;
-                            ns.instance = new_loader->create_instance();
-                            const auto* desc = new_loader->descriptor();
-                            if (desc) {
-                                scheduler.reinit_node(ns, desc, &si.param_values,
-                                    si.string_values.empty() ? nullptr : &si.string_values);
-                                for (const auto& [pname, flags] : si.lock_flags) {
-                                    auto pi = ns.param_indices.find(pname);
-                                    if (pi != ns.param_indices.end())
-                                        ns.param_lock_flags[pi->second] = flags;
-                                }
-                            }
-                            ns.errored = false;
-                            ns.error_message.clear();
-                            ns.generation++;
-                        }
-                    }
-
-                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-                    yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());
-                    yyjson_mut_obj_add_int(rdoc, res, "operator_count",
-                        static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
-                    yyjson_mut_obj_add_bool(rdoc, res, "linked", ir.info.linked);
-                    result = json_ok(rdoc, res);
-                    // Auto-reload graph if it has missing operators
-                    for (const auto& ns : scheduler.nodes()) {
-                        if (ns.missing_operator) {
-                            api.reload(has_gpu_ops, has_audio);
-                            break;
-                        }
-                    }
+                std::string snapshot_json;
+                std::string snapshot_error;
+                if (!capture_live_graph_snapshot(graph, snapshot_json, snapshot_error)) {
+                    result = json_err(snapshot_error);
                 } else {
-                    // Rebuild failed — try to recreate instances from old loaders
-                    // (if unregister didn't happen yet or loaders still exist)
-                    for (const auto& si : saved) {
-                        auto& ns = scheduler.nodes_mut()[si.node_idx];
-                        OperatorLoader* loader = registry.find(si.type_name);
-                        if (loader && loader->is_loaded()) {
-                            ns.loader = loader;
-                            ns.instance = loader->create_instance();
-                            const auto* desc = loader->descriptor();
-                            if (desc) {
-                                scheduler.reinit_node(ns, desc, &si.param_values,
-                                    si.string_values.empty() ? nullptr : &si.string_values);
-                            }
-                            ns.generation++;
+                    auto ir = package_manager->rebuild(pkg_name);
+                    if (ir.success) {
+                        auto rr = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
+                        if (!rr.ok) {
+                            result = json_err("package rebuilt but runtime refresh failed: " + rr.message);
+                        } else {
+                            yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                            yyjson_mut_val* res = yyjson_mut_obj(rdoc);
+                            yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());
+                            yyjson_mut_obj_add_int(rdoc, res, "operator_count",
+                                static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
+                            yyjson_mut_obj_add_bool(rdoc, res, "linked", ir.info.linked);
+                            result = json_ok(rdoc, res);
                         }
+                    } else {
+                        result = json_err(ir.error);
                     }
-                    result = json_err(ir.error);
                 }
             }
         }
@@ -2770,6 +2725,12 @@ void ControlServer::set_package_catalog(PackageCatalog* cat) { assert(!impl_); p
 void ControlServer::set_app_update_manager(AppUpdateManager* aum) { assert(!impl_); app_update_manager_ = aum; }
 void ControlServer::set_settings(const Settings* settings) { assert(!impl_); settings_ = settings; }
 
+uint64_t ControlServer::mcp_last_ping_ms(const std::string& name) const {
+    std::lock_guard<std::mutex> lk(mcp_ping_mutex_);
+    auto it = mcp_last_ping_ms_.find(name);
+    return (it != mcp_last_ping_ms_.end()) ? it->second : 0;
+}
+
 bool ControlServer::start(int port) {
     impl_ = std::make_unique<Impl>(port);
 
@@ -2797,6 +2758,29 @@ bool ControlServer::start(int port) {
             std::string method = request->uri;
             if (!method.empty() && method[0] == '/')
                 method = method.substr(1);
+
+            // MCP heartbeat ping — immediate, no main-thread dispatch needed
+            if (method == "mcp_ping") {
+                std::string server_name;
+                yyjson_doc* pdoc = yyjson_read(request->body.c_str(), request->body.size(), 0);
+                if (pdoc) {
+                    yyjson_val* proot = yyjson_doc_get_root(pdoc);
+                    yyjson_val* sv = proot ? yyjson_obj_get(proot, "server") : nullptr;
+                    if (sv && yyjson_is_str(sv)) server_name = yyjson_get_str(sv);
+                    yyjson_doc_free(pdoc);
+                }
+                if (!server_name.empty()) {
+                    auto now_ms = static_cast<uint64_t>(
+                        std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count());
+                    std::lock_guard<std::mutex> lk(mcp_ping_mutex_);
+                    mcp_last_ping_ms_[server_name] = now_ms;
+                }
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    R"({"ok":true})");
+            }
 
             // Recording tap start/stop (immediate, no main-thread dispatch needed)
             if (capture_coordinator_ &&

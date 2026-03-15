@@ -247,6 +247,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(const VividOperatorDesc
     entry.port_names.resize(port_count);
     entry.port_type_names.resize(port_count);
     entry.port_stable_type_ids.resize(port_count);
+    entry.port_semantic_tags.resize(port_count);
     for (uint32_t i = 0; i < port_count; ++i) {
         const auto& sp = src->ports[i];
         auto& dp = entry.ports[i];
@@ -264,6 +265,12 @@ static std::optional<DeferredEntry> deep_copy_descriptor(const VividOperatorDesc
         entry.port_stable_type_ids[i] = sp.stable_type_id ? sp.stable_type_id : "";
         dp.stable_type_id = entry.port_stable_type_ids[i].empty() ? nullptr
                                                                   : entry.port_stable_type_ids[i].c_str();
+        if (sp.semantic_tag) {
+            entry.port_semantic_tags[i] = sp.semantic_tag;
+            dp.semantic_tag = entry.port_semantic_tags[i].c_str();
+        } else {
+            dp.semantic_tag = nullptr;
+        }
     }
 
     // Build the owned descriptor
@@ -274,6 +281,8 @@ static std::optional<DeferredEntry> deep_copy_descriptor(const VividOperatorDesc
     entry.desc.port_count = port_count;
     entry.desc.ports = entry.ports.empty() ? nullptr : entry.ports.data();
     entry.desc.time_dependent = src->time_dependent;
+    entry.desc.has_process_audio = src->has_process_audio;
+    entry.desc.has_process_gpu = src->has_process_gpu;
 
     return entry;
 }

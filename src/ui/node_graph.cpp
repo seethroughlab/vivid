@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <cmath>
 #include <cctype>
+#include <cstdio>
 
 namespace vivid::ui {
 
@@ -830,6 +831,7 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
         create_popup_open_ = true;
         create_domain_sel_ = 0;
         create_name_buf_.clear();
+        text_edit_.reset(0);
         create_error_.clear();
         create_composite_ = false;
         create_destination_ = 0;
@@ -849,7 +851,15 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
         id = type + std::to_string(n);
         if (!snap_.has_node(id)) break;
     }
-    commands_.add_node(type, id);
+    std::string add_error;
+    if (!commands_.try_add_node(type, id, &add_error)) {
+        std::fprintf(stderr, "[vivid] Add node failed for '%s': %s\n",
+                     type.c_str(), add_error.c_str());
+        chooser_insert_wire_ = false;
+        chooser_wire_connect_ = false;
+        chooser_open_ = false;
+        return;
+    }
     commands_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
 
     if (chooser_insert_wire_) {
@@ -972,6 +982,50 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     clear_frame_flags();
     update_wire_hover();
     update_node_hover();
+
+    // Port hover — find nearest port when not in a drag/popup state
+    hovered_port_ = {};
+    if (hovered_node_id_.empty() && !dragging_wire_ && !panning_ && !box_selecting_ &&
+        dragging_node_idx_ < 0 && !context_menu_open_ && !chooser_open_ && !dropdown_open_) {
+        PortHit ph = hit_test_port(mouse_.x, mouse_.y);
+        if (ph.node_idx >= 0 && ph.node_idx < static_cast<int>(node_rects_.size())) {
+            hovered_port_.node_id = node_rects_[ph.node_idx].node_id;
+            hovered_port_.port_name = ph.port_name;
+            hovered_port_.is_output = ph.is_output;
+        }
+    }
+
+    // Inspector widget hover
+    hovered_slider_idx_ = -1;
+    hovered_bool_idx_ = -1;
+    hovered_dropdown_idx_ = -1;
+    if (mouse_.x >= graph_right() && has_selection() && !editing_param_) {
+        for (int i = 0; i < static_cast<int>(slider_rects_.size()); ++i) {
+            const auto& r = slider_rects_[i];
+            if (mouse_.x >= r.x && mouse_.x <= r.x + r.w &&
+                mouse_.y >= r.y && mouse_.y <= r.y + r.h) {
+                hovered_slider_idx_ = i;
+                break;
+            }
+        }
+        for (int i = 0; i < static_cast<int>(bool_rects_.size()); ++i) {
+            const auto& r = bool_rects_[i];
+            if (mouse_.x >= r.x && mouse_.x <= r.x + r.w &&
+                mouse_.y >= r.y && mouse_.y <= r.y + r.h) {
+                hovered_bool_idx_ = i;
+                break;
+            }
+        }
+        for (int i = 0; i < static_cast<int>(dropdown_rects_.size()); ++i) {
+            const auto& r = dropdown_rects_[i];
+            if (mouse_.x >= r.x && mouse_.x <= r.x + r.w &&
+                mouse_.y >= r.y && mouse_.y <= r.y + r.h) {
+                hovered_dropdown_idx_ = i;
+                break;
+            }
+        }
+    }
+
     update_sparklines();
 }
 

@@ -508,10 +508,15 @@ void NodeGraphUI::draw_graph_meta_editor(Renderer2D& tr) {
                      active ? style_.node_sel_bg[2] : style_.input_field_bg[2],
                      active ? 0.95f : 0.85f);
         std::string txt = values[i];
-        if (active && (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0)) txt += "_";
         if (txt.size() > 94) txt = txt.substr(0, 91) + "...";
         tr.draw_text(fx + 6.0f, fy + 4.0f, txt.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        if (active && cursor_blink_on()) {
+            int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(values[i].size())));
+            float cur_x = fx + 6.0f + tr.text_width(values[i].substr(0, cpos).c_str());
+            tr.draw_rect(cur_x, fy + 1.0f, 1.0f, field_h - 2.0f,
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
     }
 
     if (!graph_meta_error_.empty()) {

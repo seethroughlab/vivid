@@ -73,6 +73,21 @@ static std::string json_str(yyjson_val* v) {
     return s ? s : "";
 }
 
+static yyjson_val* introspect_node_by_id(yyjson_val* root, const char* node_id) {
+    if (!root || !node_id) return nullptr;
+    yyjson_val* result = yyjson_obj_get(root, "result");
+    yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
+    if (!nodes || !yyjson_is_arr(nodes)) return nullptr;
+    size_t idx, max;
+    yyjson_val* node = nullptr;
+    yyjson_arr_foreach(nodes, idx, max, node) {
+        yyjson_val* id = yyjson_obj_get(node, "node_id");
+        if (id && yyjson_is_str(id) && std::string(yyjson_get_str(id)) == node_id)
+            return node;
+    }
+    return nullptr;
+}
+
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
@@ -83,6 +98,7 @@ int main(int argc, char* argv[]) {
 
     // Isolate package/catalog test state from the user's real config dir.
     std::string test_home = build_dir + "/.test_cs_home";
+    std::filesystem::remove_all(test_home);
     std::filesystem::create_directories(test_home);
     setenv("HOME", test_home.c_str(), 1);
     setenv("VIVID_SKIP_PACKAGE_CATALOG_NETWORK", "1", 1);
@@ -158,7 +174,20 @@ int main(int argc, char* argv[]) {
             "  ]\n"
             "}\n";
     }
-    vivid::PackageCompiler pkg_compiler("", "");
+    std::string vivid_src_dir;
+    for (const auto& candidate : {
+             std::filesystem::current_path(),
+             std::filesystem::current_path().parent_path(),
+             std::filesystem::absolute(build_dir),
+             std::filesystem::absolute(build_dir).parent_path(),
+         }) {
+        if (std::filesystem::exists(candidate / "src/operator_api/operator.h")) {
+            vivid_src_dir = candidate.string();
+            break;
+        }
+    }
+    check(!vivid_src_dir.empty(), "resolved vivid source dir");
+    vivid::PackageCompiler pkg_compiler(vivid_src_dir, build_dir);
     vivid::PackageManager pkg_manager(pkg_compiler, registry);
     pkg_manager.scan_installed();
     vivid::PackageCatalog pkg_catalog(pkg_manager);
@@ -208,8 +237,7 @@ int main(int argc, char* argv[]) {
                "set(CONTROL_OPS\n"
                ")\n";
     }
-    std::string local_pkg_link_root = build_dir + "/packages";
-    std::filesystem::remove_all(local_pkg_link_root);
+    std::string local_pkg_link_root = vivid::PackageManager::packages_dir();
     std::filesystem::create_directories(local_pkg_link_root);
     std::string local_pkg_link = local_pkg_link_root + "/vivid-scaffold-e2e";
     std::error_code sec;
@@ -217,6 +245,7 @@ int main(int argc, char* argv[]) {
     std::filesystem::create_directory_symlink(std::filesystem::absolute(local_pkg_src),
                                               local_pkg_link, sec);
     check(!sec, "created linked local scaffold package");
+    pkg_manager.scan_installed();
     {
         auto packages = pkg_manager.list();
         bool found_linked = false;
@@ -228,6 +257,35 @@ int main(int argc, char* argv[]) {
         }
         check(found_linked, "package manager discovered linked scaffold package");
     }
+
+    std::string live_pkg_src = build_dir + "/.test_cs_live_pkg_src";
+    std::filesystem::remove_all(live_pkg_src);
+    std::filesystem::create_directories(live_pkg_src + "/operators/control/pkg_live_op");
+    {
+        std::ofstream ofs(live_pkg_src + "/vivid-package.json");
+        ofs << "{\n"
+               "  \"name\": \"vivid-live-pkg\",\n"
+               "  \"version\": \"0.0.1\",\n"
+               "  \"operators\": [\"control/pkg_live_op\"]\n"
+               "}\n";
+    }
+    auto write_live_pkg_source = [&](float output_value) {
+        std::ofstream ofs(live_pkg_src + "/operators/control/pkg_live_op/pkg_live_op.cpp");
+        ofs << "#include \"operator_api/operator.h\"\n\n"
+               "struct PkgLiveOp : vivid::ControlOperatorBase {\n"
+               "    static constexpr const char* kName = \"PkgLiveOp\";\n"
+               "    static constexpr bool kTimeDependent = false;\n"
+               "    void collect_params(std::vector<vivid::ParamBase*>&) override {}\n"
+               "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n"
+               "        out.push_back({\"out\", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});\n"
+               "    }\n"
+               "    void process(const VividProcessContext* ctx) override {\n"
+            << "        ctx->output_values[0] = " << std::to_string(output_value) << "f;\n"
+               "    }\n"
+               "};\n\n"
+               "VIVID_REGISTER(PkgLiveOp)\n";
+    };
+    write_live_pkg_source(3.0f);
 
     // Tick once so nodes have output values
     scheduler.tick(0.0, 0.016, 0);
@@ -1092,7 +1150,7 @@ int main(int argc, char* argv[]) {
             check(gp.ok, "get_param after post-load undo ok");
             if (gp.root) {
                 yyjson_val* val = yyjson_obj_get(gp.root, "value");
-                check(val && std::fabs(yyjson_get_num(val) - 3.0) < 1e-4,
+                check(val && std::fabs(yyjson_get_num(val) - 9.0) < 1e-4,
                       "post-load undo restored loaded baseline value");
             }
         }
@@ -1348,6 +1406,121 @@ int main(int argc, char* argv[]) {
             check(r_good.ok, "add_node with 'node_id' field accepted");
         }
 
+        // Final pass: package mutation safety with a live linked package node.
+        std::fprintf(stderr, "\n--- live package mutation safety ---\n");
+        {
+            auto link = post(client, base_url, "link_package",
+                std::string("{\"path\":\"") + live_pkg_src + "\"}");
+            check(link.ok, "link_package vivid-live-pkg ok");
+            if (link.root) {
+                yyjson_val* result = yyjson_obj_get(link.root, "result");
+                yyjson_val* name = result ? yyjson_obj_get(result, "name") : nullptr;
+                yyjson_val* linked = result ? yyjson_obj_get(result, "linked") : nullptr;
+                check(name && yyjson_is_str(name) &&
+                          std::string(yyjson_get_str(name)) == "vivid-live-pkg",
+                      "link_package returns vivid-live-pkg");
+                check(linked && yyjson_is_bool(linked) && yyjson_get_bool(linked),
+                      "link_package marks package as linked");
+            }
+
+            auto add_live = post(client, base_url, "add_node",
+                R"({"type":"PkgLiveOp","node_id":"pkg_live"})");
+            check(add_live.ok, "add_node pkg_live ok");
+            phase.store(15);
+            while (phase.load() < 16) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+            auto intro_v1 = post(client, base_url, "introspect_nodes");
+            check(intro_v1.ok, "introspect_nodes after add live package ok");
+            if (intro_v1.root) {
+                yyjson_val* node = introspect_node_by_id(intro_v1.root, "pkg_live");
+                check(node != nullptr, "pkg_live appears in introspect_nodes");
+                if (node) {
+                    yyjson_val* health = yyjson_obj_get(node, "health");
+                    yyjson_val* outputs = yyjson_obj_get(node, "outputs");
+                    yyjson_val* missing = health ? yyjson_obj_get(health, "missing_operator") : nullptr;
+                    check(missing && yyjson_is_bool(missing) && !yyjson_get_bool(missing),
+                          "pkg_live is resolved before rebuild");
+                    if (outputs && yyjson_is_arr(outputs) && yyjson_arr_size(outputs) > 0) {
+                        yyjson_val* out0 = yyjson_arr_get_first(outputs);
+                        yyjson_val* scalar = out0 ? yyjson_obj_get(out0, "scalar") : nullptr;
+                        check(scalar && std::fabs(yyjson_get_num(scalar) - 3.0) < 1e-4,
+                              "pkg_live output starts at 3");
+                    } else {
+                        check(false, "pkg_live exposes output after initial link");
+                    }
+                }
+            }
+
+            write_live_pkg_source(7.0f);
+            auto rebuild = post(client, base_url, "rebuild_package",
+                R"({"name":"vivid-live-pkg"})");
+            check(rebuild.ok, "rebuild_package vivid-live-pkg ok");
+            phase.store(17);
+            while (phase.load() < 18) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+            auto intro_v2 = post(client, base_url, "introspect_nodes");
+            check(intro_v2.ok, "introspect_nodes after rebuild ok");
+            if (intro_v2.root) {
+                yyjson_val* node = introspect_node_by_id(intro_v2.root, "pkg_live");
+                check(node != nullptr, "pkg_live remains after rebuild");
+                if (node) {
+                    yyjson_val* health = yyjson_obj_get(node, "health");
+                    yyjson_val* outputs = yyjson_obj_get(node, "outputs");
+                    yyjson_val* missing = health ? yyjson_obj_get(health, "missing_operator") : nullptr;
+                    check(missing && yyjson_is_bool(missing) && !yyjson_get_bool(missing),
+                          "pkg_live stays resolved after rebuild");
+                    if (outputs && yyjson_is_arr(outputs) && yyjson_arr_size(outputs) > 0) {
+                        yyjson_val* out0 = yyjson_arr_get_first(outputs);
+                        yyjson_val* scalar = out0 ? yyjson_obj_get(out0, "scalar") : nullptr;
+                        check(scalar && std::fabs(yyjson_get_num(scalar) - 7.0) < 1e-4,
+                              "pkg_live output refreshes to rebuilt value");
+                    } else {
+                        check(false, "pkg_live exposes output after rebuild");
+                    }
+                }
+            }
+
+            auto unlink = post(client, base_url, "unlink_package",
+                R"({"name":"vivid-live-pkg"})");
+            check(unlink.ok, "unlink_package vivid-live-pkg ok");
+            phase.store(19);
+            while (phase.load() < 20) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+            auto intro_missing = post(client, base_url, "introspect_nodes");
+            check(intro_missing.ok, "introspect_nodes after unlink ok");
+            if (intro_missing.root) {
+                yyjson_val* node = introspect_node_by_id(intro_missing.root, "pkg_live");
+                check(node != nullptr, "pkg_live remains in graph after unlink");
+                if (node) {
+                    yyjson_val* health = yyjson_obj_get(node, "health");
+                    yyjson_val* missing = health ? yyjson_obj_get(health, "missing_operator") : nullptr;
+                    check(missing && yyjson_is_bool(missing) && yyjson_get_bool(missing),
+                          "pkg_live becomes missing operator after unlink");
+                }
+            }
+
+            auto rl2 = post(client, base_url, "list_packages");
+            check(rl2.ok, "list_packages after unlink ok");
+            if (rl2.root) {
+                yyjson_val* result = yyjson_obj_get(rl2.root, "result");
+                yyjson_val* pkgs = result ? yyjson_obj_get(result, "packages") : nullptr;
+                bool found = false;
+                if (pkgs && yyjson_is_arr(pkgs)) {
+                    size_t idx, max;
+                    yyjson_val* p = nullptr;
+                    yyjson_arr_foreach(pkgs, idx, max, p) {
+                        yyjson_val* name = yyjson_obj_get(p, "name");
+                        if (name && yyjson_is_str(name) &&
+                            std::string(yyjson_get_str(name)) == "vivid-live-pkg") {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                check(!found, "vivid-live-pkg removed from package list after unlink");
+            }
+        }
+
         done.store(true);
     });
 
@@ -1386,6 +1559,18 @@ int main(int argc, char* argv[]) {
             api.apply_pending(has_gpu_ops, has_audio);
             scheduler.tick(0.0, 0.016, 7);
             phase.store(14);
+        } else if (p == 15) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            scheduler.tick(0.0, 0.016, 8);
+            phase.store(16);
+        } else if (p == 17) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            scheduler.tick(0.0, 0.016, 9);
+            phase.store(18);
+        } else if (p == 19) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            scheduler.tick(0.0, 0.016, 10);
+            phase.store(20);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));

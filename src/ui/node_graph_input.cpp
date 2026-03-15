@@ -17,16 +17,40 @@ using vivid::format_int;
 using vivid::format_uint;
 
 namespace {
-template <typename Pred>
-void append_paste_filtered(std::string& dst, const char* clip, Pred pred, size_t max_len = SIZE_MAX) {
-    if (!clip) return;
-    for (const char* p = clip; *p; ++p) {
-        unsigned char ch = static_cast<unsigned char>(*p);
-        if (!pred(ch)) continue;
-        if (dst.size() >= max_len) break;
-        dst.push_back(static_cast<char>(ch));
-    }
+
+// Character filter predicates used across text fields
+inline bool filter_printable(char c) {
+    auto uc = static_cast<unsigned char>(c);
+    return uc >= 32 && uc < 127;
 }
+inline bool filter_numeric(char c) {
+    auto uc = static_cast<unsigned char>(c);
+    return std::isdigit(uc) || c == '.' || c == '-';
+}
+inline bool filter_digits(char c) {
+    return std::isdigit(static_cast<unsigned char>(c));
+}
+inline bool filter_identifier(char c) {
+    auto uc = static_cast<unsigned char>(c);
+    char lc = std::isupper(uc) ? static_cast<char>(std::tolower(uc)) : c;
+    return std::islower(static_cast<unsigned char>(lc)) ||
+           std::isdigit(static_cast<unsigned char>(lc)) || lc == '_';
+}
+inline bool filter_hex(char c) {
+    return std::isxdigit(static_cast<unsigned char>(c)) || c == '#';
+}
+inline bool filter_rgb(char c) {
+    return std::isdigit(static_cast<unsigned char>(c));
+}
+
+// Active text field resolution result
+struct ActiveTextField {
+    std::string* buf = nullptr;
+    CharFilter filter;
+    size_t max_len = SIZE_MAX;
+    bool lowercase = false;  // auto-lowercase input (for identifier fields)
+};
+
 } // namespace
 
 // -----------------------------------------------------------------------
@@ -163,129 +187,152 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
 
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
     const bool mod_key = (mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER)) != 0;
+    const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
 
-    if (action == GLFW_PRESS && mod_key && key == GLFW_KEY_V) {
-        const char* clip = glfwGetClipboardString(nullptr);
-        if (graph_meta_editor_open_) {
-            if (graph_meta_active_field_ >= 0 &&
-                graph_meta_active_field_ < static_cast<int>(graph_meta_fields_.size())) {
-                auto* field = graph_meta_fields_[graph_meta_active_field_];
-                if (field) {
-                    append_paste_filtered(*field, clip, [](unsigned char c) {
-                        return c >= 32 && c < 127;
-                    });
-                }
-            }
-            return;
+    // --- Resolve active text field for shared text editing keys ---
+    auto resolve_active_field = [&]() -> ActiveTextField {
+        if (graph_meta_editor_open_ &&
+            graph_meta_active_field_ >= 0 &&
+            graph_meta_active_field_ < static_cast<int>(graph_meta_fields_.size()) &&
+            graph_meta_fields_[graph_meta_active_field_]) {
+            return {graph_meta_fields_[graph_meta_active_field_], filter_printable};
         }
-        if (example_browser_open_) {
-            append_paste_filtered(example_browser_filter_, clip, [](unsigned char c) {
-                return c >= 32 && c < 127;
-            });
-            example_browser_scroll_ = 0;
-            example_browser_sel_ = 0;
-            rebuild_example_items();
-            return;
-        }
-        if (pkg_browser_open_) {
-            append_paste_filtered(pkg_browser_filter_, clip, [](unsigned char c) {
-                return c >= 32 && c < 127;
-            });
-            pkg_browser_scroll_ = 0;
-            pkg_browser_sel_ = 0;
-            rebuild_pkg_browser_items();
-            return;
-        }
-        if (prefs_open_ && prefs_editing_custom_) {
-            append_paste_filtered(prefs_custom_command_, clip, [](unsigned char c) {
-                return c >= 32 && c < 127;
-            });
-            return;
-        }
-        if (session_editing_name_) {
-            append_paste_filtered(session_edit_buffer_, clip, [](unsigned char c) {
-                return c >= 32 && c < 127;
-            });
-            return;
-        }
-        if (editing_midi_range_ || editing_wire_remap_) {
-            append_paste_filtered(edit_buffer_, clip, [](unsigned char c) {
-                return std::isdigit(c) || c == '.' || c == '-';
-            });
-            return;
-        }
+        if (example_browser_open_)
+            return {&example_browser_filter_, filter_printable};
+        if (pkg_browser_open_)
+            return {&pkg_browser_filter_, filter_printable};
+        if (prefs_open_ && prefs_editing_custom_)
+            return {&prefs_custom_command_, filter_printable};
+        if (session_editing_name_)
+            return {&session_edit_buffer_, filter_printable};
+        if (editing_midi_range_ || editing_wire_remap_)
+            return {&edit_buffer_, filter_numeric};
         if (editing_param_) {
             const auto* ns = snap_.find_node(edit_node_id_);
             const ParamInfo* pd = ns ? ns->find_param(edit_param_name_) : nullptr;
-            if (pd && pd->type == VIVID_PARAM_TEXT) {
-                append_paste_filtered(edit_buffer_, clip, [](unsigned char c) {
-                    return c >= 32 && c < 127;
-                });
-            } else {
-                append_paste_filtered(edit_buffer_, clip, [](unsigned char c) {
-                    return std::isdigit(c) || c == '.' || c == '-';
-                });
-            }
-            return;
+            if (pd && pd->type == VIVID_PARAM_TEXT)
+                return {&edit_buffer_, filter_printable};
+            return {&edit_buffer_, filter_numeric};
         }
-        if (editing_resolution_) {
-            append_paste_filtered(edit_buffer_, clip, [](unsigned char c) {
-                return std::isdigit(c);
-            });
-            return;
-        }
-        if (color_editing_hex_) {
-            color_hex_buffer_.clear();
-            append_paste_filtered(color_hex_buffer_, clip, [](unsigned char c) {
-                return c == '#' || std::isxdigit(c);
-            }, 7);
-            return;
-        }
-        if (color_editing_rgb_ >= 0) {
-            append_paste_filtered(color_rgb_buffer_, clip, [](unsigned char c) {
-                return std::isdigit(c);
-            }, 3);
-            return;
-        }
-        if (preset_name_popup_open_) {
-            append_paste_filtered(preset_name_buffer_, clip, [](unsigned char c) {
-                if (std::isupper(c)) c = static_cast<unsigned char>(std::tolower(c));
-                return std::islower(c) || std::isdigit(c) || c == '_';
-            });
-            return;
-        }
+        if (editing_resolution_)
+            return {&edit_buffer_, filter_digits};
+        if (color_editing_hex_)
+            return {&color_hex_buffer_, filter_hex, 7};
+        if (color_editing_rgb_ >= 0)
+            return {&color_rgb_buffer_, filter_rgb, 3};
+        if (preset_name_popup_open_)
+            return {&preset_name_buffer_, filter_identifier, SIZE_MAX, true};
         if (create_popup_open_) {
-            // Route paste to active field
-            auto filter = [](unsigned char c) {
-                if (std::isupper(c)) c = static_cast<unsigned char>(std::tolower(c));
-                return std::islower(c) || std::isdigit(c) || c == '_';
-            };
-            if (create_active_field_ == 0) {
-                append_paste_filtered(create_name_buf_, clip, filter);
-                create_error_ = commands_.validate_operator_name(create_name_buf_);
-            } else {
-                int idx = create_active_field_ - 1;
-                if (idx < static_cast<int>(create_inputs_.size())) {
-                    append_paste_filtered(create_inputs_[idx].name, clip, filter);
-                } else {
-                    idx -= static_cast<int>(create_inputs_.size());
-                    if (idx < static_cast<int>(create_outputs_.size())) {
-                        append_paste_filtered(create_outputs_[idx].name, clip, filter);
-                    } else {
-                        idx -= static_cast<int>(create_outputs_.size());
-                        if (idx < static_cast<int>(create_params_.size())) {
-                            append_paste_filtered(create_params_[idx].name, clip, filter);
-                        }
-                    }
-                }
-            }
-            return;
+            if (create_active_field_ == 0)
+                return {&create_name_buf_, filter_identifier, SIZE_MAX, true};
+            int idx = create_active_field_ - 1;
+            if (idx < static_cast<int>(create_inputs_.size()))
+                return {&create_inputs_[idx].name, filter_identifier, SIZE_MAX, true};
+            idx -= static_cast<int>(create_inputs_.size());
+            if (idx < static_cast<int>(create_outputs_.size()))
+                return {&create_outputs_[idx].name, filter_identifier, SIZE_MAX, true};
+            idx -= static_cast<int>(create_outputs_.size());
+            if (idx < static_cast<int>(create_params_.size()))
+                return {&create_params_[idx].name, filter_identifier, SIZE_MAX, true};
+            return {};
         }
-        if (chooser_open_) {
-            append_paste_filtered(chooser_filter_, clip, [](unsigned char c) {
-                return c >= 32 && c < 127;
-            });
-            rebuild_chooser_items();
+        if (chooser_open_)
+            return {&chooser_filter_, filter_printable};
+        return {};
+    };
+
+    // Shared text editing key handling — cursor movement, selection, clipboard
+    {
+        ActiveTextField atf = resolve_active_field();
+        if (atf.buf) {
+            int len = static_cast<int>(atf.buf->size());
+            text_edit_.clamp(len);
+
+            if (key == GLFW_KEY_LEFT && !mod_key) {
+                text_edit_move_left(text_edit_, shift);
+                cursor_blink_time_ = 0.0f;
+                return;
+            }
+            if (key == GLFW_KEY_RIGHT && !mod_key) {
+                text_edit_move_right(text_edit_, len, shift);
+                cursor_blink_time_ = 0.0f;
+                return;
+            }
+            if (key == GLFW_KEY_LEFT && mod_key) {
+                text_edit_home(text_edit_, shift);
+                cursor_blink_time_ = 0.0f;
+                return;
+            }
+            if (key == GLFW_KEY_RIGHT && mod_key) {
+                text_edit_end(text_edit_, len, shift);
+                cursor_blink_time_ = 0.0f;
+                return;
+            }
+            if (key == GLFW_KEY_HOME) {
+                text_edit_home(text_edit_, shift);
+                cursor_blink_time_ = 0.0f;
+                return;
+            }
+            if (key == GLFW_KEY_END) {
+                text_edit_end(text_edit_, len, shift);
+                cursor_blink_time_ = 0.0f;
+                return;
+            }
+            if (key == GLFW_KEY_DELETE) {
+                text_edit_delete_forward(*atf.buf, text_edit_);
+                cursor_blink_time_ = 0.0f;
+                // Don't return — let context-specific handlers run their callbacks
+            }
+            if (mod_key && key == GLFW_KEY_A) {
+                text_edit_select_all(text_edit_, len);
+                cursor_blink_time_ = 0.0f;
+                return;
+            }
+            if (mod_key && key == GLFW_KEY_C) {
+                std::string copied = text_edit_copy(*atf.buf, text_edit_);
+                if (!copied.empty())
+                    glfwSetClipboardString(nullptr, copied.c_str());
+                return;
+            }
+            if (mod_key && key == GLFW_KEY_X) {
+                std::string cut = text_edit_cut(*atf.buf, text_edit_);
+                if (!cut.empty())
+                    glfwSetClipboardString(nullptr, cut.c_str());
+                cursor_blink_time_ = 0.0f;
+                // Don't return — let context-specific callbacks fire
+            }
+        }
+    }
+
+    if (action == GLFW_PRESS && mod_key && key == GLFW_KEY_V) {
+        const char* clip = glfwGetClipboardString(nullptr);
+        ActiveTextField atf = resolve_active_field();
+        if (atf.buf && clip) {
+            // Convert to lowercase for identifier filter before inserting
+            std::string paste_text;
+            for (const char* p = clip; *p; ++p) {
+                char c = *p;
+                if (atf.lowercase && std::isupper(static_cast<unsigned char>(c)))
+                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                paste_text += c;
+            }
+            text_edit_insert(*atf.buf, text_edit_, paste_text, atf.filter, atf.max_len);
+            cursor_blink_time_ = 0.0f;
+
+            // Per-field callbacks after paste
+            if (example_browser_open_) {
+                example_browser_scroll_ = 0;
+                example_browser_sel_ = 0;
+                rebuild_example_items();
+            } else if (pkg_browser_open_) {
+                pkg_browser_scroll_ = 0;
+                pkg_browser_sel_ = 0;
+                rebuild_pkg_browser_items();
+            } else if (create_popup_open_ && create_active_field_ == 0) {
+                create_error_ = commands_.validate_operator_name(create_name_buf_);
+            } else if (chooser_open_) {
+                rebuild_chooser_items();
+            }
             return;
         }
     }
@@ -296,6 +343,12 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;
     }
 
+    if (mcp_setup_open_) {
+        if (key == GLFW_KEY_ESCAPE)
+            mcp_setup_open_ = false;
+        return;
+    }
+
     if (graph_meta_editor_open_) {
         if (key == GLFW_KEY_ESCAPE) {
             graph_meta_editor_open_ = false;
@@ -303,15 +356,19 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         } else if (key == GLFW_KEY_TAB || key == GLFW_KEY_DOWN) {
             graph_meta_active_field_ =
                 (graph_meta_active_field_ + 1) % static_cast<int>(graph_meta_fields_.size());
+            if (auto* f = graph_meta_fields_[graph_meta_active_field_])
+                text_edit_.reset(static_cast<int>(f->size()));
         } else if (key == GLFW_KEY_UP) {
             graph_meta_active_field_--;
             if (graph_meta_active_field_ < 0)
                 graph_meta_active_field_ = static_cast<int>(graph_meta_fields_.size()) - 1;
+            if (auto* f = graph_meta_fields_[graph_meta_active_field_])
+                text_edit_.reset(static_cast<int>(f->size()));
         } else if (key == GLFW_KEY_BACKSPACE &&
                    graph_meta_active_field_ >= 0 &&
                    graph_meta_active_field_ < static_cast<int>(graph_meta_fields_.size())) {
             auto* field = graph_meta_fields_[graph_meta_active_field_];
-            if (field && !field->empty()) field->pop_back();
+            if (field) text_edit_backspace(*field, text_edit_);
         } else if (key == GLFW_KEY_ENTER) {
             if (graph_meta_save_callback_) {
                 std::string err;
@@ -339,8 +396,8 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             example_browser_sel_ = std::min(max_sel, example_browser_sel_ + 1);
             if (example_browser_sel_ >= example_browser_scroll_ + kPkgBrowserMaxVisible)
                 example_browser_scroll_ = example_browser_sel_ - kPkgBrowserMaxVisible + 1;
-        } else if (key == GLFW_KEY_BACKSPACE && !example_browser_filter_.empty()) {
-            example_browser_filter_.pop_back();
+        } else if (key == GLFW_KEY_BACKSPACE) {
+            text_edit_backspace(example_browser_filter_, text_edit_);
             example_browser_scroll_ = 0;
             example_browser_sel_ = 0;
             rebuild_example_items();
@@ -421,8 +478,8 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 }
                 }
             }
-        } else if (key == GLFW_KEY_BACKSPACE && !pkg_browser_filter_.empty()) {
-            pkg_browser_filter_.pop_back();
+        } else if (key == GLFW_KEY_BACKSPACE) {
+            text_edit_backspace(pkg_browser_filter_, text_edit_);
             pkg_browser_scroll_ = 0;
             pkg_browser_sel_ = 0;
             rebuild_pkg_browser_items();
@@ -441,8 +498,8 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             prefs_open_ = false;
             prefs_editing_custom_ = false;
         } else if (prefs_editing_custom_) {
-            if (key == GLFW_KEY_BACKSPACE && !prefs_custom_command_.empty())
-                prefs_custom_command_.pop_back();
+            if (key == GLFW_KEY_BACKSPACE)
+                text_edit_backspace(prefs_custom_command_, text_edit_);
         }
         return;
     }
@@ -458,8 +515,8 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             session_editing_name_ = false;
         } else if (key == GLFW_KEY_ESCAPE) {
             session_editing_name_ = false;
-        } else if (key == GLFW_KEY_BACKSPACE && !session_edit_buffer_.empty()) {
-            session_edit_buffer_.pop_back();
+        } else if (key == GLFW_KEY_BACKSPACE) {
+            text_edit_backspace(session_edit_buffer_, text_edit_);
         }
         return;
     }
@@ -478,11 +535,14 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 midi_range_param_name_ = param_name;
                 midi_range_editing_min_ = false;
                 const auto* mm = snap_.find_midi_mapping(node_id, param_name);
-                if (mm) edit_buffer_ = format_float(mm->range_max, 2);
+                if (mm) {
+                    edit_buffer_ = format_float(mm->range_max, 2);
+                    text_edit_.reset(static_cast<int>(edit_buffer_.size()));
+                }
             }
         }
-        else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
-            edit_buffer_.pop_back();
+        else if (key == GLFW_KEY_BACKSPACE)
+            text_edit_backspace(edit_buffer_, text_edit_);
         return;
     }
 
@@ -518,13 +578,14 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                                 edit_buffer_ = format_int(static_cast<int>(ns->param_values[pi + 1]));
                             else
                                 edit_buffer_ = format_float(ns->param_values[pi + 1], 2);
+                            text_edit_.reset(static_cast<int>(edit_buffer_.size()));
                         }
                     }
                 }
             }
         }
-        else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
-            edit_buffer_.pop_back();
+        else if (key == GLFW_KEY_BACKSPACE)
+            text_edit_backspace(edit_buffer_, text_edit_);
         return;
     }
 
@@ -553,14 +614,15 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                     char buf[32];
                     std::snprintf(buf, sizeof(buf), "%.3g", vals[next_field]);
                     edit_buffer_ = buf;
+                    text_edit_.reset(static_cast<int>(edit_buffer_.size()));
                 }
             } else {
                 editing_wire_remap_ = false;
             }
         }
         else if (key == GLFW_KEY_ESCAPE) editing_wire_remap_ = false;
-        else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
-            edit_buffer_.pop_back();
+        else if (key == GLFW_KEY_BACKSPACE)
+            text_edit_backspace(edit_buffer_, text_edit_);
         return;
     }
 
@@ -576,16 +638,18 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 edit_res_node_id_ = node_id;
                 edit_res_is_width_ = false;
                 const auto* ns = snap_.find_node(node_id);
-                if (ns) edit_buffer_ = format_uint(ns->gpu_tex_height);
+                if (ns) {
+                    edit_buffer_ = format_uint(ns->gpu_tex_height);
+                    text_edit_.reset(static_cast<int>(edit_buffer_.size()));
+                }
             }
         }
-        else if (key == GLFW_KEY_BACKSPACE && !edit_buffer_.empty())
-            edit_buffer_.pop_back();
+        else if (key == GLFW_KEY_BACKSPACE)
+            text_edit_backspace(edit_buffer_, text_edit_);
         return;
     }
 
     if (color_editing_hex_) {
-        bool mod_key = (mods & (GLFW_MOD_CONTROL | GLFW_MOD_SUPER)) != 0;
         if (key == GLFW_KEY_ENTER) {
             // Parse hex string -> RGB floats -> set params + update cached HSV
             std::string hex = color_hex_buffer_;
@@ -613,25 +677,8 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             color_editing_hex_ = false;
         } else if (key == GLFW_KEY_ESCAPE) {
             color_editing_hex_ = false;
-        } else if (key == GLFW_KEY_BACKSPACE && !color_hex_buffer_.empty()) {
-            color_hex_buffer_.pop_back();
-        } else if (key == GLFW_KEY_C && mod_key) {
-            // Copy current hex to clipboard
-            glfwSetClipboardString(nullptr, color_hex_buffer_.c_str());
-        } else if (key == GLFW_KEY_V && mod_key) {
-            // Paste from clipboard
-            const char* clip = glfwGetClipboardString(nullptr);
-            if (clip) {
-                std::string pasted = clip;
-                // Validate and accept hex content
-                color_hex_buffer_.clear();
-                for (char c : pasted) {
-                    if (c == '#' || std::isxdigit(static_cast<unsigned char>(c))) {
-                        if (color_hex_buffer_.size() < 7)
-                            color_hex_buffer_ += c;
-                    }
-                }
-            }
+        } else if (key == GLFW_KEY_BACKSPACE) {
+            text_edit_backspace(color_hex_buffer_, text_edit_);
         }
         return;
     }
@@ -664,8 +711,8 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             color_editing_rgb_ = -1;
         } else if (key == GLFW_KEY_ESCAPE) {
             color_editing_rgb_ = -1;
-        } else if (key == GLFW_KEY_BACKSPACE && !color_rgb_buffer_.empty()) {
-            color_rgb_buffer_.pop_back();
+        } else if (key == GLFW_KEY_BACKSPACE) {
+            text_edit_backspace(color_rgb_buffer_, text_edit_);
         } else if (key == GLFW_KEY_TAB) {
             // Confirm current channel, advance to next
             int val = color_rgb_buffer_.empty() ? 0 : std::atoi(color_rgb_buffer_.c_str());
@@ -716,6 +763,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                     if (it != ns2->param_indices.end()) {
                         int v = static_cast<int>(ns2->param_values[it->second] * 255.0f + 0.5f);
                         color_rgb_buffer_ = std::to_string(v);
+                        text_edit_.reset(static_cast<int>(color_rgb_buffer_.size()));
                     }
                 }
             }
@@ -731,8 +779,8 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 commands_.save_preset(preset_name_node_id_, preset_name_buffer_);
                 preset_name_popup_open_ = false;
             }
-        } else if (key == GLFW_KEY_BACKSPACE && !preset_name_buffer_.empty()) {
-            preset_name_buffer_.pop_back();
+        } else if (key == GLFW_KEY_BACKSPACE) {
+            text_edit_backspace(preset_name_buffer_, text_edit_);
         }
         return;
     }
@@ -784,12 +832,14 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                         create_active_field_ = (create_active_field_ - 1 + total_fields) % total_fields;
                     else
                         create_active_field_ = (create_active_field_ + 1) % total_fields;
+                    if (auto* b = active_buf())
+                        text_edit_.reset(static_cast<int>(b->size()));
                 }
                 break;
             case GLFW_KEY_BACKSPACE: {
                 std::string* buf = active_buf();
-                if (buf && !buf->empty()) {
-                    buf->pop_back();
+                if (buf) {
+                    text_edit_backspace(*buf, text_edit_);
                     if (create_active_field_ == 0) {
                         create_error_ = buf->empty() ? "" :
                             commands_.validate_operator_name(*buf);
@@ -955,6 +1005,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 chooser_cursor_gx_ = sx_to_gx(mouse_.x);
                 chooser_cursor_gy_ = sy_to_gy(mouse_.y);
                 chooser_filter_.clear();
+                text_edit_.reset(0);
                 chooser_sel_ = 0;
                 chooser_scroll_ = 0;
                 // If dragging a wire, enter wire-connect mode
@@ -1046,10 +1097,8 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             break;
 
         case GLFW_KEY_BACKSPACE:
-            if (!chooser_filter_.empty()) {
-                chooser_filter_.pop_back();
-                rebuild_chooser_items();
-            }
+            text_edit_backspace(chooser_filter_, text_edit_);
+            rebuild_chooser_items();
             break;
 
         default:
@@ -1064,128 +1113,82 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
         return;
     }
 
-    if (graph_meta_editor_open_) {
-        if (codepoint >= 32 && codepoint < 127 &&
+    // Centralized character input: resolve active field and insert via text_edit
+    // (reuse the same field resolution logic as on_key)
+    auto resolve_field = [&]() -> ActiveTextField {
+        if (graph_meta_editor_open_ &&
             graph_meta_active_field_ >= 0 &&
-            graph_meta_active_field_ < static_cast<int>(graph_meta_fields_.size())) {
-            auto* field = graph_meta_fields_[graph_meta_active_field_];
-            if (field) field->push_back(static_cast<char>(codepoint));
+            graph_meta_active_field_ < static_cast<int>(graph_meta_fields_.size()) &&
+            graph_meta_fields_[graph_meta_active_field_]) {
+            return {graph_meta_fields_[graph_meta_active_field_], filter_printable};
         }
-        return;
-    }
+        if (example_browser_open_)
+            return {&example_browser_filter_, filter_printable};
+        if (pkg_browser_open_)
+            return {&pkg_browser_filter_, filter_printable};
+        if (session_editing_name_)
+            return {&session_edit_buffer_, filter_printable};
+        if (prefs_open_ && prefs_editing_custom_)
+            return {&prefs_custom_command_, filter_printable};
+        if (editing_midi_range_ || editing_wire_remap_)
+            return {&edit_buffer_, filter_numeric};
+        if (editing_param_) {
+            const auto* ns = snap_.find_node(edit_node_id_);
+            const ParamInfo* pd = ns ? ns->find_param(edit_param_name_) : nullptr;
+            if (pd && pd->type == VIVID_PARAM_TEXT)
+                return {&edit_buffer_, filter_printable};
+            return {&edit_buffer_, filter_numeric};
+        }
+        if (editing_resolution_)
+            return {&edit_buffer_, filter_digits};
+        if (color_editing_hex_)
+            return {&color_hex_buffer_, filter_hex, 7};
+        if (color_editing_rgb_ >= 0)
+            return {&color_rgb_buffer_, filter_rgb, 3};
+        if (preset_name_popup_open_)
+            return {&preset_name_buffer_, filter_identifier, SIZE_MAX, true};
+        if (create_popup_open_) {
+            if (create_active_field_ == 0)
+                return {&create_name_buf_, filter_identifier, SIZE_MAX, true};
+            int idx = create_active_field_ - 1;
+            if (idx < static_cast<int>(create_inputs_.size()))
+                return {&create_inputs_[idx].name, filter_identifier, SIZE_MAX, true};
+            idx -= static_cast<int>(create_inputs_.size());
+            if (idx < static_cast<int>(create_outputs_.size()))
+                return {&create_outputs_[idx].name, filter_identifier, SIZE_MAX, true};
+            idx -= static_cast<int>(create_outputs_.size());
+            if (idx < static_cast<int>(create_params_.size()))
+                return {&create_params_[idx].name, filter_identifier, SIZE_MAX, true};
+            return {};
+        }
+        if (chooser_open_)
+            return {&chooser_filter_, filter_printable};
+        return {};
+    };
+
+    ActiveTextField atf = resolve_field();
+    if (!atf.buf) return;
+
+    // For identifier filter, lowercase the input
+    char ch = static_cast<char>(codepoint);
+    if (atf.lowercase && std::isupper(static_cast<unsigned char>(ch)))
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+
+    text_edit_insert(*atf.buf, text_edit_, std::string(1, ch), atf.filter, atf.max_len);
+    cursor_blink_time_ = 0.0f;
+
+    // Per-field callbacks after character insert
     if (example_browser_open_) {
-        if (codepoint >= 32 && codepoint < 127) {
-            example_browser_filter_ += static_cast<char>(codepoint);
-            example_browser_scroll_ = 0;
-            example_browser_sel_ = 0;
-            rebuild_example_items();
-        }
-        return;
-    }
-    if (pkg_browser_open_) {
-        if (codepoint >= 32 && codepoint < 127) {
-            pkg_browser_filter_ += static_cast<char>(codepoint);
-            pkg_browser_scroll_ = 0;
-            pkg_browser_sel_ = 0;
-            rebuild_pkg_browser_items();
-        }
-        return;
-    }
-    if (session_editing_name_) {
-        if (codepoint >= 32 && codepoint < 127)
-            session_edit_buffer_ += static_cast<char>(codepoint);
-        return;
-    }
-    if (prefs_open_ && prefs_editing_custom_) {
-        if (codepoint >= 32 && codepoint < 127)
-            prefs_custom_command_ += static_cast<char>(codepoint);
-        return;
-    }
-    if (editing_midi_range_) {
-        char ch = static_cast<char>(codepoint);
-        if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-')
-            edit_buffer_ += ch;
-        return;
-    }
-    if (editing_param_) {
-        const auto* ns = snap_.find_node(edit_node_id_);
-        const ParamInfo* pd = ns ? ns->find_param(edit_param_name_) : nullptr;
-        char ch = static_cast<char>(codepoint);
-        if (pd && pd->type == VIVID_PARAM_TEXT) {
-            if (codepoint >= 32 && codepoint < 127) edit_buffer_ += ch;
-        } else if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-') {
-            edit_buffer_ += ch;
-        }
-        return;
-    }
-    if (editing_wire_remap_) {
-        char ch = static_cast<char>(codepoint);
-        if (std::isdigit(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-')
-            edit_buffer_ += ch;
-        return;
-    }
-    if (editing_resolution_) {
-        char ch = static_cast<char>(codepoint);
-        if (std::isdigit(static_cast<unsigned char>(ch)))
-            edit_buffer_ += ch;
-        return;
-    }
-    if (color_editing_hex_) {
-        char ch = static_cast<char>(codepoint);
-        if (std::isxdigit(static_cast<unsigned char>(ch)) || ch == '#') {
-            if (color_hex_buffer_.size() < 7)
-                color_hex_buffer_ += ch;
-        }
-        return;
-    }
-    if (color_editing_rgb_ >= 0) {
-        char ch = static_cast<char>(codepoint);
-        if (std::isdigit(static_cast<unsigned char>(ch)) && color_rgb_buffer_.size() < 3)
-            color_rgb_buffer_ += ch;
-        return;
-    }
-    if (preset_name_popup_open_) {
-        char ch = static_cast<char>(codepoint);
-        if (std::isupper(static_cast<unsigned char>(ch)))
-            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-        if (std::islower(static_cast<unsigned char>(ch)) ||
-            std::isdigit(static_cast<unsigned char>(ch)) || ch == '_') {
-            preset_name_buffer_ += ch;
-        }
-        return;
-    }
-    if (create_popup_open_) {
-        char ch = static_cast<char>(codepoint);
-        if (std::isupper(static_cast<unsigned char>(ch)))
-            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-        if (std::islower(static_cast<unsigned char>(ch)) ||
-            std::isdigit(static_cast<unsigned char>(ch)) || ch == '_') {
-            // Route to active text field
-            if (create_active_field_ == 0) {
-                create_name_buf_ += ch;
-                create_error_ = commands_.validate_operator_name(create_name_buf_);
-            } else {
-                int idx = create_active_field_ - 1;
-                if (idx < static_cast<int>(create_inputs_.size())) {
-                    create_inputs_[idx].name += ch;
-                } else {
-                    idx -= static_cast<int>(create_inputs_.size());
-                    if (idx < static_cast<int>(create_outputs_.size())) {
-                        create_outputs_[idx].name += ch;
-                    } else {
-                        idx -= static_cast<int>(create_outputs_.size());
-                        if (idx < static_cast<int>(create_params_.size())) {
-                            create_params_[idx].name += ch;
-                        }
-                    }
-                }
-            }
-        }
-        return;
-    }
-    if (!chooser_open_) return;
-    if (codepoint >= 32 && codepoint < 127) {
-        chooser_filter_ += static_cast<char>(codepoint);
+        example_browser_scroll_ = 0;
+        example_browser_sel_ = 0;
+        rebuild_example_items();
+    } else if (pkg_browser_open_) {
+        pkg_browser_scroll_ = 0;
+        pkg_browser_sel_ = 0;
+        rebuild_pkg_browser_items();
+    } else if (create_popup_open_ && create_active_field_ == 0) {
+        create_error_ = commands_.validate_operator_name(create_name_buf_);
+    } else if (chooser_open_) {
         rebuild_chooser_items();
     }
 }
@@ -1721,6 +1724,7 @@ void NodeGraphUI::update_context_menu() {
                         chooser_cursor_gx_ = sx_to_gx(context_menu_x_);
                         chooser_cursor_gy_ = sy_to_gy(context_menu_y_);
                         chooser_filter_.clear();
+                        text_edit_.reset(0);
                         rebuild_chooser_items();
                         chooser_open_ = true;
                     }
@@ -1877,6 +1881,46 @@ void NodeGraphUI::handle_left_click() {
         }
     }
 
+    // MCP setup dialog button clicks
+    if (mcp_setup_open_) {
+        for (const auto& btn : mcp_dialog_button_rects_) {
+            if (mouse_.x >= btn.x && mouse_.x <= btn.x + btn.w &&
+                mouse_.y >= btn.y && mouse_.y <= btn.y + btn.h) {
+                if (btn.action == 0) {  // Copy vivid JSON
+                    // Build the same snippet as in draw_mcp_setup_dialog
+                    std::string mcp_py = mcp_dir_.empty()
+                        ? "<path_to_vivid>/mcp/vivid_mcp.py"
+                        : mcp_dir_ + "/vivid_mcp.py";
+                    std::string json = "{\"vivid\":{\"command\":\"python\",\"args\":[\"" + mcp_py + "\"],\"type\":\"stdio\"}}";
+                    glfwSetClipboardString(nullptr, json.c_str());
+                } else if (btn.action == 1) {  // Copy opdev JSON
+                    std::string opdev_py = mcp_dir_.empty()
+                        ? "<path_to_vivid>/mcp/vivid_opdev_mcp.py"
+                        : mcp_dir_ + "/vivid_opdev_mcp.py";
+                    std::string json = "{\"opdev\":{\"command\":\"python\",\"args\":[\"" + opdev_py + "\"],\"type\":\"stdio\"}}";
+                    glfwSetClipboardString(nullptr, json.c_str());
+                } else if (btn.action == 2 || btn.action == 3) {  // Done or close
+                    mcp_setup_open_ = false;
+                }
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+        // Backdrop click closes dialog
+        mouse_.left_clicked = false;
+        return;
+    }
+
+    // MCP dot clicks (in perf bar) — open setup dialog
+    for (const auto& dr : mcp_dot_rects_) {
+        if (mouse_.x >= dr.x && mouse_.x <= dr.x + dr.w &&
+            mouse_.y >= dr.y && mouse_.y <= dr.y + dr.h) {
+            mcp_setup_open_ = true;
+            mouse_.left_clicked = false;
+            return;
+        }
+    }
+
     // Session grid click handling
     if (session_grid_open_ && mouse_.y >= graph_bottom()) {
         // Check variation cells
@@ -1891,6 +1935,7 @@ void NodeGraphUI::handle_left_click() {
                     session_editing_name_ = true;
                     session_edit_idx_ = cr.idx;
                     session_edit_buffer_ = snap_.variations[cr.idx].name;
+                    text_edit_.select_all(static_cast<int>(session_edit_buffer_.size()));
                     last_variation_click_idx_ = -1;
                 } else {
                     // Single click — recall or queue
@@ -2064,6 +2109,7 @@ bool NodeGraphUI::handle_inspector_click() {
             char hex[8];
             rgb_to_hex(cr, cg, cb, hex, sizeof(hex));
             color_hex_buffer_ = hex;
+            text_edit_.reset(static_cast<int>(color_hex_buffer_.size()));
             return true;
         }
 
@@ -2087,6 +2133,7 @@ bool NodeGraphUI::handle_inspector_click() {
                         if (it != ns->param_indices.end()) {
                             int v = static_cast<int>(ns->param_values[it->second] * 255.0f + 0.5f);
                             color_rgb_buffer_ = std::to_string(v);
+                            text_edit_.reset(static_cast<int>(color_rgb_buffer_.size()));
                         }
                     }
                     return true;
@@ -2139,8 +2186,10 @@ bool NodeGraphUI::handle_inspector_click() {
             const auto* mm = snap_.find_midi_mapping(mr.node_id, mr.param_name);
             if (mm) {
                 edit_buffer_ = format_float(mr.is_min ? mm->range_min : mm->range_max, 2);
+                text_edit_.reset(static_cast<int>(edit_buffer_.size()));
             } else {
                 edit_buffer_.clear();
+                text_edit_.reset(0);
             }
             return true;
         }
@@ -2263,6 +2312,7 @@ bool NodeGraphUI::handle_inspector_click() {
             } else if (ns) {
                 preset_name_popup_open_ = true;
                 preset_name_buffer_.clear();
+                text_edit_.reset(0);
                 preset_name_node_id_ = r.node_id;
             }
             return true;
@@ -2331,6 +2381,7 @@ bool NodeGraphUI::handle_inspector_click() {
         const auto* ns = snap_.find_node(rr.node_id);
         if (ns) {
             edit_buffer_ = format_uint(rr.is_width ? ns->gpu_tex_width : ns->gpu_tex_height);
+            text_edit_.reset(static_cast<int>(edit_buffer_.size()));
         }
         return true;
     }
@@ -2355,6 +2406,7 @@ bool NodeGraphUI::handle_inspector_click() {
                     } else {
                         edit_buffer_ = format_float(ns->param_values[it->second], 2);
                     }
+                    text_edit_.reset(static_cast<int>(edit_buffer_.size()));
                     break;
                 }
             }
@@ -2491,6 +2543,7 @@ bool NodeGraphUI::handle_inspector_click() {
             } else {
                 edit_buffer_ = "0";
             }
+            text_edit_.reset(static_cast<int>(edit_buffer_.size()));
             return true;
         }
     }
@@ -3015,6 +3068,7 @@ void NodeGraphUI::open_chooser() {
     chooser_cursor_gx_ = sx_to_gx(center_sx);
     chooser_cursor_gy_ = sy_to_gy(center_sy);
     chooser_filter_.clear();
+    text_edit_.reset(0);
     chooser_sel_ = 0;
     chooser_scroll_ = 0;
     rebuild_chooser_items();

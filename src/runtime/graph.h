@@ -100,6 +100,7 @@ public:
     const std::vector<FilterDef>& filters() const { return filters_; }
     const std::vector<VariationDef>& variations() const { return variations_; }
     const std::string& source_path() const { return source_path_; }
+    void set_source_path(std::string path) { source_path_ = std::move(path); }
 
     // Mutation
     bool add_node(const std::string& id, const std::string& type,

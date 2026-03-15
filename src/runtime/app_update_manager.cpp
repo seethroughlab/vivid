@@ -53,14 +53,27 @@ AppUpdateManager::AppUpdateManager(std::string current_version)
     latest_.current_version = current_version_;
 }
 
+AppUpdateManager::~AppUpdateManager() {
+    if (worker_.joinable()) {
+        worker_.join();
+    }
+}
+
 void AppUpdateManager::refresh() {
+    std::thread old_worker;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (state_ == AppUpdateFetchState::Fetching) return;
         state_ = AppUpdateFetchState::Fetching;
         error_.clear();
+        if (worker_.joinable()) {
+            old_worker = std::move(worker_);
+        }
     }
-    std::thread(&AppUpdateManager::fetch_thread_fn, this).detach();
+    if (old_worker.joinable()) {
+        old_worker.join();
+    }
+    worker_ = std::thread(&AppUpdateManager::fetch_thread_fn, this);
 }
 
 AppUpdateFetchState AppUpdateManager::fetch_state() const {
