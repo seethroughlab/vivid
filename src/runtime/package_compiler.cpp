@@ -10,6 +10,7 @@
 #include "yyjson.h"
 
 namespace vivid {
+namespace fs = std::filesystem;
 
 // Shell-quote a string to handle spaces and special characters (including single quotes)
 static std::string quote(const std::string& s) {
@@ -19,6 +20,117 @@ static std::string quote(const std::string& s) {
         else escaped += c;
     }
     return "'" + escaped + "'";
+}
+
+static bool path_within_root(const fs::path& root, const fs::path& candidate) {
+    auto abs_root = fs::absolute(root).lexically_normal();
+    auto abs_candidate = fs::absolute(candidate).lexically_normal();
+
+    auto root_it = abs_root.begin();
+    auto cand_it = abs_candidate.begin();
+    for (; root_it != abs_root.end() && cand_it != abs_candidate.end(); ++root_it, ++cand_it) {
+        if (*root_it != *cand_it) return false;
+    }
+    return root_it == abs_root.end();
+}
+
+static std::string truncate_output(std::string output, size_t limit = 4096) {
+    if (output.size() <= limit) return output;
+    return output.substr(0, limit) + "\n... (truncated)";
+}
+
+static bool contains_any(const std::string& haystack, const std::initializer_list<const char*>& needles) {
+    for (const char* needle : needles) {
+        if (haystack.find(needle) != std::string::npos) return true;
+    }
+    return false;
+}
+
+static TestCompileResult inspect_cpp_test_source(const std::string& package_dir,
+                                                 const std::string& test_rel_path) {
+    TestCompileResult result;
+
+    fs::path package_root = fs::absolute(package_dir).lexically_normal();
+    fs::path rel_path(test_rel_path);
+    result.test_name = rel_path.stem().string();
+    result.normalized_rel_path = rel_path.lexically_normal().generic_string();
+
+    if (rel_path.is_absolute()) {
+        result.code = "path_outside_package";
+        result.message = "Test path must be package-relative";
+        return result;
+    }
+
+    fs::path source_path = (package_root / rel_path).lexically_normal();
+    if (!path_within_root(package_root, source_path)) {
+        result.code = "path_outside_package";
+        result.message = "Test path escapes the package root";
+        return result;
+    }
+
+    if (!fs::exists(source_path)) {
+        result.code = "missing_test_file";
+        result.message = "Test source not found: " + source_path.string();
+        return result;
+    }
+
+    if (!fs::is_regular_file(source_path)) {
+        result.code = "missing_test_file";
+        result.message = "Test source is not a regular file: " + source_path.string();
+        return result;
+    }
+
+    if (source_path.extension() != ".cpp") {
+        result.code = "unsupported_test_extension";
+        result.message = "Manifest cpp tests must point to .cpp files";
+        return result;
+    }
+
+    std::ifstream ifs(source_path);
+    if (!ifs) {
+        result.code = "missing_test_file";
+        result.message = "Cannot read test source: " + source_path.string();
+        return result;
+    }
+
+    std::ostringstream ss;
+    ss << ifs.rdbuf();
+    std::string source = ss.str();
+
+    // The generic runner only supports self-contained, single-source entrypoints
+    // with an explicit main() and no external test framework linkage.
+    if (contains_any(source, {
+            "#include <gtest/",
+            "#include <catch2/",
+            "#include <doctest/",
+            "TEST_CASE(",
+            "SCENARIO(",
+            "TEST(",
+            "BENCHMARK(",
+            "CATCH_CONFIG_",
+            "DOCTEST_CONFIG_",
+            "#include \"../",
+            "#include \"..\\\\"
+        })) {
+        result.code = "unsupported_cpp_test_shape";
+        result.message =
+            "Manifest cpp tests must be self-contained single-source entrypoints. "
+            "Framework-based or path-traversing tests should stay in package-local CMake/CTest.";
+        return result;
+    }
+
+    if (source.find("main(") == std::string::npos) {
+        result.code = "unsupported_cpp_test_shape";
+        result.message =
+            "Manifest cpp tests must define a standalone main(). "
+            "Framework-driven tests should stay in package-local CMake/CTest.";
+        return result;
+    }
+
+    result.success = true;
+    result.code = "cpp_ready";
+    result.message = "ready";
+    return result;
 }
 
 PackageCompiler::PackageCompiler(const std::string& vivid_src_dir,
@@ -185,23 +297,19 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
 TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
                                                 const std::string& test_rel_path,
                                                 const std::vector<std::string>& extra_include_dirs) {
-    TestCompileResult result;
-
-    std::string source_path = package_dir + "/" + test_rel_path;
-
-    // Derive test name from filename stem
-    auto stem = std::filesystem::path(test_rel_path).stem().string();
-    result.test_name = stem;
-
-    if (!std::filesystem::exists(source_path)) {
-        result.success = false;
-        result.error_output = "Test source not found: " + source_path;
+    TestCompileResult result = inspect_cpp_test_source(package_dir, test_rel_path);
+    auto stem = result.test_name;
+    if (!result.success) {
+        result.error_output = result.message;
         return result;
     }
 
+    std::string source_path =
+        (fs::absolute(package_dir) / fs::path(result.normalized_rel_path)).lexically_normal().string();
+
     // Ensure build output directory exists
     std::string build_dir = package_dir + "/build";
-    std::filesystem::create_directories(build_dir);
+    fs::create_directories(build_dir);
 
     std::string output_path = build_dir + "/" + stem;
     result.executable_path = output_path;
@@ -242,13 +350,17 @@ TestCompileResult PackageCompiler::compile_test(const std::string& package_dir,
 
     if (status != 0) {
         result.success = false;
-        result.error_output = output;
+        result.code = "cpp_compile_failed";
+        result.message = "Compilation failed";
+        result.error_output = truncate_output(output);
         std::error_code ec;
-        std::filesystem::remove(output_path, ec);
+        fs::remove(output_path, ec);
         std::fprintf(stderr, "[vivid] PackageCompiler::compile_test: FAILED %s:\n%s",
                      stem.c_str(), output.c_str());
     } else {
         result.success = true;
+        result.code = "cpp_compiled";
+        result.message = "compiled";
         std::fprintf(stderr, "[vivid] PackageCompiler::compile_test: compiled %s\n", stem.c_str());
     }
 

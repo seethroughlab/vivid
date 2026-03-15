@@ -17,6 +17,9 @@ struct TestCompileResult {
     std::string executable_path;
     std::string error_output;
     std::string test_name;
+    std::string normalized_rel_path;
+    std::string code;
+    std::string message;
 };
 
 class PackageCompiler {

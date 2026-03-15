@@ -153,3 +153,55 @@ The HTTP thread blocks on `future.get()` until the main thread processes the req
 
 `UndoManager` (undo_manager.h) is embedded in the pimpl with a 200-step history.
 Topology-changing commands that modify the graph capture a before/after JSON snapshot for undo/redo.
+
+## `test_package` Response Shape
+
+`test_package` returns package-test results with both human-readable and machine-readable fields.
+
+Top-level response payload:
+
+- `package`
+- `summary`
+  - `total`
+  - `passed`
+  - `failed`
+  - `skipped`
+- `notes` (optional)
+- `tests`
+
+Each entry in `tests` includes:
+
+- `name`
+- `type`
+- `status`
+- `code` (stable classifier)
+- `reason` (optional)
+- `output` (optional, usually only for C++ tests)
+
+Representative `code` values:
+
+- graph:
+  - `graph_passed`
+  - `graph_needs_gpu`
+  - `graph_needs_audio`
+  - `graph_load_failed`
+  - `graph_build_failed`
+  - `graph_node_error`
+  - `unsupported_graph_test_shape`
+- shared validation:
+  - `missing_test_file`
+  - `path_outside_package`
+  - `duplicate_test_entry`
+- cpp:
+  - `cpp_passed`
+  - `unsupported_test_extension`
+  - `unsupported_cpp_test_shape`
+  - `cpp_compile_failed`
+  - `cpp_runtime_failed`
+  - `cpp_runtime_launch_failed`
+  - `cpp_runtime_abnormal`
+
+`notes` is where the server surfaces contract guidance that applies to the whole package, for example:
+
+- no manifest tests declared
+- manifest `tests.cpp` entries that should stay in package-local CMake / CTest

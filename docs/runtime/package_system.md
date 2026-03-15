@@ -15,6 +15,35 @@ A package is a directory containing:
 - `audio/`, `control/`, `gpu/` subdirectories with `.cpp` operator files
 - Optional `tests/` directory with C++ test sources and/or graph test files
 
+## Package Test Contract
+
+The manifest test surface is intentionally narrow:
+
+- `tests.graphs`
+- `tests.cpp`
+
+Those two arrays have different ownership boundaries:
+
+- `tests.graphs`
+  - graph smoke / graph contract coverage
+  - package-relative `.json` graph files
+  - run through the core graph loader and scheduler
+- `tests.cpp`
+  - lightweight package tests that fit the generic core runner
+  - package-relative `.cpp` entrypoints only
+  - must be self-contained single-source tests with a standalone `main()`
+  - compile only against:
+    - Vivid headers
+    - package `operators/` headers
+    - declared vendored include dirs
+- package-local CMake / CTest
+  - canonical home for heavier package-specific C++ tests
+  - use this for framework-based tests, custom link environments, or multi-source test setups
+
+The generic runner is not a best-effort clone of package-local build systems.
+Manifest-declared `tests.cpp` entries that fall outside the supported subset fail early
+with explicit classification instead of ambiguous compile noise.
+
 ## `vivid-package.json` Fields
 
 ```json
@@ -84,7 +113,25 @@ std::vector<CompileResult> compile_all(package_dir, operators, gpu_operators, ve
 ```cpp
 TestCompileResult compile_test(package_dir, test_rel_path, extra_include_dirs = {});
 ```
-Returns `TestCompileResult { success, executable_path, error_output, test_name }`.
+Returns `TestCompileResult` with:
+
+- `success`
+- `test_name`
+- `normalized_rel_path`
+- `executable_path`
+- `code`
+- `message`
+- `error_output`
+
+Representative stable `code` values include:
+
+- `cpp_ready`
+- `cpp_compiled`
+- `missing_test_file`
+- `unsupported_test_extension`
+- `path_outside_package`
+- `unsupported_cpp_test_shape`
+- `cpp_compile_failed`
 
 ## `PackageManager`
 
@@ -118,6 +165,47 @@ std::vector<PackageInfo> list();  // all installed packages
 void scan_installed();            // scan all packages into registry (called at startup)
 static std::string packages_dir(); // platform config dir / packages
 ```
+
+## `run_package_tests()`
+
+`run_package_tests()` classifies each manifest-declared test into a stable result shape:
+
+- `name`
+- `type`
+- `status`
+- `code`
+- `reason`
+- `output`
+
+Package-level output also includes:
+
+- summary counts
+- `notes` for contract guidance such as:
+  - package has no manifest tests
+  - some manifest `tests.cpp` entries are outside the generic runner contract and should stay in package-local CMake / CTest
+
+Representative stable result codes include:
+
+- graph results:
+  - `graph_passed`
+  - `graph_needs_gpu`
+  - `graph_needs_audio`
+  - `graph_load_failed`
+  - `graph_build_failed`
+  - `graph_node_error`
+  - `unsupported_graph_test_shape`
+- shared validation:
+  - `missing_test_file`
+  - `path_outside_package`
+  - `duplicate_test_entry`
+- cpp results:
+  - `cpp_passed`
+  - `unsupported_test_extension`
+  - `unsupported_cpp_test_shape`
+  - `cpp_compile_failed`
+  - `cpp_runtime_failed`
+  - `cpp_runtime_launch_failed`
+  - `cpp_runtime_abnormal`
 
 ### Dependency Resolution
 ```cpp

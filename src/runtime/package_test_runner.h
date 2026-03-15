@@ -13,6 +13,7 @@ struct SingleTestResult {
     std::string name;    // "tests/basic.json" or "tests/test_ops.cpp"
     std::string type;    // "graph" or "cpp"
     std::string status;  // "passed", "failed", "skipped"
+    std::string code;    // stable machine-readable result classification
     std::string reason;  // empty on pass; reason for skip/fail
     std::string output;  // captured output for cpp tests
 };
@@ -22,6 +23,7 @@ struct PackageTestResult {
     std::string error;
     std::string package_name;
     int total = 0, passed = 0, failed = 0, skipped = 0;
+    std::vector<std::string> notes;
     std::vector<SingleTestResult> tests;
 };
 

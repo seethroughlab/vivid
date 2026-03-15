@@ -1512,6 +1512,29 @@ add_test(NAME test_package_test_runner
     COMMAND test_package_test_runner ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_package_contract_ecosystem
+    tests/test_package_contract_ecosystem.cpp
+    src/runtime/package_test_runner.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/builtin_operators.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_package_contract_ecosystem PRIVATE src)
+target_link_libraries(test_package_contract_ecosystem PRIVATE
+    vivid_operator_api yyjson webgpu)
+add_dependencies(test_package_contract_ecosystem control_pass_op)
+add_test(NAME test_package_contract_ecosystem
+    COMMAND test_package_contract_ecosystem ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # CaptureCoordinator unit test (non-GPU paths only)
 add_executable(test_capture_coordinator
     tests/test_capture_coordinator.cpp

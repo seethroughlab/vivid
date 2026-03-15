@@ -2645,12 +2645,21 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     yyjson_mut_obj_add_int(rdoc, summary, "skipped", tr.skipped);
                     yyjson_mut_obj_add_val(rdoc, res, "summary", summary);
 
+                    if (!tr.notes.empty()) {
+                        yyjson_mut_val* notes_arr = yyjson_mut_arr(rdoc);
+                        for (const auto& note : tr.notes)
+                            yyjson_mut_arr_add_strcpy(rdoc, notes_arr, note.c_str());
+                        yyjson_mut_obj_add_val(rdoc, res, "notes", notes_arr);
+                    }
+
                     yyjson_mut_val* tests_arr = yyjson_mut_arr(rdoc);
                     for (const auto& t : tr.tests) {
                         yyjson_mut_val* obj = yyjson_mut_obj(rdoc);
                         yyjson_mut_obj_add_strcpy(rdoc, obj, "name", t.name.c_str());
                         yyjson_mut_obj_add_strcpy(rdoc, obj, "type", t.type.c_str());
                         yyjson_mut_obj_add_strcpy(rdoc, obj, "status", t.status.c_str());
+                        if (!t.code.empty())
+                            yyjson_mut_obj_add_strcpy(rdoc, obj, "code", t.code.c_str());
                         if (!t.reason.empty())
                             yyjson_mut_obj_add_strcpy(rdoc, obj, "reason", t.reason.c_str());
                         if (!t.output.empty())
