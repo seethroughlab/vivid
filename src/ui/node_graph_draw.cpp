@@ -98,16 +98,24 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float sx = gx_to_sx(r.x), sy = gy_to_sy(r.y);
         float sw = g_to_s(r.w), sh = g_to_s(r.h);
 
-        // Node background (brighten on hover)
+        // Node background (brighten on hover with smooth animation)
         bool node_hovered = (r.node_id == hovered_node_id_);
         float sr = g_to_s(style_.corner_radius);
         float br = bg[0], bgr = bg[1], bb = bg[2];
         if (node_hovered && !selected) {
-            br += kNodeHoverBrighten;
-            bgr += kNodeHoverBrighten;
-            bb += kNodeHoverBrighten;
+            float ha = (r.node_id == node_hover_anim_id_) ? node_hover_alpha_ : 0.0f;
+            br += kNodeHoverBrighten * ha;
+            bgr += kNodeHoverBrighten * ha;
+            bb += kNodeHoverBrighten * ha;
         }
         tr.draw_rounded_rect(sx, sy, sw, sh, sr, br, bgr, bb);
+
+        // Selection glow (subtle pulse on selected nodes)
+        if (selected && selection_glow_ > 0.01f) {
+            float glow_a = selection_glow_ * 0.08f;
+            tr.draw_rounded_rect(sx, sy, sw, sh, sr,
+                                 style_.accent[0], style_.accent[1], style_.accent[2], glow_a);
+        }
 
         // Solo dimming: reduce alpha of non-active nodes
         bool node_soloed     = sn && sn->soloed;
