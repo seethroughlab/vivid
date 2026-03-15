@@ -385,6 +385,61 @@ Hardening landed so far:
 - Updated `docs/runtime/runtime_api.md` with transactional reload/snapshot guarantees
 - Added the runtime-doc maintenance rule to `AGENTS.md`
 
+### Phase 6: Long-Run Reliability And Stress Validation
+
+Status:
+
+- complete
+
+What landed:
+
+- Added dedicated stress executables for the highest-risk runtime seams:
+  - `test_runtime_stress`
+  - `test_hot_reload_stress`
+  - `test_package_stress`
+  - `test_mixed_runtime_stability`
+- Added the compatible audio hot-reload fixture family:
+  - `audio_reload_v1`
+  - `audio_reload_v2`
+  - `audio_reload_v3`
+  - `audio_reload_incompatible`
+- Added the mixed-runtime stability graph fixture:
+  - `tests/graphs/test_mixed_runtime_stability.json`
+- Added convenience targets:
+  - `phase6_stress`
+  - `phase6_soak`
+- Added the Phase 6 testing guide:
+  - `docs/testing/STABILITY-STRESS-TESTS.md`
+
+Canonical fixture set:
+
+- mixed-runtime graph:
+  - `tests/graphs/test_mixed_runtime_stability.json`
+- package churn fixture:
+  - synthetic linked package generated inside `tests/test_package_stress.cpp`
+- reload fixture family:
+  - `tests/operators/audio_reload_v1.cpp`
+  - `tests/operators/audio_reload_v2.cpp`
+  - `tests/operators/audio_reload_v3.cpp`
+  - `tests/operators/audio_reload_incompatible.cpp`
+
+Files changed during this phase:
+
+- `src/runtime/runtime_api.cpp`
+- `src/runtime/package_manager.cpp`
+- `tests/test_runtime_stress.cpp`
+- `tests/test_hot_reload_stress.cpp`
+- `tests/test_package_stress.cpp`
+- `tests/test_mixed_runtime_stability.cpp`
+- `tests/operators/audio_reload_v3.cpp`
+- `tests/graphs/test_mixed_runtime_stability.json`
+- `docs/testing/STABILITY-STRESS-TESTS.md`
+- `CMakeLists.txt`
+
+Validation:
+
+- `ctest --test-dir build --output-on-failure -R "test_runtime_stress|test_hot_reload_stress|test_package_stress|test_mixed_runtime_stability"`
+
 ### Control Server And Package Workflow Audit
 
 Reviewed:
