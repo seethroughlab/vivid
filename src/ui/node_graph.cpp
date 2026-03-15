@@ -1027,6 +1027,52 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     }
 
     update_sparklines();
+
+    // --- Animation updates ---
+    float dt = dt_;
+    if (dt <= 0.0f) dt = 1.0f / 60.0f; // fallback
+
+    // Smooth zoom/pan (only when not directly panning with middle mouse)
+    if (!panning_) {
+        zoom_ = lerp_toward(zoom_, zoom_target_, kZoomLerpSpeed, dt);
+        pan_x_ = lerp_toward(pan_x_, pan_target_x_, kPanLerpSpeed, dt);
+        pan_y_ = lerp_toward(pan_y_, pan_target_y_, kPanLerpSpeed, dt);
+        // Snap when close enough to avoid perpetual sub-pixel drift
+        if (std::fabs(zoom_ - zoom_target_) < 0.001f) zoom_ = zoom_target_;
+        if (std::fabs(pan_x_ - pan_target_x_) < 0.5f) pan_x_ = pan_target_x_;
+        if (std::fabs(pan_y_ - pan_target_y_) < 0.5f) pan_y_ = pan_target_y_;
+    }
+
+    // Popup fade
+    bool any_popup = chooser_open_ || create_popup_open_ || prefs_open_ ||
+                     pkg_browser_open_ || example_browser_open_ || graph_meta_editor_open_ ||
+                     clone_confirm_open_ || save_confirm_open_ || preset_name_popup_open_ ||
+                     about_open_ || mcp_setup_open_ || color_popup_open_;
+    float popup_target = any_popup ? 1.0f : 0.0f;
+    popup_opacity_ = lerp_toward(popup_opacity_, popup_target, kPopupFadeSpeed, dt);
+    if (popup_opacity_ < 0.01f) popup_opacity_ = 0.0f;
+    if (popup_opacity_ > 0.99f) popup_opacity_ = 1.0f;
+
+    // Node hover alpha
+    float hover_target = hovered_node_id_.empty() ? 0.0f : 1.0f;
+    if (!hovered_node_id_.empty() && hovered_node_id_ != node_hover_anim_id_) {
+        node_hover_anim_id_ = hovered_node_id_;
+        node_hover_alpha_ = 0.0f;
+    } else if (hovered_node_id_.empty() && node_hover_alpha_ < 0.01f) {
+        node_hover_anim_id_.clear();
+    }
+    node_hover_alpha_ = lerp_toward(node_hover_alpha_, hover_target, kHoverFadeSpeed, dt);
+
+    // Selection glow pulse
+    if (!selected_node_ids_.empty()) {
+        float glow_target = selection_glow_rising_ ? 1.0f : 0.0f;
+        selection_glow_ = lerp_toward(selection_glow_, glow_target, kSelectionGlowSpeed, dt);
+        if (selection_glow_ > 0.95f) selection_glow_rising_ = false;
+        if (selection_glow_ < 0.05f) selection_glow_rising_ = true;
+    } else {
+        selection_glow_ = 0.0f;
+        selection_glow_rising_ = true;
+    }
 }
 
 void NodeGraphUI::check_relayout() {
