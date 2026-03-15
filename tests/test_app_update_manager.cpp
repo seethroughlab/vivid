@@ -1,6 +1,11 @@
 #include "runtime/app_update_manager.h"
 #include <cassert>
+#include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <thread>
 
 int main() {
     const std::string xml = R"xml(
@@ -51,6 +56,40 @@ int main() {
     ok = vivid::AppUpdateManager::parse_appcast_for_test("<rss/>", "0.1.0", bad, bad_err);
     assert(!ok);
     assert(!bad_err.empty());
+
+    const auto tmp_dir = std::filesystem::temp_directory_path() / "vivid_test_app_update_manager";
+    std::filesystem::create_directories(tmp_dir);
+    const auto appcast_path = tmp_dir / "appcast.xml";
+    {
+        std::ofstream out(appcast_path);
+        out << xml;
+    }
+
+    std::string old_url = vivid::AppUpdateManager::appcast_url();
+    setenv("VIVID_APPCAST_URL", ("file://" + appcast_path.string()).c_str(), 1);
+    setenv("VIVID_APP_UPDATE_TEST_DELAY_MS", "100", 1);
+    vivid::AppUpdateManager::reset_worker_metrics_for_test();
+
+    {
+        vivid::AppUpdateManager mgr("0.1.0");
+        mgr.refresh();
+        mgr.refresh();
+        mgr.refresh();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        assert(vivid::AppUpdateManager::max_concurrent_workers_for_test() == 1);
+    }
+    assert(vivid::AppUpdateManager::active_workers_for_test() == 0);
+
+    vivid::AppUpdateManager::reset_worker_metrics_for_test();
+    {
+        vivid::AppUpdateManager mgr("0.1.0");
+        mgr.refresh();
+    }
+    assert(vivid::AppUpdateManager::active_workers_for_test() == 0);
+
+    unsetenv("VIVID_APP_UPDATE_TEST_DELAY_MS");
+    setenv("VIVID_APPCAST_URL", old_url.c_str(), 1);
+    std::filesystem::remove_all(tmp_dir);
 
     std::cout << "[PASS] test_app_update_manager\n";
     return 0;

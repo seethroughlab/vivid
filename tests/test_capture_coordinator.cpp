@@ -1,7 +1,21 @@
 #include "runtime/capture_coordinator.h"
+#include "runtime/av_exporter.h"
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <memory>
+
+namespace {
+struct FakeFailingExporter : vivid::AVExporter {
+    explicit FakeFailingExporter(std::string path) : path_(std::move(path)) {}
+
+    bool finish() override { return false; }
+    bool is_recording() const override { return true; }
+    const std::string& output_path() const override { return path_; }
+
+    std::string path_;
+};
+} // namespace
 
 static int failures = 0;
 
@@ -105,6 +119,23 @@ int main() {
         auto future = cc.request_snapshot_to_file("/tmp/test_snap.png");
         check(future.valid(), "future is valid");
         check(cc.has_pending(), "has_pending after snapshot_to_file");
+    }
+
+    // =====================================================================
+    // Test 9: stop recording reports finalize failure with path
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 9: stop recording finalize failure ===\n");
+        vivid::CaptureCoordinator cc(std::make_unique<FakeFailingExporter>("/tmp/fail_recording.mov"));
+        auto future = cc.request_stop_recording();
+        check(future.valid(), "future is valid");
+        cc.process_pending(nullptr, nullptr, nullptr, 0, 0);
+        std::string result = future.get();
+        check(result.find("\"ok\":false") != std::string::npos, "returns ok:false on finalize failure");
+        check(result.find("failed to finalize recording") != std::string::npos,
+              "error mentions finalize failure");
+        check(result.find("/tmp/fail_recording.mov") != std::string::npos,
+              "response includes recording path on finalize failure");
     }
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

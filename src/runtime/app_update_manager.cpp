@@ -1,6 +1,7 @@
 #include "runtime/app_update_manager.h"
 
 #include <array>
+#include <atomic>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -12,6 +13,8 @@ namespace vivid {
 
 static constexpr const char* kDefaultAppcastURL =
     "https://vivid.seethroughlab.com/appcast.xml";
+static std::atomic<uint32_t> g_active_workers{0};
+static std::atomic<uint32_t> g_max_concurrent_workers{0};
 
 static std::string trim_copy(std::string s) {
     size_t b = 0;
@@ -119,7 +122,38 @@ bool AppUpdateManager::parse_appcast_for_test(const std::string& xml,
     return parse_appcast(xml, current_version, out, error);
 }
 
+void AppUpdateManager::reset_worker_metrics_for_test() {
+    g_active_workers.store(0, std::memory_order_relaxed);
+    g_max_concurrent_workers.store(0, std::memory_order_relaxed);
+}
+
+uint32_t AppUpdateManager::active_workers_for_test() {
+    return g_active_workers.load(std::memory_order_relaxed);
+}
+
+uint32_t AppUpdateManager::max_concurrent_workers_for_test() {
+    return g_max_concurrent_workers.load(std::memory_order_relaxed);
+}
+
 void AppUpdateManager::fetch_thread_fn() {
+    const uint32_t active = g_active_workers.fetch_add(1, std::memory_order_relaxed) + 1;
+    uint32_t observed = g_max_concurrent_workers.load(std::memory_order_relaxed);
+    while (active > observed &&
+           !g_max_concurrent_workers.compare_exchange_weak(
+               observed, active, std::memory_order_relaxed, std::memory_order_relaxed)) {
+    }
+    auto worker_guard = std::unique_ptr<void, void(*)(void*)>(
+        reinterpret_cast<void*>(1),
+        [](void*) { g_active_workers.fetch_sub(1, std::memory_order_relaxed); });
+
+    const char* delay_env = std::getenv("VIVID_APP_UPDATE_TEST_DELAY_MS");
+    if (delay_env && delay_env[0] != '\0') {
+        int delay_ms = std::atoi(delay_env);
+        if (delay_ms > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        }
+    }
+
     std::string cmd = "curl -sS --max-time 10 '" + appcast_url() + "' 2>&1";
     FILE* pipe = popen(cmd.c_str(), "r");
     if (!pipe) {

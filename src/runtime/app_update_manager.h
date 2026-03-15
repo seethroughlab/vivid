@@ -45,6 +45,11 @@ public:
                                        AppUpdateInfo& out,
                                        std::string& error);
 
+    // Test hooks for worker lifetime/concurrency behavior.
+    static void reset_worker_metrics_for_test();
+    static uint32_t active_workers_for_test();
+    static uint32_t max_concurrent_workers_for_test();
+
 private:
     void fetch_thread_fn();
 

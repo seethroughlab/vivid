@@ -26,6 +26,7 @@ struct CaptureRequest {
 class CaptureCoordinator {
 public:
     CaptureCoordinator();
+    explicit CaptureCoordinator(std::unique_ptr<AVExporter> exporter);
     ~CaptureCoordinator();
 
     void set_audio_engine(AudioEngine* ae) { audio_ = ae; }

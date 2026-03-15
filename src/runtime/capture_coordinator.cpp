@@ -13,6 +13,8 @@
 namespace vivid {
 
 CaptureCoordinator::CaptureCoordinator() : exporter_(std::make_unique<AVExporter>()) {}
+CaptureCoordinator::CaptureCoordinator(std::unique_ptr<AVExporter> exporter)
+    : exporter_(std::move(exporter)) {}
 CaptureCoordinator::~CaptureCoordinator() = default;
 
 // ---------------------------------------------------------------------------
