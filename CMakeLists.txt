@@ -106,6 +106,10 @@ target_include_directories(miniaudio INTERFACE deps/miniaudio)
 add_library(stb_truetype INTERFACE)
 target_include_directories(stb_truetype INTERFACE deps/stb)
 
+# --- NanoSVG (header-only SVG parser + rasterizer) ---
+add_library(nanosvg INTERFACE)
+target_include_directories(nanosvg INTERFACE deps/nanosvg)
+
 # --- RtMidi (vendored, CoreMIDI backend on macOS) ---
 add_library(rtmidi STATIC deps/rtmidi/RtMidi.cpp)
 target_include_directories(rtmidi PUBLIC deps/rtmidi)
@@ -296,6 +300,7 @@ add_vivid_operator(string_select     operators/control/string_select/string_sele
 add_vivid_operator(basename          operators/control/basename/basename.cpp)
 add_vivid_operator(step_counter      operators/control/step_counter/step_counter.cpp)
 add_vivid_operator(phase_to_midi     operators/control/phase_to_midi/phase_to_midi.cpp)
+add_vivid_operator(path_animate      operators/control/path_animate/path_animate.cpp)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu
@@ -311,6 +316,11 @@ add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp     
 add_vivid_operator(metaball              operators/gpu/metaball/metaball.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 add_vivid_operator(text                  operators/gpu/text/text.cpp                               EXTRA_LIBS webgpu stb_truetype)
+add_vivid_operator(mesh_warp             operators/gpu/mesh_warp/mesh_warp.cpp                     EXTRA_LIBS webgpu)
+add_vivid_operator(lut_apply             operators/gpu/lut_apply/lut_apply.cpp                     EXTRA_LIBS webgpu)
+add_vivid_operator(scopes                operators/gpu/scopes/scopes.cpp                           EXTRA_LIBS webgpu)
+add_vivid_operator(svg_render             operators/gpu/svg_render/svg_render.cpp                   EXTRA_LIBS webgpu nanosvg)
+add_vivid_operator(rich_text              operators/gpu/rich_text/rich_text.cpp                     EXTRA_LIBS webgpu stb_truetype)
 # --- TextureLoader (static image → GPU texture, no video machinery) ---
 add_library(texture_loader MODULE
     operators/gpu/texture_loader/texture_loader.cpp
@@ -527,6 +537,28 @@ add_vivid_operator(audio_noise    operators/audio/noise/noise.cpp)
 add_vivid_operator(mixer          operators/audio/mixer/mixer.cpp)
 add_vivid_operator(compressor     operators/audio/compressor/compressor.cpp)
 add_vivid_operator(limiter        operators/audio/limiter/limiter.cpp)
+add_vivid_operator(chorus         operators/audio/chorus/chorus.cpp
+                   FACTORY_PRESETS operators/audio/chorus/factory_presets.json)
+add_vivid_operator(phaser         operators/audio/phaser/phaser.cpp
+                   FACTORY_PRESETS operators/audio/phaser/factory_presets.json)
+add_vivid_operator(flanger        operators/audio/flanger/flanger.cpp
+                   FACTORY_PRESETS operators/audio/flanger/factory_presets.json)
+add_vivid_operator(granular_synth operators/audio/granular_synth/granular_synth.cpp
+                   FACTORY_PRESETS operators/audio/granular_synth/factory_presets.json)
+add_vivid_operator(spectral_freeze operators/audio/spectral_freeze/spectral_freeze.cpp
+                    FACTORY_PRESETS operators/audio/spectral_freeze/factory_presets.json)
+add_vivid_operator(stereo_pan_width operators/audio/stereo_pan_width/stereo_pan_width.cpp
+                   FACTORY_PRESETS operators/audio/stereo_pan_width/factory_presets.json)
+add_vivid_operator(ping_pong_delay  operators/audio/ping_pong_delay/ping_pong_delay.cpp
+                   FACTORY_PRESETS operators/audio/ping_pong_delay/factory_presets.json)
+add_vivid_operator(fm_synth         operators/audio/fm_synth/fm_synth.cpp
+                   FACTORY_PRESETS  operators/audio/fm_synth/factory_presets.json)
+add_vivid_operator(ring_mod         operators/audio/ring_mod/ring_mod.cpp
+                   FACTORY_PRESETS  operators/audio/ring_mod/factory_presets.json)
+add_vivid_operator(vocoder          operators/audio/vocoder/vocoder.cpp
+                   FACTORY_PRESETS  operators/audio/vocoder/factory_presets.json)
+add_vivid_operator(parametric_eq    operators/audio/parametric_eq/parametric_eq.cpp
+                   FACTORY_PRESETS  operators/audio/parametric_eq/factory_presets.json)
 
 # --- MovieAudioOut (audio output from media stream) ---
 if(APPLE)
@@ -1310,6 +1342,46 @@ add_dependencies(test_mixed_runtime_stability gpu_fill_op)
 add_test(NAME test_mixed_runtime_stability COMMAND test_mixed_runtime_stability ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Modulation operator tests (Flanger, Chorus, Phaser)
+add_executable(test_modulation_ops
+    tests/test_modulation_ops.cpp
+    src/runtime/operator_loader.cpp
+)
+target_include_directories(test_modulation_ops PRIVATE src)
+target_link_libraries(test_modulation_ops PRIVATE vivid_operator_api webgpu yyjson)
+add_dependencies(test_modulation_ops flanger chorus phaser)
+add_test(NAME test_modulation_ops COMMAND test_modulation_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Granular & spectral operator tests (GranularSynth, SpectralFreeze)
+add_executable(test_granular_spectral_ops
+    tests/test_granular_spectral_ops.cpp
+    src/runtime/operator_loader.cpp
+)
+target_include_directories(test_granular_spectral_ops PRIVATE src)
+target_link_libraries(test_granular_spectral_ops PRIVATE vivid_operator_api webgpu yyjson)
+add_dependencies(test_granular_spectral_ops granular_synth spectral_freeze)
+add_test(NAME test_granular_spectral_ops COMMAND test_granular_spectral_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Spatial operator tests (StereoPanWidth, PingPongDelay)
+add_executable(test_spatial_ops
+    tests/test_spatial_ops.cpp
+    src/runtime/operator_loader.cpp
+)
+target_include_directories(test_spatial_ops PRIVATE src)
+target_link_libraries(test_spatial_ops PRIVATE vivid_operator_api webgpu yyjson)
+add_dependencies(test_spatial_ops stereo_pan_width ping_pong_delay)
+add_test(NAME test_spatial_ops COMMAND test_spatial_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Synthesis & transformation operator tests (FmSynth, RingMod, Vocoder, ParametricEQ)
+add_executable(test_synth_transform_ops
+    tests/test_synth_transform_ops.cpp
+    src/runtime/operator_loader.cpp
+)
+target_include_directories(test_synth_transform_ops PRIVATE src)
+target_link_libraries(test_synth_transform_ops PRIVATE vivid_operator_api webgpu yyjson)
+add_dependencies(test_synth_transform_ops fm_synth ring_mod vocoder parametric_eq)
+add_test(NAME test_synth_transform_ops COMMAND test_synth_transform_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # GPU operator plugin for testing (solid color fill)
 add_vivid_operator(gpu_fill_op      tests/operators/gpu_fill_op.cpp      EXTRA_LIBS webgpu)
 
@@ -1395,6 +1467,7 @@ configure_file(tests/graphs/test_spread_broadcast.json ${CMAKE_BINARY_DIR}/test_
 configure_file(tests/graphs/test_cross_domain_spread.json ${CMAKE_BINARY_DIR}/test_cross_domain_spread.json COPYONLY)
 configure_file(tests/graphs/test_audio_spread_wire.json ${CMAKE_BINARY_DIR}/test_audio_spread_wire.json COPYONLY)
 configure_file(tests/graphs/test_mixed_runtime_stability.json ${CMAKE_BINARY_DIR}/test_mixed_runtime_stability.json COPYONLY)
+configure_file(tests/graphs/test_package_stress.json ${CMAKE_BINARY_DIR}/test_package_stress.json COPYONLY)
 
 add_custom_target(phase6_stress
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -R
@@ -1893,6 +1966,11 @@ add_executable(test_operator_info_cache
 target_include_directories(test_operator_info_cache PRIVATE src tests)
 target_link_libraries(test_operator_info_cache PRIVATE vivid_operator_api webgpu yyjson)
 add_test(NAME test_operator_info_cache COMMAND test_operator_info_cache WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Path Animate unit tests (pure math, no runtime dependencies)
+add_executable(test_path_animate tests/test_path_animate.cpp)
+target_include_directories(test_path_animate PRIVATE src)
+add_test(NAME test_path_animate COMMAND test_path_animate WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Semantic tag vocabulary validation (script-only, no binary)
 add_test(NAME test_semantic_tags
