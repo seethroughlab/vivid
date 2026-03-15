@@ -254,6 +254,56 @@ Validation:
 
 - `ctest --test-dir build --output-on-failure -R "test_package_test_runner|test_package_contract_ecosystem|test_control_server"`
 
+### Phase 3: Tighten UI / Runtime Contract Surfaces
+
+Status:
+
+- complete
+
+Current focus:
+
+1. Formalize `GraphSnapshot` as an explicit UI read-model contract.
+2. Keep package-browser data snapshot-backed and refresh-safe.
+3. Add regression coverage for popup text-edit field behavior and broken-connection visibility.
+
+Hardening landed so far:
+
+- Added `GraphSnapshot` helper semantics for broken connections:
+  - `ConnectionSnapshot::is_broken()`
+  - `GraphSnapshot::find_connection(...)`
+  - `GraphSnapshot::broken_connection_count()`
+  - `GraphSnapshot::has_broken_connections()`
+- Added explicit package-browser refresh helper in `NodeGraphUI`
+- Fixed package-browser refresh to update on metadata changes even when entry count is unchanged
+- Added UI regressions for:
+  - package-browser same-count metadata refresh
+  - graph-meta editor text-edit field focus and save behavior
+  - broken-connection contract helpers
+- Added result-aware UI command helpers for critical multi-step mutations:
+  - `try_connect(...)`
+  - `try_disconnect(...)`
+- Hardened chooser insert-on-wire splicing so the original wire remains intact
+  unless both replacement connects succeed and the original disconnect succeeds
+- Added chooser splice rollback regression coverage for failed replacement wiring
+
+Files changed during this phase so far:
+
+- `src/ui/graph_snapshot.h`
+- `src/ui/node_graph.h`
+- `src/ui/node_graph.cpp`
+- `src/ui/node_graph_overlays.cpp`
+- `src/ui/node_graph_overlay_draw.cpp`
+- `src/ui/ui_command_sink.h`
+- `src/runtime/runtime_command_sink.h`
+- `tests/test_ui_overlay_interactions.cpp`
+- `tests/test_graph_snapshot_contract.cpp`
+- `docs/internal/GRAPH-SNAPSHOT-CONTRACT.md`
+- `CMakeLists.txt`
+
+Validation:
+
+- `ctest --test-dir build --output-on-failure -R "test_graph_snapshot_contract|test_ui_overlay_interactions|test_control_server"`
+
 ### Control Server And Package Workflow Audit
 
 Reviewed:
