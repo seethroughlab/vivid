@@ -525,6 +525,8 @@ add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp
 add_vivid_operator(filter         operators/audio/filter/filter.cpp)
 add_vivid_operator(audio_noise    operators/audio/noise/noise.cpp)
 add_vivid_operator(mixer          operators/audio/mixer/mixer.cpp)
+add_vivid_operator(compressor     operators/audio/compressor/compressor.cpp)
+add_vivid_operator(limiter        operators/audio/limiter/limiter.cpp)
 
 # --- MovieAudioOut (audio output from media stream) ---
 if(APPLE)
