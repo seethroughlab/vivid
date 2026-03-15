@@ -10,6 +10,7 @@ These are the docs that should be treated as current operating references:
 - `CODE-AUDIT-TRACKER.md` — running audit and hardening record
 - `HARDENING-ROADMAP.md` — prioritized follow-up hardening roadmap
 - `POST-AUDIT-CLOSEOUT.md` — short closeout summary of the audit and hardening pass
+- `PRD-CONFORMANCE-SCORECARD.md` — current evaluation of how well Vivid matches the PRD
 - `CUSTOM-PORT-AUTHORING.md` — current custom-port authoring contract
 - `GRAPH-SNAPSHOT-CONTRACT.md` — current UI/runtime graph snapshot contract
 - `PACKAGE-TEST-CONTRACT.md` — current package test contract
