@@ -192,6 +192,68 @@ Validation:
 
 - `ctest --test-dir build --output-on-failure -R "test_runtime_api"`
 
+## Hardening Follow-Through
+
+### Phase 1: Lock In The New Runtime Guarantees
+
+Status:
+
+- complete
+
+Covered by:
+
+- `test_runtime_api`
+- `test_hot_reload`
+- `test_audio_hot_reload`
+- `test_export_pipeline`
+- `test_capture_coordinator`
+- `test_app_update_manager`
+- `test_control_server`
+
+### Phase 2: Finish Package-Test Contract Hardening
+
+Status:
+
+- complete
+
+What landed:
+
+1. The manifest package-test contract is now explicit and intentionally hybrid:
+   - `tests.graphs` for graph smoke / graph contract coverage
+   - manifest `tests.cpp` for lightweight self-contained single-source entrypoints
+   - package-local CMake / CTest remains canonical for heavier package-specific C++ tests
+2. `PackageTestRunner` now performs deterministic early validation and stable classification for:
+   - `missing_test_file`
+   - `unsupported_test_extension`
+   - `path_outside_package`
+   - `duplicate_test_entry`
+   - `unsupported_cpp_test_shape`
+   - graph skip/failure codes such as `graph_needs_gpu` and `graph_needs_audio`
+3. `PackageCompiler::compile_test(...)` now normalizes paths, rejects escaping paths, and preserves deterministic compile failure reporting.
+4. `test_package` control-server output now exposes:
+   - per-test `code`
+   - package-level `notes`
+5. Core now has a representative ecosystem-level package-contract test:
+   - `test_package_contract_ecosystem`
+
+Files changed during this phase:
+
+- `src/runtime/package_test_runner.h`
+- `src/runtime/package_test_runner.cpp`
+- `src/runtime/package_compiler.h`
+- `src/runtime/package_compiler.cpp`
+- `src/runtime/control_server.cpp`
+- `tests/test_package_test_runner.cpp`
+- `tests/test_package_contract_ecosystem.cpp`
+- `docs/runtime/package_system.md`
+- `docs/runtime/control_server.md`
+- `docs/internal/PACKAGE-TEST-CONTRACT.md`
+- `CMakeLists.txt`
+
+Validation:
+
+- `ctest --test-dir build --output-on-failure -R "test_package_test_runner|test_package_contract_ecosystem|test_control_server"`
+
 ### Control Server And Package Workflow Audit
 
 Reviewed:
@@ -325,6 +387,138 @@ Validation:
 
 - `cmake --build build --target vivid test_capture_coordinator test_app_update_manager test_settings test_control_server`
 - `ctest --test-dir build --output-on-failure -R "test_capture_coordinator|test_app_update_manager|test_settings|test_runtime_api|test_ui_overlay_interactions|test_hot_reload"`
+
+## Post-Audit Hardening Progress
+
+### Phase 1 Workstream A: Runtime Rollback And Refresh Regressions
+
+Status:
+
+- in progress
+
+What landed:
+
+- Confirmed the previously added rollback regressions in:
+  - `tests/test_runtime_api.cpp`
+  - `tests/test_control_server.cpp`
+- Added explicit audio-side hot-reload safety coverage so rejected reloads are protected across domains, not just in the scheduler:
+  - `tests/operators/audio_reload_v1.cpp`
+  - `tests/operators/audio_reload_v2.cpp`
+  - `tests/operators/audio_reload_incompatible.cpp`
+  - `tests/test_audio_hot_reload.cpp`
+- Added build wiring for the new audio hot-reload regression:
+  - `CMakeLists.txt`
+
+What this covers now:
+
+1. compatible audio hot reload preserves existing params and applies new defaults
+2. descriptor-incompatible audio reload is rejected safely
+3. after rejected reload, the previous audio operator remains active and usable
+
+Validation:
+
+- `cmake --build build --target test_audio_hot_reload`
+- `ctest --test-dir build --output-on-failure -R "test_audio_hot_reload|test_hot_reload|test_runtime_api"`
+
+Open note:
+
+- `ctest --test-dir build --output-on-failure -R "test_control_server"` still hits the older scaffold fallback failure that was already noted during the audit. That issue is unrelated to the new rollback/hot-reload regression and belongs under Phase 1 Workstream D (harness and invocation cleanup), not as a blocker on the new audio hot-reload coverage itself.
+
+### Phase 1 Workstream B: Export Path Regression Coverage
+
+Status:
+
+- completed
+
+What landed:
+
+- Added a minimal custom-port export fixture operator:
+  - `tests/operators/export_custom_port_op.cpp`
+- Added direct export-pipeline regression coverage:
+  - `tests/test_export_pipeline.cpp`
+- Added build wiring for the new export regression:
+  - `CMakeLists.txt`
+
+What this covers now:
+
+1. `resolve_operators()` records required custom port types for exported operators
+2. `generate_static_registry()` emits `vivid_register_port_type(...)` entries for required custom types
+3. generated static registry preserves the stable custom type id string
+4. `copy_output()` copies the standalone binary to the selected destination path
+5. WebGPU sidecar dylibs are copied next to that selected destination path
+
+Validation:
+
+- `cmake --build build --target test_export_pipeline`
+- `ctest --test-dir build --output-on-failure -R "test_export_pipeline|test_audio_hot_reload|test_hot_reload|test_runtime_api"`
+
+### Phase 1 Workstream C: Capture And Update Lifecycle Regressions
+
+Status:
+
+- completed
+
+What landed:
+
+- Added a small exporter injection seam for capture tests:
+  - `src/runtime/av_exporter.h`
+  - `src/runtime/capture_coordinator.h`
+  - `src/runtime/capture_coordinator.cpp`
+- Added focused capture failure coverage:
+  - `tests/test_capture_coordinator.cpp`
+- Added app-update worker lifetime/concurrency test hooks:
+  - `src/runtime/app_update_manager.h`
+  - `src/runtime/app_update_manager.cpp`
+- Extended app-update regression coverage:
+  - `tests/test_app_update_manager.cpp`
+
+What this covers now:
+
+1. stop-recording returns `ok:false` when exporter finalization fails
+2. stop-recording failure responses still include the recording path
+3. repeated `refresh()` calls do not create overlapping app-update fetch workers
+4. destroying `AppUpdateManager` after `refresh()` leaves no active worker behind
+
+Validation:
+
+- `cmake --build build --target test_capture_coordinator test_app_update_manager`
+- `ctest --test-dir build --output-on-failure -R "test_capture_coordinator|test_app_update_manager|test_export_pipeline|test_audio_hot_reload|test_runtime_api"`
+
+### Phase 1 Workstream D: Harness And Invocation Cleanup
+
+Status:
+
+- completed
+
+What landed:
+
+- fixed the `test_control_server` CTest invocation to pass the expected build directory argument:
+  - `CMakeLists.txt`
+- isolated `test_control_server` from unrelated `build/packages/*` fixture directories by moving the test into its own temporary cwd before package discovery:
+  - `tests/test_control_server.cpp`
+
+What this covers now:
+
+1. `test_control_server` resolves its fixture/build paths consistently under both direct invocation and `ctest`
+2. package auto-destination tests no longer pick up unrelated local fixture packages from the shared build directory
+
+Validation:
+
+- `ctest --test-dir build --output-on-failure -R "test_control_server"`
+
+### Phase 1 Hardening Status
+
+Status:
+
+- completed
+
+Phase 1 gate validation:
+
+- `ctest --test-dir build --output-on-failure -R "test_runtime_api|test_control_server|test_hot_reload|test_audio_hot_reload|test_export_pipeline|test_capture_coordinator|test_app_update_manager"`
+
+Outcome:
+
+- all targeted Phase 1 hardening regressions now pass under normal `ctest` execution
 
 Fixes landed:
 
