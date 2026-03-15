@@ -44,7 +44,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
     }
 
     tr.draw_rect(0, 0, wf, hf,
-                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
 
     int visible_count = layout.visible_count;
     float ph = layout.ph;
@@ -52,6 +52,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
     float px = layout.px;
     float py = layout.py;
 
+    draw_shadow(tr, px, py, pw, ph, style_.corner_radius);
     tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
                          style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     tr.draw_rect(px, py, pw, 2,
@@ -279,7 +280,7 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
     float wf = layout.wf;
     float hf = layout.hf;
     tr.draw_rect(0, 0, wf, hf,
-                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
 
     int visible_count = layout.visible_count;
     float ph = layout.ph;
@@ -287,6 +288,7 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
     float px = layout.px;
     float py = layout.py;
 
+    draw_shadow(tr, px, py, pw, ph, style_.corner_radius);
     tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
                          style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     tr.draw_rect(px, py, pw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
@@ -461,7 +463,8 @@ void NodeGraphUI::draw_graph_meta_editor(Renderer2D& tr) {
     float px = layout.px;
     float py = layout.py;
 
-    tr.draw_rect(0, 0, wf, hf, style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+    tr.draw_rect(0, 0, wf, hf, style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
+    draw_shadow(tr, px, py, pw, ph, style_.corner_radius);
     tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
                          style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     tr.draw_rect(px, py, pw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
@@ -546,7 +549,8 @@ void NodeGraphUI::draw_about(Renderer2D& tr) {
     float pw = layout.pw, ph = layout.ph;
     float px = layout.px, py = layout.py;
 
-    tr.draw_rect(0, 0, wf, hf, style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+    tr.draw_rect(0, 0, wf, hf, style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
+    draw_shadow(tr, px, py, pw, ph, style_.corner_radius);
     tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
                          style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     tr.draw_rect(px, py, pw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);

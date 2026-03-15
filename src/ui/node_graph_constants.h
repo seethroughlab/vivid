@@ -324,6 +324,7 @@ static constexpr float kPanLerpSpeed        = 12.0f;
 static constexpr float kPopupFadeSpeed      = 10.0f;   // opacity 0→1 in ~0.1s
 static constexpr float kHoverFadeSpeed      = 14.0f;   // hover alpha transition
 static constexpr float kSelectionGlowSpeed  =  4.0f;   // selection glow pulse
+static constexpr float kNodeHeightLerpSpeed = 12.0f;   // node height shrink/grow
 
 // Hover feedback
 static constexpr float kNodeHoverBrighten    = 0.06f;  // additive RGB brightening on hovered node

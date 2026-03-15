@@ -62,10 +62,22 @@ inline void draw_rect_border(Renderer2D& tr, float x, float y, float w, float h,
     tr.draw_rect(x + w - 1, y, 1, h, br, bg, bb, ba);   // right
 }
 
-// --- Popup background (rect + accent bar at top) ---
+// --- Lo-fi drop shadow (offset dark rects, no blur) ---
+
+inline void draw_shadow(Renderer2D& tr, float x, float y, float w, float h,
+                        float corner_radius = 0.0f) {
+    // 2-layer stepped shadow: further offset = more diffuse
+    tr.draw_rounded_rect(x + 3.0f, y + 3.0f, w, h, corner_radius,
+                         0.0f, 0.0f, 0.0f, 0.20f);
+    tr.draw_rounded_rect(x + 6.0f, y + 6.0f, w, h, corner_radius,
+                         0.0f, 0.0f, 0.0f, 0.10f);
+}
+
+// --- Popup background (shadow + rect + accent bar at top) ---
 
 inline void draw_popup_bg(Renderer2D& tr, const UIStyle& style,
                           float x, float y, float w, float h) {
+    draw_shadow(tr, x, y, w, h);
     tr.draw_rect(x, y, w, h,
                  style.popup_bg[0], style.popup_bg[1], style.popup_bg[2], style.popup_bg[3]);
     tr.draw_rect(x, y, w, 1,

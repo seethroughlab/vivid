@@ -101,19 +101,21 @@ static bool port_has_connection(const std::vector<ConnectionSnapshot>& conns,
     return false;
 }
 
-uint32_t NodeGraphUI::count_visible_input_ports(const NodeSnapshot& ns) const {
+uint32_t NodeGraphUI::count_visible_input_ports(const NodeSnapshot& ns, bool show_params) const {
     // Signal input ports are always visible
     uint32_t count = static_cast<uint32_t>(ns.input_port_indices.size());
-    // Param inputs only visible if connected
-    for (const auto& [name, idx] : ns.param_indices) {
-        if (ns.input_port_indices.count(name)) continue; // already counted as signal port
-        if (port_has_connection(snap_.connections, ns.node_id, name, false))
-            count++;
+    // Param inputs only visible if connected (and param wires shown)
+    if (show_params) {
+        for (const auto& [name, idx] : ns.param_indices) {
+            if (ns.input_port_indices.count(name)) continue; // already counted as signal port
+            if (port_has_connection(snap_.connections, ns.node_id, name, false))
+                count++;
+        }
     }
     return count;
 }
 
-uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns) const {
+uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns, bool show_params) const {
     bool few_outputs = ns.output_port_indices.size() <= 3;
     bool expanded    = outputs_expanded_.count(ns.node_id) > 0;
     bool show_all    = few_outputs || expanded;
@@ -126,11 +128,13 @@ uint32_t NodeGraphUI::count_visible_output_ports(const NodeSnapshot& ns) const {
     // Affordance row always reserves one row for nodes with >3 outputs
     if (!few_outputs)
         count++;
-    // Param sources — visible only if connected as source
-    for (const auto& [name, idx] : ns.param_indices) {
-        if (ns.output_port_indices.count(name)) continue;
-        if (port_has_connection(snap_.connections, ns.node_id, name, true))
-            count++;
+    // Param sources — visible only if connected as source (and param wires shown)
+    if (show_params) {
+        for (const auto& [name, idx] : ns.param_indices) {
+            if (ns.output_port_indices.count(name)) continue;
+            if (port_has_connection(snap_.connections, ns.node_id, name, true))
+                count++;
+        }
     }
     // Analysis ports (rms/peak/waveform) — visible only if connected
     for (const auto& [name, idx] : ns.analysis_output_port_indices) {
@@ -165,17 +169,19 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
         rect.inputs.push_back({sorted_inputs[pi].second, rect.x, py, false});
     }
 
-    // Parameter inputs — only visible if connected
-    std::vector<std::pair<uint32_t, std::string>> sorted_params;
-    for (const auto& [name, idx] : ns.param_indices)
-        if (!ns.input_port_indices.count(name)) sorted_params.push_back({idx, name});
-    std::sort(sorted_params.begin(), sorted_params.end());
-    for (const auto& [idx, name] : sorted_params) {
-        if (!port_has_connection(snap_.connections, ns.node_id, name, false))
-            continue;
-        float py = port_start_y + pi * kLineH + kLineH * 0.5f;
-        rect.inputs.push_back({name, rect.x, py, true});
-        ++pi;
+    // Parameter inputs — only visible if connected and param wires shown
+    if (show_param_wires_) {
+        std::vector<std::pair<uint32_t, std::string>> sorted_params;
+        for (const auto& [name, idx] : ns.param_indices)
+            if (!ns.input_port_indices.count(name)) sorted_params.push_back({idx, name});
+        std::sort(sorted_params.begin(), sorted_params.end());
+        for (const auto& [idx, name] : sorted_params) {
+            if (!port_has_connection(snap_.connections, ns.node_id, name, false))
+                continue;
+            float py = port_start_y + pi * kLineH + kLineH * 0.5f;
+            rect.inputs.push_back({name, rect.x, py, true});
+            ++pi;
+        }
     }
 
     // Output ports — show all when few or expanded, otherwise only connected
@@ -201,17 +207,19 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
         ++oi; // reserve the row so param sources appear below
     }
 
-    // Param sources — visible only if connected as a source
-    std::vector<std::pair<uint32_t, std::string>> src_params;
-    for (const auto& [name, idx] : ns.param_indices)
-        if (!ns.output_port_indices.count(name)) src_params.push_back({idx, name});
-    std::sort(src_params.begin(), src_params.end());
-    for (const auto& [idx, name] : src_params) {
-        if (!port_has_connection(snap_.connections, ns.node_id, name, true))
-            continue;
-        float py = port_start_y + oi * kLineH + kLineH * 0.5f;
-        rect.outputs.push_back({name, rect.x + rect.w, py, true});
-        ++oi;
+    // Param sources — visible only if connected as a source (and param wires shown)
+    if (show_param_wires_) {
+        std::vector<std::pair<uint32_t, std::string>> src_params;
+        for (const auto& [name, idx] : ns.param_indices)
+            if (!ns.output_port_indices.count(name)) src_params.push_back({idx, name});
+        std::sort(src_params.begin(), src_params.end());
+        for (const auto& [idx, name] : src_params) {
+            if (!port_has_connection(snap_.connections, ns.node_id, name, true))
+                continue;
+            float py = port_start_y + oi * kLineH + kLineH * 0.5f;
+            rect.outputs.push_back({name, rect.x + rect.w, py, true});
+            ++oi;
+        }
     }
 
     // Analysis ports (rms/peak/waveform) — visible only if connected
@@ -334,8 +342,8 @@ void NodeGraphUI::layout_nodes(bool force) {
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
             float body_h = domain_body_height(ns.domain, has_ct);
 
-            uint32_t n_inputs = count_visible_input_ports(ns);
-            uint32_t n_outputs = count_visible_output_ports(ns);
+            uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
+            uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
             uint32_t port_rows = std::max(n_inputs, n_outputs);
             float h = kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
             heights[r] = h;
@@ -359,6 +367,7 @@ void NodeGraphUI::layout_nodes(bool force) {
             rect.y = cur_y;
             rect.w = kNodeW;
             rect.h = heights[r];
+            rect.target_h = heights[r];
 
             // Override with saved layout position if present (unless forced)
             if (ns.has_layout && !force) {
@@ -412,8 +421,8 @@ void NodeGraphUI::place_new_nodes() {
         const auto& ns = nodes[ni];
         bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
         float body_h = domain_body_height(ns.domain, has_ct);
-        uint32_t n_inputs = count_visible_input_ports(ns);
-        uint32_t n_outputs = count_visible_output_ports(ns);
+        uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
+        uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
         uint32_t port_rows = std::max(n_inputs, n_outputs);
         return kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
     };
@@ -429,6 +438,7 @@ void NodeGraphUI::place_new_nodes() {
         rect.domain = ns.domain;
         rect.w = kNodeW;
         rect.h = h;
+        rect.target_h = h;
 
         // If the node already has a saved layout position (e.g. from chooser), use it
         if (ns.has_layout) {
@@ -1073,6 +1083,15 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
         selection_glow_ = 0.0f;
         selection_glow_rising_ = true;
     }
+
+    // Animate node heights toward their targets
+    for (auto& rect : node_rects_) {
+        if (rect.target_h > 0.0f && std::fabs(rect.h - rect.target_h) > 0.5f) {
+            rect.h = lerp_toward(rect.h, rect.target_h, kNodeHeightLerpSpeed, dt);
+        } else if (rect.target_h > 0.0f) {
+            rect.h = rect.target_h;
+        }
+    }
 }
 
 void NodeGraphUI::check_relayout() {
@@ -1101,9 +1120,9 @@ void NodeGraphUI::check_relayout() {
         }
     } else if (cur_nodes < last_node_count_) {
         prune_node_rects();
-    } else if (cur_conns != last_conn_count_) {
-        // Connection changed — recompute ports and heights for all nodes
-        // (connected params/outputs may have appeared or disappeared)
+    } else if (cur_conns != last_conn_count_ || show_param_wires_ != last_show_param_wires_) {
+        // Connection changed or param wire visibility toggled —
+        // recompute ports and heights for all nodes
         std::unordered_map<std::string, size_t> rect_by_id;
         for (size_t i = 0; i < node_rects_.size(); ++i)
             rect_by_id[node_rects_[i].node_id] = i;
@@ -1116,14 +1135,15 @@ void NodeGraphUI::check_relayout() {
             rect.type_name = ns.type_name;
             bool has_ct = custom_thumb_nodes_.count(ns.node_id) > 0;
             float body_h = domain_body_height(ns.domain, has_ct);
-            uint32_t n_inputs = count_visible_input_ports(ns);
-            uint32_t n_outputs = count_visible_output_ports(ns);
+            uint32_t n_inputs = count_visible_input_ports(ns, show_param_wires_);
+            uint32_t n_outputs = count_visible_output_ports(ns, show_param_wires_);
             uint32_t port_rows = std::max(n_inputs, n_outputs);
-            rect.h = kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
+            rect.target_h = kAccentBarH + body_h + kNodePadY + kLineH * 2 + port_rows * kLineH + kNodePadY;
             recompute_ports(rect, ns);
         }
         last_node_count_ = cur_nodes;
         last_conn_count_ = cur_conns;
+        last_show_param_wires_ = show_param_wires_;
     }
 }
 

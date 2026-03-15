@@ -99,6 +99,7 @@ struct NodeRect {
     std::string type_name;
     VividDomain domain = VIVID_DOMAIN_CONTROL;
     float x = 0, y = 0, w = 0, h = 0;
+    float target_h = 0;  // animated height target (h lerps toward this)
     struct PortPos { std::string name; float x, y; bool is_param = false; };
     std::vector<PortPos> inputs, outputs;
     // Multi-output expand affordance
@@ -255,8 +256,8 @@ private:
     void recompute_ports(NodeRect& rect, const NodeSnapshot& ns);
 
     // Count visible input/output ports for a node (signal ports + connected params/outputs)
-    uint32_t count_visible_input_ports(const NodeSnapshot& ns) const;
-    uint32_t count_visible_output_ports(const NodeSnapshot& ns) const;
+    uint32_t count_visible_input_ports(const NodeSnapshot& ns, bool show_params = true) const;
+    uint32_t count_visible_output_ports(const NodeSnapshot& ns, bool show_params = true) const;
 
     // --- Drawing (node_graph_draw.cpp) ---
     void draw_graph(Renderer2D& tr);
@@ -881,6 +882,7 @@ private:
 
     // Param wire visibility toggle (P key)
     bool show_param_wires_ = false;
+    bool last_show_param_wires_ = false;  // detect toggle for relayout
 
     // UI visibility toggle (tilde key)
     bool visible_ = true;

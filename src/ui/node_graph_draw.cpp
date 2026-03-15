@@ -543,7 +543,8 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
         if (r.node_id == c.from_node) { dcol = domain_color(r.domain); break; }
     }
 
-    // Background
+    // Shadow + Background
+    draw_shadow(tr, px, py, popup_w, popup_h);
     tr.draw_rect(px, py, popup_w, popup_h, style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], kTooltipBgAlpha);
     // Accent line at top
     if (c.invalid) {
@@ -605,7 +606,8 @@ void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
     if (px + popup_w > graph_right()) px = mouse_.x - popup_w - kTooltipClampMargin;
     if (py + popup_h > static_cast<float>(win_h_)) py = mouse_.y - popup_h - kTooltipClampMargin;
 
-    // Background
+    // Shadow + Background
+    draw_shadow(tr, px, py, popup_w, popup_h);
     tr.draw_rect(px, py, popup_w, popup_h,
                  style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], kTooltipBgAlpha);
     // Red accent line at top
@@ -2900,14 +2902,15 @@ void NodeGraphUI::draw_save_confirm(Renderer2D& tr) {
 
     // Scrim over entire window
     tr.draw_rect(0, 0, static_cast<float>(win_w_), static_cast<float>(win_h_),
-                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
 
     // Dialog panel (centered)
     float dw = 360.0f, dh = 90.0f;
     float dx = (static_cast<float>(win_w_) - dw) * 0.5f;
     float dy = (static_cast<float>(win_h_) - dh) * 0.5f;
 
-    // Background
+    // Shadow + Background
+    draw_shadow(tr, dx, dy, dw, dh, style_.corner_radius);
     tr.draw_rounded_rect(dx, dy, dw, dh, style_.corner_radius,
                          style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     // Accent bar at top
@@ -2967,14 +2970,15 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
 
     // Scrim over entire window
     tr.draw_rect(0, 0, static_cast<float>(win_w_), static_cast<float>(win_h_),
-                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
 
     // Dialog panel (centered)
     float dw = 360.0f, dh = 108.0f;
     float dx = (static_cast<float>(win_w_) - dw) * 0.5f;
     float dy = (static_cast<float>(win_h_) - dh) * 0.5f;
 
-    // Background
+    // Shadow + Background
+    draw_shadow(tr, dx, dy, dw, dh, style_.corner_radius);
     tr.draw_rounded_rect(dx, dy, dw, dh, style_.corner_radius, style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     // Accent bar at top
     tr.draw_rect(dx, dy, dw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
@@ -3068,9 +3072,10 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
 
     // Scrim
     tr.draw_rect(0, 0, wf, hf,
-                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
 
-    // Panel
+    // Shadow + Panel
+    draw_shadow(tr, layout.px, layout.py, layout.pw, layout.ph, style_.corner_radius);
     tr.draw_rounded_rect(layout.px, layout.py, layout.pw, layout.ph, style_.corner_radius,
                          style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     tr.draw_rect(layout.px, layout.py, layout.pw, 2,
@@ -3365,12 +3370,13 @@ void NodeGraphUI::draw_preset_name_popup(Renderer2D& tr) {
 
     // Scrim
     tr.draw_rect(0, 0, wf, hf,
-                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
 
     float pw = 280.0f, ph = 70.0f;
     float px = (wf - pw) * 0.5f;
     float py = (hf - ph) * 0.5f;
 
+    draw_shadow(tr, px, py, pw, ph, style_.corner_radius);
     tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
                          style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     tr.draw_rect(px, py, pw, 2,
@@ -3416,7 +3422,7 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
 
     // Scrim
     tr.draw_rect(0, 0, wf, hf,
-                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
 
     // Compute panel height dynamically
     int editor_count = static_cast<int>(prefs_editor_names_.size());
@@ -3444,7 +3450,8 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
     float px = (wf - pw) * 0.5f;
     float py = (hf - ph) * 0.5f;
 
-    // Panel background
+    // Shadow + Panel background
+    draw_shadow(tr, px, py, pw, ph, style_.corner_radius);
     tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
                          style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     // Accent bar
@@ -3586,7 +3593,7 @@ void NodeGraphUI::draw_mcp_setup_dialog(Renderer2D& tr) {
 
     // Scrim
     tr.draw_rect(0, 0, wf, hf,
-                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3]);
+                 style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);
 
     constexpr float kDlgW      = 480.0f;
     constexpr float kDlgPadX   = 20.0f;
@@ -3606,6 +3613,7 @@ void NodeGraphUI::draw_mcp_setup_dialog(Renderer2D& tr) {
     float dlg_x = (wf - kDlgW) * 0.5f;
     float dlg_y = (hf - dlg_h) * 0.5f;
 
+    draw_shadow(tr, dlg_x, dlg_y, kDlgW, dlg_h, style_.corner_radius);
     tr.draw_rounded_rect(dlg_x, dlg_y, kDlgW, dlg_h, style_.corner_radius,
                          style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     tr.draw_rect(dlg_x, dlg_y, kDlgW, 2,
