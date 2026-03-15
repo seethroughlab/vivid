@@ -17,6 +17,7 @@
 #include "runtime/operator_destination_policy.h"
 #include "operator_api/types.h"
 #include "operator_api/type_id.h"
+#include "operator_api/port_type_registry.h"
 #include "yyjson.h"
 #include <ixwebsocket/IXHttpServer.h>
 #include <cassert>
@@ -89,6 +90,23 @@ static const char* transport_str(VividPortTransport t) {
         case VIVID_PORT_TRANSPORT_CUSTOM_REF:    return "custom_ref";
         default: return "unknown";
     }
+}
+
+static void add_port_registry_metadata(yyjson_mut_doc* doc,
+                                       yyjson_mut_val* port_obj,
+                                       const VividPortDescriptor& pd) {
+    if (!vivid_is_custom_port_type(pd.type)) return;
+
+    VividPortTypeInfo info{};
+    const bool registered = vivid_lookup_port_type(pd.type, &info) == 1;
+    yyjson_mut_obj_add_bool(doc, port_obj, "custom_type_registered", registered);
+    if (!registered) return;
+
+    yyjson_mut_obj_add_bool(doc, port_obj, "audio_safe", info.audio_safe != 0);
+    if (info.package_name && *info.package_name)
+        yyjson_mut_obj_add_strcpy(doc, port_obj, "registry_package_name", info.package_name);
+    if (info.description && *info.description)
+        yyjson_mut_obj_add_strcpy(doc, port_obj, "registry_description", info.description);
 }
 
 static const char* update_class_str(PackageUpdateClass c) {
@@ -1496,6 +1514,7 @@ static std::string handle_list_types(OperatorRegistry& registry) {
                 yyjson_mut_obj_add_strcpy(doc, p, "stable_type_id", pd.stable_type_id);
             if (pd.payload_size > 0)
                 yyjson_mut_obj_add_uint(doc, p, "payload_size", pd.payload_size);
+            add_port_registry_metadata(doc, p, pd);
             if (pd.direction == VIVID_PORT_INPUT)
                 yyjson_mut_arr_add_val(inputs_arr, p);
             else
@@ -1508,6 +1527,85 @@ static std::string handle_list_types(OperatorRegistry& registry) {
     }
 
     yyjson_mut_obj_add_val(doc, result, "types", types_arr);
+    return json_ok(doc, result);
+}
+
+static std::string handle_get_registry_diagnostics(OperatorRegistry& registry) {
+    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
+    yyjson_mut_val* result = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_int(doc, result, "schema_version", 1);
+
+    uint32_t type_count = 0;
+    vivid_list_port_types(nullptr, &type_count);
+    std::vector<VividPortTypeInfo> port_types(type_count);
+    if (type_count > 0)
+        vivid_list_port_types(port_types.data(), &type_count);
+    port_types.resize(type_count);
+    std::sort(port_types.begin(), port_types.end(),
+              [](const VividPortTypeInfo& a, const VividPortTypeInfo& b) {
+                  const char* a_id = a.stable_type_id ? a.stable_type_id : "";
+                  const char* b_id = b.stable_type_id ? b.stable_type_id : "";
+                  int cmp = std::strcmp(a_id, b_id);
+                  if (cmp != 0) return cmp < 0;
+                  return a.type_id < b.type_id;
+              });
+
+    yyjson_mut_val* types_arr = yyjson_mut_arr(doc);
+    for (const auto& info : port_types) {
+        yyjson_mut_val* item = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_uint(doc, item, "type_id", info.type_id);
+        yyjson_mut_obj_add_str(doc, item, "transport", transport_str(info.transport));
+        yyjson_mut_obj_add_uint(doc, item, "payload_size", info.payload_size);
+        yyjson_mut_obj_add_strcpy(doc, item, "type_name", info.type_name);
+        yyjson_mut_obj_add_strcpy(doc, item, "stable_type_id", info.stable_type_id);
+        yyjson_mut_obj_add_bool(doc, item, "audio_safe", info.audio_safe != 0);
+        if (info.package_name && *info.package_name)
+            yyjson_mut_obj_add_strcpy(doc, item, "package_name", info.package_name);
+        if (info.description && *info.description)
+            yyjson_mut_obj_add_strcpy(doc, item, "description", info.description);
+        yyjson_mut_arr_add_val(types_arr, item);
+    }
+    yyjson_mut_obj_add_val(doc, result, "custom_port_types", types_arr);
+
+    auto mismatches = registry.abi_mismatch_diagnostics();
+    std::sort(mismatches.begin(), mismatches.end(),
+              [](const AbiMismatchDiagnostic& a, const AbiMismatchDiagnostic& b) {
+                  if (a.package_name != b.package_name) return a.package_name < b.package_name;
+                  if (a.plugin_name != b.plugin_name) return a.plugin_name < b.plugin_name;
+                  return a.plugin_path < b.plugin_path;
+              });
+    yyjson_mut_val* mismatches_arr = yyjson_mut_arr(doc);
+    for (const auto& diag : mismatches) {
+        yyjson_mut_val* item = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, item, "plugin_path", diag.plugin_path.c_str());
+        yyjson_mut_obj_add_strcpy(doc, item, "plugin_name", diag.plugin_name.c_str());
+        if (!diag.package_name.empty())
+            yyjson_mut_obj_add_strcpy(doc, item, "package_name", diag.package_name.c_str());
+        yyjson_mut_obj_add_uint(doc, item, "plugin_abi", diag.plugin_abi);
+        yyjson_mut_obj_add_uint(doc, item, "runtime_abi", diag.runtime_abi);
+        yyjson_mut_arr_add_val(mismatches_arr, item);
+    }
+    yyjson_mut_obj_add_val(doc, result, "abi_mismatch_diagnostics", mismatches_arr);
+
+    auto loader_failures = registry.loader_failure_diagnostics();
+    std::sort(loader_failures.begin(), loader_failures.end(),
+              [](const LoaderFailureDiagnostic& a, const LoaderFailureDiagnostic& b) {
+                  if (a.code != b.code) return a.code < b.code;
+                  return a.plugin_path < b.plugin_path;
+              });
+    yyjson_mut_val* failures_arr = yyjson_mut_arr(doc);
+    for (const auto& diag : loader_failures) {
+        yyjson_mut_val* item = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, item, "plugin_path", diag.plugin_path.c_str());
+        yyjson_mut_obj_add_strcpy(doc, item, "plugin_name", diag.plugin_name.c_str());
+        if (!diag.package_name.empty())
+            yyjson_mut_obj_add_strcpy(doc, item, "package_name", diag.package_name.c_str());
+        yyjson_mut_obj_add_strcpy(doc, item, "code", diag.code.c_str());
+        yyjson_mut_obj_add_strcpy(doc, item, "message", diag.message.c_str());
+        yyjson_mut_arr_add_val(failures_arr, item);
+    }
+    yyjson_mut_obj_add_val(doc, result, "loader_failure_diagnostics", failures_arr);
+
     return json_ok(doc, result);
 }
 
@@ -1528,6 +1626,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, scheduler);
     if (method == "run_diagnostics") return handle_run_diagnostics(graph, scheduler, registry);
     if (method == "list_types")    return handle_list_types(registry);
+    if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
 
     // Parse body JSON (may be empty for some commands)
