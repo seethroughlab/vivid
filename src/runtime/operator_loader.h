@@ -11,6 +11,11 @@ struct DataDrivenFilterConfig;
 
 class OperatorLoader {
 public:
+    struct LastError {
+        std::string code;
+        std::string message;
+    };
+
     OperatorLoader() = default;
     ~OperatorLoader();
 
@@ -47,8 +52,12 @@ public:
 
     bool is_loaded() const { return handle_ != nullptr || desc_fn_ != nullptr || dd_config_ != nullptr; }
     bool is_data_driven() const { return dd_config_ != nullptr; }
+    const LastError& last_error() const { return last_error_; }
 
 private:
+    void set_last_error(std::string code, std::string message);
+    void clear_last_error();
+
     void*                  handle_             = nullptr;
     VividDescriptorFn      desc_fn_            = nullptr;
     VividCreateFn          create_fn_          = nullptr;
@@ -75,6 +84,7 @@ private:
     std::vector<std::string> dd_port_names_;
     std::vector<VividPortDescriptor> dd_ports_;
     VividOperatorDescriptor dd_desc_{};
+    LastError last_error_{};
 };
 
 } // namespace vivid

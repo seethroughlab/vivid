@@ -54,6 +54,16 @@ bool hot_reload_descriptor_compatible(const VividOperatorDescriptor* old_desc,
 }
 } // namespace
 
+void OperatorLoader::set_last_error(std::string code, std::string message) {
+    last_error_.code = std::move(code);
+    last_error_.message = std::move(message);
+}
+
+void OperatorLoader::clear_last_error() {
+    last_error_.code.clear();
+    last_error_.message.clear();
+}
+
 OperatorLoader::~OperatorLoader() {
     unload();
 }
@@ -144,23 +154,32 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
 }
 
 bool OperatorLoader::load(const char* path) {
+    clear_last_error();
+
     // Attempt to open the new dylib before touching current state (atomic swap).
     void* new_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!new_handle) {
         const char* dl_err = dlerror();
-        std::fprintf(stderr, "[vivid] dlopen failed: %s\n", dl_err ? dl_err : "unknown error");
+        std::string msg = dl_err ? dl_err : "unknown error";
+        set_last_error("dlopen_failed", msg);
+        std::fprintf(stderr, "[vivid] dlopen failed: %s\n", msg.c_str());
         return false;  // Old dylib still live
     }
 
     // Resolve required symbols from new handle
     auto abi_fn = reinterpret_cast<VividAbiVersionFn>(dlsym(new_handle, "vivid_abi_version"));
     if (!abi_fn) {
+        set_last_error("missing_abi_symbol",
+                       "missing symbol: vivid_abi_version");
         std::fprintf(stderr, "[vivid] Missing symbol: vivid_abi_version (stale/incompatible plugin)\n");
         dlclose(new_handle);
         return false;
     }
     const uint32_t abi = abi_fn();
     if (abi != VIVID_OPERATOR_ABI_VERSION) {
+        set_last_error("abi_mismatch",
+                       "plugin ABI " + std::to_string(abi) +
+                       " does not match runtime ABI " + std::to_string(VIVID_OPERATOR_ABI_VERSION));
         std::fprintf(stderr, "[vivid] Incompatible plugin ABI: got %u, expected %u\n",
                      abi, VIVID_OPERATOR_ABI_VERSION);
         dlclose(new_handle);
@@ -185,6 +204,8 @@ bool OperatorLoader::load(const char* path) {
 
     if (!new_desc_fn || !new_create_fn || !new_destroy_fn ||
         (!new_process_fn && !new_process_audio_fn && !new_process_gpu_fn)) {
+        set_last_error("missing_required_symbols",
+                       "plugin is missing one or more required Vivid entry points");
         dlclose(new_handle);
         return false;  // Old dylib still live
     }
@@ -192,16 +213,22 @@ bool OperatorLoader::load(const char* path) {
     const VividOperatorDescriptor* current_desc = descriptor();
     const VividOperatorDescriptor* new_desc = new_desc_fn();
     if (!new_desc) {
+        set_last_error("null_descriptor",
+                       std::string("vivid_descriptor returned null for ") + path);
         std::fprintf(stderr, "[vivid] vivid_descriptor returned null for %s\n", path);
         dlclose(new_handle);
         return false;
     }
     if (!new_desc->name || !*new_desc->name) {
+        set_last_error("invalid_descriptor_name",
+                       std::string("vivid_descriptor returned missing/empty name for ") + path);
         std::fprintf(stderr, "[vivid] vivid_descriptor returned missing/empty name for %s\n", path);
         dlclose(new_handle);
         return false;
     }
     if (!hot_reload_descriptor_compatible(current_desc, new_desc)) {
+        set_last_error("hot_reload_incompatible_descriptor",
+                       "descriptor shape changed incompatibly; rebuild graph/runtime instead");
         std::fprintf(stderr,
                      "[vivid] Hot-reload rejected: descriptor shape changed incompatibly; "
                      "rebuild graph/runtime instead.\n");
@@ -217,6 +244,10 @@ bool OperatorLoader::load(const char* path) {
         const VividPortTypeInfo* infos = describe_types(&count);
         for (uint32_t i = 0; i < count; ++i) {
             if (!vivid_register_port_type(&infos[i])) {
+                std::string stable_id =
+                    (infos && infos[i].stable_type_id) ? infos[i].stable_type_id : "<unknown>";
+                set_last_error("custom_type_registration_failed",
+                               "failed to register custom port type '" + stable_id + "'");
                 std::fprintf(stderr, "[vivid] Failed to register custom port type for plugin: %s\n", path);
                 dlclose(new_handle);
                 return false;
@@ -259,6 +290,7 @@ bool OperatorLoader::load(const char* path) {
     draw_insp_fn_   = reinterpret_cast<VividDrawInspectorFn>(dlsym(new_handle, "vivid_draw_inspector"));
     insp_mode_fn_   = reinterpret_cast<VividInspectorModeFn>(dlsym(new_handle, "vivid_inspector_mode"));
 
+    clear_last_error();
     return true;
 }
 
