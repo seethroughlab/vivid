@@ -877,6 +877,7 @@ add_vivid_operator(test_op_null_desc tests/operators/test_op_null_desc.cpp)
 add_vivid_operator(audio_reload_v1 tests/operators/audio_reload_v1.cpp)
 add_vivid_operator(audio_reload_v2 tests/operators/audio_reload_v2.cpp)
 add_vivid_operator(audio_reload_incompatible tests/operators/audio_reload_incompatible.cpp)
+add_vivid_operator(export_custom_port_op tests/operators/export_custom_port_op.cpp)
 add_vivid_operator(test_state_carry_op tests/operators/test_state_carry_op.cpp)
 add_vivid_operator(string_source_op tests/operators/string_source_op.cpp)
 add_vivid_operator(string_sink_op tests/operators/string_sink_op.cpp)
@@ -914,6 +915,21 @@ target_include_directories(test_audio_hot_reload PRIVATE src)
 target_link_libraries(test_audio_hot_reload PRIVATE vivid_operator_api yyjson miniaudio webgpu)
 add_dependencies(test_audio_hot_reload audio_reload_v1 audio_reload_v2 audio_reload_incompatible)
 add_test(NAME test_audio_hot_reload COMMAND test_audio_hot_reload WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_export_pipeline
+    tests/test_export_pipeline.cpp
+    src/export/export_pipeline.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/tool_discovery.cpp
+)
+target_include_directories(test_export_pipeline PRIVATE src)
+target_link_libraries(test_export_pipeline PRIVATE vivid_operator_api yyjson webgpu)
+add_dependencies(test_export_pipeline export_custom_port_op)
+add_test(NAME test_export_pipeline COMMAND test_export_pipeline WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # RuntimeAPI integration test (no GPU, no audio, no window)
 add_executable(test_runtime_api
