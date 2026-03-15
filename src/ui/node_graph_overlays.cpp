@@ -5,6 +5,45 @@
 
 namespace vivid::ui {
 
+namespace {
+bool same_package_browser_entries(const std::vector<PackageBrowserEntry>& a,
+                                  const std::vector<PackageBrowserEntry>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        const auto& lhs = a[i];
+        const auto& rhs = b[i];
+        if (lhs.name != rhs.name ||
+            lhs.description != rhs.description ||
+            lhs.version != rhs.version ||
+            lhs.author != rhs.author ||
+            lhs.category != rhs.category ||
+            lhs.tags != rhs.tags ||
+            lhs.installed != rhs.installed ||
+            lhs.linked != rhs.linked) {
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace
+
+void NodeGraphUI::refresh_package_browser_snapshot_if_ready() {
+    if (!pkg_browser_open_) return;
+    if (!pkg_browser_callbacks_.list_entries || !pkg_browser_callbacks_.fetch_state) return;
+
+    auto state = pkg_browser_callbacks_.fetch_state();
+    if (state != PackageBrowserFetchState::Ready &&
+        state != PackageBrowserFetchState::Error) {
+        return;
+    }
+
+    auto fresh = pkg_browser_callbacks_.list_entries();
+    if (!same_package_browser_entries(fresh, pkg_browser_all_)) {
+        pkg_browser_all_ = std::move(fresh);
+        rebuild_pkg_browser_items();
+    }
+}
+
 void NodeGraphUI::toggle_package_browser() {
     pkg_browser_open_ = !pkg_browser_open_;
     if (pkg_browser_open_) example_browser_open_ = false;
@@ -215,4 +254,3 @@ void NodeGraphUI::rebuild_example_items() {
 }
 
 } // namespace vivid::ui
-

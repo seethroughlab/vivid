@@ -245,6 +245,10 @@ public:
                                           std::function<void()> later_cb);
     void open_about() { about_open_ = true; about_scroll_ = 0.0f; }
 
+    // Read-only UI snapshot accessors used by tests and seam verification.
+    const std::vector<PackageBrowserEntry>& package_browser_entries() const { return pkg_browser_entries_; }
+    const GraphMetaEditData& graph_meta_data() const { return graph_meta_data_; }
+
     // Set the directory containing the MCP Python scripts (used in setup dialog)
     void set_mcp_dir(const std::string& dir) { mcp_dir_ = dir; }
 
@@ -254,6 +258,7 @@ private:
     void place_new_nodes();
     void prune_node_rects();
     void recompute_ports(NodeRect& rect, const NodeSnapshot& ns);
+    void refresh_package_browser_snapshot_if_ready();
 
     // Count visible input/output ports for a node (signal ports + connected params/outputs)
     uint32_t count_visible_input_ports(const NodeSnapshot& ns, bool show_params = true) const;

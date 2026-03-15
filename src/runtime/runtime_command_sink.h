@@ -54,9 +54,31 @@ public:
         auto r = api_.connect(from, to);
         if (r.ok) capture_undo_snapshot();
     }
+    bool try_connect(const std::string& from, const std::string& to,
+                     std::string* error = nullptr) override {
+        auto r = api_.connect(from, to);
+        if (!r.ok) {
+            if (error) *error = r.message;
+            return false;
+        }
+        capture_undo_snapshot();
+        if (error) error->clear();
+        return true;
+    }
     void disconnect(const std::string& from, const std::string& to) override {
         auto r = api_.disconnect(from, to);
         if (r.ok) capture_undo_snapshot();
+    }
+    bool try_disconnect(const std::string& from, const std::string& to,
+                        std::string* error = nullptr) override {
+        auto r = api_.disconnect(from, to);
+        if (!r.ok) {
+            if (error) *error = r.message;
+            return false;
+        }
+        capture_undo_snapshot();
+        if (error) error->clear();
+        return true;
     }
     void set_connection_remap(const std::string& from, const std::string& to,
                               float from_min, float from_max,

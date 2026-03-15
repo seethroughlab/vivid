@@ -1,7 +1,10 @@
+#define private public
 #include "ui/node_graph.h"
+#undef private
 #include "ui/graph_snapshot.h"
 #include "ui/overlay_layouts.h"
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <cstdio>
 
 using namespace vivid::ui;
@@ -18,11 +21,46 @@ static void check(bool cond, const char* msg) {
 }
 
 struct DummySink : UICommandSink {
+    std::vector<std::pair<std::string, std::string>> connect_calls;
+    std::vector<std::pair<std::string, std::string>> disconnect_calls;
+    std::vector<std::pair<std::string, std::string>> rollback_disconnect_calls;
+    std::vector<std::pair<std::string, std::string>> add_calls;
+    std::string fail_connect_from;
+    std::string fail_connect_to;
+
     void set_param(const std::string&, const std::string&, float) override {}
-    void add_node(const std::string&, const std::string&) override {}
+    void add_node(const std::string& type, const std::string& id) override {
+        add_calls.push_back({type, id});
+    }
+    bool try_add_node(const std::string& type, const std::string& id,
+                      std::string* error = nullptr) override {
+        add_calls.push_back({type, id});
+        if (error) error->clear();
+        return true;
+    }
     void remove_node(const std::string&) override {}
-    void connect(const std::string&, const std::string&) override {}
-    void disconnect(const std::string&, const std::string&) override {}
+    void connect(const std::string& from, const std::string& to) override {
+        connect_calls.push_back({from, to});
+    }
+    bool try_connect(const std::string& from, const std::string& to,
+                     std::string* error = nullptr) override {
+        connect_calls.push_back({from, to});
+        if (from == fail_connect_from && to == fail_connect_to) {
+            if (error) *error = "simulated connect failure";
+            return false;
+        }
+        if (error) error->clear();
+        return true;
+    }
+    void disconnect(const std::string& from, const std::string& to) override {
+        disconnect_calls.push_back({from, to});
+    }
+    bool try_disconnect(const std::string& from, const std::string& to,
+                        std::string* error = nullptr) override {
+        disconnect_calls.push_back({from, to});
+        if (error) error->clear();
+        return true;
+    }
     void set_connection_remap(const std::string&, const std::string&, float, float, float, float, bool) override {}
     void set_node_layout(const std::string&, float, float) override {}
     void set_resolution(const std::string&, uint32_t, uint32_t) override {}
@@ -116,6 +154,41 @@ int main() {
         check(install_calls == 1, "Package install click invokes install callback");
     }
 
+    // Package browser: ready-state refresh updates cached entries even when count stays the same
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        int refresh_calls = 0;
+        int list_calls = 0;
+        PackageBrowserFetchState state = PackageBrowserFetchState::Idle;
+        std::vector<PackageBrowserEntry> entries{
+            PackageBrowserEntry{"vivid-demo", "demo v1", "0.1.0", "dev", "", {}, false}
+        };
+        ui.set_package_browser_callbacks(PackageBrowserCallbacks{
+            [&]() { ++refresh_calls; },
+            [&]() {
+                ++list_calls;
+                return entries;
+            },
+            [&]() { return state; },
+            []() { return std::string(); },
+            []() { return PackageBrowserUpdateSummary{}; },
+            [](const std::string&, std::string&) { return true; },
+            [](const std::string&, std::string&) { return true; },
+        });
+        ui.toggle_package_browser();
+        check(refresh_calls == 1, "Package browser requests refresh when opened from idle");
+        check(ui.package_browser_entries().size() == 1, "Package browser caches initial entry snapshot");
+        check(ui.package_browser_entries()[0].description == "demo v1", "initial package browser description cached");
+
+        entries[0].description = "demo v2";
+        state = PackageBrowserFetchState::Ready;
+        ui.update(snap);
+        check(list_calls >= 2, "Package browser re-polls list when ready");
+        check(ui.package_browser_entries()[0].description == "demo v2",
+              "Package browser refreshes cached metadata even when entry count is unchanged");
+    }
+
     // Meta editor: save click dispatch
     {
         DummySink sink;
@@ -136,6 +209,100 @@ int main() {
         ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
         ui.update(snap);
         check(save_calls == 1, "Meta editor Save click invokes save callback");
+    }
+
+    // Graph meta editor: text-edit focus and save use the active field state
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        GraphMetaEditData saved;
+        int save_calls = 0;
+        ui.set_graph_meta_save_callback([&](const GraphMetaEditData& data, std::string&) {
+            ++save_calls;
+            saved = data;
+            return true;
+        });
+        GraphMetaEditData meta;
+        meta.path = "/tmp/demo.json";
+        meta.id = "demo";
+        meta.title = "Title";
+        ui.open_graph_meta_editor(meta);
+
+        ui.on_char('X');                 // id field
+        check(ui.graph_meta_data().id == "demoX", "Meta editor updates live id field on char input");
+        ui.on_key(GLFW_KEY_TAB, GLFW_PRESS, 0);   // title field
+        ui.on_char('Y');
+        check(ui.graph_meta_data().title == "TitleY", "Meta editor updates live title field after tab focus");
+
+        OverlayPanelLayout meta_layout = compute_graph_meta_editor_layout(1280, 720);
+        float by = meta_layout.py + meta_layout.ph - 42.0f;
+        float save_x = meta_layout.px + meta_layout.pw - 16.0f - 80.0f - 8.0f - 90.0f;
+        ui.on_mouse_move(save_x + 10.0f, by + 10.0f);
+        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+        ui.update(snap);
+
+        check(save_calls == 1, "Meta editor keyboard edits are saved");
+        check(saved.id == "demoX", "Meta editor appends characters to the active id field");
+        check(saved.title == "TitleY", "Meta editor tab focus advances text editing to the next field");
+    }
+
+    // Chooser insert-on-wire: preserve the original wire if the splice cannot complete
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+
+        auto make_op = [](std::initializer_list<PortInfo> ports) {
+            auto op = std::make_shared<OperatorInfo>();
+            op->ports.assign(ports.begin(), ports.end());
+            return op;
+        };
+
+        GraphSnapshot chooser_snap;
+        chooser_snap.operator_catalog["insert"] = make_op({
+            PortInfo{"in", VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
+            PortInfo{"out", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT},
+        });
+
+        NodeSnapshot src;
+        src.node_id = "src";
+        src.op_info = make_op({PortInfo{"out", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT}});
+        chooser_snap.node_index[src.node_id] = chooser_snap.nodes.size();
+        chooser_snap.nodes.push_back(src);
+
+        NodeSnapshot dst;
+        dst.node_id = "dst";
+        dst.op_info = make_op({PortInfo{"in", VIVID_PORT_FLOAT, VIVID_PORT_INPUT}});
+        chooser_snap.node_index[dst.node_id] = chooser_snap.nodes.size();
+        chooser_snap.nodes.push_back(dst);
+
+        ConnectionSnapshot conn;
+        conn.from_node = "src";
+        conn.from_port = "out";
+        conn.to_node = "dst";
+        conn.to_port = "in";
+        chooser_snap.connections.push_back(conn);
+
+        ui.update(chooser_snap);
+        ui.chooser_insert_wire_ = true;
+        ui.chooser_insert_conn_ = conn;
+        ui.insert_wire_source_type_ = VIVID_PORT_FLOAT;
+        ui.insert_wire_dest_type_ = VIVID_PORT_FLOAT;
+        ui.chooser_cursor_gx_ = 10.0f;
+        ui.chooser_cursor_gy_ = 20.0f;
+
+        sink.fail_connect_from = "insert1/out";
+        sink.fail_connect_to = "dst/in";
+
+        ui.confirm_chooser_selection("insert");
+
+        check(sink.add_calls.size() == 1, "Chooser insert adds the replacement node");
+        check(sink.connect_calls.size() == 2, "Chooser insert attempts both replacement connects before touching the original wire");
+        check(sink.disconnect_calls.size() == 1, "Chooser insert rolls back the partial replacement connection");
+        check(sink.disconnect_calls[0].first == "src/out" && sink.disconnect_calls[0].second == "insert1/in",
+              "Chooser insert rollback only removes the partial new connection");
+        check(std::none_of(sink.disconnect_calls.begin(), sink.disconnect_calls.end(),
+                           [](const auto& call) { return call.first == "src/out" && call.second == "dst/in"; }),
+              "Chooser insert preserves the original wire when the replacement splice fails");
     }
 
     std::fprintf(stderr, "%s (%d failures)\n",

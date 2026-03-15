@@ -836,6 +836,16 @@ void NodeGraphUI::rebuild_chooser_items() {
 // Shared chooser confirm — creates node and optionally splices into wire
 // -----------------------------------------------------------------------
 void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
+    auto rollback_connection = [&](const std::string& from,
+                                   const std::string& to,
+                                   const char* context) {
+        std::string rollback_error;
+        if (!commands_.try_disconnect(from, to, &rollback_error)) {
+            std::fprintf(stderr, "[vivid] UI rollback failed while %s (%s -> %s): %s\n",
+                         context, from.c_str(), to.c_str(), rollback_error.c_str());
+        }
+    };
+
     // Handle "New Operator" sentinel
     if (type == "+ New Operator...") {
         create_popup_open_ = true;
@@ -882,21 +892,45 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
             std::string dest_tag =
                 semantic_tag_for_snapshot_endpoint(snap_, chooser_insert_conn_.to_node,
                                                    chooser_insert_conn_.to_port);
-            // Remove original wire
-            commands_.disconnect(
-                chooser_insert_conn_.from_node + "/" + chooser_insert_conn_.from_port,
-                chooser_insert_conn_.to_node   + "/" + chooser_insert_conn_.to_port);
-            // Find compatible ports on the new node
+            std::string src_addr =
+                chooser_insert_conn_.from_node + "/" + chooser_insert_conn_.from_port;
+            std::string dst_addr =
+                chooser_insert_conn_.to_node + "/" + chooser_insert_conn_.to_port;
             std::string in_port  = find_compatible_port(op, insert_wire_source_type_, VIVID_PORT_INPUT, source_tag);
             std::string out_port = find_compatible_port(op, insert_wire_dest_type_,   VIVID_PORT_OUTPUT, dest_tag);
-            // Wire source → new node
-            if (!in_port.empty())
-                commands_.connect(chooser_insert_conn_.from_node + "/" + chooser_insert_conn_.from_port,
-                                  id + "/" + in_port);
-            // Wire new node → dest
-            if (!out_port.empty())
-                commands_.connect(id + "/" + out_port,
-                                  chooser_insert_conn_.to_node + "/" + chooser_insert_conn_.to_port);
+            if (!in_port.empty() && !out_port.empty()) {
+                std::string new_in_addr = id + "/" + in_port;
+                std::string new_out_addr = id + "/" + out_port;
+                std::string command_error;
+
+                if (commands_.try_connect(src_addr, new_in_addr, &command_error)) {
+                    if (commands_.try_connect(new_out_addr, dst_addr, &command_error)) {
+                        if (!commands_.try_disconnect(src_addr, dst_addr, &command_error)) {
+                            rollback_connection(new_out_addr, dst_addr,
+                                                "restoring chooser splice after source disconnect failure");
+                            rollback_connection(src_addr, new_in_addr,
+                                                "restoring chooser splice after source disconnect failure");
+                            std::fprintf(stderr,
+                                         "[vivid] UI chooser splice kept original wire (%s -> %s): %s\n",
+                                         src_addr.c_str(), dst_addr.c_str(), command_error.c_str());
+                        }
+                    } else {
+                        rollback_connection(src_addr, new_in_addr,
+                                            "restoring chooser splice after destination connect failure");
+                        std::fprintf(stderr,
+                                     "[vivid] UI chooser splice skipped (%s -> %s): %s\n",
+                                     src_addr.c_str(), dst_addr.c_str(), command_error.c_str());
+                    }
+                } else {
+                    std::fprintf(stderr,
+                                 "[vivid] UI chooser splice skipped (%s -> %s): %s\n",
+                                 src_addr.c_str(), dst_addr.c_str(), command_error.c_str());
+                }
+            } else {
+                std::fprintf(stderr,
+                             "[vivid] UI chooser splice kept original wire (%s -> %s): no compatible ports on %s\n",
+                             src_addr.c_str(), dst_addr.c_str(), type.c_str());
+            }
         }
     }
 
@@ -910,14 +944,14 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
                 // Dragged from an output — find compatible input on the new node
                 std::string in_port = find_compatible_port(op, wire_connect_type_, VIVID_PORT_INPUT, sem_tag);
                 if (!in_port.empty())
-                    commands_.connect(wire_connect_node_id_ + "/" + wire_connect_port_,
-                                      id + "/" + in_port);
+                    commands_.try_connect(wire_connect_node_id_ + "/" + wire_connect_port_,
+                                          id + "/" + in_port);
             } else {
                 // Dragged from an input — find compatible output on the new node
                 std::string out_port = find_compatible_port(op, wire_connect_type_, VIVID_PORT_OUTPUT, sem_tag);
                 if (!out_port.empty())
-                    commands_.connect(id + "/" + out_port,
-                                      wire_connect_node_id_ + "/" + wire_connect_port_);
+                    commands_.try_connect(id + "/" + out_port,
+                                          wire_connect_node_id_ + "/" + wire_connect_port_);
             }
         }
     }
@@ -934,6 +968,7 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
 void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     snap_ = snapshot;
     snap_valid_ = true;
+    refresh_package_browser_snapshot_if_ready();
 
     // Deselect a param wire that becomes hidden
     if (!show_param_wires_ && selected_wire_idx_ >= 0 &&

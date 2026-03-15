@@ -1166,6 +1166,12 @@ add_executable(test_overlay_layouts
 target_include_directories(test_overlay_layouts PRIVATE src tests)
 add_test(NAME test_overlay_layouts COMMAND test_overlay_layouts WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_graph_snapshot_contract
+    tests/test_graph_snapshot_contract.cpp
+)
+target_include_directories(test_graph_snapshot_contract PRIVATE src tests)
+add_test(NAME test_graph_snapshot_contract COMMAND test_graph_snapshot_contract WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # UI overlay interaction regressions (example/package/meta overlay callbacks)
 add_executable(test_ui_overlay_interactions
     tests/test_ui_overlay_interactions.cpp

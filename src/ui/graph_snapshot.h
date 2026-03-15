@@ -140,6 +140,10 @@ struct ConnectionSnapshot {
         return from_min != 0.0f || from_max != 1.0f ||
                to_min  != 0.0f || to_max  != 1.0f || clamp;
     }
+
+    // A connection remains part of graph truth even when an endpoint no longer resolves.
+    // The UI should surface these as broken connections rather than dropping them.
+    bool is_broken() const { return invalid; }
 };
 
 // MIDI mapping snapshot for UI
@@ -230,6 +234,31 @@ struct GraphSnapshot {
         auto it = midi_mapping_index.find(node_id + "\t" + param);
         if (it == midi_mapping_index.end()) return nullptr;
         return &midi_mappings[it->second];
+    }
+
+    const ConnectionSnapshot* find_connection(const std::string& from_node,
+                                              const std::string& from_port,
+                                              const std::string& to_node,
+                                              const std::string& to_port) const {
+        for (const auto& conn : connections) {
+            if (conn.from_node == from_node && conn.from_port == from_port &&
+                conn.to_node == to_node && conn.to_port == to_port) {
+                return &conn;
+            }
+        }
+        return nullptr;
+    }
+
+    size_t broken_connection_count() const {
+        size_t count = 0;
+        for (const auto& conn : connections) {
+            if (conn.is_broken()) ++count;
+        }
+        return count;
+    }
+
+    bool has_broken_connections() const {
+        return broken_connection_count() > 0;
     }
 };
 

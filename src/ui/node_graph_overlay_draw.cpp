@@ -32,16 +32,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
     float wf = layout.wf;
     float hf = layout.hf;
 
-    if (pkg_browser_callbacks_.list_entries && pkg_browser_callbacks_.fetch_state) {
-        auto state = pkg_browser_callbacks_.fetch_state();
-        if (state == PackageBrowserFetchState::Ready || state == PackageBrowserFetchState::Error) {
-            auto fresh = pkg_browser_callbacks_.list_entries();
-            if (fresh.size() != pkg_browser_all_.size()) {
-                pkg_browser_all_ = std::move(fresh);
-                rebuild_pkg_browser_items();
-            }
-        }
-    }
+    refresh_package_browser_snapshot_if_ready();
 
     tr.draw_rect(0, 0, wf, hf,
                  style_.scrim[0], style_.scrim[1], style_.scrim[2], style_.scrim[3] * popup_opacity_);

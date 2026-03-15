@@ -19,7 +19,19 @@ public:
     }
     virtual void remove_node(const std::string& id) = 0;
     virtual void connect(const std::string& from, const std::string& to) = 0;
+    virtual bool try_connect(const std::string& from, const std::string& to,
+                             std::string* error = nullptr) {
+        connect(from, to);
+        if (error) error->clear();
+        return true;
+    }
     virtual void disconnect(const std::string& from, const std::string& to) = 0;
+    virtual bool try_disconnect(const std::string& from, const std::string& to,
+                                std::string* error = nullptr) {
+        disconnect(from, to);
+        if (error) error->clear();
+        return true;
+    }
     virtual void set_connection_remap(const std::string& from, const std::string& to,
                                       float from_min, float from_max,
                                       float to_min, float to_max, bool clamp) = 0;
