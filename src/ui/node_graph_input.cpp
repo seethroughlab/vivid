@@ -154,22 +154,23 @@ void NodeGraphUI::on_scroll(float x_offset, float y_offset, int mods) {
     }
 
     if (mods & GLFW_MOD_SUPER) {
-        // Cmd+scroll → pan
+        // Cmd+scroll → pan (set targets for easing)
         constexpr float kPanSpeed = 3.0f;
-        float speed = kPanSpeed / zoom_;
-        pan_x_ += x_offset * speed;
-        pan_y_ += y_offset * speed;
+        float speed = kPanSpeed / zoom_target_;
+        pan_target_x_ += x_offset * speed;
+        pan_target_y_ += y_offset * speed;
     } else {
-        // Scroll → zoom (pivot around cursor)
+        // Scroll → zoom (pivot around cursor, set targets for easing)
         float factor = std::pow(1.12f, y_offset);
-        float new_zoom = zoom_ * factor;
+        float new_zoom = zoom_target_ * factor;
         new_zoom = std::max(0.4f, std::min(2.5f, new_zoom));
 
-        float gx = sx_to_gx(mouse_.x);
-        float gy = sy_to_gy(mouse_.y);
-        zoom_ = new_zoom;
-        pan_x_ = mouse_.x - gx * zoom_;
-        pan_y_ = mouse_.y - gy * zoom_;
+        // Compute pivot in graph space using current (not target) transform
+        float gx = (mouse_.x - pan_x_) / zoom_;
+        float gy = (mouse_.y - pan_y_) / zoom_;
+        zoom_target_ = new_zoom;
+        pan_target_x_ = mouse_.x - gx * new_zoom;
+        pan_target_y_ = mouse_.y - gy * new_zoom;
     }
 }
 
