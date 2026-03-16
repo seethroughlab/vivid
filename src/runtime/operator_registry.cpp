@@ -336,7 +336,7 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         auto abi_fn = reinterpret_cast<VividAbiVersionFn>(dlsym(handle, "vivid_abi_version"));
         if (!abi_fn) {
             std::fprintf(stderr, "[vivid] probe: skipping %s (missing vivid_abi_version; stale/incompatible plugin)\n", name);
-            deferred_probe_handles_.push_back(handle);
+            deferred_probe_handles_.push_back({path, handle});
             return;
         }
         const uint32_t abi = abi_fn();
@@ -351,18 +351,18 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
             diag.plugin_abi = abi;
             diag.runtime_abi = runtime_abi;
             abi_mismatch_by_path_[path] = std::move(diag);
-            deferred_probe_handles_.push_back(handle);
+            deferred_probe_handles_.push_back({path, handle});
             return;
         }
         if (!desc_fn) {
             std::fprintf(stderr, "[vivid] probe: missing vivid_descriptor in %s\n", name);
-            deferred_probe_handles_.push_back(handle);
+            deferred_probe_handles_.push_back({path, handle});
             return;
         }
 
         const VividOperatorDescriptor* desc = desc_fn();
         if (!desc || !desc->name) {
-            deferred_probe_handles_.push_back(handle);
+            deferred_probe_handles_.push_back({path, handle});
             return;
         }
         abi_mismatch_by_path_.erase(path);
@@ -371,7 +371,7 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
 
         // Skip if already fully loaded (e.g. registered as builtin)
         if (loaders_.count(type_name)) {
-            deferred_probe_handles_.push_back(handle);
+            deferred_probe_handles_.push_back({path, handle});
             return;
         }
 
@@ -379,7 +379,7 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         auto de_opt = deep_copy_descriptor(desc, path);
         // Keep probe handles alive for process lifetime. Some plugins execute
         // problematic teardown paths during dlclose() and can stall startup.
-        deferred_probe_handles_.push_back(handle);
+        deferred_probe_handles_.push_back({path, handle});
         if (!de_opt) return;  // malformed descriptor — skip operator
 
         auto [it, inserted] = deferred_.emplace(type_name, std::move(*de_opt));
@@ -725,9 +725,43 @@ void OperatorRegistry::register_package(const std::string& package_name,
 }
 
 void OperatorRegistry::unregister_package_operator(const std::string& type_name) {
-    loaders_.erase(type_name);
+    auto lit = loaders_.find(type_name);
+    if (lit != loaders_.end()) {
+        retired_package_loaders_.push_back(std::move(lit->second));
+        loaders_.erase(lit);
+    }
     deferred_.erase(type_name);
     type_to_package_.erase(type_name);
+}
+
+void OperatorRegistry::clear_retired_package_loaders() {
+    retired_package_loaders_.clear();
+}
+
+void OperatorRegistry::clear_deferred_probe_handles_for_dir(const std::string& directory) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path dir = fs::weakly_canonical(fs::path(directory), ec);
+    if (ec) dir = fs::path(directory).lexically_normal();
+    const std::string dir_s = dir.string();
+    const std::string dir_prefix = dir_s.empty() ? dir_s : (dir_s + "/");
+
+    auto it = deferred_probe_handles_.begin();
+    while (it != deferred_probe_handles_.end()) {
+        fs::path plugin = fs::weakly_canonical(fs::path(it->plugin_path), ec);
+        if (ec) {
+            ec.clear();
+            plugin = fs::path(it->plugin_path).lexically_normal();
+        }
+        const std::string plugin_s = plugin.string();
+        const bool in_dir = plugin_s == dir_s || plugin_s.rfind(dir_prefix, 0) == 0;
+        if (!in_dir) {
+            ++it;
+            continue;
+        }
+        if (it->handle) dlclose(it->handle);
+        it = deferred_probe_handles_.erase(it);
+    }
 }
 
 const std::string* OperatorRegistry::package_for_type(const std::string& type_name) const {

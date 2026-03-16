@@ -1,6 +1,7 @@
 #include "runtime/capture_coordinator.h"
 #include "runtime/av_exporter.h"
 #include "runtime/audio_engine.h"
+#include "runtime/runtime_api.h"
 #include "common/gpu_util.h"
 #include <webgpu/wgpu.h>
 #include <stb_image_write.h>
@@ -287,7 +288,43 @@ std::future<std::string> CaptureCoordinator::request_stop_recording() {
 
 bool CaptureCoordinator::has_pending() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return !pending_.empty();
+    return !pending_.empty() || !pending_analysis_requests_.empty() || !pending_compare_requests_.empty();
+}
+
+bool CaptureCoordinator::has_pending_analyses() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return !pending_analyses_.empty();
+}
+
+std::future<std::string> CaptureCoordinator::request_analyze(AnalysisMode mode, float window_seconds,
+                                                               bool include_payload, const std::string& node_id) {
+    AnalysisRequest req;
+    req.mode = mode;
+    req.window_seconds = window_seconds;
+    req.include_payload = include_payload;
+    req.node_id = node_id;
+    auto future = req.promise.get_future();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending_analysis_requests_.push_back(std::move(req));
+    }
+    return future;
+}
+
+std::future<std::string> CaptureCoordinator::request_compare(AnalysisMode mode, float window_a, float window_b,
+                                                               bool include_payload, const std::string& node_id) {
+    CompareRequest req;
+    req.mode = mode;
+    req.window_a = window_a;
+    req.window_b = window_b;
+    req.include_payload = include_payload;
+    req.node_id = node_id;
+    auto future = req.promise.get_future();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending_compare_requests_.push_back(std::move(req));
+    }
+    return future;
 }
 
 std::string CaptureCoordinator::handle_start_recording_tap() {
@@ -550,6 +587,335 @@ std::string CaptureCoordinator::capture_audio(float duration) {
     return R"({"ok":true,"sample_rate":)" + std::to_string(AudioEngine::kSampleRate) +
            R"(,"channels":2,"samples":)" + std::to_string(popped / 2) +
            R"(,"wav_base64":")" + b64 + "\"}";
+}
+
+// ---------------------------------------------------------------------------
+// Analysis JSON helpers
+// ---------------------------------------------------------------------------
+
+static const char* analysis_mode_str(AnalysisMode m) {
+    switch (m) {
+    case AnalysisMode::Frame: return "frame";
+    case AnalysisMode::Audio: return "audio";
+    case AnalysisMode::AV:    return "av";
+    }
+    return "unknown";
+}
+
+static const char* audio_level_label(float rms) {
+    if (rms > 0.3f) return "loud";
+    if (rms > 0.1f) return "moderate";
+    if (rms > 0.001f) return "quiet";
+    return "silent";
+}
+
+static const char* brightness_label(float b) {
+    if (b > 0.8f) return "very_bright";
+    if (b > 0.5f) return "bright";
+    if (b > 0.2f) return "moderate";
+    if (b > 0.05f) return "dark";
+    return "very_dark";
+}
+
+static const char* contrast_label(float c) {
+    if (c > 0.3f) return "high";
+    if (c > 0.1f) return "moderate";
+    return "low";
+}
+
+static const char* motion_label(float m) {
+    if (m > 0.3f) return "high";
+    if (m > 0.05f) return "moderate";
+    if (m > 0.01f) return "low";
+    return "none";
+}
+
+static std::string float_str(float v) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%.6f", v);
+    return buf;
+}
+
+std::string CaptureCoordinator::serialize_analysis(const AnalysisResult& result) {
+    std::string json = R"({"ok":true,"schema_version":1,"mode":")" +
+        std::string(analysis_mode_str(result.mode)) + "\"";
+
+    // Summary
+    json += R"(,"summary":{)";
+    bool first_summary = true;
+    if (result.mode == AnalysisMode::Audio || result.mode == AnalysisMode::AV) {
+        json += R"("audio_level":")" + std::string(audio_level_label(result.audio.rms)) + "\"";
+        first_summary = false;
+    }
+    if (result.mode == AnalysisMode::Frame || result.mode == AnalysisMode::AV) {
+        if (!first_summary) json += ",";
+        json += R"("brightness":")" + std::string(brightness_label(result.visual.mean_brightness)) + "\"";
+        json += R"(,"contrast":")" + std::string(contrast_label(result.visual.contrast)) + "\"";
+        json += R"(,"motion":")" + std::string(motion_label(result.visual.motion_magnitude)) + "\"";
+    }
+    json += "}";
+
+    // Metrics
+    json += R"(,"metrics":{)";
+    bool first_metric = true;
+    if (result.mode == AnalysisMode::Audio || result.mode == AnalysisMode::AV) {
+        json += R"("audio":{)";
+        json += R"("rms":)" + float_str(result.audio.rms);
+        json += R"(,"peak":)" + float_str(result.audio.peak);
+        json += R"(,"spectral_centroid_hz":)" + float_str(result.audio.spectral_centroid_hz);
+        json += R"(,"spectral_brightness":)" + float_str(result.audio.spectral_brightness);
+        json += R"(,"spectral_flatness":)" + float_str(result.audio.spectral_flatness);
+        json += "}";
+        first_metric = false;
+    }
+    if (result.mode == AnalysisMode::Frame || result.mode == AnalysisMode::AV) {
+        if (!first_metric) json += ",";
+        json += R"("visual":{)";
+        json += R"("mean_brightness":)" + float_str(result.visual.mean_brightness);
+        json += R"(,"contrast":)" + float_str(result.visual.contrast);
+        json += R"(,"motion_magnitude":)" + float_str(result.visual.motion_magnitude);
+        json += "}";
+    }
+    if (result.mode == AnalysisMode::AV) {
+        json += R"(,"av_reactivity":{)";
+        json += R"("energy_brightness_correlation":)" + float_str(result.av_reactivity.energy_brightness_correlation);
+        json += R"(,"window_seconds":)" + float_str(result.av_reactivity.window_seconds);
+        json += "}";
+    }
+    json += "}";
+
+    // Notes
+    json += R"(,"notes":[)";
+    for (size_t i = 0; i < result.notes.size(); ++i) {
+        if (i > 0) json += ",";
+        json += "\"" + json_escape(result.notes[i]) + "\"";
+    }
+    json += "]}";
+
+    return json;
+}
+
+std::string CaptureCoordinator::serialize_comparison(const ComparisonResult& result) {
+    std::string json = R"({"ok":true,"schema_version":1,"mode":")" +
+        std::string(analysis_mode_str(result.mode)) + "\"";
+
+    json += R"(,"deltas":[)";
+    for (size_t i = 0; i < result.deltas.size(); ++i) {
+        if (i > 0) json += ",";
+        json += R"({"label":")" + json_escape(result.deltas[i].label) + "\"";
+        json += R"(,"magnitude":)" + float_str(result.deltas[i].magnitude) + "}";
+    }
+    json += "]";
+
+    json += R"(,"notes":[)";
+    for (size_t i = 0; i < result.notes.size(); ++i) {
+        if (i > 0) json += ",";
+        json += "\"" + json_escape(result.notes[i]) + "\"";
+    }
+    json += "]}";
+
+    return json;
+}
+
+// ---------------------------------------------------------------------------
+// tick_analysis — called each frame to advance deferred analysis captures
+// ---------------------------------------------------------------------------
+
+void CaptureCoordinator::tick_analysis(WGPUDevice device, WGPUQueue queue,
+                                        WGPUTexture capture_tex,
+                                        uint32_t tex_width, uint32_t tex_height) {
+    // Move newly queued analysis requests into active pending list
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto& req : pending_analysis_requests_) {
+            PendingAnalysis pa;
+            pa.mode = req.mode;
+            pa.window_seconds = req.window_seconds;
+            pa.include_payload = req.include_payload;
+            pa.node_id = req.node_id;
+            pa.promise = std::move(req.promise);
+            pending_analyses_.push_back(std::move(pa));
+        }
+        pending_analysis_requests_.clear();
+    }
+
+    // Process compare requests immediately (they capture two snapshots right now)
+    {
+        std::vector<CompareRequest> compares;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            compares.swap(pending_compare_requests_);
+        }
+        for (auto& creq : compares) {
+            try {
+                // Capture snapshot A
+                AnalysisResult result_a;
+                result_a.mode = creq.mode;
+
+                if (creq.mode == AnalysisMode::Audio || creq.mode == AnalysisMode::AV) {
+                    if (audio_) {
+                        uint64_t sample_count = static_cast<uint64_t>(creq.window_a * AudioEngine::kSampleRate) * 2;
+                        uint64_t avail = audio_->available_recorded_samples();
+                        if (sample_count > avail) sample_count = avail;
+                        if (sample_count > 0) {
+                            std::vector<float> samples(sample_count);
+                            uint64_t popped = audio_->pop_recorded_samples(samples.data(), sample_count);
+                            result_a.audio = analyze_audio(samples.data(), popped, AudioEngine::kSampleRate, 2);
+                        }
+                    }
+                }
+
+                if (creq.mode == AnalysisMode::Frame || creq.mode == AnalysisMode::AV) {
+                    if (capture_tex && tex_width > 0 && tex_height > 0) {
+                        std::vector<uint8_t> pixels;
+                        if (gpu_readback_rgba8(device, queue, capture_tex, tex_width, tex_height, pixels)) {
+                            result_a.visual = analyze_frame(pixels.data(), tex_width, tex_height);
+                        }
+                    }
+                }
+
+                // For compare, result_b uses the same snapshot (both captured at same time)
+                // In practice, the two captures happen at different times via the API,
+                // but for an immediate compare we use the current state for both.
+                AnalysisResult result_b = result_a;
+
+                auto comparison = compare_analyses(result_a, result_b);
+                creq.promise.set_value(serialize_comparison(comparison));
+            } catch (const std::exception& e) {
+                creq.promise.set_value(capture_json_err(e.what()));
+            } catch (...) {
+                creq.promise.set_value(capture_json_err("unknown error during comparison"));
+            }
+        }
+    }
+
+    // Process pending analyses (deferred multi-frame state machine)
+    auto now = std::chrono::steady_clock::now();
+    auto it = pending_analyses_.begin();
+    while (it != pending_analyses_.end()) {
+        auto& pa = *it;
+        try {
+            if (!pa.frame_a_captured) {
+                // First tick: set solo if needed, capture frame A and start audio tap
+                if (!pa.node_id.empty() && runtime_api_) {
+                    pa.prev_solo = runtime_api_->solo_node_id();
+                    runtime_api_->set_solo(pa.node_id);
+                    pa.solo_set = true;
+                }
+                pa.start_time = now;
+                pa.frame_a_captured = true;
+
+                if (pa.mode == AnalysisMode::Frame || pa.mode == AnalysisMode::AV) {
+                    if (capture_tex && tex_width > 0 && tex_height > 0) {
+                        std::vector<uint8_t> pixels;
+                        if (gpu_readback_rgba8(device, queue, capture_tex, tex_width, tex_height, pixels)) {
+                            pa.frame_a_pixels = std::move(pixels);
+                            pa.frame_w = tex_width;
+                            pa.frame_h = tex_height;
+                        }
+                    }
+                }
+
+                if ((pa.mode == AnalysisMode::Audio || pa.mode == AnalysisMode::AV) && audio_) {
+                    audio_->start_recording_tap();
+                    pa.audio_tap_started = true;
+                }
+
+                ++it;
+                continue;
+            }
+
+            // Check if window has elapsed
+            auto elapsed = std::chrono::duration<float>(now - pa.start_time).count();
+            if (elapsed < pa.window_seconds) {
+                ++it;
+                continue;
+            }
+
+            // Window elapsed — capture frame B, pop audio, compute metrics
+            AnalysisResult result;
+            result.mode = pa.mode;
+
+            if (pa.mode == AnalysisMode::Frame || pa.mode == AnalysisMode::AV) {
+                if (capture_tex && tex_width > 0 && tex_height > 0) {
+                    std::vector<uint8_t> frame_b_pixels;
+                    if (gpu_readback_rgba8(device, queue, capture_tex, tex_width, tex_height, frame_b_pixels)) {
+                        result.visual = analyze_frame(frame_b_pixels.data(), tex_width, tex_height);
+                        // Compute motion between frame A and frame B
+                        if (!pa.frame_a_pixels.empty() &&
+                            pa.frame_w == tex_width && pa.frame_h == tex_height) {
+                            result.visual.motion_magnitude = compute_motion(
+                                pa.frame_a_pixels.data(), frame_b_pixels.data(),
+                                tex_width, tex_height);
+
+                            if (pa.mode == AnalysisMode::AV) {
+                                // AV reactivity needs both frames + audio
+                                if (pa.audio_tap_started && audio_) {
+                                    uint64_t avail = audio_->available_recorded_samples();
+                                    if (avail > 0) {
+                                        std::vector<float> samples(avail);
+                                        uint64_t popped = audio_->pop_recorded_samples(samples.data(), avail);
+                                        result.audio = analyze_audio(samples.data(), popped, AudioEngine::kSampleRate, 2);
+                                        result.av_reactivity = analyze_av_reactivity(
+                                            samples.data(), popped, AudioEngine::kSampleRate, 2,
+                                            pa.frame_a_pixels.data(), frame_b_pixels.data(),
+                                            tex_width, tex_height, pa.window_seconds);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (result.visual.mean_brightness < 0.05f)
+                    result.notes.push_back("frame_very_dark");
+                if (result.visual.motion_magnitude < 0.01f && pa.mode == AnalysisMode::AV)
+                    result.notes.push_back("insufficient_motion");
+            }
+
+            if (pa.mode == AnalysisMode::Audio) {
+                if (pa.audio_tap_started && audio_) {
+                    uint64_t avail = audio_->available_recorded_samples();
+                    if (avail > 0) {
+                        std::vector<float> samples(avail);
+                        uint64_t popped = audio_->pop_recorded_samples(samples.data(), avail);
+                        result.audio = analyze_audio(samples.data(), popped, AudioEngine::kSampleRate, 2);
+                    }
+                }
+                if (result.audio.rms < 0.001f)
+                    result.notes.push_back("audio_too_quiet");
+            }
+
+            if (pa.mode == AnalysisMode::AV && pa.window_seconds < 0.5f)
+                result.notes.push_back("window_too_short");
+
+            // Stop audio tap if we started it
+            if (pa.audio_tap_started && audio_)
+                audio_->stop_recording_tap();
+
+            // Restore solo
+            if (pa.solo_set && runtime_api_)
+                runtime_api_->set_solo(pa.prev_solo);
+
+            pa.promise.set_value(serialize_analysis(result));
+            it = pending_analyses_.erase(it);
+
+        } catch (const std::exception& e) {
+            if (pa.audio_tap_started && audio_)
+                audio_->stop_recording_tap();
+            if (pa.solo_set && runtime_api_)
+                runtime_api_->set_solo(pa.prev_solo);
+            pa.promise.set_value(capture_json_err(e.what()));
+            it = pending_analyses_.erase(it);
+        } catch (...) {
+            if (pa.audio_tap_started && audio_)
+                audio_->stop_recording_tap();
+            if (pa.solo_set && runtime_api_)
+                runtime_api_->set_solo(pa.prev_solo);
+            pa.promise.set_value(capture_json_err("unknown error during analysis"));
+            it = pending_analyses_.erase(it);
+        }
+    }
 }
 
 } // namespace vivid

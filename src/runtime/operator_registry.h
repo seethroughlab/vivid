@@ -101,6 +101,8 @@ public:
     // Package provenance tracking
     void register_package(const std::string& package_name, const std::string& build_dir);
     void unregister_package_operator(const std::string& type_name);
+    void clear_retired_package_loaders();
+    void clear_deferred_probe_handles_for_dir(const std::string& directory);
     const std::string* package_for_type(const std::string& type_name) const;
     bool is_package_operator(const std::string& type_name) const;
 
@@ -127,10 +129,15 @@ private:
     std::unordered_map<std::string, std::string> aliases_;         // alias -> canonical type
     // Keep probe handles alive to avoid dlclose-time destructor hangs in some plugins.
     // These are process-lifetime handles; the OS reclaims them on exit.
-    std::vector<void*> deferred_probe_handles_;
+    struct DeferredProbeHandle {
+        std::string plugin_path;
+        void* handle = nullptr;
+    };
+    std::vector<DeferredProbeHandle> deferred_probe_handles_;
     std::unordered_set<std::string> user_filter_types_;
     std::unordered_map<std::string, std::string> user_operator_sources_;
     std::unordered_map<std::string, std::string> type_to_package_;  // type_name → package_name
+    std::vector<std::unique_ptr<OperatorLoader>> retired_package_loaders_;
     std::unordered_map<std::string, std::vector<OperatorPreset>> factory_presets_;  // type_name → presets
     std::unordered_map<std::string, AbiMismatchDiagnostic> abi_mismatch_by_path_;   // plugin path -> mismatch info
     std::unordered_map<std::string, LoaderFailureDiagnostic> loader_failure_by_path_; // plugin path -> load failure

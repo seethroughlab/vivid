@@ -301,6 +301,9 @@ add_vivid_operator(basename          operators/control/basename/basename.cpp)
 add_vivid_operator(step_counter      operators/control/step_counter/step_counter.cpp)
 add_vivid_operator(phase_to_midi     operators/control/phase_to_midi/phase_to_midi.cpp)
 add_vivid_operator(path_animate      operators/control/path_animate/path_animate.cpp)
+add_vivid_operator(sequencer         operators/control/sequencer/sequencer.cpp)
+add_vivid_operator(sample_hold       operators/control/sample_hold/sample_hold.cpp)
+add_vivid_operator(quantizer         operators/control/quantizer/quantizer.cpp)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu
@@ -559,6 +562,7 @@ add_vivid_operator(vocoder          operators/audio/vocoder/vocoder.cpp
                    FACTORY_PRESETS  operators/audio/vocoder/factory_presets.json)
 add_vivid_operator(parametric_eq    operators/audio/parametric_eq/parametric_eq.cpp
                    FACTORY_PRESETS  operators/audio/parametric_eq/factory_presets.json)
+add_vivid_operator(audio_analysis   operators/audio/audio_analysis/audio_analysis.cpp)
 
 # --- MovieAudioOut (audio output from media stream) ---
 if(APPLE)
@@ -641,6 +645,7 @@ add_executable(vivid
     src/runtime/builtin_operators.cpp
     src/runtime/control_server.cpp
     src/runtime/capture_coordinator.cpp
+    src/runtime/output_analyzer.cpp
     src/runtime/av_exporter.mm
     src/runtime/operator_creator.cpp
     src/runtime/system_midi.cpp
@@ -985,6 +990,26 @@ target_link_libraries(test_runtime_api PRIVATE vivid_operator_api yyjson miniaud
 add_dependencies(test_runtime_api test_op_v1 test_state_carry_op)
 add_test(NAME test_runtime_api COMMAND test_runtime_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Latency validation test (PRD responsiveness claims)
+add_executable(test_latency_validation
+    tests/test_latency_validation.cpp
+    src/runtime/builtin_operators.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/system_midi.cpp
+)
+target_include_directories(test_latency_validation PRIVATE src)
+target_link_libraries(test_latency_validation PRIVATE vivid_operator_api yyjson miniaudio webgpu rtmidi)
+add_dependencies(test_latency_validation test_op_v1 audio_reload_v1 audio_reload_v2)
+add_test(NAME test_latency_validation COMMAND test_latency_validation ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # ControlServer integration test (HTTP endpoints, no GPU, no audio, no window)
 add_executable(test_control_server
     tests/test_control_server.cpp
@@ -1002,6 +1027,7 @@ add_executable(test_control_server
     src/runtime/undo_manager.cpp
     src/runtime/control_server.cpp
     src/runtime/capture_coordinator.cpp
+    src/runtime/output_analyzer.cpp
     src/runtime/screenshot.cpp
     src/runtime/av_exporter.mm
     src/runtime/operator_creator.cpp
@@ -1041,6 +1067,7 @@ add_executable(test_perception_introspection
     src/runtime/undo_manager.cpp
     src/runtime/control_server.cpp
     src/runtime/capture_coordinator.cpp
+    src/runtime/output_analyzer.cpp
     src/runtime/screenshot.cpp
     src/runtime/av_exporter.mm
     src/runtime/operator_creator.cpp
@@ -1710,6 +1737,7 @@ add_test(NAME test_package_contract_ecosystem
 add_executable(test_capture_coordinator
     tests/test_capture_coordinator.cpp
     src/runtime/capture_coordinator.cpp
+    src/runtime/output_analyzer.cpp
     src/runtime/av_exporter.mm
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
@@ -1719,6 +1747,8 @@ add_executable(test_capture_coordinator
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
     src/runtime/screenshot.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/undo_manager.cpp
 )
 target_include_directories(test_capture_coordinator PRIVATE src)
 target_link_libraries(test_capture_coordinator PRIVATE
@@ -1726,6 +1756,16 @@ target_link_libraries(test_capture_coordinator PRIVATE
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
 add_test(NAME test_capture_coordinator COMMAND test_capture_coordinator
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# OutputAnalyzer unit test (pure analysis functions, no GPU/audio)
+add_executable(test_output_analyzer
+    tests/test_output_analyzer.cpp
+    src/runtime/output_analyzer.cpp
+)
+target_include_directories(test_output_analyzer PRIVATE src)
+target_link_libraries(test_output_analyzer PRIVATE vivid_operator_api)
+add_test(NAME test_output_analyzer COMMAND test_output_analyzer
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # SystemMidiListener unit test (no hardware needed)
@@ -1892,6 +1932,7 @@ add_executable(test_undo_mutation_types
     src/runtime/settings.cpp
     src/runtime/hot_reload.cpp
     src/runtime/capture_coordinator.cpp
+    src/runtime/output_analyzer.cpp
     src/runtime/screenshot.cpp
     src/runtime/av_exporter.mm
     src/runtime/platform.cpp
@@ -1926,6 +1967,7 @@ add_executable(test_team_workflow_regression
     src/runtime/settings.cpp
     src/runtime/hot_reload.cpp
     src/runtime/capture_coordinator.cpp
+    src/runtime/output_analyzer.cpp
     src/runtime/screenshot.cpp
     src/runtime/av_exporter.mm
     src/runtime/platform.cpp

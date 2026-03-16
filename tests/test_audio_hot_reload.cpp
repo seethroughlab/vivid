@@ -45,6 +45,7 @@ int main(int argc, char* argv[]) {
     const std::string bad_path = build_dir + "/audio_reload_incompatible.dylib";
     const std::string staging = build_dir + "/.test_audio_hot_reload_staging";
 
+    std::filesystem::remove_all(staging);
     std::filesystem::create_directories(staging);
     std::filesystem::copy_file(v1_path, staging + "/audio_reload_v1.dylib",
                                std::filesystem::copy_options::overwrite_existing);

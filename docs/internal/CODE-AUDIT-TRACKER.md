@@ -5,8 +5,7 @@
 This document tracks the live whole-project audit after the exploration phases.
 It is separate from the code-review preparation notes:
 
-- `docs/internal/CODE_REVIEW.md` explains how to explore the codebase.
-- `docs/internal/CODE-REVIEW-PHASE*.md` capture the orientation passes.
+- `docs/internal/archive/CODE-REVIEW-PHASE*.md` capture the orientation passes.
 - This file tracks the actual audit sequence, findings status, and what is next.
 
 The goal is to keep one current view of:
@@ -253,6 +252,43 @@ Files changed during this phase:
 Validation:
 
 - `ctest --test-dir build --output-on-failure -R "test_package_test_runner|test_package_contract_ecosystem|test_control_server"`
+
+### PRD-Critical Workflow Reliability Restoration
+
+Status:
+
+- complete
+
+What landed:
+
+1. Restored audio hot-reload reliability:
+   - `AudioEngine::reload_operator(...)` now recreates replacement instances before destroying the active ones.
+   - Failed audio-side reload keeps the last-known-good operator active instead of trapping through partial teardown.
+   - `test_audio_hot_reload` fixture setup now clears stale staging outputs between reruns so the regression reflects real runtime behavior.
+2. Restored live package rebuild refresh behavior:
+   - package rebuild now preserves old registry/runtime state on compile failure
+   - package rebuild keeps retired package loaders alive until runtime teardown
+   - package build-directory deferred probe handles are explicitly cleared around rebuild so lazy load does not resolve stale in-memory images
+   - `rebuild_package` now forces one scheduler evaluation after successful runtime refresh so rebuilt outputs are visible immediately to `introspect_nodes`
+3. Added narrow diagnostics and validation for the restored workflows:
+   - isolated package plugin probe confirmed rebuilt `pkg_live_op.dylib` returned the new value in isolation
+   - focused regression suite now passes for both PRD-critical loops
+
+Files changed during this pass:
+
+- `src/runtime/audio_engine.cpp`
+- `src/runtime/control_server.cpp`
+- `src/runtime/operator_registry.h`
+- `src/runtime/operator_registry.cpp`
+- `src/runtime/package_manager.h`
+- `src/runtime/package_manager.cpp`
+- `src/runtime/runtime_api.cpp`
+- `tests/test_audio_hot_reload.cpp`
+
+Validation:
+
+- `cmake --build build --target test_audio_hot_reload test_control_server test_hot_reload test_runtime_api test_package_stress`
+- `ctest --test-dir build --output-on-failure -R '^(test_audio_hot_reload|test_control_server|test_hot_reload|test_runtime_api|test_package_stress)$'`
 
 ### Phase 3: Tighten UI / Runtime Contract Surfaces
 

@@ -862,7 +862,8 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
     return result;
 }
 
-bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& result) {
+bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& result,
+                                     bool register_outputs) {
     std::error_code canonical_ec;
     std::string compile_pkg_dir = std::filesystem::canonical(pkg_dir, canonical_ec).string();
     if (canonical_ec || compile_pkg_dir.empty())
@@ -963,16 +964,19 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         }
     }
 
-    // Scan compiled operators into registry
-    registry_.scan_deferred(build_dir.c_str());
-    auto abi_mismatches = registry_.abi_mismatch_diagnostics_for_dir(build_dir);
-    if (!abi_mismatches.empty()) {
-        result.error = abi_mismatch_error_for_package(result.info.name, abi_mismatches);
-        return false;
-    }
+    if (register_outputs) {
+        // Scan compiled operators into registry
+        registry_.clear_deferred_probe_handles_for_dir(build_dir);
+        registry_.scan_deferred(build_dir.c_str());
+        auto abi_mismatches = registry_.abi_mismatch_diagnostics_for_dir(build_dir);
+        if (!abi_mismatches.empty()) {
+            result.error = abi_mismatch_error_for_package(result.info.name, abi_mismatches);
+            return false;
+        }
 
-    // Track provenance
-    registry_.register_package(result.info.name, build_dir);
+        // Track provenance
+        registry_.register_package(result.info.name, build_dir);
+    }
 
     return true;
 }
@@ -1101,7 +1105,11 @@ InstallResult PackageManager::rebuild(const std::string& name) {
 
     result.info.linked = std::filesystem::is_symlink(pkg_dir);
 
-    // Unregister existing operators before recompile
+    if (!compile_package(pkg_dir, result, false))
+        return result;
+
+    // Re-register operators only after a successful rebuild so failed rebuilds
+    // leave the old package/runtime state intact.
     auto unregister_op = [&](const std::string& op_path) {
         auto slash = op_path.rfind('/');
         std::string target = (slash != std::string::npos) ? op_path.substr(slash + 1) : op_path;
@@ -1117,8 +1125,19 @@ InstallResult PackageManager::rebuild(const std::string& name) {
     for (const auto& op : result.info.gpu_operators)
         unregister_op(op);
 
-    if (!compile_package(pkg_dir, result))
+    std::error_code build_ec;
+    std::string build_root = std::filesystem::canonical(pkg_dir, build_ec).string();
+    if (build_ec || build_root.empty())
+        build_root = pkg_dir;
+    std::string build_dir = build_root + "/build";
+    registry_.clear_deferred_probe_handles_for_dir(build_dir);
+    registry_.scan_deferred(build_dir.c_str());
+    auto abi_mismatches = registry_.abi_mismatch_diagnostics_for_dir(build_dir);
+    if (!abi_mismatches.empty()) {
+        result.error = abi_mismatch_error_for_package(result.info.name, abi_mismatches);
         return result;
+    }
+    registry_.register_package(result.info.name, build_dir);
 
     result.success = true;
     std::fprintf(stderr, "[vivid] PackageManager: rebuilt %s (%zu operators)\n",
@@ -1255,6 +1274,7 @@ void PackageManager::scan_installed() {
     for (size_t idx : sorted_order) {
         const auto& info = loadable_packages[idx];
         std::string build_dir = info.path + "/build";
+        registry_.clear_deferred_probe_handles_for_dir(build_dir);
         registry_.scan_deferred(build_dir.c_str());
         registry_.register_package(info.name, build_dir);
         registry_.scan_factory_presets(info.path + "/factory_presets");

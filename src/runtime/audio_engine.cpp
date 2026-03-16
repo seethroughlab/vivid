@@ -1085,37 +1085,44 @@ bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry
             saved_params[name] = ns.param_values[idx];
         }
 
-        // Destroy auto-dup extra instances first
         auto dup_it = node_to_dup_group_.find(ni);
-        if (dup_it != node_to_dup_group_.end()) {
-            auto& group = auto_dup_groups_[dup_it->second];
-            for (uint8_t c = 1; c < group.channel_count; ++c) {
-                if (group.instances[c]) {
-                    ns.loader->destroy_instance(group.instances[c]);
-                    group.instances[c] = nullptr;
+        uint8_t channel_count = 1;
+        if (dup_it != node_to_dup_group_.end())
+            channel_count = auto_dup_groups_[dup_it->second].channel_count;
+
+        std::vector<void*> new_instances(channel_count, nullptr);
+        for (uint8_t c = 0; c < channel_count; ++c) {
+            new_instances[c] = new_loader->create_instance();
+            if (!new_instances[c]) {
+                for (uint8_t j = 0; j < c; ++j) {
+                    if (new_instances[j]) new_loader->destroy_instance(new_instances[j]);
                 }
+                std::fprintf(stderr,
+                             "[vivid] AudioEngine: failed to create replacement instance for '%s'\n",
+                             type_name.c_str());
+                resume();
+                return false;
             }
         }
 
-        // Destroy old instance
-        if (ns.instance) {
-            ns.loader->destroy_instance(ns.instance);
-            ns.instance = nullptr;
-        }
+        OperatorLoader* old_loader = ns.loader;
+        void* old_instance = ns.instance;
 
-        // Update loader and create new instance
         ns.loader = new_loader;
-        ns.instance = new_loader->create_instance();
+        ns.instance = new_instances[0];
         init_audio_node_state(ns, new_desc, &saved_params);
 
-        // Recreate auto-dup extra instances
         if (dup_it != node_to_dup_group_.end()) {
             auto& group = auto_dup_groups_[dup_it->second];
             group.instances[0] = ns.instance;
             for (uint8_t c = 1; c < group.channel_count; ++c) {
-                group.instances[c] = new_loader->create_instance();
+                void* old_dup = group.instances[c];
+                group.instances[c] = new_instances[c];
+                if (old_dup) old_loader->destroy_instance(old_dup);
             }
         }
+
+        if (old_instance) old_loader->destroy_instance(old_instance);
 
         // Clear error state on reload — give the new code a fresh start
         ns.errored = false;

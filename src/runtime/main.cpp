@@ -2268,6 +2268,7 @@ int main(int argc, char* argv[]) {
     // --- Control server (MCP HTTP bridge) ---
     vivid::CaptureCoordinator capture_coordinator;
     if (has_audio) capture_coordinator.set_audio_engine(&audio_engine);
+    capture_coordinator.set_runtime_api(&runtime_api);
     vivid::ControlServer control_server;
     control_server.set_capture_coordinator(&capture_coordinator);
     control_server.set_package_manager(&pkg_manager);
@@ -3556,8 +3557,9 @@ int main(int argc, char* argv[]) {
                 audio_engine.push_params(scheduler);
             }
 
-            // Process capture/recording requests (after tick, textures are fresh)
-            if (capture_coordinator.has_pending() || capture_coordinator.is_recording()) {
+            // Process capture/recording/analysis requests (after tick, textures are fresh)
+            if (capture_coordinator.has_pending() || capture_coordinator.is_recording() ||
+                capture_coordinator.has_pending_analyses()) {
                 WGPUTexture cap_tex = nullptr;
                 uint32_t cap_w = 0, cap_h = 0;
                 if (has_gpu_ops && video_out_idx >= 0) {
@@ -3571,6 +3573,8 @@ int main(int argc, char* argv[]) {
                 if (capture_coordinator.is_recording())
                     capture_coordinator.tick_recording(
                         gpu.device(), gpu.queue(), cap_tex, cap_w, cap_h);
+                capture_coordinator.tick_analysis(
+                    gpu.device(), gpu.queue(), cap_tex, cap_w, cap_h);
             }
 
             if (frame_count % 60 == 0) {

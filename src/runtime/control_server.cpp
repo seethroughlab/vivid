@@ -3018,6 +3018,90 @@ bool ControlServer::start(int port) {
                     response_body);
             }
 
+            // Analysis endpoints — route through CaptureCoordinator
+            if (capture_coordinator_ &&
+                (method == "analyze_output" || method == "compare_outputs")) {
+
+                // Parse request JSON
+                AnalysisMode amode = AnalysisMode::Frame;
+                float window_seconds = 1.0f;
+                float window_a = 1.0f, window_b = 1.0f;
+                bool include_payload = false;
+                std::string node_id;
+                bool parse_ok = true;
+
+                yyjson_doc* doc = yyjson_read(request->body.c_str(), request->body.size(), 0);
+                if (doc) {
+                    yyjson_val* root = yyjson_doc_get_root(doc);
+                    yyjson_val* mode_v = root ? yyjson_obj_get(root, "mode") : nullptr;
+                    if (mode_v && yyjson_is_str(mode_v)) {
+                        std::string mode_str = yyjson_get_str(mode_v);
+                        if (mode_str == "audio") amode = AnalysisMode::Audio;
+                        else if (mode_str == "av") amode = AnalysisMode::AV;
+                        else if (mode_str == "frame") amode = AnalysisMode::Frame;
+                        else parse_ok = false;
+                    }
+
+                    yyjson_val* ws_v = root ? yyjson_obj_get(root, "window_seconds") : nullptr;
+                    if (ws_v && yyjson_is_real(ws_v))
+                        window_seconds = static_cast<float>(yyjson_get_real(ws_v));
+                    else if (ws_v && yyjson_is_int(ws_v))
+                        window_seconds = static_cast<float>(yyjson_get_int(ws_v));
+
+                    yyjson_val* ip_v = root ? yyjson_obj_get(root, "include_payload") : nullptr;
+                    if (ip_v && yyjson_is_bool(ip_v))
+                        include_payload = yyjson_get_bool(ip_v);
+
+                    yyjson_val* nid_v = root ? yyjson_obj_get(root, "node_id") : nullptr;
+                    if (nid_v && yyjson_is_str(nid_v))
+                        node_id = yyjson_get_str(nid_v);
+
+                    // For compare_outputs, parse a/b sub-objects
+                    if (method == "compare_outputs") {
+                        yyjson_val* a_v = root ? yyjson_obj_get(root, "a") : nullptr;
+                        yyjson_val* b_v = root ? yyjson_obj_get(root, "b") : nullptr;
+                        if (a_v && yyjson_is_obj(a_v)) {
+                            yyjson_val* aw = yyjson_obj_get(a_v, "window_seconds");
+                            if (aw && yyjson_is_real(aw)) window_a = static_cast<float>(yyjson_get_real(aw));
+                            else if (aw && yyjson_is_int(aw)) window_a = static_cast<float>(yyjson_get_int(aw));
+                        }
+                        if (b_v && yyjson_is_obj(b_v)) {
+                            yyjson_val* bw = yyjson_obj_get(b_v, "window_seconds");
+                            if (bw && yyjson_is_real(bw)) window_b = static_cast<float>(yyjson_get_real(bw));
+                            else if (bw && yyjson_is_int(bw)) window_b = static_cast<float>(yyjson_get_int(bw));
+                        }
+                    }
+
+                    yyjson_doc_free(doc);
+                }
+
+                if (!parse_ok) {
+                    return std::make_shared<ix::HttpResponse>(
+                        200, "OK", ix::HttpErrorCode::Ok,
+                        ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                        R"json({"ok":false,"error":"invalid mode (expected 'frame', 'audio', or 'av')"})json");
+                }
+
+                std::future<std::string> future;
+                if (method == "analyze_output")
+                    future = capture_coordinator_->request_analyze(amode, window_seconds, include_payload, node_id);
+                else
+                    future = capture_coordinator_->request_compare(amode, window_a, window_b, include_payload, node_id);
+
+                // Wait with 10s timeout (analysis windows up to 2s + processing)
+                auto status = future.wait_for(std::chrono::seconds(10));
+                std::string response_body;
+                if (status == std::future_status::ready)
+                    response_body = future.get();
+                else
+                    response_body = R"({"ok":false,"error":"timeout"})";
+
+                return std::make_shared<ix::HttpResponse>(
+                    200, "OK", ix::HttpErrorCode::Ok,
+                    ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                    response_body);
+            }
+
             // Package catalog — thread-safe, no main-thread dispatch needed
             if (method == "package_catalog" && package_catalog_) {
                 auto entries = package_catalog_->entries();

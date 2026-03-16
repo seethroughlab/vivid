@@ -142,7 +142,8 @@ private:
                                      std::vector<std::string>& installed_deps);
 
     // Compile operators in a package directory (shared by install, link, rebuild)
-    bool compile_package(const std::string& pkg_dir, InstallResult& result);
+    bool compile_package(const std::string& pkg_dir, InstallResult& result,
+                         bool register_outputs = true);
 
     PackageCompiler& compiler_;
     OperatorRegistry& registry_;

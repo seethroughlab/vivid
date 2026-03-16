@@ -4,16 +4,18 @@
   "meta": {
     "id": "texture_analysis_demo",
     "title": "Texture Analysis",
-    "description": "Texture Analysis demo graph.",
+    "description": "Texture Analysis driving audio: brightness modulates oscillator pitch, edge density modulates filter cutoff.",
     "tags": [
       "texture",
       "analysis",
-      "demo"
+      "demo",
+      "cross-domain"
     ],
     "difficulty": "intermediate",
     "domains": [
       "gpu",
-      "control"
+      "control",
+      "audio"
     ],
     "requires_packages": [],
     "featured_rank": 36
@@ -25,24 +27,45 @@
         "speed": 0.5,
         "scale": 4.0
       },
-      "layout": [
-        100,
-        200
-      ]
+      "layout": [100, 200]
     },
     "analyze": {
       "type": "TextureAnalysis",
-      "layout": [
-        400,
-        200
-      ]
+      "layout": [400, 200]
     },
     "display": {
       "type": "video_out",
-      "layout": [
-        700,
-        200
-      ]
+      "layout": [700, 200]
+    },
+    "osc": {
+      "type": "Oscillator",
+      "params": {
+        "frequency": 440.0,
+        "amplitude": 0.5,
+        "waveform": 1
+      },
+      "layout": [400, 450]
+    },
+    "filter": {
+      "type": "Filter",
+      "params": {
+        "cutoff": 1000.0,
+        "resonance": 1.2,
+        "mode": 0
+      },
+      "layout": [600, 450]
+    },
+    "gain": {
+      "type": "Gain",
+      "params": {
+        "gain": 0.4
+      },
+      "layout": [800, 450]
+    },
+    "audio_out": {
+      "type": "audio_out",
+      "params": {},
+      "layout": [1000, 450]
     }
   },
   "connections": [
@@ -53,6 +76,34 @@
     {
       "from": "analyze/texture",
       "to": "display/input"
+    },
+    {
+      "from": "analyze/brightness",
+      "to": "osc/frequency",
+      "from_min": 0.0,
+      "from_max": 1.0,
+      "to_min": 220.0,
+      "to_max": 880.0
+    },
+    {
+      "from": "analyze/edge_density",
+      "to": "filter/cutoff",
+      "from_min": 0.0,
+      "from_max": 1.0,
+      "to_min": 300.0,
+      "to_max": 3000.0
+    },
+    {
+      "from": "osc/output",
+      "to": "filter/input"
+    },
+    {
+      "from": "filter/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "audio_out/input"
     }
   ]
 }
