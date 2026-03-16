@@ -676,6 +676,24 @@ void NodeGraphUI::draw_about(Renderer2D& tr) {
           "copyright notice and this permission notice shall be included in all copies.\n"
           "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
         },
+        { "NanoSVG",
+          "Copyright (c) 2013-14 Mikko Mononen\n"
+          "License: zlib/libpng\n"
+          "This software is provided 'as-is', without any express or implied warranty.\n"
+          "Permission is granted to use, alter and redistribute it freely, subject to:\n"
+          "1. The origin must not be misrepresented.\n"
+          "2. Altered versions must be plainly marked as such.\n"
+          "3. This notice may not be removed or altered from any source distribution."
+        },
+        { "Snappy",
+          "Copyright 2011, Google Inc. All rights reserved.\n"
+          "License: BSD 3-Clause\n"
+          "Redistribution and use in source and binary forms, with or without modification,\n"
+          "are permitted provided that: (1) source distributions retain the copyright notice;\n"
+          "(2) binary distributions reproduce the notice in docs; (3) neither the name of\n"
+          "Google Inc. nor contributor names may be used to endorse derived products.\n"
+          "THIS SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
+        },
     };
 
     constexpr int kNoticeCount = static_cast<int>(sizeof(kNotices) / sizeof(kNotices[0]));
