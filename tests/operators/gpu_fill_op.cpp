@@ -1,4 +1,5 @@
 #include "operator_api/operator.h"
+#include "operator_api/thumbnail.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
 #include <cstdio>
@@ -75,6 +76,24 @@ struct GpuFillOp : vivid::GpuOperatorBase {
                              ctx->output_texture_view, "GpuFill Pass");
     }
 
+    void draw_thumbnail(const VividThumbnailContext* ctx) override {
+        if (!thumb_pipeline_ || thumb_pipeline_format_ != ctx->thumbnail_format) {
+            if (!lazy_init_thumb(ctx)) {
+                vivid_report_thumbnail_error(ctx, "gpu_fill thumbnail pipeline init failed");
+                return;
+            }
+        }
+
+        FillUniforms u{};
+        u.color[0] = r.value;
+        u.color[1] = g.value;
+        u.color[2] = b.value;
+        u.color[3] = 1.0f;
+        wgpuQueueWriteBuffer(ctx->queue, thumb_uniform_buf_, 0, &u, sizeof(u));
+
+        vivid::thumbnail::run_pass(ctx, thumb_pipeline_, thumb_bind_group_, "GpuFill Thumb Pass");
+    }
+
     ~GpuFillOp() override {
         vivid::gpu::release(pipeline_);
         vivid::gpu::release(bind_group_);
@@ -82,6 +101,12 @@ struct GpuFillOp : vivid::GpuOperatorBase {
         vivid::gpu::release(uniform_buf_);
         vivid::gpu::release(shader_);
         vivid::gpu::release(pipe_layout_);
+        vivid::gpu::release(thumb_pipeline_);
+        vivid::gpu::release(thumb_bind_group_);
+        vivid::gpu::release(thumb_bind_layout_);
+        vivid::gpu::release(thumb_uniform_buf_);
+        vivid::gpu::release(thumb_shader_);
+        vivid::gpu::release(thumb_pipe_layout_);
     }
 
 private:
@@ -91,6 +116,13 @@ private:
     WGPUBuffer          uniform_buf_ = nullptr;
     WGPUShaderModule    shader_      = nullptr;
     WGPUPipelineLayout  pipe_layout_ = nullptr;
+    WGPURenderPipeline  thumb_pipeline_ = nullptr;
+    WGPUBindGroup       thumb_bind_group_ = nullptr;
+    WGPUBindGroupLayout thumb_bind_layout_ = nullptr;
+    WGPUBuffer          thumb_uniform_buf_ = nullptr;
+    WGPUShaderModule    thumb_shader_ = nullptr;
+    WGPUPipelineLayout  thumb_pipe_layout_ = nullptr;
+    WGPUTextureFormat   thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
 
     bool lazy_init(const VividGpuContext* ctx) {
         shader_ = vivid::gpu::create_shader(ctx->device, kFillFragment, "GpuFill Shader");
@@ -134,6 +166,32 @@ private:
 
         return true;
     }
+
+    bool lazy_init_thumb(const VividThumbnailContext* ctx) {
+        vivid::gpu::release(thumb_pipeline_);
+        vivid::gpu::release(thumb_bind_group_);
+        vivid::gpu::release(thumb_bind_layout_);
+        vivid::gpu::release(thumb_uniform_buf_);
+        vivid::gpu::release(thumb_shader_);
+        vivid::gpu::release(thumb_pipe_layout_);
+
+        thumb_shader_ = vivid::thumbnail::create_shader(ctx->device, kFillFragment, "GpuFill Thumb Shader");
+        if (!thumb_shader_) return false;
+
+        thumb_uniform_buf_ =
+            vivid::thumbnail::create_uniform_buffer(ctx->device, sizeof(FillUniforms), "GpuFill Thumb Uniforms");
+        thumb_bind_layout_ =
+            vivid::thumbnail::create_uniform_bind_layout(ctx->device, sizeof(FillUniforms), "GpuFill Thumb BGL");
+        thumb_pipe_layout_ =
+            vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_bind_layout_, "GpuFill Thumb Layout");
+        thumb_bind_group_ = vivid::thumbnail::create_uniform_bind_group(
+            ctx->device, thumb_bind_layout_, thumb_uniform_buf_, sizeof(FillUniforms), "GpuFill Thumb BG");
+        thumb_pipeline_ = vivid::thumbnail::create_pipeline(
+            ctx->device, thumb_shader_, thumb_pipe_layout_, ctx->thumbnail_format, "GpuFill Thumb Pipeline");
+        thumb_pipeline_format_ = ctx->thumbnail_format;
+        return thumb_pipeline_ != nullptr;
+    }
 };
 
 VIVID_REGISTER(GpuFillOp)
+VIVID_THUMBNAIL(GpuFillOp)

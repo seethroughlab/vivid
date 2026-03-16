@@ -2,6 +2,7 @@
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "operator_api/gpu_operator.h"
+#include "operator_api/thumbnail.h"
 #include "common/gpu_util.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
@@ -273,6 +274,108 @@ static void tick_and_submit(vivid::Scheduler& sched, HeadlessGpu& gpu,
     }
 }
 
+struct RenderTarget {
+    WGPUTexture texture = nullptr;
+    WGPUTextureView view = nullptr;
+};
+
+static RenderTarget make_render_target(WGPUDevice device, uint32_t width, uint32_t height,
+                                       WGPUTextureFormat format) {
+    RenderTarget rt{};
+    WGPUTextureDescriptor td{};
+    td.label = vivid::to_sv("Thumb Target");
+    td.size = { width, height, 1 };
+    td.mipLevelCount = 1;
+    td.sampleCount = 1;
+    td.dimension = WGPUTextureDimension_2D;
+    td.format = format;
+    td.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc | WGPUTextureUsage_TextureBinding;
+    rt.texture = wgpuDeviceCreateTexture(device, &td);
+
+    WGPUTextureViewDescriptor vd{};
+    vd.label = vivid::to_sv("Thumb Target View");
+    vd.format = format;
+    vd.dimension = WGPUTextureViewDimension_2D;
+    vd.mipLevelCount = 1;
+    vd.arrayLayerCount = 1;
+    vd.aspect = WGPUTextureAspect_All;
+    rt.view = wgpuTextureCreateView(rt.texture, &vd);
+    return rt;
+}
+
+static void release_render_target(RenderTarget& rt) {
+    if (rt.view) wgpuTextureViewRelease(rt.view);
+    if (rt.texture) wgpuTextureRelease(rt.texture);
+    rt.view = nullptr;
+    rt.texture = nullptr;
+}
+
+static std::vector<uint8_t> render_custom_thumbnail(vivid::OperatorLoader& loader,
+                                                    void* instance,
+                                                    HeadlessGpu& gpu,
+                                                    WGPUTextureFormat format,
+                                                    const float* params,
+                                                    uint32_t param_count,
+                                                    const float* outputs,
+                                                    uint32_t output_count,
+                                                    uint32_t width,
+                                                    uint32_t height) {
+    RenderTarget rt = make_render_target(gpu.device, width, height, format);
+
+    WGPUCommandEncoderDescriptor enc_desc{};
+    enc_desc.label = vivid::to_sv("Thumb Encoder");
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(gpu.device, &enc_desc);
+
+    VividThumbnailContext ctx{};
+    ctx.time = 0.0;
+    ctx.delta_time = 0.016;
+    ctx.frame = 0;
+    ctx.param_values = params;
+    ctx.param_count = param_count;
+    ctx.output_values = outputs;
+    ctx.output_count = output_count;
+    ctx.string_param_values = nullptr;
+    ctx.string_param_count = 0;
+    ctx.file_param_values = nullptr;
+    ctx.file_param_count = 0;
+    ctx.device = gpu.device;
+    ctx.queue = gpu.queue;
+    ctx.command_encoder = encoder;
+    ctx.thumbnail_texture = rt.texture;
+    ctx.thumbnail_texture_view = rt.view;
+    ctx.thumbnail_width = width;
+    ctx.thumbnail_height = height;
+    ctx.thumbnail_format = format;
+
+    loader.draw_thumbnail(instance, &ctx);
+
+    WGPUCommandBufferDescriptor cmd_desc{};
+    cmd_desc.label = vivid::to_sv("Thumb Commands");
+    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(encoder, &cmd_desc);
+    wgpuQueueSubmit(gpu.queue, 1, &cmd);
+    wgpuCommandBufferRelease(cmd);
+    wgpuCommandEncoderRelease(encoder);
+
+    {
+        struct WorkDone { bool done = false; };
+        WorkDone wd;
+        WGPUQueueWorkDoneCallbackInfo wcb{};
+        wcb.mode = WGPUCallbackMode_AllowSpontaneous;
+        wcb.callback = [](WGPUQueueWorkDoneStatus, void* ud1, void*) {
+            static_cast<WorkDone*>(ud1)->done = true;
+        };
+        wcb.userdata1 = &wd;
+        wgpuQueueOnSubmittedWorkDone(gpu.queue, wcb);
+        while (!wd.done) {
+            wgpuDevicePoll(gpu.device, true, nullptr);
+        }
+    }
+
+    auto pixels = readback_texture(gpu.device, gpu.queue, rt.texture, width, height);
+    release_render_target(rt);
+    return pixels;
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -302,11 +405,14 @@ int main() {
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file("shape.dylib", staging + "/shape.dylib",
         std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file("control_thumb_op.dylib", staging + "/control_thumb_op.dylib",
+        std::filesystem::copy_options::overwrite_existing);
 
     vivid::OperatorRegistry registry;
     check(registry.scan(staging.c_str()), "registry.scan() succeeds");
     check(registry.find("GpuFillOp") != nullptr, "GpuFillOp registered");
     check(registry.find("Shape") != nullptr, "Shape registered");
+    check(registry.find("ControlThumbOp") != nullptr, "ControlThumbOp registered");
 
     // =====================================================================
     // Test 2: Solid red fill
@@ -423,10 +529,60 @@ int main() {
     }
 
     // =====================================================================
-    // Test 5: Resolution propagation (128x128)
+    // Test 5: custom GPU thumbnail for control-domain operator
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 5: Resolution propagation ===\n");
+        std::fprintf(stderr, "\n=== Test 5: Control custom GPU thumbnail ===\n");
+        vivid::OperatorLoader loader;
+        check(loader.load((staging + "/control_thumb_op.dylib").c_str()), "load control_thumb_op");
+        check(loader.has_draw_thumbnail(), "control_thumb_op exposes draw_thumbnail");
+
+        void* instance = loader.create_instance();
+        check(instance != nullptr, "create control_thumb_op instance");
+
+        float params[] = {0.75f};
+        float outputs[] = {0.75f};
+        auto pixels = render_custom_thumbnail(loader, instance, gpu, kFormat, params, 1, outputs, 1, 64, 64);
+        check(!pixels.empty(), "control thumbnail rendered");
+        if (!pixels.empty()) {
+            size_t idx = ((32u * 64u) + 40u) * 4u;
+            check(pixels[idx] > 0 || pixels[idx + 1] > 0 || pixels[idx + 2] > 0,
+                  "control thumbnail contains visible content");
+        }
+
+        loader.destroy_instance(instance);
+    }
+
+    // =====================================================================
+    // Test 6: custom GPU thumbnail for GPU-domain operator
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 6: GPU custom thumbnail override ===\n");
+        vivid::OperatorLoader loader;
+        check(loader.load((staging + "/gpu_fill_op.dylib").c_str()), "load gpu_fill_op");
+        check(loader.has_draw_thumbnail(), "gpu_fill_op exposes draw_thumbnail");
+
+        void* instance = loader.create_instance();
+        check(instance != nullptr, "create gpu_fill_op instance");
+
+        float params[] = {0.2f, 0.7f, 0.9f};
+        float outputs[] = {0.0f};
+        auto pixels = render_custom_thumbnail(loader, instance, gpu, kFormat, params, 3, outputs, 0, 64, 64);
+        check(!pixels.empty(), "gpu thumbnail rendered");
+        if (!pixels.empty()) {
+            size_t idx = ((32u * 64u) + 32u) * 4u;
+            check(pixels[idx + 1] > 0 && pixels[idx + 2] > 0,
+                  "gpu thumbnail picked up custom fill color");
+        }
+
+        loader.destroy_instance(instance);
+    }
+
+    // =====================================================================
+    // Test 7: Resolution propagation (128x128)
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 7: Resolution propagation ===\n");
         constexpr uint32_t W = 128, H = 128;
 
         vivid::Graph g;
