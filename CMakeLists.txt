@@ -274,16 +274,17 @@ endfunction()
 # --- Control operator plugins ---
 add_vivid_operator(lfo            operators/control/lfo/lfo.cpp
                    FACTORY_PRESETS operators/control/lfo/factory_presets.json)
-add_vivid_operator(clock          operators/control/clock/clock.cpp)
+add_vivid_operator(clock          operators/control/clock/clock.cpp          EXTRA_LIBS webgpu)
 add_vivid_operator(math           operators/control/math/math.cpp)
 add_vivid_operator(envelope       operators/control/envelope/envelope.cpp
-                   FACTORY_PRESETS operators/control/envelope/factory_presets.json)
+                   FACTORY_PRESETS operators/control/envelope/factory_presets.json
+                   EXTRA_LIBS webgpu)
 add_vivid_operator(midi_input     operators/control/midi_input/midi_input.cpp     EXTRA_LIBS rtmidi)
 add_vivid_operator(fft_analysis   operators/control/fft_analysis/fft_analysis.cpp)
 add_vivid_operator(logic             operators/control/logic/logic.cpp)
 add_vivid_operator(gate              operators/control/gate/gate.cpp)
 add_vivid_operator(random            operators/control/random/random.cpp)
-add_vivid_operator(smooth            operators/control/smooth/smooth.cpp)
+add_vivid_operator(smooth            operators/control/smooth/smooth.cpp            EXTRA_LIBS webgpu)
 add_vivid_operator(euclidean         operators/control/euclidean/euclidean.cpp)
 add_vivid_operator(stack             operators/control/stack/stack.cpp)
 add_vivid_operator(alternate         operators/control/alternate/alternate.cpp)
@@ -535,9 +536,9 @@ add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp
                    FACTORY_PRESETS operators/audio/bitcrush/factory_presets.json)
 add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp
                    FACTORY_PRESETS operators/audio/distortion/factory_presets.json)
-add_vivid_operator(filter         operators/audio/filter/filter.cpp)
-add_vivid_operator(audio_noise    operators/audio/noise/noise.cpp)
-add_vivid_operator(mixer          operators/audio/mixer/mixer.cpp)
+add_vivid_operator(filter         operators/audio/filter/filter.cpp         EXTRA_LIBS webgpu)
+add_vivid_operator(audio_noise    operators/audio/noise/noise.cpp    EXTRA_LIBS webgpu)
+add_vivid_operator(mixer          operators/audio/mixer/mixer.cpp          EXTRA_LIBS webgpu)
 add_vivid_operator(compressor     operators/audio/compressor/compressor.cpp)
 add_vivid_operator(limiter        operators/audio/limiter/limiter.cpp)
 add_vivid_operator(chorus         operators/audio/chorus/chorus.cpp
@@ -913,6 +914,7 @@ add_vivid_operator(test_op_v1     tests/operators/test_op_v1.cpp)
 add_vivid_operator(test_op_v2     tests/operators/test_op_v2.cpp)
 add_vivid_operator(test_op_incompatible_port tests/operators/test_op_incompatible_port.cpp)
 add_vivid_operator(test_op_null_desc tests/operators/test_op_null_desc.cpp)
+add_vivid_operator(control_thumb_op tests/operators/control_thumb_op.cpp EXTRA_LIBS webgpu)
 add_vivid_operator(test_op_bad_custom_type tests/operators/test_op_bad_custom_type.cpp)
 add_vivid_operator(audio_reload_v1 tests/operators/audio_reload_v1.cpp)
 add_vivid_operator(audio_reload_v2 tests/operators/audio_reload_v2.cpp)
@@ -1293,7 +1295,7 @@ add_executable(test_operator_loader
 )
 target_include_directories(test_operator_loader PRIVATE src)
 target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu yyjson)
-add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op)
+add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_runtime_stress
@@ -1423,7 +1425,7 @@ add_executable(test_gpu_operators
 )
 target_include_directories(test_gpu_operators PRIVATE src)
 target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api yyjson webgpu)
-add_dependencies(test_gpu_operators gpu_fill_op shape)
+add_dependencies(test_gpu_operators gpu_fill_op shape control_thumb_op)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # 3D tests are in the vivid-3d package (see ../vivid-3d/)
