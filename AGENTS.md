@@ -36,6 +36,7 @@ Read the relevant doc for your task:
 | Runtime, graph, operators, build | `docs/ARCHITECTURE.md` |
 | UI, widgets, layout, visual style | `docs/INTERFACE.md` |
 | LLM chat, MCP server, perception | `docs/LLM-INTEGRATION.md` |
+| Custom GPU thumbnails | `docs/runtime/custom_thumbnails.md` |
 | Implementing a roadmap phase | `docs/LEGACY-REFERENCE.md` |
 | Runtime core development | `docs/runtime/architecture.md` then subsystem doc below |
 

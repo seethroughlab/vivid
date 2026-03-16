@@ -177,13 +177,4 @@ void main_thread_update(double time) override {
 
 ## Custom Thumbnails
 
-Override `draw_thumbnail` to render a custom preview in the node graph:
-
-```cpp
-void draw_thumbnail(const VividThumbnailContext* ctx) override {
-    // ctx->pixels: RGBA8 buffer (140×88), row-major
-    // ctx->output_values, ctx->param_values available
-}
-```
-
-Use `VIVID_THUMBNAIL(ClassName)` alongside `VIVID_REGISTER(ClassName)` to export the entry point.
+See `docs/runtime/custom_thumbnails.md` for the thumbnail API.

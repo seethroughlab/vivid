@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "full_synth_patch",
+    "title": "Full Synth Patch",
+    "description": "A complete modular synth patch showcasing every newly-thumbnailed core operator: Clock drives timing, Envelope shapes amplitude, LFO through Smooth modulates filter cutoff, Noise adds texture through the Mixer, and Filter shapes the final tone.",
+    "tags": ["synthesis", "modular", "thumbnail-showcase", "demo"],
+    "difficulty": "intermediate",
+    "domains": ["audio", "control"],
+    "requires_packages": [],
+    "featured_rank": 20
+  },
+  "nodes": {
+    "clock": {
+      "type": "Clock",
+      "params": { "bpm": 128.0, "beats_per_bar": 4 }
+    },
+    "env": {
+      "type": "Envelope",
+      "params": {
+        "attack": 0.01,
+        "decay": 0.2,
+        "sustain": 0.6,
+        "release": 0.35,
+        "amplitude": 1.0
+      }
+    },
+    "lfo": {
+      "type": "LFO",
+      "params": { "frequency": 0.3, "amplitude": 12.0, "waveform": 2 }
+    },
+    "smooth": {
+      "type": "Smooth",
+      "params": { "rise_time": 0.05, "fall_time": 0.05 }
+    },
+    "osc": {
+      "type": "Oscillator",
+      "params": { "frequency": 165.0, "amplitude": 0.5, "waveform": 1 }
+    },
+    "noise": {
+      "type": "Noise",
+      "params": { "color": 1, "amplitude": 0.15 }
+    },
+    "mixer": {
+      "type": "Mixer",
+      "params": { "gain_1": 1.0, "gain_2": 0.4 }
+    },
+    "filter": {
+      "type": "Filter",
+      "params": { "cutoff": 800.0, "resonance": 2.0, "mode": 0 }
+    },
+    "gain": {
+      "type": "Gain",
+      "params": { "gain": 0.7 }
+    },
+    "out": {
+      "type": "audio_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    { "from": "clock/beat_phase", "to": "env/beat_phase" },
+    { "from": "lfo/value",        "to": "smooth/input" },
+    { "from": "smooth/value",     "to": "filter/cutoff_cv" },
+    { "from": "osc/output",       "to": "mixer/input_1" },
+    { "from": "noise/output",     "to": "mixer/input_2" },
+    { "from": "mixer/output",     "to": "filter/input" },
+    { "from": "filter/output",    "to": "gain/input" },
+    { "from": "env/value",        "to": "gain/amplitude_cv" },
+    { "from": "gain/output",      "to": "out/input" }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "smooth_modulation",
+    "title": "Smooth Modulation",
+    "description": "A step sequencer drives pitch modulation through a Smooth operator, turning staircase steps into gliding portamento. The Smooth thumbnail illustrates the concept of stepped-to-smooth transitions.",
+    "tags": ["smooth", "sequencer", "modulation", "portamento", "demo"],
+    "difficulty": "beginner",
+    "domains": ["audio", "control"],
+    "requires_packages": [],
+    "featured_rank": 28
+  },
+  "nodes": {
+    "clock": {
+      "type": "Clock",
+      "params": { "bpm": 140.0, "beats_per_bar": 8 }
+    },
+    "seq": {
+      "type": "Sequencer",
+      "params": {
+        "steps": 8,
+        "val_0": 0.0, "val_1": 4.0, "val_2": 7.0, "val_3": 12.0,
+        "val_4": 10.0, "val_5": 5.0, "val_6": 3.0, "val_7": -2.0
+      }
+    },
+    "smooth": {
+      "type": "Smooth",
+      "params": { "rise_time": 0.08, "fall_time": 0.12 }
+    },
+    "env": {
+      "type": "Envelope",
+      "params": {
+        "attack": 0.002,
+        "decay": 0.1,
+        "sustain": 0.5,
+        "release": 0.15,
+        "amplitude": 1.0
+      }
+    },
+    "osc": {
+      "type": "Oscillator",
+      "params": { "frequency": 220.0, "amplitude": 0.5, "waveform": 1 }
+    },
+    "gain": {
+      "type": "Gain",
+      "params": { "gain": 0.7 }
+    },
+    "out": {
+      "type": "audio_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    { "from": "clock/beat_phase", "to": "seq/beat_phase" },
+    { "from": "clock/beat_phase", "to": "env/beat_phase" },
+    { "from": "seq/value",        "to": "smooth/input" },
+    { "from": "smooth/value",     "to": "osc/freq_cv" },
+    { "from": "osc/output",       "to": "gain/input" },
+    { "from": "env/value",        "to": "gain/amplitude_cv" },
+    { "from": "gain/output",      "to": "out/input" }
+  ]
+}
