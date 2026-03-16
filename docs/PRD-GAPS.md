@@ -1,6 +1,6 @@
-# PRD Alignment Roadmap
+# PRD Alignment Implementation Queue
 
-This roadmap turns the current PRD conformance gaps into an execution order.
+This document turns the remaining PRD conformance gaps into the next implementation queue.
 
 Source inputs:
 
@@ -8,306 +8,307 @@ Source inputs:
 - `docs/internal/PRD-CONFORMANCE-SCORECARD.md`
 - `docs/ROADMAP.md`
 
-The goal is not to close every aspirational PRD idea immediately. The goal is to raise Vivid’s PRD conformance in the areas that most affect the product thesis:
+This queue is intentionally narrower than the full PRD. It is the next practical sequence for improving PRD conformance after the workflow-reliability fixes landed.
 
-- Vivid as an exploration environment, not just a runtime
-- audio and visuals as genuine peers
-- LLMs as collaborators, not just scaffolding tools
-- hot, inspectable, trustworthy iteration loops
+## Current Baseline
 
-## Priority Order
+Recently closed:
 
-### P0. Restore PRD-Critical Workflow Reliability
+- audio hot reload reliability
+- live package rebuild refresh reliability
 
-#### Why this comes first
+The remaining high-value PRD gaps are now:
 
-Before expanding the product surface, the existing PRD-critical workflow claims need to be trustworthy under test.
+1. experimentation surface beyond the node graph
+2. perception and comparison depth
+3. product-level audio-visual parity proof
+4. latency evidence
+5. North Star / product-story validation
 
-Current live evidence still weakens the scorecard in two core areas:
+## Queue Rules
 
-- audio hot reload
-- live package rebuild behavior
+- Keep the node graph as the structural and connection editor.
+- Do not introduce a patchbay or connection matrix.
+- Prefer one strong, finished surface over several half-built ones.
+- Treat PRD alignment as product work, not just runtime work.
+- Each queue item must leave behind durable evidence:
+  - tests
+  - docs
+  - a validated workflow
 
-Those sit directly under the PRD’s strongest workflow claims around hot reload, runtime continuity, and extensibility.
+## Queue Overview
 
-#### Scope
+| Queue | Theme | Why it matters |
+|---|---|---|
+| Q1 | Session / variation exploration surface | Biggest product-shape gap in the current PRD scorecard |
+| Q2 | Perception analysis tier | Biggest LLM-collaboration gap after introspection/checks |
+| Q3 | Audio-visual parity validation | Core thesis still stronger in architecture than in demonstrated workflow |
+| Q4 | PRD-facing latency lane | Needed to back responsiveness claims with evidence |
+| Q5 | North Star and product-story reconciliation | Needed to align shipped product, docs, and 1.0 promise |
 
-- fix the current `test_audio_hot_reload` failure
-- fix the current `test_control_server` live package rebuild refresh failure
-- ensure these workflows remain covered by regression tests
-- tighten any supporting diagnostics if the current failure modes are still too opaque
+Phase docs:
 
-#### Success criteria
+- [Q1: Session / Variation Exploration Surface](docs/PRD-GAPS-Q1.md)
+- [Q2: Perception Analysis Tier](docs/PRD-GAPS-Q2.md)
+- [Q3: Audio-Visual Parity Validation](docs/PRD-GAPS-Q3.md)
+- [Q4: PRD-Facing Latency Validation Lane](docs/PRD-GAPS-Q4.md)
+- [Q5: North Star Validation And Product-Story Reconciliation](docs/PRD-GAPS-Q5.md)
 
-- compatible audio hot reload succeeds and preserves the current hardened safety contract
-- incompatible audio hot reload is rejected safely
-- live package rebuild updates the running graph coherently
-- the PRD scorecard no longer needs a workflow-reliability caveat in these two areas
+## Q1. Session / Variation Exploration Surface
 
-#### What this does not include
+### Goal
 
-- no new experimentation surfaces
-- no broader package redesign
-- no perception expansion yet
+Turn the current variation system from a useful strip into a clearly first-class exploration surface.
 
-## P1. Decide and Deliver the 1.0 Exploration Surface
+### Why this is first
 
-#### Why this comes second
+The scorecard’s largest remaining product gap is not runtime reliability anymore. It is that Vivid still feels strongest as:
 
-The biggest PRD/product gap is the experimentation-interface gap.
+- a graph editor
+- a runtime
+- an operator/package platform
 
-The product currently has:
+The PRD asks for something more exploratory than that. The shortest path to closing that gap is to deepen the variation/session surface that already exists.
 
-- a strong node graph
-- a narrower variation strip
-- strong runtime and authoring infrastructure
+### Scope
 
-But the PRD describes a richer exploration environment. The project needs a concrete 1.0 decision here:
+- expand the current variation surface beyond simple save/recall affordances
+- make alternate states visibly present at once, not only serially recalled
+- improve variation naming, organization, and quick comparison workflow
+- support variation-oriented iteration without requiring graph rewiring
+- keep all graph wiring in the node graph
 
-- either implement more of that exploration surface
-- or narrow the PRD/roadmap so the public promise matches the actual 1.0 target
+### Deliverables
 
-This is the most important product-shape decision in the roadmap.
+1. A clearer session/variation model in the UI
+2. Better variation visualization and navigation
+3. A reliable workflow for:
+   - save current state
+   - branch a variation
+   - compare or audition alternatives
+   - promote one variation back to the working state
+4. Updated docs showing the exploration workflow
 
-#### Locked decision for this phase
+### Dependencies
 
-Do not try to build all PRD experimentation interfaces at once.
+- existing variation runtime/control-server support
+- existing UI/runtime contract hardening
 
-For 1.0, the target should be:
+### Exit Criteria
 
-- keep the node graph as the central structural editor
-- strengthen the session/variation model into a more visibly exploratory surface
-- strengthen one additional first-class exploration surface beyond the node graph
-- defer the remaining named interfaces unless they become essential to the 1.0 story
+- Vivid has more than one meaningful exploration surface in active use
+- alternate states are visibly present in the product, not just hidden in recall commands
+- the PRD scorecard can upgrade the experimentation gap materially
 
-Recommended 1.0 exploration investment:
+### Explicit non-goals
 
-- **Session / variation surface, expanded beyond the current strip**
+- no patchbay
+- no built-in REPL in this slice
+- no state-machine UI in this slice unless it becomes necessary to make the session surface coherent
 
-Reason:
+## Q2. Perception Analysis Tier
 
-- it builds directly on an exploration surface that already exists
-- it improves visible branching without replacing the current graph connection model
-- it gives the LLM a stronger target for generating alternate states and mappings
-- it respects the existing decision that graph wiring should remain in the node graph rather than move to a separate matrix
+### Goal
 
-#### Scope
+Move the perception layer from mostly introspection/checks into structured higher-level analysis.
 
-- define the 1.0 exploration-surface set explicitly
-- expand the current variation/session model beyond a simple strip if needed for visible branching
-- deepen the session / variation surface into a true second first-class exploration surface
-- update the PRD or roadmap if some named interfaces are formally deferred
+### Why this is second
 
-#### Success criteria
+The LLM story is already strong on:
 
-- the product has more than one meaningful exploration interface in active use
-- creators can explore alternate states and mappings without relying only on linear recall or manual rewiring
-- variation/branching is spatially more visible than it is today
-- the PRD scorecard’s experimentation-interface gap is reduced from “materially incomplete” to “partially met with a clear 1.0 story” or better
-
-#### What this does not include
-
-- no commitment to ship every PRD interface for 1.0
-- no built-in REPL, parameter-space explorer, or state-machine UI unless they are explicitly chosen over the session-surface path
-
-## P2. Strengthen the Perception Layer from Introspection to Analysis
-
-#### Why this comes third
-
-The current perception surface is real and useful, but it mainly supports:
-
-- introspection
+- graph mutation
+- operator authoring
 - diagnostics
 - checks
 
-The PRD promise is stronger:
+What is still weak is the critic/analyst role. This is the next most important PRD-alignment step after the experimentation surface.
 
-- the LLM should be able to evaluate quality, compare alternatives, and reason about AV behavior over time
+### Scope
 
-This phase is the biggest opportunity to move the LLM story from “powerful tooling integration” toward “genuine creative collaborator.”
+- add one richer audio analysis surface
+- add one richer visual analysis surface
+- add one explicit AV-reactivity metric
+- add one comparison workflow for two captures, two graph states, or two variations
+- keep outputs structured and compact enough for LLM use
 
-#### Locked decision for this phase
+### Recommended first cut
 
-Do not try to implement the full PRD perception system in one pass.
+- audio: spectral/loudness summary
+- visual: brightness/contrast/motion-style summary
+- AV metric: audio-energy to visual-response correlation
+- comparison: A/B summary between two candidate outputs
 
-For the next step, target a minimum meaningful analysis tier:
+### Deliverables
 
-1. one richer **audio analysis** surface
-2. one richer **visual analysis** surface
-3. one explicit **audio-visual reactivity metric**
-4. one **comparison workflow**
+1. New perception endpoints or extensions to current endpoints
+2. Regression tests for the new analysis outputs
+3. Docs for the new perception contract
+4. At least one real example where analysis helps choose between two versions
 
-Recommended first set:
+### Dependencies
 
-- audio: spectral character / loudness summary
-- visual: brightness / contrast / motion-style comparison beyond raw introspection
-- AV metric: onset-response or energy-to-brightness correlation
-- comparison: A/B summary for two captures or two graph states
+- current introspection/diagnostics/checks infrastructure
+- capture/export surfaces where needed
 
-#### Scope
+### Exit Criteria
 
-- extend the perception tool surface beyond diagnostics and checks
-- keep outputs structured and LLM-usable
-- preserve deterministic compact summaries alongside fuller payloads
-- add tests for at least one cross-domain metric path
+- the LLM can answer a higher-level quality question without only dumping structure
+- at least one AV metric is implemented and validated
+- at least one comparison workflow is available and documented
 
-#### Success criteria
+### Explicit non-goals
 
-- the LLM can ask a higher-level analysis question and receive more than a structural dump
-- at least one AV-reactivity metric is implemented and testable
-- the product can compare two candidate outputs in a way that meaningfully aids iteration
-- the PRD scorecard’s perception gap becomes narrower and more evidence-backed
+- no vague “AI taste” system
+- no attempt to solve every PRD perception example at once
 
-#### What this does not include
+## Q3. Audio-Visual Parity Validation
 
-- no broad aesthetic AI layer
-- no full-blown artistic judgment system
-- no attempt to solve every PRD analysis example at once
+### Goal
 
-## P3. Validate Audio-Visual Parity as a Product Reality
+Prove audio-visual parity at the workflow level, not just the architecture level.
 
-#### Why this comes fourth
+### Why this is third
 
-Parity is the project thesis, but right now it is evidenced more by architecture than by product-level proof.
+The architecture strongly supports parity already. What is still weak is product proof:
 
-After P1 and P2, the product surface should be strong enough to validate parity more honestly.
-
-#### Locked decision for this phase
-
-Treat parity as a workflow-validation problem, not just an operator-count problem.
-
-The focus should be on proving three PRD claims with concrete scenarios:
-
-- equal ease of creation
-- equal breadth of options
+- equal ease
+- equal breadth
 - easy cross-domain interaction
 
-#### Scope
+This queue item should validate the claim honestly and identify where remaining parity problems actually come from.
 
-- define explicit A/V parity evaluation scenarios
-- validate representative audio-first, visual-first, and cross-domain-first flows
-- use seed operators plus sibling-package surface where appropriate
-- identify whether any remaining parity issue is:
-  - missing capability
-  - missing examples/docs
-  - missing exploration surface
-  - product bias toward one domain
+### Scope
 
-#### Success criteria
+- define a small set of explicit parity workflows
+- test audio-first, visual-first, and cross-domain-first creation paths
+- identify whether each weakness is:
+  - operator gap
+  - docs/example gap
+  - exploration-surface gap
+  - product bias
 
-- at least one explicit North Star-style A/V parity scenario is validated end-to-end
-- parity claims are backed by creator workflows, not just architectural argument
-- the scorecard can upgrade parity from “partial by product evidence” toward a stronger status
+### Deliverables
 
-#### What this does not include
+1. A short parity evaluation rubric
+2. A set of representative parity demo graphs or workflows
+3. A small findings summary on where parity still falls short
+4. Follow-up fixes only if the issue is small and obvious
 
-- no pressure to equalize operator count numerically across domains
-- no requirement that every audio and visual technique ship in 1.0
+### Dependencies
 
-## P4. Add a PRD-Facing Latency Validation Lane
+- Q1 should land first so the exploration story is not judged only through the graph
+- Q2 is helpful but not strictly required
 
-#### Why this comes fifth
+### Exit Criteria
 
-The PRD makes concrete responsiveness claims, and the architecture likely supports them. What is missing is a dedicated proof lane.
+- parity is evidenced by real workflows, not only by system architecture
+- the scorecard can justify a stronger parity judgment
+- remaining parity gaps are classified clearly instead of being hand-wavy
 
-This is lower priority than the workflow and product-shape gaps because it is mostly an evidence problem, not a conceptual product gap.
+### Explicit non-goals
 
-#### Locked decision for this phase
+- no operator-count balancing exercise
+- no claim that every audio and visual technique must ship for 1.0
 
-Keep the latency lane narrow and PRD-facing.
+## Q4. PRD-Facing Latency Validation Lane
 
-It should validate only the responsiveness claims that materially affect the product thesis:
+### Goal
 
-- parameter / routing responsiveness
-- hot-reload timing
-- visibility/inspection responsiveness where practical
+Add a narrow validation lane for the responsiveness claims the PRD makes explicitly.
 
-This should not become a broad performance lab.
+### Why this is fourth
 
-#### Scope
+This is mostly an evidence problem, not a product-shape problem. It matters, but it should follow the more structural PRD gaps.
 
-- define a small benchmark/validation lane tied to PRD wording
-- capture repeatable measurements or bounded pass/fail assertions
-- keep it lightweight enough to run regularly
-- use it to support scorecard updates and future release confidence
+### Scope
 
-#### Success criteria
+- define a small benchmark/validation lane around:
+  - parameter responsiveness
+  - routing responsiveness
+  - hot-reload timing
+  - inspection responsiveness where practical
+- keep it lightweight and repeatable
+- tie the results to PRD wording rather than broad profiling
 
-- the project can point to actual evidence for “instant” and “1–3 second” style claims
-- regressions in core interaction latency are detectable
-- the PRD scorecard can treat responsiveness with more than architectural inference
+### Deliverables
 
-#### What this does not include
+1. A small automated or semi-automated latency validation lane
+2. A doc explaining what is measured and what pass/fail means
+3. Stable reporting that can be cited by the PRD scorecard
 
-- no generalized profiling framework
-- no premature optimization campaign across the whole app
+### Dependencies
 
-## P5. Reconcile the PRD, 1.0 Roadmap, and Shipped Product Story
+- existing stress and regression harnesses
+- current hot-reload and runtime hardening
 
-#### Why this comes last
+### Exit Criteria
 
-By the time P0-P4 are done, the team should know which gaps were:
+- the project can point to concrete evidence for the main responsiveness claims
+- regressions in PRD-critical latency paths become detectable
 
-- actually closed in product/runtime
-- deliberately deferred
-- still aspirational
+### Explicit non-goals
 
-At that point, the docs should be reconciled so Vivid is not simultaneously underselling and overselling itself.
+- no full performance lab
+- no generalized telemetry project
 
-#### Scope
+## Q5. North Star Validation And Product-Story Reconciliation
 
-- update `docs/PRD.md` where resolved decisions or 1.0 scope boundaries have changed materially
-- update `docs/ROADMAP.md` so 1.0 scope reflects the intended experimentation and perception story
-- refresh `docs/internal/PRD-CONFORMANCE-SCORECARD.md`
-- keep `docs/PRD-GAPS.md` as the roadmap or collapse it into the scorecard/roadmap set if it has been fully consumed
+### Goal
 
-#### Success criteria
+Align the PRD, roadmap, and shipped product story after Q1-Q4 produce real outcomes.
 
-- the PRD, roadmap, and shipped product story no longer pull in different directions
-- deferred PRD ideas are clearly marked as deferred rather than silently absent
-- implemented product surfaces are described as they actually exist
+### Why this is last
 
-## Cross-Cutting Rules
+This queue item depends on the others. It is where we convert implementation and validation into a cleaner 1.0 story.
 
-### 1. Do not treat every PRD idea as a 1.0 obligation
+### Scope
 
-The PRD contains:
+- validate one explicit North Star-style workflow end to end
+- update docs where 1.0 scope is now clearer
+- separate:
+  - shipped strength
+  - near-term 1.0 commitments
+  - clearly deferred ideas
 
-- core thesis statements
-- architecture commitments
-- product-shape ambitions
-- open questions
-- explicitly deferred concepts
+### Deliverables
 
-The roadmap should prioritize:
+1. One validated North Star scenario
+2. Updated PRD/roadmap wording where needed
+3. A cleaner statement of what Vivid 1.0 is and is not
 
-- the core thesis
-- the strongest 1.0 product claims
-- the areas where misalignment most changes what Vivid *is*
+### Dependencies
 
-### 2. Prefer strengthening one exploration surface deeply over shipping many shallow ones
+- Q1 through Q4 should be substantially complete first
 
-For the PRD, one real second exploration interface is more valuable than several placeholder interfaces.
+### Exit Criteria
 
-### 3. Prefer measurable perception improvements over broad speculative analysis scope
+- the product story is tighter and less aspirationally blurry
+- PRD conformance can be discussed without relying on caveats that are no longer useful
 
-A single real AV-reactivity metric is more valuable than a long list of unevidenced future analysis ideas.
+### Explicit non-goals
 
-### 4. Keep scorecard updates coupled to roadmap progress
-
-Each roadmap phase should update `docs/internal/PRD-CONFORMANCE-SCORECARD.md` so PRD alignment is re-evaluated as work lands.
+- no full PRD rewrite
+- no broad marketing pass disconnected from actual product state
 
 ## Recommended Execution Order
 
-1. **P0** — restore PRD-critical workflow reliability
-2. **P1** — define and deliver the 1.0 exploration surface
-3. **P2** — strengthen perception from introspection to analysis
-4. **P3** — validate audio-visual parity as product reality
-5. **P4** — add PRD-facing latency validation
-6. **P5** — reconcile PRD, roadmap, and shipped story
+### Immediate next queue
 
-## Definition of Success
+1. Q1. Session / variation exploration surface
+2. Q2. Perception analysis tier
 
-This roadmap succeeds when Vivid can make a stronger version of the following claim honestly:
+### After that
 
-Vivid is not only architecturally aligned with its PRD, but product-level evidence now supports the central thesis that it is a live, inspectable, LLM-native audiovisual exploration environment where audio and visuals are genuine peers.
+3. Q3. Audio-visual parity validation
+4. Q4. PRD-facing latency lane
+5. Q5. North Star validation and product-story reconciliation
+
+## What “Done” Looks Like
+
+This queue is successful when:
+
+- Vivid is not only reliable and extensible, but more visibly exploratory
+- the LLM can analyze and compare output, not only inspect and scaffold
+- audio-visual parity is demonstrated in workflows, not just claimed in architecture
+- responsiveness claims are evidence-backed
+- the 1.0 story is clearer and easier to defend

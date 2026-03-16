@@ -115,7 +115,7 @@ Control outputs can drive both GPU and Audio parameters. GPU and Audio operators
 - **[LLM Integration](docs/LLM-INTEGRATION.md)** — MCP server, the four LLM roles
 - **[Package Libraries](docs/PACKAGE-LIBRARIES.md)** — Install/link/rebuild package operator libraries
 - **[Package Template](https://github.com/seethroughlab/vivid-package-template)** — Scaffold and author new package repos
-- **[PRD Alignment Roadmap](docs/PRD-GAPS.md)** — Prioritized roadmap for closing the biggest PRD alignment gaps
+- **[PRD Alignment Implementation Queue](docs/PRD-GAPS.md)** — The next execution queue for closing the biggest remaining PRD alignment gaps
 
 ## Status
 
