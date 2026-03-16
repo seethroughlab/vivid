@@ -27,6 +27,7 @@
 #include "ui/theme_loader.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/data_driven_filter.h"
+#include "operator_api/thumbnail.h"
 #include "operator_api/types.h"
 #include "operator_api/input_state.h"
 #include "common/gpu_util.h"
@@ -1102,26 +1103,63 @@ static int add_watch_for_resolved_package(vivid::FileWatcher& fw, const vivid::P
 }
 
 static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
-                                   vivid::ui::ThumbnailCache& cache, vivid::ui::NodeGraphUI& graph_ui,
-                                   double time, uint32_t thumb_w, uint32_t thumb_h) {
-    std::vector<uint8_t> thumb_pixels(thumb_w * thumb_h * 4);
+                                   vivid::ui::ThumbnailCache& cache,
+                                   vivid::ui::NodeGraphUI& graph_ui,
+                                   WGPUDevice device,
+                                   WGPUQueue queue,
+                                   WGPUCommandEncoder encoder,
+                                   double time,
+                                   double delta_time,
+                                   uint64_t frame,
+                                   uint32_t thumb_w,
+                                   uint32_t thumb_h,
+                                   WGPUTextureFormat thumb_format) {
     std::unordered_set<std::string> custom_thumb_ids;
     for (const auto& ns : scheduler.nodes()) {
         if (!ns.loader || !ns.instance || ns.missing_operator) continue;
         if (!ns.loader->has_draw_thumbnail()) continue;
+        WGPUTextureView thumb_view = cache.get_or_create(ns.node_id);
+        if (!thumb_view) continue;
+        WGPUTexture thumb_tex = cache.get_texture(ns.node_id);
+
         VividThumbnailContext tctx{};
-        tctx.pixels = thumb_pixels.data();
-        tctx.width = thumb_w;
-        tctx.height = thumb_h;
-        tctx.stride = thumb_w * 4;
         tctx.time = time;
-        tctx.output_values = const_cast<float*>(ns.output_values.data());
-        tctx.output_count = ns.output_port_count;
-        tctx.param_values = const_cast<float*>(ns.param_values.data());
+        tctx.delta_time = delta_time;
+        tctx.frame = frame;
+        tctx.param_values = ns.param_values.data();
         tctx.param_count = static_cast<uint32_t>(ns.param_values.size());
-        std::memset(thumb_pixels.data(), 0, thumb_pixels.size());
+        tctx.output_values = ns.output_values.data();
+        tctx.output_count = ns.output_port_count;
+        tctx.string_param_values = ns.file_param_ptrs.empty() ? nullptr : ns.file_param_ptrs.data();
+        tctx.string_param_count = static_cast<uint32_t>(ns.file_param_ptrs.size());
+        tctx.file_param_values = ns.file_param_ptrs.empty() ? nullptr : ns.file_param_ptrs.data();
+        tctx.file_param_count = static_cast<uint32_t>(ns.file_param_ptrs.size());
+        tctx.device = device;
+        tctx.queue = queue;
+        tctx.command_encoder = encoder;
+        tctx.thumbnail_texture = thumb_tex;
+        tctx.thumbnail_texture_view = thumb_view;
+        tctx.thumbnail_width = thumb_w;
+        tctx.thumbnail_height = thumb_h;
+        tctx.thumbnail_format = thumb_format;
+        tctx.source_output_texture = ns.gpu_texture;
+        tctx.source_output_texture_view = ns.gpu_texture_view;
+        tctx.source_output_width = ns.gpu_tex_width;
+        tctx.source_output_height = ns.gpu_tex_height;
+        tctx.source_output_format = thumb_format;
+        tctx.input_texture_views =
+            ns.resolved_tex_inputs.empty() ? nullptr
+                                           : const_cast<WGPUTextureView*>(ns.resolved_tex_inputs.data());
+        tctx.input_texture_count = static_cast<uint32_t>(ns.resolved_tex_inputs.size());
+        tctx.operator_errored = false;
+        tctx.operator_error_msg = nullptr;
+
         ns.loader->draw_thumbnail(ns.instance, &tctx);
-        cache.upload_cpu(ns.node_id, thumb_pixels.data());
+        if (tctx.operator_errored) {
+            std::fprintf(stderr, "[vivid] thumbnail render error for '%s': %s\n",
+                         ns.node_id.c_str(),
+                         tctx.operator_error_msg ? tctx.operator_error_msg : "unknown error");
+        }
         custom_thumb_ids.insert(ns.node_id);
     }
     graph_ui.set_custom_thumbnail_nodes(std::move(custom_thumb_ids));
@@ -3548,7 +3586,9 @@ int main(int argc, char* argv[]) {
             // Clear consumed input events
             window_user_data.pending_events.clear();
 
-            draw_custom_thumbnails(scheduler, thumb_cache, graph_ui, now, kThumbW, kThumbH);
+            draw_custom_thumbnails(scheduler, thumb_cache, graph_ui,
+                                   gpu.device(), gpu.queue(), tick_encoder,
+                                   now, dt, frame_count, kThumbW, kThumbH, kOffscreenFormat);
 
             // --- Tick state-preset mappings (after scheduler tick, state outputs are fresh) ---
             runtime_api.tick_state_presets();

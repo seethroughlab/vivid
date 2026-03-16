@@ -65,7 +65,7 @@ private:
     VividProcessFn         process_fn_         = nullptr;
     VividProcessAudioFn    process_audio_fn_   = nullptr;
     VividProcessGpuFn      process_gpu_fn_     = nullptr;
-    VividDrawThumbnailFn   draw_thumb_fn_      = nullptr;
+    VividDrawThumbnailFn    draw_thumb_fn_     = nullptr;
     VividMainThreadUpdateFn main_update_fn_    = nullptr;
     VividDrawInspectorFn   draw_insp_fn_      = nullptr;
     VividInspectorModeFn   insp_mode_fn_      = nullptr;

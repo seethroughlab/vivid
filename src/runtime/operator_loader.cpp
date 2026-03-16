@@ -5,10 +5,26 @@
 #include <cstdio>
 #include <cstring>
 #include <utility>
+#include <vector>
 
 namespace vivid {
 
 namespace {
+struct RetainedFailedPluginHandle {
+    std::string path;
+    void* handle = nullptr;
+};
+
+std::vector<RetainedFailedPluginHandle>& retained_failed_plugin_handles() {
+    static std::vector<RetainedFailedPluginHandle> handles;
+    return handles;
+}
+
+void retain_failed_plugin_handle(const char* path, void* handle) {
+    if (!handle) return;
+    retained_failed_plugin_handles().push_back({path ? path : "", handle});
+}
+
 bool hot_reload_param_layout_compatible(const VividOperatorDescriptor* old_desc,
                                         const VividOperatorDescriptor* new_desc) {
     if (!old_desc || !new_desc) return false;
@@ -98,7 +114,7 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     other.process_fn_       = nullptr;
     other.process_audio_fn_ = nullptr;
     other.process_gpu_fn_   = nullptr;
-    other.draw_thumb_fn_    = nullptr;
+    other.draw_thumb_fn_ = nullptr;
     other.main_update_fn_   = nullptr;
     other.draw_insp_fn_     = nullptr;
     other.insp_mode_fn_     = nullptr;
@@ -119,7 +135,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         process_fn_       = other.process_fn_;
         process_audio_fn_ = other.process_audio_fn_;
         process_gpu_fn_   = other.process_gpu_fn_;
-        draw_thumb_fn_    = other.draw_thumb_fn_;
+        draw_thumb_fn_ = other.draw_thumb_fn_;
         main_update_fn_   = other.main_update_fn_;
         draw_insp_fn_     = other.draw_insp_fn_;
         insp_mode_fn_     = other.insp_mode_fn_;
@@ -140,7 +156,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         other.process_fn_       = nullptr;
         other.process_audio_fn_ = nullptr;
         other.process_gpu_fn_   = nullptr;
-        other.draw_thumb_fn_    = nullptr;
+        other.draw_thumb_fn_ = nullptr;
         other.main_update_fn_   = nullptr;
         other.draw_insp_fn_     = nullptr;
         other.insp_mode_fn_     = nullptr;
@@ -249,7 +265,9 @@ bool OperatorLoader::load(const char* path) {
                 set_last_error("custom_type_registration_failed",
                                "failed to register custom port type '" + stable_id + "'");
                 std::fprintf(stderr, "[vivid] Failed to register custom port type for plugin: %s\n", path);
-                dlclose(new_handle);
+                // Some malformed plugins have unsafe teardown paths during dlclose().
+                // Retain the failed handle and keep the current live loader unchanged.
+                retain_failed_plugin_handle(path, new_handle);
                 return false;
             }
         }
@@ -285,7 +303,8 @@ bool OperatorLoader::load(const char* path) {
     process_gpu_fn_   = new_process_gpu_fn;
 
     // Optional entry points
-    draw_thumb_fn_  = reinterpret_cast<VividDrawThumbnailFn>(dlsym(new_handle, "vivid_draw_thumbnail"));
+    draw_thumb_fn_ =
+        reinterpret_cast<VividDrawThumbnailFn>(dlsym(new_handle, "vivid_draw_thumbnail"));
     main_update_fn_ = reinterpret_cast<VividMainThreadUpdateFn>(dlsym(new_handle, "vivid_main_thread_update"));
     draw_insp_fn_   = reinterpret_cast<VividDrawInspectorFn>(dlsym(new_handle, "vivid_draw_inspector"));
     insp_mode_fn_   = reinterpret_cast<VividInspectorModeFn>(dlsym(new_handle, "vivid_inspector_mode"));
@@ -420,7 +439,7 @@ void OperatorLoader::unload() {
         process_fn_       = nullptr;
         process_audio_fn_ = nullptr;
         process_gpu_fn_   = nullptr;
-        draw_thumb_fn_    = nullptr;
+        draw_thumb_fn_ = nullptr;
         main_update_fn_   = nullptr;
         draw_insp_fn_     = nullptr;
         insp_mode_fn_     = nullptr;

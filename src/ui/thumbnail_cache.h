@@ -18,10 +18,9 @@ public:
 
     // Returns a texture view for rendering into (creates if needed) — RGBA16Float for GPU capture
     WGPUTextureView get_or_create(const std::string& node_id);
-    // Upload CPU-side RGBA8 pixels to a thumbnail texture
-    void upload_cpu(const std::string& node_id, const uint8_t* pixels);
     // Returns the existing view for reading (nullptr if not created yet)
     WGPUTextureView get_view(const std::string& node_id) const;
+    WGPUTexture get_texture(const std::string& node_id) const;
     // Remove a thumbnail entry (call when a node is deleted from the graph)
     void remove(const std::string& node_id);
     // Evict entries for nodes not in the active set (call after topology changes)
@@ -42,7 +41,6 @@ private:
     struct Entry {
         WGPUTexture texture = nullptr;
         WGPUTextureView view = nullptr;
-        bool is_cpu = false;
     };
 
     WGPUDevice device_ = nullptr;

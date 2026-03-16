@@ -21,7 +21,7 @@ static constexpr float kNodePadY = 8.0f;
 // Domain body heights
 static constexpr float kAccentBarH = 3.0f;
 static constexpr float kGpuThumbH = 88.0f;     // 140 * 10/16 ~ 87.5
-static constexpr float kAudioWaveH = 40.0f;
+static constexpr float kAudioWaveH = 56.0f;
 static constexpr float kControlSparkH = 30.0f;
 
 // Colors (std::array instead of C-style arrays)
