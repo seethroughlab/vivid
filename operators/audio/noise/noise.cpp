@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
 #include "operator_api/audio_dsp.h"
+#include "operator_api/thumbnail.h"
 
 struct Noise : vivid::AudioOperatorBase {
     static constexpr const char* kName   = "Noise";
@@ -14,6 +15,14 @@ struct Noise : vivid::AudioOperatorBase {
     audio_dsp::BrownNoise  brown_;
     audio_dsp::BlueNoise   blue_;
     audio_dsp::VioletNoise violet_;
+
+    WGPURenderPipeline thumb_pipeline_ = nullptr;
+    WGPUBindGroup thumb_bind_group_ = nullptr;
+    WGPUBindGroupLayout thumb_bind_layout_ = nullptr;
+    WGPUBuffer thumb_uniform_buf_ = nullptr;
+    WGPUShaderModule thumb_shader_ = nullptr;
+    WGPUPipelineLayout thumb_pipe_layout_ = nullptr;
+    WGPUTextureFormat thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
 
     Noise() {
         vivid::semantic_tag(amplitude, "amplitude_linear");
@@ -59,40 +68,109 @@ struct Noise : vivid::AudioOperatorBase {
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
-        // Static waveform: a few cycles of random vertical bars.
-        // Uses a fixed seed so the thumbnail is deterministic.
-        uint32_t W = ctx->width;
-        uint32_t H = ctx->height;
-        float    h = static_cast<float>(H);
-        float    mid = h * 0.5f;
-
-        const uint8_t bg_r = 18,  bg_g = 20,  bg_b = 23,  bg_a = 230;
-        const uint8_t ln_r = 100, ln_g = 190, ln_b = 200, ln_a = 220;
-
-        // Fill background
-        for (uint32_t y = 0; y < H; ++y) {
-            uint8_t* row = ctx->pixels + y * ctx->stride;
-            for (uint32_t x = 0; x < W; ++x) {
-                uint8_t* px = row + x * 4;
-                px[0] = bg_r; px[1] = bg_g; px[2] = bg_b; px[3] = bg_a;
-            }
+        if (!ctx) return;
+        if (!thumb_pipeline_ || thumb_pipeline_format_ != ctx->thumbnail_format) {
+            rebuild_thumb_pipeline(ctx);
+        }
+        if (!thumb_pipeline_ || !thumb_bind_group_ || !thumb_uniform_buf_) {
+            vivid_report_thumbnail_error(ctx, "noise thumbnail pipeline init failed");
+            return;
         }
 
-        // Draw noise bars using a deterministic LCG (same seed each call)
-        uint32_t rng = 0xdeadbeef;
-        for (uint32_t x = 0; x < W; ++x) {
-            rng = rng * 1664525u + 1013904223u;
-            float val = static_cast<float>(static_cast<int32_t>(rng)) / 2147483648.0f; // [-1, 1]
-            float bar_top    = mid + val * mid * 0.85f;
-            float bar_bottom = mid - val * mid * 0.85f;
-            if (bar_top > bar_bottom) { float t = bar_top; bar_top = bar_bottom; bar_bottom = t; }
-            uint32_t y0 = static_cast<uint32_t>(bar_top    < 0.0f ? 0.0f : bar_top);
-            uint32_t y1 = static_cast<uint32_t>(bar_bottom > h - 1 ? h - 1 : bar_bottom);
-            for (uint32_t y = y0; y <= y1 && y < H; ++y) {
-                uint8_t* px = ctx->pixels + y * ctx->stride + x * 4;
-                px[0] = ln_r; px[1] = ln_g; px[2] = ln_b; px[3] = ln_a;
-            }
-        }
+        struct Uniforms { float seed; float pad[3]; } u{};
+        u.seed = 42.0f;
+        wgpuQueueWriteBuffer(ctx->queue, thumb_uniform_buf_, 0, &u, sizeof(u));
+        vivid::thumbnail::run_pass(ctx, thumb_pipeline_, thumb_bind_group_, "Noise Thumb Pass");
+    }
+
+    ~Noise() override {
+        vivid::gpu::release(thumb_pipeline_);
+        vivid::gpu::release(thumb_bind_group_);
+        vivid::gpu::release(thumb_bind_layout_);
+        vivid::gpu::release(thumb_uniform_buf_);
+        vivid::gpu::release(thumb_shader_);
+        vivid::gpu::release(thumb_pipe_layout_);
+    }
+
+private:
+    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
+        vivid::gpu::release(thumb_pipeline_);
+        vivid::gpu::release(thumb_bind_group_);
+        vivid::gpu::release(thumb_bind_layout_);
+        vivid::gpu::release(thumb_uniform_buf_);
+        vivid::gpu::release(thumb_shader_);
+        vivid::gpu::release(thumb_pipe_layout_);
+
+        static const char* kThumbFragment = R"(
+struct Uniforms {
+    data: vec4f,
+};
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) uv: vec2f,
+}
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    let fs = fullscreenTriangle(vertexIndex, true);
+    var out: VertexOutput;
+    out.position = fs.position;
+    out.uv = fs.uv;
+    return out;
+}
+
+fn pcg_hash(inp: u32) -> u32 {
+    var state = inp * 747796405u + 2891336453u;
+    var word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    let uv = input.uv;
+    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
+    let col = vec4f(80.0/255.0, 200.0/255.0, 220.0/255.0, 220.0/255.0);
+
+    let seed = u32(uniforms.data.x);
+    let col_idx = u32(uv.x * 64.0);
+    let hash = pcg_hash(col_idx + seed * 1000u);
+    let bar_height = f32(hash % 1000u) / 1000.0;
+
+    // Bar centered on midline
+    let mid = 0.5;
+    let half_h = bar_height * 0.4;
+    let top = mid - half_h;
+    let bot = mid + half_h;
+
+    let y = uv.y;
+    if (y > top && y < bot) {
+        return col;
+    }
+
+    // Midline
+    if (abs(y - 0.5) < 0.005) {
+        return vec4f(60.0/255.0, 65.0/255.0, 75.0/255.0, 150.0/255.0);
+    }
+
+    return bg;
+}
+)";
+
+        thumb_shader_ = vivid::thumbnail::create_shader(ctx->device, kThumbFragment, "Noise Thumb Shader");
+        thumb_uniform_buf_ =
+            vivid::thumbnail::create_uniform_buffer(ctx->device, sizeof(float) * 4, "Noise Thumb Uniforms");
+        thumb_bind_layout_ =
+            vivid::thumbnail::create_uniform_bind_layout(ctx->device, sizeof(float) * 4, "Noise Thumb BGL");
+        thumb_pipe_layout_ =
+            vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_bind_layout_, "Noise Thumb Layout");
+        thumb_bind_group_ = vivid::thumbnail::create_uniform_bind_group(
+            ctx->device, thumb_bind_layout_, thumb_uniform_buf_, sizeof(float) * 4, "Noise Thumb BG");
+        thumb_pipeline_ = vivid::thumbnail::create_pipeline(
+            ctx->device, thumb_shader_, thumb_pipe_layout_, ctx->thumbnail_format, "Noise Thumb Pipeline");
+        thumb_pipeline_format_ = ctx->thumbnail_format;
     }
 };
 

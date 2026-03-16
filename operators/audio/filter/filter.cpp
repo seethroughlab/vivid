@@ -1,7 +1,9 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
+#include "operator_api/thumbnail.h"
 
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -31,6 +33,14 @@ struct Filter : vivid::AudioOperatorBase {
 
     float low_  = 0.0f;
     float band_ = 0.0f;
+
+    WGPURenderPipeline thumb_pipeline_ = nullptr;
+    WGPUBindGroup thumb_bind_group_ = nullptr;
+    WGPUBindGroupLayout thumb_bind_layout_ = nullptr;
+    WGPUBuffer thumb_uniform_buf_ = nullptr;
+    WGPUShaderModule thumb_shader_ = nullptr;
+    WGPUPipelineLayout thumb_pipe_layout_ = nullptr;
+    WGPUTextureFormat thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
 
     Filter() {
         vivid::semantic_tag(cutoff, "frequency_hz");
@@ -117,97 +127,139 @@ struct Filter : vivid::AudioOperatorBase {
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
-        float p_cutoff    = (ctx->param_count > 0) ? ctx->param_values[0] : 2000.0f;
-        float p_resonance = (ctx->param_count > 1) ? ctx->param_values[1] : 0.7f;
-        int   p_mode      = (ctx->param_count > 2) ? static_cast<int>(ctx->param_values[2]) : 0;
-        if (p_cutoff < 20.0f)    p_cutoff = 20.0f;
-        if (p_cutoff > 20000.0f) p_cutoff = 20000.0f;
-        if (p_resonance < 0.1f)  p_resonance = 0.1f;
-        if (p_resonance > 4.0f)  p_resonance = 4.0f;
-
-        uint32_t W = ctx->width;
-        uint32_t H = ctx->height;
-        float w = static_cast<float>(W);
-        float h = static_cast<float>(H);
-        float pad = 4.0f;
-
-        float log_lo = std::log10(20.0f);
-        float log_hi = std::log10(20000.0f);
-
-        // Ideal 2-pole magnitude formula (closely matches SVF at audio frequencies)
-        // r = freq / cutoff, Q = resonance (not 1/Q — biquad convention here)
-        auto magnitude = [&](float freq) -> float {
-            float r     = freq / p_cutoff;
-            float r2    = r * r;
-            float Q     = p_resonance;
-            float denom = (1.0f - r2) * (1.0f - r2) + (r / Q) * (r / Q);
-            if (denom < 1e-10f) denom = 1e-10f;
-            switch (p_mode) {
-                case 0: return 1.0f / std::sqrt(denom);                               // LP
-                case 1: return r2   / std::sqrt(denom);                               // HP
-                case 2: return (r / Q) / std::sqrt(denom);                            // BP
-                case 3: return std::sqrt((1.0f - r2) * (1.0f - r2) / denom);         // Notch
-                default: return 1.0f / std::sqrt(denom);
-            }
-        };
-
-        // Y axis: -48 dB (bottom) to +12 dB (top)
-        float db_min = -48.0f;
-        float db_max =  12.0f;
-
-        auto mag_to_y = [&](float mag) -> float {
-            float db = 20.0f * std::log10(mag > 1e-6f ? mag : 1e-6f);
-            if (db < db_min) db = db_min;
-            if (db > db_max) db = db_max;
-            float t = (db - db_min) / (db_max - db_min);  // 0=bottom, 1=top
-            return pad + (1.0f - t) * (h - 2.0f * pad);
-        };
-
-        std::vector<float> curve_y(W);
-        for (uint32_t x = 0; x < W; ++x) {
-            float t     = static_cast<float>(x) / (w - 1.0f);
-            float log_f = log_lo + t * (log_hi - log_lo);
-            float freq  = std::pow(10.0f, log_f);
-            curve_y[x]  = mag_to_y(magnitude(freq));
+        if (!ctx) return;
+        if (!thumb_pipeline_ || thumb_pipeline_format_ != ctx->thumbnail_format) {
+            rebuild_thumb_pipeline(ctx);
+        }
+        if (!thumb_pipeline_ || !thumb_bind_group_ || !thumb_uniform_buf_) {
+            vivid_report_thumbnail_error(ctx, "filter thumbnail pipeline init failed");
+            return;
         }
 
-        float zero_y  = mag_to_y(1.0f);
-        int   zero_iy = static_cast<int>(zero_y + 0.5f);
+        struct Uniforms { float cutoff, resonance, mode, pad; } u{};
+        u.cutoff = ctx->param_values[0];
+        u.resonance = ctx->param_values[1];
+        u.mode = ctx->param_values[2];
+        wgpuQueueWriteBuffer(ctx->queue, thumb_uniform_buf_, 0, &u, sizeof(u));
+        vivid::thumbnail::run_pass(ctx, thumb_pipeline_, thumb_bind_group_, "Filter Thumb Pass");
+    }
 
-        // Color palette
-        const uint8_t bg_r = 18,  bg_g = 20,  bg_b = 23,  bg_a = 230;
-        const uint8_t ln_r = 100, ln_g = 190, ln_b = 200, ln_a = 230;
-        const uint8_t fi_r = 60,  fi_g = 130, fi_b = 160, fi_a = 140;
+    ~Filter() override {
+        vivid::gpu::release(thumb_pipeline_);
+        vivid::gpu::release(thumb_bind_group_);
+        vivid::gpu::release(thumb_bind_layout_);
+        vivid::gpu::release(thumb_uniform_buf_);
+        vivid::gpu::release(thumb_shader_);
+        vivid::gpu::release(thumb_pipe_layout_);
+    }
 
-        for (uint32_t y = 0; y < H; ++y) {
-            uint8_t* row = ctx->pixels + y * ctx->stride;
-            float fy = static_cast<float>(y);
-            for (uint32_t x = 0; x < W; ++x) {
-                uint8_t* px = row + x * 4;
-                float dist  = fy - curve_y[x];
-                if (std::fabs(dist) < 1.2f) {
-                    px[0] = ln_r; px[1] = ln_g; px[2] = ln_b; px[3] = ln_a;
-                } else if (dist > 0.0f) {
-                    // Below the curve — attenuated region fill
-                    px[0] = fi_r; px[1] = fi_g; px[2] = fi_b; px[3] = fi_a;
-                } else {
-                    px[0] = bg_r; px[1] = bg_g; px[2] = bg_b; px[3] = bg_a;
-                }
-            }
+private:
+    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
+        vivid::gpu::release(thumb_pipeline_);
+        vivid::gpu::release(thumb_bind_group_);
+        vivid::gpu::release(thumb_bind_layout_);
+        vivid::gpu::release(thumb_uniform_buf_);
+        vivid::gpu::release(thumb_shader_);
+        vivid::gpu::release(thumb_pipe_layout_);
+
+        static const char* kThumbFragment = R"(
+struct Uniforms {
+    data: vec4f,
+};
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) uv: vec2f,
+}
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    let fs = fullscreenTriangle(vertexIndex, true);
+    var out: VertexOutput;
+    out.position = fs.position;
+    out.uv = fs.uv;
+    return out;
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    let uv = input.uv;
+    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
+    let fill_col = vec4f(80.0/255.0, 130.0/255.0, 190.0/255.0, 150.0/255.0);
+    let line_col = vec4f(160.0/255.0, 200.0/255.0, 240.0/255.0, 240.0/255.0);
+    let ref_col = vec4f(50.0/255.0, 55.0/255.0, 65.0/255.0, 120.0/255.0);
+
+    let cutoff = uniforms.data.x;
+    let resonance = max(uniforms.data.y, 0.1);
+    let mode = i32(uniforms.data.z);
+
+    // Log frequency axis: 20 Hz to 20 kHz
+    let freq = 20.0 * pow(1000.0, uv.x);
+    let r = freq / cutoff;
+    let Q = resonance;
+    let r2 = r * r;
+    let rQ = r / Q;
+    let one_minus_r2 = 1.0 - r2;
+    let denom = one_minus_r2 * one_minus_r2 + rQ * rQ;
+
+    // Magnitude based on filter mode
+    var mag = 0.0;
+    if (mode == 0) {        // Low-pass
+        mag = 1.0 / sqrt(denom);
+    } else if (mode == 1) { // High-pass
+        mag = r2 / sqrt(denom);
+    } else if (mode == 2) { // Band-pass
+        mag = rQ / sqrt(denom);
+    } else {                // Notch
+        mag = sqrt(one_minus_r2 * one_minus_r2 / denom);
+    }
+
+    // Convert to dB, map to Y: range -48 dB to +12 dB
+    let db = 20.0 * log(max(mag, 0.0001)) / log(10.0);
+    let db_norm = (db + 48.0) / 60.0;  // 0 at -48dB, 1 at +12dB
+    let curve_y = 1.0 - clamp(db_norm, 0.0, 1.0);
+
+    let plot_y = uv.y;
+
+    // 0 dB reference line
+    let ref_y = 1.0 - (48.0 / 60.0);  // 0dB position
+    if (abs(plot_y - ref_y) < 0.005) {
+        return ref_col;
+    }
+
+    // Fill below curve
+    if (plot_y > curve_y) {
+        let dist = abs(plot_y - curve_y);
+        if (dist < 0.025) {
+            return line_col;
         }
+        return fill_col;
+    }
 
-        // 0 dB reference line (dim gray, within padded area)
-        if (zero_iy >= 0 && zero_iy < static_cast<int>(H)) {
-            uint8_t* row = ctx->pixels + zero_iy * ctx->stride;
-            for (uint32_t x = static_cast<uint32_t>(pad);
-                 x < W - static_cast<uint32_t>(pad); ++x) {
-                uint8_t* px = row + x * 4;
-                px[0] = (px[0] + 60) / 2;
-                px[1] = (px[1] + 60) / 2;
-                px[2] = (px[2] + 60) / 2;
-                px[3] = 180;
-            }
-        }
+    // Line on curve
+    let dist = abs(plot_y - curve_y);
+    if (dist < 0.025) {
+        return line_col;
+    }
+
+    return bg;
+}
+)";
+
+        thumb_shader_ = vivid::thumbnail::create_shader(ctx->device, kThumbFragment, "Filter Thumb Shader");
+        thumb_uniform_buf_ =
+            vivid::thumbnail::create_uniform_buffer(ctx->device, sizeof(float) * 4, "Filter Thumb Uniforms");
+        thumb_bind_layout_ =
+            vivid::thumbnail::create_uniform_bind_layout(ctx->device, sizeof(float) * 4, "Filter Thumb BGL");
+        thumb_pipe_layout_ =
+            vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_bind_layout_, "Filter Thumb Layout");
+        thumb_bind_group_ = vivid::thumbnail::create_uniform_bind_group(
+            ctx->device, thumb_bind_layout_, thumb_uniform_buf_, sizeof(float) * 4, "Filter Thumb BG");
+        thumb_pipeline_ = vivid::thumbnail::create_pipeline(
+            ctx->device, thumb_shader_, thumb_pipe_layout_, ctx->thumbnail_format, "Filter Thumb Pipeline");
+        thumb_pipeline_format_ = ctx->thumbnail_format;
     }
 };
 
