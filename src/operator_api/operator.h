@@ -460,9 +460,15 @@ extern "C" void vivid_main_thread_update(void* instance, double time,         \
 // ---------------------------------------------------------------------------
 
 #define VIVID_THUMBNAIL(ClassName)                                             \
-extern "C" void vivid_draw_thumbnail(void* instance,                           \
-                                     const VividThumbnailContext* ctx) {        \
-    static_cast<_VividInstance*>(instance)->op.draw_thumbnail(ctx);             \
+extern "C" void vivid_draw_thumbnail(                                          \
+    void* instance, const VividThumbnailContext* ctx) {                        \
+    auto* inst = static_cast<_VividInstance*>(instance);                       \
+    _vivid_sync_params(inst,                                                   \
+                       const_cast<float*>(ctx ? ctx->param_values : nullptr),  \
+                       const_cast<const char**>(ctx ? ctx->file_param_values   \
+                                                     : nullptr),               \
+                       ctx ? ctx->file_param_count : 0);                       \
+    inst->op.draw_thumbnail(ctx);                                              \
 }
 
 // ---------------------------------------------------------------------------

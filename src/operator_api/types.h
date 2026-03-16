@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 7u
+#define VIVID_OPERATOR_ABI_VERSION 8u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -258,23 +258,9 @@ typedef void   (*VividProcessFn)(void* instance, VividProcessContext* ctx);
 typedef void   (*VividProcessAudioFn)(void* instance, VividAudioContext* ctx);
 typedef void   (*VividProcessGpuFn)(void* instance, struct VividGpuContext* ctx);
 
-// ---------------------------------------------------------------------------
-// Thumbnail context — optional custom thumbnail rendering
-// ---------------------------------------------------------------------------
-
-typedef struct VividThumbnailContext {
-    uint8_t*  pixels;         // RGBA8 buffer (pre-allocated, row-major)
-    uint32_t  width;          // 140
-    uint32_t  height;         // 88
-    uint32_t  stride;         // width * 4
-    double    time;
-    float*    output_values;
-    uint32_t  output_count;
-    float*    param_values;
-    uint32_t  param_count;
-} VividThumbnailContext;
-
-typedef void (*VividDrawThumbnailFn)(void* instance, const VividThumbnailContext* ctx);
+struct VividThumbnailContext;
+typedef void (*VividDrawThumbnailFn)(void* instance,
+                                     const struct VividThumbnailContext* ctx);
 
 // ---------------------------------------------------------------------------
 // Inspector context — optional custom inspector rendering (draw_inspector)
