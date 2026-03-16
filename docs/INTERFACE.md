@@ -41,7 +41,58 @@ The visibility hierarchy driving this layout:
 
 The main workspace interaction pattern centers on the node graph for structure and wiring, with the session/variation surface managing branching and alternate states. Parameter exploration and modulation overlays should stay close to the graph rather than requiring a separate connection matrix view.
 
-## 6.5 Node Thumbnails
+## 6.5 Session Exploration Surface
+
+The session surface is the bottom strip of the node graph workspace (toggled with **V**). It manages variation branching, auditioning, and reordering — the core exploration workflow for building a performance set.
+
+### Layout
+
+- **Header row:** "SESSION" label, quantize mode buttons (Off/Beat/Bar/4Bar), Branch button (duplicates active variation), Update button (visible only when the active variation is dirty).
+- **Card row:** Horizontally scrollable row of variation cards, followed by a "+ Save New" button. Cards are 130×44px with two-line content.
+
+### Card States
+
+Each card renders one of five visual states:
+
+| State | Visual |
+|-------|--------|
+| **Active** | 2px accent border, tinted accent background |
+| **Queued** | Pulsing accent border, dimmed accent fill |
+| **Dirty** | Yellow dot marker on the active card |
+| **Selected** | Bright highlight border (separate from active) |
+| **Inactive** | Subtle background, dim text |
+
+Card line 1 shows the variation name (truncated with ellipsis). Line 2 shows status markers (active dot, queued arrow, dirty dot).
+
+### Interactions
+
+- **Single click:** Select card and recall (instant) or queue (if quantize mode > Off).
+- **Double click:** Enter inline rename.
+- **Right click:** Context menu with Rename, Duplicate, Delete, Branch From.
+- **Drag reorder:** Click and drag past 3px threshold to reorder. A ghost card follows the cursor and an insertion indicator shows the drop position.
+- **Delete/Backspace:** Deletes the selected card.
+- **Escape:** Closes context menu or deselects card.
+
+### Header Actions
+
+- **Branch:** Duplicates the active variation with a " branch" suffix and recalls the copy. This is the primary exploration action — try something new without losing your current state.
+- **Update:** Overwrites the active variation with the current live state, clearing the dirty flag.
+- **+ Save New:** Saves the current live state as a new variation.
+
+### API Commands
+
+The session surface uses these commands (available via UI, control server, and CLI):
+
+- `save_variation(name)` — snapshot current state as a new variation
+- `recall_variation(name)` / `recall_variation_idx(idx)` — recall a variation
+- `duplicate_variation(name, new_name)` — deep-copy a variation, insert after source
+- `move_variation(name, to_index)` — reorder variations
+- `update_variation(name)` — overwrite a variation with current live state
+- `remove_variation(name)` — delete a variation
+- `rename_variation(old_name, new_name)` — rename a variation
+- `queue_variation(name, quantize)` — queue a variation switch (instant/beat/bar/4bar)
+
+## 6.6 Node Thumbnails
 
 **Decision: Always-on small thumbnails, with on-hover fallback for large graphs.** Every node in the graph displays a live texture thumbnail at all times, matching the existing Vivid chain visualizer and TouchDesigner's behavior. This directly serves the "See Every Step" principle — maximum inspectability. If GPU cost becomes a problem at high node counts (20+), a user toggle switches to on-hover mode where nodes are compact by default and expand on selection.
 

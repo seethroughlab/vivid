@@ -246,6 +246,8 @@ static bool is_undo_tracked_method(const std::string& method) {
            method == "recall_variation" ||
            method == "remove_variation" ||
            method == "rename_variation" ||
+           method == "duplicate_variation" ||
+           method == "move_variation" ||
            method == "update_variation" ||
            method == "queue_variation" ||
            method == "set_quantize_clock" ||
@@ -1956,6 +1958,28 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 result = command_result_to_json(
                     api.rename_variation(yyjson_get_str(old_name), yyjson_get_str(new_name)));
         }
+    } else if (method == "duplicate_variation") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* name = yyjson_obj_get(root, "name");
+            yyjson_val* new_name = yyjson_obj_get(root, "new_name");
+            if (!name || !new_name || !yyjson_is_str(name) || !yyjson_is_str(new_name))
+                result = json_err("missing 'name' or 'new_name'");
+            else
+                result = command_result_to_json(
+                    api.duplicate_variation(yyjson_get_str(name), yyjson_get_str(new_name)));
+        }
+    } else if (method == "move_variation") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* name = yyjson_obj_get(root, "name");
+            yyjson_val* to_idx = yyjson_obj_get(root, "to_index");
+            if (!name || !to_idx || !yyjson_is_str(name) || !yyjson_is_int(to_idx))
+                result = json_err("missing 'name' or 'to_index'");
+            else
+                result = command_result_to_json(
+                    api.move_variation(yyjson_get_str(name), yyjson_get_int(to_idx)));
+        }
     } else if (method == "update_variation") {
         if (!root) { result = json_err("invalid JSON body"); }
         else {
@@ -2449,10 +2473,19 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 } else {
                     auto ir = package_manager->rebuild(pkg_name);
                     if (ir.success) {
+                        std::error_code build_ec;
+                        std::string pkg_path = package_manager->resolve_package_path(pkg_name);
+                        if (!pkg_path.empty()) {
+                            std::string build_root = std::filesystem::canonical(pkg_path, build_ec).string();
+                            if (build_ec || build_root.empty())
+                                build_root = pkg_path;
+                            registry.clear_deferred_probe_handles_for_dir(build_root + "/build");
+                        }
                         auto rr = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
                         if (!rr.ok) {
                             result = json_err("package rebuilt but runtime refresh failed: " + rr.message);
                         } else {
+                            scheduler.tick(0.0, 0.016, 0);
                             yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
                             yyjson_mut_val* res = yyjson_mut_obj(rdoc);
                             yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());

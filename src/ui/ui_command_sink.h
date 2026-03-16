@@ -70,6 +70,8 @@ public:
     virtual void remove_variation(const std::string& name) {}
     virtual void rename_variation(const std::string& old_name, const std::string& new_name) {}
     virtual void update_variation(const std::string& name) {}
+    virtual void duplicate_variation(const std::string& name, const std::string& new_name) {}
+    virtual void move_variation(const std::string& name, int to_index) {}
     virtual void queue_variation(const std::string& name, const std::string& quantize) {}
     virtual void set_quantize_clock(const std::string& node_id) {}
 

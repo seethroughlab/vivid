@@ -29,12 +29,22 @@ Then select an audio-related parameter and confirm audible response.
 
 Expected result: both audio and visuals react immediately without restart.
 
-## 3. Save a Variation (1 minute)
+## 3. Save and Explore Variations (2 minutes)
 
-Use variation controls to save a state snapshot (for example `Intro`).
-This gives you a repeatable baseline before further changes.
+Press **V** to open the session surface at the bottom of the graph. This is where you build a set of variation snapshots for auditioning and performance.
 
-Expected result: recalling the variation restores the same parameter state.
+**Canonical workflow:**
+
+1. Tweak parameters until you like the current state.
+2. Click **+ Save New** to save it as a variation (e.g. "Var 1").
+3. Keep tweaking. The active card shows a dirty dot when you've changed something.
+4. Click **Branch** to duplicate the active variation and explore a new direction without losing the original.
+5. Audition between variations by clicking cards. Use quantize mode (Beat/Bar/4Bar) for tempo-synced switches.
+6. Click **Update** to promote your live tweaks into the active variation.
+7. Drag cards to reorder your set. Right-click a card for Rename, Duplicate, Delete, or Branch From.
+8. Save the graph — variation order and state persist across sessions.
+
+Expected result: recalling any variation restores the exact parameter state it was saved with.
 
 ## 4. Try a Package Operator (2-3 minutes)
 

@@ -797,6 +797,53 @@ int main(int argc, char* argv[]) {
         check(!r4.ok, "rename non-existent fails");
     }
 
+    // --- Test duplicate_variation ---
+    std::fprintf(stderr, "\n--- duplicate_variation ---\n");
+    {
+        // At this point we have "Intro" (renamed from A) and "B"
+        auto r1 = api.duplicate_variation("Intro", "Intro_copy");
+        check(r1.ok, "duplicate Intro -> Intro_copy ok");
+
+        // Recall the copy — should have same params as Intro
+        auto r2 = api.recall_variation("Intro_copy");
+        check(r2.ok, "recall Intro_copy ok");
+
+        // Name conflict
+        auto r3 = api.duplicate_variation("Intro", "B");
+        check(!r3.ok, "duplicate with name conflict fails");
+
+        // Not found
+        auto r4 = api.duplicate_variation("nope", "X");
+        check(!r4.ok, "duplicate non-existent fails");
+
+        // Clean up the copy for subsequent tests
+        api.remove_variation("Intro_copy");
+    }
+
+    // --- Test move_variation ---
+    std::fprintf(stderr, "\n--- move_variation ---\n");
+    {
+        // At this point we have "Intro" and "B"
+        auto r1 = api.move_variation("B", 0);
+        check(r1.ok, "move B to index 0 ok");
+
+        // Verify order: B should now be at index 0
+        auto r2 = api.list_variations();
+        check(r2.ok, "list after move ok");
+
+        // Move back
+        auto r3 = api.move_variation("B", 1);
+        check(r3.ok, "move B back to index 1 ok");
+
+        // Invalid index
+        auto r4 = api.move_variation("Intro", 99);
+        check(!r4.ok, "move to out-of-range fails");
+
+        // Not found
+        auto r5 = api.move_variation("nope", 0);
+        check(!r5.ok, "move non-existent fails");
+    }
+
     // --- Test remove_variation ---
     std::fprintf(stderr, "\n--- remove_variation ---\n");
     {

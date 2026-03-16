@@ -149,6 +149,7 @@ public:
             || color_editing_rgb_ >= 0
             || patch_ctx_open_
             || session_editing_name_
+            || session_ctx_menu_open_
             || record_dropdown_open_
             || preset_name_popup_open_
             || pkg_browser_open_
@@ -860,7 +861,7 @@ private:
     float about_scroll_ = 0.0f;
     float about_max_scroll_ = 0.0f;
 
-    // --- Session grid (variation strip) ---
+    // --- Session grid (variation strip / exploration surface) ---
     bool session_grid_open_ = false;
     float session_scroll_x_ = 0.0f;
     int session_hovered_col_ = -1;
@@ -873,11 +874,26 @@ private:
     int last_variation_click_idx_ = -1;
     // Quantize mode (persisted as UI state, synced via commands)
     int session_quantize_mode_ = 0;  // 0=Off, 1=Beat, 2=Bar, 3=4Bar
+    // Selected card (separate from active — keyboard/visual focus)
+    int session_selected_idx_ = -1;
+    // Drag reorder state
+    int session_drag_idx_ = -1;
+    int session_drag_target_idx_ = -1;
+    float session_drag_start_x_ = 0.0f;
+    float session_drag_start_y_ = 0.0f;
+    bool session_drag_active_ = false;
+    // Context menu state
+    bool session_ctx_menu_open_ = false;
+    float session_ctx_menu_x_ = 0.0f;
+    float session_ctx_menu_y_ = 0.0f;
+    int session_ctx_menu_idx_ = -1;
     // Hit-test rects
     struct VariationCellRect { float x, y, w, h; int idx; };
     std::vector<VariationCellRect> variation_cell_rects_;
-    struct SessionButtonRect { float x, y, w, h; int action; }; // action: 0=+New, 1=Save, 2-5=quantize buttons
+    struct SessionButtonRect { float x, y, w, h; int action; }; // action: 0=+New, 1=Update, 2-5=quantize, 6=Branch
     std::vector<SessionButtonRect> session_button_rects_;
+    struct SessionCtxMenuRect { float x, y, w, h; int action; }; // action: 0=Rename, 1=Duplicate, 2=Delete, 3=Branch From
+    std::vector<SessionCtxMenuRect> session_ctx_menu_rects_;
 
     // Active UI style
     UIStyle style_;

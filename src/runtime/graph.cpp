@@ -777,6 +777,42 @@ bool Graph::rename_variation(const std::string& old_name, const std::string& new
     return true;
 }
 
+bool Graph::duplicate_variation(const std::string& name, const std::string& new_name) {
+    if (find_variation(new_name)) return false; // name conflict
+    int src_idx = find_variation_index(name);
+    if (src_idx < 0) return false;
+    // Deep copy the source variation
+    VariationDef copy = variations_[src_idx];
+    copy.name = new_name;
+    // Insert after source
+    variations_.insert(variations_.begin() + src_idx + 1, std::move(copy));
+    // Adjust active_variation_ if it's after the insertion point
+    if (active_variation_ > src_idx)
+        active_variation_++;
+    return true;
+}
+
+bool Graph::move_variation(const std::string& name, int to_index) {
+    int from_idx = find_variation_index(name);
+    if (from_idx < 0) return false;
+    int n = static_cast<int>(variations_.size());
+    if (to_index < 0 || to_index >= n) return false;
+    if (from_idx == to_index) return true; // no-op
+    // Extract, erase, re-insert
+    VariationDef tmp = std::move(variations_[from_idx]);
+    variations_.erase(variations_.begin() + from_idx);
+    variations_.insert(variations_.begin() + to_index, std::move(tmp));
+    // Adjust active_variation_ to track the same variation
+    if (active_variation_ == from_idx) {
+        active_variation_ = to_index;
+    } else if (from_idx < active_variation_ && to_index >= active_variation_) {
+        active_variation_--;
+    } else if (from_idx > active_variation_ && to_index <= active_variation_) {
+        active_variation_++;
+    }
+    return true;
+}
+
 const VariationDef* Graph::find_variation(const std::string& name) const {
     for (const auto& v : variations_) {
         if (v.name == name) return &v;

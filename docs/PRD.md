@@ -627,7 +627,7 @@ The visibility hierarchy driving this layout:
 
 The main workspace interaction pattern is centered on the node graph for structure and wiring, with the session/variation surface managing branching and alternate states. Parameter exploration and modulation overlays should live close to the graph rather than requiring a separate connection matrix view.
 
-> **Implementation note:** The actual layout centers on the node graph as the primary workspace. The inspector is an overlay panel (not a separate pane). The session-grid vision is only partially implemented today via the variation strip. The output preview is the selected GPU node's texture, displayed in the node graph itself via live thumbnails. Transport/clock information appears as an overlay. File dialogs use native macOS sheets (`src/ui/file_dialog.mm`).
+> **Implementation note:** The actual layout centers on the node graph as the primary workspace. The inspector is an overlay panel (not a separate pane). The session surface (toggled with V) provides variation branching, drag reorder, context menus (rename/duplicate/delete/branch), quantized switching, and five distinct card states (active/queued/dirty/selected/inactive). The output preview is the selected GPU node's texture, displayed in the node graph itself via live thumbnails. Transport/clock information appears as an overlay. File dialogs use native macOS sheets (`src/ui/file_dialog.mm`).
 
 ### 6.5 Node Thumbnails
 

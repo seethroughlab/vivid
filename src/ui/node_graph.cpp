@@ -999,6 +999,41 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     check_relayout();
     update_pan();
     update_node_drag();
+
+    // Session card drag reorder
+    if (session_drag_idx_ >= 0 && mouse_.left_down) {
+        float dx = mouse_.x - session_drag_start_x_;
+        float dy = mouse_.y - session_drag_start_y_;
+        if (!session_drag_active_ &&
+            (dx * dx + dy * dy) > kSessionDragThreshold * kSessionDragThreshold) {
+            session_drag_active_ = true;
+        }
+        if (session_drag_active_) {
+            // Determine insertion target from mouse X vs cell rects
+            session_drag_target_idx_ = static_cast<int>(snap_.variations.size());
+            for (const auto& cr : variation_cell_rects_) {
+                if (mouse_.x < cr.x + cr.w * 0.5f) {
+                    session_drag_target_idx_ = cr.idx;
+                    break;
+                }
+            }
+        }
+    }
+    if (session_drag_idx_ >= 0 && mouse_.left_released) {
+        if (session_drag_active_ && session_drag_target_idx_ >= 0 &&
+            session_drag_idx_ < static_cast<int>(snap_.variations.size())) {
+            int target = session_drag_target_idx_;
+            // Adjust target for the removal of the source
+            if (target > session_drag_idx_) target--;
+            if (target != session_drag_idx_) {
+                commands_.move_variation(snap_.variations[session_drag_idx_].name, target);
+            }
+        }
+        session_drag_idx_ = -1;
+        session_drag_target_idx_ = -1;
+        session_drag_active_ = false;
+    }
+
     update_box_select();
     update_wire_drag();
     update_scrollbar_drag();

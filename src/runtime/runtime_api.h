@@ -86,6 +86,8 @@ public:
     CommandResult recall_variation_idx(int idx);
     CommandResult remove_variation(const std::string& name);
     CommandResult rename_variation(const std::string& old_name, const std::string& new_name);
+    CommandResult duplicate_variation(const std::string& name, const std::string& new_name);
+    CommandResult move_variation(const std::string& name, int to_index);
     CommandResult update_variation(const std::string& name);
     CommandResult list_variations();
     CommandResult queue_variation(const std::string& name, const std::string& quantize);

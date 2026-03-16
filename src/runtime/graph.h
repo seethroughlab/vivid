@@ -135,6 +135,8 @@ public:
     void add_variation(VariationDef v);
     bool remove_variation(const std::string& name);
     bool rename_variation(const std::string& old_name, const std::string& new_name);
+    bool duplicate_variation(const std::string& name, const std::string& new_name);
+    bool move_variation(const std::string& name, int to_index);
     const VariationDef* find_variation(const std::string& name) const;
     VariationDef* find_variation(const std::string& name);
     int find_variation_index(const std::string& name) const;

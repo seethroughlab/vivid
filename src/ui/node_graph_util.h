@@ -55,11 +55,12 @@ inline void rgb_to_hex(float r, float g, float b, char* buf, size_t buf_size) {
 // --- Border rect (filled rect + 1px border lines) ---
 
 inline void draw_rect_border(Renderer2D& tr, float x, float y, float w, float h,
-                             float br, float bg, float bb, float ba = 0.6f) {
-    tr.draw_rect(x, y, w, 1, br, bg, bb, ba);           // top
-    tr.draw_rect(x, y + h - 1, w, 1, br, bg, bb, ba);   // bottom
-    tr.draw_rect(x, y, 1, h, br, bg, bb, ba);            // left
-    tr.draw_rect(x + w - 1, y, 1, h, br, bg, bb, ba);   // right
+                             float br, float bg, float bb, float ba = 0.6f,
+                             float thickness = 1.0f) {
+    tr.draw_rect(x, y, w, thickness, br, bg, bb, ba);                   // top
+    tr.draw_rect(x, y + h - thickness, w, thickness, br, bg, bb, ba);   // bottom
+    tr.draw_rect(x, y, thickness, h, br, bg, bb, ba);                   // left
+    tr.draw_rect(x + w - thickness, y, thickness, h, br, bg, bb, ba);   // right
 }
 
 // --- Lo-fi drop shadow (offset dark rects, no blur) ---

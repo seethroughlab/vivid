@@ -778,6 +778,37 @@ CommandResult RuntimeAPI::rename_variation(const std::string& old_name, const st
     return {true, "renamed '" + old_name + "' to '" + new_name + "'"};
 }
 
+CommandResult RuntimeAPI::duplicate_variation(const std::string& name, const std::string& new_name) {
+    int src_idx = graph_.find_variation_index(name);
+    if (!graph_.duplicate_variation(name, new_name))
+        return {false, "duplicate failed (not found or name conflict)"};
+    // Adjust pending_variation_ index if it's after the insertion point
+    if (pending_variation_.armed && pending_variation_.variation_idx > src_idx)
+        pending_variation_.variation_idx++;
+    mark_graph_dirty();
+    return {true, "duplicated '" + name + "' as '" + new_name + "'"};
+}
+
+CommandResult RuntimeAPI::move_variation(const std::string& name, int to_index) {
+    int from_idx = graph_.find_variation_index(name);
+    if (from_idx < 0) return {false, "unknown variation '" + name + "'"};
+    if (!graph_.move_variation(name, to_index))
+        return {false, "move failed (invalid index)"};
+    // Adjust pending_variation_ index to track the same variation
+    if (pending_variation_.armed) {
+        int pi = pending_variation_.variation_idx;
+        if (pi == from_idx) {
+            pending_variation_.variation_idx = to_index;
+        } else if (from_idx < pi && to_index >= pi) {
+            pending_variation_.variation_idx--;
+        } else if (from_idx > pi && to_index <= pi) {
+            pending_variation_.variation_idx++;
+        }
+    }
+    mark_graph_dirty();
+    return {true, "moved '" + name + "' to index " + std::to_string(to_index)};
+}
+
 CommandResult RuntimeAPI::update_variation(const std::string& name) {
     auto* vd = graph_.find_variation(name);
     if (!vd) return {false, "unknown variation '" + name + "'"};
@@ -1369,6 +1400,7 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
         has_audio = false;
     }
     scheduler_.shutdown();
+    registry_.clear_retired_package_loaders();
 
     if (!graph_.load(path.c_str())) {
         return restore_previous_state("failed to reload " + path);
@@ -1430,6 +1462,7 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
 CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {
     if (has_audio) { audio_engine_.shutdown(); has_audio = false; }
     scheduler_.shutdown();
+    registry_.clear_retired_package_loaders();
 
     auto read_file = [](const std::string& path, std::string& out) -> bool {
         auto f = std::fopen(path.c_str(), "rb");
@@ -1563,6 +1596,7 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
         has_audio = false;
     }
     scheduler_.shutdown();
+    registry_.clear_retired_package_loaders();
 
     // Preserve source_path so normal save/reload still target the same graph file.
     if (!graph_.load_from_string(graph_json.c_str(), graph_json.size(), true)) {

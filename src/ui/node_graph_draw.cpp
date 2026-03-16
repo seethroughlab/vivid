@@ -4314,6 +4314,7 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
 
     variation_cell_rects_.clear();
     session_button_rects_.clear();
+    session_ctx_menu_rects_.clear();
 
     float strip_y = static_cast<float>(win_h_) - kSessionStripH;
     float strip_w = static_cast<float>(win_w_);
@@ -4327,7 +4328,7 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
 
     // --- Header row ---
     float hx = kSessionPadX;
-    float hy = strip_y + 3;
+    float hy = strip_y + 5;
 
     tr.draw_text(hx, hy + 2, "SESSION",
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
@@ -4351,72 +4352,194 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
         hx += bw + 3;
     }
 
-    // Save button (overwrites active variation)
     hx += 10;
-    if (snap_.active_variation >= 0 && snap_.variation_dirty) {
-        float save_w = 42.0f;
-        tr.draw_rect(hx, hy, save_w, 18,
-                     style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
-        tr.draw_text(hx + 6, hy + 2, "Save",
+
+    // Branch button (duplicates active variation)
+    if (snap_.active_variation >= 0) {
+        float branch_w = 54.0f;
+        tr.draw_rect(hx, hy, branch_w, 18,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.7f);
+        tr.draw_text(hx + 6, hy + 2, "Branch",
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        session_button_rects_.push_back({hx, hy, save_w, 18.0f, 1});
-        hx += save_w + 6;
+        session_button_rects_.push_back({hx, hy, branch_w, 18.0f, 6});
+        hx += branch_w + 6;
     }
 
-    // --- Cell row ---
-    float cy = strip_y + kSessionHeaderH + 2;
+    // Update button (enabled only when dirty)
+    if (snap_.active_variation >= 0 && snap_.variation_dirty) {
+        float update_w = 54.0f;
+        tr.draw_rect(hx, hy, update_w, 18,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
+        tr.draw_text(hx + 6, hy + 2, "Update",
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        session_button_rects_.push_back({hx, hy, update_w, 18.0f, 1});
+        hx += update_w + 6;
+    }
+
+    // --- Card row ---
+    float cy = strip_y + kSessionHeaderH + 4;
     float cx = kSessionPadX - session_scroll_x_;
 
     for (int i = 0; i < static_cast<int>(snap_.variations.size()); ++i) {
-        bool active = (i == snap_.active_variation);
-        bool queued = (i == snap_.queued_variation);
+        // Skip the card being dragged (drawn separately as ghost)
+        if (session_drag_active_ && session_drag_idx_ == i) {
+            variation_cell_rects_.push_back({cx, cy, kSessionCellW, kSessionCellH, i});
+            cx += kSessionCellW + kSessionCellPad;
+            continue;
+        }
 
-        float r, g, b, a;
-        if (active) {
-            r = style_.accent[0]; g = style_.accent[1]; b = style_.accent[2]; a = 0.85f;
-        } else if (queued) {
-            r = style_.accent[0] * 0.6f; g = style_.accent[1] * 0.6f; b = style_.accent[2] * 0.6f; a = 0.7f;
+        bool is_active = (i == snap_.active_variation);
+        bool is_queued = (i == snap_.queued_variation);
+        bool is_selected = (i == session_selected_idx_);
+        bool is_dirty = is_active && snap_.variation_dirty;
+
+        // Card background
+        float bg_r, bg_g, bg_b, bg_a;
+        if (is_active) {
+            bg_r = style_.accent[0] * 0.25f;
+            bg_g = style_.accent[1] * 0.25f;
+            bg_b = style_.accent[2] * 0.25f;
+            bg_a = 0.85f;
+        } else if (is_queued) {
+            bg_r = style_.accent[0] * 0.15f;
+            bg_g = style_.accent[1] * 0.15f;
+            bg_b = style_.accent[2] * 0.15f;
+            bg_a = 0.7f;
         } else {
-            r = style_.slider_track[0]; g = style_.slider_track[1]; b = style_.slider_track[2]; a = 0.7f;
+            bg_r = style_.slider_track[0];
+            bg_g = style_.slider_track[1];
+            bg_b = style_.slider_track[2];
+            bg_a = 0.5f;
         }
+        tr.draw_rect(cx, cy, kSessionCellW, kSessionCellH, bg_r, bg_g, bg_b, bg_a);
 
-        tr.draw_rect(cx, cy, kSessionCellW, kSessionCellH, r, g, b, a);
-
-        // Queued indicator: pulsing border
-        if (queued) {
+        // Border: active = 2px accent, queued = pulsing accent, selected = bright highlight
+        if (is_active) {
             draw_rect_border(tr, cx, cy, kSessionCellW, kSessionCellH,
-                             style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
+                             style_.accent[0], style_.accent[1], style_.accent[2], 0.9f, 2.0f);
+        } else if (is_queued) {
+            float pulse = 0.5f + 0.3f * std::sin(cursor_blink_time_ * 6.0f);
+            draw_rect_border(tr, cx, cy, kSessionCellW, kSessionCellH,
+                             style_.accent[0], style_.accent[1], style_.accent[2], pulse);
+        }
+        if (is_selected) {
+            draw_rect_border(tr, cx - 1, cy - 1, kSessionCellW + 2, kSessionCellH + 2,
+                             style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.7f);
         }
 
-        // Variation name
+        // Drag insertion indicator
+        if (session_drag_active_ && session_drag_target_idx_ == i) {
+            tr.draw_rect(cx - 2, cy, 2, kSessionCellH,
+                         style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+        }
+
+        // Line 1: Variation name (truncated)
+        float text_y = cy + 6;
         if (session_editing_name_ && session_edit_idx_ == i) {
-            // Edit mode: draw text buffer with cursor
-            tr.draw_text(cx + 6, cy + 4, session_edit_buffer_.c_str(),
+            tr.draw_text(cx + 8, text_y, session_edit_buffer_.c_str(),
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
             if (cursor_blink_on()) {
                 int cpos = std::max(0, std::min(text_edit_.cursor, static_cast<int>(session_edit_buffer_.size())));
-                float cur_x = cx + 6 + tr.text_width(session_edit_buffer_.substr(0, cpos).c_str());
-                tr.draw_rect(cur_x, cy + 3, 1.0f, kSessionCellH - 6,
+                float cur_x = cx + 8 + tr.text_width(session_edit_buffer_.substr(0, cpos).c_str());
+                tr.draw_rect(cur_x, text_y - 1, 1.0f, 14,
                              style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
             }
         } else {
-            std::string label = snap_.variations[i].name;
-            if (active && snap_.variation_dirty) label += " *";
-            tr.draw_text(cx + 6, cy + 4, label.c_str(),
-                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            const std::string& name = snap_.variations[i].name;
+            // Truncate name to fit card width
+            float max_text_w = kSessionCellW - 16;
+            std::string label = name;
+            if (tr.text_width(label.c_str()) > max_text_w) {
+                while (label.size() > 1 && tr.text_width((label + "...").c_str()) > max_text_w)
+                    label.pop_back();
+                label += "...";
+            }
+            float text_r = is_active ? style_.bright_text[0] : style_.dim_text[0];
+            float text_g = is_active ? style_.bright_text[1] : style_.dim_text[1];
+            float text_b = is_active ? style_.bright_text[2] : style_.dim_text[2];
+            tr.draw_text(cx + 8, text_y, label.c_str(), text_r, text_g, text_b);
+        }
+
+        // Line 2: Status markers
+        float marker_y = cy + kSessionCellH - 14;
+        float mx = cx + 8;
+        if (is_active) {
+            // Active dot
+            tr.draw_rect(mx, marker_y + 4, 6, 6,
+                         style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+            mx += 10;
+        }
+        if (is_queued) {
+            // Queued arrow indicator
+            tr.draw_text(mx, marker_y + 1, ">",
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+            mx += 12;
+        }
+        if (is_dirty) {
+            // Dirty dot
+            tr.draw_rect(mx, marker_y + 4, kSessionDirtyDotR * 2, kSessionDirtyDotR * 2,
+                         1.0f, 0.8f, 0.2f, 0.9f);
         }
 
         variation_cell_rects_.push_back({cx, cy, kSessionCellW, kSessionCellH, i});
         cx += kSessionCellW + kSessionCellPad;
     }
 
-    // [+ New] button
-    float new_btn_w = 60.0f;
+    // Drag insertion indicator at the end
+    if (session_drag_active_ && session_drag_target_idx_ == static_cast<int>(snap_.variations.size())) {
+        tr.draw_rect(cx - 2, cy, 2, kSessionCellH,
+                     style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
+    }
+
+    // [+ Save New] button
+    float new_btn_w = 74.0f;
     tr.draw_rect(cx, cy, new_btn_w, kSessionCellH,
                  style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.5f);
-    tr.draw_text(cx + 8, cy + 4, "+ New",
+    tr.draw_text(cx + 8, cy + 14, "+ Save New",
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     session_button_rects_.push_back({cx, cy, new_btn_w, kSessionCellH, 0});
+
+    // --- Drag ghost card ---
+    if (session_drag_active_ && session_drag_idx_ >= 0 &&
+        session_drag_idx_ < static_cast<int>(snap_.variations.size())) {
+        float ghost_x = mouse_.x - kSessionCellW * 0.5f;
+        float ghost_y = cy;
+        tr.draw_rect(ghost_x, ghost_y, kSessionCellW, kSessionCellH,
+                     style_.accent[0] * 0.3f, style_.accent[1] * 0.3f, style_.accent[2] * 0.3f, 0.6f);
+        draw_rect_border(tr, ghost_x, ghost_y, kSessionCellW, kSessionCellH,
+                         style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
+        tr.draw_text(ghost_x + 8, ghost_y + 14,
+                     snap_.variations[session_drag_idx_].name.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+
+    // --- Context menu ---
+    if (session_ctx_menu_open_ && session_ctx_menu_idx_ >= 0) {
+        static const char* ctx_labels[] = { "Rename", "Duplicate", "Delete", "Branch From" };
+        int item_count = 4;
+        float menu_w = kSessionCtxMenuW;
+        float menu_h = item_count * kSessionCtxMenuItemH + 4;
+        float menu_x = session_ctx_menu_x_;
+        float menu_y = session_ctx_menu_y_;
+        // Clamp to screen
+        if (menu_x + menu_w > strip_w) menu_x = strip_w - menu_w;
+        if (menu_y + menu_h > static_cast<float>(win_h_)) menu_y -= menu_h;
+
+        draw_popup_bg(tr, style_, menu_x, menu_y, menu_w, menu_h);
+
+        for (int ci = 0; ci < item_count; ++ci) {
+            float iy = menu_y + 2 + ci * kSessionCtxMenuItemH;
+            bool hovered = (mouse_.x >= menu_x && mouse_.x <= menu_x + menu_w &&
+                            mouse_.y >= iy && mouse_.y <= iy + kSessionCtxMenuItemH);
+            if (hovered) {
+                tr.draw_rect(menu_x + 2, iy, menu_w - 4, kSessionCtxMenuItemH,
+                             style_.accent[0], style_.accent[1], style_.accent[2], 0.2f);
+            }
+            tr.draw_text(menu_x + 10, iy + 3, ctx_labels[ci],
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            session_ctx_menu_rects_.push_back({menu_x, iy, menu_w, kSessionCtxMenuItemH, ci});
+        }
+    }
 }
 
 } // namespace vivid::ui

@@ -264,13 +264,18 @@ static constexpr float kPrefsSectionGap = 12.0f;
 static constexpr float kPrefsBtnW = 70.0f;
 static constexpr float kPrefsBtnH = 24.0f;
 
-// Session grid (variation strip)
-static constexpr float kSessionStripH = 52.0f;
-static constexpr float kSessionHeaderH = 24.0f;
-static constexpr float kSessionCellW = 110.0f;
-static constexpr float kSessionCellH = 24.0f;
+// Session grid (variation strip / exploration surface)
+static constexpr float kSessionStripH = 84.0f;
+static constexpr float kSessionHeaderH = 28.0f;
+static constexpr float kSessionCellW = 130.0f;
+static constexpr float kSessionCellH = 44.0f;
 static constexpr float kSessionCellPad = 4.0f;
 static constexpr float kSessionPadX = 8.0f;
+static constexpr float kSessionCardRadius = 4.0f;
+static constexpr float kSessionDirtyDotR = 3.0f;
+static constexpr float kSessionCtxMenuW = 120.0f;
+static constexpr float kSessionCtxMenuItemH = 22.0f;
+static constexpr float kSessionDragThreshold = 3.0f;
 
 // Package browser panel
 static constexpr float kPkgBrowserW = 520.0f;

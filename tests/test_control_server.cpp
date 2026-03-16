@@ -1511,6 +1511,39 @@ int main(int argc, char* argv[]) {
 
             auto r10 = post(client, base_url, "remove_variation", R"({"name":"bogus"})");
             check(!r10.ok, "remove_variation bogus fails");
+
+            // duplicate_variation
+            auto rd1 = post(client, base_url, "save_variation", R"({"name":"D1"})");
+            check(rd1.ok, "save_variation D1 ok");
+
+            auto rd2 = post(client, base_url, "duplicate_variation",
+                R"({"name":"D1","new_name":"D1_copy"})");
+            check(rd2.ok, "duplicate_variation D1 -> D1_copy ok");
+
+            auto rd3 = post(client, base_url, "duplicate_variation",
+                R"({"name":"D1","new_name":"D1_copy"})");
+            check(!rd3.ok, "duplicate_variation name conflict fails");
+
+            auto rd4 = post(client, base_url, "duplicate_variation",
+                R"({"name":"nope","new_name":"X"})");
+            check(!rd4.ok, "duplicate_variation not found fails");
+
+            // move_variation
+            auto rm1 = post(client, base_url, "move_variation",
+                R"({"name":"D1_copy","to_index":0})");
+            check(rm1.ok, "move_variation D1_copy to 0 ok");
+
+            auto rm2 = post(client, base_url, "move_variation",
+                R"({"name":"D1","to_index":99})");
+            check(!rm2.ok, "move_variation out of range fails");
+
+            auto rm3 = post(client, base_url, "move_variation",
+                R"({"name":"nope","to_index":0})");
+            check(!rm3.ok, "move_variation not found fails");
+
+            // Cleanup
+            post(client, base_url, "remove_variation", R"({"name":"D1"})");
+            post(client, base_url, "remove_variation", R"({"name":"D1_copy"})");
         }
 
         // --- input validation: recording path traversal ---
