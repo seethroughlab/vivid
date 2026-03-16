@@ -6,6 +6,8 @@
 #include <cstring>
 #include <vector>
 
+struct EnvelopeThumbState;
+
 struct Envelope : vivid::ControlOperatorBase {
     static constexpr const char* kName   = "Envelope";
     static constexpr bool kTimeDependent = true;
@@ -50,6 +52,8 @@ struct Envelope : vivid::ControlOperatorBase {
         vivid::semantic_shape(offset, "scalar");
         vivid::semantic_intent(offset, "env_offset");
     }
+
+    ~Envelope() override;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         display_hint(attack,  VIVID_DISPLAY_KNOB);
@@ -192,106 +196,10 @@ struct Envelope : vivid::ControlOperatorBase {
         vivid::adsr_inspector::draw(ctx, a, d, s, r, false);
     }
 
-    void draw_thumbnail(const VividThumbnailContext* ctx) override {
-        // Param order: attack=0, decay=1, sustain=2, release=3, amplitude=4, offset=5
-        float atk = (ctx->param_count > 0) ? ctx->param_values[0] : 0.01f;
-        float dec = (ctx->param_count > 1) ? ctx->param_values[1] : 0.2f;
-        float sus = (ctx->param_count > 2) ? ctx->param_values[2] : 0.7f;
-        float rel = (ctx->param_count > 3) ? ctx->param_values[3] : 0.3f;
-        if (atk < 0.0001f) atk = 0.0001f;
-        if (dec < 0.001f)  dec = 0.001f;
-        if (rel < 0.001f)  rel = 0.001f;
-        if (sus < 0.0f) sus = 0.0f;
-        if (sus > 1.0f) sus = 1.0f;
+    void draw_thumbnail(const VividThumbnailContext* ctx) override;
 
-        // Sustain display width is 30% of (attack + decay + release)
-        float sustain_width = 0.3f * (atk + dec + rel);
-        float total_time = atk + dec + sustain_width + rel;
+private:
+    EnvelopeThumbState* thumb_state_ = nullptr;
 
-        float w = static_cast<float>(ctx->width);
-        float h = static_cast<float>(ctx->height);
-        float pad = 4.0f;
-
-        // Colors
-        const uint8_t bg_r = 18, bg_g = 20, bg_b = 23, bg_a = 230;
-        const uint8_t fill_r = 100, fill_g = 130, fill_b = 170, fill_a = 160;
-        const uint8_t line_r = 160, line_g = 190, line_b = 220, line_a = 230;
-        const uint8_t level_r = 255, level_g = 220, level_b = 100, level_a = 180;
-
-        // ADSR envelope at time t
-        auto env_at = [&](float t) -> float {
-            if (t <= atk) {
-                return t / atk;                              // Attack: 0->1
-            }
-            t -= atk;
-            if (t <= dec) {
-                return 1.0f - (1.0f - sus) * (t / dec);     // Decay: 1->sustain
-            }
-            t -= dec;
-            if (t <= sustain_width) {
-                return sus;                                   // Sustain: hold
-            }
-            t -= sustain_width;
-            if (t <= rel) {
-                return sus * (1.0f - t / rel);               // Release: sustain->0
-            }
-            return 0.0f;
-        };
-
-        auto x_to_time = [&](float x) -> float {
-            return (x - pad) / (w - 2.0f * pad) * total_time;
-        };
-        auto env_to_y = [&](float e) -> float {
-            return pad + (1.0f - e) * (h - 2.0f * pad);
-        };
-
-        // Compute curve y for each column
-        std::vector<float> curve_y(ctx->width);
-        for (uint32_t x = 0; x < ctx->width; ++x) {
-            float t = x_to_time(static_cast<float>(x));
-            if (t < 0.0f) t = 0.0f;
-            if (t > total_time) t = total_time;
-            curve_y[x] = env_to_y(env_at(t));
-        }
-
-        // Draw pixels
-        for (uint32_t y = 0; y < ctx->height; ++y) {
-            uint8_t* row = ctx->pixels + y * ctx->stride;
-            float fy = static_cast<float>(y);
-            for (uint32_t x = 0; x < ctx->width; ++x) {
-                uint8_t* px = row + x * 4;
-                float cy = curve_y[x];
-                float dist_to_curve = fy - cy;
-
-                if (std::fabs(dist_to_curve) < 1.2f) {
-                    px[0] = line_r; px[1] = line_g; px[2] = line_b; px[3] = line_a;
-                } else if (dist_to_curve > 0.0f) {
-                    px[0] = fill_r; px[1] = fill_g; px[2] = fill_b; px[3] = fill_a;
-                } else {
-                    px[0] = bg_r; px[1] = bg_g; px[2] = bg_b; px[3] = bg_a;
-                }
-            }
-        }
-
-        // Draw current-level horizontal indicator from output value
-        if (ctx->output_count > 0) {
-            float raw = ctx->output_values[0];
-            float amp = (ctx->param_count > 4) ? ctx->param_values[4] : 1.0f;
-            float off = (ctx->param_count > 5) ? ctx->param_values[5] : 0.0f;
-            float env_val = (amp > 0.0001f) ? (raw - off) / amp : 0.0f;
-            if (env_val < 0.0f) env_val = 0.0f;
-            if (env_val > 1.0f) env_val = 1.0f;
-
-            float ly = env_to_y(env_val);
-            uint32_t iy = static_cast<uint32_t>(ly);
-            if (iy < ctx->height) {
-                uint8_t* row = ctx->pixels + iy * ctx->stride;
-                for (uint32_t x = static_cast<uint32_t>(pad);
-                     x < ctx->width - static_cast<uint32_t>(pad); ++x) {
-                    uint8_t* px = row + x * 4;
-                    px[0] = level_r; px[1] = level_g; px[2] = level_b; px[3] = level_a;
-                }
-            }
-        }
-    }
+    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx);
 };
