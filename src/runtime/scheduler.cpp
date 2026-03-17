@@ -22,7 +22,14 @@ inline bool has_remap(const Wire& w) {
 // Apply remap: maps val from [from_min, from_max] to [to_min, to_max]
 inline float apply_remap(float val, const Wire& w) {
     float range = w.from_max - w.from_min;
-    float t = (range != 0.0f) ? (val - w.from_min) / range : 0.0f;
+    float t;
+    if (range != 0.0f) {
+        t = (val - w.from_min) / range;
+    } else {
+        t = 0.5f;
+        std::fprintf(stderr, "[vivid] Scheduler: wire remap has zero input range "
+                     "(from_min == from_max == %g) — using midpoint\n", w.from_min);
+    }
     float out = w.to_min + t * (w.to_max - w.to_min);
     if (w.clamp) {
         float lo = std::min(w.to_min, w.to_max);

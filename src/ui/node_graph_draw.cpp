@@ -1023,7 +1023,7 @@ void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
 
     // Normalized value
     float range = pd.max_value - pd.min_value;
-    float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
+    float t = (range > 0) ? (val - pd.min_value) / range : 0.5f;
     t = std::max(0.0f, std::min(1.0f, t));
 
     // Track arc (full 270° sweep)
@@ -1599,7 +1599,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float sw = panel_w, sh = kSliderH;
         tr.draw_rect(sx, sy, sw, sh, style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
         float range = pd.max_value - pd.min_value;
-        float t = (range > 0) ? (val - pd.min_value) / range : 0.0f;
+        float t = (range > 0) ? (val - pd.min_value) / range : 0.5f;
         t = std::max(0.0f, std::min(1.0f, t));
         const float* sc = domain_color(node.domain);
         if (is_connected) {
@@ -1612,7 +1612,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                     auto pi_it = src.output_port_indices.find(conn_from_port);
                     if (pi_it != src.output_port_indices.end() && pi_it->second < src.output_values.size()) {
                         float mod_val = src.output_values[pi_it->second];
-                        float mod_t = (range > 0) ? std::clamp((mod_val - pd.min_value) / range, 0.0f, 1.0f) : 0.0f;
+                        float mod_t = (range > 0) ? std::clamp((mod_val - pd.min_value) / range, 0.0f, 1.0f) : 0.5f;
                         float t_min = std::min(t, mod_t);
                         float t_max = std::max(t, mod_t);
                         tr.draw_rect(sx + sw * t_min, sy, sw * (t_max - t_min), sh, sc[0], sc[1], sc[2], 0.20f);
