@@ -564,6 +564,7 @@ add_vivid_operator(vocoder          operators/audio/vocoder/vocoder.cpp
 add_vivid_operator(parametric_eq    operators/audio/parametric_eq/parametric_eq.cpp
                    FACTORY_PRESETS  operators/audio/parametric_eq/factory_presets.json)
 add_vivid_operator(audio_analysis   operators/audio/audio_analysis/audio_analysis.cpp)
+add_vivid_operator(mic_input        operators/audio/mic_input/mic_input.cpp EXTRA_LIBS miniaudio)
 
 # --- MovieAudioOut (audio output from media stream) ---
 if(APPLE)
