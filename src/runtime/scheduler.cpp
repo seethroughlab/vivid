@@ -22,7 +22,10 @@ inline bool has_remap(const Wire& w) {
 // Apply remap: maps val from [from_min, from_max] to [to_min, to_max]
 inline float apply_remap(float val, const Wire& w) {
     float range = w.from_max - w.from_min;
-    float t = (range != 0.0f) ? (val - w.from_min) / range : 0.0f;
+    // Guard against zero-range input: previously silently returned to_min for any input.
+    // Now returns the midpoint of the output range, which is a more neutral default and
+    // makes degenerate wires easier to spot during debugging.
+    float t = (range != 0.0f) ? (val - w.from_min) / range : 0.5f;
     float out = w.to_min + t * (w.to_max - w.to_min);
     if (w.clamp) {
         float lo = std::min(w.to_min, w.to_max);
