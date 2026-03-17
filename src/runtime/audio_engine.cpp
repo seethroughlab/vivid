@@ -1387,8 +1387,10 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                     audio_ctx.custom_inputs = ns.has_custom_input_ports ? ns.custom_input_values.data() : nullptr;
                     audio_ctx.custom_input_count = static_cast<uint32_t>(ns.custom_input_values.size());
                     audio_ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
-                    audio_ctx.input_float_values = ns.float_input_values.empty() ? nullptr : ns.float_input_values.data();
-                    audio_ctx.output_float_values = ns.float_output_values.empty() ? nullptr : ns.float_output_values.data();
+                    audio_ctx.input_float_values = ns.float_input_values.empty()
+                        ? ns.float_input_scratch_ : ns.float_input_values.data();
+                    audio_ctx.output_float_values = ns.float_output_values.empty()
+                        ? ns.float_output_scratch_ : ns.float_output_values.data();
                     audio_ctx.custom_outputs = ns.custom_output_ptrs.empty() ? nullptr : ns.custom_output_ptrs.data();
                     audio_ctx.custom_output_count = ns.custom_output_count;
                     audio_ctx.file_param_values = nullptr;
@@ -1441,8 +1443,10 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                 audio_ctx.custom_inputs = ns.has_custom_input_ports ? ns.custom_input_values.data() : nullptr;
                 audio_ctx.custom_input_count = static_cast<uint32_t>(ns.custom_input_values.size());
                 audio_ctx.input_string_values = ns.has_string_input_ports ? ns.c_input_string_values.data() : nullptr;
-                audio_ctx.input_float_values = ns.float_input_values.empty() ? nullptr : ns.float_input_values.data();
-                audio_ctx.output_float_values = ns.float_output_values.empty() ? nullptr : ns.float_output_values.data();
+                audio_ctx.input_float_values = ns.float_input_values.empty()
+                    ? ns.float_input_scratch_ : ns.float_input_values.data();
+                audio_ctx.output_float_values = ns.float_output_values.empty()
+                    ? ns.float_output_scratch_ : ns.float_output_values.data();
                 audio_ctx.custom_outputs = ns.custom_output_ptrs.empty() ? nullptr : ns.custom_output_ptrs.data();
                 audio_ctx.custom_output_count = ns.custom_output_count;
                 audio_ctx.file_param_values = nullptr;

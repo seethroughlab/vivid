@@ -82,6 +82,11 @@ struct AudioNodeState {
     std::vector<const char*> c_input_string_values;  // [input_port_idx]
     std::vector<void*> custom_input_values;              // [input_port_idx]
 
+    // --- Defensive scratch buffers (fallback when no FLOAT ports declared) ---
+    static constexpr uint32_t kScratchFloats = 8;
+    float float_output_scratch_[kScratchFloats] = {};
+    float float_input_scratch_[kScratchFloats] = {};
+
     // --- Error state (audio thread only; propagated via AnalysisSnapshot) ---
     bool errored = false;
     char error_message[256] = {};  // fixed-size, no allocation on audio thread
