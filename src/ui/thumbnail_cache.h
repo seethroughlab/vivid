@@ -23,6 +23,15 @@ public:
     WGPUTexture get_texture(const std::string& node_id) const;
     // Remove a thumbnail entry (call when a node is deleted from the graph)
     void remove(const std::string& node_id);
+    // Release all cached entries (call on full graph rebuild)
+    void clear() {
+        for (auto& [id, e] : entries_) {
+            if (e.view) wgpuTextureViewRelease(e.view);
+            if (e.texture) wgpuTextureRelease(e.texture);
+        }
+        entries_.clear();
+    }
+
     // Evict entries for nodes not in the active set (call after topology changes)
     template<typename Container>
     void retain_only(const Container& active_ids) {

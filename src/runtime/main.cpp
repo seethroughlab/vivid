@@ -1159,6 +1159,7 @@ static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
             std::fprintf(stderr, "[vivid] thumbnail render error for '%s': %s\n",
                          ns.node_id.c_str(),
                          tctx.operator_error_msg ? tctx.operator_error_msg : "unknown error");
+            continue;  // fall back to default thumbnail
         }
         custom_thumb_ids.insert(ns.node_id);
     }
@@ -2326,6 +2327,7 @@ int main(int argc, char* argv[]) {
             has_audio = false;
         }
         scheduler.shutdown();
+        thumb_cache.clear();
 
         if (!scheduler.build(graph, registry)) {
             std::fprintf(stderr, "[vivid] Runtime rebuild failed after registry refresh\n");

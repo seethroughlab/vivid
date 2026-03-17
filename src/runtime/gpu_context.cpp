@@ -277,25 +277,31 @@ bool GpuContext::end_frame(const FrameState& frame) {
         return false;
     }
 
-    // Push an error scope to capture validation errors before they hit the fatal path
+    // Push error scopes for all three filter types so errors are captured
+    // instead of falling through to wgpu-native's handle_error_fatal / abort.
     wgpuDevicePushErrorScope(device_, WGPUErrorFilter_Validation);
+    wgpuDevicePushErrorScope(device_, WGPUErrorFilter_OutOfMemory);
+    wgpuDevicePushErrorScope(device_, WGPUErrorFilter_Internal);
 
     wgpuQueueSubmit(queue_, 1, &cmd);
     wgpuCommandBufferRelease(cmd);
     wgpuCommandEncoderRelease(frame.encoder);
 
-    // Pop error scope (fire-and-forget — the callback logs any error)
-    WGPUPopErrorScopeCallbackInfo pop_cb{};
-    pop_cb.mode = WGPUCallbackMode_AllowSpontaneous;
-    pop_cb.callback = [](WGPUPopErrorScopeStatus status, WGPUErrorType type,
-                         WGPUStringView message, void*, void*) {
+    // Pop all three scopes (LIFO order: Internal, OutOfMemory, Validation)
+    auto error_cb = [](WGPUPopErrorScopeStatus status, WGPUErrorType type,
+                       WGPUStringView message, void*, void*) {
         if (status == WGPUPopErrorScopeStatus_Success && type != WGPUErrorType_NoError) {
-            std::fprintf(stderr, "[vivid] GPU validation error in frame submit (%d): %.*s\n",
+            std::fprintf(stderr, "[vivid] GPU error in frame submit (%d): %.*s\n",
                          static_cast<int>(type), static_cast<int>(message.length),
                          message.data ? message.data : "");
         }
     };
-    wgpuDevicePopErrorScope(device_, pop_cb);
+    for (int i = 0; i < 3; ++i) {
+        WGPUPopErrorScopeCallbackInfo pop_cb{};
+        pop_cb.mode = WGPUCallbackMode_AllowSpontaneous;
+        pop_cb.callback = error_cb;
+        wgpuDevicePopErrorScope(device_, pop_cb);
+    }
 
     // Present BEFORE releasing the surface texture/view
     wgpuSurfacePresent(surface_);
