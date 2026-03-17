@@ -375,15 +375,20 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         // Find output port position in graph space
         float gsx = from_rect.x + from_rect.w;
         float gsy = from_rect.y + from_rect.h * 0.5f;
+        bool from_port_found = false;
         for (const auto& p : from_rect.outputs) {
-            if (p.name == c.from_port) { gsx = p.x; gsy = p.y; break; }
+            if (p.name == c.from_port) { gsx = p.x; gsy = p.y; from_port_found = true; break; }
         }
         // Find input port position in graph space
         float gex = to_rect.x;
         float gey = to_rect.y + to_rect.h * 0.5f;
+        bool to_port_found = false;
         for (const auto& p : to_rect.inputs) {
-            if (p.name == c.to_port) { gex = p.x; gey = p.y; break; }
+            if (p.name == c.to_port) { gex = p.x; gey = p.y; to_port_found = true; break; }
         }
+
+        // Skip wires with unresolvable port endpoints (unless invalid — keep those visible)
+        if ((!from_port_found || !to_port_found) && !c.invalid) continue;
 
         // Transform to screen space
         float ssx = gx_to_sx(gsx), ssy = gy_to_sy(gsy);
@@ -418,15 +423,10 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
             if (c.invalid) a_param = a;
             draw_dashed_wire(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th, cr, cg, cb, a_param);
         } else {
-        bool cross_domain = from_rect.domain != to_rect.domain;
-        if (cross_domain) {
-            draw_dashed_wire(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th, cr, cg, cb, a);
-        } else {
             traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
                 [&](float x0, float y0, float x1, float y1) {
                     tr.draw_line(x0, y0, x1, y1, wire_th, cr, cg, cb, a);
                 });
-        }
         }
 
         // Spread cardinality badge: show "×N" at wire midpoint for spread wires

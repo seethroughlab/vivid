@@ -811,6 +811,17 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
                     invalid_reason = "missing source endpoint";
                 } else {
                     from_is_param = true;
+                    {
+                        static std::unordered_set<std::string> warned;
+                        std::string key = conns[i].from_node + "/" + conns[i].from_port
+                                        + "->" + conns[i].to_node + "/" + conns[i].to_port + ":src";
+                        if (warned.insert(key).second)
+                            std::fprintf(stderr, "[vivid] snapshot: %s/%s -> %s/%s: "
+                                "source '%s' not in output ports, resolved as param\n",
+                                conns[i].from_node.c_str(), conns[i].from_port.c_str(),
+                                conns[i].to_node.c_str(), conns[i].to_port.c_str(),
+                                conns[i].from_port.c_str());
+                    }
                 }
             }
         } else {
@@ -833,6 +844,17 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
                         invalid_reason += "; missing destination endpoint";
                 } else {
                     to_is_param = true;
+                    {
+                        static std::unordered_set<std::string> warned;
+                        std::string key = conns[i].from_node + "/" + conns[i].from_port
+                                        + "->" + conns[i].to_node + "/" + conns[i].to_port + ":dst";
+                        if (warned.insert(key).second)
+                            std::fprintf(stderr, "[vivid] snapshot: %s/%s -> %s/%s: "
+                                "destination '%s' not in input ports, resolved as param\n",
+                                conns[i].from_node.c_str(), conns[i].from_port.c_str(),
+                                conns[i].to_node.c_str(), conns[i].to_port.c_str(),
+                                conns[i].to_port.c_str());
+                    }
                 }
             }
         } else {
