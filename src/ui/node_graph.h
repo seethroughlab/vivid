@@ -91,6 +91,8 @@ struct MouseState {
     bool left_clicked = false;   // true on the frame the button went down
     bool left_released = false;  // true on the frame the button went up
     bool right_clicked = false;  // true on the frame right button went down
+    bool right_down = false;
+    bool right_released = false; // true on the frame right button went up
     bool shift_down = false;
 };
 
@@ -218,6 +220,9 @@ public:
 
     bool show_param_wires() const { return show_param_wires_; }
     void set_show_param_wires(bool v) { show_param_wires_ = v; }
+
+    const std::string& pan_gesture() const { return pan_gesture_; }
+    void set_pan_gesture(const std::string& g) { pan_gesture_ = g; }
 
     const UIStyle& style() const { return style_; }
     void set_style(const UIStyle& s) { style_ = s; }
@@ -813,6 +818,8 @@ private:
     std::vector<UIStyle> prefs_styles_;
     std::vector<ThemeInfo> prefs_themes_;
     int prefs_saved_style_sel_ = 0;   // to revert on cancel
+    int prefs_pan_gesture_sel_ = 1;       // 0=middle, 1=left, 2=right
+    int prefs_saved_pan_gesture_sel_ = 1; // to revert on cancel
 
     // --- Package browser ---
     bool pkg_browser_open_ = false;
@@ -904,6 +911,13 @@ private:
     // Param wire visibility toggle (P key)
     bool show_param_wires_ = false;
     bool last_show_param_wires_ = false;  // detect toggle for relayout
+
+    // Pan gesture setting ("middle", "left", "right")
+    std::string pan_gesture_ = "left";
+
+    // Right-drag pan state (used when pan_gesture_ == "right")
+    bool right_pending_ = false;
+    float right_press_mx_ = 0, right_press_my_ = 0;
 
     // UI visibility toggle (tilde key)
     bool visible_ = true;

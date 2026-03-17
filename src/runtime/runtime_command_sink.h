@@ -434,6 +434,12 @@ public:
         vivid::save_settings(*settings_);
     }
 
+    void set_pan_gesture_preference(const std::string& gesture) override {
+        if (!settings_) return;
+        settings_->pan_gesture = gesture;
+        vivid::save_settings(*settings_);
+    }
+
     bool can_create_operator() const override {
         return !operators_dir_.empty() && !build_dir_.empty();
     }

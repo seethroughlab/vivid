@@ -75,17 +75,42 @@ void NodeGraphUI::on_mouse_button(int button, int action, int mods) {
         }
     } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
         if (action == GLFW_PRESS) {
-            mouse_.right_clicked = true;
+            mouse_.right_down = true;
+            if (pan_gesture_ == "right") {
+                // Defer context menu: start pending right-drag pan
+                right_pending_ = true;
+                right_press_mx_ = mouse_.x;
+                right_press_my_ = mouse_.y;
+                pan_start_mx_ = mouse_.x;
+                pan_start_my_ = mouse_.y;
+                pan_start_px_ = pan_x_;
+                pan_start_py_ = pan_y_;
+            } else {
+                mouse_.right_clicked = true;
+            }
+        } else if (action == GLFW_RELEASE) {
+            mouse_.right_down = false;
+            if (pan_gesture_ == "right") {
+                if (right_pending_) {
+                    // No drag occurred — treat as context menu click
+                    right_pending_ = false;
+                    mouse_.right_clicked = true;
+                }
+                panning_ = false;
+            }
+            mouse_.right_released = true;
         }
     } else if (button == GLFW_MOUSE_BUTTON_MIDDLE) {
-        if (action == GLFW_PRESS) {
-            panning_ = true;
-            pan_start_mx_ = mouse_.x;
-            pan_start_my_ = mouse_.y;
-            pan_start_px_ = pan_x_;
-            pan_start_py_ = pan_y_;
-        } else if (action == GLFW_RELEASE) {
-            panning_ = false;
+        if (pan_gesture_ == "middle") {
+            if (action == GLFW_PRESS) {
+                panning_ = true;
+                pan_start_mx_ = mouse_.x;
+                pan_start_my_ = mouse_.y;
+                pan_start_px_ = pan_x_;
+                pan_start_py_ = pan_y_;
+            } else if (action == GLFW_RELEASE) {
+                panning_ = false;
+            }
         }
     }
 }
@@ -2816,14 +2841,24 @@ void NodeGraphUI::handle_graph_click() {
                 selected_wire_idx_ = wi;
                 selected_node_ids_.clear();
             } else {
-                // Empty canvas: clear wire selection, start box-select
+                // Empty canvas: clear wire selection
                 selected_wire_idx_ = -1;
-                if (!mouse_.shift_down)
+                if (pan_gesture_ == "left" && !mouse_.shift_down) {
+                    // Left-drag pans; shift+left-drag box-selects
                     selected_node_ids_.clear();
-                box_selecting_ = true;
-                box_start_gx_ = sx_to_gx(mouse_.x);
-                box_start_gy_ = sy_to_gy(mouse_.y);
-                box_shift_held_ = mouse_.shift_down;
+                    panning_ = true;
+                    pan_start_mx_ = mouse_.x;
+                    pan_start_my_ = mouse_.y;
+                    pan_start_px_ = pan_x_;
+                    pan_start_py_ = pan_y_;
+                } else {
+                    if (!mouse_.shift_down)
+                        selected_node_ids_.clear();
+                    box_selecting_ = true;
+                    box_start_gx_ = sx_to_gx(mouse_.x);
+                    box_start_gy_ = sy_to_gy(mouse_.y);
+                    box_shift_held_ = mouse_.shift_down;
+                }
             }
         }
     }
@@ -2875,6 +2910,8 @@ void NodeGraphUI::update_preferences() {
         + kPrefsSectionGap
         + kPrefsRowH + style_count * kPrefsRowH
         + kPrefsRowH + 4                          // "Open Themes Folder" link
+        + kPrefsSectionGap
+        + kPrefsRowH + 3 * kPrefsRowH             // MOUSE section header + 3 radio items
         + kPrefsSectionGap + kPrefsBtnH + kPrefsPadY;
 
     float pw = kPrefsW;
@@ -2891,6 +2928,7 @@ void NodeGraphUI::update_preferences() {
             style_ = prefs_styles_[prefs_saved_style_sel_];
             prefs_style_sel_ = prefs_saved_style_sel_;
         }
+        prefs_pan_gesture_sel_ = prefs_saved_pan_gesture_sel_;
         prefs_open_ = false;
         prefs_editing_custom_ = false;
         mouse_.left_clicked = false;
@@ -2965,6 +3003,23 @@ void NodeGraphUI::update_preferences() {
 
     cy += kPrefsSectionGap;
 
+    // Skip MOUSE section header
+    cy += kPrefsRowH;
+
+    // Pan gesture radio items
+    for (int i = 0; i < 3; ++i) {
+        if (mouse_.x >= cx && mouse_.x <= cx + inner_w &&
+            mouse_.y >= cy && mouse_.y <= cy + kPrefsRowH) {
+            prefs_pan_gesture_sel_ = i;
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+            return;
+        }
+        cy += kPrefsRowH;
+    }
+
+    cy += kPrefsSectionGap;
+
     // Buttons
     float btn_total = 2 * kPrefsBtnW + 12;
     float save_x = px + (pw - btn_total) * 0.5f;
@@ -2983,6 +3038,12 @@ void NodeGraphUI::update_preferences() {
             prefs_saved_style_sel_ = prefs_style_sel_;
         }
 
+        // Pan gesture
+        const char* gestures[] = { "middle", "left", "right" };
+        pan_gesture_ = gestures[prefs_pan_gesture_sel_];
+        commands_.set_pan_gesture_preference(pan_gesture_);
+        prefs_saved_pan_gesture_sel_ = prefs_pan_gesture_sel_;
+
         prefs_open_ = false;
         prefs_editing_custom_ = false;
         mouse_.left_clicked = false;
@@ -2998,6 +3059,7 @@ void NodeGraphUI::update_preferences() {
             style_ = prefs_styles_[prefs_saved_style_sel_];
             prefs_style_sel_ = prefs_saved_style_sel_;
         }
+        prefs_pan_gesture_sel_ = prefs_saved_pan_gesture_sel_;
         prefs_open_ = false;
         prefs_editing_custom_ = false;
         mouse_.left_clicked = false;

@@ -28,6 +28,7 @@ struct Settings {
     std::string operator_clone_destination_mode = "project_default";
     std::string project_operator_root;         // absolute path (optional)
     std::string project_package_name;          // package target hint (optional)
+    std::string pan_gesture = "left";          // "middle", "left", or "right"
 };
 
 Settings load_settings();

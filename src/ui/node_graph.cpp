@@ -997,6 +997,17 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     }
 
     check_relayout();
+
+    // Right-drag pan detection: promote pending right-press to panning
+    if (pan_gesture_ == "right" && right_pending_) {
+        float dx = mouse_.x - right_press_mx_;
+        float dy = mouse_.y - right_press_my_;
+        if (dx * dx + dy * dy > kRightClickDragThreshold * kRightClickDragThreshold) {
+            right_pending_ = false;
+            panning_ = true;
+        }
+    }
+
     update_pan();
     update_node_drag();
 
@@ -1485,6 +1496,7 @@ void NodeGraphUI::clear_frame_flags() {
     mouse_.left_clicked = false;
     mouse_.left_released = false;
     mouse_.right_clicked = false;
+    mouse_.right_released = false;
 }
 
 void NodeGraphUI::update_node_hover() {
@@ -1541,6 +1553,11 @@ void NodeGraphUI::toggle_preferences() {
         prefs_open_ = true;
         prefs_editing_custom_ = false;
         prefs_saved_style_sel_ = prefs_style_sel_;
+        // Sync pan gesture selection from current state
+        if (pan_gesture_ == "left") prefs_pan_gesture_sel_ = 1;
+        else if (pan_gesture_ == "right") prefs_pan_gesture_sel_ = 2;
+        else prefs_pan_gesture_sel_ = 0;
+        prefs_saved_pan_gesture_sel_ = prefs_pan_gesture_sel_;
     }
 }
 

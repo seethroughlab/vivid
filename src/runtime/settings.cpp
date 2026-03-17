@@ -69,6 +69,11 @@ Settings load_settings() {
         s.project_operator_root = yyjson_get_str(v);
     if ((v = yyjson_obj_get(root, "project_package_name")) && yyjson_is_str(v))
         s.project_package_name = yyjson_get_str(v);
+    if ((v = yyjson_obj_get(root, "pan_gesture")) && yyjson_is_str(v))
+        s.pan_gesture = yyjson_get_str(v);
+
+    if (s.pan_gesture != "middle" && s.pan_gesture != "left" && s.pan_gesture != "right")
+        s.pan_gesture = "left";
 
     if (s.operator_clone_destination_mode != "project_default" &&
         s.operator_clone_destination_mode != "core_explicit") {
@@ -120,6 +125,7 @@ void save_settings(const Settings& s) {
     if (!s.project_package_name.empty())
         yyjson_mut_obj_add_str(doc, root, "project_package_name",
                                s.project_package_name.c_str());
+    yyjson_mut_obj_add_str(doc, root, "pan_gesture", s.pan_gesture.c_str());
 
     std::string path = settings_path();
     yyjson_write_err werr;

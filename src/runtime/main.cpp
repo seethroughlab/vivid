@@ -2409,6 +2409,7 @@ int main(int argc, char* argv[]) {
     graph_ui.set_dpi_scale(dpi_scale);
     graph_ui.set_bezier_wires(settings.bezier_wires);
     graph_ui.set_show_param_wires(settings.show_param_wires);
+    graph_ui.set_pan_gesture(settings.pan_gesture);
     {
         // Resolve mcp/ directory: <bundle>/Contents/Resources/mcp or <exe_dir>/mcp
         auto mcp_dir = resources_dir / "mcp";

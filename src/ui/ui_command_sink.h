@@ -53,6 +53,7 @@ public:
     virtual void set_editor_preference(const std::string& editor_id,
                                        const std::string& custom_command) {}
     virtual void set_style_preference(const std::string& style_id) {}
+    virtual void set_pan_gesture_preference(const std::string& gesture) {}
     virtual bool can_create_operator() const { return false; }
     virtual std::string validate_operator_name(const std::string& name) { return "not available"; }
     virtual bool create_operator(const std::string& name, int domain) { return false; }

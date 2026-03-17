@@ -3442,6 +3442,9 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
         + style_count * kPrefsRowH                // radio items
         + kPrefsRowH + 4                          // "Open Themes Folder" button
         + kPrefsSectionGap
+        + kPrefsRowH                              // "MOUSE" section header
+        + 3 * kPrefsRowH                          // pan gesture radio items
+        + kPrefsSectionGap
         + kPrefsBtnH                              // buttons
         + kPrefsPadY;
 
@@ -3544,6 +3547,29 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
                      style_.accent[0], style_.accent[1], style_.accent[2], alpha);
     }
     cy += kPrefsRowH;
+
+    cy += kPrefsSectionGap;
+
+    // --- MOUSE section ---
+    tr.draw_text(cx, cy, "MOUSE",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+    cy += kPrefsRowH;
+
+    const char* pan_labels[] = { "Middle drag", "Left drag (empty canvas)", "Right drag" };
+    for (int i = 0; i < 3; ++i) {
+        bool sel = (i == prefs_pan_gesture_sel_);
+        float radio_x = cx + 2;
+        float radio_y = cy + kPrefsRowH * 0.5f - 5;
+        tr.draw_rect(radio_x, radio_y, 10, 10,
+                     style_.separator[0], style_.separator[1], style_.separator[2]);
+        if (sel) {
+            tr.draw_rect(radio_x + 2, radio_y + 2, 6, 6,
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
+        }
+        tr.draw_text(cx + 18, cy + 1, pan_labels[i],
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        cy += kPrefsRowH;
+    }
 
     cy += kPrefsSectionGap;
 
