@@ -648,6 +648,7 @@ add_executable(vivid
     src/runtime/control_server.cpp
     src/runtime/capture_coordinator.cpp
     src/runtime/output_analyzer.cpp
+    src/runtime/file_drop_registry.cpp
     src/runtime/av_exporter.mm
     src/runtime/operator_creator.cpp
     src/runtime/system_midi.cpp
@@ -925,6 +926,9 @@ add_vivid_operator(export_custom_port_op tests/operators/export_custom_port_op.c
 add_vivid_operator(test_state_carry_op tests/operators/test_state_carry_op.cpp)
 add_vivid_operator(string_source_op tests/operators/string_source_op.cpp)
 add_vivid_operator(string_sink_op tests/operators/string_sink_op.cpp)
+add_vivid_operator(file_drop_test_op tests/operators/file_drop_test_op.cpp)
+add_vivid_operator(file_drop_test_op_alt tests/operators/file_drop_test_op_alt.cpp)
+add_vivid_operator(file_drop_bad_param_op tests/operators/file_drop_bad_param_op.cpp)
 add_vivid_operator(semantic_ms_source_op tests/operators/semantic_ms_source_op.cpp)
 add_vivid_operator(semantic_s_dest_op    tests/operators/semantic_s_dest_op.cpp)
 add_vivid_operator(semantic_unknown_source_op tests/operators/semantic_unknown_source_op.cpp)
@@ -1296,8 +1300,20 @@ add_executable(test_operator_loader
 )
 target_include_directories(test_operator_loader PRIVATE src)
 target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu yyjson)
-add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op)
+add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_file_drop_registry
+    tests/test_file_drop_registry.cpp
+    src/runtime/file_drop_registry.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+)
+target_include_directories(test_file_drop_registry PRIVATE src)
+target_link_libraries(test_file_drop_registry PRIVATE vivid_operator_api webgpu yyjson)
+add_dependencies(test_file_drop_registry file_drop_test_op file_drop_test_op_alt file_drop_bad_param_op)
+add_test(NAME test_file_drop_registry COMMAND test_file_drop_registry WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_runtime_stress
     tests/test_runtime_stress.cpp

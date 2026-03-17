@@ -1113,18 +1113,15 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
     switch (key) {
         case GLFW_KEY_ESCAPE:
             chooser_open_ = false;
-            chooser_insert_wire_ = false;
-            chooser_wire_connect_ = false;
+            reset_chooser_state();
             break;
 
         case GLFW_KEY_ENTER: {
             if (!chooser_items_.empty() && chooser_sel_ >= 0 &&
                 chooser_sel_ < static_cast<int>(chooser_items_.size())) {
-                confirm_chooser_selection(chooser_items_[chooser_sel_]);
+                confirm_chooser_selection_idx(chooser_sel_);
             } else {
-                chooser_insert_wire_ = false;
-                chooser_wire_connect_ = false;
-                chooser_open_ = false;
+                reset_chooser_state();
             }
             break;
         }
@@ -2120,15 +2117,13 @@ bool NodeGraphUI::handle_chooser_click() {
         !chooser_items_.empty()) {
         int idx = chooser_scroll_ + static_cast<int>((mouse_.y - items_y) / kChooserItemH);
         if (idx >= 0 && idx < static_cast<int>(chooser_items_.size())) {
-            confirm_chooser_selection(chooser_items_[idx]);
+            confirm_chooser_selection_idx(idx);
             mouse_.left_clicked = false;
             mouse_.left_released = false;
             return true;
         }
     }
-    chooser_insert_wire_ = false;
-    chooser_wire_connect_ = false;
-    chooser_open_ = false;
+    reset_chooser_state();
     mouse_.left_clicked = false;
     mouse_.left_released = false;
     return true;

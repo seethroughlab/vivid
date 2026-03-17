@@ -42,6 +42,9 @@ public:
     bool has_draw_thumbnail() const { return draw_thumb_fn_ != nullptr; }
     void draw_thumbnail(void* instance, const VividThumbnailContext* ctx) const;
 
+    bool has_file_drop_handlers() const { return file_drop_fn_ != nullptr; }
+    const VividFileDropHandlerDescriptor* file_drop_handlers(uint32_t* count) const;
+
     bool has_draw_inspector() const { return draw_insp_fn_ != nullptr; }
     uint32_t inspector_mode() const;
     void draw_inspector(void* instance, VividInspectorContext* ctx) const;
@@ -66,6 +69,7 @@ private:
     VividProcessAudioFn    process_audio_fn_   = nullptr;
     VividProcessGpuFn      process_gpu_fn_     = nullptr;
     VividDrawThumbnailFn    draw_thumb_fn_     = nullptr;
+    VividFileDropDescriptorFn file_drop_fn_    = nullptr;
     VividMainThreadUpdateFn main_update_fn_    = nullptr;
     VividDrawInspectorFn   draw_insp_fn_      = nullptr;
     VividInspectorModeFn   insp_mode_fn_      = nullptr;

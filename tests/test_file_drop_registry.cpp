@@ -1,0 +1,53 @@
+#include "runtime/file_drop_registry.h"
+#include "runtime/operator_registry.h"
+
+#include <cstdio>
+#include <filesystem>
+
+static int failures = 0;
+
+static void check(bool cond, const char* msg) {
+    if (!cond) {
+        std::fprintf(stderr, "FAIL: %s\n", msg);
+        ++failures;
+    } else {
+        std::fprintf(stderr, "PASS: %s\n", msg);
+    }
+}
+
+int main() {
+    namespace fs = std::filesystem;
+
+    fs::path staging = fs::path("./.test_file_drop_registry");
+    fs::create_directories(staging);
+    fs::copy_file("file_drop_test_op.dylib", staging / "file_drop_test_op.dylib",
+                  fs::copy_options::overwrite_existing);
+    fs::copy_file("file_drop_test_op_alt.dylib", staging / "file_drop_test_op_alt.dylib",
+                  fs::copy_options::overwrite_existing);
+    fs::copy_file("file_drop_bad_param_op.dylib", staging / "file_drop_bad_param_op.dylib",
+                  fs::copy_options::overwrite_existing);
+
+    vivid::OperatorRegistry registry;
+    check(registry.scan_deferred(staging.c_str()), "scan_deferred succeeds");
+
+    vivid::FileDropRegistry drops;
+    drops.refresh(registry);
+
+    auto handlers = drops.all_registered_handlers();
+    check(handlers.size() == 2, "invalid file-drop registration filtered out");
+
+    auto matches = drops.matches_for_path("/tmp/example.DROPX");
+    check(matches.size() == 2, "extension match is case-insensitive");
+    if (matches.size() == 2) {
+        check(matches[0].type_name == "FileDropTestOp", "higher priority handler ordered first");
+        check(matches[1].type_name == "FileDropTestOpAlt", "second handler preserved");
+    }
+
+    auto no_matches = drops.matches_for_path("/tmp/example.dropbad");
+    check(no_matches.empty(), "invalid file_param handler does not match");
+
+    fs::remove_all(staging);
+
+    std::fprintf(stderr, "\n%d failed\n", failures);
+    return failures ? 1 : 0;
+}

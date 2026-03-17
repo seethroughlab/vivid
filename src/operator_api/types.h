@@ -262,6 +262,17 @@ struct VividThumbnailContext;
 typedef void (*VividDrawThumbnailFn)(void* instance,
                                      const struct VividThumbnailContext* ctx);
 
+typedef struct VividFileDropHandlerDescriptor {
+    const char* label;
+    const char* const* extensions;
+    uint32_t extension_count;
+    const char* file_param;
+    int32_t priority;
+    const char* description;
+} VividFileDropHandlerDescriptor;
+
+typedef const VividFileDropHandlerDescriptor* (*VividFileDropDescriptorFn)(uint32_t* count);
+
 // ---------------------------------------------------------------------------
 // Inspector context — optional custom inspector rendering (draw_inspector)
 // ---------------------------------------------------------------------------

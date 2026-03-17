@@ -787,6 +787,9 @@ static std::string find_compatible_port(const OperatorInfo& op, VividPortType wi
 // -----------------------------------------------------------------------
 void NodeGraphUI::rebuild_chooser_items() {
     if (!snap_valid_) return;
+    chooser_mode_ = ChooserMode::Operators;
+    chooser_subtitles_.clear();
+    chooser_drop_actions_.clear();
     const auto& all = snap_.operator_types;
     chooser_items_.clear();
 
@@ -835,7 +838,112 @@ void NodeGraphUI::rebuild_chooser_items() {
 // -----------------------------------------------------------------------
 // Shared chooser confirm — creates node and optionally splices into wire
 // -----------------------------------------------------------------------
+void NodeGraphUI::reset_chooser_state() {
+    chooser_insert_wire_ = false;
+    chooser_wire_connect_ = false;
+    chooser_open_ = false;
+    chooser_filter_.clear();
+    chooser_subtitles_.clear();
+    chooser_drop_actions_.clear();
+    chooser_mode_ = ChooserMode::Operators;
+}
+
+bool NodeGraphUI::graph_position_for_screen(float sx, float sy, float& gx, float& gy) const {
+    if (sx < 0.0f || sy < 0.0f || sx >= graph_right() || sy >= graph_bottom())
+        return false;
+    gx = sx_to_gx(sx);
+    gy = sy_to_gy(sy);
+    return true;
+}
+
+void NodeGraphUI::graph_center_position(float& gx, float& gy) const {
+    gx = sx_to_gx(graph_right() * 0.5f);
+    gy = sy_to_gy(graph_bottom() * 0.5f);
+}
+
+void NodeGraphUI::open_file_drop_chooser(std::vector<FileDropChooserAction> actions,
+                                         float graph_x, float graph_y) {
+    chooser_mode_ = ChooserMode::FileDrop;
+    chooser_items_.clear();
+    chooser_subtitles_.clear();
+    chooser_drop_actions_ = std::move(actions);
+    for (const auto& action : chooser_drop_actions_) {
+        chooser_items_.push_back(action.label);
+        chooser_subtitles_.push_back(action.subtitle);
+    }
+    chooser_filter_.clear();
+    chooser_sel_ = 0;
+    chooser_scroll_ = 0;
+    chooser_cursor_gx_ = graph_x;
+    chooser_cursor_gy_ = graph_y;
+    chooser_insert_wire_ = false;
+    chooser_wire_connect_ = false;
+    chooser_open_ = !chooser_items_.empty();
+}
+
 void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
+    if (chooser_mode_ == ChooserMode::FileDrop) {
+        for (size_t i = 0; i < chooser_drop_actions_.size(); ++i) {
+            if (chooser_drop_actions_[i].type_name == type ||
+                chooser_drop_actions_[i].label == type) {
+                confirm_chooser_selection_idx(static_cast<int>(i));
+                return;
+            }
+        }
+        reset_chooser_state();
+        return;
+    }
+
+    if (chooser_items_.empty()) {
+        chooser_mode_ = ChooserMode::Operators;
+        chooser_items_ = {type};
+        chooser_sel_ = 0;
+        chooser_scroll_ = 0;
+        chooser_open_ = true;
+        confirm_chooser_selection_idx(0);
+        return;
+    }
+
+    auto it = std::find(chooser_items_.begin(), chooser_items_.end(), type);
+    if (it == chooser_items_.end()) {
+        reset_chooser_state();
+        return;
+    }
+    confirm_chooser_selection_idx(static_cast<int>(std::distance(chooser_items_.begin(), it)));
+}
+
+void NodeGraphUI::confirm_chooser_selection_idx(int idx) {
+    if (idx < 0 || idx >= static_cast<int>(chooser_items_.size())) {
+        reset_chooser_state();
+        return;
+    }
+
+    if (chooser_mode_ == ChooserMode::FileDrop) {
+        if (idx >= static_cast<int>(chooser_drop_actions_.size())) {
+            reset_chooser_state();
+            return;
+        }
+        const auto& action = chooser_drop_actions_[idx];
+        std::string id;
+        for (int n = 1; ; ++n) {
+            id = action.type_name + std::to_string(n);
+            if (!snap_.has_node(id)) break;
+        }
+        std::string add_error;
+        if (!commands_.try_add_node(action.type_name, id, &add_error)) {
+            std::fprintf(stderr, "[vivid] Add node failed for dropped file '%s': %s\n",
+                         action.type_name.c_str(), add_error.c_str());
+            reset_chooser_state();
+            return;
+        }
+        commands_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
+        commands_.set_string_param(id, action.file_param, action.dropped_path);
+        selected_node_ids_ = {id};
+        reset_chooser_state();
+        return;
+    }
+
+    const std::string& type = chooser_items_[idx];
     auto rollback_connection = [&](const std::string& from,
                                    const std::string& to,
                                    const char* context) {
@@ -859,9 +967,7 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
         create_inputs_  = {{"input", 0}};   // domain-default: float
         create_outputs_ = {{"output", 0}};  // domain-default: float
         create_params_.clear();
-        chooser_open_ = false;
-        chooser_insert_wire_ = false;
-        chooser_wire_connect_ = false;
+        reset_chooser_state();
         return;
     }
 
@@ -875,9 +981,7 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
     if (!commands_.try_add_node(type, id, &add_error)) {
         std::fprintf(stderr, "[vivid] Add node failed for '%s': %s\n",
                      type.c_str(), add_error.c_str());
-        chooser_insert_wire_ = false;
-        chooser_wire_connect_ = false;
-        chooser_open_ = false;
+        reset_chooser_state();
         return;
     }
     commands_.set_node_layout(id, chooser_cursor_gx_, chooser_cursor_gy_);
@@ -957,9 +1061,7 @@ void NodeGraphUI::confirm_chooser_selection(const std::string& type) {
     }
 
     selected_node_ids_ = { id };
-    chooser_insert_wire_ = false;
-    chooser_wire_connect_ = false;
-    chooser_open_ = false;
+    reset_chooser_state();
 }
 
 // -----------------------------------------------------------------------

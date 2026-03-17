@@ -9,8 +9,16 @@
 // File-static global registry — process-wide singleton
 // ---------------------------------------------------------------------------
 
-static std::mutex                                      s_mu;
-static std::unordered_map<uint32_t, VividPortTypeInfo> s_registry;
+struct OwnedPortTypeInfo {
+    VividPortTypeInfo info{};
+    std::string type_name_storage;
+    std::string stable_type_id_storage;
+    std::string package_name_storage;
+    std::string description_storage;
+};
+
+static std::mutex                                           s_mu;
+static std::unordered_map<uint32_t, OwnedPortTypeInfo> s_registry;
 
 // ---------------------------------------------------------------------------
 // vivid_register_port_type
@@ -37,7 +45,7 @@ int vivid_register_port_type(const VividPortTypeInfo* info) {
     auto it = s_registry.find(info->type_id);
     if (it != s_registry.end()) {
         // Idempotent if all fields match; fatal on any mismatch.
-        const VividPortTypeInfo& existing = it->second;
+        const VividPortTypeInfo& existing = it->second.info;
         if (existing.transport    != info->transport    ||
             existing.payload_size != info->payload_size ||
             existing.abi_version  != info->abi_version ||
@@ -51,7 +59,18 @@ int vivid_register_port_type(const VividPortTypeInfo* info) {
         }
         return 1; // identical re-registration — idempotent
     }
-    s_registry[info->type_id] = *info;
+    auto& owned = s_registry[info->type_id];
+    owned.type_name_storage = info->type_name;
+    owned.stable_type_id_storage = info->stable_type_id;
+    owned.package_name_storage = info->package_name ? info->package_name : "";
+    owned.description_storage = info->description ? info->description : "";
+    owned.info = *info;
+    owned.info.type_name = owned.type_name_storage.c_str();
+    owned.info.stable_type_id = owned.stable_type_id_storage.c_str();
+    owned.info.package_name = owned.package_name_storage.empty()
+        ? nullptr : owned.package_name_storage.c_str();
+    owned.info.description = owned.description_storage.empty()
+        ? nullptr : owned.description_storage.c_str();
     return 1;
 }
 
@@ -63,7 +82,7 @@ int vivid_lookup_port_type(uint32_t type_id, VividPortTypeInfo* out) {
     std::lock_guard<std::mutex> lock(s_mu);
     auto it = s_registry.find(type_id);
     if (it == s_registry.end()) return 0;
-    if (out) *out = it->second;
+    if (out) *out = it->second.info;
     return 1;
 }
 
@@ -80,9 +99,9 @@ void vivid_list_port_types(VividPortTypeInfo* buf, uint32_t* count) {
         return;
     }
     uint32_t n = 0;
-    for (auto& [id, info] : s_registry) {
+    for (auto& [id, owned] : s_registry) {
         if (n >= *count) break;
-        buf[n++] = info;
+        buf[n++] = owned.info;
     }
     *count = n;
 }

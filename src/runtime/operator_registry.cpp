@@ -75,6 +75,12 @@ static std::string guess_package_name_from_plugin_path(const std::string& plugin
     return {};
 }
 
+static std::string normalized_extension(std::string ext) {
+    for (auto& c : ext)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext;
+}
+
 template<typename DiagnosticT>
 static std::vector<DiagnosticT> diagnostics_for_dir(
         const std::unordered_map<std::string, DiagnosticT>& diagnostics_by_path,
@@ -169,8 +175,11 @@ bool OperatorRegistry::scan(const char* directory) {
 
 // Deep-copy a VividOperatorDescriptor into a DeferredEntry with fully owned storage.
 // Returns std::nullopt if the descriptor is malformed (null params/ports with non-zero counts).
-static std::optional<DeferredEntry> deep_copy_descriptor(const VividOperatorDescriptor* src,
-                                                          const std::string& dylib_path) {
+static std::optional<DeferredEntry> deep_copy_descriptor(
+        const VividOperatorDescriptor* src,
+        const VividFileDropHandlerDescriptor* file_drop_src,
+        uint32_t file_drop_count,
+        const std::string& dylib_path) {
     DeferredEntry entry;
     entry.dylib_path = dylib_path;
 
@@ -314,6 +323,44 @@ static std::optional<DeferredEntry> deep_copy_descriptor(const VividOperatorDesc
     entry.desc.has_process_audio = src->has_process_audio;
     entry.desc.has_process_gpu = src->has_process_gpu;
 
+    entry.file_drop_handlers.resize(file_drop_count);
+    entry.file_drop_labels.resize(file_drop_count);
+    entry.file_drop_file_params.resize(file_drop_count);
+    entry.file_drop_descriptions.resize(file_drop_count);
+    entry.file_drop_extensions.resize(file_drop_count);
+    entry.file_drop_extension_ptrs.resize(file_drop_count);
+    for (uint32_t i = 0; i < file_drop_count; ++i) {
+        const auto& src_handler = file_drop_src[i];
+        auto& dst_handler = entry.file_drop_handlers[i];
+        entry.file_drop_labels[i] = src_handler.label ? src_handler.label : "";
+        dst_handler.label = entry.file_drop_labels[i].empty()
+                            ? nullptr : entry.file_drop_labels[i].c_str();
+        entry.file_drop_file_params[i] = src_handler.file_param ? src_handler.file_param : "";
+        dst_handler.file_param = entry.file_drop_file_params[i].empty()
+                                 ? nullptr : entry.file_drop_file_params[i].c_str();
+        entry.file_drop_descriptions[i] = src_handler.description ? src_handler.description : "";
+        dst_handler.description = entry.file_drop_descriptions[i].empty()
+                                  ? nullptr : entry.file_drop_descriptions[i].c_str();
+        dst_handler.priority = src_handler.priority;
+        dst_handler.extension_count = src_handler.extension_count;
+        if (src_handler.extensions && src_handler.extension_count > 0) {
+            entry.file_drop_extensions[i].reserve(src_handler.extension_count);
+            entry.file_drop_extension_ptrs[i].reserve(src_handler.extension_count);
+            for (uint32_t ei = 0; ei < src_handler.extension_count; ++ei) {
+                std::string ext = src_handler.extensions[ei] ? src_handler.extensions[ei] : "";
+                entry.file_drop_extensions[i].push_back(std::move(ext));
+            }
+            for (auto& ext : entry.file_drop_extensions[i]) {
+                ext = normalized_extension(ext);
+                entry.file_drop_extension_ptrs[i].push_back(ext.c_str());
+            }
+            dst_handler.extensions = entry.file_drop_extension_ptrs[i].data();
+        } else {
+            dst_handler.extensions = nullptr;
+            dst_handler.extension_count = 0;
+        }
+    }
+
     return entry;
 }
 
@@ -333,6 +380,8 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         }
 
         auto desc_fn = reinterpret_cast<VividDescriptorFn>(dlsym(handle, "vivid_descriptor"));
+        auto file_drop_fn = reinterpret_cast<VividFileDropDescriptorFn>(
+            dlsym(handle, "vivid_file_drop_descriptor"));
         auto abi_fn = reinterpret_cast<VividAbiVersionFn>(dlsym(handle, "vivid_abi_version"));
         if (!abi_fn) {
             std::fprintf(stderr, "[vivid] probe: skipping %s (missing vivid_abi_version; stale/incompatible plugin)\n", name);
@@ -376,7 +425,10 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         }
 
         // Deep-copy descriptor into owned storage
-        auto de_opt = deep_copy_descriptor(desc, path);
+        uint32_t file_drop_count = 0;
+        const VividFileDropHandlerDescriptor* file_drop_desc =
+            file_drop_fn ? file_drop_fn(&file_drop_count) : nullptr;
+        auto de_opt = deep_copy_descriptor(desc, file_drop_desc, file_drop_count, path);
         // Keep probe handles alive for process lifetime. Some plugins execute
         // problematic teardown paths during dlclose() and can stall startup.
         deferred_probe_handles_.push_back({path, handle});
@@ -772,6 +824,67 @@ const std::string* OperatorRegistry::package_for_type(const std::string& type_na
 
 bool OperatorRegistry::is_package_operator(const std::string& type_name) const {
     return type_to_package_.count(type_name) > 0;
+}
+
+std::vector<FileDropRegistration> OperatorRegistry::file_drop_handlers() const {
+    auto build_for = [&](const std::string& type_name,
+                         const VividOperatorDescriptor* desc,
+                         const VividFileDropHandlerDescriptor* handlers,
+                         uint32_t handler_count,
+                         std::vector<FileDropRegistration>& out) {
+        if (!desc || !handlers || handler_count == 0) return;
+        for (uint32_t i = 0; i < handler_count; ++i) {
+            const auto& h = handlers[i];
+            if (!h.extensions || h.extension_count == 0 || !h.file_param || !*h.file_param)
+                continue;
+
+            bool file_param_valid = false;
+            for (uint32_t pi = 0; pi < desc->param_count; ++pi) {
+                const auto& pd = desc->params[pi];
+                if (!pd.name || std::strcmp(pd.name, h.file_param) != 0) continue;
+                file_param_valid = (pd.type == VIVID_PARAM_FILE || pd.type == VIVID_PARAM_TEXT);
+                break;
+            }
+            if (!file_param_valid) continue;
+
+            FileDropRegistration reg;
+            reg.type_name = type_name;
+            reg.label = (h.label && *h.label) ? h.label : type_name;
+            reg.file_param = h.file_param;
+            reg.description = h.description ? h.description : "";
+            reg.priority = h.priority;
+            if (const auto* pkg = package_for_type(type_name))
+                reg.package_name = *pkg;
+            reg.extensions.reserve(h.extension_count);
+            for (uint32_t ei = 0; ei < h.extension_count; ++ei) {
+                std::string ext = h.extensions[ei] ? h.extensions[ei] : "";
+                ext = normalized_extension(ext);
+                if (!ext.empty())
+                    reg.extensions.push_back(std::move(ext));
+            }
+            if (!reg.extensions.empty())
+                out.push_back(std::move(reg));
+        }
+    };
+
+    std::vector<FileDropRegistration> out;
+    for (const auto& [type_name, loader] : loaders_) {
+        uint32_t count = 0;
+        const auto* handlers = loader ? loader->file_drop_handlers(&count) : nullptr;
+        build_for(type_name, loader ? loader->descriptor() : nullptr, handlers, count, out);
+    }
+    for (const auto& [type_name, deferred] : deferred_) {
+        build_for(type_name, &deferred.desc,
+                  deferred.file_drop_handlers.data(),
+                  static_cast<uint32_t>(deferred.file_drop_handlers.size()),
+                  out);
+    }
+    std::sort(out.begin(), out.end(), [](const FileDropRegistration& a, const FileDropRegistration& b) {
+        if (a.priority != b.priority) return a.priority > b.priority;
+        if (a.label != b.label) return a.label < b.label;
+        return a.type_name < b.type_name;
+    });
+    return out;
 }
 
 std::vector<AbiMismatchDiagnostic> OperatorRegistry::abi_mismatch_diagnostics() const {

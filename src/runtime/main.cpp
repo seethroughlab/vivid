@@ -22,6 +22,7 @@
 #include "runtime/editor_detect.h"
 #include "runtime/operator_info_cache.h"
 #include "runtime/runtime_command_sink.h"
+#include "runtime/file_drop_registry.h"
 #include "runtime/crash_guard.h"
 #include "ui/ui_style.h"
 #include "ui/theme_loader.h"
@@ -1414,13 +1415,7 @@ static void scroll_callback(GLFWwindow* w, double xoffset, double yoffset) {
 static void drop_callback(GLFWwindow* w, int count, const char** paths) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
     if (!ud || count < 1) return;
-    for (int i = 0; i < count; ++i) {
-        std::string_view p(paths[i]);
-        if (p.size() > 5 && p.substr(p.size() - 5) == ".json") {
-            ud->pending_drop_path = paths[i];
-            return;
-        }
-    }
+    ud->pending_drop_path = paths[0];
 }
 
 // --- Build/source directory discovery (shared by export, packages, hot-reload) ---
@@ -2957,6 +2952,32 @@ int main(int argc, char* argv[]) {
         return result.ok;
     };
 
+    vivid::FileDropRegistry file_drop_registry;
+    auto refresh_file_drop_registry = [&]() {
+        file_drop_registry.refresh(registry);
+    };
+    refresh_file_drop_registry();
+
+    auto create_file_drop_node = [&](const vivid::FileDropMatch& match,
+                                     const std::string& dropped_path,
+                                     float graph_x, float graph_y) {
+        std::string id;
+        for (int n = 1; ; ++n) {
+            id = match.type_name + std::to_string(n);
+            if (!graph.find_node(id)) break;
+        }
+
+        std::string add_error;
+        if (!command_sink.try_add_node(match.type_name, id, &add_error)) {
+            std::fprintf(stderr, "[vivid] Drop: failed to add %s: %s\n",
+                         match.type_name.c_str(), add_error.c_str());
+            return false;
+        }
+        command_sink.set_node_layout(id, graph_x, graph_y);
+        command_sink.set_string_param(id, match.file_param, dropped_path);
+        return true;
+    };
+
     graph_ui.set_example_open_callback([&](const std::string& rel_path) {
         load_graph_runtime(rel_path, "Open Example");
     });
@@ -3318,11 +3339,50 @@ int main(int argc, char* argv[]) {
         // Skip frame if minimized
         if (fb_w == 0 || fb_h == 0) return true;
 
-        // Handle drag-and-drop graph loading
+        // Handle drag-and-drop graph loading / file-to-operator creation
         if (!window_user_data.pending_drop_path.empty()) {
             std::string path = std::move(window_user_data.pending_drop_path);
             window_user_data.pending_drop_path.clear();
-            load_graph_runtime(path, "Drop");
+            std::string ext = std::filesystem::path(path).extension().string();
+            for (auto& c : ext)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+            if (ext == ".json") {
+                load_graph_runtime(path, "Drop");
+            } else {
+                refresh_file_drop_registry();
+                auto matches = file_drop_registry.matches_for_path(path);
+                if (matches.empty()) {
+                    std::fprintf(stderr, "[vivid] Drop: no operator registered for %s\n", path.c_str());
+                } else {
+                    float graph_x = 0.0f, graph_y = 0.0f;
+                    if (!graph_ui.graph_position_for_screen(
+                            static_cast<float>(window_user_data.raw_mouse_x),
+                            static_cast<float>(window_user_data.raw_mouse_y),
+                            graph_x, graph_y)) {
+                        graph_ui.graph_center_position(graph_x, graph_y);
+                    }
+
+                    if (matches.size() == 1) {
+                        create_file_drop_node(matches.front(), path, graph_x, graph_y);
+                    } else {
+                        std::vector<vivid::ui::FileDropChooserAction> actions;
+                        actions.reserve(matches.size());
+                        for (const auto& match : matches) {
+                            vivid::ui::FileDropChooserAction action;
+                            action.label = match.label;
+                            action.subtitle = match.package_name.empty()
+                                ? match.type_name
+                                : (match.type_name + "  [" + match.package_name + "]");
+                            action.type_name = match.type_name;
+                            action.file_param = match.file_param;
+                            action.dropped_path = path;
+                            actions.push_back(std::move(action));
+                        }
+                        graph_ui.open_file_drop_chooser(std::move(actions), graph_x, graph_y);
+                    }
+                }
+            }
         }
 
         // Reconfigure GPU surface if framebuffer size changed.

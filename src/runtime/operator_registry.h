@@ -31,6 +31,12 @@ struct DeferredEntry {
     std::vector<std::string> semantic_intents;      // stable strings for semantic_intent pointers
     std::vector<std::vector<std::string>> choice_labels;     // owned choice label strings
     std::vector<std::vector<const char*>> choice_label_ptrs; // C pointer arrays into choice_labels
+    std::vector<VividFileDropHandlerDescriptor> file_drop_handlers;
+    std::vector<std::string> file_drop_labels;
+    std::vector<std::string> file_drop_file_params;
+    std::vector<std::string> file_drop_descriptions;
+    std::vector<std::vector<std::string>> file_drop_extensions;
+    std::vector<std::vector<const char*>> file_drop_extension_ptrs;
 };
 
 struct AbiMismatchDiagnostic {
@@ -47,6 +53,16 @@ struct LoaderFailureDiagnostic {
     std::string package_name;  // empty when unknown
     std::string code;
     std::string message;
+};
+
+struct FileDropRegistration {
+    std::string type_name;
+    std::string label;
+    std::string file_param;
+    std::string description;
+    std::string package_name;
+    std::vector<std::string> extensions;
+    int32_t priority = 0;
 };
 
 class OperatorRegistry {
@@ -105,6 +121,7 @@ public:
     void clear_deferred_probe_handles_for_dir(const std::string& directory);
     const std::string* package_for_type(const std::string& type_name) const;
     bool is_package_operator(const std::string& type_name) const;
+    std::vector<FileDropRegistration> file_drop_handlers() const;
 
     // ABI mismatch diagnostics captured during probing/loading.
     std::vector<AbiMismatchDiagnostic> abi_mismatch_diagnostics() const;

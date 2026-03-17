@@ -472,6 +472,20 @@ extern "C" void vivid_draw_thumbnail(                                          \
 }
 
 // ---------------------------------------------------------------------------
+// VIVID_FILE_DROP(handlers_array) — exports vivid_file_drop_descriptor.
+// handlers_array must be a static array of VividFileDropHandlerDescriptor.
+// ---------------------------------------------------------------------------
+
+#define VIVID_FILE_DROP(handlers_array)                                        \
+extern "C" const VividFileDropHandlerDescriptor* vivid_file_drop_descriptor(   \
+    uint32_t* count) {                                                         \
+    if (count)                                                                 \
+        *count = static_cast<uint32_t>(sizeof(handlers_array) /                \
+                                       sizeof((handlers_array)[0]));           \
+    return (handlers_array);                                                   \
+}
+
+// ---------------------------------------------------------------------------
 // VIVID_INSPECTOR(ClassName) — exports vivid_draw_inspector + vivid_inspector_mode
 // Place alongside VIVID_REGISTER for operators that override draw_inspector.
 // VIVID_INSPECTOR  = STANDARD mode (core draws params first, operator draws below)

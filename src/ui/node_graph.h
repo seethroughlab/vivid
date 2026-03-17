@@ -80,6 +80,14 @@ struct PackageBrowserCallbacks {
     std::function<bool(const std::string&, std::string&)> link;
 };
 
+struct FileDropChooserAction {
+    std::string label;
+    std::string subtitle;
+    std::string type_name;
+    std::string file_param;
+    std::string dropped_path;
+};
+
 class Renderer2D;
 class ThumbnailRenderer;
 class ThumbnailCache;
@@ -174,6 +182,11 @@ public:
     void toggle_midi_map_mode();
     void delete_selected();
     void open_chooser();  // centers chooser in visible graph area
+    bool graph_position_for_screen(float sx, float sy, float& gx, float& gy) const;
+    void graph_center_position(float& gx, float& gy) const;
+    void open_file_drop_chooser(std::vector<FileDropChooserAction> actions,
+                                float graph_x, float graph_y);
+    void confirm_chooser_selection(const std::string& type);
 
     // State queries (used by menu bar for checkmarks)
     bool session_grid_open() const { return session_grid_open_; }
@@ -321,7 +334,8 @@ private:
 
     // --- Chooser ---
     void rebuild_chooser_items();
-    void confirm_chooser_selection(const std::string& type);
+    void confirm_chooser_selection_idx(int idx);
+    void reset_chooser_state();
 
     // --- Hit testing ---
     int hit_test_node(float mx, float my) const;
@@ -696,11 +710,18 @@ private:
     float dpi_scale_ = 1.0f;
 
     // Operator chooser popup
+    enum class ChooserMode {
+        Operators,
+        FileDrop,
+    };
     bool chooser_open_ = false;
+    ChooserMode chooser_mode_ = ChooserMode::Operators;
     std::string chooser_filter_;
     int chooser_sel_ = 0;
     int chooser_scroll_ = 0;
     std::vector<std::string> chooser_items_;
+    std::vector<std::string> chooser_subtitles_;
+    std::vector<FileDropChooserAction> chooser_drop_actions_;
     float chooser_cursor_gx_ = 0, chooser_cursor_gy_ = 0;
 
     // Insert-on-wire state (chooser opened from wire context menu)

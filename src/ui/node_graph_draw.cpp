@@ -2635,11 +2635,19 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
         }
 
         const std::string& name = chooser_items_[idx];
+        const std::string subtitle =
+            idx < static_cast<int>(chooser_subtitles_.size()) ? chooser_subtitles_[idx] : "";
 
-        if (name == "+ New Operator...") {
+        if (chooser_mode_ == ChooserMode::Operators && name == "+ New Operator...") {
             // Sentinel: accent-colored text, no domain dot
             tr.draw_text(px + 10, item_y + 3, name.c_str(),
                          style_.accent[0], style_.accent[1], style_.accent[2]);
+        } else if (chooser_mode_ == ChooserMode::FileDrop) {
+            tr.draw_text(px + 10, item_y + 2, name.c_str(), 1.0f, 1.0f, 1.0f);
+            if (!subtitle.empty()) {
+                tr.draw_text(px + 10, item_y + 16, subtitle.c_str(),
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            }
         } else {
             // Domain color dot
             const float* dcol = kControlAccent.data(); // default

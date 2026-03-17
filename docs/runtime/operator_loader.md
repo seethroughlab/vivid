@@ -45,7 +45,8 @@ extern "C" VividCreateFn     vivid_create;
 extern "C" VividDestroyFn    vivid_destroy;
 extern "C" VividProcessFn    vivid_process;       // control domain
 // + optional: vivid_process_audio, vivid_process_gpu, vivid_draw_thumbnail,
-//             vivid_main_thread_update, vivid_draw_inspector, vivid_inspector_mode
+//             vivid_main_thread_update, vivid_draw_inspector, vivid_inspector_mode,
+//             vivid_file_drop_descriptor
 ```
 
 ### Per-Domain Dispatch
@@ -65,6 +66,9 @@ void draw_thumbnail(void* instance, const VividThumbnailContext* ctx) const;
 bool has_draw_inspector() const;
 uint32_t inspector_mode() const;
 void draw_inspector(void* instance, VividInspectorContext* ctx) const;
+
+bool has_file_drop_handlers() const;
+const VividFileDropHandlerDescriptor* file_drop_handlers(uint32_t* count) const;
 
 bool has_main_thread_update() const;
 void main_thread_update(void* instance, double time,
@@ -196,4 +200,16 @@ Stored in `target_to_type_` map, populated from dylib filename conventions.
 
 Holds the full descriptor (with all owned `std::string` storage for stable `const char*` pointers)
 for a probed-but-not-yet-loaded operator. Fields include: `dylib_path`, `desc`, `params`, `ports`,
-all the `_names`, `_type_names`, `_stable_type_ids`, `_default_strings`, `_semantic_tags`, etc.
+all the `_names`, `_type_names`, `_stable_type_ids`, `_default_strings`, `_semantic_tags`, and
+the owned file-drop metadata used by `file_drop_handlers()`.
+
+### File-Drop Metadata
+
+Operators can optionally export file-drop handlers through
+`vivid_file_drop_descriptor()` / `VIVID_FILE_DROP(...)`.
+
+`OperatorLoader` exposes that metadata directly for loaded plugins, and
+`OperatorRegistry` preserves it during deferred probe so file-drop handlers are
+available before the operator is fully loaded.
+
+See `docs/runtime/file_drop_handlers.md` for the authoring contract and runtime behavior.

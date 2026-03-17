@@ -219,6 +219,24 @@ int main() {
         check(!moved.is_loaded(), "move-assign: source unloaded");
     }
 
+    // Test 10b: file-drop metadata
+    {
+        vivid::OperatorLoader loader;
+        std::string path = build_dir + "/file_drop_test_op.dylib";
+        check(loader.load(path.c_str()), "file_drop_test_op loads");
+        check(loader.has_file_drop_handlers(), "file_drop_test_op exposes file-drop metadata");
+        uint32_t count = 0;
+        const auto* handlers = loader.file_drop_handlers(&count);
+        check(handlers != nullptr, "file-drop handler pointer not null");
+        check(count == 1, "file-drop handler count = 1");
+        if (handlers && count == 1) {
+            check(std::strcmp(handlers[0].file_param, "file") == 0, "file-drop param name preserved");
+            check(handlers[0].extension_count == 1, "file-drop extension count = 1");
+            if (handlers[0].extensions && handlers[0].extension_count == 1)
+                check(std::strcmp(handlers[0].extensions[0], ".dropx") == 0, "file-drop extension preserved");
+        }
+    }
+
     // =========================================================================
     // OperatorRegistry tests
     // =========================================================================

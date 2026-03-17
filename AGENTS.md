@@ -56,6 +56,7 @@ When working on `src/runtime/`, read the architecture doc first, then the releva
 | Package system | `docs/runtime/package_system.md` | `package_manager.h/cpp`, `package_compiler.h/cpp` |
 | Hot reload | `docs/runtime/hot_reload.md` | `hot_reload.h/cpp` |
 | GPU / WebGPU | `docs/runtime/gpu.md` | `gpu_context.h/cpp` |
+| Operator-owned file drops | `docs/runtime/file_drop_handlers.md` | `operator.h`, `operator_loader.h/cpp`, `operator_registry.h/cpp`, `main.cpp` |
 
 When changing runtime behavior in `src/runtime/`, update the matching `docs/runtime/*.md` file in
 the same change unless the behavior is clearly internal-only. Treat those runtime docs as living

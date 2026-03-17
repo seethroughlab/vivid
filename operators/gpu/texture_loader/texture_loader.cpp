@@ -315,4 +315,20 @@ private:
     }
 };
 
+static const char* kTextureLoaderImageExts[] = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+};
+
+static const VividFileDropHandlerDescriptor kTextureLoaderFileDrops[] = {{
+    "Load Image",
+    kTextureLoaderImageExts,
+    3,
+    "file",
+    100,
+    "Create a TextureLoader node from a dropped image file.",
+}};
+
 VIVID_REGISTER(TextureLoader)
+VIVID_FILE_DROP(kTextureLoaderFileDrops)

@@ -6,6 +6,7 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cstdio>
+#include <tuple>
 
 using namespace vivid::ui;
 
@@ -25,6 +26,8 @@ struct DummySink : UICommandSink {
     std::vector<std::pair<std::string, std::string>> disconnect_calls;
     std::vector<std::pair<std::string, std::string>> rollback_disconnect_calls;
     std::vector<std::pair<std::string, std::string>> add_calls;
+    std::vector<std::tuple<std::string, float, float>> layout_calls;
+    std::vector<std::tuple<std::string, std::string, std::string>> string_param_calls;
     std::string fail_connect_from;
     std::string fail_connect_to;
 
@@ -62,12 +65,17 @@ struct DummySink : UICommandSink {
         return true;
     }
     void set_connection_remap(const std::string&, const std::string&, float, float, float, float, bool) override {}
-    void set_node_layout(const std::string&, float, float) override {}
+    void set_node_layout(const std::string& node_id, float x, float y) override {
+        layout_calls.emplace_back(node_id, x, y);
+    }
     void set_resolution(const std::string&, uint32_t, uint32_t) override {}
     void add_midi_mapping(const std::string&, const std::string&, int, int, float, float) override {}
     void remove_midi_mapping(const std::string&, const std::string&) override {}
     void update_midi_mapping(const std::string&, const std::string&, float, float) override {}
-    void set_string_param(const std::string&, const std::string&, const std::string&) override {}
+    void set_string_param(const std::string& node_id, const std::string& param,
+                          const std::string& value) override {
+        string_param_calls.emplace_back(node_id, param, value);
+    }
 };
 
 int main() {
@@ -244,6 +252,37 @@ int main() {
         check(save_calls == 1, "Meta editor keyboard edits are saved");
         check(saved.id == "demoX", "Meta editor appends characters to the active id field");
         check(saved.title == "TitleY", "Meta editor tab focus advances text editing to the next field");
+    }
+
+    // File-drop chooser: selected action creates node and assigns dropped path
+    {
+        DummySink sink;
+        NodeGraphUI ui(sink);
+        ui.open_file_drop_chooser({
+            FileDropChooserAction{
+                "Load Test Asset",
+                "FileDropTestOp  [tests]",
+                "FileDropTestOp",
+                "file",
+                "/tmp/example.dropx"
+            }
+        }, 123.0f, 456.0f);
+
+        check(ui.chooser_open_, "file-drop chooser opens");
+        ui.confirm_chooser_selection_idx(0);
+        check(!sink.add_calls.empty(), "file-drop chooser adds node");
+        if (!sink.add_calls.empty())
+            check(sink.add_calls[0].first == "FileDropTestOp", "file-drop chooser adds expected type");
+        check(!sink.layout_calls.empty(), "file-drop chooser sets layout");
+        if (!sink.layout_calls.empty())
+            check(std::get<1>(sink.layout_calls[0]) == 123.0f &&
+                  std::get<2>(sink.layout_calls[0]) == 456.0f,
+                  "file-drop chooser uses supplied graph position");
+        check(!sink.string_param_calls.empty(), "file-drop chooser sets dropped path");
+        if (!sink.string_param_calls.empty())
+            check(std::get<1>(sink.string_param_calls[0]) == "file" &&
+                  std::get<2>(sink.string_param_calls[0]) == "/tmp/example.dropx",
+                  "file-drop chooser sets declared file param");
     }
 
     // Chooser insert-on-wire: preserve the original wire if the splice cannot complete
