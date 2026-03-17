@@ -26,6 +26,8 @@ int main() {
                   fs::copy_options::overwrite_existing);
     fs::copy_file("file_drop_bad_param_op.dylib", staging / "file_drop_bad_param_op.dylib",
                   fs::copy_options::overwrite_existing);
+    fs::copy_file("midi_file_player.dylib", staging / "midi_file_player.dylib",
+                  fs::copy_options::overwrite_existing);
 
     vivid::OperatorRegistry registry;
     check(registry.scan_deferred(staging.c_str()), "scan_deferred succeeds");
@@ -34,7 +36,7 @@ int main() {
     drops.refresh(registry);
 
     auto handlers = drops.all_registered_handlers();
-    check(handlers.size() == 2, "invalid file-drop registration filtered out");
+    check(handlers.size() == 3, "invalid file-drop registration filtered out");
 
     auto matches = drops.matches_for_path("/tmp/example.DROPX");
     check(matches.size() == 2, "extension match is case-insensitive");
@@ -45,6 +47,15 @@ int main() {
 
     auto no_matches = drops.matches_for_path("/tmp/example.dropbad");
     check(no_matches.empty(), "invalid file_param handler does not match");
+
+    auto midi_matches = drops.matches_for_path("/tmp/example.MID");
+    check(midi_matches.size() == 1, "midi extension resolves to a single handler");
+    if (midi_matches.size() == 1) {
+        check(midi_matches[0].type_name == "MidiFilePlayer", "midi handler resolves to MidiFilePlayer");
+    }
+
+    auto midi_matches_long = drops.matches_for_path("/tmp/example.midi");
+    check(midi_matches_long.size() == 1, ".midi extension also resolves");
 
     fs::remove_all(staging);
 

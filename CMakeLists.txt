@@ -565,6 +565,25 @@ add_vivid_operator(parametric_eq    operators/audio/parametric_eq/parametric_eq.
                    FACTORY_PRESETS  operators/audio/parametric_eq/factory_presets.json)
 add_vivid_operator(audio_analysis   operators/audio/audio_analysis/audio_analysis.cpp)
 add_vivid_operator(mic_input        operators/audio/mic_input/mic_input.cpp EXTRA_LIBS miniaudio)
+add_library(midi_file_player MODULE
+    operators/audio/midi_file_player/midi_file_player.cpp
+    src/common/midi_file.cpp
+)
+target_link_libraries(midi_file_player PRIVATE vivid_operator_api)
+set_target_properties(midi_file_player PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+if(APPLE)
+    add_custom_command(TARGET midi_file_player POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:midi_file_player>
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
+        COMMENT "Updating midi_file_player in Vivid.app bundle"
+    )
+endif()
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+    "  \"midi_file_player\": { \"sources\": [\"operators/audio/midi_file_player/midi_file_player.cpp\", \"src/common/midi_file.cpp\"], \"extra_libs\": [] }")
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS midi_file_player)
 
 # --- MovieAudioOut (audio output from media stream) ---
 if(APPLE)
@@ -1312,8 +1331,24 @@ add_executable(test_file_drop_registry
 )
 target_include_directories(test_file_drop_registry PRIVATE src)
 target_link_libraries(test_file_drop_registry PRIVATE vivid_operator_api webgpu yyjson)
-add_dependencies(test_file_drop_registry file_drop_test_op file_drop_test_op_alt file_drop_bad_param_op)
+add_dependencies(test_file_drop_registry file_drop_test_op file_drop_test_op_alt file_drop_bad_param_op midi_file_player)
 add_test(NAME test_file_drop_registry COMMAND test_file_drop_registry WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_midi_file_parser
+    tests/test_midi_file_parser.cpp
+    src/common/midi_file.cpp
+)
+target_include_directories(test_midi_file_parser PRIVATE src tests)
+target_link_libraries(test_midi_file_parser PRIVATE vivid_operator_api)
+add_test(NAME test_midi_file_parser COMMAND test_midi_file_parser WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_midi_file_player
+    tests/test_midi_file_player.cpp
+    src/common/midi_file.cpp
+)
+target_include_directories(test_midi_file_player PRIVATE src tests operators)
+target_link_libraries(test_midi_file_player PRIVATE vivid_operator_api)
+add_test(NAME test_midi_file_player COMMAND test_midi_file_player WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_runtime_stress
     tests/test_runtime_stress.cpp

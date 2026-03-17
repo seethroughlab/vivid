@@ -98,11 +98,35 @@ This keeps ambiguous families workable without forcing a global policy too early
 More semantic families such as MIDI, GIF, TXT, HTML, ONNX, LUTs, and fonts can
 build on the same operator-owned model later.
 
+## Single-File Eligibility Rule
+
+Register a file type only on operators that can do something complete and
+truthful from a single dropped file of that type.
+
+Having a `file` param is not enough. The chooser should only show operators that
+are honest one-file destinations.
+
+Examples:
+
+- `.wav`
+  - `Sampler`
+  - `Slicer`
+- `.mid`, `.midi`
+  - `MidiFilePlayer`
+
+Non-example:
+
+- `SP404` is intentionally excluded from `.wav` registration because it is
+  designed around a broader sample-bank / pad workflow, not a single dropped
+  sample.
+
 ## Seed Examples
 
 Current seed examples:
 
 - core:
   - `TextureLoader` handles `.png`, `.jpg`, `.jpeg`
+  - `MidiFilePlayer` handles `.mid`, `.midi`
 - sibling package:
   - `MeshImport` in `vivid-3d` handles `.glb`, `.gltf`, `.obj`
+  - `Sampler` / `Slicer` in `vivid-sampler` handle `.wav`
