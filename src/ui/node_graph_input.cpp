@@ -370,8 +370,10 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
     }
 
     if (mcp_setup_open_) {
-        if (key == GLFW_KEY_ESCAPE)
+        if (key == GLFW_KEY_ESCAPE) {
             mcp_setup_open_ = false;
+            mcp_project_config_.scanned = false;
+        }
         return;
     }
 
@@ -1964,6 +1966,7 @@ void NodeGraphUI::handle_left_click() {
                     glfwSetClipboardString(nullptr, json.c_str());
                 } else if (btn.action == 2 || btn.action == 3) {  // Done or close
                     mcp_setup_open_ = false;
+                    mcp_project_config_.scanned = false;
                 }
                 mouse_.left_clicked = false;
                 return;

@@ -986,6 +986,17 @@ private:
     struct McpDialogButtonRect { float x, y, w, h; int action; };  // action: 0=copy_vivid, 1=copy_opdev, 2=done, 3=close
     std::vector<McpDialogButtonRect> mcp_dialog_button_rects_;
 
+    // --- MCP project config detection ---
+    struct McpProjectConfig {
+        bool scanned = false;
+        std::string scanned_for_path;
+        bool vivid_configured = false;
+        bool opdev_configured = false;
+        std::string mcp_json_dir;  // parent dir of found .mcp.json (for display)
+    };
+    McpProjectConfig mcp_project_config_;
+    void scan_mcp_project_config();
+
     // --- Record/Snapshot buttons in perf bar ---
     bool record_dropdown_open_ = false;
     float record_dropdown_x_ = 0.0f, record_dropdown_y_ = 0.0f;
