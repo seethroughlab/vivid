@@ -214,8 +214,7 @@ int main(int argc, char* argv[]) {
 
         // Some operators require external hardware or OS services that are
         // unavailable in headless CI harnesses (camera permission dialogs,
-        // Syphon server, OSC socket).  MovieLoaded/MovieAudioOut can run
-        // headlessly now that the AVFoundation dispatch_sync deadlock is fixed.
+        // Syphon server, OSC socket).
         bool has_external_io = false;
         bool has_movie_loaded = false;
         for (const auto& n : graph.nodes()) {

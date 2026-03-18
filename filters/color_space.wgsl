@@ -8,78 +8,68 @@
   ]
 }*/
 
-// ---- RGB ↔ XYZ matrices (D65 white point) ----
-// sRGB / Rec.709
-const srgb_to_xyz = mat3x3<f32>(
-    vec3f(0.4124564, 0.3575761, 0.1804375),
-    vec3f(0.2126729, 0.7151522, 0.0721750),
-    vec3f(0.0193339, 0.1191920, 0.9503041)
-);
-const xyz_to_srgb = mat3x3<f32>(
-    vec3f( 3.2404542, -1.5371385, -0.4985314),
-    vec3f(-0.9692660,  1.8760108,  0.0415560),
-    vec3f( 0.0556434, -0.2040259,  1.0572252)
-);
-
-// DCI-P3 (D65 display variant, a.k.a. Display P3)
-const p3_to_xyz = mat3x3<f32>(
-    vec3f(0.4865709, 0.2656677, 0.1982173),
-    vec3f(0.2289746, 0.6917385, 0.0792869),
-    vec3f(0.0000000, 0.0451134, 1.0439444)
-);
-const xyz_to_p3 = mat3x3<f32>(
-    vec3f( 2.4934969, -0.9313836, -0.4027108),
-    vec3f(-0.8294890,  1.7626641,  0.0236247),
-    vec3f( 0.0358458, -0.0761724,  0.9568845)
-);
-
-// Rec.2020
-const r2020_to_xyz = mat3x3<f32>(
-    vec3f(0.6369580, 0.1446169, 0.1688810),
-    vec3f(0.2627002, 0.6779981, 0.0593017),
-    vec3f(0.0000000, 0.0280727, 1.0609851)
-);
-const xyz_to_r2020 = mat3x3<f32>(
-    vec3f( 1.7166512, -0.3556708, -0.2533663),
-    vec3f(-0.6666844,  1.6164812,  0.0157685),
-    vec3f( 0.0176399, -0.0427706,  0.9421031)
-);
+// RGB ↔ XYZ conversions using explicit dot products.
+// Avoids module-scope `const mat3x3` and function recursion, both of
+// which trigger GPU hangs in wgpu-native's Metal backend.
 
 fn rgb_to_xyz(rgb: vec3f, space: i32) -> vec3f {
-    if (space == 1) { return p3_to_xyz * rgb; }
-    if (space == 2) { return r2020_to_xyz * rgb; }
-    return srgb_to_xyz * rgb;
+    if (space == 1) {
+        // DCI-P3 (D65 display variant)
+        return vec3f(
+            dot(rgb, vec3f(0.4865709, 0.2656677, 0.1982173)),
+            dot(rgb, vec3f(0.2289746, 0.6917385, 0.0792869)),
+            dot(rgb, vec3f(0.0000000, 0.0451134, 1.0439444))
+        );
+    }
+    if (space == 2) {
+        // Rec.2020
+        return vec3f(
+            dot(rgb, vec3f(0.6369580, 0.1446169, 0.1688810)),
+            dot(rgb, vec3f(0.2627002, 0.6779981, 0.0593017)),
+            dot(rgb, vec3f(0.0000000, 0.0280727, 1.0609851))
+        );
+    }
+    // sRGB / Rec.709
+    return vec3f(
+        dot(rgb, vec3f(0.4124564, 0.3575761, 0.1804375)),
+        dot(rgb, vec3f(0.2126729, 0.7151522, 0.0721750)),
+        dot(rgb, vec3f(0.0193339, 0.1191920, 0.9503041))
+    );
 }
 
 fn xyz_to_rgb(xyz: vec3f, space: i32) -> vec3f {
-    if (space == 1) { return xyz_to_p3 * xyz; }
-    if (space == 2) { return xyz_to_r2020 * xyz; }
-    return xyz_to_srgb * xyz;
+    if (space == 1) {
+        // DCI-P3 (D65 display variant)
+        return vec3f(
+            dot(xyz, vec3f( 2.4934969, -0.9313836, -0.4027108)),
+            dot(xyz, vec3f(-0.8294890,  1.7626641,  0.0236247)),
+            dot(xyz, vec3f( 0.0358458, -0.0761724,  0.9568845))
+        );
+    }
+    if (space == 2) {
+        // Rec.2020
+        return vec3f(
+            dot(xyz, vec3f( 1.7166512, -0.3556708, -0.2533663)),
+            dot(xyz, vec3f(-0.6666844,  1.6164812,  0.0157685)),
+            dot(xyz, vec3f( 0.0176399, -0.0427706,  0.9421031))
+        );
+    }
+    // sRGB / Rec.709
+    return vec3f(
+        dot(xyz, vec3f( 3.2404542, -1.5371385, -0.4985314)),
+        dot(xyz, vec3f(-0.9692660,  1.8760108,  0.0415560)),
+        dot(xyz, vec3f( 0.0556434, -0.2040259,  1.0572252))
+    );
 }
-
-// ---- Gamut mapping ----
 
 // Soft-compress values outside [0,1] toward the boundary.
-// Uses a smooth shoulder curve so near-boundary colors stay accurate
-// while far-out-of-gamut colors are pulled in gracefully.
 fn gamut_compress_channel(v: f32) -> f32 {
     if (v >= 0.0 && v <= 1.0) { return v; }
-    if (v < 0.0) {
-        // Mirror: compress negative values symmetrically
-        return -gamut_compress_channel(-v);
-    }
-    // v > 1.0: soft knee — asymptotically approaches 1.0 + threshold
-    let excess = v - 1.0;
+    let abs_v = abs(v);
+    let excess = abs_v - 1.0;
     let threshold = 0.2;
-    return 1.0 + threshold * (1.0 - exp(-excess / threshold));
-}
-
-fn gamut_compress(rgb: vec3f) -> vec3f {
-    return vec3f(
-        gamut_compress_channel(rgb.x),
-        gamut_compress_channel(rgb.y),
-        gamut_compress_channel(rgb.z)
-    );
+    let compressed = 1.0 + threshold * (1.0 - exp(-excess / threshold));
+    return select(compressed, -compressed, v < 0.0);
 }
 
 @fragment
@@ -105,7 +95,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
         rgb = clamp(rgb, vec3f(0.0), vec3f(1.0));
     } else if (mode == 2) {
         // Soft compress
-        rgb = gamut_compress(rgb);
+        rgb = vec3f(
+            gamut_compress_channel(rgb.x),
+            gamut_compress_channel(rgb.y),
+            gamut_compress_channel(rgb.z)
+        );
     }
 
     return vec4f(rgb, col.a);
