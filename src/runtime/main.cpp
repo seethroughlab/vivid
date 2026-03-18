@@ -1174,7 +1174,7 @@ static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
             ns.resolved_tex_inputs.empty() ? nullptr
                                            : const_cast<WGPUTextureView*>(ns.resolved_tex_inputs.data());
         tctx.input_texture_count = static_cast<uint32_t>(ns.resolved_tex_inputs.size());
-        tctx.operator_errored = false;
+        tctx.operator_errored = 0;
         tctx.operator_error_msg = nullptr;
 
         ns.loader->draw_thumbnail(ns.instance, &tctx);

@@ -7,33 +7,32 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 8u
+#define VIVID_OPERATOR_ABI_VERSION 9u
+// v9: bool→uint8_t in GPU/thumbnail contexts, fixed-width enums, removed C++ default initializers.
+// The ABI version catches stale dylibs during hot-reload — it is not a cross-version compatibility promise.
 
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
 
-typedef enum VividDomain {
-    VIVID_DOMAIN_CONTROL = 0,
-    VIVID_DOMAIN_AUDIO   = 1,
-    VIVID_DOMAIN_GPU     = 2,
-} VividDomain;
+typedef uint32_t VividDomain;
+#define VIVID_DOMAIN_CONTROL  0u
+#define VIVID_DOMAIN_AUDIO    1u
+#define VIVID_DOMAIN_GPU      2u
 
-typedef enum VividParamType {
-    VIVID_PARAM_FLOAT = 0,
-    VIVID_PARAM_INT   = 1,
-    VIVID_PARAM_BOOL  = 2,
-    VIVID_PARAM_FILE  = 3,
-    VIVID_PARAM_TEXT  = 4,
-} VividParamType;
+typedef uint32_t VividParamType;
+#define VIVID_PARAM_FLOAT  0u
+#define VIVID_PARAM_INT    1u
+#define VIVID_PARAM_BOOL   2u
+#define VIVID_PARAM_FILE   3u
+#define VIVID_PARAM_TEXT   4u
 
-typedef enum VividDisplayHint {
-    VIVID_DISPLAY_DEFAULT = 0,   // full-width slider (current behavior)
-    VIVID_DISPLAY_KNOB    = 1,   // circular knob widget
-    VIVID_DISPLAY_XY_PAD  = 2,   // 2D axis pad (pair consecutive x/y params)
-    VIVID_DISPLAY_COLOR   = 3,   // color swatch + popup (triple consecutive r/g/b params)
-    VIVID_DISPLAY_HIDDEN  = 4,   // param exists but is not drawn by standard inspector
-} VividDisplayHint;
+typedef uint32_t VividDisplayHint;
+#define VIVID_DISPLAY_DEFAULT  0u  // full-width slider (current behavior)
+#define VIVID_DISPLAY_KNOB     1u  // circular knob widget
+#define VIVID_DISPLAY_XY_PAD   2u  // 2D axis pad (pair consecutive x/y params)
+#define VIVID_DISPLAY_COLOR    3u  // color swatch + popup (triple consecutive r/g/b params)
+#define VIVID_DISPLAY_HIDDEN   4u  // param exists but is not drawn by standard inspector
 
 // Channel kinds — reflect the logical data type on a port.
 typedef uint32_t VividPortType;
@@ -45,21 +44,19 @@ typedef uint32_t VividPortType;
 #define VIVID_PORT_STRING_SPREAD  4u  // variable-length string array
 #define VIVID_PORT_TEXTURE        5u  // WGPUTextureView
 
-typedef enum VividPortDirection {
-    VIVID_PORT_INPUT  = 0,
-    VIVID_PORT_OUTPUT = 1,
-} VividPortDirection;
+typedef uint32_t VividPortDirection;
+#define VIVID_PORT_INPUT   0u
+#define VIVID_PORT_OUTPUT  1u
 
-typedef enum VividPortTransport {
-    VIVID_PORT_TRANSPORT_SCALAR        = 0, // float-like main-thread copy
-    VIVID_PORT_TRANSPORT_AUDIO_BUFFER  = 1, // audio sample buffers
-    VIVID_PORT_TRANSPORT_SPREAD        = 2, // float spread copy
-    VIVID_PORT_TRANSPORT_STRING        = 3, // string copy
-    VIVID_PORT_TRANSPORT_STRING_SPREAD = 4, // string spread copy
-    VIVID_PORT_TRANSPORT_TEXTURE       = 5, // GPU texture/view routing
-    VIVID_PORT_TRANSPORT_CUSTOM_VALUE  = 6, // memcpy-by-value snapshot
-    VIVID_PORT_TRANSPORT_CUSTOM_REF    = 7, // opaque shared-handle/reference
-} VividPortTransport;
+typedef uint32_t VividPortTransport;
+#define VIVID_PORT_TRANSPORT_SCALAR         0u  // float-like main-thread copy
+#define VIVID_PORT_TRANSPORT_AUDIO_BUFFER   1u  // audio sample buffers
+#define VIVID_PORT_TRANSPORT_SPREAD         2u  // float spread copy
+#define VIVID_PORT_TRANSPORT_STRING         3u  // string copy
+#define VIVID_PORT_TRANSPORT_STRING_SPREAD  4u  // string spread copy
+#define VIVID_PORT_TRANSPORT_TEXTURE        5u  // GPU texture/view routing
+#define VIVID_PORT_TRANSPORT_CUSTOM_VALUE   6u  // memcpy-by-value snapshot
+#define VIVID_PORT_TRANSPORT_CUSTOM_REF     7u  // opaque shared-handle/reference
 
 // ---------------------------------------------------------------------------
 // Descriptors
@@ -117,13 +114,12 @@ typedef struct VividOperatorDescriptor {
 // Input events — mouse, keyboard, scroll for interactive operators
 // ---------------------------------------------------------------------------
 
-typedef enum VividInputEventType {
-    VIVID_INPUT_MOUSE_MOVE   = 0,
-    VIVID_INPUT_MOUSE_BUTTON = 1,
-    VIVID_INPUT_MOUSE_SCROLL = 2,
-    VIVID_INPUT_KEY          = 3,
-    VIVID_INPUT_CHAR         = 4,
-} VividInputEventType;
+typedef uint32_t VividInputEventType;
+#define VIVID_INPUT_MOUSE_MOVE    0u
+#define VIVID_INPUT_MOUSE_BUTTON  1u
+#define VIVID_INPUT_MOUSE_SCROLL  2u
+#define VIVID_INPUT_KEY           3u
+#define VIVID_INPUT_CHAR          4u
 
 typedef struct VividInputEvent {
     VividInputEventType type;
@@ -277,10 +273,9 @@ typedef const VividFileDropHandlerDescriptor* (*VividFileDropDescriptorFn)(uint3
 // Inspector context — optional custom inspector rendering (draw_inspector)
 // ---------------------------------------------------------------------------
 
-typedef enum VividInspectorMode {
-    VIVID_INSPECTOR_STANDARD = 0,  // core draws standard params first, operator draws below
-    VIVID_INSPECTOR_FULL     = 1,  // operator handles entire inspector (no standard params)
-} VividInspectorMode;
+typedef uint32_t VividInspectorMode;
+#define VIVID_INSPECTOR_STANDARD  0u  // core draws standard params first, operator draws below
+#define VIVID_INSPECTOR_FULL      1u  // operator handles entire inspector (no standard params)
 
 typedef struct VividColor { float r, g, b, a; } VividColor;
 

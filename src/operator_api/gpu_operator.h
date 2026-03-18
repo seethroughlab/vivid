@@ -11,6 +11,10 @@
 // Contains both common per-tick fields and GPU-specific resources.
 // ---------------------------------------------------------------------------
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct VividGpuContext {
     // ---- Common per-tick fields (same as VividProcessContext) ----------------
     double    time;
@@ -30,8 +34,8 @@ struct VividGpuContext {
     uint32_t           output_height;
     WGPUTextureFormat  output_format;
     // Auxiliary texture outputs (2nd, 3rd... GPU_TEXTURE output ports), scheduler-allocated.
-    WGPUTextureView*   aux_output_texture_views = nullptr;
-    uint32_t           aux_output_texture_count = 0;
+    WGPUTextureView*   aux_output_texture_views;
+    uint32_t           aux_output_texture_count;
 
     // Texture inputs (one per GPU_TEXTURE input port, nullptr if disconnected)
     WGPUTextureView*   input_texture_views;
@@ -48,10 +52,10 @@ struct VividGpuContext {
     // Custom-transport I/O — opaque ports with VIVID_PORT_TRANSPORT_CUSTOM_VALUE/REF.
     // Operators cast from void* using their known type. Type safety is enforced at
     // wire validation time via type_name on VividPortDescriptor.
-    void**    custom_outputs       = nullptr;
-    uint32_t  custom_output_count  = 0;
-    void**    custom_inputs        = nullptr;
-    uint32_t  custom_input_count   = 0;
+    void**    custom_outputs;
+    uint32_t  custom_output_count;
+    void**    custom_inputs;
+    uint32_t  custom_input_count;
 
     // ---- Cross-domain inputs from control -----------------------------------
     VividSpreadPort*   input_spreads;
@@ -70,9 +74,13 @@ struct VividGpuContext {
     // ---- Operator write-back ------------------------------------------------
     uint32_t           preferred_tex_width;
     uint32_t           preferred_tex_height;
-    bool               operator_errored    = false;   // written by operator on shader/init failure
-    const char*        operator_error_msg  = nullptr; // must point to long-lived storage
+    uint8_t            operator_errored;               // written by operator on shader/init failure
+    const char*        operator_error_msg;             // must point to long-lived storage
 };
+
+#ifdef __cplusplus
+}
+#endif
 
 // Request a texture resize for the next frame. The preferred_tex_* fields are
 // write-back fields (operator → runtime), explicitly mutable through const ctx.
@@ -85,7 +93,7 @@ static inline void vivid_request_output_size(const VividGpuContext* ctx,
 // Report a GPU shader/init error. msg must point to storage that outlives the
 // process_gpu() call (e.g. a std::string member of the operator struct).
 static inline void vivid_report_gpu_error(const VividGpuContext* ctx, const char* msg) {
-    const_cast<VividGpuContext*>(ctx)->operator_errored   = true;
+    const_cast<VividGpuContext*>(ctx)->operator_errored   = 1;
     const_cast<VividGpuContext*>(ctx)->operator_error_msg = msg;
 }
 

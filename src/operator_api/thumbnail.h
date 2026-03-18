@@ -42,7 +42,7 @@ typedef struct VividThumbnailContext {
     WGPUTextureView*   input_texture_views;
     uint32_t           input_texture_count;
 
-    bool               operator_errored;
+    uint8_t            operator_errored;
     const char*        operator_error_msg;
 } VividThumbnailContext;
 
@@ -53,7 +53,7 @@ typedef struct VividThumbnailContext {
 static inline void vivid_report_thumbnail_error(const VividThumbnailContext* ctx,
                                                     const char* msg) {
     auto* mut = const_cast<VividThumbnailContext*>(ctx);
-    mut->operator_errored = true;
+    mut->operator_errored = 1;
     mut->operator_error_msg = msg;
 }
 
