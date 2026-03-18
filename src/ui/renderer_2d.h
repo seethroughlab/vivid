@@ -2,6 +2,7 @@
 
 #include <webgpu/webgpu.h>
 #include <cstdint>
+#include <unordered_map>
 #include <vector>
 #include <string>
 
@@ -27,7 +28,8 @@ public:
     Renderer2D& operator=(const Renderer2D&) = delete;
 
     bool init(WGPUDevice device, WGPUTextureFormat surface_format,
-              const char* font_path, float font_size, float dpi_scale = 1.0f);
+              const char* font_path, float font_size, float dpi_scale = 1.0f,
+              const uint32_t* extra_codepoints = nullptr, size_t extra_count = 0);
     void shutdown();
 
     void draw_text(float x, float y, const char* text, float r, float g, float b, float a = 1.0f, float scale = 1.0f);
@@ -44,6 +46,10 @@ public:
                   float r, float g, float b, float a = 1.0f);
     float text_width(const char* text, float scale = 1.0f) const;
     float line_height() const { return line_height_; }
+
+    std::vector<std::string> wrap_text(const char* text, float max_width, float scale = 1.0f) const;
+    float draw_text_wrapped(float x, float y, const char* text, float max_width,
+                            float r, float g, float b, float a = 1.0f, float scale = 1.0f);
 
     // Clip rect stack — content drawn between push/pop is scissored to (x,y,w,h)
     // in logical pixel coordinates. Calls finalize the current vertex batch.
@@ -62,6 +68,8 @@ private:
     void push_tri(float x0, float y0, float x1, float y1, float x2, float y2,
                   float r, float g, float b, float a);
     void finalize_batch();
+    static uint32_t decode_utf8(const char*& p);
+    const GlyphInfo* lookup_glyph(uint32_t codepoint) const;
 
     WGPUDevice device_ = nullptr;
     WGPURenderPipeline pipeline_ = nullptr;
@@ -77,6 +85,7 @@ private:
     int buf_idx_ = 0;               // alternates 0/1 each flush
 
     GlyphInfo glyphs_[128]{}; // ASCII 0-127 (only 32-126 used)
+    std::unordered_map<uint32_t, GlyphInfo> extra_glyphs_;
     float line_height_ = 0.0f;
     float font_size_ = 0.0f;
     float solid_u_ = 0.0f;   // UV center of the solid-white 2x2 atlas block

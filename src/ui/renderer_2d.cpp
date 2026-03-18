@@ -56,7 +56,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 )";
 
 bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
-                         const char* font_path, float font_size, float dpi_scale) {
+                         const char* font_path, float font_size, float dpi_scale,
+                         const uint32_t* extra_codepoints, size_t extra_count) {
     device_ = device;
     font_size_ = font_size;
     dpi_scale_ = dpi_scale;
@@ -148,6 +149,79 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
 
         pen_x += gw + 1;
         if (static_cast<uint32_t>(gh) > row_height) row_height = gh;
+    }
+
+    // Bake extra Unicode codepoints used in the UI
+    static constexpr uint32_t kExtraCodepoints[] = {
+        0x00A9, // © copyright
+        0x00B7, // · middle dot
+        0x00D7, // × multiplication sign
+        0x2014, // — em dash
+        0x2026, // … ellipsis
+        0x2190, // ← left arrow
+        0x2192, // → right arrow
+        // 0x2398 removed — not in JetBrains Mono; copy button uses text now
+        0x25B4, // ▴ up triangle
+        0x25B8, // ▸ right triangle
+        0x25BE, // ▾ down triangle
+        0x2715, // ✕ multiplication x
+    };
+
+    // Helper lambda: bake a single codepoint into the atlas
+    auto bake_codepoint = [&](uint32_t cp) {
+        if (extra_glyphs_.count(cp)) return; // already baked
+        if (stbtt_FindGlyphIndex(&font, cp) == 0) return; // not in font
+
+        int x0, y0, x1, y1;
+        stbtt_GetCodepointBitmapBox(&font, cp, scale, scale, &x0, &y0, &x1, &y1);
+        int gw = x1 - x0;
+        int gh = y1 - y0;
+
+        if (gw <= 0 || gh <= 0) return; // glyph not in font
+
+        if (pen_x + gw + 1 >= kAtlasWidth) {
+            pen_x = 0;
+            pen_y += row_height + 1;
+            row_height = 0;
+        }
+        if (pen_y + gh >= kAtlasHeight) {
+            std::fprintf(stderr, "[vivid] Renderer2D: atlas overflow at U+%04X\n", cp);
+            return;
+        }
+
+        stbtt_MakeCodepointBitmap(&font, atlas.data() + pen_y * kAtlasWidth + pen_x,
+                                   gw, gh, kAtlasWidth, scale, scale, cp);
+
+        GlyphInfo gi{};
+        gi.u0 = static_cast<float>(pen_x) / kAtlasWidth;
+        gi.v0 = static_cast<float>(pen_y) / kAtlasHeight;
+        gi.u1 = static_cast<float>(pen_x + gw) / kAtlasWidth;
+        gi.v1 = static_cast<float>(pen_y + gh) / kAtlasHeight;
+        gi.x0 = static_cast<float>(x0) / dpi_scale;
+        gi.y0 = static_cast<float>(y0) / dpi_scale;
+        gi.x1 = static_cast<float>(x1) / dpi_scale;
+        gi.y1 = static_cast<float>(y1) / dpi_scale;
+
+        int advance, lsb;
+        stbtt_GetCodepointHMetrics(&font, cp, &advance, &lsb);
+        gi.advance = advance * scale / dpi_scale;
+
+        extra_glyphs_[cp] = gi;
+
+        pen_x += gw + 1;
+        if (static_cast<uint32_t>(gh) > row_height) row_height = gh;
+    };
+
+    // Bake built-in defaults
+    for (uint32_t cp : kExtraCodepoints) bake_codepoint(cp);
+
+    // Bake caller-provided extras (if any)
+    for (size_t i = 0; i < extra_count; ++i) bake_codepoint(extra_codepoints[i]);
+
+    // Bake all remaining BMP codepoints the font supports (Tier 1 i18n)
+    for (uint32_t cp = 0x0080; cp <= 0xFFFF; ++cp) {
+        if (stbtt_FindGlyphIndex(&font, cp) != 0)
+            bake_codepoint(cp);
     }
 
     // --- Create atlas texture (R8Unorm) ---
@@ -341,8 +415,9 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
     solid_u_ = 0.5f / kAtlasWidth;
     solid_v_ = 0.5f / kAtlasHeight;
 
-    std::fprintf(stderr, "[vivid] Renderer2D initialized (%.0fpt @ %.1fx, raster %.0fpx, atlas %ux%u)\n",
-        font_size, dpi_scale, raster_size, kAtlasWidth, kAtlasHeight);
+    std::fprintf(stderr, "[vivid] Renderer2D initialized (%.0fpt @ %.1fx, raster %.0fpx, atlas %ux%u, %zu glyphs)\n",
+        font_size, dpi_scale, raster_size, kAtlasWidth, kAtlasHeight,
+        95 + extra_glyphs_.size());
     return true;
 }
 
@@ -428,20 +503,45 @@ void Renderer2D::draw_rounded_rect(float x, float y, float w, float h, float rad
     }
 }
 
+uint32_t Renderer2D::decode_utf8(const char*& p) {
+    unsigned char c = static_cast<unsigned char>(*p);
+    if (c < 0x80) { ++p; return c; }
+    uint32_t cp = 0;
+    int extra = 0;
+    if ((c & 0xE0) == 0xC0)      { cp = c & 0x1F; extra = 1; }
+    else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; extra = 2; }
+    else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; extra = 3; }
+    else { ++p; return 0; } // invalid leading byte
+    ++p;
+    for (int i = 0; i < extra; ++i) {
+        if ((static_cast<unsigned char>(*p) & 0xC0) != 0x80) return 0; // malformed
+        cp = (cp << 6) | (static_cast<unsigned char>(*p) & 0x3F);
+        ++p;
+    }
+    return cp;
+}
+
+const GlyphInfo* Renderer2D::lookup_glyph(uint32_t codepoint) const {
+    if (codepoint >= 32 && codepoint <= 126) return &glyphs_[codepoint];
+    auto it = extra_glyphs_.find(codepoint);
+    return (it != extra_glyphs_.end()) ? &it->second : nullptr;
+}
+
 void Renderer2D::draw_text(float x, float y, const char* text,
                               float r, float g, float b, float a, float scale) {
     float baseline = y + font_size_ * 0.8f * scale;
     float pen = x;
-    for (const char* p = text; *p; ++p) {
-        unsigned char c = *p;
-        if (c < 32 || c > 126) continue;
-        const auto& gi = glyphs_[c];
-        float gx0 = pen + gi.x0 * scale;
-        float gy0 = baseline + gi.y0 * scale;
-        float gx1 = pen + gi.x1 * scale;
-        float gy1 = baseline + gi.y1 * scale;
-        push_quad(gx0, gy0, gx1, gy1, gi.u0, gi.v0, gi.u1, gi.v1, r, g, b, a);
-        pen += gi.advance * scale;
+    const char* p = text;
+    while (*p) {
+        uint32_t cp = decode_utf8(p);
+        const GlyphInfo* gi = lookup_glyph(cp);
+        if (!gi) continue;
+        float gx0 = pen + gi->x0 * scale;
+        float gy0 = baseline + gi->y0 * scale;
+        float gx1 = pen + gi->x1 * scale;
+        float gy1 = baseline + gi->y1 * scale;
+        push_quad(gx0, gy0, gx1, gy1, gi->u0, gi->v0, gi->u1, gi->v1, r, g, b, a);
+        pen += gi->advance * scale;
     }
 }
 
@@ -513,11 +613,68 @@ void Renderer2D::pop_clip_rect() {
 
 float Renderer2D::text_width(const char* text, float scale) const {
     float w = 0;
-    for (const char* p = text; *p; ++p) {
-        unsigned char c = *p;
-        if (c >= 32 && c <= 126) w += glyphs_[c].advance * scale;
+    const char* p = text;
+    while (*p) {
+        uint32_t cp = decode_utf8(p);
+        const GlyphInfo* gi = lookup_glyph(cp);
+        if (gi) w += gi->advance * scale;
     }
     return w;
+}
+
+std::vector<std::string> Renderer2D::wrap_text(const char* text, float max_width, float scale) const {
+    std::vector<std::string> lines;
+    const char* p = text;
+    while (*p) {
+        float w = 0;
+        int len = 0;
+        // Measure chars (bytes) until we exceed max_width or hit end
+        while (p[len]) {
+            const char* cur = p + len;
+            uint32_t cp = decode_utf8(cur);
+            int byte_len = static_cast<int>(cur - (p + len));
+            const GlyphInfo* gi = lookup_glyph(cp);
+            float adv = gi ? gi->advance * scale : 0;
+            if (w + adv > max_width && len > 0) break;
+            w += adv;
+            len += byte_len;
+        }
+        if (p[len] == '\0') {
+            // Rest fits on one line
+            lines.emplace_back(p, len);
+            break;
+        }
+        // Look back for a preferred break char
+        static const char* delims = ",:{}[]";
+        int best = -1;
+        int lookback = (len > 20) ? 20 : len;
+        for (int j = len - 1; j >= len - lookback && j >= 0; --j) {
+            for (const char* d = delims; *d; ++d) {
+                if (p[j] == *d) { best = j; goto found; }
+            }
+        }
+        found:
+        if (best >= 0) {
+            lines.emplace_back(p, best + 1); // break after delimiter
+            p += best + 1;
+        } else {
+            lines.emplace_back(p, len);
+            p += len;
+        }
+    }
+    if (lines.empty()) lines.emplace_back("");
+    return lines;
+}
+
+float Renderer2D::draw_text_wrapped(float x, float y, const char* text, float max_width,
+                                     float r, float g, float b, float a, float scale) {
+    auto lines = wrap_text(text, max_width, scale);
+    float lh = line_height();
+    for (auto& line : lines) {
+        draw_text(x, y, line.c_str(), r, g, b, a, scale);
+        y += lh;
+    }
+    return lines.size() * lh;
 }
 
 void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
