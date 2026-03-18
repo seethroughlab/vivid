@@ -277,17 +277,17 @@ bool GpuContext::end_frame(const FrameState& frame) {
         return false;
     }
 
-    // Push error scopes for all three filter types so errors are captured
-    // instead of falling through to wgpu-native's handle_error_fatal / abort.
+    // Push error scopes so errors are captured instead of falling through
+    // to wgpu-native's handle_error_fatal / abort.
+    // Note: wgpu-native only supports Validation and OutOfMemory filters.
     wgpuDevicePushErrorScope(device_, WGPUErrorFilter_Validation);
     wgpuDevicePushErrorScope(device_, WGPUErrorFilter_OutOfMemory);
-    wgpuDevicePushErrorScope(device_, WGPUErrorFilter_Internal);
 
     wgpuQueueSubmit(queue_, 1, &cmd);
     wgpuCommandBufferRelease(cmd);
     wgpuCommandEncoderRelease(frame.encoder);
 
-    // Pop all three scopes (LIFO order: Internal, OutOfMemory, Validation)
+    // Pop both scopes (LIFO order: OutOfMemory, Validation)
     auto error_cb = [](WGPUPopErrorScopeStatus status, WGPUErrorType type,
                        WGPUStringView message, void*, void*) {
         if (status == WGPUPopErrorScopeStatus_Success && type != WGPUErrorType_NoError) {
@@ -296,7 +296,7 @@ bool GpuContext::end_frame(const FrameState& frame) {
                          message.data ? message.data : "");
         }
     };
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 2; ++i) {
         WGPUPopErrorScopeCallbackInfo pop_cb{};
         pop_cb.mode = WGPUCallbackMode_AllowSpontaneous;
         pop_cb.callback = error_cb;
