@@ -3,14 +3,17 @@
 #include "ui/node_graph_util.h"
 #include "ui/overlay_layouts.h"
 #include "ui/renderer_2d.h"
+#include "ui/i18n.h"
 #include "ui/thumbnail_cache.h"
 #include "ui/thumbnail_renderer.h"
 #include "common/string_util.h"
 #include "common/system_info.h"
+#include <yyjson.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 
 #ifndef VIVID_CORE_VERSION
 #define VIVID_CORE_VERSION "0.1.0"
@@ -597,7 +600,7 @@ void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
 
     float pad    = kTooltipPad;
     float line_h = kTooltipLineH;
-    float header_w = tr.text_width("Error:");
+    float header_w = tr.text_width(T("error_label", "Error:"));
     float popup_w  = std::max(header_w, max_line_w) + pad * 2;
     float popup_h  = line_h * (1 + static_cast<float>(lines.size())) + pad * 2;
 
@@ -613,7 +616,7 @@ void NodeGraphUI::draw_node_error_tooltip(Renderer2D& tr) {
     // Red accent line at top
     tr.draw_rect(px, py, popup_w, kTooltipAccentH, 1.0f, 0.3f, 0.3f, 0.9f);
     // "Error:" header in red
-    tr.draw_text(px + pad, py + pad, "Error:", 1.0f, 0.3f, 0.3f);
+    tr.draw_text(px + pad, py + pad, T("error_label", "Error:"), 1.0f, 0.3f, 0.3f);
     // One line per message line
     for (int k = 0; k < static_cast<int>(lines.size()); ++k) {
         tr.draw_text(px + pad, py + pad + line_h * (1 + k), lines[k].c_str(),
@@ -657,7 +660,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         float py = kPerfBarH + 8;
 
         // Header
-        tr.draw_text(px, py, "Wire", style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 1.0f, 1.2f);
+        tr.draw_text(px, py, T("wire", "Wire"), style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 1.0f, 1.2f);
         py += 22;
         std::string label = c.from_node + "/" + c.from_port + " \xE2\x86\x92 " + c.to_node + "/" + c.to_port;
         tr.draw_text(px, py, label.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
@@ -723,7 +726,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
                          style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
         }
         wire_clamp_rects_.push_back({px, py, cb_size, cb_size});
-        tr.draw_text(px + cb_size + 6, py + 1, "Clamp",
+        tr.draw_text(px + cb_size + 6, py + 1, T("clamp", "Clamp"),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
 
         insp_content_h_ = 0;
@@ -749,7 +752,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             if (!node_a || !node_b || !node_a->op_info || !node_b->op_info) {
                 float px = insp_x + kInspPadX;
                 float py = kPerfBarH + 8;
-                tr.draw_text(px, py, "Node not found", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+                tr.draw_text(px, py, T("node_not_found", "Node not found"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
                 insp_content_h_ = 0;
                 return;
             }
@@ -781,7 +784,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             tr.draw_text(px + name_w + 4 + plus_w, py, node_b->op_info->name.c_str(), clr_b[0], clr_b[1], clr_b[2]);
             py += kLineH;
 
-            tr.draw_text(px, py, "Delete / Backspace to remove", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            tr.draw_text(px, py, T("delete_to_remove", "Delete / Backspace to remove"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
             py += kLineH + 8;
 
             tr.draw_rect(px, py, kInspContentW, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
@@ -800,7 +803,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             std::string label = std::to_string(selected_node_ids_.size()) + " nodes selected";
             tr.draw_text(px, py, label.c_str(), 1.0f, 1.0f, 1.0f);
             py += kLineH + 4;
-            tr.draw_text(px, py, "Delete / Backspace to remove", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            tr.draw_text(px, py, T("delete_to_remove", "Delete / Backspace to remove"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 
             insp_content_h_ = 0;
         }
@@ -818,7 +821,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     // Find the selected node in snapshot
     const auto* sel_node = snap_.find_node(sel_id);
     if (!sel_node || !sel_node->op_info) {
-        tr.draw_text(insp_x + kInspPadX, 20, "Node not found", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        tr.draw_text(insp_x + kInspPadX, 20, T("node_not_found", "Node not found"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         return;
     }
 
@@ -1001,7 +1004,7 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
         float save_x = px + dd_w + gap;
         tr.draw_rect(save_x, py, save_w, dd_h,
                      style_.button_bg[0], style_.button_bg[1], style_.button_bg[2]);
-        tr.draw_text(save_x + 8, py + 3, "Save",
+        tr.draw_text(save_x + 8, py + 3, T("save", "Save"),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         preset_save_rects_.push_back({save_x, py, save_w, dd_h, node.node_id, ""});
 
@@ -1220,7 +1223,7 @@ void NodeGraphUI::draw_inspector_color_swatch(Renderer2D& tr, const NodeSnapshot
     float sw = layout.full_w;
 
     // Color label
-    tr.draw_text(px, py, "color", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    tr.draw_text(px, py, T("color", "color"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH;
 
     // Filled swatch rect
@@ -1650,7 +1653,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                               !midi_range_editing_min_;
 
         // "min" label
-        tr.draw_text(px, row_y, "min", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        tr.draw_text(px, row_y, T("min", "min"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         float min_x = px + 28;
         if (is_editing_min) {
             draw_editing_text_field(tr, style_, min_x, row_y, field_w, kMidiRangeH - 2,
@@ -1666,7 +1669,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
 
         // "max" label
         float max_label_x = min_x + field_w + 10;
-        tr.draw_text(max_label_x, row_y, "max", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        tr.draw_text(max_label_x, row_y, T("max", "max"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         float max_x = max_label_x + 30;
         if (is_editing_max) {
             draw_editing_text_field(tr, style_, max_x, row_y, field_w, kMidiRangeH - 2,
@@ -1953,7 +1956,7 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
     tr.draw_rect(px, py, panel_w, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
     py += 8;
 
-    tr.draw_text(px, py, "Resolution", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    tr.draw_text(px, py, T("resolution", "Resolution"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH;
 
     bool editing_w = editing_resolution_ &&
@@ -2012,7 +2015,7 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
 
     if (!is_generator && node.gpu_tex_inherited) {
         float label_x = h_val_x + kResInputW + 4.0f;
-        tr.draw_text(label_x, py, "(from input)", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        tr.draw_text(label_x, py, T("from_input", "(from input)"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     }
 
     py += kLineH;
@@ -2046,7 +2049,7 @@ void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapsho
     tr.draw_rect(px, py, panel_w, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
     py += 8;
 
-    tr.draw_text(px, py, "State Presets", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    tr.draw_text(px, py, T("state_presets", "State Presets"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH;
 
     float dd_h = 20.0f;
@@ -2129,7 +2132,7 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
     tr.draw_rect(px, py, panel_w, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
     py += 8;
 
-    tr.draw_text(px, py, "Outputs", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    tr.draw_text(px, py, T("outputs", "Outputs"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH;
 
     auto sorted_outs = sorted_ports(node.output_port_indices);
@@ -2529,7 +2532,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         if (hovered)
             tr.draw_rect(mx + 1, item_y, menu_w - 2, kCtxMenuItemH,
                          style_.accent[0], style_.accent[1], style_.accent[2], 0.3f);
-        tr.draw_text(mx + 6, item_y + 2, "Disconnect", 1.0f, 1.0f, 1.0f, 0.9f);
+        tr.draw_text(mx + 6, item_y + 2, T("disconnect", "Disconnect"), 1.0f, 1.0f, 1.0f, 0.9f);
     }
 
     py = start_y + max_rows * kPatchRowH + 8;
@@ -2677,7 +2680,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
 
     // Show "no matches" if empty
     if (chooser_items_.empty()) {
-        tr.draw_text(px + 8, iy + 3, "no matches", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        tr.draw_text(px + 8, iy + 3, T("no_matches", "no matches"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     }
 
     // Scrollbar when items overflow
@@ -2925,7 +2928,7 @@ void NodeGraphUI::draw_save_confirm(Renderer2D& tr) {
     tr.draw_rect(dx, dy, dw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
 
     // Label text
-    tr.draw_text(dx + 12, dy + 12, "Save changes before closing?",
+    tr.draw_text(dx + 12, dy + 12, T("save_changes_prompt", "Save changes before closing?"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
     // Three buttons: Cancel | Don't Save | Save
@@ -2944,7 +2947,7 @@ void NodeGraphUI::draw_save_confirm(Renderer2D& tr) {
                  cancel_hover ? style_.button_hover[0] : style_.button_bg[0],
                  cancel_hover ? style_.button_hover[1] : style_.button_bg[1],
                  cancel_hover ? style_.button_hover[2] : style_.button_bg[2], 0.9f);
-    tr.draw_text(cancel_x + 16, btn_y + 3, "Cancel",
+    tr.draw_text(cancel_x + 16, btn_y + 3, T("cancel", "Cancel"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 
     // Don't Save button
@@ -2954,7 +2957,7 @@ void NodeGraphUI::draw_save_confirm(Renderer2D& tr) {
                  dont_hover ? style_.button_hover[0] : style_.button_bg[0],
                  dont_hover ? style_.button_hover[1] : style_.button_bg[1],
                  dont_hover ? style_.button_hover[2] : style_.button_bg[2], 0.9f);
-    tr.draw_text(dont_save_x + 4, btn_y + 3, "Don't Save",
+    tr.draw_text(dont_save_x + 4, btn_y + 3, T("dont_save", "Don't Save"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 
     // Save button (accent)
@@ -2966,7 +2969,7 @@ void NodeGraphUI::draw_save_confirm(Renderer2D& tr) {
     else
         tr.draw_rect(save_x, btn_y, btn_w, btn_h,
                      style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
-    tr.draw_text(save_x + 24, btn_y + 3, "Save",
+    tr.draw_text(save_x + 24, btn_y + 3, T("save", "Save"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 }
 
@@ -3025,13 +3028,13 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
     }
 
     if (clone_confirm_project_available_) {
-        tr.draw_text(toggle_x + 12.0f, toggle_y + 4.0f, "Project Package",
+        tr.draw_text(toggle_x + 12.0f, toggle_y + 4.0f, T("project_package", "Project Package"),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     } else {
-        tr.draw_text(toggle_x + 12.0f, toggle_y + 4.0f, "Project Package (unavailable)",
+        tr.draw_text(toggle_x + 12.0f, toggle_y + 4.0f, T("project_package_unavailable", "Project Package (unavailable)"),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     }
-    tr.draw_text(toggle_x + left_w + 12.0f, toggle_y + 4.0f, "Core",
+    tr.draw_text(toggle_x + left_w + 12.0f, toggle_y + 4.0f, T("core", "Core"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
     // Buttons
@@ -3047,7 +3050,7 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
         tr.draw_rect(clone_x, btn_y, btn_w, btn_h, style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
     else
         tr.draw_rect(clone_x, btn_y, btn_w, btn_h, style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
-    tr.draw_text(clone_x + 16, btn_y + 3, "Clone", style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    tr.draw_text(clone_x + 16, btn_y + 3, T("clone", "Clone"), style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
     // Cancel button
     bool cancel_hover = mouse_.x >= cancel_x && mouse_.x <= cancel_x + btn_w &&
@@ -3056,7 +3059,7 @@ void NodeGraphUI::draw_clone_confirm(Renderer2D& tr) {
         tr.draw_rect(cancel_x, btn_y, btn_w, btn_h, style_.button_hover[0], style_.button_hover[1], style_.button_hover[2], 0.9f);
     else
         tr.draw_rect(cancel_x, btn_y, btn_w, btn_h, style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
-    tr.draw_text(cancel_x + 13, btn_y + 3, "Cancel", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    tr.draw_text(cancel_x + 13, btn_y + 3, T("cancel", "Cancel"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 }
 
 // -----------------------------------------------------------------------
@@ -3094,7 +3097,7 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     float cy = layout.py + kCreateModalPadY;
 
     // 1. Title
-    tr.draw_text(cx, cy, "New Operator",
+    tr.draw_text(cx, cy, T("new_operator", "New Operator"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     cy += 24.0f;
 
@@ -3123,7 +3126,7 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     // 3. Composite checkbox (control domain only)
     if (show_composite) {
         draw_checkbox(tr, style_, cx, cy + 2, 16.0f, create_composite_);
-        tr.draw_text(cx + 22, cy + 2, "Composite (ChildOp template)",
+        tr.draw_text(cx + 22, cy + 2, T("composite_template", "Composite (ChildOp template)"),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         cy += 24.0f + kCreateModalRowGap;
     }
@@ -3159,10 +3162,10 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
             // Section header + "+ Add" link
             tr.draw_text(cx, cy, title,
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-            float add_w = tr.text_width("+ Add") + 4;
+            float add_w = tr.text_width(T("add", "+ Add")) + 4;
             float add_x = cx + inner_w - add_w;
             if (static_cast<int>(rows.size()) < max_rows) {
-                tr.draw_text(add_x, cy, "+ Add",
+                tr.draw_text(add_x, cy, T("add", "+ Add"),
                              style_.accent[0], style_.accent[1], style_.accent[2]);
             }
             cy += 18.0f + 4.0f;
@@ -3223,10 +3226,10 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
 
         // 7. Parameters
         cy += kCreateModalSectionGap;
-        tr.draw_text(cx, cy, "Parameters",
+        tr.draw_text(cx, cy, T("parameters", "Parameters"),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         if (static_cast<int>(create_params_.size()) < kCreateMaxParamRows) {
-            float add_w = tr.text_width("+ Add") + 4;
+            float add_w = tr.text_width(T("add", "+ Add")) + 4;
             float add_x = cx + inner_w - add_w;
             tr.draw_text(add_x, cy, "+ Add",
                          style_.accent[0], style_.accent[1], style_.accent[2]);
@@ -3350,21 +3353,21 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     // Create Empty (left-aligned)
     tr.draw_rect(cx, btn_y, kCreateModalBtnW, kCreateModalBtnH,
                  style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
-    tr.draw_text(cx + 8, btn_y + 5, "Create Empty",
+    tr.draw_text(cx + 8, btn_y + 5, T("create_empty", "Create Empty"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 
     // Cancel (right-aligned)
     float cancel_x = cx + inner_w - kCreateModalBtnW;
     tr.draw_rect(cancel_x, btn_y, kCreateModalBtnW, kCreateModalBtnH,
                  style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
-    tr.draw_text(cancel_x + 28, btn_y + 5, "Cancel",
+    tr.draw_text(cancel_x + 28, btn_y + 5, T("cancel", "Cancel"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
 
     // Create (right of Create Empty... actually to the left of Cancel)
     float create_x = cancel_x - kCreateModalBtnW - 8.0f;
     tr.draw_rect(create_x, btn_y, kCreateModalBtnW, kCreateModalBtnH,
                  style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
-    tr.draw_text(create_x + 28, btn_y + 5, "Create", 0.0f, 0.0f, 0.0f);
+    tr.draw_text(create_x + 28, btn_y + 5, T("create", "Create"), 0.0f, 0.0f, 0.0f);
 }
 
 // -----------------------------------------------------------------------
@@ -3393,7 +3396,7 @@ void NodeGraphUI::draw_preset_name_popup(Renderer2D& tr) {
     float cx = px + 16.0f;
     float cy = py + 12.0f;
 
-    tr.draw_text(cx, cy, "Save Preset",
+    tr.draw_text(cx, cy, T("save_preset", "Save Preset"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     cy += 20.0f;
 
@@ -3473,12 +3476,12 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
     float inner_w = pw - 2 * kPrefsPadX;
 
     // Title
-    tr.draw_text(cx, cy, "Preferences",
+    tr.draw_text(cx, cy, T("preferences", "Preferences"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     cy += kPrefsRowH + kPrefsSectionGap;
 
     // --- TEXT EDITOR section ---
-    tr.draw_text(cx, cy, "TEXT EDITOR",
+    tr.draw_text(cx, cy, T("text_editor", "TEXT EDITOR"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
     cy += kPrefsRowH;
 
@@ -3525,7 +3528,7 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
     cy += kPrefsSectionGap;
 
     // --- STYLE section ---
-    tr.draw_text(cx, cy, "STYLE",
+    tr.draw_text(cx, cy, T("style", "STYLE"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
     cy += kPrefsRowH;
 
@@ -3559,7 +3562,7 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
     cy += kPrefsSectionGap;
 
     // --- MOUSE section ---
-    tr.draw_text(cx, cy, "MOUSE",
+    tr.draw_text(cx, cy, T("mouse", "MOUSE"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
     cy += kPrefsRowH;
 
@@ -3597,8 +3600,8 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
     else
         tr.draw_rounded_rect(save_x, cy, kPrefsBtnW, kPrefsBtnH, style_.corner_radius,
                              style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
-    float save_tw = tr.text_width("Save");
-    tr.draw_text(save_x + (kPrefsBtnW - save_tw) * 0.5f, cy + 4, "Save",
+    float save_tw = tr.text_width(T("save", "Save"));
+    tr.draw_text(save_x + (kPrefsBtnW - save_tw) * 0.5f, cy + 4, T("save", "Save"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
     if (cancel_hover)
@@ -3607,9 +3610,54 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
     else
         tr.draw_rounded_rect(cancel_x, cy, kPrefsBtnW, kPrefsBtnH, style_.corner_radius,
                              style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
-    float cancel_tw = tr.text_width("Cancel");
-    tr.draw_text(cancel_x + (kPrefsBtnW - cancel_tw) * 0.5f, cy + 4, "Cancel",
+    float cancel_tw = tr.text_width(T("cancel", "Cancel"));
+    tr.draw_text(cancel_x + (kPrefsBtnW - cancel_tw) * 0.5f, cy + 4, T("cancel", "Cancel"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+}
+
+// -----------------------------------------------------------------------
+// MCP project config detection
+// -----------------------------------------------------------------------
+void NodeGraphUI::scan_mcp_project_config() {
+    const std::string& gpath = graph_meta_data_.path;
+    if (mcp_project_config_.scanned && mcp_project_config_.scanned_for_path == gpath)
+        return;
+
+    mcp_project_config_.scanned = true;
+    mcp_project_config_.scanned_for_path = gpath;
+    mcp_project_config_.vivid_configured = false;
+    mcp_project_config_.opdev_configured = false;
+    mcp_project_config_.mcp_json_dir.clear();
+
+    if (gpath.empty()) return;
+
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path dir = fs::path(gpath).parent_path();
+
+    for (int i = 0; i < 5; ++i) {
+        fs::path candidate = dir / ".mcp.json";
+        if (fs::exists(candidate, ec)) {
+            yyjson_read_err err;
+            yyjson_doc* doc = yyjson_read_file(candidate.string().c_str(), 0, nullptr, &err);
+            if (doc) {
+                yyjson_val* root = yyjson_doc_get_root(doc);
+                yyjson_val* servers = yyjson_obj_get(root, "mcpServers");
+                if (servers) {
+                    if (yyjson_obj_get(servers, "vivid"))
+                        mcp_project_config_.vivid_configured = true;
+                    if (yyjson_obj_get(servers, "opdev"))
+                        mcp_project_config_.opdev_configured = true;
+                }
+                mcp_project_config_.mcp_json_dir = dir.string();
+                yyjson_doc_free(doc);
+            }
+            break;  // stop at first .mcp.json found
+        }
+        fs::path parent = dir.parent_path();
+        if (parent == dir) break;  // reached root
+        dir = parent;
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -3617,6 +3665,8 @@ void NodeGraphUI::draw_preferences(Renderer2D& tr) {
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_mcp_setup_dialog(Renderer2D& tr) {
     if (!mcp_setup_open_) return;
+
+    scan_mcp_project_config();
 
     auto now_ms = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -3633,46 +3683,14 @@ void NodeGraphUI::draw_mcp_setup_dialog(Renderer2D& tr) {
     constexpr float kDlgPadX   = 20.0f;
     constexpr float kDlgPadY   = 16.0f;
     constexpr float kRowH      = 20.0f;
-    constexpr float kCodeH     = 56.0f;   // height of a code block
     constexpr float kSep       = 10.0f;
     constexpr float kBtnH      = 24.0f;
     constexpr float kBtnW      = 72.0f;
-    constexpr float kCopyBtnW  = 36.0f;
+    constexpr float kCopyBtnW  = 48.0f;
+    constexpr float kCodePad   = 6.0f;
 
-    // Panel height: title + 2 server sections + Done button
-    float section_h = kRowH + kRowH + kCodeH + kSep; // status + description + code + gap
-    float dlg_h = kDlgPadY + kRowH + kSep            // title
-                + section_h * 2                       // two servers
-                + kBtnH + kDlgPadY;                   // Done + padding
-    float dlg_x = (wf - kDlgW) * 0.5f;
-    float dlg_y = (hf - dlg_h) * 0.5f;
-
-    draw_shadow(tr, dlg_x, dlg_y, kDlgW, dlg_h, style_.corner_radius);
-    tr.draw_rounded_rect(dlg_x, dlg_y, kDlgW, dlg_h, style_.corner_radius,
-                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
-    tr.draw_rect(dlg_x, dlg_y, kDlgW, 2,
-                 style_.accent[0], style_.accent[1], style_.accent[2]);
-
-    float cx = dlg_x + kDlgPadX;
-    float cy = dlg_y + kDlgPadY;
     float inner_w = kDlgW - 2 * kDlgPadX;
-
-    // Title + close [✕]
-    tr.draw_text(cx, cy, "MCP Servers",
-                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-    const char* close_x = "\xe2\x9c\x95";
-    float close_tw = tr.text_width(close_x);
-    float close_bx = dlg_x + kDlgW - kDlgPadX - close_tw;
-    mcp_dialog_button_rects_.clear();
-    bool close_hov = mouse_.x >= close_bx - 4 && mouse_.x <= close_bx + close_tw + 4 &&
-                     mouse_.y >= cy - 2 && mouse_.y <= cy + kRowH + 2;
-    tr.draw_text(close_bx, cy,
-                 close_x,
-                 close_hov ? style_.bright_text[0] : style_.dim_text[0],
-                 close_hov ? style_.bright_text[1] : style_.dim_text[1],
-                 close_hov ? style_.bright_text[2] : style_.dim_text[2]);
-    mcp_dialog_button_rects_.push_back({close_bx - 4, cy - 2, close_tw + 8, kRowH + 4, 3 /*close*/});
-    cy += kRowH + kSep;
+    float code_text_w = inner_w - kCopyBtnW - 6.0f - 2 * kCodePad;
 
     // Build JSON snippets
     std::string mcp_py_path = mcp_dir_.empty() ? "<path_to_vivid>/mcp/vivid_mcp.py"
@@ -3691,15 +3709,58 @@ void NodeGraphUI::draw_mcp_setup_dialog(Renderer2D& tr) {
         const std::string* json_snippet;
         uint64_t     last_ping_ms;
         int          copy_action;  // 0=copy_vivid, 1=copy_opdev
+        bool         configured;
     };
     bool vivid_connected = (snap_.mcp_main_last_ping_ms  > 0 && now_ms - snap_.mcp_main_last_ping_ms  < kMcpStaleMs);
     bool opdev_connected = (snap_.mcp_opdev_last_ping_ms > 0 && now_ms - snap_.mcp_opdev_last_ping_ms < kMcpStaleMs);
 
     ServerDef servers[2] = {
-        { "Graph Server",   "Controls the Vivid node graph via AI.",  &vivid_json, snap_.mcp_main_last_ping_ms,  0 },
-        { "Operator Dev",   "Helps build custom operators.",           &opdev_json, snap_.mcp_opdev_last_ping_ms, 1 },
+        { "Graph Server",   "Controls the Vivid node graph via AI.",  &vivid_json, snap_.mcp_main_last_ping_ms,  0, mcp_project_config_.vivid_configured },
+        { "Operator Dev",   "Helps build custom operators.",           &opdev_json, snap_.mcp_opdev_last_ping_ms, 1, mcp_project_config_.opdev_configured },
     };
     bool connected[2] = { vivid_connected, opdev_connected };
+
+    // Pre-pass: compute wrapped code block heights
+    float code_h[2];
+    for (int i = 0; i < 2; ++i) {
+        auto lines = tr.wrap_text(servers[i].json_snippet->c_str(), code_text_w);
+        code_h[i] = lines.size() * tr.line_height() + 2 * kCodePad;
+    }
+
+    // Panel height: title + 2 server sections + Done button
+    float section_h_0 = kRowH + kRowH + code_h[0] + kSep;
+    float section_h_1 = kRowH + kRowH + code_h[1] + kSep;
+    float dlg_h = kDlgPadY + kRowH + kSep            // title
+                + section_h_0 + section_h_1           // two servers
+                + kBtnH + kDlgPadY;                   // Done + padding
+    float dlg_x = (wf - kDlgW) * 0.5f;
+    float dlg_y = (hf - dlg_h) * 0.5f;
+
+    draw_shadow(tr, dlg_x, dlg_y, kDlgW, dlg_h, style_.corner_radius);
+    tr.draw_rounded_rect(dlg_x, dlg_y, kDlgW, dlg_h, style_.corner_radius,
+                         style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
+    tr.draw_rect(dlg_x, dlg_y, kDlgW, 2,
+                 style_.accent[0], style_.accent[1], style_.accent[2]);
+
+    float cx = dlg_x + kDlgPadX;
+    float cy = dlg_y + kDlgPadY;
+
+    // Title + close [✕]
+    tr.draw_text(cx, cy, T("mcp_servers", "MCP Servers"),
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    const char* close_x = "\xe2\x9c\x95";
+    float close_tw = tr.text_width(close_x);
+    float close_bx = dlg_x + kDlgW - kDlgPadX - close_tw;
+    mcp_dialog_button_rects_.clear();
+    bool close_hov = mouse_.x >= close_bx - 4 && mouse_.x <= close_bx + close_tw + 4 &&
+                     mouse_.y >= cy - 2 && mouse_.y <= cy + kRowH + 2;
+    tr.draw_text(close_bx, cy,
+                 close_x,
+                 close_hov ? style_.bright_text[0] : style_.dim_text[0],
+                 close_hov ? style_.bright_text[1] : style_.dim_text[1],
+                 close_hov ? style_.bright_text[2] : style_.dim_text[2]);
+    mcp_dialog_button_rects_.push_back({close_bx - 4, cy - 2, close_tw + 8, kRowH + 4, 3 /*close*/});
+    cy += kRowH + kSep;
 
     for (int i = 0; i < 2; ++i) {
         const auto& s = servers[i];
@@ -3719,6 +3780,15 @@ void NodeGraphUI::draw_mcp_setup_dialog(Renderer2D& tr) {
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         const char* status_str = conn ? "connected" : "not connected";
         float status_x = dlg_x + kDlgW - kDlgPadX - tr.text_width(status_str);
+
+        // "configured" badge (muted blue, drawn left of connection status)
+        if (s.configured) {
+            const char* cfg_str = "configured";
+            float cfg_tw = tr.text_width(cfg_str);
+            float cfg_x = status_x - cfg_tw - 10.0f;
+            tr.draw_text(cfg_x, cy, cfg_str, 0.45f, 0.65f, 0.90f);
+        }
+
         tr.draw_text(status_x, cy, status_str,
                      conn ? dot_r : style_.dim_text[0],
                      conn ? dot_g : style_.dim_text[1],
@@ -3730,47 +3800,34 @@ void NodeGraphUI::draw_mcp_setup_dialog(Renderer2D& tr) {
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
         cy += kRowH;
 
-        // Code block
+        // Code block with dynamic height
         float code_x = cx;
         float code_w = inner_w - kCopyBtnW - 6.0f;
-        tr.draw_rect(code_x, cy, code_w, kCodeH, 0.06f, 0.07f, 0.08f, 0.95f);
+        tr.draw_rect(code_x, cy, code_w, code_h[i], 0.06f, 0.07f, 0.08f, 0.95f);
 
-        // Word-wrap JSON into the code block (monospace — just clip at ~64 chars per line)
         const std::string& jsnip = *s.json_snippet;
-        // Draw first ~60 chars, then remainder on next line
-        float code_ty = cy + 6.0f;
-        float code_tx = code_x + 6.0f;
-        size_t line_chars = 56;
-        if (jsnip.size() <= line_chars) {
-            tr.draw_text(code_tx, code_ty, jsnip.c_str(),
-                         0.75f, 0.85f, 0.95f);
-        } else {
-            // Split at a sensible boundary (after the first comma inside)
-            size_t split = jsnip.rfind(',', line_chars);
-            if (split == std::string::npos) split = line_chars;
-            std::string l1 = jsnip.substr(0, split + 1);
-            std::string l2 = "  " + jsnip.substr(split + 1);
-            tr.draw_text(code_tx, code_ty,      l1.c_str(), 0.75f, 0.85f, 0.95f);
-            tr.draw_text(code_tx, code_ty + 18, l2.c_str(), 0.75f, 0.85f, 0.95f);
-        }
+        float code_tx = code_x + kCodePad;
+        float code_ty = cy + kCodePad;
+        tr.draw_text_wrapped(code_tx, code_ty, jsnip.c_str(), code_text_w,
+                             0.75f, 0.85f, 0.95f);
 
-        // Copy button
+        // Copy button (vertically centered in code block)
         float copy_bx = code_x + code_w + 6.0f;
-        float copy_by = cy + (kCodeH - kBtnH) * 0.5f;
+        float copy_by = cy + (code_h[i] - kBtnH) * 0.5f;
         bool copy_hov = mouse_.x >= copy_bx && mouse_.x <= copy_bx + kCopyBtnW &&
                         mouse_.y >= copy_by && mouse_.y <= copy_by + kBtnH;
         tr.draw_rounded_rect(copy_bx, copy_by, kCopyBtnW, kBtnH, style_.corner_radius,
                              copy_hov ? style_.button_hover[0] : style_.button_bg[0],
                              copy_hov ? style_.button_hover[1] : style_.button_bg[1],
                              copy_hov ? style_.button_hover[2] : style_.button_bg[2], 0.9f);
-        const char* copy_lbl = "\xe2\x8e\x98";  // ⎘ copy symbol
+        const char* copy_lbl = "Copy";
         float copy_lbl_w = tr.text_width(copy_lbl);
         tr.draw_text(copy_bx + (kCopyBtnW - copy_lbl_w) * 0.5f,
                      copy_by + (kBtnH - tr.line_height()) * 0.5f,
                      copy_lbl,
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         mcp_dialog_button_rects_.push_back({copy_bx, copy_by, kCopyBtnW, kBtnH, s.copy_action});
-        cy += kCodeH + kSep;
+        cy += code_h[i] + kSep;
     }
 
     // Done button
@@ -3781,8 +3838,8 @@ void NodeGraphUI::draw_mcp_setup_dialog(Renderer2D& tr) {
                          done_hov ? style_.button_hover[0] : style_.button_bg[0],
                          done_hov ? style_.button_hover[1] : style_.button_bg[1],
                          done_hov ? style_.button_hover[2] : style_.button_bg[2], 0.9f);
-    float done_tw = tr.text_width("Done");
-    tr.draw_text(done_x + (kBtnW - done_tw) * 0.5f, cy + (kBtnH - tr.line_height()) * 0.5f, "Done",
+    float done_tw = tr.text_width(T("done", "Done"));
+    tr.draw_text(done_x + (kBtnW - done_tw) * 0.5f, cy + (kBtnH - tr.line_height()) * 0.5f, T("done", "Done"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     mcp_dialog_button_rects_.push_back({done_x, cy, kBtnW, kBtnH, 2 /*done*/});
 }
@@ -4215,7 +4272,7 @@ void NodeGraphUI::draw_perf_expanded(Renderer2D& tr) {
     // Title
     float tx = ex + pad;
     float ty = ey + pad;
-    tr.draw_text(tx, ty, "Memory", 0.85f, 0.87f, 0.90f);
+    tr.draw_text(tx, ty, T("memory", "Memory"), 0.85f, 0.87f, 0.90f);
 
     // Current value
     char mem_buf[64];
@@ -4364,13 +4421,13 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     float hx = kSessionPadX;
     float hy = strip_y + 5;
 
-    tr.draw_text(hx, hy + 2, "SESSION",
+    tr.draw_text(hx, hy + 2, T("session", "SESSION"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     hx += 70;
 
     // Quantize buttons
     static const char* quantize_labels[] = { "Off", "Beat", "Bar", "4Bar" };
-    tr.draw_text(hx, hy + 2, "Quantize:",
+    tr.draw_text(hx, hy + 2, T("quantize", "Quantize:"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     hx += 72;
     for (int i = 0; i < 4; ++i) {
@@ -4393,7 +4450,7 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
         float branch_w = 54.0f;
         tr.draw_rect(hx, hy, branch_w, 18,
                      style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.7f);
-        tr.draw_text(hx + 6, hy + 2, "Branch",
+        tr.draw_text(hx + 6, hy + 2, T("branch", "Branch"),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         session_button_rects_.push_back({hx, hy, branch_w, 18.0f, 6});
         hx += branch_w + 6;
@@ -4404,7 +4461,7 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
         float update_w = 54.0f;
         tr.draw_rect(hx, hy, update_w, 18,
                      style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
-        tr.draw_text(hx + 6, hy + 2, "Update",
+        tr.draw_text(hx + 6, hy + 2, T("update", "Update"),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         session_button_rects_.push_back({hx, hy, update_w, 18.0f, 1});
         hx += update_w + 6;
@@ -4529,7 +4586,7 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     float new_btn_w = 74.0f;
     tr.draw_rect(cx, cy, new_btn_w, kSessionCellH,
                  style_.slider_track[0], style_.slider_track[1], style_.slider_track[2], 0.5f);
-    tr.draw_text(cx + 8, cy + 14, "+ Save New",
+    tr.draw_text(cx + 8, cy + 14, T("save_new", "+ Save New"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     session_button_rects_.push_back({cx, cy, new_btn_w, kSessionCellH, 0});
 
