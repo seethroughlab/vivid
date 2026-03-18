@@ -1,0 +1,72 @@
+{
+    "locale": "en",
+
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "create": "Create",
+    "done": "Done",
+    "open": "Open",
+    "clone": "Clone",
+
+    "error_label": "Error:",
+    "wire": "Wire",
+    "clamp": "Clamp",
+    "node_not_found": "Node not found",
+    "delete_to_remove": "Delete / Backspace to remove",
+    "disconnect": "Disconnect",
+    "no_matches": "no matches",
+
+    "color": "color",
+    "min": "min",
+    "max": "max",
+    "resolution": "Resolution",
+    "from_input": "(from input)",
+    "state_presets": "State Presets",
+    "outputs": "Outputs",
+
+    "save_changes_prompt": "Save changes before closing?",
+    "dont_save": "Don't Save",
+
+    "project_package": "Project Package",
+    "project_package_unavailable": "Project Package (unavailable)",
+    "core": "Core",
+    "new_operator": "New Operator",
+    "composite_template": "Composite (ChildOp template)",
+    "add": "+ Add",
+    "parameters": "Parameters",
+    "create_empty": "Create Empty",
+    "save_preset": "Save Preset",
+
+    "preferences": "Preferences",
+    "text_editor": "TEXT EDITOR",
+    "style": "STYLE",
+    "mouse": "MOUSE",
+
+    "mcp_servers": "MCP Servers",
+    "memory": "Memory",
+
+    "session": "SESSION",
+    "quantize": "Quantize:",
+    "branch": "Branch",
+    "update": "Update",
+    "save_new": "+ Save New",
+
+    "packages": "Packages",
+    "link_local": "Link Local...",
+    "search_packages": "Search packages...",
+    "linked": "Linked",
+    "installed": "Installed",
+    "unlink": "Unlink",
+    "remove": "Remove",
+    "install": "Install",
+    "fetching_catalog": "Fetching catalog...",
+
+    "open_example": "Open Example",
+    "search_examples": "Search by title, tags, id, path...",
+    "core_only": "Core only",
+    "package": "Package",
+    "needs_packages": "needs package(s)",
+
+    "edit_meta": "Edit Meta"
+}

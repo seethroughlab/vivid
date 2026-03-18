@@ -622,6 +622,7 @@ add_library(vivid_ui STATIC
     src/ui/renderer_2d.cpp
     src/ui/thumbnail_renderer.cpp
     src/ui/thumbnail_cache.cpp
+    src/ui/i18n.cpp
     src/ui/node_graph.cpp
     src/ui/node_graph_overlays.cpp
     src/ui/node_graph_draw.cpp
