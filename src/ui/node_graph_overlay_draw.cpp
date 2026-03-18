@@ -3,6 +3,7 @@
 #include "ui/node_graph_util.h"
 #include "ui/overlay_layouts.h"
 #include "ui/renderer_2d.h"
+#include "ui/i18n.h"
 #include <algorithm>
 
 namespace vivid::ui {
@@ -53,7 +54,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
     float inner_w = layout.inner_w;
     float cy = py + kPkgBrowserPadY;
 
-    tr.draw_text(cx, cy + 6, "Packages",
+    tr.draw_text(cx, cy + 6, T("packages", "Packages"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
     static const float kLinkBtnW = 96.0f;
@@ -66,8 +67,8 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
                  link_btn_hovered ? style_.accent[1] : style_.button_bg[1],
                  link_btn_hovered ? style_.accent[2] : style_.button_bg[2],
                  link_btn_hovered ? 0.9f : 0.8f);
-    float link_lbl_x = link_btn_x + (kLinkBtnW - tr.text_width("Link Local...")) * 0.5f;
-    tr.draw_text(link_lbl_x, link_btn_y + 3, "Link Local...",
+    float link_lbl_x = link_btn_x + (kLinkBtnW - tr.text_width(T("link_local", "Link Local..."))) * 0.5f;
+    tr.draw_text(link_lbl_x, link_btn_y + 3, T("link_local", "Link Local..."),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
     cy += kPkgBrowserHeaderH;
@@ -84,7 +85,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
         search_display += " ";
 
     if (pkg_browser_filter_.empty() && search_display.size() <= 1) {
-        tr.draw_text(cx + 4, cy + 5, "Search packages...",
+        tr.draw_text(cx + 4, cy + 5, T("search_packages", "Search packages..."),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
     } else {
         tr.draw_text(cx + 4, cy + 5, search_display.c_str(),
@@ -134,7 +135,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
 
         std::string ver_str = "v" + entry.version;
         const float ver_w = tr.text_width(ver_str.c_str());
-        const char* state = entry.linked ? "Linked" : "Installed";
+        const char* state = entry.linked ? T("linked", "Linked") : T("installed", "Installed");
         const float chip_w = tr.text_width(state) + 16.0f;
         float available_name_w = text_w - 8.0f - ver_w;
         if (entry.installed) available_name_w -= (10.0f + chip_w);
@@ -177,7 +178,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
 
         float btn_x = btn.x;
         float btn_y = btn.y;
-        const char* btn_label = entry.installed ? (entry.linked ? "Unlink" : "Remove") : "Install";
+        const char* btn_label = entry.installed ? (entry.linked ? T("unlink", "Unlink") : T("remove", "Remove")) : T("install", "Install");
         bool this_pending = pkg_action_pending_ && (entry.name == pkg_action_name_);
         bool any_pending  = pkg_action_pending_;
         bool btn_hover = !any_pending && overlay_contains(btn, mouse_.x, mouse_.y);
@@ -236,7 +237,7 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
     if (pkg_browser_callbacks_.fetch_state) {
         auto state = pkg_browser_callbacks_.fetch_state();
         if (state == PackageBrowserFetchState::Fetching) {
-            status = "Fetching catalog...";
+            status = T("fetching_catalog", "Fetching catalog...");
         } else if (state == PackageBrowserFetchState::Error) {
             if (pkg_browser_callbacks_.fetch_error) status = pkg_browser_callbacks_.fetch_error();
         } else {
@@ -288,7 +289,7 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
     float inner_w = layout.inner_w;
     float cy = py + kPkgBrowserPadY;
 
-    tr.draw_text(cx, cy + 6, "Open Example",
+    tr.draw_text(cx, cy + 6, T("open_example", "Open Example"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     cy += kPkgBrowserHeaderH;
 
@@ -298,7 +299,7 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
     std::string s = example_browser_filter_;
     s += (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0) ? "_" : " ";
     if (example_browser_filter_.empty() && s.size() <= 1) {
-        tr.draw_text(cx + 4, cy + 5, "Search by title, tags, id, path...",
+        tr.draw_text(cx + 4, cy + 5, T("search_examples", "Search by title, tags, id, path..."),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.55f);
     } else {
         tr.draw_text(cx + 4, cy + 5, s.c_str(),
@@ -332,7 +333,7 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
                  example_browser_core_only_ ? style_.accent[1] : style_.button_bg[1],
                  example_browser_core_only_ ? style_.accent[2] : style_.button_bg[2],
                  example_browser_core_only_ ? 0.9f : 0.65f);
-    tr.draw_text(toggles_x + 8, cy + 3, "Core only",
+    tr.draw_text(toggles_x + 8, cy + 3, T("core_only", "Core only"),
                  example_browser_core_only_ ? 0.0f : style_.dim_text[0],
                  example_browser_core_only_ ? 0.0f : style_.dim_text[1],
                  example_browser_core_only_ ? 0.0f : style_.dim_text[2]);
@@ -341,7 +342,7 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
                  example_browser_package_only_ ? style_.accent[1] : style_.button_bg[1],
                  example_browser_package_only_ ? style_.accent[2] : style_.button_bg[2],
                  example_browser_package_only_ ? 0.9f : 0.65f);
-    tr.draw_text(toggles_x + toggle_w + 14.0f, cy + 3, "Package",
+    tr.draw_text(toggles_x + toggle_w + 14.0f, cy + 3, T("package", "Package"),
                  example_browser_package_only_ ? 0.0f : style_.dim_text[0],
                  example_browser_package_only_ ? 0.0f : style_.dim_text[1],
                  example_browser_package_only_ ? 0.0f : style_.dim_text[2]);
@@ -406,15 +407,15 @@ void NodeGraphUI::draw_example_browser(Renderer2D& tr) {
 
         tr.draw_rect(bx, by, open_btn.w, open_btn.h,
                      style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
-        float tw = tr.text_width("Open");
-        tr.draw_text(bx + (open_btn.w - tw) * 0.5f, by + 3, "Open",
+        float tw = tr.text_width(T("open", "Open"));
+        tr.draw_text(bx + (open_btn.w - tw) * 0.5f, by + 3, T("open", "Open"),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
         if (has_missing_packages) {
             const float badge_x = bx - badge_gap - badge_w;
             tr.draw_rect(badge_x, by, badge_w, open_btn.h,
                          0.42f, 0.30f, 0.12f, 0.9f);
-            tr.draw_text(badge_x + 8.0f, by + 3.0f, "needs package(s)",
+            tr.draw_text(badge_x + 8.0f, by + 3.0f, T("needs_packages", "needs package(s)"),
                          0.95f, 0.78f, 0.32f, 0.95f);
         }
     }
@@ -459,7 +460,7 @@ void NodeGraphUI::draw_graph_meta_editor(Renderer2D& tr) {
     tr.draw_rounded_rect(px, py, pw, ph, style_.corner_radius,
                          style_.popup_bg[0], style_.popup_bg[1], style_.popup_bg[2], style_.popup_bg[3]);
     tr.draw_rect(px, py, pw, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
-    tr.draw_text(px + 16.0f, py + 16.0f, "Edit Meta",
+    tr.draw_text(px + 16.0f, py + 16.0f, T("edit_meta", "Edit Meta"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
     if (!graph_meta_data_.path.empty()) {
@@ -526,9 +527,9 @@ void NodeGraphUI::draw_graph_meta_editor(Renderer2D& tr) {
     tr.draw_rect(save_x, by, save_w, 24.0f, style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
     tr.draw_rect(cancel_x, by, cancel_w, 24.0f,
                  style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.85f);
-    tr.draw_text(save_x + 20.0f, by + 4.0f, "Save",
+    tr.draw_text(save_x + 20.0f, by + 4.0f, T("save", "Save"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-    tr.draw_text(cancel_x + 18.0f, by + 4.0f, "Cancel",
+    tr.draw_text(cancel_x + 18.0f, by + 4.0f, T("cancel", "Cancel"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 }
 
@@ -754,7 +755,7 @@ void NodeGraphUI::draw_about(Renderer2D& tr) {
                  btn_hovered ? style_.button_hover[0] : style_.button_bg[0],
                  btn_hovered ? style_.button_hover[1] : style_.button_bg[1],
                  btn_hovered ? style_.button_hover[2] : style_.button_bg[2], 0.85f);
-    tr.draw_text(btn_x + 22.0f, btn_y + 4.0f, "Close",
+    tr.draw_text(btn_x + 22.0f, btn_y + 4.0f, T("close", "Close"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
     // Scrollbar indicator
