@@ -1,5 +1,9 @@
 # Package Libraries
 
+Packages are distributed as source code (git repos). `vivid install` clones the repo and compiles
+it against your current Vivid headers. When Vivid updates, recompile your packages with
+`vivid rebuild <name>`. There are no pre-compiled binaries — everything builds from source.
+
 Vivid supports additional operator libraries as packages.
 
 For package authoring templates/checklists, see `../vivid-package-template/README.md`.

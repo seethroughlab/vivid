@@ -17,6 +17,12 @@ In the age of LLM-assisted development, writing an operator that does exactly wh
 - **Exploration > construction.** Since writing operators is cheap, the bottleneck is the experimentation loop: how fast can the user try an idea, hear it, see it, and try the next one? Optimize for this loop in every design decision.
 - **When scaffolding operators:** use the existing seed operators as templates. Match the patterns in `operators/gpu/`, `operators/audio/`, `operators/control/` — same file structure, same macro conventions, same parameter style. This is what makes LLM-generated operators reliable.
 
+## Operator Loading Model
+
+Vivid uses dylibs for hot-reload during development, not for binary distribution. Operators always compile from source against the current headers. The ABI version (`VIVID_OPERATOR_ABI_VERSION`) is a staleness detector that catches stale build artifacts — it is not a cross-version compatibility promise.
+
+When generating operators, write clean C++ against the current `operator_api` headers. The `VIVID_REGISTER` macro handles the `extern "C"` boundary. Do not add binary-compatibility scaffolding (struct_size fields, reserved slots, interface tables).
+
 ## Architecture Overview
 
 - **Language:** C++ throughout (runtime, interface, and operators)
