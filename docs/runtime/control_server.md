@@ -124,7 +124,7 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 ### Scaffolding
 | Method | Key params | Description |
 |--------|-----------|-------------|
-| `scaffold_operator` | `name`, `domain`, `variant` | Generate operator from template |
+| `scaffold_operator` | `name`, `domain`, `variant`, `inputs`, `outputs`, `params` | Generate operator from template. `name`/`domain`/`variant` create a starter template (UI/CLI path). `inputs`/`outputs`/`params` are optional and used by MCP tools for programmatic advanced scaffolding. |
 
 ## Buffered vs Immediate Commands
 

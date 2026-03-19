@@ -195,3 +195,146 @@ class TestStructure:
         for header in opdev.ALLOWED_HEADERS:
             path = opdev.OPERATOR_API_DIR / header
             assert path.is_file(), f"Allowlisted header missing: {header}"
+
+
+# ---------------------------------------------------------------------------
+# search_example_operators
+# ---------------------------------------------------------------------------
+
+class TestSearchExampleOperators:
+    @pytest.mark.anyio
+    async def test_search_by_keyword(self):
+        result = json.loads(await opdev.search_example_operators("lfo"))
+        assert result["ok"]
+        assert result["count"] >= 1
+        names = [m["name"] for m in result["matches"]]
+        assert "lfo" in names
+
+    @pytest.mark.anyio
+    async def test_search_source_content(self):
+        result = json.loads(await opdev.search_example_operators("FilePath"))
+        assert result["ok"]
+        assert result["count"] >= 1
+        # Should find operators that use FilePath in their source
+        source_matches = [m for m in result["matches"] if m["matched_in"] == "source"]
+        assert len(source_matches) >= 1
+
+    @pytest.mark.anyio
+    async def test_search_with_domain_filter(self):
+        result = json.loads(await opdev.search_example_operators("gain", domain="control"))
+        assert result["ok"]
+        for m in result["matches"]:
+            assert m["domain"] == "control"
+
+    @pytest.mark.anyio
+    async def test_search_no_matches(self):
+        result = json.loads(await opdev.search_example_operators("zzz_nonexistent_keyword_zzz"))
+        assert result["ok"]
+        assert result["count"] == 0
+        assert result["matches"] == []
+
+    @pytest.mark.anyio
+    async def test_search_invalid_domain(self):
+        result = json.loads(await opdev.search_example_operators("lfo", domain="invalid"))
+        assert not result["ok"]
+        assert "Unknown domain" in result["error"]
+
+    @pytest.mark.anyio
+    async def test_search_empty_query(self):
+        result = json.loads(await opdev.search_example_operators(""))
+        assert not result["ok"]
+
+    @pytest.mark.anyio
+    async def test_search_results_capped(self):
+        # A broad search should not exceed MAX_SEARCH_RESULTS
+        result = json.loads(await opdev.search_example_operators("float"))
+        assert result["ok"]
+        assert result["count"] <= opdev.MAX_SEARCH_RESULTS
+
+
+# ---------------------------------------------------------------------------
+# get_capability_guidance
+# ---------------------------------------------------------------------------
+
+class TestGetCapabilityGuidance:
+    @pytest.mark.anyio
+    async def test_known_capability(self):
+        result = json.loads(await opdev.get_capability_guidance("file_drop"))
+        assert result["ok"]
+        assert result["capability"] == "file_drop"
+        assert "explanation" in result
+        assert "doc_topic" in result
+        assert "example_operators" in result
+        assert "code_snippet" in result
+        assert len(result["example_operators"]) >= 1
+
+    @pytest.mark.anyio
+    async def test_all_capabilities_valid(self):
+        for cap in opdev.CAPABILITY_GUIDANCE:
+            result = json.loads(await opdev.get_capability_guidance(cap))
+            assert result["ok"], f"Capability '{cap}' failed"
+            assert "explanation" in result
+            assert "doc_topic" in result
+            assert "example_operators" in result
+            assert "code_snippet" in result
+
+    @pytest.mark.anyio
+    async def test_unknown_capability(self):
+        result = json.loads(await opdev.get_capability_guidance("nonexistent"))
+        assert not result["ok"]
+        assert "Unknown capability" in result["error"]
+        # Should list available capabilities
+        assert "file_drop" in result["error"]
+        assert "child_op" in result["error"]
+
+    @pytest.mark.anyio
+    async def test_case_insensitive(self):
+        result = json.loads(await opdev.get_capability_guidance("FILE_DROP"))
+        assert result["ok"]
+        assert result["capability"] == "file_drop"
+
+
+# ---------------------------------------------------------------------------
+# recommend_starting_point
+# ---------------------------------------------------------------------------
+
+class TestRecommendStartingPoint:
+    @pytest.mark.anyio
+    async def test_goal_mentions_operator(self):
+        result = json.loads(await opdev.recommend_starting_point("something like the lfo operator"))
+        assert result["ok"]
+        assert result["approach"] == "clone_example"
+        assert "lfo" in result["reasoning"]
+        assert len(result["next_steps"]) >= 2
+
+    @pytest.mark.anyio
+    async def test_goal_mentions_capability(self):
+        result = json.loads(await opdev.recommend_starting_point("operator that accepts file drops"))
+        assert result["ok"]
+        assert result["approach"] == "scaffold"
+        assert "file_drop" in result["reasoning"]
+        assert any("get_capability_guidance" in step for step in result["next_steps"])
+
+    @pytest.mark.anyio
+    async def test_generic_goal(self):
+        result = json.loads(await opdev.recommend_starting_point("a cool effect"))
+        assert result["ok"]
+        assert result["approach"] == "scaffold"
+        assert len(result["next_steps"]) >= 2
+
+    @pytest.mark.anyio
+    async def test_audio_domain_inference(self):
+        result = json.loads(await opdev.recommend_starting_point("an audio synthesizer"))
+        assert result["ok"]
+        assert "audio" in json.dumps(result["next_steps"])
+
+    @pytest.mark.anyio
+    async def test_gpu_domain_inference(self):
+        result = json.loads(await opdev.recommend_starting_point("a gpu shader effect"))
+        assert result["ok"]
+        assert "gpu" in json.dumps(result["next_steps"])
+
+    @pytest.mark.anyio
+    async def test_empty_goal(self):
+        result = json.loads(await opdev.recommend_starting_point(""))
+        assert not result["ok"]

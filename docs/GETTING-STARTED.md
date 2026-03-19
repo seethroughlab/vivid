@@ -78,10 +78,10 @@ Reference:
 ## Next Steps
 
 - **Create your own operator (recommended):**
+  - Scaffold a starter template from the UI (+ New Operator) or CLI (`vivid scaffold-operator`)
+  - For advanced features (custom ports, params, inspectors): use MCP opdev tools
   - Operator contract + runtime architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
-  - MCP workflow and scaffold tools: [LLM-INTEGRATION.md](LLM-INTEGRATION.md)
-  - Semantic tagging guidance (when to tag vs not to tag): [SEMANTIC-PARAM-TAGS.md](SEMANTIC-PARAM-TAGS.md)
-  - Practical scaffold/edit/reload checklist: [OPERATOR-CREATION-MCP-TEST-PLAN.md](testing/OPERATOR-CREATION-MCP-TEST-PLAN.md)
+  - Semantic tagging guidance: [SEMANTIC-PARAM-TAGS.md](SEMANTIC-PARAM-TAGS.md)
 - **Install more operator libraries:** [PACKAGE-LIBRARIES.md](PACKAGE-LIBRARIES.md)
 - **Author your own package repo:** [vivid-package-template](https://github.com/seethroughlab/vivid-package-template)
 

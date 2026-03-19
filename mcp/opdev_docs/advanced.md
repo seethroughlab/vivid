@@ -178,3 +178,20 @@ void main_thread_update(double time) override {
 ## Custom Thumbnails
 
 See `docs/runtime/custom_thumbnails.md` for the thumbnail API.
+
+## Canonical Examples
+
+Reference operators for advanced patterns — study these when implementing specific capabilities.
+
+| Pattern | Example Operator(s) |
+|---|---|
+| ChildOp\<T\> composites | `control/modulated_gain` |
+| Custom value ports | `control/sequencer`, `control/phase_to_midi` (use `VIVID_CUSTOM_VALUE_PORT`) |
+| Custom ref ports | `gpu/movie_loaded`, `gpu/movie_video_out`, `audio/movie_audio_out` (use `VIVID_CUSTOM_REF_PORT`) |
+| MIDI input | `control/midi_input`, `audio/midi_file_player` |
+| File drop params | `gpu/texture_loader`, `gpu/lut_apply`, `gpu/svg_render` |
+| Input events (mouse/keyboard) | `control/mouse`, `control/keyboard` |
+| Media streams | `shared/media_session`, `gpu/movie_loaded` |
+| GPU compute buffers | `gpu/texture_analysis` |
+| Custom thumbnails | `control/envelope`, `control/clock`, `control/smooth` |
+| Audio analysis / FFT | `control/fft_analysis`, `audio/audio_analysis` |

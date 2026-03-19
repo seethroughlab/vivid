@@ -24,7 +24,7 @@ Connections must match types: `gpu_texture` → `gpu_texture`, `data` → `data`
 1. `list_types` — discover all available operators (seed + installed packages)
 2. **Compose first** — build the graph from existing operators before considering custom ones. Most goals are achievable by wiring existing operators together.
 3. `add_node` → `connect` → `set_param` — assemble and configure the graph
-4. `scaffold_operator` — only when no existing operator or combination achieves the goal. Design it for reuse: generic name, broad params, not single-purpose.
+4. `scaffold_operator` — scaffold a starter template when no existing operator achieves the goal. Creates a minimal working operator; use the opdev MCP server for advanced features (custom ports, params, inspectors).
 5. `inspect_graph` — verify the graph state, check live output values
 
 ## Common Patterns
@@ -435,6 +435,74 @@ async def update_midi_mapping(node_id: str, param: str,
 
 
 @mcp.tool()
+async def add_sticky_note(text: str, x: float, y: float,
+                          width: float = 200.0, height: float = 120.0,
+                          color: int = 0, id: str = "") -> str:
+    """Add a sticky note annotation to the graph canvas.
+
+    Args:
+        text: Note text (supports **bold**, - lists, [text](url))
+        x: Graph-space X position
+        y: Graph-space Y position
+        width: Note width (default 200)
+        height: Note height (default 120)
+        color: Color index (0=yellow, 1=green, 2=blue, 3=pink, 4=orange)
+        id: Optional note ID (auto-generated if empty)
+    """
+    params: dict = {"text": text, "x": x, "y": y, "width": width, "height": height, "color": color}
+    if id:
+        params["id"] = id
+    return await _post("add_sticky_note", params)
+
+
+@mcp.tool()
+async def list_sticky_notes() -> str:
+    """List all sticky notes on the graph canvas."""
+    return await _post("list_sticky_notes")
+
+
+@mcp.tool()
+async def update_sticky_note(id: str, text: str = None, x: float = None, y: float = None,
+                              width: float = None, height: float = None,
+                              color: int = None) -> str:
+    """Update an existing sticky note.
+
+    Args:
+        id: Note ID (required)
+        text: New text (optional)
+        x: New X position (optional)
+        y: New Y position (optional)
+        width: New width (optional)
+        height: New height (optional)
+        color: New color index (optional)
+    """
+    params: dict = {"id": id}
+    if text is not None:
+        params["text"] = text
+    if x is not None:
+        params["x"] = x
+    if y is not None:
+        params["y"] = y
+    if width is not None:
+        params["width"] = width
+    if height is not None:
+        params["height"] = height
+    if color is not None:
+        params["color"] = color
+    return await _post("update_sticky_note", params)
+
+
+@mcp.tool()
+async def remove_sticky_note(id: str) -> str:
+    """Remove a sticky note from the graph canvas.
+
+    Args:
+        id: Note ID to remove
+    """
+    return await _post("remove_sticky_note", {"id": id})
+
+
+@mcp.tool()
 async def get_graph_errors() -> str:
     """Get a list of nodes that are in an error state."""
     return await _post("get_graph_errors")
@@ -442,8 +510,11 @@ async def get_graph_errors() -> str:
 
 @mcp.tool()
 async def scaffold_operator(name: str, domain: str, variant: str = "") -> str:
-    """Create a new operator from a template. Only use after confirming via list_types that no
+    """Scaffold a starter operator template. Only use after confirming via list_types that no
     existing operator (seed or installed package) achieves the goal, alone or in combination.
+
+    Creates a minimal working operator with domain-appropriate defaults. For advanced features
+    (custom ports, typed parameters, inspectors), use the opdev MCP server tools.
 
     Design the operator for reuse: generic name, broadly useful params, clear single responsibility.
 

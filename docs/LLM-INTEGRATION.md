@@ -28,6 +28,11 @@ This is the most LLM-friendly design: the LLM reads JSON, writes JSON. No code g
 
 **Operator layer — LLM as author (when needed).** The LLM first composes from existing operators (seed + installed packages). When no existing operator or combination achieves the goal, the LLM writes a self-contained C++ operator, hot-reload compiles it in under a second, and the user sees the result immediately. Authored operators should be designed for reuse — generic names, clear parameters, broad applicability — so they become lasting additions to the project, not throwaway scaffolding. The operator contract is designed to make this generation reliable.
 
+**Operator Authoring Layers**
+
+- **Bootstrap layer (UI + CLI):** `scaffold_operator` creates a starter template with name, domain, and variant. The UI modal and CLI provide quick access to this. The generated template includes guiding comments pointing to examples and MCP tools for next steps.
+- **Advanced authoring layer (MCP/opdev):** Full-featured operator development — custom ports, typed parameters, file drops, inspectors, thumbnails. The opdev MCP server provides discovery tools (`search_example_operators`, `get_capability_guidance`, `recommend_starting_point`), API documentation, and example operator source. The control server's `scaffold_operator` endpoint also accepts `inputs`, `outputs`, and `params` for programmatic use by MCP tools.
+
 **Routing layer — LLM as architect.** "Build me a patch with 3 audio analysis bands driving 3 visual layers with independent particle systems." The LLM generates graph structure as JSON that the user then explores. This is the scaffolding role — often combined with operator authoring when the scaffold requires new operators that don't yet exist.
 
 **Experimentation layer — LLM as variation generator.** "Generate 8 different connection matrix configurations." "Fill this session column with particle behavior variations." The user evaluates and selects. The LLM produces breadth; the user provides taste.
@@ -38,9 +43,9 @@ This is the most LLM-friendly design: the LLM reads JSON, writes JSON. No code g
 
 The LLM connects to Vivid through two complementary paths, both built on a shared Runtime API.
 
-**The Runtime API** is an internal interface exposing all LLM-relevant operations: inspect graph structure, read and write parameters, capture frames and audio, run analysis tools, evaluate checks, scaffold operators, and modify graph topology. This is the single source of truth for what the LLM can do. Both integration paths below call into the same API.
+**The Runtime API** is an internal interface exposing all LLM-relevant operations: inspect graph structure, read and write parameters, capture frames and audio, run analysis tools, evaluate checks, scaffold starter templates, and modify graph topology. This is the single source of truth for what the LLM can do. Both integration paths below call into the same API.
 
-**Path 1: MCP server.** Vivid runs an MCP (Model Context Protocol) server that exposes the Runtime API as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to it externally. This is the primary LLM integration path — it provides the complete tool surface (inspect, add, connect, set_param, scaffold_operator, introspection/diagnostics/checks) with streaming, multi-turn context, and tool use UIs that external clients already provide. It also enables non-interactive use cases: CI pipelines running checks, scripts generating patch variations, installation monitors watching for drift.
+**Path 1: MCP server.** Vivid runs an MCP (Model Context Protocol) server that exposes the Runtime API as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to it externally. This is the primary LLM integration path — it provides the complete tool surface (inspect, add, connect, set_param, scaffold_operator (bootstrap starter template; opdev server handles advanced authoring), introspection/diagnostics/checks) with streaming, multi-turn context, and tool use UIs that external clients already provide. It also enables non-interactive use cases: CI pipelines running checks, scripts generating patch variations, installation monitors watching for drift.
 
 Core/package update MCP tool surface (current):
 - `check_core_updates(force_refresh=false)` — checks Vivid core app update availability from appcast metadata.
