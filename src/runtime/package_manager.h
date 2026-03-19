@@ -5,6 +5,7 @@
 #include <functional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace vivid {
@@ -46,7 +47,8 @@ struct PackageInfo {
 
 struct InstallResult {
     bool success = false;
-    std::string error;
+    std::string error_code;  // machine-readable, e.g. "missing_tool", "abi_mismatch"
+    std::string error;       // human-readable message (unchanged)
     PackageInfo info;
     std::vector<CompileResult> compile_results;
     std::vector<std::string> installed_deps;  // deps installed during this call
@@ -133,8 +135,8 @@ private:
     static std::vector<PackageInfo> resolve_packages(bool emit_warnings);
 
     // Parse vivid-package.json into PackageInfo.
-    // Returns empty string on success, or a human-readable error message.
-    static std::string parse_manifest(const std::string& package_dir, PackageInfo& info);
+    // Returns {code, message} on error, or {"", ""} on success.
+    static std::pair<std::string, std::string> parse_manifest(const std::string& package_dir, PackageInfo& info);
 
     // Internal install with dependency chain tracking for circular detection
     InstallResult install_with_chain(const std::string& url,

@@ -263,11 +263,11 @@ std::vector<PackageInfo> PackageManager::resolve_packages(bool emit_warnings) {
             if (dir_name.size() > 9 && dir_name.compare(0, 9, ".staging_") == 0) continue;
 
             PackageInfo info;
-            auto manifest_err = parse_manifest(entry.path().string(), info);
-            if (!manifest_err.empty()) {
+            auto [manifest_code, manifest_msg] = parse_manifest(entry.path().string(), info);
+            if (!manifest_code.empty()) {
                 if (emit_warnings) {
                     std::fprintf(stderr, "[vivid] PackageManager: warning: %s in %s (scope=%s)\n",
-                                 manifest_err.c_str(), entry.path().string().c_str(), sr.scope.c_str());
+                                 manifest_msg.c_str(), entry.path().string().c_str(), sr.scope.c_str());
                 }
                 continue;
             }
@@ -439,10 +439,10 @@ std::string PackageManager::packages_dir() {
     return get_config_dir() + "/packages";
 }
 
-std::string PackageManager::parse_manifest(const std::string& package_dir, PackageInfo& info) {
+std::pair<std::string, std::string> PackageManager::parse_manifest(const std::string& package_dir, PackageInfo& info) {
     std::string manifest_path = package_dir + "/vivid-package.json";
     std::ifstream ifs(manifest_path);
-    if (!ifs) return "vivid-package.json not found";
+    if (!ifs) return {"manifest_not_found", "vivid-package.json not found"};
 
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -456,11 +456,11 @@ std::string PackageManager::parse_manifest(const std::string& package_dir, Packa
         msg += std::to_string(read_err.pos);
         msg += ": ";
         msg += read_err.msg ? read_err.msg : "unknown error";
-        return msg;
+        return {"manifest_invalid_json", msg};
     }
 
     yyjson_val* root = yyjson_doc_get_root(doc);
-    if (!root || !yyjson_is_obj(root)) { yyjson_doc_free(doc); return "vivid-package.json has no root object"; }
+    if (!root || !yyjson_is_obj(root)) { yyjson_doc_free(doc); return {"manifest_no_root_object", "vivid-package.json has no root object"}; }
 
     yyjson_val* name_v = yyjson_obj_get(root, "name");
     yyjson_val* ver_v  = yyjson_obj_get(root, "version");
@@ -469,11 +469,11 @@ std::string PackageManager::parse_manifest(const std::string& package_dir, Packa
 
     if (!name_v) {
         yyjson_doc_free(doc);
-        return "vivid-package.json is missing required field 'name'";
+        return {"manifest_missing_field", "vivid-package.json is missing required field 'name'"};
     }
     if (!yyjson_is_str(name_v)) {
         yyjson_doc_free(doc);
-        return "'name' field in vivid-package.json must be a string";
+        return {"manifest_field_type", "'name' field in vivid-package.json must be a string"};
     }
 
     info.name = yyjson_get_str(name_v);
@@ -515,7 +515,7 @@ std::string PackageManager::parse_manifest(const std::string& package_dir, Packa
                 std::string op_name = yyjson_get_str(val);
                 if (!is_valid_op_name(op_name)) {
                     yyjson_doc_free(doc);
-                    return "Invalid operator name '" + op_name + "': contains invalid characters or path traversal";
+                    return {"manifest_invalid_operator_name", "Invalid operator name '" + op_name + "': contains invalid characters or path traversal"};
                 }
                 info.operators.push_back(std::move(op_name));
             }
@@ -531,7 +531,7 @@ std::string PackageManager::parse_manifest(const std::string& package_dir, Packa
                 std::string op_name = yyjson_get_str(val);
                 if (!is_valid_op_name(op_name)) {
                     yyjson_doc_free(doc);
-                    return "Invalid operator name '" + op_name + "': contains invalid characters or path traversal";
+                    return {"manifest_invalid_operator_name", "Invalid operator name '" + op_name + "': contains invalid characters or path traversal"};
                 }
                 info.gpu_operators.push_back(std::move(op_name));
             }
@@ -611,7 +611,7 @@ std::string PackageManager::parse_manifest(const std::string& package_dir, Packa
     }
 
     yyjson_doc_free(doc);
-    return {};  // empty string = success
+    return {"", ""};  // success
 }
 
 // Scan a directory for recognizable project files when vivid-package.json is absent.
@@ -753,12 +753,14 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
         std::filesystem::copy(normalized_url, staging_dir,
             std::filesystem::copy_options::recursive, ec);
         if (ec) {
+            result.error_code = "copy_failed";
             result.error = "Failed to copy local package: " + ec.message();
             return result;
         }
     } else {
         std::string git_exe = find_tool("git");
         if (git_exe.empty()) {
+            result.error_code = "missing_tool";
             result.error = missing_tool_error("git");
             return result;
         }
@@ -769,6 +771,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
         std::string output;
         FILE* pipe = popen(cmd.c_str(), "r");
         if (!pipe) {
+            result.error_code = "git_clone_failed";
             result.error = "Failed to execute git clone";
             return result;
         }
@@ -778,6 +781,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
         }
         int status = pclose(pipe);
         if (status != 0) {
+            result.error_code = "git_clone_failed";
             result.error = "git clone failed: " + output;
             std::filesystem::remove_all(staging_dir);
             return result;
@@ -785,10 +789,11 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
     }
 
     // Parse manifest to get canonical package name
-    auto manifest_err = parse_manifest(staging_dir, result.info);
-    if (!manifest_err.empty()) {
+    auto [manifest_code, manifest_msg] = parse_manifest(staging_dir, result.info);
+    if (!manifest_code.empty()) {
         std::string hint = diagnose_non_package_dir(staging_dir);
-        result.error = manifest_err;
+        result.error_code = manifest_code;
+        result.error = manifest_msg;
         if (!hint.empty()) result.error += "\n" + hint;
         std::filesystem::remove_all(staging_dir);
         return result;
@@ -799,6 +804,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
 
     // Check if already installed
     if (std::filesystem::exists(pkg_dir)) {
+        result.error_code = "already_installed";
         result.error = "Package already installed: " + result.info.name +
                        " (uninstall first, or remove " + pkg_dir + ")";
         std::filesystem::remove_all(staging_dir);
@@ -811,6 +817,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
         if (is_installed(dep_name)) continue;
 
         if (installing_chain.count(dep_name)) {
+            result.error_code = "circular_dependency";
             result.error = "Circular dependency detected: " + result.info.name +
                            " -> " + dep_name + " (already in install chain)";
             std::filesystem::remove_all(staging_dir);
@@ -818,6 +825,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
         }
 
         if (!resolver_) {
+            result.error_code = "no_resolver";
             result.error = "Package '" + result.info.name + "' depends on '" +
                            dep_name + "' but no package resolver is configured";
             std::filesystem::remove_all(staging_dir);
@@ -826,6 +834,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
 
         std::string dep_url = resolver_(dep_name);
         if (dep_url.empty()) {
+            result.error_code = "dependency_not_found";
             result.error = "Dependency '" + dep_name + "' not found in package catalog";
             std::filesystem::remove_all(staging_dir);
             return result;
@@ -833,6 +842,7 @@ InstallResult PackageManager::install_with_chain(const std::string& url,
 
         auto dep_result = install_with_chain(dep_url, installing_chain, installed_deps);
         if (!dep_result.success) {
+            result.error_code = dep_result.error_code.empty() ? "dependency_install_failed" : dep_result.error_code;
             result.error = "Failed to install dependency '" + dep_name + "': " + dep_result.error;
             std::filesystem::remove_all(staging_dir);
             return result;
@@ -876,6 +886,7 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
     if (result.info.build_type == "cmake") {
         std::string cmake_exe = find_tool("cmake");
         if (cmake_exe.empty()) {
+            result.error_code = "missing_tool";
             result.error = missing_tool_error("cmake");
             return false;
         }
@@ -899,6 +910,7 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         std::string output;
         FILE* pipe = popen(cmake_cmd.c_str(), "r");
         if (!pipe) {
+            result.error_code = "cmake_configure_failed";
             result.error = "Failed to execute cmake configure";
             return false;
         }
@@ -908,6 +920,7 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         int status = pclose(pipe);
 
         if (status != 0) {
+            result.error_code = "cmake_configure_failed";
             result.error = "cmake configure failed:\n" + output;
             return false;
         }
@@ -919,6 +932,7 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         output.clear();
         pipe = popen(build_cmd.c_str(), "r");
         if (!pipe) {
+            result.error_code = "cmake_build_failed";
             result.error = "Failed to execute cmake build";
             return false;
         }
@@ -927,6 +941,7 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         status = pclose(pipe);
 
         if (status != 0) {
+            result.error_code = "cmake_build_failed";
             result.error = "cmake build failed:\n" + output;
             return false;
         }
@@ -944,6 +959,13 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         }
     } else {
         // Default: clang++ compilation via PackageCompiler
+        std::string clang_exe = find_tool("clang++");
+        if (clang_exe.empty()) {
+            result.error_code = "missing_tool";
+            result.error = missing_tool_error("clang++");
+            return false;
+        }
+
         std::vector<std::string> vendor_includes;
         for (const auto& vd : result.info.dependencies.vendor)
             vendor_includes.push_back(compile_pkg_dir + "/" + vd.include);
@@ -959,6 +981,7 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         }
 
         if (!all_ok) {
+            result.error_code = "compile_failed";
             result.error = "Some operators failed to compile";
             return false;
         }
@@ -970,6 +993,7 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
         registry_.scan_deferred(build_dir.c_str());
         auto abi_mismatches = registry_.abi_mismatch_diagnostics_for_dir(build_dir);
         if (!abi_mismatches.empty()) {
+            result.error_code = "abi_mismatch";
             result.error = abi_mismatch_error_for_package(result.info.name, abi_mismatches);
             return false;
         }
@@ -988,25 +1012,29 @@ InstallResult PackageManager::link(const std::string& path) {
     std::error_code ec;
     auto canonical = std::filesystem::canonical(path, ec);
     if (ec) {
+        result.error_code = "path_not_found";
         result.error = "Path does not exist: " + path;
         return result;
     }
 
     // Validate it's a directory with a manifest
     if (!std::filesystem::is_directory(canonical)) {
+        result.error_code = "not_a_directory";
         result.error = "Not a directory: " + canonical.string();
         return result;
     }
 
     if (!std::filesystem::exists(canonical / "vivid-package.json")) {
+        result.error_code = "link_no_manifest";
         result.error = "No vivid-package.json found in " + canonical.string();
         return result;
     }
 
     // Parse manifest to get canonical package name
-    auto link_manifest_err = parse_manifest(canonical.string(), result.info);
-    if (!link_manifest_err.empty()) {
-        result.error = link_manifest_err + " (in " + canonical.string() + ")";
+    auto [link_manifest_code, link_manifest_msg] = parse_manifest(canonical.string(), result.info);
+    if (!link_manifest_code.empty()) {
+        result.error_code = link_manifest_code;
+        result.error = link_manifest_msg + " (in " + canonical.string() + ")";
         return result;
     }
 
@@ -1016,6 +1044,7 @@ InstallResult PackageManager::link(const std::string& path) {
     // Check no existing package with same name
     std::string pkg_dir = packages_dir() + "/" + result.info.name;
     if (std::filesystem::exists(pkg_dir)) {
+        result.error_code = "already_installed";
         result.error = "Package already exists: " + result.info.name +
                        " (uninstall or unlink first)";
         return result;
@@ -1024,6 +1053,7 @@ InstallResult PackageManager::link(const std::string& path) {
     // Create symlink
     std::filesystem::create_directory_symlink(canonical, pkg_dir, ec);
     if (ec) {
+        result.error_code = "link_failed";
         result.error = "Failed to create symlink: " + ec.message();
         return result;
     }
@@ -1058,7 +1088,7 @@ bool PackageManager::unlink(const std::string& name) {
 
     // Unregister operators from registry (best-effort; error discarded)
     PackageInfo info;
-    if (parse_manifest(pkg_dir, info).empty()) {
+    if (parse_manifest(pkg_dir, info).first.empty()) {
         auto unregister_op = [&](const std::string& op_path) {
             auto slash = op_path.rfind('/');
             std::string target = (slash != std::string::npos) ? op_path.substr(slash + 1) : op_path;
@@ -1093,13 +1123,15 @@ InstallResult PackageManager::rebuild(const std::string& name) {
 
     std::string pkg_dir = packages_dir() + "/" + name;
     if (!std::filesystem::exists(pkg_dir)) {
+        result.error_code = "package_not_found";
         result.error = "Package not found: " + name;
         return result;
     }
 
-    auto rebuild_manifest_err = parse_manifest(pkg_dir, result.info);
-    if (!rebuild_manifest_err.empty()) {
-        result.error = rebuild_manifest_err + " (in " + name + ")";
+    auto [rebuild_manifest_code, rebuild_manifest_msg] = parse_manifest(pkg_dir, result.info);
+    if (!rebuild_manifest_code.empty()) {
+        result.error_code = rebuild_manifest_code;
+        result.error = rebuild_manifest_msg + " (in " + name + ")";
         return result;
     }
 
@@ -1134,6 +1166,7 @@ InstallResult PackageManager::rebuild(const std::string& name) {
     registry_.scan_deferred(build_dir.c_str());
     auto abi_mismatches = registry_.abi_mismatch_diagnostics_for_dir(build_dir);
     if (!abi_mismatches.empty()) {
+        result.error_code = "abi_mismatch";
         result.error = abi_mismatch_error_for_package(result.info.name, abi_mismatches);
         return result;
     }
@@ -1158,7 +1191,7 @@ bool PackageManager::uninstall(const std::string& name) {
     for (auto& entry : std::filesystem::directory_iterator(packages_dir())) {
         if (!entry.is_directory()) continue;
         PackageInfo dep_info;
-        if (!parse_manifest(entry.path().string(), dep_info).empty()) continue;
+        if (!parse_manifest(entry.path().string(), dep_info).first.empty()) continue;
         if (dep_info.name == name) continue;
         for (const auto& dep : dep_info.dependencies.packages) {
             if (dep == name) {
@@ -1173,7 +1206,7 @@ bool PackageManager::uninstall(const std::string& name) {
     // segment is the cmake target name (dylib stem). We need to look up the actual
     // descriptor type name from the target→type mapping.
     PackageInfo info;
-    if (parse_manifest(pkg_dir, info).empty()) {
+    if (parse_manifest(pkg_dir, info).first.empty()) {
         auto unregister_op = [&](const std::string& op_path) {
             auto slash = op_path.rfind('/');
             std::string target = (slash != std::string::npos) ? op_path.substr(slash + 1) : op_path;
