@@ -1581,6 +1581,79 @@ int main(int argc, char* argv[]) {
             check(r_good.ok, "add_node with 'node_id' field accepted");
         }
 
+        // ---------------------------------------------------------------
+        // Sticky note CRUD via control server
+        // ---------------------------------------------------------------
+        std::fprintf(stderr, "\n--- sticky note CRUD ---\n");
+        {
+            auto r = post(client, base_url, "add_sticky_note",
+                R"({"text":"Hello world","x":100,"y":200,"width":250,"height":150,"color":1})");
+            check(r.ok, "add_sticky_note ok");
+            std::string note_id;
+            if (r.root) {
+                yyjson_val* result_v = yyjson_obj_get(r.root, "result");
+                yyjson_val* id_v = result_v ? yyjson_obj_get(result_v, "id") : nullptr;
+                if (id_v && yyjson_is_str(id_v)) note_id = yyjson_get_str(id_v);
+                check(!note_id.empty(), "add_sticky_note returns id");
+            }
+
+            auto r2 = post(client, base_url, "add_sticky_note",
+                R"({"id":"custom_note","text":"Second","x":300,"y":400})");
+            check(r2.ok, "add_sticky_note with custom id ok");
+
+            auto list = post(client, base_url, "list_sticky_notes");
+            check(list.ok, "list_sticky_notes ok");
+            if (list.root) {
+                yyjson_val* result_v = yyjson_obj_get(list.root, "result");
+                check(result_v && yyjson_is_arr(result_v) && yyjson_arr_size(result_v) == 2,
+                      "list_sticky_notes returns 2 notes");
+            }
+
+            auto upd = post(client, base_url, "update_sticky_note",
+                R"({"id":"custom_note","text":"Updated text","color":3})");
+            check(upd.ok, "update_sticky_note ok");
+
+            auto list2 = post(client, base_url, "list_sticky_notes");
+            if (list2.root) {
+                yyjson_val* result_v = yyjson_obj_get(list2.root, "result");
+                if (result_v && yyjson_is_arr(result_v)) {
+                    size_t idx2, max2;
+                    yyjson_val* item;
+                    yyjson_arr_foreach(result_v, idx2, max2, item) {
+                        yyjson_val* id_v = yyjson_obj_get(item, "id");
+                        if (id_v && std::string(yyjson_get_str(id_v)) == "custom_note") {
+                            yyjson_val* text_v = yyjson_obj_get(item, "text");
+                            check(text_v && std::string(yyjson_get_str(text_v)) == "Updated text",
+                                  "sticky note text updated");
+                            yyjson_val* color_v = yyjson_obj_get(item, "color");
+                            check(color_v && yyjson_get_int(color_v) == 3,
+                                  "sticky note color updated");
+                        }
+                    }
+                }
+            }
+
+            auto rem = post(client, base_url, "remove_sticky_note",
+                R"({"id":"custom_note"})");
+            check(rem.ok, "remove_sticky_note ok");
+
+            auto list3 = post(client, base_url, "list_sticky_notes");
+            if (list3.root) {
+                yyjson_val* result_v = yyjson_obj_get(list3.root, "result");
+                check(result_v && yyjson_is_arr(result_v) && yyjson_arr_size(result_v) == 1,
+                      "1 sticky note after remove");
+            }
+
+            auto rem_bad = post(client, base_url, "remove_sticky_note",
+                R"({"id":"nonexistent"})");
+            check(!rem_bad.ok, "remove_sticky_note nonexistent fails");
+
+            // Clean up
+            auto rem2 = post(client, base_url, "remove_sticky_note",
+                std::string("{\"id\":\"") + note_id + "\"}");
+            check(rem2.ok, "remove remaining sticky note ok");
+        }
+
         // Final pass: package mutation safety with a live linked package node.
         std::fprintf(stderr, "\n--- live package mutation safety ---\n");
         {

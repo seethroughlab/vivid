@@ -260,6 +260,9 @@ static bool is_undo_tracked_method(const std::string& method) {
            method == "set_state_preset" ||
            method == "remove_state_preset" ||
            method == "clear_state_presets" ||
+           method == "add_sticky_note" ||
+           method == "remove_sticky_note" ||
+           method == "update_sticky_note" ||
            method == "load_graph";
 }
 
@@ -2822,6 +2825,92 @@ static std::string dispatch(const std::string& method, const std::string& body,
         yyjson_mut_obj_add_bool(rdoc, rroot, "active", !solo_id.empty());
         result = json_serialize(rdoc);
         yyjson_mut_doc_free(rdoc);
+    } else if (method == "add_sticky_note") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* text_v = yyjson_obj_get(root, "text");
+            yyjson_val* x_v = yyjson_obj_get(root, "x");
+            yyjson_val* y_v = yyjson_obj_get(root, "y");
+            if (!text_v || !yyjson_is_str(text_v) || !x_v || !yyjson_is_num(x_v) || !y_v || !yyjson_is_num(y_v))
+                result = json_err("missing 'text', 'x', or 'y'");
+            else {
+                StickyNoteDef note;
+                yyjson_val* id_v = yyjson_obj_get(root, "id");
+                if (id_v && yyjson_is_str(id_v))
+                    note.id = yyjson_get_str(id_v);
+                else
+                    note.id = "sticky_" + std::to_string(graph.sticky_notes().size() + 1);
+                note.text = yyjson_get_str(text_v);
+                note.x = static_cast<float>(yyjson_get_num(x_v));
+                note.y = static_cast<float>(yyjson_get_num(y_v));
+                yyjson_val* w_v = yyjson_obj_get(root, "width");
+                if (w_v && yyjson_is_num(w_v)) note.width = static_cast<float>(yyjson_get_num(w_v));
+                yyjson_val* h_v = yyjson_obj_get(root, "height");
+                if (h_v && yyjson_is_num(h_v)) note.height = static_cast<float>(yyjson_get_num(h_v));
+                yyjson_val* c_v = yyjson_obj_get(root, "color");
+                if (c_v && yyjson_is_int(c_v)) note.color = static_cast<int>(yyjson_get_int(c_v));
+                std::string assigned_id = note.id;
+                graph.add_sticky_note(std::move(note));
+                yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+                yyjson_mut_val* rval = yyjson_mut_obj(rdoc);
+                yyjson_mut_obj_add_strcpy(rdoc, rval, "id", assigned_id.c_str());
+                result = json_ok(rdoc, rval);
+            }
+        }
+    } else if (method == "list_sticky_notes") {
+        yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
+        yyjson_mut_val* arr = yyjson_mut_arr(rdoc);
+        for (const auto& sn : graph.sticky_notes()) {
+            yyjson_mut_val* obj = yyjson_mut_obj(rdoc);
+            yyjson_mut_obj_add_strcpy(rdoc, obj, "id", sn.id.c_str());
+            yyjson_mut_obj_add_strcpy(rdoc, obj, "text", sn.text.c_str());
+            yyjson_mut_obj_add_real(rdoc, obj, "x", static_cast<double>(sn.x));
+            yyjson_mut_obj_add_real(rdoc, obj, "y", static_cast<double>(sn.y));
+            yyjson_mut_obj_add_real(rdoc, obj, "width", static_cast<double>(sn.width));
+            yyjson_mut_obj_add_real(rdoc, obj, "height", static_cast<double>(sn.height));
+            yyjson_mut_obj_add_int(rdoc, obj, "color", sn.color);
+            yyjson_mut_arr_add_val(arr, obj);
+        }
+        result = json_ok(rdoc, arr);
+    } else if (method == "update_sticky_note") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* id_v = yyjson_obj_get(root, "id");
+            if (!id_v || !yyjson_is_str(id_v))
+                result = json_err("missing 'id'");
+            else {
+                auto* sn = graph.find_sticky_note(yyjson_get_str(id_v));
+                if (!sn)
+                    result = json_err("sticky note not found");
+                else {
+                    yyjson_val* text_v = yyjson_obj_get(root, "text");
+                    if (text_v && yyjson_is_str(text_v)) sn->text = yyjson_get_str(text_v);
+                    yyjson_val* x_v = yyjson_obj_get(root, "x");
+                    if (x_v && yyjson_is_num(x_v)) sn->x = static_cast<float>(yyjson_get_num(x_v));
+                    yyjson_val* y_v = yyjson_obj_get(root, "y");
+                    if (y_v && yyjson_is_num(y_v)) sn->y = static_cast<float>(yyjson_get_num(y_v));
+                    yyjson_val* w_v = yyjson_obj_get(root, "width");
+                    if (w_v && yyjson_is_num(w_v)) sn->width = static_cast<float>(yyjson_get_num(w_v));
+                    yyjson_val* h_v = yyjson_obj_get(root, "height");
+                    if (h_v && yyjson_is_num(h_v)) sn->height = static_cast<float>(yyjson_get_num(h_v));
+                    yyjson_val* c_v = yyjson_obj_get(root, "color");
+                    if (c_v && yyjson_is_int(c_v)) sn->color = static_cast<int>(yyjson_get_int(c_v));
+                    result = json_ok_msg("updated");
+                }
+            }
+        }
+    } else if (method == "remove_sticky_note") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* id_v = yyjson_obj_get(root, "id");
+            if (!id_v || !yyjson_is_str(id_v))
+                result = json_err("missing 'id'");
+            else {
+                bool removed = graph.remove_sticky_note(yyjson_get_str(id_v));
+                if (removed) result = json_ok_msg("removed");
+                else result = json_err("sticky note not found");
+            }
+        }
     } else {
         result = json_err("unknown method '" + method + "'");
     }

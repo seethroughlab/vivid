@@ -71,6 +71,7 @@ bool Graph::parse_doc(yyjson_doc* doc) {
     variations_.clear();
     node_presets_.clear();
     state_preset_mappings_.clear();
+    sticky_notes_.clear();
     load_diagnostics.clear();
     active_variation_ = -1;
     quantize_clock_node_.clear();
@@ -542,6 +543,38 @@ bool Graph::parse_doc(yyjson_doc* doc) {
         }
     }
 
+    // Parse sticky notes
+    yyjson_val* sticky_arr = yyjson_obj_get(root, "sticky_notes");
+    if (sticky_arr && yyjson_is_arr(sticky_arr)) {
+        size_t snidx, snmax;
+        yyjson_val* snval;
+        yyjson_arr_foreach(sticky_arr, snidx, snmax, snval) {
+            StickyNoteDef sn;
+            yyjson_val* sn_id = yyjson_obj_get(snval, "id");
+            if (sn_id && yyjson_is_str(sn_id))
+                sn.id = yyjson_get_str(sn_id);
+            yyjson_val* sn_text = yyjson_obj_get(snval, "text");
+            if (sn_text && yyjson_is_str(sn_text))
+                sn.text = yyjson_get_str(sn_text);
+            yyjson_val* sn_x = yyjson_obj_get(snval, "x");
+            if (sn_x && yyjson_is_num(sn_x))
+                sn.x = static_cast<float>(yyjson_get_num(sn_x));
+            yyjson_val* sn_y = yyjson_obj_get(snval, "y");
+            if (sn_y && yyjson_is_num(sn_y))
+                sn.y = static_cast<float>(yyjson_get_num(sn_y));
+            yyjson_val* sn_w = yyjson_obj_get(snval, "width");
+            if (sn_w && yyjson_is_num(sn_w))
+                sn.width = static_cast<float>(yyjson_get_num(sn_w));
+            yyjson_val* sn_h = yyjson_obj_get(snval, "height");
+            if (sn_h && yyjson_is_num(sn_h))
+                sn.height = static_cast<float>(yyjson_get_num(sn_h));
+            yyjson_val* sn_color = yyjson_obj_get(snval, "color");
+            if (sn_color && yyjson_is_int(sn_color))
+                sn.color = static_cast<int>(yyjson_get_int(sn_color));
+            sticky_notes_.push_back(std::move(sn));
+        }
+    }
+
     return true;
 }
 
@@ -942,6 +975,41 @@ const StatePresetMapping* Graph::find_state_mapping(const std::string& sm_node) 
     return nullptr;
 }
 
+// --- Sticky Note CRUD ---
+
+void Graph::add_sticky_note(StickyNoteDef note) {
+    // Replace if already exists
+    for (auto& sn : sticky_notes_) {
+        if (sn.id == note.id) {
+            sn = std::move(note);
+            return;
+        }
+    }
+    sticky_notes_.push_back(std::move(note));
+}
+
+bool Graph::remove_sticky_note(const std::string& id) {
+    auto it = std::find_if(sticky_notes_.begin(), sticky_notes_.end(),
+        [&](const StickyNoteDef& sn) { return sn.id == id; });
+    if (it == sticky_notes_.end()) return false;
+    sticky_notes_.erase(it);
+    return true;
+}
+
+const StickyNoteDef* Graph::find_sticky_note(const std::string& id) const {
+    for (const auto& sn : sticky_notes_) {
+        if (sn.id == id) return &sn;
+    }
+    return nullptr;
+}
+
+StickyNoteDef* Graph::find_sticky_note(const std::string& id) {
+    for (auto& sn : sticky_notes_) {
+        if (sn.id == id) return &sn;
+    }
+    return nullptr;
+}
+
 // --- Serialization ---
 
 static yyjson_mut_doc* build_graph_json_doc(const Graph& graph) {
@@ -1166,6 +1234,23 @@ static yyjson_mut_doc* build_graph_json_doc(const Graph& graph) {
         yyjson_mut_obj_add_real(doc, vp_obj, "pan_y", static_cast<double>(graph.viewport_pan_y));
         yyjson_mut_obj_add_real(doc, vp_obj, "zoom",  static_cast<double>(graph.viewport_zoom));
         yyjson_mut_obj_add_val(doc, root, "viewport", vp_obj);
+    }
+
+    // Sticky notes
+    if (!graph.sticky_notes().empty()) {
+        yyjson_mut_val* sn_arr = yyjson_mut_arr(doc);
+        for (const auto& sn : graph.sticky_notes()) {
+            yyjson_mut_val* sn_obj = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_strcpy(doc, sn_obj, "id", sn.id.c_str());
+            yyjson_mut_obj_add_strcpy(doc, sn_obj, "text", sn.text.c_str());
+            yyjson_mut_obj_add_real(doc, sn_obj, "x", static_cast<double>(sn.x));
+            yyjson_mut_obj_add_real(doc, sn_obj, "y", static_cast<double>(sn.y));
+            yyjson_mut_obj_add_real(doc, sn_obj, "width", static_cast<double>(sn.width));
+            yyjson_mut_obj_add_real(doc, sn_obj, "height", static_cast<double>(sn.height));
+            yyjson_mut_obj_add_int(doc, sn_obj, "color", sn.color);
+            yyjson_mut_arr_add_val(sn_arr, sn_obj);
+        }
+        yyjson_mut_obj_add_val(doc, root, "sticky_notes", sn_arr);
     }
 
     return doc;

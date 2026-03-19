@@ -90,6 +90,14 @@ struct StatePresetMapping {
     std::vector<std::unordered_map<std::string, std::string>> state_presets;
 };
 
+struct StickyNoteDef {
+    std::string id;
+    std::string text;
+    float x = 0.0f, y = 0.0f;
+    float width = 200.0f, height = 120.0f;
+    int color = 0;  // 0=yellow, 1=green, 2=blue, 3=pink, 4=orange
+};
+
 class Graph {
 public:
     bool load(const char* path);
@@ -167,6 +175,14 @@ public:
     const StatePresetMapping* find_state_mapping(const std::string& sm_node) const;
     const std::vector<StatePresetMapping>& state_preset_mappings() const { return state_preset_mappings_; }
 
+    // Sticky note CRUD
+    const std::vector<StickyNoteDef>& sticky_notes() const { return sticky_notes_; }
+    std::vector<StickyNoteDef>& sticky_notes_mut() { return sticky_notes_; }
+    void add_sticky_note(StickyNoteDef note);
+    bool remove_sticky_note(const std::string& id);
+    const StickyNoteDef* find_sticky_note(const std::string& id) const;
+    StickyNoteDef* find_sticky_note(const std::string& id);
+
     // Lookup
     const NodeDef* find_node(const std::string& id) const;
     NodeDef* find_node(const std::string& id);
@@ -212,6 +228,7 @@ private:
     std::string source_path_;
     std::unordered_map<std::string, std::vector<OperatorPreset>> node_presets_;
     std::vector<StatePresetMapping> state_preset_mappings_;
+    std::vector<StickyNoteDef> sticky_notes_;
 };
 
 } // namespace vivid
