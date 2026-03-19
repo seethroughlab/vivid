@@ -5,9 +5,17 @@
     "id": "star_spin_demo",
     "title": "Star Spin",
     "description": "Audio-reactive spinning star with feedback trails and bloom.",
-    "tags": ["demo", "feedback", "audio-reactive"],
+    "tags": [
+      "demo",
+      "feedback",
+      "audio-reactive"
+    ],
     "difficulty": "intermediate",
-    "domains": ["audio", "gpu", "control"],
+    "domains": [
+      "audio",
+      "gpu",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 10
   },
@@ -90,14 +98,70 @@
     }
   },
   "connections": [
-    {"from": "osc/output",      "to": "gain/input"},
-    {"from": "gain/output",     "to": "aout/input"},
-    {"from": "lfo_rot/value",   "to": "star/rotation"},
-    {"from": "lfo_size/value",  "to": "star/radius"},
-    {"from": "gain/rms",        "to": "math_zoom/a"},
-    {"from": "math_zoom/result","to": "feedback/zoom"},
-    {"from": "star/texture",    "to": "feedback/input"},
-    {"from": "feedback/texture","to": "bloom/input"},
-    {"from": "bloom/texture",   "to": "vout/input"}
+    {
+      "from": "osc/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "aout/input"
+    },
+    {
+      "from": "lfo_rot/value",
+      "to": "star/rotation"
+    },
+    {
+      "from": "lfo_size/value",
+      "to": "star/radius"
+    },
+    {
+      "from": "gain/rms",
+      "to": "math_zoom/a"
+    },
+    {
+      "from": "math_zoom/result",
+      "to": "feedback/zoom"
+    },
+    {
+      "from": "star/texture",
+      "to": "feedback/input"
+    },
+    {
+      "from": "feedback/texture",
+      "to": "bloom/input"
+    },
+    {
+      "from": "bloom/texture",
+      "to": "vout/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Audio-Reactive Visuals**\nAudio RMS level drives the\nfeedback zoom amount via Math",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**RMS → Math(add 1.01) → zoom**\nLouder audio = more zoom =\nfaster spiral expansion",
+      "x": -100.0,
+      "y": 180.0,
+      "width": 250.0,
+      "height": 80.0,
+      "color": 2
+    },
+    {
+      "id": "note_3",
+      "text": "Bloom softens the feedback\ntrails into a glowing halo",
+      "x": 300.0,
+      "y": -80.0,
+      "width": 220.0,
+      "height": 60.0,
+      "color": 3
+    }
   ]
 }

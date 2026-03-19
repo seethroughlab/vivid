@@ -5,9 +5,17 @@
     "id": "vocoder_demo",
     "title": "Vocoder: Noise into Saw",
     "description": "White noise as the modulator shapes a saw-wave carrier through a 24-band vocoder. An LFO on envelope speed varies how quickly the bands track, producing a talking-robot texture.",
-    "tags": ["audio", "vocoder", "spectral", "demo"],
+    "tags": [
+      "audio",
+      "vocoder",
+      "spectral",
+      "demo"
+    ],
     "difficulty": "beginner",
-    "domains": ["audio", "control"],
+    "domains": [
+      "audio",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 30
   },
@@ -55,10 +63,54 @@
     }
   },
   "connections": [
-    { "from": "noise/output",       "to": "vocoder/modulator"  },
-    { "from": "carrier_osc/output", "to": "vocoder/carrier"    },
-    { "from": "lfo_speed/value",    "to": "vocoder/speed_cv"   },
-    { "from": "vocoder/output",     "to": "gain/input"         },
-    { "from": "gain/output",        "to": "out/input"          }
+    {
+      "from": "noise/output",
+      "to": "vocoder/modulator"
+    },
+    {
+      "from": "carrier_osc/output",
+      "to": "vocoder/carrier"
+    },
+    {
+      "from": "lfo_speed/value",
+      "to": "vocoder/speed_cv"
+    },
+    {
+      "from": "vocoder/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "out/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Vocoder** — talking-robot effect\nThe modulator’s spectral shape is\nimprinted onto the carrier",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**Modulator**: white noise\nProvides the spectral envelope\nthat shapes the output",
+      "x": -100.0,
+      "y": 150.0,
+      "width": 230.0,
+      "height": 80.0,
+      "color": 2
+    },
+    {
+      "id": "note_3",
+      "text": "**Carrier**: 110 Hz saw wave\nProvides the pitched harmonic\ncontent that gets shaped",
+      "x": 200.0,
+      "y": 150.0,
+      "width": 230.0,
+      "height": 80.0,
+      "color": 1
+    }
   ]
 }

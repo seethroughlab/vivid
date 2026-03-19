@@ -53,5 +53,25 @@
       "from": "noise1/texture",
       "to": "vout/input"
     }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Clock → LFO → Visual** pipeline\nThe Clock's beat_phase drives the LFO,\nwhich modulates the noise texture scale",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 280.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "LFO offset=4 keeps scale positive;\namplitude=2 sweeps scale from 2–6",
+      "x": 200.0,
+      "y": -80.0,
+      "width": 250.0,
+      "height": 60.0,
+      "color": 2
+    }
   ]
 }

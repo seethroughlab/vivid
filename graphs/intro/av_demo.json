@@ -96,5 +96,34 @@
       "from": "noise1/texture",
       "to": "vout/input"
     }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Shared Clock** drives both domains\nOne Clock syncs audio and visuals\nvia two separate LFOs",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**Visual path**: LFO modulates\nnoise texture scale",
+      "x": 250.0,
+      "y": -80.0,
+      "width": 220.0,
+      "height": 60.0,
+      "color": 3
+    },
+    {
+      "id": "note_3",
+      "text": "**Audio path**: LFO sweeps\noscillator frequency 230–430 Hz",
+      "x": 250.0,
+      "y": 120.0,
+      "width": 230.0,
+      "height": 60.0,
+      "color": 1
+    }
   ]
 }

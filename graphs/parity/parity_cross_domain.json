@@ -27,7 +27,10 @@
         "bpm": 120.0,
         "beats_per_bar": 4
       },
-      "layout": [100, 300]
+      "layout": [
+        100,
+        300
+      ]
     },
     "lfo1": {
       "type": "LFO",
@@ -37,7 +40,10 @@
         "offset": 0.0,
         "waveform": 0
       },
-      "layout": [350, 200]
+      "layout": [
+        350,
+        200
+      ]
     },
     "env1": {
       "type": "Envelope",
@@ -49,7 +55,10 @@
         "amplitude": 1.0,
         "offset": 0.0
       },
-      "layout": [350, 450]
+      "layout": [
+        350,
+        450
+      ]
     },
     "osc1": {
       "type": "Oscillator",
@@ -58,7 +67,10 @@
         "amplitude": 0.6,
         "waveform": 0
       },
-      "layout": [650, 100]
+      "layout": [
+        650,
+        100
+      ]
     },
     "filter1": {
       "type": "Filter",
@@ -67,19 +79,28 @@
         "resonance": 1.8,
         "mode": 0
       },
-      "layout": [850, 100]
+      "layout": [
+        850,
+        100
+      ]
     },
     "gain1": {
       "type": "Gain",
       "params": {
         "gain": 0.5
       },
-      "layout": [1050, 100]
+      "layout": [
+        1050,
+        100
+      ]
     },
     "audio_out": {
       "type": "audio_out",
       "params": {},
-      "layout": [1250, 100]
+      "layout": [
+        1250,
+        100
+      ]
     },
     "shape1": {
       "type": "Shape",
@@ -91,7 +112,10 @@
         "g": 0.6,
         "b": 1.0
       },
-      "layout": [650, 400]
+      "layout": [
+        650,
+        400
+      ]
     },
     "noise_bg": {
       "type": "NoiseTexture",
@@ -100,7 +124,10 @@
         "speed": 0.5,
         "octaves": 3
       },
-      "layout": [650, 600]
+      "layout": [
+        650,
+        600
+      ]
     },
     "composite1": {
       "type": "Composite",
@@ -108,7 +135,10 @@
         "blend_mode": 1,
         "opacity": 1.0
       },
-      "layout": [900, 500]
+      "layout": [
+        900,
+        500
+      ]
     },
     "bloom1": {
       "type": "Bloom",
@@ -117,12 +147,18 @@
         "intensity": 0.8,
         "radius": 1.0
       },
-      "layout": [1100, 500]
+      "layout": [
+        1100,
+        500
+      ]
     },
     "video_out": {
       "type": "video_out",
       "params": {},
-      "layout": [1300, 500]
+      "layout": [
+        1300,
+        500
+      ]
     }
   },
   "connections": [
@@ -205,6 +241,44 @@
     {
       "from": "bloom1/texture",
       "to": "video_out/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Shared Control Hub**\nClock → LFO + Envelope drive\nboth audio and visual paths\nsymmetrically",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 260.0,
+      "height": 100.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**Audio path**: LFO → osc freq,\nEnvelope → gain + filter cutoff",
+      "x": 400.0,
+      "y": -80.0,
+      "width": 240.0,
+      "height": 60.0,
+      "color": 1
+    },
+    {
+      "id": "note_3",
+      "text": "**Visual path**: LFO → rotation\n+ noise scale, Env → shape radius",
+      "x": 400.0,
+      "y": 250.0,
+      "width": 250.0,
+      "height": 60.0,
+      "color": 3
+    },
+    {
+      "id": "note_4",
+      "text": "Range mapping (from_min/max →\nto_min/max) scales control signals\nto each domain’s natural units",
+      "x": -100.0,
+      "y": 250.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 2
     }
   ]
 }

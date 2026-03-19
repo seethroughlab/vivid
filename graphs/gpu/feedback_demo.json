@@ -80,5 +80,25 @@
       "from": "feedback/texture",
       "to": "vout/input"
     }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Feedback Loop**\nEach frame mixes the new star\nwith a decayed, zoomed copy of\nthe previous frame",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 260.0,
+      "height": 100.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**decay=0.92**: previous frame\nfades 8% each frame\n**zoom=1.02**: old frame grows\n→ creates spiraling trail effect",
+      "x": -100.0,
+      "y": 180.0,
+      "width": 260.0,
+      "height": 100.0,
+      "color": 4
+    }
   ]
 }

@@ -5,9 +5,18 @@
     "id": "ring_mod_demo",
     "title": "Ring Modulator Metallic Warble",
     "description": "A saw oscillator ring-modulated with a sine carrier whose frequency is swept by an LFO, producing a metallic, warbling texture that evolves over time.",
-    "tags": ["audio", "ring-mod", "modulation", "metallic", "demo"],
+    "tags": [
+      "audio",
+      "ring-mod",
+      "modulation",
+      "metallic",
+      "demo"
+    ],
     "difficulty": "beginner",
-    "domains": ["audio", "control"],
+    "domains": [
+      "audio",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 30
   },
@@ -48,9 +57,41 @@
     }
   },
   "connections": [
-    { "from": "osc/output",   "to": "ring/input"    },
-    { "from": "lfo/value",    "to": "ring/freq_cv"   },
-    { "from": "ring/output",  "to": "gain/input"    },
-    { "from": "gain/output",  "to": "out/input"     }
+    {
+      "from": "osc/output",
+      "to": "ring/input"
+    },
+    {
+      "from": "lfo/value",
+      "to": "ring/freq_cv"
+    },
+    {
+      "from": "ring/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "out/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Ring Modulation**\nMultiplies two signals → outputs\nsum and difference frequencies\n(165±300 Hz = 135 & 465 Hz)",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 270.0,
+      "height": 100.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "LFO sweeps carrier freq ±150 Hz\nfor evolving metallic texture",
+      "x": -100.0,
+      "y": 180.0,
+      "width": 240.0,
+      "height": 60.0,
+      "color": 2
+    }
   ]
 }

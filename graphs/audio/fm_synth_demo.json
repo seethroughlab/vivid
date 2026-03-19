@@ -5,9 +5,18 @@
     "id": "fm_synth_demo",
     "title": "FM Synth Bell Tones",
     "description": "An FM synthesizer triggered by a clock, producing bell-like tones with an LFO sweeping the modulation index for evolving timbre. Classic FM synthesis demonstration.",
-    "tags": ["audio", "fm", "synthesis", "bell", "demo"],
+    "tags": [
+      "audio",
+      "fm",
+      "synthesis",
+      "bell",
+      "demo"
+    ],
     "difficulty": "beginner",
-    "domains": ["audio", "control"],
+    "domains": [
+      "audio",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 30
   },
@@ -61,10 +70,54 @@
     }
   },
   "connections": [
-    { "from": "clock/beat_phase",  "to": "env_gate/phase"     },
-    { "from": "env_gate/value",    "to": "fm/gate_cv"         },
-    { "from": "lfo_mod/value",     "to": "fm/mod_index_cv"    },
-    { "from": "fm/output",         "to": "gain/input"         },
-    { "from": "gain/output",       "to": "out/input"          }
+    {
+      "from": "clock/beat_phase",
+      "to": "env_gate/phase"
+    },
+    {
+      "from": "env_gate/value",
+      "to": "fm/gate_cv"
+    },
+    {
+      "from": "lfo_mod/value",
+      "to": "fm/mod_index_cv"
+    },
+    {
+      "from": "fm/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "out/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**FM Synthesis** bell tones\nCarrier=220 Hz, mod_ratio=3×\nmod_index controls brightness",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**Modulation index** is swept\nby an LFO — higher index =\nmore overtones = brighter timbre",
+      "x": -100.0,
+      "y": 150.0,
+      "width": 250.0,
+      "height": 80.0,
+      "color": 2
+    },
+    {
+      "id": "note_3",
+      "text": "Envelope creates a gate pulse\non each beat to trigger the FM note",
+      "x": 250.0,
+      "y": -80.0,
+      "width": 240.0,
+      "height": 60.0,
+      "color": 1
+    }
   ]
 }

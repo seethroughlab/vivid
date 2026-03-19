@@ -5,9 +5,18 @@
     "id": "compressor_demo",
     "title": "Compressor with Sidechain Ducking",
     "description": "A square-wave bass and noise mixed through a compressor with sidechain ducking from a kick-like oscillator. Clock-triggered envelopes create dynamic input levels so compression is clearly audible.",
-    "tags": ["audio", "compressor", "dynamics", "sidechain", "demo"],
+    "tags": [
+      "audio",
+      "compressor",
+      "dynamics",
+      "sidechain",
+      "demo"
+    ],
     "difficulty": "beginner",
-    "domains": ["audio", "control"],
+    "domains": [
+      "audio",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 30
   },
@@ -97,16 +106,78 @@
     }
   },
   "connections": [
-    { "from": "clock/beat_phase",  "to": "env/phase"          },
-    { "from": "clock/beat_phase",  "to": "kick_env/phase"     },
-    { "from": "env/value",         "to": "osc/amplitude_cv"   },
-    { "from": "osc/output",        "to": "mixer/input_1"      },
-    { "from": "noise/output",      "to": "mixer/input_2"      },
-    { "from": "mixer/output",      "to": "compressor/input"   },
-    { "from": "kick_osc/output",   "to": "kick_gain/input"    },
-    { "from": "kick_env/value",    "to": "kick_gain/amplitude_cv" },
-    { "from": "kick_gain/output",  "to": "compressor/sidechain" },
-    { "from": "compressor/output", "to": "gain/input"         },
-    { "from": "gain/output",       "to": "out/input"          }
+    {
+      "from": "clock/beat_phase",
+      "to": "env/phase"
+    },
+    {
+      "from": "clock/beat_phase",
+      "to": "kick_env/phase"
+    },
+    {
+      "from": "env/value",
+      "to": "osc/amplitude_cv"
+    },
+    {
+      "from": "osc/output",
+      "to": "mixer/input_1"
+    },
+    {
+      "from": "noise/output",
+      "to": "mixer/input_2"
+    },
+    {
+      "from": "mixer/output",
+      "to": "compressor/input"
+    },
+    {
+      "from": "kick_osc/output",
+      "to": "kick_gain/input"
+    },
+    {
+      "from": "kick_env/value",
+      "to": "kick_gain/amplitude_cv"
+    },
+    {
+      "from": "kick_gain/output",
+      "to": "compressor/sidechain"
+    },
+    {
+      "from": "compressor/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "out/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Sidechain Compression**\nThe kick signal tells the compressor\nwhen to duck the main audio",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**Main signal path**\nBass osc + noise → Mixer → Compressor\nThis is the audio being compressed",
+      "x": -100.0,
+      "y": 180.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 1
+    },
+    {
+      "id": "note_3",
+      "text": "**Sidechain path**\nKick osc → envelope → gain →\ncompressor sidechain input\nLouder kick = more ducking",
+      "x": 300.0,
+      "y": -80.0,
+      "width": 240.0,
+      "height": 100.0,
+      "color": 4
+    }
   ]
 }

@@ -5,9 +5,18 @@
     "id": "ping_pong_delay_demo",
     "title": "Ping-Pong Delay Plucks",
     "description": "Short pluck-like sine notes triggered by a clock bounce back and forth in stereo through a ping-pong delay with low-pass filtering on the repeats.",
-    "tags": ["audio", "delay", "ping-pong", "stereo", "demo"],
+    "tags": [
+      "audio",
+      "delay",
+      "ping-pong",
+      "stereo",
+      "demo"
+    ],
     "difficulty": "beginner",
-    "domains": ["audio", "control"],
+    "domains": [
+      "audio",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 30
   },
@@ -59,10 +68,45 @@
     }
   },
   "connections": [
-    { "from": "clock/beat_phase",  "to": "env/phase"              },
-    { "from": "env/value",         "to": "osc/amplitude_cv"       },
-    { "from": "osc/output",        "to": "pre_gain/input"         },
-    { "from": "pre_gain/output",   "to": "delay/input"            },
-    { "from": "delay/output",      "to": "out/input"              }
+    {
+      "from": "clock/beat_phase",
+      "to": "env/phase"
+    },
+    {
+      "from": "env/value",
+      "to": "osc/amplitude_cv"
+    },
+    {
+      "from": "osc/output",
+      "to": "pre_gain/input"
+    },
+    {
+      "from": "pre_gain/output",
+      "to": "delay/input"
+    },
+    {
+      "from": "delay/output",
+      "to": "out/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Ping-Pong Delay**\nPluck notes bounce L→R→L in stereo\nspread=1.0 for full stereo width",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**feedback=0.55** gives ~5 echoes\nbefore silence; higher = longer tail\nFilter at 4 kHz darkens each repeat",
+      "x": -100.0,
+      "y": 150.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 4
+    }
   ]
 }

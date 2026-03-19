@@ -5,9 +5,18 @@
     "id": "parametric_eq_demo",
     "title": "Parametric EQ Sculpted Noise",
     "description": "White noise sculpted by a 3-band parametric EQ with a sweeping low-mid peak, a cut at 1 kHz, and a boost at 5 kHz. An LFO sweeps band 1 frequency for an audible filter-sweep effect.",
-    "tags": ["audio", "eq", "filter", "parametric", "demo"],
+    "tags": [
+      "audio",
+      "eq",
+      "filter",
+      "parametric",
+      "demo"
+    ],
     "difficulty": "beginner",
-    "domains": ["audio", "control"],
+    "domains": [
+      "audio",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 30
   },
@@ -57,9 +66,50 @@
     }
   },
   "connections": [
-    { "from": "noise/output",  "to": "eq/input"       },
-    { "from": "lfo/value",     "to": "eq/freq_1_cv"   },
-    { "from": "eq/output",     "to": "gain/input"     },
-    { "from": "gain/output",   "to": "out/input"      }
+    {
+      "from": "noise/output",
+      "to": "eq/input"
+    },
+    {
+      "from": "lfo/value",
+      "to": "eq/freq_1_cv"
+    },
+    {
+      "from": "eq/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "out/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**3-Band Parametric EQ**\nSculpts white noise into a\ntonal, evolving texture",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 240.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "Band 1: +12 dB sweep (LFO-driven)\nBand 2: −6 dB cut at 1 kHz\nBand 3: +8 dB boost at 5 kHz",
+      "x": -100.0,
+      "y": 150.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 1
+    },
+    {
+      "id": "note_3",
+      "text": "The LFO sweeps Band 1’s\nfrequency ±300 Hz for\nan audible filter sweep",
+      "x": 250.0,
+      "y": -80.0,
+      "width": 230.0,
+      "height": 80.0,
+      "color": 2
+    }
   ]
 }

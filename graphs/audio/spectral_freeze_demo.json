@@ -5,9 +5,18 @@
     "id": "spectral_freeze_demo",
     "title": "Spectral Freeze on Beat",
     "description": "Pink noise fed into a spectral freeze that captures and holds the spectrum on each beat. An LFO crossfades the blend between live and frozen signal for an icy, evolving pad texture.",
-    "tags": ["audio", "spectral", "freeze", "fft", "demo"],
+    "tags": [
+      "audio",
+      "spectral",
+      "freeze",
+      "fft",
+      "demo"
+    ],
     "difficulty": "beginner",
-    "domains": ["audio", "control"],
+    "domains": [
+      "audio",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 30
   },
@@ -66,11 +75,58 @@
     }
   },
   "connections": [
-    { "from": "clock/beat_phase",   "to": "env_freeze/phase"   },
-    { "from": "noise/output",       "to": "freeze/input"       },
-    { "from": "env_freeze/value",   "to": "freeze/freeze_cv"   },
-    { "from": "lfo_blend/value",    "to": "freeze/blend_cv"    },
-    { "from": "freeze/output",      "to": "gain/input"         },
-    { "from": "gain/output",        "to": "out/input"          }
+    {
+      "from": "clock/beat_phase",
+      "to": "env_freeze/phase"
+    },
+    {
+      "from": "noise/output",
+      "to": "freeze/input"
+    },
+    {
+      "from": "env_freeze/value",
+      "to": "freeze/freeze_cv"
+    },
+    {
+      "from": "lfo_blend/value",
+      "to": "freeze/blend_cv"
+    },
+    {
+      "from": "freeze/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "out/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Spectral Freeze**\nCaptures a FFT snapshot of the\nspectrum and holds it as a pad",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "Clock triggers envelope → freeze_cv\nEach beat captures a new snapshot\nof the pink noise spectrum",
+      "x": -100.0,
+      "y": 150.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 2
+    },
+    {
+      "id": "note_3",
+      "text": "**Blend LFO** crossfades between\nlive noise and frozen spectrum",
+      "x": 250.0,
+      "y": -80.0,
+      "width": 230.0,
+      "height": 60.0,
+      "color": 1
+    }
   ]
 }

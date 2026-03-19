@@ -44,5 +44,25 @@
       "from": "gain1/output",
       "to": "out1/input"
     }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Simplest audio patch**\nOscillator → Gain → audio_out\nA 440 Hz sine at 80% volume",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 250.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "Try changing **frequency** and\n**waveform** to hear the difference",
+      "x": -100.0,
+      "y": 120.0,
+      "width": 230.0,
+      "height": 60.0,
+      "color": 4
+    }
   ]
 }

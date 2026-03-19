@@ -5,9 +5,18 @@
     "id": "stereo_pan_width_demo",
     "title": "Auto-Pan and Stereo Width",
     "description": "A triangle oscillator panned by a slow LFO for auto-pan sweep, with a second LFO modulating the stereo width for a breathing spatial effect.",
-    "tags": ["audio", "stereo", "panning", "spatial", "demo"],
+    "tags": [
+      "audio",
+      "stereo",
+      "panning",
+      "spatial",
+      "demo"
+    ],
     "difficulty": "beginner",
-    "domains": ["audio", "control"],
+    "domains": [
+      "audio",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 30
   },
@@ -57,10 +66,45 @@
     }
   },
   "connections": [
-    { "from": "osc/output",        "to": "pre_gain/input"      },
-    { "from": "pre_gain/output",   "to": "pan_width/input"     },
-    { "from": "lfo_pan/value",     "to": "pan_width/pan_cv"    },
-    { "from": "lfo_width/value",   "to": "pan_width/width_cv"  },
-    { "from": "pan_width/output",  "to": "out/input"           }
+    {
+      "from": "osc/output",
+      "to": "pre_gain/input"
+    },
+    {
+      "from": "pre_gain/output",
+      "to": "pan_width/input"
+    },
+    {
+      "from": "lfo_pan/value",
+      "to": "pan_width/pan_cv"
+    },
+    {
+      "from": "lfo_width/value",
+      "to": "pan_width/width_cv"
+    },
+    {
+      "from": "pan_width/output",
+      "to": "out/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Pan vs Width**\n**Pan** moves the sound L/R;\n**Width** controls stereo spread\n(>1 = wider than source)",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 250.0,
+      "height": 100.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "Slow pan LFO (0.25 Hz) sweeps\nthe image; width LFO (0.08 Hz)\nbreathes the stereo field",
+      "x": -100.0,
+      "y": 180.0,
+      "width": 250.0,
+      "height": 80.0,
+      "color": 2
+    }
   ]
 }

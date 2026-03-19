@@ -29,7 +29,10 @@
         "offset": 3.14,
         "waveform": 0
       },
-      "layout": [100, 100]
+      "layout": [
+        100,
+        100
+      ]
     },
     "shape1": {
       "type": "Shape",
@@ -42,7 +45,10 @@
         "g": 0.4,
         "b": 0.1
       },
-      "layout": [300, 100]
+      "layout": [
+        300,
+        100
+      ]
     },
     "feedback1": {
       "type": "Feedback",
@@ -52,7 +58,10 @@
         "zoom": 1.01,
         "rotate": 2.0
       },
-      "layout": [550, 100]
+      "layout": [
+        550,
+        100
+      ]
     },
     "bloom1": {
       "type": "Bloom",
@@ -61,19 +70,28 @@
         "intensity": 1.0,
         "radius": 1.2
       },
-      "layout": [800, 100]
+      "layout": [
+        800,
+        100
+      ]
     },
     "video_out": {
       "type": "video_out",
       "params": {},
-      "layout": [1050, 100]
+      "layout": [
+        1050,
+        100
+      ]
     },
     "analyze1": {
       "type": "TextureAnalysis",
       "params": {
         "skip_frames": 0
       },
-      "layout": [800, 350]
+      "layout": [
+        800,
+        350
+      ]
     },
     "osc1": {
       "type": "Oscillator",
@@ -82,7 +100,10 @@
         "amplitude": 0.5,
         "waveform": 1
       },
-      "layout": [500, 500]
+      "layout": [
+        500,
+        500
+      ]
     },
     "filter1": {
       "type": "Filter",
@@ -91,19 +112,28 @@
         "resonance": 1.2,
         "mode": 0
       },
-      "layout": [700, 500]
+      "layout": [
+        700,
+        500
+      ]
     },
     "gain1": {
       "type": "Gain",
       "params": {
         "gain": 0.4
       },
-      "layout": [900, 500]
+      "layout": [
+        900,
+        500
+      ]
     },
     "audio_out": {
       "type": "audio_out",
       "params": {},
-      "layout": [1100, 500]
+      "layout": [
+        1100,
+        500
+      ]
     }
   },
   "connections": [
@@ -154,6 +184,35 @@
     {
       "from": "gain1/output",
       "to": "audio_out/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Visual-First** with audio coupling\nShape → Feedback → Bloom forms\nthe core visual loop",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**TextureAnalysis** extracts\nbrightness → osc frequency\nedge_density → filter cutoff\nVisuals drive the audio!",
+      "x": -100.0,
+      "y": 200.0,
+      "width": 260.0,
+      "height": 100.0,
+      "color": 2
+    },
+    {
+      "id": "note_3",
+      "text": "Audio path: Osc → Filter → Gain\nModulated entirely by what’s\nhappening on screen",
+      "x": 300.0,
+      "y": 200.0,
+      "width": 240.0,
+      "height": 80.0,
+      "color": 1
     }
   ]
 }

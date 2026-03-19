@@ -75,5 +75,25 @@
       "from": "time_machine/texture",
       "to": "vout/input"
     }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Temporal Displacement**\nEach pixel looks back a different\nnumber of frames based on\nthe noise map brightness",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 260.0,
+      "height": 100.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**60-frame buffer** stores ~2 sec\nof webcam at 30 fps; depth=0.8\nmeans up to 48 frames of offset",
+      "x": -100.0,
+      "y": 180.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 4
+    }
   ]
 }

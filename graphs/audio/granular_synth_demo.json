@@ -5,9 +5,18 @@
     "id": "granular_synth_demo",
     "title": "Granular Texture Scanner",
     "description": "A saw oscillator and noise mixed into the granular engine. One LFO scans the grain position through the buffer while a second drifts the pitch, creating evolving textural clouds.",
-    "tags": ["audio", "granular", "synthesis", "texture", "demo"],
+    "tags": [
+      "audio",
+      "granular",
+      "synthesis",
+      "texture",
+      "demo"
+    ],
     "difficulty": "beginner",
-    "domains": ["audio", "control"],
+    "domains": [
+      "audio",
+      "control"
+    ],
     "requires_packages": [],
     "featured_rank": 30
   },
@@ -75,12 +84,62 @@
     }
   },
   "connections": [
-    { "from": "osc/output",        "to": "mixer/input_1"          },
-    { "from": "noise/output",      "to": "mixer/input_2"          },
-    { "from": "mixer/output",      "to": "granular/input"         },
-    { "from": "lfo_pos/value",     "to": "granular/position_cv"   },
-    { "from": "lfo_pitch/value",   "to": "granular/pitch_cv"      },
-    { "from": "granular/output",   "to": "gain/input"             },
-    { "from": "gain/output",       "to": "out/input"              }
+    {
+      "from": "osc/output",
+      "to": "mixer/input_1"
+    },
+    {
+      "from": "noise/output",
+      "to": "mixer/input_2"
+    },
+    {
+      "from": "mixer/output",
+      "to": "granular/input"
+    },
+    {
+      "from": "lfo_pos/value",
+      "to": "granular/position_cv"
+    },
+    {
+      "from": "lfo_pitch/value",
+      "to": "granular/pitch_cv"
+    },
+    {
+      "from": "granular/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "gain/output",
+      "to": "out/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Granular Synthesis**\nChops audio into tiny grains and\nreassembles them into texture clouds",
+      "x": -100.0,
+      "y": -80.0,
+      "width": 270.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**Position LFO** scans through\nthe grain buffer — triangle wave\nfor smooth back-and-forth scanning",
+      "x": -100.0,
+      "y": 180.0,
+      "width": 260.0,
+      "height": 80.0,
+      "color": 2
+    },
+    {
+      "id": "note_3",
+      "text": "**Pitch LFO** drifts the grain\npitch ±4 semitones for shimmer",
+      "x": 250.0,
+      "y": 180.0,
+      "width": 230.0,
+      "height": 60.0,
+      "color": 2
+    }
   ]
 }
