@@ -56,10 +56,9 @@ public:
     virtual void set_pan_gesture_preference(const std::string& gesture) {}
     virtual bool can_create_operator() const { return false; }
     virtual std::string validate_operator_name(const std::string& name) { return "not available"; }
-    virtual bool create_operator(const std::string& name, int domain) { return false; }
-    virtual bool create_operator(const VividCreateOperatorRequest& request) {
-        // Default shim: delegate to legacy 2-arg overload
-        return create_operator(request.name, static_cast<int>(request.domain));
+    virtual bool create_operator(const VividCreateOperatorRequest& request,
+                                 std::string* error = nullptr) {
+        return false;
     }
     virtual void set_string_param(const std::string& node_id, const std::string& param,
                                   const std::string& value) = 0;
@@ -89,6 +88,13 @@ public:
                                   const std::string& preset_name) {}
     virtual void remove_state_preset(const std::string& sm_node, int state_idx,
                                      const std::string& target_node) {}
+
+    // Sticky note operations (defaults are no-ops for headless/test sinks)
+    virtual void add_sticky_note(const std::string& id, const std::string& text,
+                                 float x, float y, float w, float h, int color) {}
+    virtual void remove_sticky_note(const std::string& id) {}
+    virtual void update_sticky_note(const std::string& id, const std::string& text,
+                                    float x, float y, float w, float h, int color) {}
 
     // Solo mode (session-only UI affordance)
     virtual void set_solo(const std::string& node_id) {}

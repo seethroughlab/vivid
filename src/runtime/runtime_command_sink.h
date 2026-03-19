@@ -449,57 +449,12 @@ public:
         return vivid::OperatorCreator::validate_name(name, *registry_);
     }
 
-    bool create_operator(const std::string& name, int domain) override {
-        if (operators_dir_.empty() || !registry_) return false;
-
-        VividDomain d;
-        switch (domain) {
-            case 0: d = VIVID_DOMAIN_CONTROL; break;
-            case 1: d = VIVID_DOMAIN_AUDIO;   break;
-            case 2: d = VIVID_DOMAIN_GPU;     break;
-            default: return false;
-        }
-
-        const std::string core_src_dir = std::filesystem::path(operators_dir_).parent_path().string();
-        const std::vector<vivid::PackageInfo> packages = package_manager_
-            ? package_manager_->list()
-            : std::vector<vivid::PackageInfo>{};
-        vivid::OperatorDestination dest;
-        std::string resolve_error;
-        if (!vivid::resolve_operator_destination("auto", core_src_dir, packages, settings_,
-                                                 dest, resolve_error)) {
-            std::fprintf(stderr, "[vivid] Create operator destination error: %s\n",
-                         resolve_error.c_str());
+    bool create_operator(const VividCreateOperatorRequest& request,
+                         std::string* error = nullptr) override {
+        if (operators_dir_.empty() || !registry_) {
+            if (error) *error = "operator creation not available";
             return false;
         }
-        if (!dest.warning.empty()) {
-            std::fprintf(stderr, "[vivid] %s\n", dest.warning.c_str());
-        }
-        if (dest.package_layout && dest.package_name.empty()) {
-            std::fprintf(stderr,
-                         "[vivid] Project destination '%s' is not an active package; using core destination\n",
-                         dest.root.c_str());
-            dest = {};
-            dest.root = core_src_dir;
-        }
-
-        auto cr = vivid::OperatorCreator::create(name, d, dest.root, "", dest.package_layout);
-        if (!cr.success) return false;
-
-        if (hot_reloader_) {
-            if (dest.package_layout && !dest.package_name.empty()) {
-                hot_reloader_->queue_rebuild("pkg:" + dest.package_name + ":" + cr.target_name);
-            } else {
-                hot_reloader_->queue_rebuild(cr.target_name);
-            }
-        }
-
-        vivid::OperatorCreator::open_in_editor(cr.cpp_path);
-        return true;
-    }
-
-    bool create_operator(const VividCreateOperatorRequest& request) override {
-        if (operators_dir_.empty() || !registry_) return false;
 
         const std::string core_src_dir = std::filesystem::path(operators_dir_).parent_path().string();
         const std::vector<vivid::PackageInfo> packages = package_manager_
@@ -513,6 +468,7 @@ public:
                                                  dest, resolve_error)) {
             std::fprintf(stderr, "[vivid] Create operator destination error: %s\n",
                          resolve_error.c_str());
+            if (error) *error = resolve_error;
             return false;
         }
         if (!dest.warning.empty()) {
@@ -527,7 +483,10 @@ public:
         }
 
         auto cr = vivid::OperatorCreator::create(request, dest.root, dest.package_layout);
-        if (!cr.success) return false;
+        if (!cr.success) {
+            if (error) *error = cr.error;
+            return false;
+        }
 
         if (hot_reloader_) {
             if (dest.package_layout && !dest.package_name.empty()) {
@@ -543,6 +502,30 @@ public:
 
     void set_solo(const std::string& node_id) override {
         api_.set_solo(node_id);
+    }
+
+    void add_sticky_note(const std::string& id, const std::string& text,
+                         float x, float y, float w, float h, int color) override {
+        if (!graph_) return;
+        vivid::StickyNoteDef note;
+        note.id = id; note.text = text;
+        note.x = x; note.y = y; note.width = w; note.height = h; note.color = color;
+        graph_->add_sticky_note(std::move(note));
+        capture_undo_snapshot();
+    }
+    void remove_sticky_note(const std::string& id) override {
+        if (!graph_) return;
+        if (graph_->remove_sticky_note(id))
+            capture_undo_snapshot();
+    }
+    void update_sticky_note(const std::string& id, const std::string& text,
+                            float x, float y, float w, float h, int color) override {
+        if (!graph_) return;
+        auto* sn = graph_->find_sticky_note(id);
+        if (!sn) return;
+        sn->text = text; sn->x = x; sn->y = y;
+        sn->width = w; sn->height = h; sn->color = color;
+        capture_undo_snapshot("sticky:" + id);
     }
 
     void capture_snapshot() override {

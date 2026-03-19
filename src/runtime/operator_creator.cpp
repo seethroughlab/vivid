@@ -283,6 +283,8 @@ static std::string control_template(const std::string& name, const std::string& 
 
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
+    s << "// Starter template. For advanced features (custom ports, file drops,\n";
+    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
@@ -359,6 +361,8 @@ static std::string audio_template(const std::string& name, const std::string& st
 
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
+    s << "// Starter template. For advanced features (custom ports, file drops,\n";
+    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::AudioOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
@@ -433,6 +437,8 @@ static std::string gpu_template(const std::string& name, const std::string& stru
 
     std::ostringstream s;
     s << "#include \"operator_api/wgsl_filter.h\"\n\n";
+    s << "// Starter template. For advanced features (custom ports, file drops,\n";
+    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     emit_custom_type_support(s, effective_ports);
     s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
@@ -472,6 +478,8 @@ static std::string composite_control_template(const std::string& name, const std
     s << "#include \"operator_api/child_op.h\"\n";
     s << "#include \"control/lfo/lfo.h\"\n";
     s << "#include \"control/smooth/smooth.h\"\n\n";
+    s << "// Starter template. For advanced features (custom ports, file drops,\n";
+    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
@@ -530,6 +538,8 @@ static std::string composite_control_template(const std::string& name, const std
 static std::string empty_control_template(const std::string& struct_name) {
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
+    s << "// Starter template. For advanced features (custom ports, file drops,\n";
+    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = false;\n\n";
@@ -549,6 +559,8 @@ static std::string empty_control_template(const std::string& struct_name) {
 static std::string empty_audio_template(const std::string& struct_name) {
     std::ostringstream s;
     s << "#include \"operator_api/operator.h\"\n\n";
+    s << "// Starter template. For advanced features (custom ports, file drops,\n";
+    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     s << "struct " << struct_name << " : vivid::AudioOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
@@ -571,6 +583,8 @@ static std::string empty_audio_template(const std::string& struct_name) {
 static std::string empty_gpu_template(const std::string& name, const std::string& struct_name) {
     std::ostringstream s;
     s << "#include \"operator_api/wgsl_filter.h\"\n\n";
+    s << "// Starter template. For advanced features (custom ports, file drops,\n";
+    s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     s << "struct " << struct_name << " : vivid::WgslFilterBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
@@ -586,7 +600,8 @@ static std::string empty_gpu_template(const std::string& name, const std::string
 }
 
 static std::string gpu_shader_template() {
-    return "@fragment\n"
+    return "// Starter shader. See GPU examples in operators/gpu/ for advanced patterns.\n\n"
+           "@fragment\n"
            "fn fs_main(input: VertexOutput) -> @location(0) vec4f {\n"
            "    let color = textureSample(inputTex, texSampler, input.uv);\n"
            "    return mix(color, vec4f(color.rgb * u.amount, color.a), u.amount);\n"
@@ -889,41 +904,6 @@ CreateOperatorResult OperatorCreator::create(const VividCreateOperatorRequest& r
     result.cpp_path = cpp_path;
     result.target_name = request.name;
     return result;
-}
-
-CreateOperatorResult OperatorCreator::create(const std::string& name, VividDomain domain,
-                                              const std::string& src_dir,
-                                              const std::string& variant,
-                                              bool package_layout,
-                                              const std::vector<VividPortSpec>& extra_outputs) {
-    VividCreateOperatorRequest req;
-    req.name = name;
-    req.domain = domain;
-    req.variant = variant;
-
-    // Convert extra_outputs to full port list (legacy: these are *extra* outputs
-    // beyond the single default, so we don't set req.ports — let the template
-    // use defaults + append the extras). For backward compat, when extra_outputs
-    // is non-empty, build a full port list with the domain default input + output
-    // plus the extras.
-    if (!extra_outputs.empty()) {
-        // Add domain-default input
-        VividPortType default_type = VIVID_PORT_FLOAT;
-        std::string default_in_name = "input";
-        std::string default_out_name = "output";
-        if (domain == VIVID_DOMAIN_AUDIO) {
-            default_type = VIVID_PORT_AUDIO;
-        } else if (domain == VIVID_DOMAIN_GPU) {
-            default_type = VIVID_PORT_TEXTURE;
-            default_out_name = "texture";
-        }
-        req.ports.push_back({default_in_name, default_type, VIVID_PORT_INPUT});
-        req.ports.push_back({default_out_name, default_type, VIVID_PORT_OUTPUT});
-        for (const auto& ep : extra_outputs)
-            req.ports.push_back({ep.name, ep.type, VIVID_PORT_OUTPUT});
-    }
-
-    return create(req, src_dir, package_layout);
 }
 
 void OperatorCreator::open_in_editor(const std::string& path) {

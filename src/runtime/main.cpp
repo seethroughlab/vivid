@@ -947,6 +947,21 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
     }
     snap.active_variation = graph.active_variation();
     snap.quantize_clock_node = graph.quantize_clock_node();
+
+    // Sticky notes
+    const auto& sticky = graph.sticky_notes();
+    snap.sticky_notes.resize(sticky.size());
+    for (size_t i = 0; i < sticky.size(); ++i) {
+        auto& ss = snap.sticky_notes[i];
+        const auto& gs = sticky[i];
+        ss.id = gs.id;
+        ss.text = gs.text;
+        ss.x = gs.x;
+        ss.y = gs.y;
+        ss.width = gs.width;
+        ss.height = gs.height;
+        ss.color = gs.color;
+    }
     if (runtime_api) {
         snap.variation_dirty = runtime_api->variation_dirty();
         snap.graph_dirty = runtime_api->graph_dirty();
@@ -1564,9 +1579,8 @@ int main(int argc, char* argv[]) {
     std::string scaffold_op_domain = "control";
     std::string scaffold_op_variant;
     std::string scaffold_op_dest = "auto";
-    std::string scaffold_op_outputs;  // comma-separated "name:type" pairs
     auto* scaffold_op_cmd = app.add_subcommand("scaffold-operator",
-        "Scaffold a new operator source file");
+        "Scaffold a starter operator source file");
     scaffold_op_cmd->add_option("name", scaffold_op_name, "Operator name (snake_case)")->required();
     scaffold_op_cmd->add_option("--domain", scaffold_op_domain,
                                 "Operator domain: control|audio|gpu")
@@ -1577,10 +1591,6 @@ int main(int argc, char* argv[]) {
     scaffold_op_cmd->add_option("--dest", scaffold_op_dest,
                                 "Destination: auto|core|package:<name>|absolute path")
         ->default_val("auto");
-    scaffold_op_cmd->add_option("--outputs", scaffold_op_outputs,
-                                "Extra output ports: comma-separated name:type pairs "
-                                "(e.g. \"result:float,error:float\")");
-
     std::string update_core_version = VIVID_CORE_VERSION;
     bool update_include_all = false;
     auto* check_updates_cmd = app.add_subcommand("package-check-updates",
@@ -1708,73 +1718,12 @@ int main(int argc, char* argv[]) {
             if (!destination.warning.empty())
                 std::fprintf(stderr, "[vivid] %s\n", destination.warning.c_str());
 
-            // Parse --outputs "name:type,name:type" into OutputPortSpec list
-            std::vector<vivid::OutputPortSpec> extra_outputs;
-            if (!scaffold_op_outputs.empty()) {
-                // Split on commas
-                std::istringstream ss(scaffold_op_outputs);
-                std::string token;
-                bool parse_ok = true;
-                while (std::getline(ss, token, ',')) {
-                    if (token.empty()) continue;
-                    auto colon = token.find(':');
-                    if (colon == std::string::npos) {
-                        std::fprintf(stderr, "Scaffold failed: invalid --outputs entry '%s' "
-                                     "(expected name:type)\n", token.c_str());
-                        parse_ok = false;
-                        break;
-                    }
-                    std::string pname = token.substr(0, colon);
-                    std::string ptype = token.substr(colon + 1);
-                    // Validate port name
-                    {
-                        std::string verr = vivid::OperatorCreator::validate_name(pname, registry);
-                        if (!verr.empty()) {
-                            std::fprintf(stderr, "Scaffold failed: output port name '%s': %s\n",
-                                         pname.c_str(), verr.c_str());
-                            parse_ok = false;
-                            break;
-                        }
-                    }
-                    // Map type string -> VividPortType
-                    VividPortType vt = VIVID_PORT_FLOAT;
-                    if (domain == VIVID_DOMAIN_CONTROL) {
-                        if      (ptype == "float")  vt = VIVID_PORT_FLOAT;
-                        else if (ptype == "int")    vt = VIVID_PORT_FLOAT;
-                        else if (ptype == "bool")   vt = VIVID_PORT_FLOAT;
-                        else if (ptype == "spread") vt = VIVID_PORT_SPREAD;
-                        else if (ptype == "string") vt = VIVID_PORT_STRING;
-                        else {
-                            std::fprintf(stderr, "Scaffold failed: unknown type '%s' for control domain "
-                                         "(valid: float, int, bool, spread, string)\n", ptype.c_str());
-                            parse_ok = false; break;
-                        }
-                    } else if (domain == VIVID_DOMAIN_AUDIO) {
-                        if (ptype == "float") vt = VIVID_PORT_AUDIO;
-                        else {
-                            std::fprintf(stderr, "Scaffold failed: unknown type '%s' for audio domain "
-                                         "(valid: float)\n", ptype.c_str());
-                            parse_ok = false; break;
-                        }
-                    } else if (domain == VIVID_DOMAIN_GPU) {
-                        if (ptype == "texture") vt = VIVID_PORT_TEXTURE;
-                        else {
-                            std::fprintf(stderr, "Scaffold failed: unknown type '%s' for gpu domain "
-                                         "(valid: texture)\n", ptype.c_str());
-                            parse_ok = false; break;
-                        }
-                    }
-                    extra_outputs.push_back({pname, vt, VIVID_PORT_OUTPUT});
-                }
-                if (!parse_ok) return 1;
-            }
-
-            auto result = vivid::OperatorCreator::create(scaffold_op_name,
-                                                         domain,
-                                                         destination.root,
-                                                         scaffold_op_variant,
-                                                         destination.package_layout,
-                                                         extra_outputs);
+            VividCreateOperatorRequest req;
+            req.name = scaffold_op_name;
+            req.domain = domain;
+            req.variant = scaffold_op_variant;
+            auto result = vivid::OperatorCreator::create(req, destination.root,
+                                                         destination.package_layout);
             if (!result.success) {
                 std::fprintf(stderr, "Scaffold failed: %s\n", result.error.c_str());
                 return 1;
@@ -1793,6 +1742,7 @@ int main(int argc, char* argv[]) {
                 std::printf("Next step: cmake --build %s --target %s\n",
                             build_paths.build_dir.c_str(), result.target_name.c_str());
             }
+            std::printf("Hint: Use MCP opdev tools for advanced features (custom ports, params, inspectors)\n");
             return 0;
         }
 

@@ -71,8 +71,10 @@ int main(int argc, char* argv[]) {
         }
 
         // Scaffold team_op into project package (package_layout = true)
-        auto result = vivid::OperatorCreator::create(
-            "team_op", VIVID_DOMAIN_CONTROL, proj_root.string(), "", /*package_layout=*/true);
+        VividCreateOperatorRequest req_a;
+        req_a.name = "team_op";
+        req_a.domain = VIVID_DOMAIN_CONTROL;
+        auto result = vivid::OperatorCreator::create(req_a, proj_root.string(), /*package_layout=*/true);
 
         check(result.success, "Case A: scaffold to project package succeeds");
         check(fs::exists(proj_root / "src" / "team_op.cpp"),
@@ -121,7 +123,10 @@ int main(int argc, char* argv[]) {
         check(dest.root == core_root.string(), "Case C: destination resolves to core root");
 
         // Scaffold solo_op into the resolved core destination
-        auto result = vivid::OperatorCreator::create("solo_op", VIVID_DOMAIN_CONTROL, dest.root);
+        VividCreateOperatorRequest req_c;
+        req_c.name = "solo_op";
+        req_c.domain = VIVID_DOMAIN_CONTROL;
+        auto result = vivid::OperatorCreator::create(req_c, dest.root);
 
         check(result.success, "Case C: scaffold into core succeeds");
         check(fs::exists(core_root / "operators" / "control" / "solo_op" / "solo_op.cpp"),

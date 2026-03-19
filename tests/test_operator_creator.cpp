@@ -26,6 +26,17 @@ static void write_full_cmake(const std::string& dir) {
         << "# --- Operators meta-target ---\n";
 }
 
+static vivid::CreateOperatorResult create_op(const std::string& name, VividDomain domain,
+                                              const std::string& src_dir,
+                                              const std::string& variant = "",
+                                              bool package_layout = false) {
+    VividCreateOperatorRequest req;
+    req.name = name;
+    req.domain = domain;
+    req.variant = variant;
+    return vivid::OperatorCreator::create(req, src_dir, package_layout);
+}
+
 int main() {
     vivid::OperatorRegistry reg;  // empty registry — no collisions
 
@@ -69,7 +80,7 @@ int main() {
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
-        auto result = vivid::OperatorCreator::create("my_op", VIVID_DOMAIN_CONTROL, tmp);
+        auto result = create_op("my_op", VIVID_DOMAIN_CONTROL, tmp);
         check(result.success, "create control op succeeds");
         check(result.error.empty(), "no error");
         check(result.target_name == "my_op", "target_name = my_op");
@@ -116,7 +127,7 @@ int main() {
                 << "# --- Operators meta-target ---\n";
         }
 
-        auto result = vivid::OperatorCreator::create("my_synth", VIVID_DOMAIN_AUDIO, tmp);
+        auto result = create_op("my_synth", VIVID_DOMAIN_AUDIO, tmp);
         check(result.success, "create audio op succeeds");
 
         std::string cpp_path = tmp + "/operators/audio/my_synth/my_synth.cpp";
@@ -150,7 +161,7 @@ int main() {
                 << "# --- SyphonOut operator ---\n";
         }
 
-        auto result = vivid::OperatorCreator::create("cool_fx", VIVID_DOMAIN_GPU, tmp);
+        auto result = create_op("cool_fx", VIVID_DOMAIN_GPU, tmp);
         check(result.success, "create gpu op succeeds");
 
         std::string cpp_path = tmp + "/operators/gpu/cool_fx/cool_fx.cpp";
@@ -192,7 +203,7 @@ int main() {
             ofs << "# --- GPU operator plugins ---\n";
         }
 
-        auto result = vivid::OperatorCreator::create("foo", VIVID_DOMAIN_CONTROL, tmp);
+        auto result = create_op("foo", VIVID_DOMAIN_CONTROL, tmp);
         check(!result.success, "collision detected");
         check(result.error.find("already exists") != std::string::npos,
               "error mentions 'already exists'");
@@ -214,7 +225,7 @@ int main() {
             ofs << "# nothing relevant here\n";
         }
 
-        auto result = vivid::OperatorCreator::create("bar", VIVID_DOMAIN_CONTROL, tmp);
+        auto result = create_op("bar", VIVID_DOMAIN_CONTROL, tmp);
         check(!result.success, "fails when marker missing");
         check(result.error.find("insertion marker") != std::string::npos,
               "error mentions insertion marker");
@@ -236,7 +247,7 @@ int main() {
             ofs << "# --- GPU operator plugins ---\n";
         }
 
-        auto result = vivid::OperatorCreator::create("lo_fi_delay", VIVID_DOMAIN_CONTROL, tmp);
+        auto result = create_op("lo_fi_delay", VIVID_DOMAIN_CONTROL, tmp);
         check(result.success, "create lo_fi_delay succeeds");
 
         std::string src = read_file(tmp + "/operators/control/lo_fi_delay/lo_fi_delay.cpp");
@@ -262,7 +273,7 @@ int main() {
                 << "# --- GPU operator plugins ---\n";
         }
 
-        auto result = vivid::OperatorCreator::create("mod_filter", VIVID_DOMAIN_CONTROL, tmp, "composite");
+        auto result = create_op("mod_filter", VIVID_DOMAIN_CONTROL, tmp, "composite");
         check(result.success, "create composite op succeeds");
         check(result.error.empty(), "no error");
 
@@ -307,7 +318,7 @@ int main() {
                 << "# --- SyphonOut operator ---\n";
         }
 
-        auto result = vivid::OperatorCreator::create("bad_comp", VIVID_DOMAIN_GPU, tmp, "composite");
+        auto result = create_op("bad_comp", VIVID_DOMAIN_GPU, tmp, "composite");
         check(!result.success, "composite GPU rejected");
         check(result.error.find("control domain") != std::string::npos,
               "error mentions 'control domain'");
@@ -335,7 +346,7 @@ int main() {
                 << ")\n";
         }
 
-        auto result = vivid::OperatorCreator::create("team_gain", VIVID_DOMAIN_AUDIO, tmp, "", true);
+        auto result = create_op("team_gain", VIVID_DOMAIN_AUDIO, tmp, "", true);
         check(result.success, "create package-layout op succeeds");
 
         std::string cpp_path = tmp + "/src/team_gain.cpp";
@@ -358,7 +369,7 @@ int main() {
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
-        auto result = vivid::OperatorCreator::create("bare_ctrl", VIVID_DOMAIN_CONTROL, tmp, "empty");
+        auto result = create_op("bare_ctrl", VIVID_DOMAIN_CONTROL, tmp, "empty");
         check(result.success, "create empty control succeeds");
 
         std::string src = read_file(result.cpp_path);
@@ -383,7 +394,7 @@ int main() {
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
-        auto result = vivid::OperatorCreator::create("bare_audio", VIVID_DOMAIN_AUDIO, tmp, "empty");
+        auto result = create_op("bare_audio", VIVID_DOMAIN_AUDIO, tmp, "empty");
         check(result.success, "create empty audio succeeds");
 
         std::string src = read_file(result.cpp_path);
@@ -406,7 +417,7 @@ int main() {
         fs::create_directories(tmp);
         write_full_cmake(tmp);
 
-        auto result = vivid::OperatorCreator::create("bare_gpu", VIVID_DOMAIN_GPU, tmp, "empty");
+        auto result = create_op("bare_gpu", VIVID_DOMAIN_GPU, tmp, "empty");
         check(result.success, "create empty gpu succeeds");
 
         std::string src = read_file(result.cpp_path);
@@ -777,31 +788,6 @@ int main() {
         check(src.find("\"texture_in\"") != std::string::npos, "texture_in port");
         check(src.find("\"texture_out\"") != std::string::npos, "texture_out port");
         check(src.find("VIVID_PORT_TEXTURE") != std::string::npos, "texture type");
-
-        fs::remove_all(tmp);
-    }
-
-    // =================================================================
-    // Test 21: Legacy overload with extra_outputs backward compat
-    // =================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 21: Legacy extra_outputs ===\n");
-        std::string tmp = "/tmp/vivid_test_creator_legacy_outputs";
-        fs::remove_all(tmp);
-        fs::create_directories(tmp);
-        write_full_cmake(tmp);
-
-        std::vector<vivid::OutputPortSpec> extra = {
-            {"sidechain", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT},
-        };
-
-        auto result = vivid::OperatorCreator::create("legacy_out", VIVID_DOMAIN_CONTROL, tmp, "", false, extra);
-        check(result.success, "legacy extra outputs succeeds");
-
-        std::string src = read_file(result.cpp_path);
-        check(src.find("\"sidechain\"") != std::string::npos, "extra output sidechain");
-        check(src.find("\"input\"") != std::string::npos, "default input port");
-        check(src.find("\"output\"") != std::string::npos, "default output port");
 
         fs::remove_all(tmp);
     }
