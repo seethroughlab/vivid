@@ -9,6 +9,8 @@
 #include <cstring>
 #include <cmath>
 #include <thread>
+#include <atomic>
+#include <memory>
 
 // =============================================================================
 // LoopObserver — restarts playback when the item reaches end
@@ -54,6 +56,35 @@
 }
 
 @end
+
+// =============================================================================
+// dispatch_to_main_with_timeout — bounded alternative to dispatch_sync
+// =============================================================================
+
+/// Dispatch a block to the main queue with a bounded timeout.
+/// Returns true if the block executed, false on timeout.
+/// If already on the main thread, executes inline.
+static bool dispatch_to_main_with_timeout(void (^block)(void), double timeout_seconds) {
+    if ([NSThread isMainThread]) {
+        block();
+        return true;
+    }
+    auto cancelled = std::make_shared<std::atomic<bool>>(false);
+    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!cancelled->load(std::memory_order_acquire)) {
+            block();
+        }
+        dispatch_semaphore_signal(sem);
+    });
+    long result = dispatch_semaphore_wait(sem,
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timeout_seconds * NSEC_PER_SEC)));
+    if (result != 0) {
+        cancelled->store(true, std::memory_order_release);
+        return false;
+    }
+    return true;
+}
 
 // =============================================================================
 // AVFDecoder::Impl — Objective-C++ internals
@@ -168,22 +199,22 @@ struct AVFDecoder::Impl {
     bool open(const std::string& path) {
         NSString* path_ns = [NSString stringWithUTF8String:path.c_str()];
         if (!path_ns) return false;
-        if ([NSThread isMainThread]) {
-            return open_main_thread(path_ns);
-        }
         __block bool ok = false;
-        dispatch_sync(dispatch_get_main_queue(), ^{
-            ok = open_main_thread(path_ns);
-        });
+        if (!dispatch_to_main_with_timeout(^{ ok = open_main_thread(path_ns); }, 5.0)) {
+            std::fprintf(stderr, "[avf_decoder] open() timed out — main queue not "
+                                 "responding (headless environment?)\n");
+            return false;
+        }
         return ok;
     }
 
     void close() {
         if (![NSThread isMainThread]) {
-            dispatch_sync(dispatch_get_main_queue(), ^{
-                close();
-            });
-            return;
+            if (dispatch_to_main_with_timeout(^{ close(); }, 3.0)) {
+                return;  // Main thread handled cleanup.
+            }
+            std::fprintf(stderr, "[avf_decoder] close() timed out — forcing local cleanup\n");
+            // Fall through to cleanup on this thread. ARC will release objects.
         }
         @autoreleasepool {
             if (player) {
