@@ -3,6 +3,7 @@
 #include "ui/node_graph_util.h"
 #include "ui/overlay_layouts.h"
 #include "ui/file_dialog.h"
+#include "runtime/platform.h"
 #include "common/string_util.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -248,24 +249,34 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             return {&color_rgb_buffer_, filter_rgb, 3};
         if (preset_name_popup_open_)
             return {&preset_name_buffer_, filter_identifier, SIZE_MAX, true};
-        if (create_popup_open_) {
-            if (create_active_field_ == 0)
-                return {&create_name_buf_, filter_identifier, SIZE_MAX, true};
-            int idx = create_active_field_ - 1;
-            if (idx < static_cast<int>(create_inputs_.size()))
-                return {&create_inputs_[idx].name, filter_identifier, SIZE_MAX, true};
-            idx -= static_cast<int>(create_inputs_.size());
-            if (idx < static_cast<int>(create_outputs_.size()))
-                return {&create_outputs_[idx].name, filter_identifier, SIZE_MAX, true};
-            idx -= static_cast<int>(create_outputs_.size());
-            if (idx < static_cast<int>(create_params_.size()))
-                return {&create_params_[idx].name, filter_identifier, SIZE_MAX, true};
-            return {};
-        }
+        if (create_popup_open_)
+            return {&create_name_buf_, filter_identifier, SIZE_MAX, true};
+        if (editing_sticky_)
+            return {&sticky_edit_buffer_, filter_printable};
         if (chooser_open_)
             return {&chooser_filter_, filter_printable};
         return {};
     };
+
+    // Sticky note editing: Escape cancels, Enter inserts newline, Backspace deletes
+    if (editing_sticky_) {
+        if (key == GLFW_KEY_ESCAPE) {
+            editing_sticky_ = false;
+            sticky_edit_id_.clear();
+            return;
+        }
+        if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+            // Insert newline (bypass filter since '\n' is not printable)
+            text_edit_insert(sticky_edit_buffer_, text_edit_, std::string(1, '\n'), nullptr);
+            cursor_blink_time_ = 0.0f;
+            return;
+        }
+        if (key == GLFW_KEY_BACKSPACE) {
+            text_edit_backspace(sticky_edit_buffer_, text_edit_);
+            cursor_blink_time_ = 0.0f;
+            return;
+        }
+    }
 
     // Shared text editing key handling — cursor movement, selection, clipboard
     {
@@ -354,7 +365,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 pkg_browser_scroll_ = 0;
                 pkg_browser_sel_ = 0;
                 rebuild_pkg_browser_items();
-            } else if (create_popup_open_ && create_active_field_ == 0) {
+            } else if (create_popup_open_) {
                 create_error_ = commands_.validate_operator_name(create_name_buf_);
             } else if (chooser_open_) {
                 rebuild_chooser_items();
@@ -362,6 +373,10 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
             return;
         }
     }
+
+    // While editing a sticky note, swallow all remaining keys so they don't
+    // trigger hotkeys (e.g. M for MIDI map, B for bezier wires, etc.)
+    if (editing_sticky_) return;
 
     if (about_open_) {
         if (key == GLFW_KEY_ESCAPE)
@@ -837,67 +852,29 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
     }
 
     if (create_popup_open_) {
-        // Count total text fields for Tab cycling
-        int total_fields = 1 + static_cast<int>(create_inputs_.size())
-                             + static_cast<int>(create_outputs_.size())
-                             + static_cast<int>(create_params_.size());
-
-        // Helper to get the active string buffer for current field
-        auto active_buf = [&]() -> std::string* {
-            if (create_active_field_ == 0) return &create_name_buf_;
-            int idx = create_active_field_ - 1;
-            if (idx < static_cast<int>(create_inputs_.size()))
-                return &create_inputs_[idx].name;
-            idx -= static_cast<int>(create_inputs_.size());
-            if (idx < static_cast<int>(create_outputs_.size()))
-                return &create_outputs_[idx].name;
-            idx -= static_cast<int>(create_outputs_.size());
-            if (idx < static_cast<int>(create_params_.size()))
-                return &create_params_[idx].name;
-            return nullptr;
-        };
-
         switch (key) {
             case GLFW_KEY_ESCAPE:
                 create_popup_open_ = false;
                 break;
             case GLFW_KEY_LEFT:
-                if (create_active_field_ == 0) {
-                    if (create_domain_sel_ > 0) {
-                        create_domain_sel_--;
-                        reset_create_domain_defaults();
-                    }
+                if (create_domain_sel_ > 0) {
+                    create_domain_sel_--;
+                    reset_create_domain_defaults();
                 }
                 break;
             case GLFW_KEY_RIGHT:
-                if (create_active_field_ == 0) {
-                    if (create_domain_sel_ < 2) {
-                        create_domain_sel_++;
-                        reset_create_domain_defaults();
-                    }
+                if (create_domain_sel_ < 2) {
+                    create_domain_sel_++;
+                    reset_create_domain_defaults();
                 }
                 break;
             case GLFW_KEY_TAB:
-                if (total_fields > 0) {
-                    if (mods & GLFW_MOD_SHIFT)
-                        create_active_field_ = (create_active_field_ - 1 + total_fields) % total_fields;
-                    else
-                        create_active_field_ = (create_active_field_ + 1) % total_fields;
-                    if (auto* b = active_buf())
-                        text_edit_.reset(static_cast<int>(b->size()));
-                }
+                break;  // single field, no-op
+            case GLFW_KEY_BACKSPACE:
+                text_edit_backspace(create_name_buf_, text_edit_);
+                create_error_ = create_name_buf_.empty() ? "" :
+                    commands_.validate_operator_name(create_name_buf_);
                 break;
-            case GLFW_KEY_BACKSPACE: {
-                std::string* buf = active_buf();
-                if (buf) {
-                    text_edit_backspace(*buf, text_edit_);
-                    if (create_active_field_ == 0) {
-                        create_error_ = buf->empty() ? "" :
-                            commands_.validate_operator_name(*buf);
-                    }
-                }
-                break;
-            }
             case GLFW_KEY_ENTER:
                 if (!create_name_buf_.empty() && create_error_.empty()) {
                     submit_create_operator(false);
@@ -1104,9 +1081,14 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 commands_.set_solo(is_soloed ? "" : sel_id);
             }
         }
-        // Delete selected nodes (Delete or Backspace)
+        // Delete selected nodes or sticky note (Delete or Backspace)
         if ((key == GLFW_KEY_DELETE || key == GLFW_KEY_BACKSPACE) && action == GLFW_PRESS) {
-            delete_selected();
+            if (!selected_sticky_id_.empty() && !editing_sticky_) {
+                commands_.remove_sticky_note(selected_sticky_id_);
+                selected_sticky_id_.clear();
+            } else {
+                delete_selected();
+            }
         }
         return;
     }
@@ -1195,20 +1177,10 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
             return {&color_rgb_buffer_, filter_rgb, 3};
         if (preset_name_popup_open_)
             return {&preset_name_buffer_, filter_identifier, SIZE_MAX, true};
-        if (create_popup_open_) {
-            if (create_active_field_ == 0)
-                return {&create_name_buf_, filter_identifier, SIZE_MAX, true};
-            int idx = create_active_field_ - 1;
-            if (idx < static_cast<int>(create_inputs_.size()))
-                return {&create_inputs_[idx].name, filter_identifier, SIZE_MAX, true};
-            idx -= static_cast<int>(create_inputs_.size());
-            if (idx < static_cast<int>(create_outputs_.size()))
-                return {&create_outputs_[idx].name, filter_identifier, SIZE_MAX, true};
-            idx -= static_cast<int>(create_outputs_.size());
-            if (idx < static_cast<int>(create_params_.size()))
-                return {&create_params_[idx].name, filter_identifier, SIZE_MAX, true};
-            return {};
-        }
+        if (create_popup_open_)
+            return {&create_name_buf_, filter_identifier, SIZE_MAX, true};
+        if (editing_sticky_)
+            return {&sticky_edit_buffer_, filter_printable};
         if (chooser_open_)
             return {&chooser_filter_, filter_printable};
         return {};
@@ -1234,7 +1206,7 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
         pkg_browser_scroll_ = 0;
         pkg_browser_sel_ = 0;
         rebuild_pkg_browser_items();
-    } else if (create_popup_open_ && create_active_field_ == 0) {
+    } else if (create_popup_open_) {
         create_error_ = commands_.validate_operator_name(create_name_buf_);
     } else if (chooser_open_) {
         rebuild_chooser_items();
@@ -1361,70 +1333,23 @@ void NodeGraphUI::submit_create_operator(bool empty_variant) {
     const char* dest_strs[] = { "auto", "project", "core" };
     req.destination = dest_strs[create_destination_];
 
-    // Ports (only when not composite and not empty)
-    if (!empty_variant && !create_composite_) {
-        const auto& ptypes = port_types_for_domain(create_domain_sel_);
-        for (const auto& row : create_inputs_) {
-            int ts = std::min(row.type_sel, static_cast<int>(ptypes.size()) - 1);
-            if (ts < 0) ts = 0;
-            req.ports.push_back({row.name, ptypes[ts].type, VIVID_PORT_INPUT});
-        }
-        for (const auto& row : create_outputs_) {
-            int ts = std::min(row.type_sel, static_cast<int>(ptypes.size()) - 1);
-            if (ts < 0) ts = 0;
-            req.ports.push_back({row.name, ptypes[ts].type, VIVID_PORT_OUTPUT});
-        }
-
-        // Params
-        for (const auto& p : create_params_) {
-            VividParamSpec ps;
-            ps.name = p.name;
-            ps.type = static_cast<VividParamType>(p.type_sel);
-            ps.default_value = p.default_val;
-            ps.min_value = p.min_val;
-            ps.max_value = p.max_val;
-            req.params.push_back(ps);
-        }
-    }
-
-    if (commands_.create_operator(req)) {
+    if (commands_.create_operator(req, &create_error_)) {
         create_popup_open_ = false;
-    } else {
-        create_error_ = "creation failed";
     }
+    // error is already populated by the sink
 }
 
-// Helper: reset port defaults when domain changes
+// Helper: reset defaults when domain changes
 void NodeGraphUI::reset_create_domain_defaults() {
     create_composite_ = false;
-    if (create_domain_sel_ == 0) {
-        // Control: float in/out
-        create_inputs_  = {{"input", 0}};
-        create_outputs_ = {{"output", 0}};
-    } else if (create_domain_sel_ == 1) {
-        // Audio: float in/out (index 0 in audio types)
-        create_inputs_  = {{"input", 0}};
-        create_outputs_ = {{"output", 0}};
-    } else {
-        // GPU: texture in/out (index 0 in gpu types)
-        create_inputs_  = {{"input", 0}};
-        create_outputs_ = {{"texture", 0}};
-    }
-    create_params_.clear();
 }
 
 void NodeGraphUI::update_create_popup() {
     if (!create_popup_open_ || !mouse_.left_clicked) return;
 
     bool show_composite = (create_domain_sel_ == 0);
-    bool hide_port_param = create_composite_;
 
-    auto layout = compute_create_operator_layout(
-        win_w_, win_h_,
-        hide_port_param ? 0 : static_cast<int>(create_inputs_.size()),
-        hide_port_param ? 0 : static_cast<int>(create_outputs_.size()),
-        hide_port_param ? 0 : static_cast<int>(create_params_.size()),
-        show_composite);
+    auto layout = compute_create_operator_layout(win_w_, win_h_, show_composite);
 
     // Click outside → close
     if (!overlay_contains(layout, mouse_.x, mouse_.y)) {
@@ -1472,164 +1397,18 @@ void NodeGraphUI::update_create_popup() {
         cy += 24.0f + kCreateModalRowGap;
     }
 
-    // Name field click → activate field 0
+    // Name field click
     if (mouse_.x >= cx && mouse_.x <= cx + inner_w &&
         mouse_.y >= cy && mouse_.y <= cy + 22.0f) {
-        create_active_field_ = 0;
         mouse_.left_clicked = false;
         mouse_.left_released = false;
         return;
     }
     cy += kCreateModalFieldH + kCreateModalRowGap;
 
-    const auto& port_types = port_types_for_domain(create_domain_sel_);
-
-    if (!hide_port_param) {
-        // Helper for port section click handling
-        auto handle_port_section = [&](std::vector<CreatePortRow>& rows,
-                                       int field_offset, int max_rows) {
-            cy += kCreateModalSectionGap;
-            // "+ Add" link
-            float add_w = 40.0f;
-            float add_x = cx + inner_w - add_w;
-            if (static_cast<int>(rows.size()) < max_rows &&
-                mouse_.x >= add_x && mouse_.x <= add_x + add_w &&
-                mouse_.y >= cy && mouse_.y <= cy + 18.0f) {
-                rows.push_back({"", 0});
-                mouse_.left_clicked = false;
-                mouse_.left_released = false;
-                return true;
-            }
-            cy += 18.0f + 4.0f;
-
-            float name_w = 120.0f;
-            float remove_w = 20.0f;
-            float type_w = inner_w - name_w - remove_w - 8.0f;
-
-            for (size_t i = 0; i < rows.size(); ++i) {
-                float row_y = cy;
-
-                // Name field click
-                if (mouse_.x >= cx && mouse_.x <= cx + name_w &&
-                    mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
-                    create_active_field_ = field_offset + static_cast<int>(i);
-                    mouse_.left_clicked = false;
-                    mouse_.left_released = false;
-                    return true;
-                }
-
-                // Type dropdown click — cycle through types
-                float type_x = cx + name_w + 4.0f;
-                if (mouse_.x >= type_x && mouse_.x <= type_x + type_w &&
-                    mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
-                    rows[i].type_sel = (rows[i].type_sel + 1) % static_cast<int>(port_types.size());
-                    mouse_.left_clicked = false;
-                    mouse_.left_released = false;
-                    return true;
-                }
-
-                // Remove button
-                float rem_x = cx + inner_w - remove_w;
-                if (mouse_.x >= rem_x && mouse_.x <= rem_x + remove_w &&
-                    mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
-                    rows.erase(rows.begin() + static_cast<long>(i));
-                    if (create_active_field_ >= field_offset)
-                        create_active_field_ = 0;  // reset to name field
-                    mouse_.left_clicked = false;
-                    mouse_.left_released = false;
-                    return true;
-                }
-
-                cy += kCreatePortRowH;
-            }
-            return false;
-        };
-
-        // Input ports
-        int input_field_offset = 1;
-        if (handle_port_section(create_inputs_, input_field_offset, kCreateMaxPortRows))
-            return;
-
-        // Output ports
-        int output_field_offset = 1 + static_cast<int>(create_inputs_.size());
-        if (handle_port_section(create_outputs_, output_field_offset, kCreateMaxPortRows))
-            return;
-
-        // Parameters section
-        cy += kCreateModalSectionGap;
-        float add_w = 40.0f;
-        float add_x = cx + inner_w - add_w;
-        if (static_cast<int>(create_params_.size()) < kCreateMaxParamRows &&
-            mouse_.x >= add_x && mouse_.x <= add_x + add_w &&
-            mouse_.y >= cy && mouse_.y <= cy + 18.0f) {
-            create_params_.push_back({});
-            mouse_.left_clicked = false;
-            mouse_.left_released = false;
-            return;
-        }
-        cy += 18.0f + 4.0f;
-
-        int param_field_offset = 1 + static_cast<int>(create_inputs_.size())
-                                   + static_cast<int>(create_outputs_.size());
-
-        for (size_t i = 0; i < create_params_.size(); ++i) {
-            auto& p = create_params_[i];
-            float row_y = cy;
-            float name_w = 100.0f;
-            float type_w = 60.0f;
-            float remove_w = 20.0f;
-
-            // Name click
-            if (mouse_.x >= cx && mouse_.x <= cx + name_w &&
-                mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
-                create_active_field_ = param_field_offset + static_cast<int>(i);
-                mouse_.left_clicked = false;
-                mouse_.left_released = false;
-                return;
-            }
-
-            // Type dropdown click — cycle
-            float type_x = cx + name_w + 4.0f;
-            if (mouse_.x >= type_x && mouse_.x <= type_x + type_w &&
-                mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
-                p.type_sel = (p.type_sel + 1) % kParamTypeCount;
-                // Reset default values on type change
-                if (p.type_sel == 0) { p.default_val = 0.0f; p.min_val = 0.0f; p.max_val = 1.0f; }
-                else if (p.type_sel == 1) { p.default_val = 0.0f; p.min_val = 0.0f; p.max_val = 10.0f; }
-                else if (p.type_sel == 2) { p.default_val = 0.0f; }
-                mouse_.left_clicked = false;
-                mouse_.left_released = false;
-                return;
-            }
-
-            // Bool default toggle
-            int ts = p.type_sel;
-            if (ts == 2) {
-                float extra_x = type_x + type_w + 4.0f;
-                if (mouse_.x >= extra_x && mouse_.x <= extra_x + 16 &&
-                    mouse_.y >= row_y + 2 && mouse_.y <= row_y + 18) {
-                    p.default_val = (p.default_val == 0.0f) ? 1.0f : 0.0f;
-                    mouse_.left_clicked = false;
-                    mouse_.left_released = false;
-                    return;
-                }
-            }
-
-            // Remove button
-            float rem_x = cx + inner_w - remove_w;
-            if (mouse_.x >= rem_x && mouse_.x <= rem_x + remove_w &&
-                mouse_.y >= row_y && mouse_.y <= row_y + 22.0f) {
-                create_params_.erase(create_params_.begin() + static_cast<long>(i));
-                if (create_active_field_ >= param_field_offset)
-                    create_active_field_ = 0;
-                mouse_.left_clicked = false;
-                mouse_.left_released = false;
-                return;
-            }
-
-            cy += kCreateParamRowH;
-        }
-    }
+    // MCP hint line (no interaction)
+    cy += kCreateModalSectionGap;
+    cy += 18.0f + kCreateModalRowGap;
 
     // Destination radio buttons
     cy += kCreateModalSectionGap;
@@ -1707,13 +1486,18 @@ void NodeGraphUI::update_context_menu() {
 
     // Context menu click
     if (context_menu_open_ && mouse_.left_clicked) {
+        bool is_sticky_ctx = (context_node_id_ == "__sticky__");
         int item_count = 1;  // "Delete Node" or "Delete Wire"
-        if (!context_node_id_.empty() && context_node_has_shader_)
+        if (context_bg_menu_)
+            item_count = 2;  // "Re-layout All" + "Add Sticky Note"
+        else if (is_sticky_ctx)
+            item_count = 2;  // "Delete Note" + "Change Color"
+        else if (!context_node_id_.empty() && context_node_has_shader_)
             item_count = 2;  // + "Clone & Edit"
-        if (context_wire_idx_ >= 0)
+        if (!context_bg_menu_ && !is_sticky_ctx && context_wire_idx_ >= 0 && context_node_id_.empty())
             item_count = 2;  // + "Insert Node"
         // Solo item for node context menus
-        bool show_solo = !context_node_id_.empty() && !context_bg_menu_;
+        bool show_solo = !context_node_id_.empty() && !context_bg_menu_ && !is_sticky_ctx;
         if (show_solo) item_count++;
 
         float menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
@@ -1729,6 +1513,33 @@ void NodeGraphUI::update_context_menu() {
                 if (clicked_item == 0) {
                     // "Re-layout All" — force ignores saved positions
                     layout_nodes(/*force=*/true);
+                } else if (clicked_item == 1) {
+                    // "Add Sticky Note"
+                    std::string id = "sticky_" + std::to_string(++sticky_note_id_counter_);
+                    float gx = sx_to_gx(context_menu_x_);
+                    float gy = sy_to_gy(context_menu_y_);
+                    commands_.add_sticky_note(id, "", gx, gy, 200.0f, 120.0f, 0);
+                    selected_sticky_id_ = id;
+                    selected_node_ids_.clear();
+                    selected_wire_idx_ = -1;
+                    // Enter edit mode
+                    editing_sticky_ = true;
+                    sticky_edit_id_ = id;
+                    sticky_edit_buffer_.clear();
+                    text_edit_.reset(0);
+                    cursor_blink_time_ = 0.0f;
+                }
+            } else if (context_node_id_ == "__sticky__") {
+                if (clicked_item == 0) {
+                    // "Delete Note"
+                    commands_.remove_sticky_note(selected_sticky_id_);
+                    selected_sticky_id_.clear();
+                } else if (clicked_item == 1) {
+                    // "Change Color" — open color picker
+                    sticky_color_menu_open_ = true;
+                    sticky_color_menu_id_ = selected_sticky_id_;
+                    sticky_color_menu_x_ = context_menu_x_;
+                    sticky_color_menu_y_ = context_menu_y_;
                 }
             } else if (!context_node_id_.empty()) {
                 // Build the item index map to match draw order
@@ -1829,6 +1640,27 @@ void NodeGraphUI::handle_right_click() {
         if (cat_it != snap_.operator_catalog.end() && cat_it->second)
             context_node_has_shader_ = cat_it->second->has_shader;
     } else {
+        // Check sticky notes first
+        int sticky_hit = -1;
+        for (int si = 0; si < static_cast<int>(sticky_note_rects_.size()); ++si) {
+            const auto& sr = sticky_note_rects_[si];
+            if (mouse_.x >= sr.x && mouse_.x <= sr.x + sr.w &&
+                mouse_.y >= sr.y && mouse_.y <= sr.y + sr.h) {
+                sticky_hit = si;
+                break;
+            }
+        }
+        if (sticky_hit >= 0) {
+            // Right-click on sticky note — show Delete Note / Change Color
+            context_menu_open_ = true;
+            context_node_id_ = "__sticky__";  // sentinel to identify sticky context
+            context_wire_idx_ = sticky_hit;    // reuse for sticky index
+            context_bg_menu_ = false;
+            context_menu_x_ = mouse_.x;
+            context_menu_y_ = mouse_.y;
+            selected_sticky_id_ = sticky_note_rects_[sticky_hit].id;
+            return;
+        }
         int wi = hit_test_wire(mouse_.x, mouse_.y);
         if (wi >= 0) {
             context_menu_open_ = true;
@@ -2833,14 +2665,95 @@ void NodeGraphUI::handle_graph_click() {
                 pending_select_node_id_.clear();
             }
         } else {
-            // No node hit — try wire selection
+            // Hit-test sticky notes before wires
+            int sticky_hit = -1;
+            for (int si = 0; si < static_cast<int>(sticky_note_rects_.size()); ++si) {
+                const auto& sr = sticky_note_rects_[si];
+                if (mouse_.x >= sr.x && mouse_.x <= sr.x + sr.w &&
+                    mouse_.y >= sr.y && mouse_.y <= sr.y + sr.h) {
+                    sticky_hit = si;
+                    break;
+                }
+            }
+            if (sticky_hit >= 0) {
+                const auto& sr = sticky_note_rects_[sticky_hit];
+                selected_sticky_id_ = sr.id;
+                selected_node_ids_.clear();
+                selected_wire_idx_ = -1;
+
+                // Check if click is on a hyperlink — open in browser and consume the click
+                for (const auto& lr : sticky_link_rects_) {
+                    if (mouse_.x >= lr.x && mouse_.x <= lr.x + lr.w &&
+                        mouse_.y >= lr.y && mouse_.y <= lr.y + lr.h) {
+                        open_url(lr.url);
+                        return;
+                    }
+                }
+
+                // Check for resize grab handles (bottom-right, bottom-left, top-right)
+                float gs = kStickyResizeGrab;
+                float mx = mouse_.x, my = mouse_.y;
+                int edge = 0;
+                // bottom-right
+                if (mx >= sr.x + sr.w - gs && my >= sr.y + sr.h - gs) edge = 2 | 8;
+                // bottom-left
+                else if (mx <= sr.x + gs && my >= sr.y + sr.h - gs) edge = 1 | 8;
+                // top-right
+                else if (mx >= sr.x + sr.w - gs && my <= sr.y + gs) edge = 2 | 4;
+
+                if (edge != 0) {
+                    resizing_sticky_idx_ = sticky_hit;
+                    sticky_resize_edge_ = edge;
+                    // Find graph-space note to store starting geometry
+                    if (sticky_hit < static_cast<int>(snap_.sticky_notes.size())) {
+                        const auto& sn = snap_.sticky_notes[sticky_hit];
+                        sticky_resize_start_x_ = sn.x;
+                        sticky_resize_start_y_ = sn.y;
+                        sticky_resize_start_w_ = sn.width;
+                        sticky_resize_start_h_ = sn.height;
+                        sticky_resize_start_gx_ = sx_to_gx(mouse_.x);
+                        sticky_resize_start_gy_ = sy_to_gy(mouse_.y);
+                    }
+                } else {
+                    // Double-click detection for inline editing
+                    static double last_sticky_click_time = 0.0;
+                    static std::string last_sticky_click_id;
+                    double now = glfwGetTime();
+                    if (sr.id == last_sticky_click_id && (now - last_sticky_click_time) < 0.3) {
+                        // Enter edit mode
+                        editing_sticky_ = true;
+                        sticky_edit_id_ = sr.id;
+                        // Find the note text
+                        for (const auto& sn : snap_.sticky_notes) {
+                            if (sn.id == sr.id) {
+                                sticky_edit_buffer_ = sn.text;
+                                break;
+                            }
+                        }
+                        text_edit_.reset(static_cast<int>(sticky_edit_buffer_.size()));
+                        cursor_blink_time_ = 0.0f;
+                        last_sticky_click_id.clear();
+                    } else {
+                        last_sticky_click_id = sr.id;
+                        last_sticky_click_time = now;
+
+                        // Start drag
+                        dragging_sticky_idx_ = sticky_hit;
+                        sticky_drag_offset_x_ = sx_to_gx(mouse_.x) - snap_.sticky_notes[sticky_hit].x;
+                        sticky_drag_offset_y_ = sy_to_gy(mouse_.y) - snap_.sticky_notes[sticky_hit].y;
+                    }
+                }
+            } else {
+            // No node or sticky hit — try wire selection
             int wi = hit_test_wire(mouse_.x, mouse_.y);
             if (wi >= 0) {
                 selected_wire_idx_ = wi;
                 selected_node_ids_.clear();
+                selected_sticky_id_.clear();
             } else {
-                // Empty canvas: clear wire selection
+                // Empty canvas: clear all selection
                 selected_wire_idx_ = -1;
+                selected_sticky_id_.clear();
                 if (pan_gesture_ == "left" && !mouse_.shift_down) {
                     // Left-drag pans; shift+left-drag box-selects
                     selected_node_ids_.clear();
@@ -2858,6 +2771,7 @@ void NodeGraphUI::handle_graph_click() {
                     box_shift_held_ = mouse_.shift_down;
                 }
             }
+            } // end sticky_hit else (no sticky hit)
         }
     }
 }

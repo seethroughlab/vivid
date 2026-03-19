@@ -963,10 +963,6 @@ void NodeGraphUI::confirm_chooser_selection_idx(int idx) {
         create_error_.clear();
         create_composite_ = false;
         create_destination_ = 0;
-        create_active_field_ = 0;
-        create_inputs_  = {{"input", 0}};   // domain-default: float
-        create_outputs_ = {{"output", 0}};  // domain-default: float
-        create_params_.clear();
         reset_chooser_state();
         return;
     }
@@ -1112,6 +1108,133 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
 
     update_pan();
     update_node_drag();
+
+    // Sticky note drag
+    if (dragging_sticky_idx_ >= 0) {
+        if (mouse_.left_down) {
+            float mgx = sx_to_gx(mouse_.x);
+            float mgy = sy_to_gy(mouse_.y);
+            float nx = mgx - sticky_drag_offset_x_;
+            float ny = mgy - sticky_drag_offset_y_;
+            // Update the screen-space rect for responsive feedback
+            if (dragging_sticky_idx_ < static_cast<int>(sticky_note_rects_.size())) {
+                auto& sr = sticky_note_rects_[dragging_sticky_idx_];
+                sr.x = gx_to_sx(nx);
+                sr.y = gy_to_sy(ny);
+            }
+        }
+        if (mouse_.left_released) {
+            float mgx = sx_to_gx(mouse_.x);
+            float mgy = sy_to_gy(mouse_.y);
+            float nx = mgx - sticky_drag_offset_x_;
+            float ny = mgy - sticky_drag_offset_y_;
+            if (dragging_sticky_idx_ < static_cast<int>(snap_.sticky_notes.size())) {
+                auto& sn = snap_.sticky_notes[dragging_sticky_idx_];
+                commands_.update_sticky_note(sn.id, sn.text, nx, ny,
+                                             sn.width, sn.height, sn.color);
+                // Patch snapshot so draw doesn't flash back to old position
+                sn.x = nx;
+                sn.y = ny;
+            }
+            dragging_sticky_idx_ = -1;
+        }
+    }
+
+    // Sticky note resize
+    if (resizing_sticky_idx_ >= 0) {
+        if (mouse_.left_down) {
+            float dgx = sx_to_gx(mouse_.x) - sticky_resize_start_gx_;
+            float dgy = sy_to_gy(mouse_.y) - sticky_resize_start_gy_;
+            float nx = sticky_resize_start_x_, ny = sticky_resize_start_y_;
+            float nw = sticky_resize_start_w_, nh = sticky_resize_start_h_;
+            if (sticky_resize_edge_ & 2) nw = std::max(kStickyMinW, sticky_resize_start_w_ + dgx);
+            if (sticky_resize_edge_ & 1) { nw = std::max(kStickyMinW, sticky_resize_start_w_ - dgx); nx = sticky_resize_start_x_ + (sticky_resize_start_w_ - nw); }
+            if (sticky_resize_edge_ & 8) nh = std::max(kStickyMinH, sticky_resize_start_h_ + dgy);
+            if (sticky_resize_edge_ & 4) { nh = std::max(kStickyMinH, sticky_resize_start_h_ - dgy); ny = sticky_resize_start_y_ + (sticky_resize_start_h_ - nh); }
+            // Update screen-space rect for responsive feedback
+            if (resizing_sticky_idx_ < static_cast<int>(sticky_note_rects_.size())) {
+                auto& sr = sticky_note_rects_[resizing_sticky_idx_];
+                sr.x = gx_to_sx(nx); sr.y = gy_to_sy(ny);
+                sr.w = g_to_s(nw); sr.h = g_to_s(nh);
+            }
+        }
+        if (mouse_.left_released) {
+            float dgx = sx_to_gx(mouse_.x) - sticky_resize_start_gx_;
+            float dgy = sy_to_gy(mouse_.y) - sticky_resize_start_gy_;
+            float nx = sticky_resize_start_x_, ny = sticky_resize_start_y_;
+            float nw = sticky_resize_start_w_, nh = sticky_resize_start_h_;
+            if (sticky_resize_edge_ & 2) nw = std::max(kStickyMinW, sticky_resize_start_w_ + dgx);
+            if (sticky_resize_edge_ & 1) { nw = std::max(kStickyMinW, sticky_resize_start_w_ - dgx); nx = sticky_resize_start_x_ + (sticky_resize_start_w_ - nw); }
+            if (sticky_resize_edge_ & 8) nh = std::max(kStickyMinH, sticky_resize_start_h_ + dgy);
+            if (sticky_resize_edge_ & 4) { nh = std::max(kStickyMinH, sticky_resize_start_h_ - dgy); ny = sticky_resize_start_y_ + (sticky_resize_start_h_ - nh); }
+            if (resizing_sticky_idx_ < static_cast<int>(snap_.sticky_notes.size())) {
+                auto& sn = snap_.sticky_notes[resizing_sticky_idx_];
+                commands_.update_sticky_note(sn.id, sn.text, nx, ny, nw, nh, sn.color);
+                // Patch snapshot so draw doesn't flash back to old position/size
+                sn.x = nx;
+                sn.y = ny;
+                sn.width = nw;
+                sn.height = nh;
+            }
+            resizing_sticky_idx_ = -1;
+        }
+    }
+
+    // Commit sticky note editing on click outside
+    if (editing_sticky_ && mouse_.left_clicked) {
+        bool clicked_inside = false;
+        for (const auto& sr : sticky_note_rects_) {
+            if (sr.id == sticky_edit_id_ &&
+                mouse_.x >= sr.x && mouse_.x <= sr.x + sr.w &&
+                mouse_.y >= sr.y && mouse_.y <= sr.y + sr.h) {
+                clicked_inside = true;
+                break;
+            }
+        }
+        if (!clicked_inside) {
+            // Commit edit
+            for (const auto& sn : snap_.sticky_notes) {
+                if (sn.id == sticky_edit_id_) {
+                    commands_.update_sticky_note(sn.id, sticky_edit_buffer_,
+                                                 sn.x, sn.y, sn.width, sn.height, sn.color);
+                    break;
+                }
+            }
+            editing_sticky_ = false;
+            sticky_edit_id_.clear();
+        }
+    }
+
+    // Sticky note color picker click
+    if (sticky_color_menu_open_ && mouse_.left_clicked) {
+        float cmx = sticky_color_menu_x_;
+        float cmy = sticky_color_menu_y_;
+        float swatch_size = 20.0f;
+        float gap = 4.0f;
+        bool hit = false;
+        for (int i = 0; i < kStickyColorCount; ++i) {
+            float sx2 = cmx + 4.0f + i * (swatch_size + gap);
+            float sy2 = cmy + 4.0f;
+            if (mouse_.x >= sx2 && mouse_.x <= sx2 + swatch_size &&
+                mouse_.y >= sy2 && mouse_.y <= sy2 + swatch_size) {
+                // Apply color change
+                for (const auto& sn : snap_.sticky_notes) {
+                    if (sn.id == sticky_color_menu_id_) {
+                        commands_.update_sticky_note(sn.id, sn.text,
+                                                     sn.x, sn.y, sn.width, sn.height, i);
+                        break;
+                    }
+                }
+                hit = true;
+                break;
+            }
+        }
+        sticky_color_menu_open_ = false;
+        if (hit) {
+            mouse_.left_clicked = false;
+            mouse_.left_released = false;
+        }
+    }
 
     // Session card drag reorder
     if (session_drag_idx_ >= 0 && mouse_.left_down) {

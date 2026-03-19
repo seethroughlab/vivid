@@ -111,10 +111,6 @@ static constexpr float kCreateModalRowGap = 8.0f;
 static constexpr float kCreateModalSectionGap = 14.0f;
 static constexpr float kCreateModalBtnW = 100.0f;
 static constexpr float kCreateModalBtnH = 26.0f;
-static constexpr float kCreatePortRowH = 28.0f;
-static constexpr float kCreateParamRowH = 28.0f;
-static constexpr int   kCreateMaxPortRows = 8;   // per direction
-static constexpr int   kCreateMaxParamRows = 12;
 static constexpr float kCreateDomainBtnW = 100.0f;
 static constexpr float kCreateDomainBtnH = 22.0f;
 // Legacy alias
@@ -340,5 +336,20 @@ static constexpr float kPortHoverScale       = 1.5f;   // port dot scale multipl
 static constexpr float kPortHoverAlpha       = 1.0f;   // port dot alpha on hover (overrides param dim)
 static constexpr float kWidgetHoverAlpha     = 0.12f;  // overlay alpha for hovered inspector widgets
 static constexpr float kBoxSelectNodeAlpha   = 0.15f;  // highlight alpha for nodes inside box select
+
+// Sticky note constants
+static constexpr float kStickyColors[][3] = {
+    {0.95f, 0.90f, 0.55f},  // yellow
+    {0.60f, 0.88f, 0.65f},  // green
+    {0.55f, 0.72f, 0.92f},  // blue
+    {0.92f, 0.65f, 0.78f},  // pink
+    {0.95f, 0.75f, 0.45f},  // orange
+};
+static constexpr int kStickyColorCount = 5;
+static constexpr float kStickyMinW = 80.0f;
+static constexpr float kStickyMinH = 60.0f;
+static constexpr float kStickyResizeGrab = 6.0f;
+static constexpr float kStickyPad = 8.0f;
+static constexpr float kStickyCornerR = 4.0f;
 
 } // namespace vivid::ui

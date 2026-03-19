@@ -171,6 +171,13 @@ struct VariationInfo {
     std::string name;
 };
 
+// Sticky note snapshot for UI
+struct StickyNoteSnapshot {
+    std::string id, text;
+    float x, y, width, height;
+    int color;
+};
+
 // Complete frame snapshot — everything the UI needs to render
 struct GraphSnapshot {
     std::vector<NodeSnapshot> nodes;
@@ -206,6 +213,9 @@ struct GraphSnapshot {
     bool graph_dirty = false;
     int queued_variation = -1;
     std::string quantize_clock_node;
+
+    // Sticky notes
+    std::vector<StickyNoteSnapshot> sticky_notes;
 
     // Solo state
     std::string solo_node_id;  // empty = no solo active

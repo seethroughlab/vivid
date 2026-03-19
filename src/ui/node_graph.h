@@ -167,6 +167,8 @@ public:
             || graph_meta_editor_open_
             || about_open_
             || mcp_setup_open_
+            || editing_sticky_
+            || sticky_color_menu_open_
             || custom_inspector_wants_keyboard_;
     }
     bool wire_inspector_visible() const;
@@ -284,6 +286,7 @@ private:
     uint32_t count_visible_output_ports(const NodeSnapshot& ns, bool show_params = true) const;
 
     // --- Drawing (node_graph_draw.cpp) ---
+    void draw_sticky_notes(Renderer2D& tr);
     void draw_graph(Renderer2D& tr);
     void draw_connections(Renderer2D& tr);
     void draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h);
@@ -811,23 +814,6 @@ private:
     bool create_composite_ = false;        // variant checkbox, control-only
     int create_destination_ = 0;           // 0=auto, 1=project, 2=core
 
-    // Active text field tracking: 0=name, 1..N=input port names,
-    //   N+1..M=output port names, M+1..=param names
-    int create_active_field_ = 0;
-
-    struct CreatePortRow { std::string name; int type_sel = 0; };
-    std::vector<CreatePortRow> create_inputs_;
-    std::vector<CreatePortRow> create_outputs_;
-
-    struct CreateParamRow {
-        std::string name;
-        int type_sel = 0;     // index into {float, int, bool, file, text}
-        float default_val = 0.0f;
-        float min_val = 0.0f;
-        float max_val = 1.0f;
-    };
-    std::vector<CreateParamRow> create_params_;
-
     // Preferences panel state
     bool prefs_open_ = false;
     int prefs_editor_sel_ = 0;
@@ -1005,6 +991,28 @@ private:
     struct PerfButtonRect { float x, y, w, h; int action; bool enabled; };
     // action: 0=Record/Stop, 1=Snapshot, 2=Undo, 3=Redo
     std::vector<PerfButtonRect> perf_button_rects_;
+
+    // --- Sticky notes ---
+    struct StickyNoteRect { std::string id; float x, y, w, h; };
+    std::vector<StickyNoteRect> sticky_note_rects_;
+    struct StickyLinkRect { float x, y, w, h; std::string url; };
+    std::vector<StickyLinkRect> sticky_link_rects_;
+    std::string selected_sticky_id_;
+    int dragging_sticky_idx_ = -1;
+    float sticky_drag_offset_x_ = 0, sticky_drag_offset_y_ = 0;
+    int resizing_sticky_idx_ = -1;
+    int sticky_resize_edge_ = 0;  // bitmask: 1=left, 2=right, 4=top, 8=bottom
+    float sticky_resize_start_x_ = 0, sticky_resize_start_y_ = 0;
+    float sticky_resize_start_w_ = 0, sticky_resize_start_h_ = 0;
+    float sticky_resize_start_gx_ = 0, sticky_resize_start_gy_ = 0;
+    bool editing_sticky_ = false;
+    std::string sticky_edit_buffer_;
+    std::string sticky_edit_id_;
+    int sticky_note_id_counter_ = 0;
+    // Sticky note color picker context menu state
+    bool sticky_color_menu_open_ = false;
+    std::string sticky_color_menu_id_;
+    float sticky_color_menu_x_ = 0, sticky_color_menu_y_ = 0;
 
     // --- Core update notice ---
     bool core_update_notice_open_ = false;

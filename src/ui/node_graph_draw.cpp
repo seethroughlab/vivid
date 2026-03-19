@@ -2742,6 +2742,230 @@ void NodeGraphUI::draw_grid(Renderer2D& tr) {
 }
 
 // -----------------------------------------------------------------------
+// Sticky notes
+// -----------------------------------------------------------------------
+void NodeGraphUI::draw_sticky_notes(Renderer2D& tr) {
+    sticky_note_rects_.clear();
+    sticky_link_rects_.clear();
+    for (const auto& sn : snap_.sticky_notes) {
+        float sx = gx_to_sx(sn.x);
+        float sy = gy_to_sy(sn.y);
+        float sw = g_to_s(sn.width);
+        float sh = g_to_s(sn.height);
+
+        // Live position override during drag
+        int idx = static_cast<int>(&sn - &snap_.sticky_notes[0]);
+        if (idx == dragging_sticky_idx_ && mouse_.left_down) {
+            float gx = sx_to_gx(mouse_.x) - sticky_drag_offset_x_;
+            float gy = sy_to_gy(mouse_.y) - sticky_drag_offset_y_;
+            sx = gx_to_sx(gx);
+            sy = gy_to_sy(gy);
+        }
+        // Live size/position override during resize
+        if (idx == resizing_sticky_idx_ && mouse_.left_down) {
+            float dgx = sx_to_gx(mouse_.x) - sticky_resize_start_gx_;
+            float dgy = sy_to_gy(mouse_.y) - sticky_resize_start_gy_;
+            float nx = sticky_resize_start_x_, ny = sticky_resize_start_y_;
+            float nw = sticky_resize_start_w_, nh = sticky_resize_start_h_;
+            if (sticky_resize_edge_ & 2) nw = std::max(kStickyMinW, sticky_resize_start_w_ + dgx);
+            if (sticky_resize_edge_ & 1) { nw = std::max(kStickyMinW, sticky_resize_start_w_ - dgx); nx = sticky_resize_start_x_ + (sticky_resize_start_w_ - nw); }
+            if (sticky_resize_edge_ & 8) nh = std::max(kStickyMinH, sticky_resize_start_h_ + dgy);
+            if (sticky_resize_edge_ & 4) { nh = std::max(kStickyMinH, sticky_resize_start_h_ - dgy); ny = sticky_resize_start_y_ + (sticky_resize_start_h_ - nh); }
+            sx = gx_to_sx(nx); sy = gy_to_sy(ny);
+            sw = g_to_s(nw);   sh = g_to_s(nh);
+        }
+
+        sticky_note_rects_.push_back({sn.id, sx, sy, sw, sh});
+
+        int ci = sn.color;
+        if (ci < 0 || ci >= kStickyColorCount) ci = 0;
+        float cr = kStickyColors[ci][0];
+        float cg = kStickyColors[ci][1];
+        float cb = kStickyColors[ci][2];
+
+        // Background
+        tr.draw_rounded_rect(sx, sy, sw, sh, kStickyCornerR, cr, cg, cb, 0.85f);
+
+        // Selection border (draw slightly larger rect behind)
+        if (sn.id == selected_sticky_id_) {
+            tr.draw_rounded_rect(sx - 2, sy - 2, sw + 4, sh + 4, kStickyCornerR + 2,
+                                 kAccent[0], kAccent[1], kAccent[2], 0.5f);
+            // Re-draw background on top to create border effect
+            tr.draw_rounded_rect(sx, sy, sw, sh, kStickyCornerR, cr, cg, cb, 0.85f);
+        }
+
+        // Text
+        float text_x = sx + g_to_s(kStickyPad);
+        float text_y = sy + g_to_s(kStickyPad);
+        float text_scale = zoom_ * 0.85f;
+        if (text_scale < 0.3f) text_scale = 0.3f;
+
+        if (editing_sticky_ && sticky_edit_id_ == sn.id) {
+            // Render edit buffer line-by-line (split on \n)
+            const std::string& buf = sticky_edit_buffer_;
+            float line_y = text_y;
+            float line_h = 14.0f * text_scale;
+            size_t cursor_pos = static_cast<size_t>(text_edit_.cursor);
+            float cursor_draw_x = 0, cursor_draw_y = 0;
+            bool cursor_found = false;
+            size_t pos = 0;
+
+            while (pos <= buf.size()) {
+                size_t nl = buf.find('\n', pos);
+                if (nl == std::string::npos) nl = buf.size();
+                std::string line = buf.substr(pos, nl - pos);
+
+                tr.draw_text(text_x, line_y, line.c_str(),
+                             0.1f, 0.1f, 0.1f, 1.0f, text_scale);
+
+                // Check if cursor is on this line
+                if (!cursor_found && cursor_pos >= pos && cursor_pos <= nl) {
+                    std::string before_cursor = buf.substr(pos, cursor_pos - pos);
+                    cursor_draw_x = text_x + tr.text_width(before_cursor.c_str(), text_scale);
+                    cursor_draw_y = line_y;
+                    cursor_found = true;
+                }
+
+                line_y += line_h + 2.0f * text_scale;
+                pos = nl + 1;
+                if (pos > buf.size()) break;
+                if (line_y > sy + sh - g_to_s(kStickyPad)) break;
+            }
+
+            // Cursor at end of buffer (after last line)
+            if (!cursor_found) {
+                cursor_draw_y = line_y - (line_h + 2.0f * text_scale);
+                size_t last_nl = buf.rfind('\n');
+                if (last_nl != std::string::npos) {
+                    cursor_draw_x = text_x + tr.text_width(buf.substr(last_nl + 1).c_str(), text_scale);
+                } else {
+                    cursor_draw_x = text_x + tr.text_width(buf.c_str(), text_scale);
+                }
+            }
+
+            if (cursor_blink_on()) {
+                tr.draw_rect(cursor_draw_x, cursor_draw_y, 1.0f, line_h,
+                             0.1f, 0.1f, 0.1f, 0.8f);
+            }
+        } else {
+            // Render text with lightweight markdown
+            const std::string& text = sn.text;
+            float line_y = text_y;
+            float line_h = 14.0f * text_scale;
+            size_t pos = 0;
+            while (pos < text.size()) {
+                size_t nl = text.find('\n', pos);
+                if (nl == std::string::npos) nl = text.size();
+                std::string line = text.substr(pos, nl - pos);
+
+                // Bullet list item
+                bool is_bullet = false;
+                if (line.size() >= 2 && line[0] == '-' && line[1] == ' ') {
+                    is_bullet = true;
+                    line = line.substr(2);
+                }
+
+                float lx = text_x;
+                if (is_bullet) {
+                    tr.draw_text(lx, line_y, "\xe2\x80\xa2",
+                                 0.1f, 0.1f, 0.1f, 1.0f, text_scale);
+                    lx += 10.0f * text_scale;
+                }
+
+                // Simple bold: **text**
+                size_t bold_start = line.find("**");
+                if (bold_start != std::string::npos) {
+                    size_t bold_end = line.find("**", bold_start + 2);
+                    if (bold_end != std::string::npos) {
+                        std::string before = line.substr(0, bold_start);
+                        std::string bold_text = line.substr(bold_start + 2, bold_end - bold_start - 2);
+                        std::string after = line.substr(bold_end + 2);
+                        if (!before.empty()) {
+                            tr.draw_text(lx, line_y, before.c_str(),
+                                         0.15f, 0.15f, 0.15f, 1.0f, text_scale);
+                            lx += tr.text_width(before.c_str(), text_scale);
+                        }
+                        tr.draw_text(lx, line_y, bold_text.c_str(),
+                                     0.05f, 0.05f, 0.05f, 1.0f, text_scale);
+                        lx += tr.text_width(bold_text.c_str(), text_scale);
+                        if (!after.empty()) {
+                            tr.draw_text(lx, line_y, after.c_str(),
+                                         0.15f, 0.15f, 0.15f, 1.0f, text_scale);
+                        }
+                    } else {
+                        tr.draw_text(lx, line_y, line.c_str(),
+                                     0.15f, 0.15f, 0.15f, 1.0f, text_scale);
+                    }
+                } else {
+                    // Check for link: [text](url) — render text in accent color
+                    size_t link_start = line.find('[');
+                    size_t link_mid = (link_start != std::string::npos) ? line.find("](", link_start) : std::string::npos;
+                    size_t link_end = (link_mid != std::string::npos) ? line.find(')', link_mid + 2) : std::string::npos;
+                    if (link_start != std::string::npos && link_end != std::string::npos) {
+                        std::string before = line.substr(0, link_start);
+                        std::string link_text = line.substr(link_start + 1, link_mid - link_start - 1);
+                        std::string after = line.substr(link_end + 1);
+                        if (!before.empty()) {
+                            tr.draw_text(lx, line_y, before.c_str(),
+                                         0.15f, 0.15f, 0.15f, 1.0f, text_scale);
+                            lx += tr.text_width(before.c_str(), text_scale);
+                        }
+                        std::string link_url = line.substr(link_mid + 2, link_end - link_mid - 2);
+                        float link_x = lx;
+                        float link_w = tr.text_width(link_text.c_str(), text_scale);
+                        tr.draw_text(lx, line_y, link_text.c_str(),
+                                     kAccent[0] * 0.7f, kAccent[1] * 0.7f, kAccent[2] * 0.9f, 1.0f, text_scale);
+                        lx += link_w;
+                        sticky_link_rects_.push_back({link_x, line_y, link_w, line_h, std::move(link_url)});
+                        if (!after.empty()) {
+                            tr.draw_text(lx, line_y, after.c_str(),
+                                         0.15f, 0.15f, 0.15f, 1.0f, text_scale);
+                        }
+                    } else {
+                        tr.draw_text(lx, line_y, line.c_str(),
+                                     0.15f, 0.15f, 0.15f, 1.0f, text_scale);
+                    }
+                }
+
+                line_y += line_h + 2.0f * text_scale;
+                pos = nl + 1;
+                if (line_y > sy + sh - g_to_s(kStickyPad)) break;
+            }
+        }
+
+        // Resize grab handles at corners (small squares)
+        if (sn.id == selected_sticky_id_) {
+            float gs = kStickyResizeGrab;
+            float ha = 0.3f;
+            tr.draw_rect(sx + sw - gs, sy + sh - gs, gs, gs,
+                         0.2f, 0.2f, 0.2f, ha);  // bottom-right
+            tr.draw_rect(sx, sy + sh - gs, gs, gs,
+                         0.2f, 0.2f, 0.2f, ha);  // bottom-left
+            tr.draw_rect(sx + sw - gs, sy, gs, gs,
+                         0.2f, 0.2f, 0.2f, ha);  // top-right
+        }
+    }
+
+    // Sticky note color picker menu
+    if (sticky_color_menu_open_) {
+        float cmx = sticky_color_menu_x_;
+        float cmy = sticky_color_menu_y_;
+        float swatch_size = 20.0f;
+        float gap = 4.0f;
+        float total_w = kStickyColorCount * (swatch_size + gap) - gap + 8.0f;
+        float total_h = swatch_size + 8.0f;
+        tr.draw_rounded_rect(cmx, cmy, total_w, total_h, 4.0f,
+                             0.15f, 0.16f, 0.18f, 0.95f);
+        for (int i = 0; i < kStickyColorCount; ++i) {
+            float sx2 = cmx + 4.0f + i * (swatch_size + gap);
+            float sy2 = cmy + 4.0f;
+            tr.draw_rounded_rect(sx2, sy2, swatch_size, swatch_size, 3.0f,
+                                 kStickyColors[i][0], kStickyColors[i][1], kStickyColors[i][2], 1.0f);
+        }
+    }
+}
+
+// -----------------------------------------------------------------------
 // Draw (top-level)
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
@@ -2761,6 +2985,7 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_midi_map_banner(tr);
     draw_core_update_banner(tr);
 
+    draw_sticky_notes(tr);
     draw_graph(tr);
     draw_connections(tr);
     draw_preview_wire(tr);
@@ -2847,6 +3072,8 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
             item_count = 2;
         if (context_wire_idx_ >= 0)
             item_count = 2;
+        if (context_bg_menu_)
+            item_count = 2;  // "Re-layout All" + "Add Sticky Note"
         // Solo item for node context menus
         bool show_solo = !context_node_id_.empty() && !context_bg_menu_;
         if (show_solo) item_count++;
@@ -2859,10 +3086,19 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
 
         // Item labels
         std::string delete_label;
-        const char* labels[4];
+        const char* labels[5];
         int label_idx = 0;
+        bool is_sticky_ctx = (context_node_id_ == "__sticky__");
+        if (is_sticky_ctx) {
+            item_count = 2;
+            menu_h = kCtxMenuPadTop + item_count * kCtxMenuItemH + 2.0f;
+        }
         if (context_bg_menu_) {
             labels[label_idx++] = "Re-layout All";
+            labels[label_idx++] = "Add Sticky Note";
+        } else if (is_sticky_ctx) {
+            labels[label_idx++] = "Delete Note";
+            labels[label_idx++] = "Change Color";
         } else if (!context_node_id_.empty()) {
             if (selected_node_ids_.count(context_node_id_) && selected_node_ids_.size() > 1) {
                 delete_label = "Delete " + std::to_string(selected_node_ids_.size()) + " Nodes";
@@ -3072,14 +3308,8 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     float hf = static_cast<float>(win_h_);
     bool blink_on = (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0);
     bool show_composite = (create_domain_sel_ == 0);
-    bool hide_port_param = create_composite_;
 
-    auto layout = compute_create_operator_layout(
-        win_w_, win_h_,
-        hide_port_param ? 0 : static_cast<int>(create_inputs_.size()),
-        hide_port_param ? 0 : static_cast<int>(create_outputs_.size()),
-        hide_port_param ? 0 : static_cast<int>(create_params_.size()),
-        show_composite);
+    auto layout = compute_create_operator_layout(win_w_, win_h_, show_composite);
 
     // Scrim
     tr.draw_rect(0, 0, wf, hf,
@@ -3097,7 +3327,7 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     float cy = layout.py + kCreateModalPadY;
 
     // 1. Title
-    tr.draw_text(cx, cy, T("new_operator", "New Operator"),
+    tr.draw_text(cx, cy, T("new_operator", "New Starter Operator"),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     cy += 24.0f;
 
@@ -3132,191 +3362,21 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     }
 
     // 4. Name field
-    if (create_active_field_ == 0) {
-        draw_editing_text_field(tr, style_, cx, cy, inner_w, 22.0f,
-                               create_name_buf_, text_edit_, blink_on);
-        if (create_name_buf_.empty()) {
-            tr.draw_text(cx + 4, cy + 2, "operator_name",
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
-        }
-    } else {
-        tr.draw_rect(cx, cy, inner_w, 22.0f,
-                     style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-        if (create_name_buf_.empty()) {
-            tr.draw_text(cx + 4, cy + 2, "operator_name",
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
-        } else {
-            tr.draw_text(cx + 4, cy + 2, create_name_buf_.c_str(),
-                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        }
+    draw_editing_text_field(tr, style_, cx, cy, inner_w, 22.0f,
+                           create_name_buf_, text_edit_, blink_on);
+    if (create_name_buf_.empty()) {
+        tr.draw_text(cx + 4, cy + 2, "operator_name",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
     }
     cy += kCreateModalFieldH + kCreateModalRowGap;
 
-    const auto& port_types = port_types_for_domain(create_domain_sel_);
+    // 5. MCP hint
+    cy += kCreateModalSectionGap;
+    tr.draw_text(cx, cy, "Use MCP opdev tools for custom ports and parameters",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f);
+    cy += 18.0f + kCreateModalRowGap;
 
-    if (!hide_port_param) {
-        // Helper lambda for drawing port rows
-        auto draw_port_section = [&](const char* title, std::vector<CreatePortRow>& rows,
-                                     int field_offset, int max_rows) {
-            cy += kCreateModalSectionGap;
-            // Section header + "+ Add" link
-            tr.draw_text(cx, cy, title,
-                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-            float add_w = tr.text_width(T("add", "+ Add")) + 4;
-            float add_x = cx + inner_w - add_w;
-            if (static_cast<int>(rows.size()) < max_rows) {
-                tr.draw_text(add_x, cy, T("add", "+ Add"),
-                             style_.accent[0], style_.accent[1], style_.accent[2]);
-            }
-            cy += 18.0f + 4.0f;
-
-            float name_w = 120.0f;
-            float remove_w = 20.0f;
-            float type_w = inner_w - name_w - remove_w - 8.0f;
-
-            for (size_t i = 0; i < rows.size(); ++i) {
-                int field_idx = field_offset + static_cast<int>(i);
-                float row_y = cy;
-
-                // Port name field
-                if (create_active_field_ == field_idx) {
-                    draw_editing_text_field(tr, style_, cx, row_y, name_w, 22.0f,
-                                           rows[i].name, text_edit_, blink_on);
-                } else {
-                    tr.draw_rect(cx, row_y, name_w, 22.0f,
-                                 style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-                    if (rows[i].name.empty()) {
-                        tr.draw_text(cx + 4, row_y + 2, "name",
-                                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
-                    } else {
-                        tr.draw_text(cx + 4, row_y + 2, rows[i].name.c_str(),
-                                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-                    }
-                }
-
-                // Type dropdown (drawn as button showing current type)
-                float type_x = cx + name_w + 4.0f;
-                int clamped_sel = std::min(rows[i].type_sel, static_cast<int>(port_types.size()) - 1);
-                if (clamped_sel < 0) clamped_sel = 0;
-                tr.draw_rect(type_x, row_y, type_w, 22.0f,
-                             style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.7f);
-                if (!port_types.empty()) {
-                    tr.draw_text(type_x + 4, row_y + 2, port_types[clamped_sel].label,
-                                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-                }
-
-                // Remove [x] button
-                float rem_x = cx + inner_w - remove_w;
-                tr.draw_rect(rem_x, row_y, remove_w, 22.0f,
-                             style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.5f);
-                tr.draw_text(rem_x + 5, row_y + 2, "x",
-                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-
-                cy += kCreatePortRowH;
-            }
-        };
-
-        // 5. Input Ports
-        int input_field_offset = 1;  // field 0 = name
-        draw_port_section("Input Ports", create_inputs_, input_field_offset, kCreateMaxPortRows);
-
-        // 6. Output Ports
-        int output_field_offset = 1 + static_cast<int>(create_inputs_.size());
-        draw_port_section("Output Ports", create_outputs_, output_field_offset, kCreateMaxPortRows);
-
-        // 7. Parameters
-        cy += kCreateModalSectionGap;
-        tr.draw_text(cx, cy, T("parameters", "Parameters"),
-                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        if (static_cast<int>(create_params_.size()) < kCreateMaxParamRows) {
-            float add_w = tr.text_width(T("add", "+ Add")) + 4;
-            float add_x = cx + inner_w - add_w;
-            tr.draw_text(add_x, cy, "+ Add",
-                         style_.accent[0], style_.accent[1], style_.accent[2]);
-        }
-        cy += 18.0f + 4.0f;
-
-        int param_field_offset = 1 + static_cast<int>(create_inputs_.size())
-                                   + static_cast<int>(create_outputs_.size());
-
-        for (size_t i = 0; i < create_params_.size(); ++i) {
-            auto& p = create_params_[i];
-            int field_idx = param_field_offset + static_cast<int>(i);
-            float row_y = cy;
-            float name_w = 100.0f;
-            float type_w = 60.0f;
-            float remove_w = 20.0f;
-
-            // Param name
-            if (create_active_field_ == field_idx) {
-                draw_editing_text_field(tr, style_, cx, row_y, name_w, 22.0f,
-                                       p.name, text_edit_, blink_on);
-            } else {
-                tr.draw_rect(cx, row_y, name_w, 22.0f,
-                             style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-                if (p.name.empty()) {
-                    tr.draw_text(cx + 4, row_y + 2, "param",
-                                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
-                } else {
-                    tr.draw_text(cx + 4, row_y + 2, p.name.c_str(),
-                                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-                }
-            }
-
-            // Param type dropdown
-            float type_x = cx + name_w + 4.0f;
-            int ts = std::min(p.type_sel, kParamTypeCount - 1);
-            tr.draw_rect(type_x, row_y, type_w, 22.0f,
-                         style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.7f);
-            tr.draw_text(type_x + 4, row_y + 2, param_type_labels[ts],
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-
-            // Extra fields depending on type
-            float extra_x = type_x + type_w + 4.0f;
-            float extra_w = inner_w - name_w - type_w - remove_w - 16.0f;
-            if (ts == 0 || ts == 1) {
-                // float/int: show default, min, max
-                float fw = (extra_w - 8.0f) / 3.0f;
-                char buf[32];
-                // Default
-                std::snprintf(buf, sizeof(buf), ts == 0 ? "%.1f" : "%d",
-                              ts == 0 ? p.default_val : static_cast<float>(static_cast<int>(p.default_val)));
-                tr.draw_rect(extra_x, row_y, fw, 22.0f,
-                             style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-                tr.draw_text(extra_x + 2, row_y + 2, buf,
-                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
-                // Min
-                std::snprintf(buf, sizeof(buf), ts == 0 ? "%.1f" : "%d",
-                              ts == 0 ? p.min_val : static_cast<float>(static_cast<int>(p.min_val)));
-                tr.draw_rect(extra_x + fw + 4, row_y, fw, 22.0f,
-                             style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-                tr.draw_text(extra_x + fw + 6, row_y + 2, buf,
-                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
-                // Max
-                std::snprintf(buf, sizeof(buf), ts == 0 ? "%.1f" : "%d",
-                              ts == 0 ? p.max_val : static_cast<float>(static_cast<int>(p.max_val)));
-                tr.draw_rect(extra_x + 2 * (fw + 4), row_y, fw, 22.0f,
-                             style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2]);
-                tr.draw_text(extra_x + 2 * (fw + 4) + 2, row_y + 2, buf,
-                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
-            } else if (ts == 2) {
-                // bool: default toggle
-                draw_checkbox(tr, style_, extra_x, row_y + 2, 16.0f, p.default_val != 0.0f);
-            }
-            // file/text: no extra fields
-
-            // Remove button
-            float rem_x = cx + inner_w - remove_w;
-            tr.draw_rect(rem_x, row_y, remove_w, 22.0f,
-                         style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.5f);
-            tr.draw_text(rem_x + 5, row_y + 2, "x",
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-
-            cy += kCreateParamRowH;
-        }
-    }
-
-    // 8. Destination radio buttons
+    // 6. Destination radio buttons
     cy += kCreateModalSectionGap;
     const char* dest_labels[] = { "Auto", "Project", "Core" };
     float dest_x = cx;
@@ -3341,14 +3401,14 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     }
     cy += 22.0f + kCreateModalRowGap;
 
-    // 9. Error area
+    // 7. Error area
     if (!create_error_.empty()) {
         tr.draw_text(cx, cy, create_error_.c_str(),
                      kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.9f);
     }
     cy += 18.0f + kCreateModalRowGap;
 
-    // 10. Button row: [Create Empty] left, [Create] [Cancel] right
+    // 8. Button row: [Create Empty] left, [Create] [Cancel] right
     float btn_y = cy;
     // Create Empty (left-aligned)
     tr.draw_rect(cx, btn_y, kCreateModalBtnW, kCreateModalBtnH,
