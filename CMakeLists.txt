@@ -1316,12 +1316,14 @@ add_executable(test_operator_loader
     tests/test_operator_loader.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
+    src/runtime/port_type_registry.cpp
     src/runtime/wgsl_header_parser.cpp
 )
 target_include_directories(test_operator_loader PRIVATE src)
 target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu yyjson)
 add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_operator_loader PROPERTIES LABELS "LOADER")
 
 add_executable(test_file_drop_registry
     tests/test_file_drop_registry.cpp
@@ -1368,6 +1370,7 @@ target_link_libraries(test_runtime_stress PRIVATE vivid_operator_api yyjson mini
 add_dependencies(test_runtime_stress test_op_v1 test_state_carry_op)
 add_test(NAME test_runtime_stress COMMAND test_runtime_stress ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_runtime_stress PROPERTIES LABELS "STABILITY")
 
 add_executable(test_hot_reload_stress
     tests/test_hot_reload_stress.cpp
@@ -1385,6 +1388,7 @@ target_link_libraries(test_hot_reload_stress PRIVATE vivid_operator_api yyjson m
 add_dependencies(test_hot_reload_stress audio_reload_v1 audio_reload_v2 audio_reload_v3 audio_reload_incompatible)
 add_test(NAME test_hot_reload_stress COMMAND test_hot_reload_stress ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_hot_reload_stress PROPERTIES LABELS "STABILITY")
 
 add_executable(test_package_stress
     tests/test_package_stress.cpp
@@ -1406,6 +1410,7 @@ target_include_directories(test_package_stress PRIVATE src)
 target_link_libraries(test_package_stress PRIVATE vivid_operator_api yyjson miniaudio webgpu)
 add_test(NAME test_package_stress COMMAND test_package_stress ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_package_stress PROPERTIES LABELS "STABILITY")
 
 add_executable(test_mixed_runtime_stability
     tests/test_mixed_runtime_stability.cpp
@@ -1420,9 +1425,10 @@ add_executable(test_mixed_runtime_stability
 )
 target_include_directories(test_mixed_runtime_stability PRIVATE src)
 target_link_libraries(test_mixed_runtime_stability PRIVATE vivid_operator_api yyjson miniaudio webgpu)
-add_dependencies(test_mixed_runtime_stability gpu_fill_op)
+add_dependencies(test_mixed_runtime_stability gpu_fill_op lfo oscillator)
 add_test(NAME test_mixed_runtime_stability COMMAND test_mixed_runtime_stability ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_mixed_runtime_stability PROPERTIES LABELS "STABILITY")
 
 # Modulation operator tests (Flanger, Chorus, Phaser)
 add_executable(test_modulation_ops
@@ -1535,7 +1541,9 @@ add_test(NAME test_audio_spread_wire COMMAND test_audio_spread_wire
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # ChildOp<T> composition unit test (no plugins, no scheduler, header-only)
-add_executable(test_child_op tests/test_child_op.cpp)
+# Smooth has out-of-line virtuals (destructor, draw_thumbnail) in smooth.cpp
+# which pulls in WebGPU. Stub them so this test stays focused on ChildOp logic.
+add_executable(test_child_op tests/test_child_op.cpp tests/stubs/smooth_stubs.cpp)
 target_include_directories(test_child_op PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(test_child_op PRIVATE vivid_operator_api)
 add_test(NAME test_child_op COMMAND test_child_op WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1597,7 +1605,34 @@ add_dependencies(test_demo_graphs
 add_test(NAME test_demo_graphs
     COMMAND test_demo_graphs ${CMAKE_BINARY_DIR}/graphs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_demo_graphs PROPERTIES LABELS "SMOKE" TIMEOUT 120)
+set_tests_properties(test_demo_graphs PROPERTIES LABELS "HEADLESS_SMOKE" TIMEOUT 120)
+
+# Media-headless integration test — MovieLoaded/AVFoundation chains
+# with bounded timeout to prevent CI hangs. See docs/test_stabilization.md step 4.
+add_executable(test_media_headless
+    tests/test_media_headless.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/builtin_operators.cpp
+)
+target_include_directories(test_media_headless PRIVATE src)
+target_link_libraries(test_media_headless PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu rtmidi)
+add_dependencies(test_media_headless
+    movie_loaded movie_audio_out
+    lfo noise composite bloom feedback
+)
+add_test(NAME test_media_headless
+    COMMAND test_media_headless ${CMAKE_BINARY_DIR}/graphs
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_media_headless PROPERTIES
+    LABELS "MEDIA_HEADLESS"
+    TIMEOUT 60)
 
 # Audio-domain sequencer integration test
 add_executable(test_audio_domain_sequencer
@@ -1614,9 +1649,11 @@ add_executable(test_audio_domain_sequencer
 target_include_directories(test_audio_domain_sequencer PRIVATE src)
 target_link_libraries(test_audio_domain_sequencer PRIVATE
     vivid_operator_api yyjson miniaudio webgpu rtmidi)
+add_dependencies(test_audio_domain_sequencer clock oscillator gain)
 add_test(NAME test_audio_domain_sequencer
-    COMMAND test_audio_domain_sequencer
+    COMMAND test_audio_domain_sequencer ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_audio_domain_sequencer PROPERTIES LABELS "STABILITY")
 
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler
@@ -1633,6 +1670,7 @@ target_link_libraries(test_package_compiler PRIVATE vivid_operator_api yyjson we
 add_test(NAME test_package_compiler
     COMMAND test_package_compiler ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_package_compiler PROPERTIES LABELS "PACKAGE")
 
 # PackageCatalog unit test (JSON parsing, cache, merge)
 add_executable(test_package_catalog
@@ -1651,6 +1689,7 @@ target_link_libraries(test_package_catalog PRIVATE vivid_operator_api yyjson web
 add_test(NAME test_package_catalog
     COMMAND test_package_catalog
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_package_catalog PROPERTIES LABELS "PACKAGE")
 
 # PackageManager lifecycle test (install/list/uninstall with local path)
 add_executable(test_package_manager
@@ -1668,6 +1707,7 @@ target_link_libraries(test_package_manager PRIVATE vivid_operator_api yyjson web
 add_test(NAME test_package_manager
     COMMAND test_package_manager ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_package_manager PROPERTIES LABELS "PACKAGE")
 
 # Package scope resolver test (deterministic multi-scope precedence/conflicts)
 add_executable(test_package_scope_resolver
@@ -1685,6 +1725,7 @@ target_link_libraries(test_package_scope_resolver PRIVATE vivid_operator_api yyj
 add_test(NAME test_package_scope_resolver
     COMMAND test_package_scope_resolver ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_package_scope_resolver PROPERTIES LABELS "PACKAGE")
 
 # Package scope + registry integration test (winner package only)
 add_executable(test_package_scope_registry
@@ -1702,6 +1743,7 @@ target_link_libraries(test_package_scope_registry PRIVATE vivid_operator_api yyj
 add_test(NAME test_package_scope_registry
     COMMAND test_package_scope_registry ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_package_scope_registry PROPERTIES LABELS "PACKAGE")
 
 # Package scaffolder unit test (template copy + placeholder replacement)
 add_executable(test_package_scaffolder
@@ -1712,6 +1754,7 @@ target_include_directories(test_package_scaffolder PRIVATE src)
 add_test(NAME test_package_scaffolder
     COMMAND test_package_scaffolder ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_package_scaffolder PROPERTIES LABELS "PACKAGE")
 
 # PackageManager update metadata logic test (semantic version + compatibility)
 add_executable(test_package_update_logic
@@ -1729,6 +1772,7 @@ target_link_libraries(test_package_update_logic PRIVATE vivid_operator_api yyjso
 add_test(NAME test_package_update_logic
     COMMAND test_package_update_logic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_package_update_logic PROPERTIES LABELS "PACKAGE")
 
 # Core app update metadata parsing test (appcast + semver compare)
 add_executable(test_app_update_manager
@@ -1740,6 +1784,7 @@ target_link_libraries(test_app_update_manager PRIVATE vivid_operator_api webgpu)
 add_test(NAME test_app_update_manager
     COMMAND test_app_update_manager
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_app_update_manager PROPERTIES LABELS "PACKAGE")
 
 # PackageTestRunner test (graph + C++ test execution for packages)
 add_executable(test_package_test_runner
@@ -1764,6 +1809,7 @@ add_dependencies(test_package_test_runner control_pass_op)
 add_test(NAME test_package_test_runner
     COMMAND test_package_test_runner ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_package_test_runner PROPERTIES LABELS "PACKAGE")
 
 add_executable(test_package_contract_ecosystem
     tests/test_package_contract_ecosystem.cpp
@@ -1787,6 +1833,7 @@ add_dependencies(test_package_contract_ecosystem control_pass_op)
 add_test(NAME test_package_contract_ecosystem
     COMMAND test_package_contract_ecosystem ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_package_contract_ecosystem PROPERTIES LABELS "PACKAGE")
 
 # CaptureCoordinator unit test (non-GPU paths only)
 add_executable(test_capture_coordinator

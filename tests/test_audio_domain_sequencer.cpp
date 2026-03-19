@@ -1,5 +1,5 @@
-// Integration test: Clock → DrumSequencer → DrumKick, all audio domain.
-// Verifies the new AudioFloatPortWire routing and float gate triggers.
+// Integration test: Clock → Oscillator → Gain → audio_out, all audio domain.
+// Verifies AudioFloatPortWire routing with core CMake-built operators.
 
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <string>
 
 static int passes = 0;
@@ -24,22 +25,31 @@ static void check(bool ok, const char* label) {
     }
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    std::string build_dir = ".";
+    if (argc > 1) build_dir = argv[1];
+
     std::fprintf(stderr, "=== test_audio_domain_sequencer ===\n");
+
+    // --- Stage required dylibs into an isolated directory ---
+    const std::string staging = build_dir + "/.test_audio_sequencer_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+    std::filesystem::copy_file(build_dir + "/clock.dylib", staging + "/clock.dylib",
+                               std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/oscillator.dylib", staging + "/oscillator.dylib",
+                               std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/gain.dylib", staging + "/gain.dylib",
+                               std::filesystem::copy_options::overwrite_existing);
 
     // --- Operator registry ---
     vivid::OperatorRegistry registry;
-    // Scan an isolated directory with only the operators we need, to avoid
-    // probing GPU operators that crash in headless mode (pre-existing issue).
-    const char* ops_dir = std::getenv("VIVID_TEST_OPS_DIR");
-    registry.scan_deferred(ops_dir ? ops_dir : ".");
+    registry.scan_deferred(staging.c_str());
 
     // Verify operators loaded
     check(registry.find("Clock") != nullptr, "Clock operator loaded");
-    check(registry.find("DrumSequencer") != nullptr, "DrumSequencer operator loaded");
-    check(registry.find("DrumKick") != nullptr, "DrumKick operator loaded");
-    check(registry.find("DrumSnare") != nullptr, "DrumSnare operator loaded");
-    check(registry.find("DrumHiHat") != nullptr, "DrumHiHat operator loaded");
+    check(registry.find("Oscillator") != nullptr, "Oscillator operator loaded");
+    check(registry.find("Gain") != nullptr, "Gain operator loaded");
 
     // Verify Clock is now audio domain
     {
@@ -51,49 +61,38 @@ int main() {
         }
     }
 
-    // Verify DrumSequencer is now audio domain
+    // Verify Oscillator is audio domain with freq_cv input
     {
-        auto* seq_loader = registry.find("DrumSequencer");
-        if (seq_loader) {
-            const auto* desc = seq_loader->descriptor();
-            check(desc->domain == VIVID_DOMAIN_AUDIO, "DrumSequencer is audio domain");
-            check(desc->has_process_audio == 1, "DrumSequencer has process_audio");
-        }
-    }
-
-    // Verify DrumKick has trigger float input
-    {
-        auto* kick_loader = registry.find("DrumKick");
-        if (kick_loader) {
-            const auto* desc = kick_loader->descriptor();
-            bool has_trigger = false;
+        auto* osc_loader = registry.find("Oscillator");
+        if (osc_loader) {
+            const auto* desc = osc_loader->descriptor();
+            check(desc->domain == VIVID_DOMAIN_AUDIO, "Oscillator is audio domain");
+            check(desc->has_process_audio == 1, "Oscillator has process_audio");
+            bool has_freq_cv = false;
             for (uint32_t i = 0; i < desc->port_count; ++i) {
-                if (std::string(desc->ports[i].name) == "trigger" &&
+                if (std::string(desc->ports[i].name) == "freq_cv" &&
                     desc->ports[i].type == VIVID_PORT_FLOAT &&
                     desc->ports[i].direction == VIVID_PORT_INPUT) {
-                    has_trigger = true;
+                    has_freq_cv = true;
                     break;
                 }
             }
-            check(has_trigger, "DrumKick has float trigger input port");
+            check(has_freq_cv, "Oscillator has float freq_cv input port");
         }
     }
 
-    // --- Build graph: Clock → DrumSequencer → DrumKick → audio_out ---
+    // --- Build graph: Clock → Oscillator → Gain → audio_out ---
     const char* graph_json = R"({
         "nodes": {
             "clock1": { "type": "Clock", "params": { "bpm": 120.0 } },
-            "seq1": { "type": "DrumSequencer", "params": {
-                "steps": 4,
-                "kick_0": 1, "kick_1": 1, "kick_2": 1, "kick_3": 1
-            }},
-            "kick1": { "type": "DrumKick", "params": { "volume": 0.8 } },
+            "osc1": { "type": "Oscillator", "params": { "frequency": 440.0 } },
+            "gain1": { "type": "Gain", "params": { "amplitude": 0.8 } },
             "aout": { "type": "audio_out", "params": {} }
         },
         "connections": [
-            { "from": "clock1/bar_phase", "to": "seq1/beat_phase" },
-            { "from": "seq1/kick", "to": "kick1/trigger" },
-            { "from": "kick1/output", "to": "aout/input" }
+            { "from": "clock1/beat_phase", "to": "osc1/freq_cv" },
+            { "from": "osc1/output", "to": "gain1/input" },
+            { "from": "gain1/output", "to": "aout/input" }
         ]
     })";
 
@@ -129,35 +128,26 @@ int main() {
         audio.inject_analysis(sched);
     }
 
-    // Check that audio output has non-zero RMS (the kick should be producing sound)
+    // Check that audio output has non-zero RMS (the gain node should pass through sound)
     const auto& analysis = audio.analysis_read();
-    int kick_idx = audio.audio_node_index("kick1");
-    check(kick_idx >= 0, "Kick node found in audio engine");
+    int gain_idx = audio.audio_node_index("gain1");
+    check(gain_idx >= 0, "Gain node found in audio engine");
 
-    if (kick_idx >= 0) {
-        float rms = analysis.rms[kick_idx];
-        float peak = analysis.peak[kick_idx];
-        std::fprintf(stderr, "    kick1 RMS=%.6f  peak=%.6f\n", rms, peak);
-        check(peak > 0.001f, "DrumKick produced non-zero audio output");
+    if (gain_idx >= 0) {
+        float rms = analysis.rms[gain_idx];
+        float peak = analysis.peak[gain_idx];
+        std::fprintf(stderr, "    gain1 RMS=%.6f  peak=%.6f\n", rms, peak);
+        check(peak > 0.001f, "Gain produced non-zero audio output");
     }
 
-    // Check that the sequencer's float outputs are being fed back to scheduler
-    // (via inject_analysis → inject_external_output)
-    for (size_t si = 0; si < sched.nodes().size(); ++si) {
-        const auto& ns = sched.nodes()[si];
-        if (ns.node_id == "seq1") {
-            // Look for the "step" output
-            auto step_it = ns.output_port_indices.find("step");
-            if (step_it != ns.output_port_indices.end()) {
-                // After 30 ticks at 120 BPM, some steps should have fired
-                // The step value should be a valid step index (0-3)
-                float step_val = ns.output_values[step_it->second];
-                std::fprintf(stderr, "    seq1/step = %.2f\n", step_val);
-                check(step_val >= 0.0f && step_val <= 3.0f,
-                      "DrumSequencer step output fed back to scheduler");
-            }
-            break;
-        }
+    // Check that the oscillator's audio output is being fed through the graph
+    int osc_idx = audio.audio_node_index("osc1");
+    check(osc_idx >= 0, "Oscillator node found in audio engine");
+
+    if (osc_idx >= 0) {
+        float osc_peak = analysis.peak[osc_idx];
+        std::fprintf(stderr, "    osc1 peak=%.6f\n", osc_peak);
+        check(osc_peak > 0.001f, "Oscillator produced non-zero audio output");
     }
 
     // Check no errors on any audio node
@@ -174,6 +164,7 @@ int main() {
     // Cleanup
     audio.shutdown();
     sched.shutdown();
+    std::filesystem::remove_all(staging);
 
     std::fprintf(stderr, "\n========================================\n");
     std::fprintf(stderr, "Results: %d passed, %d failed\n", passes, failures);

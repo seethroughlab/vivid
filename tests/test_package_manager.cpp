@@ -182,8 +182,8 @@ VIVID_REGISTER(TestMgrOp)
     auto missing_tool_result = pm.install(mock_pkg_dir);
     unsetenv("VIVID_MOCK_MISSING_TOOL");
     check(!missing_tool_result.success, "install fails when compiler is unavailable");
-    check(missing_tool_result.error.find("Missing required build tool: clang++") != std::string::npos,
-          "missing compiler error is clear");
+    check(missing_tool_result.error_code == "missing_tool",
+          "missing compiler error_code is missing_tool");
     check(!fs::exists(pkg_install_dir), "missing compiler failure rolls back package directory");
 
     // --- Test 8: Compile failure cleans up partial install ---
@@ -229,8 +229,8 @@ VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
     auto abi_mismatch_result = pm.install(mock_pkg_dir);
     unsetenv("VIVID_MOCK_RUNTIME_ABI");
     check(!abi_mismatch_result.success, "install fails when plugin ABI mismatches runtime ABI");
-    check(abi_mismatch_result.error.find("Plugin ABI mismatch for package 'test-mgr-package'") != std::string::npos,
-          "ABI mismatch failure message is clear");
+    check(abi_mismatch_result.error_code == "abi_mismatch",
+          "ABI mismatch error_code is abi_mismatch");
     check(abi_mismatch_result.error.find("Rebuild vivid and rerun package rebuild.") != std::string::npos,
           "ABI mismatch remediation is included");
     check(!fs::exists(pkg_install_dir), "ABI mismatch failure rolls back package directory");
@@ -492,7 +492,7 @@ set_target_properties(test_cmake_op PROPERTIES
 
         auto circ_result = pm.install(circ_a_dir);
         check(!circ_result.success, "circular dep install fails");
-        check(circ_result.error.find("Circular") != std::string::npos, "error mentions Circular");
+        check(circ_result.error_code == "circular_dependency", "error_code is circular_dependency");
 
         // Cleanup
         fs::remove_all(vivid::PackageManager::packages_dir() + "/test-circ-a");
@@ -569,7 +569,7 @@ set_target_properties(test_cmake_op PROPERTIES
         pm.set_resolver(nullptr);
         auto nores_result = pm.install(nores_dir);
         check(!nores_result.success, "install without resolver fails");
-        check(nores_result.error.find("resolver") != std::string::npos, "error mentions resolver");
+        check(nores_result.error_code == "no_resolver", "error_code is no_resolver");
 
         // Cleanup
         fs::remove_all(vivid::PackageManager::packages_dir() + "/test-nores");
@@ -596,8 +596,7 @@ set_target_properties(test_cmake_op PROPERTIES
 
         auto unres_result = pm.install(unres_dir);
         check(!unres_result.success, "install with unresolvable dep fails");
-        check(unres_result.error.find("nonexistent-pkg") != std::string::npos, "error mentions dep name");
-        check(unres_result.error.find("not found") != std::string::npos, "error mentions not found");
+        check(unres_result.error_code == "dependency_not_found", "error_code is dependency_not_found");
 
         // Cleanup
         fs::remove_all(vivid::PackageManager::packages_dir() + "/test-unres");
@@ -746,8 +745,8 @@ set_target_properties(test_cmake_op PROPERTIES
         fs::create_directories(no_manifest_dir);
         auto r1 = pm.install(no_manifest_dir);
         check(!r1.success, "no manifest install fails");
-        check(r1.error.find("not found") != std::string::npos,
-              "error mentions 'not found'");
+        check(r1.error_code == "manifest_not_found",
+              "error_code is manifest_not_found");
         fs::remove_all(no_manifest_dir);
 
         // Invalid JSON
@@ -760,8 +759,8 @@ set_target_properties(test_cmake_op PROPERTIES
         }
         auto r2 = pm.install(bad_json_dir);
         check(!r2.success, "invalid JSON install fails");
-        check(r2.error.find("invalid JSON") != std::string::npos,
-              "error mentions 'invalid JSON'");
+        check(r2.error_code == "manifest_invalid_json",
+              "error_code is manifest_invalid_json");
         fs::remove_all(bad_json_dir);
 
         // Missing name
@@ -774,8 +773,8 @@ set_target_properties(test_cmake_op PROPERTIES
         }
         auto r3 = pm.install(no_name_dir);
         check(!r3.success, "missing name install fails");
-        check(r3.error.find("missing required field") != std::string::npos,
-              "error mentions 'missing required field'");
+        check(r3.error_code == "manifest_missing_field",
+              "error_code is manifest_missing_field");
         fs::remove_all(no_name_dir);
 
         // name is integer
@@ -788,8 +787,8 @@ set_target_properties(test_cmake_op PROPERTIES
         }
         auto r4 = pm.install(int_name_dir);
         check(!r4.success, "integer name install fails");
-        check(r4.error.find("must be a string") != std::string::npos,
-              "error mentions 'must be a string'");
+        check(r4.error_code == "manifest_field_type",
+              "error_code is manifest_field_type");
         fs::remove_all(int_name_dir);
     }
 
@@ -806,6 +805,8 @@ set_target_properties(test_cmake_op PROPERTIES
         }
         auto r1 = pm.install(node_dir);
         check(!r1.success, "Node.js project install fails");
+        check(r1.error_code == "manifest_not_found",
+              "error_code is manifest_not_found for Node.js dir");
         check(r1.error.find("Node.js") != std::string::npos,
               "error mentions Node.js");
         fs::remove_all(node_dir);
@@ -820,6 +821,8 @@ set_target_properties(test_cmake_op PROPERTIES
         }
         auto r2 = pm.install(subdir_dir);
         check(!r2.success, "subdirectory manifest install fails");
+        check(r2.error_code == "manifest_not_found",
+              "error_code is manifest_not_found for subdir");
         check(r2.error.find("my-plugin") != std::string::npos,
               "error mentions subdirectory name");
         fs::remove_all(subdir_dir);

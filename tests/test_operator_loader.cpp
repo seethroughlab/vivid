@@ -418,9 +418,9 @@ int main() {
 
     // Test 22c: deferred probe preserves process flags and port semantic metadata
     {
-        auto* reg = new vivid::OperatorRegistry();
-        check(reg->scan_deferred(staging_mixed.c_str()), "scan_deferred mixed directory");
-        const auto* desc = reg->probe_descriptor("AudioTestOp");
+        vivid::OperatorRegistry reg;
+        check(reg.scan_deferred(staging_mixed.c_str()), "scan_deferred mixed directory");
+        const auto* desc = reg.probe_descriptor("AudioTestOp");
         check(desc != nullptr, "probe_descriptor AudioTestOp");
         if (desc) {
             check(desc->has_process_audio == 1, "probe preserves has_process_audio");
@@ -439,9 +439,9 @@ int main() {
 
     // Test 22d: deferred probe preserves custom port metadata
     {
-        auto* reg = new vivid::OperatorRegistry();
-        check(reg->scan_deferred(staging_custom.c_str()), "scan_deferred custom-port directory");
-        const auto* desc = reg->probe_descriptor("ExportCustomPortOp");
+        vivid::OperatorRegistry reg;
+        check(reg.scan_deferred(staging_custom.c_str()), "scan_deferred custom-port directory");
+        const auto* desc = reg.probe_descriptor("ExportCustomPortOp");
         check(desc != nullptr, "probe_descriptor ExportCustomPortOp");
         if (desc) {
             check(desc->port_count == 1, "custom port probe preserves port count");
@@ -465,12 +465,12 @@ int main() {
 
     // Test 22e: scan records malformed custom-type registration failures
     {
-        auto* reg = new vivid::OperatorRegistry();
-        check(reg->scan(staging_bad_custom.c_str()), "scan bad custom-type staging succeeds overall");
-        check(reg->find("ExportCustomPortOp") != nullptr, "good custom-type plugin still loads");
-        check(reg->find("BadCustomTypeOp") == nullptr, "bad custom-type plugin is not registered");
-        check(reg->has_loader_failure_diagnostics(), "loader failure diagnostics present");
-        auto failures = reg->loader_failure_diagnostics_for_dir(staging_bad_custom);
+        vivid::OperatorRegistry reg;
+        check(reg.scan(staging_bad_custom.c_str()), "scan bad custom-type staging succeeds overall");
+        check(reg.find("ExportCustomPortOp") != nullptr, "good custom-type plugin still loads");
+        check(reg.find("BadCustomTypeOp") == nullptr, "bad custom-type plugin is not registered");
+        check(reg.has_loader_failure_diagnostics(), "loader failure diagnostics present");
+        auto failures = reg.loader_failure_diagnostics_for_dir(staging_bad_custom);
         check(!failures.empty(), "loader failure diagnostics filtered by dir");
         bool found_bad_custom = false;
         for (const auto& diag : failures) {
@@ -722,9 +722,22 @@ int main() {
         }
     }
 
+    // Test 34: Registry teardown after scan_deferred does not crash
+    {
+        std::fprintf(stderr, "\n--- Registry teardown after scan_deferred ---\n");
+        {
+            vivid::OperatorRegistry reg;
+            reg.scan_deferred(staging_mixed.c_str());
+            (void)reg.probe_descriptor("AudioTestOp");
+        }  // destructor runs here
+        check(true, "registry teardown after scan_deferred is clean");
+    }
+
     // Cleanup
     std::filesystem::remove_all(staging);
     std::filesystem::remove_all(staging_mixed);
+    std::filesystem::remove_all(staging_custom);
+    std::filesystem::remove_all(staging_bad_custom);
     std::filesystem::remove_all(staging_empty);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",

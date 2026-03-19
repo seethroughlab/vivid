@@ -26,4 +26,4 @@ jobs:
         run: ./scripts/validate_semantic_tags.sh
 
       - name: Run smoke tests
-        run: cd build && ctest -L SMOKE --output-on-failure
+        run: cd build && ctest -L HEADLESS_SMOKE --output-on-failure

@@ -127,6 +127,10 @@ int main(int argc, char* argv[]) {
     std::filesystem::create_directories(staging);
     std::filesystem::copy_file(build_dir + "/gpu_fill_op.dylib", staging + "/gpu_fill_op.dylib",
                                std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/lfo.dylib", staging + "/lfo.dylib",
+                               std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/oscillator.dylib", staging + "/oscillator.dylib",
+                               std::filesystem::copy_options::overwrite_existing);
 
     std::fprintf(stderr, "\n=== Test: Mixed Runtime Stability%s ===\n\n",
                  soak ? " (soak)" : "");
