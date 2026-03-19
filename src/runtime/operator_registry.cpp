@@ -18,6 +18,18 @@
 
 namespace vivid {
 
+OperatorRegistry::~OperatorRegistry() {
+    // Controlled teardown order to avoid use-after-free at process exit.
+    // 1. Release deep-copied descriptor data while libraries are still loaded.
+    deferred_.clear();
+    // 2. Destroy loaders (triggers dlclose on their handles).
+    loaders_.clear();
+    // 3. Clear retired package loaders.
+    retired_package_loaders_.clear();
+    // Do NOT dlclose deferred_probe_handles_ — they are process-lifetime
+    // handles kept alive intentionally to avoid plugin teardown hangs.
+}
+
 static std::string resolve_alias_once(const std::unordered_map<std::string, std::string>& aliases,
                                       const std::string& type_name) {
     std::string cur = type_name;

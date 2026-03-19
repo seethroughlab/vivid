@@ -67,6 +67,8 @@ struct FileDropRegistration {
 
 class OperatorRegistry {
 public:
+    ~OperatorRegistry();
+
     bool scan(const char* directory);
     bool scan_deferred(const char* directory);       // probe-only scan (no full load)
     bool scan_wgsl_presets(const std::string& directory);  // self-describing .wgsl filters
