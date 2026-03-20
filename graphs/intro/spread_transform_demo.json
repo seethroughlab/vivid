@@ -1,0 +1,239 @@
+{
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "nodes": {
+        "clock": {
+            "type": "Clock",
+            "params": {
+                "bpm": 120.0
+            },
+            "layout": {
+                "x": -58.668128967285156,
+                "y": 511.8123779296875
+            }
+        },
+        "euclid_a": {
+            "type": "Euclidean",
+            "params": {
+                "steps": 8.0,
+                "hits": 5.0
+            },
+            "layout": {
+                "x": 188.17137145996094,
+                "y": 462.57000732421875
+            }
+        },
+        "euclid_b": {
+            "type": "Euclidean",
+            "params": {
+                "rotation": 2.0,
+                "steps": 8.0,
+                "hits": 3.0
+            },
+            "layout": {
+                "x": 189.3553009033203,
+                "y": 595.0731811523438
+            }
+        },
+        "xform_a": {
+            "type": "PatTransform",
+            "params": {
+                "offset": 0.019999999552965164,
+                "scale": 0.05999999865889549
+            },
+            "layout": {
+                "x": 414.9963073730469,
+                "y": 470.8523254394531
+            }
+        },
+        "xform_b": {
+            "type": "PatTransform",
+            "params": {
+                "offset": 0.019999999552965164,
+                "scale": 0.10000000149011612,
+                "rotate": 2.0,
+                "reverse": 1.0
+            },
+            "layout": {
+                "x": 422.41845703125,
+                "y": 595.8009643554688
+            }
+        },
+        "stack": {
+            "type": "Stack",
+            "params": {
+                "mode": 0.0
+            },
+            "layout": {
+                "x": 624.7030639648438,
+                "y": 566.5279541015625
+            }
+        },
+        "noise_x": {
+            "type": "SpreadNoise",
+            "params": {
+                "seed": 42.0,
+                "offset": 0.5,
+                "amplitude": 0.699999988079071,
+                "speed": 0.5,
+                "count": 16.0
+            },
+            "layout": {
+                "x": 455.6830139160156,
+                "y": 149.92320251464844
+            }
+        },
+        "noise_y": {
+            "type": "SpreadNoise",
+            "params": {
+                "seed": 200.0,
+                "offset": 0.5,
+                "amplitude": 0.699999988079071,
+                "speed": 0.6000000238418579,
+                "count": 16.0
+            },
+            "layout": {
+                "x": 448.0978698730469,
+                "y": 281.9753723144531
+            }
+        },
+        "metaball": {
+            "type": "Metaball",
+            "params": {
+                "color_mode": 1.0,
+                "glow": 0.2917209267616272,
+                "softness": 0.0010000000474974513,
+                "render_mode": 0.0,
+                "threshold": 1.2130805253982544,
+                "count": 16.0
+            },
+            "layout": {
+                "x": 830.427734375,
+                "y": 409.0
+            }
+        },
+        "vout": {
+            "type": "video_out"
+        }
+    },
+    "connections": [
+        {
+            "from": "clock/beat_phase",
+            "to": "euclid_a/beat_phase"
+        },
+        {
+            "from": "clock/beat_phase",
+            "to": "euclid_b/beat_phase"
+        },
+        {
+            "from": "euclid_a/pattern",
+            "to": "xform_a/pattern"
+        },
+        {
+            "from": "euclid_b/pattern",
+            "to": "xform_b/pattern"
+        },
+        {
+            "from": "xform_a/pattern",
+            "to": "stack/a"
+        },
+        {
+            "from": "xform_b/pattern",
+            "to": "stack/b"
+        },
+        {
+            "from": "stack/output",
+            "to": "metaball/radii"
+        },
+        {
+            "from": "noise_x/values",
+            "to": "metaball/pos_x",
+            "from_min": 0.0,
+            "from_max": 1.0,
+            "to_min": -1.0,
+            "to_max": 1.0
+        },
+        {
+            "from": "noise_y/values",
+            "to": "metaball/pos_y",
+            "from_min": 0.0,
+            "from_max": 1.0,
+            "to_min": -1.0,
+            "to_max": 1.0
+        },
+        {
+            "from": "metaball/texture",
+            "to": "vout/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 342.97857666015625,
+        "pan_y": 263.18951416015625,
+        "zoom": 0.803552508354187
+    },
+    "sticky_notes": [
+        {
+            "id": "note_1",
+            "text": "**Modifying Spreads**\nSpreads can be transformed and combined.\nHere, Euclidean rhythms (patterns of 0s\nand 1s) are scaled, reversed, and\nconcatenated into a 16-element spread\nthat drives circle radii.",
+            "x": -327.2906494140625,
+            "y": 32.193599700927734,
+            "width": 300.0,
+            "height": 120.0,
+            "color": 0
+        },
+        {
+            "id": "note_2",
+            "text": "**Euclidean → Spread of 0s and 1s**\nDistributes N hits evenly across M steps.\nTwo patterns here: 5-of-8 and 3-of-8\n(with rotation=2). Each outputs an\n8-element spread.",
+            "x": -100.0,
+            "y": -120.0,
+            "width": 300.0,
+            "height": 100.0,
+            "color": 1
+        },
+        {
+            "id": "note_3",
+            "text": "**PatTransform A: scale + offset**\nMaps 0/1 values to radius sizes.\n0 × 0.06 + 0.02 = 0.02 (tiny dot)\n1 × 0.06 + 0.02 = 0.08 (visible circle)\nRaw pattern becomes geometry.",
+            "x": 300.0,
+            "y": -120.0,
+            "width": 280.0,
+            "height": 100.0,
+            "color": 2
+        },
+        {
+            "id": "note_4",
+            "text": "**PatTransform B: reverse + rotate**\nFlips the pattern, shifts it 2 steps,\nand uses larger scale (0.1) so hits\nbecome bigger circles (radius 0.12).\nDifferent transform = different look.",
+            "x": 134.91940307617188,
+            "y": 216.09228515625,
+            "width": 280.0,
+            "height": 100.0,
+            "color": 2
+        },
+        {
+            "id": "note_5",
+            "text": "**Stack: Combining Spreads**\nConcat mode joins two 8-element spreads\ninto one 16-element spread. The first 8\nvalues come from pattern A, the next 8\nfrom pattern B.",
+            "x": 550.0,
+            "y": -120.0,
+            "width": 280.0,
+            "height": 100.0,
+            "color": 1
+        },
+        {
+            "id": "note_6",
+            "text": "**Spread → Visual Mapping**\nThe 16-element stacked spread drives\nradii. Hits appear as big circles,\nmisses as tiny dots. The rhythm\nbecomes a visual pattern.",
+            "x": 850.0,
+            "y": -50.0,
+            "width": 280.0,
+            "height": 100.0,
+            "color": 3
+        },
+        {
+            "id": "note_7",
+            "text": "**Try This!**\n• Change hits on either Euclidean\n• Toggle Stack mode to Interleave\n• Set probability to 0.5 on a\n  PatTransform to randomly drop hits\n• Switch render_mode to Metaball",
+            "x": 1150.0,
+            "y": -50.0,
+            "width": 260.0,
+            "height": 120.0,
+            "color": 4
+        }
+    ]
+}

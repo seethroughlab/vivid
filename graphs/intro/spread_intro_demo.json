@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "spread_intro_demo",
+    "title": "Introduction to Spreads",
+    "description": "Learn what a spread is — Vivid's core data primitive. Three SpreadNoise operators generate variable-length float arrays that drive Metaball circles on screen.",
+    "tags": ["demo", "spreads", "tutorial"],
+    "difficulty": "beginner",
+    "domains": ["control", "gpu"],
+    "requires_packages": [],
+    "featured_rank": 5
+  },
+  "nodes": {
+    "noise_x": {
+      "type": "SpreadNoise",
+      "params": {
+        "count": 8,
+        "speed": 0.3,
+        "amplitude": 0.8,
+        "offset": 0.5,
+        "seed": 42
+      },
+      "layout_x": 0.0,
+      "layout_y": 0.0
+    },
+    "noise_y": {
+      "type": "SpreadNoise",
+      "params": {
+        "count": 8,
+        "speed": 0.4,
+        "amplitude": 0.8,
+        "offset": 0.5,
+        "seed": 137
+      },
+      "layout_x": 0.0,
+      "layout_y": 200.0
+    },
+    "noise_r": {
+      "type": "SpreadNoise",
+      "params": {
+        "count": 8,
+        "speed": 0.2,
+        "amplitude": 0.06,
+        "offset": 0.08,
+        "seed": 999
+      },
+      "layout_x": 0.0,
+      "layout_y": 400.0
+    },
+    "metaball": {
+      "type": "Metaball",
+      "params": {
+        "count": 8,
+        "color_mode": 1,
+        "render_mode": 1
+      },
+      "layout_x": 400.0,
+      "layout_y": 200.0
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {},
+      "layout_x": 700.0,
+      "layout_y": 200.0
+    }
+  },
+  "connections": [
+    {
+      "from": "noise_x/values",
+      "to": "metaball/pos_x"
+    },
+    {
+      "from": "noise_y/values",
+      "to": "metaball/pos_y"
+    },
+    {
+      "from": "noise_r/values",
+      "to": "metaball/radii"
+    },
+    {
+      "from": "metaball/texture",
+      "to": "vout/input"
+    }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**What is a Spread?**\nA spread is a variable-length array of floats —\nVivid's core data primitive. Even a single\nvalue is a spread of length 1. This graph\nuses three 8-element spreads to animate\n8 circles on screen.",
+      "x": -350.0,
+      "y": -50.0,
+      "width": 300.0,
+      "height": 120.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "**SpreadNoise → X positions**\nGenerates 8 animated noise values\nused as X coordinates. Each element\ndrifts independently, creating organic\nhorizontal motion.",
+      "x": -350.0,
+      "y": 100.0,
+      "width": 280.0,
+      "height": 100.0,
+      "color": 1
+    },
+    {
+      "id": "note_3",
+      "text": "**SpreadNoise → Y positions**\nSame operator, different seed so\nY motion is independent of X.\nTogether they create 2D wandering.",
+      "x": -350.0,
+      "y": 230.0,
+      "width": 280.0,
+      "height": 80.0,
+      "color": 1
+    },
+    {
+      "id": "note_4",
+      "text": "**SpreadNoise → Radii**\nSmaller amplitude (0.06) keeps radii\nvisible but subtle. The circles gently\nbreathe as values animate.",
+      "x": -350.0,
+      "y": 360.0,
+      "width": 280.0,
+      "height": 80.0,
+      "color": 1
+    },
+    {
+      "id": "note_5",
+      "text": "**3 spreads flow into Metaball**\npos_x, pos_y, and radii each receive\n8 values. Metaball draws one circle\nper element — element 0 gets\n(x[0], y[0], r[0]), and so on.",
+      "x": 300.0,
+      "y": -50.0,
+      "width": 280.0,
+      "height": 100.0,
+      "color": 2
+    },
+    {
+      "id": "note_6",
+      "text": "**Circles + Rainbow mode**\nEach ball gets a unique hue from the\nRainbow color mode. Try switching\nrender_mode to Metaball to see the\nclassic blobby look!",
+      "x": 600.0,
+      "y": -50.0,
+      "width": 280.0,
+      "height": 100.0,
+      "color": 3
+    }
+  ]
+}
