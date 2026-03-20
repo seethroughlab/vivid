@@ -19,36 +19,35 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(webgpu)
 
-option(VIVID_USE_WGPU_NATIVE_FORK "Build and use the pinned wgpu-native fork for Metal interop symbols" ON)
-if(APPLE AND VIVID_USE_WGPU_NATIVE_FORK)
+option(VIVID_USE_WGPU_NATIVE_UPSTREAM "Build upstream wgpu-native from source for Metal interop symbols" ON)
+if(APPLE AND VIVID_USE_WGPU_NATIVE_UPSTREAM)
     FetchContent_Declare(
-        wgpu_native_fork
-        GIT_REPOSITORY https://github.com/seethroughlab/wgpu-native
-        GIT_TAG        5b278226543632af984fae102c81a7dca9d815a2
-        GIT_SHALLOW    TRUE
+        wgpu_native_upstream
+        GIT_REPOSITORY https://github.com/gfx-rs/wgpu-native
+        GIT_TAG        1487faea32e3b7fc891fd671323582b487038aea
         GIT_SUBMODULES_RECURSE TRUE
     )
-    FetchContent_GetProperties(wgpu_native_fork)
-    if(NOT wgpu_native_fork_POPULATED)
-        FetchContent_Populate(wgpu_native_fork)
+    FetchContent_GetProperties(wgpu_native_upstream)
+    if(NOT wgpu_native_upstream_POPULATED)
+        FetchContent_Populate(wgpu_native_upstream)
     endif()
 
     find_program(VIVID_CARGO_EXECUTABLE cargo REQUIRED)
-    set(VIVID_WGPU_NATIVE_FORK_LIB
-        "${wgpu_native_fork_SOURCE_DIR}/target/release/libwgpu_native.dylib")
+    set(VIVID_WGPU_NATIVE_UPSTREAM_LIB
+        "${wgpu_native_upstream_SOURCE_DIR}/target/release/libwgpu_native.dylib")
 
-    add_custom_target(wgpu_native_fork_build ALL
+    add_custom_target(wgpu_native_upstream_build ALL
         COMMAND ${VIVID_CARGO_EXECUTABLE} build --release
-        WORKING_DIRECTORY ${wgpu_native_fork_SOURCE_DIR}
-        COMMENT "Building pinned wgpu-native fork (Metal interop symbols)"
+        WORKING_DIRECTORY ${wgpu_native_upstream_SOURCE_DIR}
+        COMMENT "Building upstream wgpu-native from source (Metal interop symbols)"
         VERBATIM
     )
 
     if(TARGET webgpu)
-        add_dependencies(webgpu wgpu_native_fork_build)
-        set_target_properties(webgpu PROPERTIES IMPORTED_LOCATION "${VIVID_WGPU_NATIVE_FORK_LIB}")
+        add_dependencies(webgpu wgpu_native_upstream_build)
+        set_target_properties(webgpu PROPERTIES IMPORTED_LOCATION "${VIVID_WGPU_NATIVE_UPSTREAM_LIB}")
     endif()
-    set(WEBGPU_RUNTIME_LIB "${VIVID_WGPU_NATIVE_FORK_LIB}" CACHE INTERNAL "Path to the WebGPU library binary" FORCE)
+    set(WEBGPU_RUNTIME_LIB "${VIVID_WGPU_NATIVE_UPSTREAM_LIB}" CACHE INTERNAL "Path to the WebGPU library binary" FORCE)
 endif()
 
 FetchContent_Declare(
