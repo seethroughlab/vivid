@@ -3056,6 +3056,16 @@ int main(int argc, char* argv[]) {
             graph_ui.toggle_example_browser();
         };
 
+        menu_cbs.on_open_graph_folder = [&]() {
+            auto folder = std::filesystem::path(graph.source_path()).parent_path().string();
+            if (!folder.empty())
+                vivid::open_url(folder);
+        };
+
+        menu_cbs.has_graph_path = [&]() -> bool {
+            return !graph.source_path().empty();
+        };
+
         menu_cbs.on_export = [&]() {
             if (graph.source_path().empty()) {
                 std::fprintf(stderr, "[vivid] Export: no graph loaded\n");

@@ -9,6 +9,7 @@ enum MenuTag : NSInteger {
     kMenuTagNewProject,
     kMenuTagOpen,
     kMenuTagOpenExample,
+    kMenuTagOpenGraphFolder,
     kMenuTagSave,
     kMenuTagPreferences,
     kMenuTagExport,
@@ -46,6 +47,7 @@ enum MenuTag : NSInteger {
         case kMenuTagNewProject:        if (_callbacks.on_new_project) _callbacks.on_new_project(); break;
         case kMenuTagOpen:              if (_callbacks.on_open) _callbacks.on_open(); break;
         case kMenuTagOpenExample:       if (_callbacks.on_open_example) _callbacks.on_open_example(); break;
+        case kMenuTagOpenGraphFolder:  if (_callbacks.on_open_graph_folder) _callbacks.on_open_graph_folder(); break;
         case kMenuTagSave:              if (_callbacks.on_save) _callbacks.on_save(); break;
         case kMenuTagPreferences:       if (_callbacks.on_preferences) _callbacks.on_preferences(); break;
         case kMenuTagExport:            if (_callbacks.on_export) _callbacks.on_export(); break;
@@ -76,6 +78,8 @@ enum MenuTag : NSInteger {
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
     switch (item.tag) {
+        case kMenuTagOpenGraphFolder:
+            return _callbacks.has_graph_path ? _callbacks.has_graph_path() : NO;
         case kMenuTagDeleteSelected:
             return _callbacks.has_selection ? _callbacks.has_selection() : NO;
         case kMenuTagEditMeta:
@@ -222,6 +226,14 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         openExampleItem.target = sDelegate;
         openExampleItem.tag = kMenuTagOpenExample;
         [fileMenu addItem:openExampleItem];
+
+        NSMenuItem* openGraphFolderItem = [[NSMenuItem alloc]
+            initWithTitle:@"Open Graph Folder"
+                   action:@selector(menuAction:)
+            keyEquivalent:@""];
+        openGraphFolderItem.target = sDelegate;
+        openGraphFolderItem.tag = kMenuTagOpenGraphFolder;
+        [fileMenu addItem:openGraphFolderItem];
 
         NSMenuItem* saveItem = [[NSMenuItem alloc]
             initWithTitle:@"Save"

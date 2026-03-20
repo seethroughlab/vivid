@@ -13,6 +13,7 @@ struct MenuCallbacks {
     std::function<void()> on_new_project;
     std::function<void()> on_open;
     std::function<void()> on_open_example;
+    std::function<void()> on_open_graph_folder;
     std::function<void()> on_save;
     std::function<void()> on_preferences;
     std::function<void()> on_export;
@@ -46,6 +47,7 @@ struct MenuCallbacks {
     std::function<bool()> is_midi_map_mode;
     std::function<bool()> has_selection;
     std::function<bool()> can_edit_meta;
+    std::function<bool()> has_graph_path;
     std::function<bool()> is_auto_check_updates;
 };
 
