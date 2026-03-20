@@ -1,5 +1,5 @@
 // Tests for synthesis & transformation audio operators:
-// RingMod, FmSynth, ParametricEQ, Vocoder.
+// RingMod, FmSynth, ParametricEQ.
 
 #include "runtime/operator_loader.h"
 
@@ -326,86 +326,6 @@ static void test_parametric_eq(const std::string& staging) {
 }
 
 // ---------------------------------------------------------------------------
-// Vocoder tests
-// ---------------------------------------------------------------------------
-
-static void test_vocoder(const std::string& staging) {
-    std::fprintf(stderr, "\n--- Vocoder ---\n");
-
-    vivid::OperatorLoader loader;
-    std::string path = staging + "/vocoder.dylib";
-    check(loader.load(path.c_str()), "load dylib");
-    if (!loader.is_loaded()) return;
-
-    const auto* desc = loader.descriptor();
-    check(desc != nullptr, "descriptor not null");
-    if (!desc) return;
-
-    check(std::strcmp(desc->name, "Vocoder") == 0, "descriptor name");
-    check(static_cast<int>(desc->param_count) == 3, "param_count = 3");
-    check(static_cast<int>(desc->port_count) == 4, "port_count = 4");
-
-    // Silence -> silence
-    {
-        void* inst = loader.create_instance();
-        TestContext tc;
-        tc.fill_silence();
-        for (int b = 0; b < 4; b++) {
-            tc.clear_output();
-            loader.process_audio(inst, &tc.ctx);
-        }
-        float r = rms(tc.output, TestContext::kFrames);
-        check(r < 0.001f, "silence in -> near-silence out");
-        check(is_finite(tc.output, TestContext::kFrames), "silence output finite");
-        loader.destroy_instance(inst);
-    }
-
-    // Dual-input signal production
-    {
-        void* inst = loader.create_instance();
-        TestContext tc;
-        for (int b = 0; b < 8; b++) {
-            tc.fill_sine(220.0f, 0.5f);   // modulator
-            tc.fill_sine2(440.0f, 0.5f);  // carrier
-            tc.clear_output();
-            loader.process_audio(inst, &tc.ctx);
-        }
-        float r = rms(tc.output, TestContext::kFrames);
-        check(r > 0.001f, "dual input signal RMS > 0");
-        check(is_finite(tc.output, TestContext::kFrames), "signal output finite");
-        loader.destroy_instance(inst);
-    }
-
-    // Extreme params
-    {
-        void* inst = loader.create_instance();
-        TestContext tc;
-        tc.fill_sine(220.0f, 0.5f);
-        tc.fill_sine2(440.0f, 0.5f);
-
-        std::vector<float> param_vals(desc->param_count);
-        for (uint32_t p = 0; p < desc->param_count; p++)
-            param_vals[p] = desc->params[p].max_value;
-        tc.ctx.param_values = param_vals.data();
-
-        for (int b = 0; b < 4; b++) {
-            tc.clear_output();
-            loader.process_audio(inst, &tc.ctx);
-        }
-        check(is_finite(tc.output, TestContext::kFrames), "max params -> finite");
-
-        for (uint32_t p = 0; p < desc->param_count; p++)
-            param_vals[p] = desc->params[p].min_value;
-        for (int b = 0; b < 4; b++) {
-            tc.clear_output();
-            loader.process_audio(inst, &tc.ctx);
-        }
-        check(is_finite(tc.output, TestContext::kFrames), "min params -> finite");
-        loader.destroy_instance(inst);
-    }
-}
-
-// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -416,7 +336,7 @@ int main() {
     std::filesystem::remove_all(staging);
     std::filesystem::create_directories(staging);
 
-    const char* ops[] = {"ring_mod", "fm_synth", "parametric_eq", "vocoder"};
+    const char* ops[] = {"ring_mod", "fm_synth", "parametric_eq"};
     for (const char* op : ops) {
         std::string src = build_dir + "/" + op + ".dylib";
         std::string dst = staging + "/" + op + ".dylib";
@@ -433,7 +353,6 @@ int main() {
     test_ring_mod(staging);
     test_fm_synth(staging);
     test_parametric_eq(staging);
-    test_vocoder(staging);
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
                  failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);

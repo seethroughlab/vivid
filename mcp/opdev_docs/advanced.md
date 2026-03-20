@@ -186,7 +186,7 @@ Reference operators for advanced patterns — study these when implementing spec
 | Pattern | Example Operator(s) |
 |---|---|
 | ChildOp\<T\> composites | `control/modulated_gain` |
-| Custom value ports | `control/sequencer`, `control/phase_to_midi` (use `VIVID_CUSTOM_VALUE_PORT`) |
+| Custom value ports | `control/step_counter`, `control/sample_hold` (use `VIVID_CUSTOM_VALUE_PORT`) |
 | Custom ref ports | `gpu/movie_loaded`, `gpu/movie_video_out`, `audio/movie_audio_out` (use `VIVID_CUSTOM_REF_PORT`) |
 | MIDI input | `control/midi_input`, `audio/midi_file_player` |
 | File drop params | `gpu/texture_loader`, `gpu/lut_apply`, `gpu/svg_render` |

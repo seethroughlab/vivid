@@ -284,10 +284,8 @@ add_vivid_operator(logic             operators/control/logic/logic.cpp)
 add_vivid_operator(gate              operators/control/gate/gate.cpp)
 add_vivid_operator(random            operators/control/random/random.cpp)
 add_vivid_operator(smooth            operators/control/smooth/smooth.cpp            EXTRA_LIBS webgpu)
-add_vivid_operator(euclidean         operators/control/euclidean/euclidean.cpp)
 add_vivid_operator(stack             operators/control/stack/stack.cpp)
 add_vivid_operator(alternate         operators/control/alternate/alternate.cpp)
-add_vivid_operator(pat_transform     operators/control/pat_transform/pat_transform.cpp)
 add_vivid_operator(modulated_gain   operators/control/modulated_gain/modulated_gain.cpp
                                     EXTRA_LIBS vivid_composable_ops)
 add_vivid_operator(spread_noise    operators/control/spread_noise/spread_noise.cpp)
@@ -299,9 +297,7 @@ add_vivid_operator(folder_list       operators/control/folder_list/folder_list.c
 add_vivid_operator(string_select     operators/control/string_select/string_select.cpp)
 add_vivid_operator(basename          operators/control/basename/basename.cpp)
 add_vivid_operator(step_counter      operators/control/step_counter/step_counter.cpp)
-add_vivid_operator(phase_to_midi     operators/control/phase_to_midi/phase_to_midi.cpp)
 add_vivid_operator(path_animate      operators/control/path_animate/path_animate.cpp)
-add_vivid_operator(sequencer         operators/control/sequencer/sequencer.cpp)
 add_vivid_operator(sample_hold       operators/control/sample_hold/sample_hold.cpp)
 add_vivid_operator(quantizer         operators/control/quantizer/quantizer.cpp)
 
@@ -546,10 +542,6 @@ add_vivid_operator(phaser         operators/audio/phaser/phaser.cpp
                    FACTORY_PRESETS operators/audio/phaser/factory_presets.json)
 add_vivid_operator(flanger        operators/audio/flanger/flanger.cpp
                    FACTORY_PRESETS operators/audio/flanger/factory_presets.json)
-add_vivid_operator(granular_synth operators/audio/granular_synth/granular_synth.cpp
-                   FACTORY_PRESETS operators/audio/granular_synth/factory_presets.json)
-add_vivid_operator(spectral_freeze operators/audio/spectral_freeze/spectral_freeze.cpp
-                    FACTORY_PRESETS operators/audio/spectral_freeze/factory_presets.json)
 add_vivid_operator(stereo_pan_width operators/audio/stereo_pan_width/stereo_pan_width.cpp
                    FACTORY_PRESETS operators/audio/stereo_pan_width/factory_presets.json)
 add_vivid_operator(ping_pong_delay  operators/audio/ping_pong_delay/ping_pong_delay.cpp
@@ -558,8 +550,6 @@ add_vivid_operator(fm_synth         operators/audio/fm_synth/fm_synth.cpp
                    FACTORY_PRESETS  operators/audio/fm_synth/factory_presets.json)
 add_vivid_operator(ring_mod         operators/audio/ring_mod/ring_mod.cpp
                    FACTORY_PRESETS  operators/audio/ring_mod/factory_presets.json)
-add_vivid_operator(vocoder          operators/audio/vocoder/vocoder.cpp
-                   FACTORY_PRESETS  operators/audio/vocoder/factory_presets.json)
 add_vivid_operator(parametric_eq    operators/audio/parametric_eq/parametric_eq.cpp
                    FACTORY_PRESETS  operators/audio/parametric_eq/factory_presets.json)
 add_vivid_operator(audio_analysis   operators/audio/audio_analysis/audio_analysis.cpp)
@@ -1439,16 +1429,6 @@ target_link_libraries(test_modulation_ops PRIVATE vivid_operator_api webgpu yyjs
 add_dependencies(test_modulation_ops flanger chorus phaser)
 add_test(NAME test_modulation_ops COMMAND test_modulation_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# Granular & spectral operator tests (GranularSynth, SpectralFreeze)
-add_executable(test_granular_spectral_ops
-    tests/test_granular_spectral_ops.cpp
-    src/runtime/operator_loader.cpp
-)
-target_include_directories(test_granular_spectral_ops PRIVATE src)
-target_link_libraries(test_granular_spectral_ops PRIVATE vivid_operator_api webgpu yyjson)
-add_dependencies(test_granular_spectral_ops granular_synth spectral_freeze)
-add_test(NAME test_granular_spectral_ops COMMAND test_granular_spectral_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-
 # Spatial operator tests (StereoPanWidth, PingPongDelay)
 add_executable(test_spatial_ops
     tests/test_spatial_ops.cpp
@@ -1459,14 +1439,14 @@ target_link_libraries(test_spatial_ops PRIVATE vivid_operator_api webgpu yyjson)
 add_dependencies(test_spatial_ops stereo_pan_width ping_pong_delay)
 add_test(NAME test_spatial_ops COMMAND test_spatial_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# Synthesis & transformation operator tests (FmSynth, RingMod, Vocoder, ParametricEQ)
+# Synthesis & transformation operator tests (FmSynth, RingMod, ParametricEQ)
 add_executable(test_synth_transform_ops
     tests/test_synth_transform_ops.cpp
     src/runtime/operator_loader.cpp
 )
 target_include_directories(test_synth_transform_ops PRIVATE src)
 target_link_libraries(test_synth_transform_ops PRIVATE vivid_operator_api webgpu yyjson)
-add_dependencies(test_synth_transform_ops fm_synth ring_mod vocoder parametric_eq)
+add_dependencies(test_synth_transform_ops fm_synth ring_mod parametric_eq)
 add_test(NAME test_synth_transform_ops COMMAND test_synth_transform_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # GPU operator plugin for testing (solid color fill)
@@ -1590,7 +1570,7 @@ add_dependencies(test_demo_graphs
     # control
     lfo clock math envelope midi_input fft_analysis
     logic gate random smooth
-    euclidean stack alternate pat_transform
+    stack alternate
     modulated_gain spread_noise
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)
     noise shape composite

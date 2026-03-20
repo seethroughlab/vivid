@@ -12,6 +12,8 @@ Vivid is the first general-purpose creative coding platform where audio and visu
 
 Vivid's value is the environment, not the operators. In the age of LLM-assisted development, writing code that does exactly what you want is cheap. What's expensive is making experimentation and discovery possible and productive. Vivid ships a minimal set of seed operators — just enough to validate each domain and serve as examples for the LLM — and relies on LLM-generated operators for everything else. The framework is the product; the operators are emergent.
 
+**Core Admission Policy (package-first):** New operators go into domain packages by default (`vivid-sequencers`, `vivid-sampler`, etc.), not core. An operator belongs in core only if it (a) is a fundamental building block that most graphs depend on (e.g. LFO, Clock, Math, Gain), or (b) provides an essential example pattern for the LLM that no package operator can substitute. Specialized or domain-specific operators — even widely used ones — belong in packages. This keeps the core minimal and the package ecosystem rich.
+
 ### 1.1 What Vivid Is For
 
 - Live audiovisual performances
@@ -717,7 +719,7 @@ The declarative graph representation enabling LLM-driven patching. Needs to capt
 
 The decision to handle all automation and logic as visible Control operators (no scripting layer) requires a sufficient set of seed control operators for the LLM to use as examples and building blocks. What is the minimum viable seed set? LFO, Clock, Math, and Envelope are likely sufficient — the LLM generates specialized control operators (Sequencer, Pattern, Gate, Random, Smooth/Lerp) on demand when needed. The question is whether any common automation patterns are awkward to express as node graphs even with LLM-generated operators.
 
-> **Resolved:** 30+ control operators shipped including LFO, Clock, Math, Envelope, Gate, Random, Smooth, Euclidean, MIDI Input, OSC In/Out, Keyboard, Mouse, Logic, FFT Analysis, PatTransform, Stack, Alternate, StepCounter, and more.
+> **Resolved:** 20+ core control operators shipped including LFO, Clock, Math, Envelope, Gate, Random, Smooth, MIDI Input, OSC In/Out, Keyboard, Mouse, Logic, FFT Analysis, Stack, Alternate, StepCounter, and more. Specialized operators (Euclidean, PatTransform, Sequencer, PhaseToMidi) live in the `vivid-sequencers` package; audio DSP operators (GranularSynth, Vocoder, SpectralFreeze) live in `vivid-sampler`.
 
 **WebSocket API Scope**
 

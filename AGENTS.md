@@ -122,12 +122,11 @@ vivid/
 │   ├── audio/                # 12 operators: oscillator, gain, delay, reverb,
 │   │                         #   bitcrush, distortion, filter, mixer, noise,
 │   │                         #   spread_adsr, spread_lfo, movie_audio_out
-│   ├── control/              # 24 operators: lfo, clock, math, envelope, midi_input,
-│   │                         #   fft_analysis, euclidean, pat_transform, stack,
-│   │                         #   alternate, gate, logic, random, smooth,
-│   │                         #   modulated_gain, spread_noise, mouse, keyboard,
-│   │                         #   basename, folder_list, osc_in, osc_out,
-│   │                         #   step_counter, string_select
+│   ├── control/              # 20 operators: lfo, clock, math, envelope, midi_input,
+│   │                         #   fft_analysis, stack, alternate, gate, logic,
+│   │                         #   random, smooth, modulated_gain, spread_noise,
+│   │                         #   mouse, keyboard, basename, folder_list,
+│   │                         #   osc_in, osc_out, step_counter, string_select
 │   └── shared/               # Shared operator modules (media_session, movie_audio, movie_decode)
 ├── filters/                  # 25 self-describing WGSL shader presets
 ├── graphs/                   # 47 demo/example graph JSON files
