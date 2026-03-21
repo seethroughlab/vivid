@@ -351,6 +351,20 @@ typedef void (*VividMainThreadUpdateFn)(void* instance, double time,
                                         const char** file_param_values,
                                         uint32_t file_param_count);
 
+// ---------------------------------------------------------------------------
+// Port type compatibility helpers
+// ---------------------------------------------------------------------------
+
+static inline int vivid_is_control_type(VividPortType t) {
+    return t == VIVID_PORT_FLOAT || t == VIVID_PORT_SPREAD ||
+           t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_SPREAD;
+}
+
+static inline int vivid_port_type_compatible(VividPortType a, VividPortType b) {
+    if (a == b) return 1;
+    return vivid_is_control_type(a) && vivid_is_control_type(b);
+}
+
 #ifdef __cplusplus
 }
 #endif

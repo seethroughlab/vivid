@@ -170,8 +170,7 @@ inline void draw_checkbox(
 // --- Port type compatibility ---
 
 inline bool is_control_type(VividPortType t) {
-    return t == VIVID_PORT_FLOAT || t == VIVID_PORT_SPREAD ||
-           t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_SPREAD;
+    return vivid_is_control_type(t) != 0;
 }
 
 inline bool is_numeric_type(VividPortType t) {
@@ -179,8 +178,7 @@ inline bool is_numeric_type(VividPortType t) {
 }
 
 inline bool port_type_compatible(VividPortType a, VividPortType b) {
-    if (a == b) return true;
-    return is_control_type(a) && is_control_type(b);
+    return vivid_port_type_compatible(a, b) != 0;
 }
 
 // --- Create operator modal helpers ---

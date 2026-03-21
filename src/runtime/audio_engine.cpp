@@ -267,7 +267,8 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     cw.to_port_idx = to_custom_ord;
                     cw.type_id = from_ptype;
                     audio_custom_wires_.push_back(cw);
-                } else {
+                } else if (vivid_port_type_compatible(from_ptype, to_ptype)) {
+                    // Compatible types (e.g. AUDIO→AUDIO) — generic wire
                     AudioWire w;
                     w.from_node_idx = fi;
                     w.from_port_idx = fp_it->second;
@@ -275,6 +276,13 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     w.to_port_idx = tp_it->second;
                     w.scale = remap_to_scale(conn);
                     wires_.push_back(w);
+                } else {
+                    // Type mismatch — warn and skip
+                    std::fprintf(stderr,
+                        "[vivid] AudioEngine: port type mismatch: %s/%s (type 0x%x) -> %s/%s (type 0x%x); wire skipped\n",
+                        conn.from_node.c_str(), conn.from_port.c_str(), from_ptype,
+                        conn.to_node.c_str(), conn.to_port.c_str(), to_ptype);
+                    continue;
                 }
 
                 adj[fi].push_back(ti);
