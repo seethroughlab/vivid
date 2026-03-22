@@ -636,13 +636,9 @@ int NodeGraphUI::hit_test_binding_line(float sx, float sy) const {
         float ssx = gx_to_sx(bl.gsx), ssy = gy_to_sy(bl.gsy);
         float sex = gx_to_sx(bl.gex), sey = gy_to_sy(bl.gey);
 
-        int found = -1;
-        traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
-            [&](float x0, float y0, float x1, float y1) {
-                if (found < 0 && point_seg_dist2(sx, sy, x0, y0, x1, y1) < thresh2)
-                    found = i;
-            });
-        if (found >= 0) return found;
+        // Straight-line hit test (binding lines are drawn as straight dashes)
+        if (point_seg_dist2(sx, sy, ssx, ssy, sex, sey) < thresh2)
+            return i;
     }
     return -1;
 }

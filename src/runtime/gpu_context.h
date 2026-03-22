@@ -1,9 +1,10 @@
 #pragma once
 
 #include <webgpu/webgpu.h>
-#include <GLFW/glfw3.h>
 #include <cstdint>
 #include <string>
+
+struct GLFWwindow;
 
 namespace vivid {
 

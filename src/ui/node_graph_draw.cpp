@@ -2307,8 +2307,28 @@ void NodeGraphUI::draw_binding_lines(Renderer2D& tr) {
             float sex = gx_to_sx(gex), sey = gy_to_sy(gey);
             float wire_th = style_.wire_param_thickness * zoom_;
 
-            draw_dashed_wire(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th,
-                             dcol[0], dcol[1], dcol[2], alpha);
+            // Straight dashed line (not bezier/z-route) for binding lines
+            {
+                float dx = sex - ssx, dy = sey - ssy;
+                float seg_len = std::sqrt(dx * dx + dy * dy);
+                if (seg_len > 0.001f) {
+                    float nx = dx / seg_len, ny = dy / seg_len;
+                    float dash_cycle = kDashOn + kDashOff;
+                    float consumed = 0.0f;
+                    while (consumed < seg_len) {
+                        float phase = std::fmod(consumed, dash_cycle);
+                        bool on = (phase < kDashOn);
+                        float remain = on ? (kDashOn - phase) : (dash_cycle - phase);
+                        float chunk = std::min(remain, seg_len - consumed);
+                        if (on) {
+                            tr.draw_line(ssx + nx * consumed, ssy + ny * consumed,
+                                         ssx + nx * (consumed + chunk), ssy + ny * (consumed + chunk),
+                                         wire_th, dcol[0], dcol[1], dcol[2], alpha);
+                        }
+                        consumed += chunk;
+                    }
+                }
+            }
 
             // Label badge at midpoint
             float mid_sx = (ssx + sex) * 0.5f;
