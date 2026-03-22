@@ -50,12 +50,12 @@ struct Keyboard : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"held",     VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"pressed",  VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"released", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"shift",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"ctrl",     VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"alt",      VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"held",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"pressed",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"released", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"shift",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"ctrl",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"alt",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {

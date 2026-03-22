@@ -7,8 +7,9 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 9u
-// v9: bool→uint8_t in GPU/thumbnail contexts, fixed-width enums, removed C++ default initializers.
+#define VIVID_OPERATOR_ABI_VERSION 13u
+// v13: Added role_binding_count/role_binding_configs to VividGpuContext.
+// v12: Replaced embedded slots with role bindings (VividRoleBindingDescriptor/VividRoleBindingRuntimeConfig).
 // The ABI version catches stale dylibs during hot-reload — it is not a cross-version compatibility promise.
 
 // ---------------------------------------------------------------------------
@@ -37,7 +38,8 @@ typedef uint32_t VividDisplayHint;
 // Channel kinds — reflect the logical data type on a port.
 typedef uint32_t VividPortType;
 
-#define VIVID_PORT_FLOAT          0u  // float value (control_float/int/bool all route identically)
+#define VIVID_PORT_SIGNAL         0u  // continuous numeric value (scalar or buffer depending on domain)
+#define VIVID_PORT_FLOAT          VIVID_PORT_SIGNAL  // deprecated alias
 #define VIVID_PORT_AUDIO          1u  // audio sample buffer
 #define VIVID_PORT_SPREAD         2u  // variable-length float array
 #define VIVID_PORT_STRING         3u  // UTF-8 string
@@ -49,7 +51,8 @@ typedef uint32_t VividPortDirection;
 #define VIVID_PORT_OUTPUT  1u
 
 typedef uint32_t VividPortTransport;
-#define VIVID_PORT_TRANSPORT_SCALAR         0u  // float-like main-thread copy
+#define VIVID_PORT_TRANSPORT_SIGNAL         0u  // numeric value (scalar or buffer depending on domain)
+#define VIVID_PORT_TRANSPORT_SCALAR         VIVID_PORT_TRANSPORT_SIGNAL  // deprecated alias
 #define VIVID_PORT_TRANSPORT_AUDIO_BUFFER   1u  // audio sample buffers
 #define VIVID_PORT_TRANSPORT_SPREAD         2u  // float spread copy
 #define VIVID_PORT_TRANSPORT_STRING         3u  // string copy
@@ -57,6 +60,11 @@ typedef uint32_t VividPortTransport;
 #define VIVID_PORT_TRANSPORT_TEXTURE        5u  // GPU texture/view routing
 #define VIVID_PORT_TRANSPORT_CUSTOM_VALUE   6u  // memcpy-by-value snapshot
 #define VIVID_PORT_TRANSPORT_CUSTOM_REF     7u  // opaque shared-handle/reference
+
+
+typedef uint32_t VividRoleScope;
+#define VIVID_ROLE_SHARED     0u
+#define VIVID_ROLE_PER_VOICE  1u
 
 // ---------------------------------------------------------------------------
 // Descriptors
@@ -93,10 +101,36 @@ typedef struct VividPortDescriptor {
     uint32_t           payload_size; // 0 for built-in types
     const char*        type_name;    // C++ type name, NULL for built-ins
     uint8_t            channels;     // 0=auto, 1=mono, 2=stereo, etc.
-    float              default_value;// default for VIVID_PORT_FLOAT inputs
+    float              default_value;// default for VIVID_PORT_SIGNAL inputs
     const char*        stable_type_id; // stable namespaced id for custom types, NULL for built-ins
     const char*        semantic_tag;   // e.g. "beat_phase", "gate", "trigger", "midi", NULL if unset
 } VividPortDescriptor;
+
+
+typedef struct VividRoleBindingDescriptor {
+    const char*    role_id;                            // unique within operator, e.g. "amp_env"
+    const char*    label;                              // display label, e.g. "Amplitude Envelope"
+    VividDomain    accepted_domain;                    // VIVID_DOMAIN_CONTROL for v1
+    VividRoleScope runtime_scope;                      // VIVID_ROLE_SHARED or VIVID_ROLE_PER_VOICE
+    const char**   allowed_operator_types;             // NULL = any bindable control op
+    uint32_t       allowed_operator_type_count;        // 0 = any
+    const char**   preferred_output_semantic_tags;     // hint for auto-wiring, e.g. {"envelope"}
+    uint32_t       preferred_output_semantic_tag_count;
+    const char*    preferred_output_name;              // usually "value"
+    const char*    default_operator_type;              // e.g. "Envelope", NULL = none
+} VividRoleBindingDescriptor;
+
+
+typedef struct VividRoleBindingRuntimeConfig {
+    const char*  role_id;
+    const char*  bound_node_type;    // "" if unbound
+    const char*  bound_output_name;  // "" if unbound
+    void*      (*create_fn)(void);   // returns OperatorBase*, NULL if unbound
+    void       (*destroy_fn)(void*); // paired destroy, NULL if unbound
+    uint32_t     param_count;
+    const char** param_names;        // [param_count]
+    const float* param_values;       // [param_count]
+} VividRoleBindingRuntimeConfig;
 
 typedef struct VividOperatorDescriptor {
     const char*               name;
@@ -108,6 +142,8 @@ typedef struct VividOperatorDescriptor {
     int                       time_dependent;  // 1 if operator reads ctx->time, 0 otherwise
     int                       has_process_audio; // 1 if operator inherits AudioOperatorBase
     int                       has_process_gpu;   // 1 if operator inherits GpuOperatorBase
+    uint32_t                            role_binding_count;
+    const VividRoleBindingDescriptor*   role_bindings;
 } VividOperatorDescriptor;
 
 // ---------------------------------------------------------------------------
@@ -202,6 +238,9 @@ typedef struct VividAudioContext {
     const char**      file_param_values;
     uint32_t          file_param_count;
     const VividSharedHandleService* shared_handles;
+    // Role binding runtime configuration
+    uint32_t                                role_binding_count;
+    const VividRoleBindingRuntimeConfig*    role_binding_configs;
 } VividAudioContext;
 
 // ---------------------------------------------------------------------------
@@ -237,6 +276,10 @@ typedef struct VividProcessContext {
     // Leave as 0 to keep the current size (no action taken).
     uint32_t  preferred_tex_width;
     uint32_t  preferred_tex_height;
+
+    // Role binding runtime configuration
+    uint32_t                                role_binding_count;
+    const VividRoleBindingRuntimeConfig*    role_binding_configs;
 } VividProcessContext;
 
 // Forward declaration — full definition in gpu_operator.h (requires WebGPU types)
@@ -351,17 +394,24 @@ typedef void (*VividMainThreadUpdateFn)(void* instance, double time,
                                         const char** file_param_values,
                                         uint32_t file_param_count);
 
+// Bindable operator factory entry points (for bindable control operators)
+typedef void*  (*VividCreateBindableFn)(void);
+typedef void   (*VividDestroyBindableFn)(void* instance);
+
 // ---------------------------------------------------------------------------
 // Port type compatibility helpers
 // ---------------------------------------------------------------------------
 
 static inline int vivid_is_control_type(VividPortType t) {
-    return t == VIVID_PORT_FLOAT || t == VIVID_PORT_SPREAD ||
+    return t == VIVID_PORT_SIGNAL || t == VIVID_PORT_SPREAD ||
            t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_SPREAD;
 }
 
 static inline int vivid_port_type_compatible(VividPortType a, VividPortType b) {
     if (a == b) return 1;
+    /* SIGNAL ↔ AUDIO: audio-domain SIGNAL ports use 1-channel buffers */
+    if ((a == VIVID_PORT_SIGNAL && b == VIVID_PORT_AUDIO) ||
+        (a == VIVID_PORT_AUDIO  && b == VIVID_PORT_SIGNAL)) return 1;
     return vivid_is_control_type(a) && vivid_is_control_type(b);
 }
 

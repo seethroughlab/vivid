@@ -13,13 +13,13 @@ struct Alternate : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_FLOAT,  VIVID_PORT_INPUT});   // in float[0]
+        out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});   // in float[0]
         out.push_back({"a",          VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[0]
         out.push_back({"b",          VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[1]
         out.push_back({"c",          VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[2]
         out.push_back({"d",          VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // in spread[3]
         out.push_back({"output",     VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // out spread[0]
-        out.push_back({"index",      VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // out float[0]
+        out.push_back({"index",      VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out float[0]
     }
 
     void process(const VividProcessContext* ctx) override {

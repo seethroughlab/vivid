@@ -182,8 +182,8 @@ struct MovieLoaded : vivid::GpuOperatorBase {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
-        out.push_back({"time", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"speed", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"time", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"speed", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
         out.push_back(VIVID_CUSTOM_REF_PORT("media_clock", VIVID_PORT_OUTPUT, vivid::MediaStreamV1));
     }
 

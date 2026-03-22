@@ -17,9 +17,9 @@ struct SampleHold : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"signal",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"trigger", VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"value",   VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"signal",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"trigger", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"value",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
     void process(const VividProcessContext* ctx) override {

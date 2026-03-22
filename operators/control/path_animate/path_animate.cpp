@@ -79,12 +79,12 @@ struct PathAnimate : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"phase_in", VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"trigger",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"x",        VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"y",        VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"angle",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"progress", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"phase_in", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"trigger",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"x",        VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"y",        VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"angle",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"progress", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
     // -------------------------------------------------------------------------
