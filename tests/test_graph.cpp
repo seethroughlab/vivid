@@ -1721,6 +1721,154 @@ int main() {
         check(g.sticky_notes().empty(), "no sticky notes from old graph");
     }
 
+    // =====================================================================
+    // Test: Role binding basic round-trip
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test: Role binding basic round-trip ===\n");
+        vivid::Graph g;
+        g.add_node("synth1", "WavetableSynth");
+        g.add_node("env1", "Envelope");
+        auto* n = g.find_node("synth1");
+        check(n != nullptr, "synth1 created");
+        vivid::NodeDef::RoleBindingState rbs;
+        rbs.target_node_id = "env1";
+        rbs.target_output_name = "out";
+        n->role_bindings["amp_envelope"] = rbs;
+
+        std::string json;
+        check(g.save_to_string(json), "save with role binding");
+        vivid::Graph g2;
+        check(g2.load_from_string(json.c_str(), json.size()), "reload with role binding");
+        const auto* n2 = g2.find_node("synth1");
+        check(n2 != nullptr, "synth1 found after reload");
+        if (n2) {
+            auto it = n2->role_bindings.find("amp_envelope");
+            check(it != n2->role_bindings.end(), "role binding amp_envelope found");
+            if (it != n2->role_bindings.end()) {
+                check(it->second.target_node_id == "env1", "target_node_id = env1");
+                check(it->second.target_output_name == "out", "target_output_name = out");
+            }
+        }
+    }
+
+    // =====================================================================
+    // Test: Backward compat — no role_bindings key
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test: Backward compat no role_bindings ===\n");
+        const char* json = R"({
+            "nodes": { "n1": { "type": "Oscillator" } },
+            "connections": []
+        })";
+        vivid::Graph g;
+        check(g.load_from_string(json), "load graph without role_bindings");
+        const auto* n = g.find_node("n1");
+        check(n != nullptr, "n1 found");
+        if (n) {
+            check(n->role_bindings.empty(), "role_bindings empty when absent from JSON");
+        }
+    }
+
+    // =====================================================================
+    // Test: Multiple role bindings round-trip
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test: Multiple role bindings round-trip ===\n");
+        vivid::Graph g;
+        g.add_node("synth1", "WavetableSynth");
+        g.add_node("env1", "Envelope");
+        g.add_node("lfo1", "LFO");
+        auto* n = g.find_node("synth1");
+        check(n != nullptr, "synth1 created");
+        n->role_bindings["amp_envelope"] = {"env1", "out"};
+        n->role_bindings["pitch_mod"] = {"lfo1", "signal"};
+
+        std::string json;
+        check(g.save_to_string(json), "save with multiple role bindings");
+        vivid::Graph g2;
+        check(g2.load_from_string(json.c_str(), json.size()), "reload with multiple role bindings");
+        const auto* n2 = g2.find_node("synth1");
+        check(n2 != nullptr, "synth1 found");
+        if (n2) {
+            check(n2->role_bindings.size() == 2, "two role bindings present");
+            auto it1 = n2->role_bindings.find("amp_envelope");
+            check(it1 != n2->role_bindings.end(), "amp_envelope found");
+            if (it1 != n2->role_bindings.end()) {
+                check(it1->second.target_node_id == "env1", "amp_envelope target = env1");
+                check(it1->second.target_output_name == "out", "amp_envelope output = out");
+            }
+            auto it2 = n2->role_bindings.find("pitch_mod");
+            check(it2 != n2->role_bindings.end(), "pitch_mod found");
+            if (it2 != n2->role_bindings.end()) {
+                check(it2->second.target_node_id == "lfo1", "pitch_mod target = lfo1");
+                check(it2->second.target_output_name == "signal", "pitch_mod output = signal");
+            }
+        }
+    }
+
+    // =====================================================================
+    // Test: Node removal clears role bindings referencing removed node
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test: Node removal clears role bindings ===\n");
+        vivid::Graph g;
+        g.add_node("synth1", "WavetableSynth");
+        g.add_node("env1", "Envelope");
+        g.add_node("lfo1", "LFO");
+        auto* n = g.find_node("synth1");
+        check(n != nullptr, "synth1 created");
+        n->role_bindings["amp_envelope"] = {"env1", "out"};
+        n->role_bindings["pitch_mod"] = {"lfo1", "signal"};
+
+        // Remove env1 — should clear amp_envelope binding but keep pitch_mod
+        check(g.remove_node("env1"), "remove env1");
+        const auto* n2 = g.find_node("synth1");
+        check(n2 != nullptr, "synth1 still exists");
+        if (n2) {
+            check(n2->role_bindings.count("amp_envelope") == 0,
+                  "amp_envelope binding cleared after target removed");
+            check(n2->role_bindings.count("pitch_mod") == 1,
+                  "pitch_mod binding preserved (different target)");
+        }
+    }
+
+    // =====================================================================
+    // Test: Schema version 2 round-trip
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test: Schema version 2 round-trip ===\n");
+        vivid::Graph g;
+        g.add_node("n1", "Oscillator");
+        std::string json;
+        check(g.save_to_string(json), "save graph");
+        // Verify saved JSON contains schema_version 2
+        check(json.find("\"schema_version\": 2") != std::string::npos ||
+              json.find("\"schema_version\":2") != std::string::npos,
+              "saved JSON has schema_version 2");
+        vivid::Graph g2;
+        check(g2.load_from_string(json.c_str(), json.size()), "reload schema v2 graph");
+    }
+
+    // =====================================================================
+    // Test: Legacy embedded_ops graph rejected
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test: Legacy embedded_ops graph rejected ===\n");
+        const char* json = R"({
+            "schema_version": 1,
+            "nodes": {
+                "synth1": {
+                    "type": "WavetableSynth",
+                    "embedded_ops": { "env": { "type": "Envelope" } }
+                }
+            },
+            "connections": []
+        })";
+        vivid::Graph g;
+        check(!g.load_from_string(json), "graph with embedded_ops is rejected");
+    }
+
     // --- Cleanup temp files ---
     std::remove("/tmp/vivid_test_valid.json");
     std::remove("/tmp/vivid_test_layout.json");

@@ -298,19 +298,19 @@ int main() {
 
         GraphSnapshot chooser_snap;
         chooser_snap.operator_catalog["insert"] = make_op({
-            PortInfo{"in", VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
-            PortInfo{"out", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT},
+            PortInfo{"in", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
+            PortInfo{"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT},
         });
 
         NodeSnapshot src;
         src.node_id = "src";
-        src.op_info = make_op({PortInfo{"out", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT}});
+        src.op_info = make_op({PortInfo{"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT}});
         chooser_snap.node_index[src.node_id] = chooser_snap.nodes.size();
         chooser_snap.nodes.push_back(src);
 
         NodeSnapshot dst;
         dst.node_id = "dst";
-        dst.op_info = make_op({PortInfo{"in", VIVID_PORT_FLOAT, VIVID_PORT_INPUT}});
+        dst.op_info = make_op({PortInfo{"in", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT}});
         chooser_snap.node_index[dst.node_id] = chooser_snap.nodes.size();
         chooser_snap.nodes.push_back(dst);
 
@@ -324,8 +324,8 @@ int main() {
         ui.update(chooser_snap);
         ui.chooser_insert_wire_ = true;
         ui.chooser_insert_conn_ = conn;
-        ui.insert_wire_source_type_ = VIVID_PORT_FLOAT;
-        ui.insert_wire_dest_type_ = VIVID_PORT_FLOAT;
+        ui.insert_wire_source_type_ = VIVID_PORT_SIGNAL;
+        ui.insert_wire_dest_type_ = VIVID_PORT_SIGNAL;
         ui.chooser_cursor_gx_ = 10.0f;
         ui.chooser_cursor_gy_ = 20.0f;
 

@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
             bool has_freq_cv = false;
             for (uint32_t i = 0; i < desc->port_count; ++i) {
                 if (std::string(desc->ports[i].name) == "freq_cv" &&
-                    desc->ports[i].type == VIVID_PORT_FLOAT &&
+                    desc->ports[i].type == VIVID_PORT_SIGNAL &&
                     desc->ports[i].direction == VIVID_PORT_INPUT) {
                     has_freq_cv = true;
                     break;

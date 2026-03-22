@@ -446,10 +446,10 @@ int main() {
         req.name = "multi_port";
         req.domain = VIVID_DOMAIN_CONTROL;
         req.ports = {
-            {"signal",    VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
-            {"modulator", VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
-            {"result",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT},
-            {"error",     VIVID_PORT_FLOAT,   VIVID_PORT_OUTPUT},
+            {"signal",    VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
+            {"modulator", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
+            {"result",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT},
+            {"error",     VIVID_PORT_SIGNAL,   VIVID_PORT_OUTPUT},
         };
 
         auto result = vivid::OperatorCreator::create(req, tmp);
@@ -462,7 +462,7 @@ int main() {
         check(src.find("\"error\"") != std::string::npos, "output port 'error'");
         check(src.find("VIVID_PORT_INPUT") != std::string::npos, "has VIVID_PORT_INPUT");
         check(src.find("VIVID_PORT_OUTPUT") != std::string::npos, "has VIVID_PORT_OUTPUT");
-        check(src.find("VIVID_PORT_FLOAT") != std::string::npos, "has float port type (int maps to float)");
+        check(src.find("VIVID_PORT_SIGNAL") != std::string::npos, "has float port type (int maps to float)");
 
         fs::remove_all(tmp);
     }
@@ -666,7 +666,7 @@ int main() {
         req.name = "builtin_port_bad_metadata";
         req.domain = VIVID_DOMAIN_CONTROL;
         req.ports = {
-            {"value_in", VIVID_PORT_FLOAT, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
+            {"value_in", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_CUSTOM_REF,
                 16, "IgnoredType", "", true},
         };
 
@@ -692,9 +692,9 @@ int main() {
         req.name = "mixed_op";
         req.domain = VIVID_DOMAIN_CONTROL;
         req.ports = {
-            {"in_a", VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
+            {"in_a", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
             {"in_b", VIVID_PORT_SPREAD, VIVID_PORT_INPUT},
-            {"out",  VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT},
+            {"out",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT},
         };
         req.params = {
             {"gain", VIVID_PARAM_FLOAT, 1.0f, 0.0f, 2.0f},
@@ -728,8 +728,8 @@ int main() {
         req.name = "dup_port_op";
         req.domain = VIVID_DOMAIN_CONTROL;
         req.ports = {
-            {"input", VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
-            {"input", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT},  // duplicate name
+            {"input", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
+            {"input", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT},  // duplicate name
         };
 
         auto result = vivid::OperatorCreator::create(req, tmp);
@@ -753,7 +753,7 @@ int main() {
         req.name = "empty_name_op";
         req.domain = VIVID_DOMAIN_CONTROL;
         req.ports = {
-            {"", VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
+            {"", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
         };
 
         auto result = vivid::OperatorCreator::create(req, tmp);
