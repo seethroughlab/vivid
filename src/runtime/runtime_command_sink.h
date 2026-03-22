@@ -500,6 +500,17 @@ public:
         return true;
     }
 
+    void set_role_binding(const std::string& node_id, const std::string& role_id,
+                          const std::string& target_node_id,
+                          const std::string& target_output_name) override {
+        auto r = api_.set_role_binding(node_id, role_id, target_node_id, target_output_name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void clear_role_binding(const std::string& node_id, const std::string& role_id) override {
+        auto r = api_.clear_role_binding(node_id, role_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+
     void set_solo(const std::string& node_id) override {
         api_.set_solo(node_id);
     }

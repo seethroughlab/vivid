@@ -59,14 +59,21 @@ struct AudioNodeState {
     std::vector<float*> in_ptrs;
     std::vector<float*> out_ptrs;
 
-    // --- Float CV inputs (cross-domain bridge, VIVID_PORT_FLOAT inputs on audio ops) ---
+    // --- Float CV inputs (cross-domain bridge, VIVID_PORT_SIGNAL inputs on audio ops) ---
     std::vector<float> float_input_defaults;  // per FLOAT input port, from descriptor default_value
     std::vector<float> float_input_values;    // reset to defaults each control tick, then overwritten by wires
     uint32_t float_input_count = 0;
 
-    // --- Float outputs (audio-domain FLOAT output ports — scalar values) ---
-    std::vector<float> float_output_values;   // [float_output_ordinal] — written by process_audio
+    // --- Float outputs (audio-domain SIGNAL/FLOAT output ports — scalar values) ---
+    std::vector<float> float_output_values;   // [float_output_ordinal] — written by process_audio or auto-extracted
     uint32_t float_output_count = 0;
+
+    // --- SIGNAL output auto-extraction (port_idx → float_ordinal) ---
+    // For SIGNAL output ports that also have output buffers, the engine auto-copies
+    // the last sample from output_buffers[port_idx] to float_output_values[float_ordinal]
+    // after process_audio(). This bridges audio-rate output to scalar consumers.
+    struct SignalOutputMapping { uint32_t port_idx; uint32_t float_ordinal; };
+    std::vector<SignalOutputMapping> signal_output_extractions;
 
     // --- Custom outputs (audio-domain custom output ports) ---
     std::vector<void*> custom_output_ptrs;    // [custom_output_ordinal] — set by process_audio
@@ -183,12 +190,22 @@ struct CustomPortSnapshot {
     }
 };
 
+// Snapshot of role binding runtime configs for one audio node.
+// Contains a copy of the flat VividRoleBindingRuntimeConfig array.
+// Pointers within the configs (param_names, param_values, role_id, bound_node_type)
+// point into scheduler NodeState storage, which is stable between build() calls.
+struct RoleBindingSnapshot {
+    uint32_t count = 0;
+    const VividRoleBindingRuntimeConfig* configs = nullptr; // points into scheduler NodeState
+};
+
 struct ParamSnapshot {
     std::vector<std::vector<float>> node_params;  // [audio_node_idx][param_idx]
     std::vector<std::vector<float>> float_input_values; // [audio_node_idx][float_input_ordinal]
     std::vector<std::vector<SpreadSnapshot>> spread_inputs; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<std::string>> input_string_values; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<CustomPortSnapshot>> custom_inputs; // [audio_node_idx][input_port_idx]
+    std::vector<RoleBindingSnapshot> role_bindings; // [audio_node_idx]
     std::vector<bool> solo_active_set;  // empty = no solo; [audio_node_idx] = active
 };
 

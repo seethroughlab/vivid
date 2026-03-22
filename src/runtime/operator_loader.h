@@ -53,6 +53,12 @@ public:
     void main_thread_update(void* instance, double time,
                             const char** file_param_values, uint32_t file_param_count) const;
 
+    bool has_create_bindable() const { return create_bindable_fn_ != nullptr; }
+    void* create_bindable_instance() const;
+    void  destroy_bindable_instance(void* instance) const;
+    VividCreateBindableFn  raw_create_bindable_fn()  const { return create_bindable_fn_; }
+    VividDestroyBindableFn raw_destroy_bindable_fn() const { return destroy_bindable_fn_; }
+
     bool is_loaded() const { return handle_ != nullptr || desc_fn_ != nullptr || dd_config_ != nullptr; }
     bool is_data_driven() const { return dd_config_ != nullptr; }
     const LastError& last_error() const { return last_error_; }
@@ -73,6 +79,8 @@ private:
     VividMainThreadUpdateFn main_update_fn_    = nullptr;
     VividDrawInspectorFn   draw_insp_fn_      = nullptr;
     VividInspectorModeFn   insp_mode_fn_      = nullptr;
+    VividCreateBindableFn  create_bindable_fn_  = nullptr;
+    VividDestroyBindableFn destroy_bindable_fn_ = nullptr;
 
     void fixup_dd_pointers();  // re-point all C string pointers after move
 

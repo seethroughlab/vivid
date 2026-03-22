@@ -66,7 +66,7 @@ static const char* param_type_str(VividParamType t) {
 
 static const char* port_type_str(VividPortType t) {
     switch (t) {
-        case VIVID_PORT_FLOAT:         return "float";
+        case VIVID_PORT_SIGNAL:         return "float";
         case VIVID_PORT_AUDIO:         return "audio";
         case VIVID_PORT_SPREAD:        return "spread";
         case VIVID_PORT_STRING:        return "string";
@@ -80,7 +80,7 @@ static const char* port_type_str(VividPortType t) {
 
 static const char* transport_str(VividPortTransport t) {
     switch (t) {
-        case VIVID_PORT_TRANSPORT_SCALAR:        return "scalar";
+        case VIVID_PORT_TRANSPORT_SIGNAL:        return "scalar";
         case VIVID_PORT_TRANSPORT_AUDIO_BUFFER:  return "audio_buffer";
         case VIVID_PORT_TRANSPORT_SPREAD:        return "spread";
         case VIVID_PORT_TRANSPORT_STRING:        return "string";
@@ -2232,9 +2232,9 @@ static std::string dispatch(const std::string& method, const std::string& body,
             // Parse optional "inputs" array: [{"name": "x", "type": "float"}, ...]
             auto parse_port_type = [&](const std::string& type_str, VividDomain d, VividPortType& out) -> std::string {
                 if (d == VIVID_DOMAIN_CONTROL) {
-                    if      (type_str == "float")         out = VIVID_PORT_FLOAT;
-                    else if (type_str == "int")           out = VIVID_PORT_FLOAT;
-                    else if (type_str == "bool")          out = VIVID_PORT_FLOAT;
+                    if      (type_str == "float")         out = VIVID_PORT_SIGNAL;
+                    else if (type_str == "int")           out = VIVID_PORT_SIGNAL;
+                    else if (type_str == "bool")          out = VIVID_PORT_SIGNAL;
                     else if (type_str == "spread")        out = VIVID_PORT_SPREAD;
                     else if (type_str == "string")        out = VIVID_PORT_STRING;
                     else if (type_str == "string_spread") out = VIVID_PORT_STRING_SPREAD;

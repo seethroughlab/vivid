@@ -786,8 +786,42 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         if (spm)
             sn.state_preset_map = spm->state_presets;
 
+        // Role binding snapshots
+        if (sn.op_info && !sn.op_info->role_bindings.empty() && ndef) {
+            for (const auto& rb : sn.op_info->role_bindings) {
+                vivid::ui::NodeSnapshot::RoleBindingSnapshot rbs;
+                rbs.role_id = rb.role_id;
+                auto bit = ndef->role_bindings.find(rb.role_id);
+                if (bit != ndef->role_bindings.end()) {
+                    rbs.target_node_id = bit->second.target_node_id;
+                    rbs.target_output_name = bit->second.target_output_name;
+                    const auto* target_ndef = graph.find_node(bit->second.target_node_id);
+                    if (target_ndef) rbs.target_type_name = target_ndef->type;
+                }
+                sn.role_binding_snapshots.push_back(std::move(rbs));
+            }
+        }
+
         // Index
         snap.node_index[ns.node_id] = i;
+    }
+
+    // Populate referenced_by (reverse lookup of role bindings)
+    for (auto& sn : snap.nodes) {
+        for (const auto& rbs : sn.role_binding_snapshots) {
+            if (rbs.target_node_id.empty()) continue;
+            auto tgt_it = snap.node_index.find(rbs.target_node_id);
+            if (tgt_it == snap.node_index.end()) continue;
+            auto& target = snap.nodes[tgt_it->second];
+            // Find human-readable label from op_info
+            std::string label = rbs.role_id;
+            if (sn.op_info) {
+                for (const auto& rb : sn.op_info->role_bindings) {
+                    if (rb.role_id == rbs.role_id) { label = rb.label; break; }
+                }
+            }
+            target.referenced_by.push_back({sn.node_id, rbs.role_id, label});
+        }
     }
 
     // Connections — preserve graph truth even when an endpoint no longer resolves.
@@ -3637,6 +3671,8 @@ int main(int argc, char* argv[]) {
 
             // --- Tick state-preset mappings (after scheduler tick, state outputs are fresh) ---
             runtime_api.tick_state_presets();
+
+            scheduler.sync_role_binding_params();
 
             if (has_audio) {
                 audio_engine.push_params(scheduler);

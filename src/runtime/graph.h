@@ -9,7 +9,7 @@ struct yyjson_doc;
 
 // Bumped when the graph JSON format changes in a backward-incompatible way.
 // Graphs saved with schema_version > GRAPH_SCHEMA_VERSION are hard-rejected.
-#define GRAPH_SCHEMA_VERSION 1
+#define GRAPH_SCHEMA_VERSION 2
 
 namespace vivid {
 
@@ -33,6 +33,13 @@ struct NodeDef {
     // Package provenance (empty for core operators)
     std::string pkg_name;
     std::string pkg_version;
+
+    // Per-role binding state (role_id → target)
+    struct RoleBindingState {
+        std::string target_node_id;
+        std::string target_output_name;
+    };
+    std::unordered_map<std::string, RoleBindingState> role_bindings;  // role_id → state
 };
 
 struct ConnectionDef {

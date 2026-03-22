@@ -1290,6 +1290,71 @@ void RuntimeAPI::tick_state_presets() {
 
 // --- Solo mode ---
 
+// --- Role binding operations ---
+
+CommandResult RuntimeAPI::set_role_binding(const std::string& node_id, const std::string& role_id,
+                                            const std::string& target_node_id,
+                                            const std::string& target_output_name) {
+    auto* ndef = graph_.find_node(node_id);
+    if (!ndef) return {false, "node not found: " + node_id};
+
+    // Validate host has this role
+    const auto* host_desc = registry_.probe_descriptor(ndef->type);
+    if (!host_desc) return {false, "host descriptor not found for: " + ndef->type};
+
+    bool role_found = false;
+    for (uint32_t i = 0; i < host_desc->role_binding_count; ++i) {
+        if (host_desc->role_bindings[i].role_id &&
+            role_id == host_desc->role_bindings[i].role_id) {
+            role_found = true;
+            break;
+        }
+    }
+    if (!role_found) return {false, "role not found: " + role_id};
+
+    // Validate target node exists
+    auto* target_ndef = graph_.find_node(target_node_id);
+    if (!target_ndef) return {false, "target node not found: " + target_node_id};
+
+    // Validate target is bindable
+    auto vr = validate_role_binding(host_desc, role_id, target_ndef->type,
+                                    target_output_name, registry_);
+    switch (vr) {
+        case RoleBindingValidation::kOk: break;
+        case RoleBindingValidation::kRoleNotFound:
+            return {false, "role not found: " + role_id};
+        case RoleBindingValidation::kNotBindable:
+            return {false, "target not bindable: " + target_ndef->type};
+        case RoleBindingValidation::kTypeNotAllowed:
+            return {false, "type not allowed in role: " + target_ndef->type};
+        case RoleBindingValidation::kDomainMismatch:
+            return {false, "domain mismatch for: " + target_ndef->type};
+        case RoleBindingValidation::kOutputNotFound:
+            return {false, "output not found on target: " + target_output_name};
+    }
+
+    // Store binding
+    auto& binding = ndef->role_bindings[role_id];
+    binding.target_node_id = target_node_id;
+    binding.target_output_name = target_output_name;
+
+    pending_topology_change_ = true;
+    mark_graph_dirty();
+    return {true, "bound " + target_node_id + " to role " + role_id};
+}
+
+CommandResult RuntimeAPI::clear_role_binding(const std::string& node_id, const std::string& role_id) {
+    auto* ndef = graph_.find_node(node_id);
+    if (!ndef) return {false, "node not found: " + node_id};
+
+    if (ndef->role_bindings.erase(role_id) == 0)
+        return {false, "no binding for role: " + role_id};
+
+    pending_topology_change_ = true;
+    mark_graph_dirty();
+    return {true, "cleared role " + role_id};
+}
+
 CommandResult RuntimeAPI::set_solo(const std::string& node_id) {
     if (node_id.empty()) {
         scheduler_.set_solo(-1);

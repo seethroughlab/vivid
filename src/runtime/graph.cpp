@@ -226,6 +226,34 @@ bool Graph::parse_doc(yyjson_doc* doc) {
                 }
             }
 
+            // Reject legacy embedded_ops (pre-role-binding format)
+            if (yyjson_obj_get(val, "embedded_ops")) {
+                std::fprintf(stderr,
+                    "[vivid] Graph: node '%s' uses legacy embedded_ops format — "
+                    "please recreate the graph with role bindings.\n", node.id.c_str());
+                return false;
+            }
+
+            // Optional role bindings
+            yyjson_val* rb_obj = yyjson_obj_get(val, "role_bindings");
+            if (rb_obj && yyjson_is_obj(rb_obj)) {
+                yyjson_obj_iter rbiter;
+                yyjson_obj_iter_init(rb_obj, &rbiter);
+                yyjson_val* rbkey;
+                while ((rbkey = yyjson_obj_iter_next(&rbiter)) != nullptr) {
+                    yyjson_val* rbval = yyjson_obj_iter_get_val(rbkey);
+                    if (!rbval || !yyjson_is_obj(rbval)) continue;
+                    NodeDef::RoleBindingState rbs;
+                    yyjson_val* tid = yyjson_obj_get(rbval, "target_node_id");
+                    if (tid && yyjson_is_str(tid))
+                        rbs.target_node_id = yyjson_get_str(tid);
+                    yyjson_val* tname = yyjson_obj_get(rbval, "target_output_name");
+                    if (tname && yyjson_is_str(tname))
+                        rbs.target_output_name = yyjson_get_str(tname);
+                    node.role_bindings[yyjson_get_str(rbkey)] = std::move(rbs);
+                }
+            }
+
             if (find_node(node.id)) {
                 std::fprintf(stderr, "[vivid] Graph: duplicate node id '%s', skipping\n", node.id.c_str());
                 continue;
@@ -627,6 +655,15 @@ bool Graph::remove_node(const std::string& id) {
     for (auto& m : state_preset_mappings_) {
         for (auto& bindings : m.state_presets) {
             bindings.erase(id);
+        }
+    }
+    // Clear role bindings referencing the removed node
+    for (auto& remaining : nodes_) {
+        for (auto it = remaining.role_bindings.begin(); it != remaining.role_bindings.end(); ) {
+            if (it->second.target_node_id == id)
+                it = remaining.role_bindings.erase(it);
+            else
+                ++it;
         }
     }
     return true;
@@ -1097,6 +1134,17 @@ static yyjson_mut_doc* build_graph_json_doc(const Graph& graph) {
                                        static_cast<int64_t>(flags));
             }
             yyjson_mut_obj_add_val(doc, node_obj, "locks", locks_obj);
+        }
+
+        if (!node.role_bindings.empty()) {
+            yyjson_mut_val* rb_obj = yyjson_mut_obj(doc);
+            for (const auto& [role_id, rbs] : node.role_bindings) {
+                yyjson_mut_val* rb_entry = yyjson_mut_obj(doc);
+                yyjson_mut_obj_add_strcpy(doc, rb_entry, "target_node_id", rbs.target_node_id.c_str());
+                yyjson_mut_obj_add_strcpy(doc, rb_entry, "target_output_name", rbs.target_output_name.c_str());
+                yyjson_mut_obj_add_val(doc, rb_obj, role_id.c_str(), rb_entry);
+            }
+            yyjson_mut_obj_add_val(doc, node_obj, "role_bindings", rb_obj);
         }
 
         yyjson_mut_obj_add_val(doc, nodes_obj, node.id.c_str(), node_obj);
