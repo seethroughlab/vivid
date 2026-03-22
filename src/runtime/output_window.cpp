@@ -1,4 +1,5 @@
 #include "runtime/output_window.h"
+#include "runtime/gpu_context.h"
 #include "common/gpu_util.h"
 #include <glfw3webgpu.h>
 #include <cstdio>
@@ -188,6 +189,10 @@ bool OutputWindow::present(WGPUTextureView source_tex,
     view_desc.baseArrayLayer = 0;
     view_desc.arrayLayerCount = 1;
     WGPUTextureView dest = wgpuTextureCreateView(st.texture, &view_desc);
+    if (!dest) {
+        wgpuTextureRelease(st.texture);
+        return false;
+    }
 
     // Create command encoder
     WGPUCommandEncoderDescriptor enc_desc{};
@@ -198,13 +203,8 @@ bool OutputWindow::present(WGPUTextureView source_tex,
                    src_w, src_h, width_, height_,
                    fit_mode, /*ui_visible=*/false);
 
-    WGPUCommandBufferDescriptor cmd_desc{};
-    cmd_desc.label = to_sv("Output Window Commands");
-    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(encoder, &cmd_desc);
-    wgpuQueueSubmit(queue_, 1, &cmd);
+    gpu_submit(device_, queue_, encoder, "Output Window Commands");
 
-    wgpuCommandBufferRelease(cmd);
-    wgpuCommandEncoderRelease(encoder);
     wgpuTextureViewRelease(dest);
     wgpuTextureRelease(st.texture);
 

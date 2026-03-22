@@ -318,12 +318,7 @@ int main(int argc, char* argv[]) {
 
             gpu.end_frame(frame);
         } else {
-            WGPUCommandBufferDescriptor cmd_desc{};
-            cmd_desc.label = to_sv("Offscreen Commands");
-            WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(tick_encoder, &cmd_desc);
-            wgpuQueueSubmit(gpu.queue(), 1, &cmd);
-            wgpuCommandBufferRelease(cmd);
-            wgpuCommandEncoderRelease(tick_encoder);
+            vivid::gpu_submit(gpu.device(), gpu.queue(), tick_encoder, "Offscreen Commands");
         }
 
         wgpuDevicePoll(gpu.device(), false, nullptr);

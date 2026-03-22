@@ -36,6 +36,7 @@ public:
     WGPUTextureFormat surface_format() const { return surface_format_; }
     bool surface_supports_copy_src() const { return surface_copy_src_; }
     bool bc_texture_compression_enabled() const { return bc_texture_compression_enabled_; }
+    bool device_lost() const { return device_lost_; }
     uint32_t width() const { return width_; }
     uint32_t height() const { return height_; }
 
@@ -48,6 +49,7 @@ private:
     WGPUTextureFormat surface_format_ = WGPUTextureFormat_Undefined;
     bool surface_copy_src_ = false;
     bool bc_texture_compression_enabled_ = false;
+    bool device_lost_ = false;
     uint32_t width_ = 0;
     uint32_t height_ = 0;
 
@@ -55,5 +57,12 @@ private:
     std::string last_error_;
     WGPUErrorType last_error_type_ = WGPUErrorType_NoError;
 };
+
+// Finish, submit, and release a command encoder with error-scope protection.
+// Wraps wgpuQueueSubmit in Validation + OutOfMemory error scopes so that GPU
+// errors are captured and logged instead of hitting wgpu-native's fatal abort.
+// Returns false if the encoder was in an error state (null command buffer).
+bool gpu_submit(WGPUDevice device, WGPUQueue queue, WGPUCommandEncoder encoder,
+                const char* label = "Commands");
 
 } // namespace vivid

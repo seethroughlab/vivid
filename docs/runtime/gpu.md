@@ -122,6 +122,30 @@ It handles: pipeline creation, uniform buffer, vertex shader, render pass setup.
 Operators only need to provide the fragment shader in a `.wgsl` file.
 WGSL shaders hot-reload without a dylib recompile.
 
+## Surface Suppression
+
+During certain macOS window transitions the surface may be transiently invalid.
+Calling `begin_frame()` / `end_frame()` (and therefore `wgpuQueueSubmit` with a
+surface-bound command buffer) during these windows can trigger a fatal abort
+inside wgpu-native that bypasses error scopes.
+
+Known transition sources:
+- **Resize** — framebuffer size changes mid-frame
+- **Fullscreen** — borderless-fullscreen enter/exit
+- **Drag-and-drop tracking** — macOS enters a nested `NSEventTrackingRunLoopMode`
+  runloop during `NSCoreDragReceiveMessageProc`; the CFRunLoop timer fires ticks
+  inside this nested loop while the surface is unstable
+
+The main loop handles all of these via `surface_settle_frames`: when a transition
+is detected, surface presentation is suppressed for a small number of frames.
+During suppression the app continues ticking offscreen (scheduler, audio, compute
+operators) using a standalone command encoder, and resumes surface presentation
+once the settle window expires.
+
+`discard_frame()` is the safe escape hatch when a surface-acquired frame must be
+abandoned mid-flight (e.g. framebuffer size changed between `begin_frame()` and
+the end-of-frame submit).
+
 ## Error Handling
 
 GPU shader compilation errors are reported through:

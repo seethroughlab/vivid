@@ -124,11 +124,14 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
     // Device lost callback
     device_desc.deviceLostCallbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
     device_desc.deviceLostCallbackInfo.callback =
-        [](WGPUDevice const*, WGPUDeviceLostReason reason, WGPUStringView message, void*, void*) {
+        [](WGPUDevice const*, WGPUDeviceLostReason reason, WGPUStringView message, void* ud1, void*) {
+            auto* self = static_cast<GpuContext*>(ud1);
+            self->device_lost_ = true;
             std::fprintf(stderr, "[vivid] Device lost (reason %d): %.*s\n",
                          static_cast<int>(reason), static_cast<int>(message.length),
                          message.data ? message.data : "");
         };
+    device_desc.deviceLostCallbackInfo.userdata1 = this;
 
     // Uncaptured error callback — capture last error for crash diagnostics
     device_desc.uncapturedErrorCallbackInfo.callback =
@@ -261,46 +264,14 @@ bool GpuContext::begin_frame(FrameState& frame) {
 }
 
 bool GpuContext::end_frame(const FrameState& frame) {
-    WGPUCommandBufferDescriptor cmd_desc{};
-    cmd_desc.nextInChain = nullptr;
-    cmd_desc.label = to_sv("Frame Commands");
-    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(frame.encoder, &cmd_desc);
-
-    if (!cmd) {
-        // Encoder was in an error state (e.g. surface texture invalidated mid-frame).
-        // Discard the frame instead of crashing in wgpuQueueSubmit.
-        std::fprintf(stderr, "[vivid] Command encoder finish failed — dropping frame"
+    if (!gpu_submit(device_, queue_, frame.encoder, "Frame Commands")) {
+        // Encoder was in an error state (e.g. surface texture invalidated mid-frame
+        // during resize, fullscreen, or macOS drag-tracking transitions).
+        std::fprintf(stderr, "[vivid] Frame submit failed — dropping frame"
                      " (last error: %s)\n", last_error_.c_str());
-        wgpuCommandEncoderRelease(frame.encoder);
         wgpuTextureViewRelease(frame.view);
         wgpuTextureRelease(frame.texture);
         return false;
-    }
-
-    // Push error scopes so errors are captured instead of falling through
-    // to wgpu-native's handle_error_fatal / abort.
-    // Note: wgpu-native only supports Validation and OutOfMemory filters.
-    wgpuDevicePushErrorScope(device_, WGPUErrorFilter_Validation);
-    wgpuDevicePushErrorScope(device_, WGPUErrorFilter_OutOfMemory);
-
-    wgpuQueueSubmit(queue_, 1, &cmd);
-    wgpuCommandBufferRelease(cmd);
-    wgpuCommandEncoderRelease(frame.encoder);
-
-    // Pop both scopes (LIFO order: OutOfMemory, Validation)
-    auto error_cb = [](WGPUPopErrorScopeStatus status, WGPUErrorType type,
-                       WGPUStringView message, void*, void*) {
-        if (status == WGPUPopErrorScopeStatus_Success && type != WGPUErrorType_NoError) {
-            std::fprintf(stderr, "[vivid] GPU error in frame submit (%d): %.*s\n",
-                         static_cast<int>(type), static_cast<int>(message.length),
-                         message.data ? message.data : "");
-        }
-    };
-    for (int i = 0; i < 2; ++i) {
-        WGPUPopErrorScopeCallbackInfo pop_cb{};
-        pop_cb.mode = WGPUCallbackMode_AllowSpontaneous;
-        pop_cb.callback = error_cb;
-        wgpuDevicePopErrorScope(device_, pop_cb);
     }
 
     // Present BEFORE releasing the surface texture/view
@@ -312,7 +283,8 @@ bool GpuContext::end_frame(const FrameState& frame) {
 }
 
 void GpuContext::discard_frame(const FrameState& frame) {
-    // Drop acquired surface frame without submit/present when window/surface changed mid-frame.
+    // Drop acquired surface frame without submit/present when the surface is
+    // transiently invalid (resize, fullscreen transition, drag-tracking runloop).
     if (frame.encoder) wgpuCommandEncoderRelease(frame.encoder);
     if (frame.view) wgpuTextureViewRelease(frame.view);
     if (frame.texture) wgpuTextureRelease(frame.texture);
@@ -341,6 +313,53 @@ void GpuContext::shutdown() {
         instance_ = nullptr;
     }
     surface_format_ = WGPUTextureFormat_Undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Safe queue submit with error-scope protection
+// ---------------------------------------------------------------------------
+
+bool gpu_submit(WGPUDevice device, WGPUQueue queue, WGPUCommandEncoder encoder,
+                const char* label) {
+    WGPUCommandBufferDescriptor cmd_desc{};
+    cmd_desc.nextInChain = nullptr;
+    cmd_desc.label = to_sv(label);
+    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(encoder, &cmd_desc);
+
+    if (!cmd) {
+        // Encoder was in an error state — release it and bail.
+        wgpuCommandEncoderRelease(encoder);
+        return false;
+    }
+
+    // Push error scopes so errors are captured instead of falling through
+    // to wgpu-native's handle_error_fatal / abort.
+    // Note: only Validation and OutOfMemory are supported by our wgpu-native
+    // build; WGPUErrorFilter_Internal is not implemented and will abort.
+    wgpuDevicePushErrorScope(device, WGPUErrorFilter_Validation);
+    wgpuDevicePushErrorScope(device, WGPUErrorFilter_OutOfMemory);
+
+    wgpuQueueSubmit(queue, 1, &cmd);
+    wgpuCommandBufferRelease(cmd);
+    wgpuCommandEncoderRelease(encoder);
+
+    // Pop both scopes (LIFO order: OutOfMemory, Validation)
+    auto error_cb = [](WGPUPopErrorScopeStatus status, WGPUErrorType type,
+                       WGPUStringView message, void*, void*) {
+        if (status == WGPUPopErrorScopeStatus_Success && type != WGPUErrorType_NoError) {
+            std::fprintf(stderr, "[vivid] GPU submit error (%d): %.*s\n",
+                         static_cast<int>(type), static_cast<int>(message.length),
+                         message.data ? message.data : "");
+        }
+    };
+    for (int i = 0; i < 2; ++i) {
+        WGPUPopErrorScopeCallbackInfo pop_cb{};
+        pop_cb.mode = WGPUCallbackMode_AllowSpontaneous;
+        pop_cb.callback = error_cb;
+        wgpuDevicePopErrorScope(device, pop_cb);
+    }
+
+    return true;
 }
 
 } // namespace vivid

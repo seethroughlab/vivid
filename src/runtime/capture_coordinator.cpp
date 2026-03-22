@@ -2,6 +2,7 @@
 #include "runtime/av_exporter.h"
 #include "runtime/audio_engine.h"
 #include "runtime/runtime_api.h"
+#include "runtime/gpu_context.h"
 #include "common/gpu_util.h"
 #include <webgpu/wgpu.h>
 #include <stb_image_write.h>
@@ -189,12 +190,7 @@ static bool gpu_readback_rgba8(WGPUDevice device, WGPUQueue queue,
     WGPUExtent3D copy_size = { w, h, 1 };
     wgpuCommandEncoderCopyTextureToBuffer(encoder, &src, &dst, &copy_size);
 
-    WGPUCommandBufferDescriptor cmd_desc{};
-    cmd_desc.label = to_sv("Capture Commands");
-    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(encoder, &cmd_desc);
-    wgpuQueueSubmit(queue, 1, &cmd);
-    wgpuCommandBufferRelease(cmd);
-    wgpuCommandEncoderRelease(encoder);
+    gpu_submit(device, queue, encoder, "Capture Commands");
 
     // Wait for GPU work
     {
