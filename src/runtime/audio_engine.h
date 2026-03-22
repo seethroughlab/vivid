@@ -274,6 +274,14 @@ public:
     // Hot-reload support
     void pause();
     void resume();
+    // Two-phase hot reload: destroy old instances while old dylib is still loaded,
+    // then create new instances after the dylib swap.
+    // Call sequence: pre_reload → scheduler.reload_operator → post_reload
+    void pre_reload_operator(const std::string& type_name);
+    bool post_reload_operator(const std::string& type_name, OperatorRegistry& registry);
+
+    // Single-call reload (DEPRECATED — only safe if old dylib is still loaded).
+    // Prefer the two-phase protocol above.
     bool reload_operator(const std::string& type_name, OperatorRegistry& registry);
 
     // Recording tap — capture the final stereo mix (call from main thread)
@@ -299,6 +307,13 @@ private:
 
     void init_audio_node_state(AudioNodeState& ns, const VividOperatorDescriptor* desc,
                                const std::unordered_map<std::string, float>* param_overrides);
+
+    // Saved state for two-phase reload (between pre_reload and post_reload)
+    struct ReloadSavedNode {
+        uint32_t node_idx;
+        std::unordered_map<std::string, float> params;
+    };
+    std::vector<ReloadSavedNode> reload_saved_;
 
     std::vector<AudioNodeState> nodes_;
     std::vector<AudioWire> wires_;

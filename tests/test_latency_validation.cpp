@@ -196,9 +196,10 @@ static void scenario_hot_reload(const std::string& build_dir) {
 
     auto t0 = std::chrono::high_resolution_clock::now();
 
+    audio_engine.pre_reload_operator("AudioReloadOp");
     check(scheduler.reload_operator("AudioReloadOp", audio_registry, staged_v2),
           "s3: scheduler reload");
-    check(audio_engine.reload_operator("AudioReloadOp", audio_registry),
+    check(audio_engine.post_reload_operator("AudioReloadOp", audio_registry),
           "s3: audio engine reload");
 
     float output[vivid::AudioEngine::kBufferSize * 2] = {};

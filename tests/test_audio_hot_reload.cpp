@@ -78,9 +78,10 @@ int main(int argc, char* argv[]) {
     const std::string staged_v2 = staging + "/audio_reload_v2_reload_0.dylib";
     std::filesystem::copy_file(v2_path, staged_v2,
                                std::filesystem::copy_options::overwrite_existing);
+    audio_engine.pre_reload_operator("AudioReloadOp");
     check(scheduler.reload_operator("AudioReloadOp", registry, staged_v2),
           "scheduler reload succeeds for compatible audio operator");
-    check(audio_engine.reload_operator("AudioReloadOp", registry),
+    check(audio_engine.post_reload_operator("AudioReloadOp", registry),
           "audio engine reload succeeds for compatible audio operator");
     check_float(first_sample_after_process(audio_engine), 7.0f, 1e-4f,
                 "v2 audio output preserves level and applies new offset default");
@@ -89,8 +90,12 @@ int main(int argc, char* argv[]) {
     const std::string staged_bad = staging + "/audio_reload_bad_reload_0.dylib";
     std::filesystem::copy_file(bad_path, staged_bad,
                                std::filesystem::copy_options::overwrite_existing);
+    audio_engine.pre_reload_operator("AudioReloadOp");
     check(!scheduler.reload_operator("AudioReloadOp", registry, staged_bad),
           "scheduler rejects incompatible audio operator reload");
+    // Recreate instances from old (still-loaded) dylib after rejected reload
+    check(audio_engine.post_reload_operator("AudioReloadOp", registry),
+          "audio engine recovers after rejected reload");
     check_float(first_sample_after_process(audio_engine), 7.0f, 1e-4f,
                 "previous audio operator remains active after rejected reload");
 

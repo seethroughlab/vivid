@@ -1133,32 +1133,63 @@ void AudioEngine::resume() {
     }
 }
 
-bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry& registry) {
+// Phase 1: Destroy old instances while the old dylib is still loaded.
+// Must be called BEFORE scheduler.reload_operator() swaps the dylib.
+void AudioEngine::pre_reload_operator(const std::string& type_name) {
     pause();
+    reload_saved_.clear();
 
+    for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
+        auto& ns = nodes_[ni];
+        const auto* desc = ns.loader->descriptor();
+        if (!desc || std::string(desc->name) != type_name) continue;
+
+        // Save param values by name
+        ReloadSavedNode saved;
+        saved.node_idx = ni;
+        for (const auto& [name, idx] : ns.param_indices)
+            saved.params[name] = ns.param_values[idx];
+        reload_saved_.push_back(std::move(saved));
+
+        // Destroy old instances using the still-valid old loader
+        auto dup_it = node_to_dup_group_.find(ni);
+        if (dup_it != node_to_dup_group_.end()) {
+            auto& group = auto_dup_groups_[dup_it->second];
+            for (uint8_t c = 1; c < group.channel_count; ++c) {
+                if (group.instances[c]) {
+                    ns.loader->destroy_instance(group.instances[c]);
+                    group.instances[c] = nullptr;
+                }
+            }
+        }
+        if (ns.instance) {
+            ns.loader->destroy_instance(ns.instance);
+            ns.instance = nullptr;
+        }
+    }
+    // Note: audio remains paused until post_reload_operator
+}
+
+// Phase 2: Create new instances from the new (already-swapped) loader.
+// Must be called AFTER scheduler.reload_operator() swaps the dylib.
+bool AudioEngine::post_reload_operator(const std::string& type_name, OperatorRegistry& registry) {
     OperatorLoader* new_loader = registry.find(type_name);
     if (!new_loader) {
         resume();
+        reload_saved_.clear();
         return false;
     }
     const auto* new_desc = new_loader->descriptor();
     if (!new_desc) {
         resume();
+        reload_saved_.clear();
         return false;
     }
 
-    for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
-        auto& ns = nodes_[ni];
-        const auto* old_desc = ns.loader->descriptor();
-        if (!old_desc || std::string(old_desc->name) != type_name) continue;
+    for (const auto& saved : reload_saved_) {
+        auto& ns = nodes_[saved.node_idx];
 
-        // Save param values by name
-        std::unordered_map<std::string, float> saved_params;
-        for (const auto& [name, idx] : ns.param_indices) {
-            saved_params[name] = ns.param_values[idx];
-        }
-
-        auto dup_it = node_to_dup_group_.find(ni);
+        auto dup_it = node_to_dup_group_.find(saved.node_idx);
         uint8_t channel_count = 1;
         if (dup_it != node_to_dup_group_.end())
             channel_count = auto_dup_groups_[dup_it->second].channel_count;
@@ -1174,33 +1205,27 @@ bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry
                              "[vivid] AudioEngine: failed to create replacement instance for '%s'\n",
                              type_name.c_str());
                 resume();
+                reload_saved_.clear();
                 return false;
             }
         }
 
-        OperatorLoader* old_loader = ns.loader;
-        void* old_instance = ns.instance;
-
         ns.loader = new_loader;
         ns.instance = new_instances[0];
-        init_audio_node_state(ns, new_desc, &saved_params);
+        init_audio_node_state(ns, new_desc, &saved.params);
 
         if (dup_it != node_to_dup_group_.end()) {
             auto& group = auto_dup_groups_[dup_it->second];
             group.instances[0] = ns.instance;
-            for (uint8_t c = 1; c < group.channel_count; ++c) {
-                void* old_dup = group.instances[c];
+            for (uint8_t c = 1; c < channel_count; ++c)
                 group.instances[c] = new_instances[c];
-                if (old_dup) old_loader->destroy_instance(old_dup);
-            }
         }
 
-        if (old_instance) old_loader->destroy_instance(old_instance);
-
-        // Clear error state on reload — give the new code a fresh start
         ns.errored = false;
         ns.error_message[0] = '\0';
     }
+
+    reload_saved_.clear();
 
     // Update param snapshots to match new layout
     uint32_t n = static_cast<uint32_t>(nodes_.size());
@@ -1222,6 +1247,14 @@ bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry
 
     resume();
     return true;
+}
+
+// Legacy single-call reload — only correct if old dylib is still loaded.
+// Prefer the two-phase protocol (pre_reload + post_reload) around
+// scheduler.reload_operator().
+bool AudioEngine::reload_operator(const std::string& type_name, OperatorRegistry& registry) {
+    pre_reload_operator(type_name);
+    return post_reload_operator(type_name, registry);
 }
 
 void AudioEngine::shutdown() {

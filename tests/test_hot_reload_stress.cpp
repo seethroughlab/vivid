@@ -84,8 +84,10 @@ int main(int argc, char* argv[]) {
             const std::string staged_bad = staging + "/audio_reload_bad_" + std::to_string(i) + ".dylib";
             std::filesystem::copy_file(bad_path, staged_bad,
                                        std::filesystem::copy_options::overwrite_existing);
+            audio_engine.pre_reload_operator("AudioReloadOp");
             check(!scheduler.reload_operator("AudioReloadOp", registry, staged_bad),
                   "incompatible reload rejected");
+            audio_engine.post_reload_operator("AudioReloadOp", registry);
             check_float(first_sample_after_process(audio_engine), expected_sample, 1e-4f,
                         "rejected reload preserves active audio operator");
             auto failures_for_dir = registry.loader_failure_diagnostics_for_dir(staging);
@@ -105,9 +107,10 @@ int main(int argc, char* argv[]) {
         const std::string& src = target_is_v2 ? v2_path : v3_path;
         const std::string staged_ok = staging + "/audio_reload_ok_" + std::to_string(i) + ".dylib";
         std::filesystem::copy_file(src, staged_ok, std::filesystem::copy_options::overwrite_existing);
+        audio_engine.pre_reload_operator("AudioReloadOp");
         check(scheduler.reload_operator("AudioReloadOp", registry, staged_ok),
               "scheduler compatible reload succeeds");
-        check(audio_engine.reload_operator("AudioReloadOp", registry),
+        check(audio_engine.post_reload_operator("AudioReloadOp", registry),
               "audio engine compatible reload succeeds");
 
         active_is_v2_family = target_is_v2;
