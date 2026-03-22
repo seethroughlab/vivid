@@ -8,7 +8,7 @@ struct VividPortSpec {
     std::string        name;
     VividPortType      type;
     VividPortDirection direction   = VIVID_PORT_OUTPUT;
-    VividPortTransport transport   = VIVID_PORT_TRANSPORT_SCALAR; // relevant only for custom types
+    VividPortTransport transport   = VIVID_PORT_TRANSPORT_SIGNAL; // relevant only for custom types
     uint32_t           payload_size = 0;                          // 0 for built-in types
     std::string        type_name;                                  // empty for built-in types
     std::string        stable_type_id;                             // required for custom types

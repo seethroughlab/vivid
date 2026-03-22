@@ -207,6 +207,8 @@ struct OperatorBase {
     virtual void draw_thumbnail(const VividThumbnailContext*) {}  // optional override
     virtual void draw_inspector(VividInspectorContext*) {}        // optional override
     virtual void main_thread_update(double time) {}               // optional override
+
+    virtual void collect_role_bindings(std::vector<VividRoleBindingDescriptor>&) {} // optional override
 };
 
 // ---------------------------------------------------------------------------
@@ -301,6 +303,15 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
     static std::vector<std::vector<std::string>> s_label_storage;             \
     static std::vector<std::vector<const char*>> s_label_ptrs;                \
     static std::vector<std::string> s_file_defaults;                          \
+    static std::vector<VividRoleBindingDescriptor> s_role_bindings;           \
+    static std::vector<std::string> s_role_ids;                               \
+    static std::vector<std::string> s_role_labels;                            \
+    static std::vector<std::vector<std::string>> s_role_allowed_types;        \
+    static std::vector<std::vector<const char*>> s_role_allowed_type_ptrs;    \
+    static std::vector<std::vector<std::string>> s_role_pref_tags;            \
+    static std::vector<std::vector<const char*>> s_role_pref_tag_ptrs;        \
+    static std::vector<std::string> s_role_pref_output_names;                 \
+    static std::vector<std::string> s_role_default_types;                     \
     static bool inited = false;                                               \
     if (!inited) {                                                            \
         inited = true;                                                        \
@@ -361,6 +372,83 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             }                                                                 \
         }                                                                     \
         tmp.collect_ports(s_ports);                                           \
+        {                                                                     \
+            std::vector<VividRoleBindingDescriptor> raw_slots;                \
+            tmp.collect_role_bindings(raw_slots);                             \
+            s_role_bindings.resize(raw_slots.size());                         \
+            s_role_ids.resize(raw_slots.size());                              \
+            s_role_labels.resize(raw_slots.size());                           \
+            s_role_allowed_types.resize(raw_slots.size());                    \
+            s_role_allowed_type_ptrs.resize(raw_slots.size());                \
+            s_role_pref_tags.resize(raw_slots.size());                        \
+            s_role_pref_tag_ptrs.resize(raw_slots.size());                    \
+            s_role_pref_output_names.resize(raw_slots.size());                \
+            s_role_default_types.resize(raw_slots.size());                    \
+            for (size_t i = 0; i < raw_slots.size(); ++i) {                  \
+                auto& src_s = raw_slots[i];                                   \
+                auto& dst_s = s_role_bindings[i];                             \
+                dst_s.accepted_domain = src_s.accepted_domain;                \
+                dst_s.runtime_scope = src_s.runtime_scope;                    \
+                s_role_ids[i] = src_s.role_id ? src_s.role_id : "";           \
+                dst_s.role_id = s_role_ids[i].c_str();                        \
+                s_role_labels[i] = src_s.label ? src_s.label : "";            \
+                dst_s.label = s_role_labels[i].c_str();                       \
+                s_role_pref_output_names[i] = src_s.preferred_output_name     \
+                    ? src_s.preferred_output_name : "";                        \
+                dst_s.preferred_output_name =                                  \
+                    s_role_pref_output_names[i].empty()                        \
+                    ? nullptr : s_role_pref_output_names[i].c_str();           \
+                s_role_default_types[i] = src_s.default_operator_type         \
+                    ? src_s.default_operator_type : "";                        \
+                dst_s.default_operator_type =                                  \
+                    s_role_default_types[i].empty()                            \
+                    ? nullptr : s_role_default_types[i].c_str();               \
+                if (src_s.allowed_operator_types &&                            \
+                    src_s.allowed_operator_type_count > 0) {                   \
+                    s_role_allowed_types[i].resize(                            \
+                        src_s.allowed_operator_type_count);                    \
+                    s_role_allowed_type_ptrs[i].resize(                        \
+                        src_s.allowed_operator_type_count);                    \
+                    for (uint32_t j = 0;                                       \
+                         j < src_s.allowed_operator_type_count; ++j) {         \
+                        s_role_allowed_types[i][j] =                           \
+                            src_s.allowed_operator_types[j]                    \
+                            ? src_s.allowed_operator_types[j] : "";            \
+                        s_role_allowed_type_ptrs[i][j] =                       \
+                            s_role_allowed_types[i][j].c_str();                \
+                    }                                                          \
+                    dst_s.allowed_operator_types =                              \
+                        s_role_allowed_type_ptrs[i].data();                    \
+                    dst_s.allowed_operator_type_count =                         \
+                        src_s.allowed_operator_type_count;                     \
+                } else {                                                       \
+                    dst_s.allowed_operator_types = nullptr;                     \
+                    dst_s.allowed_operator_type_count = 0;                     \
+                }                                                              \
+                if (src_s.preferred_output_semantic_tags &&                     \
+                    src_s.preferred_output_semantic_tag_count > 0) {            \
+                    s_role_pref_tags[i].resize(                                \
+                        src_s.preferred_output_semantic_tag_count);             \
+                    s_role_pref_tag_ptrs[i].resize(                            \
+                        src_s.preferred_output_semantic_tag_count);             \
+                    for (uint32_t j = 0;                                       \
+                         j < src_s.preferred_output_semantic_tag_count; ++j) {  \
+                        s_role_pref_tags[i][j] =                               \
+                            src_s.preferred_output_semantic_tags[j]             \
+                            ? src_s.preferred_output_semantic_tags[j] : "";     \
+                        s_role_pref_tag_ptrs[i][j] =                           \
+                            s_role_pref_tags[i][j].c_str();                    \
+                    }                                                          \
+                    dst_s.preferred_output_semantic_tags =                      \
+                        s_role_pref_tag_ptrs[i].data();                        \
+                    dst_s.preferred_output_semantic_tag_count =                 \
+                        src_s.preferred_output_semantic_tag_count;              \
+                } else {                                                       \
+                    dst_s.preferred_output_semantic_tags = nullptr;             \
+                    dst_s.preferred_output_semantic_tag_count = 0;             \
+                }                                                              \
+            }                                                                  \
+        }                                                                     \
         desc.name           = ClassName::kName;                               \
         desc.has_process_audio =                                              \
             std::is_base_of_v<vivid::AudioOperatorBase, ClassName> ? 1 : 0;   \
@@ -378,6 +466,10 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         desc.port_count     = static_cast<uint32_t>(s_ports.size());          \
         desc.ports          = s_ports.data();                                 \
         desc.time_dependent = ClassName::kTimeDependent ? 1 : 0;              \
+        desc.role_binding_count =                                             \
+            static_cast<uint32_t>(s_role_bindings.size());                    \
+        desc.role_bindings = s_role_bindings.empty()                          \
+            ? nullptr : s_role_bindings.data();                               \
     }                                                                         \
     return &desc;                                                             \
 }                                                                             \
@@ -508,4 +600,21 @@ extern "C" uint32_t vivid_inspector_mode() {                                   \
 extern "C" void vivid_draw_inspector(void* instance,                           \
                                      VividInspectorContext* ctx) {              \
     static_cast<_VividInstance*>(instance)->op.draw_inspector(ctx);             \
+}
+
+// ---------------------------------------------------------------------------
+// VIVID_BINDABLE(ClassName) — exports bindable operator factory entry points
+//
+// Place alongside VIVID_REGISTER for simple control operators that can be
+// bound to roles on other operators (e.g. Envelope, LFO). The macro exports
+// vivid_create_bindable / vivid_destroy_bindable which create standalone
+// ControlOperatorBase instances (no _VividInstance wrapper).
+// ---------------------------------------------------------------------------
+
+#define VIVID_BINDABLE(ClassName)                                              \
+extern "C" void* vivid_create_bindable() {                                     \
+    return static_cast<vivid::OperatorBase*>(new ClassName());                  \
+}                                                                              \
+extern "C" void vivid_destroy_bindable(void* instance) {                       \
+    delete static_cast<vivid::OperatorBase*>(instance);                         \
 }

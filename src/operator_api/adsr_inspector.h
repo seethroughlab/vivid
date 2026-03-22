@@ -7,9 +7,29 @@
 namespace vivid {
 namespace adsr_inspector {
 
+// Attempt shaping helpers (mirroring Envelope's static methods)
+inline float shape_attack(float t, int curve) {
+    t = std::max(0.0f, std::min(1.0f, t));
+    switch (curve) {
+        case 0: return t;
+        case 1: return 1.0f - std::exp(-4.0f * t);
+        case 2: return t * t;
+        default: return t;
+    }
+}
+inline float shape_decay(float t, int curve) {
+    t = std::max(0.0f, std::min(1.0f, t));
+    switch (curve) {
+        case 0: return t;
+        case 1: return 1.0f - std::exp(-4.0f * t);
+        case 2: return t * t;
+        default: return t;
+    }
+}
+
 inline void draw(VividInspectorContext* ctx,
                  float attack, float decay, float sustain, float release,
-                 bool bypassed) {
+                 bool bypassed, int curve_type = 0) {
     auto& d = ctx->draw;
     void* o = d.opaque;
     const auto& th = ctx->theme;
@@ -35,13 +55,13 @@ inline void draw(VividInspectorContext* ctx,
     float total_time = attack + decay + sustain_width + release;
 
     auto env_at = [&](float t) -> float {
-        if (t <= attack) return t / attack;
+        if (t <= attack) return shape_attack(t / attack, curve_type);
         t -= attack;
-        if (t <= decay) return 1.0f - (1.0f - sustain) * (t / decay);
+        if (t <= decay) return 1.0f - (1.0f - sustain) * shape_decay(t / decay, curve_type);
         t -= decay;
         if (t <= sustain_width) return sustain;
         t -= sustain_width;
-        if (t <= release) return sustain * (1.0f - t / release);
+        if (t <= release) return sustain * (1.0f - shape_decay(t / release, curve_type));
         return 0.0f;
     };
 
