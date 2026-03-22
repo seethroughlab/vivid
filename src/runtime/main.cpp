@@ -743,10 +743,19 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
                          : ns.error_message;   // compile/build error (node still running)
         sn.missing_operator = ns.missing_operator;
         if (ns.missing_operator) {
-            if (registry.has_abi_mismatch_diagnostics()) {
+            // Try to find the specific package with an ABI mismatch for this operator
+            std::string pkg_name;
+            for (const auto& d : registry.abi_mismatch_diagnostics()) {
+                if (d.plugin_name == sn.type_name) { pkg_name = d.package_name; break; }
+            }
+            if (!pkg_name.empty()) {
+                sn.error_message = "\"" + sn.type_name + "\" failed to load (ABI mismatch).\n"
+                    "Package '" + pkg_name + "' may need rebuild.\n"
+                    "Run: vivid rebuild " + pkg_name;
+            } else if (registry.has_abi_mismatch_diagnostics()) {
                 sn.error_message = "Operator \"" + sn.type_name + "\" not found.\n"
-                    "ABI mismatch detected — plugins were built against a different Vivid version.\n"
-                    "Run 'vivid package rebuild' to recompile, then reload.";
+                    "ABI mismatch detected \xe2\x80\x94 plugins were built against a different Vivid version.\n"
+                    "Run 'vivid rebuild <package>' to recompile, then reload.";
             } else {
                 sn.error_message = "Operator \"" + sn.type_name + "\" not found.\n"
                     "The package providing this operator may not be installed or linked.\n"
@@ -1099,14 +1108,16 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
 
         bool is_audio_op = scheduler.is_audio_type(tn);
 
+        // Two-phase audio reload: destroy old instances BEFORE the dylib swap
+        // so we can safely call the old dylib's destroy function.
         if (is_audio_op && has_audio) {
-            audio_engine.pause();
+            audio_engine.pre_reload_operator(tn);
         }
 
         if (scheduler.reload_operator(tn, registry, result.staged_dylib_path)) {
             bool audio_reload_ok = true;
             if (is_audio_op && has_audio) {
-                audio_reload_ok = audio_engine.reload_operator(tn, registry);
+                audio_reload_ok = audio_engine.post_reload_operator(tn, registry);
             }
             if (!audio_reload_ok) {
                 std::fprintf(stderr, "[vivid] Hot-reload: %s audio reload FAILED\n", tn.c_str());
@@ -1121,10 +1132,10 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
             }
         } else {
             std::fprintf(stderr, "[vivid] Hot-reload: %s reload FAILED\n", tn.c_str());
-        }
-
-        if (is_audio_op && has_audio) {
-            audio_engine.resume();
+            // Recreate audio instances from the old (still-loaded) dylib
+            if (is_audio_op && has_audio) {
+                audio_engine.post_reload_operator(tn, registry);
+            }
         }
     }
 }
@@ -2419,6 +2430,14 @@ int main(int argc, char* argv[]) {
         for (const auto& p : pkg_manager.list()) {
             installed_map[p.name] = p;
         }
+
+        // Collect per-package ABI mismatch and loader failure diagnostics
+        std::unordered_set<std::string> packages_needing_rebuild;
+        for (const auto& d : registry.abi_mismatch_diagnostics())
+            if (!d.package_name.empty()) packages_needing_rebuild.insert(d.package_name);
+        for (const auto& d : registry.loader_failure_diagnostics())
+            if (!d.package_name.empty()) packages_needing_rebuild.insert(d.package_name);
+
         auto entries = pkg_catalog.entries();
         out.reserve(entries.size() + installed_map.size());
         for (const auto& e : entries) {
@@ -2433,6 +2452,10 @@ int main(int argc, char* argv[]) {
                 ui_e.linked = it->second.linked;
                 ui_e.category = it->second.category;
                 ui_e.tags = it->second.tags;
+                if (packages_needing_rebuild.count(ui_e.name))  {
+                    ui_e.needs_rebuild = true;
+                    ui_e.health_detail = "ABI mismatch \xe2\x80\x94 try rebuild";
+                }
                 installed_map.erase(it);
             }
             out.push_back(std::move(ui_e));
@@ -2447,6 +2470,10 @@ int main(int argc, char* argv[]) {
             ui_e.tags = info.tags;
             ui_e.installed = true;
             ui_e.linked = info.linked;
+            if (packages_needing_rebuild.count(ui_e.name)) {
+                ui_e.needs_rebuild = true;
+                ui_e.health_detail = "ABI mismatch \xe2\x80\x94 try rebuild";
+            }
             out.push_back(std::move(ui_e));
         }
         pkg_browser_entries_cache = std::move(out);
@@ -2573,6 +2600,30 @@ int main(int argc, char* argv[]) {
             pkg_action_error_msg = r.success ? "" : r.error;
             // Refresh examples if the symlink was created (graphs/ dir may exist even if compile failed)
             pkg_action_needs_refresh = r.success || !r.info.path.empty();
+            pkg_action_state = r.success ? PkgActionState::Done : PkgActionState::Error;
+        });
+        return true;
+    };
+    pkg_browser_cbs.rebuild = [&pkg_manager,
+                                &pkg_action_mutex, &pkg_action_state,
+                                &pkg_action_error_msg, &pkg_action_needs_refresh,
+                                &pkg_action_thread](
+                                    const std::string& name, std::string&) -> bool {
+        {
+            std::lock_guard<std::mutex> lk(pkg_action_mutex);
+            if (pkg_action_state == PkgActionState::Running) return false;
+            pkg_action_state = PkgActionState::Running;
+            pkg_action_error_msg.clear();
+            pkg_action_needs_refresh = false;
+        }
+        if (pkg_action_thread.joinable()) pkg_action_thread.join();
+        pkg_action_thread = std::thread([&pkg_manager, name,
+                     &pkg_action_mutex, &pkg_action_state,
+                     &pkg_action_error_msg, &pkg_action_needs_refresh]() {
+            auto r = pkg_manager.rebuild(name);
+            std::lock_guard<std::mutex> lk(pkg_action_mutex);
+            pkg_action_error_msg = r.success ? "" : r.error;
+            pkg_action_needs_refresh = true;
             pkg_action_state = r.success ? PkgActionState::Done : PkgActionState::Error;
         });
         return true;
@@ -2972,78 +3023,78 @@ int main(int argc, char* argv[]) {
         return true;
     });
 
+    // Helper: save current graph (capturing viewport + filter shaders)
+    auto do_save = [&]() {
+        if (graph_ui.visible())
+            graph.set_viewport(graph_ui.pan_x(), graph_ui.pan_y(), graph_ui.zoom());
+        if (!working_filters_dir.empty()) {
+            for (const auto& fd : graph.filters()) {
+                std::string wpath = working_filters_dir + "/" + fd.name + ".wgsl";
+                std::ifstream ifs(wpath);
+                if (ifs) {
+                    std::ostringstream ss;
+                    ss << ifs.rdbuf();
+                    graph.update_filter_shader(fd.name, ss.str());
+                }
+            }
+        }
+        annotate_graph_packages(graph);
+        auto result = runtime_api.save();
+        std::fprintf(stderr, "[vivid] Save: %s\n", result.message.c_str());
+        return result.ok;
+    };
+
+    // Helper: open save-as dialog and save, returns true if saved
+    auto do_save_as_dialog = [&]() -> bool {
+        std::string path = vivid::ui::save_file_dialog();
+        if (path.empty()) return false;
+        if (graph_ui.visible())
+            graph.set_viewport(graph_ui.pan_x(), graph_ui.pan_y(), graph_ui.zoom());
+        annotate_graph_packages(graph);
+        auto result = runtime_api.save_as(path);
+        std::fprintf(stderr, "[vivid] Save As: %s\n", result.message.c_str());
+        return result.ok;
+    };
+
+    // Helper: execute the pending action after save-confirm resolves
+    auto execute_pending_action = [&](vivid::ui::NodeGraphUI::SaveConfirmAction action) {
+        if (action == vivid::ui::NodeGraphUI::SaveConfirmAction::kNewGraph) {
+            new_graph_runtime();
+        } else {
+            // kNewProject — open directory save dialog then create project
+            std::string dir = vivid::ui::save_directory_dialog("MyProject");
+            if (dir.empty()) return;
+            auto result = runtime_api.new_project(dir, has_gpu_ops, has_audio);
+            if (result.ok) {
+                graph_loaded = true;
+                command_sink.reset_undo_history();
+            }
+            std::fprintf(stderr, "[vivid] New Project: %s\n", result.message.c_str());
+        }
+    };
+
+    // Save-confirm dialog callbacks
+    graph_ui.on_save_confirm_cancel = [&]() {
+        // do nothing — dialog already closed
+    };
+    graph_ui.on_save_confirm_dont_save = [&]() {
+        execute_pending_action(graph_ui.save_confirm_action());
+    };
+    graph_ui.on_save_confirm_save = [&]() {
+        auto action = graph_ui.save_confirm_action();
+        bool saved;
+        if (graph.source_path().empty())
+            saved = do_save_as_dialog();
+        else
+            saved = do_save();
+        if (saved)
+            execute_pending_action(action);
+    };
+
     // --- macOS native menu bar ---
 #ifdef __APPLE__
     {
         vivid::MenuCallbacks menu_cbs;
-
-        // Helper: save current graph (capturing viewport + filter shaders)
-        auto do_save = [&]() {
-            if (graph_ui.visible())
-                graph.set_viewport(graph_ui.pan_x(), graph_ui.pan_y(), graph_ui.zoom());
-            if (!working_filters_dir.empty()) {
-                for (const auto& fd : graph.filters()) {
-                    std::string wpath = working_filters_dir + "/" + fd.name + ".wgsl";
-                    std::ifstream ifs(wpath);
-                    if (ifs) {
-                        std::ostringstream ss;
-                        ss << ifs.rdbuf();
-                        graph.update_filter_shader(fd.name, ss.str());
-                    }
-                }
-            }
-            annotate_graph_packages(graph);
-            auto result = runtime_api.save();
-            std::fprintf(stderr, "[vivid] Save: %s\n", result.message.c_str());
-            return result.ok;
-        };
-
-        // Helper: open save-as dialog and save, returns true if saved
-        auto do_save_as_dialog = [&]() -> bool {
-            std::string path = vivid::ui::save_file_dialog();
-            if (path.empty()) return false;
-            if (graph_ui.visible())
-                graph.set_viewport(graph_ui.pan_x(), graph_ui.pan_y(), graph_ui.zoom());
-            annotate_graph_packages(graph);
-            auto result = runtime_api.save_as(path);
-            std::fprintf(stderr, "[vivid] Save As: %s\n", result.message.c_str());
-            return result.ok;
-        };
-
-        // Helper: execute the pending action after save-confirm resolves
-        auto execute_pending_action = [&](vivid::ui::NodeGraphUI::SaveConfirmAction action) {
-            if (action == vivid::ui::NodeGraphUI::SaveConfirmAction::kNewGraph) {
-                new_graph_runtime();
-            } else {
-                // kNewProject — open directory save dialog then create project
-                std::string dir = vivid::ui::save_directory_dialog("MyProject");
-                if (dir.empty()) return;
-                auto result = runtime_api.new_project(dir, has_gpu_ops, has_audio);
-                if (result.ok) {
-                    graph_loaded = true;
-                    command_sink.reset_undo_history();
-                }
-                std::fprintf(stderr, "[vivid] New Project: %s\n", result.message.c_str());
-            }
-        };
-
-        // Save-confirm dialog callbacks
-        graph_ui.on_save_confirm_cancel = [&]() {
-            // do nothing — dialog already closed
-        };
-        graph_ui.on_save_confirm_dont_save = [&]() {
-            execute_pending_action(graph_ui.save_confirm_action());
-        };
-        graph_ui.on_save_confirm_save = [&]() {
-            auto action = graph_ui.save_confirm_action();
-            bool saved;
-            if (graph.source_path().empty())
-                saved = do_save_as_dialog();
-            else
-                saved = do_save();
-            if (saved)
-                execute_pending_action(action);
-        };
 
         menu_cbs.on_about = [&]() { graph_ui.open_about(); };
         menu_cbs.on_new = [&]() {
@@ -3265,6 +3316,18 @@ int main(int argc, char* argv[]) {
 
     // --- Main loop ---
     auto tick_frame = [&]() -> bool {
+        // Guard against reentrancy from nested macOS run loops (e.g. drag-and-drop
+        // spins a nested NSRunLoop that fires our CFRunLoopTimer again).
+        struct ReentrancyGuard {
+            bool& flag;
+            bool was_reentrant;
+            ReentrancyGuard(bool& f) : flag(f), was_reentrant(f) { flag = true; }
+            ~ReentrancyGuard() { if (!was_reentrant) flag = false; }
+        };
+        static bool in_tick = false;
+        ReentrancyGuard guard(in_tick);
+        if (guard.was_reentrant) return true;
+
         // Close button may fire during macOS tracking (resize/menus).
         if (glfwWindowShouldClose(window)) return false;
 
@@ -3377,6 +3440,14 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
+            // Suppress surface presentation for a few frames after a drop.
+            // The drop callback fires during glfwPollEvents(), and macOS may
+            // still be inside NSCoreDragReceiveMessageProc when our CFRunLoop
+            // timer fires this tick.  The window surface can be transiently
+            // invalid during drag-tracking runloops, so we avoid begin_frame /
+            // end_frame (and the fatal wgpuQueueSubmit) until the surface
+            // stabilises.  Reuses the same settle mechanism as resize/fullscreen.
+            display_state.surface_settle_frames = std::max(display_state.surface_settle_frames, 3);
         }
 
         // Reconfigure GPU surface if framebuffer size changed.
@@ -3827,12 +3898,7 @@ int main(int argc, char* argv[]) {
         } else {
             // No surface — submit offscreen GPU work (scheduler tick, thumbnails)
             // and poll the device so audio/compute operators still advance.
-            WGPUCommandBufferDescriptor cmd_desc{};
-            cmd_desc.label = to_sv("Offscreen Commands");
-            WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(tick_encoder, &cmd_desc);
-            wgpuQueueSubmit(gpu.queue(), 1, &cmd);
-            wgpuCommandBufferRelease(cmd);
-            wgpuCommandEncoderRelease(tick_encoder);
+            vivid::gpu_submit(gpu.device(), gpu.queue(), tick_encoder, "Offscreen Commands");
         }
 
         // wgpu-native: poll the device to process async operations

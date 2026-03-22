@@ -321,6 +321,12 @@ add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp     
                    FACTORY_PRESETS operators/gpu/feedback/factory_presets.json)
 add_vivid_operator(metaball              operators/gpu/metaball/metaball.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(particles             operators/gpu/particles/particles.cpp                     EXTRA_LIBS webgpu)
+add_vivid_operator(instanced_shapes      operators/gpu/instanced_shapes/instanced_shapes.cpp      EXTRA_LIBS webgpu)
+add_vivid_operator(flocking              operators/gpu/flocking/flocking.cpp                       EXTRA_LIBS webgpu)
+add_vivid_operator(trails                operators/gpu/trails/trails.cpp                           EXTRA_LIBS webgpu)
+add_vivid_operator(reaction_diffusion    operators/gpu/reaction_diffusion/reaction_diffusion.cpp   EXTRA_LIBS webgpu)
+add_vivid_operator(cellular_automata     operators/gpu/cellular_automata/cellular_automata.cpp     EXTRA_LIBS webgpu)
+add_vivid_operator(fluid                 operators/gpu/fluid/fluid.cpp                             EXTRA_LIBS webgpu)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 add_vivid_operator(text                  operators/gpu/text/text.cpp                               EXTRA_LIBS webgpu stb_truetype)
 add_vivid_operator(mesh_warp             operators/gpu/mesh_warp/mesh_warp.cpp                     EXTRA_LIBS webgpu)
@@ -951,6 +957,7 @@ add_vivid_operator(semantic_s_dest_op    tests/operators/semantic_s_dest_op.cpp)
 add_vivid_operator(semantic_unknown_source_op tests/operators/semantic_unknown_source_op.cpp)
 add_vivid_operator(untagged_dest_op          tests/operators/untagged_dest_op.cpp)
 add_vivid_operator(test_op_with_roles        tests/operators/test_op_with_roles.cpp)
+add_vivid_operator(test_multi_output_bindable tests/operators/test_multi_output_bindable.cpp)
 
 # Hot-reload integration test (no GPU, no audio, no window)
 add_executable(test_hot_reload
@@ -965,6 +972,7 @@ target_include_directories(test_hot_reload PRIVATE src)
 target_link_libraries(test_hot_reload PRIVATE vivid_operator_api yyjson webgpu)
 add_dependencies(test_hot_reload test_op_v1 test_op_v2 test_op_incompatible_port)
 add_test(NAME test_hot_reload COMMAND test_hot_reload WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_hot_reload PROPERTIES TIMEOUT 15)
 
 add_executable(test_audio_hot_reload
     tests/test_audio_hot_reload.cpp
@@ -981,6 +989,7 @@ target_include_directories(test_audio_hot_reload PRIVATE src)
 target_link_libraries(test_audio_hot_reload PRIVATE vivid_operator_api yyjson miniaudio webgpu)
 add_dependencies(test_audio_hot_reload audio_reload_v1 audio_reload_v2 audio_reload_incompatible)
 add_test(NAME test_audio_hot_reload COMMAND test_audio_hot_reload WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_audio_hot_reload PROPERTIES TIMEOUT 15)
 
 add_executable(test_export_pipeline
     tests/test_export_pipeline.cpp
@@ -1034,6 +1043,7 @@ target_link_libraries(test_latency_validation PRIVATE vivid_operator_api yyjson 
 add_dependencies(test_latency_validation test_op_v1 audio_reload_v1 audio_reload_v2)
 add_test(NAME test_latency_validation COMMAND test_latency_validation ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_latency_validation PROPERTIES TIMEOUT 30)
 
 # ControlServer integration test (HTTP endpoints, no GPU, no audio, no window)
 add_executable(test_control_server
@@ -1260,6 +1270,13 @@ add_executable(test_graph_snapshot_contract
 target_include_directories(test_graph_snapshot_contract PRIVATE src tests)
 add_test(NAME test_graph_snapshot_contract COMMAND test_graph_snapshot_contract WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Inspector layout normalization tests
+add_executable(test_inspector_layout
+    tests/test_inspector_layout.cpp
+)
+target_include_directories(test_inspector_layout PRIVATE src tests)
+add_test(NAME test_inspector_layout COMMAND test_inspector_layout WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # UI overlay interaction regressions (example/package/meta overlay callbacks)
 add_executable(test_ui_overlay_interactions
     tests/test_ui_overlay_interactions.cpp
@@ -1368,7 +1385,7 @@ target_link_libraries(test_runtime_stress PRIVATE vivid_operator_api yyjson mini
 add_dependencies(test_runtime_stress test_op_v1 test_state_carry_op)
 add_test(NAME test_runtime_stress COMMAND test_runtime_stress ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_runtime_stress PROPERTIES LABELS "STABILITY")
+set_tests_properties(test_runtime_stress PROPERTIES LABELS "STABILITY" TIMEOUT 30)
 
 add_executable(test_hot_reload_stress
     tests/test_hot_reload_stress.cpp
@@ -1386,7 +1403,7 @@ target_link_libraries(test_hot_reload_stress PRIVATE vivid_operator_api yyjson m
 add_dependencies(test_hot_reload_stress audio_reload_v1 audio_reload_v2 audio_reload_v3 audio_reload_incompatible)
 add_test(NAME test_hot_reload_stress COMMAND test_hot_reload_stress ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_hot_reload_stress PROPERTIES LABELS "STABILITY")
+set_tests_properties(test_hot_reload_stress PROPERTIES LABELS "STABILITY" TIMEOUT 30)
 
 add_executable(test_package_stress
     tests/test_package_stress.cpp
@@ -1408,7 +1425,7 @@ target_include_directories(test_package_stress PRIVATE src)
 target_link_libraries(test_package_stress PRIVATE vivid_operator_api yyjson miniaudio webgpu)
 add_test(NAME test_package_stress COMMAND test_package_stress ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_package_stress PROPERTIES LABELS "STABILITY")
+set_tests_properties(test_package_stress PROPERTIES LABELS "STABILITY" TIMEOUT 30)
 
 add_executable(test_mixed_runtime_stability
     tests/test_mixed_runtime_stability.cpp
@@ -1426,7 +1443,7 @@ target_link_libraries(test_mixed_runtime_stability PRIVATE vivid_operator_api yy
 add_dependencies(test_mixed_runtime_stability gpu_fill_op lfo oscillator)
 add_test(NAME test_mixed_runtime_stability COMMAND test_mixed_runtime_stability ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_mixed_runtime_stability PROPERTIES LABELS "STABILITY")
+set_tests_properties(test_mixed_runtime_stability PROPERTIES LABELS "STABILITY" TIMEOUT 30)
 
 # Modulation operator tests (Flanger, Chorus, Phaser)
 add_executable(test_modulation_ops
@@ -1572,7 +1589,7 @@ add_executable(test_role_binding_registry
 )
 target_include_directories(test_role_binding_registry PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(test_role_binding_registry PRIVATE vivid_operator_api webgpu yyjson)
-add_dependencies(test_role_binding_registry envelope lfo)
+add_dependencies(test_role_binding_registry envelope lfo test_multi_output_bindable)
 add_test(NAME test_role_binding_registry COMMAND test_role_binding_registry WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Copy test graphs to build directory
@@ -2108,7 +2125,7 @@ target_link_libraries(test_role_binding_commands PRIVATE
     vivid_operator_api yyjson miniaudio webgpu rtmidi stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
-add_dependencies(test_role_binding_commands test_op_with_roles test_op_v1 envelope lfo)
+add_dependencies(test_role_binding_commands test_op_with_roles test_op_v1 envelope lfo test_multi_output_bindable)
 add_test(NAME test_role_binding_commands
     COMMAND test_role_binding_commands ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
