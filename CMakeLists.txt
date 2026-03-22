@@ -300,6 +300,13 @@ add_vivid_operator(step_counter      operators/control/step_counter/step_counter
 add_vivid_operator(path_animate      operators/control/path_animate/path_animate.cpp)
 add_vivid_operator(sample_hold       operators/control/sample_hold/sample_hold.cpp)
 add_vivid_operator(quantizer         operators/control/quantizer/quantizer.cpp)
+add_vivid_operator(macro             operators/control/macro/macro.cpp)
+add_vivid_operator(random_sh         operators/control/random_sh/random_sh.cpp
+                   FACTORY_PRESETS operators/control/random_sh/factory_presets.json)
+add_vivid_operator(mseg              operators/control/mseg/mseg.cpp
+                   FACTORY_PRESETS operators/control/mseg/factory_presets.json)
+add_vivid_operator(step_seq          operators/control/step_seq/step_seq.cpp
+                   FACTORY_PRESETS operators/control/step_seq/factory_presets.json)
 
 # --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu
@@ -313,6 +320,7 @@ add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp           
 add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp                       EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/gpu/feedback/factory_presets.json)
 add_vivid_operator(metaball              operators/gpu/metaball/metaball.cpp                       EXTRA_LIBS webgpu)
+add_vivid_operator(particles             operators/gpu/particles/particles.cpp                     EXTRA_LIBS webgpu)
 add_vivid_operator(time_machine          operators/gpu/time_machine/time_machine.cpp               EXTRA_LIBS webgpu)
 add_vivid_operator(text                  operators/gpu/text/text.cpp                               EXTRA_LIBS webgpu stb_truetype)
 add_vivid_operator(mesh_warp             operators/gpu/mesh_warp/mesh_warp.cpp                     EXTRA_LIBS webgpu)
@@ -942,6 +950,7 @@ add_vivid_operator(semantic_ms_source_op tests/operators/semantic_ms_source_op.c
 add_vivid_operator(semantic_s_dest_op    tests/operators/semantic_s_dest_op.cpp)
 add_vivid_operator(semantic_unknown_source_op tests/operators/semantic_unknown_source_op.cpp)
 add_vivid_operator(untagged_dest_op          tests/operators/untagged_dest_op.cpp)
+add_vivid_operator(test_op_with_roles        tests/operators/test_op_with_roles.cpp)
 
 # Hot-reload integration test (no GPU, no audio, no window)
 add_executable(test_hot_reload
@@ -1527,6 +1536,45 @@ target_include_directories(test_child_op PRIVATE src tests ${CMAKE_SOURCE_DIR}/o
 target_link_libraries(test_child_op PRIVATE vivid_operator_api)
 add_test(NAME test_child_op COMMAND test_child_op WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# SIGNAL port tests (type compat, per-sample LFO/Envelope, auto-extraction, wire routing)
+add_executable(test_signal_port
+    tests/test_signal_port.cpp
+    tests/stubs/envelope_stubs.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/system_midi.cpp
+)
+target_include_directories(test_signal_port PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_signal_port PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu rtmidi)
+add_dependencies(test_signal_port lfo audio_float_cv_op test_op_v1)
+add_test(NAME test_signal_port COMMAND test_signal_port WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# BoundControlInstance unit test (runtime-polymorphic bound control wrapper)
+add_executable(test_bound_control_instance tests/test_bound_control_instance.cpp tests/stubs/envelope_stubs.cpp)
+target_include_directories(test_bound_control_instance PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_bound_control_instance PRIVATE vivid_operator_api)
+add_test(NAME test_bound_control_instance COMMAND test_bound_control_instance WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Role binding registry test (creates bindable operators via registry + dylib loading)
+add_executable(test_role_binding_registry
+    tests/test_role_binding_registry.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+)
+target_include_directories(test_role_binding_registry PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_role_binding_registry PRIVATE vivid_operator_api webgpu yyjson)
+add_dependencies(test_role_binding_registry envelope lfo)
+add_test(NAME test_role_binding_registry COMMAND test_role_binding_registry WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Copy test graphs to build directory
 configure_file(tests/graphs/test_reload.json ${CMAKE_BINARY_DIR}/test_reload.json COPYONLY)
 configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runtime_api.json COPYONLY)
@@ -2027,6 +2075,42 @@ target_link_libraries(test_undo_mutation_types PRIVATE
 add_dependencies(test_undo_mutation_types test_op_v1)
 add_test(NAME test_undo_mutation_types
     COMMAND test_undo_mutation_types ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Role binding command tests (set/clear + undo/redo + serialization)
+configure_file(tests/graphs/test_role_binding_commands.json ${CMAKE_BINARY_DIR}/test_role_binding_commands.json COPYONLY)
+add_executable(test_role_binding_commands
+    tests/test_role_binding_commands.cpp
+    src/runtime/operator_loader.cpp
+    src/runtime/operator_registry.cpp
+    src/runtime/wgsl_header_parser.cpp
+    src/runtime/graph.cpp
+    src/runtime/scheduler.cpp
+    src/runtime/port_type_registry.cpp
+    src/runtime/audio_engine.cpp
+    src/runtime/runtime_api.cpp
+    src/runtime/package_compiler.cpp
+    src/runtime/tool_discovery.cpp
+    src/runtime/package_manager.cpp
+    src/runtime/undo_manager.cpp
+    src/runtime/operator_creator.cpp
+    src/runtime/settings.cpp
+    src/runtime/hot_reload.cpp
+    src/runtime/capture_coordinator.cpp
+    src/runtime/output_analyzer.cpp
+    src/runtime/screenshot.cpp
+    src/runtime/av_exporter.mm
+    src/runtime/platform.cpp
+    src/runtime/system_midi.cpp
+)
+target_include_directories(test_role_binding_commands PRIVATE src tests)
+target_link_libraries(test_role_binding_commands PRIVATE
+    vivid_operator_api yyjson miniaudio webgpu rtmidi stb_truetype
+    "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+    "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
+add_dependencies(test_role_binding_commands test_op_with_roles test_op_v1 envelope lfo)
+add_test(NAME test_role_binding_commands
+    COMMAND test_role_binding_commands ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Team workflow regression: project package isolation (Cases A/C: unit; Case B: dylib staging)

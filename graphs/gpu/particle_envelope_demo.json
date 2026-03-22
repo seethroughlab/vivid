@@ -1,0 +1,74 @@
+{
+  "meta": {
+    "title": "Particle Envelope Demo",
+    "description": "Each particle has its own Envelope controlling opacity and size — a visual analogue to per-note polyphony.",
+    "tags": ["demo", "particles", "role-binding", "envelope"],
+    "difficulty": "intermediate",
+    "domains": ["gpu", "control"]
+  },
+  "nodes": {
+    "particles": {
+      "type": "Particles",
+      "params": {
+        "count": 16,
+        "rate": 4.0,
+        "size": 0.12,
+        "spread": 0.35,
+        "speed": 0.5,
+        "color_r": 0.4,
+        "color_g": 0.6,
+        "color_b": 1.0,
+        "glow": 0.8
+      },
+      "role_bindings": {
+        "envelope": {
+          "target_node_id": "env",
+          "target_output_name": "value"
+        }
+      },
+      "tex_width": 512,
+      "tex_height": 512
+    },
+    "env": {
+      "type": "Envelope",
+      "params": {
+        "attack": 0.05,
+        "decay": 0.3,
+        "sustain": 0.0,
+        "release": 0.5,
+        "amplitude": 1.0,
+        "offset": 0.0,
+        "curve": 1
+      }
+    },
+    "bloom": {
+      "type": "Bloom",
+      "params": {
+        "threshold": 0.2,
+        "intensity": 1.5,
+        "radius": 4.0
+      },
+      "tex_width": 512,
+      "tex_height": 512
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    { "from": "particles/texture", "to": "bloom/input" },
+    { "from": "bloom/texture", "to": "vout/input" }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_binding",
+      "text": "**Role Binding Demo**\n\nThe Particles operator binds an Envelope to each particle.\nTry changing Attack, Decay, and Release to reshape how particles appear and fade.",
+      "x": -300,
+      "y": -100,
+      "width": 280,
+      "height": 100,
+      "color": 0
+    }
+  ]
+}
