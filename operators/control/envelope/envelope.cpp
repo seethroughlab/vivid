@@ -39,12 +39,13 @@ void Envelope::draw_thumbnail(const VividThumbnailContext* ctx) {
         return;
     }
 
-    struct Uniforms { float attack, decay, sustain, release_val, current_value; float pad[3]; } u{};
+    struct Uniforms { float attack, decay, sustain, release_val, current_value, curve_type; float pad[2]; } u{};
     u.attack = ctx->param_values[0];
     u.decay = ctx->param_values[1];
     u.sustain = ctx->param_values[2];
     u.release_val = ctx->param_values[3];
     u.current_value = (ctx->output_count > 0) ? ctx->output_values[0] : 0.0f;
+    u.curve_type = (ctx->param_count > 6) ? ctx->param_values[6] : 1.0f;
     wgpuQueueWriteBuffer(ctx->queue, thumb_state_->uniform_buf, 0, &u, sizeof(u));
     vivid::thumbnail::run_pass(ctx, thumb_state_->pipeline, thumb_state_->bind_group, "Envelope Thumb Pass");
 }
@@ -74,17 +75,32 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     return out;
 }
 
+fn shape_attack_wgsl(t: f32, curve: f32) -> f32 {
+    let tc = clamp(t, 0.0, 1.0);
+    if (curve < 0.5) { return tc; }                          // linear
+    if (curve < 1.5) { return 1.0 - exp(-4.0 * tc); }       // exponential
+    return tc * tc;                                           // logarithmic
+}
+
+fn shape_decay_wgsl(t: f32, curve: f32) -> f32 {
+    let tc = clamp(t, 0.0, 1.0);
+    if (curve < 0.5) { return tc; }
+    if (curve < 1.5) { return 1.0 - exp(-4.0 * tc); }
+    return tc * tc;
+}
+
 fn envelope_at(x: f32, x_a: f32, x_d: f32, x_s: f32, s: f32) -> f32 {
+    let curve = uniforms.data2.y;
     if (x < x_a) {
-        return x / x_a;
+        return shape_attack_wgsl(x / x_a, curve);
     } else if (x < x_d) {
         let t = (x - x_a) / (x_d - x_a);
-        return 1.0 - (1.0 - s) * t;
+        return 1.0 - (1.0 - s) * shape_decay_wgsl(t, curve);
     } else if (x < x_s) {
         return s;
     } else {
         let t = (x - x_s) / (1.0 - x_s);
-        return s * (1.0 - t);
+        return s * (1.0 - shape_decay_wgsl(t, curve));
     }
 }
 
@@ -167,5 +183,6 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 
 VIVID_REGISTER(Envelope)
+VIVID_BINDABLE(Envelope)
 VIVID_INSPECTOR(Envelope)
 VIVID_THUMBNAIL(Envelope)
