@@ -61,6 +61,8 @@ struct PackageBrowserEntry {
     std::vector<std::string> tags;
     bool installed = false;
     bool linked = false;
+    bool needs_rebuild = false;      // ABI mismatch or load failure detected
+    std::string health_detail;       // e.g. "ABI mismatch — try rebuild"
 };
 
 struct PackageBrowserUpdateSummary {
@@ -79,6 +81,7 @@ struct PackageBrowserCallbacks {
     std::function<bool(const std::string&, std::string&)> uninstall;
     std::function<bool(const std::string&, std::string&)> unlink;
     std::function<bool(const std::string&, std::string&)> link;
+    std::function<bool(const std::string&, std::string&)> rebuild;
 };
 
 struct FileDropChooserAction {
@@ -309,6 +312,7 @@ private:
                                       const std::string& group_name, bool collapsed);
     void draw_one_inspector_param_simple(Renderer2D& tr, const NodeSnapshot& node,
                                          float px, float& py, uint32_t pi);
+    void draw_section_separator(Renderer2D& tr, float px, float& py, float panel_w, const char* label);
     void draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_referenced_by(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_binding_lines(Renderer2D& tr);
@@ -584,9 +588,14 @@ private:
     int hovered_binding_line_idx_ = -1;
 
     // Role binding chooser popup state
+    struct RoleChooserItem {
+        std::string node_id;
+        std::string output_name;
+        std::string label;
+    };
     bool role_chooser_open_ = false;
     std::string role_chooser_node_id_, role_chooser_role_id_;
-    std::vector<std::string> role_chooser_items_;  // compatible node IDs from graph
+    std::vector<RoleChooserItem> role_chooser_items_;
     int role_chooser_sel_ = -1;
     float role_chooser_x_ = 0, role_chooser_y_ = 0;
 

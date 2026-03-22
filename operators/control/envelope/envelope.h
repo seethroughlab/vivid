@@ -84,10 +84,10 @@ struct Envelope : vivid::AudioOperatorBase {
         display_hint(sustain, VIVID_DISPLAY_KNOB);
         display_hint(release, VIVID_DISPLAY_KNOB);
 
-        layout_row(attack,  4, 0);
-        layout_row(decay,   4, 1);
-        layout_row(sustain, 4, 2);
-        layout_row(release, 4, 3);
+        layout_row(attack,  2, 0);
+        layout_row(decay,   2, 1);
+        layout_row(sustain, 2, 0);
+        layout_row(release, 2, 1);
 
         out.push_back(&attack);
         out.push_back(&decay);

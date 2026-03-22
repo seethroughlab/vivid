@@ -2316,19 +2316,9 @@ bool NodeGraphUI::handle_inspector_click() {
             if (!role_chooser_items_.empty()) {
                 int idx = static_cast<int>((mouse_.y - role_chooser_y_ - 2) / item_h);
                 if (idx >= 0 && idx < static_cast<int>(role_chooser_items_.size())) {
-                    // Resolve the output name from the role's preferred_output_name
-                    std::string output_name = "value";  // fallback
-                    const auto* host_ns = snap_.find_node(role_chooser_node_id_);
-                    if (host_ns && host_ns->op_info) {
-                        for (const auto& ri : host_ns->op_info->role_bindings) {
-                            if (ri.role_id == role_chooser_role_id_ && !ri.preferred_output_name.empty()) {
-                                output_name = ri.preferred_output_name;
-                                break;
-                            }
-                        }
-                    }
+                    const auto& item = role_chooser_items_[idx];
                     commands_.set_role_binding(role_chooser_node_id_, role_chooser_role_id_,
-                                              role_chooser_items_[idx], output_name);
+                                              item.node_id, item.output_name);
                 }
             }
             role_chooser_open_ = false;
@@ -2360,22 +2350,57 @@ bool NodeGraphUI::handle_inspector_click() {
             const auto& r = role_bind_rects_[bi];
             const auto* ns = snap_.find_node(r.node_id);
             if (ns && ns->op_info) {
-                // Find role's candidates (operator type names), then filter to existing graph nodes
                 role_chooser_items_.clear();
                 for (const auto& role : ns->op_info->role_bindings) {
-                    if (role.role_id == r.role_id) {
-                        // Build set of candidate type names
-                        std::unordered_set<std::string> candidate_types(
-                            role.candidates.begin(), role.candidates.end());
-                        // Find matching nodes in graph
-                        for (const auto& gn : snap_.nodes) {
-                            if (gn.node_id == r.node_id) continue;  // skip self
-                            if (candidate_types.count(gn.type_name)) {
-                                role_chooser_items_.push_back(gn.node_id);
+                    if (role.role_id != r.role_id) continue;
+
+                    // Build lookup: type_name → compatible outputs
+                    std::unordered_map<std::string, const vivid::ui::RoleCandidate*> cand_map;
+                    for (const auto& rc : role.candidates)
+                        cand_map[rc.type_name] = &rc;
+
+                    for (const auto& gn : snap_.nodes) {
+                        if (gn.node_id == r.node_id) continue;  // skip self
+                        auto cit = cand_map.find(gn.type_name);
+                        if (cit == cand_map.end()) continue;
+                        const auto& compat = cit->second->compatible_outputs;
+
+                        if (compat.size() <= 1) {
+                            // Single (or zero) compatible output — one item
+                            RoleChooserItem item;
+                            item.node_id = gn.node_id;
+                            item.output_name = compat.empty() ? "value" : compat[0];
+                            item.label = gn.node_id + " (" + gn.type_name + ")";
+                            role_chooser_items_.push_back(std::move(item));
+                        } else {
+                            // Multiple compatible outputs — prefer preferred_output_name
+                            // if it matches; otherwise show one item per output.
+                            bool used_preferred = false;
+                            if (!role.preferred_output_name.empty()) {
+                                for (const auto& o : compat) {
+                                    if (o == role.preferred_output_name) {
+                                        RoleChooserItem item;
+                                        item.node_id = gn.node_id;
+                                        item.output_name = o;
+                                        item.label = gn.node_id + " (" + gn.type_name + ")";
+                                        role_chooser_items_.push_back(std::move(item));
+                                        used_preferred = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!used_preferred) {
+                                for (const auto& o : compat) {
+                                    RoleChooserItem item;
+                                    item.node_id = gn.node_id;
+                                    item.output_name = o;
+                                    item.label = gn.node_id + "." + o + " (" + gn.type_name + ")";
+                                    role_chooser_items_.push_back(std::move(item));
+                                }
                             }
                         }
-                        break;
                     }
+                    break;
                 }
                 role_chooser_node_id_ = r.node_id;
                 role_chooser_role_id_ = r.role_id;

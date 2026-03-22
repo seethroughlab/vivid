@@ -85,7 +85,15 @@ void NodeGraphUI::update_package_browser() {
                 pkg_action_error_.clear();
                 pkg_action_pending_ = true;
                 pkg_action_name_ = entry.name;
-                if (entry.installed) {
+                if (entry.needs_rebuild) {
+                    if (!pkg_browser_callbacks_.rebuild ||
+                        !pkg_browser_callbacks_.rebuild(entry.name, pkg_action_error_)) {
+                        pkg_action_pending_ = false;
+                        pkg_action_name_.clear();
+                        if (pkg_action_error_.empty())
+                            pkg_action_error_ = "Failed to rebuild " + entry.name;
+                    }
+                } else if (entry.installed) {
                     if (entry.linked) {
                         if (!pkg_browser_callbacks_.unlink ||
                             !pkg_browser_callbacks_.unlink(entry.name, pkg_action_error_)) {

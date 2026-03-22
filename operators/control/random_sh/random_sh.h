@@ -40,8 +40,8 @@ struct RandomSH : vivid::ControlOperatorBase {
         display_hint(rate, VIVID_DISPLAY_KNOB);
         display_hint(slew, VIVID_DISPLAY_KNOB);
 
-        layout_row(rate, 4, 0);
-        layout_row(slew, 4, 1);
+        layout_row(rate, 2, 0);
+        layout_row(slew, 2, 1);
 
         out.push_back(&rate);
         out.push_back(&amplitude);

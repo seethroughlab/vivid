@@ -82,6 +82,16 @@ static std::string build_semantic_hint(const ParamInfo& pd) {
     return hint;
 }
 
+// Truncate text with ellipsis if it exceeds max_w at the given scale.
+static std::string truncate_text(Renderer2D& tr, const std::string& text,
+                                 float max_w, float scale = 1.0f) {
+    if (tr.text_width(text.c_str(), scale) <= max_w) return text;
+    std::string result = text;
+    while (result.size() > 1 && tr.text_width((result + "\xe2\x80\xa6").c_str(), scale) > max_w)
+        result.pop_back();
+    return result + "\xe2\x80\xa6";
+}
+
 // -----------------------------------------------------------------------
 // Drawing
 // -----------------------------------------------------------------------
@@ -170,7 +180,8 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
             tr.draw_text(lx, ly, label, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.8f, zoom_);
             // Sub-label with reason
             if (sn && !sn->error_message.empty()) {
-                const char* sub = sn->error_message.find("ABI mismatch") != std::string::npos
+                const char* sub = sn->error_message.find("rebuild") != std::string::npos
+                                  ? "try rebuild" : sn->error_message.find("ABI") != std::string::npos
                                   ? "ABI mismatch" : "not installed";
                 float sub_scale = zoom_ * 0.75f;
                 float sub_w = tr.text_width(sub, sub_scale);
@@ -860,11 +871,27 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     } else {
         draw_inspector_params(tr, *sel_node, px, py);
     }
-    draw_inspector_role_bindings(tr, *sel_node, px, py);
-    draw_inspector_referenced_by(tr, *sel_node, px, py);
-    draw_inspector_resolution(tr, *sel_node, px, py);
-    draw_inspector_state_presets(tr, *sel_node, px, py);
-    draw_inspector_outputs(tr, *sel_node, px, py);
+    // --- Bindings section ---
+    {
+        bool has_bindings = sel_node->op_info && !sel_node->op_info->role_bindings.empty();
+        bool has_refs = !sel_node->referenced_by.empty();
+        if (has_bindings || has_refs)
+            draw_section_separator(tr, px, py, kInspContentW, "Bindings");
+        draw_inspector_role_bindings(tr, *sel_node, px, py);
+        draw_inspector_referenced_by(tr, *sel_node, px, py);
+    }
+
+    // --- Technical section ---
+    {
+        bool has_resolution = sel_node->is_gpu && sel_node->gpu_tex_width > 0;
+        bool has_state_presets = sel_node->param_indices.count("states") > 0;
+        bool has_outputs = !sel_node->output_port_indices.empty();
+        if (has_resolution || has_state_presets || has_outputs)
+            draw_section_separator(tr, px, py, kInspContentW, "Technical");
+        draw_inspector_resolution(tr, *sel_node, px, py);
+        draw_inspector_state_presets(tr, *sel_node, px, py);
+        draw_inspector_outputs(tr, *sel_node, px, py);
+    }
 
     // Inspector widget hover highlights
     if (hovered_slider_idx_ >= 0 && hovered_slider_idx_ < static_cast<int>(slider_rects_.size())) {
@@ -1438,14 +1465,16 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         tr.draw_rect(dot_x, dot_y, dot_sz, dot_sz, dot_clr[0], dot_clr[1], dot_clr[2], 0.9f);
     }
 
-    // Label (dimmed if driven by connection)
+    // Label (dimmed if driven by connection), truncated to leave room for value
+    float max_label_w = panel_w * 0.55f;
+    std::string display_label = truncate_text(tr, pd.name, max_label_w);
     if (is_connected)
-        tr.draw_text(label_x, py, pd.name.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+        tr.draw_text(label_x, py, display_label.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
     else
-        tr.draw_text(label_x, py, pd.name.c_str(), 0.8f, 0.82f, 0.85f);
+        tr.draw_text(label_x, py, display_label.c_str(), 0.8f, 0.82f, 0.85f);
 
     // CC badge inline with label
-    float after_label_x = px + tr.text_width(pd.name.c_str()) + 6;
+    float after_label_x = px + tr.text_width(display_label.c_str()) + 6;
     if (midi_mm) {
         std::string badge = "CC " + std::to_string(midi_mm->cc_number);
         float badge_x = after_label_x;
@@ -1563,7 +1592,9 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         val_str = format_float(val, 2);
     }
 
-    float vw = tr.text_width(val_str.c_str());
+    float max_val_w = panel_w * 0.4f;
+    std::string display_val = truncate_text(tr, val_str, max_val_w);
+    float vw = tr.text_width(display_val.c_str());
     float val_x = px + panel_w - vw;
     float val_y = py;
 
@@ -1575,9 +1606,9 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                                 edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
     } else {
         if (is_connected)
-            tr.draw_text(val_x, py, val_str.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+            tr.draw_text(val_x, py, display_val.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
         else
-            tr.draw_text(val_x, py, val_str.c_str(), 0.8f, 0.82f, 0.85f);
+            tr.draw_text(val_x, py, display_val.c_str(), 0.8f, 0.82f, 0.85f);
         if (pd.type != VIVID_PARAM_BOOL && pd.choice_count == 0) {
             value_text_rects_.push_back({val_x, val_y, vw, kLineH,
                                          single_selected_id(), pd.name});
@@ -1586,7 +1617,8 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
 
     py += kLineH;
     if (has_semantic_hint) {
-        tr.draw_text(px, py - 2.0f, semantic_hint.c_str(),
+        std::string display_hint = truncate_text(tr, semantic_hint, panel_w, 0.6f);
+        tr.draw_text(px, py - 2.0f, display_hint.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f);
         py += kLineH - 2.0f;
     }
@@ -1647,7 +1679,8 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
 
     // Source label for connected params (e.g. "← lfo_1/value")
     if (is_connected) {
-        tr.draw_text(px, py - 4, conn_source_label.c_str(),
+        std::string display_source = truncate_text(tr, conn_source_label, panel_w, 0.6f);
+        tr.draw_text(px, py - 4, display_source.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f);
         py += kLineH - 2;
     }
@@ -1810,8 +1843,13 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                 continue;
             }
 
-            layout.begin_param(pd.layout_columns, pd.layout_column_index);
+            layout.begin_param_normalized(pd.layout_columns, pd.layout_column_index,
+                                          pd.display_hint, pd.type, pd.choice_count);
+            if (layout.row_columns >= 2)
+                tr.push_clip_rect(layout.x, layout.y, layout.col_w, 200.0f);
             draw_one_inspector_param(tr, node, layout, pi);
+            if (layout.row_columns >= 2)
+                tr.pop_clip_rect();
             ++pi;
         }
         layout.flush_row();
@@ -1958,6 +1996,22 @@ void NodeGraphUI::draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node
     insp_char_events_.clear();
 }
 
+void NodeGraphUI::draw_section_separator(Renderer2D& tr, float px, float& py,
+                                         float panel_w, const char* label) {
+    py += kSectionGapBefore;
+    tr.draw_rect(px, py, panel_w, 1,
+                 style_.separator[0], style_.separator[1], style_.separator[2]);
+    py += 6;
+    if (label) {
+        tr.draw_text(px, py, label,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2],
+                     kSectionLabelScale);
+        py += kLineH * kSectionLabelScale + kSectionGapAfter;
+    } else {
+        py += kSectionGapAfter;
+    }
+}
+
 void NodeGraphUI::draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapshot& node,
                                                float px, float& py) {
     if (!node.op_info || node.op_info->role_bindings.empty()) return;
@@ -1967,7 +2021,8 @@ void NodeGraphUI::draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapsho
 
     for (const auto& role : node.op_info->role_bindings) {
         // Header row
-        py += 6.0f;
+        py += 4.0f;
+        float panel_top = py;  // track start for accent bar
         float header_y = py;
         float header_h = 20.0f;
 
@@ -2006,7 +2061,13 @@ void NodeGraphUI::draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapsho
                                       node.node_id, role.role_id});
         py = header_y + header_h;
 
-        if (collapsed) continue;
+        if (collapsed) {
+            // Draw accent bar for collapsed role (header only)
+            const float* dcol = domain_color(role.accepted_domain);
+            tr.draw_rect(px - 4, panel_top, 2, py - panel_top,
+                         dcol[0], dcol[1], dcol[2], 0.5f);
+            continue;
+        }
 
         // Find matching role binding snapshot
         const NodeSnapshot::RoleBindingSnapshot* bound = nullptr;
@@ -2037,8 +2098,12 @@ void NodeGraphUI::draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapsho
 
             py += btn_h + 2.0f;
 
-            // Target node ID label
-            tr.draw_text(px, py, bound->target_node_id.c_str(),
+            // Target node ID label (with output name when disambiguation matters)
+            std::string id_label = bound->target_node_id;
+            if (!bound->target_output_name.empty()) {
+                id_label += "." + bound->target_output_name;
+            }
+            tr.draw_text(px, py, id_label.c_str(),
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.75f);
             py += kLineH;
 
@@ -2084,6 +2149,11 @@ void NodeGraphUI::draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapsho
 
             py += btn_h + 4.0f;
         }
+
+        // Left accent bar for this role
+        const float* dcol = domain_color(role.accepted_domain);
+        tr.draw_rect(px - 4, panel_top, 2, py - panel_top,
+                     dcol[0], dcol[1], dcol[2], 0.5f);
     }
 }
 
@@ -2095,7 +2165,8 @@ void NodeGraphUI::draw_inspector_referenced_by(Renderer2D& tr, const NodeSnapsho
     const float btn_h = 18.0f;
 
     // Section header
-    py += 6.0f;
+    py += 4.0f;
+    float section_top = py;
     float header_y = py;
     float header_h = 20.0f;
 
@@ -2128,42 +2199,46 @@ void NodeGraphUI::draw_inspector_referenced_by(Renderer2D& tr, const NodeSnapsho
                                     node.node_id, ""});
     py = header_y + header_h;
 
-    if (collapsed) return;
+    if (!collapsed) {
+        for (const auto& ref : node.referenced_by) {
+            py += 4.0f;
 
-    for (const auto& ref : node.referenced_by) {
-        py += 4.0f;
+            // Look up host node for type name and domain color
+            const auto* host = snap_.find_node(ref.host_node_id);
+            const std::string& chip_label = host ? host->type_name : ref.host_node_id;
+            VividDomain host_domain = host ? host->domain : VIVID_DOMAIN_CONTROL;
+            const float* dcol = domain_color(host_domain);
 
-        // Look up host node for type name and domain color
-        const auto* host = snap_.find_node(ref.host_node_id);
-        const std::string& chip_label = host ? host->type_name : ref.host_node_id;
-        VividDomain host_domain = host ? host->domain : VIVID_DOMAIN_CONTROL;
-        const float* dcol = domain_color(host_domain);
+            // Host type chip
+            float chip_w = tr.text_width(chip_label.c_str(), 0.85f) + 12.0f;
+            tr.draw_rect(px, py, chip_w, btn_h,
+                         dcol[0] * 0.3f, dcol[1] * 0.3f, dcol[2] * 0.3f, 0.8f);
+            tr.draw_text(px + 6, py + 1, chip_label.c_str(),
+                         dcol[0], dcol[1], dcol[2], 0.85f);
+            py += btn_h + 2.0f;
 
-        // Host type chip
-        float chip_w = tr.text_width(chip_label.c_str(), 0.85f) + 12.0f;
-        tr.draw_rect(px, py, chip_w, btn_h,
-                     dcol[0] * 0.3f, dcol[1] * 0.3f, dcol[2] * 0.3f, 0.8f);
-        tr.draw_text(px + 6, py + 1, chip_label.c_str(),
-                     dcol[0], dcol[1], dcol[2], 0.85f);
-        py += btn_h + 2.0f;
+            // "as [role_label]" dim text
+            std::string as_label = "as " + ref.role_label;
+            tr.draw_text(px, py, as_label.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.75f);
+            py += kLineH;
 
-        // "as [role_label]" dim text
-        std::string as_label = "as " + ref.role_label;
-        tr.draw_text(px, py, as_label.c_str(),
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.75f);
-        py += kLineH;
+            // Jump To button
+            float jump_w = tr.text_width("Jump To", 0.8f) + 12.0f;
+            tr.draw_rect(px, py, jump_w, btn_h,
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+            tr.draw_text(px + 6, py + 1, "Jump To",
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.8f);
+            ref_by_jump_rects_.push_back({px, py, jump_w, btn_h,
+                                          ref.host_node_id, ref.role_id});
 
-        // Jump To button
-        float jump_w = tr.text_width("Jump To", 0.8f) + 12.0f;
-        tr.draw_rect(px, py, jump_w, btn_h,
-                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-        tr.draw_text(px + 6, py + 1, "Jump To",
-                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.8f);
-        ref_by_jump_rects_.push_back({px, py, jump_w, btn_h,
-                                      ref.host_node_id, ref.role_id});
-
-        py += btn_h + 4.0f;
+            py += btn_h + 4.0f;
+        }
     }
+
+    // Left accent bar for referenced-by section
+    tr.draw_rect(px - 4, section_top, 2, py - section_top,
+                 kControlAccent[0], kControlAccent[1], kControlAccent[2], 0.4f);
 }
 
 void NodeGraphUI::draw_binding_lines(Renderer2D& tr) {
@@ -2185,11 +2260,26 @@ void NodeGraphUI::draw_binding_lines(Renderer2D& tr) {
             const auto& host_rect = node_rects_[hi->second];
             const auto& target_rect = node_rects_[ti->second];
 
-            // Graph-space center-to-center
-            float gsx = host_rect.x + host_rect.w * 0.5f;
-            float gsy = host_rect.y + host_rect.h * 0.5f;
-            float gex = target_rect.x + target_rect.w * 0.5f;
-            float gey = target_rect.y + target_rect.h * 0.5f;
+            // Clip endpoints to rect edges so the line doesn't pass through nodes
+            float hcx = host_rect.x + host_rect.w * 0.5f;
+            float hcy = host_rect.y + host_rect.h * 0.5f;
+            float tcx = target_rect.x + target_rect.w * 0.5f;
+            float tcy = target_rect.y + target_rect.h * 0.5f;
+            auto [gsx, gsy] = clip_to_rect_edge(hcx, hcy, tcx, tcy,
+                host_rect.x, host_rect.y, host_rect.w, host_rect.h);
+            auto [gex, gey] = clip_to_rect_edge(tcx, tcy, hcx, hcy,
+                target_rect.x, target_rect.y, target_rect.w, target_rect.h);
+
+            // Pull back slightly for visual breathing room
+            float len = std::hypot(gex - gsx, gey - gsy);
+            constexpr float margin = 4.0f;
+            if (len > margin * 3.0f) {
+                float nx = (gex - gsx) / len, ny = (gey - gsy) / len;
+                gsx += nx * margin;
+                gsy += ny * margin;
+                gex -= nx * margin;
+                gey -= ny * margin;
+            }
 
             int line_idx = static_cast<int>(binding_lines_.size());
             binding_lines_.push_back({node.node_id, rbs.target_node_id, rbs.role_id,
@@ -2271,10 +2361,7 @@ void NodeGraphUI::draw_role_chooser(Renderer2D& tr) {
             tr.draw_rect(role_chooser_x_ + 2, iy, popup_w - 4, item_h,
                          style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
         }
-        // Show "node_id (TypeName)"
-        const auto* target_ns = snap_.find_node(role_chooser_items_[i]);
-        std::string label = role_chooser_items_[i];
-        if (target_ns) label += " (" + target_ns->type_name + ")";
+        const auto& label = role_chooser_items_[i].label;
         tr.draw_text(role_chooser_x_ + 8, iy + 2, label.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     }
@@ -2287,10 +2374,6 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
 
     bool is_generator = node.is_generator;
     float panel_w = kInspContentW;
-
-    py += 4;
-    tr.draw_rect(px, py, panel_w, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
-    py += 8;
 
     tr.draw_text(px, py, T("resolution", "Resolution"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH;
@@ -2380,11 +2463,6 @@ void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapsho
     }
     if (preset_nodes.empty()) return;
 
-    // Separator
-    py += 4;
-    tr.draw_rect(px, py, panel_w, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
-    py += 8;
-
     tr.draw_text(px, py, T("state_presets", "State Presets"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH;
 
@@ -2462,11 +2540,6 @@ void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapsho
 void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node,
                                          float px, float& py) {
     float panel_w = kInspContentW;
-
-    // Separator before outputs
-    py += 4;
-    tr.draw_rect(px, py, panel_w, 1, style_.separator[0], style_.separator[1], style_.separator[2]);
-    py += 8;
 
     tr.draw_text(px, py, T("outputs", "Outputs"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     py += kLineH;

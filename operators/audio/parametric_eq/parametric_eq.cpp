@@ -61,24 +61,24 @@ struct ParametricEQ : vivid::AudioOperatorBase {
             vivid::semantic_shape(freq, "scalar");
             vivid::semantic_unit(freq, "Hz");
             vivid::display_hint(freq, VIVID_DISPLAY_KNOB);
-            vivid::layout_row(freq, 4, 0);
+            vivid::layout_row(freq, 2, 0);
 
             vivid::param_group(gain, group);
             vivid::semantic_tag(gain, "gain_db");
             vivid::semantic_shape(gain, "scalar");
             vivid::semantic_unit(gain, "dB");
             vivid::display_hint(gain, VIVID_DISPLAY_KNOB);
-            vivid::layout_row(gain, 4, 1);
+            vivid::layout_row(gain, 2, 1);
 
             vivid::param_group(q, group);
             vivid::semantic_tag(q, "resonance");
             vivid::semantic_shape(q, "scalar");
             vivid::display_hint(q, VIVID_DISPLAY_KNOB);
-            vivid::layout_row(q, 4, 2);
+            vivid::layout_row(q, 2, 0);
 
             vivid::param_group(type, group);
             vivid::display_hint(type, VIVID_DISPLAY_KNOB);
-            vivid::layout_row(type, 4, 3);
+            vivid::layout_row(type, 2, 1);
         };
 
         setup_band(freq_1, gain_1, q_1, type_1, "Band 1");

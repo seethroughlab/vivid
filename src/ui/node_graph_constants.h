@@ -8,7 +8,7 @@ namespace vivid::ui {
 // Layout constants
 static constexpr float kGraphX = 0.0f;
 static constexpr float kGraphY = 0.0f;
-static constexpr float kInspectorW = 320.0f;
+static constexpr float kInspectorW = 400.0f;
 static constexpr float kNodeW = 140.0f;
 static constexpr float kColSpacing = 200.0f;
 static constexpr float kRowSpacing = 16.0f;
@@ -52,9 +52,15 @@ static constexpr float kResInputW = 40.0f;
 static constexpr float kInspPadX = 16.0f;
 static constexpr float kInspContentW = kInspectorW - 2 * kInspPadX;
 static constexpr float kInspColGap = 8.0f;
+static constexpr float kInspMinColW = 160.0f;  // minimum per-column width; safety net for two-up layout
 static constexpr float kGroupHeaderH = 22.0f;
 static constexpr float kGroupHeaderPadTop = 6.0f;
 static constexpr float kGroupChevronSize = 8.0f;
+
+// Section dividers (between major inspector regions)
+static constexpr float kSectionGapBefore  = 12.0f;  // space above separator line
+static constexpr float kSectionGapAfter   =  6.0f;  // space below label
+static constexpr float kSectionLabelScale =  0.75f;  // text scale for section labels
 
 // XY pad widget
 static constexpr float kXYPadSize     = 120.0f;   // square side length
@@ -168,6 +174,21 @@ inline float point_seg_dist2(float px, float py, float ax, float ay, float bx, f
     float cx = ax + t * dx, cy = ay + t * dy;
     float ex = px - cx, ey = py - cy;
     return ex * ex + ey * ey;
+}
+
+// Clip a ray from rect center toward a target point to the rect boundary.
+inline std::pair<float, float> clip_to_rect_edge(
+    float cx, float cy,   // center of rect
+    float tx, float ty,   // target point (determines direction)
+    float rx, float ry, float rw, float rh)  // rect bounds
+{
+    float dx = tx - cx, dy = ty - cy;
+    if (dx == 0.0f && dy == 0.0f) return {cx, cy};
+    float hw = rw * 0.5f, hh = rh * 0.5f;
+    float t = 1.0f;
+    if (dx != 0.0f) t = std::min(t, hw / std::fabs(dx));
+    if (dy != 0.0f) t = std::min(t, hh / std::fabs(dy));
+    return {cx + dx * t, cy + dy * t};
 }
 
 // Wire geometry helpers

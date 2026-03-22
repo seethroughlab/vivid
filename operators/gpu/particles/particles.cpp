@@ -133,16 +133,14 @@ struct Particles : vivid::GpuOperatorBase {
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(count, 2, 0);
         vivid::layout_row(rate,  2, 1);
-        vivid::layout_row(size,    3, 0);
-        vivid::layout_row(spread,  3, 1);
-        vivid::layout_row(speed,   3, 2);
+        // size, spread, speed: full-width sliders
         vivid::display_hint(color_r, VIVID_DISPLAY_KNOB);
         vivid::display_hint(color_g, VIVID_DISPLAY_KNOB);
         vivid::display_hint(color_b, VIVID_DISPLAY_KNOB);
-        vivid::layout_row(color_r, 4, 0);
-        vivid::layout_row(color_g, 4, 1);
-        vivid::layout_row(color_b, 4, 2);
-        vivid::layout_row(glow,    4, 3);
+        vivid::layout_row(color_r, 2, 0);
+        vivid::layout_row(color_g, 2, 1);
+        vivid::layout_row(color_b, 2, 0);
+        vivid::layout_row(glow,    2, 1);
         out.push_back(&count);
         out.push_back(&rate);
         out.push_back(&size);

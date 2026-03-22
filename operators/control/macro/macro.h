@@ -25,7 +25,7 @@ struct Macro : vivid::ControlOperatorBase {
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         display_hint(value, VIVID_DISPLAY_KNOB);
-        layout_row(value, 4, 0);
+        // value: full-width by default
 
         out.push_back(&value);
         out.push_back(&amplitude);

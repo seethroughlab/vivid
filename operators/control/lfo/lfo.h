@@ -49,19 +49,17 @@ struct LFO : vivid::AudioOperatorBase {
         display_hint(phase_offset,  VIVID_DISPLAY_KNOB);
         display_hint(fade_in,       VIVID_DISPLAY_KNOB);
 
-        layout_row(frequency,    4, 0);
-        layout_row(phase_offset, 4, 1);
-        layout_row(fade_in,      4, 2);
-        layout_row(amplitude,    4, 3);
+        layout_row(phase_offset, 2, 0);
+        layout_row(fade_in,      2, 1);
 
         out.push_back(&frequency);
+        out.push_back(&phase_offset);
+        out.push_back(&fade_in);
         out.push_back(&amplitude);
         out.push_back(&offset);
         out.push_back(&waveform);
         out.push_back(&rate_mode);
         out.push_back(&polarity);
-        out.push_back(&phase_offset);
-        out.push_back(&fade_in);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {

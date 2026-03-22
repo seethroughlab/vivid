@@ -81,6 +81,7 @@ template int NodeGraphUI::hit_test_rect(const std::vector<XYPadRect>& rects, flo
 template int NodeGraphUI::hit_test_rect(const std::vector<ColorSwatchRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<StatePresetRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<StateHeaderRect>& rects, float mx, float my);
+template int NodeGraphUI::hit_test_rect(const std::vector<RoleBindingRect>& rects, float mx, float my);
 
 // -----------------------------------------------------------------------
 // Port visibility helpers

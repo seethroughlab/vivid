@@ -135,7 +135,9 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
 
         std::string ver_str = "v" + entry.version;
         const float ver_w = tr.text_width(ver_str.c_str());
-        const char* state = entry.linked ? T("linked", "Linked") : T("installed", "Installed");
+        const char* state = entry.needs_rebuild ? T("needs_rebuild", "Try Rebuild")
+                          : entry.linked        ? T("linked", "Linked")
+                          :                       T("installed", "Installed");
         const float chip_w = tr.text_width(state) + 16.0f;
         float available_name_w = text_w - 8.0f - ver_w;
         if (entry.installed) available_name_w -= (10.0f + chip_w);
@@ -147,15 +149,16 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
         if (entry.installed) {
             float state_x = text_left + name_w + 8 + ver_w + 10.0f;
+            bool error_chip = entry.needs_rebuild;
             tr.draw_rect(state_x, iy + 4, chip_w, 16.0f,
-                         entry.linked ? style_.accent[0] : style_.button_bg[0],
-                         entry.linked ? style_.accent[1] : style_.button_bg[1],
-                         entry.linked ? style_.accent[2] : style_.button_bg[2],
-                         entry.linked ? 0.85f : 0.75f);
+                         error_chip   ? kErrorAccent[0] : entry.linked ? style_.accent[0] : style_.button_bg[0],
+                         error_chip   ? kErrorAccent[1] : entry.linked ? style_.accent[1] : style_.button_bg[1],
+                         error_chip   ? kErrorAccent[2] : entry.linked ? style_.accent[2] : style_.button_bg[2],
+                         error_chip   ? 0.85f : entry.linked ? 0.85f : 0.75f);
             tr.draw_text(state_x + 6.0f, iy + 6, state,
-                         entry.linked ? 0.0f : style_.bright_text[0],
-                         entry.linked ? 0.0f : style_.bright_text[1],
-                         entry.linked ? 0.0f : style_.bright_text[2],
+                         error_chip   ? 1.0f : entry.linked ? 0.0f : style_.bright_text[0],
+                         error_chip   ? 1.0f : entry.linked ? 0.0f : style_.bright_text[1],
+                         error_chip   ? 1.0f : entry.linked ? 0.0f : style_.bright_text[2],
                          0.9f);
         }
 
@@ -178,7 +181,9 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
 
         float btn_x = btn.x;
         float btn_y = btn.y;
-        const char* btn_label = entry.installed ? (entry.linked ? T("unlink", "Unlink") : T("remove", "Remove")) : T("install", "Install");
+        const char* btn_label = entry.needs_rebuild ? T("rebuild", "Rebuild")
+                              : entry.installed     ? (entry.linked ? T("unlink", "Unlink") : T("remove", "Remove"))
+                              :                       T("install", "Install");
         bool this_pending = pkg_action_pending_ && (entry.name == pkg_action_name_);
         bool any_pending  = pkg_action_pending_;
         bool btn_hover = !any_pending && overlay_contains(btn, mouse_.x, mouse_.y);
@@ -201,7 +206,14 @@ void NodeGraphUI::draw_package_browser(Renderer2D& tr) {
             tr.draw_text(label_x, btn_y + 3, btn_label,
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.35f);
         } else {
-        if (entry.installed) {
+        if (entry.needs_rebuild) {
+            // Rebuild button — accent color to draw attention
+            tr.draw_rect(btn_x, btn_y, kPkgBrowserBtnW, kPkgBrowserBtnH,
+                         btn_hover ? style_.accent[0] : kErrorAccent[0],
+                         btn_hover ? style_.accent[1] : kErrorAccent[1],
+                         btn_hover ? style_.accent[2] : kErrorAccent[2],
+                         btn_hover ? 0.9f : 0.8f);
+        } else if (entry.installed) {
             tr.draw_rect(btn_x, btn_y, kPkgBrowserBtnW, kPkgBrowserBtnH,
                          btn_hover ? kErrorAccent[0] : style_.button_bg[0],
                          btn_hover ? kErrorAccent[1] : style_.button_bg[1],

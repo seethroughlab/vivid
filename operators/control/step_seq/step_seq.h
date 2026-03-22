@@ -81,8 +81,8 @@ struct StepSeq : vivid::ControlOperatorBase {
         display_hint(frequency, VIVID_DISPLAY_KNOB);
         display_hint(glide, VIVID_DISPLAY_KNOB);
 
-        layout_row(frequency, 4, 0);
-        layout_row(glide, 4, 1);
+        layout_row(frequency, 2, 0);
+        layout_row(glide, 2, 1);
 
         // Visible params (indices 0–6)
         out.push_back(&num_steps);

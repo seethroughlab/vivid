@@ -67,7 +67,7 @@ struct MSEG : vivid::ControlOperatorBase {
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         display_hint(total_time, VIVID_DISPLAY_KNOB);
-        layout_row(total_time, 4, 0);
+        // total_time: full-width by default
 
         out.push_back(&num_points);
         out.push_back(&total_time);
