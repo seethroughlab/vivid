@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <functional>
+#include <string>
 
 namespace vivid::ui {
 
@@ -174,7 +176,7 @@ inline bool is_control_type(VividPortType t) {
 }
 
 inline bool is_numeric_type(VividPortType t) {
-    return t == VIVID_PORT_FLOAT || t == VIVID_PORT_SPREAD || t == VIVID_PORT_AUDIO;
+    return t == VIVID_PORT_SIGNAL || t == VIVID_PORT_SPREAD || t == VIVID_PORT_AUDIO;
 }
 
 inline bool port_type_compatible(VividPortType a, VividPortType b) {
@@ -190,7 +192,7 @@ struct PortTypeEntry {
 
 inline const std::vector<PortTypeEntry>& port_types_for_domain(int domain_sel) {
     static const std::vector<PortTypeEntry> control_types = {
-        {"float",         VIVID_PORT_FLOAT},
+        {"float",         VIVID_PORT_SIGNAL},
         {"spread",        VIVID_PORT_SPREAD},
         {"string",        VIVID_PORT_STRING},
         {"string_spread", VIVID_PORT_STRING_SPREAD},
@@ -210,5 +212,71 @@ inline const std::vector<PortTypeEntry>& port_types_for_domain(int domain_sel) {
 
 inline const char* param_type_labels[] = { "float", "int", "bool", "file", "text" };
 inline constexpr int kParamTypeCount = 5;
+
+// --- Preset menu tree (for hierarchical submenus) ---
+
+struct PresetMenuNode {
+    std::string label;       // segment name, e.g. "Bass" or "Deep Sub"
+    std::string full_path;   // full slash-delimited name (empty for folders)
+    bool is_folder = false;
+    bool is_factory = false;
+    std::vector<PresetMenuNode> children;
+};
+
+// Build a hierarchical menu tree from flat preset name lists.
+// Names containing "/" are split into folder levels (e.g. "Bass/Deep Sub" →
+// folder "Bass" → leaf "Deep Sub"). Factory and user presets merge into the
+// same tree, distinguished by is_factory on leaf nodes.
+inline std::vector<PresetMenuNode> build_preset_menu_tree(
+    const std::vector<std::string>& factory_names,
+    const std::vector<std::string>& user_names)
+{
+    std::vector<PresetMenuNode> root;
+
+    auto insert = [&](const std::string& full_name, bool is_factory) {
+        std::vector<PresetMenuNode>* level = &root;
+        size_t pos = 0;
+        // Walk/create intermediate folder nodes for each segment before the last
+        while (true) {
+            size_t slash = full_name.find('/', pos);
+            if (slash == std::string::npos) break;  // remaining part is the leaf
+            std::string seg = full_name.substr(pos, slash - pos);
+            if (seg.empty()) { pos = slash + 1; continue; }
+            // Find or create folder
+            PresetMenuNode* folder = nullptr;
+            for (auto& child : *level) {
+                if (child.is_folder && child.label == seg) { folder = &child; break; }
+            }
+            if (!folder) {
+                level->push_back({seg, "", true, false, {}});
+                folder = &level->back();
+            }
+            level = &folder->children;
+            pos = slash + 1;
+        }
+        // Leaf node
+        std::string leaf_label = full_name.substr(pos);
+        if (leaf_label.empty()) return;
+        level->push_back({leaf_label, full_name, false, is_factory, {}});
+    };
+
+    for (const auto& n : factory_names) insert(n, true);
+    for (const auto& n : user_names)    insert(n, false);
+
+    // Sort each level: folders first (alpha), then leaves (alpha)
+    std::function<void(std::vector<PresetMenuNode>&)> sort_level;
+    sort_level = [&](std::vector<PresetMenuNode>& nodes) {
+        std::sort(nodes.begin(), nodes.end(), [](const PresetMenuNode& a, const PresetMenuNode& b) {
+            if (a.is_folder != b.is_folder) return a.is_folder > b.is_folder;  // folders first
+            return a.label < b.label;
+        });
+        for (auto& node : nodes) {
+            if (node.is_folder) sort_level(node.children);
+        }
+    };
+    sort_level(root);
+
+    return root;
+}
 
 } // namespace vivid::ui

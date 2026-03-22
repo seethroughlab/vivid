@@ -7,6 +7,7 @@
 #include "ui/ui_style.h"
 #include "ui/theme_loader.h"
 #include "ui/text_edit.h"
+#include "ui/node_graph_util.h"
 #include "operator_api/types.h"
 #include <webgpu/webgpu.h>
 #include <string>
@@ -169,6 +170,7 @@ public:
             || mcp_setup_open_
             || editing_sticky_
             || sticky_color_menu_open_
+            || role_chooser_open_
             || custom_inspector_wants_keyboard_;
     }
     bool wire_inspector_visible() const;
@@ -307,6 +309,10 @@ private:
                                       const std::string& group_name, bool collapsed);
     void draw_one_inspector_param_simple(Renderer2D& tr, const NodeSnapshot& node,
                                          float px, float& py, uint32_t pi);
+    void draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_referenced_by(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_binding_lines(Renderer2D& tr);
+    void draw_role_chooser(Renderer2D& tr);
     void draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
@@ -351,6 +357,7 @@ private:
     };
     PortHit hit_test_port(float mx, float my) const;
     int hit_test_wire(float sx, float sy) const;
+    int hit_test_binding_line(float sx, float sy) const;
 
     // Generic AABB hit test for rect vectors (replaces 5 individual methods)
     template<typename RectT>
@@ -555,6 +562,34 @@ private:
     // Lock badge hit rects
     std::vector<InspectorRect> lock_badge_rects_;
 
+    // Role binding hit-test rects
+    struct RoleBindingRect { float x, y, w, h; std::string node_id, role_id; };
+    std::vector<RoleBindingRect> role_bind_rects_;      // "Bind..." / bound-chip click
+    std::vector<RoleBindingRect> role_clear_rects_;     // "Clear" button
+    std::vector<RoleBindingRect> role_jump_rects_;      // "Jump To" button
+    std::vector<RoleBindingRect> role_header_rects_;    // collapse toggle
+
+    // Referenced-by hit-test rects (reuse RoleBindingRect struct)
+    std::vector<RoleBindingRect> ref_by_jump_rects_;
+    std::vector<RoleBindingRect> ref_by_header_rects_;
+
+    // Binding line state
+    struct BindingLineEntry {
+        std::string host_node_id;
+        std::string target_node_id;
+        std::string role_id;
+        float gsx, gsy, gex, gey;  // graph-space endpoints for hit-testing
+    };
+    std::vector<BindingLineEntry> binding_lines_;
+    int hovered_binding_line_idx_ = -1;
+
+    // Role binding chooser popup state
+    bool role_chooser_open_ = false;
+    std::string role_chooser_node_id_, role_chooser_role_id_;
+    std::vector<std::string> role_chooser_items_;  // compatible node IDs from graph
+    int role_chooser_sel_ = -1;
+    float role_chooser_x_ = 0, role_chooser_y_ = 0;
+
     // XY pad state
     struct XYPadRect { float x, y, w, h; std::string node_id; std::string param_x, param_y; };
     std::vector<XYPadRect> xy_pad_rects_;
@@ -650,6 +685,18 @@ private:
     std::vector<std::string> dropdown_labels_;
     int dropdown_factory_count_ = 0;  // number of factory preset entries at start of labels
 
+    // Preset submenu tree (hierarchical folders via "/" in names)
+    Renderer2D* dropdown_tr_ = nullptr;  // set during draw for submenu width calc
+    std::vector<ui::PresetMenuNode> dropdown_menu_tree_;
+    struct SubmenuLevel {
+        const std::vector<ui::PresetMenuNode>* items = nullptr;
+        int hovered_idx = -1;
+        float x = 0, y = 0, w = 0;
+    };
+    std::vector<SubmenuLevel> dropdown_submenu_stack_;
+    int dropdown_hover_frames_ = 0;
+    int dropdown_hover_target_ = -1;
+
     // State-preset dropdown context
     int dropdown_state_idx_ = -1;
     std::string dropdown_sm_node_;
@@ -730,15 +777,15 @@ private:
     // Insert-on-wire state (chooser opened from wire context menu)
     bool chooser_insert_wire_ = false;
     ConnectionSnapshot chooser_insert_conn_;
-    VividPortType insert_wire_source_type_ = VIVID_PORT_FLOAT;
-    VividPortType insert_wire_dest_type_ = VIVID_PORT_FLOAT;
+    VividPortType insert_wire_source_type_ = VIVID_PORT_SIGNAL;
+    VividPortType insert_wire_dest_type_ = VIVID_PORT_SIGNAL;
 
     // Connect-from-wire-drag state (chooser opened via Tab during wire drag)
     bool chooser_wire_connect_ = false;
     std::string wire_connect_node_id_;
     std::string wire_connect_port_;
     bool wire_connect_from_output_ = true;
-    VividPortType wire_connect_type_ = VIVID_PORT_FLOAT;
+    VividPortType wire_connect_type_ = VIVID_PORT_SIGNAL;
 
     // Right-click context menu state
     bool context_menu_open_ = false;

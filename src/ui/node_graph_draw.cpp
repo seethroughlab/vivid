@@ -643,6 +643,12 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     state_preset_rects_.clear();
     state_header_rects_.clear();
     lock_badge_rects_.clear();
+    role_bind_rects_.clear();
+    role_clear_rects_.clear();
+    role_jump_rects_.clear();
+    role_header_rects_.clear();
+    ref_by_jump_rects_.clear();
+    ref_by_header_rects_.clear();
 
     wire_remap_rects_.clear();
     wire_clamp_rects_.clear();
@@ -854,6 +860,8 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     } else {
         draw_inspector_params(tr, *sel_node, px, py);
     }
+    draw_inspector_role_bindings(tr, *sel_node, px, py);
+    draw_inspector_referenced_by(tr, *sel_node, px, py);
     draw_inspector_resolution(tr, *sel_node, px, py);
     draw_inspector_state_presets(tr, *sel_node, px, py);
     draw_inspector_outputs(tr, *sel_node, px, py);
@@ -987,9 +995,15 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
         tr.draw_rect(px, py, dd_w, dd_h,
                      style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
 
-        // Label: active preset name or "(none)"
-        const char* label = node.active_preset.empty()
-            ? "(none)" : node.active_preset.c_str();
+        // Label: show leaf segment of active preset path, or "(none)"
+        std::string preset_display;
+        if (!node.active_preset.empty()) {
+            auto slash = node.active_preset.rfind('/');
+            preset_display = (slash != std::string::npos)
+                ? node.active_preset.substr(slash + 1) : node.active_preset;
+        }
+        const char* label = preset_display.empty()
+            ? "(none)" : preset_display.c_str();
         tr.draw_text(px + 6, py + 3, label,
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
 
@@ -1944,6 +1958,328 @@ void NodeGraphUI::draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node
     insp_char_events_.clear();
 }
 
+void NodeGraphUI::draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapshot& node,
+                                               float px, float& py) {
+    if (!node.op_info || node.op_info->role_bindings.empty()) return;
+
+    const float panel_w = kInspContentW;
+    const float btn_h = 18.0f;
+
+    for (const auto& role : node.op_info->role_bindings) {
+        // Header row
+        py += 6.0f;
+        float header_y = py;
+        float header_h = 20.0f;
+
+        // Collapse key reuses group_collapsed_ map
+        std::string collapse_key = node.type_name + "\trole\t" + role.role_id;
+        bool collapsed = group_collapsed_.count(collapse_key) && group_collapsed_[collapse_key];
+
+        // Draw header background
+        tr.draw_rect(px, header_y, panel_w, header_h,
+                     style_.group_header_bg[0], style_.group_header_bg[1], style_.group_header_bg[2]);
+
+        // Chevron
+        float cx = px + 8.0f;
+        float cy = header_y + header_h * 0.5f;
+        float cs = 4.0f;
+        if (collapsed) {
+            tr.draw_tri(cx, cy - cs, cx, cy + cs, cx + cs, cy,
+                        style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+        } else {
+            tr.draw_tri(cx - cs, cy - cs * 0.5f, cx + cs, cy - cs * 0.5f, cx, cy + cs * 0.5f,
+                        style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+        }
+
+        // Label
+        float tx = cx + cs + 6.0f;
+        tr.draw_text(tx, header_y + 3.0f, role.label.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.9f);
+
+        // Scope badge
+        const char* scope_text = (role.runtime_scope == VIVID_ROLE_PER_VOICE) ? "Per-Voice" : "Shared";
+        float scope_x = px + panel_w - tr.text_width(scope_text, 0.7f) - 6.0f;
+        tr.draw_text(scope_x, header_y + 4.0f, scope_text,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+
+        role_header_rects_.push_back({px, header_y, panel_w, header_h,
+                                      node.node_id, role.role_id});
+        py = header_y + header_h;
+
+        if (collapsed) continue;
+
+        // Find matching role binding snapshot
+        const NodeSnapshot::RoleBindingSnapshot* bound = nullptr;
+        for (const auto& rbs : node.role_binding_snapshots) {
+            if (rbs.role_id == role.role_id && !rbs.target_node_id.empty()) {
+                bound = &rbs;
+                break;
+            }
+        }
+
+        if (bound) {
+            py += 4.0f;
+
+            // Target node chip: type name in domain color
+            const float* dcol = domain_color(role.accepted_domain);
+            const std::string& chip_label = bound->target_type_name.empty()
+                ? bound->target_node_id : bound->target_type_name;
+
+            float chip_w = tr.text_width(chip_label.c_str(), 0.85f) + 12.0f;
+            tr.draw_rect(px, py, chip_w, btn_h,
+                         dcol[0] * 0.3f, dcol[1] * 0.3f, dcol[2] * 0.3f, 0.8f);
+            tr.draw_text(px + 6, py + 1, chip_label.c_str(),
+                         dcol[0], dcol[1], dcol[2], 0.85f);
+
+            // Register chip as bind rect (click to rebind)
+            role_bind_rects_.push_back({px, py, chip_w, btn_h,
+                                        node.node_id, role.role_id});
+
+            py += btn_h + 2.0f;
+
+            // Target node ID label
+            tr.draw_text(px, py, bound->target_node_id.c_str(),
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.75f);
+            py += kLineH;
+
+            // Jump To + Clear buttons
+            float btn_gap = 6.0f;
+            float jump_w = tr.text_width("Jump To", 0.8f) + 12.0f;
+            float clear_w = tr.text_width("Clear", 0.8f) + 12.0f;
+
+            tr.draw_rect(px, py, jump_w, btn_h,
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+            tr.draw_text(px + 6, py + 1, "Jump To",
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.8f);
+            role_jump_rects_.push_back({px, py, jump_w, btn_h,
+                                        node.node_id, role.role_id});
+
+            float clear_x = px + jump_w + btn_gap;
+            tr.draw_rect(clear_x, py, clear_w, btn_h,
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+            tr.draw_text(clear_x + 6, py + 1, "Clear",
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.8f);
+            role_clear_rects_.push_back({clear_x, py, clear_w, btn_h,
+                                         node.node_id, role.role_id});
+
+            py += btn_h + 4.0f;
+        } else {
+            // Unbound: "+ Bind..." button
+            py += 4.0f;
+            float bind_w = tr.text_width("+ Bind...", 0.85f) + 12.0f;
+            tr.draw_rect(px, py, bind_w, btn_h,
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+            tr.draw_text(px + 6, py + 1, "+ Bind...",
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.85f);
+            role_bind_rects_.push_back({px, py, bind_w, btn_h,
+                                        node.node_id, role.role_id});
+
+            // Show default type hint if set
+            if (!role.default_operator_type.empty()) {
+                float hint_x = px + bind_w + 8.0f;
+                std::string hint = "default: " + role.default_operator_type;
+                tr.draw_text(hint_x, py + 2, hint.c_str(),
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+            }
+
+            py += btn_h + 4.0f;
+        }
+    }
+}
+
+void NodeGraphUI::draw_inspector_referenced_by(Renderer2D& tr, const NodeSnapshot& node,
+                                               float px, float& py) {
+    if (node.referenced_by.empty()) return;
+
+    const float panel_w = kInspContentW;
+    const float btn_h = 18.0f;
+
+    // Section header
+    py += 6.0f;
+    float header_y = py;
+    float header_h = 20.0f;
+
+    std::string collapse_key = node.type_name + "\tref_by";
+    bool collapsed = group_collapsed_.count(collapse_key) && group_collapsed_[collapse_key];
+
+    // Header background
+    tr.draw_rect(px, header_y, panel_w, header_h,
+                 style_.group_header_bg[0], style_.group_header_bg[1], style_.group_header_bg[2]);
+
+    // Chevron
+    float cx = px + 8.0f;
+    float cy = header_y + header_h * 0.5f;
+    float cs = 4.0f;
+    if (collapsed) {
+        tr.draw_tri(cx, cy - cs, cx, cy + cs, cx + cs, cy,
+                    style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+    } else {
+        tr.draw_tri(cx - cs, cy - cs * 0.5f, cx + cs, cy - cs * 0.5f, cx, cy + cs * 0.5f,
+                    style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+    }
+
+    // Label with count
+    float tx = cx + cs + 6.0f;
+    std::string header_label = "Referenced By (" + std::to_string(node.referenced_by.size()) + ")";
+    tr.draw_text(tx, header_y + 3.0f, header_label.c_str(),
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.9f);
+
+    ref_by_header_rects_.push_back({px, header_y, panel_w, header_h,
+                                    node.node_id, ""});
+    py = header_y + header_h;
+
+    if (collapsed) return;
+
+    for (const auto& ref : node.referenced_by) {
+        py += 4.0f;
+
+        // Look up host node for type name and domain color
+        const auto* host = snap_.find_node(ref.host_node_id);
+        const std::string& chip_label = host ? host->type_name : ref.host_node_id;
+        VividDomain host_domain = host ? host->domain : VIVID_DOMAIN_CONTROL;
+        const float* dcol = domain_color(host_domain);
+
+        // Host type chip
+        float chip_w = tr.text_width(chip_label.c_str(), 0.85f) + 12.0f;
+        tr.draw_rect(px, py, chip_w, btn_h,
+                     dcol[0] * 0.3f, dcol[1] * 0.3f, dcol[2] * 0.3f, 0.8f);
+        tr.draw_text(px + 6, py + 1, chip_label.c_str(),
+                     dcol[0], dcol[1], dcol[2], 0.85f);
+        py += btn_h + 2.0f;
+
+        // "as [role_label]" dim text
+        std::string as_label = "as " + ref.role_label;
+        tr.draw_text(px, py, as_label.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.75f);
+        py += kLineH;
+
+        // Jump To button
+        float jump_w = tr.text_width("Jump To", 0.8f) + 12.0f;
+        tr.draw_rect(px, py, jump_w, btn_h,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+        tr.draw_text(px + 6, py + 1, "Jump To",
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.8f);
+        ref_by_jump_rects_.push_back({px, py, jump_w, btn_h,
+                                      ref.host_node_id, ref.role_id});
+
+        py += btn_h + 4.0f;
+    }
+}
+
+void NodeGraphUI::draw_binding_lines(Renderer2D& tr) {
+    binding_lines_.clear();
+
+    // Build fast lookup: node_id -> index in node_rects_
+    std::unordered_map<std::string, size_t> id_to_rect;
+    for (size_t i = 0; i < node_rects_.size(); ++i)
+        id_to_rect[node_rects_[i].node_id] = i;
+
+    for (const auto& node : snap_.nodes) {
+        for (const auto& rbs : node.role_binding_snapshots) {
+            if (rbs.target_node_id.empty()) continue;
+
+            auto hi = id_to_rect.find(node.node_id);
+            auto ti = id_to_rect.find(rbs.target_node_id);
+            if (hi == id_to_rect.end() || ti == id_to_rect.end()) continue;
+
+            const auto& host_rect = node_rects_[hi->second];
+            const auto& target_rect = node_rects_[ti->second];
+
+            // Graph-space center-to-center
+            float gsx = host_rect.x + host_rect.w * 0.5f;
+            float gsy = host_rect.y + host_rect.h * 0.5f;
+            float gex = target_rect.x + target_rect.w * 0.5f;
+            float gey = target_rect.y + target_rect.h * 0.5f;
+
+            int line_idx = static_cast<int>(binding_lines_.size());
+            binding_lines_.push_back({node.node_id, rbs.target_node_id, rbs.role_id,
+                                      gsx, gsy, gex, gey});
+
+            // Determine color from role's accepted_domain
+            VividDomain role_domain = VIVID_DOMAIN_CONTROL;
+            if (node.op_info) {
+                for (const auto& rb : node.op_info->role_bindings) {
+                    if (rb.role_id == rbs.role_id) {
+                        role_domain = rb.accepted_domain;
+                        break;
+                    }
+                }
+            }
+            const float* dcol = domain_color(role_domain);
+
+            // Highlight when either node is selected or line is hovered
+            bool highlight = hovered_binding_line_idx_ == line_idx
+                || selected_node_ids_.count(node.node_id)
+                || selected_node_ids_.count(rbs.target_node_id);
+            float alpha = highlight ? 0.7f : 0.35f;
+
+            float ssx = gx_to_sx(gsx), ssy = gy_to_sy(gsy);
+            float sex = gx_to_sx(gex), sey = gy_to_sy(gey);
+            float wire_th = style_.wire_param_thickness * zoom_;
+
+            draw_dashed_wire(tr, ssx, ssy, sex, sey, bezier_wires_, wire_th,
+                             dcol[0], dcol[1], dcol[2], alpha);
+
+            // Label badge at midpoint
+            float mid_sx = (ssx + sex) * 0.5f;
+            float mid_sy = (ssy + sey) * 0.5f;
+
+            // Find role label
+            std::string role_label = rbs.role_id;
+            if (node.op_info) {
+                for (const auto& rb : node.op_info->role_bindings) {
+                    if (rb.role_id == rbs.role_id) { role_label = rb.label; break; }
+                }
+            }
+
+            float label_scale = 0.6f * zoom_;
+            if (label_scale > 0.15f) {  // only show when zoomed enough to read
+                float lw = tr.text_width(role_label.c_str(), label_scale);
+                tr.draw_text(mid_sx - lw * 0.5f, mid_sy - 5.0f * zoom_,
+                             role_label.c_str(),
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2],
+                             label_scale);
+            }
+        }
+    }
+}
+
+void NodeGraphUI::draw_role_chooser(Renderer2D& tr) {
+    if (!role_chooser_open_) return;
+
+    float item_h = kDropdownItemH;
+    float popup_w = 220.0f;
+    float popup_h;
+
+    if (role_chooser_items_.empty()) {
+        popup_h = item_h + 4;
+        draw_popup_bg(tr, style_, role_chooser_x_, role_chooser_y_, popup_w, popup_h);
+        tr.draw_text(role_chooser_x_ + 8, role_chooser_y_ + 4,
+                     "(no compatible nodes)",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
+        return;
+    }
+
+    popup_h = role_chooser_items_.size() * item_h + 4;
+    draw_popup_bg(tr, style_, role_chooser_x_, role_chooser_y_, popup_w, popup_h);
+
+    for (int i = 0; i < static_cast<int>(role_chooser_items_.size()); ++i) {
+        float iy = role_chooser_y_ + 2 + i * item_h;
+        bool hovered = mouse_.x >= role_chooser_x_ && mouse_.x <= role_chooser_x_ + popup_w &&
+                       mouse_.y >= iy && mouse_.y <= iy + item_h;
+        if (i == role_chooser_sel_ || hovered) {
+            tr.draw_rect(role_chooser_x_ + 2, iy, popup_w - 4, item_h,
+                         style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
+        }
+        // Show "node_id (TypeName)"
+        const auto* target_ns = snap_.find_node(role_chooser_items_[i]);
+        std::string label = role_chooser_items_[i];
+        if (target_ns) label += " (" + target_ns->type_name + ")";
+        tr.draw_text(role_chooser_x_ + 8, iy + 2, label.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+    }
+}
+
 void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node,
                                             float px, float& py) {
     if (!node.is_gpu || node.gpu_tex_width == 0 || node.gpu_tex_height == 0)
@@ -2192,7 +2528,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         // Outputs first (signal output ports)
         auto sorted_outs = sorted_ports(ns.output_port_indices);
         for (const auto& [idx, name] : sorted_outs) {
-            VividPortType pt = VIVID_PORT_FLOAT;
+            VividPortType pt = VIVID_PORT_SIGNAL;
             for (const auto& p : ns.op_info->ports)
                 if (p.name == name && p.direction == VIVID_PORT_OUTPUT) { pt = p.type; break; }
             result.ports.push_back({name, pt, true, false, false});
@@ -2214,7 +2550,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         for (const auto& [idx, name] : sorted_params) {
             const ParamInfo* pd = ns.find_param(name);
             if (pd && (pd->type == VIVID_PARAM_FILE || pd->type == VIVID_PARAM_TEXT)) continue;
-            result.params.push_back({name, VIVID_PORT_FLOAT, true, true, true});
+            result.params.push_back({name, VIVID_PORT_SIGNAL, true, true, true});
         }
         return result;
     };
@@ -2988,6 +3324,7 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
     draw_sticky_notes(tr);
     draw_graph(tr);
     draw_connections(tr);
+    draw_binding_lines(tr);
     draw_preview_wire(tr);
     draw_box_select(tr);
     draw_wire_tooltip(tr);
@@ -3011,35 +3348,80 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     // Parameter picker popup
     draw_param_picker(tr);
 
+    // Stash renderer ref for input-time submenu width calculations
+    dropdown_tr_ = &tr;
+
     // Dropdown popup
     if (dropdown_open_ && !dropdown_labels_.empty()) {
         float item_h = kDropdownItemH;
-        float popup_h = dropdown_labels_.size() * item_h + 4;
-        // Background
-        draw_popup_bg(tr, style_, dropdown_x_, dropdown_y_, dropdown_w_, popup_h);
-        for (int i = 0; i < static_cast<int>(dropdown_labels_.size()); ++i) {
-            float iy = dropdown_y_ + 2 + i * item_h;
-            if (i == dropdown_sel_) {
-                tr.draw_rect(dropdown_x_ + 2, iy, dropdown_w_ - 4, item_h,
-                             style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
-            }
 
-            // Separator entry between factory and user presets
-            if (dropdown_is_preset_ && dropdown_factory_count_ > 0 &&
-                i == dropdown_factory_count_) {
-                // Draw separator line at top of this item
-                tr.draw_rect(dropdown_x_ + 6, iy, dropdown_w_ - 12, 1,
-                             style_.separator[0], style_.separator[1], style_.separator[2], 0.5f);
-            }
+        // Preset dropdowns use hierarchical submenu rendering
+        if ((dropdown_is_preset_ || dropdown_is_state_preset_) && !dropdown_submenu_stack_.empty()) {
+            for (size_t lvl = 0; lvl < dropdown_submenu_stack_.size(); ++lvl) {
+                auto& level = dropdown_submenu_stack_[lvl];
+                if (!level.items || level.items->empty()) continue;
+                int count = static_cast<int>(level.items->size());
+                float popup_h = count * item_h + 4;
+                // Auto-size width from content
+                float auto_w = level.w;
+                for (const auto& n : *level.items) {
+                    float tw = tr.text_width(n.label.c_str()) + 24.0f;
+                    if (n.is_folder) tw += 12.0f;
+                    if (tw > auto_w) auto_w = tw;
+                }
+                level.w = auto_w;
+                float lw = level.w;
+                float lx = level.x;
+                float ly = level.y;
+                draw_popup_bg(tr, style_, lx, ly, lw, popup_h);
 
-            // Factory presets use dim text, user presets use bright text
-            bool is_factory = dropdown_is_preset_ && i < dropdown_factory_count_;
-            float r = is_factory ? style_.dim_text[0] : style_.bright_text[0];
-            float g = is_factory ? style_.dim_text[1] : style_.bright_text[1];
-            float b = is_factory ? style_.dim_text[2] : style_.bright_text[2];
-            tr.draw_text(dropdown_x_ + 8, iy + 2, dropdown_labels_[i].c_str(), r, g, b);
+                for (int i = 0; i < count; ++i) {
+                    const auto& node = (*level.items)[i];
+                    float iy = ly + 2 + i * item_h;
+
+                    // Highlight hovered item
+                    if (i == level.hovered_idx) {
+                        tr.draw_rect(lx + 2, iy, lw - 4, item_h,
+                                     style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
+                    }
+
+                    // Color: folders use bright, factory leaves use dim, user leaves use bright
+                    float cr, cg, cb;
+                    if (node.is_folder) {
+                        cr = style_.bright_text[0]; cg = style_.bright_text[1]; cb = style_.bright_text[2];
+                    } else if (node.is_factory) {
+                        cr = style_.dim_text[0]; cg = style_.dim_text[1]; cb = style_.dim_text[2];
+                    } else {
+                        cr = style_.bright_text[0]; cg = style_.bright_text[1]; cb = style_.bright_text[2];
+                    }
+
+                    tr.draw_text(lx + 8, iy + 2, node.label.c_str(), cr, cg, cb);
+
+                    // Folder indicator arrow on right side
+                    if (node.is_folder) {
+                        tr.draw_text(lx + lw - 16, iy + 2, ">",
+                                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+                    }
+                }
+            }
+        } else {
+            // Non-preset flat dropdown (param selectors, etc.)
+            float popup_h = dropdown_labels_.size() * item_h + 4;
+            draw_popup_bg(tr, style_, dropdown_x_, dropdown_y_, dropdown_w_, popup_h);
+            for (int i = 0; i < static_cast<int>(dropdown_labels_.size()); ++i) {
+                float iy = dropdown_y_ + 2 + i * item_h;
+                if (i == dropdown_sel_) {
+                    tr.draw_rect(dropdown_x_ + 2, iy, dropdown_w_ - 4, item_h,
+                                 style_.node_sel_bg[0], style_.node_sel_bg[1], style_.node_sel_bg[2], 0.9f);
+                }
+                tr.draw_text(dropdown_x_ + 8, iy + 2, dropdown_labels_[i].c_str(),
+                             style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            }
         }
     }
+
+    // Role binding chooser popup
+    draw_role_chooser(tr);
 
     // Record codec dropdown
     if (record_dropdown_open_) {
@@ -3468,7 +3850,7 @@ void NodeGraphUI::draw_preset_name_popup(Renderer2D& tr) {
                  style_.accent[0], style_.accent[1], style_.accent[2]);
 
     if (preset_name_buffer_.empty()) {
-        tr.draw_text(cx + 4, cy + 3, "preset_name",
+        tr.draw_text(cx + 4, cy + 3, "Folder/Name",
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.5f);
     } else {
         tr.draw_text(cx + 4, cy + 3, preset_name_buffer_.c_str(),

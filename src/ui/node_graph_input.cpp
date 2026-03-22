@@ -37,6 +37,10 @@ inline bool filter_identifier(char c) {
     return std::islower(static_cast<unsigned char>(lc)) ||
            std::isdigit(static_cast<unsigned char>(lc)) || lc == '_';
 }
+inline bool filter_preset_name(char c) {
+    auto uc = static_cast<unsigned char>(c);
+    return std::isalnum(uc) || c == '_' || c == '/' || c == ' ' || c == '-';
+}
 inline bool filter_hex(char c) {
     return std::isxdigit(static_cast<unsigned char>(c)) || c == '#';
 }
@@ -248,7 +252,7 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         if (color_editing_rgb_ >= 0)
             return {&color_rgb_buffer_, filter_rgb, 3};
         if (preset_name_popup_open_)
-            return {&preset_name_buffer_, filter_identifier, SIZE_MAX, true};
+            return {&preset_name_buffer_, filter_preset_name, SIZE_MAX, true};
         if (create_popup_open_)
             return {&create_name_buf_, filter_identifier, SIZE_MAX, true};
         if (editing_sticky_)
@@ -963,6 +967,11 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;
     }
 
+    if (role_chooser_open_) {
+        if (key == GLFW_KEY_ESCAPE) role_chooser_open_ = false;
+        return;
+    }
+
     if (record_dropdown_open_) {
         if (key == GLFW_KEY_ESCAPE) record_dropdown_open_ = false;
         return;
@@ -974,40 +983,94 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
     }
 
     if (dropdown_open_) {
-        switch (key) {
-            case GLFW_KEY_ESCAPE:
-                dropdown_open_ = false;
-                dropdown_is_preset_ = false;
-                dropdown_is_state_preset_ = false;
-                break;
-            case GLFW_KEY_UP:
-                if (dropdown_sel_ > 0) dropdown_sel_--;
-                break;
-            case GLFW_KEY_DOWN:
-                if (dropdown_sel_ < static_cast<int>(dropdown_labels_.size()) - 1)
-                    dropdown_sel_++;
-                break;
-            case GLFW_KEY_ENTER:
-                if (dropdown_is_state_preset_) {
-                    if (dropdown_sel_ == 0) {
-                        commands_.remove_state_preset(dropdown_sm_node_, dropdown_state_idx_,
-                                                      dropdown_target_node_);
-                    } else if (dropdown_sel_ > 0) {
-                        commands_.set_state_preset(dropdown_sm_node_, dropdown_state_idx_,
-                                                   dropdown_target_node_,
-                                                   dropdown_labels_[dropdown_sel_]);
+        // Preset dropdowns: hierarchical keyboard navigation
+        if ((dropdown_is_preset_ || dropdown_is_state_preset_) && !dropdown_submenu_stack_.empty()) {
+            auto& cur = dropdown_submenu_stack_.back();
+            int count = cur.items ? static_cast<int>(cur.items->size()) : 0;
+            switch (key) {
+                case GLFW_KEY_ESCAPE:
+                    dropdown_open_ = false;
+                    dropdown_is_preset_ = false;
+                    dropdown_is_state_preset_ = false;
+                    break;
+                case GLFW_KEY_UP:
+                    if (cur.hovered_idx > 0) cur.hovered_idx--;
+                    else cur.hovered_idx = count - 1;
+                    break;
+                case GLFW_KEY_DOWN:
+                    if (cur.hovered_idx < count - 1) cur.hovered_idx++;
+                    else cur.hovered_idx = 0;
+                    break;
+                case GLFW_KEY_RIGHT:
+                case GLFW_KEY_ENTER: {
+                    if (cur.hovered_idx >= 0 && cur.hovered_idx < count) {
+                        const auto& node = (*cur.items)[cur.hovered_idx];
+                        if (node.is_folder) {
+                            // Enter subfolder
+                            float item_h = kDropdownItemH;
+                            float sub_x = cur.x + cur.w - 2;
+                            float sub_y = cur.y + 2 + cur.hovered_idx * item_h;
+                            float sub_w = cur.w;
+                            if (dropdown_tr_) {
+                                for (const auto& child : node.children) {
+                                    float tw = dropdown_tr_->text_width(child.label.c_str()) + 24.0f;
+                                    if (child.is_folder) tw += 12.0f;
+                                    if (tw > sub_w) sub_w = tw;
+                                }
+                            }
+                            float wf = static_cast<float>(win_w_);
+                            if (sub_x + sub_w > wf) sub_x = cur.x - sub_w + 2;
+                            dropdown_submenu_stack_.push_back({&node.children, 0, sub_x, sub_y, sub_w});
+                        } else if (key == GLFW_KEY_ENTER) {
+                            // Select leaf preset
+                            if (dropdown_is_state_preset_) {
+                                if (node.full_path.empty()) {
+                                    commands_.remove_state_preset(dropdown_sm_node_, dropdown_state_idx_,
+                                                                  dropdown_target_node_);
+                                } else {
+                                    commands_.set_state_preset(dropdown_sm_node_, dropdown_state_idx_,
+                                                              dropdown_target_node_, node.full_path);
+                                }
+                            } else {
+                                commands_.recall_preset(dropdown_node_id_, node.full_path);
+                            }
+                            dropdown_open_ = false;
+                            dropdown_is_preset_ = false;
+                            dropdown_is_state_preset_ = false;
+                        }
                     }
-                } else if (dropdown_is_preset_) {
-                    if (dropdown_sel_ >= 0)
-                        commands_.recall_preset(dropdown_node_id_, dropdown_labels_[dropdown_sel_]);
-                } else {
+                    break;
+                }
+                case GLFW_KEY_LEFT:
+                    // Go back to parent level
+                    if (dropdown_submenu_stack_.size() > 1) {
+                        dropdown_submenu_stack_.pop_back();
+                    }
+                    break;
+            }
+        } else {
+            // Non-preset flat dropdown keyboard nav
+            switch (key) {
+                case GLFW_KEY_ESCAPE:
+                    dropdown_open_ = false;
+                    dropdown_is_preset_ = false;
+                    dropdown_is_state_preset_ = false;
+                    break;
+                case GLFW_KEY_UP:
+                    if (dropdown_sel_ > 0) dropdown_sel_--;
+                    break;
+                case GLFW_KEY_DOWN:
+                    if (dropdown_sel_ < static_cast<int>(dropdown_labels_.size()) - 1)
+                        dropdown_sel_++;
+                    break;
+                case GLFW_KEY_ENTER:
                     commands_.set_param(dropdown_node_id_, dropdown_param_name_,
                                    static_cast<float>(dropdown_sel_));
-                }
-                dropdown_open_ = false;
-                dropdown_is_preset_ = false;
-                dropdown_is_state_preset_ = false;
-                break;
+                    dropdown_open_ = false;
+                    dropdown_is_preset_ = false;
+                    dropdown_is_state_preset_ = false;
+                    break;
+            }
         }
         return;
     }
@@ -1176,7 +1239,7 @@ void NodeGraphUI::on_char(unsigned int codepoint) {
         if (color_editing_rgb_ >= 0)
             return {&color_rgb_buffer_, filter_rgb, 3};
         if (preset_name_popup_open_)
-            return {&preset_name_buffer_, filter_identifier, SIZE_MAX, true};
+            return {&preset_name_buffer_, filter_preset_name, SIZE_MAX, true};
         if (create_popup_open_)
             return {&create_name_buf_, filter_identifier, SIZE_MAX, true};
         if (editing_sticky_)
@@ -1968,25 +2031,75 @@ bool NodeGraphUI::handle_dropdown_click() {
     if (!dropdown_open_ || dropdown_labels_.empty()) return false;
 
     float item_h = kDropdownItemH;
+
+    // Preset dropdowns: use hierarchical submenu hit-testing
+    if ((dropdown_is_preset_ || dropdown_is_state_preset_) && !dropdown_submenu_stack_.empty()) {
+        // Hit-test levels deepest-first (deepest is drawn on top)
+        for (int lvl = static_cast<int>(dropdown_submenu_stack_.size()) - 1; lvl >= 0; --lvl) {
+            const auto& level = dropdown_submenu_stack_[lvl];
+            if (!level.items || level.items->empty()) continue;
+            int count = static_cast<int>(level.items->size());
+            float popup_h = count * item_h + 4;
+            if (mouse_.x >= level.x && mouse_.x <= level.x + level.w &&
+                mouse_.y >= level.y && mouse_.y <= level.y + popup_h) {
+                int idx = static_cast<int>((mouse_.y - level.y - 2) / item_h);
+                if (idx >= 0 && idx < count) {
+                    const auto& node = (*level.items)[idx];
+                    if (node.is_folder) {
+                        // Open this folder's submenu
+                        dropdown_submenu_stack_.resize(lvl + 1);
+                        float sub_x = level.x + level.w - 2;
+                        float sub_y = level.y + 2 + idx * item_h;
+                        // Compute width from longest child label
+                        float sub_w = level.w;
+                        for (const auto& child : node.children) {
+                            float tw = dropdown_tr_ ? dropdown_tr_->text_width(child.label.c_str()) + 24.0f : level.w;
+                            if (child.is_folder) tw += 12.0f;
+                            if (tw > sub_w) sub_w = tw;
+                        }
+                        // Flip to left if off-screen
+                        float wf = static_cast<float>(win_w_);
+                        if (sub_x + sub_w > wf) sub_x = level.x - sub_w + 2;
+                        dropdown_submenu_stack_.push_back({&node.children, -1, sub_x, sub_y, sub_w});
+                        dropdown_submenu_stack_[lvl].hovered_idx = idx;
+                    } else {
+                        // Leaf: select preset
+                        if (dropdown_is_state_preset_) {
+                            if (node.full_path.empty()) {
+                                commands_.remove_state_preset(dropdown_sm_node_, dropdown_state_idx_,
+                                                              dropdown_target_node_);
+                            } else {
+                                commands_.set_state_preset(dropdown_sm_node_, dropdown_state_idx_,
+                                                          dropdown_target_node_, node.full_path);
+                            }
+                        } else {
+                            commands_.recall_preset(dropdown_node_id_, node.full_path);
+                        }
+                        dropdown_is_preset_ = false;
+                        dropdown_is_state_preset_ = false;
+                        dropdown_open_ = false;
+                    }
+                }
+                mouse_.left_clicked = false;
+                mouse_.left_released = false;
+                return true;
+            }
+        }
+        // Click outside all levels: close
+        dropdown_open_ = false;
+        dropdown_is_preset_ = false;
+        dropdown_is_state_preset_ = false;
+        return false;
+    }
+
+    // Non-preset flat dropdown (param selectors, etc.)
     float popup_h = dropdown_labels_.size() * item_h + 4;
     if (mouse_.x >= dropdown_x_ && mouse_.x <= dropdown_x_ + dropdown_w_ &&
         mouse_.y >= dropdown_y_ && mouse_.y <= dropdown_y_ + popup_h) {
         int idx = static_cast<int>((mouse_.y - dropdown_y_ - 2) / item_h);
         if (idx >= 0 && idx < static_cast<int>(dropdown_labels_.size())) {
-            if (dropdown_is_state_preset_) {
-                if (idx == 0) { // "(none)"
-                    commands_.remove_state_preset(dropdown_sm_node_, dropdown_state_idx_,
-                                                  dropdown_target_node_);
-                } else {
-                    commands_.set_state_preset(dropdown_sm_node_, dropdown_state_idx_,
-                                              dropdown_target_node_, dropdown_labels_[idx]);
-                }
-            } else if (dropdown_is_preset_) {
-                commands_.recall_preset(dropdown_node_id_, dropdown_labels_[idx]);
-            } else {
-                commands_.set_param(dropdown_node_id_, dropdown_param_name_,
-                               static_cast<float>(idx));
-            }
+            commands_.set_param(dropdown_node_id_, dropdown_param_name_,
+                           static_cast<float>(idx));
         }
         dropdown_is_preset_ = false;
         dropdown_is_state_preset_ = false;
@@ -2192,6 +2305,145 @@ bool NodeGraphUI::handle_inspector_click() {
         }
     }
 
+    // Role binding chooser popup click handling
+    if (role_chooser_open_) {
+        float item_h = kDropdownItemH;
+        float popup_w = 220.0f;
+        float popup_h = std::max(1, static_cast<int>(role_chooser_items_.size())) * item_h + 4;
+        // Click inside popup
+        if (mouse_.x >= role_chooser_x_ && mouse_.x < role_chooser_x_ + popup_w &&
+            mouse_.y >= role_chooser_y_ && mouse_.y < role_chooser_y_ + popup_h) {
+            if (!role_chooser_items_.empty()) {
+                int idx = static_cast<int>((mouse_.y - role_chooser_y_ - 2) / item_h);
+                if (idx >= 0 && idx < static_cast<int>(role_chooser_items_.size())) {
+                    // Resolve the output name from the role's preferred_output_name
+                    std::string output_name = "value";  // fallback
+                    const auto* host_ns = snap_.find_node(role_chooser_node_id_);
+                    if (host_ns && host_ns->op_info) {
+                        for (const auto& ri : host_ns->op_info->role_bindings) {
+                            if (ri.role_id == role_chooser_role_id_ && !ri.preferred_output_name.empty()) {
+                                output_name = ri.preferred_output_name;
+                                break;
+                            }
+                        }
+                    }
+                    commands_.set_role_binding(role_chooser_node_id_, role_chooser_role_id_,
+                                              role_chooser_items_[idx], output_name);
+                }
+            }
+            role_chooser_open_ = false;
+            return true;
+        }
+        // Click outside — dismiss
+        role_chooser_open_ = false;
+        return true;
+    }
+
+    // Role binding header click (collapse toggle)
+    {
+        int rhi = hit_test_rect(role_header_rects_, mouse_.x, mouse_.y);
+        if (rhi >= 0) {
+            const auto& r = role_header_rects_[rhi];
+            const auto* ns = snap_.find_node(r.node_id);
+            if (ns) {
+                std::string collapse_key = ns->type_name + "\trole\t" + r.role_id;
+                group_collapsed_[collapse_key] = !group_collapsed_[collapse_key];
+            }
+            return true;
+        }
+    }
+
+    // Role bind click — open chooser popup with compatible graph nodes
+    {
+        int bi = hit_test_rect(role_bind_rects_, mouse_.x, mouse_.y);
+        if (bi >= 0) {
+            const auto& r = role_bind_rects_[bi];
+            const auto* ns = snap_.find_node(r.node_id);
+            if (ns && ns->op_info) {
+                // Find role's candidates (operator type names), then filter to existing graph nodes
+                role_chooser_items_.clear();
+                for (const auto& role : ns->op_info->role_bindings) {
+                    if (role.role_id == r.role_id) {
+                        // Build set of candidate type names
+                        std::unordered_set<std::string> candidate_types(
+                            role.candidates.begin(), role.candidates.end());
+                        // Find matching nodes in graph
+                        for (const auto& gn : snap_.nodes) {
+                            if (gn.node_id == r.node_id) continue;  // skip self
+                            if (candidate_types.count(gn.type_name)) {
+                                role_chooser_items_.push_back(gn.node_id);
+                            }
+                        }
+                        break;
+                    }
+                }
+                role_chooser_node_id_ = r.node_id;
+                role_chooser_role_id_ = r.role_id;
+                role_chooser_sel_ = -1;
+                role_chooser_x_ = r.x;
+                role_chooser_y_ = r.y + r.h;
+                role_chooser_open_ = true;
+            }
+            return true;
+        }
+    }
+
+    // Role clear click
+    {
+        int ci = hit_test_rect(role_clear_rects_, mouse_.x, mouse_.y);
+        if (ci >= 0) {
+            const auto& r = role_clear_rects_[ci];
+            commands_.clear_role_binding(r.node_id, r.role_id);
+            return true;
+        }
+    }
+
+    // Role jump-to click — select the target node
+    {
+        int ji = hit_test_rect(role_jump_rects_, mouse_.x, mouse_.y);
+        if (ji >= 0) {
+            const auto& r = role_jump_rects_[ji];
+            // Find the target node ID from the role binding snapshot
+            const auto* ns = snap_.find_node(r.node_id);
+            if (ns) {
+                for (const auto& rbs : ns->role_binding_snapshots) {
+                    if (rbs.role_id == r.role_id && !rbs.target_node_id.empty()) {
+                        selected_node_ids_.clear();
+                        selected_node_ids_.insert(rbs.target_node_id);
+                        break;
+                    }
+                }
+            }
+            return true;
+        }
+    }
+
+    // Referenced-by header click (collapse toggle)
+    {
+        int rhi = hit_test_rect(ref_by_header_rects_, mouse_.x, mouse_.y);
+        if (rhi >= 0) {
+            const auto& r = ref_by_header_rects_[rhi];
+            const auto* ns = snap_.find_node(r.node_id);
+            if (ns) {
+                std::string collapse_key = ns->type_name + "\tref_by";
+                group_collapsed_[collapse_key] = !group_collapsed_[collapse_key];
+            }
+            return true;
+        }
+    }
+
+    // Referenced-by jump-to click — select the host node
+    {
+        int ji = hit_test_rect(ref_by_jump_rects_, mouse_.x, mouse_.y);
+        if (ji >= 0) {
+            const auto& r = ref_by_jump_rects_[ji];
+            // r.node_id is the host node ID (stored in ReferencedByEntry)
+            selected_node_ids_.clear();
+            selected_node_ids_.insert(r.node_id);
+            return true;
+        }
+    }
+
     // Reject clicks above perf bar (clipped-off content)
     if (mouse_.y < kPerfBarH) return true;
 
@@ -2246,6 +2498,15 @@ bool NodeGraphUI::handle_inspector_click() {
                 for (int i = 0; i < static_cast<int>(dropdown_labels_.size()); i++) {
                     if (dropdown_labels_[i] == ns->active_preset) { dropdown_sel_ = i; break; }
                 }
+
+                // Build hierarchical menu tree for submenu rendering
+                dropdown_menu_tree_ = ui::build_preset_menu_tree(
+                    ns->factory_preset_names, ns->preset_names);
+                dropdown_submenu_stack_.clear();
+                dropdown_submenu_stack_.push_back({&dropdown_menu_tree_, -1,
+                    dropdown_x_, dropdown_y_, dropdown_w_});
+                dropdown_hover_frames_ = 0;
+                dropdown_hover_target_ = -1;
             }
             dropdown_is_preset_ = true;
             dropdown_is_state_preset_ = false;
@@ -2319,6 +2580,18 @@ bool NodeGraphUI::handle_inspector_click() {
                 dropdown_sm_node_ = r.sm_node;
                 dropdown_state_idx_ = r.state_idx;
                 dropdown_target_node_ = r.target_node;
+
+                // Build hierarchical menu tree for submenu rendering
+                dropdown_menu_tree_ = ui::build_preset_menu_tree(
+                    target->factory_preset_names, target->preset_names);
+                // Insert "(none)" as first entry for state-preset clearing
+                dropdown_menu_tree_.insert(dropdown_menu_tree_.begin(),
+                    ui::PresetMenuNode{"(none)", "", false, false, {}});
+                dropdown_submenu_stack_.clear();
+                dropdown_submenu_stack_.push_back({&dropdown_menu_tree_, -1,
+                    dropdown_x_, dropdown_y_, dropdown_w_});
+                dropdown_hover_frames_ = 0;
+                dropdown_hover_target_ = -1;
             }
             return true;
         }
@@ -2744,11 +3017,19 @@ void NodeGraphUI::handle_graph_click() {
                     }
                 }
             } else {
-            // No node or sticky hit — try wire selection
+            // No node or sticky hit — try wire or binding line selection
             int wi = hit_test_wire(mouse_.x, mouse_.y);
             if (wi >= 0) {
                 selected_wire_idx_ = wi;
                 selected_node_ids_.clear();
+                selected_sticky_id_.clear();
+            } else if (hovered_binding_line_idx_ >= 0 &&
+                       hovered_binding_line_idx_ < static_cast<int>(binding_lines_.size())) {
+                const auto& bl = binding_lines_[hovered_binding_line_idx_];
+                selected_node_ids_.clear();
+                selected_node_ids_.insert(bl.host_node_id);
+                selected_node_ids_.insert(bl.target_node_id);
+                selected_wire_idx_ = -1;
                 selected_sticky_id_.clear();
             } else {
                 // Empty canvas: clear all selection

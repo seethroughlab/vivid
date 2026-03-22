@@ -626,6 +626,26 @@ int NodeGraphUI::hit_test_wire(float sx, float sy) const {
     return -1;
 }
 
+int NodeGraphUI::hit_test_binding_line(float sx, float sy) const {
+    constexpr float kHitThresh = 8.0f;
+    float thresh2 = kHitThresh * kHitThresh;
+
+    for (int i = 0; i < static_cast<int>(binding_lines_.size()); ++i) {
+        const auto& bl = binding_lines_[i];
+        float ssx = gx_to_sx(bl.gsx), ssy = gy_to_sy(bl.gsy);
+        float sex = gx_to_sx(bl.gex), sey = gy_to_sy(bl.gey);
+
+        int found = -1;
+        traverse_wire(ssx, ssy, sex, sey, bezier_wires_,
+            [&](float x0, float y0, float x1, float y1) {
+                if (found < 0 && point_seg_dist2(sx, sy, x0, y0, x1, y1) < thresh2)
+                    found = i;
+            });
+        if (found >= 0) return found;
+    }
+    return -1;
+}
+
 // -----------------------------------------------------------------------
 // Text editing
 // -----------------------------------------------------------------------
@@ -1398,6 +1418,71 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
             rect.h = rect.target_h;
         }
     }
+
+    // Preset submenu hover tracking
+    if (dropdown_open_ && (dropdown_is_preset_ || dropdown_is_state_preset_)
+        && !dropdown_submenu_stack_.empty()) {
+        float item_h = kDropdownItemH;
+        // Find deepest level the mouse is inside
+        int hit_lvl = -1;
+        int hit_idx = -1;
+        for (int lvl = static_cast<int>(dropdown_submenu_stack_.size()) - 1; lvl >= 0; --lvl) {
+            const auto& level = dropdown_submenu_stack_[lvl];
+            if (!level.items || level.items->empty()) continue;
+            int count = static_cast<int>(level.items->size());
+            float popup_h = count * item_h + 4;
+            if (mouse_.x >= level.x && mouse_.x <= level.x + level.w &&
+                mouse_.y >= level.y && mouse_.y <= level.y + popup_h) {
+                int idx = static_cast<int>((mouse_.y - level.y - 2) / item_h);
+                if (idx >= 0 && idx < count) {
+                    hit_lvl = lvl;
+                    hit_idx = idx;
+                }
+                break;
+            }
+        }
+
+        if (hit_lvl >= 0) {
+            dropdown_submenu_stack_[hit_lvl].hovered_idx = hit_idx;
+            const auto& node = (*dropdown_submenu_stack_[hit_lvl].items)[hit_idx];
+
+            if (node.is_folder) {
+                // Hover on folder: after delay, open its submenu
+                int target_key = hit_lvl * 1000 + hit_idx;
+                if (dropdown_hover_target_ == target_key) {
+                    dropdown_hover_frames_++;
+                    if (dropdown_hover_frames_ >= 10) {
+                        // Open subfolder submenu
+                        dropdown_submenu_stack_.resize(hit_lvl + 1);
+                        const auto& level = dropdown_submenu_stack_[hit_lvl];
+                        float sub_x = level.x + level.w - 2;
+                        float sub_y = level.y + 2 + hit_idx * item_h;
+                        float sub_w = level.w;
+                        if (dropdown_tr_) {
+                            for (const auto& child : node.children) {
+                                float tw = dropdown_tr_->text_width(child.label.c_str()) + 24.0f;
+                                if (child.is_folder) tw += 12.0f;
+                                if (tw > sub_w) sub_w = tw;
+                            }
+                        }
+                        float wf = static_cast<float>(win_w_);
+                        if (sub_x + sub_w > wf) sub_x = level.x - sub_w + 2;
+                        dropdown_submenu_stack_.push_back({&node.children, -1, sub_x, sub_y, sub_w});
+                        dropdown_hover_frames_ = 0;
+                        dropdown_hover_target_ = -1;
+                    }
+                } else {
+                    dropdown_hover_target_ = target_key;
+                    dropdown_hover_frames_ = 0;
+                }
+            } else {
+                // Hovering a leaf: close deeper submenus
+                dropdown_submenu_stack_.resize(hit_lvl + 1);
+                dropdown_hover_target_ = -1;
+                dropdown_hover_frames_ = 0;
+            }
+        }
+    }
 }
 
 void NodeGraphUI::check_relayout() {
@@ -1742,8 +1827,11 @@ void NodeGraphUI::update_wire_hover() {
     if (!dragging_wire_ && !panning_ && !box_selecting_ && dragging_node_idx_ < 0 &&
         !context_menu_open_ && !chooser_open_ && !dropdown_open_) {
         hovered_wire_idx_ = hit_test_wire(mouse_.x, mouse_.y);
+        hovered_binding_line_idx_ = (hovered_wire_idx_ < 0)
+            ? hit_test_binding_line(mouse_.x, mouse_.y) : -1;
     } else {
         hovered_wire_idx_ = -1;
+        hovered_binding_line_idx_ = -1;
     }
 }
 
@@ -1837,14 +1925,14 @@ VividPortType NodeGraphUI::resolve_port_type(const GraphSnapshot& snap,
                                               const std::string& port_name,
                                               bool is_output) {
     const auto* ns = snap.find_node(node_id);
-    if (!ns || !ns->op_info) return VIVID_PORT_FLOAT;
+    if (!ns || !ns->op_info) return VIVID_PORT_SIGNAL;
     for (const auto& p : ns->op_info->ports) {
         if (p.name == port_name &&
             ((is_output && p.direction == VIVID_PORT_OUTPUT) ||
              (!is_output && p.direction == VIVID_PORT_INPUT)))
             return p.type;
     }
-    return VIVID_PORT_FLOAT;
+    return VIVID_PORT_SIGNAL;
 }
 
 // -----------------------------------------------------------------------
@@ -1893,7 +1981,7 @@ void NodeGraphUI::rebuild_param_picker_items() {
         VividPortType src_type;
         std::string src_semantic_tag;
         if (!wire_from_is_output_)
-            src_type = VIVID_PORT_FLOAT;  // param sources are always float
+            src_type = VIVID_PORT_SIGNAL;  // param sources are always float
         else
             src_type = resolve_port_type(snap_, param_picker_wire_from_node_,
                                           param_picker_wire_from_port_, true);
@@ -1923,7 +2011,7 @@ void NodeGraphUI::rebuild_param_picker_items() {
             if (already_connected) continue;
 
             // Check type compatibility
-            VividPortType dest_type = VIVID_PORT_FLOAT;
+            VividPortType dest_type = VIVID_PORT_SIGNAL;
             for (const auto& p : ns->op_info->ports) {
                 if (p.name == name && p.direction == VIVID_PORT_INPUT) {
                     dest_type = p.type;
