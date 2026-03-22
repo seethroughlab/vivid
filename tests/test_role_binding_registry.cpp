@@ -541,6 +541,145 @@ int main() {
               "Envelope rejected for GPU-domain role");
     }
 
+    // =====================================================================
+    // Test 18: compatible_outputs — single-output operator returns one output
+    // =====================================================================
+    std::fprintf(stderr, "\n=== Test 18: compatible_outputs — single output ===\n");
+    {
+        vivid::OperatorRegistry reg;
+        reg.scan_deferred(build_dir.c_str());
+
+        const auto* desc = reg.probe_descriptor("Envelope");
+        check(desc != nullptr, "Envelope descriptor found");
+
+        if (desc) {
+            auto outs = vivid::compatible_outputs(desc, nullptr);
+            check(outs.size() == 1, "Envelope has 1 output");
+            check(!outs.empty() && outs[0] == "value", "Envelope output is 'value'");
+        }
+    }
+
+    // =====================================================================
+    // Test 19: compatible_outputs — multi-output operator returns all outputs
+    // =====================================================================
+    std::fprintf(stderr, "\n=== Test 19: compatible_outputs — multi output ===\n");
+    {
+        vivid::OperatorRegistry reg;
+        reg.scan_deferred(build_dir.c_str());
+
+        const auto* desc = reg.probe_descriptor("TestMultiOutputBindable");
+        check(desc != nullptr, "TestMultiOutputBindable descriptor found");
+
+        if (desc) {
+            auto outs = vivid::compatible_outputs(desc, nullptr);
+            check(outs.size() == 2, "TestMultiOutputBindable has 2 outputs");
+            // Order matches port declaration order: value, phase
+            check(outs.size() >= 2 && outs[0] == "value" && outs[1] == "phase",
+                  "outputs are [value, phase]");
+        }
+    }
+
+    // =====================================================================
+    // Test 20: compatible_outputs — semantic tag filtering
+    // =====================================================================
+    std::fprintf(stderr, "\n=== Test 20: compatible_outputs — semantic tag filter ===\n");
+    {
+        vivid::OperatorRegistry reg;
+        reg.scan_deferred(build_dir.c_str());
+
+        const auto* desc = reg.probe_descriptor("TestMultiOutputBindable");
+        check(desc != nullptr, "TestMultiOutputBindable descriptor found");
+
+        if (desc) {
+            const char* tags[] = {"envelope"};
+            VividRoleBindingDescriptor role{};
+            role.role_id = "env";
+            role.accepted_domain = VIVID_DOMAIN_CONTROL;
+            role.preferred_output_semantic_tags = tags;
+            role.preferred_output_semantic_tag_count = 1;
+
+            auto outs = vivid::compatible_outputs(desc, &role);
+            check(outs.size() == 1, "tag filter yields 1 output");
+            check(!outs.empty() && outs[0] == "value",
+                  "tag-filtered output is 'value'");
+        }
+    }
+
+    // =====================================================================
+    // Test 21: validate_role_binding — multi-output, valid non-default output
+    // =====================================================================
+    std::fprintf(stderr, "\n=== Test 21: validate — multi-output valid output ===\n");
+    {
+        vivid::OperatorRegistry reg;
+        reg.scan_deferred(build_dir.c_str());
+
+        VividRoleBindingDescriptor roles[1]{};
+        roles[0].role_id = "mod";
+        roles[0].accepted_domain = VIVID_DOMAIN_CONTROL;
+
+        VividOperatorDescriptor host_desc{};
+        host_desc.role_binding_count = 1;
+        host_desc.role_bindings = roles;
+
+        auto r1 = vivid::validate_role_binding(
+            &host_desc, "mod", "TestMultiOutputBindable", "phase", reg);
+        check(r1 == vivid::RoleBindingValidation::kOk,
+              "binding to 'phase' output succeeds");
+
+        auto r2 = vivid::validate_role_binding(
+            &host_desc, "mod", "TestMultiOutputBindable", "value", reg);
+        check(r2 == vivid::RoleBindingValidation::kOk,
+              "binding to 'value' output succeeds");
+
+        auto r3 = vivid::validate_role_binding(
+            &host_desc, "mod", "TestMultiOutputBindable", "nonexistent", reg);
+        check(r3 == vivid::RoleBindingValidation::kOutputNotFound,
+              "binding to 'nonexistent' output fails");
+    }
+
+    // =====================================================================
+    // Test 22: bindable_candidates includes multi-output operator
+    // =====================================================================
+    std::fprintf(stderr, "\n=== Test 22: bindable_candidates includes multi-output op ===\n");
+    {
+        vivid::OperatorRegistry reg;
+        reg.scan_deferred(build_dir.c_str());
+
+        VividRoleBindingDescriptor role{};
+        role.role_id = "mod";
+        role.accepted_domain = VIVID_DOMAIN_CONTROL;
+
+        auto candidates = reg.bindable_candidates(&role);
+        bool found = false;
+        for (const auto& c : candidates) {
+            if (c == "TestMultiOutputBindable") { found = true; break; }
+        }
+        check(found, "TestMultiOutputBindable in control-domain candidates");
+    }
+
+    // =====================================================================
+    // Test 23: audio-for-control exception is bounded — non-bindable audio
+    //          operator is NOT returned as a candidate for control roles
+    // =====================================================================
+    std::fprintf(stderr, "\n=== Test 23: non-bindable audio op rejected for control ===\n");
+    {
+        vivid::OperatorRegistry reg;
+        reg.scan_deferred(build_dir.c_str());
+
+        VividRoleBindingDescriptor role{};
+        role.role_id = "mod";
+        role.accepted_domain = VIVID_DOMAIN_CONTROL;
+
+        auto candidates = reg.bindable_candidates(&role);
+        // AudioTestOp is audio-domain but does NOT export VIVID_BINDABLE
+        bool found_audio_test = false;
+        for (const auto& c : candidates) {
+            if (c == "AudioTestOp") { found_audio_test = true; break; }
+        }
+        check(!found_audio_test,
+              "non-bindable AudioTestOp not in control-domain candidates");
+    }
+
     std::fprintf(stderr, "\n%s (%d failure%s)\n",
                  failures ? "FAILED" : "ALL TESTS PASSED",
                  failures, failures == 1 ? "" : "s");

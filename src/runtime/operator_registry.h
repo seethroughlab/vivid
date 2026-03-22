@@ -214,4 +214,11 @@ RoleBindingValidation validate_role_binding(
     const std::string& output_name,
     const OperatorRegistry& registry);
 
+// Return the names of output ports on target_desc that are compatible with role_desc.
+// If role_desc has preferred_output_semantic_tags, only outputs whose semantic_tag
+// matches one of the tags are returned.  Otherwise all output ports are returned.
+std::vector<std::string> compatible_outputs(
+    const VividOperatorDescriptor* target_desc,
+    const VividRoleBindingDescriptor* role_desc);
+
 } // namespace vivid

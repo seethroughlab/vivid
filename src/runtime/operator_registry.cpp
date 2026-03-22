@@ -1165,8 +1165,11 @@ std::vector<std::string> OperatorRegistry::bindable_candidates(
         if (!entry.bindable) continue;
         if (role) {
             if (entry.desc.domain != role->accepted_domain) {
-                // Audio-domain control operators (e.g. Envelope, LFO) use process_audio
-                // for sample-accurate processing but are logically control operators.
+                // Intentional narrow exception: some operators (Envelope, LFO) are
+                // audio-domain because they use process_audio for sample accuracy,
+                // but are semantically control sources.  Only operators that also
+                // export VIVID_BINDABLE benefit from this — it is NOT a general rule
+                // that any audio operator may satisfy a control role.
                 bool audio_for_control = (role->accepted_domain == VIVID_DOMAIN_CONTROL &&
                                           entry.desc.domain == VIVID_DOMAIN_AUDIO);
                 if (!audio_for_control) continue;
@@ -1249,8 +1252,9 @@ RoleBindingValidation validate_role_binding(
     }
 
     // Check domain compatibility (control-only for v1).
-    // Audio-domain control operators (e.g. Envelope, LFO) use process_audio for
-    // sample-accurate processing but are logically control operators.
+    // Intentional narrow exception: Envelope/LFO are audio-domain (process_audio
+    // for sample accuracy) but semantically control sources.  Only VIVID_BINDABLE
+    // operators benefit — this is not a general audio→control domain collapse.
     const auto* bound_desc = registry.probe_descriptor(type_name);
     if (bound_desc && role_desc->accepted_domain != bound_desc->domain) {
         bool audio_for_control = (role_desc->accepted_domain == VIVID_DOMAIN_CONTROL &&
@@ -1261,20 +1265,50 @@ RoleBindingValidation validate_role_binding(
 
     // Validate that the named output actually exists on the target operator.
     if (!output_name.empty() && bound_desc) {
-        bool found_output = false;
-        for (uint32_t pi = 0; pi < bound_desc->port_count; ++pi) {
-            const auto& port = bound_desc->ports[pi];
-            if (port.direction == VIVID_PORT_OUTPUT &&
-                port.name && output_name == port.name) {
-                found_output = true;
-                break;
-            }
+        auto outs = compatible_outputs(bound_desc, role_desc);
+        bool found = false;
+        for (const auto& o : outs) {
+            if (o == output_name) { found = true; break; }
         }
-        if (!found_output)
+        if (!found)
             return RoleBindingValidation::kOutputNotFound;
     }
 
     return RoleBindingValidation::kOk;
+}
+
+std::vector<std::string> compatible_outputs(
+        const VividOperatorDescriptor* target_desc,
+        const VividRoleBindingDescriptor* role_desc) {
+    std::vector<std::string> result;
+    if (!target_desc) return result;
+
+    // Collect preferred semantic tags from the role (if any).
+    std::vector<std::string> tags;
+    if (role_desc && role_desc->preferred_output_semantic_tags) {
+        for (uint32_t i = 0; i < role_desc->preferred_output_semantic_tag_count; ++i)
+            tags.emplace_back(role_desc->preferred_output_semantic_tags[i]);
+    }
+
+    for (uint32_t pi = 0; pi < target_desc->port_count; ++pi) {
+        const auto& port = target_desc->ports[pi];
+        if (port.direction != VIVID_PORT_OUTPUT) continue;
+        if (!port.name) continue;
+
+        if (!tags.empty()) {
+            // If the role specifies semantic tags, only include outputs that match.
+            const char* port_tag = port.semantic_tag;
+            if (!port_tag) continue;
+            bool matched = false;
+            for (const auto& t : tags) {
+                if (t == port_tag) { matched = true; break; }
+            }
+            if (!matched) continue;
+        }
+
+        result.emplace_back(port.name);
+    }
+    return result;
 }
 
 } // namespace vivid

@@ -66,6 +66,9 @@ int main(int argc, char* argv[]) {
     fs::copy_file(build_dir + "/lfo.dylib",
                   staging + "/lfo.dylib",
                   fs::copy_options::overwrite_existing);
+    fs::copy_file(build_dir + "/test_multi_output_bindable.dylib",
+                  staging + "/test_multi_output_bindable.dylib",
+                  fs::copy_options::overwrite_existing);
 
     vivid::OperatorRegistry registry;
     check(registry.scan(staging.c_str()), "registry.scan()");
@@ -219,6 +222,75 @@ int main(int argc, char* argv[]) {
         check(sink.redo(), "E2: redo clear_role_binding");
         check(find_role_binding(graph, "host", "mod") == nullptr,
               "E2: role cleared again after redo");
+    }
+
+    // -----------------------------------------------------------------------
+    // F. Multi-output binding — bind to non-default output
+    // -----------------------------------------------------------------------
+    std::fprintf(stderr, "\n--- F. Multi-output binding ---\n");
+    {
+        // Reload graph with multi-output node (test E replaced it)
+        check(graph.load_from_string(R"({
+  "nodes": {
+    "host":  { "type": "TestOpWithRoles", "params": { "gain": 1.0 } },
+    "src":   { "type": "TestOp", "params": { "scale": 2.0 } },
+    "env1":  { "type": "Envelope", "params": {} },
+    "multi": { "type": "TestMultiOutputBindable", "params": { "rate": 1.0 } }
+  },
+  "connections": []
+})"), "reload graph with multi-output node");
+        check(scheduler.build(graph, registry), "rebuild scheduler");
+    }
+    {
+        // Bind to the "phase" output on a multi-output operator
+        auto r1 = api.set_role_binding("host", "mod", "multi", "phase");
+        check(r1.ok, "bind to 'phase' output succeeds");
+
+        const auto* binding = find_role_binding(graph, "host", "mod");
+        check(binding != nullptr, "role_bindings has 'mod' key");
+        check(binding && binding->target_node_id == "multi",
+              "binding target is 'multi'");
+        check(binding && binding->target_output_name == "phase",
+              "binding output is 'phase'");
+        settle_topology(api, has_gpu_ops, has_audio);
+
+        // Re-bind to "value" output
+        auto r2 = api.set_role_binding("host", "mod", "multi", "value");
+        check(r2.ok, "rebind to 'value' output succeeds");
+        binding = find_role_binding(graph, "host", "mod");
+        check(binding && binding->target_output_name == "value",
+              "binding output updated to 'value'");
+        settle_topology(api, has_gpu_ops, has_audio);
+    }
+
+    // -----------------------------------------------------------------------
+    // G. Multi-output serialization round-trip
+    // -----------------------------------------------------------------------
+    std::fprintf(stderr, "\n--- G. Multi-output serialization round-trip ---\n");
+    {
+        api.set_role_binding("host", "mod", "multi", "phase");
+        settle_topology(api, has_gpu_ops, has_audio);
+
+        std::string json;
+        check(graph.save_to_string(json), "save_to_string succeeds");
+
+        std::string tmp_path = build_dir + "/test_role_binding_multi_rt.json";
+        {
+            std::ofstream ofs(tmp_path);
+            ofs << json;
+        }
+
+        vivid::Graph graph2;
+        check(graph2.load(tmp_path.c_str()), "reload graph from file");
+
+        const auto* binding2 = find_role_binding(graph2, "host", "mod");
+        check(binding2 != nullptr, "mod role exists in reloaded graph");
+        check(binding2 && binding2->target_node_id == "multi",
+              "target_node_id 'multi' preserved");
+        check(binding2 && binding2->target_output_name == "phase",
+              "target_output_name 'phase' preserved");
+
+        fs::remove(tmp_path);
     }
 
     // -----------------------------------------------------------------------

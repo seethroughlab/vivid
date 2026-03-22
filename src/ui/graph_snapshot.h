@@ -45,6 +45,12 @@ struct PortInfo {
     VividPortDirection direction = VIVID_PORT_INPUT;
 };
 
+// A candidate operator type that can satisfy a role binding, with its compatible outputs.
+struct RoleCandidate {
+    std::string type_name;
+    std::vector<std::string> compatible_outputs;
+};
+
 // Role binding metadata (from operator descriptor)
 struct RoleBindingInfo {
     std::string role_id;
@@ -55,7 +61,7 @@ struct RoleBindingInfo {
     std::string default_operator_type;
     std::string preferred_output_name;
     std::vector<std::string> preferred_output_semantic_tags;
-    std::vector<std::string> candidates;
+    std::vector<RoleCandidate> candidates;
 };
 
 // Owned copy of operator metadata

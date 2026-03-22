@@ -96,7 +96,17 @@ public:
             ri.preferred_output_name = rd.preferred_output_name ? rd.preferred_output_name : "";
             for (uint32_t t = 0; t < rd.preferred_output_semantic_tag_count; ++t)
                 ri.preferred_output_semantic_tags.push_back(rd.preferred_output_semantic_tags[t]);
-            ri.candidates = registry.bindable_candidates(&rd);
+            // Build output-aware candidates: for each bindable type, enumerate
+            // which of its outputs are compatible with this role.
+            auto type_names = registry.bindable_candidates(&rd);
+            for (const auto& tn : type_names) {
+                vivid::ui::RoleCandidate rc;
+                rc.type_name = tn;
+                const auto* td = registry.probe_descriptor(tn);
+                if (td)
+                    rc.compatible_outputs = vivid::compatible_outputs(td, &rd);
+                ri.candidates.push_back(std::move(rc));
+            }
             info->role_bindings.push_back(std::move(ri));
         }
 
