@@ -1,0 +1,61 @@
+{
+  "nodes": {
+    "shapes": {
+      "type": "Instanced Shapes",
+      "params": {
+        "count": 12,
+        "shape": 4,
+        "base_size": 0.06,
+        "softness": 0.005,
+        "color_r": 0.4,
+        "color_g": 0.7,
+        "color_b": 1.0,
+        "layout": 2,
+        "animate": 1,
+        "speed": 0.8
+      },
+      "role_bindings": {
+        "scale": {
+          "target_node_id": "scale_lfo",
+          "target_output_name": "value"
+        },
+        "rotation": {
+          "target_node_id": "rot_lfo",
+          "target_output_name": "value"
+        },
+        "color_mod": {
+          "target_node_id": "color_lfo",
+          "target_output_name": "value"
+        }
+      }
+    },
+    "scale_lfo": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.5,
+        "amplitude": 0.6
+      }
+    },
+    "rot_lfo": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.15,
+        "amplitude": 1.0
+      }
+    },
+    "color_lfo": {
+      "type": "LFO",
+      "params": {
+        "frequency": 0.3,
+        "amplitude": 0.8
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
+  },
+  "connections": [
+    { "from": "shapes/texture", "to": "vout/input" }
+  ]
+}
