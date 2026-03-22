@@ -1,0 +1,54 @@
+{
+  "presets": [
+    {
+      "name": "Slow Drift",
+      "params": {
+        "rate": 0.2,
+        "slew": 0.8,
+        "amplitude": 0.5
+      }
+    },
+    {
+      "name": "Stepped Random",
+      "params": {
+        "rate": 4.0,
+        "slew": 0.0,
+        "amplitude": 1.0
+      }
+    },
+    {
+      "name": "Gaussian Wander",
+      "params": {
+        "rate": 0.5,
+        "distribution": 1,
+        "slew": 0.6
+      }
+    },
+    {
+      "name": "Glitch Steps",
+      "params": {
+        "rate": 12.0,
+        "slew": 0.0,
+        "amplitude": 1.0,
+        "bipolar": 1
+      }
+    },
+    {
+      "name": "Smooth Evolution",
+      "params": {
+        "rate": 0.1,
+        "slew": 0.9,
+        "amplitude": 0.5
+      }
+    },
+    {
+      "name": "Triggered Random",
+      "params": {
+        "rate": 2.0,
+        "slew": 0.4,
+        "amplitude": 1.0,
+        "trigger_mode": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "presets": [
+    {
+      "name": "Ramp Up",
+      "params": {
+        "num_points": 2,
+        "total_time": 1.0,
+        "pt_time_0": 0.0,
+        "pt_value_0": 0.0,
+        "pt_time_1": 1.0,
+        "pt_value_1": 1.0
+      }
+    },
+    {
+      "name": "Triangle",
+      "params": {
+        "num_points": 3,
+        "total_time": 1.0,
+        "pt_time_0": 0.0,
+        "pt_value_0": 0.0,
+        "pt_time_1": 0.5,
+        "pt_value_1": 1.0,
+        "pt_time_2": 1.0,
+        "pt_value_2": 0.0
+      }
+    },
+    {
+      "name": "Decay Curve",
+      "params": {
+        "num_points": 2,
+        "total_time": 1.0,
+        "pt_time_0": 0.0,
+        "pt_value_0": 1.0,
+        "pt_time_1": 1.0,
+        "pt_value_1": 0.0,
+        "pt_curve_0": 0.5
+      }
+    },
+    {
+      "name": "Swell & Dip",
+      "params": {
+        "num_points": 5,
+        "total_time": 2.0,
+        "pt_time_0": 0.0,
+        "pt_value_0": 0.0,
+        "pt_time_1": 0.25,
+        "pt_value_1": 0.8,
+        "pt_time_2": 0.5,
+        "pt_value_2": 0.4,
+        "pt_time_3": 0.75,
+        "pt_value_3": 1.0,
+        "pt_time_4": 1.0,
+        "pt_value_4": 0.0,
+        "pt_curve_0": -0.3,
+        "pt_curve_3": 0.4
+      }
+    },
+    {
+      "name": "Rhythmic Gate",
+      "params": {
+        "num_points": 5,
+        "total_time": 0.5,
+        "loop_enabled": 1,
+        "loop_start": 0,
+        "loop_end": 4,
+        "pt_time_0": 0.0,
+        "pt_value_0": 1.0,
+        "pt_time_1": 0.24,
+        "pt_value_1": 1.0,
+        "pt_time_2": 0.25,
+        "pt_value_2": 0.0,
+        "pt_time_3": 0.49,
+        "pt_value_3": 0.0,
+        "pt_time_4": 0.5,
+        "pt_value_4": 1.0
+      }
+    },
+    {
+      "name": "Slow Attack Curve",
+      "params": {
+        "num_points": 2,
+        "total_time": 2.0,
+        "pt_time_0": 0.0,
+        "pt_value_0": 0.0,
+        "pt_time_1": 1.0,
+        "pt_value_1": 1.0,
+        "pt_curve_0": 0.6
+      }
+    },
+    {
+      "name": "Pluck Decay",
+      "params": {
+        "num_points": 3,
+        "total_time": 1.0,
+        "pt_time_0": 0.0,
+        "pt_value_0": 0.0,
+        "pt_time_1": 0.02,
+        "pt_value_1": 1.0,
+        "pt_time_2": 1.0,
+        "pt_value_2": 0.0,
+        "pt_curve_1": 0.5
+      }
+    },
+    {
+      "name": "Wobble Loop",
+      "params": {
+        "num_points": 4,
+        "total_time": 1.0,
+        "loop_enabled": 1,
+        "loop_start": 0,
+        "loop_end": 3,
+        "pt_time_0": 0.0,
+        "pt_value_0": 0.5,
+        "pt_time_1": 0.33,
+        "pt_value_1": 1.0,
+        "pt_time_2": 0.66,
+        "pt_value_2": 0.0,
+        "pt_time_3": 1.0,
+        "pt_value_3": 0.5,
+        "pt_curve_0": -0.3,
+        "pt_curve_2": -0.3
+      }
+    }
+  ]
+}
