@@ -41,6 +41,7 @@
 #include "runtime/platform.h"
 #include "runtime/operator_creator.h"
 #include "runtime/operator_destination_policy.h"
+#include "ui/file_dialog.h"
 #include <fstream>
 #include <sstream>
 #include <webgpu/webgpu.h>
@@ -68,7 +69,6 @@
 #include "runtime/macos_frame_timer.h"
 #include "runtime/macos_menu.h"
 #include "runtime/sparkle_bridge.h"
-#include "ui/file_dialog.h"
 #endif
 
 // #16191D in sRGB → linear: pow(x/255, 2.2)
@@ -128,6 +128,12 @@ static std::string platform_label() {
 #endif
 }
 
+static void stbi_write_to_vec(void* context, void* data, int size) {
+    auto* vec = static_cast<std::vector<uint8_t>*>(context);
+    auto* bytes = static_cast<const uint8_t*>(data);
+    vec->insert(vec->end(), bytes, bytes + size);
+}
+
 static std::string now_epoch_seconds_str() {
     auto now = std::chrono::system_clock::now();
     auto sec = std::chrono::time_point_cast<std::chrono::seconds>(now)
@@ -144,6 +150,493 @@ static std::vector<std::string> json_str_array(yyjson_val* arr) {
         if (yyjson_is_str(v)) out.emplace_back(yyjson_get_str(v));
     }
     return out;
+}
+
+enum class UITestActionType {
+    Wait,
+    MouseMove,
+    MouseButton,
+    Key,
+    CharInput,
+    Screenshot,
+    Checkpoint,
+};
+
+struct UITestAction {
+    UITestActionType type = UITestActionType::Wait;
+    int frames = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    int button = GLFW_MOUSE_BUTTON_LEFT;
+    int mouse_action = GLFW_PRESS;
+    int key = 0;
+    int key_action = GLFW_PRESS;
+    int mods = 0;
+    unsigned int codepoint = 0;
+    std::string screenshot_path;
+    int screenshot_delay = 0;
+    std::string checkpoint_label;
+};
+
+struct UITestScript {
+    std::vector<UITestAction> actions;
+    size_t next_action = 0;
+    int wait_frames_remaining = 0;
+    std::filesystem::path source_dir;
+    std::vector<std::string> pending_checkpoint_labels;
+};
+
+struct UITestNodeState {
+    std::string node_id;
+    std::string type_name;
+    bool missing_operator = false;
+    bool has_layout = false;
+    float layout_x = 0.0f;
+    float layout_y = 0.0f;
+    std::unordered_map<std::string, std::string> file_param_values;
+};
+
+struct UITestConnectionState {
+    std::string from_node;
+    std::string from_port;
+    std::string to_node;
+    std::string to_port;
+    bool invalid = false;
+};
+
+struct UITestObservedState {
+    std::vector<UITestNodeState> nodes;
+    std::vector<UITestConnectionState> connections;
+    std::vector<std::string> selected_node_ids;
+    bool chooser_open = false;
+    bool file_drop_chooser_open = false;
+    bool role_chooser_open = false;
+    vivid::ui::FileDialogTestStats file_dialog_stats;
+};
+
+struct UITestCheckpointState {
+    std::string label;
+    UITestObservedState state;
+};
+
+struct UITestDumpState {
+    bool has_final_state = false;
+    UITestObservedState final_state;
+    std::vector<UITestCheckpointState> checkpoints;
+};
+
+static std::string lower_copy(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return s;
+}
+
+static bool parse_ui_test_modifiers(yyjson_val* arr, int& mods, std::string& error) {
+    mods = 0;
+    if (!arr) return true;
+    if (!yyjson_is_arr(arr)) {
+        error = "mods must be an array";
+        return false;
+    }
+    size_t idx = 0, max = 0;
+    yyjson_val* value = nullptr;
+    yyjson_arr_foreach(arr, idx, max, value) {
+        if (!yyjson_is_str(value)) {
+            error = "mods entries must be strings";
+            return false;
+        }
+        std::string mod = lower_copy(yyjson_get_str(value));
+        if (mod == "shift") mods |= GLFW_MOD_SHIFT;
+        else if (mod == "control" || mod == "ctrl") mods |= GLFW_MOD_CONTROL;
+        else if (mod == "super" || mod == "cmd" || mod == "meta") mods |= GLFW_MOD_SUPER;
+        else if (mod == "alt" || mod == "option") mods |= GLFW_MOD_ALT;
+        else {
+            error = "unknown modifier: " + mod;
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool parse_ui_test_mouse_button(const std::string& button_name, int& button) {
+    std::string name = lower_copy(button_name);
+    if (name == "left") {
+        button = GLFW_MOUSE_BUTTON_LEFT;
+        return true;
+    }
+    if (name == "right") {
+        button = GLFW_MOUSE_BUTTON_RIGHT;
+        return true;
+    }
+    if (name == "middle") {
+        button = GLFW_MOUSE_BUTTON_MIDDLE;
+        return true;
+    }
+    return false;
+}
+
+static bool parse_ui_test_action_name(const std::string& action_name, int& action) {
+    std::string name = lower_copy(action_name);
+    if (name == "press") {
+        action = GLFW_PRESS;
+        return true;
+    }
+    if (name == "release") {
+        action = GLFW_RELEASE;
+        return true;
+    }
+    if (name == "repeat") {
+        action = GLFW_REPEAT;
+        return true;
+    }
+    return false;
+}
+
+static bool parse_ui_test_key_name(const std::string& key_name, int& key) {
+    static const std::unordered_map<std::string, int> named_keys = {
+        {"tab", GLFW_KEY_TAB},
+        {"enter", GLFW_KEY_ENTER},
+        {"escape", GLFW_KEY_ESCAPE},
+        {"esc", GLFW_KEY_ESCAPE},
+        {"delete", GLFW_KEY_DELETE},
+        {"backspace", GLFW_KEY_BACKSPACE},
+        {"left", GLFW_KEY_LEFT},
+        {"right", GLFW_KEY_RIGHT},
+        {"up", GLFW_KEY_UP},
+        {"down", GLFW_KEY_DOWN},
+        {"space", GLFW_KEY_SPACE},
+    };
+    std::string name = lower_copy(key_name);
+    auto it = named_keys.find(name);
+    if (it != named_keys.end()) {
+        key = it->second;
+        return true;
+    }
+    if (name.size() == 1) {
+        char c = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+        if (c >= 'A' && c <= 'Z') {
+            key = GLFW_KEY_A + (c - 'A');
+            return true;
+        }
+        if (c >= '0' && c <= '9') {
+            key = GLFW_KEY_0 + (c - '0');
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool load_ui_test_script(const std::string& script_path,
+                                UITestScript& script,
+                                std::string& error) {
+    yyjson_read_err err{};
+    yyjson_doc* doc = yyjson_read_file(script_path.c_str(), 0, nullptr, &err);
+    if (!doc) {
+        error = "failed to read script JSON";
+        return false;
+    }
+
+    yyjson_val* root = yyjson_doc_get_root(doc);
+    yyjson_val* actions = root;
+    if (root && yyjson_is_obj(root))
+        actions = yyjson_obj_get(root, "actions");
+    if (!actions || !yyjson_is_arr(actions)) {
+        yyjson_doc_free(doc);
+        error = "script must be a JSON array or an object with an 'actions' array";
+        return false;
+    }
+
+    script = {};
+    script.source_dir = std::filesystem::path(script_path).parent_path();
+    size_t idx = 0, max = 0;
+    yyjson_val* item = nullptr;
+    yyjson_arr_foreach(actions, idx, max, item) {
+        if (!yyjson_is_obj(item)) {
+            yyjson_doc_free(doc);
+            error = "script actions must be objects";
+            return false;
+        }
+        yyjson_val* type_val = yyjson_obj_get(item, "type");
+        if (!type_val || !yyjson_is_str(type_val)) {
+            yyjson_doc_free(doc);
+            error = "script action missing string 'type'";
+            return false;
+        }
+
+        UITestAction action;
+        std::string type = lower_copy(yyjson_get_str(type_val));
+        if (type == "wait") {
+            yyjson_val* frames_val = yyjson_obj_get(item, "frames");
+            action.type = UITestActionType::Wait;
+            action.frames = frames_val && yyjson_is_int(frames_val)
+                ? static_cast<int>(yyjson_get_int(frames_val))
+                : 1;
+        } else if (type == "mouse_move") {
+            yyjson_val* x_val = yyjson_obj_get(item, "x");
+            yyjson_val* y_val = yyjson_obj_get(item, "y");
+            if (!x_val || !y_val || !yyjson_is_num(x_val) || !yyjson_is_num(y_val)) {
+                yyjson_doc_free(doc);
+                error = "mouse_move requires numeric x and y";
+                return false;
+            }
+            action.type = UITestActionType::MouseMove;
+            action.x = static_cast<float>(yyjson_get_num(x_val));
+            action.y = static_cast<float>(yyjson_get_num(y_val));
+        } else if (type == "mouse_button") {
+            yyjson_val* button_val = yyjson_obj_get(item, "button");
+            yyjson_val* action_val = yyjson_obj_get(item, "action");
+            if (!button_val || !action_val || !yyjson_is_str(button_val) || !yyjson_is_str(action_val) ||
+                !parse_ui_test_mouse_button(yyjson_get_str(button_val), action.button) ||
+                !parse_ui_test_action_name(yyjson_get_str(action_val), action.mouse_action) ||
+                !parse_ui_test_modifiers(yyjson_obj_get(item, "mods"), action.mods, error)) {
+                yyjson_doc_free(doc);
+                if (error.empty())
+                    error = "mouse_button requires valid button/action/mods";
+                return false;
+            }
+            action.type = UITestActionType::MouseButton;
+        } else if (type == "key") {
+            yyjson_val* key_val = yyjson_obj_get(item, "key");
+            yyjson_val* action_val = yyjson_obj_get(item, "action");
+            if (!key_val || !action_val || !yyjson_is_str(key_val) || !yyjson_is_str(action_val) ||
+                !parse_ui_test_key_name(yyjson_get_str(key_val), action.key) ||
+                !parse_ui_test_action_name(yyjson_get_str(action_val), action.key_action) ||
+                !parse_ui_test_modifiers(yyjson_obj_get(item, "mods"), action.mods, error)) {
+                yyjson_doc_free(doc);
+                if (error.empty())
+                    error = "key requires valid key/action/mods";
+                return false;
+            }
+            action.type = UITestActionType::Key;
+        } else if (type == "char") {
+            yyjson_val* value_val = yyjson_obj_get(item, "value");
+            if (!value_val || !yyjson_is_str(value_val)) {
+                yyjson_doc_free(doc);
+                error = "char requires string value";
+                return false;
+            }
+            std::string value = yyjson_get_str(value_val);
+            if (value.empty()) {
+                yyjson_doc_free(doc);
+                error = "char value must not be empty";
+                return false;
+            }
+            action.type = UITestActionType::CharInput;
+            action.codepoint = static_cast<unsigned int>(static_cast<unsigned char>(value[0]));
+        } else if (type == "screenshot") {
+            yyjson_val* path_val = yyjson_obj_get(item, "path");
+            if (!path_val || !yyjson_is_str(path_val)) {
+                yyjson_doc_free(doc);
+                error = "screenshot requires string path";
+                return false;
+            }
+            action.type = UITestActionType::Screenshot;
+            action.screenshot_path = yyjson_get_str(path_val);
+            yyjson_val* delay_val = yyjson_obj_get(item, "delay_frames");
+            if (delay_val && yyjson_is_int(delay_val))
+                action.screenshot_delay = static_cast<int>(yyjson_get_int(delay_val));
+        } else if (type == "checkpoint") {
+            yyjson_val* label_val = yyjson_obj_get(item, "label");
+            if (!label_val || !yyjson_is_str(label_val)) {
+                yyjson_doc_free(doc);
+                error = "checkpoint requires string label";
+                return false;
+            }
+            action.type = UITestActionType::Checkpoint;
+            action.checkpoint_label = yyjson_get_str(label_val);
+        } else {
+            yyjson_doc_free(doc);
+            error = "unknown script action type: " + type;
+            return false;
+        }
+
+        script.actions.push_back(std::move(action));
+    }
+
+    yyjson_doc_free(doc);
+    return true;
+}
+
+static vivid::ui::FileDialogTestStats current_file_dialog_test_stats() {
+#ifdef __APPLE__
+    return vivid::ui::file_dialog_test_stats();
+#else
+    return {};
+#endif
+}
+
+static void reset_file_dialog_test_stats_runtime() {
+#ifdef __APPLE__
+    vivid::ui::reset_file_dialog_test_stats();
+#endif
+}
+
+static UITestObservedState capture_ui_test_observed_state(
+    const vivid::ui::GraphSnapshot& snapshot,
+    const vivid::ui::NodeGraphUI& graph_ui) {
+    UITestObservedState out;
+    out.nodes.reserve(snapshot.nodes.size());
+    for (const auto& node : snapshot.nodes) {
+        UITestNodeState state;
+        state.node_id = node.node_id;
+        state.type_name = node.type_name;
+        state.missing_operator = node.missing_operator;
+        state.has_layout = node.has_layout;
+        state.layout_x = node.layout_x;
+        state.layout_y = node.layout_y;
+        state.file_param_values = node.file_param_values;
+        out.nodes.push_back(std::move(state));
+    }
+    out.connections.reserve(snapshot.connections.size());
+    for (const auto& conn : snapshot.connections) {
+        UITestConnectionState state;
+        state.from_node = conn.from_node;
+        state.from_port = conn.from_port;
+        state.to_node = conn.to_node;
+        state.to_port = conn.to_port;
+        state.invalid = conn.invalid;
+        out.connections.push_back(std::move(state));
+    }
+    out.selected_node_ids = graph_ui.selected_node_ids_for_test();
+    std::sort(out.selected_node_ids.begin(), out.selected_node_ids.end());
+    out.chooser_open = graph_ui.chooser_open_for_test();
+    out.file_drop_chooser_open = graph_ui.file_drop_chooser_open_for_test();
+    out.role_chooser_open = graph_ui.role_chooser_open_for_test();
+    out.file_dialog_stats = current_file_dialog_test_stats();
+    return out;
+}
+
+static std::string sanitize_json_string(const std::string& input) {
+    std::string out;
+    out.reserve(input.size());
+    for (unsigned char c : input) {
+        if (c >= 0x20 && c < 0x7f) {
+            out.push_back(static_cast<char>(c));
+        } else if (c == '\n' || c == '\r' || c == '\t') {
+            out.push_back(static_cast<char>(c));
+        } else {
+            out.push_back('?');
+        }
+    }
+    return out;
+}
+
+static yyjson_mut_val* encode_ui_test_state(yyjson_mut_doc* doc,
+                                            const UITestObservedState& state) {
+    yyjson_mut_val* root = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_int(doc, root, "node_count",
+                           static_cast<int64_t>(state.nodes.size()));
+    yyjson_mut_obj_add_int(doc, root, "connection_count",
+                           static_cast<int64_t>(state.connections.size()));
+    yyjson_mut_obj_add_bool(doc, root, "chooser_open", state.chooser_open);
+    yyjson_mut_obj_add_bool(doc, root, "file_drop_chooser_open",
+                            state.file_drop_chooser_open);
+    yyjson_mut_obj_add_bool(doc, root, "role_chooser_open", state.role_chooser_open);
+    yyjson_mut_obj_add_int(doc, root, "native_file_dialog_count",
+                           state.file_dialog_stats.invocation_count);
+
+    yyjson_mut_val* dialog_stats = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_int(doc, dialog_stats, "invocation_count",
+                           state.file_dialog_stats.invocation_count);
+    yyjson_mut_obj_add_int(doc, dialog_stats, "open_file_count",
+                           state.file_dialog_stats.open_file_count);
+    yyjson_mut_obj_add_int(doc, dialog_stats, "open_directory_count",
+                           state.file_dialog_stats.open_directory_count);
+    yyjson_mut_obj_add_int(doc, dialog_stats, "save_file_count",
+                           state.file_dialog_stats.save_file_count);
+    yyjson_mut_obj_add_int(doc, dialog_stats, "save_directory_count",
+                           state.file_dialog_stats.save_directory_count);
+    yyjson_mut_obj_add_val(doc, root, "file_dialog_stats", dialog_stats);
+
+    yyjson_mut_val* selected = yyjson_mut_arr(doc);
+    for (const auto& node_id : state.selected_node_ids) {
+        const std::string safe = sanitize_json_string(node_id);
+        yyjson_mut_arr_add_strcpy(doc, selected, safe.c_str());
+    }
+    yyjson_mut_obj_add_val(doc, root, "selected_node_ids", selected);
+
+    yyjson_mut_val* nodes = yyjson_mut_arr(doc);
+    for (const auto& node : state.nodes) {
+        yyjson_mut_val* item = yyjson_mut_obj(doc);
+        const std::string safe_node_id = sanitize_json_string(node.node_id);
+        const std::string safe_type_name = sanitize_json_string(node.type_name);
+        yyjson_mut_obj_add_strcpy(doc, item, "node_id", safe_node_id.c_str());
+        yyjson_mut_obj_add_strcpy(doc, item, "type_name", safe_type_name.c_str());
+        yyjson_mut_obj_add_bool(doc, item, "missing_operator", node.missing_operator);
+        yyjson_mut_obj_add_bool(doc, item, "has_layout", node.has_layout);
+        yyjson_mut_obj_add_real(doc, item, "layout_x", node.layout_x);
+        yyjson_mut_obj_add_real(doc, item, "layout_y", node.layout_y);
+        yyjson_mut_val* file_params = yyjson_mut_obj(doc);
+        std::vector<std::string> keys;
+        keys.reserve(node.file_param_values.size());
+        for (const auto& [key, _] : node.file_param_values)
+            keys.push_back(key);
+        std::sort(keys.begin(), keys.end());
+        for (const auto& key : keys) {
+            auto it = node.file_param_values.find(key);
+            const std::string safe_key = sanitize_json_string(key);
+            const std::string safe_value = sanitize_json_string(it->second);
+            yyjson_mut_obj_add_strcpy(doc, file_params, safe_key.c_str(), safe_value.c_str());
+        }
+        yyjson_mut_obj_add_val(doc, item, "file_params", file_params);
+        yyjson_mut_arr_add_val(nodes, item);
+    }
+    yyjson_mut_obj_add_val(doc, root, "nodes", nodes);
+
+    yyjson_mut_val* connections = yyjson_mut_arr(doc);
+    for (const auto& conn : state.connections) {
+        yyjson_mut_val* item = yyjson_mut_obj(doc);
+        const std::string safe_from_node = sanitize_json_string(conn.from_node);
+        const std::string safe_from_port = sanitize_json_string(conn.from_port);
+        const std::string safe_to_node = sanitize_json_string(conn.to_node);
+        const std::string safe_to_port = sanitize_json_string(conn.to_port);
+        yyjson_mut_obj_add_strcpy(doc, item, "from_node", safe_from_node.c_str());
+        yyjson_mut_obj_add_strcpy(doc, item, "from_port", safe_from_port.c_str());
+        yyjson_mut_obj_add_strcpy(doc, item, "to_node", safe_to_node.c_str());
+        yyjson_mut_obj_add_strcpy(doc, item, "to_port", safe_to_port.c_str());
+        yyjson_mut_obj_add_bool(doc, item, "invalid", conn.invalid);
+        yyjson_mut_arr_add_val(connections, item);
+    }
+    yyjson_mut_obj_add_val(doc, root, "connections", connections);
+    return root;
+}
+
+static bool write_ui_test_dump_file(const std::string& path,
+                                    const UITestDumpState& dump,
+                                    std::string& error) {
+    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
+    if (!doc) {
+        error = "failed to allocate JSON document";
+        return false;
+    }
+    yyjson_mut_val* root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    yyjson_mut_obj_add_bool(doc, root, "has_final_state", dump.has_final_state);
+    if (dump.has_final_state) {
+        yyjson_mut_obj_add_val(doc, root, "final_state",
+                               encode_ui_test_state(doc, dump.final_state));
+    }
+
+    yyjson_mut_val* checkpoints = yyjson_mut_arr(doc);
+    for (const auto& checkpoint : dump.checkpoints) {
+        yyjson_mut_val* item = yyjson_mut_obj(doc);
+        const std::string safe_label = sanitize_json_string(checkpoint.label);
+        yyjson_mut_obj_add_strcpy(doc, item, "label", safe_label.c_str());
+        yyjson_mut_obj_add_val(doc, item, "state",
+                               encode_ui_test_state(doc, checkpoint.state));
+        yyjson_mut_arr_add_val(checkpoints, item);
+    }
+    yyjson_mut_obj_add_val(doc, root, "checkpoints", checkpoints);
+
+    yyjson_write_err write_err{};
+    bool ok = yyjson_mut_write_file(path.c_str(), doc, 0, nullptr, &write_err);
+    yyjson_mut_doc_free(doc);
+    if (!ok) {
+        error = write_err.msg ? write_err.msg : "failed to write JSON";
+        return false;
+    }
+    return true;
 }
 
 static std::string trim_copy(const std::string& s) {
@@ -1197,6 +1690,16 @@ static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
                                    uint32_t thumb_w,
                                    uint32_t thumb_h,
                                    WGPUTextureFormat thumb_format) {
+    for (const auto& ns : scheduler.nodes()) {
+        if (ns.missing_operator) {
+            // Missing-operator placeholders are intentionally degraded UI state.
+            // Do not issue custom thumbnail GPU work in that state; fall back to
+            // default node bodies instead of risking stale/invalid thumbnail submit.
+            graph_ui.set_custom_thumbnail_nodes({});
+            return;
+        }
+    }
+
     std::unordered_set<std::string> custom_thumb_ids;
     for (const auto& ns : scheduler.nodes()) {
         if (!ns.loader || !ns.instance || ns.missing_operator) continue;
@@ -1249,14 +1752,21 @@ static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
     graph_ui.set_custom_thumbnail_nodes(std::move(custom_thumb_ids));
 }
 
-static bool try_capture_screenshot(const std::string& path, vivid::GpuContext& gpu,
-                                   vivid::FrameState& frame, int fb_w, int fb_h,
-                                   uint64_t frame_count, int delay, GLFWwindow* window) {
-    if (path.empty() || !gpu.surface_supports_copy_src()
-        || static_cast<int>(frame_count) < delay) {
+struct SurfaceCaptureResult {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<uint8_t> png_data;
+};
+
+static bool capture_surface_png(vivid::GpuContext& gpu,
+                                vivid::FrameState& frame,
+                                int fb_w, int fb_h,
+                                SurfaceCaptureResult& out,
+                                std::string& error) {
+    if (!gpu.surface_supports_copy_src()) {
+        error = "surface does not support interface capture";
         return false;
     }
-
     const uint32_t ss_w = static_cast<uint32_t>(fb_w);
     const uint32_t ss_h = static_cast<uint32_t>(fb_h);
     const uint32_t bpp = 4;
@@ -1271,6 +1781,10 @@ static bool try_capture_screenshot(const std::string& path, vivid::GpuContext& g
     staging_desc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
     staging_desc.mappedAtCreation = false;
     WGPUBuffer staging = wgpuDeviceCreateBuffer(gpu.device(), &staging_desc);
+    if (!staging) {
+        error = "failed to allocate screenshot staging buffer";
+        return false;
+    }
 
     WGPUTexelCopyTextureInfo src{};
     src.texture = frame.texture;
@@ -1316,6 +1830,12 @@ static bool try_capture_screenshot(const std::string& path, vivid::GpuContext& g
 
     const uint8_t* mapped = static_cast<const uint8_t*>(
         wgpuBufferGetConstMappedRange(staging, 0, buf_size));
+    if (!mapped) {
+        wgpuBufferUnmap(staging);
+        wgpuBufferRelease(staging);
+        error = "failed to map screenshot staging buffer";
+        return false;
+    }
 
     std::vector<uint8_t> pixels(ss_w * ss_h * bpp);
     for (uint32_t y = 0; y < ss_h; ++y) {
@@ -1332,7 +1852,41 @@ static bool try_capture_screenshot(const std::string& path, vivid::GpuContext& g
     wgpuBufferUnmap(staging);
     wgpuBufferRelease(staging);
 
-    if (stbi_write_png(path.c_str(), ss_w, ss_h, 4, pixels.data(), ss_w * bpp)) {
+    out.width = ss_w;
+    out.height = ss_h;
+    out.png_data.clear();
+    out.png_data.reserve(ss_w * ss_h);
+    stbi_write_png_to_func(stbi_write_to_vec, &out.png_data, ss_w, ss_h, 4,
+                           pixels.data(), static_cast<int>(ss_w * bpp));
+    if (out.png_data.empty()) {
+        error = "PNG encoding failed";
+        return false;
+    }
+    return true;
+}
+
+static bool try_capture_screenshot(const std::string& path, vivid::GpuContext& gpu,
+                                   vivid::FrameState& frame, int fb_w, int fb_h,
+                                   uint64_t frame_count, int delay, GLFWwindow* window) {
+    if (path.empty() || static_cast<int>(frame_count) < delay) {
+        return false;
+    }
+
+    SurfaceCaptureResult capture;
+    std::string error;
+    if (!capture_surface_png(gpu, frame, fb_w, fb_h, capture, error)) {
+        std::fprintf(stderr, "[vivid] Screenshot FAILED: %s\n", error.c_str());
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+        return true;
+    }
+
+    std::ofstream out(path, std::ios::binary);
+    if (out) {
+        out.write(reinterpret_cast<const char*>(capture.png_data.data()),
+                  static_cast<std::streamsize>(capture.png_data.size()));
+    }
+
+    if (out.good()) {
         std::fprintf(stderr, "[vivid] Screenshot saved: %s\n", path.c_str());
     } else {
         std::fprintf(stderr, "[vivid] Screenshot FAILED: %s\n", path.c_str());
@@ -1359,6 +1913,86 @@ struct WindowUserData {
     // Drag-and-drop graph loading
     std::string pending_drop_path;
 };
+
+static void run_ui_test_script_frame(UITestScript& script,
+                                     vivid::ui::NodeGraphUI& graph_ui,
+                                     WindowUserData& window_user_data,
+                                     std::string& screenshot_path,
+                                     int& screenshot_delay,
+                                     uint64_t frame_count) {
+    if (script.actions.empty() || script.next_action >= script.actions.size())
+        return;
+    if (script.wait_frames_remaining > 0) {
+        --script.wait_frames_remaining;
+        return;
+    }
+
+    while (script.next_action < script.actions.size()) {
+        const auto& action = script.actions[script.next_action++];
+        switch (action.type) {
+            case UITestActionType::Wait:
+                script.wait_frames_remaining = std::max(0, action.frames);
+                return;
+            case UITestActionType::MouseMove:
+                window_user_data.raw_mouse_x = action.x;
+                window_user_data.raw_mouse_y = action.y;
+                graph_ui.on_mouse_move(action.x, action.y);
+                std::fprintf(stderr,
+                             "[vivid] UI script mouse_move to (%.1f, %.1f) on frame %llu\n",
+                             static_cast<double>(action.x),
+                             static_cast<double>(action.y),
+                             static_cast<unsigned long long>(frame_count));
+                break;
+            case UITestActionType::MouseButton:
+                window_user_data.current_mods = action.mods;
+                if (action.button >= 0 && action.button <= 2) {
+                    if (action.mouse_action == GLFW_PRESS)
+                        window_user_data.buttons_held |= (1 << action.button);
+                    else if (action.mouse_action == GLFW_RELEASE)
+                        window_user_data.buttons_held &= ~(1 << action.button);
+                }
+                graph_ui.on_mouse_button(action.button, action.mouse_action, action.mods);
+                std::fprintf(stderr,
+                             "[vivid] UI script mouse_button %d/%d on frame %llu\n",
+                             action.button, action.mouse_action,
+                             static_cast<unsigned long long>(frame_count));
+                break;
+            case UITestActionType::Key:
+                window_user_data.current_mods = action.mods;
+                graph_ui.on_key(action.key, action.key_action, action.mods);
+                std::fprintf(stderr,
+                             "[vivid] UI script key %d/%d mods=%d on frame %llu\n",
+                             action.key, action.key_action, action.mods,
+                             static_cast<unsigned long long>(frame_count));
+                break;
+            case UITestActionType::CharInput:
+                graph_ui.on_char(action.codepoint);
+                std::fprintf(stderr,
+                             "[vivid] UI script char %u on frame %llu\n",
+                             action.codepoint,
+                             static_cast<unsigned long long>(frame_count));
+                break;
+            case UITestActionType::Screenshot: {
+                std::filesystem::path shot_path(action.screenshot_path);
+                if (!shot_path.is_absolute())
+                    shot_path = script.source_dir / shot_path;
+                screenshot_path = shot_path.string();
+                screenshot_delay = static_cast<int>(frame_count) + action.screenshot_delay;
+                std::fprintf(stderr,
+                             "[vivid] UI script scheduled screenshot: %s at frame %d\n",
+                             screenshot_path.c_str(), screenshot_delay);
+                return;
+            }
+            case UITestActionType::Checkpoint:
+                script.pending_checkpoint_labels.push_back(action.checkpoint_label);
+                std::fprintf(stderr,
+                             "[vivid] UI script checkpoint queued: %s on frame %llu\n",
+                             action.checkpoint_label.c_str(),
+                             static_cast<unsigned long long>(frame_count));
+                break;
+        }
+    }
+}
 
 static void char_callback(GLFWwindow* w, unsigned int codepoint) {
     auto* ud = static_cast<WindowUserData*>(glfwGetWindowUserPointer(w));
@@ -1541,7 +2175,13 @@ int main(int argc, char* argv[]) {
     // --- CLI argument parsing ---
     std::string graph_file;
     std::string screenshot_path;
+    std::string screenshot_select_node;
     int screenshot_delay = 5;
+    std::string test_drop_path;
+    std::vector<int> test_drop_screen_pos;
+    int test_drop_frame = 5;
+    std::string test_ui_script_path;
+    std::string test_dump_ui_state_path;
     bool headless = false;
     std::string src_dir;
 
@@ -1552,6 +2192,24 @@ int main(int argc, char* argv[]) {
     app.add_option("graph", graph_file, "Graph file to load")->type_name("FILE");
     app.add_option("--screenshot", screenshot_path, "Capture a screenshot to PNG and exit")->type_name("FILE");
     app.add_option("--screenshot-delay", screenshot_delay, "Frames to wait before capture (default: 5)");
+    app.add_option("--select-node", screenshot_select_node,
+                   "Select a node by id before drawing the inspector (useful with --screenshot)")
+        ->type_name("NODE_ID");
+    app.add_option("--test-drop-path", test_drop_path,
+                   "Inject a synthetic drag-and-drop path after startup (testing seam)")
+        ->type_name("FILE");
+    app.add_option("--test-drop-screen-pos", test_drop_screen_pos,
+                   "Synthetic drop location in window coordinates (x y)")
+        ->type_name("X Y")
+        ->expected(2);
+    app.add_option("--test-drop-frame", test_drop_frame,
+                   "Frame number at which to inject --test-drop-path (default: 5)");
+    app.add_option("--test-ui-script", test_ui_script_path,
+                   "Replay a scripted sequence of UI inputs after startup (testing seam)")
+        ->type_name("FILE");
+    app.add_option("--test-dump-ui-state", test_dump_ui_state_path,
+                   "Write a machine-readable final UI/runtime state snapshot (testing seam)")
+        ->type_name("FILE");
     app.add_flag("--headless", headless, "Run without displaying a window");
     app.add_option("--src-dir", src_dir, "Source directory for operator hot-reload")->type_name("PATH");
 
@@ -1658,6 +2316,22 @@ int main(int argc, char* argv[]) {
         app.parse(argc, argv);
     } catch (const CLI::ParseError& e) {
         return app.exit(e);
+    }
+    if (test_drop_frame < 0) test_drop_frame = 0;
+    UITestScript test_ui_script;
+    if (!test_ui_script_path.empty()) {
+        std::string script_error;
+        if (!load_ui_test_script(test_ui_script_path, test_ui_script, script_error)) {
+            std::fprintf(stderr, "[vivid] Failed to load --test-ui-script %s: %s\n",
+                         test_ui_script_path.c_str(), script_error.c_str());
+            return 1;
+        }
+    }
+    if (!test_dump_ui_state_path.empty()) {
+        std::filesystem::path dump_path(test_dump_ui_state_path);
+        if (!dump_path.is_absolute())
+            dump_path = std::filesystem::absolute(dump_path);
+        test_dump_ui_state_path = dump_path.string();
     }
 
     // Resolve build/source directories once (used by export, packages, hot-reload)
@@ -2400,6 +3074,8 @@ int main(int argc, char* argv[]) {
     graph_ui.set_bezier_wires(settings.bezier_wires);
     graph_ui.set_show_param_wires(settings.show_param_wires);
     graph_ui.set_pan_gesture(settings.pan_gesture);
+    bool screenshot_select_applied = screenshot_select_node.empty();
+    bool screenshot_select_warned = false;
     {
         // Resolve mcp/ directory: <bundle>/Contents/Resources/mcp or <exe_dir>/mcp
         auto mcp_dir = resources_dir / "mcp";
@@ -2996,6 +3672,12 @@ int main(int argc, char* argv[]) {
     auto create_file_drop_node = [&](const vivid::FileDropMatch& match,
                                      const std::string& dropped_path,
                                      float graph_x, float graph_y) {
+        if (!registry.find(match.type_name)) {
+            std::fprintf(stderr, "[vivid] Drop: failed to load operator %s\n",
+                         match.type_name.c_str());
+            return false;
+        }
+
         std::string id;
         for (int n = 1; ; ++n) {
             id = match.type_name + std::to_string(n);
@@ -3009,7 +3691,13 @@ int main(int argc, char* argv[]) {
             return false;
         }
         command_sink.set_node_layout(id, graph_x, graph_y);
-        command_sink.set_string_param(id, match.file_param, dropped_path);
+        runtime_api.apply_pending(has_gpu_ops, has_audio);
+        auto set_result = runtime_api.set_string_param(id, match.file_param, dropped_path);
+        if (!set_result.ok) {
+            std::fprintf(stderr, "[vivid] Drop: failed to set %s/%s: %s\n",
+                         id.c_str(), match.file_param.c_str(), set_result.message.c_str());
+            return false;
+        }
         return true;
     };
 
@@ -3309,10 +3997,14 @@ int main(int argc, char* argv[]) {
     uint64_t frame_count = 0;
     bool pkg_update_notice_done = false;
     bool core_update_notice_done = false;
+    bool synthetic_drop_injected = false;
+    UITestDumpState test_dump_state;
+    bool test_dump_write_attempted = false;
 #ifdef __APPLE__
     bool window_doc_edited = false;
 #endif
     std::string window_title_graph_path;
+    reset_file_dialog_test_stats_runtime();
 
     // --- Main loop ---
     auto tick_frame = [&]() -> bool {
@@ -3396,6 +4088,36 @@ int main(int argc, char* argv[]) {
         // Skip frame if minimized
         if (fb_w == 0 || fb_h == 0) return true;
 
+        if (!test_drop_path.empty() &&
+            !synthetic_drop_injected &&
+            static_cast<int>(frame_count) >= test_drop_frame &&
+            window_user_data.pending_drop_path.empty()) {
+            std::filesystem::path drop_path(test_drop_path);
+            if (!drop_path.is_absolute()) drop_path = std::filesystem::absolute(drop_path);
+            if (!std::filesystem::exists(drop_path)) {
+                std::fprintf(stderr,
+                             "[vivid] Test drop fixture missing: %s\n",
+                             drop_path.string().c_str());
+            } else {
+                float drop_x = static_cast<float>(win_w) * 0.5f;
+                float drop_y = static_cast<float>(win_h) * 0.5f;
+                if (test_drop_screen_pos.size() == 2) {
+                    drop_x = static_cast<float>(test_drop_screen_pos[0]);
+                    drop_y = static_cast<float>(test_drop_screen_pos[1]);
+                }
+                window_user_data.raw_mouse_x = drop_x;
+                window_user_data.raw_mouse_y = drop_y;
+                window_user_data.pending_drop_path = drop_path.string();
+                std::fprintf(stderr,
+                             "[vivid] Test drop injected: %s at (%.1f, %.1f) on frame %llu\n",
+                             window_user_data.pending_drop_path.c_str(),
+                             static_cast<double>(drop_x),
+                             static_cast<double>(drop_y),
+                             static_cast<unsigned long long>(frame_count));
+            }
+            synthetic_drop_injected = true;
+        }
+
         // Handle drag-and-drop graph loading / file-to-operator creation
         if (!window_user_data.pending_drop_path.empty()) {
             std::string path = std::move(window_user_data.pending_drop_path);
@@ -3465,7 +4187,9 @@ int main(int argc, char* argv[]) {
         static uint64_t last_reload_serial = 0;
         if (runtime_api.reload_serial() != last_reload_serial) {
             last_reload_serial = runtime_api.reload_serial();
-            command_sink.reset_undo_history();
+            if (!runtime_api.consume_preserve_undo_history_reload()) {
+                command_sink.reset_undo_history();
+            }
         }
 
         if (runtime_api.has_pending()) {
@@ -3852,31 +4576,90 @@ int main(int argc, char* argv[]) {
                 emit_clear_pass(frame.encoder, frame.view, clear);
             }
 
+            const bool interface_capture_requested =
+                capture_coordinator.has_pending_interface_capture() ||
+                capture_coordinator.has_active_interface_capture();
+            if (interface_capture_requested && !gpu.surface_supports_copy_src()) {
+                capture_coordinator.fail_pending_interface_captures(
+                    "surface does not support interface capture");
+            }
+            if (interface_capture_requested && !text_renderer_ok) {
+                capture_coordinator.fail_pending_interface_captures(
+                    "UI text renderer is unavailable");
+            }
+
             // --- Node graph UI overlay (2-pass rendering) ---
-            if (text_renderer_ok && graph_ui.visible()) {
+            if (text_renderer_ok && (graph_ui.visible() || interface_capture_requested)) {
                 auto snapshot = build_graph_snapshot(
                     graph, scheduler, has_audio ? &audio_engine : nullptr,
                     registry, op_info_cache, &system_midi, &runtime_api,
                     &capture_coordinator, &control_server);
 
-                graph_ui.update(snapshot);
-                graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
-                // Pass 1: text/rects
-                text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
-                // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
-                if (thumb_renderer_ok) {
-                    graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
-                                             frame.encoder, frame.view,
-                                             static_cast<uint32_t>(fb_width),
-                                             static_cast<uint32_t>(fb_height));
+                if (!test_ui_script.actions.empty()) {
+                    run_ui_test_script_frame(test_ui_script, graph_ui, window_user_data,
+                                             screenshot_path, screenshot_delay, frame_count);
                 }
-                // Pass 3: overlays (context menu, dropdown) on top of thumbnails
-                graph_ui.draw_overlays(text_renderer);
-                text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
+                graph_ui.update(snapshot);
+                if (!test_dump_ui_state_path.empty()) {
+                    test_dump_state.final_state =
+                        capture_ui_test_observed_state(snapshot, graph_ui);
+                    test_dump_state.has_final_state = true;
+                    for (const auto& label : test_ui_script.pending_checkpoint_labels) {
+                        test_dump_state.checkpoints.push_back(
+                            UITestCheckpointState{
+                                label,
+                                capture_ui_test_observed_state(snapshot, graph_ui),
+                            });
+                    }
+                    test_ui_script.pending_checkpoint_labels.clear();
+                }
+                if (interface_capture_requested) {
+                    capture_coordinator.prepare_pending_interface_capture(graph_ui);
+                }
+                if (!screenshot_select_applied && !screenshot_select_node.empty()) {
+                    if (graph_ui.select_single_node_for_review(screenshot_select_node)) {
+                        screenshot_select_applied = true;
+                    } else if (!screenshot_select_warned) {
+                        std::fprintf(stderr,
+                                     "[vivid] --select-node could not find node id '%s' in the current graph yet\n",
+                                     screenshot_select_node.c_str());
+                        screenshot_select_warned = true;
+                    }
+                }
+                if (graph_ui.visible()) {
+                    graph_ui.draw(text_renderer, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
+                    // Pass 1: text/rects
+                    text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
+                    // Pass 2: thumbnails (GPU auto-captured + CPU custom, composited over text)
+                    if (thumb_renderer_ok) {
+                        graph_ui.draw_thumbnails(thumb_renderer, thumb_cache,
+                                                 frame.encoder, frame.view,
+                                                 static_cast<uint32_t>(fb_width),
+                                                 static_cast<uint32_t>(fb_height));
+                    }
+                    // Pass 3: overlays (context menu, dropdown) on top of thumbnails
+                    graph_ui.draw_overlays(text_renderer);
+                    text_renderer.flush(frame.encoder, frame.view, static_cast<uint32_t>(win_w), static_cast<uint32_t>(win_h));
+                }
+            }
+
+            bool frame_already_submitted = false;
+            if (capture_coordinator.has_active_interface_capture()) {
+                SurfaceCaptureResult interface_capture;
+                std::string capture_error;
+                if (capture_surface_png(gpu, frame, fb_width, fb_height,
+                                        interface_capture, capture_error)) {
+                    capture_coordinator.complete_active_interface_capture(
+                        interface_capture.width, interface_capture.height, interface_capture.png_data);
+                } else {
+                    capture_coordinator.fail_active_interface_capture(capture_error);
+                }
+                frame_already_submitted = true;
             }
 
             // --- Screenshot capture ---
-            if (try_capture_screenshot(screenshot_path, gpu, frame, fb_width, fb_height,
+            if (!frame_already_submitted &&
+                try_capture_screenshot(screenshot_path, gpu, frame, fb_width, fb_height,
                                        frame_count, screenshot_delay, window)) {
                 return true; // frame already submitted inside try_capture_screenshot
             }
@@ -3890,12 +4673,19 @@ int main(int argc, char* argv[]) {
                     gpu.resize(static_cast<uint32_t>(fb_width), static_cast<uint32_t>(fb_height));
                 }
                 display_state.surface_settle_frames = std::max(display_state.surface_settle_frames, 2);
-                gpu.discard_frame(frame);
+                if (!frame_already_submitted)
+                    gpu.discard_frame(frame);
                 return true;
             }
 
-            gpu.end_frame(frame);
+            if (!frame_already_submitted)
+                gpu.end_frame(frame);
         } else {
+            if (capture_coordinator.has_pending_interface_capture() ||
+                capture_coordinator.has_active_interface_capture()) {
+                capture_coordinator.fail_pending_interface_captures(
+                    "no capturable surface available");
+            }
             // No surface — submit offscreen GPU work (scheduler tick, thumbnails)
             // and poll the device so audio/compute operators still advance.
             vivid::gpu_submit(gpu.device(), gpu.queue(), tick_encoder, "Offscreen Commands");
@@ -3919,6 +4709,20 @@ int main(int argc, char* argv[]) {
         if (!tick_frame()) break;
     }
 #endif
+
+    if (!test_dump_ui_state_path.empty() && !test_dump_write_attempted) {
+        std::filesystem::create_directories(
+            std::filesystem::path(test_dump_ui_state_path).parent_path());
+        std::string dump_error;
+        if (write_ui_test_dump_file(test_dump_ui_state_path, test_dump_state, dump_error)) {
+            std::fprintf(stderr, "[vivid] UI test dump saved: %s\n",
+                         test_dump_ui_state_path.c_str());
+        } else {
+            std::fprintf(stderr, "[vivid] UI test dump FAILED: %s (%s)\n",
+                         test_dump_ui_state_path.c_str(), dump_error.c_str());
+        }
+        test_dump_write_attempted = true;
+    }
 
     // --- Shutdown ---
     if (pkg_action_thread.joinable()) pkg_action_thread.join();

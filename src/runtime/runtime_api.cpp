@@ -209,6 +209,11 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
     }
 
     set_file_param_internal(*ns, param, value);
+    NodeDef* ndef = graph_.find_node(node_id);
+    if (ndef) ndef->string_params[param] = value;
+
+    if (graph_.active_variation() >= 0)
+        variation_dirty_ = true;
     mark_graph_dirty();
 
     return {true, node_id + "/" + param + " = " + value};
@@ -1398,6 +1403,13 @@ CommandResult RuntimeAPI::save_as(const std::string& path) {
 CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
     const auto& path = graph_.source_path();
     if (path.empty()) return {false, "no source path to reload from"};
+    return load_graph(path, has_gpu_ops, has_audio);
+}
+
+CommandResult RuntimeAPI::load_graph(const std::string& path,
+                                     bool& has_gpu_ops,
+                                     bool& has_audio) {
+    if (path.empty()) return {false, "missing graph path"};
     const bool preserve_runtime_state =
         normalized_graph_identity_path(path) == active_graph_source_path_;
     std::string previous_graph_json;
@@ -1519,6 +1531,7 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
     }
 
     active_graph_source_path_ = normalized_graph_identity_path(path);
+    preserve_undo_history_on_reload_ = false;
     reload_serial_++;
     capture_saved_snapshot();
     return {true, "reloaded from " + path};
@@ -1584,6 +1597,7 @@ CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {
     active_graph_source_path_.clear();
     pending_topology_change_ = false;
     active_crossfades_.clear();
+    preserve_undo_history_on_reload_ = false;
     reload_serial_++;
     capture_saved_snapshot();
     return {true, "new graph"};
@@ -1653,6 +1667,7 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
 
         pending_topology_change_ = false;
         active_crossfades_.clear();
+        preserve_undo_history_on_reload_ = false;
         return {false, reason};
     };
 
@@ -1685,6 +1700,7 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
 
     pending_topology_change_ = false;
     active_crossfades_.clear();
+    preserve_undo_history_on_reload_ = true;
     reload_serial_++;
     refresh_graph_dirty_from_saved_snapshot();
     return {true, "applied graph snapshot"};

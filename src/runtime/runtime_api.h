@@ -128,6 +128,7 @@ public:
     // Persistence
     CommandResult save();
     CommandResult save_as(const std::string& path);
+    CommandResult load_graph(const std::string& path, bool& has_gpu_ops, bool& has_audio);
     CommandResult reload(bool& has_gpu_ops, bool& has_audio);
     CommandResult new_graph(bool& has_gpu_ops, bool& has_audio);
     CommandResult new_project(const std::string& dir_path, bool& has_gpu_ops, bool& has_audio);
@@ -149,6 +150,11 @@ public:
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
     uint64_t reload_serial() const { return reload_serial_; }
+    bool consume_preserve_undo_history_reload() {
+        bool preserve = preserve_undo_history_on_reload_;
+        preserve_undo_history_on_reload_ = false;
+        return preserve;
+    }
 
 private:
     static bool split_addr(const std::string& addr, std::string& node, std::string& port);
@@ -161,6 +167,7 @@ private:
     bool pending_topology_change_ = false;
     bool needs_gpu_realloc_ = false;
     uint64_t reload_serial_ = 0;
+    bool preserve_undo_history_on_reload_ = false;
 
     // Quantized variation switching state
     struct PendingVariation {

@@ -11,6 +11,27 @@ the queue on the main thread, dispatches commands, and fulfills promises.
 
 This ensures all runtime mutations happen on the main thread — no locking on `Scheduler` or `Graph`.
 
+## Ownership
+
+The control server is embedded in the running Vivid app process.
+
+- the running Vivid instance owns the live graph and runtime state
+- that same process binds the local HTTP server, default `127.0.0.1:9876`
+- one live runtime instance owns that port for a given session
+- external tools should connect to that instance rather than launching additional runtimes for the same interactive session
+
+## Relationship To MCP
+
+The control server is **not** itself an MCP server.
+
+- `mcp/vivid_mcp.py` is a separate Python MCP bridge process
+- the bridge can launch or reuse a Vivid runtime, then translates MCP stdio tool calls into HTTP requests against this control server
+- MCP clients therefore operate on the current live runtime instance through the bridge layered on top of the HTTP control server
+
+Interface capture, graph inspection, and live analysis are conceptually operations on the running runtime, even if some isolated debug/repro workflows still describe direct CLI screenshot runs.
+
+`capture_interface` is the live-session whole-window capture path. Unlike `capture_frame`, it runs after the graph UI, thumbnails, and overlays have been composed, so the returned PNG reflects the actual inspector/window state of the running instance.
+
 ## HTTP Protocol
 
 - **Method**: `POST /<method_name>`
@@ -24,9 +45,12 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 ### Graph Inspection
 | Method | Key params | Description |
 |--------|-----------|-------------|
-| `inspect_graph` | — | All nodes, params, connections as JSON |
+| `inspect_graph` | — | All nodes, params, role bindings, connections as JSON |
 | `introspect_nodes` | — | Compact per-node state summary |
 | `run_diagnostics` | — | Graph-level diagnostics (port mismatches, etc.) |
+| `capture_interface` | `node_id` (optional), `save_path` (optional), `ensure_ui_visible` (default `true`) | Capture the full running interface after UI overlays are drawn |
+| `analyze_output` | `mode`, `window_seconds`, `include_payload`, `node_id` (optional) | Capture and analyze the current frame/audio/AV output |
+| `compare_outputs` | `mode`, `a.window_seconds`, `b.window_seconds`, `include_payload`, `node_id` (optional) | Capture two output windows and return structured comparison |
 | `get_graph_load_diagnostics` | — | Package version mismatch info from last load |
 | `get_registry_diagnostics` | — | Registered custom port types + loader ABI mismatch diagnostics |
 | `get_graph_errors` | — | Per-node error state |
@@ -43,7 +67,11 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `remove_node` | `node_id` | Remove node + connections |
 | `connect` | `from_addr`, `to_addr`, `semantic_defaults` | Connect ports (`node_id/port_name`) |
 | `disconnect` | `from_addr`, `to_addr` | Disconnect ports |
+| `set_role_binding` | `node_id`, `role_id`, `target_node_id`, `target_output_name` | Bind a host role to a target node output |
+| `clear_role_binding` | `node_id`, `role_id` | Clear a host role binding |
 | `set_connection_remap` | `from_addr`, `to_addr`, `from_min/max`, `to_min/max`, `clamp` | Set wire remap |
+
+Role-binding payloads and snapshots still carry model/runtime fields such as `runtime_scope`. That data remains part of the graph/read model for runtime correctness and tooling, even though the main inspector UI intentionally hides scope wording in normal visual workflows.
 
 ### Parameters
 | Method | Key params | Description |
@@ -60,7 +88,7 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | Method | Key params | Description |
 |--------|-----------|-------------|
 | `save_graph` | `path` (optional) | Save to file |
-| `load_graph` | `path` | Load graph from file |
+| `load_graph` | `path` | Load the requested graph file into the running runtime and make it the active graph |
 
 ### Variations
 | Method | Key params | Description |
@@ -129,8 +157,9 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 ## Buffered vs Immediate Commands
 
 `is_topology_command()` returns true for commands that must be applied via `apply_pending()`:
-`add_node`, `remove_node`, `connect`, `disconnect`, `set_connection_remap`, `set_param`,
-`set_string_param`, `set_resolution`, `set_node_layout`, MIDI/variation/preset mutations, `load_graph`.
+`add_node`, `remove_node`, `connect`, `disconnect`, `set_role_binding`, `clear_role_binding`,
+`set_connection_remap`, `set_param`, `set_string_param`, `set_resolution`, `set_node_layout`,
+MIDI/variation/preset mutations, `load_graph`.
 
 Non-topology commands (`inspect_graph`, `list_types`, etc.) can execute immediately on the main thread.
 

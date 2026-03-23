@@ -210,6 +210,16 @@ static bool is_safe_recording_path(const std::string& path) {
     return ext == ".mov" || ext == ".mp4";
 }
 
+static bool is_safe_capture_image_path(const std::string& path) {
+    if (path.empty()) return false;
+    if (path[0] != '/') return false;
+    if (path.find("..") != std::string::npos) return false;
+    auto dot = path.rfind('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = path.substr(dot);
+    return ext == ".png";
+}
+
 static bool response_is_ok(const std::string& response_json) {
     yyjson_doc* doc = yyjson_read(response_json.c_str(), response_json.size(), 0);
     if (!doc) return false;
@@ -234,6 +244,8 @@ static bool is_undo_tracked_method(const std::string& method) {
            method == "remove_node" ||
            method == "connect" ||
            method == "disconnect" ||
+           method == "set_role_binding" ||
+           method == "clear_role_binding" ||
            method == "set_connection_remap" ||
            method == "set_param" ||
            method == "set_string_param" ||
@@ -332,6 +344,33 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
             }
         }
         yyjson_mut_obj_add_val(doc, node, "params", params_arr);
+
+        if (desc && desc->role_binding_count > 0) {
+            yyjson_mut_val* bindings_arr = yyjson_mut_arr(doc);
+            for (uint32_t i = 0; i < desc->role_binding_count; ++i) {
+                const auto& rb = desc->role_bindings[i];
+                yyjson_mut_val* b = yyjson_mut_obj(doc);
+                yyjson_mut_obj_add_strcpy(doc, b, "role_id", rb.role_id ? rb.role_id : "");
+                yyjson_mut_obj_add_strcpy(doc, b, "label", rb.label ? rb.label : "");
+                NodeDef::RoleBindingState state;
+                bool has_binding = false;
+                auto it = ndef.role_bindings.find(rb.role_id ? rb.role_id : "");
+                if (it != ndef.role_bindings.end()) {
+                    state = it->second;
+                    has_binding = true;
+                }
+                yyjson_mut_obj_add_bool(doc, b, "bound", has_binding);
+                if (has_binding) {
+                    yyjson_mut_obj_add_strcpy(doc, b, "target_node_id", state.target_node_id.c_str());
+                    yyjson_mut_obj_add_strcpy(doc, b, "target_output_name", state.target_output_name.c_str());
+                    if (const auto* target = graph.find_node(state.target_node_id)) {
+                        yyjson_mut_obj_add_strcpy(doc, b, "target_type_name", target->type.c_str());
+                    }
+                }
+                yyjson_mut_arr_add_val(bindings_arr, b);
+            }
+            yyjson_mut_obj_add_val(doc, node, "role_bindings", bindings_arr);
+        }
 
         // Ports split into inputs / outputs
         yyjson_mut_val* inputs_arr = yyjson_mut_arr(doc);
@@ -1754,6 +1793,33 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     api.set_param(yyjson_get_str(nid), yyjson_get_str(param),
                                   static_cast<float>(yyjson_get_num(value))));
         }
+    } else if (method == "set_role_binding") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid = yyjson_obj_get(root, "node_id");
+            yyjson_val* rid = yyjson_obj_get(root, "role_id");
+            yyjson_val* tid = yyjson_obj_get(root, "target_node_id");
+            yyjson_val* out = yyjson_obj_get(root, "target_output_name");
+            if (!nid || !rid || !tid || !out ||
+                !yyjson_is_str(nid) || !yyjson_is_str(rid) ||
+                !yyjson_is_str(tid) || !yyjson_is_str(out))
+                result = json_err("missing 'node_id', 'role_id', 'target_node_id', or 'target_output_name'");
+            else
+                result = command_result_to_json(
+                    api.set_role_binding(yyjson_get_str(nid), yyjson_get_str(rid),
+                                         yyjson_get_str(tid), yyjson_get_str(out)));
+        }
+    } else if (method == "clear_role_binding") {
+        if (!root) { result = json_err("invalid JSON body"); }
+        else {
+            yyjson_val* nid = yyjson_obj_get(root, "node_id");
+            yyjson_val* rid = yyjson_obj_get(root, "role_id");
+            if (!nid || !rid || !yyjson_is_str(nid) || !yyjson_is_str(rid))
+                result = json_err("missing 'node_id' or 'role_id'");
+            else
+                result = command_result_to_json(
+                    api.clear_role_binding(yyjson_get_str(nid), yyjson_get_str(rid)));
+        }
     } else if (method == "set_string_param") {
         if (!root) { result = json_err("invalid JSON body"); }
         else {
@@ -1818,9 +1884,19 @@ static std::string dispatch(const std::string& method, const std::string& body,
             result = command_result_to_json(api.save());
         }
     } else if (method == "load_graph") {
-        // reload updates has_gpu_ops/has_audio via out-params;
-        // main loop's needs_gpu_realloc() check handles GPU textures.
-        result = command_result_to_json(api.reload(has_gpu_ops, has_audio));
+        if (!root) {
+            result = json_err("invalid JSON body");
+        } else {
+            yyjson_val* path = yyjson_obj_get(root, "path");
+            if (!path || !yyjson_is_str(path)) {
+                result = json_err("load_graph requires 'path' parameter");
+            } else {
+                // load_graph updates has_gpu_ops/has_audio via out-params;
+                // main loop's needs_gpu_realloc() check handles GPU textures.
+                result = command_result_to_json(
+                    api.load_graph(yyjson_get_str(path), has_gpu_ops, has_audio));
+            }
+        }
     } else if (method == "set_resolution") {
         if (!root) { result = json_err("invalid JSON body"); }
         else {
@@ -3073,14 +3149,18 @@ bool ControlServer::start(int port) {
 
             // Capture methods bypass normal dispatch — route to CaptureCoordinator
             if (capture_coordinator_ &&
-                (method == "capture_frame" || method == "capture_audio" || method == "capture_av")) {
+                (method == "capture_frame" || method == "capture_audio" ||
+                 method == "capture_av" || method == "capture_interface")) {
                 CaptureType ctype = CaptureType::Frame;
                 float audio_dur = 1.0f;
+                std::string node_id;
+                std::string save_path;
+                bool ensure_ui_visible = true;
                 if (method == "capture_audio") ctype = CaptureType::Audio;
                 else if (method == "capture_av") ctype = CaptureType::AV;
 
                 // Parse optional duration from body
-                if (ctype == CaptureType::Audio || ctype == CaptureType::AV) {
+                if (ctype == CaptureType::Audio || ctype == CaptureType::AV || method == "capture_interface") {
                     yyjson_doc* doc = yyjson_read(request->body.c_str(), request->body.size(), 0);
                     if (doc) {
                         yyjson_val* root = yyjson_doc_get_root(doc);
@@ -3089,12 +3169,38 @@ bool ControlServer::start(int port) {
                             audio_dur = static_cast<float>(yyjson_get_real(dur_v));
                         else if (dur_v && yyjson_is_int(dur_v))
                             audio_dur = static_cast<float>(yyjson_get_int(dur_v));
+                        if (method == "capture_interface") {
+                            yyjson_val* node_v = root ? yyjson_obj_get(root, "node_id") : nullptr;
+                            if (node_v && yyjson_is_str(node_v))
+                                node_id = yyjson_get_str(node_v);
+                            yyjson_val* path_v = root ? yyjson_obj_get(root, "save_path") : nullptr;
+                            if (path_v && yyjson_is_str(path_v)) {
+                                std::string candidate = yyjson_get_str(path_v);
+                                if (!candidate.empty() && !is_safe_capture_image_path(candidate)) {
+                                    yyjson_doc_free(doc);
+                                    return std::make_shared<ix::HttpResponse>(
+                                        200, "OK", ix::HttpErrorCode::Ok,
+                                        ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
+                                        R"({"ok":false,"error":"invalid save_path"})");
+                                }
+                                save_path = candidate;
+                            }
+                            yyjson_val* ensure_v = root ? yyjson_obj_get(root, "ensure_ui_visible") : nullptr;
+                            if (ensure_v && yyjson_is_bool(ensure_v))
+                                ensure_ui_visible = yyjson_get_bool(ensure_v);
+                        }
                         yyjson_doc_free(doc);
                     }
                 }
 
-                auto future = capture_coordinator_->request_capture(ctype, audio_dur);
-                auto status = future.wait_for(std::chrono::seconds(5));
+                std::future<std::string> future;
+                if (method == "capture_interface") {
+                    future = capture_coordinator_->request_interface_capture(
+                        node_id, save_path, ensure_ui_visible);
+                } else {
+                    future = capture_coordinator_->request_capture(ctype, audio_dur);
+                }
+                auto status = future.wait_for(std::chrono::seconds(method == "capture_interface" ? 10 : 5));
                 std::string response_body;
                 if (status == std::future_status::ready)
                     response_body = future.get();

@@ -3,6 +3,7 @@
 #include "runtime/audio_engine.h"
 #include "runtime/runtime_api.h"
 #include "runtime/gpu_context.h"
+#include "ui/node_graph.h"
 #include "common/gpu_util.h"
 #include <webgpu/wgpu.h>
 #include <stb_image_write.h>
@@ -11,6 +12,7 @@
 #include <cstring>
 #include <ctime>
 #include <cstdlib>
+#include <fstream>
 
 namespace vivid {
 
@@ -504,6 +506,140 @@ std::future<std::string> CaptureCoordinator::request_snapshot_to_file(const std:
         pending_.push_back(std::move(req));
     }
     return future;
+}
+
+std::future<std::string> CaptureCoordinator::request_interface_capture(const std::string& node_id,
+                                                                       const std::string& save_path,
+                                                                       bool ensure_ui_visible) {
+    InterfaceCaptureRequest req;
+    req.node_id = node_id;
+    req.save_path = save_path;
+    req.ensure_ui_visible = ensure_ui_visible;
+    auto future = req.promise.get_future();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending_interface_capture_requests_.push_back(std::move(req));
+    }
+    return future;
+}
+
+bool CaptureCoordinator::has_pending_interface_capture() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return !pending_interface_capture_requests_.empty();
+}
+
+bool CaptureCoordinator::has_active_interface_capture() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return active_interface_capture_.has_value();
+}
+
+bool CaptureCoordinator::prepare_pending_interface_capture(ui::NodeGraphUI& graph_ui) {
+    for (;;) {
+        std::string node_id;
+        bool ensure_ui_visible = true;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!active_interface_capture_) {
+                if (pending_interface_capture_requests_.empty())
+                    return false;
+                active_interface_capture_ = std::move(pending_interface_capture_requests_.front());
+                pending_interface_capture_requests_.erase(pending_interface_capture_requests_.begin());
+            }
+            node_id = active_interface_capture_->node_id;
+            ensure_ui_visible = active_interface_capture_->ensure_ui_visible;
+        }
+
+        if (ensure_ui_visible)
+            graph_ui.set_visible(true);
+
+        if (!node_id.empty() && !graph_ui.select_single_node_for_review(node_id)) {
+            fail_active_interface_capture("node id '" + node_id + "' not found");
+            continue;
+        }
+        return true;
+    }
+}
+
+void CaptureCoordinator::complete_active_interface_capture(uint32_t width, uint32_t height,
+                                                           const std::vector<uint8_t>& png_data) {
+    std::optional<InterfaceCaptureRequest> req;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!active_interface_capture_)
+            return;
+        req = std::move(active_interface_capture_);
+        active_interface_capture_.reset();
+    }
+
+    if (!req)
+        return;
+
+    std::string response;
+    if (png_data.empty()) {
+        response = capture_json_err("PNG encoding failed");
+    } else {
+        std::string saved_path;
+        if (!req->save_path.empty()) {
+            std::ofstream out(req->save_path, std::ios::binary);
+            if (!out) {
+                response = capture_json_err("failed to open save_path for writing");
+            } else {
+                out.write(reinterpret_cast<const char*>(png_data.data()),
+                          static_cast<std::streamsize>(png_data.size()));
+                if (!out.good()) {
+                    response = capture_json_err("failed to write PNG");
+                } else {
+                    saved_path = req->save_path;
+                }
+            }
+        }
+
+        if (response.empty()) {
+            std::string b64 = base64_encode(png_data.data(), png_data.size());
+            response = R"({"ok":true,"width":)" + std::to_string(width) +
+                       R"(,"height":)" + std::to_string(height) +
+                       R"(,"png_base64":")" + b64 + "\"";
+            if (!saved_path.empty())
+                response += R"(,"path":")" + json_escape(saved_path) + "\"";
+            response += "}";
+        }
+    }
+
+    req->promise.set_value(std::move(response));
+}
+
+void CaptureCoordinator::fail_active_interface_capture(const std::string& error) {
+    std::optional<InterfaceCaptureRequest> req;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!active_interface_capture_)
+            return;
+        req = std::move(active_interface_capture_);
+        active_interface_capture_.reset();
+    }
+    if (req)
+        req->promise.set_value(capture_json_err(error));
+}
+
+void CaptureCoordinator::fail_pending_interface_captures(const std::string& error) {
+    std::vector<std::promise<std::string>> pending_promises;
+    std::optional<std::promise<std::string>> active_promise;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto& req : pending_interface_capture_requests_)
+            pending_promises.push_back(std::move(req.promise));
+        pending_interface_capture_requests_.clear();
+        if (active_interface_capture_) {
+            active_promise = std::move(active_interface_capture_->promise);
+            active_interface_capture_.reset();
+        }
+    }
+
+    std::string response = capture_json_err(error);
+    for (auto& promise : pending_promises)
+        promise.set_value(response);
+    if (active_promise)
+        active_promise->set_value(std::move(response));
 }
 
 void CaptureCoordinator::tick_recording(WGPUDevice device, WGPUQueue queue,

@@ -118,6 +118,7 @@ The session surface uses these commands (available via UI, control server, and C
 - **Workspace grid.** A subtle grid underlays the node graph — very low opacity, in the GPU accent color. Provides structure and snap targets without visual noise.
 - **Wires.** Thin (1px), in the domain color of the source port, low opacity (40%). Cross-domain wires (Control→GPU, Control→Audio) are dashed to indicate the bridge crossing. Wires should never visually compete with node content.
 - **Inspector.** Dark background, parameters as horizontal rows. Slider tracks are dark with a domain-colored fill. Modulation range overlays (Bitwig-inspired) appear as subtle highlights showing the modulated range. Modulation source is indicated by a small tag next to the parameter.
+  Role-binding UI should prioritize the role label, target, and available actions. Runtime implementation details such as `runtime_scope` may exist in the model, but are intentionally hidden from the main inspector surface unless a quieter advanced/debug presentation is added later.
 - **Transport bar.** Minimal. Beat position as filled/unfilled dots. BPM as a number. Current state name. No unnecessary decoration.
 
 ### What This Is NOT

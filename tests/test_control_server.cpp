@@ -88,6 +88,35 @@ static yyjson_val* introspect_node_by_id(yyjson_val* root, const char* node_id) 
     return nullptr;
 }
 
+static yyjson_val* inspect_graph_node_by_id(yyjson_val* root, const char* node_id) {
+    if (!root || !node_id) return nullptr;
+    yyjson_val* result = yyjson_obj_get(root, "result");
+    yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
+    if (!nodes || !yyjson_is_arr(nodes)) return nullptr;
+    size_t idx, max;
+    yyjson_val* node = nullptr;
+    yyjson_arr_foreach(nodes, idx, max, node) {
+        yyjson_val* id = yyjson_obj_get(node, "id");
+        if (id && yyjson_is_str(id) && std::string(yyjson_get_str(id)) == node_id)
+            return node;
+    }
+    return nullptr;
+}
+
+static yyjson_val* inspect_role_binding(yyjson_val* node, const char* role_id) {
+    if (!node || !role_id) return nullptr;
+    yyjson_val* bindings = yyjson_obj_get(node, "role_bindings");
+    if (!bindings || !yyjson_is_arr(bindings)) return nullptr;
+    size_t idx, max;
+    yyjson_val* binding = nullptr;
+    yyjson_arr_foreach(bindings, idx, max, binding) {
+        yyjson_val* rid = yyjson_obj_get(binding, "role_id");
+        if (rid && yyjson_is_str(rid) && std::string(yyjson_get_str(rid)) == role_id)
+            return binding;
+    }
+    return nullptr;
+}
+
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
@@ -134,6 +163,12 @@ int main(int argc, char* argv[]) {
         std::filesystem::copy_options::overwrite_existing);
     std::filesystem::copy_file(build_dir + "/test_op_bad_custom_type.dylib",
         staging + "/test_op_bad_custom_type.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/test_op_with_roles.dylib",
+        staging + "/test_op_with_roles.dylib",
+        std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(build_dir + "/envelope.dylib",
+        staging + "/envelope.dylib",
         std::filesystem::copy_options::overwrite_existing);
 
     std::string abi_probe_dir = build_dir + "/.test_cs_abi_probe";
@@ -1257,18 +1292,38 @@ int main(int argc, char* argv[]) {
         // Phase 11: save_graph
         std::fprintf(stderr, "\n--- save_graph ---\n");
         std::string tmp_path = build_dir + "/test_cs_saved.json";
+        std::string load_graph_path = build_dir + "/test_cs_loaded.json";
         {
             auto r = post(client, base_url, "save_graph",
                 R"({"path":")" + tmp_path + R"("})");
             check(r.ok, "save_graph ok");
             check(std::filesystem::exists(tmp_path), "saved file exists");
         }
+        {
+            std::ofstream ofs(load_graph_path);
+            ofs <<
+                "{\n"
+                "  \"nodes\": {\n"
+                "    \"loaded_only\": { \"type\": \"TestOp\", \"params\": { \"scale\": 4.25 } }\n"
+                "  }\n"
+                "}\n";
+        }
 
         // Phase 12: load_graph
         std::fprintf(stderr, "\n--- load_graph ---\n");
         {
-            auto r = post(client, base_url, "load_graph");
+            auto r = post(client, base_url, "load_graph",
+                R"({"path":")" + load_graph_path + R"("})");
             check(r.ok, "load_graph ok");
+
+            auto ig = post(client, base_url, "inspect_graph");
+            check(ig.ok, "inspect_graph after load_graph ok");
+            if (ig.root) {
+                check(inspect_graph_node_by_id(ig.root, "loaded_only") != nullptr,
+                      "load_graph switched to requested file");
+                check(inspect_graph_node_by_id(ig.root, "a") == nullptr,
+                      "load_graph no longer shows previous graph nodes");
+            }
 
             // Undo history must reset on file load.
             auto u = post(client, base_url, "undo");
@@ -1276,17 +1331,177 @@ int main(int argc, char* argv[]) {
 
             // Baseline should still be tracked: mutate then undo returns to loaded state.
             auto sp = post(client, base_url, "set_param",
-                R"({"node_id":"a","param":"scale","value":8.0})");
+                R"({"node_id":"loaded_only","param":"scale","value":8.0})");
             check(sp.ok, "set_param after load_graph ok");
             auto u2 = post(client, base_url, "undo");
             check(u2.ok, "undo after post-load mutation ok");
             auto gp = post(client, base_url, "get_param",
-                R"({"node_id":"a","param":"scale"})");
+                R"({"node_id":"loaded_only","param":"scale"})");
             check(gp.ok, "get_param after post-load undo ok");
             if (gp.root) {
                 yyjson_val* val = yyjson_obj_get(gp.root, "value");
-                check(val && std::fabs(yyjson_get_num(val) - 9.0) < 1e-4,
+                check(val && std::fabs(yyjson_get_num(val) - 4.25) < 1e-4,
                       "post-load undo restored loaded baseline value");
+            }
+        }
+
+        // Phase 12b: role binding parity over control server
+        std::fprintf(stderr, "\n--- role binding parity ---\n");
+        {
+            auto add_host = post(client, base_url, "add_node",
+                R"({"type":"TestOpWithRoles","node_id":"rb_host"})");
+            check(add_host.ok, "add_node TestOpWithRoles rb_host ok");
+
+            auto add_env = post(client, base_url, "add_node",
+                R"({"type":"Envelope","node_id":"rb_env"})");
+            check(add_env.ok, "add_node Envelope rb_env ok");
+
+            auto bad_bind = post(client, base_url, "set_role_binding",
+                R"({"node_id":"rb_host","role_id":"mod","target_node_id":"rb_env","target_output_name":"nonexistent"})");
+            check(!bad_bind.ok, "set_role_binding invalid output rejected");
+
+            auto bind = post(client, base_url, "set_role_binding",
+                R"({"node_id":"rb_host","role_id":"mod","target_node_id":"rb_env","target_output_name":"value"})");
+            check(bind.ok, "set_role_binding rb_host/mod -> rb_env/value ok");
+
+            phase.store(21);
+            while (phase.load() < 22) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+            auto ig = post(client, base_url, "inspect_graph");
+            check(ig.ok, "inspect_graph after set_role_binding ok");
+            if (ig.root) {
+                yyjson_val* node = inspect_graph_node_by_id(ig.root, "rb_host");
+                check(node != nullptr, "rb_host present in inspect_graph");
+                yyjson_val* binding = inspect_role_binding(node, "mod");
+                check(binding != nullptr, "rb_host exposes mod role binding");
+                if (binding) {
+                    yyjson_val* bound = yyjson_obj_get(binding, "bound");
+                    yyjson_val* target = yyjson_obj_get(binding, "target_node_id");
+                    yyjson_val* output = yyjson_obj_get(binding, "target_output_name");
+                    yyjson_val* type = yyjson_obj_get(binding, "target_type_name");
+                    check(bound && yyjson_is_bool(bound) && yyjson_get_bool(bound),
+                          "role binding reports bound=true");
+                    check(target && yyjson_is_str(target) &&
+                              std::string(yyjson_get_str(target)) == "rb_env",
+                          "role binding target_node_id captured");
+                    check(output && yyjson_is_str(output) &&
+                              std::string(yyjson_get_str(output)) == "value",
+                          "role binding target_output_name captured");
+                    check(type && yyjson_is_str(type) &&
+                              std::string(yyjson_get_str(type)) == "Envelope",
+                          "role binding target_type_name captured");
+                }
+            }
+
+            auto undo_bind = post(client, base_url, "undo");
+            check(undo_bind.ok, "undo set_role_binding ok");
+            auto ig_undo = post(client, base_url, "inspect_graph");
+            check(ig_undo.ok, "inspect_graph after undo set_role_binding ok");
+            if (ig_undo.root) {
+                yyjson_val* node = inspect_graph_node_by_id(ig_undo.root, "rb_host");
+                yyjson_val* binding = inspect_role_binding(node, "mod");
+                check(binding != nullptr, "mod role still present after undo set");
+                if (binding) {
+                    yyjson_val* bound = yyjson_obj_get(binding, "bound");
+                    yyjson_val* target = yyjson_obj_get(binding, "target_node_id");
+                    check(bound && yyjson_is_bool(bound) && !yyjson_get_bool(bound),
+                          "undo set_role_binding clears bound state");
+                    check(target == nullptr, "undo set_role_binding removes target_node_id");
+                }
+            }
+
+            auto redo_bind = post(client, base_url, "redo");
+            check(redo_bind.ok, "redo set_role_binding ok");
+            auto ig_redo = post(client, base_url, "inspect_graph");
+            check(ig_redo.ok, "inspect_graph after redo set_role_binding ok");
+            if (ig_redo.root) {
+                yyjson_val* node = inspect_graph_node_by_id(ig_redo.root, "rb_host");
+                yyjson_val* binding = inspect_role_binding(node, "mod");
+                check(binding != nullptr, "mod role present after redo set");
+                if (binding) {
+                    yyjson_val* bound = yyjson_obj_get(binding, "bound");
+                    yyjson_val* target = yyjson_obj_get(binding, "target_node_id");
+                    check(bound && yyjson_is_bool(bound) && yyjson_get_bool(bound),
+                          "redo set_role_binding restores bound state");
+                    check(target && yyjson_is_str(target) &&
+                              std::string(yyjson_get_str(target)) == "rb_env",
+                          "redo set_role_binding restores target");
+                }
+            }
+
+            auto clear = post(client, base_url, "clear_role_binding",
+                R"({"node_id":"rb_host","role_id":"mod"})");
+            check(clear.ok, "clear_role_binding rb_host/mod ok");
+
+            phase.store(23);
+            while (phase.load() < 24) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+            auto ig_clear = post(client, base_url, "inspect_graph");
+            check(ig_clear.ok, "inspect_graph after clear_role_binding ok");
+            if (ig_clear.root) {
+                yyjson_val* node = inspect_graph_node_by_id(ig_clear.root, "rb_host");
+                yyjson_val* binding = inspect_role_binding(node, "mod");
+                check(binding != nullptr, "mod role present after clear");
+                if (binding) {
+                    yyjson_val* bound = yyjson_obj_get(binding, "bound");
+                    yyjson_val* target = yyjson_obj_get(binding, "target_node_id");
+                    check(bound && yyjson_is_bool(bound) && !yyjson_get_bool(bound),
+                          "clear_role_binding clears bound state");
+                    check(target == nullptr, "clear_role_binding removes target_node_id");
+                }
+            }
+
+            auto undo_clear = post(client, base_url, "undo");
+            check(undo_clear.ok, "undo clear_role_binding ok");
+            auto ig_undo_clear = post(client, base_url, "inspect_graph");
+            check(ig_undo_clear.ok, "inspect_graph after undo clear_role_binding ok");
+            if (ig_undo_clear.root) {
+                yyjson_val* node = inspect_graph_node_by_id(ig_undo_clear.root, "rb_host");
+                yyjson_val* binding = inspect_role_binding(node, "mod");
+                check(binding != nullptr, "mod role present after undo clear");
+                if (binding) {
+                    yyjson_val* bound = yyjson_obj_get(binding, "bound");
+                    yyjson_val* target = yyjson_obj_get(binding, "target_node_id");
+                    check(bound && yyjson_is_bool(bound) && yyjson_get_bool(bound),
+                          "undo clear_role_binding restores bound state");
+                    check(target && yyjson_is_str(target) &&
+                              std::string(yyjson_get_str(target)) == "rb_env",
+                          "undo clear_role_binding restores target");
+                }
+            }
+
+            auto redo_clear = post(client, base_url, "redo");
+            check(redo_clear.ok, "redo clear_role_binding ok");
+            auto ig_redo_clear = post(client, base_url, "inspect_graph");
+            check(ig_redo_clear.ok, "inspect_graph after redo clear_role_binding ok");
+            if (ig_redo_clear.root) {
+                yyjson_val* node = inspect_graph_node_by_id(ig_redo_clear.root, "rb_host");
+                yyjson_val* binding = inspect_role_binding(node, "mod");
+                check(binding != nullptr, "mod role present after redo clear");
+                if (binding) {
+                    yyjson_val* bound = yyjson_obj_get(binding, "bound");
+                    check(bound && yyjson_is_bool(bound) && !yyjson_get_bool(bound),
+                          "redo clear_role_binding clears bound state again");
+                }
+            }
+
+            auto rm_host = post(client, base_url, "remove_node",
+                R"({"node_id":"rb_host"})");
+            check(rm_host.ok, "remove_node rb_host ok");
+            auto rm_env = post(client, base_url, "remove_node",
+                R"({"node_id":"rb_env"})");
+            check(rm_env.ok, "remove_node rb_env ok");
+
+            phase.store(25);
+            while (phase.load() < 26) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+            auto ig_cleanup = post(client, base_url, "inspect_graph");
+            check(ig_cleanup.ok, "inspect_graph after role binding cleanup ok");
+            if (ig_cleanup.root) {
+                check(inspect_graph_node_by_id(ig_cleanup.root, "rb_host") == nullptr,
+                      "rb_host removed after cleanup");
+                check(inspect_graph_node_by_id(ig_cleanup.root, "rb_env") == nullptr,
+                      "rb_env removed after cleanup");
             }
         }
 
@@ -1819,6 +2034,18 @@ int main(int argc, char* argv[]) {
             api.apply_pending(has_gpu_ops, has_audio);
             scheduler.tick(0.0, 0.016, 10);
             phase.store(20);
+        } else if (p == 21) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            scheduler.tick(0.0, 0.016, 11);
+            phase.store(22);
+        } else if (p == 23) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            scheduler.tick(0.0, 0.016, 12);
+            phase.store(24);
+        } else if (p == 25) {
+            api.apply_pending(has_gpu_ops, has_audio);
+            scheduler.tick(0.0, 0.016, 13);
+            phase.store(26);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));

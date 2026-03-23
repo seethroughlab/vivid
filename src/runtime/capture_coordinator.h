@@ -7,6 +7,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -15,6 +16,7 @@ namespace vivid {
 class AudioEngine;
 class AVExporter;
 class RuntimeAPI;
+namespace ui { class NodeGraphUI; }
 
 enum class CaptureType { Frame, Audio, AV, StartRecording, StopRecording, SnapshotToFile };
 
@@ -55,6 +57,13 @@ struct CompareRequest {
     float window_b = 1.0f;
     bool include_payload = false;
     std::string node_id;
+    std::promise<std::string> promise;
+};
+
+struct InterfaceCaptureRequest {
+    std::string node_id;
+    std::string save_path;
+    bool ensure_ui_visible = true;
     std::promise<std::string> promise;
 };
 
@@ -104,6 +113,18 @@ public:
     // Snapshot-to-file: writes PNG directly to disk, returns path
     std::future<std::string> request_snapshot_to_file(const std::string& path);
 
+    // Whole-interface capture from the running window after UI overlays are drawn.
+    std::future<std::string> request_interface_capture(const std::string& node_id,
+                                                       const std::string& save_path,
+                                                       bool ensure_ui_visible);
+    bool has_pending_interface_capture() const;
+    bool has_active_interface_capture() const;
+    bool prepare_pending_interface_capture(ui::NodeGraphUI& graph_ui);
+    void complete_active_interface_capture(uint32_t width, uint32_t height,
+                                           const std::vector<uint8_t>& png_data);
+    void fail_active_interface_capture(const std::string& error);
+    void fail_pending_interface_captures(const std::string& error);
+
     // Returns true if there are pending analyses (for main loop check)
     bool has_pending_analyses() const;
 
@@ -126,6 +147,9 @@ private:
     std::vector<AnalysisRequest> pending_analysis_requests_;
     std::vector<PendingAnalysis> pending_analyses_;
     std::vector<CompareRequest> pending_compare_requests_;
+
+    std::vector<InterfaceCaptureRequest> pending_interface_capture_requests_;
+    std::optional<InterfaceCaptureRequest> active_interface_capture_;
 };
 
 } // namespace vivid
