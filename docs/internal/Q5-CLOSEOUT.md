@@ -56,7 +56,7 @@
 - 71 operators (audio, GPU, control)
 - Hot reload (same-frame params, 1–3s code reload)
 - Package ecosystem (install/link/scaffold/test/publish)
-- MCP server (57 tools)
+- Python MCP bridge (57 tools)
 - HTTP control server (61 endpoints)
 - Output analyzer (9 metrics + comparison)
 - Variations, presets, undo/redo

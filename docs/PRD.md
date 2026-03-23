@@ -246,13 +246,13 @@ The Runtime API is an internal interface exposing all LLM-relevant operations: i
 
 **Path 1: Built-in chat.** A collapsible chat panel inside Vivid's interface (§6.4) calls the Anthropic API directly and invokes the Runtime API in-process. This is the primary workflow for creative exploration: "make the particles react more to the bass," "generate 5 variations of this feedback loop," "why is the output so dark?" Zero latency between the LLM's intent and its effect on the graph. The user stays in Vivid.
 
-**Path 2: MCP server.** Vivid runs an MCP (Model Context Protocol) server that exposes the same Runtime API as MCP tools. Claude Code, Claude.ai, or any MCP-capable LLM connects to it externally. This is the power-user workflow for operator development: scaffolding C++ operators, debugging compilation errors, running test assertions from the terminal, and automating batch operations. It also enables non-interactive use cases: CI pipelines running assertions, scripts generating patch variations, installation monitors watching for drift.
+**Path 2: Python MCP bridge.** A separate Python MCP bridge process exposes the same Runtime API as MCP tools by connecting to the running Vivid instance over the local HTTP control server. Claude Code, Claude.ai, or any MCP-capable LLM connects to that bridge externally. This is the power-user workflow for operator development: scaffolding C++ operators, debugging compilation errors, running test assertions from the terminal, and automating batch operations. It also enables non-interactive use cases: CI pipelines running assertions, scripts generating patch variations, installation monitors watching for drift.
 
-> **1.0 Status:** The MCP server is the shipped 1.0 LLM integration path (57 tools covering graph manipulation, introspection, packages, variations, checks, and more). The built-in chat panel is deferred past 1.0. The Runtime API and HTTP control server (61 endpoints) are fully implemented; the MCP bridge wraps most but not all of them (notable gap: `analyze_output` and `compare_outputs` are HTTP-only and should be added to the MCP bridge as a near-term 1.0 item).
+> **1.0 Status:** The Python MCP bridge is the shipped 1.0 LLM integration path (57 tools covering graph manipulation, introspection, packages, variations, checks, and more). The built-in chat panel is deferred past 1.0. The Runtime API and HTTP control server (61 endpoints) are fully implemented; the MCP bridge wraps most but not all of them (notable gap: `analyze_output` and `compare_outputs` are HTTP-only and should be added to the MCP bridge as a near-term 1.0 item).
 
-Both paths are Phase 1 in the original design. The built-in chat handles creative workflows where immediacy matters. MCP handles development workflows where the user is already in their IDE or terminal. The underlying Runtime API is implemented once; the chat panel and MCP server are thin layers on top.
+Both paths are Phase 1 in the original design. The built-in chat handles creative workflows where immediacy matters. The Python MCP bridge handles development workflows where the user is already in their IDE or terminal. The underlying Runtime API is implemented once; the chat panel and MCP bridge are thin layers on top.
 
-**Future path:** WebSocket API (Phase 3) exposes the same Runtime API over WebSocket for non-LLM external processes — Python scripts, Max/MSP, show control systems. The MCP server and WebSocket API may share transport infrastructure but serve different audiences.
+**Future path:** WebSocket API (Phase 3) exposes the same Runtime API over WebSocket for non-LLM external processes — Python scripts, Max/MSP, show control systems. The Python MCP bridge and WebSocket API may share transport infrastructure but serve different audiences.
 
 ---
 
@@ -461,7 +461,7 @@ Key dependencies (managed via git submodules, vendored source, or CMake FetchCon
 - **oscpack**: OSC message serialization and UDP transport.
 - **Syphon**: GPU texture sharing between applications (macOS-only).
 - **Snappy**: fast compression for HAP video codec.
-- **IXWebSocket**: HTTP server powering the control server / MCP endpoint.
+- **IXWebSocket**: HTTP server powering the runtime control server endpoint.
 - **CLI11**: command-line argument parsing.
 - **Sparkle**: macOS app auto-update framework.
 
@@ -677,7 +677,7 @@ The main workspace interaction pattern is centered on the node graph for structu
 
 The original 25-phase roadmap has been superseded by milestone-based planning in `docs/ROADMAP.md`. See the roadmap's "Shipped" section for the full list of delivered capabilities.
 
-**Completed highlights:** Three-domain data flow, Spreads, hot-reload, 71 operators across 3 domains, MCP server (57 tools), MIDI/OSC input, data-driven WGSL filter framework, package ecosystem (install/link/scaffold/publish/test), movie playback (MovieLoaded trio), standalone export, operator versioning, first-class GPU port types (buffer/mesh/compute), multiple output ports, output analyzer (audio/visual/AV metrics + comparison), capture/recording, variations/presets, undo/redo, introspection/diagnostics/checks. North Star validation completed (see `docs/internal/NORTH-STAR-VALIDATION.md`).
+**Completed highlights:** Three-domain data flow, Spreads, hot-reload, 71 operators across 3 domains, Python MCP bridge (57 tools), MIDI/OSC input, data-driven WGSL filter framework, package ecosystem (install/link/scaffold/publish/test), movie playback (MovieLoaded trio), standalone export, operator versioning, first-class GPU port types (buffer/mesh/compute), multiple output ports, output analyzer (audio/visual/AV metrics + comparison), capture/recording, variations/presets, undo/redo, introspection/diagnostics/checks. North Star validation completed (see `docs/internal/NORTH-STAR-VALIDATION.md`).
 
 **In progress:** Core stability verification (M1 exit gate), operator creation modal (M11), solo mode (M12), semantic tag rollout (M13), launch prep (M14).
 

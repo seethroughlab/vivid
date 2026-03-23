@@ -20,7 +20,7 @@ const LastError& last_error() const;
 ### ABI Check (performed inside `load()`)
 
 On load, the runtime calls `vivid_abi_version()` from the dylib and compares it to
-`VIVID_OPERATOR_ABI_VERSION` (currently **9**). This is a staleness check, not a binary-compatibility
+`VIVID_OPERATOR_ABI_VERSION` (currently **13**). This is a staleness check, not a binary-compatibility
 contract — operators always compile from source against the current headers. Mismatching ABI → load
 failure, diagnostic stored in `OperatorRegistry::abi_mismatch_by_path_`.
 

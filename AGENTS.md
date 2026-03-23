@@ -194,7 +194,8 @@ Dark steel background, monospace type, sharp corners. Domain identity through ac
 ### Control Server
 - HTTP API on port 9876 for runtime manipulation
 - Endpoints for graph CRUD, parameter control, capture, package management
-- MCP bridge (`mcp/vivid_mcp.py`) exposes control server to LLM tools
+- The running Vivid app hosts the HTTP control server on port 9876; the separate Python MCP bridge (`mcp/vivid_mcp.py`) connects to that server and exposes it to LLM tools
+- MCP startup workflow: call `ensure_runtime(graph_path="...")` before MCP graph/capture operations. Outside MCP, launch `./build/vivid [graph]` first, then use the control-server/MCP tools against that running instance.
 
 ### Export Pipeline
 - `src/export/` compiles a graph + its operators into a standalone binary

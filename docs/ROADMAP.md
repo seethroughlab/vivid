@@ -14,7 +14,7 @@ Major capabilities delivered for 1.0:
 - **71 operators** across audio, GPU, and control domains (seed set + packages)
 - **Hot reload** — parameter/routing changes same-frame, operator code recompile in 1–3 seconds with rollback-first safety
 - **Package ecosystem** — install, link, unlink, rebuild, scaffold, test, browse, publish; project-local operator ownership
-- **MCP server** — 57 tools exposing graph manipulation, introspection, packages, variations, checks, diagnostics, and more
+- **Python MCP bridge** — 57 tools exposing graph manipulation, introspection, packages, variations, checks, diagnostics, and more
 - **HTTP control server** — 61 endpoints covering full Runtime API surface
 - **Output analyzer** — audio metrics (RMS, peak, spectral centroid, brightness, flatness), visual metrics (brightness, contrast, motion), AV reactivity correlation, structured comparison with semantic labels
 - **Capture and recording** — frame and audio capture for analysis and export
@@ -57,7 +57,7 @@ Project-local operator ownership (clone/scaffold destination policy, package CMa
 - Parameter space explorer — spatial parameter manipulation with MIDI mapping and preset interpolation (PRD §3.2)
 - Pattern algebra interface — composable time-varying pattern expressions (PRD §3.2)
 - State machine interface — macro-level named states with transition conditions (PRD §3.2)
-- Built-in chat panel — in-app LLM chat; MCP server is the 1.0 path
+- Built-in chat panel — in-app LLM chat; the Python MCP bridge is the 1.0 path
 - Advanced analysis — color harmony, symmetry, spatial balance, pitch detection, stereo imaging, A/B parameter sweeps (PRD §9.2)
 
 ---

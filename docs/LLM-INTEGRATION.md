@@ -45,13 +45,27 @@ The LLM connects to Vivid through two complementary paths, both built on a share
 
 **The Runtime API** is an internal interface exposing all LLM-relevant operations: inspect graph structure, read and write parameters, capture frames and audio, run analysis tools, evaluate checks, scaffold starter templates, and modify graph topology. This is the single source of truth for what the LLM can do. Both integration paths below call into the same API.
 
-**Path 1: MCP server.** Vivid runs an MCP (Model Context Protocol) server that exposes the Runtime API as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to it externally. This is the primary LLM integration path — it provides the complete tool surface (inspect, add, connect, set_param, scaffold_operator (bootstrap starter template; opdev server handles advanced authoring), introspection/diagnostics/checks) with streaming, multi-turn context, and tool use UIs that external clients already provide. It also enables non-interactive use cases: CI pipelines running checks, scripts generating patch variations, installation monitors watching for drift.
+**Path 1: Python MCP bridge.** A separate MCP (Model Context Protocol) bridge process, `mcp/vivid_mcp.py`, connects to the running Vivid instance over the local HTTP control server and re-exposes that runtime as MCP tools. Claude Code, Cursor, or any MCP-capable LLM connects to the Python bridge externally. This is the primary LLM integration path — it provides the complete tool surface (inspect, add, connect, set_param, scaffold_operator (bootstrap starter template; opdev server handles advanced authoring), introspection/diagnostics/checks) with streaming, multi-turn context, and tool use UIs that external clients already provide. It also enables non-interactive use cases: CI pipelines running checks, scripts generating patch variations, installation monitors watching for drift.
+
+```text
+LLM client -> Python MCP bridge (stdio) -> Vivid HTTP control server -> running Vivid instance
+```
+
+The ownership model matters:
+- the **running Vivid app** owns the live graph and embeds the HTTP control server
+- the **HTTP control server** is the local runtime transport, defaulting to `127.0.0.1:9876`
+- the **Python MCP bridge** is a separate process that can launch/reuse the runtime, then forwards MCP tool calls to that running runtime
 
 Core/package update MCP tool surface (current):
+- `ensure_runtime(graph_path="")` — ensures a GUI Vivid runtime is reachable, launching `build/vivid` when needed and optionally opening a graph at startup.
+- `runtime_status()` — reports whether a runtime is reachable and whether it is bridge-managed.
+- `stop_runtime()` — stops only the runtime process launched by the Python MCP bridge.
 - `check_core_updates(force_refresh=false)` — checks Vivid core app update availability from appcast metadata.
 - `check_package_updates(core_version, include_all_installed=false)` — checks installed package update/compatibility status.
 
 Perception MCP tool surface (current):
+- `capture_image(mode="interface" | "output", node_id="", save_path="", ensure_ui_visible=true)` — unified image capture from the running instance. Use `mode="interface"` for the full composed UI/window, or `mode="output"` for output-only frame capture.
+- `capture_interface(node_id="", save_path="", ensure_ui_visible=true)` — captures the full composed interface from the already-running Vivid instance, optionally selecting a node first so the inspector is visible.
 - `introspect_nodes(include_payload=false)` — compact node-count/domain/error summary; optional full payload.
 - `run_diagnostics(include_payload=false)` — compact severity summary + top hint IDs; optional full findings.
 - `validate_checks(checks, include_payload=false)` — compact validity/error-count summary; optional full validation details.
@@ -62,9 +76,9 @@ Perception MCP response policy:
 - `include_payload=true` adds the full underlying runtime result object.
 - Runtime-side failures are normalized into explicit `{ ok:false, error:{...} }` envelopes.
 
-**Path 2: Built-in chat (deferred).** Originally planned as a collapsible chat panel inside Vivid's interface calling the Anthropic API directly. Deferred because the MCP server already provides full LLM integration through external clients, and building a built-in chat would mean significant complexity to produce a worse version of what Claude Code and Cursor already offer. May be revisited if in-app chat proves essential for creative workflows where context-switching to an external client is too slow.
+**Path 2: Built-in chat (deferred).** Originally planned as a collapsible chat panel inside Vivid's interface calling the Anthropic API directly. Deferred because the Python MCP bridge already provides full LLM integration through external clients, and building a built-in chat would mean significant complexity to produce a worse version of what Claude Code and Cursor already offer. May be revisited if in-app chat proves essential for creative workflows where context-switching to an external client is too slow.
 
-**Future path: WebSocket API** (Phase 3) exposes the same Runtime API over WebSocket for non-LLM external processes — Python scripts, Max/MSP, show control systems. The MCP server and WebSocket API may share transport infrastructure but serve different audiences.
+**Future path: WebSocket API** (Phase 3) exposes the same Runtime API over WebSocket for non-LLM external processes — Python scripts, Max/MSP, show control systems. The Python MCP bridge and WebSocket API may share transport infrastructure but serve different audiences.
 
 ---
 
@@ -74,7 +88,15 @@ The LLM cannot see the screen. When it generates a graph, adjusts parameters, or
 
 ### 9.1 The Perception Loop
 
-LLM-assisted development in Vivid follows a feedback cycle: capture the current output (frame, audio buffer, or both), extract structured metrics, evaluate whether the result matches intent, modify the graph or parameters, and capture again to verify. This loop is the runtime equivalent of a human watching the screen while turning knobs. Without it, the LLM's role collapses from "collaborator" to "one-shot generator."
+LLM-assisted development in Vivid follows a feedback cycle: capture the current output (frame, audio buffer, or both), extract structured metrics, evaluate whether the result matches intent, modify the graph or parameters, and capture again to verify. This loop is the runtime equivalent of a human watching the screen while turning knobs. Without it, the LLM's role collapses from "collaborator" to "one-shot generator." In the MCP workflow, these captures and analyses are operations on the already-running Vivid instance via the runtime/control-server path, not a second runtime launched just for observation.
+
+Typical live-session screenshot flow:
+
+1. `ensure_runtime(graph_path="graphs/gpu/instanced_shapes_demo.json")`
+2. `capture_image(mode="interface", node_id="shapes", save_path="/tmp/shapes.png")`
+3. inspect the returned PNG payload or saved file from the running instance
+
+When switching graphs after startup, use `load_graph(path="...")` against that already-running instance instead of launching another runtime.
 
 ### 9.2 Three Perception Layers
 

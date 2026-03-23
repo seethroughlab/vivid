@@ -310,7 +310,7 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 | **oscpack** | OSC message serialization and UDP transport | ~30KB source | vendored |
 | **Syphon** | GPU texture sharing between applications (macOS) | ~100KB source | vendored |
 | **Snappy** | Fast compression (used by HAP video codec) | ~50KB source | FetchContent |
-| **IXWebSocket** | HTTP server for control server / MCP endpoint | ~200KB source | FetchContent |
+| **IXWebSocket** | HTTP server for the runtime control server endpoint | ~200KB source | FetchContent |
 | **CLI11** | Command-line argument parsing | header-only | FetchContent |
 | **Sparkle** (macOS) | App auto-update framework | framework | system framework |
 
@@ -372,7 +372,7 @@ vivid/
 │   │   ├── media_stream.h      # MediaStreamV1 cross-domain media type
 │   │   ├── media_clock.h       # MediaClockV1 synchronization type
 │   │   └── midi_types.h        # VividMidiBuffer type (reserved)
-│   ├── cli/                    # CLI tool and MCP server
+│   ├── cli/                    # CLI tooling
 │   │   └── mcp_server.cpp      # MCP tool handlers (~4000 lines)
 │   └── export/                 # Standalone export build
 │       └── standalone_main.cpp
@@ -583,9 +583,9 @@ Every intermediate result is a Spread visible on a wire. Every step is a discret
 
 Vivid exposes its full runtime API through two integration surfaces:
 
-**Control Server** (`src/runtime/control_server.cpp`) — an HTTP server (powered by IXWebSocket) running on `localhost:7777` that handles OSC messages, MIDI input, and a REST/MCP JSON-RPC endpoint. MCP tools exposed include: graph inspection and mutation, operator scaffolding and compilation, parameter read/write, capture (screenshot, audio), analysis (texture metrics, audio metrics), assertion evaluation, package management, and undo/redo. The control server is the primary interface for Claude Code and other MCP-capable LLMs.
+**Control Server** (`src/runtime/control_server.cpp`) — an HTTP server (powered by IXWebSocket) running inside the Vivid runtime on `127.0.0.1:9876` by default. It handles OSC messages, MIDI input, and the HTTP JSON-RPC runtime endpoint. Graph inspection and mutation, operator scaffolding and compilation, parameter read/write, capture, analysis, package management, and undo/redo all flow through this surface.
 
-**Python MCP Server** (`mcp/vivid_mcp.py`) — a Python wrapper that connects to the control server and re-exposes its tools as a standard MCP stdio server. This allows any MCP client (Claude Desktop, custom agents) to interact with a running Vivid instance without direct HTTP calls.
+**Python MCP Server** (`mcp/vivid_mcp.py`) — a Python wrapper that connects to the control server and re-exposes its tools as a standard MCP stdio server. This allows any MCP client (Claude Desktop, custom agents) to interact with a running Vivid instance without direct HTTP calls. The running Vivid app owns the live graph and the HTTP port; the Python process owns the MCP stdio layer.
 
 **Runtime API** (`src/runtime/runtime_api.cpp/.h`) — the internal C++ API that both the control server and the built-in chat interface call into. All graph mutations, operator creation, capture, and analysis operations are implemented here. The Runtime API operates on the same in-process data structures as the scheduler and graph — no serialization overhead.
 

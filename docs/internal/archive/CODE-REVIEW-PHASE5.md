@@ -9,7 +9,7 @@ The goal of this phase is to map the systems that cut across the runtime, UI, op
 - the main external interface surfaces around the runtime
 - the package/discovery/build/test lifecycle as a horizontal slice through the app
 - process-wide services such as settings, updates, capture, and export
-- where the MCP/LLM bridge sits relative to the runtime control surface
+- where the Python MCP/LLM bridges sit relative to the runtime control surface
 - the main integration boundaries that later review should focus on
 
 This note does not judge reliability, security, or product quality.
@@ -77,7 +77,7 @@ This is a broader integration surface than a thin RPC wrapper. It appears to be 
 - [mcp/vivid_mcp.py](/Users/jeff/Developer/vivid/mcp/vivid_mcp.py)
 - [docs/LLM-INTEGRATION.md](/Users/jeff/Developer/vivid/docs/LLM-INTEGRATION.md)
 
-The graph/runtime MCP server appears to sit above the HTTP control server rather than beside it.
+The graph/runtime Python MCP bridge appears to sit above the running Vivid runtime's HTTP control server rather than beside it.
 
 Its role appears to be:
 
@@ -86,14 +86,14 @@ Its role appears to be:
 - package common graph-edit actions for LLM workflows
 - keep the external LLM tool surface aligned to runtime capabilities without embedding model-specific logic into the runtime itself
 
-This suggests the LLM integration path is an adapter over the control-server surface rather than a separate execution stack.
+This suggests the LLM integration path is an adapter over the control-server surface owned by the running Vivid instance rather than a separate execution stack.
 
 ### 2. Operator-development MCP bridge
 
 **Primary file**
 - [mcp/vivid_opdev_mcp.py](/Users/jeff/Developer/vivid/mcp/vivid_opdev_mcp.py)
 
-The operator-development MCP server appears to combine two roles:
+The operator-development Python MCP bridge appears to combine two roles:
 
 - documentation/resource serving for operator API headers and curated authoring docs
 - forwarding action requests such as scaffolding, rebuild, link, and test into the same runtime/control surfaces
