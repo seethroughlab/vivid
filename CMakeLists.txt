@@ -200,10 +200,16 @@ if(APPLE)
     target_link_options(vivid_operator_api INTERFACE -undefined dynamic_lookup)
 endif()
 
-# --- Composable operator headers (for ChildOp<T> consumers) ---
-add_library(vivid_composable_ops INTERFACE)
-target_include_directories(vivid_composable_ops INTERFACE ${CMAKE_SOURCE_DIR}/operators)
-target_link_libraries(vivid_composable_ops INTERFACE vivid_operator_api)
+# --- Composable operator support (for ChildOp<T> consumers) ---
+# Most ChildOp examples are header-driven, but some reusable child operators
+# still have out-of-line virtuals or thumbnail helpers. This support library
+# carries those concrete definitions so composite plugins do not rely on
+# incomplete header-only linkage.
+add_library(vivid_composable_ops STATIC
+    operators/control/smooth/smooth_composable.cpp
+)
+target_include_directories(vivid_composable_ops PUBLIC ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(vivid_composable_ops PUBLIC vivid_operator_api)
 
 # --- Operator plugin suffix (platform-aware) ---
 if(APPLE)
@@ -1289,6 +1295,78 @@ if(APPLE)
         "-framework Cocoa" "-framework Foundation")
 endif()
 add_test(NAME test_ui_overlay_interactions COMMAND test_ui_overlay_interactions WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_ui_overlay_interactions PROPERTIES LABELS "UI_SMOKE")
+
+add_executable(test_ui_editor_interactions
+    tests/test_ui_editor_interactions.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_ui_editor_interactions PRIVATE src tests)
+target_link_libraries(test_ui_editor_interactions PRIVATE vivid_ui webgpu glfw yyjson stb_truetype)
+if(APPLE)
+    target_link_libraries(test_ui_editor_interactions PRIVATE
+        "-framework Cocoa" "-framework Foundation")
+endif()
+add_test(NAME test_ui_editor_interactions COMMAND test_ui_editor_interactions WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_ui_editor_interactions PROPERTIES LABELS "UI_SMOKE")
+
+add_executable(test_ui_widget_interactions
+    tests/test_ui_widget_interactions.cpp
+    src/runtime/platform.cpp
+)
+target_include_directories(test_ui_widget_interactions PRIVATE src tests)
+target_link_libraries(test_ui_widget_interactions PRIVATE vivid_ui webgpu glfw yyjson stb_truetype)
+if(APPLE)
+    target_link_libraries(test_ui_widget_interactions PRIVATE
+        "-framework Cocoa" "-framework Foundation")
+endif()
+add_test(NAME test_ui_widget_interactions COMMAND test_ui_widget_interactions WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_ui_widget_interactions PROPERTIES LABELS "UI_SMOKE")
+
+# Windowed GUI smoke for inspector and editor-drop regressions.
+add_executable(test_ui_screenshot_smoke
+    tests/test_ui_screenshot_smoke.cpp
+)
+target_include_directories(test_ui_screenshot_smoke PRIVATE src tests deps/stb)
+target_link_libraries(test_ui_screenshot_smoke PRIVATE yyjson)
+add_dependencies(test_ui_screenshot_smoke vivid file_drop_test_op file_drop_test_op_alt)
+if(APPLE)
+    add_custom_command(TARGET test_ui_screenshot_smoke POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:file_drop_test_op>
+            $<TARGET_FILE:file_drop_test_op_alt>
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
+        COMMENT "Staging GUI smoke file-drop fixtures into Vivid.app bundle"
+    )
+endif()
+add_test(NAME test_ui_screenshot_smoke
+    COMMAND test_ui_screenshot_smoke ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_ui_screenshot_smoke PROPERTIES
+    LABELS "GUI_SMOKE"
+    TIMEOUT 180
+    ENVIRONMENT
+        "VIVID_ENABLE_UI_SCREENSHOT_SMOKE=1;VIVID_UI_SMOKE_LANE=gui_smoke;HOME=${CMAKE_BINARY_DIR}/.test_ui_screenshot_smoke/gui_smoke/home")
+
+add_test(NAME test_ui_screenshot_smoke_env
+    COMMAND test_ui_screenshot_smoke ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_ui_screenshot_smoke_env PROPERTIES
+    LABELS "GUI_ENV"
+    TIMEOUT 180
+    ENVIRONMENT
+        "VIVID_ENABLE_UI_SCREENSHOT_SMOKE=1;VIVID_ENABLE_GUI_ENV_SMOKE=1;VIVID_UI_SMOKE_LANE=gui_env;HOME=${CMAKE_BINARY_DIR}/.test_ui_screenshot_smoke/gui_env/home")
+
+add_test(NAME test_ui_screenshot_smoke_harness
+    COMMAND test_ui_screenshot_smoke ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_ui_screenshot_smoke_harness PROPERTIES
+    LABELS "UI_SMOKE"
+    TIMEOUT 30
+    ENVIRONMENT
+        "VIVID_ENABLE_UI_SCREENSHOT_SMOKE=1;VIVID_UI_SMOKE_HARNESS_SELFTEST=1;VIVID_UI_SMOKE_LANE=harness_selftest;HOME=${CMAKE_BINARY_DIR}/.test_ui_screenshot_smoke/harness_selftest/home")
 
 # Architecture guard: UI layer must not directly include runtime package catalog
 add_executable(test_ui_arch_guard tests/test_ui_arch_guard.cpp)
