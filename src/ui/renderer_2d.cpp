@@ -729,14 +729,20 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
     for (const auto& batch : batches_) {
         if (batch.count == 0) continue;
         if (batch.has_scissor) {
-            // batch.sx/sy/sw/sh are already in physical pixels (scaled in push_clip_rect)
-            uint32_t sx = static_cast<uint32_t>(std::max(0.0f, batch.sx));
-            uint32_t sy = static_cast<uint32_t>(std::max(0.0f, batch.sy));
-            uint32_t sw = static_cast<uint32_t>(std::max(0.0f, batch.sw));
-            uint32_t sh = static_cast<uint32_t>(std::max(0.0f, batch.sh));
-            // Clamp to surface bounds
-            if (sx + sw > phys_w) sw = phys_w > sx ? phys_w - sx : 0;
-            if (sy + sh > phys_h) sh = phys_h > sy ? phys_h - sy : 0;
+            // batch.sx/sy/sw/sh are already in physical pixels (scaled in push_clip_rect).
+            // Clamp both origin and extent; if the rect is fully off-surface, skip the batch
+            // instead of issuing an invalid zero-area/out-of-bounds scissor.
+            float x0 = std::max(0.0f, batch.sx);
+            float y0 = std::max(0.0f, batch.sy);
+            float x1 = std::min(static_cast<float>(phys_w), batch.sx + std::max(0.0f, batch.sw));
+            float y1 = std::min(static_cast<float>(phys_h), batch.sy + std::max(0.0f, batch.sh));
+            if (x1 <= x0 || y1 <= y0) {
+                continue;
+            }
+            uint32_t sx = static_cast<uint32_t>(x0);
+            uint32_t sy = static_cast<uint32_t>(y0);
+            uint32_t sw = static_cast<uint32_t>(x1 - x0);
+            uint32_t sh = static_cast<uint32_t>(y1 - y0);
             wgpuRenderPassEncoderSetScissorRect(pass, sx, sy, sw, sh);
         } else {
             wgpuRenderPassEncoderSetScissorRect(pass, 0, 0, phys_w, phys_h);

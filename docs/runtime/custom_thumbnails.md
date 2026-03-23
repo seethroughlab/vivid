@@ -75,6 +75,9 @@ Rules:
 - do not mutate the main graph output texture
 - keep the pass deterministic and lightweight
 - report initialization/render errors with `vivid_report_thumbnail_error(ctx, "...")`
+- fail closed: if shader/pipeline/bind resources are not valid, report the error and let the UI fall back to the default thumbnail instead of attempting to encode a partial pass
+- thumbnail WGSL must follow current WGSL identifier rules; avoid reserved identifiers in struct fields and bindings
+- the runtime may suppress custom thumbnail GPU work entirely when the current graph contains unresolved / missing-operator placeholders; that unresolved-graph path should degrade to default node bodies instead of continuing thumbnail rendering on partial graph state
 
 ## Helper API
 
@@ -108,6 +111,11 @@ struct MyOp : vivid::ControlOperatorBase {
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
         if (!pipeline_ || pipeline_format_ != ctx->thumbnail_format) {
             // (re)build pipeline for the current thumbnail format
+        }
+
+        if (!pipeline_ || !bind_group_ || !uniform_buf_) {
+            vivid_report_thumbnail_error(ctx, "my_op thumbnail pipeline init failed");
+            return;
         }
 
         // update uniforms

@@ -160,10 +160,18 @@ inline void run_pass(const VividThumbnailContext* ctx,
                      WGPUBindGroup bind_group,
                      const char* label,
                      WGPUColor clear = WGPUColor{0.0, 0.0, 0.0, 0.0}) {
-    if (!ctx || !ctx->thumbnail_texture_view || !pipeline || !bind_group) {
-        if (ctx && (!pipeline || !bind_group)) {
-            vivid_report_thumbnail_error(ctx, "thumbnail render skipped: null pipeline or bind group");
-        }
+    if (!ctx) {
+        return;
+    }
+    if (ctx->operator_errored) {
+        return;
+    }
+    if (!ctx->thumbnail_texture_view) {
+        vivid_report_thumbnail_error(ctx, "thumbnail render skipped: null thumbnail target");
+        return;
+    }
+    if (!pipeline || !bind_group) {
+        vivid_report_thumbnail_error(ctx, "thumbnail render skipped: null pipeline or bind group");
         return;
     }
 

@@ -455,12 +455,11 @@ private:
 
         // Glyph staging buffer (R8)
         std::vector<unsigned char> glyph_staging(row_stride * h, 0);
-        // Character index staging buffer (R32Float) — stores idx/total for each pixel
-        // bytesPerRow for R32Float must also be 256-aligned
-        uint32_t idx_bytes_per_row = w * 4;
-        uint32_t idx_row_stride = (idx_bytes_per_row + 255) & ~255u;
-        uint32_t idx_pixels_per_row = idx_row_stride / 4;
-        std::vector<float> idx_staging(idx_pixels_per_row * h, 0.0f);
+        // Character index staging buffer (R8Unorm). We store a normalized
+        // per-character progress value in 8-bit form so the shader can sample
+        // it with the same filtering sampler used for glyph alpha.
+        uint32_t idx_row_stride = (w + 255) & ~255u;
+        std::vector<unsigned char> idx_staging(idx_row_stride * h, 0);
 
         int char_counter = 0;
 
@@ -470,8 +469,8 @@ private:
             float pen_y = base_y + static_cast<float>(li) * line_spacing;
 
             for (size_t ci = 0; ci < line.size(); ++ci) {
-                float char_idx_normalized = static_cast<float>(char_counter) /
-                                           static_cast<float>(total_chars);
+                float char_idx_normalized = static_cast<float>(char_counter + 1) /
+                                           static_cast<float>(total_chars + 1);
                 char_counter++;
 
                 int x0, y0, x1, y1;
@@ -507,8 +506,9 @@ private:
 
                                 // Character index texture — write index if this pixel has coverage
                                 if (val > 0) {
-                                    idx_staging[dst_y * idx_pixels_per_row + dst_x] =
-                                        char_idx_normalized;
+                                    float clamped = std::clamp(char_idx_normalized, 0.0f, 1.0f);
+                                    idx_staging[dst_y * idx_row_stride + dst_x] =
+                                        static_cast<unsigned char>(clamped * 255.0f + 0.5f);
                                 }
                             }
                         }
@@ -566,14 +566,14 @@ private:
             tex_desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
             tex_desc.dimension = WGPUTextureDimension_2D;
             tex_desc.size = {w, h, 1};
-            tex_desc.format = WGPUTextureFormat_R32Float;
+            tex_desc.format = WGPUTextureFormat_R8Unorm;
             tex_desc.mipLevelCount = 1;
             tex_desc.sampleCount = 1;
             char_idx_tex_ = wgpuDeviceCreateTexture(device_, &tex_desc);
 
             WGPUTextureViewDescriptor view_desc{};
             view_desc.label = vivid_sv("Rich Text CharIdx View");
-            view_desc.format = WGPUTextureFormat_R32Float;
+            view_desc.format = WGPUTextureFormat_R8Unorm;
             view_desc.dimension = WGPUTextureViewDimension_2D;
             view_desc.mipLevelCount = 1;
             view_desc.arrayLayerCount = 1;
@@ -613,7 +613,7 @@ private:
 
             WGPUExtent3D extent = {w, h, 1};
             wgpuQueueWriteTexture(queue_, &dest, idx_staging.data(),
-                                  idx_staging.size() * sizeof(float), &layout, &extent);
+                                  idx_staging.size(), &layout, &extent);
         }
     }
 
@@ -674,7 +674,7 @@ private:
 
         bgl_entries[3].binding = 3;
         bgl_entries[3].visibility = WGPUShaderStage_Fragment;
-        bgl_entries[3].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+        bgl_entries[3].texture.sampleType = WGPUTextureSampleType_Float;
         bgl_entries[3].texture.viewDimension = WGPUTextureViewDimension_2D;
 
         WGPUBindGroupLayoutDescriptor bgl_desc{};
@@ -714,7 +714,7 @@ private:
 
         make_placeholder(WGPUTextureFormat_R8Unorm, "Rich Text Glyph Placeholder",
                          glyph_tex_, glyph_view_);
-        make_placeholder(WGPUTextureFormat_R32Float, "Rich Text CharIdx Placeholder",
+        make_placeholder(WGPUTextureFormat_R8Unorm, "Rich Text CharIdx Placeholder",
                          char_idx_tex_, char_idx_view_);
 
         rebuild_bind_group();
