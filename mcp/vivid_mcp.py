@@ -1,11 +1,23 @@
 """Vivid MCP Server — bridges MCP stdio to the Vivid runtime HTTP control server."""
 
-import os
+import asyncio
 import json
+import os
+import pathlib
+import subprocess
+import tempfile
+import time
 import httpx
 from mcp.server.fastmcp import FastMCP
 
 VIVID_URL = os.environ.get("VIVID_URL", "http://127.0.0.1:9876")
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+DEFAULT_VIVID_BIN = REPO_ROOT / "build" / "vivid"
+DEFAULT_RUNTIME_LOG = pathlib.Path(tempfile.gettempdir()) / "vivid_mcp_runtime.log"
+_RUNTIME_STARTUP_TIMEOUT_SEC = 20.0
+_RUNTIME_STARTUP_POLL_SEC = 0.25
+_managed_runtime_process: subprocess.Popen | None = None
+_managed_runtime_log_path: str = ""
 
 mcp = FastMCP("vivid", instructions="""Vivid is a real-time audio-visual graph engine. You build node graphs that generate and process visuals, audio, and control signals, all running live.
 
@@ -21,11 +33,12 @@ Connections must match types: `gpu_texture` → `gpu_texture`, `data` → `data`
 
 ## Workflow
 
-1. `list_types` — discover all available operators (seed + installed packages)
-2. **Compose first** — build the graph from existing operators before considering custom ones. Most goals are achievable by wiring existing operators together.
-3. `add_node` → `connect` → `set_param` — assemble and configure the graph
-4. `scaffold_operator` — scaffold a starter template when no existing operator achieves the goal. Creates a minimal working operator; use the opdev MCP server for advanced features (custom ports, params, inspectors).
-5. `inspect_graph` — verify the graph state, check live output values
+1. `ensure_runtime` — make sure a GUI Vivid runtime is running before using the rest of the tool surface
+2. `list_types` — discover all available operators (seed + installed packages)
+3. **Compose first** — build the graph from existing operators before considering custom ones. Most goals are achievable by wiring existing operators together.
+4. `add_node` → `connect` → `set_param` — assemble and configure the graph
+5. `scaffold_operator` — scaffold a starter template when no existing operator achieves the goal. Creates a minimal working operator; use the opdev MCP server for advanced features (custom ports, params, inspectors).
+6. `inspect_graph` — verify the graph state, check live output values
 
 ## Common Patterns
 
@@ -57,6 +70,112 @@ async def _post(method: str, body: dict | None = None) -> str:
             timeout=10.0,
         )
         return resp.text
+
+
+def _json_response(payload: dict) -> str:
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True)
+
+
+def _clear_managed_runtime_if_exited() -> None:
+    global _managed_runtime_process, _managed_runtime_log_path
+    if _managed_runtime_process is not None and _managed_runtime_process.poll() is not None:
+        _managed_runtime_process = None
+        _managed_runtime_log_path = ""
+
+
+def _resolve_vivid_bin() -> pathlib.Path:
+    env_bin = os.environ.get("VIVID_BIN")
+    if env_bin:
+        candidate = pathlib.Path(env_bin).expanduser()
+        if candidate.exists():
+            return candidate.resolve()
+    if DEFAULT_VIVID_BIN.exists():
+        return DEFAULT_VIVID_BIN.resolve()
+    raise FileNotFoundError(
+        "no launchable Vivid runtime binary found; set VIVID_BIN or build ./build/vivid"
+    )
+
+
+def _resolve_graph_path(graph_path: str) -> str:
+    if not graph_path:
+        return ""
+    candidate = pathlib.Path(graph_path).expanduser()
+    search = []
+    if candidate.is_absolute():
+        search.append(candidate)
+    else:
+        search.append((REPO_ROOT / candidate).resolve())
+        search.append((pathlib.Path.cwd() / candidate).resolve())
+    for path in search:
+        if path.exists():
+            return str(path)
+    raise FileNotFoundError(f"graph file not found: {graph_path}")
+
+
+async def _runtime_is_reachable() -> bool:
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"{VIVID_URL}/list_nodes", json={}, timeout=1.0)
+        payload = json.loads(resp.text)
+        return bool(payload.get("ok", False))
+    except Exception:
+        return False
+
+
+async def _load_graph_path(graph_path: str) -> tuple[bool, str]:
+    resolved_graph = _resolve_graph_path(graph_path)
+    raw = await _post("load_graph", {"path": resolved_graph})
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return False, raw
+    return bool(payload.get("ok", False)), raw
+
+
+def _launch_runtime_process(graph_path: str = "") -> tuple[subprocess.Popen, str]:
+    vivid_bin = _resolve_vivid_bin()
+    cmd = [str(vivid_bin)]
+    if graph_path:
+        cmd.append(graph_path)
+    log_path = str(DEFAULT_RUNTIME_LOG)
+    log_file = open(log_path, "w", encoding="utf-8")
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(REPO_ROOT),
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    return proc, log_path
+
+
+async def _wait_for_runtime_ready(proc: subprocess.Popen | None, timeout_sec: float) -> bool:
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        if proc is not None and proc.poll() is not None:
+            return False
+        if await _runtime_is_reachable():
+            return True
+        await asyncio.sleep(_RUNTIME_STARTUP_POLL_SEC)
+    return False
+
+
+def _runtime_status_payload(reachable: bool) -> dict:
+    _clear_managed_runtime_if_exited()
+    managed = _managed_runtime_process is not None
+    return {
+        "ok": True,
+        "url": VIVID_URL,
+        "reachable": reachable,
+        "bridge_managed": managed,
+        "pid": _managed_runtime_process.pid if managed else None,
+        "log_path": _managed_runtime_log_path if managed else "",
+        "status": (
+            "bridge_managed_running" if managed and reachable else
+            "external_running" if reachable else
+            "not_running"
+        ),
+    }
 
 
 def _compact_envelope(raw: str) -> dict:
@@ -191,6 +310,226 @@ async def run_checks(checks: list[dict], include_payload: bool = False) -> str:
 
 
 @mcp.tool()
+async def analyze_output(mode: str = "frame", window_seconds: float = 1.0,
+                         include_payload: bool = False, node_id: str = "") -> str:
+    """Analyze the current runtime output.
+
+    Args:
+        mode: "frame", "audio", or "av"
+        window_seconds: Analysis window for audio/av modes
+        include_payload: Include heavyweight capture payloads when available
+        node_id: Optional node id to scope analysis to a specific output source
+    """
+    body = {
+        "mode": mode,
+        "window_seconds": window_seconds,
+        "include_payload": include_payload,
+    }
+    if node_id:
+        body["node_id"] = node_id
+    return await _post("analyze_output", body)
+
+
+@mcp.tool()
+async def compare_outputs(mode: str = "frame",
+                          window_seconds_a: float = 1.0,
+                          window_seconds_b: float = 1.0,
+                          include_payload: bool = False,
+                          node_id: str = "") -> str:
+    """Capture and compare two runtime output windows.
+
+    Args:
+        mode: "frame", "audio", or "av"
+        window_seconds_a: Analysis window for capture A
+        window_seconds_b: Analysis window for capture B
+        include_payload: Include heavyweight capture payloads when available
+        node_id: Optional node id to scope analysis to a specific output source
+    """
+    body = {
+        "mode": mode,
+        "include_payload": include_payload,
+        "a": {"window_seconds": window_seconds_a},
+        "b": {"window_seconds": window_seconds_b},
+    }
+    if node_id:
+        body["node_id"] = node_id
+    return await _post("compare_outputs", body)
+
+
+@mcp.tool()
+async def capture_interface(node_id: str = "",
+                            save_path: str = "",
+                            ensure_ui_visible: bool = True) -> str:
+    """Capture the full running Vivid interface from the live runtime instance.
+
+    Args:
+        node_id: Optional node id to select before capture so the inspector is visible
+        save_path: Optional absolute PNG path to also write on the runtime machine
+        ensure_ui_visible: Force the graph UI visible before capture
+    """
+    body = {
+        "ensure_ui_visible": ensure_ui_visible,
+    }
+    if node_id:
+        body["node_id"] = node_id
+    if save_path:
+        body["save_path"] = save_path
+    return await _post("capture_interface", body)
+
+
+@mcp.tool()
+async def capture_image(mode: str = "interface",
+                        node_id: str = "",
+                        save_path: str = "",
+                        ensure_ui_visible: bool = True) -> str:
+    """Capture an image from the running Vivid instance.
+
+    Args:
+        mode: "interface" for full-window UI capture, or "output" for output-only frame capture
+        node_id: Optional node id to select before interface capture
+        save_path: Optional absolute PNG path to also write on the runtime machine for interface capture
+        ensure_ui_visible: Force the graph UI visible before interface capture
+    """
+    if mode == "interface":
+        return await capture_interface(node_id, save_path, ensure_ui_visible)
+    if mode == "output":
+        return await _post("capture_frame", {})
+    raise ValueError("mode must be 'interface' or 'output'")
+
+
+@mcp.tool()
+async def runtime_status() -> str:
+    """Report whether a Vivid runtime is reachable and whether it is bridge-managed."""
+    reachable = await _runtime_is_reachable()
+    return _json_response(_runtime_status_payload(reachable))
+
+
+@mcp.tool()
+async def ensure_runtime(graph_path: str = "") -> str:
+    """Ensure a GUI Vivid runtime is running, optionally with a graph loaded."""
+    global _managed_runtime_process, _managed_runtime_log_path
+
+    _clear_managed_runtime_if_exited()
+    resolved_graph = ""
+    if graph_path:
+        try:
+            resolved_graph = _resolve_graph_path(graph_path)
+        except Exception as exc:
+            return _json_response({
+                "ok": False,
+                "url": VIVID_URL,
+                "error": str(exc),
+            })
+
+    reachable = await _runtime_is_reachable()
+    if reachable:
+        graph_loaded = False
+        graph_result = ""
+        if resolved_graph:
+            graph_loaded, graph_result = await _load_graph_path(resolved_graph)
+            if not graph_loaded:
+                return _json_response({
+                    "ok": False,
+                    "url": VIVID_URL,
+                    "launched": False,
+                    "reused_existing": True,
+                    "graph_loaded": False,
+                    "graph_path": resolved_graph,
+                    "error": "failed to load graph into existing runtime",
+                    "runtime_response": graph_result,
+                    "pid": _managed_runtime_process.pid if _managed_runtime_process else None,
+                    "log_path": _managed_runtime_log_path if _managed_runtime_process else "",
+                })
+        return _json_response({
+            "ok": True,
+            "url": VIVID_URL,
+            "launched": False,
+            "reused_existing": True,
+            "graph_loaded": graph_loaded,
+            "graph_path": resolved_graph,
+            "pid": _managed_runtime_process.pid if _managed_runtime_process else None,
+            "log_path": _managed_runtime_log_path if _managed_runtime_process else "",
+        })
+
+    try:
+        proc, log_path = _launch_runtime_process(resolved_graph)
+    except Exception as exc:
+        return _json_response({
+            "ok": False,
+            "url": VIVID_URL,
+            "error": str(exc),
+        })
+
+    _managed_runtime_process = proc
+    _managed_runtime_log_path = log_path
+    ready = await _wait_for_runtime_ready(proc, _RUNTIME_STARTUP_TIMEOUT_SEC)
+    if not ready:
+        _clear_managed_runtime_if_exited()
+        return _json_response({
+            "ok": False,
+            "url": VIVID_URL,
+            "launched": True,
+            "reused_existing": False,
+            "graph_loaded": False,
+            "graph_path": resolved_graph,
+            "pid": proc.pid,
+            "log_path": log_path,
+            "error": "runtime failed to become reachable before timeout",
+        })
+
+    return _json_response({
+        "ok": True,
+        "url": VIVID_URL,
+        "launched": True,
+        "reused_existing": False,
+        "graph_loaded": bool(resolved_graph),
+        "graph_path": resolved_graph,
+        "pid": proc.pid,
+        "log_path": log_path,
+    })
+
+
+@mcp.tool()
+async def stop_runtime() -> str:
+    """Stop the bridge-managed Vivid runtime, if one exists."""
+    global _managed_runtime_process, _managed_runtime_log_path
+    _clear_managed_runtime_if_exited()
+    if _managed_runtime_process is None:
+        reachable = await _runtime_is_reachable()
+        return _json_response({
+            "ok": True,
+            "stopped": False,
+            "bridge_managed": False,
+            "reachable": reachable,
+            "url": VIVID_URL,
+            "status": "not_bridge_managed",
+        })
+
+    proc = _managed_runtime_process
+    log_path = _managed_runtime_log_path
+    try:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5.0)
+    finally:
+        _managed_runtime_process = None
+        _managed_runtime_log_path = ""
+
+    return _json_response({
+        "ok": True,
+        "stopped": True,
+        "bridge_managed": True,
+        "url": VIVID_URL,
+        "pid": proc.pid,
+        "log_path": log_path,
+        "status": "stopped",
+    })
+
+
+@mcp.tool()
 async def inspect_graph() -> str:
     """Get the full graph state: nodes with params (live values + schema metadata including semantic_tag/shape/unit/intent), input/output ports (with current output values), and connections."""
     return await _post("inspect_graph")
@@ -310,9 +649,10 @@ async def save_graph(path: str | None = None) -> str:
 
 
 @mcp.tool()
-async def load_graph() -> str:
-    """Reload the graph from disk, rebuilding the scheduler."""
-    return await _post("load_graph")
+async def load_graph(path: str) -> str:
+    """Load a graph from disk, rebuilding the scheduler."""
+    resolved_path = _resolve_graph_path(path)
+    return await _post("load_graph", {"path": resolved_path})
 
 
 @mcp.tool()
