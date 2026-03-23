@@ -92,6 +92,75 @@ static std::string truncate_text(Renderer2D& tr, const std::string& text,
     return result + "\xe2\x80\xa6";
 }
 
+struct InspectorCardBox {
+    float x = 0.0f;
+    float y = 0.0f;
+    float w = 0.0f;
+    float h = 0.0f;
+    float content_x = 0.0f;
+    float content_w = 0.0f;
+};
+
+static InspectorCardBox draw_inspector_card(Renderer2D& tr, const UIStyle& style,
+                                            float x, float y, float w, float h,
+                                            float inner_pad, float alpha = 0.55f) {
+    tr.draw_rect(x, y, w, h,
+                 style.slider_track[0], style.slider_track[1], style.slider_track[2], alpha);
+    return InspectorCardBox{ x, y, w, h, x + inner_pad, w - inner_pad * 2.0f };
+}
+
+static float draw_inspector_domain_chip(Renderer2D& tr, float x, float y,
+                                        const std::string& label,
+                                        const float* color,
+                                        float scale = 0.85f, float pad_x = 6.0f,
+                                        float h = 18.0f) {
+    float chip_w = tr.text_width(label.c_str(), scale) + pad_x * 2.0f;
+    tr.draw_rect(x, y, chip_w, h,
+                 color[0] * 0.3f, color[1] * 0.3f, color[2] * 0.3f, 0.8f);
+    tr.draw_text(x + pad_x, y + 1.0f, label.c_str(), color[0], color[1], color[2], scale);
+    return chip_w;
+}
+
+static float draw_inspector_text_button(Renderer2D& tr, const UIStyle& style,
+                                        float x, float y, const char* label,
+                                        float scale = 0.8f, float pad_x = 6.0f,
+                                        float h = 18.0f) {
+    float w = tr.text_width(label, scale) + pad_x * 2.0f;
+    tr.draw_rect(x, y, w, h,
+                 style.slider_track[0], style.slider_track[1], style.slider_track[2]);
+    tr.draw_text(x + pad_x, y + 1.0f, label,
+                 style.bright_text[0], style.bright_text[1], style.bright_text[2], scale);
+    return w;
+}
+
+static void draw_inspector_left_accent(Renderer2D& tr, float x, float top, float bottom,
+                                       const float* color, float alpha = 0.5f) {
+    tr.draw_rect(x - 4.0f, top, 2.0f, bottom - top, color[0], color[1], color[2], alpha);
+}
+
+struct ParamConnectionInfo {
+    bool connected = false;
+    std::string from_node;
+    std::string from_port;
+    std::string source_label;
+};
+
+static ParamConnectionInfo find_param_connection(const GraphSnapshot& snap,
+                                                 const std::string& node_id,
+                                                 const std::string& param_name) {
+    ParamConnectionInfo info;
+    for (const auto& c : snap.connections) {
+        if (c.to_node == node_id && c.to_port == param_name) {
+            info.connected = true;
+            info.from_node = c.from_node;
+            info.from_port = c.from_port;
+            info.source_label = "\xE2\x86\x90 " + c.from_node + "/" + c.from_port;
+            break;
+        }
+    }
+    return info;
+}
+
 // -----------------------------------------------------------------------
 // Drawing
 // -----------------------------------------------------------------------
@@ -864,12 +933,31 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         py += kLineH + 4;
     }
 
+    bool has_visible_standard_params = false;
+    if (sel_node->op_info) {
+        for (const auto& pd : sel_node->op_info->params) {
+            if (pd.display_hint != VIVID_DISPLAY_HIDDEN) {
+                has_visible_standard_params = true;
+                break;
+            }
+        }
+    }
+    bool has_custom_inspector = sel_node->op_info && sel_node->op_info->has_custom_inspector;
+
     if (sel_node->op_info && sel_node->op_info->has_custom_inspector) {
-        if (sel_node->op_info->inspector_mode == VIVID_INSPECTOR_STANDARD)
+        if (sel_node->op_info->inspector_mode == VIVID_INSPECTOR_STANDARD && has_visible_standard_params) {
+            draw_section_separator(tr, px, py, kInspContentW, "Controls");
             draw_inspector_params(tr, *sel_node, px, py);
+        }
+        if (has_custom_inspector) {
+            draw_section_separator(tr, px, py, kInspContentW, "Custom");
+        }
         draw_custom_inspector(tr, *sel_node, px, py);
     } else {
-        draw_inspector_params(tr, *sel_node, px, py);
+        if (has_visible_standard_params) {
+            draw_section_separator(tr, px, py, kInspContentW, "Controls");
+            draw_inspector_params(tr, *sel_node, px, py);
+        }
     }
     // --- Bindings section ---
     {
@@ -1054,7 +1142,8 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
 }
 
 void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
-                                       InspectorLayout& layout, uint32_t pi) {
+                                       InspectorLayout& layout,
+                                       const ParamLayoutPlan& plan, uint32_t pi) {
     const auto& pd = node.op_info->params[pi];
     float val = node.param_values[pi];
     float px = layout.x;
@@ -1094,16 +1183,17 @@ void NodeGraphUI::draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
 
     // Param name label centered below knob
     float label_y = cy + kKnobRadius + kKnobLabelGap;
-    float label_w = tr.text_width(pd.name.c_str(), 0.85f);
+    std::string label_text = truncate_text(tr, pd.name, panel_w - 18.0f, 0.8f);
+    float label_w = tr.text_width(label_text.c_str(), 0.8f);
     float label_x = cx - label_w * 0.5f;
-    tr.draw_text(label_x, label_y, pd.name.c_str(),
+    tr.draw_text(label_x, label_y, label_text.c_str(),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
 
     // Lock badge next to knob label
     {
         uint8_t lock = (pi < node.param_lock_flags.size()) ? node.param_lock_flags[pi] : 0;
         float badge_anchor_x = label_x + label_w + 3;
-        if (lock != kParamLockNone) {
+        if (plan.allow_inline_lock_badge && lock != kParamLockNone) {
             const char* lock_text =
                 (lock == (kParamLockWires | kParamLockPresets)) ? "WP" :
                 (lock & kParamLockWires) ? "W" : "P";
@@ -1417,7 +1507,8 @@ void NodeGraphUI::draw_color_popup(Renderer2D& tr) {
 }
 
 void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& node,
-                                           InspectorLayout& layout, uint32_t pi) {
+                                           InspectorLayout& layout,
+                                           const ParamLayoutPlan& plan, uint32_t pi) {
     const auto& op = *node.op_info;
     float start_y = layout.y;
     float py = layout.y;
@@ -1427,37 +1518,33 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
     float val = node.param_values[pi];
     const std::string semantic_hint = build_semantic_hint(pd);
     const bool has_semantic_hint = !semantic_hint.empty();
-
-    if (pd.display_hint == VIVID_DISPLAY_KNOB && pd.type == VIVID_PARAM_FLOAT) {
-        draw_inspector_knob(tr, node, layout, pi);
-        return;
-    }
-
-    // Check if this param is driven by a wire connection
-    std::string conn_source_label;
-    std::string conn_from_node, conn_from_port;
-    bool is_connected = false;
-    for (const auto& c : snap_.connections) {
-        if (c.to_node == single_selected_id() && c.to_port == pd.name) {
-            is_connected = true;
-            conn_from_node = c.from_node;
-            conn_from_port = c.from_port;
-            conn_source_label = "\xE2\x86\x90 " + c.from_node + "/" + c.from_port;  // "← node/port"
-            break;
-        }
-    }
-
+    const auto conn = find_param_connection(snap_, node.node_id, pd.name);
+    const bool is_connected = conn.connected;
     bool is_editing_this = editing_param_ &&
                            edit_node_id_ == single_selected_id() &&
                            edit_param_name_ == pd.name;
-
-    // CC badge (if this param has a MIDI mapping)
     const auto* midi_mm = snap_.find_midi_mapping(single_selected_id(), pd.name);
+    uint8_t lock = (pi < node.param_lock_flags.size()) ? node.param_lock_flags[pi] : 0;
+    const bool is_file = pd.type == VIVID_PARAM_FILE;
+    const bool is_text = pd.type == VIVID_PARAM_TEXT;
+    const bool is_bool = pd.type == VIVID_PARAM_BOOL;
+    const bool is_dropdown = pd.choice_count > 0;
+    const bool is_numeric = !is_file && !is_text && !is_bool && !is_dropdown;
 
-    // Domain-colored dot indicating this param is driven by a connection
-    float label_x = px;
+    if (pd.display_hint == VIVID_DISPLAY_KNOB && pd.type == VIVID_PARAM_FLOAT) {
+        draw_inspector_knob(tr, node, layout, plan, pi);
+        return;
+    }
+
+    auto draw_secondary_line = [&](const std::string& text, float scale = 0.62f) {
+        std::string display = truncate_text(tr, text, panel_w, scale);
+        tr.draw_text(px, py - 1.0f, display.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.72f, scale);
+        py += tr.line_height() * scale + 2.0f;
+    };
+
     if (is_connected) {
-        const auto* src_ns = snap_.find_node(conn_from_node);
+        const auto* src_ns = snap_.find_node(conn.from_node);
         const float* dot_clr = src_ns ? domain_color(src_ns->domain) : style_.accent.data();
         float dot_sz = 5.0f;
         float dot_x = px - dot_sz - 2.0f;
@@ -1465,49 +1552,43 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         tr.draw_rect(dot_x, dot_y, dot_sz, dot_sz, dot_clr[0], dot_clr[1], dot_clr[2], 0.9f);
     }
 
-    // Label (dimmed if driven by connection), truncated to leave room for value
-    float max_label_w = panel_w * 0.55f;
-    std::string display_label = truncate_text(tr, pd.name, max_label_w);
-    if (is_connected)
-        tr.draw_text(label_x, py, display_label.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
-    else
-        tr.draw_text(label_x, py, display_label.c_str(), 0.8f, 0.82f, 0.85f);
+    float label_scale = plan.compact ? 0.8f : 0.85f;
+    float value_scale = plan.compact ? 0.8f : 1.0f;
+    bool show_inline_value = is_numeric && plan.allow_inline_value;
+    float max_label_w = panel_w * (show_inline_value ? (plan.compact ? 0.62f : 0.52f)
+                                                     : (plan.compact ? 0.78f : 0.82f));
+    std::string display_label = truncate_text(tr, pd.name, max_label_w, label_scale);
+    tr.draw_text(px, py, display_label.c_str(),
+                 is_connected ? style_.dim_text[0] : 0.8f,
+                 is_connected ? style_.dim_text[1] : 0.82f,
+                 is_connected ? style_.dim_text[2] : 0.85f,
+                 is_connected ? 0.75f : 1.0f, label_scale);
 
-    // CC badge inline with label
-    float after_label_x = px + tr.text_width(display_label.c_str()) + 6;
-    if (midi_mm) {
+    float after_label_x = px + tr.text_width(display_label.c_str(), label_scale) + 6.0f;
+    if (plan.allow_inline_midi_badge && midi_mm) {
         std::string badge = "CC " + std::to_string(midi_mm->cc_number);
         float badge_x = after_label_x;
-        float badge_w = tr.text_width(badge.c_str()) + 8;
+        float badge_w = tr.text_width(badge.c_str(), 0.8f) + 8.0f;
         tr.draw_rect(badge_x, py, badge_w, kMidiBadgeH,
                      kMidiMapBadge[0], kMidiMapBadge[1], kMidiMapBadge[2], kMidiMapBadge[3]);
-        tr.draw_text(badge_x + 4, py, badge.c_str(), 0.85f, 0.90f, 1.0f);
-        after_label_x = badge_x + badge_w + 4;
+        tr.draw_text(badge_x + 4, py, badge.c_str(), 0.85f, 0.90f, 1.0f, 1.0f, 0.8f);
+        after_label_x = badge_x + badge_w + 4.0f;
     }
 
-    // Lock badge (W / P / WP)
-    {
-        uint8_t lock = (pi < node.param_lock_flags.size()) ? node.param_lock_flags[pi] : 0;
-        if (lock != kParamLockNone) {
-            const char* lock_text =
-                (lock == (kParamLockWires | kParamLockPresets)) ? "WP" :
-                (lock & kParamLockWires)   ? "W" : "P";
-            float badge_w = tr.text_width(lock_text) + 8;
-            float badge_x = after_label_x;
-            tr.draw_rect(badge_x, py, badge_w, kMidiBadgeH,
-                         0.6f, 0.45f, 0.15f, 0.85f);
-            tr.draw_text(badge_x + 4, py, lock_text, 1.0f, 0.85f, 0.4f);
-            lock_badge_rects_.push_back({badge_x, py, badge_w, kMidiBadgeH,
-                                         node.node_id, pd.name});
-        } else {
-            // Invisible hit-test zone for unlocked params (small area after label)
-            float zone_w = 18.0f;
-            lock_badge_rects_.push_back({after_label_x, py, zone_w, kMidiBadgeH,
-                                         node.node_id, pd.name});
-        }
+    if (plan.allow_inline_lock_badge && lock != kParamLockNone) {
+        const char* lock_text =
+            (lock == (kParamLockWires | kParamLockPresets)) ? "WP" :
+            (lock & kParamLockWires) ? "W" : "P";
+        float badge_w = tr.text_width(lock_text, 0.8f) + 8.0f;
+        float badge_x = after_label_x;
+        tr.draw_rect(badge_x, py, badge_w, kMidiBadgeH,
+                     0.6f, 0.45f, 0.15f, 0.85f);
+        tr.draw_text(badge_x + 4, py, lock_text, 1.0f, 0.85f, 0.4f, 1.0f, 0.8f);
+        lock_badge_rects_.push_back({badge_x, py, badge_w, kMidiBadgeH, node.node_id, pd.name});
+    } else {
+        lock_badge_rects_.push_back({after_label_x, py, 18.0f, kMidiBadgeH, node.node_id, pd.name});
     }
 
-    // "Waiting" highlight (pulsing blue outline)
     if (midi_map_waiting_ && midi_map_node_id_ == single_selected_id() &&
         midi_map_param_name_ == pd.name) {
         float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(perf_frame_counter_) * 0.15f);
@@ -1515,72 +1596,10 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                      0.3f, 0.5f, 0.9f, pulse * 0.6f);
     }
 
-    // File params: special rendering (filename + browse button), then return
-    if (pd.type == VIVID_PARAM_FILE) {
-        py += kLineH;
-        // Look up current file path
-        std::string file_path;
-        auto fp_it = node.file_param_values.find(pd.name);
-        if (fp_it != node.file_param_values.end())
-            file_path = fp_it->second;
-
-        // Extract just the filename for display
-        std::string display_name = "Browse\xe2\x80\xa6";  // "Browse…"
-        if (!file_path.empty()) {
-            auto slash = file_path.rfind('/');
-            display_name = (slash != std::string::npos) ? file_path.substr(slash + 1) : file_path;
-        }
-
-        // Draw button background
-        float btn_h = kDropdownH;
-        tr.draw_rect(px, py, panel_w, btn_h,
-                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-        // Truncate display name if it's too wide
-        float max_text_w = panel_w - 12;
-        std::string truncated = display_name;
-        while (tr.text_width(truncated.c_str()) > max_text_w && truncated.size() > 4) {
-            truncated = "\xe2\x80\xa6" + truncated.substr(truncated.size() - (truncated.size() - 4));
-        }
-        tr.draw_text(px + 6, py + 1, truncated.c_str(),
-                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        file_button_rects_.push_back({px, py, panel_w, btn_h,
-                                      single_selected_id(), pd.name});
-        py += btn_h + 6;
-        layout.end_param(py - start_y);
-        return;
-    }
-    // Text params: inline editable field, no file dialog.
-    if (pd.type == VIVID_PARAM_TEXT) {
-        py += kLineH;
-        std::string text_value;
-        auto sp_it = node.file_param_values.find(pd.name);
-        if (sp_it != node.file_param_values.end()) text_value = sp_it->second;
-        float field_h = kDropdownH;
-        if (is_editing_this) {
-            draw_editing_text_field(tr, style_, px, py, panel_w, field_h,
-                                    edit_buffer_, text_edit_, cursor_blink_on(), 6.0f, 1.0f);
-        } else {
-            tr.draw_rect(px, py, panel_w, field_h,
-                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-            std::string display = text_value.empty() ? "(empty)" : text_value;
-            float max_text_w = panel_w - 12;
-            while (tr.text_width(display.c_str()) > max_text_w && display.size() > 4) {
-                display = display.substr(0, display.size() - 2);
-            }
-            tr.draw_text(px + 6, py + 1, display.c_str(),
-                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        }
-        value_text_rects_.push_back({px, py, panel_w, field_h, single_selected_id(), pd.name});
-        py += field_h + 6;
-        layout.end_param(py - start_y);
-        return;
-    }
-
-    // Value text (right-aligned on the label line)
     std::string val_str;
-    if (pd.type == VIVID_PARAM_BOOL) {
+    if (is_bool) {
         val_str = val > 0.5f ? "true" : "false";
-    } else if (pd.choice_count > 0) {
+    } else if (is_dropdown) {
         int idx = static_cast<int>(val);
         if (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
             val_str = pd.choice_labels[idx];
@@ -1592,100 +1611,137 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         val_str = format_float(val, 2);
     }
 
-    float max_val_w = panel_w * 0.4f;
-    std::string display_val = truncate_text(tr, val_str, max_val_w);
-    float vw = tr.text_width(display_val.c_str());
-    float val_x = px + panel_w - vw;
-    float val_y = py;
+    if (show_inline_value) {
+        float max_val_w = panel_w * (plan.compact ? 0.34f : 0.40f);
+        std::string display_val = truncate_text(tr, val_str, max_val_w, value_scale);
+        float vw = tr.text_width(display_val.c_str(), value_scale);
+        float val_x = px + panel_w - vw;
+        float val_y = py;
 
-    if (is_editing_this) {
-        float edit_w = panel_w * 0.4f;
-        float edit_x = px + panel_w - edit_w;
-        float edit_h = kLineH;
-        draw_editing_text_field(tr, style_, edit_x, val_y, edit_w, edit_h,
-                                edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
-    } else {
-        if (is_connected)
-            tr.draw_text(val_x, py, display_val.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
-        else
-            tr.draw_text(val_x, py, display_val.c_str(), 0.8f, 0.82f, 0.85f);
-        if (pd.type != VIVID_PARAM_BOOL && pd.choice_count == 0) {
-            value_text_rects_.push_back({val_x, val_y, vw, kLineH,
-                                         single_selected_id(), pd.name});
+        if (is_editing_this) {
+            float edit_w = panel_w * (plan.compact ? 0.38f : 0.4f);
+            float edit_x = px + panel_w - edit_w;
+            draw_editing_text_field(tr, style_, edit_x, val_y, edit_w, kLineH,
+                                    edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
+        } else {
+            tr.draw_text(val_x, py, display_val.c_str(),
+                         is_connected ? style_.dim_text[0] : 0.8f,
+                         is_connected ? style_.dim_text[1] : 0.82f,
+                         is_connected ? style_.dim_text[2] : 0.85f,
+                         is_connected ? 0.75f : 1.0f, value_scale);
+            value_text_rects_.push_back({val_x, val_y, vw, kLineH, single_selected_id(), pd.name});
         }
     }
 
-    py += kLineH;
-    if (has_semantic_hint) {
-        std::string display_hint = truncate_text(tr, semantic_hint, panel_w, 0.6f);
-        tr.draw_text(px, py - 2.0f, display_hint.c_str(),
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f);
-        py += kLineH - 2.0f;
-    }
+    py += kLineH + 3.0f;
 
-    if (pd.type == VIVID_PARAM_BOOL) {
-        float bx = px, by = py;
-        draw_checkbox(tr, style_, bx, by, kCheckboxSize, val > 0.5f, is_connected ? 0.3f : 1.0f);
-        bool_rects_.push_back({bx, by, kCheckboxSize, kCheckboxSize, single_selected_id(), pd.name});
-        py += kCheckboxSize + 6;
-    } else if (pd.choice_count > 0) {
-        float dx = px, dy = py;
-        float dw = panel_w, dh = kDropdownH;
-        tr.draw_rect(dx, dy, dw, dh, style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+    if (is_file) {
+        std::string file_path;
+        auto fp_it = node.file_param_values.find(pd.name);
+        if (fp_it != node.file_param_values.end())
+            file_path = fp_it->second;
+
+        std::string display_name = "Browse\xe2\x80\xa6";
+        if (!file_path.empty()) {
+            auto slash = file_path.rfind('/');
+            display_name = (slash != std::string::npos) ? file_path.substr(slash + 1) : file_path;
+        }
+
+        float btn_h = kDropdownH;
+        tr.draw_rect(px, py, panel_w, btn_h,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+        tr.draw_text(px + 6, py + 1,
+                     truncate_text(tr, display_name, panel_w - 12.0f).c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        file_button_rects_.push_back({px, py, panel_w, btn_h, single_selected_id(), pd.name});
+        py += btn_h + 6.0f;
+    } else if (is_text) {
+        std::string text_value;
+        auto sp_it = node.file_param_values.find(pd.name);
+        if (sp_it != node.file_param_values.end()) text_value = sp_it->second;
+        float field_h = kDropdownH;
+        if (is_editing_this) {
+            draw_editing_text_field(tr, style_, px, py, panel_w, field_h,
+                                    edit_buffer_, text_edit_, cursor_blink_on(), 6.0f, 1.0f);
+        } else {
+            tr.draw_rect(px, py, panel_w, field_h,
+                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+            std::string display = text_value.empty() ? "(empty)" : text_value;
+            tr.draw_text(px + 6, py + 1, truncate_text(tr, display, panel_w - 12.0f).c_str(),
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        }
+        value_text_rects_.push_back({px, py, panel_w, field_h, single_selected_id(), pd.name});
+        py += field_h + 6.0f;
+    } else if (is_bool) {
+        draw_checkbox(tr, style_, px, py, kCheckboxSize, val > 0.5f, is_connected ? 0.3f : 1.0f);
+        bool_rects_.push_back({px, py, kCheckboxSize, kCheckboxSize, single_selected_id(), pd.name});
+        tr.draw_text(px + kCheckboxSize + 8.0f, py - 1.0f, val_str.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f, 0.8f);
+        py += kCheckboxSize + 6.0f;
+    } else if (is_dropdown) {
+        float dh = kDropdownH;
+        tr.draw_rect(px, py, panel_w, dh,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
         int idx = static_cast<int>(val);
-        const char* label = (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
-                            ? pd.choice_labels[idx].c_str() : "?";
-        if (is_connected)
-            tr.draw_text(dx + 6, dy + 1, label, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
-        else
-            tr.draw_text(dx + 6, dy + 1, label, style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
-        float arrow_x = dx + dw - 16;
-        tr.draw_text(arrow_x, dy + 1, "\xE2\x96\xBE", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-        dropdown_rects_.push_back({dx, dy, dw, dh, single_selected_id(), pd.name});
-        py += dh + 6;
+        const char* choice_label = (idx >= 0 && idx < static_cast<int>(pd.choice_labels.size()))
+            ? pd.choice_labels[idx].c_str() : "?";
+        std::string display_choice = truncate_text(tr, choice_label, panel_w - 22.0f);
+        tr.draw_text(px + 6, py + 1, display_choice.c_str(),
+                     is_connected ? style_.dim_text[0] : style_.bright_text[0],
+                     is_connected ? style_.dim_text[1] : style_.bright_text[1],
+                     is_connected ? style_.dim_text[2] : style_.bright_text[2],
+                     is_connected ? 0.75f : 1.0f);
+        tr.draw_text(px + panel_w - 16, py + 1, "\xE2\x96\xBE",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        dropdown_rects_.push_back({px, py, panel_w, dh, single_selected_id(), pd.name});
+        py += dh + 6.0f;
     } else {
-        float sx = px, sy = py;
-        float sw = panel_w, sh = kSliderH;
-        tr.draw_rect(sx, sy, sw, sh, style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
+        float sh = kSliderH;
+        tr.draw_rect(px, py, panel_w, sh,
+                     style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
         float range = pd.max_value - pd.min_value;
         float t = (range > 0) ? (val - pd.min_value) / range : 0.5f;
         t = std::max(0.0f, std::min(1.0f, t));
         const float* sc = domain_color(node.domain);
         if (is_connected) {
-            tr.draw_rect(sx, sy, sw * t, sh, sc[0], sc[1], sc[2], 0.3f);
-            // Modulation range overlay: show range between static value and modulated value
-            if (!conn_from_node.empty()) {
-                auto ni = snap_.node_index.find(conn_from_node);
+            tr.draw_rect(px, py, panel_w * t, sh, sc[0], sc[1], sc[2], 0.3f);
+            if (!conn.from_node.empty()) {
+                auto ni = snap_.node_index.find(conn.from_node);
                 if (ni != snap_.node_index.end()) {
                     const auto& src = snap_.nodes[ni->second];
-                    auto pi_it = src.output_port_indices.find(conn_from_port);
+                    auto pi_it = src.output_port_indices.find(conn.from_port);
                     if (pi_it != src.output_port_indices.end() && pi_it->second < src.output_values.size()) {
                         float mod_val = src.output_values[pi_it->second];
                         float mod_t = (range > 0) ? std::clamp((mod_val - pd.min_value) / range, 0.0f, 1.0f) : 0.5f;
                         float t_min = std::min(t, mod_t);
                         float t_max = std::max(t, mod_t);
-                        tr.draw_rect(sx + sw * t_min, sy, sw * (t_max - t_min), sh, sc[0], sc[1], sc[2], 0.20f);
+                        tr.draw_rect(px + panel_w * t_min, py, panel_w * (t_max - t_min), sh,
+                                     sc[0], sc[1], sc[2], 0.20f);
                     }
                 }
             }
         } else {
-            tr.draw_rect(sx, sy, sw * t, sh, sc[0], sc[1], sc[2]);
-            float thumb_x = sx + sw * t - 3;
-            tr.draw_rect(thumb_x, sy - 2, 6, sh + 4, style_.accent[0], style_.accent[1], style_.accent[2]);
+            tr.draw_rect(px, py, panel_w * t, sh, sc[0], sc[1], sc[2]);
+            float thumb_x = px + panel_w * t - 3.0f;
+            tr.draw_rect(thumb_x, py - 2.0f, 6.0f, sh + 4.0f,
+                         style_.accent[0], style_.accent[1], style_.accent[2]);
         }
-        slider_rects_.push_back({sx, sy - 4, sw, sh + 8, single_selected_id(), pd.name});
-        py += sh + 10;
+        slider_rects_.push_back({px, py - 4.0f, panel_w, sh + 8.0f, single_selected_id(), pd.name});
+        py += sh + 10.0f;
     }
 
-    // Source label for connected params (e.g. "← lfo_1/value")
-    if (is_connected) {
-        std::string display_source = truncate_text(tr, conn_source_label, panel_w, 0.6f);
-        tr.draw_text(px, py - 4, display_source.c_str(),
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.6f);
-        py += kLineH - 2;
+    if (plan.allow_secondary_text) {
+        if (midi_mm && !plan.allow_inline_midi_badge) {
+            draw_secondary_line("CC " + std::to_string(midi_mm->cc_number));
+        }
+        if (has_semantic_hint && plan.allow_semantic_hint) {
+            draw_secondary_line(semantic_hint);
+        }
+        if (is_connected && plan.allow_connection_source) {
+            draw_secondary_line(conn.source_label);
+        }
     }
 
-    // Inline MIDI min/max controls (only in MIDI map mode, only for mapped params)
     if (midi_map_mode_ && midi_mm) {
         float row_y = py;
         float field_w = 50.0f;
@@ -1699,45 +1755,37 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
                               midi_range_param_name_ == pd.name &&
                               !midi_range_editing_min_;
 
-        // "min" label
         tr.draw_text(px, row_y, T("min", "min"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-        float min_x = px + 28;
+        float min_x = px + 28.0f;
         if (is_editing_min) {
             draw_editing_text_field(tr, style_, min_x, row_y, field_w, kMidiRangeH - 2,
                                     edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
         } else {
             tr.draw_rect(min_x, row_y, field_w, kMidiRangeH - 2,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-            std::string min_str = format_float(midi_mm->range_min, 2);
-            tr.draw_text(min_x + 2, row_y, min_str.c_str(), 0.8f, 0.82f, 0.85f);
+            tr.draw_text(min_x + 2, row_y, format_float(midi_mm->range_min, 2).c_str(), 0.8f, 0.82f, 0.85f);
         }
-        midi_range_rects_.push_back({min_x, row_y, field_w, kMidiRangeH,
-                                     single_selected_id(), pd.name, true});
+        midi_range_rects_.push_back({min_x, row_y, field_w, kMidiRangeH, single_selected_id(), pd.name, true});
 
-        // "max" label
-        float max_label_x = min_x + field_w + 10;
+        float max_label_x = min_x + field_w + 10.0f;
         tr.draw_text(max_label_x, row_y, T("max", "max"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-        float max_x = max_label_x + 30;
+        float max_x = max_label_x + 30.0f;
         if (is_editing_max) {
             draw_editing_text_field(tr, style_, max_x, row_y, field_w, kMidiRangeH - 2,
                                     edit_buffer_, text_edit_, cursor_blink_on(), 2.0f, 0.0f);
         } else {
             tr.draw_rect(max_x, row_y, field_w, kMidiRangeH - 2,
                          style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-            std::string max_str = format_float(midi_mm->range_max, 2);
-            tr.draw_text(max_x + 2, row_y, max_str.c_str(), 0.8f, 0.82f, 0.85f);
+            tr.draw_text(max_x + 2, row_y, format_float(midi_mm->range_max, 2).c_str(), 0.8f, 0.82f, 0.85f);
         }
-        midi_range_rects_.push_back({max_x, row_y, field_w, kMidiRangeH,
-                                     single_selected_id(), pd.name, false});
+        midi_range_rects_.push_back({max_x, row_y, field_w, kMidiRangeH, single_selected_id(), pd.name, false});
 
-        // "x" remove button
-        float remove_x = max_x + field_w + 8;
-        tr.draw_rect(remove_x, row_y, 16, kMidiRangeH - 2, 0.5f, 0.2f, 0.2f, 0.8f);
+        float remove_x = max_x + field_w + 8.0f;
+        tr.draw_rect(remove_x, row_y, 16.0f, kMidiRangeH - 2, 0.5f, 0.2f, 0.2f, 0.8f);
         tr.draw_text(remove_x + 3, row_y, "x", 0.9f, 0.6f, 0.6f);
-        midi_remove_rects_.push_back({remove_x, row_y, 16, kMidiRangeH,
-                                      single_selected_id(), pd.name});
+        midi_remove_rects_.push_back({remove_x, row_y, 16.0f, kMidiRangeH, single_selected_id(), pd.name});
 
-        py += kMidiRangeH + 4;
+        py += kMidiRangeH + 4.0f;
     }
 
     layout.end_param(py - start_y);
@@ -1748,8 +1796,9 @@ void NodeGraphUI::draw_one_inspector_param_simple(Renderer2D& tr, const NodeSnap
     InspectorLayout layout;
     layout.x = px; layout.y = py;
     layout.col_w = kInspContentW; layout.full_w = kInspContentW; layout.base_x = px;
-    layout.begin_param(0, 0);
-    draw_one_inspector_param(tr, node, layout, pi);
+    ParamLayoutPlan plan;
+    layout.begin_param(plan);
+    draw_one_inspector_param(tr, node, layout, plan, pi);
     py = layout.y;
 }
 
@@ -1796,6 +1845,58 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
         layout.full_w = kInspContentW; layout.col_w = kInspContentW;
 
         std::string current_group;
+        bool drew_secondary_controls = false;
+        auto build_request = [&](uint32_t param_idx) {
+            const auto& rpd = op.params[param_idx];
+            ParamLayoutRequest req;
+            req.columns = rpd.layout_columns;
+            req.col_index = rpd.layout_column_index;
+            req.hint = rpd.display_hint;
+            req.type = rpd.type;
+            req.choice_count = rpd.choice_count;
+            req.long_label = tr.text_width(rpd.name.c_str(), 0.85f) > 92.0f;
+            req.metadata_heavy =
+                snap_.find_midi_mapping(node.node_id, rpd.name) != nullptr ||
+                ((param_idx < node.param_lock_flags.size()) ? node.param_lock_flags[param_idx] : 0) != 0 ||
+                !build_semantic_hint(rpd).empty() ||
+                find_param_connection(snap_, node.node_id, rpd.name).connected;
+            return req;
+        };
+        auto measure_param_clip_height = [&](uint32_t param_idx, const ParamLayoutPlan& plan) {
+            const auto& mpd = op.params[param_idx];
+            const auto* midi_mm = snap_.find_midi_mapping(node.node_id, mpd.name);
+            const bool is_file = mpd.type == VIVID_PARAM_FILE;
+            const bool is_text = mpd.type == VIVID_PARAM_TEXT;
+            const bool is_bool = mpd.type == VIVID_PARAM_BOOL;
+            const bool is_dropdown = mpd.choice_count > 0;
+            float total_h = kLineH + 3.0f;
+            if (mpd.display_hint == VIVID_DISPLAY_KNOB && mpd.type == VIVID_PARAM_FLOAT) {
+                total_h = kKnobDiameter + kKnobLabelGap + tr.line_height() * 0.85f +
+                          kKnobValueGap + tr.line_height() * 0.8f + 4.0f;
+            } else if (is_file || is_text || is_dropdown) {
+                total_h += kDropdownH + 6.0f;
+            } else if (is_bool) {
+                total_h += kCheckboxSize + 6.0f;
+            } else {
+                total_h += kSliderH + 10.0f;
+            }
+
+            if (plan.allow_secondary_text) {
+                auto secondary_line_h = tr.line_height() * 0.62f + 2.0f;
+                if (midi_mm && !plan.allow_inline_midi_badge)
+                    total_h += secondary_line_h;
+                if (plan.allow_semantic_hint && !build_semantic_hint(mpd).empty())
+                    total_h += secondary_line_h;
+                auto conn = find_param_connection(snap_, node.node_id, mpd.name);
+                if (plan.allow_connection_source && conn.connected)
+                    total_h += secondary_line_h;
+            }
+
+            if (midi_map_mode_ && midi_mm)
+                total_h += kMidiRangeH + 4.0f;
+
+            return total_h + 4.0f;
+        };
 
         uint32_t param_count = static_cast<uint32_t>(op.params.size());
         for (uint32_t pi = 0; pi < param_count; ) {
@@ -1808,6 +1909,10 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                 current_group = pd.group;
 
                 if (!current_group.empty()) {
+                    if (!drew_secondary_controls) {
+                        draw_section_separator(tr, px, layout.y, kInspContentW, "Secondary Controls");
+                        drew_secondary_controls = true;
+                    }
                     bool collapsed = is_group_collapsed(node.type_name, current_group);
                     draw_inspector_group_header(tr, layout, node.type_name, current_group, collapsed);
                     if (collapsed) {
@@ -1843,13 +1948,48 @@ void NodeGraphUI::draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node
                 continue;
             }
 
-            layout.begin_param_normalized(pd.layout_columns, pd.layout_column_index,
-                                          pd.display_hint, pd.type, pd.choice_count);
-            if (layout.row_columns >= 2)
-                tr.push_clip_rect(layout.x, layout.y, layout.col_w, 200.0f);
-            draw_one_inspector_param(tr, node, layout, pi);
-            if (layout.row_columns >= 2)
-                tr.pop_clip_rect();
+            ParamLayoutRequest req = build_request(pi);
+            bool drew_pair = false;
+            if (pi + 1 < param_count) {
+                const auto& next_pd = op.params[pi + 1];
+                bool next_is_compound =
+                    (next_pd.display_hint == VIVID_DISPLAY_XY_PAD && pi + 2 < param_count &&
+                     op.params[pi + 2].display_hint == VIVID_DISPLAY_XY_PAD) ||
+                    (next_pd.display_hint == VIVID_DISPLAY_COLOR && pi + 3 < param_count &&
+                     op.params[pi + 2].display_hint == VIVID_DISPLAY_COLOR &&
+                     op.params[pi + 3].display_hint == VIVID_DISPLAY_COLOR);
+                if (next_pd.display_hint != VIVID_DISPLAY_HIDDEN &&
+                    next_pd.group == current_group &&
+                    !next_is_compound) {
+                    ParamLayoutRequest next_req = build_request(pi + 1);
+                    if (InspectorLayout::requests_form_two_up_pair(req, next_req)) {
+                        ParamLayoutPlan left_plan = InspectorLayout::two_up_plan(0);
+                        ParamLayoutPlan right_plan = InspectorLayout::two_up_plan(1);
+
+                        layout.begin_param(left_plan);
+                        tr.push_clip_rect(layout.x, layout.y, layout.col_w,
+                                          measure_param_clip_height(pi, left_plan));
+                        draw_one_inspector_param(tr, node, layout, left_plan, pi);
+                        tr.pop_clip_rect();
+
+                        layout.begin_param(right_plan);
+                        tr.push_clip_rect(layout.x, layout.y, layout.col_w,
+                                          measure_param_clip_height(pi + 1, right_plan));
+                        draw_one_inspector_param(tr, node, layout, right_plan, pi + 1);
+                        tr.pop_clip_rect();
+
+                        pi += 2;
+                        drew_pair = true;
+                    }
+                }
+            }
+
+            if (drew_pair)
+                continue;
+
+            ParamLayoutPlan plan = layout.plan_param(req);
+            layout.begin_param(plan);
+            draw_one_inspector_param(tr, node, layout, plan, pi);
             ++pi;
         }
         layout.flush_row();
@@ -2018,6 +2158,7 @@ void NodeGraphUI::draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapsho
 
     const float panel_w = kInspContentW;
     const float btn_h = 18.0f;
+    const float inner_pad = 8.0f;
 
     for (const auto& role : node.op_info->role_bindings) {
         // Header row
@@ -2051,12 +2192,6 @@ void NodeGraphUI::draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapsho
         tr.draw_text(tx, header_y + 3.0f, role.label.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.9f);
 
-        // Scope badge
-        const char* scope_text = (role.runtime_scope == VIVID_ROLE_PER_VOICE) ? "Per-Voice" : "Shared";
-        float scope_x = px + panel_w - tr.text_width(scope_text, 0.7f) - 6.0f;
-        tr.draw_text(scope_x, header_y + 4.0f, scope_text,
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
-
         role_header_rects_.push_back({px, header_y, panel_w, header_h,
                                       node.node_id, role.role_id});
         py = header_y + header_h;
@@ -2078,82 +2213,75 @@ void NodeGraphUI::draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapsho
             }
         }
 
+        const float body_x = px;
+        const float body_y = py + 4.0f;
+        const float body_w = panel_w;
+
         if (bound) {
-            py += 4.0f;
-
-            // Target node chip: type name in domain color
             const float* dcol = domain_color(role.accepted_domain);
-            const std::string& chip_label = bound->target_type_name.empty()
-                ? bound->target_node_id : bound->target_type_name;
+            float body_h = 8.0f + btn_h + 4.0f + kLineH + 4.0f + btn_h + 8.0f;
+            auto card = draw_inspector_card(tr, style_, body_x, body_y, body_w, body_h, inner_pad);
 
-            float chip_w = tr.text_width(chip_label.c_str(), 0.85f) + 12.0f;
-            tr.draw_rect(px, py, chip_w, btn_h,
-                         dcol[0] * 0.3f, dcol[1] * 0.3f, dcol[2] * 0.3f, 0.8f);
-            tr.draw_text(px + 6, py + 1, chip_label.c_str(),
-                         dcol[0], dcol[1], dcol[2], 0.85f);
+            std::string chip_label = bound->target_type_name.empty()
+                ? bound->target_node_id : bound->target_type_name;
+            chip_label = truncate_text(tr, chip_label, card.content_w * 0.65f, 0.85f);
+
+            float cy = body_y + 8.0f;
+            float chip_w = draw_inspector_domain_chip(tr, card.content_x, cy, chip_label, dcol);
 
             // Register chip as bind rect (click to rebind)
-            role_bind_rects_.push_back({px, py, chip_w, btn_h,
+            role_bind_rects_.push_back({card.content_x, cy, chip_w, btn_h,
                                         node.node_id, role.role_id});
-
-            py += btn_h + 2.0f;
+            cy += btn_h + 4.0f;
 
             // Target node ID label (with output name when disambiguation matters)
             std::string id_label = bound->target_node_id;
             if (!bound->target_output_name.empty()) {
                 id_label += "." + bound->target_output_name;
             }
-            tr.draw_text(px, py, id_label.c_str(),
+            id_label = truncate_text(tr, id_label, card.content_w, 0.75f);
+            tr.draw_text(card.content_x, cy, id_label.c_str(),
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.75f);
-            py += kLineH;
+            cy += kLineH + 4.0f;
 
             // Jump To + Clear buttons
             float btn_gap = 6.0f;
-            float jump_w = tr.text_width("Jump To", 0.8f) + 12.0f;
-            float clear_w = tr.text_width("Clear", 0.8f) + 12.0f;
-
-            tr.draw_rect(px, py, jump_w, btn_h,
-                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-            tr.draw_text(px + 6, py + 1, "Jump To",
-                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.8f);
-            role_jump_rects_.push_back({px, py, jump_w, btn_h,
+            float jump_w = draw_inspector_text_button(tr, style_, card.content_x, cy, "Jump To");
+            role_jump_rects_.push_back({card.content_x, cy, jump_w, btn_h,
                                         node.node_id, role.role_id});
 
-            float clear_x = px + jump_w + btn_gap;
-            tr.draw_rect(clear_x, py, clear_w, btn_h,
-                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-            tr.draw_text(clear_x + 6, py + 1, "Clear",
-                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.8f);
-            role_clear_rects_.push_back({clear_x, py, clear_w, btn_h,
+            float clear_x = card.content_x + jump_w + btn_gap;
+            float clear_w = draw_inspector_text_button(tr, style_, clear_x, cy, "Clear");
+            role_clear_rects_.push_back({clear_x, cy, clear_w, btn_h,
                                          node.node_id, role.role_id});
 
-            py += btn_h + 4.0f;
+            py = body_y + body_h;
         } else {
-            // Unbound: "+ Bind..." button
-            py += 4.0f;
-            float bind_w = tr.text_width("+ Bind...", 0.85f) + 12.0f;
-            tr.draw_rect(px, py, bind_w, btn_h,
-                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-            tr.draw_text(px + 6, py + 1, "+ Bind...",
-                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.85f);
-            role_bind_rects_.push_back({px, py, bind_w, btn_h,
+            float body_h = role.default_operator_type.empty()
+                ? (8.0f + btn_h + 8.0f)
+                : (8.0f + btn_h + 4.0f + kLineH + 8.0f);
+            auto card = draw_inspector_card(tr, style_, body_x, body_y, body_w, body_h, inner_pad);
+
+            float cy = body_y + 8.0f;
+            float bind_w = draw_inspector_text_button(tr, style_, card.content_x, cy, "+ Bind...", 0.85f);
+            role_bind_rects_.push_back({card.content_x, cy, bind_w, btn_h,
                                         node.node_id, role.role_id});
 
             // Show default type hint if set
             if (!role.default_operator_type.empty()) {
-                float hint_x = px + bind_w + 8.0f;
                 std::string hint = "default: " + role.default_operator_type;
-                tr.draw_text(hint_x, py + 2, hint.c_str(),
+                cy += btn_h + 4.0f;
+                hint = truncate_text(tr, hint, card.content_w, 0.7f);
+                tr.draw_text(card.content_x, cy, hint.c_str(),
                              style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
             }
 
-            py += btn_h + 4.0f;
+            py = body_y + body_h;
         }
 
         // Left accent bar for this role
         const float* dcol = domain_color(role.accepted_domain);
-        tr.draw_rect(px - 4, panel_top, 2, py - panel_top,
-                     dcol[0], dcol[1], dcol[2], 0.5f);
+        draw_inspector_left_accent(tr, px, panel_top, py, dcol);
     }
 }
 
@@ -2163,6 +2291,7 @@ void NodeGraphUI::draw_inspector_referenced_by(Renderer2D& tr, const NodeSnapsho
 
     const float panel_w = kInspContentW;
     const float btn_h = 18.0f;
+    const float inner_pad = 8.0f;
 
     // Section header
     py += 4.0f;
@@ -2202,43 +2331,40 @@ void NodeGraphUI::draw_inspector_referenced_by(Renderer2D& tr, const NodeSnapsho
     if (!collapsed) {
         for (const auto& ref : node.referenced_by) {
             py += 4.0f;
+            float body_y = py;
+            float body_h = 8.0f + btn_h + 4.0f + kLineH + 4.0f + btn_h + 8.0f;
+            auto card = draw_inspector_card(tr, style_, px, body_y, panel_w, body_h, inner_pad);
 
             // Look up host node for type name and domain color
             const auto* host = snap_.find_node(ref.host_node_id);
-            const std::string& chip_label = host ? host->type_name : ref.host_node_id;
+            std::string chip_label = host ? host->type_name : ref.host_node_id;
             VividDomain host_domain = host ? host->domain : VIVID_DOMAIN_CONTROL;
             const float* dcol = domain_color(host_domain);
+            chip_label = truncate_text(tr, chip_label, card.content_w * 0.65f, 0.85f);
 
             // Host type chip
-            float chip_w = tr.text_width(chip_label.c_str(), 0.85f) + 12.0f;
-            tr.draw_rect(px, py, chip_w, btn_h,
-                         dcol[0] * 0.3f, dcol[1] * 0.3f, dcol[2] * 0.3f, 0.8f);
-            tr.draw_text(px + 6, py + 1, chip_label.c_str(),
-                         dcol[0], dcol[1], dcol[2], 0.85f);
-            py += btn_h + 2.0f;
+            float cy = body_y + 8.0f;
+            draw_inspector_domain_chip(tr, card.content_x, cy, chip_label, dcol);
+            cy += btn_h + 4.0f;
 
             // "as [role_label]" dim text
             std::string as_label = "as " + ref.role_label;
-            tr.draw_text(px, py, as_label.c_str(),
+            as_label = truncate_text(tr, as_label, card.content_w, 0.75f);
+            tr.draw_text(card.content_x, cy, as_label.c_str(),
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.75f);
-            py += kLineH;
+            cy += kLineH + 4.0f;
 
             // Jump To button
-            float jump_w = tr.text_width("Jump To", 0.8f) + 12.0f;
-            tr.draw_rect(px, py, jump_w, btn_h,
-                         style_.slider_track[0], style_.slider_track[1], style_.slider_track[2]);
-            tr.draw_text(px + 6, py + 1, "Jump To",
-                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.8f);
-            ref_by_jump_rects_.push_back({px, py, jump_w, btn_h,
+            float jump_w = draw_inspector_text_button(tr, style_, card.content_x, cy, "Jump To");
+            ref_by_jump_rects_.push_back({card.content_x, cy, jump_w, btn_h,
                                           ref.host_node_id, ref.role_id});
 
-            py += btn_h + 4.0f;
+            py = body_y + body_h;
         }
     }
 
     // Left accent bar for referenced-by section
-    tr.draw_rect(px - 4, section_top, 2, py - section_top,
-                 kControlAccent[0], kControlAccent[1], kControlAccent[2], 0.4f);
+    draw_inspector_left_accent(tr, px, section_top, py, kControlAccent.data(), 0.4f);
 }
 
 void NodeGraphUI::draw_binding_lines(Renderer2D& tr) {
@@ -2580,7 +2706,8 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
         } else {
             line = name + " = ?";
         }
-        tr.draw_text(px, py, line.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        line = truncate_text(tr, line, panel_w, 0.85f);
+        tr.draw_text(px, py, line.c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.85f);
         py += kLineH;
     }
 }
@@ -4859,6 +4986,9 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
                                   uint32_t w, uint32_t h) {
     renderer.begin(encoder, surface, w, h);
     for (const auto& r : node_rects_) {
+        bool should_draw_thumb = (r.domain == VIVID_DOMAIN_GPU) ||
+                                 (custom_thumb_nodes_.count(r.node_id) > 0);
+        if (!should_draw_thumb) continue;
         WGPUTextureView thumb_view = cache.get_view(r.node_id);
         if (!thumb_view) continue;
         // Viewport units are physical pixels — apply zoom/pan then dpi_scale

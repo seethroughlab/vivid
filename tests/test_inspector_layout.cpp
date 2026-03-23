@@ -4,8 +4,7 @@
 
 using namespace vivid::ui;
 
-// Convenience: expected two-up column width at kInspContentW = 368
-static constexpr float kTwoUpColW = (kInspContentW - kInspColGap) / 2.0f;  // 180.0
+static constexpr float kTwoUpColW = (kInspContentW - kInspColGap) / 2.0f;
 
 static InspectorLayout make_layout(float start_y = 0.0f) {
     InspectorLayout l;
@@ -17,231 +16,185 @@ static InspectorLayout make_layout(float start_y = 0.0f) {
     return l;
 }
 
+static ParamLayoutRequest make_request(uint8_t columns, uint8_t col_index,
+                                       VividDisplayHint hint,
+                                       VividParamType type,
+                                       uint32_t choice_count = 0,
+                                       bool metadata_heavy = false,
+                                       bool long_label = false) {
+    ParamLayoutRequest req;
+    req.columns = columns;
+    req.col_index = col_index;
+    req.hint = hint;
+    req.type = type;
+    req.choice_count = choice_count;
+    req.metadata_heavy = metadata_heavy;
+    req.long_label = long_label;
+    return req;
+}
+
 int main() {
-    // =================================================================
-    // Test 1: Full-width params (columns < 2)
-    // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 1: Full-width params ===\n");
         auto layout = make_layout();
-        layout.begin_param_normalized(0, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT, 0);
+        auto plan = layout.plan_param(make_request(0, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT));
+        check(plan.row_mode == RowMode::kFull, "full-width plan selected");
+        layout.begin_param(plan);
         check_float(layout.col_w, kInspContentW, "col_w == kInspContentW");
         check_float(layout.x, layout.base_x, "x == base_x");
-        check(layout.row_columns == 0, "row_columns == 0 (single column)");
+        check(layout.row_columns == 0, "row_columns == 0");
     }
 
-    // =================================================================
-    // Test 2: Two-up passthrough (columns == 2)
-    // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 2: Two-up passthrough ===\n");
+        std::fprintf(stderr, "\n=== Test 2: Two-up compact numeric passthrough ===\n");
         auto layout = make_layout();
-
-        layout.begin_param_normalized(2, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kTwoUpColW, "col 0: col_w == two-up width");
-        check_float(layout.x, layout.base_x, "col 0: x == base_x");
-        float col0_x = layout.x;
+        auto lhs = make_request(2, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT);
+        auto rhs = make_request(2, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT);
+        check(InspectorLayout::requests_form_two_up_pair(lhs, rhs), "adjacent compact pair accepted");
+        auto plan0 = InspectorLayout::two_up_plan(0);
+        check(plan0.row_mode == RowMode::kTwoUp, "col 0 uses two-up");
+        check(plan0.compact, "col 0 marked compact");
+        check(!plan0.allow_secondary_text, "compact row suppresses secondary text");
+        layout.begin_param(plan0);
+        check_float(layout.col_w, kTwoUpColW, "col 0 width");
+        check_float(layout.x, layout.base_x, "col 0 x");
         layout.end_param(20.0f);
 
-        layout.begin_param_normalized(2, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kTwoUpColW, "col 1: col_w == two-up width");
-        check_float(layout.x, col0_x + kTwoUpColW + kInspColGap, "col 1: x offset correct");
+        auto plan1 = InspectorLayout::two_up_plan(1);
+        check(plan1.row_mode == RowMode::kTwoUp, "col 1 uses two-up");
+        layout.begin_param(plan1);
+        check_float(layout.x, layout.base_x + kTwoUpColW + kInspColGap, "col 1 x");
         layout.end_param(20.0f);
     }
 
-    // =================================================================
-    // Test 3: Knobs in 4-col → two-up auto-paired (Envelope pattern)
-    // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 3: 4-col knobs → two-up pairs ===\n");
+        std::fprintf(stderr, "\n=== Test 3: Metadata-heavy two-up request collapses to full ===\n");
+        auto lhs = make_request(2, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT, 0, true);
+        auto rhs = make_request(2, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT);
+        check(!InspectorLayout::requests_form_two_up_pair(lhs, rhs),
+              "metadata-heavy row collapses to full");
+    }
+
+    {
+        std::fprintf(stderr, "\n=== Test 4: Long-label two-up request collapses to full ===\n");
+        auto lhs = make_request(2, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT, 0, false, true);
+        auto rhs = make_request(2, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT);
+        check(!InspectorLayout::requests_form_two_up_pair(lhs, rhs),
+              "long-label row collapsed to full");
+    }
+
+    {
+        std::fprintf(stderr, "\n=== Test 5: 4-col knobs pair only as explicit adjacent rows ===\n");
         auto layout = make_layout(100.0f);
 
-        // Param 0 (KNOB, 4, 0) → two-up col 0
-        layout.begin_param_normalized(4, 0, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kTwoUpColW, "knob 0: two-up width");
-        check_float(layout.x, layout.base_x, "knob 0: col 0 position");
+        auto req0 = make_request(4, 0, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT);
+        auto req1 = make_request(4, 1, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT);
+        auto req2 = make_request(4, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT);
+        auto req3 = make_request(4, 3, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT);
+
+        check(InspectorLayout::requests_form_two_up_pair(req0, req1), "knob 0/1 pair");
+        check(InspectorLayout::requests_form_two_up_pair(req2, req3), "knob 2/3 pair");
+        check(!InspectorLayout::requests_form_two_up_pair(req1, req2), "no modulo remap across 1/2");
+
+        auto p0 = InspectorLayout::two_up_plan(0);
+        auto p1 = InspectorLayout::two_up_plan(1);
+        auto p2 = InspectorLayout::two_up_plan(0);
+        auto p3 = InspectorLayout::two_up_plan(1);
+        layout.begin_param(p0);
         float row1_y = layout.y;
         layout.end_param(40.0f);
-
-        // Param 1 (KNOB, 4, 1) → two-up col 1
-        layout.begin_param_normalized(4, 1, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.x, layout.base_x + kTwoUpColW + kInspColGap, "knob 1: col 1 position");
-        check_float(layout.y, row1_y, "knob 1: y reset to row start");
+        layout.begin_param(p1);
+        check_float(layout.y, row1_y, "row 1 reused");
         layout.end_param(40.0f);
-
-        // Param 2 (KNOB, 4, 2) → two-up col 0 (new row)
-        layout.begin_param_normalized(4, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.x, layout.base_x, "knob 2: col 0 position (new row)");
-        check(layout.y > row1_y, "knob 2: y advanced past first row");
+        layout.begin_param(p2);
+        check(layout.y > row1_y, "row advanced");
         float row2_y = layout.y;
         layout.end_param(40.0f);
-
-        // Param 3 (KNOB, 4, 3) → two-up col 1
-        layout.begin_param_normalized(4, 3, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.x, layout.base_x + kTwoUpColW + kInspColGap, "knob 3: col 1 position");
-        check_float(layout.y, row2_y, "knob 3: y reset to row 2 start");
+        layout.begin_param(p3);
+        check_float(layout.y, row2_y, "row 2 reused");
         layout.end_param(40.0f);
     }
 
-    // =================================================================
-    // Test 4: Mixed hints in 4-col (LFO pattern)
-    // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 4: Mixed 4-col (DEFAULT, KNOB, KNOB, DEFAULT) ===\n");
-        auto layout = make_layout(0.0f);
-
-        // Param 0: DEFAULT slider → full width
-        layout.begin_param_normalized(4, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kInspContentW, "param 0: full width (slider)");
-        layout.end_param(30.0f);
-        float after_p0 = layout.y;
-
-        // Param 1: KNOB → two-up col 0
-        layout.begin_param_normalized(4, 1, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kTwoUpColW, "param 1: two-up width (knob)");
-        check_float(layout.x, layout.base_x, "param 1: col 0");
-        layout.end_param(40.0f);
-
-        // Param 2: KNOB → two-up col 1
-        layout.begin_param_normalized(4, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kTwoUpColW, "param 2: two-up width (knob)");
-        check_float(layout.x, layout.base_x + kTwoUpColW + kInspColGap, "param 2: col 1");
-        layout.end_param(40.0f);
-
-        // Param 3: DEFAULT slider → full width (flushes knob row)
-        layout.begin_param_normalized(4, 3, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kInspContentW, "param 3: full width (slider)");
-        check(layout.y >= after_p0 + 40.0f, "param 3: y past knob row");
-        layout.end_param(30.0f);
+        std::fprintf(stderr, "\n=== Test 6: Non-knob legacy 4-col requests normalize to full ===\n");
+        auto lhs = make_request(4, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT);
+        auto rhs = make_request(4, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT);
+        check(!InspectorLayout::requests_form_two_up_pair(lhs, rhs),
+              "legacy slider normalized to full");
     }
 
-    // =================================================================
-    // Test 5: Sliders in 3-col → all full width
-    // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 5: 3-col sliders → full width ===\n");
+        std::fprintf(stderr, "\n=== Test 7: Dropdown/bool/file/text stay full-width ===\n");
+        check(!InspectorLayout::requests_form_two_up_pair(
+                  make_request(3, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_INT, 3),
+                  make_request(3, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_INT, 3)),
+              "dropdown full-width");
+        check(!InspectorLayout::requests_form_two_up_pair(
+                  make_request(3, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_BOOL),
+                  make_request(3, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_BOOL)),
+              "bool full-width");
+        check(!InspectorLayout::requests_form_two_up_pair(
+                  make_request(3, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FILE),
+                  make_request(3, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FILE)),
+              "file full-width");
+        check(!InspectorLayout::requests_form_two_up_pair(
+                  make_request(3, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_TEXT),
+                  make_request(3, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_TEXT)),
+              "text full-width");
+    }
+
+    {
+        std::fprintf(stderr, "\n=== Test 8: Compound widgets stay compound/full-width ===\n");
         auto layout = make_layout();
-
-        layout.begin_param_normalized(3, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kInspContentW, "slider 0: full width");
-        layout.end_param(20.0f);
-
-        layout.begin_param_normalized(3, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kInspContentW, "slider 1: full width");
-        layout.end_param(20.0f);
-
-        layout.begin_param_normalized(3, 2, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kInspContentW, "slider 2: full width");
-        layout.end_param(20.0f);
+        auto xy = layout.plan_param(make_request(0, 0, VIVID_DISPLAY_XY_PAD, VIVID_PARAM_FLOAT));
+        auto color = layout.plan_param(make_request(0, 0, VIVID_DISPLAY_COLOR, VIVID_PARAM_FLOAT));
+        check(xy.row_mode == RowMode::kCompound, "xy pad uses compound row");
+        check(color.row_mode == RowMode::kCompound, "color swatch uses compound row");
     }
 
-    // =================================================================
-    // Test 6: Orphan knob (single knob then full-width param)
-    // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 6: Orphan knob ===\n");
-        auto layout = make_layout(50.0f);
-
-        // Single KNOB in >=3 col slot
-        layout.begin_param_normalized(4, 0, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kTwoUpColW, "orphan knob: two-up width");
-        check_float(layout.x, layout.base_x, "orphan knob: col 0");
-        layout.end_param(40.0f);
-
-        // Next param is full-width → flushes the incomplete knob row
-        layout.begin_param_normalized(0, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kInspContentW, "next param: full width");
-        check_float(layout.y, 50.0f + 40.0f, "y advanced past orphan knob row");
-        layout.end_param(20.0f);
-    }
-
-    // =================================================================
-    // Test 7: Dropdown in >=3 col → full width
-    // =================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 7: Dropdown in 4-col → full width ===\n");
-        auto layout = make_layout();
-
-        // KNOB at (4, 0) → two-up col 0
-        layout.begin_param_normalized(4, 0, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        check_float(layout.col_w, kTwoUpColW, "knob: two-up width");
-        layout.end_param(40.0f);
-
-        // Dropdown (choice_count > 0) at (4, 1) → full width
-        layout.begin_param_normalized(4, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_INT, 3);
-        check_float(layout.col_w, kInspContentW, "dropdown: full width despite 4-col");
-        check(layout.two_up_next_col == 0, "two_up_next_col reset after dropdown");
-        layout.end_param(20.0f);
-    }
-
-    // =================================================================
-    // Test 8: Bool/File/Text in >=3 col → full width
-    // =================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 8: Bool/File/Text in 3-col → full width ===\n");
-        auto layout = make_layout();
-
-        layout.begin_param_normalized(3, 0, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_BOOL, 0);
-        check_float(layout.col_w, kInspContentW, "bool: full width");
-        layout.end_param(20.0f);
-
-        layout.begin_param_normalized(3, 1, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_FILE, 0);
-        check_float(layout.col_w, kInspContentW, "file: full width");
-        layout.end_param(20.0f);
-
-        layout.begin_param_normalized(3, 2, VIVID_DISPLAY_DEFAULT, VIVID_PARAM_TEXT, 0);
-        check_float(layout.col_w, kInspContentW, "text: full width");
-        layout.end_param(20.0f);
-    }
-
-    // =================================================================
-    // Test 9: Row flushing uses tallest column height
-    // =================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 9: Row flush uses max height ===\n");
+        std::fprintf(stderr, "\n=== Test 9: Row flush uses tallest two-up column ===\n");
         auto layout = make_layout(10.0f);
+        ParamLayoutPlan col0;
+        col0.row_mode = RowMode::kTwoUp;
+        col0.column = 0;
+        ParamLayoutPlan col1 = col0;
+        col1.column = 1;
 
-        layout.begin_param(2, 0);
-        layout.end_param(30.0f);  // col 0: 30px tall
-
-        layout.begin_param(2, 1);
-        layout.end_param(50.0f);  // col 1: 50px tall
-
+        layout.begin_param(col0);
+        layout.end_param(30.0f);
+        layout.begin_param(col1);
+        layout.end_param(50.0f);
         layout.flush_row();
-        check_float(layout.y, 10.0f + 50.0f, "y advanced by tallest column (50)");
+        check_float(layout.y, 60.0f, "y advanced by tallest column");
     }
 
-    // =================================================================
-    // Test 10: Control order preservation (Envelope ADSR)
-    // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 10: Control order (ADSR) ===\n");
-        auto layout = make_layout();
+        std::fprintf(stderr, "\n=== Test 10: Compact rows preserve control order, not legacy modulo semantics ===\n");
+        check(InspectorLayout::requests_form_two_up_pair(
+                  make_request(4, 0, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+                  make_request(4, 1, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT)),
+              "A/D pair accepted");
+        check(InspectorLayout::requests_form_two_up_pair(
+                  make_request(4, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+                  make_request(4, 3, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT)),
+              "S/R pair accepted");
+        check(!InspectorLayout::requests_form_two_up_pair(
+                  make_request(4, 1, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT),
+                  make_request(4, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT)),
+              "1/2 never form an arithmetic modulo pair");
+    }
 
-        // A: col 0 of first row
-        layout.begin_param_normalized(4, 0, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        float a_x = layout.x;
-        layout.end_param(40.0f);
-
-        // D: col 1 of first row
-        layout.begin_param_normalized(4, 1, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        float d_x = layout.x;
-        layout.end_param(40.0f);
-
-        // S: col 0 of second row
-        layout.begin_param_normalized(4, 2, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        float s_x = layout.x;
-        layout.end_param(40.0f);
-
-        // R: col 1 of second row
-        layout.begin_param_normalized(4, 3, VIVID_DISPLAY_KNOB, VIVID_PARAM_FLOAT, 0);
-        float r_x = layout.x;
-        layout.end_param(40.0f);
-
-        check(a_x < d_x, "A is left of D");
-        check(s_x < r_x, "S is left of R");
-        check_float(a_x, s_x, "A and S same x (both col 0)");
-        check_float(d_x, r_x, "D and R same x (both col 1)");
+    {
+        std::fprintf(stderr, "\n=== Test 11: Stray right-column begin_param recovers instead of overlapping ===\n");
+        auto layout = make_layout(32.0f);
+        auto full = InspectorLayout::full_plan();
+        layout.begin_param(full);
+        layout.end_param(24.0f);
+        auto rogue = InspectorLayout::two_up_plan(1);
+        layout.begin_param(2, 1);
+        check_float(layout.y, 56.0f, "stray right-column row starts from current y");
+        layout.end_param(20.0f);
     }
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
