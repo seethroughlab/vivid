@@ -24,7 +24,7 @@ struct Limiter : vivid::AudioOperatorBase {
     uint32_t init_rate_   = 0;
 
     Limiter() {
-        vivid::semantic_tag(ceiling, "amplitude_db");
+        vivid::semantic_tag(ceiling, "gain_db");
         vivid::semantic_shape(ceiling, "scalar");
         vivid::semantic_unit(ceiling, "dB");
         vivid::display_hint(ceiling, VIVID_DISPLAY_KNOB);

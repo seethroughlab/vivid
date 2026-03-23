@@ -36,7 +36,6 @@ struct FmSynth : vivid::AudioOperatorBase {
         vivid::semantic_unit(carrier_freq, "Hz");
         vivid::display_hint(carrier_freq, VIVID_DISPLAY_KNOB);
 
-        vivid::semantic_tag(mod_ratio, "ratio");
         vivid::semantic_shape(mod_ratio, "scalar");
         vivid::display_hint(mod_ratio, VIVID_DISPLAY_KNOB);
 

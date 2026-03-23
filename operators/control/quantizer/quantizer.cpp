@@ -15,11 +15,8 @@ struct Quantizer : vivid::ControlOperatorBase {
     vivid::Param<float> max_val  {"max_val",   1.0f, -10000.0f, 10000.0f};
 
     Quantizer() {
-        vivid::semantic_tag(mode, "mode");
         vivid::semantic_shape(mode, "enum");
-        vivid::semantic_tag(scale, "mode");
         vivid::semantic_shape(scale, "enum");
-        vivid::semantic_tag(root, "pitch_class");
         vivid::semantic_shape(root, "int");
         vivid::semantic_tag(num_steps, "count");
         vivid::semantic_shape(num_steps, "int");

@@ -276,7 +276,6 @@ struct LutApply : vivid::GpuOperatorBase {
     vivid::Param<int>   interpolation  {"interpolation", 1, {"Nearest", "Trilinear"}};
 
     LutApply() {
-        vivid::semantic_tag(file, "path_lut");
         vivid::semantic_shape(file, "path");
     }
 

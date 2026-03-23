@@ -23,12 +23,11 @@ struct Compressor : vivid::AudioOperatorBase {
     float env_ = 0.0f;
 
     Compressor() {
-        vivid::semantic_tag(threshold, "amplitude_db");
+        vivid::semantic_tag(threshold, "gain_db");
         vivid::semantic_shape(threshold, "scalar");
         vivid::semantic_unit(threshold, "dB");
         vivid::display_hint(threshold, VIVID_DISPLAY_KNOB);
 
-        vivid::semantic_tag(ratio, "ratio");
         vivid::semantic_shape(ratio, "scalar");
         vivid::display_hint(ratio, VIVID_DISPLAY_KNOB);
 
@@ -42,12 +41,12 @@ struct Compressor : vivid::AudioOperatorBase {
         vivid::semantic_unit(release, "ms");
         vivid::display_hint(release, VIVID_DISPLAY_KNOB);
 
-        vivid::semantic_tag(knee, "amplitude_db");
+        vivid::semantic_tag(knee, "gain_db");
         vivid::semantic_shape(knee, "scalar");
         vivid::semantic_unit(knee, "dB");
         vivid::display_hint(knee, VIVID_DISPLAY_KNOB);
 
-        vivid::semantic_tag(makeup, "amplitude_db");
+        vivid::semantic_tag(makeup, "gain_db");
         vivid::semantic_shape(makeup, "scalar");
         vivid::semantic_unit(makeup, "dB");
         vivid::display_hint(makeup, VIVID_DISPLAY_KNOB);

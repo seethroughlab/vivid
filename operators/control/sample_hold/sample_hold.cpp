@@ -8,7 +8,6 @@ struct SampleHold : vivid::ControlOperatorBase {
     vivid::Param<int> mode{"mode", 0, {"sample", "track_and_hold"}};
 
     SampleHold() {
-        vivid::semantic_tag(mode, "mode");
         vivid::semantic_shape(mode, "enum");
     }
 

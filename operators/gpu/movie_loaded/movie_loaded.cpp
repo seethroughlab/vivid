@@ -148,7 +148,7 @@ struct MovieLoaded : vivid::GpuOperatorBase {
         vivid::semantic_tag(speed, "x_playback_speed");
         vivid::semantic_shape(speed, "scalar");
 
-        vivid::semantic_tag(video_phase_offset_ms, "time_offset_ms");
+        vivid::semantic_tag(video_phase_offset_ms, "time_milliseconds");
         vivid::semantic_shape(video_phase_offset_ms, "scalar");
         vivid::semantic_unit(video_phase_offset_ms, "ms");
 

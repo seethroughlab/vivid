@@ -16,7 +16,7 @@ struct StereoPanWidth : vivid::AudioOperatorBase {
     vivid::Param<float> ms_balance{"ms_balance", 0.5f,  0.0f, 1.0f};
 
     StereoPanWidth() {
-        vivid::semantic_tag(pan, "pan_lr");
+        vivid::semantic_tag(pan, "pan");
         vivid::semantic_shape(pan, "scalar");
         vivid::display_hint(pan, VIVID_DISPLAY_KNOB);
 

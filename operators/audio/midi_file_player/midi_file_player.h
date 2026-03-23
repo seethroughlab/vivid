@@ -25,7 +25,6 @@ struct MidiFilePlayer : vivid::AudioOperatorBase {
     vivid::Param<float> velocity_scale {"velocity_scale", 1.0f, 0.0f, 4.0f};
 
     MidiFilePlayer() {
-        vivid::semantic_tag(file, "path_midi");
         vivid::semantic_shape(file, "path");
     }
 

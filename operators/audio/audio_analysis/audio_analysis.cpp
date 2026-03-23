@@ -27,7 +27,6 @@ struct AudioAnalysis : vivid::AudioOperatorBase {
     vivid::Param<float> smoothing{"smoothing", 0.9f, 0.0f, 0.99f};
 
     AudioAnalysis() {
-        vivid::semantic_tag(smoothing, "coefficient");
         vivid::semantic_shape(smoothing, "scalar");
     }
 
