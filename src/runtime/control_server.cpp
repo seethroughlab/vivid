@@ -41,6 +41,17 @@
 namespace vivid {
 
 // ---------------------------------------------------------------------------
+// Timeout constants (seconds)
+// ---------------------------------------------------------------------------
+static constexpr int kCaptureTimeoutSec           = 5;
+static constexpr int kInterfaceCaptureTimeoutSec   = 10;
+static constexpr int kRecordingTimeoutSec          = 10;
+static constexpr int kAnalysisTimeoutSec           = 10;
+static constexpr int kDefaultDispatchTimeoutSec    = 5;
+static constexpr int kSampleNodeOutputsTimeoutSec  = 30;
+static constexpr int kTestPackageTimeoutSec        = 60;
+
+// ---------------------------------------------------------------------------
 // Enum → string helpers
 // ---------------------------------------------------------------------------
 
@@ -485,6 +496,144 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
     }
     yyjson_mut_obj_add_val(doc, result, "connections", conns_arr);
 
+    return json_ok(doc, result);
+}
+
+static const NodeState* find_node_state(const Scheduler& scheduler,
+                                        const std::string& node_id) {
+    for (const auto& ns : scheduler.nodes()) {
+        if (ns.node_id == node_id) return &ns;
+    }
+    return nullptr;
+}
+
+static yyjson_mut_val* sample_node_outputs_snapshot(yyjson_mut_doc* doc,
+                                                    const NodeState& ns,
+                                                    bool include_spreads) {
+    yyjson_mut_val* outputs_obj = yyjson_mut_obj(doc);
+    const VividOperatorDescriptor* desc = ns.loader ? ns.loader->descriptor() : nullptr;
+    if (!desc) return outputs_obj;
+
+    for (uint32_t pi = 0; pi < desc->port_count; ++pi) {
+        const auto& pd = desc->ports[pi];
+        if (pd.direction != VIVID_PORT_OUTPUT) continue;
+
+        yyjson_mut_val* out = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, out, "kind", port_type_str(pd.type));
+        yyjson_mut_obj_add_str(doc, out, "transport", transport_str(pd.transport));
+        if (pd.type_name)
+            yyjson_mut_obj_add_strcpy(doc, out, "type_name", pd.type_name);
+        if (pd.stable_type_id)
+            yyjson_mut_obj_add_strcpy(doc, out, "stable_type_id", pd.stable_type_id);
+
+        auto oit = ns.output_port_indices.find(pd.name);
+        if (oit != ns.output_port_indices.end()) {
+            const uint32_t oi = oit->second;
+            if (oi < ns.output_values.size()) {
+                yyjson_mut_obj_add_real(doc, out, "scalar",
+                                        static_cast<double>(ns.output_values[oi]));
+            }
+            if (oi < ns.output_string_values.size() &&
+                !ns.output_string_values[oi].empty()) {
+                yyjson_mut_obj_add_strcpy(doc, out, "string",
+                                          ns.output_string_values[oi].c_str());
+            }
+            if (include_spreads && oi < ns.output_spreads.size() &&
+                !ns.output_spreads[oi].empty()) {
+                yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                for (float sv : ns.output_spreads[oi]) {
+                    yyjson_mut_arr_add_real(doc, spread_arr, static_cast<double>(sv));
+                }
+                yyjson_mut_obj_add_val(doc, out, "spread", spread_arr);
+            }
+            if (include_spreads && oi < ns.output_string_spreads.size() &&
+                !ns.output_string_spreads[oi].empty()) {
+                yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                for (const auto& sv : ns.output_string_spreads[oi]) {
+                    yyjson_mut_arr_add_strcpy(doc, spread_arr, sv.c_str());
+                }
+                yyjson_mut_obj_add_val(doc, out, "string_spread", spread_arr);
+            }
+        }
+
+        yyjson_mut_obj_add_val(doc, outputs_obj, pd.name, out);
+    }
+
+    return outputs_obj;
+}
+
+static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler,
+                                              yyjson_val* root) {
+    if (!root) return json_err("invalid JSON body");
+
+    yyjson_val* node_v = yyjson_obj_get(root, "node_id");
+    if (!node_v || !yyjson_is_str(node_v)) return json_err("missing 'node_id'");
+    std::string node_id = yyjson_get_str(node_v);
+
+    double duration_seconds = 8.0;
+    int interval_ms = 250;
+    bool include_spreads = true;
+
+    if (yyjson_val* dur_v = yyjson_obj_get(root, "duration_seconds")) {
+        if (yyjson_is_real(dur_v)) duration_seconds = yyjson_get_real(dur_v);
+        else if (yyjson_is_int(dur_v)) duration_seconds = static_cast<double>(yyjson_get_int(dur_v));
+    }
+    if (yyjson_val* interval_v = yyjson_obj_get(root, "interval_ms")) {
+        if (yyjson_is_int(interval_v)) interval_ms = static_cast<int>(yyjson_get_int(interval_v));
+        else if (yyjson_is_real(interval_v)) interval_ms = static_cast<int>(yyjson_get_real(interval_v));
+    }
+    if (yyjson_val* spread_v = yyjson_obj_get(root, "include_spreads")) {
+        if (yyjson_is_bool(spread_v)) include_spreads = yyjson_get_bool(spread_v);
+    }
+
+    duration_seconds = std::clamp(duration_seconds, 0.0, 60.0);
+    interval_ms = std::clamp(interval_ms, 10, 5000);
+
+    const NodeState* initial = find_node_state(scheduler, node_id);
+    if (!initial) return json_err("node not found");
+    if (!initial->loader || !initial->loader->descriptor()) {
+        return json_err("node has no live descriptor");
+    }
+
+    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
+    yyjson_mut_val* result = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_strcpy(doc, result, "node_id", node_id.c_str());
+    yyjson_mut_obj_add_strcpy(doc, result, "type", initial->type_name.c_str());
+    yyjson_mut_obj_add_str(doc, result, "domain",
+                           initial->is_gpu ? "gpu" : (initial->is_audio ? "audio" : "control"));
+    yyjson_mut_obj_add_real(doc, result, "duration_seconds", duration_seconds);
+    yyjson_mut_obj_add_int(doc, result, "interval_ms", interval_ms);
+    yyjson_mut_obj_add_bool(doc, result, "include_spreads", include_spreads);
+
+    yyjson_mut_val* samples_arr = yyjson_mut_arr(doc);
+    const auto start = std::chrono::steady_clock::now();
+    const auto end = start + std::chrono::duration<double>(duration_seconds);
+    auto next_sample = start;
+    int sample_count = 0;
+
+    while (true) {
+        const auto now = std::chrono::steady_clock::now();
+        const NodeState* ns = find_node_state(scheduler, node_id);
+        if (!ns) {
+            yyjson_mut_doc_free(doc);
+            return json_err("node disappeared during sampling");
+        }
+
+        yyjson_mut_val* sample = yyjson_mut_obj(doc);
+        const double t = std::chrono::duration<double>(now - start).count();
+        yyjson_mut_obj_add_real(doc, sample, "time_seconds", t);
+        yyjson_mut_obj_add_val(doc, sample, "outputs",
+                               sample_node_outputs_snapshot(doc, *ns, include_spreads));
+        yyjson_mut_arr_add_val(samples_arr, sample);
+        ++sample_count;
+
+        if (now >= end) break;
+        next_sample += std::chrono::milliseconds(interval_ms);
+        std::this_thread::sleep_until(next_sample);
+    }
+
+    yyjson_mut_obj_add_int(doc, result, "sample_count", sample_count);
+    yyjson_mut_obj_add_val(doc, result, "samples", samples_arr);
     return json_ok(doc, result);
 }
 
@@ -1682,6 +1831,8 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
     if (method == "validate_checks") {
         result = handle_validate_checks(root);
+    } else if (method == "sample_node_outputs") {
+        result = handle_sample_node_outputs(graph, scheduler, root);
     } else if (method == "run_checks") {
         result = handle_run_checks(graph, scheduler, registry, root);
     } else if (method == "add_node") {
@@ -3135,7 +3286,7 @@ bool ControlServer::start(int port) {
                     future = capture_coordinator_->request_stop_recording();
                 }
 
-                auto status = future.wait_for(std::chrono::seconds(10));
+                auto status = future.wait_for(std::chrono::seconds(kRecordingTimeoutSec));
                 std::string response_body;
                 if (status == std::future_status::ready)
                     response_body = future.get();
@@ -3201,7 +3352,7 @@ bool ControlServer::start(int port) {
                 } else {
                     future = capture_coordinator_->request_capture(ctype, audio_dur);
                 }
-                auto status = future.wait_for(std::chrono::seconds(method == "capture_interface" ? 10 : 5));
+                auto status = future.wait_for(std::chrono::seconds(method == "capture_interface" ? kInterfaceCaptureTimeoutSec : kCaptureTimeoutSec));
                 std::string response_body;
                 if (status == std::future_status::ready)
                     response_body = future.get();
@@ -3284,8 +3435,7 @@ bool ControlServer::start(int port) {
                 else
                     future = capture_coordinator_->request_compare(amode, window_a, window_b, include_payload, node_id);
 
-                // Wait with 10s timeout (analysis windows up to 2s + processing)
-                auto status = future.wait_for(std::chrono::seconds(10));
+                auto status = future.wait_for(std::chrono::seconds(kAnalysisTimeoutSec));
                 std::string response_body;
                 if (status == std::future_status::ready)
                     response_body = future.get();
@@ -3503,7 +3653,7 @@ bool ControlServer::start(int port) {
                     std::lock_guard<std::mutex> lock(impl_->queue_mutex);
                     impl_->queue.push_back(std::move(req));
                 }
-                auto status = future.wait_for(std::chrono::seconds(60));
+                auto status = future.wait_for(std::chrono::seconds(kTestPackageTimeoutSec));
                 std::string response_body;
                 if (status == std::future_status::ready)
                     response_body = future.get();
@@ -3516,6 +3666,8 @@ bool ControlServer::start(int port) {
             }
 
             // Push request to queue, block until main thread processes it
+            const bool is_sample_node_outputs = (method == "sample_node_outputs");
+
             Impl::PendingRequest req;
             req.method = std::move(method);
             req.body = request->body;
@@ -3526,7 +3678,9 @@ bool ControlServer::start(int port) {
                 impl_->queue.push_back(std::move(req));
             }
 
-            auto status = future.wait_for(std::chrono::seconds(5));
+            const int timeout_seconds =
+                is_sample_node_outputs ? kSampleNodeOutputsTimeoutSec : kDefaultDispatchTimeoutSec;
+            auto status = future.wait_for(std::chrono::seconds(timeout_seconds));
             std::string response_body;
             if (status == std::future_status::ready)
                 response_body = future.get();
