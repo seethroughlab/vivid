@@ -198,6 +198,24 @@ class PerceptionMCPTests(unittest.TestCase):
             self.mod._post = original
         self.assertEqual(out, '{"ok":true}')
 
+    def test_sample_node_outputs_bridge(self):
+        async def fake_post(method, body=None, timeout=10.0):
+            self.assertEqual(method, "sample_node_outputs")
+            self.assertEqual(body["node_id"], "cp1")
+            self.assertEqual(body["duration_seconds"], 8.0)
+            self.assertEqual(body["interval_ms"], 250)
+            self.assertEqual(body["include_spreads"], True)
+            self.assertEqual(timeout, 13.0)
+            return '{"ok":true}'
+
+        original = self.mod._post
+        self.mod._post = fake_post
+        try:
+            out = asyncio.run(self.mod.sample_node_outputs("cp1", 8.0, 250, True))
+        finally:
+            self.mod._post = original
+        self.assertEqual(out, '{"ok":true}')
+
     def test_load_graph_bridge(self):
         async def fake_post(method, body=None):
             self.assertEqual(method, "load_graph")
@@ -227,6 +245,16 @@ class PerceptionMCPTests(unittest.TestCase):
         self.assertTrue(out["ok"])
         self.assertEqual(out["status"], "external_running")
         self.assertFalse(out["bridge_managed"])
+
+    def test_bridge_smoke_uses_session_helper(self):
+        smoke_src = (
+            pathlib.Path(__file__).resolve().parent.parent
+            / "scripts"
+            / "mcp_bridge_smoke.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("from vivid_mcp_session import VividMCPSession", smoke_src)
+        self.assertNotIn("spec_from_file_location", smoke_src)
+        self.assertNotIn("_load_bridge_module", smoke_src)
 
     def test_ensure_runtime_reuses_existing(self):
         original_reachable = self.mod._runtime_is_reachable

@@ -61,13 +61,13 @@ the dedicated operator development MCP server provides comprehensive resources.
 """)
 
 
-async def _post(method: str, body: dict | None = None) -> str:
+async def _post(method: str, body: dict | None = None, timeout: float = 10.0) -> str:
     """POST to the Vivid control server and return the JSON response as text."""
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{VIVID_URL}/{method}",
             json=body or {},
-            timeout=10.0,
+            timeout=timeout,
         )
         return resp.text
 
@@ -118,7 +118,7 @@ async def _runtime_is_reachable() -> bool:
             resp = await client.post(f"{VIVID_URL}/list_nodes", json={}, timeout=1.0)
         payload = json.loads(resp.text)
         return bool(payload.get("ok", False))
-    except Exception:
+    except Exception:  # connection refused, timeout, invalid JSON — all mean unreachable
         return False
 
 
@@ -127,7 +127,7 @@ async def _load_graph_path(graph_path: str) -> tuple[bool, str]:
     raw = await _post("load_graph", {"path": resolved_graph})
     try:
         payload = json.loads(raw)
-    except Exception:
+    except (ValueError, TypeError):
         return False, raw
     return bool(payload.get("ok", False)), raw
 
@@ -182,7 +182,7 @@ def _compact_envelope(raw: str) -> dict:
     """Create a compact, deterministic envelope for MCP-facing perception tools."""
     try:
         payload = json.loads(raw)
-    except Exception:
+    except (ValueError, TypeError):
         return {
             "ok": False,
             "schema_version": 1,
@@ -395,6 +395,22 @@ async def capture_image(mode: str = "interface",
     if mode == "output":
         return await _post("capture_frame", {})
     raise ValueError("mode must be 'interface' or 'output'")
+
+
+@mcp.tool()
+async def sample_node_outputs(node_id: str,
+                              duration_seconds: float = 8.0,
+                              interval_ms: int = 250,
+                              include_spreads: bool = True) -> str:
+    """Sample one live node repeatedly over time."""
+    body = {
+        "node_id": node_id,
+        "duration_seconds": duration_seconds,
+        "interval_ms": interval_ms,
+        "include_spreads": include_spreads,
+    }
+    timeout = max(10.0, float(duration_seconds) + 5.0)
+    return await _post("sample_node_outputs", body, timeout=timeout)
 
 
 @mcp.tool()
@@ -1205,7 +1221,7 @@ def _start_heartbeat() -> None:
                     method="POST",
                 )
                 urllib.request.urlopen(req, timeout=2)
-            except Exception:
+            except Exception:  # heartbeat is best-effort; runtime may not be up yet
                 pass
             time.sleep(15)
 

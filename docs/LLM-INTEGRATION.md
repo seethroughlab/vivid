@@ -70,6 +70,9 @@ Perception MCP tool surface (current):
 - `run_diagnostics(include_payload=false)` — compact severity summary + top hint IDs; optional full findings.
 - `validate_checks(checks, include_payload=false)` — compact validity/error-count summary; optional full validation details.
 - `run_checks(checks, include_payload=false)` — compact pass/fail summary (`all_passed`, `all_critical_passed`); optional full per-check results.
+- `analyze_output(mode="frame"|"audio"|"av", window_seconds=1.0, include_payload=false, node_id="")` — capture and analyze current output. Returns structured metrics (brightness, RMS, peak, etc.).
+- `compare_outputs(mode, window_seconds_a, window_seconds_b, include_payload, node_id)` — A/B comparison of two output windows for before/after analysis.
+- `sample_node_outputs(node_id, duration_seconds=8.0, interval_ms=250, include_spreads=true)` — time-series sampling of a node's output port values over a configurable window. Returns timestamped snapshots of scalars and spreads.
 
 Perception MCP response policy:
 - Default output is compact and deterministic for stable tool loops.
@@ -107,9 +110,9 @@ runner:
   --summary-json phase4-summary.json
 ```
 
-That runner imports `mcp/vivid_mcp.py` directly and exercises the bridge surface end-to-end
-(`ensure_runtime`, `load_graph`, `inspect_graph`, `introspect_nodes`, `capture_image`) instead of
-talking to the control server with ad hoc HTTP.
+That runner keeps one stdio MCP session open and exercises the bridge surface end-to-end
+(`ensure_runtime`, `load_graph`, `inspect_graph`, `introspect_nodes`, `capture_image`,
+`sample_node_outputs`) rather than talking to the control server with ad hoc HTTP.
 
 ### 9.2 Three Perception Layers
 

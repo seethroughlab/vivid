@@ -59,10 +59,21 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `inspect` | `node_id` | Single node params + port values |
 | `validate_checks` | `checks` | Validate check definitions (no graph needed) |
 | `run_checks` | `checks` | Run checks against live graph |
+| `sample_node_outputs` | `node_id`, `duration_seconds`, `interval_ms`, `include_spreads` | Time-series sampling of a node's output port values |
+
+### Capture
+| Method | Key params | Description |
+|--------|-----------|-------------|
+| `capture_frame` | — | Capture single GPU output frame |
+| `capture_audio` | `window_seconds` | Capture audio buffer |
+| `capture_av` | `window_seconds` | Capture synchronized audio + video |
+| `start_recording` | `path`, `fps` | Begin continuous recording to file |
+| `stop_recording` | — | End recording session |
 
 ### Graph Topology
 | Method | Key params | Description |
 |--------|-----------|-------------|
+| `new_graph` | — | Create empty graph |
 | `add_node` | `type`, `id` | Add node, queues topology rebuild |
 | `remove_node` | `node_id` | Remove node + connections |
 | `connect` | `from_addr`, `to_addr`, `semantic_defaults` | Connect ports (`node_id/port_name`) |
@@ -90,6 +101,12 @@ Role-binding payloads and snapshots still carry model/runtime fields such as `ru
 | `save_graph` | `path` (optional) | Save to file |
 | `load_graph` | `path` | Load the requested graph file into the running runtime and make it the active graph |
 
+### Undo / Redo
+| Method | Key params | Description |
+|--------|-----------|-------------|
+| `undo` | — | Undo last graph mutation |
+| `redo` | — | Redo undone mutation |
+
 ### Variations
 | Method | Key params | Description |
 |--------|-----------|-------------|
@@ -100,6 +117,8 @@ Role-binding payloads and snapshots still carry model/runtime fields such as `ru
 | `update_variation` | `name` | Overwrite with current params |
 | `list_variations` | — | All variation names |
 | `queue_variation` | `name`, `quantize` (`"instant"/"beat"/"bar"/"four_bar"`) | Schedule switch |
+| `duplicate_variation` | `name` | Clone an existing variation |
+| `move_variation` | `name`, `position` | Reorder variation in list |
 | `set_quantize_clock` | `node_id` | Set clock node for quantized switching |
 
 ### Per-Operator Presets
@@ -133,6 +152,22 @@ Role-binding payloads and snapshots still carry model/runtime fields such as `ru
 |--------|-----------|-------------|
 | `set_solo` | `node_id` (empty = clear) | Solo a GPU node |
 | `get_solo` | — | Current solo node |
+
+### Sticky Notes
+| Method | Key params | Description |
+|--------|-----------|-------------|
+| `add_sticky_note` | `text`, `x`, `y`, `width`, `height`, `color`, `id` | Add annotation to graph canvas |
+| `list_sticky_notes` | — | All sticky notes in current graph |
+| `update_sticky_note` | `id`, `text`, `x`, `y`, `width`, `height`, `color` | Update note (all fields optional except `id`) |
+| `remove_sticky_note` | `id` | Delete note |
+
+### Utility
+| Method | Key params | Description |
+|--------|-----------|-------------|
+| `mcp_ping` | `server` | Heartbeat / liveness check for MCP clients |
+| `package_catalog` | — | Fetch remote package catalog metadata |
+| `check_package_updates` | `core_version`, `include_all_installed` | Check installed package update status |
+| `check_core_updates` | `force_refresh` | Check core app update availability |
 
 ### Packages
 | Method | Key params | Description |
