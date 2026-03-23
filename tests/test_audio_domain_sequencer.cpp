@@ -150,6 +150,36 @@ int main(int argc, char* argv[]) {
         check(osc_peak > 0.001f, "Oscillator produced non-zero audio output");
     }
 
+    int clock_sched_idx = -1;
+    for (size_t i = 0; i < sched.nodes().size(); ++i) {
+        if (sched.nodes()[i].node_id == "clock1") {
+            clock_sched_idx = static_cast<int>(i);
+            break;
+        }
+    }
+    check(clock_sched_idx >= 0, "Clock node found in scheduler");
+    if (clock_sched_idx >= 0) {
+        const auto& clock_ns = sched.nodes()[clock_sched_idx];
+        auto beat_phase_it = clock_ns.output_port_indices.find("beat_phase");
+        auto beat_ms_it = clock_ns.output_port_indices.find("beat_ms");
+        auto bar_phase_it = clock_ns.output_port_indices.find("bar_phase");
+        check(beat_phase_it != clock_ns.output_port_indices.end(), "Clock beat_phase output exists");
+        check(beat_ms_it != clock_ns.output_port_indices.end(), "Clock beat_ms output exists");
+        check(bar_phase_it != clock_ns.output_port_indices.end(), "Clock bar_phase output exists");
+        if (beat_phase_it != clock_ns.output_port_indices.end() &&
+            beat_ms_it != clock_ns.output_port_indices.end() &&
+            bar_phase_it != clock_ns.output_port_indices.end()) {
+            float beat_phase = clock_ns.output_values[beat_phase_it->second];
+            float beat_ms = clock_ns.output_values[beat_ms_it->second];
+            float bar_phase = clock_ns.output_values[bar_phase_it->second];
+            std::fprintf(stderr, "    clock1 beat_phase=%.6f beat_ms=%.6f bar_phase=%.6f\n",
+                         beat_phase, beat_ms, bar_phase);
+            check(beat_phase > 0.001f, "Clock beat_phase advances");
+            check(std::fabs(beat_ms - 500.0f) < 0.5f, "Clock beat_ms remains correct");
+            check(bar_phase > 0.001f, "Clock bar_phase advances");
+        }
+    }
+
     // Check no errors on any audio node
     bool any_error = false;
     for (size_t i = 0; i < analysis.errored.size(); ++i) {

@@ -23,7 +23,7 @@ Per-operator audio state. Notable fields:
 - `input_buffers` / `output_buffers`: `[port][sample]` float arrays, pre-allocated
 - `in_ptrs` / `out_ptrs`: `float*` arrays passed to `VividAudioContext`
 - `float_input_values` / `float_input_count`: VIVID_PORT_FLOAT input ports (cross-domain CV)
-- `float_output_values` / `float_output_count`: VIVID_PORT_FLOAT output ports (audio → control)
+- `float_output_values` / `float_output_count`: audio-domain `VIVID_PORT_SIGNAL` scalar outputs (audio → control)
 - `spread_inputs` / `spread_outputs`: `SpreadSnapshot[input_port_idx]`
 - `custom_input_values` / `custom_output_ptrs`: custom-type port values
 - `errored`, `error_message[256]`: fixed-size, no heap allocation on audio thread
@@ -144,6 +144,12 @@ When a mono audio operator is wired to a stereo chain, the engine auto-duplicate
 - Error messages use `char[256]` arrays (not `std::string`) to avoid heap allocation
 
 ## Recent Hardening Guarantees
+
+- audio-domain `VIVID_PORT_SIGNAL` outputs now support both internal bridge paths:
+  scalar-written outputs can write `ctx->output_float_values[...]` directly, while
+  buffer-backed outputs can still rely on last-sample extraction from `output_buffers[...]`
+- the engine preserves explicit scalar signal writes and only auto-extracts from
+  `output_buffers` when the scalar slot was left untouched by the operator
 
 - control-to-audio `FLOAT` inputs are now snapshotted through `ParamSnapshot` just like other
   cross-domain audio inputs; they are no longer written live into `AudioNodeState` from the main thread

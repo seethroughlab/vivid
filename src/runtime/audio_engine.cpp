@@ -13,8 +13,13 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 
 namespace vivid {
+
+static float unset_signal_output_sentinel() {
+    return std::numeric_limits<float>::quiet_NaN();
+}
 
 // Compute a linear scale equivalent from ConnectionDef remap fields.
 // Audio engine wires use a simple float scale; this extracts the gain factor.
@@ -1451,8 +1456,11 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
 
             double time = static_cast<double>(audio_frame_ + frames_written) / kSampleRate;
 
-            // Reset float output values and custom output pointers
-            std::fill(ns.float_output_values.begin(), ns.float_output_values.end(), 0.0f);
+            // Reset float output values to a sentinel so we can distinguish
+            // scalar-written SIGNAL outputs from buffer-backed SIGNAL outputs
+            // that still need last-sample extraction after process_audio().
+            std::fill(ns.float_output_values.begin(), ns.float_output_values.end(),
+                      unset_signal_output_sentinel());
             std::fill(ns.custom_output_ptrs.begin(), ns.custom_output_ptrs.end(), nullptr);
 
             // Check if this is an auto-dup node
@@ -1606,12 +1614,21 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                 }
             }
 
-            // Auto-extract last sample from SIGNAL output buffers → float_output_values
+            // Auto-extract last sample from buffer-backed SIGNAL outputs only when the
+            // operator left the scalar slot untouched. Scalar-writing audio operators
+            // such as Clock intentionally write ctx->output_float_values directly.
             for (const auto& se : ns.signal_output_extractions) {
-                if (se.port_idx < ns.output_buffers.size() && chunk > 0) {
+                if (se.float_ordinal >= ns.float_output_values.size())
+                    continue;
+                if (std::isnan(ns.float_output_values[se.float_ordinal]) &&
+                    se.port_idx < ns.output_buffers.size() && chunk > 0) {
                     ns.float_output_values[se.float_ordinal] =
                         ns.output_buffers[se.port_idx][chunk - 1];
                 }
+            }
+            for (auto& out : ns.float_output_values) {
+                if (std::isnan(out))
+                    out = 0.0f;
             }
 
             // Route spread outputs to downstream audio nodes via audio spread wires

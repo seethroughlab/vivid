@@ -324,6 +324,18 @@ static void test_signal_auto_extraction() {
     // Last sample should be 255/255 = 1.0
     check_float(ns.float_output_values[0], 1.0f, 0.001f,
                 "auto-extracted last sample = 1.0");
+
+    // Scalar-written outputs must survive the same extraction pass unchanged.
+    ns.float_output_values[0] = 0.37f;
+    for (const auto& se : ns.signal_output_extractions) {
+        if (se.port_idx < ns.output_buffers.size() && chunk > 0 &&
+            std::isnan(ns.float_output_values[se.float_ordinal])) {
+            ns.float_output_values[se.float_ordinal] =
+                ns.output_buffers[se.port_idx][chunk - 1];
+        }
+    }
+    check_float(ns.float_output_values[0], 0.37f, 0.001f,
+                "scalar-written signal output preserved");
 }
 
 // =====================================================================
