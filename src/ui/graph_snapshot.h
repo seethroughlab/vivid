@@ -227,9 +227,13 @@ struct GraphSnapshot {
     std::unordered_map<std::string, int> audio_index;  // node_id -> audio engine index
     std::vector<AudioNodeAnalysis> audio_analysis;
 
-    // Audio underrun detection
+    // Audio engine stats
     uint32_t audio_underrun_count = 0;
     bool audio_underrun_active = false;
+    float audio_load = 0.0f;            // 0.0–1.0 callback budget usage
+    uint32_t audio_sample_rate = 0;
+    uint32_t audio_buffer_size = 0;
+    uint32_t audio_node_count = 0;
 
     // MIDI mapping data
     std::vector<MidiMappingSnapshot> midi_mappings;

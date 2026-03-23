@@ -292,6 +292,8 @@ public:
 
     uint32_t underrun_count() const { return underrun_count_.load(std::memory_order_relaxed); }
     bool last_buffer_underrun() const { return last_buffer_underrun_.load(std::memory_order_relaxed); }
+    float audio_load() const { return audio_load_.load(std::memory_order_relaxed); }
+    uint32_t node_count() const { return static_cast<uint32_t>(nodes_.size()); }
 
     // Test-only accessors — expose internal state for white-box snapshot contract tests.
     float float_input_value_for_test(int node_idx, int port_idx) const;
@@ -378,6 +380,7 @@ private:
     // Underrun detection
     std::atomic<uint32_t> underrun_count_{0};
     std::atomic<bool> last_buffer_underrun_{false};
+    std::atomic<float> audio_load_{0.0f};
 
     // Recording tap (stereo mix capture)
     RecordingTap recording_tap_;

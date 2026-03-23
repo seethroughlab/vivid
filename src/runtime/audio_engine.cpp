@@ -244,15 +244,33 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     sw.scale = remap_to_scale(conn);
                     audio_spread_wires_.push_back(sw);
                 } else if (from_ptype == VIVID_PORT_SIGNAL && to_ptype == VIVID_PORT_SIGNAL) {
-                    // SIGNAL→SIGNAL: check if source has buffer extraction (writes
-                    // to output_buffers). If so, route as AudioWire for per-sample
-                    // delivery. Otherwise fall back to scalar AudioFloatPortWire.
+                    // SIGNAL→SIGNAL: always create a scalar float wire so that
+                    // operators reading input_float_values (e.g. ChordProgression
+                    // reading beat_phase) receive the value regardless of whether
+                    // the source writes to output_float_values or output_buffers.
+                    // Additionally create a buffer wire when the source has a
+                    // buffer slot, for operators that read per-sample input_buffers.
+                    uint32_t from_float_ord = 0;
+                    for (uint32_t pi = 0; pi < fp_it->second; ++pi) {
+                        if (from_ns.output_port_types[pi] == VIVID_PORT_SIGNAL) from_float_ord++;
+                    }
+                    uint32_t to_float_ord = 0;
+                    for (uint32_t pi = 0; pi < tp_it->second; ++pi) {
+                        if (to_ns.input_port_types[pi] == VIVID_PORT_SIGNAL) to_float_ord++;
+                    }
+                    AudioFloatPortWire fw;
+                    fw.from_node_idx = fi;
+                    fw.from_float_port_idx = from_float_ord;
+                    fw.to_node_idx = ti;
+                    fw.to_float_port_idx = to_float_ord;
+                    fw.scale = remap_to_scale(conn);
+                    audio_float_wires_.push_back(fw);
+
                     bool source_has_buffer = false;
                     for (const auto& se : from_ns.signal_output_extractions) {
                         if (se.port_idx == fp_it->second) { source_has_buffer = true; break; }
                     }
                     if (source_has_buffer) {
-                        // Buffer routing (1-channel AudioWire)
                         AudioWire w;
                         w.from_node_idx = fi;
                         w.from_port_idx = fp_it->second;
@@ -260,23 +278,6 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                         w.to_port_idx = tp_it->second;
                         w.scale = remap_to_scale(conn);
                         wires_.push_back(w);
-                    } else {
-                        // Legacy scalar routing (AudioFloatPortWire)
-                        uint32_t from_float_ord = 0;
-                        for (uint32_t pi = 0; pi < fp_it->second; ++pi) {
-                            if (from_ns.output_port_types[pi] == VIVID_PORT_SIGNAL) from_float_ord++;
-                        }
-                        uint32_t to_float_ord = 0;
-                        for (uint32_t pi = 0; pi < tp_it->second; ++pi) {
-                            if (to_ns.input_port_types[pi] == VIVID_PORT_SIGNAL) to_float_ord++;
-                        }
-                        AudioFloatPortWire fw;
-                        fw.from_node_idx = fi;
-                        fw.from_float_port_idx = from_float_ord;
-                        fw.to_node_idx = ti;
-                        fw.to_float_port_idx = to_float_ord;
-                        fw.scale = remap_to_scale(conn);
-                        audio_float_wires_.push_back(fw);
                     }
                 } else if (vivid_is_custom_port_type(from_ptype) &&
                            vivid_is_custom_port_type(to_ptype) &&
@@ -1738,6 +1739,7 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
     auto cb_end = std::chrono::steady_clock::now();
     double budget_us = static_cast<double>(frame_count) / kSampleRate * 1e6;
     double elapsed_us = std::chrono::duration<double, std::micro>(cb_end - cb_start).count();
+    audio_load_.store(static_cast<float>(elapsed_us / budget_us), std::memory_order_relaxed);
     if (elapsed_us > budget_us) {
         underrun_count_.fetch_add(1, std::memory_order_relaxed);
         last_buffer_underrun_.store(true, std::memory_order_relaxed);
