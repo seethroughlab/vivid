@@ -182,6 +182,7 @@ public:
     const std::string& single_selected_id() const { assert(!selected_node_ids_.empty()); return *selected_node_ids_.begin(); }
 
     void toggle_visible() { visible_ = !visible_; }
+    void set_visible(bool visible) { visible_ = visible; }
     bool visible() const { return visible_; }
 
     // Graph actions (used by menu bar and bare-key shortcuts)
@@ -274,9 +275,25 @@ public:
     // Read-only UI snapshot accessors used by tests and seam verification.
     const std::vector<PackageBrowserEntry>& package_browser_entries() const { return pkg_browser_entries_; }
     const GraphMetaEditData& graph_meta_data() const { return graph_meta_data_; }
+    std::vector<std::string> selected_node_ids_for_test() const {
+        return std::vector<std::string>(selected_node_ids_.begin(), selected_node_ids_.end());
+    }
+    bool chooser_open_for_test() const { return chooser_open_; }
+    bool file_drop_chooser_open_for_test() const {
+        return chooser_open_ && chooser_mode_ == ChooserMode::FileDrop;
+    }
+    bool role_chooser_open_for_test() const { return role_chooser_open_; }
 
     // Set the directory containing the MCP Python scripts (used in setup dialog)
     void set_mcp_dir(const std::string& dir) { mcp_dir_ = dir; }
+
+    // Debug/signoff seam: force a single-node inspector selection by id.
+    // Review/debug-only selection seam used for deterministic inspector capture.
+    // This does not modify persisted graph state or undo history.
+    bool select_single_node_for_review(const std::string& node_id);
+    bool select_single_node_for_debug(const std::string& node_id) {
+        return select_single_node_for_review(node_id);
+    }
 
 private:
     // --- Layout ---
@@ -298,9 +315,11 @@ private:
     void draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& node,
-                                  InspectorLayout& layout, uint32_t pi);
+                                  InspectorLayout& layout,
+                                  const ParamLayoutPlan& plan, uint32_t pi);
     void draw_inspector_knob(Renderer2D& tr, const NodeSnapshot& node,
-                              InspectorLayout& layout, uint32_t pi);
+                              InspectorLayout& layout,
+                              const ParamLayoutPlan& plan, uint32_t pi);
     void draw_inspector_xy_pad(Renderer2D& tr, const NodeSnapshot& node,
                                 InspectorLayout& layout, uint32_t pi_x, uint32_t pi_y);
     void draw_inspector_color_swatch(Renderer2D& tr, const NodeSnapshot& node,
@@ -374,6 +393,10 @@ private:
     void cancel_resolution_edit();
     void confirm_midi_range_edit();
     void cancel_midi_range_edit();
+    void copy_selected_nodes();
+    void paste_copied_nodes();
+    std::string next_available_node_id(const std::string& base,
+                                       const std::unordered_set<std::string>& reserved = {}) const;
 
     // --- Sorted port indices helper ---
     static std::vector<std::pair<uint32_t, std::string>> sorted_ports(
@@ -488,6 +511,13 @@ private:
     std::unordered_set<std::string> selected_node_ids_;
     int selected_wire_idx_ = -1;  // index into snap_.connections, or -1
     std::vector<NodeRect> node_rects_;
+    struct ClipboardNode {
+        NodeSnapshot node;
+        float rel_x = 0.0f;
+        float rel_y = 0.0f;
+    };
+    std::vector<ClipboardNode> clipboard_nodes_;
+    std::vector<ConnectionSnapshot> clipboard_connections_;
 
     // Track topology version to re-layout on changes
     size_t last_node_count_ = 0;

@@ -28,6 +28,148 @@ NodeGraphUI::NodeGraphUI(UICommandSink& commands)
     if (!styles.empty()) style_ = styles[0];
 }
 
+bool NodeGraphUI::select_single_node_for_review(const std::string& node_id) {
+    if (!snap_.has_node(node_id))
+        return false;
+    selected_node_ids_.clear();
+    selected_node_ids_.insert(node_id);
+    selected_wire_idx_ = -1;
+    pending_select_node_id_.clear();
+    insp_scroll_y_ = 0.0f;
+    insp_scroll_node_id_.clear();
+    return true;
+}
+
+std::string NodeGraphUI::next_available_node_id(
+    const std::string& base,
+    const std::unordered_set<std::string>& reserved) const {
+    std::string candidate = base;
+    if (candidate.empty())
+        candidate = "node";
+    auto id_available = [&](const std::string& id) {
+        return !snap_.has_node(id) && reserved.count(id) == 0;
+    };
+    if (id_available(candidate))
+        return candidate;
+    for (int n = 1;; ++n) {
+        candidate = base + "_copy";
+        if (n > 1)
+            candidate += std::to_string(n);
+        if (id_available(candidate))
+            return candidate;
+    }
+}
+
+void NodeGraphUI::copy_selected_nodes() {
+    clipboard_nodes_.clear();
+    clipboard_connections_.clear();
+    if (!snap_valid_ || selected_node_ids_.empty())
+        return;
+
+    float anchor_x = 0.0f;
+    float anchor_y = 0.0f;
+    bool anchor_set = false;
+    for (const auto& node_id : selected_node_ids_) {
+        const auto* ns = snap_.find_node(node_id);
+        if (!ns)
+            continue;
+        float x = ns->has_layout ? ns->layout_x : 0.0f;
+        float y = ns->has_layout ? ns->layout_y : 0.0f;
+        if (!anchor_set) {
+            anchor_x = x;
+            anchor_y = y;
+            anchor_set = true;
+        } else {
+            anchor_x = std::min(anchor_x, x);
+            anchor_y = std::min(anchor_y, y);
+        }
+    }
+    if (!anchor_set)
+        return;
+
+    for (const auto& node_id : selected_node_ids_) {
+        const auto* ns = snap_.find_node(node_id);
+        if (!ns)
+            continue;
+        ClipboardNode entry;
+        entry.node = *ns;
+        float x = ns->has_layout ? ns->layout_x : 0.0f;
+        float y = ns->has_layout ? ns->layout_y : 0.0f;
+        entry.rel_x = x - anchor_x;
+        entry.rel_y = y - anchor_y;
+        clipboard_nodes_.push_back(std::move(entry));
+    }
+
+    for (const auto& conn : snap_.connections) {
+        if (selected_node_ids_.count(conn.from_node) &&
+            selected_node_ids_.count(conn.to_node)) {
+            clipboard_connections_.push_back(conn);
+        }
+    }
+}
+
+void NodeGraphUI::paste_copied_nodes() {
+    if (clipboard_nodes_.empty())
+        return;
+
+    float base_x = 0.0f;
+    float base_y = 0.0f;
+    if (!graph_position_for_screen(mouse_.x, mouse_.y, base_x, base_y))
+        graph_center_position(base_x, base_y);
+
+    std::unordered_map<std::string, std::string> id_map;
+    std::unordered_set<std::string> reserved_ids;
+    std::unordered_set<std::string> pasted_ids;
+    for (const auto& copied : clipboard_nodes_) {
+        std::string new_id = next_available_node_id(copied.node.node_id, reserved_ids);
+        reserved_ids.insert(new_id);
+        id_map[copied.node.node_id] = new_id;
+        pasted_ids.insert(new_id);
+
+        std::string add_error;
+        if (!commands_.try_add_node(copied.node.type_name, new_id, &add_error)) {
+            std::fprintf(stderr, "[vivid] Paste add node failed for '%s': %s\n",
+                         copied.node.type_name.c_str(), add_error.c_str());
+            continue;
+        }
+
+        // Keep pasted nodes visibly offset from the source selection so redo
+        // restores a readable result instead of stacking copies on top.
+        commands_.set_node_layout(new_id, base_x + copied.rel_x + 220.0f,
+                                  base_y + copied.rel_y + 120.0f);
+
+        if (copied.node.op_info) {
+            for (const auto& pd : copied.node.op_info->params) {
+                auto pi_it = copied.node.param_indices.find(pd.name);
+                if (pd.type == VIVID_PARAM_TEXT) {
+                    auto text_it = copied.node.file_param_values.find(pd.name);
+                    if (text_it != copied.node.file_param_values.end())
+                        commands_.set_string_param(new_id, pd.name, text_it->second);
+                    continue;
+                }
+                if (pi_it != copied.node.param_indices.end() &&
+                    pi_it->second < copied.node.param_values.size()) {
+                    commands_.set_param(new_id, pd.name, copied.node.param_values[pi_it->second]);
+                }
+            }
+        }
+    }
+
+    for (const auto& conn : clipboard_connections_) {
+        auto from_it = id_map.find(conn.from_node);
+        auto to_it = id_map.find(conn.to_node);
+        if (from_it == id_map.end() || to_it == id_map.end())
+            continue;
+        commands_.connect(from_it->second + "/" + conn.from_port,
+                          to_it->second + "/" + conn.to_port);
+    }
+
+    if (!pasted_ids.empty()) {
+        selected_node_ids_ = std::move(pasted_ids);
+        selected_wire_idx_ = -1;
+    }
+}
+
 void NodeGraphUI::open_clone_confirm_dialog(const std::string& type_name) {
     clone_confirm_type_ = type_name;
     clone_confirm_project_available_ = commands_.has_project_clone_destination();

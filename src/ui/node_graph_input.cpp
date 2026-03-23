@@ -378,6 +378,17 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         }
     }
 
+    if (!chooser_open_ && action == GLFW_PRESS && mod_key) {
+        if (key == GLFW_KEY_C) {
+            copy_selected_nodes();
+            return;
+        }
+        if (key == GLFW_KEY_V) {
+            paste_copied_nodes();
+            return;
+        }
+    }
+
     // While editing a sticky note, swallow all remaining keys so they don't
     // trigger hotkeys (e.g. M for MIDI map, B for bezier wires, etc.)
     if (editing_sticky_) return;
