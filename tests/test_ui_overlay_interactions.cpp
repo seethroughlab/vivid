@@ -260,7 +260,7 @@ int main() {
         NodeGraphUI ui(sink);
         ui.open_file_drop_chooser({
             FileDropChooserAction{
-                "Load Test Asset",
+                "Create Test Asset Node",
                 "FileDropTestOp  [tests]",
                 "FileDropTestOp",
                 "file",

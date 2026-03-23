@@ -21,7 +21,7 @@ struct FileDropTestOpAlt : vivid::ControlOperatorBase {
 
 static const char* kFileDropTestOpAltExts[] = {".dropx"};
 static const VividFileDropHandlerDescriptor kFileDropTestOpAltHandlers[] = {{
-    "Alternate Test Asset",
+    "Create Alternate Test Asset Node",
     kFileDropTestOpAltExts,
     1,
     "file",
