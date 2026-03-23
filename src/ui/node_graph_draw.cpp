@@ -3556,6 +3556,10 @@ void NodeGraphUI::draw(Renderer2D& tr, uint32_t w, uint32_t h) {
 // popups (context menu, dropdown) appear on top of everything.
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_overlays(Renderer2D& tr) {
+    // Perf bar expanded panels
+    if (perf_mem_hovered_) draw_perf_expanded(tr);
+    if (perf_audio_hovered_) draw_perf_audio_expanded(tr);
+
     // Inspector — drawn in overlay pass so it paints over GPU thumbnails
     draw_inspector(tr, win_w_, win_h_);
 
@@ -4574,6 +4578,64 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
     tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
     x += kPerfSepW + kPerfSepMargin;
 
+    // --- Audio rate ---
+    audio_load_history_.push(snap_.audio_load);
+    {
+        float audio_section_start = x;
+
+        // "48kHz" label
+        char audio_buf[32];
+        if (snap_.audio_sample_rate > 0)
+            std::snprintf(audio_buf, sizeof(audio_buf), "%ukHz", snap_.audio_sample_rate / 1000);
+        else
+            std::snprintf(audio_buf, sizeof(audio_buf), "--kHz");
+        tr.draw_text(x, text_y, audio_buf,
+                     kPerfAudioColor[0], kPerfAudioColor[1], kPerfAudioColor[2]);
+        x += tr.text_width(audio_buf) + kPerfSepMargin;
+
+        // Separator
+        tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
+        x += kPerfSepW + kPerfSepMargin;
+
+        // Audio load "N%" label (color-coded)
+        std::snprintf(buf, sizeof(buf), "%.0f%%", snap_.audio_load * 100.0f);
+        float load_field_w = tr.text_width("100%");
+        float load_text_w = tr.text_width(buf);
+        float load = snap_.audio_load;
+        float lr, lg, lb;
+        if (load < 0.5f) {
+            lr = kPerfAudioColor[0]; lg = kPerfAudioColor[1]; lb = kPerfAudioColor[2];
+        } else if (load < 0.8f) {
+            lr = 0.95f; lg = 0.85f; lb = 0.30f;
+        } else {
+            lr = 0.95f; lg = 0.35f; lb = 0.30f;
+        }
+        tr.draw_text(x + (load_field_w - load_text_w), text_y, buf, lr, lg, lb);
+        x += load_field_w + 4.0f;
+
+        // Mini sparkline for audio load
+        float ag_x = x;
+        float ag_y = (kPerfBarH - kPerfMiniGraphH) * 0.5f;
+        perf_audio_graph_x_ = ag_x;
+        perf_audio_graph_y_ = ag_y;
+
+        tr.draw_rect(ag_x, ag_y, kPerfMiniGraphW, kPerfMiniGraphH,
+                     0.04f, 0.05f, 0.06f, 0.8f);
+        draw_perf_sparkline(tr, audio_load_history_.values, kPerfHistoryLen,
+                            audio_load_history_.write_idx, audio_load_history_.filled,
+                            ag_x, ag_y, kPerfMiniGraphW, kPerfMiniGraphH,
+                            lr, lg, lb, 0.7f);
+        x = ag_x + kPerfMiniGraphW + kPerfSepMargin;
+
+        // Track full audio section bounds for hover
+        perf_audio_section_x_ = audio_section_start;
+        perf_audio_section_w_ = x - audio_section_start;
+    }
+
+    // Separator
+    tr.draw_rect(x, 4, kPerfSepW, kPerfBarH - 8, 0.30f, 0.32f, 0.35f, 0.5f);
+    x += kPerfSepW + kPerfSepMargin;
+
     // --- Frame time ---
     std::snprintf(buf, sizeof(buf), "%.1f ms", display_ms_);
     float ms_field_w = tr.text_width("000.0 ms");
@@ -4877,8 +4939,25 @@ void NodeGraphUI::draw_perf_bar(Renderer2D& tr) {
 
     perf_mem_hovered_ = in_mini || in_expanded;
 
-    if (perf_mem_hovered_) {
-        draw_perf_expanded(tr);
+    // perf_mem_hovered_ drawn in draw_overlays()
+
+    // Check hover over audio section (kHz label + load% + sparkline)
+    {
+        bool in_audio_section = mouse_.x >= perf_audio_section_x_ &&
+                                mouse_.x <= perf_audio_section_x_ + perf_audio_section_w_ &&
+                                mouse_.y >= 0 && mouse_.y <= kPerfBarH;
+
+        float audio_exp_x = perf_audio_section_x_;
+        if (audio_exp_x + kPerfExpandedW > fw - 10.0f)
+            audio_exp_x = fw - 10.0f - kPerfExpandedW;
+        constexpr float kAudioExpandedH = 200.0f;
+        bool in_audio_expanded = perf_audio_hovered_ &&
+                                 mouse_.x >= audio_exp_x && mouse_.x <= audio_exp_x + kPerfExpandedW &&
+                                 mouse_.y >= kPerfBarH && mouse_.y <= kPerfBarH + kAudioExpandedH;
+
+        perf_audio_hovered_ = in_audio_section || in_audio_expanded;
+
+        // perf_audio_hovered_ drawn in draw_overlays()
     }
 }
 
@@ -4976,6 +5055,110 @@ void NodeGraphUI::draw_perf_expanded(Renderer2D& tr) {
         tr.draw_text(graph_x + 2, graph_y + graph_h - tr.line_height(), label,
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
     }
+}
+
+void NodeGraphUI::draw_perf_audio_expanded(Renderer2D& tr) {
+    float fw = static_cast<float>(win_w_);
+
+    float ex = perf_audio_section_x_;
+    if (ex + kPerfExpandedW > fw - 10.0f)
+        ex = fw - 10.0f - kPerfExpandedW;
+    float ey = kPerfBarH;
+
+    float pad = 8.0f;
+    float line_h = tr.line_height();
+    float row_h = line_h + 2.0f;
+
+    // Count info rows: rate, buffer, latency, channels, nodes, xruns, load
+    constexpr int kInfoRows = 7;
+    float info_h = kInfoRows * row_h;
+    float sparkline_h = 60.0f;
+    float total_h = pad + line_h + 4.0f + info_h + 4.0f + sparkline_h + pad;
+
+    // Panel background
+    tr.draw_rect(ex, ey, kPerfExpandedW, total_h, 0.08f, 0.09f, 0.10f, 0.95f);
+    // Top accent
+    tr.draw_rect(ex, ey, kPerfExpandedW, 2,
+                 kPerfAudioColor[0], kPerfAudioColor[1], kPerfAudioColor[2], 0.8f);
+
+    float tx = ex + pad;
+    float ty = ey + pad;
+    float right_x = ex + kPerfExpandedW - pad;
+
+    // Title + current load %
+    tr.draw_text(tx, ty, T("audio", "Audio"), 0.85f, 0.87f, 0.90f);
+    char load_buf[32];
+    std::snprintf(load_buf, sizeof(load_buf), "%.0f%%", snap_.audio_load * 100.0f);
+    float load_w = tr.text_width(load_buf);
+    tr.draw_text(right_x - load_w, ty, load_buf,
+                 kPerfAudioColor[0], kPerfAudioColor[1], kPerfAudioColor[2]);
+
+    ty += line_h + 4.0f;
+
+    // Helper to draw a label: value row
+    auto draw_row = [&](const char* label, const char* value) {
+        tr.draw_text(tx, ty, label, style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        float vw = tr.text_width(value);
+        tr.draw_text(right_x - vw, ty, value, 0.85f, 0.87f, 0.90f);
+        ty += row_h;
+    };
+
+    // Sample rate
+    char val[64];
+    std::snprintf(val, sizeof(val), "%u Hz", snap_.audio_sample_rate);
+    draw_row(T("rate", "Rate"), val);
+
+    // Buffer size
+    std::snprintf(val, sizeof(val), "%u samples", snap_.audio_buffer_size);
+    draw_row(T("buffer", "Buffer"), val);
+
+    // Latency
+    if (snap_.audio_sample_rate > 0) {
+        float latency_ms = static_cast<float>(snap_.audio_buffer_size)
+                           / static_cast<float>(snap_.audio_sample_rate) * 1000.0f;
+        std::snprintf(val, sizeof(val), "%.1f ms", latency_ms);
+    } else {
+        std::snprintf(val, sizeof(val), "-- ms");
+    }
+    draw_row(T("latency", "Latency"), val);
+
+    // Channels
+    draw_row(T("channels", "Channels"), "2");
+
+    // Nodes
+    std::snprintf(val, sizeof(val), "%u", snap_.audio_node_count);
+    draw_row(T("nodes", "Nodes"), val);
+
+    // XRUNs
+    std::snprintf(val, sizeof(val), "%u", snap_.audio_underrun_count);
+    draw_row(T("xruns", "XRUNs"), val);
+
+    // Load
+    std::snprintf(val, sizeof(val), "%.1f%%", snap_.audio_load * 100.0f);
+    draw_row(T("load", "Load"), val);
+
+    // Sparkline
+    ty += 4.0f;
+    float graph_x = tx;
+    float graph_w = kPerfExpandedW - pad * 2;
+
+    tr.draw_rect(graph_x, ty, graph_w, sparkline_h, 0.04f, 0.05f, 0.06f, 0.8f);
+
+    // Color by current load
+    float load = snap_.audio_load;
+    float lr, lg, lb;
+    if (load < 0.5f) {
+        lr = kPerfAudioColor[0]; lg = kPerfAudioColor[1]; lb = kPerfAudioColor[2];
+    } else if (load < 0.8f) {
+        lr = 0.95f; lg = 0.85f; lb = 0.30f;
+    } else {
+        lr = 0.95f; lg = 0.35f; lb = 0.30f;
+    }
+
+    draw_perf_sparkline(tr, audio_load_history_.values, kPerfHistoryLen,
+                        audio_load_history_.write_idx, audio_load_history_.filled,
+                        graph_x, ty, graph_w, sparkline_h,
+                        lr, lg, lb, 0.7f);
 }
 
 // -----------------------------------------------------------------------

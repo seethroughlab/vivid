@@ -362,6 +362,7 @@ private:
                              float x, float y, float w, float h,
                              float r, float g, float b, float a);
     void draw_perf_expanded(Renderer2D& tr);
+    void draw_perf_audio_expanded(Renderer2D& tr);
     void draw_mcp_setup_dialog(Renderer2D& tr);
 
     // --- Chooser ---
@@ -1036,6 +1037,7 @@ private:
     PerfRingBuffer fps_history_;
     PerfRingBuffer frame_time_history_;
     PerfRingBuffer memory_history_;
+    PerfRingBuffer audio_load_history_;
 
     float dt_ = 0.0f;
     float cursor_blink_time_ = 0.0f;  // accumulated time for cursor blink
@@ -1049,6 +1051,12 @@ private:
     bool perf_mem_hovered_ = false;
     float perf_mem_graph_x_ = 0.0f;
     float perf_mem_graph_y_ = 0.0f;
+
+    bool perf_audio_hovered_ = false;
+    float perf_audio_section_x_ = 0.0f;  // full audio section for hover
+    float perf_audio_section_w_ = 0.0f;
+    float perf_audio_graph_x_ = 0.0f;
+    float perf_audio_graph_y_ = 0.0f;
 
     // --- MCP status dots in perf bar ---
     std::string mcp_dir_;  // directory containing vivid_mcp.py / vivid_opdev_mcp.py
