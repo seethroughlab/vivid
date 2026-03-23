@@ -482,6 +482,13 @@ bool ExportPipeline::generate_cmakelists() {
     replace("STANDALONE_HEADLESS", headless_ ? "ON" : "OFF");
     replace("STANDALONE_CONTROL_SERVER", control_server_ ? "ON" : "OFF");
 
+    const auto webgpu_prefetch = std::filesystem::path(build_dir_) / "_deps" / "webgpu-src";
+    const auto ixwebsocket_prefetch = std::filesystem::path(build_dir_) / "_deps" / "ixwebsocket-src";
+    replace("WEBGPU_PREFETCH_SOURCE_DIR",
+            std::filesystem::exists(webgpu_prefetch) ? webgpu_prefetch.string() : "");
+    replace("IXWEBSOCKET_PREFETCH_SOURCE_DIR",
+            std::filesystem::exists(ixwebsocket_prefetch) ? ixwebsocket_prefetch.string() : "");
+
     // Operator OBJECT library blocks
     std::ostringstream op_blocks;
     std::ostringstream op_targets;

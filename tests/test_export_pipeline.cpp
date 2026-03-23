@@ -42,11 +42,25 @@ int main(int argc, char* argv[]) {
         std::filesystem::path(build_dir) / ".test_export_pipeline_artifacts";
     const std::filesystem::path manifest_build_dir =
         std::filesystem::path(build_dir) / ".test_export_pipeline_build";
+    const std::filesystem::path webgpu_prefetch =
+        manifest_build_dir / "_deps" / "webgpu-src";
+    const std::filesystem::path ixwebsocket_prefetch =
+        manifest_build_dir / "_deps" / "ixwebsocket-src";
     std::filesystem::remove_all(staging);
     std::filesystem::remove_all(export_dir);
     std::filesystem::remove_all(manifest_build_dir);
     std::filesystem::create_directories(staging);
     std::filesystem::create_directories(manifest_build_dir);
+    std::filesystem::create_directories(webgpu_prefetch);
+    std::filesystem::create_directories(ixwebsocket_prefetch);
+    {
+        std::ofstream ofs(webgpu_prefetch / "CMakeLists.txt");
+        ofs << "cmake_minimum_required(VERSION 3.20)\nproject(fake_webgpu)\n";
+    }
+    {
+        std::ofstream ofs(ixwebsocket_prefetch / "CMakeLists.txt");
+        ofs << "cmake_minimum_required(VERSION 3.20)\nproject(fake_ixwebsocket)\n";
+    }
 
     std::filesystem::copy_file(std::filesystem::path(build_dir) / "export_custom_port_op.dylib",
                                staging / "export_custom_port_op.dylib",
@@ -91,17 +105,30 @@ int main(int argc, char* argv[]) {
     }
 
     pipeline.export_dir_ = export_dir.string();
+    pipeline.headless_ = true;
+    pipeline.control_server_ = true;
     std::filesystem::create_directories(export_dir);
     check(pipeline.generate_static_registry(), "generate_static_registry()");
+    check(pipeline.generate_cmakelists(), "generate_cmakelists()");
 
     const std::string static_registry = read_file(export_dir / "static_registry.cpp");
+    const std::string cmakelists = read_file(export_dir / "CMakeLists.txt");
     check(!static_registry.empty(), "static_registry.cpp generated");
+    check(!cmakelists.empty(), "CMakeLists.txt generated");
     check(static_registry.find("vivid_register_port_type") != std::string::npos,
           "static registry registers custom port types");
     check(static_registry.find("seethroughlab.vivid.media_stream_v1") != std::string::npos,
           "static registry embeds stable custom type id");
     check(static_registry.find("ExportCustomPortOp") != std::string::npos,
           "static registry registers the operator");
+    check(cmakelists.find("Using pre-fetched WebGPU-distribution") != std::string::npos,
+          "standalone CMake prefers pre-fetched WebGPU source");
+    check(cmakelists.find(webgpu_prefetch.string()) != std::string::npos,
+          "standalone CMake embeds local WebGPU source path");
+    check(cmakelists.find("Using pre-fetched IXWebSocket") != std::string::npos,
+          "standalone CMake prefers pre-fetched IXWebSocket source");
+    check(cmakelists.find(ixwebsocket_prefetch.string()) != std::string::npos,
+          "standalone CMake embeds local IXWebSocket source path");
 
     const std::filesystem::path fake_build = export_dir / "build";
     std::filesystem::create_directories(fake_build);

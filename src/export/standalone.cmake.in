@@ -7,15 +7,28 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(VIVID_SRC "${VIVID_SRC}")
 set(VIVID_BUILD "${VIVID_BUILD}")
+set(VIVID_WEBGPU_SOURCE_DIR "${WEBGPU_PREFETCH_SOURCE_DIR}" CACHE PATH
+    "Optional local/pre-fetched WebGPU-distribution source tree for standalone export")
+set(VIVID_IXWEBSOCKET_SOURCE_DIR "${IXWEBSOCKET_PREFETCH_SOURCE_DIR}" CACHE PATH
+    "Optional local/pre-fetched IXWebSocket source tree for standalone export")
 
-# --- Dawn/WebGPU (reuse already-fetched from vivid build tree) ---
+# --- Dawn/WebGPU (prefer pre-fetched local source, fall back to network fetch) ---
 include(FetchContent)
-FetchContent_Declare(
-    webgpu
-    GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
-    GIT_TAG        main
-    GIT_SHALLOW    TRUE
-)
+if(VIVID_WEBGPU_SOURCE_DIR AND EXISTS "${VIVID_WEBGPU_SOURCE_DIR}/CMakeLists.txt")
+    message(STATUS "[vivid export] Using pre-fetched WebGPU-distribution: ${VIVID_WEBGPU_SOURCE_DIR}")
+    FetchContent_Declare(
+        webgpu
+        SOURCE_DIR "${VIVID_WEBGPU_SOURCE_DIR}"
+    )
+else()
+    message(STATUS "[vivid export] WebGPU-distribution not pre-fetched; falling back to FetchContent download")
+    FetchContent_Declare(
+        webgpu
+        GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
+        GIT_TAG        main
+        GIT_SHALLOW    TRUE
+    )
+endif()
 FetchContent_MakeAvailable(webgpu)
 
 # --- GLFW (from vivid deps submodule) ---
@@ -56,12 +69,21 @@ set(CONTROL_SERVER_SOURCES "")
 set(CONTROL_SERVER_LIBS "")
 set(CONTROL_SERVER_DEFS "")
 if(STANDALONE_CONTROL_SERVER)
-    FetchContent_Declare(
-        ixwebsocket
-        GIT_REPOSITORY https://github.com/machinezone/IXWebSocket
-        GIT_TAG        v11.4.5
-        GIT_SHALLOW    TRUE
-    )
+    if(VIVID_IXWEBSOCKET_SOURCE_DIR AND EXISTS "${VIVID_IXWEBSOCKET_SOURCE_DIR}/CMakeLists.txt")
+        message(STATUS "[vivid export] Using pre-fetched IXWebSocket: ${VIVID_IXWEBSOCKET_SOURCE_DIR}")
+        FetchContent_Declare(
+            ixwebsocket
+            SOURCE_DIR "${VIVID_IXWEBSOCKET_SOURCE_DIR}"
+        )
+    else()
+        message(STATUS "[vivid export] IXWebSocket not pre-fetched; falling back to FetchContent download")
+        FetchContent_Declare(
+            ixwebsocket
+            GIT_REPOSITORY https://github.com/machinezone/IXWebSocket
+            GIT_TAG        v11.4.5
+            GIT_SHALLOW    TRUE
+        )
+    endif()
     set(USE_TLS OFF CACHE BOOL "" FORCE)
     set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(ixwebsocket)
