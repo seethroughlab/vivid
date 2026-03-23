@@ -46,6 +46,13 @@ Each per-push GUI case must prove at least one user-meaningful success condition
 Whole-window screenshots and coarse baselines are still useful, but they are only checked after the
 semantic assertions pass.
 
+In practice:
+
+- `GUI_SMOKE` uses blessed coarse baselines as a secondary regression signal after semantic success.
+- `GUI_ENV` keeps screenshots for triage, but does not reuse the per-push visual baselines. The
+  scheduled lane is allowed to differ visually as long as its semantic package/runtime assertions
+  still pass.
+
 Harness failures are classified separately from app regressions. A failing case now reports whether
 it was caused by:
 
@@ -94,22 +101,28 @@ ctest --test-dir build --output-on-failure -L '^GUI_SMOKE$'
 To include the package/environment lane locally:
 
 ```bash
-HOME=$PWD/build/.test_ui_screenshot_smoke/gui_env/home \
-./build/vivid link ../vivid-wavetable
+cmake -S ../vivid-wavetable -B ../vivid-wavetable/build \
+  -DVIVID_SRC_DIR=$PWD -DVIVID_PLUGIN_SUFFIX=.dylib
 
-HOME=$PWD/build/.test_ui_screenshot_smoke/gui_env/home \
-./build/vivid rebuild vivid-wavetable
+cmake --build ../vivid-wavetable/build --target operators
+
+cmake -S ../vivid-sequencers -B ../vivid-sequencers/build \
+  -DVIVID_SRC_DIR=$PWD -DVIVID_BUILD_DIR=$PWD/build -DVIVID_PLUGIN_SUFFIX=.dylib
+
+cmake --build ../vivid-sequencers/build --target operators
 
 VIVID_ENABLE_UI_SCREENSHOT_SMOKE=1 \
 VIVID_ENABLE_GUI_ENV_SMOKE=1 \
+VIVID_GUI_ENV_PACKAGE_ROOT=$PWD/../vivid-wavetable \
+VIVID_PACKAGE_PATHS=$PWD/.. \
 ctest --test-dir build --output-on-failure -L '^GUI_ENV$'
 ```
 
 Artifacts are written under:
 
 ```text
-build/.test_ui_screenshot_smoke/gui_smoke/
-build/.test_ui_screenshot_smoke/gui_env/
+build/.test_ui_screenshot_smoke/gui_smoke/artifacts/
+build/.test_ui_screenshot_smoke/gui_env/artifacts/
 ```
 
 ## CI Split
@@ -122,14 +135,46 @@ build/.test_ui_screenshot_smoke/gui_env/
 The default GitHub smoke workflow runs `GUI_SMOKE` on every push. `GUI_ENV` is intended for a
 separate scheduled or release-oriented workflow because those cases require additional setup and
 should not gate every commit. The scheduled `GUI_ENV` workflow explicitly checks out the
-package fixture repo, links it into an isolated lane-specific `HOME`, rebuilds it, verifies that
-the package is resolvable, and then runs the package-aware smoke cases. Both workflows upload lane
-artifacts on failure for triage.
+required package repos into a dedicated `external-packages/` root, builds them in place, points
+`VIVID_PACKAGE_PATHS` at that isolated package root, verifies that the required packages are
+resolvable, and then runs the package-aware smoke cases. Both workflows upload lane artifacts on
+failure for triage.
 
 Per-push `GUI_SMOKE` must not contain package-dependent graphs. If a graph depends on linked
 packages, external devices, multiple displays, or other machine setup, it belongs in `GUI_ENV`.
 
 ## Two Screenshot Workflows
+
+## Bridge-Driven Live Smoke
+
+For live-session investigations, prefer the checked-in bridge runner over ad hoc
+`curl` requests:
+
+```bash
+./.venv-mcp/bin/python scripts/mcp_bridge_smoke.py \
+  --preset phase4 \
+  --summary-json phase4-summary.json
+```
+
+This path talks to [`mcp/vivid_mcp.py`](/Users/jeff/Developer/vivid/mcp/vivid_mcp.py)
+directly, so it exercises the same bridge surface that Codex uses:
+
+- `ensure_runtime(...)`
+- `load_graph(...)`
+- `inspect_graph()`
+- `introspect_nodes(include_payload=true)`
+- `capture_image(mode="interface", ...)`
+
+For one-off graph investigations, add explicit capture cases:
+
+```bash
+./.venv-mcp/bin/python scripts/mcp_bridge_smoke.py \
+  --capture /Users/jeff/Developer/vivid-wavetable/graphs/extended/wavetable_dream_keys_demo.json \
+            cp1 \
+            /tmp/vivid_live_ui_review/wavetable_dream_keys_cp1.png
+```
+
+Use raw control-server HTTP only when the bridge itself is the thing under suspicion.
 
 **Isolated debug repro**
 

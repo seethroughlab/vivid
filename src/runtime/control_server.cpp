@@ -299,7 +299,8 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
 
         auto sit = state_map.find(ndef.id);
         const NodeState* ns = (sit != state_map.end()) ? sit->second : nullptr;
-        const VividOperatorDescriptor* desc = ns ? ns->loader->descriptor() : nullptr;
+        const VividOperatorDescriptor* desc =
+            (ns && ns->loader) ? ns->loader->descriptor() : nullptr;
 
         // Params (with live values from scheduler)
         yyjson_mut_val* params_arr = yyjson_mut_arr(doc);

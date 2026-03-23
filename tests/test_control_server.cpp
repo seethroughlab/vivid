@@ -1962,6 +1962,16 @@ int main(int argc, char* argv[]) {
                 }
             }
 
+            auto list_missing = post(client, base_url, "list_nodes");
+            check(list_missing.ok, "list_nodes after unlink ok");
+
+            auto inspect_missing = post(client, base_url, "inspect_graph");
+            check(inspect_missing.ok, "inspect_graph after unlink ok");
+            if (inspect_missing.root) {
+                yyjson_val* node = inspect_graph_node_by_id(inspect_missing.root, "pkg_live");
+                check(node != nullptr, "pkg_live remains inspectable after unlink");
+            }
+
             auto rl2 = post(client, base_url, "list_packages");
             check(rl2.ok, "list_packages after unlink ok");
             if (rl2.root) {

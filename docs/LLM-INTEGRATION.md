@@ -98,6 +98,19 @@ Typical live-session screenshot flow:
 
 When switching graphs after startup, use `load_graph(path="...")` against that already-running instance instead of launching another runtime.
 
+For checked-in live investigations outside the MCP client UI, prefer the bridge-driven smoke
+runner:
+
+```bash
+./.venv-mcp/bin/python scripts/mcp_bridge_smoke.py \
+  --preset phase4 \
+  --summary-json phase4-summary.json
+```
+
+That runner imports `mcp/vivid_mcp.py` directly and exercises the bridge surface end-to-end
+(`ensure_runtime`, `load_graph`, `inspect_graph`, `introspect_nodes`, `capture_image`) instead of
+talking to the control server with ad hoc HTTP.
+
 ### 9.2 Three Perception Layers
 
 #### Layer 1: Introspection

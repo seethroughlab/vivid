@@ -136,6 +136,17 @@ bool semantic_default_remap(const ParamSemanticMeta& src,
 
     return converted_range_for_pair(src, dst, to_min, to_max);
 }
+
+const VividOperatorDescriptor* node_descriptor(const NodeState& ns) {
+    return ns.loader ? ns.loader->descriptor() : nullptr;
+}
+
+std::string node_display_name(const NodeState& ns,
+                              const VividOperatorDescriptor* desc) {
+    if (desc && desc->name && desc->name[0] != '\0') return desc->name;
+    if (!ns.type_name.empty()) return ns.type_name;
+    return "missing_operator";
+}
 } // namespace
 
 // --- Immediate param changes ---
@@ -502,9 +513,13 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
     const auto& nodes = scheduler_.nodes();
     for (const auto& ns : nodes) {
         if (ns.node_id != node_id) continue;
-        const auto* desc = ns.loader->descriptor();
+        const auto* desc = node_descriptor(ns);
         std::ostringstream oss;
-        oss << node_id << " (" << desc->name << ")\n";
+        oss << node_id << " (" << node_display_name(ns, desc) << ")\n";
+        if (ns.missing_operator) {
+            oss << "  status: missing operator placeholder for type "
+                << ns.type_name << "\n";
+        }
         oss << "  params:";
         for (const auto& [name, idx] : ns.param_indices) {
             oss << " " << name << "=" << ns.param_values[idx];
@@ -568,8 +583,8 @@ CommandResult RuntimeAPI::list_nodes() {
     if (nodes.empty()) return {true, "(no nodes)"};
     std::ostringstream oss;
     for (const auto& ns : nodes) {
-        const auto* desc = ns.loader->descriptor();
-        oss << ns.node_id << " (" << desc->name << ")\n";
+        const auto* desc = node_descriptor(ns);
+        oss << ns.node_id << " (" << node_display_name(ns, desc) << ")\n";
     }
     std::string result = oss.str();
     if (!result.empty() && result.back() == '\n') result.pop_back();
@@ -641,7 +656,8 @@ CommandResult RuntimeAPI::save_variation(const std::string& name) {
     VariationDef vd;
     vd.name = name;
     for (const auto& ns : scheduler_.nodes()) {
-        const auto* desc = ns.loader->descriptor();
+        const auto* desc = node_descriptor(ns);
+        if (!desc) continue;
         auto& pm = vd.params[ns.node_id];
         for (const auto& [pname, idx] : ns.param_indices) {
             // Delta encoding: only store non-default values
@@ -694,7 +710,8 @@ void RuntimeAPI::apply_variation(int idx) {
 
     // Phase 1: Reset all unlocked params to defaults
     for (auto& ns : scheduler_.nodes_mut()) {
-        const auto* desc = ns.loader->descriptor();
+        const auto* desc = node_descriptor(ns);
+        if (!desc) continue;
         NodeDef* ndef = graph_.find_node(ns.node_id);
         for (const auto& [pname, pidx] : ns.param_indices) {
             if (ns.param_lock_flags[pidx] & PARAM_LOCK_PRESETS) continue;
@@ -820,7 +837,8 @@ CommandResult RuntimeAPI::update_variation(const std::string& name) {
     vd->params.clear();
     vd->string_params.clear();
     for (const auto& ns : scheduler_.nodes()) {
-        const auto* desc = ns.loader->descriptor();
+        const auto* desc = node_descriptor(ns);
+        if (!desc) continue;
         auto& pm = vd->params[ns.node_id];
         for (const auto& [pname, idx] : ns.param_indices) {
             if (idx < desc->param_count &&

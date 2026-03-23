@@ -10,6 +10,7 @@ jobs:
     runs-on: [self-hosted, macOS]
     env:
       VIVID_GUI_ENV_HOME: ${{ github.workspace }}/build/.test_ui_screenshot_smoke/gui_env/home
+      VIVID_GUI_ENV_PACKAGE_ROOT: ${{ github.workspace }}/external-packages
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,7 +20,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: seethroughlab/vivid-wavetable
-          path: vivid-wavetable
+          path: external-packages/vivid-wavetable
+
+      - name: Checkout vivid-sequencers
+        uses: actions/checkout@v4
+        with:
+          repository: seethroughlab/vivid-sequencers
+          path: external-packages/vivid-sequencers
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_OSX_ARCHITECTURES=arm64
@@ -30,27 +37,54 @@ jobs:
       - name: Build GUI env smoke tests
         run: cmake --build build --target test_ui_screenshot_smoke -j$(sysctl -n hw.logicalcpu)
 
-      - name: Link wavetable package
-        env:
-          HOME: ${{ env.VIVID_GUI_ENV_HOME }}
-        run: ./build/vivid link ./vivid-wavetable
+      - name: Configure vivid-wavetable package
+        run: >
+          cmake
+          -S external-packages/vivid-wavetable
+          -B external-packages/vivid-wavetable/build
+          -DVIVID_SRC_DIR=${{ github.workspace }}
+          -DVIVID_PLUGIN_SUFFIX=.dylib
 
-      - name: Rebuild wavetable package
-        env:
-          HOME: ${{ env.VIVID_GUI_ENV_HOME }}
-        run: ./build/vivid rebuild vivid-wavetable
+      - name: Build vivid-wavetable package
+        run: >
+          cmake --build external-packages/vivid-wavetable/build
+          --target operators
+          -j$(sysctl -n hw.logicalcpu)
+
+      - name: Configure vivid-sequencers package
+        run: >
+          cmake
+          -S external-packages/vivid-sequencers
+          -B external-packages/vivid-sequencers/build
+          -DVIVID_SRC_DIR=${{ github.workspace }}
+          -DVIVID_BUILD_DIR=${{ github.workspace }}/build
+          -DVIVID_PLUGIN_SUFFIX=.dylib
+
+      - name: Build vivid-sequencers package
+        run: >
+          cmake --build external-packages/vivid-sequencers/build
+          --target operators
+          -j$(sysctl -n hw.logicalcpu)
 
       - name: Verify wavetable package setup
         env:
           HOME: ${{ env.VIVID_GUI_ENV_HOME }}
+          VIVID_PACKAGE_PATHS: ${{ env.VIVID_GUI_ENV_PACKAGE_ROOT }}
         run: ./build/vivid list-packages | grep '^vivid-wavetable '
+
+      - name: Verify sequencers package setup
+        env:
+          HOME: ${{ env.VIVID_GUI_ENV_HOME }}
+          VIVID_PACKAGE_PATHS: ${{ env.VIVID_GUI_ENV_PACKAGE_ROOT }}
+        run: ./build/vivid list-packages | grep '^vivid-sequencers '
 
       - name: Run GUI env smoke tests
         env:
           VIVID_ENABLE_UI_SCREENSHOT_SMOKE: "1"
           VIVID_ENABLE_GUI_ENV_SMOKE: "1"
           VIVID_UI_SMOKE_LANE: "gui_env"
-          VIVID_GUI_ENV_PACKAGE_ROOT: "${{ github.workspace }}/vivid-wavetable"
+          VIVID_GUI_ENV_PACKAGE_ROOT: "${{ env.VIVID_GUI_ENV_PACKAGE_ROOT }}/vivid-wavetable"
+          VIVID_PACKAGE_PATHS: ${{ env.VIVID_GUI_ENV_PACKAGE_ROOT }}
           HOME: ${{ env.VIVID_GUI_ENV_HOME }}
         run: cd build && ctest -L '^GUI_ENV$' --output-on-failure
 
@@ -59,6 +93,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gui-env-artifacts
-          path: build/.test_ui_screenshot_smoke/gui_env
+          path: build/.test_ui_screenshot_smoke/gui_env/artifacts
           if-no-files-found: ignore
           retention-days: 14

@@ -407,6 +407,13 @@ static std::string resolve_lane_name() {
     return "gui_smoke";
 }
 
+static bool should_check_visual_baselines() {
+    // GUI_ENV is the scheduled package/environment lane. It reuses the semantic
+    // harness and screenshots for triage, but it should not fail on the same
+    // coarse visual baselines that gate the tightly-controlled per-push lane.
+    return !env_enabled("VIVID_ENABLE_GUI_ENV_SMOKE");
+}
+
 static DumpState parse_dump_state(yyjson_val* value) {
     DumpState state;
     if (!value || !yyjson_is_obj(value))
@@ -747,8 +754,8 @@ static int run_harness_selftest(const std::filesystem::path& build_dir) {
     const std::string gui_smoke_lane = sanitize_lane_name("gui_smoke");
     const std::string gui_env_lane = sanitize_lane_name("gui_env");
     const std::filesystem::path root = build_dir / ".test_ui_screenshot_smoke";
-    const std::filesystem::path gui_smoke_root = root / gui_smoke_lane;
-    const std::filesystem::path gui_env_root = root / gui_env_lane;
+    const std::filesystem::path gui_smoke_root = root / gui_smoke_lane / "artifacts";
+    const std::filesystem::path gui_env_root = root / gui_env_lane / "artifacts";
     check(gui_smoke_root != gui_env_root,
           "lane artifact roots differ between GUI_SMOKE and GUI_ENV");
 
@@ -809,12 +816,16 @@ int main(int argc, char* argv[]) {
     const std::filesystem::path vivid_bin = build_dir / "vivid";
     const std::filesystem::path graphs_dir = build_dir / "graphs";
     const std::string lane_name = resolve_lane_name();
-    const std::filesystem::path artifacts_dir =
+    const bool check_visual_baselines = should_check_visual_baselines();
+    const std::filesystem::path lane_root =
         build_dir / ".test_ui_screenshot_smoke" / lane_name;
+    const std::filesystem::path artifacts_dir = lane_root / "artifacts";
     const std::filesystem::path fixtures_dir = artifacts_dir / "fixtures";
     const std::filesystem::path scripts_dir = artifacts_dir / "scripts";
-    const std::filesystem::path runtime_home = artifacts_dir / "home";
-    const std::filesystem::path runtime_tmp = artifacts_dir / "tmp";
+    const std::filesystem::path runtime_home = lane_root / "home";
+    const std::filesystem::path runtime_tmp = lane_root / "tmp";
+    const std::filesystem::path runtime_config_dir =
+        runtime_home / "Library" / "Application Support" / "Vivid";
 
     if (env_enabled("VIVID_UI_SMOKE_HARNESS_SELFTEST"))
         return run_harness_selftest(build_dir);
@@ -822,6 +833,9 @@ int main(int argc, char* argv[]) {
     std::error_code fs_ec;
     std::filesystem::remove_all(artifacts_dir, fs_ec);
     check(!fs_ec, ("cleared artifacts directory for lane " + lane_name).c_str());
+    fs_ec.clear();
+    std::filesystem::remove_all(runtime_tmp, fs_ec);
+    check(!fs_ec, ("cleared runtime TMPDIR for lane " + lane_name).c_str());
     fs_ec.clear();
     std::filesystem::create_directories(fixtures_dir, fs_ec);
     check(!fs_ec, ("created fixtures directory for lane " + lane_name).c_str());
@@ -834,6 +848,12 @@ int main(int argc, char* argv[]) {
     fs_ec.clear();
     std::filesystem::create_directories(runtime_tmp, fs_ec);
     check(!fs_ec, ("created runtime TMPDIR directory for lane " + lane_name).c_str());
+    fs_ec.clear();
+    std::filesystem::create_directories(runtime_config_dir, fs_ec);
+    check(!fs_ec, ("created runtime config directory for lane " + lane_name).c_str());
+    fs_ec.clear();
+    std::filesystem::remove(runtime_config_dir / "settings.json", fs_ec);
+    check(!fs_ec, ("reset runtime settings for lane " + lane_name).c_str());
 
     const std::filesystem::path repo_root = build_dir.parent_path();
     const auto baselines = load_baselines(repo_root / "tests" / "ui_screenshot_baselines.txt");
@@ -1260,7 +1280,7 @@ int main(int argc, char* argv[]) {
         CaseReport report{
             c.name,
             {
-                artifacts_dir,
+                lane_root,
                 screenshot_path,
                 log_path,
                 dump_path,
@@ -1331,7 +1351,7 @@ int main(int argc, char* argv[]) {
                                  c.output_expectation.min_non_background_fraction,
                              "output non-background fraction clears threshold for " + c.name);
             }
-            if (!c.baseline_key.empty()) {
+            if (check_visual_baselines && !c.baseline_key.empty()) {
                 auto it = baselines.find(c.baseline_key);
                 report_check(report, FailureKind::Baseline, it != baselines.end(),
                              "baseline entry exists for " + c.baseline_key);
@@ -1362,6 +1382,10 @@ int main(int argc, char* argv[]) {
                     std::fprintf(stderr, "BASELINE %s\n",
                                  baseline_line(c.baseline_key, fingerprint_png(screenshot_path)).c_str());
                 }
+            } else if (!c.baseline_key.empty()) {
+                std::fprintf(stderr,
+                             "[test_ui_screenshot_smoke] baseline checks skipped for '%s' in lane '%s'\n",
+                             c.name.c_str(), lane_name.c_str());
             }
         }
 

@@ -45,6 +45,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gui-smoke-artifacts
-          path: build/.test_ui_screenshot_smoke/gui_smoke
+          path: build/.test_ui_screenshot_smoke/gui_smoke/artifacts
           if-no-files-found: ignore
           retention-days: 14
