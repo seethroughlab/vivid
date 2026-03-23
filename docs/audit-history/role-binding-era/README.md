@@ -1,6 +1,8 @@
-# Release Audit
+# Historical Release Audit — Role-Binding Era
 
-This folder is the active release-facing audit record for the current Vivid release cycle.
+This folder preserves the earlier release audit that was run against the role-binding-era architecture.
+
+It remains useful as engineering history and as a record of what was audited and fixed during that period, but it is **not** the active release audit for the current codebase.
 
 It is intentionally separate from older exploration and internal hardening notes:
 
@@ -8,7 +10,7 @@ It is intentionally separate from older exploration and internal hardening notes
 - `docs/release/` remains the operational release checklist
 - `docs/testing/` remains the test-plan and manual-validation reference set
 
-Use this folder for the current audit only.
+For the current active audit, see [`docs/audit/`](/Users/jeff/Developer/vivid/docs/audit/README.md).
 
 ## Files
 

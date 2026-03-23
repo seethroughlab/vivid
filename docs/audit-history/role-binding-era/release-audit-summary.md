@@ -5,6 +5,7 @@
 - `Current phase`: Phase 6 completed
 - `Next phase`: release-candidate prep and operational release checklist
 - `Overall release status`: audit sequence complete; no audit-established blockers or release-required code fixes remain open
+- `Current architecture`: the codebase has since consolidated on owned embedded composition for host-local behavior, ordinary ports for graph transport, and explicit outputs for graph-visible sharing
 
 ## Open Blockers
 
@@ -33,21 +34,27 @@
   - direct demo smoke also probes `ModulatedGain` cleanly
   - no unresolved `Smooth` vtable/probe error appears in the current registry scan paths
 
-### 3. Control-server mutation parity now includes role bindings
+### 3. During Phase 2, control-server mutation parity was extended to include the then-current role-binding model
 
 - Fixed in: `Phase 2`
 - Current evidence:
-  - `control_server.cpp` exposes `set_role_binding` and `clear_role_binding`
-  - `test_control_server` covers remote bind/clear plus undo/redo
-  - `inspect_graph` now exposes per-node role-binding state for readback
+  - during that audit phase, `control_server.cpp` exposed `set_role_binding` and `clear_role_binding`
+  - `test_control_server` covered remote bind/clear plus undo/redo for the then-current graph model
+  - `inspect_graph` exposed per-node role-binding state for readback during that period
+- Current interpretation:
+  - that role-binding design was later removed during the embedded-composition simplification
+  - this finding remains accurate about the audit path, but it is no longer part of the current release architecture
 
-### 4. Graph snapshot contract now covers role-binding truth
+### 4. During Phase 2, the graph snapshot contract was extended to cover the then-current role-binding graph truth
 
 - Fixed in: `Phase 2`
 - Current evidence:
-  - `test_graph_snapshot_contract` now covers:
+  - `test_graph_snapshot_contract` covered:
     - `role_binding_snapshots`
     - `referenced_by`
+- Current interpretation:
+  - those snapshot fields belonged to the role-binding-era UI/runtime contract
+  - the current architecture no longer treats them as active release-surface requirements
 
 ### 5. Semantic-tag metadata now matches the accepted v1 taxonomy
 
@@ -90,8 +97,8 @@
 - Fixed in: `Phase 4`
 - Current evidence:
   - the inspector planner now rejects broken compact pairings and collapses them to readable full rows
-  - role bindings and `Referenced By` render as stacked cards instead of dense inline rows
-  - role-binding headers no longer show runtime-scope wording like `Per-Voice` / `Shared` in the visual inspector surface
+  - the then-current role-binding and `Referenced By` panels were reworked from dense inline rows into readable stacked cards
+  - the then-current role-binding headers no longer showed runtime-scope wording like `Per-Voice` / `Shared` in the visual inspector surface
   - deterministic whole-window screenshots now exist for:
     - `graphs/gpu/instanced_shapes_demo.json` → `shapes`
     - `graphs/gpu/instanced_shapes_demo.json` → `scale_lfo`
@@ -101,7 +108,10 @@
     - `load_graph(...)`
     - `capture_image(mode="interface", ...)`
   - those screenshots show the previously open overlap issue resolved strongly enough to close the release item
-  - the same screenshot pass also confirmed that removing the runtime-scope label made the role-binding UI clearer in visual contexts without changing any runtime behavior
+  - the same screenshot pass also confirmed that the then-current role-binding inspector surface had become readable enough to close the item
+- Current interpretation:
+  - the screenshot evidence and geometry recovery still matter
+  - the specific role-binding UI model audited in Phase 4 has since been removed as part of the architecture simplification
 
 ### 9. `rich_text_demo.json` has been reclassified as a verification-gap issue, not a general GPU/runtime defect
 
@@ -183,7 +193,7 @@
   - `operators/control/smooth/smooth_composable.cpp`
   - `operators/gpu/rich_text/rich_text.cpp`
   - `tests/test_demo_graphs.cpp`
-  - `docs/audit/`
+  - `docs/audit-history/role-binding-era/`
   - `docs/release/RELEASE-CHECKLIST.md`
 
 This is not a finding by itself, but it matters when interpreting later regressions.

@@ -15,6 +15,17 @@ Primary graph and mutation surfaces reviewed in this phase:
 
 This phase focused on graph truth, mutation parity, undo/redo behavior, and snapshot consistency for runtime/UI consumers.
 
+## Current Interpretation
+
+This document remains historically accurate for the Phase 2 audit window, but it does not describe the current architecture one-to-one.
+
+At the time of this phase:
+
+- role bindings were part of the active graph model
+- the control server and snapshot contract were extended to support that design
+
+Since then, role bindings have been removed. The current architecture uses owned embedded composition for host-local modulation, ordinary ports for graph transport, and explicit outputs for cross-domain sharing. The findings below should therefore be read as audit history for the then-current design, not as present-day architectural requirements.
+
 ## Evidence Gathered
 
 ### Automated Phase 2 evidence bundle
@@ -69,14 +80,14 @@ Current classification:
 
 ## Findings
 
-### 1. Control-server mutation parity now includes role bindings
+### 1. During this phase, control-server mutation parity was extended to include role bindings
 
 - Severity: `fixed`
 - Workstreams:
   - `live mutation surfaces`
   - `RuntimeAPI / control-server parity`
 - Evidence:
-  - `control_server.cpp` now exposes:
+  - during this phase, `control_server.cpp` exposed:
     - `set_role_binding`
     - `clear_role_binding`
   - both methods are tracked by the existing snapshot-based undo history
@@ -87,23 +98,23 @@ Current classification:
     - clear
     - undo/redo after clear
 - Why this matters:
-  - role bindings are persisted graph truth
-  - remote clients using control server / MCP can now mutate them through the same main-thread command path as other graph edits
+  - at the time of this phase, role bindings were persisted graph truth
+  - this phase verified that remote clients using control server / MCP could mutate that then-current graph model through the same main-thread command path as other graph edits
 
-### 2. Graph snapshot contract coverage now includes role-binding graph truth
+### 2. During this phase, graph snapshot contract coverage was extended to include role-binding graph truth
 
 - Severity: `fixed`
 - Workstreams:
   - `graph snapshot consistency`
   - `UI/runtime graph truth parity`
 - Evidence:
-  - `tests/test_graph_snapshot_contract.cpp` now explicitly covers:
+  - `tests/test_graph_snapshot_contract.cpp` explicitly covered the then-current fields:
     - `role_binding_snapshots`
     - `referenced_by`
   - the contract test now verifies host/target relationship data survives lookup as expected
 - Why this matters:
-  - role bindings are now part of the snapshot contract used by the inspector and reverse-reference UI
-  - regressions in those fields now have direct test coverage
+  - during the role-binding design period, those fields were part of the snapshot contract used by the inspector and reverse-reference UI
+  - this phase gave that historical contract direct test coverage
 
 ### 3. Core graph serialization and undo paths look healthy in the tested surfaces
 
@@ -111,12 +122,12 @@ Current classification:
 - Workstreams:
   - `graph serialization`
   - `undo/redo correctness`
-  - `role binding graph truth`
+  - `then-current role-binding graph truth`
 - Evidence:
   - `test_graph` covers:
     - schema version handling
     - round-trip serialization
-    - role-binding persistence
+    - role-binding persistence in the then-current graph model
     - rejection of legacy `embedded_ops`
   - `test_role_binding_commands` covers:
     - validation

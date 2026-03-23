@@ -204,7 +204,7 @@ Later phases should use that same language consistently.
 - runtime mutations
 - control-server mutation paths
 - undo/redo
-- role bindings
+- historical role-binding graph model during the earlier Phase 2 audit window
 
 ### Phase 3 — Domain Pipelines And Cross-Domain Behavior
 

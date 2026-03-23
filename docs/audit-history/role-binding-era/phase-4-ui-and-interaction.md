@@ -7,12 +7,23 @@ Primary UI and interaction surfaces reviewed in this phase:
 - retained node-graph controller structure in `src/ui/node_graph.*`
 - inspector layout and draw behavior
 - overlay layout and overlay interaction paths
-- graph snapshot and role-binding UI read model
+- graph snapshot and the then-current role-binding UI read model
 - theme/text-edit support and UI architecture guardrails
 - existing inspector redesign notes in `docs/archive/INSPECTOR-UI-AUDIT-PLAN.md`
 - earlier UI architecture exploration in `docs/internal/archive/CODE-REVIEW-PHASE4.md`
 
 This phase focused on workflow readability and interaction quality, not runtime-core stability.
+
+## Current Interpretation
+
+This document remains historically accurate about the UI state audited during Phase 4, but parts of that UI model no longer exist in the current architecture.
+
+At the time of this phase:
+
+- the inspector consumed a role-binding-aware snapshot/read model
+- the UI still exposed role-binding and reverse-reference surfaces such as `Referenced By`
+
+Since then, role bindings have been removed. The current architecture uses owned embedded composition for host-local behavior, ordinary ports for transport, and explicit outputs for graph-visible sharing. The findings below should therefore be read as the UI recovery and signoff story for the then-current design, not as a description of the present-day inspector contract.
 
 ## Evidence Gathered
 
@@ -60,7 +71,7 @@ Key current-state observations:
   - semantic hints
   - connection badges
   - MIDI/lock badges
-  - role-binding and reverse-reference sections
+  - the then-current role-binding and reverse-reference sections
 
 ### Manual UI validation note
 
@@ -80,7 +91,7 @@ Those captures provided the required whole-interface evidence for:
 - one dense inspector (`Instanced Shapes`)
 - one `LFO`
 - one `Envelope`
-- nodes that expose `Referenced By`
+- one case that, at the time, exposed `Referenced By`
 
 The same live review session also attempted an optional sanity capture for
 `../vivid-wavetable/graphs/extended/wavetable_dream_keys_demo.json` → `cp1`.
@@ -102,7 +113,7 @@ inspector failure.
   - all targeted UI tests passed
   - `test_overlay_layouts` and `test_ui_overlay_interactions` cover deterministic overlay geometry and click behavior
   - `test_text_edit` and `test_theme_loader` keep basic editing/styling support covered
-  - `test_graph_snapshot_contract` remains green for the UI read model, including role-binding snapshot truth
+  - `test_graph_snapshot_contract` remained green for the then-current UI read model, including role-binding snapshot truth
 - Current read:
   - there is no evidence here of broadly broken UI interaction plumbing
 
@@ -112,20 +123,21 @@ inspector failure.
 - Workstreams:
   - `inspector layout`
   - `inspector readability`
-  - `role-binding and metadata density`
+  - `then-current role-binding and metadata density`
 - Evidence:
   - the inspector planner now grants `two_up` only for explicit adjacent compact-safe pairs; unsafe or broken legacy pairings collapse to `full`
   - standard param rows now reserve vertical space for their actual widget stack instead of compressing dropdowns, bools, and metadata into the same row rhythm as plain sliders
-  - role bindings and `Referenced By` now render as stacked cards instead of dense inline hint/action rows
-  - role-binding headers no longer expose runtime-scope wording like `Per-Voice` / `Shared` in the main inspector surface, which keeps the visual UI focused on role label, target, and actions instead of runtime implementation detail
+  - the then-current role-binding and `Referenced By` sections were reworked into stacked cards instead of dense inline hint/action rows
+  - the then-current role-binding headers no longer exposed runtime-scope wording like `Per-Voice` / `Shared` in the main inspector surface, which kept the visual UI focused on role label, target, and actions instead of runtime implementation detail
   - deterministic screenshot evidence now shows:
     - no overlap in `Instanced Shapes`
-    - clean `Referenced By` presentation on `scale_lfo`
+    - clean historical `Referenced By` presentation on `scale_lfo`
     - readable `Envelope` inspector hierarchy with custom content and reverse references
-    - cleaner role-binding headers after removing the misleading scope label from visual inspectors
+    - cleaner historical role-binding headers after removing the misleading scope label from visual inspectors
 - Current read:
   - this was a real release-facing problem
   - the implementation pass addressed the geometry and hierarchy issues strongly enough to close the item for release
+  - that specific role-binding UI model has since been removed as part of the architecture simplification
 
 ### 3. Automated UI coverage is good for contract safety, but still thin for visual quality
 
