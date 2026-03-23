@@ -157,8 +157,6 @@ public:
             audio_ctx.file_param_values   = nullptr;
             audio_ctx.file_param_count    = 0;
             audio_ctx.shared_handles      = nullptr;
-            audio_ctx.role_binding_count   = 0;
-            audio_ctx.role_binding_configs = nullptr;
 
             op_.process_audio(&audio_ctx);
 

@@ -260,3 +260,7 @@ Phase 0 is complete because:
 - current known issues are captured once in one place
 - the audit phase order is frozen
 - later phases now have a clean contract for recording findings
+
+---
+
+**Note (March 2026):** Role bindings were an intermediate design that has since been removed. The codebase now uses owned embedded composition for host-local modulation, ordinary ports for graph transport, and explicit outputs for cross-domain sharing. See `docs/EMBEDDED-OPERATOR-SLOTS.md` for the current architecture.

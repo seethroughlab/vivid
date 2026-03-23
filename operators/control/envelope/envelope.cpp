@@ -183,6 +183,5 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 
 VIVID_REGISTER(Envelope)
-VIVID_BINDABLE(Envelope)
 VIVID_INSPECTOR(Envelope)
 VIVID_THUMBNAIL(Envelope)

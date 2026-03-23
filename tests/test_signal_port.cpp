@@ -121,8 +121,6 @@ struct AudioTestContext {
         ctx.file_param_values = nullptr;
         ctx.file_param_count = 0;
         ctx.shared_handles = nullptr;
-        ctx.role_binding_count = 0;
-        ctx.role_binding_configs = nullptr;
     }
 
     void advance_frame() {

@@ -3,13 +3,14 @@
 // Two RGBA16Float state textures at grid_size resolution, ping-pong.
 // Moore neighborhood (8 neighbors), rule evaluation. Visualization pass
 // with nearest-neighbor sampling to preserve cell edges. Step accumulator
-// for fractional-frame timing. Two SHARED role bindings modulate
+// for fractional-frame timing. Two owned ChildOp<LFO> instances modulate
 // birth and survival thresholds.
 
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
-#include "operator_api/bound_control_instance.h"
+#include "operator_api/child_op.h"
+#include "control/lfo/lfo.h"
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -172,14 +173,9 @@ struct VisUniforms {
     float dead_g, dead_b;     // f32, f32
 };
 
-// ── Shared role binding ─────────────────────────────────────────────────
+// ── Waveform index mapping (UI enum → LFO enum) ─────────────────────────
 
-struct SharedBinding {
-    std::unique_ptr<vivid::BoundControlInstance> instance;
-    bool initialized = false;
-    VividCreateBindableFn  cached_create_fn  = nullptr;
-    VividDestroyBindableFn cached_destroy_fn = nullptr;
-};
+static constexpr int kWaveformMap[] = { 0, 3, 1, 2 }; // Sine, Tri, Saw, Square
 
 // ── Operator ────────────────────────────────────────────────────────────
 
@@ -212,6 +208,20 @@ struct CellularAutomata : vivid::GpuOperatorBase {
     // Trigger
     vivid::Param<int>   randomize    {"randomize",    0,     {"Off", "Randomize"}};
 
+    // ── Birth threshold LFO params ──────────────────────────────────
+    vivid::Param<int>   birth_threshold_enabled  {"birth_threshold_enabled",  0,    {"Off", "On"}};
+    vivid::Param<float> birth_threshold_amount   {"birth_threshold_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> birth_threshold_rate     {"birth_threshold_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   birth_threshold_waveform {"birth_threshold_waveform", 0,    {"Sine", "Tri", "Saw", "Square"}};
+    vivid::Param<float> birth_threshold_offset   {"birth_threshold_offset",   0.0f, -1.0f, 1.0f};
+
+    // ── Survive threshold LFO params ────────────────────────────────
+    vivid::Param<int>   survive_threshold_enabled  {"survive_threshold_enabled",  0,    {"Off", "On"}};
+    vivid::Param<float> survive_threshold_amount   {"survive_threshold_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> survive_threshold_rate     {"survive_threshold_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   survive_threshold_waveform {"survive_threshold_waveform", 0,    {"Sine", "Tri", "Saw", "Square"}};
+    vivid::Param<float> survive_threshold_offset   {"survive_threshold_offset",   0.0f, -1.0f, 1.0f};
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(rule_mode,    2, 0);
         vivid::layout_row(grid_size,    2, 1);
@@ -234,6 +244,19 @@ struct CellularAutomata : vivid::GpuOperatorBase {
         vivid::layout_row(dead_g,       3, 1);
         vivid::layout_row(dead_b,       3, 2);
         vivid::layout_row(randomize,    1, 0);
+
+        vivid::layout_row(birth_threshold_enabled,  2, 0);
+        vivid::layout_row(birth_threshold_waveform, 2, 1);
+        vivid::layout_row(birth_threshold_rate,     3, 0);
+        vivid::layout_row(birth_threshold_amount,   3, 1);
+        vivid::layout_row(birth_threshold_offset,   3, 2);
+
+        vivid::layout_row(survive_threshold_enabled,  2, 0);
+        vivid::layout_row(survive_threshold_waveform, 2, 1);
+        vivid::layout_row(survive_threshold_rate,     3, 0);
+        vivid::layout_row(survive_threshold_amount,   3, 1);
+        vivid::layout_row(survive_threshold_offset,   3, 2);
+
         out.push_back(&rule_mode);
         out.push_back(&grid_size);
         out.push_back(&birth_min);
@@ -249,41 +272,25 @@ struct CellularAutomata : vivid::GpuOperatorBase {
         out.push_back(&dead_g);
         out.push_back(&dead_b);
         out.push_back(&randomize);
+        out.push_back(&birth_threshold_enabled);
+        out.push_back(&birth_threshold_amount);
+        out.push_back(&birth_threshold_rate);
+        out.push_back(&birth_threshold_waveform);
+        out.push_back(&birth_threshold_offset);
+        out.push_back(&survive_threshold_enabled);
+        out.push_back(&survive_threshold_amount);
+        out.push_back(&survive_threshold_rate);
+        out.push_back(&survive_threshold_waveform);
+        out.push_back(&survive_threshold_offset);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_role_bindings(std::vector<VividRoleBindingDescriptor>& out) override {
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "birth_threshold";
-            role.label                              = "Birth Threshold";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_SHARED;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "survive_threshold";
-            role.label                              = "Survive Threshold";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_SHARED;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
+    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
+        out.push_back({"birth_threshold", "LFO", "birth_threshold_"});
+        out.push_back({"survive_threshold", "LFO", "survive_threshold_"});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -298,18 +305,32 @@ struct CellularAutomata : vivid::GpuOperatorBase {
             cached_grid_size_ = gs;
         }
 
-        // ── Init shared bindings ─────────────────────────────────────
-        maybe_init_shared(birth_binding_,   ctx, "birth_threshold");
-        maybe_init_shared(survive_binding_, ctx, "survive_threshold");
-
-        // ── Process shared bindings ──────────────────────────────────
+        // ── Process owned LFOs ──────────────────────────────────────
         VividProcessContext ctrl_ctx{};
         ctrl_ctx.time       = ctx->time;
         ctrl_ctx.delta_time = ctx->delta_time;
         ctrl_ctx.frame      = ctx->frame;
 
-        float birth_mod   = process_shared(birth_binding_, &ctrl_ctx);
-        float survive_mod = process_shared(survive_binding_, &ctrl_ctx);
+        float birth_mod   = 0.0f;
+        float survive_mod = 0.0f;
+
+        if (birth_threshold_enabled.int_value() != 0) {
+            birth_lfo_.set_param("frequency",  birth_threshold_rate.value);
+            birth_lfo_.set_param("amplitude",  birth_threshold_amount.value);
+            birth_lfo_.set_param("offset",     birth_threshold_offset.value);
+            birth_lfo_.set_param("waveform",   static_cast<float>(kWaveformMap[birth_threshold_waveform.int_value()]));
+            birth_lfo_.process(&ctrl_ctx);
+            birth_mod = birth_lfo_.output("value");
+        }
+
+        if (survive_threshold_enabled.int_value() != 0) {
+            survive_lfo_.set_param("frequency",  survive_threshold_rate.value);
+            survive_lfo_.set_param("amplitude",  survive_threshold_amount.value);
+            survive_lfo_.set_param("offset",     survive_threshold_offset.value);
+            survive_lfo_.set_param("waveform",   static_cast<float>(kWaveformMap[survive_threshold_waveform.int_value()]));
+            survive_lfo_.process(&ctrl_ctx);
+            survive_mod = survive_lfo_.output("value");
+        }
 
         // ── Handle randomize trigger ─────────────────────────────────
         int rnd = randomize.int_value();
@@ -430,9 +451,9 @@ struct CellularAutomata : vivid::GpuOperatorBase {
     }
 
 private:
-    // Shared role bindings
-    SharedBinding birth_binding_;
-    SharedBinding survive_binding_;
+    // Owned LFO instances
+    vivid::ChildOp<LFO> birth_lfo_;
+    vivid::ChildOp<LFO> survive_lfo_;
 
     // Ping-pong state
     int ping_ = 0;
@@ -560,75 +581,6 @@ private:
                 nearest_sampler_, &state_view_[i], 1,
                 i == 0 ? "CA Vis BG 0" : "CA Vis BG 1");
         }
-    }
-
-    // ── Shared binding management ────────────────────────────────────
-
-    void maybe_init_shared(SharedBinding& sb, const VividGpuContext* ctx,
-                           const char* role_id) {
-        if (!ctx->role_binding_configs || ctx->role_binding_count == 0) {
-            if (sb.initialized) {
-                sb.instance.reset();
-                sb.initialized = false;
-            }
-            return;
-        }
-
-        const VividRoleBindingRuntimeConfig* cfg = nullptr;
-        for (uint32_t i = 0; i < ctx->role_binding_count; ++i) {
-            if (std::strcmp(ctx->role_binding_configs[i].role_id, role_id) == 0) {
-                cfg = &ctx->role_binding_configs[i];
-                break;
-            }
-        }
-
-        if (!cfg || !cfg->create_fn) {
-            if (sb.initialized) {
-                sb.instance.reset();
-                sb.initialized = false;
-            }
-            return;
-        }
-
-        bool need_reinit = !sb.initialized
-            || sb.cached_create_fn != cfg->create_fn;
-
-        if (need_reinit) {
-            sb.instance.reset();
-            sb.cached_create_fn  = cfg->create_fn;
-            sb.cached_destroy_fn = cfg->destroy_fn;
-
-            auto* raw = static_cast<vivid::OperatorBase*>(cfg->create_fn());
-            if (!raw) return;
-
-            auto destroy = [dfn = sb.cached_destroy_fn](vivid::OperatorBase* p) {
-                if (dfn) dfn(p); else delete p;
-            };
-            sb.instance = std::make_unique<vivid::BoundControlInstance>(raw, std::move(destroy));
-
-            for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                if (sb.instance->has_param(cfg->param_names[pi])) {
-                    sb.instance->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                }
-            }
-            sb.initialized = true;
-        } else {
-            if (sb.instance) {
-                for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                    if (sb.instance->has_param(cfg->param_names[pi])) {
-                        sb.instance->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                    }
-                }
-            }
-        }
-    }
-
-    static float process_shared(SharedBinding& sb, const VividProcessContext* ctrl_ctx) {
-        if (sb.instance) {
-            sb.instance->process(ctrl_ctx);
-            return sb.instance->output("value");
-        }
-        return 0.0f;
     }
 };
 

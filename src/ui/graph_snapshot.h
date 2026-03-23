@@ -45,25 +45,6 @@ struct PortInfo {
     VividPortDirection direction = VIVID_PORT_INPUT;
 };
 
-// A candidate operator type that can satisfy a role binding, with its compatible outputs.
-struct RoleCandidate {
-    std::string type_name;
-    std::vector<std::string> compatible_outputs;
-};
-
-// Role binding metadata (from operator descriptor)
-struct RoleBindingInfo {
-    std::string role_id;
-    std::string label;
-    VividDomain accepted_domain = VIVID_DOMAIN_CONTROL;
-    uint32_t runtime_scope = 0;
-    std::vector<std::string> allowed_operator_types;
-    std::string default_operator_type;
-    std::string preferred_output_name;
-    std::vector<std::string> preferred_output_semantic_tags;
-    std::vector<RoleCandidate> candidates;
-};
-
 // Owned copy of operator metadata
 struct OperatorInfo {
     std::string name;
@@ -74,7 +55,7 @@ struct OperatorInfo {
     uint32_t inspector_mode = 0;
     std::vector<ParamInfo> params;
     std::vector<PortInfo> ports;
-    std::vector<RoleBindingInfo> role_bindings;
+
 };
 
 // Per-node snapshot data
@@ -127,23 +108,6 @@ struct NodeSnapshot {
     // State-preset mappings (populated only for StateMachine nodes)
     // state_index → { target_node_id → preset_name }
     std::vector<std::unordered_map<std::string, std::string>> state_preset_map;
-
-    // Role binding snapshots (populated from NodeDef::role_bindings)
-    struct RoleBindingSnapshot {
-        std::string role_id;
-        std::string target_node_id;      // empty if unbound
-        std::string target_output_name;
-        std::string target_type_name;    // resolved type of target node
-    };
-    std::vector<RoleBindingSnapshot> role_binding_snapshots;
-
-    // Reverse lookup: which host nodes bind to this node via roles
-    struct ReferencedByEntry {
-        std::string host_node_id;    // the node that binds to us
-        std::string role_id;         // which role on the host
-        std::string role_label;      // human-readable label from RoleBindingInfo
-    };
-    std::vector<ReferencedByEntry> referenced_by;
 
     // Operator metadata (shared across nodes of same type, cached across frames)
     std::shared_ptr<const OperatorInfo> op_info;

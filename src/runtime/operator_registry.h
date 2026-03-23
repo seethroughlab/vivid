@@ -14,23 +14,6 @@ struct DataDrivenFilterConfig;
 struct OperatorBase;
 class Graph;
 
-// Custom deleter that calls through OperatorLoader's paired destroy function.
-// operator() is defined in operator_registry.cpp (OperatorBase is incomplete here).
-struct BindableDeleter {
-    OperatorLoader* loader = nullptr;
-    void operator()(vivid::OperatorBase* p) const;
-};
-using BindableOpHandle = std::unique_ptr<vivid::OperatorBase, BindableDeleter>;
-
-enum class RoleBindingValidation {
-    kOk,
-    kRoleNotFound,
-    kNotBindable,
-    kTypeNotAllowed,
-    kDomainMismatch,
-    kOutputNotFound,
-};
-
 // Probed operator metadata — enough for UI catalog without a full dlopen
 struct DeferredEntry {
     std::string dylib_path;
@@ -55,17 +38,11 @@ struct DeferredEntry {
     std::vector<std::string> file_drop_descriptions;
     std::vector<std::vector<std::string>> file_drop_extensions;
     std::vector<std::vector<const char*>> file_drop_extension_ptrs;
-    bool bindable = false;
-    // Role binding descriptor storage
-    std::vector<VividRoleBindingDescriptor> role_bindings;
-    std::vector<std::string> role_ids;
-    std::vector<std::string> role_labels;
-    std::vector<std::vector<std::string>> role_allowed_types;
-    std::vector<std::vector<const char*>> role_allowed_type_ptrs;
-    std::vector<std::vector<std::string>> role_pref_tags;
-    std::vector<std::vector<const char*>> role_pref_tag_ptrs;
-    std::vector<std::string> role_pref_output_names;
-    std::vector<std::string> role_default_types;
+    // Embedded operator slot metadata
+    std::vector<VividEmbeddedOpSlot> embedded_op_slots;
+    std::vector<std::string> embedded_op_role_ids;       // stable strings for role_id pointers
+    std::vector<std::string> embedded_op_default_types;  // stable strings for default_type pointers
+    std::vector<std::string> embedded_op_prefixes;       // stable strings for param_prefix pointers
 };
 
 struct AbiMismatchDiagnostic {
@@ -111,13 +88,8 @@ public:
     OperatorLoader* find_loaded(const std::string& type_name);
     const VividOperatorDescriptor* probe_descriptor(const std::string& type_name) const;
 
-    // Create a standalone bindable control operator instance by type name.
-    // Returns nullptr if the type doesn't exist or isn't bindable.
-    // The returned handle calls through the loader's paired destroy function.
-    BindableOpHandle create_bindable(const std::string& type_name);
-
-    // Check if a type is bindable without loading it.
-    bool is_bindable(const std::string& type_name) const;
+    // Embedded operator slot metadata (for serialization)
+    const std::vector<VividEmbeddedOpSlot>* embedded_op_slots(const std::string& type_name) const;
 
     // User-defined filter management
     void register_user_filter(const std::string& name,
@@ -137,12 +109,6 @@ public:
     const std::shared_ptr<DataDrivenFilterConfig>* wgsl_config(const std::string& name) const;
     std::vector<std::string> wgsl_preset_names() const;
     bool is_wgsl_preset(const std::string& name) const;
-
-    // Return sorted list of bindable operator type names.
-    // If role is non-null, filters by the role's accepted_domain and allowed_operator_types.
-    // Does not trigger lazy-loading.
-    std::vector<std::string> bindable_candidates(
-        const VividRoleBindingDescriptor* role = nullptr) const;
 
     // Introspection
     std::vector<std::string> type_names() const;
@@ -204,21 +170,5 @@ private:
     std::unordered_map<std::string, AbiMismatchDiagnostic> abi_mismatch_by_path_;   // plugin path -> mismatch info
     std::unordered_map<std::string, LoaderFailureDiagnostic> loader_failure_by_path_; // plugin path -> load failure
 };
-
-// Validate whether a role binding assignment is valid for a given role.
-// output_name is the target output port name to bind (validated against the target descriptor).
-RoleBindingValidation validate_role_binding(
-    const VividOperatorDescriptor* host_desc,
-    const std::string& role_id,
-    const std::string& type_name,
-    const std::string& output_name,
-    const OperatorRegistry& registry);
-
-// Return the names of output ports on target_desc that are compatible with role_desc.
-// If role_desc has preferred_output_semantic_tags, only outputs whose semantic_tag
-// matches one of the tags are returned.  Otherwise all output ports are returned.
-std::vector<std::string> compatible_outputs(
-    const VividOperatorDescriptor* target_desc,
-    const VividRoleBindingDescriptor* role_desc);
 
 } // namespace vivid

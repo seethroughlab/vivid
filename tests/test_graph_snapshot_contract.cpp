@@ -19,20 +19,9 @@ int main() {
 
     NodeSnapshot node_a;
     node_a.node_id = "a";
-    NodeSnapshot::RoleBindingSnapshot role_binding;
-    role_binding.role_id = "mod";
-    role_binding.target_node_id = "b";
-    role_binding.target_output_name = "value";
-    role_binding.target_type_name = "Envelope";
-    node_a.role_binding_snapshots.push_back(role_binding);
 
     NodeSnapshot node_b;
     node_b.node_id = "b";
-    NodeSnapshot::ReferencedByEntry ref;
-    ref.host_node_id = "a";
-    ref.role_id = "mod";
-    ref.role_label = "Modulator";
-    node_b.referenced_by.push_back(ref);
     snap.nodes = {node_a, node_b};
     snap.node_index["a"] = 0;
     snap.node_index["b"] = 1;
@@ -69,26 +58,6 @@ int main() {
 
     check(snap.broken_connection_count() == 1, "broken_connection_count reports invalid wires");
     check(snap.has_broken_connections(), "has_broken_connections returns true when present");
-
-    const auto* host = snap.find_node("a");
-    check(host && host->role_binding_snapshots.size() == 1,
-          "host exposes one role_binding_snapshot");
-    if (host && host->role_binding_snapshots.size() == 1) {
-        const auto& rb = host->role_binding_snapshots[0];
-        check(rb.role_id == "mod", "role_binding_snapshot preserves role_id");
-        check(rb.target_node_id == "b", "role_binding_snapshot preserves target_node_id");
-        check(rb.target_output_name == "value", "role_binding_snapshot preserves target_output_name");
-        check(rb.target_type_name == "Envelope", "role_binding_snapshot preserves target_type_name");
-    }
-
-    const auto* target = snap.find_node("b");
-    check(target && target->referenced_by.size() == 1, "target exposes one referenced_by entry");
-    if (target && target->referenced_by.size() == 1) {
-        const auto& rb = target->referenced_by[0];
-        check(rb.host_node_id == "a", "referenced_by preserves host_node_id");
-        check(rb.role_id == "mod", "referenced_by preserves role_id");
-        check(rb.role_label == "Modulator", "referenced_by preserves role_label");
-    }
 
     std::fprintf(stderr, "%s (%d failures)\n",
                  failures == 0 ? "ALL PASSED" : "SOME FAILED",

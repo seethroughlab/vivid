@@ -34,12 +34,8 @@ struct NodeDef {
     std::string pkg_name;
     std::string pkg_version;
 
-    // Per-role binding state (role_id → target)
-    struct RoleBindingState {
-        std::string target_node_id;
-        std::string target_output_name;
-    };
-    std::unordered_map<std::string, RoleBindingState> role_bindings;  // role_id → state
+    // Owned embedded modulators (role_id → child node)
+    std::unordered_map<std::string, NodeDef> embedded_ops;
 };
 
 struct ConnectionDef {
@@ -89,6 +85,7 @@ struct OperatorPreset {
     std::string name;
     std::unordered_map<std::string, float> params;  // param_name -> value
     std::unordered_map<std::string, std::string> string_params;  // file/string params
+    std::unordered_map<std::string, NodeDef> embedded_ops;  // role_id -> child node
 };
 
 struct StatePresetMapping {

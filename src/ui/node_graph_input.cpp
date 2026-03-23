@@ -978,11 +978,6 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
         return;
     }
 
-    if (role_chooser_open_) {
-        if (key == GLFW_KEY_ESCAPE) role_chooser_open_ = false;
-        return;
-    }
-
     if (record_dropdown_open_) {
         if (key == GLFW_KEY_ESCAPE) record_dropdown_open_ = false;
         return;
@@ -2316,170 +2311,6 @@ bool NodeGraphUI::handle_inspector_click() {
         }
     }
 
-    // Role binding chooser popup click handling
-    if (role_chooser_open_) {
-        float item_h = kDropdownItemH;
-        float popup_w = 220.0f;
-        float popup_h = std::max(1, static_cast<int>(role_chooser_items_.size())) * item_h + 4;
-        // Click inside popup
-        if (mouse_.x >= role_chooser_x_ && mouse_.x < role_chooser_x_ + popup_w &&
-            mouse_.y >= role_chooser_y_ && mouse_.y < role_chooser_y_ + popup_h) {
-            if (!role_chooser_items_.empty()) {
-                int idx = static_cast<int>((mouse_.y - role_chooser_y_ - 2) / item_h);
-                if (idx >= 0 && idx < static_cast<int>(role_chooser_items_.size())) {
-                    const auto& item = role_chooser_items_[idx];
-                    commands_.set_role_binding(role_chooser_node_id_, role_chooser_role_id_,
-                                              item.node_id, item.output_name);
-                }
-            }
-            role_chooser_open_ = false;
-            return true;
-        }
-        // Click outside — dismiss
-        role_chooser_open_ = false;
-        return true;
-    }
-
-    // Role binding header click (collapse toggle)
-    {
-        int rhi = hit_test_rect(role_header_rects_, mouse_.x, mouse_.y);
-        if (rhi >= 0) {
-            const auto& r = role_header_rects_[rhi];
-            const auto* ns = snap_.find_node(r.node_id);
-            if (ns) {
-                std::string collapse_key = ns->type_name + "\trole\t" + r.role_id;
-                group_collapsed_[collapse_key] = !group_collapsed_[collapse_key];
-            }
-            return true;
-        }
-    }
-
-    // Role bind click — open chooser popup with compatible graph nodes
-    {
-        int bi = hit_test_rect(role_bind_rects_, mouse_.x, mouse_.y);
-        if (bi >= 0) {
-            const auto& r = role_bind_rects_[bi];
-            const auto* ns = snap_.find_node(r.node_id);
-            if (ns && ns->op_info) {
-                role_chooser_items_.clear();
-                for (const auto& role : ns->op_info->role_bindings) {
-                    if (role.role_id != r.role_id) continue;
-
-                    // Build lookup: type_name → compatible outputs
-                    std::unordered_map<std::string, const vivid::ui::RoleCandidate*> cand_map;
-                    for (const auto& rc : role.candidates)
-                        cand_map[rc.type_name] = &rc;
-
-                    for (const auto& gn : snap_.nodes) {
-                        if (gn.node_id == r.node_id) continue;  // skip self
-                        auto cit = cand_map.find(gn.type_name);
-                        if (cit == cand_map.end()) continue;
-                        const auto& compat = cit->second->compatible_outputs;
-
-                        if (compat.size() <= 1) {
-                            // Single (or zero) compatible output — one item
-                            RoleChooserItem item;
-                            item.node_id = gn.node_id;
-                            item.output_name = compat.empty() ? "value" : compat[0];
-                            item.label = gn.node_id + " (" + gn.type_name + ")";
-                            role_chooser_items_.push_back(std::move(item));
-                        } else {
-                            // Multiple compatible outputs — prefer preferred_output_name
-                            // if it matches; otherwise show one item per output.
-                            bool used_preferred = false;
-                            if (!role.preferred_output_name.empty()) {
-                                for (const auto& o : compat) {
-                                    if (o == role.preferred_output_name) {
-                                        RoleChooserItem item;
-                                        item.node_id = gn.node_id;
-                                        item.output_name = o;
-                                        item.label = gn.node_id + " (" + gn.type_name + ")";
-                                        role_chooser_items_.push_back(std::move(item));
-                                        used_preferred = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (!used_preferred) {
-                                for (const auto& o : compat) {
-                                    RoleChooserItem item;
-                                    item.node_id = gn.node_id;
-                                    item.output_name = o;
-                                    item.label = gn.node_id + "." + o + " (" + gn.type_name + ")";
-                                    role_chooser_items_.push_back(std::move(item));
-                                }
-                            }
-                        }
-                    }
-                    break;
-                }
-                role_chooser_node_id_ = r.node_id;
-                role_chooser_role_id_ = r.role_id;
-                role_chooser_sel_ = -1;
-                role_chooser_x_ = r.x;
-                role_chooser_y_ = r.y + r.h;
-                role_chooser_open_ = true;
-            }
-            return true;
-        }
-    }
-
-    // Role clear click
-    {
-        int ci = hit_test_rect(role_clear_rects_, mouse_.x, mouse_.y);
-        if (ci >= 0) {
-            const auto& r = role_clear_rects_[ci];
-            commands_.clear_role_binding(r.node_id, r.role_id);
-            return true;
-        }
-    }
-
-    // Role jump-to click — select the target node
-    {
-        int ji = hit_test_rect(role_jump_rects_, mouse_.x, mouse_.y);
-        if (ji >= 0) {
-            const auto& r = role_jump_rects_[ji];
-            // Find the target node ID from the role binding snapshot
-            const auto* ns = snap_.find_node(r.node_id);
-            if (ns) {
-                for (const auto& rbs : ns->role_binding_snapshots) {
-                    if (rbs.role_id == r.role_id && !rbs.target_node_id.empty()) {
-                        selected_node_ids_.clear();
-                        selected_node_ids_.insert(rbs.target_node_id);
-                        break;
-                    }
-                }
-            }
-            return true;
-        }
-    }
-
-    // Referenced-by header click (collapse toggle)
-    {
-        int rhi = hit_test_rect(ref_by_header_rects_, mouse_.x, mouse_.y);
-        if (rhi >= 0) {
-            const auto& r = ref_by_header_rects_[rhi];
-            const auto* ns = snap_.find_node(r.node_id);
-            if (ns) {
-                std::string collapse_key = ns->type_name + "\tref_by";
-                group_collapsed_[collapse_key] = !group_collapsed_[collapse_key];
-            }
-            return true;
-        }
-    }
-
-    // Referenced-by jump-to click — select the host node
-    {
-        int ji = hit_test_rect(ref_by_jump_rects_, mouse_.x, mouse_.y);
-        if (ji >= 0) {
-            const auto& r = ref_by_jump_rects_[ji];
-            // r.node_id is the host node ID (stored in ReferencedByEntry)
-            selected_node_ids_.clear();
-            selected_node_ids_.insert(r.node_id);
-            return true;
-        }
-    }
-
     // Reject clicks above perf bar (clipped-off content)
     if (mouse_.y < kPerfBarH) return true;
 
@@ -3053,19 +2884,11 @@ void NodeGraphUI::handle_graph_click() {
                     }
                 }
             } else {
-            // No node or sticky hit — try wire or binding line selection
+            // No node or sticky hit — try wire selection
             int wi = hit_test_wire(mouse_.x, mouse_.y);
             if (wi >= 0) {
                 selected_wire_idx_ = wi;
                 selected_node_ids_.clear();
-                selected_sticky_id_.clear();
-            } else if (hovered_binding_line_idx_ >= 0 &&
-                       hovered_binding_line_idx_ < static_cast<int>(binding_lines_.size())) {
-                const auto& bl = binding_lines_[hovered_binding_line_idx_];
-                selected_node_ids_.clear();
-                selected_node_ids_.insert(bl.host_node_id);
-                selected_node_ids_.insert(bl.target_node_id);
-                selected_wire_idx_ = -1;
                 selected_sticky_id_.clear();
             } else {
                 // Empty canvas: clear all selection

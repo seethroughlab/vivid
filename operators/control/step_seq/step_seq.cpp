@@ -115,5 +115,4 @@ void StepSeq::draw_inspector(VividInspectorContext* ctx) {
 }
 
 VIVID_REGISTER(StepSeq)
-VIVID_BINDABLE(StepSeq)
 VIVID_INSPECTOR(StepSeq)

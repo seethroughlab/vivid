@@ -223,7 +223,6 @@ template int NodeGraphUI::hit_test_rect(const std::vector<XYPadRect>& rects, flo
 template int NodeGraphUI::hit_test_rect(const std::vector<ColorSwatchRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<StatePresetRect>& rects, float mx, float my);
 template int NodeGraphUI::hit_test_rect(const std::vector<StateHeaderRect>& rects, float mx, float my);
-template int NodeGraphUI::hit_test_rect(const std::vector<RoleBindingRect>& rects, float mx, float my);
 
 // -----------------------------------------------------------------------
 // Port visibility helpers
@@ -765,22 +764,6 @@ int NodeGraphUI::hit_test_wire(float sx, float sy) const {
                     found = ci;
             });
         if (found >= 0) return found;
-    }
-    return -1;
-}
-
-int NodeGraphUI::hit_test_binding_line(float sx, float sy) const {
-    constexpr float kHitThresh = 8.0f;
-    float thresh2 = kHitThresh * kHitThresh;
-
-    for (int i = 0; i < static_cast<int>(binding_lines_.size()); ++i) {
-        const auto& bl = binding_lines_[i];
-        float ssx = gx_to_sx(bl.gsx), ssy = gy_to_sy(bl.gsy);
-        float sex = gx_to_sx(bl.gex), sey = gy_to_sy(bl.gey);
-
-        // Straight-line hit test (binding lines are drawn as straight dashes)
-        if (point_seg_dist2(sx, sy, ssx, ssy, sex, sey) < thresh2)
-            return i;
     }
     return -1;
 }
@@ -1966,11 +1949,8 @@ void NodeGraphUI::update_wire_hover() {
     if (!dragging_wire_ && !panning_ && !box_selecting_ && dragging_node_idx_ < 0 &&
         !context_menu_open_ && !chooser_open_ && !dropdown_open_) {
         hovered_wire_idx_ = hit_test_wire(mouse_.x, mouse_.y);
-        hovered_binding_line_idx_ = (hovered_wire_idx_ < 0)
-            ? hit_test_binding_line(mouse_.x, mouse_.y) : -1;
     } else {
         hovered_wire_idx_ = -1;
-        hovered_binding_line_idx_ = -1;
     }
 }
 

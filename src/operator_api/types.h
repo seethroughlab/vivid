@@ -7,9 +7,8 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 13u
-// v13: Added role_binding_count/role_binding_configs to VividGpuContext.
-// v12: Replaced embedded slots with role bindings (VividRoleBindingDescriptor/VividRoleBindingRuntimeConfig).
+#define VIVID_OPERATOR_ABI_VERSION 14u
+// v14: Removed role bindings — replaced with owned internal modulators + ordinary ports.
 // The ABI version catches stale dylibs during hot-reload — it is not a cross-version compatibility promise.
 
 // ---------------------------------------------------------------------------
@@ -62,9 +61,6 @@ typedef uint32_t VividPortTransport;
 #define VIVID_PORT_TRANSPORT_CUSTOM_REF     7u  // opaque shared-handle/reference
 
 
-typedef uint32_t VividRoleScope;
-#define VIVID_ROLE_SHARED     0u
-#define VIVID_ROLE_PER_VOICE  1u
 
 // ---------------------------------------------------------------------------
 // Descriptors
@@ -107,31 +103,6 @@ typedef struct VividPortDescriptor {
 } VividPortDescriptor;
 
 
-typedef struct VividRoleBindingDescriptor {
-    const char*    role_id;                            // unique within operator, e.g. "amp_env"
-    const char*    label;                              // display label, e.g. "Amplitude Envelope"
-    VividDomain    accepted_domain;                    // VIVID_DOMAIN_CONTROL for v1
-    VividRoleScope runtime_scope;                      // VIVID_ROLE_SHARED or VIVID_ROLE_PER_VOICE
-    const char**   allowed_operator_types;             // NULL = any bindable control op
-    uint32_t       allowed_operator_type_count;        // 0 = any
-    const char**   preferred_output_semantic_tags;     // hint for auto-wiring, e.g. {"envelope"}
-    uint32_t       preferred_output_semantic_tag_count;
-    const char*    preferred_output_name;              // usually "value"
-    const char*    default_operator_type;              // e.g. "Envelope", NULL = none
-} VividRoleBindingDescriptor;
-
-
-typedef struct VividRoleBindingRuntimeConfig {
-    const char*  role_id;
-    const char*  bound_node_type;    // "" if unbound
-    const char*  bound_output_name;  // "" if unbound
-    void*      (*create_fn)(void);   // returns OperatorBase*, NULL if unbound
-    void       (*destroy_fn)(void*); // paired destroy, NULL if unbound
-    uint32_t     param_count;
-    const char** param_names;        // [param_count]
-    const float* param_values;       // [param_count]
-} VividRoleBindingRuntimeConfig;
-
 typedef struct VividOperatorDescriptor {
     const char*               name;
     VividDomain               domain;
@@ -142,9 +113,17 @@ typedef struct VividOperatorDescriptor {
     int                       time_dependent;  // 1 if operator reads ctx->time, 0 otherwise
     int                       has_process_audio; // 1 if operator inherits AudioOperatorBase
     int                       has_process_gpu;   // 1 if operator inherits GpuOperatorBase
-    uint32_t                            role_binding_count;
-    const VividRoleBindingDescriptor*   role_bindings;
+    uint32_t                  embedded_op_slot_count;
+    const struct VividEmbeddedOpSlot* embedded_op_slots;
 } VividOperatorDescriptor;
+
+// Embedded operator slot metadata — declares which owned modulation slots
+// an operator supports, and how their params map to the host's flat param namespace.
+typedef struct VividEmbeddedOpSlot {
+    const char* role_id;        // e.g. "envelope", "viscosity_mod"
+    const char* default_type;   // e.g. "Envelope", "LFO"
+    const char* param_prefix;   // e.g. "envelope_", "viscosity_mod_"
+} VividEmbeddedOpSlot;
 
 // ---------------------------------------------------------------------------
 // Input events — mouse, keyboard, scroll for interactive operators
@@ -238,9 +217,6 @@ typedef struct VividAudioContext {
     const char**      file_param_values;
     uint32_t          file_param_count;
     const VividSharedHandleService* shared_handles;
-    // Role binding runtime configuration
-    uint32_t                                role_binding_count;
-    const VividRoleBindingRuntimeConfig*    role_binding_configs;
 } VividAudioContext;
 
 // ---------------------------------------------------------------------------
@@ -277,9 +253,6 @@ typedef struct VividProcessContext {
     uint32_t  preferred_tex_width;
     uint32_t  preferred_tex_height;
 
-    // Role binding runtime configuration
-    uint32_t                                role_binding_count;
-    const VividRoleBindingRuntimeConfig*    role_binding_configs;
 } VividProcessContext;
 
 // Forward declaration — full definition in gpu_operator.h (requires WebGPU types)
@@ -393,10 +366,6 @@ typedef uint32_t (*VividInspectorModeFn)(void);
 typedef void (*VividMainThreadUpdateFn)(void* instance, double time,
                                         const char** file_param_values,
                                         uint32_t file_param_count);
-
-// Bindable operator factory entry points (for bindable control operators)
-typedef void*  (*VividCreateBindableFn)(void);
-typedef void   (*VividDestroyBindableFn)(void* instance);
 
 // ---------------------------------------------------------------------------
 // Port type compatibility helpers

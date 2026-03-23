@@ -209,5 +209,4 @@ void MSEG::draw_inspector(VividInspectorContext* ctx) {
 }
 
 VIVID_REGISTER(MSEG)
-VIVID_BINDABLE(MSEG)
 VIVID_INSPECTOR(MSEG)

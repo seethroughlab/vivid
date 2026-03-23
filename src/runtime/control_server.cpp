@@ -255,8 +255,6 @@ static bool is_undo_tracked_method(const std::string& method) {
            method == "remove_node" ||
            method == "connect" ||
            method == "disconnect" ||
-           method == "set_role_binding" ||
-           method == "clear_role_binding" ||
            method == "set_connection_remap" ||
            method == "set_param" ||
            method == "set_string_param" ||
@@ -356,33 +354,6 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
             }
         }
         yyjson_mut_obj_add_val(doc, node, "params", params_arr);
-
-        if (desc && desc->role_binding_count > 0) {
-            yyjson_mut_val* bindings_arr = yyjson_mut_arr(doc);
-            for (uint32_t i = 0; i < desc->role_binding_count; ++i) {
-                const auto& rb = desc->role_bindings[i];
-                yyjson_mut_val* b = yyjson_mut_obj(doc);
-                yyjson_mut_obj_add_strcpy(doc, b, "role_id", rb.role_id ? rb.role_id : "");
-                yyjson_mut_obj_add_strcpy(doc, b, "label", rb.label ? rb.label : "");
-                NodeDef::RoleBindingState state;
-                bool has_binding = false;
-                auto it = ndef.role_bindings.find(rb.role_id ? rb.role_id : "");
-                if (it != ndef.role_bindings.end()) {
-                    state = it->second;
-                    has_binding = true;
-                }
-                yyjson_mut_obj_add_bool(doc, b, "bound", has_binding);
-                if (has_binding) {
-                    yyjson_mut_obj_add_strcpy(doc, b, "target_node_id", state.target_node_id.c_str());
-                    yyjson_mut_obj_add_strcpy(doc, b, "target_output_name", state.target_output_name.c_str());
-                    if (const auto* target = graph.find_node(state.target_node_id)) {
-                        yyjson_mut_obj_add_strcpy(doc, b, "target_type_name", target->type.c_str());
-                    }
-                }
-                yyjson_mut_arr_add_val(bindings_arr, b);
-            }
-            yyjson_mut_obj_add_val(doc, node, "role_bindings", bindings_arr);
-        }
 
         // Ports split into inputs / outputs
         yyjson_mut_val* inputs_arr = yyjson_mut_arr(doc);
@@ -1944,33 +1915,6 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 result = command_result_to_json(
                     api.set_param(yyjson_get_str(nid), yyjson_get_str(param),
                                   static_cast<float>(yyjson_get_num(value))));
-        }
-    } else if (method == "set_role_binding") {
-        if (!root) { result = json_err("invalid JSON body"); }
-        else {
-            yyjson_val* nid = yyjson_obj_get(root, "node_id");
-            yyjson_val* rid = yyjson_obj_get(root, "role_id");
-            yyjson_val* tid = yyjson_obj_get(root, "target_node_id");
-            yyjson_val* out = yyjson_obj_get(root, "target_output_name");
-            if (!nid || !rid || !tid || !out ||
-                !yyjson_is_str(nid) || !yyjson_is_str(rid) ||
-                !yyjson_is_str(tid) || !yyjson_is_str(out))
-                result = json_err("missing 'node_id', 'role_id', 'target_node_id', or 'target_output_name'");
-            else
-                result = command_result_to_json(
-                    api.set_role_binding(yyjson_get_str(nid), yyjson_get_str(rid),
-                                         yyjson_get_str(tid), yyjson_get_str(out)));
-        }
-    } else if (method == "clear_role_binding") {
-        if (!root) { result = json_err("invalid JSON body"); }
-        else {
-            yyjson_val* nid = yyjson_obj_get(root, "node_id");
-            yyjson_val* rid = yyjson_obj_get(root, "role_id");
-            if (!nid || !rid || !yyjson_is_str(nid) || !yyjson_is_str(rid))
-                result = json_err("missing 'node_id' or 'role_id'");
-            else
-                result = command_result_to_json(
-                    api.clear_role_binding(yyjson_get_str(nid), yyjson_get_str(rid)));
         }
     } else if (method == "set_string_param") {
         if (!root) { result = json_err("invalid JSON body"); }

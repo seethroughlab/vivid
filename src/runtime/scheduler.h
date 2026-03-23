@@ -119,26 +119,6 @@ struct NodeState {
     bool        gpu_shader_error     = false;
     std::string gpu_shader_error_msg;
 
-    // ── Role binding runtime (built during build(), read on audio thread) ──
-    struct RoleBindingRuntime {
-        std::string role_id;
-        std::string bound_node_id;       // target node ID (empty if unbound)
-        std::string bound_output_name;
-        std::string type_name;           // resolved type of target node
-        VividCreateBindableFn create_fn = nullptr;
-        VividDestroyBindableFn destroy_fn = nullptr;
-        std::vector<std::string> param_names;
-        std::vector<float> param_values;
-        uint32_t target_node_idx = UINT32_MAX;  // for live param sync
-        // C-level view (pointers into the above)
-        std::vector<const char*> c_param_names;
-        VividRoleBindingRuntimeConfig c_config{};
-        void rebuild_c_view();
-    };
-    std::vector<RoleBindingRuntime> role_binding_runtime;
-    // Flat array of c_config views for passing to VividAudioContext (rebuilt in build())
-    std::vector<VividRoleBindingRuntimeConfig> role_binding_configs;
-
     // Per-instance loader for WGSLFilter nodes (owns the loader; ns.loader points here)
     std::unique_ptr<OperatorLoader> owned_loader;
 
@@ -209,7 +189,6 @@ public:
                      const std::unordered_map<std::string, std::string>* string_overrides = nullptr) {
         init_node_state(ns, desc, param_overrides, string_overrides);
     }
-    void sync_role_binding_params();
 
     bool gpu_sink_source_size(int sink_idx, uint32_t& w, uint32_t& h) const;
     WGPUTexture gpu_sink_source_texture(int sink_idx) const;

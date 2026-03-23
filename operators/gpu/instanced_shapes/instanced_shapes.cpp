@@ -1,13 +1,14 @@
-// Instanced Shapes — GPU SDF geometry with per-instance role bindings.
+// Instanced Shapes — GPU SDF geometry with owned internal LFO pools.
 //
 // Renders N instances of a chosen SDF shape (circle, triangle, square, pentagon,
-// hexagon, star) in configurable spatial layouts. Three PER_VOICE role bindings
-// (scale, rotation, color_mod) allow independent modulation per instance.
+// hexagon, star) in configurable spatial layouts. Three owned LFO pools
+// (scale, rotation, color_mod) provide per-instance modulation via ChildOp<LFO>.
 
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
-#include "operator_api/bound_control_instance.h"
+#include "operator_api/child_op.h"
+#include "control/lfo/lfo.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -140,14 +141,25 @@ struct Instance {
     float phase = 0.0f;          // per-instance animation phase offset
 };
 
-// ── Role binding pool ───────────────────────────────────────────────────
+// ── Owned LFO pool ─────────────────────────────────────────────────────
 
-struct RolePool {
-    std::vector<std::unique_ptr<vivid::BoundControlInstance>> pool;
-    bool initialized = false;
-    VividCreateBindableFn  cached_create_fn  = nullptr;
-    VividDestroyBindableFn cached_destroy_fn = nullptr;
+struct LfoPool {
+    std::vector<vivid::ChildOp<LFO>> instances;
+    int cached_count = 0;
 };
+
+// ── Waveform index mapping ─────────────────────────────────────────────
+// Host param enum:  0=Sine, 1=Triangle, 2=Saw, 3=Square
+// LFO waveform enum: 0=sine, 1=saw, 2=square, 3=triangle
+static int host_waveform_to_lfo(int host) {
+    switch (host) {
+        case 0: return 0; // Sine   → sine
+        case 1: return 3; // Triangle → triangle
+        case 2: return 1; // Saw    → saw
+        case 3: return 2; // Square → square
+        default: return 0;
+    }
+}
 
 // ── Operator ────────────────────────────────────────────────────────────
 
@@ -165,6 +177,25 @@ struct InstancedShapes : vivid::GpuOperatorBase {
     vivid::Param<int>   layout    {"layout",    0,     {"Random", "Grid", "Circle", "Line"}};
     vivid::Param<int>   animate   {"animate",   0,     {"Off", "On"}};
     vivid::Param<float> speed     {"speed",     1.0f,  0.0f,  5.0f};
+
+    // ── Scale Modulation ────────────────────────────────────────
+    vivid::Param<int>   scale_enabled  {"scale_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> scale_amount   {"scale_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> scale_rate     {"scale_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   scale_waveform {"scale_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> scale_offset   {"scale_offset",   0.0f, -1.0f, 1.0f};
+    // ── Rotation Modulation ─────────────────────────────────────
+    vivid::Param<int>   rotation_enabled  {"rotation_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> rotation_amount   {"rotation_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> rotation_rate     {"rotation_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   rotation_waveform {"rotation_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> rotation_offset   {"rotation_offset",   0.0f, -1.0f, 1.0f};
+    // ── Color Mod Modulation ────────────────────────────────────
+    vivid::Param<int>   color_mod_enabled  {"color_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> color_mod_amount   {"color_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> color_mod_rate     {"color_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   color_mod_waveform {"color_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> color_mod_offset   {"color_mod_offset",   0.0f, -1.0f, 1.0f};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(count,     2, 0);
@@ -186,55 +217,43 @@ struct InstancedShapes : vivid::GpuOperatorBase {
         out.push_back(&color_b);
         out.push_back(&animate);
         out.push_back(&speed);
+
+        // Scale modulation params
+        vivid::layout_row(scale_enabled,  2, 0);
+        vivid::layout_row(scale_waveform, 2, 1);
+        out.push_back(&scale_enabled);
+        out.push_back(&scale_amount);
+        out.push_back(&scale_rate);
+        out.push_back(&scale_waveform);
+        out.push_back(&scale_offset);
+
+        // Rotation modulation params
+        vivid::layout_row(rotation_enabled,  2, 0);
+        vivid::layout_row(rotation_waveform, 2, 1);
+        out.push_back(&rotation_enabled);
+        out.push_back(&rotation_amount);
+        out.push_back(&rotation_rate);
+        out.push_back(&rotation_waveform);
+        out.push_back(&rotation_offset);
+
+        // Color mod modulation params
+        vivid::layout_row(color_mod_enabled,  2, 0);
+        vivid::layout_row(color_mod_waveform, 2, 1);
+        out.push_back(&color_mod_enabled);
+        out.push_back(&color_mod_amount);
+        out.push_back(&color_mod_rate);
+        out.push_back(&color_mod_waveform);
+        out.push_back(&color_mod_offset);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_role_bindings(std::vector<VividRoleBindingDescriptor>& out) override {
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "scale";
-            role.label                              = "Scale";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_PER_VOICE;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "rotation";
-            role.label                              = "Rotation";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_PER_VOICE;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "color_mod";
-            role.label                              = "Color Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_PER_VOICE;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
+    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
+        out.push_back({"scale", "LFO", "scale_"});
+        out.push_back({"rotation", "LFO", "rotation_"});
+        out.push_back({"color_mod", "LFO", "color_mod_"});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -244,10 +263,10 @@ struct InstancedShapes : vivid::GpuOperatorBase {
         if (n < 1) n = 1;
         if (n > kMaxInstances) n = kMaxInstances;
 
-        // ── Initialize role binding pools ────────────────────────────
-        maybe_init_pool(scale_pool_,     ctx, "scale",     n);
-        maybe_init_pool(rotation_pool_,  ctx, "rotation",  n);
-        maybe_init_pool(color_mod_pool_, ctx, "color_mod", n);
+        // ── Sync LFO pools ──────────────────────────────────────────
+        sync_lfo_pool(scale_pool_,     n, scale_enabled,     scale_rate,     scale_waveform,     scale_offset);
+        sync_lfo_pool(rotation_pool_,  n, rotation_enabled,  rotation_rate,  rotation_waveform,  rotation_offset);
+        sync_lfo_pool(color_mod_pool_, n, color_mod_enabled, color_mod_rate, color_mod_waveform, color_mod_offset);
 
         // ── Compute layout positions ─────────────────────────────────
         int layout_mode = layout.int_value();
@@ -284,11 +303,20 @@ struct InstancedShapes : vivid::GpuOperatorBase {
         u.star_factor   = star_factor;
         u.softness      = softness.value;
 
-        // Shared process context for all bound control instances
+        // Shared process context for all child LFO instances
         VividProcessContext ctrl_ctx{};
         ctrl_ctx.time       = ctx->time;
         ctrl_ctx.delta_time = ctx->delta_time;
         ctrl_ctx.frame      = ctx->frame;
+
+        // Process all LFO pools
+        float scale_vals[kMaxInstances];
+        float rotation_vals[kMaxInstances];
+        float color_mod_vals[kMaxInstances];
+
+        process_lfo_pool(scale_pool_,     &ctrl_ctx, n, scale_amount.value,     scale_vals);
+        process_lfo_pool(rotation_pool_,  &ctrl_ctx, n, rotation_amount.value,  rotation_vals);
+        process_lfo_pool(color_mod_pool_, &ctrl_ctx, n, color_mod_amount.value, color_mod_vals);
 
         float cr = color_r.value;
         float cg = color_g.value;
@@ -324,36 +352,17 @@ struct InstancedShapes : vivid::GpuOperatorBase {
                 }
             }
 
-            // Query role bindings
-            float scale_val = 1.0f;
-            if (i < static_cast<int>(scale_pool_.pool.size()) && scale_pool_.pool[i]) {
-                scale_pool_.pool[i]->process(&ctrl_ctx);
-                scale_val = scale_pool_.pool[i]->output("value");
-            }
-
-            float rot_val = 0.0f;
-            if (i < static_cast<int>(rotation_pool_.pool.size()) && rotation_pool_.pool[i]) {
-                rotation_pool_.pool[i]->process(&ctrl_ctx);
-                rot_val = rotation_pool_.pool[i]->output("value");
-            }
-
-            float color_mod_val = 0.0f;
-            if (i < static_cast<int>(color_mod_pool_.pool.size()) && color_mod_pool_.pool[i]) {
-                color_mod_pool_.pool[i]->process(&ctrl_ctx);
-                color_mod_val = color_mod_pool_.pool[i]->output("value");
-            }
-
             // Pack geometry: xy=position, z=size, w=rotation
-            // scale_val: bipolar [-1,1] → remap to [0,2] so 0 = default size
-            float sz = bs * std::max(0.0f, 1.0f + scale_val);
+            // scale_vals: bipolar [-1,1] → remap to [0,2] so 0 = default size
+            float sz = bs * std::max(0.0f, 1.0f + scale_vals[i]);
             u.instances_geo[i * 4 + 0] = px;
             u.instances_geo[i * 4 + 1] = py;
             u.instances_geo[i * 4 + 2] = sz;
-            u.instances_geo[i * 4 + 3] = rot_val * 6.2831853f;
+            u.instances_geo[i * 4 + 3] = rotation_vals[i] * 6.2831853f;
 
             // Pack color: rgb=modulated color, a=alpha
-            // color_mod_val: bipolar [-1,1] → brightness range [0.5, 1.5]
-            float mod = std::max(0.0f, 1.0f + color_mod_val * 0.5f);
+            // color_mod_vals: bipolar [-1,1] → brightness range [0.5, 1.5]
+            float mod = std::max(0.0f, 1.0f + color_mod_vals[i] * 0.5f);
             u.instances_color[i * 4 + 0] = cr * mod;
             u.instances_color[i * 4 + 1] = cg * mod;
             u.instances_color[i * 4 + 2] = cb * mod;
@@ -380,10 +389,10 @@ private:
     int prev_count_  = -1;
     int prev_layout_ = -1;
 
-    // Role binding pools
-    RolePool scale_pool_;
-    RolePool rotation_pool_;
-    RolePool color_mod_pool_;
+    // Owned LFO pools
+    LfoPool scale_pool_;
+    LfoPool rotation_pool_;
+    LfoPool color_mod_pool_;
 
     // GPU handles
     WGPURenderPipeline  pipeline_    = nullptr;
@@ -494,85 +503,56 @@ private:
         }
     }
 
-    // ── Role binding pool management ────────────────────────────────
+    // ── LFO pool management ─────────────────────────────────────────
 
-    void maybe_init_pool(RolePool& rp, const VividGpuContext* ctx,
-                         const char* role_id, int n) {
-        if (!ctx->role_binding_configs || ctx->role_binding_count == 0) {
-            if (rp.initialized) {
-                rp.pool.clear();
-                rp.initialized = false;
+    void sync_lfo_pool(LfoPool& pool, int n,
+                       const vivid::Param<int>& enabled_param,
+                       const vivid::Param<float>& rate_param,
+                       const vivid::Param<int>& waveform_param,
+                       const vivid::Param<float>& offset_param) {
+        if (enabled_param.int_value() == 0) {
+            if (!pool.instances.empty()) {
+                pool.instances.clear();
+                pool.cached_count = 0;
             }
             return;
         }
 
-        // Find matching role config
-        const VividRoleBindingRuntimeConfig* cfg = nullptr;
-        for (uint32_t i = 0; i < ctx->role_binding_count; ++i) {
-            if (std::strcmp(ctx->role_binding_configs[i].role_id, role_id) == 0) {
-                cfg = &ctx->role_binding_configs[i];
-                break;
-            }
-        }
+        // Resize pool if instance count changed
+        if (n != pool.cached_count) {
+            pool.instances.clear();
+            pool.instances.resize(n);
+            pool.cached_count = n;
 
-        if (!cfg || !cfg->create_fn) {
-            if (rp.initialized) {
-                rp.pool.clear();
-                rp.initialized = false;
-            }
-            return;
-        }
-
-        bool need_reinit = !rp.initialized
-            || rp.cached_create_fn != cfg->create_fn
-            || static_cast<int>(rp.pool.size()) != n;
-
-        if (need_reinit) {
-            rp.pool.clear();
-            rp.cached_create_fn  = cfg->create_fn;
-            rp.cached_destroy_fn = cfg->destroy_fn;
-
+            // Set staggered phase offset on each new instance
             for (int i = 0; i < n; ++i) {
-                auto* raw = static_cast<vivid::OperatorBase*>(cfg->create_fn());
-                if (!raw) continue;
-
-                auto destroy = [dfn = rp.cached_destroy_fn](vivid::OperatorBase* p) {
-                    if (dfn) dfn(p); else delete p;
-                };
-                auto inst = std::make_unique<vivid::BoundControlInstance>(raw, std::move(destroy));
-
-                for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                    if (inst->has_param(cfg->param_names[pi])) {
-                        inst->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                    }
-                }
-
-                // Spread phase_offset across instances so each runs at
-                // a different point in the LFO/envelope cycle.
-                if (inst->has_param("phase_offset")) {
-                    inst->set_param("phase_offset",
-                        static_cast<float>(i) / static_cast<float>(n));
-                }
-
-                rp.pool.push_back(std::move(inst));
+                pool.instances[i].set_param("phase_offset",
+                    static_cast<float>(i) / static_cast<float>(n));
             }
-            rp.initialized = true;
-        } else {
-            // Sync params each frame (user may tweak knobs live)
-            for (int i = 0; i < static_cast<int>(rp.pool.size()); ++i) {
-                auto& inst = rp.pool[i];
-                if (!inst) continue;
-                for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                    if (inst->has_param(cfg->param_names[pi])) {
-                        inst->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                    }
-                }
-                // Re-apply per-instance phase offset (template sync may overwrite it)
-                if (inst->has_param("phase_offset")) {
-                    inst->set_param("phase_offset",
-                        static_cast<float>(i) / static_cast<float>(rp.pool.size()));
-                }
-            }
+        }
+
+        // Sync host params → child LFO params each frame
+        float freq = rate_param.value;
+        int   wf   = host_waveform_to_lfo(waveform_param.int_value());
+        float off  = offset_param.value;
+
+        for (int i = 0; i < n; ++i) {
+            pool.instances[i].set_param("frequency", freq);
+            pool.instances[i].set_param("waveform",  static_cast<float>(wf));
+            pool.instances[i].set_param("offset",    off);
+        }
+    }
+
+    void process_lfo_pool(LfoPool& pool, const VividProcessContext* ctx,
+                          int n, float amount, float* out_values) {
+        if (pool.instances.empty()) {
+            for (int i = 0; i < n; ++i) out_values[i] = 0.0f;
+            return;
+        }
+
+        for (int i = 0; i < n; ++i) {
+            pool.instances[i].process(ctx);
+            out_values[i] = pool.instances[i].output("value") * amount;
         }
     }
 };

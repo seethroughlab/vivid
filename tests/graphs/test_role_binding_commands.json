@@ -1,9 +1,0 @@
-{
-  "nodes": {
-    "host": { "type": "TestOpWithRoles", "params": { "gain": 1.0 } },
-    "src":  { "type": "TestOp", "params": { "scale": 2.0 } },
-    "env1": { "type": "Envelope", "params": {} },
-    "multi": { "type": "TestMultiOutputBindable", "params": { "rate": 1.0 } }
-  },
-  "connections": []
-}

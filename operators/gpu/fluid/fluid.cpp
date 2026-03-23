@@ -1,20 +1,19 @@
-// Fluid Simulation — 2D Navier-Stokes (Stable Fluids) with SHARED role binding
+// Fluid Simulation — 2D Navier-Stokes (Stable Fluids) with owned LFO
 // modulation.
 //
 // Seven RGBA16Float state textures: velocity[2], pressure[2], dye[2], divergence.
 // Seven passes per frame: advect velocity, apply forces, compute divergence,
 // pressure solve (N Jacobi iterations), subtract pressure gradient, advect dye,
-// visualize. Three SHARED role bindings (viscosity_mod, buoyancy_mod, force_mod)
-// modulate simulation parameters globally.
+// visualize. Three owned ChildOp<LFO> instances (viscosity, buoyancy, force)
+// modulate simulation parameters.
 
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
-#include "operator_api/bound_control_instance.h"
+#include "operator_api/child_op.h"
+#include "control/lfo/lfo.h"
 #include <algorithm>
 #include <cmath>
-#include <cstring>
-#include <memory>
 #include <string>
 
 // ── WGSL shared preamble (uniform struct + bindings) ────────────────────
@@ -195,15 +194,6 @@ struct FluidUniforms {
     float padding;          // f32 — 64 bytes total
 };
 
-// ── Shared role binding ─────────────────────────────────────────────────
-
-struct SharedBinding {
-    std::unique_ptr<vivid::BoundControlInstance> instance;
-    bool initialized = false;
-    VividCreateBindableFn  cached_create_fn  = nullptr;
-    VividDestroyBindableFn cached_destroy_fn = nullptr;
-};
-
 // ── Operator ────────────────────────────────────────────────────────────
 
 struct Fluid : vivid::GpuOperatorBase {
@@ -230,6 +220,25 @@ struct Fluid : vivid::GpuOperatorBase {
     // ── Control ─────────────────────────────────────────────────────
     vivid::Param<int>   sim_resolution  {"sim_resolution",  2,       {"64", "128", "256", "512"}};
     vivid::Param<int>   reset           {"reset",           0,       {"Off", "Reset"}};
+
+    // ── Modulation ──────────────────────────────────────────────
+    vivid::Param<int>   viscosity_mod_enabled  {"viscosity_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> viscosity_mod_amount   {"viscosity_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> viscosity_mod_rate     {"viscosity_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   viscosity_mod_waveform {"viscosity_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> viscosity_mod_offset   {"viscosity_mod_offset",   0.0f, -1.0f, 1.0f};
+
+    vivid::Param<int>   buoyancy_mod_enabled   {"buoyancy_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> buoyancy_mod_amount    {"buoyancy_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> buoyancy_mod_rate      {"buoyancy_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   buoyancy_mod_waveform  {"buoyancy_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> buoyancy_mod_offset    {"buoyancy_mod_offset",   0.0f, -1.0f, 1.0f};
+
+    vivid::Param<int>   force_mod_enabled      {"force_mod_enabled",     0, {"Off", "On"}};
+    vivid::Param<float> force_mod_amount       {"force_mod_amount",      1.0f, 0.0f, 2.0f};
+    vivid::Param<float> force_mod_rate         {"force_mod_rate",        1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   force_mod_waveform     {"force_mod_waveform",    0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> force_mod_offset       {"force_mod_offset",      0.0f, -1.0f, 1.0f};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(viscosity,       2, 0);
@@ -259,6 +268,21 @@ struct Fluid : vivid::GpuOperatorBase {
         out.push_back(&color_b);
         out.push_back(&sim_resolution);
         out.push_back(&reset);
+        out.push_back(&viscosity_mod_enabled);
+        out.push_back(&viscosity_mod_amount);
+        out.push_back(&viscosity_mod_rate);
+        out.push_back(&viscosity_mod_waveform);
+        out.push_back(&viscosity_mod_offset);
+        out.push_back(&buoyancy_mod_enabled);
+        out.push_back(&buoyancy_mod_amount);
+        out.push_back(&buoyancy_mod_rate);
+        out.push_back(&buoyancy_mod_waveform);
+        out.push_back(&buoyancy_mod_offset);
+        out.push_back(&force_mod_enabled);
+        out.push_back(&force_mod_amount);
+        out.push_back(&force_mod_rate);
+        out.push_back(&force_mod_waveform);
+        out.push_back(&force_mod_offset);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -266,49 +290,10 @@ struct Fluid : vivid::GpuOperatorBase {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_role_bindings(std::vector<VividRoleBindingDescriptor>& out) override {
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "viscosity_mod";
-            role.label                              = "Viscosity Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_SHARED;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "buoyancy_mod";
-            role.label                              = "Buoyancy Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_SHARED;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "force_mod";
-            role.label                              = "Force Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_SHARED;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
+    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
+        out.push_back({"viscosity_mod", "LFO", "viscosity_mod_"});
+        out.push_back({"buoyancy_mod", "LFO", "buoyancy_mod_"});
+        out.push_back({"force_mod", "LFO", "force_mod_"});
     }
 
     // ── Per-frame GPU processing ────────────────────────────────────
@@ -331,19 +316,35 @@ struct Fluid : vivid::GpuOperatorBase {
         }
         prev_reset_ = rst;
 
-        // ── Shared role bindings ────────────────────────────────
-        maybe_init_shared(viscosity_binding_, ctx, "viscosity_mod");
-        maybe_init_shared(buoyancy_binding_,  ctx, "buoyancy_mod");
-        maybe_init_shared(force_binding_,     ctx, "force_mod");
-
+        // ── Owned modulation ───────────────────────────────────
         VividProcessContext ctrl_ctx{};
         ctrl_ctx.time       = ctx->time;
         ctrl_ctx.delta_time = ctx->delta_time;
         ctrl_ctx.frame      = ctx->frame;
 
-        float visc_mod  = process_shared(viscosity_binding_, &ctrl_ctx);
-        float buoy_mod  = process_shared(buoyancy_binding_,  &ctrl_ctx);
-        float force_mod = process_shared(force_binding_,     &ctrl_ctx);
+        float visc_mod = 0.0f, buoy_mod = 0.0f, force_mod = 0.0f;
+
+        if (viscosity_mod_enabled.int_value()) {
+            viscosity_lfo_.set_param("rate", viscosity_mod_rate.value);
+            viscosity_lfo_.set_param("waveform", static_cast<float>(viscosity_mod_waveform.int_value()));
+            viscosity_lfo_.set_param("offset", viscosity_mod_offset.value);
+            viscosity_lfo_.process(&ctrl_ctx);
+            visc_mod = viscosity_lfo_.output("value") * viscosity_mod_amount.value;
+        }
+        if (buoyancy_mod_enabled.int_value()) {
+            buoyancy_lfo_.set_param("rate", buoyancy_mod_rate.value);
+            buoyancy_lfo_.set_param("waveform", static_cast<float>(buoyancy_mod_waveform.int_value()));
+            buoyancy_lfo_.set_param("offset", buoyancy_mod_offset.value);
+            buoyancy_lfo_.process(&ctrl_ctx);
+            buoy_mod = buoyancy_lfo_.output("value") * buoyancy_mod_amount.value;
+        }
+        if (force_mod_enabled.int_value()) {
+            force_lfo_.set_param("rate", force_mod_rate.value);
+            force_lfo_.set_param("waveform", static_cast<float>(force_mod_waveform.int_value()));
+            force_lfo_.set_param("offset", force_mod_offset.value);
+            force_lfo_.process(&ctrl_ctx);
+            force_mod = force_lfo_.output("value") * force_mod_amount.value;
+        }
 
         // ── Fill uniforms ───────────────────────────────────────
         float s = static_cast<float>(sim_res_pixels());
@@ -466,10 +467,10 @@ struct Fluid : vivid::GpuOperatorBase {
     }
 
 private:
-    // ── Shared role bindings ────────────────────────────────────────
-    SharedBinding viscosity_binding_;
-    SharedBinding buoyancy_binding_;
-    SharedBinding force_binding_;
+    // ── Owned LFO modulators ────────────────────────────────────────
+    vivid::ChildOp<LFO> viscosity_lfo_;
+    vivid::ChildOp<LFO> buoyancy_lfo_;
+    vivid::ChildOp<LFO> force_lfo_;
 
     // ── Ping-pong state ─────────────────────────────────────────────
     int vel_ping_  = 0;
@@ -630,74 +631,6 @@ private:
         vivid::gpu::release(divergence_view_);  divergence_view_ = nullptr;
     }
 
-    // ── Shared binding management ───────────────────────────────────
-
-    void maybe_init_shared(SharedBinding& sb, const VividGpuContext* ctx,
-                           const char* role_id) {
-        if (!ctx->role_binding_configs || ctx->role_binding_count == 0) {
-            if (sb.initialized) {
-                sb.instance.reset();
-                sb.initialized = false;
-            }
-            return;
-        }
-
-        const VividRoleBindingRuntimeConfig* cfg = nullptr;
-        for (uint32_t i = 0; i < ctx->role_binding_count; ++i) {
-            if (std::strcmp(ctx->role_binding_configs[i].role_id, role_id) == 0) {
-                cfg = &ctx->role_binding_configs[i];
-                break;
-            }
-        }
-
-        if (!cfg || !cfg->create_fn) {
-            if (sb.initialized) {
-                sb.instance.reset();
-                sb.initialized = false;
-            }
-            return;
-        }
-
-        bool need_reinit = !sb.initialized
-            || sb.cached_create_fn != cfg->create_fn;
-
-        if (need_reinit) {
-            sb.instance.reset();
-            sb.cached_create_fn  = cfg->create_fn;
-            sb.cached_destroy_fn = cfg->destroy_fn;
-
-            auto* raw = static_cast<vivid::OperatorBase*>(cfg->create_fn());
-            if (!raw) return;
-
-            auto destroy = [dfn = sb.cached_destroy_fn](vivid::OperatorBase* p) {
-                if (dfn) dfn(p); else delete p;
-            };
-            sb.instance = std::make_unique<vivid::BoundControlInstance>(raw, std::move(destroy));
-
-            for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                if (sb.instance->has_param(cfg->param_names[pi])) {
-                    sb.instance->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                }
-            }
-            sb.initialized = true;
-        } else {
-            if (sb.instance) {
-                for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                    if (sb.instance->has_param(cfg->param_names[pi])) {
-                        sb.instance->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                    }
-                }
-            }
-        }
-    }
-
-    static float process_shared(SharedBinding& sb, const VividProcessContext* ctrl_ctx) {
-        if (sb.instance) {
-            sb.instance->process(ctrl_ctx);
-            return sb.instance->output("value");
-        }
-        return 0.0f;
-    }
 };
 
 VIVID_REGISTER(Fluid)

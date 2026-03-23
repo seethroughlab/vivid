@@ -135,11 +135,6 @@ public:
     CommandResult apply_snapshot_json(const std::string& graph_json,
                                       bool& has_gpu_ops, bool& has_audio);
 
-    // Role binding operations
-    CommandResult set_role_binding(const std::string& node_id, const std::string& role_id,
-                                   const std::string& target_node_id, const std::string& target_output_name);
-    CommandResult clear_role_binding(const std::string& node_id, const std::string& role_id);
-
     // Solo mode (session-only, not serialized)
     CommandResult set_solo(const std::string& node_id);  // empty string = clear solo
     std::string solo_node_id() const;

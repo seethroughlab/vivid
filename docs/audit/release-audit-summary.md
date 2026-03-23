@@ -231,3 +231,7 @@ This is not a finding by itself, but it matters when interpreting later regressi
 2. Continue the broader `NodeGraphUI` modularity cleanup while the inspector refactor is still fresh.
 3. Tighten standalone export hermeticity beyond the new pre-fetched-source fallback if fully offline export matters.
 4. Execute the operational release checklist when the codebase is actually ready to cut a release.
+
+---
+
+**Note (March 2026):** Role bindings were an intermediate design that has since been removed. The codebase now uses owned embedded composition for host-local modulation, ordinary ports for graph transport, and explicit outputs for cross-domain sharing. See `docs/EMBEDDED-OPERATOR-SLOTS.md` for the current architecture.

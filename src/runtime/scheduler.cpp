@@ -11,21 +11,6 @@
 
 namespace vivid {
 
-void NodeState::RoleBindingRuntime::rebuild_c_view() {
-    c_param_names.resize(param_names.size());
-    for (size_t i = 0; i < param_names.size(); ++i)
-        c_param_names[i] = param_names[i].c_str();
-
-    c_config.role_id           = role_id.c_str();
-    c_config.bound_node_type   = type_name.c_str();
-    c_config.bound_output_name = bound_output_name.c_str();
-    c_config.create_fn         = create_fn;
-    c_config.destroy_fn        = destroy_fn;
-    c_config.param_count       = static_cast<uint32_t>(param_names.size());
-    c_config.param_names       = c_param_names.empty() ? nullptr : c_param_names.data();
-    c_config.param_values      = param_values.empty() ? nullptr : param_values.data();
-}
-
 static constexpr uint32_t kMaxSpreadCapacity = 1024;
 
 // Check if a wire has non-default remap (any field differs from identity mapping)
@@ -315,65 +300,6 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
                 auto pi = ns.param_indices.find(pname);
                 if (pi != ns.param_indices.end())
                     ns.param_lock_flags[pi->second] = flags;
-            }
-
-            // Build role binding runtime configs for all declared roles
-            if (desc->role_binding_count > 0) {
-                ns.role_binding_runtime.resize(desc->role_binding_count);
-                for (uint32_t si = 0; si < desc->role_binding_count; ++si) {
-                    const auto& role_desc = desc->role_bindings[si];
-                    auto& rt = ns.role_binding_runtime[si];
-                    rt.role_id = role_desc.role_id;
-
-                    // Check if the graph has a role binding for this role
-                    auto bind_it = ndef.role_bindings.find(rt.role_id);
-                    if (bind_it != ndef.role_bindings.end()) {
-                        const auto& binding = bind_it->second;
-                        rt.bound_node_id = binding.target_node_id;
-                        rt.bound_output_name = binding.target_output_name;
-
-                        // Find the target node's type
-                        const auto* target_ndef = graph.find_node(binding.target_node_id);
-                        if (target_ndef) {
-                            rt.type_name = target_ndef->type;
-
-                            // Resolve factory functions from the loader
-                            OperatorLoader* bind_loader = registry.find(target_ndef->type);
-                            if (bind_loader && bind_loader->has_create_bindable()) {
-                                rt.create_fn  = bind_loader->raw_create_bindable_fn();
-                                rt.destroy_fn = bind_loader->raw_destroy_bindable_fn();
-                            }
-
-                            // Copy param names from target descriptor, values from target NodeDef
-                            const auto* target_desc = registry.probe_descriptor(target_ndef->type);
-                            if (target_desc) {
-                                for (uint32_t pi = 0; pi < target_desc->param_count; ++pi) {
-                                    rt.param_names.push_back(target_desc->params[pi].name);
-                                    auto pit = target_ndef->params.find(target_desc->params[pi].name);
-                                    rt.param_values.push_back(
-                                        pit != target_ndef->params.end()
-                                        ? pit->second
-                                        : target_desc->params[pi].default_value);
-                                }
-                            }
-
-                            // Resolve target_node_idx for live param sync
-                            for (uint32_t ni2 = 0; ni2 < static_cast<uint32_t>(nodes_.size()); ++ni2) {
-                                if (nodes_[ni2].node_id == binding.target_node_id) {
-                                    rt.target_node_idx = ni2;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    rt.rebuild_c_view();
-                }
-
-                // Build flat config array for VividAudioContext
-                ns.role_binding_configs.resize(ns.role_binding_runtime.size());
-                for (size_t si = 0; si < ns.role_binding_runtime.size(); ++si)
-                    ns.role_binding_configs[si] = ns.role_binding_runtime[si].c_config;
             }
 
             // Per-node GPU texture resolution from graph definition
@@ -733,18 +659,6 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         if (ns.owned_loader) ns.loader = ns.owned_loader.get();
     }
 
-    // Re-resolve role binding target indices after topological reorder
-    std::unordered_map<std::string, uint32_t> sorted_node_index;
-    for (uint32_t i = 0; i < static_cast<uint32_t>(nodes_.size()); ++i)
-        sorted_node_index[nodes_[i].node_id] = i;
-    for (auto& ns : nodes_) {
-        for (auto& rt : ns.role_binding_runtime) {
-            if (rt.bound_node_id.empty()) continue;
-            auto it = sorted_node_index.find(rt.bound_node_id);
-            rt.target_node_idx = (it != sorted_node_index.end()) ? it->second : UINT32_MAX;
-        }
-    }
-
     // Build per-node list of upstream node indices for generation tracking
     for (auto& ns : nodes_)
         ns.upstream_nodes.clear();
@@ -1044,10 +958,6 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             gpu_ctx.custom_input_count = static_cast<uint32_t>(ns.resolved_custom_inputs.size());
             gpu_ctx.custom_outputs      = ns.custom_output_buf.empty() ? nullptr : ns.custom_output_buf.data();
             gpu_ctx.custom_output_count = static_cast<uint32_t>(ns.custom_output_buf.size());
-            gpu_ctx.role_binding_count  = static_cast<uint32_t>(ns.role_binding_configs.size());
-            gpu_ctx.role_binding_configs = ns.role_binding_configs.empty()
-                ? nullptr : ns.role_binding_configs.data();
-
             try {
                 if (ns.missing_operator || !ns.loader) {
                     std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
@@ -1125,10 +1035,6 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
             ctx.file_param_count  = static_cast<uint32_t>(ns.file_param_ptrs.size());
             ctx.shared_handles = vivid::shared_handle_service();
             ctx.input = input ? const_cast<void*>(static_cast<const void*>(input)) : nullptr;
-            ctx.role_binding_count  = static_cast<uint32_t>(ns.role_binding_configs.size());
-            ctx.role_binding_configs = ns.role_binding_configs.empty()
-                ? nullptr : ns.role_binding_configs.data();
-
             try {
                 if (ns.missing_operator || !ns.loader) {
                     std::fill(ns.output_values.begin(), ns.output_values.end(), 0.0f);
@@ -1621,27 +1527,6 @@ void Scheduler::set_solo(int node_idx) {
                 queue.push_back(up);
             }
         }
-    }
-}
-
-void Scheduler::sync_role_binding_params() {
-    for (auto& ns : nodes_) {
-        for (auto& rt : ns.role_binding_runtime) {
-            if (rt.target_node_idx == UINT32_MAX) continue;
-            if (rt.target_node_idx >= nodes_.size()) continue;
-            const auto& target_ns = nodes_[rt.target_node_idx];
-            // Copy live param values from target node
-            for (size_t i = 0; i < rt.param_names.size(); ++i) {
-                auto pi = target_ns.param_indices.find(rt.param_names[i]);
-                if (pi != target_ns.param_indices.end())
-                    rt.param_values[i] = target_ns.param_values[pi->second];
-            }
-            rt.rebuild_c_view();
-        }
-        // Rebuild flat configs array
-        ns.role_binding_configs.resize(ns.role_binding_runtime.size());
-        for (size_t i = 0; i < ns.role_binding_runtime.size(); ++i)
-            ns.role_binding_configs[i] = ns.role_binding_runtime[i].c_config;
     }
 }
 

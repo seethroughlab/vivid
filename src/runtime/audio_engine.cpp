@@ -709,7 +709,6 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         snap.spread_inputs.resize(n);
         snap.input_string_values.resize(n);
         snap.custom_inputs.resize(n);
-        snap.role_bindings.resize(n);
         for (uint32_t i = 0; i < n; ++i) {
             snap.node_params[i] = nodes_[i].param_values;
             snap.float_input_values[i] = nodes_[i].float_input_defaults;
@@ -1011,19 +1010,6 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
         }
     }
 
-    // Role binding configs: snapshot pointers from scheduler NodeState
-    for (const auto& m : param_mappings_) {
-        const auto& sched_ns = scheduler.nodes()[m.scheduler_node_idx];
-        auto& rb = snap.role_bindings[m.audio_engine_idx];
-        if (!sched_ns.role_binding_configs.empty()) {
-            rb.count = static_cast<uint32_t>(sched_ns.role_binding_configs.size());
-            rb.configs = sched_ns.role_binding_configs.data();
-        } else {
-            rb.count = 0;
-            rb.configs = nullptr;
-        }
-    }
-
     // Solo mode: map scheduler solo state to audio engine indices
     if (scheduler.is_solo_active()) {
         const auto& sched_solo = scheduler.solo_active_set();
@@ -1241,7 +1227,6 @@ bool AudioEngine::post_reload_operator(const std::string& type_name, OperatorReg
         snap.spread_inputs.resize(n);
         snap.input_string_values.resize(n);
         snap.custom_inputs.resize(n);
-        snap.role_bindings.resize(n);
         for (uint32_t i = 0; i < n; ++i) {
             snap.node_params[i] = nodes_[i].param_values;
             snap.float_input_values[i] = nodes_[i].float_input_defaults;
@@ -1512,14 +1497,6 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                     audio_ctx.file_param_values = nullptr;
                     audio_ctx.file_param_count = 0;
                     audio_ctx.shared_handles = vivid::shared_handle_service();
-                    // Role binding configs (same for all channel duplicates)
-                    if (ni < static_cast<uint32_t>(snap.role_bindings.size())) {
-                        audio_ctx.role_binding_count  = snap.role_bindings[ni].count;
-                        audio_ctx.role_binding_configs = snap.role_bindings[ni].configs;
-                    } else {
-                        audio_ctx.role_binding_count  = 0;
-                        audio_ctx.role_binding_configs = nullptr;
-                    }
 
                     if (!ns.errored) {
                         try {
@@ -1576,14 +1553,6 @@ void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
                 audio_ctx.file_param_values = nullptr;
                 audio_ctx.file_param_count = 0;
                 audio_ctx.shared_handles = vivid::shared_handle_service();
-                // Role binding configs
-                if (ni < static_cast<uint32_t>(snap.role_bindings.size())) {
-                    audio_ctx.role_binding_count  = snap.role_bindings[ni].count;
-                    audio_ctx.role_binding_configs = snap.role_bindings[ni].configs;
-                } else {
-                    audio_ctx.role_binding_count  = 0;
-                    audio_ctx.role_binding_configs = nullptr;
-                }
 
                 if (!ns.errored) {
                     try {

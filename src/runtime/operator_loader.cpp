@@ -97,8 +97,6 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , main_update_fn_(other.main_update_fn_)
     , draw_insp_fn_(other.draw_insp_fn_)
     , insp_mode_fn_(other.insp_mode_fn_)
-    , create_bindable_fn_(other.create_bindable_fn_)
-    , destroy_bindable_fn_(other.destroy_bindable_fn_)
     , dd_config_(std::move(other.dd_config_))
     , dd_name_(std::move(other.dd_name_))
     , dd_param_names_(std::move(other.dd_param_names_))
@@ -122,8 +120,6 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     other.main_update_fn_   = nullptr;
     other.draw_insp_fn_     = nullptr;
     other.insp_mode_fn_     = nullptr;
-    other.create_bindable_fn_  = nullptr;
-    other.destroy_bindable_fn_ = nullptr;
     other.dd_desc_ = {};
     // Fixup descriptor pointers to our own storage
     if (dd_config_) {
@@ -146,8 +142,6 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         main_update_fn_   = other.main_update_fn_;
         draw_insp_fn_     = other.draw_insp_fn_;
         insp_mode_fn_     = other.insp_mode_fn_;
-        create_bindable_fn_  = other.create_bindable_fn_;
-        destroy_bindable_fn_ = other.destroy_bindable_fn_;
         dd_config_        = std::move(other.dd_config_);
         dd_name_          = std::move(other.dd_name_);
         dd_param_names_   = std::move(other.dd_param_names_);
@@ -170,8 +164,6 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         other.main_update_fn_   = nullptr;
         other.draw_insp_fn_     = nullptr;
         other.insp_mode_fn_     = nullptr;
-        other.create_bindable_fn_  = nullptr;
-        other.destroy_bindable_fn_ = nullptr;
         other.dd_desc_ = {};
         // Fixup descriptor pointers to our own storage
         if (dd_config_) {
@@ -322,10 +314,6 @@ bool OperatorLoader::load(const char* path) {
     main_update_fn_ = reinterpret_cast<VividMainThreadUpdateFn>(dlsym(new_handle, "vivid_main_thread_update"));
     draw_insp_fn_   = reinterpret_cast<VividDrawInspectorFn>(dlsym(new_handle, "vivid_draw_inspector"));
     insp_mode_fn_   = reinterpret_cast<VividInspectorModeFn>(dlsym(new_handle, "vivid_inspector_mode"));
-    create_bindable_fn_ = reinterpret_cast<VividCreateBindableFn>(
-        dlsym(new_handle, "vivid_create_bindable"));
-    destroy_bindable_fn_ = reinterpret_cast<VividDestroyBindableFn>(
-        dlsym(new_handle, "vivid_destroy_bindable"));
 
     clear_last_error();
     return true;
@@ -338,14 +326,10 @@ void OperatorLoader::init_builtin(VividDescriptorFn desc, VividCreateFn create,
     create_fn_  = create;
     destroy_fn_ = destroy;
     process_fn_ = process;
-    create_bindable_fn_  = nullptr;
-    destroy_bindable_fn_ = nullptr;
 }
 
 void OperatorLoader::init_data_driven(std::shared_ptr<DataDrivenFilterConfig> config) {
     unload();
-    create_bindable_fn_  = nullptr;
-    destroy_bindable_fn_ = nullptr;
     dd_config_ = std::move(config);
 
     // Build owned descriptor with stable string storage
@@ -466,8 +450,6 @@ void OperatorLoader::unload() {
         main_update_fn_   = nullptr;
         draw_insp_fn_     = nullptr;
         insp_mode_fn_     = nullptr;
-        create_bindable_fn_  = nullptr;
-        destroy_bindable_fn_ = nullptr;
     }
     if (dd_config_) {
         dd_config_.reset();
@@ -553,15 +535,6 @@ void OperatorLoader::draw_inspector(void* instance, VividInspectorContext* ctx) 
     if (draw_insp_fn_ && instance) {
         draw_insp_fn_(instance, ctx);
     }
-}
-
-void* OperatorLoader::create_bindable_instance() const {
-    return create_bindable_fn_ ? create_bindable_fn_() : nullptr;
-}
-
-void OperatorLoader::destroy_bindable_instance(void* instance) const {
-    if (destroy_bindable_fn_ && instance)
-        destroy_bindable_fn_(instance);
 }
 
 } // namespace vivid

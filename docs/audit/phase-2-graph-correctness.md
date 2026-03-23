@@ -169,3 +169,7 @@ Reason:
 - the graph snapshot contract gap is fixed
 - the targeted graph/mutation evidence bundle is green
 - the remaining GPU-specific issue is real enough to track, but not broad enough to keep Phase 2 open from this environment alone
+
+---
+
+**Note (March 2026):** Role bindings were an intermediate design that has since been removed. The codebase now uses owned embedded composition for host-local modulation, ordinary ports for graph transport, and explicit outputs for cross-domain sharing. See `docs/EMBEDDED-OPERATOR-SLOTS.md` for the current architecture.

@@ -173,7 +173,6 @@ public:
             || mcp_setup_open_
             || editing_sticky_
             || sticky_color_menu_open_
-            || role_chooser_open_
             || custom_inspector_wants_keyboard_;
     }
     bool wire_inspector_visible() const;
@@ -282,8 +281,6 @@ public:
     bool file_drop_chooser_open_for_test() const {
         return chooser_open_ && chooser_mode_ == ChooserMode::FileDrop;
     }
-    bool role_chooser_open_for_test() const { return role_chooser_open_; }
-
     // Set the directory containing the MCP Python scripts (used in setup dialog)
     void set_mcp_dir(const std::string& dir) { mcp_dir_ = dir; }
 
@@ -332,10 +329,6 @@ private:
     void draw_one_inspector_param_simple(Renderer2D& tr, const NodeSnapshot& node,
                                          float px, float& py, uint32_t pi);
     void draw_section_separator(Renderer2D& tr, float px, float& py, float panel_w, const char* label);
-    void draw_inspector_role_bindings(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
-    void draw_inspector_referenced_by(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
-    void draw_binding_lines(Renderer2D& tr);
-    void draw_role_chooser(Renderer2D& tr);
     void draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
@@ -381,8 +374,6 @@ private:
     };
     PortHit hit_test_port(float mx, float my) const;
     int hit_test_wire(float sx, float sy) const;
-    int hit_test_binding_line(float sx, float sy) const;
-
     // Generic AABB hit test for rect vectors (replaces 5 individual methods)
     template<typename RectT>
     static int hit_test_rect(const std::vector<RectT>& rects, float mx, float my);
@@ -596,39 +587,6 @@ private:
 
     // Lock badge hit rects
     std::vector<InspectorRect> lock_badge_rects_;
-
-    // Role binding hit-test rects
-    struct RoleBindingRect { float x, y, w, h; std::string node_id, role_id; };
-    std::vector<RoleBindingRect> role_bind_rects_;      // "Bind..." / bound-chip click
-    std::vector<RoleBindingRect> role_clear_rects_;     // "Clear" button
-    std::vector<RoleBindingRect> role_jump_rects_;      // "Jump To" button
-    std::vector<RoleBindingRect> role_header_rects_;    // collapse toggle
-
-    // Referenced-by hit-test rects (reuse RoleBindingRect struct)
-    std::vector<RoleBindingRect> ref_by_jump_rects_;
-    std::vector<RoleBindingRect> ref_by_header_rects_;
-
-    // Binding line state
-    struct BindingLineEntry {
-        std::string host_node_id;
-        std::string target_node_id;
-        std::string role_id;
-        float gsx, gsy, gex, gey;  // graph-space endpoints for hit-testing
-    };
-    std::vector<BindingLineEntry> binding_lines_;
-    int hovered_binding_line_idx_ = -1;
-
-    // Role binding chooser popup state
-    struct RoleChooserItem {
-        std::string node_id;
-        std::string output_name;
-        std::string label;
-    };
-    bool role_chooser_open_ = false;
-    std::string role_chooser_node_id_, role_chooser_role_id_;
-    std::vector<RoleChooserItem> role_chooser_items_;
-    int role_chooser_sel_ = -1;
-    float role_chooser_x_ = 0, role_chooser_y_ = 0;
 
     // XY pad state
     struct XYPadRect { float x, y, w, h; std::string node_id; std::string param_x, param_y; };

@@ -1,18 +1,17 @@
-// Reaction-Diffusion — Gray-Scott system with SHARED role binding modulation.
+// Reaction-Diffusion — Gray-Scott system with owned ChildOp<LFO> modulation.
 //
 // Two RGBA16Float state textures ping-pong for N iterations per frame.
 // R=A concentration, G=B concentration. 5-point Laplacian stencil.
-// Three SHARED role bindings (feed_mod, kill_mod, diffusion_mod) modulate
+// Three internal LFO instances (feed_mod, kill_mod, diffusion_mod) modulate
 // the simulation parameters globally. A final visualization pass maps
 // concentrations to color.
 
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
-#include "operator_api/bound_control_instance.h"
+#include "operator_api/child_op.h"
+#include "control/lfo/lfo.h"
 #include <cmath>
-#include <cstring>
-#include <memory>
 #include <string>
 
 // ── WGSL simulation shader ─────────────────────────────────────────────
@@ -160,15 +159,6 @@ struct SimUniforms {
     float seed_radius;     // f32
 };
 
-// ── Shared role binding ─────────────────────────────────────────────────
-
-struct SharedBinding {
-    std::unique_ptr<vivid::BoundControlInstance> instance;
-    bool initialized = false;
-    VividCreateBindableFn  cached_create_fn  = nullptr;
-    VividDestroyBindableFn cached_destroy_fn = nullptr;
-};
-
 // ── Operator ────────────────────────────────────────────────────────────
 
 struct ReactionDiffusion : vivid::GpuOperatorBase {
@@ -189,6 +179,27 @@ struct ReactionDiffusion : vivid::GpuOperatorBase {
     vivid::Param<int>   color_mode   {"color_mode",   0,      {"Grayscale", "Blue-White", "Fire", "Chemical"}};
     vivid::Param<int>   reset        {"reset",        0,      {"Off", "Reset"}};
 
+    // Feed modulation LFO
+    vivid::Param<int>   feed_mod_enabled  {"feed_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> feed_mod_amount   {"feed_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> feed_mod_rate     {"feed_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   feed_mod_waveform {"feed_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> feed_mod_offset   {"feed_mod_offset",   0.0f, -1.0f, 1.0f};
+
+    // Kill modulation LFO
+    vivid::Param<int>   kill_mod_enabled  {"kill_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> kill_mod_amount   {"kill_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> kill_mod_rate     {"kill_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   kill_mod_waveform {"kill_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> kill_mod_offset   {"kill_mod_offset",   0.0f, -1.0f, 1.0f};
+
+    // Diffusion modulation LFO
+    vivid::Param<int>   diffusion_mod_enabled  {"diffusion_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> diffusion_mod_amount   {"diffusion_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> diffusion_mod_rate     {"diffusion_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   diffusion_mod_waveform {"diffusion_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> diffusion_mod_offset   {"diffusion_mod_offset",   0.0f, -1.0f, 1.0f};
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(feed_rate,    2, 0);
         vivid::layout_row(kill_rate,    2, 1);
@@ -206,55 +217,37 @@ struct ReactionDiffusion : vivid::GpuOperatorBase {
         out.push_back(&seed_radius);
         out.push_back(&color_mode);
         out.push_back(&reset);
+
+        // Feed mod LFO params
+        out.push_back(&feed_mod_enabled);
+        out.push_back(&feed_mod_amount);
+        out.push_back(&feed_mod_rate);
+        out.push_back(&feed_mod_waveform);
+        out.push_back(&feed_mod_offset);
+
+        // Kill mod LFO params
+        out.push_back(&kill_mod_enabled);
+        out.push_back(&kill_mod_amount);
+        out.push_back(&kill_mod_rate);
+        out.push_back(&kill_mod_waveform);
+        out.push_back(&kill_mod_offset);
+
+        // Diffusion mod LFO params
+        out.push_back(&diffusion_mod_enabled);
+        out.push_back(&diffusion_mod_amount);
+        out.push_back(&diffusion_mod_rate);
+        out.push_back(&diffusion_mod_waveform);
+        out.push_back(&diffusion_mod_offset);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_role_bindings(std::vector<VividRoleBindingDescriptor>& out) override {
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "feed_mod";
-            role.label                              = "Feed Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_SHARED;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "kill_mod";
-            role.label                              = "Kill Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_SHARED;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "diffusion_mod";
-            role.label                              = "Diffusion Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_SHARED;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
+    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
+        out.push_back({"feed_mod", "LFO", "feed_mod_"});
+        out.push_back({"kill_mod", "LFO", "kill_mod_"});
+        out.push_back({"diffusion_mod", "LFO", "diffusion_mod_"});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -267,20 +260,45 @@ struct ReactionDiffusion : vivid::GpuOperatorBase {
             cached_height_ = ctx->output_height;
         }
 
-        // ── Init shared bindings ─────────────────────────────────────
-        maybe_init_shared(feed_binding_,      ctx, "feed_mod");
-        maybe_init_shared(kill_binding_,       ctx, "kill_mod");
-        maybe_init_shared(diffusion_binding_, ctx, "diffusion_mod");
+        // ── Process owned LFO modulators ────────────────────────────
+        // Waveform index remap: our choices {Sine, Triangle, Saw, Square}
+        // map to LFO waveform indices       {0,    3,        1,   2}.
+        static constexpr int kWaveformMap[] = {0, 3, 1, 2};
 
-        // ── Process shared bindings ──────────────────────────────────
         VividProcessContext ctrl_ctx{};
         ctrl_ctx.time       = ctx->time;
         ctrl_ctx.delta_time = ctx->delta_time;
         ctrl_ctx.frame      = ctx->frame;
 
-        float feed_mod = process_shared(feed_binding_, &ctrl_ctx);
-        float kill_mod = process_shared(kill_binding_, &ctrl_ctx);
-        float diff_mod = process_shared(diffusion_binding_, &ctrl_ctx);
+        float feed_mod = 0.0f;
+        if (feed_mod_enabled.int_value()) {
+            feed_lfo_.set_param("frequency", feed_mod_rate.value);
+            feed_lfo_.set_param("amplitude", 1.0f);
+            feed_lfo_.set_param("offset", feed_mod_offset.value);
+            feed_lfo_.set_param("waveform", static_cast<float>(kWaveformMap[feed_mod_waveform.int_value()]));
+            feed_lfo_.process(&ctrl_ctx);
+            feed_mod = feed_lfo_.output("value") * feed_mod_amount.value;
+        }
+
+        float kill_mod = 0.0f;
+        if (kill_mod_enabled.int_value()) {
+            kill_lfo_.set_param("frequency", kill_mod_rate.value);
+            kill_lfo_.set_param("amplitude", 1.0f);
+            kill_lfo_.set_param("offset", kill_mod_offset.value);
+            kill_lfo_.set_param("waveform", static_cast<float>(kWaveformMap[kill_mod_waveform.int_value()]));
+            kill_lfo_.process(&ctrl_ctx);
+            kill_mod = kill_lfo_.output("value") * kill_mod_amount.value;
+        }
+
+        float diff_mod = 0.0f;
+        if (diffusion_mod_enabled.int_value()) {
+            diffusion_lfo_.set_param("frequency", diffusion_mod_rate.value);
+            diffusion_lfo_.set_param("amplitude", 1.0f);
+            diffusion_lfo_.set_param("offset", diffusion_mod_offset.value);
+            diffusion_lfo_.set_param("waveform", static_cast<float>(kWaveformMap[diffusion_mod_waveform.int_value()]));
+            diffusion_lfo_.process(&ctrl_ctx);
+            diff_mod = diffusion_lfo_.output("value") * diffusion_mod_amount.value;
+        }
 
         // ── Handle reset trigger ─────────────────────────────────────
         int rst = reset.int_value();
@@ -361,10 +379,10 @@ struct ReactionDiffusion : vivid::GpuOperatorBase {
     }
 
 private:
-    // Shared role bindings
-    SharedBinding feed_binding_;
-    SharedBinding kill_binding_;
-    SharedBinding diffusion_binding_;
+    // Owned LFO modulators
+    vivid::ChildOp<LFO> feed_lfo_;
+    vivid::ChildOp<LFO> kill_lfo_;
+    vivid::ChildOp<LFO> diffusion_lfo_;
 
     // Ping-pong state
     int ping_ = 0;
@@ -475,75 +493,6 @@ private:
         }
     }
 
-    // ── Shared binding management ────────────────────────────────────
-
-    void maybe_init_shared(SharedBinding& sb, const VividGpuContext* ctx,
-                           const char* role_id) {
-        if (!ctx->role_binding_configs || ctx->role_binding_count == 0) {
-            if (sb.initialized) {
-                sb.instance.reset();
-                sb.initialized = false;
-            }
-            return;
-        }
-
-        const VividRoleBindingRuntimeConfig* cfg = nullptr;
-        for (uint32_t i = 0; i < ctx->role_binding_count; ++i) {
-            if (std::strcmp(ctx->role_binding_configs[i].role_id, role_id) == 0) {
-                cfg = &ctx->role_binding_configs[i];
-                break;
-            }
-        }
-
-        if (!cfg || !cfg->create_fn) {
-            if (sb.initialized) {
-                sb.instance.reset();
-                sb.initialized = false;
-            }
-            return;
-        }
-
-        bool need_reinit = !sb.initialized
-            || sb.cached_create_fn != cfg->create_fn;
-
-        if (need_reinit) {
-            sb.instance.reset();
-            sb.cached_create_fn  = cfg->create_fn;
-            sb.cached_destroy_fn = cfg->destroy_fn;
-
-            auto* raw = static_cast<vivid::OperatorBase*>(cfg->create_fn());
-            if (!raw) return;
-
-            auto destroy = [dfn = sb.cached_destroy_fn](vivid::OperatorBase* p) {
-                if (dfn) dfn(p); else delete p;
-            };
-            sb.instance = std::make_unique<vivid::BoundControlInstance>(raw, std::move(destroy));
-
-            for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                if (sb.instance->has_param(cfg->param_names[pi])) {
-                    sb.instance->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                }
-            }
-            sb.initialized = true;
-        } else {
-            // Sync params each frame
-            if (sb.instance) {
-                for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                    if (sb.instance->has_param(cfg->param_names[pi])) {
-                        sb.instance->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                    }
-                }
-            }
-        }
-    }
-
-    static float process_shared(SharedBinding& sb, const VividProcessContext* ctrl_ctx) {
-        if (sb.instance) {
-            sb.instance->process(ctrl_ctx);
-            return sb.instance->output("value");
-        }
-        return 0.0f;
-    }
 };
 
 VIVID_REGISTER(ReactionDiffusion)

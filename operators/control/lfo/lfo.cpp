@@ -1,4 +1,3 @@
 #include "lfo.h"
 
 VIVID_REGISTER(LFO)
-VIVID_BINDABLE(LFO)

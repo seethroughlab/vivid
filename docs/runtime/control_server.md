@@ -45,7 +45,7 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 ### Graph Inspection
 | Method | Key params | Description |
 |--------|-----------|-------------|
-| `inspect_graph` | — | All nodes, params, role bindings, connections as JSON |
+| `inspect_graph` | — | All nodes, params, connections as JSON |
 | `introspect_nodes` | — | Compact per-node state summary |
 | `run_diagnostics` | — | Graph-level diagnostics (port mismatches, etc.) |
 | `capture_interface` | `node_id` (optional), `save_path` (optional), `ensure_ui_visible` (default `true`) | Capture the full running interface after UI overlays are drawn |
@@ -78,11 +78,7 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 | `remove_node` | `node_id` | Remove node + connections |
 | `connect` | `from_addr`, `to_addr`, `semantic_defaults` | Connect ports (`node_id/port_name`) |
 | `disconnect` | `from_addr`, `to_addr` | Disconnect ports |
-| `set_role_binding` | `node_id`, `role_id`, `target_node_id`, `target_output_name` | Bind a host role to a target node output |
-| `clear_role_binding` | `node_id`, `role_id` | Clear a host role binding |
 | `set_connection_remap` | `from_addr`, `to_addr`, `from_min/max`, `to_min/max`, `clamp` | Set wire remap |
-
-Role-binding payloads and snapshots still carry model/runtime fields such as `runtime_scope`. That data remains part of the graph/read model for runtime correctness and tooling, even though the main inspector UI intentionally hides scope wording in normal visual workflows.
 
 ### Parameters
 | Method | Key params | Description |
@@ -192,7 +188,7 @@ Role-binding payloads and snapshots still carry model/runtime fields such as `ru
 ## Buffered vs Immediate Commands
 
 `is_topology_command()` returns true for commands that must be applied via `apply_pending()`:
-`add_node`, `remove_node`, `connect`, `disconnect`, `set_role_binding`, `clear_role_binding`,
+`add_node`, `remove_node`, `connect`, `disconnect`,
 `set_connection_remap`, `set_param`, `set_string_param`, `set_resolution`, `set_node_layout`,
 MIDI/variation/preset mutations, `load_graph`.
 

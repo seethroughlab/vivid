@@ -181,3 +181,7 @@ Reason:
 - the follow-up inspector recovery addressed the previously open readability issue
 - manual screenshot signoff now exists for the required high-frequency inspector cases via the live
   running-instance MCP workflow
+
+---
+
+**Note (March 2026):** Role bindings were an intermediate design that has since been removed. The codebase now uses owned embedded composition for host-local modulation, ordinary ports for graph transport, and explicit outputs for cross-domain sharing. See `docs/EMBEDDED-OPERATOR-SLOTS.md` for the current architecture.

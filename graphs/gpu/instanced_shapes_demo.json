@@ -1,9 +1,16 @@
 {
+  "meta": {
+    "title": "Instanced Shapes Demo",
+    "description": "Demonstrates per-instance LFO modulation of scale, rotation, and color on instanced shapes.",
+    "tags": ["demo", "instanced-shapes", "lfo", "owned-modulation"],
+    "difficulty": "beginner",
+    "domains": ["gpu"]
+  },
   "nodes": {
     "shapes": {
       "type": "Instanced Shapes",
       "params": {
-        "count": 12,
+        "count": 16,
         "shape": 4,
         "base_size": 0.06,
         "softness": 0.005,
@@ -12,42 +19,35 @@
         "color_b": 1.0,
         "layout": 2,
         "animate": 1,
-        "speed": 0.8
+        "speed": 0.8,
+        "scale_enabled": 1,
+        "scale_amount": 0.8,
+        "rotation_enabled": 1,
+        "rotation_amount": 1.0,
+        "color_mod_enabled": 0,
+        "color_mod_amount": 1.0
       },
-      "role_bindings": {
+      "embedded_ops": {
         "scale": {
-          "target_node_id": "scale_lfo",
-          "target_output_name": "value"
+          "type": "LFO",
+          "params": { "rate": 0.5, "waveform": 0, "offset": 0.0 }
         },
         "rotation": {
-          "target_node_id": "rot_lfo",
-          "target_output_name": "value"
+          "type": "LFO",
+          "params": { "rate": 0.3, "waveform": 0, "offset": 0.0 }
         },
         "color_mod": {
-          "target_node_id": "color_lfo",
-          "target_output_name": "value"
+          "type": "LFO",
+          "params": { "rate": 0.2, "waveform": 0, "offset": 0.0 }
         }
       }
     },
-    "scale_lfo": {
-      "type": "LFO",
+    "bloom": {
+      "type": "Bloom",
       "params": {
-        "frequency": 0.5,
-        "amplitude": 0.6
-      }
-    },
-    "rot_lfo": {
-      "type": "LFO",
-      "params": {
-        "frequency": 0.15,
-        "amplitude": 1.0
-      }
-    },
-    "color_lfo": {
-      "type": "LFO",
-      "params": {
-        "frequency": 0.3,
-        "amplitude": 0.8
+        "threshold": 0.3,
+        "intensity": 1.2,
+        "radius": 3.0
       }
     },
     "vout": {
@@ -56,6 +56,18 @@
     }
   },
   "connections": [
-    { "from": "shapes/texture", "to": "vout/input" }
+    { "from": "shapes/texture", "to": "bloom/input" },
+    { "from": "bloom/texture", "to": "vout/input" }
+  ],
+  "sticky_notes": [
+    {
+      "id": "note_modulation",
+      "text": "**Owned LFO Modulation**\n\nEach shape instance has its own LFO for scale and rotation.\nEnable color_mod to add per-instance color variation.",
+      "x": -300,
+      "y": -100,
+      "width": 280,
+      "height": 100,
+      "color": 0
+    }
   ]
 }

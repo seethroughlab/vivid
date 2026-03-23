@@ -1,14 +1,15 @@
 // Flocking / Boids — GPU operator with classical Reynolds flocking rules.
 //
-// CPU simulation (N<=64, O(N²)) with separation, alignment, and cohesion.
-// Three PER_VOICE role bindings (speed_mod, separation_mod, alignment_mod)
-// allow independent modulation per boid. GPU renders oriented triangle SDFs
-// with optional directional trails.
+// CPU simulation (N<=64, O(N^2)) with separation, alignment, and cohesion.
+// Three owned ChildOp<LFO> pools (speed_mod, separation_mod, alignment_mod)
+// provide independent modulation per boid with staggered phase offsets.
+// GPU renders oriented triangle SDFs with optional directional trails.
 
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
-#include "operator_api/bound_control_instance.h"
+#include "operator_api/child_op.h"
+#include "control/lfo/lfo.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -163,13 +164,10 @@ struct Boid {
     float heading = 0.0f;          // derived from velocity direction
 };
 
-// ── Role binding pool ───────────────────────────────────────────────────
+// ── Owned LFO pool ─────────────────────────────────────────────────────
 
-struct RolePool {
-    std::vector<std::unique_ptr<vivid::BoundControlInstance>> pool;
-    bool initialized = false;
-    VividCreateBindableFn  cached_create_fn  = nullptr;
-    VividDestroyBindableFn cached_destroy_fn = nullptr;
+struct LfoPool {
+    std::vector<vivid::ChildOp<LFO>> pool;
 };
 
 // ── Operator ────────────────────────────────────────────────────────────
@@ -201,6 +199,27 @@ struct Flocking : vivid::GpuOperatorBase {
     vivid::Param<float> color_g       {"color_g",           0.8f,  0.0f,  1.0f};
     vivid::Param<float> color_b       {"color_b",           1.0f,  0.0f,  1.0f};
 
+    // Speed modulation (owned LFO pool)
+    vivid::Param<int>   speed_mod_enabled  {"speed_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> speed_mod_amount   {"speed_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> speed_mod_rate     {"speed_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   speed_mod_waveform {"speed_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> speed_mod_offset   {"speed_mod_offset",   0.0f, -1.0f, 1.0f};
+
+    // Separation modulation (owned LFO pool)
+    vivid::Param<int>   separation_mod_enabled  {"separation_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> separation_mod_amount   {"separation_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> separation_mod_rate     {"separation_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   separation_mod_waveform {"separation_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> separation_mod_offset   {"separation_mod_offset",   0.0f, -1.0f, 1.0f};
+
+    // Alignment modulation (owned LFO pool)
+    vivid::Param<int>   alignment_mod_enabled  {"alignment_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> alignment_mod_amount   {"alignment_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> alignment_mod_rate     {"alignment_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   alignment_mod_waveform {"alignment_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> alignment_mod_offset   {"alignment_mod_offset",   0.0f, -1.0f, 1.0f};
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(count,         2, 0);
         vivid::layout_row(boundary_mode, 2, 1);
@@ -225,55 +244,31 @@ struct Flocking : vivid::GpuOperatorBase {
         out.push_back(&color_r);
         out.push_back(&color_g);
         out.push_back(&color_b);
+        out.push_back(&speed_mod_enabled);
+        out.push_back(&speed_mod_amount);
+        out.push_back(&speed_mod_rate);
+        out.push_back(&speed_mod_waveform);
+        out.push_back(&speed_mod_offset);
+        out.push_back(&separation_mod_enabled);
+        out.push_back(&separation_mod_amount);
+        out.push_back(&separation_mod_rate);
+        out.push_back(&separation_mod_waveform);
+        out.push_back(&separation_mod_offset);
+        out.push_back(&alignment_mod_enabled);
+        out.push_back(&alignment_mod_amount);
+        out.push_back(&alignment_mod_rate);
+        out.push_back(&alignment_mod_waveform);
+        out.push_back(&alignment_mod_offset);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_role_bindings(std::vector<VividRoleBindingDescriptor>& out) override {
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "speed_mod";
-            role.label                              = "Speed Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_PER_VOICE;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "separation_mod";
-            role.label                              = "Separation Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_PER_VOICE;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "alignment_mod";
-            role.label                              = "Alignment Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_PER_VOICE;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
+    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
+        out.push_back({"speed_mod", "LFO", "speed_mod_"});
+        out.push_back({"separation_mod", "LFO", "separation_mod_"});
+        out.push_back({"alignment_mod", "LFO", "alignment_mod_"});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -283,12 +278,12 @@ struct Flocking : vivid::GpuOperatorBase {
         if (n < 1) n = 1;
         if (n > kMaxBoids) n = kMaxBoids;
 
-        // ── Initialize role binding pools ────────────────────────────
-        maybe_init_pool(speed_pool_,      ctx, "speed_mod",      n);
-        maybe_init_pool(separation_pool_, ctx, "separation_mod", n);
-        maybe_init_pool(alignment_pool_,  ctx, "alignment_mod",  n);
+        // ── Resize owned LFO pools on count change ──────────────
+        maybe_resize_pool(speed_pool_,      n);
+        maybe_resize_pool(separation_pool_, n);
+        maybe_resize_pool(alignment_pool_,  n);
 
-        // ── Re-randomize on count change ─────────────────────────────
+        // ── Re-randomize on count change ─────────────────────────
         if (n != prev_count_) {
             randomize_boids(n);
             prev_count_ = n;
@@ -297,7 +292,7 @@ struct Flocking : vivid::GpuOperatorBase {
         float dt = static_cast<float>(ctx->delta_time);
         if (dt > 0.05f) dt = 0.05f; // clamp to prevent teleporting
 
-        // ── Process role bindings ────────────────────────────────────
+        // ── Process owned modulation ────────────────────────────
         VividProcessContext ctrl_ctx{};
         ctrl_ctx.time       = ctx->time;
         ctrl_ctx.delta_time = ctx->delta_time;
@@ -309,25 +304,37 @@ struct Flocking : vivid::GpuOperatorBase {
 
         for (int i = 0; i < n; ++i) {
             speed_mod_vals[i] = 0.0f;
-            if (i < static_cast<int>(speed_pool_.pool.size()) && speed_pool_.pool[i]) {
-                speed_pool_.pool[i]->process(&ctrl_ctx);
-                speed_mod_vals[i] = speed_pool_.pool[i]->output("value");
+            if (speed_mod_enabled.int_value()) {
+                auto& lfo = speed_pool_.pool[i];
+                lfo.set_param("frequency", speed_mod_rate.value);
+                lfo.set_param("waveform", static_cast<float>(speed_mod_waveform.int_value()));
+                lfo.set_param("offset", speed_mod_offset.value);
+                lfo.process(&ctrl_ctx);
+                speed_mod_vals[i] = lfo.output("value") * speed_mod_amount.value;
             }
 
             sep_mod_vals[i] = 0.0f;
-            if (i < static_cast<int>(separation_pool_.pool.size()) && separation_pool_.pool[i]) {
-                separation_pool_.pool[i]->process(&ctrl_ctx);
-                sep_mod_vals[i] = separation_pool_.pool[i]->output("value");
+            if (separation_mod_enabled.int_value()) {
+                auto& lfo = separation_pool_.pool[i];
+                lfo.set_param("frequency", separation_mod_rate.value);
+                lfo.set_param("waveform", static_cast<float>(separation_mod_waveform.int_value()));
+                lfo.set_param("offset", separation_mod_offset.value);
+                lfo.process(&ctrl_ctx);
+                sep_mod_vals[i] = lfo.output("value") * separation_mod_amount.value;
             }
 
             align_mod_vals[i] = 0.0f;
-            if (i < static_cast<int>(alignment_pool_.pool.size()) && alignment_pool_.pool[i]) {
-                alignment_pool_.pool[i]->process(&ctrl_ctx);
-                align_mod_vals[i] = alignment_pool_.pool[i]->output("value");
+            if (alignment_mod_enabled.int_value()) {
+                auto& lfo = alignment_pool_.pool[i];
+                lfo.set_param("frequency", alignment_mod_rate.value);
+                lfo.set_param("waveform", static_cast<float>(alignment_mod_waveform.int_value()));
+                lfo.set_param("offset", alignment_mod_offset.value);
+                lfo.process(&ctrl_ctx);
+                align_mod_vals[i] = lfo.output("value") * alignment_mod_amount.value;
             }
         }
 
-        // ── Flocking simulation ──────────────────────────────────────
+        // ── Flocking simulation ──────────────────────────────────
         float sr     = sep_radius.value;
         float percep = sr * 2.0f; // perception radius for alignment/cohesion
         float sw     = separation_wt.value;
@@ -494,10 +501,10 @@ private:
     std::vector<Boid> boids_;
     int prev_count_ = -1;
 
-    // Role binding pools
-    RolePool speed_pool_;
-    RolePool separation_pool_;
-    RolePool alignment_pool_;
+    // Owned LFO pools (one ChildOp<LFO> per boid, per modulation axis)
+    LfoPool speed_pool_;
+    LfoPool separation_pool_;
+    LfoPool alignment_pool_;
 
     // GPU handles
     WGPURenderPipeline  pipeline_    = nullptr;
@@ -571,85 +578,19 @@ private:
         }
     }
 
-    // ── Role binding pool management ────────────────────────────────
+    // ── Owned LFO pool management ──────────────────────────────────
 
-    void maybe_init_pool(RolePool& rp, const VividGpuContext* ctx,
-                         const char* role_id, int n) {
-        if (!ctx->role_binding_configs || ctx->role_binding_count == 0) {
-            if (rp.initialized) {
-                rp.pool.clear();
-                rp.initialized = false;
-            }
-            return;
-        }
+    void maybe_resize_pool(LfoPool& lp, int n) {
+        if (static_cast<int>(lp.pool.size()) == n) return;
 
-        // Find matching role config
-        const VividRoleBindingRuntimeConfig* cfg = nullptr;
-        for (uint32_t i = 0; i < ctx->role_binding_count; ++i) {
-            if (std::strcmp(ctx->role_binding_configs[i].role_id, role_id) == 0) {
-                cfg = &ctx->role_binding_configs[i];
-                break;
-            }
-        }
+        lp.pool.clear();
+        lp.pool.resize(n);
 
-        if (!cfg || !cfg->create_fn) {
-            if (rp.initialized) {
-                rp.pool.clear();
-                rp.initialized = false;
-            }
-            return;
-        }
-
-        bool need_reinit = !rp.initialized
-            || rp.cached_create_fn != cfg->create_fn
-            || static_cast<int>(rp.pool.size()) != n;
-
-        if (need_reinit) {
-            rp.pool.clear();
-            rp.cached_create_fn  = cfg->create_fn;
-            rp.cached_destroy_fn = cfg->destroy_fn;
-
-            for (int i = 0; i < n; ++i) {
-                auto* raw = static_cast<vivid::OperatorBase*>(cfg->create_fn());
-                if (!raw) continue;
-
-                auto destroy = [dfn = rp.cached_destroy_fn](vivid::OperatorBase* p) {
-                    if (dfn) dfn(p); else delete p;
-                };
-                auto inst = std::make_unique<vivid::BoundControlInstance>(raw, std::move(destroy));
-
-                for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                    if (inst->has_param(cfg->param_names[pi])) {
-                        inst->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                    }
-                }
-
-                // Spread phase_offset across boids so each runs at
-                // a different point in the LFO/envelope cycle.
-                if (inst->has_param("phase_offset")) {
-                    inst->set_param("phase_offset",
-                        static_cast<float>(i) / static_cast<float>(n));
-                }
-
-                rp.pool.push_back(std::move(inst));
-            }
-            rp.initialized = true;
-        } else {
-            // Sync params each frame (user may tweak knobs live)
-            for (int i = 0; i < static_cast<int>(rp.pool.size()); ++i) {
-                auto& inst = rp.pool[i];
-                if (!inst) continue;
-                for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                    if (inst->has_param(cfg->param_names[pi])) {
-                        inst->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                    }
-                }
-                // Re-apply per-instance phase offset (template sync may overwrite it)
-                if (inst->has_param("phase_offset")) {
-                    inst->set_param("phase_offset",
-                        static_cast<float>(i) / static_cast<float>(rp.pool.size()));
-                }
-            }
+        // Stagger phase_offset across boids so each runs at a
+        // different point in the LFO cycle.
+        for (int i = 0; i < n; ++i) {
+            lp.pool[i].set_param("phase_offset",
+                static_cast<float>(i) / static_cast<float>(n));
         }
     }
 };

@@ -1,13 +1,14 @@
-// Particles — GPU particle system with per-particle role-bound envelope.
+// Particles — GPU particle system with per-particle internal envelope.
 //
-// Each particle auto-spawns at a configurable rate. If an "envelope" role
-// binding is provided, each particle gets its own BoundControlInstance
-// controlling opacity and size over its lifetime.
+// Each particle auto-spawns at a configurable rate. If the envelope is
+// enabled, each particle gets its own ChildOp<Envelope> controlling
+// opacity and size over its lifetime.
 
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
-#include "operator_api/bound_control_instance.h"
+#include "operator_api/child_op.h"
+#include "control/envelope/envelope.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -130,6 +131,14 @@ struct Particles : vivid::GpuOperatorBase {
     vivid::Param<float> color_b  {"color_b", 1.0f,  0.0f,  1.0f};
     vivid::Param<float> glow     {"glow",    0.8f,  0.0f,  2.0f};
 
+    // Envelope group
+    vivid::Param<int>   envelope_enabled  {"envelope_enabled",  1, {"Off", "On"}};
+    vivid::Param<float> envelope_amount   {"envelope_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> envelope_attack   {"envelope_attack",   0.05f, 0.001f, 5.0f};
+    vivid::Param<float> envelope_decay    {"envelope_decay",    0.3f, 0.001f, 5.0f};
+    vivid::Param<float> envelope_sustain  {"envelope_sustain",  0.0f, 0.0f, 1.0f};
+    vivid::Param<float> envelope_release  {"envelope_release",  0.5f, 0.001f, 10.0f};
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(count, 2, 0);
         vivid::layout_row(rate,  2, 1);
@@ -150,25 +159,21 @@ struct Particles : vivid::GpuOperatorBase {
         out.push_back(&color_g);
         out.push_back(&color_b);
         out.push_back(&glow);
+
+        out.push_back(&envelope_enabled);
+        out.push_back(&envelope_amount);
+        out.push_back(&envelope_attack);
+        out.push_back(&envelope_decay);
+        out.push_back(&envelope_sustain);
+        out.push_back(&envelope_release);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_role_bindings(std::vector<VividRoleBindingDescriptor>& out) override {
-        VividRoleBindingDescriptor role{};
-        role.role_id                          = "envelope";
-        role.label                            = "Particle Envelope";
-        role.accepted_domain                  = VIVID_DOMAIN_CONTROL;
-        role.runtime_scope                    = VIVID_ROLE_PER_VOICE;
-        role.allowed_operator_types           = nullptr;
-        role.allowed_operator_type_count      = 0;
-        role.default_operator_type            = "Envelope";
-        role.preferred_output_name            = "value";
-        role.preferred_output_semantic_tags      = nullptr;
-        role.preferred_output_semantic_tag_count = 0;
-        out.push_back(role);
+    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
+        out.push_back({"envelope", "Envelope", "envelope_"});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -179,8 +184,8 @@ struct Particles : vivid::GpuOperatorBase {
         if (n < 1) n = 1;
         if (n > kMaxParticles) n = kMaxParticles;
 
-        // ── Initialize envelope pool from role binding (lazy) ───────────
-        maybe_init_envelopes(ctx, n);
+        // ── Initialize envelope pool (lazy) ──────────────────────────────
+        maybe_init_envelopes(n);
 
         // ── Spawn new particles ─────────────────────────────────────────
         spawn_timer_ += dt;
@@ -218,16 +223,16 @@ struct Particles : vivid::GpuOperatorBase {
             // Gate lifecycle
             if (!p.released && p.age >= p.lifetime) {
                 p.released = true;
-                if (i < static_cast<int>(envelope_pool_.size()) && envelope_pool_[i]) {
-                    envelope_pool_[i]->set_input("gate", 0.0f);
+                if (i < static_cast<int>(envelope_pool_.size())) {
+                    envelope_pool_[i].set_input("gate", 0.0f);
                 }
             }
 
-            // Get envelope value (or 1.0 if no binding)
+            // Get envelope value (or 1.0 if no envelope)
             float env_val = 1.0f;
-            if (i < static_cast<int>(envelope_pool_.size()) && envelope_pool_[i]) {
-                envelope_pool_[i]->process(&env_ctx);
-                env_val = envelope_pool_[i]->output("value");
+            if (i < static_cast<int>(envelope_pool_.size())) {
+                envelope_pool_[i].process(&env_ctx);
+                env_val = envelope_pool_[i].output("value") * envelope_amount.value;
             }
 
             // Deactivate if envelope finished
@@ -266,11 +271,9 @@ private:
     float spawn_timer_ = 0.0f;
     uint32_t seed_ = 42;
 
-    // Envelope pool (one BoundControlInstance per particle slot)
-    std::vector<std::unique_ptr<vivid::BoundControlInstance>> envelope_pool_;
+    // Envelope pool (one ChildOp<Envelope> per particle slot)
+    std::vector<vivid::ChildOp<Envelope>> envelope_pool_;
     bool envelopes_initialized_ = false;
-    VividCreateBindableFn  cached_create_fn_  = nullptr;
-    VividDestroyBindableFn cached_destroy_fn_ = nullptr;
 
     // GPU handles
     WGPURenderPipeline  pipeline_    = nullptr;
@@ -327,9 +330,8 @@ private:
         return true;
     }
 
-    void maybe_init_envelopes(const VividGpuContext* ctx, int n) {
-        if (!ctx->role_binding_configs || ctx->role_binding_count == 0) {
-            // No role bindings — clear pool if previously initialized
+    void maybe_init_envelopes(int n) {
+        if (!envelope_enabled.int_value()) {
             if (envelopes_initialized_) {
                 envelope_pool_.clear();
                 envelopes_initialized_ = false;
@@ -337,61 +339,26 @@ private:
             return;
         }
 
-        // Find the "envelope" role config
-        const VividRoleBindingRuntimeConfig* env_cfg = nullptr;
-        for (uint32_t i = 0; i < ctx->role_binding_count; ++i) {
-            if (std::strcmp(ctx->role_binding_configs[i].role_id, "envelope") == 0) {
-                env_cfg = &ctx->role_binding_configs[i];
-                break;
-            }
-        }
-
-        if (!env_cfg || !env_cfg->create_fn) {
-            if (envelopes_initialized_) {
-                envelope_pool_.clear();
-                envelopes_initialized_ = false;
-            }
-            return;
-        }
-
-        // Re-initialize if factory changed or pool size changed
         bool need_reinit = !envelopes_initialized_
-            || cached_create_fn_ != env_cfg->create_fn
             || static_cast<int>(envelope_pool_.size()) != n;
 
         if (need_reinit) {
             envelope_pool_.clear();
-            cached_create_fn_  = env_cfg->create_fn;
-            cached_destroy_fn_ = env_cfg->destroy_fn;
-
+            envelope_pool_.resize(n);
             for (int i = 0; i < n; ++i) {
-                auto* raw = static_cast<vivid::OperatorBase*>(env_cfg->create_fn());
-                if (!raw) continue;
-
-                auto destroy = [dfn = cached_destroy_fn_](vivid::OperatorBase* p) {
-                    if (dfn) dfn(p); else delete p;
-                };
-                auto inst = std::make_unique<vivid::BoundControlInstance>(raw, std::move(destroy));
-
-                // Apply template params from the bound node
-                for (uint32_t pi = 0; pi < env_cfg->param_count; ++pi) {
-                    if (inst->has_param(env_cfg->param_names[pi])) {
-                        inst->set_param(env_cfg->param_names[pi], env_cfg->param_values[pi]);
-                    }
-                }
-
-                envelope_pool_.push_back(std::move(inst));
+                envelope_pool_[i].set_param("attack", envelope_attack.value);
+                envelope_pool_[i].set_param("decay", envelope_decay.value);
+                envelope_pool_[i].set_param("sustain", envelope_sustain.value);
+                envelope_pool_[i].set_param("release", envelope_release.value);
             }
             envelopes_initialized_ = true;
         } else {
-            // Sync params each frame (user may tweak envelope knobs live)
+            // Sync params each frame
             for (auto& inst : envelope_pool_) {
-                if (!inst) continue;
-                for (uint32_t pi = 0; pi < env_cfg->param_count; ++pi) {
-                    if (inst->has_param(env_cfg->param_names[pi])) {
-                        inst->set_param(env_cfg->param_names[pi], env_cfg->param_values[pi]);
-                    }
-                }
+                inst.set_param("attack", envelope_attack.value);
+                inst.set_param("decay", envelope_decay.value);
+                inst.set_param("sustain", envelope_sustain.value);
+                inst.set_param("release", envelope_release.value);
             }
         }
     }
@@ -423,9 +390,8 @@ private:
         p.dy = vspeed * std::sin(vangle);
 
         // Reset and gate the envelope
-        if (slot < static_cast<int>(envelope_pool_.size()) && envelope_pool_[slot]) {
-            envelope_pool_[slot]->reset();
-            envelope_pool_[slot]->set_input("gate", 1.0f);
+        if (slot < static_cast<int>(envelope_pool_.size())) {
+            envelope_pool_[slot].set_input("gate", 1.0f);
         }
     }
 };

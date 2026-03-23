@@ -104,12 +104,6 @@ public:
     virtual void start_recording(const std::string& path, const std::string& codec, double fps) {}
     virtual void stop_recording() {}
 
-    // Role binding operations (defaults are no-ops for headless/test sinks)
-    virtual void set_role_binding(const std::string& node_id, const std::string& role_id,
-                                  const std::string& target_node_id,
-                                  const std::string& target_output_name) {}
-    virtual void clear_role_binding(const std::string& node_id, const std::string& role_id) {}
-
     // Undo/redo (default no-op for sinks that do not support history)
     virtual bool undo() { return false; }
     virtual bool redo() { return false; }

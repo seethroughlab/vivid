@@ -82,34 +82,6 @@ public:
             pi.direction = desc->ports[i].direction;
         }
 
-        // Role bindings
-        for (uint32_t i = 0; i < desc->role_binding_count; ++i) {
-            const auto& rd = desc->role_bindings[i];
-            vivid::ui::RoleBindingInfo ri;
-            ri.role_id = rd.role_id ? rd.role_id : "";
-            ri.label = rd.label ? rd.label : ri.role_id;
-            ri.accepted_domain = rd.accepted_domain;
-            ri.runtime_scope = rd.runtime_scope;
-            for (uint32_t a = 0; a < rd.allowed_operator_type_count; ++a)
-                ri.allowed_operator_types.push_back(rd.allowed_operator_types[a]);
-            ri.default_operator_type = rd.default_operator_type ? rd.default_operator_type : "";
-            ri.preferred_output_name = rd.preferred_output_name ? rd.preferred_output_name : "";
-            for (uint32_t t = 0; t < rd.preferred_output_semantic_tag_count; ++t)
-                ri.preferred_output_semantic_tags.push_back(rd.preferred_output_semantic_tags[t]);
-            // Build output-aware candidates: for each bindable type, enumerate
-            // which of its outputs are compatible with this role.
-            auto type_names = registry.bindable_candidates(&rd);
-            for (const auto& tn : type_names) {
-                vivid::ui::RoleCandidate rc;
-                rc.type_name = tn;
-                const auto* td = registry.probe_descriptor(tn);
-                if (td)
-                    rc.compatible_outputs = vivid::compatible_outputs(td, &rd);
-                ri.candidates.push_back(std::move(rc));
-            }
-            info->role_bindings.push_back(std::move(ri));
-        }
-
         // Only check shader/user status for fully-loaded operators
         if (loader) {
             if (loader->is_data_driven()) {

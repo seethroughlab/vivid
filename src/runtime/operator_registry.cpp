@@ -20,12 +20,6 @@
 
 namespace vivid {
 
-// Out-of-line: OperatorBase is complete here (operator.h included above).
-void BindableDeleter::operator()(vivid::OperatorBase* p) const {
-    if (loader) loader->destroy_bindable_instance(p);
-    else delete p;
-}
-
 OperatorRegistry::~OperatorRegistry() {
     // Controlled teardown order to avoid use-after-free at process exit.
     // 1. Release deep-copied descriptor data while libraries are still loaded.
@@ -332,64 +326,6 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
         }
     }
 
-    // Deep-copy role binding descriptors
-    const uint32_t slot_count = std::min(src->role_binding_count, 32u);
-    if (slot_count > 0 && src->role_bindings) {
-        entry.role_bindings.resize(slot_count);
-        entry.role_ids.resize(slot_count);
-        entry.role_labels.resize(slot_count);
-        entry.role_allowed_types.resize(slot_count);
-        entry.role_allowed_type_ptrs.resize(slot_count);
-        entry.role_pref_tags.resize(slot_count);
-        entry.role_pref_tag_ptrs.resize(slot_count);
-        entry.role_pref_output_names.resize(slot_count);
-        entry.role_default_types.resize(slot_count);
-        for (uint32_t i = 0; i < slot_count; ++i) {
-            const auto& ss = src->role_bindings[i];
-            auto& ds = entry.role_bindings[i];
-            ds.accepted_domain = ss.accepted_domain;
-            ds.runtime_scope = ss.runtime_scope;
-            entry.role_ids[i] = ss.role_id ? ss.role_id : "";
-            ds.role_id = entry.role_ids[i].c_str();
-            entry.role_labels[i] = ss.label ? ss.label : "";
-            ds.label = entry.role_labels[i].c_str();
-            entry.role_pref_output_names[i] = ss.preferred_output_name ? ss.preferred_output_name : "";
-            ds.preferred_output_name = entry.role_pref_output_names[i].empty()
-                                       ? nullptr : entry.role_pref_output_names[i].c_str();
-            entry.role_default_types[i] = ss.default_operator_type ? ss.default_operator_type : "";
-            ds.default_operator_type = entry.role_default_types[i].empty()
-                                       ? nullptr : entry.role_default_types[i].c_str();
-            if (ss.allowed_operator_types && ss.allowed_operator_type_count > 0) {
-                entry.role_allowed_types[i].resize(ss.allowed_operator_type_count);
-                entry.role_allowed_type_ptrs[i].resize(ss.allowed_operator_type_count);
-                for (uint32_t j = 0; j < ss.allowed_operator_type_count; ++j) {
-                    entry.role_allowed_types[i][j] = ss.allowed_operator_types[j]
-                                                     ? ss.allowed_operator_types[j] : "";
-                    entry.role_allowed_type_ptrs[i][j] = entry.role_allowed_types[i][j].c_str();
-                }
-                ds.allowed_operator_types = entry.role_allowed_type_ptrs[i].data();
-                ds.allowed_operator_type_count = ss.allowed_operator_type_count;
-            } else {
-                ds.allowed_operator_types = nullptr;
-                ds.allowed_operator_type_count = 0;
-            }
-            if (ss.preferred_output_semantic_tags && ss.preferred_output_semantic_tag_count > 0) {
-                entry.role_pref_tags[i].resize(ss.preferred_output_semantic_tag_count);
-                entry.role_pref_tag_ptrs[i].resize(ss.preferred_output_semantic_tag_count);
-                for (uint32_t j = 0; j < ss.preferred_output_semantic_tag_count; ++j) {
-                    entry.role_pref_tags[i][j] = ss.preferred_output_semantic_tags[j]
-                                                 ? ss.preferred_output_semantic_tags[j] : "";
-                    entry.role_pref_tag_ptrs[i][j] = entry.role_pref_tags[i][j].c_str();
-                }
-                ds.preferred_output_semantic_tags = entry.role_pref_tag_ptrs[i].data();
-                ds.preferred_output_semantic_tag_count = ss.preferred_output_semantic_tag_count;
-            } else {
-                ds.preferred_output_semantic_tags = nullptr;
-                ds.preferred_output_semantic_tag_count = 0;
-            }
-        }
-    }
-
     // Build the owned descriptor
     entry.desc.name = nullptr;  // set after emplace (points to stable map key)
     entry.desc.domain = src->domain;
@@ -400,8 +336,6 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.desc.time_dependent = src->time_dependent;
     entry.desc.has_process_audio = src->has_process_audio;
     entry.desc.has_process_gpu = src->has_process_gpu;
-    entry.desc.role_binding_count = slot_count;
-    entry.desc.role_bindings = entry.role_bindings.empty() ? nullptr : entry.role_bindings.data();
 
     entry.file_drop_handlers.resize(file_drop_count);
     entry.file_drop_labels.resize(file_drop_count);
@@ -439,6 +373,29 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
             dst_handler.extensions = nullptr;
             dst_handler.extension_count = 0;
         }
+    }
+
+    // Deep-copy embedded operator slots
+    const uint32_t eo_count = std::min(src->embedded_op_slot_count, 32u);
+    if (eo_count > 0 && src->embedded_op_slots) {
+        entry.embedded_op_slots.resize(eo_count);
+        entry.embedded_op_role_ids.resize(eo_count);
+        entry.embedded_op_default_types.resize(eo_count);
+        entry.embedded_op_prefixes.resize(eo_count);
+        for (uint32_t i = 0; i < eo_count; ++i) {
+            const auto& s = src->embedded_op_slots[i];
+            entry.embedded_op_role_ids[i] = s.role_id ? s.role_id : "";
+            entry.embedded_op_default_types[i] = s.default_type ? s.default_type : "";
+            entry.embedded_op_prefixes[i] = s.param_prefix ? s.param_prefix : "";
+            entry.embedded_op_slots[i].role_id = entry.embedded_op_role_ids[i].c_str();
+            entry.embedded_op_slots[i].default_type = entry.embedded_op_default_types[i].c_str();
+            entry.embedded_op_slots[i].param_prefix = entry.embedded_op_prefixes[i].c_str();
+        }
+        entry.desc.embedded_op_slot_count = eo_count;
+        entry.desc.embedded_op_slots = entry.embedded_op_slots.data();
+    } else {
+        entry.desc.embedded_op_slot_count = 0;
+        entry.desc.embedded_op_slots = nullptr;
     }
 
     return entry;
@@ -513,9 +470,6 @@ bool OperatorRegistry::scan_deferred(const char* directory) {
         // problematic teardown paths during dlclose() and can stall startup.
         deferred_probe_handles_.push_back({path, handle});
         if (!de_opt) return;  // malformed descriptor — skip operator
-
-        // Check for bindable factory entry point
-        de_opt->bindable = dlsym(handle, "vivid_create_bindable") != nullptr;
 
         auto [it, inserted] = deferred_.emplace(type_name, std::move(*de_opt));
         if (!inserted) {
@@ -668,23 +622,13 @@ const VividOperatorDescriptor* OperatorRegistry::probe_descriptor(const std::str
     return &dit->second.desc;
 }
 
-BindableOpHandle OperatorRegistry::create_bindable(const std::string& type_name) {
-    OperatorLoader* loader = find(type_name);  // lazy-loads if needed
-    if (!loader || !loader->has_create_bindable()) return {nullptr, {nullptr}};
-    void* raw = loader->create_bindable_instance();
-    if (!raw) return {nullptr, {nullptr}};
-    return {static_cast<vivid::OperatorBase*>(raw), BindableDeleter{loader}};
-}
-
-bool OperatorRegistry::is_bindable(const std::string& type_name) const {
+const std::vector<VividEmbeddedOpSlot>* OperatorRegistry::embedded_op_slots(
+        const std::string& type_name) const {
     const std::string resolved = resolve_alias_once(aliases_, type_name);
-    auto lit = loaders_.find(resolved);
-    if (lit != loaders_.end() && lit->second)
-        return lit->second->has_create_bindable();
     auto dit = deferred_.find(resolved);
-    if (dit != deferred_.end())
-        return dit->second.bindable;
-    return false;
+    if (dit != deferred_.end() && !dit->second.embedded_op_slots.empty())
+        return &dit->second.embedded_op_slots;
+    return nullptr;
 }
 
 void OperatorRegistry::register_builtin(const std::string& type_name,
@@ -1154,161 +1098,6 @@ std::vector<std::string> OperatorRegistry::factory_preset_names(
     for (const auto& p : it->second)
         names.push_back(p.name);
     return names;
-}
-
-std::vector<std::string> OperatorRegistry::bindable_candidates(
-        const VividRoleBindingDescriptor* role) const {
-    std::vector<std::string> result;
-
-    // Check deferred entries (does not trigger lazy-loading)
-    for (const auto& [name, entry] : deferred_) {
-        if (!entry.bindable) continue;
-        if (role) {
-            if (entry.desc.domain != role->accepted_domain) {
-                // Intentional narrow exception: some operators (Envelope, LFO) are
-                // audio-domain because they use process_audio for sample accuracy,
-                // but are semantically control sources.  Only operators that also
-                // export VIVID_BINDABLE benefit from this — it is NOT a general rule
-                // that any audio operator may satisfy a control role.
-                bool audio_for_control = (role->accepted_domain == VIVID_DOMAIN_CONTROL &&
-                                          entry.desc.domain == VIVID_DOMAIN_AUDIO);
-                if (!audio_for_control) continue;
-            }
-            if (role->allowed_operator_type_count > 0) {
-                bool allowed = false;
-                for (uint32_t i = 0; i < role->allowed_operator_type_count; ++i) {
-                    if (name == role->allowed_operator_types[i]) {
-                        allowed = true;
-                        break;
-                    }
-                }
-                if (!allowed) continue;
-            }
-        }
-        result.push_back(name);
-    }
-
-    // Check fully loaded entries
-    for (const auto& [name, loader] : loaders_) {
-        if (!loader || !loader->has_create_bindable()) continue;
-        if (role) {
-            const auto* desc = loader->descriptor();
-            if (!desc) continue;
-            if (desc->domain != role->accepted_domain) {
-                bool audio_for_control = (role->accepted_domain == VIVID_DOMAIN_CONTROL &&
-                                          desc->domain == VIVID_DOMAIN_AUDIO);
-                if (!audio_for_control) continue;
-            }
-            if (role->allowed_operator_type_count > 0) {
-                bool allowed = false;
-                for (uint32_t i = 0; i < role->allowed_operator_type_count; ++i) {
-                    if (name == role->allowed_operator_types[i]) {
-                        allowed = true;
-                        break;
-                    }
-                }
-                if (!allowed) continue;
-            }
-        }
-        result.push_back(name);
-    }
-
-    std::sort(result.begin(), result.end());
-    result.erase(std::unique(result.begin(), result.end()), result.end());
-    return result;
-}
-
-RoleBindingValidation validate_role_binding(
-        const VividOperatorDescriptor* host_desc,
-        const std::string& role_id,
-        const std::string& type_name,
-        const std::string& output_name,
-        const OperatorRegistry& registry) {
-    // Find role in host descriptor
-    const VividRoleBindingDescriptor* role_desc = nullptr;
-    for (uint32_t si = 0; si < host_desc->role_binding_count; ++si) {
-        if (host_desc->role_bindings[si].role_id &&
-            role_id == host_desc->role_bindings[si].role_id) {
-            role_desc = &host_desc->role_bindings[si];
-            break;
-        }
-    }
-    if (!role_desc) return RoleBindingValidation::kRoleNotFound;
-
-    // Check bindable
-    if (!registry.is_bindable(type_name))
-        return RoleBindingValidation::kNotBindable;
-
-    // Check allowlist
-    if (role_desc->allowed_operator_type_count > 0) {
-        bool allowed = false;
-        for (uint32_t ti = 0; ti < role_desc->allowed_operator_type_count; ++ti) {
-            if (type_name == role_desc->allowed_operator_types[ti]) {
-                allowed = true;
-                break;
-            }
-        }
-        if (!allowed) return RoleBindingValidation::kTypeNotAllowed;
-    }
-
-    // Check domain compatibility (control-only for v1).
-    // Intentional narrow exception: Envelope/LFO are audio-domain (process_audio
-    // for sample accuracy) but semantically control sources.  Only VIVID_BINDABLE
-    // operators benefit — this is not a general audio→control domain collapse.
-    const auto* bound_desc = registry.probe_descriptor(type_name);
-    if (bound_desc && role_desc->accepted_domain != bound_desc->domain) {
-        bool audio_for_control = (role_desc->accepted_domain == VIVID_DOMAIN_CONTROL &&
-                                  bound_desc->domain == VIVID_DOMAIN_AUDIO);
-        if (!audio_for_control)
-            return RoleBindingValidation::kDomainMismatch;
-    }
-
-    // Validate that the named output actually exists on the target operator.
-    if (!output_name.empty() && bound_desc) {
-        auto outs = compatible_outputs(bound_desc, role_desc);
-        bool found = false;
-        for (const auto& o : outs) {
-            if (o == output_name) { found = true; break; }
-        }
-        if (!found)
-            return RoleBindingValidation::kOutputNotFound;
-    }
-
-    return RoleBindingValidation::kOk;
-}
-
-std::vector<std::string> compatible_outputs(
-        const VividOperatorDescriptor* target_desc,
-        const VividRoleBindingDescriptor* role_desc) {
-    std::vector<std::string> result;
-    if (!target_desc) return result;
-
-    // Collect preferred semantic tags from the role (if any).
-    std::vector<std::string> tags;
-    if (role_desc && role_desc->preferred_output_semantic_tags) {
-        for (uint32_t i = 0; i < role_desc->preferred_output_semantic_tag_count; ++i)
-            tags.emplace_back(role_desc->preferred_output_semantic_tags[i]);
-    }
-
-    for (uint32_t pi = 0; pi < target_desc->port_count; ++pi) {
-        const auto& port = target_desc->ports[pi];
-        if (port.direction != VIVID_PORT_OUTPUT) continue;
-        if (!port.name) continue;
-
-        if (!tags.empty()) {
-            // If the role specifies semantic tags, only include outputs that match.
-            const char* port_tag = port.semantic_tag;
-            if (!port_tag) continue;
-            bool matched = false;
-            for (const auto& t : tags) {
-                if (t == port_tag) { matched = true; break; }
-            }
-            if (!matched) continue;
-        }
-
-        result.emplace_back(port.name);
-    }
-    return result;
 }
 
 } // namespace vivid

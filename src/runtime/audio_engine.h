@@ -190,22 +190,12 @@ struct CustomPortSnapshot {
     }
 };
 
-// Snapshot of role binding runtime configs for one audio node.
-// Contains a copy of the flat VividRoleBindingRuntimeConfig array.
-// Pointers within the configs (param_names, param_values, role_id, bound_node_type)
-// point into scheduler NodeState storage, which is stable between build() calls.
-struct RoleBindingSnapshot {
-    uint32_t count = 0;
-    const VividRoleBindingRuntimeConfig* configs = nullptr; // points into scheduler NodeState
-};
-
 struct ParamSnapshot {
     std::vector<std::vector<float>> node_params;  // [audio_node_idx][param_idx]
     std::vector<std::vector<float>> float_input_values; // [audio_node_idx][float_input_ordinal]
     std::vector<std::vector<SpreadSnapshot>> spread_inputs; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<std::string>> input_string_values; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<CustomPortSnapshot>> custom_inputs; // [audio_node_idx][input_port_idx]
-    std::vector<RoleBindingSnapshot> role_bindings; // [audio_node_idx]
     std::vector<bool> solo_active_set;  // empty = no solo; [audio_node_idx] = active
 };
 

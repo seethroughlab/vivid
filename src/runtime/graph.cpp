@@ -63,6 +63,106 @@ bool Graph::load_from_string(const char* json, size_t len, bool preserve_source_
     return ok;
 }
 
+// Parse common NodeDef fields from a JSON object. Does NOT set node.id (caller's job).
+// Recursively parses embedded_ops.
+static bool parse_node_fields(yyjson_val* val, NodeDef& node) {
+    // type
+    yyjson_val* type_val = yyjson_obj_get(val, "type");
+    if (type_val && yyjson_is_str(type_val))
+        node.type = yyjson_get_str(type_val);
+
+    // pkg
+    auto* pkg_obj = yyjson_obj_get(val, "pkg");
+    if (pkg_obj && yyjson_is_obj(pkg_obj)) {
+        auto* pn = yyjson_obj_get(pkg_obj, "name");
+        auto* pv = yyjson_obj_get(pkg_obj, "version");
+        node.pkg_name    = (pn && yyjson_is_str(pn)) ? yyjson_get_str(pn) : "";
+        node.pkg_version = (pv && yyjson_is_str(pv)) ? yyjson_get_str(pv) : "";
+    }
+
+    // params
+    yyjson_val* params_obj = yyjson_obj_get(val, "params");
+    if (params_obj && yyjson_is_obj(params_obj)) {
+        yyjson_obj_iter piter;
+        yyjson_obj_iter_init(params_obj, &piter);
+        yyjson_val* pkey;
+        while ((pkey = yyjson_obj_iter_next(&piter))) {
+            yyjson_val* pval = yyjson_obj_iter_get_val(pkey);
+            if (yyjson_is_num(pval))
+                node.params[yyjson_get_str(pkey)] = static_cast<float>(yyjson_get_num(pval));
+            else if (yyjson_is_str(pval))
+                node.string_params[yyjson_get_str(pkey)] = yyjson_get_str(pval);
+        }
+    }
+
+    // layout
+    yyjson_val* layout_obj = yyjson_obj_get(val, "layout");
+    if (layout_obj && yyjson_is_obj(layout_obj)) {
+        yyjson_val* lx = yyjson_obj_get(layout_obj, "x");
+        yyjson_val* ly = yyjson_obj_get(layout_obj, "y");
+        if (lx && yyjson_is_num(lx) && ly && yyjson_is_num(ly)) {
+            node.layout_x = static_cast<float>(yyjson_get_num(lx));
+            node.layout_y = static_cast<float>(yyjson_get_num(ly));
+        }
+    }
+
+    // resolution
+    yyjson_val* res_arr = yyjson_obj_get(val, "resolution");
+    if (res_arr && yyjson_is_arr(res_arr) && yyjson_arr_size(res_arr) == 2) {
+        yyjson_val* rw = yyjson_arr_get(res_arr, 0);
+        yyjson_val* rh = yyjson_arr_get(res_arr, 1);
+        if (rw && yyjson_is_int(rw) && rh && yyjson_is_int(rh)) {
+            node.tex_width  = static_cast<uint32_t>(yyjson_get_int(rw));
+            node.tex_height = static_cast<uint32_t>(yyjson_get_int(rh));
+            if (node.tex_width > 8192 || node.tex_height > 8192) {
+                node.tex_width = 0;
+                node.tex_height = 0;
+            }
+        }
+    }
+
+    // locks
+    yyjson_val* locks_obj = yyjson_obj_get(val, "locks");
+    if (locks_obj && yyjson_is_obj(locks_obj)) {
+        yyjson_obj_iter liter;
+        yyjson_obj_iter_init(locks_obj, &liter);
+        yyjson_val* lkey;
+        while ((lkey = yyjson_obj_iter_next(&liter))) {
+            yyjson_val* lval = yyjson_obj_iter_get_val(lkey);
+            if (lval && yyjson_is_int(lval))
+                node.param_lock_flags[yyjson_get_str(lkey)] = static_cast<uint8_t>(yyjson_get_int(lval));
+        }
+    }
+
+    // embedded_ops (recursive)
+    yyjson_val* eo_obj = yyjson_obj_get(val, "embedded_ops");
+    if (eo_obj && yyjson_is_obj(eo_obj)) {
+        yyjson_obj_iter eo_iter;
+        yyjson_obj_iter_init(eo_obj, &eo_iter);
+        yyjson_val* eo_key;
+        while ((eo_key = yyjson_obj_iter_next(&eo_iter))) {
+            yyjson_val* eo_val = yyjson_obj_iter_get_val(eo_key);
+            if (!yyjson_is_obj(eo_val)) continue;
+            std::string role_id = yyjson_get_str(eo_key);
+            NodeDef child;
+            parse_node_fields(eo_val, child);
+            node.embedded_ops[role_id] = std::move(child);
+        }
+    }
+
+    // Inject embedded op params as flat prefixed params on the host
+    // (bridge to flat runtime Param<> members)
+    for (const auto& [role_id, child] : node.embedded_ops) {
+        std::string prefix = role_id + "_";
+        for (const auto& [pn, pv] : child.params)
+            node.params[prefix + pn] = pv;
+        for (const auto& [pn, pv] : child.string_params)
+            node.string_params[prefix + pn] = pv;
+    }
+
+    return true;
+}
+
 bool Graph::parse_doc(yyjson_doc* doc) {
     nodes_.clear();
     connections_.clear();
@@ -157,102 +257,8 @@ bool Graph::parse_doc(yyjson_doc* doc) {
                 std::fprintf(stderr, "[vivid] Graph: node '%s' missing type\n", node.id.c_str());
                 return false;
             }
-            node.type = yyjson_get_str(type_val);
 
-            // Optional package provenance
-            auto* pkg_obj = yyjson_obj_get(val, "pkg");
-            if (pkg_obj && yyjson_is_obj(pkg_obj)) {
-                auto* pn = yyjson_obj_get(pkg_obj, "name");
-                auto* pv = yyjson_obj_get(pkg_obj, "version");
-                node.pkg_name    = (pn && yyjson_is_str(pn)) ? yyjson_get_str(pn) : "";
-                node.pkg_version = (pv && yyjson_is_str(pv)) ? yyjson_get_str(pv) : "";
-            }
-
-            yyjson_val* params_obj = yyjson_obj_get(val, "params");
-            if (params_obj && yyjson_is_obj(params_obj)) {
-                yyjson_obj_iter piter;
-                yyjson_obj_iter_init(params_obj, &piter);
-                yyjson_val* pkey;
-                while ((pkey = yyjson_obj_iter_next(&piter)) != nullptr) {
-                    yyjson_val* pval = yyjson_obj_iter_get_val(pkey);
-                    if (yyjson_is_num(pval)) {
-                        node.params[yyjson_get_str(pkey)] = static_cast<float>(yyjson_get_num(pval));
-                    } else if (yyjson_is_str(pval)) {
-                        node.string_params[yyjson_get_str(pkey)] = yyjson_get_str(pval);
-                    }
-                }
-            }
-
-            // Optional layout position
-            yyjson_val* layout_obj = yyjson_obj_get(val, "layout");
-            if (layout_obj && yyjson_is_obj(layout_obj)) {
-                yyjson_val* lx = yyjson_obj_get(layout_obj, "x");
-                yyjson_val* ly = yyjson_obj_get(layout_obj, "y");
-                if (lx && yyjson_is_num(lx) && ly && yyjson_is_num(ly)) {
-                    node.layout_x = static_cast<float>(yyjson_get_num(lx));
-                    node.layout_y = static_cast<float>(yyjson_get_num(ly));
-                }
-            }
-
-            // Optional per-node GPU texture resolution
-            yyjson_val* res_arr = yyjson_obj_get(val, "resolution");
-            if (res_arr && yyjson_is_arr(res_arr) && yyjson_arr_size(res_arr) == 2) {
-                yyjson_val* rw = yyjson_arr_get(res_arr, 0);
-                yyjson_val* rh = yyjson_arr_get(res_arr, 1);
-                if (rw && yyjson_is_int(rw) && rh && yyjson_is_int(rh)) {
-                    node.tex_width  = static_cast<uint32_t>(yyjson_get_int(rw));
-                    node.tex_height = static_cast<uint32_t>(yyjson_get_int(rh));
-                    if (node.tex_width > 8192 || node.tex_height > 8192) {
-                        std::fprintf(stderr, "[vivid] Graph: node '%s' resolution %ux%u exceeds max (8192), ignoring\n",
-                                     node.id.c_str(), node.tex_width, node.tex_height);
-                        node.tex_width  = 0;
-                        node.tex_height = 0;
-                    }
-                }
-            }
-
-            // Optional per-parameter lock flags
-            yyjson_val* locks_obj = yyjson_obj_get(val, "locks");
-            if (locks_obj && yyjson_is_obj(locks_obj)) {
-                yyjson_obj_iter liter;
-                yyjson_obj_iter_init(locks_obj, &liter);
-                yyjson_val* lkey;
-                while ((lkey = yyjson_obj_iter_next(&liter)) != nullptr) {
-                    yyjson_val* lval = yyjson_obj_iter_get_val(lkey);
-                    if (lval && yyjson_is_int(lval)) {
-                        node.param_lock_flags[yyjson_get_str(lkey)] =
-                            static_cast<uint8_t>(yyjson_get_int(lval));
-                    }
-                }
-            }
-
-            // Reject legacy embedded_ops (pre-role-binding format)
-            if (yyjson_obj_get(val, "embedded_ops")) {
-                std::fprintf(stderr,
-                    "[vivid] Graph: node '%s' uses legacy embedded_ops format — "
-                    "please recreate the graph with role bindings.\n", node.id.c_str());
-                return false;
-            }
-
-            // Optional role bindings
-            yyjson_val* rb_obj = yyjson_obj_get(val, "role_bindings");
-            if (rb_obj && yyjson_is_obj(rb_obj)) {
-                yyjson_obj_iter rbiter;
-                yyjson_obj_iter_init(rb_obj, &rbiter);
-                yyjson_val* rbkey;
-                while ((rbkey = yyjson_obj_iter_next(&rbiter)) != nullptr) {
-                    yyjson_val* rbval = yyjson_obj_iter_get_val(rbkey);
-                    if (!rbval || !yyjson_is_obj(rbval)) continue;
-                    NodeDef::RoleBindingState rbs;
-                    yyjson_val* tid = yyjson_obj_get(rbval, "target_node_id");
-                    if (tid && yyjson_is_str(tid))
-                        rbs.target_node_id = yyjson_get_str(tid);
-                    yyjson_val* tname = yyjson_obj_get(rbval, "target_output_name");
-                    if (tname && yyjson_is_str(tname))
-                        rbs.target_output_name = yyjson_get_str(tname);
-                    node.role_bindings[yyjson_get_str(rbkey)] = std::move(rbs);
-                }
-            }
+            parse_node_fields(val, node);
 
             if (find_node(node.id)) {
                 std::fprintf(stderr, "[vivid] Graph: duplicate node id '%s', skipping\n", node.id.c_str());
@@ -532,6 +538,21 @@ bool Graph::parse_doc(yyjson_doc* doc) {
                                 op.string_params[yyjson_get_str(ppkey)] = yyjson_get_str(ppv);
                         }
                     }
+                    // Parse embedded_ops in preset
+                    yyjson_val* peo_obj = yyjson_obj_get(pentry, "embedded_ops");
+                    if (peo_obj && yyjson_is_obj(peo_obj)) {
+                        yyjson_obj_iter peo_iter;
+                        yyjson_obj_iter_init(peo_obj, &peo_iter);
+                        yyjson_val* peo_key;
+                        while ((peo_key = yyjson_obj_iter_next(&peo_iter))) {
+                            yyjson_val* peo_val = yyjson_obj_iter_get_val(peo_key);
+                            if (!yyjson_is_obj(peo_val)) continue;
+                            std::string role_id = yyjson_get_str(peo_key);
+                            NodeDef child;
+                            parse_node_fields(peo_val, child);
+                            op.embedded_ops[role_id] = std::move(child);
+                        }
+                    }
                     presets.push_back(std::move(op));
                 }
             }
@@ -655,15 +676,6 @@ bool Graph::remove_node(const std::string& id) {
     for (auto& m : state_preset_mappings_) {
         for (auto& bindings : m.state_presets) {
             bindings.erase(id);
-        }
-    }
-    // Clear role bindings referencing the removed node
-    for (auto& remaining : nodes_) {
-        for (auto it = remaining.role_bindings.begin(); it != remaining.role_bindings.end(); ) {
-            if (it->second.target_node_id == id)
-                it = remaining.role_bindings.erase(it);
-            else
-                ++it;
         }
     }
     return true;
@@ -1049,6 +1061,75 @@ StickyNoteDef* Graph::find_sticky_note(const std::string& id) {
 
 // --- Serialization ---
 
+static void serialize_node_fields(yyjson_mut_doc* doc, yyjson_mut_val* node_obj, const NodeDef& node) {
+    yyjson_mut_obj_add_str(doc, node_obj, "type", node.type.c_str());
+
+    if (!node.pkg_name.empty()) {
+        auto* pkg_sub = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, pkg_sub, "name", node.pkg_name.c_str());
+        yyjson_mut_obj_add_strcpy(doc, pkg_sub, "version", node.pkg_version.c_str());
+        yyjson_mut_obj_add_val(doc, node_obj, "pkg", pkg_sub);
+    }
+
+    // Build set of embedded_ops prefixes to skip from flat params
+    std::vector<std::string> eo_prefixes;
+    for (const auto& [role_id, child] : node.embedded_ops)
+        eo_prefixes.push_back(role_id + "_");
+
+    auto is_embedded_param = [&](const std::string& pname) {
+        for (const auto& pfx : eo_prefixes) {
+            if (pname.size() >= pfx.size() && pname.compare(0, pfx.size(), pfx) == 0)
+                return true;
+        }
+        return false;
+    };
+
+    if (!node.params.empty() || !node.string_params.empty()) {
+        yyjson_mut_val* params_obj = yyjson_mut_obj(doc);
+        for (const auto& [pname, pval] : node.params) {
+            if (is_embedded_param(pname)) continue;
+            yyjson_mut_obj_add_real(doc, params_obj, pname.c_str(), static_cast<double>(pval));
+        }
+        for (const auto& [pname, pval] : node.string_params) {
+            if (is_embedded_param(pname)) continue;
+            yyjson_mut_obj_add_strcpy(doc, params_obj, pname.c_str(), pval.c_str());
+        }
+        yyjson_mut_obj_add_val(doc, node_obj, "params", params_obj);
+    }
+
+    if (node.has_layout()) {
+        yyjson_mut_val* layout_obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_real(doc, layout_obj, "x", static_cast<double>(node.layout_x));
+        yyjson_mut_obj_add_real(doc, layout_obj, "y", static_cast<double>(node.layout_y));
+        yyjson_mut_obj_add_val(doc, node_obj, "layout", layout_obj);
+    }
+
+    if (node.tex_width > 0 && node.tex_height > 0) {
+        yyjson_mut_val* res_arr = yyjson_mut_arr(doc);
+        yyjson_mut_arr_add_int(doc, res_arr, static_cast<int64_t>(node.tex_width));
+        yyjson_mut_arr_add_int(doc, res_arr, static_cast<int64_t>(node.tex_height));
+        yyjson_mut_obj_add_val(doc, node_obj, "resolution", res_arr);
+    }
+
+    if (!node.param_lock_flags.empty()) {
+        yyjson_mut_val* locks_obj = yyjson_mut_obj(doc);
+        for (const auto& [pname, flags] : node.param_lock_flags)
+            yyjson_mut_obj_add_int(doc, locks_obj, pname.c_str(), static_cast<int64_t>(flags));
+        yyjson_mut_obj_add_val(doc, node_obj, "locks", locks_obj);
+    }
+
+    // Write embedded_ops — recursive, uses child NodeDef directly
+    if (!node.embedded_ops.empty()) {
+        yyjson_mut_val* eo_obj = yyjson_mut_obj(doc);
+        for (const auto& [role_id, child] : node.embedded_ops) {
+            yyjson_mut_val* child_obj = yyjson_mut_obj(doc);
+            serialize_node_fields(doc, child_obj, child);
+            yyjson_mut_obj_add_val(doc, eo_obj, role_id.c_str(), child_obj);
+        }
+        yyjson_mut_obj_add_val(doc, node_obj, "embedded_ops", eo_obj);
+    }
+}
+
 static yyjson_mut_doc* build_graph_json_doc(const Graph& graph) {
     yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
     yyjson_mut_val* root = yyjson_mut_obj(doc);
@@ -1093,60 +1174,7 @@ static yyjson_mut_doc* build_graph_json_doc(const Graph& graph) {
     yyjson_mut_val* nodes_obj = yyjson_mut_obj(doc);
     for (const auto& node : graph.nodes()) {
         yyjson_mut_val* node_obj = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_str(doc, node_obj, "type", node.type.c_str());
-
-        if (!node.pkg_name.empty()) {
-            auto* pkg_sub = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_strcpy(doc, pkg_sub, "name",    node.pkg_name.c_str());
-            yyjson_mut_obj_add_strcpy(doc, pkg_sub, "version", node.pkg_version.c_str());
-            yyjson_mut_obj_add_val(doc, node_obj, "pkg", pkg_sub);
-        }
-
-        if (!node.params.empty() || !node.string_params.empty()) {
-            yyjson_mut_val* params_obj = yyjson_mut_obj(doc);
-            for (const auto& [pname, pval] : node.params) {
-                yyjson_mut_obj_add_real(doc, params_obj, pname.c_str(), static_cast<double>(pval));
-            }
-            for (const auto& [pname, pval] : node.string_params) {
-                yyjson_mut_obj_add_strcpy(doc, params_obj, pname.c_str(), pval.c_str());
-            }
-            yyjson_mut_obj_add_val(doc, node_obj, "params", params_obj);
-        }
-
-        if (node.has_layout()) {
-            yyjson_mut_val* layout_obj = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_real(doc, layout_obj, "x", static_cast<double>(node.layout_x));
-            yyjson_mut_obj_add_real(doc, layout_obj, "y", static_cast<double>(node.layout_y));
-            yyjson_mut_obj_add_val(doc, node_obj, "layout", layout_obj);
-        }
-
-        if (node.tex_width > 0 && node.tex_height > 0) {
-            yyjson_mut_val* res_arr = yyjson_mut_arr(doc);
-            yyjson_mut_arr_add_int(doc, res_arr, static_cast<int64_t>(node.tex_width));
-            yyjson_mut_arr_add_int(doc, res_arr, static_cast<int64_t>(node.tex_height));
-            yyjson_mut_obj_add_val(doc, node_obj, "resolution", res_arr);
-        }
-
-        if (!node.param_lock_flags.empty()) {
-            yyjson_mut_val* locks_obj = yyjson_mut_obj(doc);
-            for (const auto& [pname, flags] : node.param_lock_flags) {
-                yyjson_mut_obj_add_int(doc, locks_obj, pname.c_str(),
-                                       static_cast<int64_t>(flags));
-            }
-            yyjson_mut_obj_add_val(doc, node_obj, "locks", locks_obj);
-        }
-
-        if (!node.role_bindings.empty()) {
-            yyjson_mut_val* rb_obj = yyjson_mut_obj(doc);
-            for (const auto& [role_id, rbs] : node.role_bindings) {
-                yyjson_mut_val* rb_entry = yyjson_mut_obj(doc);
-                yyjson_mut_obj_add_strcpy(doc, rb_entry, "target_node_id", rbs.target_node_id.c_str());
-                yyjson_mut_obj_add_strcpy(doc, rb_entry, "target_output_name", rbs.target_output_name.c_str());
-                yyjson_mut_obj_add_val(doc, rb_obj, role_id.c_str(), rb_entry);
-            }
-            yyjson_mut_obj_add_val(doc, node_obj, "role_bindings", rb_obj);
-        }
-
+        serialize_node_fields(doc, node_obj, node);
         yyjson_mut_obj_add_val(doc, nodes_obj, node.id.c_str(), node_obj);
     }
     yyjson_mut_obj_add_val(doc, root, "nodes", nodes_obj);
@@ -1247,6 +1275,16 @@ static yyjson_mut_doc* build_graph_json_doc(const Graph& graph) {
                     yyjson_mut_obj_add_strcpy(doc, pp_obj, pname.c_str(), pval.c_str());
                 }
                 yyjson_mut_obj_add_val(doc, pr_obj, "params", pp_obj);
+                // Write embedded_ops in preset
+                if (!p.embedded_ops.empty()) {
+                    yyjson_mut_val* peo_obj = yyjson_mut_obj(doc);
+                    for (const auto& [role_id, child] : p.embedded_ops) {
+                        yyjson_mut_val* child_obj = yyjson_mut_obj(doc);
+                        serialize_node_fields(doc, child_obj, child);
+                        yyjson_mut_obj_add_val(doc, peo_obj, role_id.c_str(), child_obj);
+                    }
+                    yyjson_mut_obj_add_val(doc, pr_obj, "embedded_ops", peo_obj);
+                }
                 yyjson_mut_arr_add_val(pr_arr, pr_obj);
             }
             yyjson_mut_obj_add_val(doc, presets_obj, node_id.c_str(), pr_arr);

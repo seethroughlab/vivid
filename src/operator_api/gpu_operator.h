@@ -71,10 +71,6 @@ struct VividGpuContext {
     const VividInputState* input;
     const VividSharedHandleService* shared_handles;
 
-    // Role binding runtime configuration
-    uint32_t                                role_binding_count;
-    const VividRoleBindingRuntimeConfig*    role_binding_configs;
-
     // ---- Operator write-back ------------------------------------------------
     uint32_t           preferred_tex_width;
     uint32_t           preferred_tex_height;

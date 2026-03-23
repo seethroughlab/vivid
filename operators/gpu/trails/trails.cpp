@@ -1,18 +1,18 @@
-// Trails / Ribbons — Persistent motion trails with per-voice role bindings.
+// Trails / Ribbons — Persistent motion trails with owned ChildOp<LFO> pools.
 //
 // Autonomous trail heads move with configurable speed and curvature. A ping-pong
 // feedback texture creates trail persistence through per-frame decay. Three
-// PER_VOICE role bindings (width_mod, opacity_mod, color_shift) allow independent
-// modulation per trail. Optional texture input composites behind the trails.
+// owned LFO pools (width_mod, opacity_mod, color_shift) provide per-trail
+// modulation with staggered phase offsets. Optional texture input composites
+// behind the trails.
 
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
-#include "operator_api/bound_control_instance.h"
+#include "operator_api/child_op.h"
+#include "control/lfo/lfo.h"
 #include <cmath>
 #include <cstdio>
-#include <cstring>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -161,13 +161,10 @@ struct Trail {
     float curve_offset = 0.0f;           // per-trail curvature variation
 };
 
-// ── Role binding pool ───────────────────────────────────────────────────
+// ── LFO pool (one ChildOp<LFO> per trail) ───────────────────────────────
 
-struct RolePool {
-    std::vector<std::unique_ptr<vivid::BoundControlInstance>> pool;
-    bool initialized = false;
-    VividCreateBindableFn  cached_create_fn  = nullptr;
-    VividDestroyBindableFn cached_destroy_fn = nullptr;
+struct LfoPool {
+    std::vector<vivid::ChildOp<LFO>> pool;
 };
 
 // ── Operator ────────────────────────────────────────────────────────────
@@ -193,6 +190,27 @@ struct Trails : vivid::GpuOperatorBase {
     // Glow
     vivid::Param<float> glow      {"glow",      0.0f,  0.0f,  1.0f};
 
+    // ── Width modulation ────────────────────────────────────────────
+    vivid::Param<int>   width_mod_enabled  {"width_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> width_mod_amount   {"width_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> width_mod_rate     {"width_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   width_mod_waveform {"width_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> width_mod_offset   {"width_mod_offset",   0.0f, -1.0f, 1.0f};
+
+    // ── Opacity modulation ──────────────────────────────────────────
+    vivid::Param<int>   opacity_mod_enabled  {"opacity_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> opacity_mod_amount   {"opacity_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> opacity_mod_rate     {"opacity_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   opacity_mod_waveform {"opacity_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> opacity_mod_offset   {"opacity_mod_offset",   0.0f, -1.0f, 1.0f};
+
+    // ── Color shift modulation ──────────────────────────────────────
+    vivid::Param<int>   color_shift_mod_enabled  {"color_shift_mod_enabled",  0, {"Off", "On"}};
+    vivid::Param<float> color_shift_mod_amount   {"color_shift_mod_amount",   1.0f, 0.0f, 2.0f};
+    vivid::Param<float> color_shift_mod_rate     {"color_shift_mod_rate",     1.0f, 0.01f, 20.0f};
+    vivid::Param<int>   color_shift_mod_waveform {"color_shift_mod_waveform", 0, {"Sine", "Triangle", "Saw", "Square"}};
+    vivid::Param<float> color_shift_mod_offset   {"color_shift_mod_offset",   0.0f, -1.0f, 1.0f};
+
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         vivid::layout_row(count,     2, 0);
         vivid::layout_row(decay,     2, 1);
@@ -211,6 +229,21 @@ struct Trails : vivid::GpuOperatorBase {
         out.push_back(&color_g);
         out.push_back(&color_b);
         out.push_back(&glow);
+        out.push_back(&width_mod_enabled);
+        out.push_back(&width_mod_amount);
+        out.push_back(&width_mod_rate);
+        out.push_back(&width_mod_waveform);
+        out.push_back(&width_mod_offset);
+        out.push_back(&opacity_mod_enabled);
+        out.push_back(&opacity_mod_amount);
+        out.push_back(&opacity_mod_rate);
+        out.push_back(&opacity_mod_waveform);
+        out.push_back(&opacity_mod_offset);
+        out.push_back(&color_shift_mod_enabled);
+        out.push_back(&color_shift_mod_amount);
+        out.push_back(&color_shift_mod_rate);
+        out.push_back(&color_shift_mod_waveform);
+        out.push_back(&color_shift_mod_offset);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -218,49 +251,10 @@ struct Trails : vivid::GpuOperatorBase {
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
-    void collect_role_bindings(std::vector<VividRoleBindingDescriptor>& out) override {
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "width_mod";
-            role.label                              = "Width Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_PER_VOICE;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "opacity_mod";
-            role.label                              = "Opacity Mod";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_PER_VOICE;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
-        {
-            VividRoleBindingDescriptor role{};
-            role.role_id                            = "color_shift";
-            role.label                              = "Color Shift";
-            role.accepted_domain                    = VIVID_DOMAIN_CONTROL;
-            role.runtime_scope                      = VIVID_ROLE_PER_VOICE;
-            role.allowed_operator_types             = nullptr;
-            role.allowed_operator_type_count        = 0;
-            role.default_operator_type              = "LFO";
-            role.preferred_output_name              = "value";
-            role.preferred_output_semantic_tags      = nullptr;
-            role.preferred_output_semantic_tag_count = 0;
-            out.push_back(role);
-        }
+    void collect_embedded_op_slots(std::vector<VividEmbeddedOpSlot>& out) override {
+        out.push_back({"width_mod", "LFO", "width_mod_"});
+        out.push_back({"opacity_mod", "LFO", "opacity_mod_"});
+        out.push_back({"color_shift", "LFO", "color_shift_"});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -285,10 +279,10 @@ struct Trails : vivid::GpuOperatorBase {
         if (n < 1) n = 1;
         if (n > kMaxTrails) n = kMaxTrails;
 
-        // ── Initialize role binding pools ────────────────────────────
-        maybe_init_pool(width_pool_,       ctx, "width_mod",   n);
-        maybe_init_pool(opacity_pool_,     ctx, "opacity_mod", n);
-        maybe_init_pool(color_shift_pool_, ctx, "color_shift", n);
+        // ── Resize LFO pools on count change ────────────────────────
+        maybe_resize_pool(width_pool_,       n);
+        maybe_resize_pool(opacity_pool_,     n);
+        maybe_resize_pool(color_shift_pool_, n);
 
         // ── Re-randomize on count change ─────────────────────────────
         if (n != prev_count_) {
@@ -299,7 +293,7 @@ struct Trails : vivid::GpuOperatorBase {
         float dt = static_cast<float>(ctx->delta_time);
         if (dt > 0.05f) dt = 0.05f;
 
-        // ── Process role bindings ────────────────────────────────────
+        // ── Process owned LFO pools ─────────────────────────────────
         VividProcessContext ctrl_ctx{};
         ctrl_ctx.time       = ctx->time;
         ctrl_ctx.delta_time = ctx->delta_time;
@@ -311,21 +305,33 @@ struct Trails : vivid::GpuOperatorBase {
 
         for (int i = 0; i < n; ++i) {
             width_mod_vals[i] = 0.0f;
-            if (i < static_cast<int>(width_pool_.pool.size()) && width_pool_.pool[i]) {
-                width_pool_.pool[i]->process(&ctrl_ctx);
-                width_mod_vals[i] = width_pool_.pool[i]->output("value");
+            if (width_mod_enabled.int_value()) {
+                auto& lfo = width_pool_.pool[i];
+                lfo.set_param("rate", width_mod_rate.value);
+                lfo.set_param("waveform", static_cast<float>(width_mod_waveform.int_value()));
+                lfo.set_param("offset", width_mod_offset.value);
+                lfo.process(&ctrl_ctx);
+                width_mod_vals[i] = lfo.output("value") * width_mod_amount.value;
             }
 
             opacity_mod_vals[i] = 0.0f;
-            if (i < static_cast<int>(opacity_pool_.pool.size()) && opacity_pool_.pool[i]) {
-                opacity_pool_.pool[i]->process(&ctrl_ctx);
-                opacity_mod_vals[i] = opacity_pool_.pool[i]->output("value");
+            if (opacity_mod_enabled.int_value()) {
+                auto& lfo = opacity_pool_.pool[i];
+                lfo.set_param("rate", opacity_mod_rate.value);
+                lfo.set_param("waveform", static_cast<float>(opacity_mod_waveform.int_value()));
+                lfo.set_param("offset", opacity_mod_offset.value);
+                lfo.process(&ctrl_ctx);
+                opacity_mod_vals[i] = lfo.output("value") * opacity_mod_amount.value;
             }
 
             color_shift_vals[i] = 0.0f;
-            if (i < static_cast<int>(color_shift_pool_.pool.size()) && color_shift_pool_.pool[i]) {
-                color_shift_pool_.pool[i]->process(&ctrl_ctx);
-                color_shift_vals[i] = color_shift_pool_.pool[i]->output("value");
+            if (color_shift_mod_enabled.int_value()) {
+                auto& lfo = color_shift_pool_.pool[i];
+                lfo.set_param("rate", color_shift_mod_rate.value);
+                lfo.set_param("waveform", static_cast<float>(color_shift_mod_waveform.int_value()));
+                lfo.set_param("offset", color_shift_mod_offset.value);
+                lfo.process(&ctrl_ctx);
+                color_shift_vals[i] = lfo.output("value") * color_shift_mod_amount.value;
             }
         }
 
@@ -432,10 +438,10 @@ private:
     std::vector<Trail> trails_;
     int prev_count_ = -1;
 
-    // Role binding pools
-    RolePool width_pool_;
-    RolePool opacity_pool_;
-    RolePool color_shift_pool_;
+    // Owned LFO pools (one ChildOp<LFO> per trail)
+    LfoPool width_pool_;
+    LfoPool opacity_pool_;
+    LfoPool color_shift_pool_;
 
     // GPU handles — pipeline
     WGPURenderPipeline  pipeline_    = nullptr;
@@ -585,80 +591,19 @@ private:
         }
     }
 
-    // ── Role binding pool management ────────────────────────────────
+    // ── LFO pool management ─────────────────────────────────────────
 
-    void maybe_init_pool(RolePool& rp, const VividGpuContext* ctx,
-                         const char* role_id, int n) {
-        if (!ctx->role_binding_configs || ctx->role_binding_count == 0) {
-            if (rp.initialized) {
-                rp.pool.clear();
-                rp.initialized = false;
-            }
-            return;
-        }
+    void maybe_resize_pool(LfoPool& lp, int n) {
+        if (static_cast<int>(lp.pool.size()) == n) return;
 
-        const VividRoleBindingRuntimeConfig* cfg = nullptr;
-        for (uint32_t i = 0; i < ctx->role_binding_count; ++i) {
-            if (std::strcmp(ctx->role_binding_configs[i].role_id, role_id) == 0) {
-                cfg = &ctx->role_binding_configs[i];
-                break;
-            }
-        }
+        lp.pool.clear();
+        lp.pool.resize(n);
 
-        if (!cfg || !cfg->create_fn) {
-            if (rp.initialized) {
-                rp.pool.clear();
-                rp.initialized = false;
-            }
-            return;
-        }
-
-        bool need_reinit = !rp.initialized
-            || rp.cached_create_fn != cfg->create_fn
-            || static_cast<int>(rp.pool.size()) != n;
-
-        if (need_reinit) {
-            rp.pool.clear();
-            rp.cached_create_fn  = cfg->create_fn;
-            rp.cached_destroy_fn = cfg->destroy_fn;
-
-            for (int i = 0; i < n; ++i) {
-                auto* raw = static_cast<vivid::OperatorBase*>(cfg->create_fn());
-                if (!raw) continue;
-
-                auto destroy = [dfn = rp.cached_destroy_fn](vivid::OperatorBase* p) {
-                    if (dfn) dfn(p); else delete p;
-                };
-                auto inst = std::make_unique<vivid::BoundControlInstance>(raw, std::move(destroy));
-
-                for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                    if (inst->has_param(cfg->param_names[pi])) {
-                        inst->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                    }
-                }
-
-                if (inst->has_param("phase_offset")) {
-                    inst->set_param("phase_offset",
-                        static_cast<float>(i) / static_cast<float>(n));
-                }
-
-                rp.pool.push_back(std::move(inst));
-            }
-            rp.initialized = true;
-        } else {
-            for (int i = 0; i < static_cast<int>(rp.pool.size()); ++i) {
-                auto& inst = rp.pool[i];
-                if (!inst) continue;
-                for (uint32_t pi = 0; pi < cfg->param_count; ++pi) {
-                    if (inst->has_param(cfg->param_names[pi])) {
-                        inst->set_param(cfg->param_names[pi], cfg->param_values[pi]);
-                    }
-                }
-                if (inst->has_param("phase_offset")) {
-                    inst->set_param("phase_offset",
-                        static_cast<float>(i) / static_cast<float>(rp.pool.size()));
-                }
-            }
+        // Stagger phase_offset so each trail sits at a different point
+        // in the LFO cycle.
+        for (int i = 0; i < n; ++i) {
+            lp.pool[i].set_param("phase_offset",
+                static_cast<float>(i) / static_cast<float>(n));
         }
     }
 };
