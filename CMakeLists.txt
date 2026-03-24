@@ -338,6 +338,24 @@ add_vivid_operator(mseg              operators/control/mseg/mseg.cpp
 add_vivid_operator(step_seq          operators/control/step_seq/step_seq.cpp
                    FACTORY_PRESETS operators/control/step_seq/factory_presets.json)
 
+# --- Sequencer operators (from vivid-sequencers) ---
+add_vivid_operator(sequencer          operators/control/sequencer/sequencer.cpp)
+add_vivid_operator(drum_sequencer     operators/control/drum_sequencer/drum_sequencer.cpp     EXTRA_LIBS webgpu)
+add_vivid_operator(pattern_seq        operators/control/pattern_seq/pattern_seq.cpp)
+add_vivid_operator(note_pattern       operators/control/note_pattern/note_pattern.cpp       EXTRA_LIBS webgpu)
+add_vivid_operator(note_duration      operators/control/note_duration/note_duration.cpp)
+add_vivid_operator(arpeggiator        operators/control/arpeggiator/arpeggiator.cpp        EXTRA_LIBS webgpu)
+add_vivid_operator(chord_progression  operators/control/chord_progression/chord_progression.cpp  EXTRA_LIBS webgpu)
+add_vivid_operator(state_machine      operators/control/state_machine/state_machine.cpp)
+add_vivid_operator(tracker            operators/control/tracker/tracker.cpp            EXTRA_LIBS webgpu)
+add_vivid_operator(euclidean          operators/control/euclidean/euclidean.cpp)
+add_vivid_operator(pat_transform      operators/control/pat_transform/pat_transform.cpp)
+add_vivid_operator(phase_to_midi      operators/control/phase_to_midi/phase_to_midi.cpp)
+foreach(_seq_op sequencer drum_sequencer pattern_seq note_pattern note_duration
+        arpeggiator chord_progression state_machine tracker euclidean pat_transform phase_to_midi)
+    target_include_directories(${_seq_op} PRIVATE ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
+endforeach()
+
 # --- GPU operator plugins (complex operators with custom pipelines) ---
 add_vivid_operator(noise          operators/gpu/noise/noise.cpp          EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/gpu/noise/factory_presets.json)
@@ -598,6 +616,44 @@ add_vivid_operator(parametric_eq    operators/audio/parametric_eq/parametric_eq.
                    FACTORY_PRESETS  operators/audio/parametric_eq/factory_presets.json)
 add_vivid_operator(audio_analysis   operators/audio/audio_analysis/audio_analysis.cpp)
 add_vivid_operator(mic_input        operators/audio/mic_input/mic_input.cpp EXTRA_LIBS miniaudio)
+
+# --- Drum operators (from vivid-drums) ---
+add_vivid_operator(drum_kick     operators/audio/drum_kick/drum_kick.cpp
+                   FACTORY_PRESETS operators/audio/drum_kick/factory_presets.json)
+add_vivid_operator(drum_snare    operators/audio/drum_snare/drum_snare.cpp
+                   FACTORY_PRESETS operators/audio/drum_snare/factory_presets.json)
+add_vivid_operator(drum_hihat    operators/audio/drum_hihat/drum_hihat.cpp
+                   FACTORY_PRESETS operators/audio/drum_hihat/factory_presets.json)
+add_vivid_operator(drum_clap     operators/audio/drum_clap/drum_clap.cpp
+                   FACTORY_PRESETS operators/audio/drum_clap/factory_presets.json)
+add_vivid_operator(drum_cymbal   operators/audio/drum_cymbal/drum_cymbal.cpp
+                   FACTORY_PRESETS operators/audio/drum_cymbal/factory_presets.json)
+add_vivid_operator(drum_tom      operators/audio/drum_tom/drum_tom.cpp
+                   FACTORY_PRESETS operators/audio/drum_tom/factory_presets.json)
+
+# --- Sampler operators (from vivid-sampler) ---
+# Static libraries for miniaudio/yyjson decoder support
+add_library(sampler_miniaudio STATIC operators/shared/sampler_common/miniaudio_impl.c)
+target_include_directories(sampler_miniaudio PRIVATE ${CMAKE_SOURCE_DIR}/deps/miniaudio)
+add_library(sampler_yyjson STATIC operators/shared/sampler_common/yyjson_impl.c)
+target_include_directories(sampler_yyjson PRIVATE ${CMAKE_SOURCE_DIR}/deps/yyjson)
+
+add_vivid_operator(sp404            operators/audio/sp404/sp404.cpp
+                   EXTRA_LIBS sampler_miniaudio sampler_yyjson)
+add_vivid_operator(sampler          operators/audio/sampler/sampler.cpp
+                   EXTRA_LIBS sampler_miniaudio sampler_yyjson)
+add_vivid_operator(slicer           operators/audio/slicer/slicer.cpp
+                   EXTRA_LIBS sampler_miniaudio sampler_yyjson)
+add_vivid_operator(granular_synth   operators/audio/granular_synth/granular_synth.cpp)
+add_vivid_operator(vocoder          operators/audio/vocoder/vocoder.cpp)
+add_vivid_operator(spectral_freeze  operators/audio/spectral_freeze/spectral_freeze.cpp)
+foreach(_samp_op sp404 sampler slicer)
+    target_include_directories(${_samp_op} PRIVATE
+        ${CMAKE_SOURCE_DIR}/operators/shared/sampler_common
+        ${CMAKE_SOURCE_DIR}/deps/miniaudio
+        ${CMAKE_SOURCE_DIR}/deps/yyjson)
+endforeach()
+
 add_library(midi_file_player MODULE
     operators/audio/midi_file_player/midi_file_player.cpp
     src/common/midi_file.cpp
@@ -1602,6 +1658,19 @@ target_include_directories(test_operator_sweep PRIVATE src)
 target_link_libraries(test_operator_sweep PRIVATE vivid_operator_api webgpu yyjson)
 add_test(NAME test_operator_sweep COMMAND test_operator_sweep WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_sweep PROPERTIES LABELS "HEADLESS_SMOKE" TIMEOUT 120)
+
+# --- Sequencer operator tests (from vivid-sequencers) ---
+add_executable(test_arpeggiator_patterns tests/test_arpeggiator_patterns.cpp)
+target_include_directories(test_arpeggiator_patterns PRIVATE
+    src ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
+target_link_libraries(test_arpeggiator_patterns PRIVATE vivid_operator_api)
+add_test(NAME test_arpeggiator_patterns COMMAND test_arpeggiator_patterns)
+
+add_executable(test_state_machine tests/test_state_machine.cpp)
+target_include_directories(test_state_machine PRIVATE
+    src ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
+target_link_libraries(test_state_machine PRIVATE vivid_operator_api)
+add_test(NAME test_state_machine COMMAND test_state_machine)
 
 # 3D tests are in the vivid-3d package (see ../vivid-3d/)
 

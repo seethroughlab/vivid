@@ -16,9 +16,15 @@ For package authoring templates/checklists, see `../vivid-package-template/READM
 
 - Repo: `https://github.com/seethroughlab/vivid-3d`
 
+### vivid-wavetable
+
+Wavetable synthesizer operator.
+
+- Repo: `https://github.com/seethroughlab/vivid-wavetable`
+
 ### vivid-glitch
 
-Glitch audio/GPU operator suite.
+Creative audio and visual glitch effects (stutter, tape stop, datamosh, VHS, and more).
 
 - Repo: `https://github.com/seethroughlab/vivid-glitch`
 
@@ -28,12 +34,25 @@ Chromium Embedded Framework browser source operator.
 
 - Repo: `https://github.com/seethroughlab/vivid-cef`
 
+### vivid-physics2d
+
+2D physics simulation operators.
+
+- Repo: `https://github.com/seethroughlab/vivid-physics2d`
+
+### vivid-plexus
+
+Plexus GPU + audio combined effects.
+
+- Repo: `https://github.com/seethroughlab/vivid-plexus`
+
 ## Install Packages
 
 From a built vivid-core checkout:
 
 ```bash
 ./build/vivid install https://github.com/seethroughlab/vivid-3d.git
+./build/vivid install https://github.com/seethroughlab/vivid-wavetable.git
 ./build/vivid install https://github.com/seethroughlab/vivid-glitch.git
 ./build/vivid install https://github.com/seethroughlab/vivid-cef.git
 ```

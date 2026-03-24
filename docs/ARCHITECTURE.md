@@ -524,7 +524,7 @@ The `StateMachine` is a control-domain metadata emitter that drives macro-level 
 
 **Integration patterns (without subgraphs):**
 
-- **State → Sequencer:** state index scaled to phase drives a Sequencer (from `vivid-sequencers`), selecting per-state parameter values.
+- **State → Sequencer:** state index scaled to phase drives a Sequencer, selecting per-state parameter values.
 - **Progress → crossfade:** progress output drives Gain levels for fade-in/fade-out or dual-source crossfades.
 - **Trigger → Envelope:** transition trigger gates one-shot envelopes for percussive hits at section boundaries.
 - **Threshold mode:** sensor input drives state changes for installation scenarios; Logic operators can combine multiple conditions.
@@ -573,15 +573,15 @@ This system is the core experimentation mechanism: save what works, explore free
 
 ## 5.21 Pattern Algebra
 
-> **Status: Partially implemented.** `Stack` and `Alternate` are shipped as built-in operators. `Euclidean`, `PatTransform`, `PatternSeq`, `NotePattern`, `ChordProgression`, `Arpeggiator`, and `Sequencer` live in the `vivid-sequencers` package.
+> **Status: Implemented.** All pattern algebra operators are built-in core operators.
 
 **Decision: Patterns are standard control-domain operators with Spread ports, not a DSL.** Composition happens through normal graph wiring. The Spread type system (§5.9) provides implicit vectorization — a pattern transformer operates on all elements transparently.
 
 **Three operator roles:**
 
-- **Generators** produce Spread outputs from parameters or time inputs: `Euclidean` (Bjorklund rhythm patterns), `PatternSeq` (16-step sequences), `NotePattern` (per-step chord specifications), `ChordProgression` (diatonic chords from scale degrees). Most generators live in the `vivid-sequencers` package.
-- **Transformers** take a Spread input and produce a transformed Spread output: `PatTransform` (in `vivid-sequencers`) applies reverse, rotate, scale, offset, and probabilistic element nulling in a fixed chain. Each step is a parameter — no control flow.
-- **Combinators** merge multiple Spread inputs: `Stack` (concatenate or interleave up to 4 Spread inputs), `Alternate` (time-driven selection between Spread inputs on beat/bar boundaries). These remain in core.
+- **Generators** produce Spread outputs from parameters or time inputs: `Euclidean` (Bjorklund rhythm patterns), `PatternSeq` (16-step sequences), `NotePattern` (per-step chord specifications), `ChordProgression` (diatonic chords from scale degrees).
+- **Transformers** take a Spread input and produce a transformed Spread output: `PatTransform` applies reverse, rotate, scale, offset, and probabilistic element nulling in a fixed chain. Each step is a parameter — no control flow.
+- **Combinators** merge multiple Spread inputs: `Stack` (concatenate or interleave up to 4 Spread inputs), `Alternate` (time-driven selection between Spread inputs on beat/bar boundaries).
 
 **Composable chains:**
 

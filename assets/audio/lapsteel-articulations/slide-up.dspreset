@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DecentSampler minVersion="1.0.0">
+	<ui width="812" height="375" layoutMode="relative" bgMode="top_left" bgImage="bg.png">
+		<tab name="main">
+			<labeled-knob x="350" y="130" width="90" textSize="16" textColor="AA000000" 
+                    trackForegroundColor="CC000000" trackBackgroundColor="66999999" 
+                    label="" type="float" minValue="0.0" maxValue="4.0" value="0.00" >
+				<binding type="amp" level="instrument" position="0" parameter="ENV_ATTACK" />
+			</labeled-knob>
+		</tab>
+	</ui>
+	<groups>
+		<group ampVelTrack="0.3" volume="0.8">
+			<sample rootNote="57" loNote="57" hiNote="63" path="samples/slide-up/A3.wav"/>
+			<sample rootNote="69" loNote="69" hiNote="72" path="samples/slide-up/A4.wav"/>
+			<sample rootNote="81" loNote="81" hiNote="81" path="samples/slide-up/A5.wav"/>
+			<sample rootNote="73" loNote="73" hiNote="75" path="samples/slide-up/C#5.wav"/>
+			<sample rootNote="64" loNote="64" hiNote="68" path="samples/slide-up/E4.wav"/>
+			<sample rootNote="76" loNote="76" hiNote="79" path="samples/slide-up/E5.wav"/>
+		</group>
+	</groups>
+	<effects>
+		<effect type="lowpass" frequency="22000.0"/>
+	</effects>
+	<modulators>
+		<envelope attack="0.1" decay="0.1" sustain="1.0" release="0.5"/>
+	</modulators>
+	<modulations>
+		<modulation source="envelope" destination="amp" amount="1.0"/>
+		<modulation source="ENV_ATTACK" destination="envelope" parameter="ATTACK"/>
+	</modulations>
+</DecentSampler>

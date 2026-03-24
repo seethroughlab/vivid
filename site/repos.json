@@ -5,10 +5,6 @@
     "status": "experimental"
   },
   {
-    "name": "vivid-drums",
-    "url": "https://github.com/seethroughlab/vivid-drums.git"
-  },
-  {
     "name": "vivid-glitch",
     "url": "https://github.com/seethroughlab/vivid-glitch.git"
   },
@@ -25,14 +21,6 @@
   {
     "name": "vivid-plexus",
     "url": "https://github.com/seethroughlab/vivid-plexus.git"
-  },
-  {
-    "name": "vivid-sampler",
-    "url": "https://github.com/seethroughlab/vivid-sampler.git"
-  },
-  {
-    "name": "vivid-sequencers",
-    "url": "https://github.com/seethroughlab/vivid-sequencers.git"
   },
   {
     "name": "vivid-wavetable",

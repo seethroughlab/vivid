@@ -46,19 +46,20 @@ creative coding platform, node-based media tool, or similar product.
 
 Vivid has a deliberate architectural boundary between the **core** (this
 repository) and **Operator Packages** (separate repositories like
-`vivid-glitch`).
+`vivid-glitch`, `vivid-wavetable`, `vivid-3d`).
 
 The core provides the environment: the runtime, graph engine, scheduler, UI,
-operator API contract, and seed operators. It's owned by See-Through Lab LLC
-under the Vivid Source Available License.
+operator API contract, and a full set of built-in operators covering drums,
+samplers, sequencers, synthesis, effects, and GPU visuals. It's owned by
+See-Through Lab LLC under the Vivid Source Available License.
 
 Operator Packages are self-contained extensions that plug into the core
 through the public operator API. They are **not** covered by this license.
 You own your operators and can license them however you choose.
 
-This split is intentional. Vivid's value is the environment, not the
-operators. The environment is proprietary; the ecosystem on top of it is
-open.
+This split is intentional. The core ships enough to be immediately useful;
+packages extend it with specialized or opinionated functionality. The
+environment is proprietary; the ecosystem on top of it is open.
 
 ## Future Open Source
 

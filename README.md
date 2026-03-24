@@ -33,27 +33,33 @@ Built in C++ with WebGPU (Dawn). Designed from the ground up for LLM-assisted cr
 ## Core Operators (Built-In)
 
 ### GPU
-Shape, Noise, Composite, Bloom, Feedback, Metaball, Texture Loader, Time Machine, Text, Texture Analysis, Movie File In, Movie Video Out, Webcam In, Syphon In, Syphon Out
+Shape, Noise, Composite, Bloom, Feedback, Metaball, Texture Loader, Time Machine, Text, Rich Text, SVG Render, Texture Analysis, Particles, Instanced Shapes, Trails, Flocking, Fluid, Reaction Diffusion, Cellular Automata, Mesh Warp, LUT Apply, Scopes, Movie File In, Movie Video Out, Webcam In, Syphon In, Syphon Out
 
 ### GPU Filters (WGSL)
 HSV, Levels, Blur, Edge, Mirror, Pixelate, Posterize, Gradient, Chromatic Aberration, Scanlines, CRT Effect, Transform, Displace, Dither, Halftone, Tile, Ramp, Solid Color, Switch, Division Raster, Hex Grid, Radial Rainbow, Raster Grid, Spirograph, Voronoi
 
 ### Audio
-**Synthesis:** Oscillator, Gain, Noise
-**Effects:** Reverb, Delay, Bitcrush, Distortion, Filter, Mixer
+**Synthesis:** Oscillator, FM Synth, Gain, Noise
+**Drums:** Drum Kick, Drum Snare, Drum HiHat, Drum Clap, Drum Cymbal, Drum Tom
+**Samplers:** SP404, Sampler, Slicer, Granular Synth, Vocoder, Spectral Freeze
+**Effects:** Reverb, Delay, Bitcrush, Distortion, Filter, Mixer, Compressor, Limiter, Chorus, Phaser, Flanger, Stereo Pan Width, Ping Pong Delay, Ring Mod, Parametric EQ
 **Spread:** Spread ADSR, Spread LFO
-**Output:** Movie Audio Out
+**I/O:** Mic Input, MIDI File Player, Movie Audio Out
 
 ### Control
-Clock, LFO, Math, Envelope, MIDI Input, FFT Analysis, Logic, Gate, Random, Smooth, Euclidean, Stack, Alternate, Pattern Transform, Modulated Gain, Spread Noise, Mouse, Keyboard, Basename, Folder List, OSC In, OSC Out, Step Counter, String Select
+**Fundamentals:** Clock, LFO, Math, Envelope, MIDI Input, FFT Analysis, Logic, Gate, Random, Smooth, Stack, Alternate, Modulated Gain, Spread Noise, Mouse, Keyboard, Basename, Folder List, OSC In, OSC Out, Step Counter, String Select, Sample Hold, Quantizer, Macro, Random S&H, MSEG, Step Seq, Path Animate
+**Sequencers:** Sequencer, Drum Sequencer, Pattern Seq, Note Pattern, Note Duration, Arpeggiator, Chord Progression, State Machine, Tracker, Euclidean, Pat Transform, Phase To MIDI
 
 ## Package Operators
 
 Install additional package libraries:
 
-- `vivid-3d`: 3D operator suite
-- `vivid-glitch`: glitch audio/GPU suite
+- `vivid-3d`: 3D rendering operator suite
+- `vivid-wavetable`: wavetable synthesizer
+- `vivid-glitch`: creative audio/GPU glitch effects
 - `vivid-cef`: Chromium Embedded Framework browser source
+- `vivid-physics2d`: 2D physics simulation
+- `vivid-plexus`: plexus GPU + audio effects
 
 See [docs/PACKAGE-LIBRARIES.md](docs/PACKAGE-LIBRARIES.md) for install/link/rebuild commands and package details.
 
