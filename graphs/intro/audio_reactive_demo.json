@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "audio_reactive_demo",
-    "title": "Audio Reactive",
-    "description": "Audio Reactive demo graph.",
+    "title": "Audio-Reactive Visuals",
+    "description": "Audio RMS level drives visual noise texture scale, demonstrating how audio analysis can make visuals react to sound.",
     "tags": [
       "reactive",
       "demo"

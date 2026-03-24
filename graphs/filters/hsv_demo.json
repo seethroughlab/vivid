@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "hsv_demo",
-    "title": "Hsv",
-    "description": "Hsv demo graph.",
+    "title": "HSV Color Adjust",
+    "description": "Hue, saturation, and brightness adjustments with an LFO continuously rotating the hue.",
     "tags": [
       "hsv",
       "demo"
@@ -67,7 +67,10 @@
       "from": "hsv/texture",
       "to": "vout/input"
     },
-    {"from": "vid/media_clock", "to": "audio/media_stream"},
+    {
+      "from": "vid/media_clock",
+      "to": "audio/media_stream"
+    },
     {
       "from": "audio/output",
       "to": "aout/input"

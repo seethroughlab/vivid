@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "syphon_out_demo",
-    "title": "Syphon Out",
-    "description": "Syphon Out demo graph.",
+    "title": "Syphon Output",
+    "description": "Generates a noise texture and broadcasts it to other applications via Syphon while also displaying locally.",
     "tags": [
       "syphon",
       "out",

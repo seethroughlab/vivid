@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "audio_demo",
-    "title": "Audio",
-    "description": "Audio demo graph.",
+    "title": "Hello Audio",
+    "description": "The simplest audio patch: a single 440 Hz oscillator through a gain control into the audio output.",
     "tags": [
       "demo"
     ],
@@ -48,7 +48,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Simplest audio patch**\nOscillator → Gain → audio_out\nA 440 Hz sine at 80% volume",
+      "text": "**Simplest audio patch**\nOscillator \u2192 Gain \u2192 audio_out\nA 440 Hz sine at 80% volume",
       "x": -100.0,
       "y": -80.0,
       "width": 250.0,

@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "ramp_demo",
-    "title": "Ramp",
-    "description": "Ramp demo graph.",
+    "title": "Color Ramp",
+    "description": "Animated color ramp generator with LFO-controlled hue offset and angle.",
     "tags": [
       "ramp",
       "demo"

@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "syphon_in_demo",
-    "title": "Syphon In",
-    "description": "Syphon In demo graph.",
+    "title": "Syphon Input",
+    "description": "Receives a video stream from another application via Syphon (macOS inter-app video sharing).",
     "tags": [
       "syphon",
       "in",

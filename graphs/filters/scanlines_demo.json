@@ -4,7 +4,7 @@
   "meta": {
     "id": "scanlines_demo",
     "title": "Scanlines",
-    "description": "Scanlines demo graph.",
+    "description": "CRT-style horizontal scanlines overlaid on video after levels adjustment.",
     "tags": [
       "scanlines",
       "demo"
@@ -68,7 +68,10 @@
       "from": "scanlines/texture",
       "to": "vout/input"
     },
-    {"from": "vid/media_clock", "to": "audio/media_stream"},
+    {
+      "from": "vid/media_clock",
+      "to": "audio/media_stream"
+    },
     {
       "from": "audio/output",
       "to": "aout/input"

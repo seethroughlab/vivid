@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "dither_demo",
-    "title": "Dither",
-    "description": "Dither demo graph.",
+    "title": "Dithering",
+    "description": "Pattern-based color reduction applied to a gradient, with LFO-animated quantization levels.",
     "tags": [
       "dither",
       "demo"

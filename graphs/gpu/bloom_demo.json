@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "bloom_demo",
-    "title": "Bloom",
-    "description": "Bloom demo graph.",
+    "title": "Bloom Glow",
+    "description": "Soft glow bloom effect applied to a rotating star shape, spreading light beyond bright areas.",
     "tags": [
       "bloom",
       "demo"

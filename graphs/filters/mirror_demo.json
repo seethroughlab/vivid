@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "mirror_demo",
-    "title": "Mirror",
-    "description": "Mirror demo graph.",
+    "title": "Kaleidoscope Mirror",
+    "description": "Kaleidoscopic mirror effect with LFO-animated rotation and configurable segment count.",
     "tags": [
       "mirror",
       "demo"
@@ -67,7 +67,10 @@
       "from": "mirror/texture",
       "to": "vout/input"
     },
-    {"from": "vid/media_clock", "to": "audio/media_stream"},
+    {
+      "from": "vid/media_clock",
+      "to": "audio/media_stream"
+    },
     {
       "from": "audio/output",
       "to": "aout/input"

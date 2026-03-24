@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "crt_effect_demo",
-    "title": "Crt Effect",
-    "description": "Crt Effect demo graph.",
+    "title": "CRT Monitor Effect",
+    "description": "Simulates a vintage CRT monitor with curvature, bloom, vignette, scanlines, and chromatic aberration.",
     "tags": [
       "crt",
       "effect",
@@ -74,7 +74,10 @@
       "from": "crt/texture",
       "to": "vout/input"
     },
-    {"from": "vid/media_clock", "to": "audio/media_stream"},
+    {
+      "from": "vid/media_clock",
+      "to": "audio/media_stream"
+    },
     {
       "from": "audio/output",
       "to": "aout/input"

@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "mfi_composite_demo",
-    "title": "Mfi Composite",
-    "description": "Mfi Composite demo graph.",
+    "title": "Movie File: Composite",
+    "description": "Blends two video files with LFO-animated opacity and levels adjustment.",
     "tags": [
       "file",
       "mfi",
@@ -92,7 +92,10 @@
       "from": "levels/texture",
       "to": "vout/input"
     },
-    {"from": "vid1/media_clock", "to": "audio/media_stream"},
+    {
+      "from": "vid1/media_clock",
+      "to": "audio/media_stream"
+    },
     {
       "from": "audio/output",
       "to": "aout/input"

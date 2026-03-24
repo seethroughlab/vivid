@@ -1,10 +1,19 @@
 {
   "meta": {
     "title": "Particle Envelope Demo",
-    "description": "Each particle has its own internal Envelope controlling opacity and size — a visual analogue to per-note polyphony.",
-    "tags": ["demo", "particles", "envelope", "owned-modulation"],
+    "description": "Each particle has its own internal Envelope controlling opacity and size \u2014 a visual analogue to per-note polyphony.",
+    "tags": [
+      "demo",
+      "particles",
+      "envelope",
+      "owned-modulation"
+    ],
     "difficulty": "intermediate",
-    "domains": ["gpu", "control"]
+    "domains": [
+      "gpu",
+      "control"
+    ],
+    "featured_rank": 28
   },
   "nodes": {
     "particles": {
@@ -52,8 +61,14 @@
     }
   },
   "connections": [
-    { "from": "particles/texture", "to": "bloom/input" },
-    { "from": "bloom/texture", "to": "vout/input" }
+    {
+      "from": "particles/texture",
+      "to": "bloom/input"
+    },
+    {
+      "from": "bloom/texture",
+      "to": "vout/input"
+    }
   ],
   "sticky_notes": [
     {

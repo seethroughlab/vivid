@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "wgsl_filters_demo",
-    "title": "Wgsl Filters",
-    "description": "Wgsl Filters demo graph.",
+    "title": "WGSL Filter Chain",
+    "description": "Comprehensive filter chain: HSV \u2192 Levels \u2192 Mirror \u2192 Displace \u2192 Transform \u2192 Posterize \u2192 Pixelate \u2192 Chroma \u2192 Scanlines \u2192 CRT. Shows every WGSL filter in sequence.",
     "tags": [
       "wgsl",
       "demo"
@@ -273,7 +273,7 @@
   "sticky_notes": [
     {
       "id": "note_1",
-      "text": "**Full Filter Chain**\nVideo → HSV → Levels → Mirror →\nDisplace → Transform → Posterize →\nPixelate → Chroma → Scanlines → CRT",
+      "text": "**Full Filter Chain**\nVideo \u2192 HSV \u2192 Levels \u2192 Mirror \u2192\nDisplace \u2192 Transform \u2192 Posterize \u2192\nPixelate \u2192 Chroma \u2192 Scanlines \u2192 CRT",
       "x": -100.0,
       "y": -120.0,
       "width": 300.0,

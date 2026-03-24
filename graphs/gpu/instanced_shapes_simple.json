@@ -16,5 +16,20 @@
       }
     }
   },
-  "connections": []
+  "connections": [],
+  "meta": {
+    "id": "instanced_shapes_simple",
+    "title": "Instanced Shapes: Minimal",
+    "description": "The simplest instanced-shapes example \u2014 12 hexagons arranged in a circular pattern with basic animation.",
+    "tags": [
+      "instanced-shapes",
+      "minimal",
+      "demo"
+    ],
+    "difficulty": "beginner",
+    "domains": [
+      "gpu"
+    ],
+    "featured_rank": 28
+  }
 }

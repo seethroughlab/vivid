@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "mfi_kitchen_sink_demo",
-    "title": "Mfi Kitchen Sink",
-    "description": "Mfi Kitchen Sink demo graph.",
+    "title": "Movie File: Kitchen Sink",
+    "description": "Stacked effect chain on video: Levels \u2192 Posterize \u2192 Halftone \u2192 Blur, showing how multiple filters combine.",
     "tags": [
       "file",
       "mfi",
@@ -91,7 +91,10 @@
       "from": "blur/texture",
       "to": "vout/input"
     },
-    {"from": "vid/media_clock", "to": "audio/media_stream"},
+    {
+      "from": "vid/media_clock",
+      "to": "audio/media_stream"
+    },
     {
       "from": "audio/output",
       "to": "aout/input"

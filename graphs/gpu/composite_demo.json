@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "composite_demo",
-    "title": "Composite",
-    "description": "Composite demo graph.",
+    "title": "Composite Blend",
+    "description": "Blends two sources (an animated hexagon and a noise texture) using a composite node with blend modes.",
     "tags": [
       "composite",
       "demo"

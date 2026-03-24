@@ -1,17 +1,86 @@
 {
   "nodes": {
-    "clock1": { "type": "Clock",    "params": { "bpm": 120.0 } },
-    "env1":   { "type": "Envelope", "params": { "decay": 0.3, "amplitude": 0.35, "offset": 0.05 } },
-    "shape1": { "type": "Shape",    "params": { "sides": 5, "star": 0.4, "r": 0.2, "g": 0.6, "b": 1.0 } },
-    "drum1":  { "type": "DrumKick", "params": { "pitch": 80.0, "decay": 0.3, "click": 0.3, "pitch_env": 150.0, "volume": 0.5 } },
-    "out1":   { "type": "audio_out", "params": {} },
-    "vout":   { "type": "video_out", "params": {} }
+    "clock1": {
+      "type": "Clock",
+      "params": {
+        "bpm": 120.0
+      }
+    },
+    "env1": {
+      "type": "Envelope",
+      "params": {
+        "decay": 0.3,
+        "amplitude": 0.35,
+        "offset": 0.05
+      }
+    },
+    "shape1": {
+      "type": "Shape",
+      "params": {
+        "sides": 5,
+        "star": 0.4,
+        "r": 0.2,
+        "g": 0.6,
+        "b": 1.0
+      }
+    },
+    "drum1": {
+      "type": "DrumKick",
+      "params": {
+        "pitch": 80.0,
+        "decay": 0.3,
+        "click": 0.3,
+        "pitch_env": 150.0,
+        "volume": 0.5
+      }
+    },
+    "out1": {
+      "type": "audio_out",
+      "params": {}
+    },
+    "vout": {
+      "type": "video_out",
+      "params": {}
+    }
   },
   "connections": [
-    { "from": "clock1/beat_phase", "to": "env1/phase" },
-    { "from": "env1/value",        "to": "shape1/radius" },
-    { "from": "clock1/beat_phase", "to": "drum1/trigger" },
-    { "from": "drum1/output",      "to": "out1/input" },
-    { "from": "shape1/texture",    "to": "vout/input" }
-  ]
+    {
+      "from": "clock1/beat_phase",
+      "to": "env1/phase"
+    },
+    {
+      "from": "env1/value",
+      "to": "shape1/radius"
+    },
+    {
+      "from": "clock1/beat_phase",
+      "to": "drum1/trigger"
+    },
+    {
+      "from": "drum1/output",
+      "to": "out1/input"
+    },
+    {
+      "from": "shape1/texture",
+      "to": "vout/input"
+    }
+  ],
+  "meta": {
+    "id": "av_sync_demo",
+    "title": "AV Sync",
+    "description": "Clock-triggered drum kick synced with an expanding shape \u2014 the simplest audio-visual synchronization demo.",
+    "tags": [
+      "audio-visual",
+      "sync",
+      "clock",
+      "demo"
+    ],
+    "difficulty": "beginner",
+    "domains": [
+      "audio",
+      "gpu",
+      "control"
+    ],
+    "featured_rank": 24
+  }
 }

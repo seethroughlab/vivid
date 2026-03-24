@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "osc_av_loopback_demo",
-    "title": "Osc Av Loopback",
-    "description": "Osc Av Loopback demo graph.",
+    "title": "OSC Loopback",
+    "description": "LFO values sent via OSC Out are received back via OSC In to control audio and visuals \u2014 a self-contained OSC round-trip test.",
     "tags": [
       "osc",
       "av",

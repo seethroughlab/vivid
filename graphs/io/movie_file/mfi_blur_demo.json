@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "mfi_blur_demo",
-    "title": "Mfi Blur",
-    "description": "Mfi Blur demo graph.",
+    "title": "Movie File: Blur",
+    "description": "Loads an image and applies animated Gaussian blur with LFO-controlled radius.",
     "tags": [
       "file",
       "mfi",

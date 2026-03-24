@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "midi_demo",
-    "title": "Midi",
-    "description": "Midi demo graph.",
+    "title": "MIDI Control",
+    "description": "MIDI CC values modulate LFO frequency, which drives noise texture generation \u2014 a template for MIDI-controlled patches.",
     "tags": [
       "midi",
       "demo"

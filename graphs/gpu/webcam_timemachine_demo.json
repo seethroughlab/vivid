@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "webcam_timemachine_demo",
-    "title": "Webcam Timemachine",
-    "description": "Webcam Timemachine demo graph.",
+    "title": "Webcam Time Machine",
+    "description": "Temporal displacement effect: a noise map controls how many frames back each pixel looks, creating a time-smeared webcam image.",
     "tags": [
       "webcam",
       "timemachine",

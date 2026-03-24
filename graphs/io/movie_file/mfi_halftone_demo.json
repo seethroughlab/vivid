@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "mfi_halftone_demo",
-    "title": "Mfi Halftone",
-    "description": "Mfi Halftone demo graph.",
+    "title": "Movie File: Halftone",
+    "description": "Halftone printing effect applied to video with LFO-animated dot size.",
     "tags": [
       "file",
       "mfi",
@@ -69,7 +69,10 @@
       "from": "halftone/texture",
       "to": "vout/input"
     },
-    {"from": "vid/media_clock", "to": "audio/media_stream"},
+    {
+      "from": "vid/media_clock",
+      "to": "audio/media_stream"
+    },
     {
       "from": "audio/output",
       "to": "aout/input"

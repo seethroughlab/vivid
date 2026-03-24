@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "displace_demo",
-    "title": "Displace",
-    "description": "Displace demo graph.",
+    "title": "Displacement Map",
+    "description": "Warps a hexagon shape using a noise-based displacement map with LFO-animated intensity.",
     "tags": [
       "displace",
       "demo"

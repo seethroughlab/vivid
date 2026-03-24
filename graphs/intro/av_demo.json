@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "av_demo",
-    "title": "Av",
-    "description": "Av demo graph.",
+    "title": "Audio-Visual Sync",
+    "description": "A shared Clock drives both a visual noise texture and an audio oscillator sweep, showing how audio and video stay in sync.",
     "tags": [
       "av",
       "demo"
@@ -118,7 +118,7 @@
     },
     {
       "id": "note_3",
-      "text": "**Audio path**: LFO sweeps\noscillator frequency 230–430 Hz",
+      "text": "**Audio path**: LFO sweeps\noscillator frequency 230\u2013430 Hz",
       "x": 250.0,
       "y": 120.0,
       "width": 230.0,

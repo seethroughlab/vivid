@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "edge_demo",
-    "title": "Edge",
-    "description": "Edge demo graph.",
+    "title": "Edge Detection",
+    "description": "Detects and highlights edges in the video signal with LFO-modulated strength.",
     "tags": [
       "edge",
       "demo"
@@ -79,7 +79,10 @@
       "from": "edge/texture",
       "to": "vout/input"
     },
-    {"from": "vid/media_clock", "to": "audio/media_stream"},
+    {
+      "from": "vid/media_clock",
+      "to": "audio/media_stream"
+    },
     {
       "from": "audio/output",
       "to": "aout/input"

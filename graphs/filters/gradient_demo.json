@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "gradient_demo",
-    "title": "Gradient",
-    "description": "Gradient demo graph.",
+    "title": "Gradient Generator",
+    "description": "Two animated gradients (linear and radial) with LFO-driven angle and scale, blended together.",
     "tags": [
       "gradient",
       "demo"

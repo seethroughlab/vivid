@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "mfi_displace_demo",
-    "title": "Mfi Displace",
-    "description": "Mfi Displace demo graph.",
+    "title": "Movie File: Displace",
+    "description": "Displaces video using an animated noise map with LFO-controlled intensity.",
     "tags": [
       "file",
       "mfi",
@@ -80,7 +80,10 @@
       "from": "displace/texture",
       "to": "vout/input"
     },
-    {"from": "vid/media_clock", "to": "audio/media_stream"},
+    {
+      "from": "vid/media_clock",
+      "to": "audio/media_stream"
+    },
     {
       "from": "audio/output",
       "to": "aout/input"

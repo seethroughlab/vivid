@@ -4,7 +4,7 @@
   "meta": {
     "id": "transform_demo",
     "title": "Transform",
-    "description": "Transform demo graph.",
+    "description": "Rotation and scale transforms applied to a shape with LFO-driven animation.",
     "tags": [
       "transform",
       "demo"
