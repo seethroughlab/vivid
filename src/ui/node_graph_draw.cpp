@@ -344,6 +344,18 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                     constexpr uint32_t kVisualBars = 256;
                     constexpr uint32_t kStride = kWaveN / kVisualBars; // 4
                     float bar_w = wave_w / kVisualBars;
+
+                    // Find peak absolute amplitude across all buckets so
+                    // signals outside [-1,1] (e.g. LFO) are scaled to fit.
+                    float max_abs = 0.0f;
+                    for (uint32_t bi = 0; bi < kVisualBars; ++bi) {
+                        for (uint32_t j = 0; j < kStride; ++j) {
+                            float a = std::fabs(analysis.waveform[bi * kStride + j]);
+                            if (a > max_abs) max_abs = a;
+                        }
+                    }
+                    float scale = (max_abs > 1.0f) ? 1.0f / max_abs : 1.0f;
+
                     for (uint32_t bi = 0; bi < kVisualBars; ++bi) {
                         // Find the sample with the largest absolute amplitude in this bucket
                         float amp = analysis.waveform[bi * kStride];
@@ -351,7 +363,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                             float s = analysis.waveform[bi * kStride + j];
                             if (std::fabs(s) > std::fabs(amp)) amp = s;
                         }
-                        float bh = std::fabs(amp) * wave_h * 0.5f;
+                        float bh = std::fabs(amp) * scale * wave_h * 0.5f;
                         bh = std::max(0.5f, bh);
                         float bx = wave_x + bi * bar_w;
                         float by = (amp >= 0) ? center_y - bh : center_y;
