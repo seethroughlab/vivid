@@ -13,7 +13,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <yyjson.h>
+#include <nlohmann/json.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -370,20 +370,26 @@ static std::string baseline_line(const std::string& key, const ScreenshotBaselin
     return out.str();
 }
 
-static bool json_bool(yyjson_val* value, bool fallback = false) {
-    return value && yyjson_is_bool(value) ? yyjson_get_bool(value) : fallback;
+using json = nlohmann::json;
+
+static bool json_bool(const json& j, const char* key, bool fallback = false) {
+    auto it = j.find(key);
+    return (it != j.end() && it->is_boolean()) ? it->get<bool>() : fallback;
 }
 
-static int json_int(yyjson_val* value, int fallback = 0) {
-    return value && yyjson_is_int(value) ? static_cast<int>(yyjson_get_int(value)) : fallback;
+static int json_int(const json& j, const char* key, int fallback = 0) {
+    auto it = j.find(key);
+    return (it != j.end() && it->is_number_integer()) ? it->get<int>() : fallback;
 }
 
-static float json_float(yyjson_val* value, float fallback = 0.0f) {
-    return value && yyjson_is_num(value) ? static_cast<float>(yyjson_get_num(value)) : fallback;
+static float json_float(const json& j, const char* key, float fallback = 0.0f) {
+    auto it = j.find(key);
+    return (it != j.end() && it->is_number()) ? it->get<float>() : fallback;
 }
 
-static std::string json_string(yyjson_val* value) {
-    return value && yyjson_is_str(value) ? yyjson_get_str(value) : std::string{};
+static std::string json_string(const json& j, const char* key) {
+    auto it = j.find(key);
+    return (it != j.end() && it->is_string()) ? it->get<std::string>() : std::string{};
 }
 
 static std::string sanitize_lane_name(std::string lane) {
@@ -414,71 +420,57 @@ static bool should_check_visual_baselines() {
     return !env_enabled("VIVID_ENABLE_GUI_ENV_SMOKE");
 }
 
-static DumpState parse_dump_state(yyjson_val* value) {
+static DumpState parse_dump_state(const json& value) {
     DumpState state;
-    if (!value || !yyjson_is_obj(value))
+    if (!value.is_object())
         return state;
 
-    yyjson_val* chooser_open = yyjson_obj_get(value, "chooser_open");
-    yyjson_val* file_drop_chooser_open = yyjson_obj_get(value, "file_drop_chooser_open");
-    yyjson_val* role_chooser_open = yyjson_obj_get(value, "role_chooser_open");
-    yyjson_val* native_file_dialog_count = yyjson_obj_get(value, "native_file_dialog_count");
-    yyjson_val* file_dialog_stats = yyjson_obj_get(value, "file_dialog_stats");
-    yyjson_val* node_count = yyjson_obj_get(value, "node_count");
-    yyjson_val* connection_count = yyjson_obj_get(value, "connection_count");
+    state.has_chooser_open_field = value.contains("chooser_open");
+    state.has_file_drop_chooser_open_field = value.contains("file_drop_chooser_open");
+    state.has_role_chooser_open_field = value.contains("role_chooser_open");
+    state.has_native_file_dialog_count_field = value.contains("native_file_dialog_count");
+    state.has_file_dialog_stats_field =
+        value.contains("file_dialog_stats") && value["file_dialog_stats"].is_object();
+    state.has_node_count_field = value.contains("node_count");
+    state.has_connection_count_field = value.contains("connection_count");
 
-    state.has_chooser_open_field = chooser_open != nullptr;
-    state.has_file_drop_chooser_open_field = file_drop_chooser_open != nullptr;
-    state.has_role_chooser_open_field = role_chooser_open != nullptr;
-    state.has_native_file_dialog_count_field = native_file_dialog_count != nullptr;
-    state.has_file_dialog_stats_field = file_dialog_stats && yyjson_is_obj(file_dialog_stats);
-    state.has_node_count_field = node_count != nullptr;
-    state.has_connection_count_field = connection_count != nullptr;
-
-    state.chooser_open = json_bool(chooser_open);
-    state.file_drop_chooser_open = json_bool(file_drop_chooser_open);
-    state.role_chooser_open = json_bool(role_chooser_open);
-    state.native_file_dialog_count = json_int(native_file_dialog_count);
-    state.declared_node_count = json_int(node_count, static_cast<int>(state.nodes.size()));
+    state.chooser_open = json_bool(value, "chooser_open");
+    state.file_drop_chooser_open = json_bool(value, "file_drop_chooser_open");
+    state.role_chooser_open = json_bool(value, "role_chooser_open");
+    state.native_file_dialog_count = json_int(value, "native_file_dialog_count");
+    state.declared_node_count =
+        json_int(value, "node_count", static_cast<int>(state.nodes.size()));
     state.declared_connection_count =
-        json_int(connection_count, static_cast<int>(state.connections.size()));
+        json_int(value, "connection_count", static_cast<int>(state.connections.size()));
 
-    yyjson_val* selected = yyjson_obj_get(value, "selected_node_ids");
-    state.has_selected_node_ids_field = selected && yyjson_is_arr(selected);
-    if (selected && yyjson_is_arr(selected)) {
-        size_t idx = 0, max = 0;
-        yyjson_val* item = nullptr;
-        yyjson_arr_foreach(selected, idx, max, item) {
-            if (yyjson_is_str(item))
-                state.selected_node_ids.emplace_back(yyjson_get_str(item));
+    auto sel_it = value.find("selected_node_ids");
+    state.has_selected_node_ids_field = sel_it != value.end() && sel_it->is_array();
+    if (state.has_selected_node_ids_field) {
+        for (const auto& item : *sel_it) {
+            if (item.is_string())
+                state.selected_node_ids.emplace_back(item.get<std::string>());
         }
     }
 
-    yyjson_val* nodes = yyjson_obj_get(value, "nodes");
-    state.has_nodes_field = nodes && yyjson_is_arr(nodes);
-    if (nodes && yyjson_is_arr(nodes)) {
-        size_t idx = 0, max = 0;
-        yyjson_val* item = nullptr;
-        yyjson_arr_foreach(nodes, idx, max, item) {
-            if (!yyjson_is_obj(item))
+    auto nodes_it = value.find("nodes");
+    state.has_nodes_field = nodes_it != value.end() && nodes_it->is_array();
+    if (state.has_nodes_field) {
+        for (const auto& item : *nodes_it) {
+            if (!item.is_object())
                 continue;
             DumpNode node;
-            node.node_id = json_string(yyjson_obj_get(item, "node_id"));
-            node.type_name = json_string(yyjson_obj_get(item, "type_name"));
-            node.missing_operator = json_bool(yyjson_obj_get(item, "missing_operator"));
-            node.has_layout = json_bool(yyjson_obj_get(item, "has_layout"));
-            node.layout_x = json_float(yyjson_obj_get(item, "layout_x"));
-            node.layout_y = json_float(yyjson_obj_get(item, "layout_y"));
+            node.node_id = json_string(item, "node_id");
+            node.type_name = json_string(item, "type_name");
+            node.missing_operator = json_bool(item, "missing_operator");
+            node.has_layout = json_bool(item, "has_layout");
+            node.layout_x = json_float(item, "layout_x");
+            node.layout_y = json_float(item, "layout_y");
 
-            yyjson_val* file_params = yyjson_obj_get(item, "file_params");
-            if (file_params && yyjson_is_obj(file_params)) {
-                yyjson_obj_iter iter;
-                yyjson_obj_iter_init(file_params, &iter);
-                yyjson_val* key = nullptr;
-                while ((key = yyjson_obj_iter_next(&iter)) != nullptr) {
-                    yyjson_val* param_val = yyjson_obj_iter_get_val(key);
-                    if (yyjson_is_str(param_val))
-                        node.file_params[yyjson_get_str(key)] = yyjson_get_str(param_val);
+            auto fp_it = item.find("file_params");
+            if (fp_it != item.end() && fp_it->is_object()) {
+                for (auto& [key, val] : fp_it->items()) {
+                    if (val.is_string())
+                        node.file_params[key] = val.get<std::string>();
                 }
             }
 
@@ -486,20 +478,18 @@ static DumpState parse_dump_state(yyjson_val* value) {
         }
     }
 
-    yyjson_val* connections = yyjson_obj_get(value, "connections");
-    state.has_connections_field = connections && yyjson_is_arr(connections);
-    if (connections && yyjson_is_arr(connections)) {
-        size_t idx = 0, max = 0;
-        yyjson_val* item = nullptr;
-        yyjson_arr_foreach(connections, idx, max, item) {
-            if (!yyjson_is_obj(item))
+    auto conn_it = value.find("connections");
+    state.has_connections_field = conn_it != value.end() && conn_it->is_array();
+    if (state.has_connections_field) {
+        for (const auto& item : *conn_it) {
+            if (!item.is_object())
                 continue;
             DumpConnection conn;
-            conn.from_node = json_string(yyjson_obj_get(item, "from_node"));
-            conn.from_port = json_string(yyjson_obj_get(item, "from_port"));
-            conn.to_node = json_string(yyjson_obj_get(item, "to_node"));
-            conn.to_port = json_string(yyjson_obj_get(item, "to_port"));
-            conn.invalid = json_bool(yyjson_obj_get(item, "invalid"));
+            conn.from_node = json_string(item, "from_node");
+            conn.from_port = json_string(item, "from_port");
+            conn.to_node = json_string(item, "to_node");
+            conn.to_port = json_string(item, "to_port");
+            conn.invalid = json_bool(item, "invalid");
             state.connections.push_back(std::move(conn));
         }
     }
@@ -509,32 +499,38 @@ static DumpState parse_dump_state(yyjson_val* value) {
 
 static DumpDocument load_dump_document(const std::filesystem::path& path) {
     DumpDocument doc_out;
-    yyjson_read_err err{};
-    yyjson_doc* doc = yyjson_read_file(path.string().c_str(), 0, nullptr, &err);
-    if (!doc)
+    std::string text = read_text(path);
+    if (text.empty())
         return doc_out;
+
+    json root;
+    try {
+        root = json::parse(text);
+    } catch (const json::parse_error&) {
+        return doc_out;
+    }
     doc_out.parse_ok = true;
 
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    if (root && yyjson_is_obj(root)) {
-        doc_out.has_final_state = json_bool(yyjson_obj_get(root, "has_final_state"));
-        doc_out.final_state = parse_dump_state(yyjson_obj_get(root, "final_state"));
+    if (root.is_object()) {
+        doc_out.has_final_state = json_bool(root, "has_final_state");
+        auto fs_it = root.find("final_state");
+        if (fs_it != root.end())
+            doc_out.final_state = parse_dump_state(*fs_it);
 
-        yyjson_val* checkpoints = yyjson_obj_get(root, "checkpoints");
-        doc_out.has_checkpoints_field = checkpoints && yyjson_is_arr(checkpoints);
-        if (checkpoints && yyjson_is_arr(checkpoints)) {
-            size_t idx = 0, max = 0;
-            yyjson_val* item = nullptr;
-            yyjson_arr_foreach(checkpoints, idx, max, item) {
-                if (!yyjson_is_obj(item))
+        auto cp_it = root.find("checkpoints");
+        doc_out.has_checkpoints_field = cp_it != root.end() && cp_it->is_array();
+        if (doc_out.has_checkpoints_field) {
+            for (const auto& item : *cp_it) {
+                if (!item.is_object())
                     continue;
-                std::string label = json_string(yyjson_obj_get(item, "label"));
-                doc_out.checkpoints[label] = parse_dump_state(yyjson_obj_get(item, "state"));
+                std::string label = json_string(item, "label");
+                auto st_it = item.find("state");
+                if (st_it != item.end())
+                    doc_out.checkpoints[label] = parse_dump_state(*st_it);
             }
         }
     }
 
-    yyjson_doc_free(doc);
     return doc_out;
 }
 

@@ -1,3 +1,4 @@
+#include <nlohmann/json.hpp>
 #include "ui/node_graph.h"
 #include "ui/node_graph_constants.h"
 #include "ui/node_graph_util.h"
@@ -8,8 +9,8 @@
 #include "ui/thumbnail_renderer.h"
 #include "common/string_util.h"
 #include "common/system_info.h"
-#include <yyjson.h>
 #include <algorithm>
+#include <fstream>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -3922,20 +3923,18 @@ void NodeGraphUI::scan_mcp_project_config() {
     for (int i = 0; i < 5; ++i) {
         fs::path candidate = dir / ".mcp.json";
         if (fs::exists(candidate, ec)) {
-            yyjson_read_err err;
-            yyjson_doc* doc = yyjson_read_file(candidate.string().c_str(), 0, nullptr, &err);
-            if (doc) {
-                yyjson_val* root = yyjson_doc_get_root(doc);
-                yyjson_val* servers = yyjson_obj_get(root, "mcpServers");
-                if (servers) {
-                    if (yyjson_obj_get(servers, "vivid"))
+            try {
+                std::ifstream ifs(candidate);
+                auto j = nlohmann::json::parse(ifs);
+                if (j.is_object() && j.contains("mcpServers")) {
+                    auto& servers = j["mcpServers"];
+                    if (servers.contains("vivid"))
                         mcp_project_config_.vivid_configured = true;
-                    if (yyjson_obj_get(servers, "opdev"))
+                    if (servers.contains("opdev"))
                         mcp_project_config_.opdev_configured = true;
                 }
                 mcp_project_config_.mcp_json_dir = dir.string();
-                yyjson_doc_free(doc);
-            }
+            } catch (...) {}
             break;  // stop at first .mcp.json found
         }
         fs::path parent = dir.parent_path();

@@ -7,7 +7,7 @@
 #include <fstream>
 #include <sstream>
 
-#include "yyjson.h"
+#include <nlohmann/json.hpp>
 
 namespace vivid {
 namespace fs = std::filesystem;
@@ -397,39 +397,34 @@ std::vector<CompileResult> PackageCompiler::compile_all(const std::string& packa
     ss << ifs.rdbuf();
     std::string json_str = ss.str();
 
-    yyjson_doc* doc = yyjson_read(json_str.c_str(), json_str.size(), 0);
-    if (!doc) {
+    nlohmann::json root;
+    try {
+        root = nlohmann::json::parse(json_str);
+    } catch (const nlohmann::json::parse_error&) {
         CompileResult err;
         err.success = false;
         err.error_output = "Invalid JSON in manifest: " + manifest_path;
         return {std::move(err)};
     }
 
-    yyjson_val* root = yyjson_doc_get_root(doc);
-
     std::vector<std::string> operators;
-    yyjson_val* ops = yyjson_obj_get(root, "operators");
-    if (ops && yyjson_is_arr(ops)) {
-        size_t idx, max;
-        yyjson_val* val;
-        yyjson_arr_foreach(ops, idx, max, val) {
-            if (yyjson_is_str(val))
-                operators.push_back(yyjson_get_str(val));
+    auto ops_it = root.find("operators");
+    if (ops_it != root.end() && ops_it->is_array()) {
+        for (auto& val : *ops_it) {
+            if (val.is_string())
+                operators.push_back(val.get<std::string>());
         }
     }
 
     std::vector<std::string> gpu_ops_list;
-    yyjson_val* gpu_ops = yyjson_obj_get(root, "gpu_operators");
-    if (gpu_ops && yyjson_is_arr(gpu_ops)) {
-        size_t idx, max;
-        yyjson_val* val;
-        yyjson_arr_foreach(gpu_ops, idx, max, val) {
-            if (yyjson_is_str(val))
-                gpu_ops_list.push_back(yyjson_get_str(val));
+    auto gpu_it = root.find("gpu_operators");
+    if (gpu_it != root.end() && gpu_it->is_array()) {
+        for (auto& val : *gpu_it) {
+            if (val.is_string())
+                gpu_ops_list.push_back(val.get<std::string>());
         }
     }
 
-    yyjson_doc_free(doc);
     return compile_all(package_dir, operators, gpu_ops_list);
 }
 

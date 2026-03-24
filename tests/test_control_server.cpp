@@ -9,7 +9,7 @@
 #include "runtime/package_catalog.h"
 #include "runtime/settings.h"
 #include "runtime/platform.h"
-#include "yyjson.h"
+#include <nlohmann/json.hpp>
 #include <ixwebsocket/IXHttpClient.h>
 #include <atomic>
 #include <cstdio>
@@ -19,6 +19,8 @@
 #include <fstream>
 #include <string>
 #include <thread>
+
+using json = nlohmann::json;
 
 static std::atomic<int> failures{0};
 
@@ -31,18 +33,14 @@ static void check(bool cond, const char* msg) {
     }
 }
 
-// POST helper — returns parsed yyjson_doc* (caller must free), or nullptr.
+// POST helper — returns parsed json, or null json on failure.
 // Also validates top-level "ok" field matches expected_ok.
 struct Response {
-    yyjson_doc* doc = nullptr;
-    yyjson_val* root = nullptr;
+    json j;
     bool ok = false;
 
-    ~Response() { if (doc) yyjson_doc_free(doc); }
     Response() = default;
-    Response(Response&& o) : doc(o.doc), root(o.root), ok(o.ok) {
-        o.doc = nullptr; o.root = nullptr;
-    }
+    Response(Response&& o) = default;
     Response& operator=(Response&&) = delete;
     Response(const Response&) = delete;
 };
@@ -58,46 +56,36 @@ static Response post(ix::HttpClient& client, const std::string& base_url,
     Response r;
     if (!resp || resp->statusCode != 200) return r;
 
-    r.doc = yyjson_read(resp->body.c_str(), resp->body.size(), 0);
-    r.root = r.doc ? yyjson_doc_get_root(r.doc) : nullptr;
-    if (r.root) {
-        yyjson_val* ok_val = yyjson_obj_get(r.root, "ok");
-        r.ok = ok_val && yyjson_is_bool(ok_val) && yyjson_get_bool(ok_val);
+    try {
+        r.j = json::parse(resp->body);
+    } catch (...) {
+        return r;
+    }
+    if (r.j.contains("ok") && r.j["ok"].is_boolean()) {
+        r.ok = r.j["ok"].get<bool>();
     }
     return r;
 }
 
-static std::string json_str(yyjson_val* v) {
-    if (!v) return "";
-    const char* s = yyjson_get_str(v);
-    return s ? s : "";
-}
-
-static yyjson_val* introspect_node_by_id(yyjson_val* root, const char* node_id) {
-    if (!root || !node_id) return nullptr;
-    yyjson_val* result = yyjson_obj_get(root, "result");
-    yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
-    if (!nodes || !yyjson_is_arr(nodes)) return nullptr;
-    size_t idx, max;
-    yyjson_val* node = nullptr;
-    yyjson_arr_foreach(nodes, idx, max, node) {
-        yyjson_val* id = yyjson_obj_get(node, "node_id");
-        if (id && yyjson_is_str(id) && std::string(yyjson_get_str(id)) == node_id)
+static json introspect_node_by_id(const json& root, const char* node_id) {
+    if (!root.contains("result")) return nullptr;
+    const auto& result = root["result"];
+    if (!result.contains("nodes") || !result["nodes"].is_array()) return nullptr;
+    for (const auto& node : result["nodes"]) {
+        if (node.contains("node_id") && node["node_id"].is_string() &&
+            node["node_id"].get<std::string>() == node_id)
             return node;
     }
     return nullptr;
 }
 
-static yyjson_val* inspect_graph_node_by_id(yyjson_val* root, const char* node_id) {
-    if (!root || !node_id) return nullptr;
-    yyjson_val* result = yyjson_obj_get(root, "result");
-    yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
-    if (!nodes || !yyjson_is_arr(nodes)) return nullptr;
-    size_t idx, max;
-    yyjson_val* node = nullptr;
-    yyjson_arr_foreach(nodes, idx, max, node) {
-        yyjson_val* id = yyjson_obj_get(node, "id");
-        if (id && yyjson_is_str(id) && std::string(yyjson_get_str(id)) == node_id)
+static json inspect_graph_node_by_id(const json& root, const char* node_id) {
+    if (!root.contains("result")) return nullptr;
+    const auto& result = root["result"];
+    if (!result.contains("nodes") || !result["nodes"].is_array()) return nullptr;
+    for (const auto& node : result["nodes"]) {
+        if (node.contains("id") && node["id"].is_string() &&
+            node["id"].get<std::string>() == node_id)
             return node;
     }
     return nullptr;
@@ -358,36 +346,31 @@ int main(int argc, char* argv[]) {
         {
             auto r = post(client, base_url, "inspect_graph");
             check(r.ok, "inspect_graph ok");
-            if (r.root) {
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
-                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
-                check(nodes && yyjson_arr_size(nodes) == 2, "2 nodes");
-                check(conns && yyjson_arr_size(conns) == 1, "1 connection");
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                auto& nodes = result["nodes"];
+                auto& conns = result["connections"];
+                check(nodes.is_array() && nodes.size() == 2, "2 nodes");
+                check(conns.is_array() && conns.size() == 1, "1 connection");
 
                 // Check that params have values
-                yyjson_val* first_node = nodes ? yyjson_arr_get_first(nodes) : nullptr;
-                yyjson_val* params = first_node ? yyjson_obj_get(first_node, "params") : nullptr;
-                check(params && yyjson_arr_size(params) > 0, "params have values");
-                if (params && yyjson_arr_size(params) > 0) {
-                    yyjson_val* p0 = yyjson_arr_get_first(params);
-                    yyjson_val* type = p0 ? yyjson_obj_get(p0, "type") : nullptr;
-                    yyjson_val* tag = p0 ? yyjson_obj_get(p0, "semantic_tag") : nullptr;
-                    yyjson_val* shape = p0 ? yyjson_obj_get(p0, "semantic_shape") : nullptr;
-                    yyjson_val* unit = p0 ? yyjson_obj_get(p0, "semantic_unit") : nullptr;
-                    yyjson_val* intent = p0 ? yyjson_obj_get(p0, "semantic_intent") : nullptr;
-                    check(type && yyjson_is_str(type), "inspect_graph params expose type");
-                    check(tag && yyjson_is_str(tag) &&
-                              std::string(yyjson_get_str(tag)) == "frequency_hz",
+                auto& first_node = nodes[0];
+                auto& params = first_node["params"];
+                check(params.is_array() && params.size() > 0, "params have values");
+                if (params.is_array() && params.size() > 0) {
+                    auto& p0 = params[0];
+                    check(p0.contains("type") && p0["type"].is_string(), "inspect_graph params expose type");
+                    check(p0.contains("semantic_tag") && p0["semantic_tag"].is_string() &&
+                              p0["semantic_tag"].get<std::string>() == "frequency_hz",
                           "inspect_graph params expose semantic_tag");
-                    check(shape && yyjson_is_str(shape) &&
-                              std::string(yyjson_get_str(shape)) == "scalar",
+                    check(p0.contains("semantic_shape") && p0["semantic_shape"].is_string() &&
+                              p0["semantic_shape"].get<std::string>() == "scalar",
                           "inspect_graph params expose semantic_shape");
-                    check(unit && yyjson_is_str(unit) &&
-                              std::string(yyjson_get_str(unit)) == "Hz",
+                    check(p0.contains("semantic_unit") && p0["semantic_unit"].is_string() &&
+                              p0["semantic_unit"].get<std::string>() == "Hz",
                           "inspect_graph params expose semantic_unit");
-                    check(intent && yyjson_is_str(intent) &&
-                              std::string(yyjson_get_str(intent)) == "test_scale",
+                    check(p0.contains("semantic_intent") && p0["semantic_intent"].is_string() &&
+                              p0["semantic_intent"].get<std::string>() == "test_scale",
                           "inspect_graph params expose semantic_intent");
                 }
             }
@@ -398,60 +381,46 @@ int main(int argc, char* argv[]) {
         {
             auto r = post(client, base_url, "introspect_nodes");
             check(r.ok, "introspect_nodes ok");
-            if (r.root) {
-                yyjson_val* sv = yyjson_obj_get(r.root, "schema_version");
-                check(sv && yyjson_is_int(sv) && yyjson_get_int(sv) == 1,
+            if (!r.j.is_null()) {
+                check(r.j.contains("schema_version") && r.j["schema_version"].is_number_integer() &&
+                          r.j["schema_version"].get<int>() == 1,
                       "introspect_nodes schema_version=1");
 
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
-                check(nodes && yyjson_is_arr(nodes), "introspect_nodes returns nodes array");
-                check(nodes && yyjson_arr_size(nodes) == 2, "introspect_nodes returns 2 nodes");
+                auto& result = r.j["result"];
+                auto& nodes = result["nodes"];
+                check(nodes.is_array(), "introspect_nodes returns nodes array");
+                check(nodes.is_array() && nodes.size() == 2, "introspect_nodes returns 2 nodes");
 
-                yyjson_val* first_node = nodes ? yyjson_arr_get_first(nodes) : nullptr;
-                yyjson_val* node_id = first_node ? yyjson_obj_get(first_node, "node_id") : nullptr;
-                yyjson_val* node_type = first_node ? yyjson_obj_get(first_node, "type") : nullptr;
-                yyjson_val* domain = first_node ? yyjson_obj_get(first_node, "domain") : nullptr;
-                yyjson_val* health = first_node ? yyjson_obj_get(first_node, "health") : nullptr;
-                yyjson_val* params = first_node ? yyjson_obj_get(first_node, "params") : nullptr;
-                yyjson_val* param_meta = first_node ? yyjson_obj_get(first_node, "param_meta") : nullptr;
-                yyjson_val* inputs = first_node ? yyjson_obj_get(first_node, "inputs") : nullptr;
-                yyjson_val* outputs = first_node ? yyjson_obj_get(first_node, "outputs") : nullptr;
-                yyjson_val* domain_metrics = first_node ? yyjson_obj_get(first_node, "domain_metrics") : nullptr;
-                yyjson_val* incoming_wires = first_node ? yyjson_obj_get(first_node, "incoming_wires") : nullptr;
-                yyjson_val* outgoing_wires = first_node ? yyjson_obj_get(first_node, "outgoing_wires") : nullptr;
-                check(node_id && yyjson_is_str(node_id), "introspection node has node_id");
-                check(node_type && yyjson_is_str(node_type), "introspection node has type");
-                check(domain && yyjson_is_str(domain), "introspection node has domain");
-                check(health && yyjson_is_obj(health), "introspection node has health object");
-                check(params && yyjson_is_obj(params), "introspection node has params object");
-                check(param_meta && yyjson_is_arr(param_meta), "introspection node has param_meta array");
-                if (param_meta && yyjson_arr_size(param_meta) > 0) {
-                    yyjson_val* pm0 = yyjson_arr_get_first(param_meta);
-                    yyjson_val* tag = pm0 ? yyjson_obj_get(pm0, "semantic_tag") : nullptr;
-                    yyjson_val* shape = pm0 ? yyjson_obj_get(pm0, "semantic_shape") : nullptr;
-                    yyjson_val* unit = pm0 ? yyjson_obj_get(pm0, "semantic_unit") : nullptr;
-                    yyjson_val* intent = pm0 ? yyjson_obj_get(pm0, "semantic_intent") : nullptr;
-                    check(tag && yyjson_is_str(tag) &&
-                              std::string(yyjson_get_str(tag)) == "frequency_hz",
+                auto& first_node = nodes[0];
+                check(first_node.contains("node_id") && first_node["node_id"].is_string(), "introspection node has node_id");
+                check(first_node.contains("type") && first_node["type"].is_string(), "introspection node has type");
+                check(first_node.contains("domain") && first_node["domain"].is_string(), "introspection node has domain");
+                check(first_node.contains("health") && first_node["health"].is_object(), "introspection node has health object");
+                check(first_node.contains("params") && first_node["params"].is_object(), "introspection node has params object");
+                check(first_node.contains("param_meta") && first_node["param_meta"].is_array(), "introspection node has param_meta array");
+                if (first_node.contains("param_meta") && first_node["param_meta"].is_array() &&
+                    first_node["param_meta"].size() > 0) {
+                    auto& pm0 = first_node["param_meta"][0];
+                    check(pm0.contains("semantic_tag") && pm0["semantic_tag"].is_string() &&
+                              pm0["semantic_tag"].get<std::string>() == "frequency_hz",
                           "introspection param_meta exposes semantic_tag");
-                    check(shape && yyjson_is_str(shape) &&
-                              std::string(yyjson_get_str(shape)) == "scalar",
+                    check(pm0.contains("semantic_shape") && pm0["semantic_shape"].is_string() &&
+                              pm0["semantic_shape"].get<std::string>() == "scalar",
                           "introspection param_meta exposes semantic_shape");
-                    check(unit && yyjson_is_str(unit) &&
-                              std::string(yyjson_get_str(unit)) == "Hz",
+                    check(pm0.contains("semantic_unit") && pm0["semantic_unit"].is_string() &&
+                              pm0["semantic_unit"].get<std::string>() == "Hz",
                           "introspection param_meta exposes semantic_unit");
-                    check(intent && yyjson_is_str(intent) &&
-                              std::string(yyjson_get_str(intent)) == "test_scale",
+                    check(pm0.contains("semantic_intent") && pm0["semantic_intent"].is_string() &&
+                              pm0["semantic_intent"].get<std::string>() == "test_scale",
                           "introspection param_meta exposes semantic_intent");
                 }
-                check(inputs && yyjson_is_arr(inputs), "introspection node has inputs array");
-                check(outputs && yyjson_is_arr(outputs), "introspection node has outputs array");
-                check(domain_metrics && yyjson_is_obj(domain_metrics),
+                check(first_node.contains("inputs") && first_node["inputs"].is_array(), "introspection node has inputs array");
+                check(first_node.contains("outputs") && first_node["outputs"].is_array(), "introspection node has outputs array");
+                check(first_node.contains("domain_metrics") && first_node["domain_metrics"].is_object(),
                       "introspection node has domain_metrics object");
-                check(incoming_wires && yyjson_is_int(incoming_wires),
+                check(first_node.contains("incoming_wires") && first_node["incoming_wires"].is_number_integer(),
                       "introspection node has incoming_wires");
-                check(outgoing_wires && yyjson_is_int(outgoing_wires),
+                check(first_node.contains("outgoing_wires") && first_node["outgoing_wires"].is_number_integer(),
                       "introspection node has outgoing_wires");
             }
         }
@@ -461,32 +430,30 @@ int main(int argc, char* argv[]) {
         {
             auto r = post(client, base_url, "run_diagnostics");
             check(r.ok, "run_diagnostics ok");
-            if (r.root) {
-                yyjson_val* sv = yyjson_obj_get(r.root, "schema_version");
-                check(sv && yyjson_is_int(sv) && yyjson_get_int(sv) == 1,
+            if (!r.j.is_null()) {
+                check(r.j.contains("schema_version") && r.j["schema_version"].is_number_integer() &&
+                          r.j["schema_version"].get<int>() == 1,
                       "run_diagnostics schema_version=1");
 
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* summary = result ? yyjson_obj_get(result, "summary") : nullptr;
-                yyjson_val* findings = result ? yyjson_obj_get(result, "findings") : nullptr;
-                yyjson_val* hints = result ? yyjson_obj_get(result, "hints") : nullptr;
+                auto& result = r.j["result"];
+                auto& summary = result["summary"];
+                auto& findings = result["findings"];
+                auto& hints = result["hints"];
 
-                check(summary && yyjson_is_obj(summary), "run_diagnostics has summary");
-                check(findings && yyjson_is_arr(findings), "run_diagnostics has findings array");
-                check(hints && yyjson_is_arr(hints), "run_diagnostics has hints array");
+                check(summary.is_object(), "run_diagnostics has summary");
+                check(findings.is_array(), "run_diagnostics has findings array");
+                check(hints.is_array(), "run_diagnostics has hints array");
 
-                if (summary) {
-                    yyjson_val* critical = yyjson_obj_get(summary, "critical");
-                    yyjson_val* warning = yyjson_obj_get(summary, "warning");
-                    yyjson_val* info = yyjson_obj_get(summary, "info");
-                    check(critical && yyjson_is_int(critical), "summary has critical count");
-                    check(warning && yyjson_is_int(warning), "summary has warning count");
-                    check(info && yyjson_is_int(info), "summary has info count");
-                    if (critical && warning && info &&
-                        yyjson_is_int(critical) && yyjson_is_int(warning) && yyjson_is_int(info)) {
-                        check(yyjson_get_int(critical) == 0 &&
-                              yyjson_get_int(warning) == 0 &&
-                              yyjson_get_int(info) == 0,
+                if (summary.is_object()) {
+                    check(summary.contains("critical") && summary["critical"].is_number_integer(), "summary has critical count");
+                    check(summary.contains("warning") && summary["warning"].is_number_integer(), "summary has warning count");
+                    check(summary.contains("info") && summary["info"].is_number_integer(), "summary has info count");
+                    if (summary.contains("critical") && summary.contains("warning") && summary.contains("info") &&
+                        summary["critical"].is_number_integer() && summary["warning"].is_number_integer() &&
+                        summary["info"].is_number_integer()) {
+                        check(summary["critical"].get<int>() == 0 &&
+                              summary["warning"].get<int>() == 0 &&
+                              summary["info"].get<int>() == 0,
                               "healthy fixture graph yields minimal diagnostics");
                     }
                 }
@@ -498,29 +465,27 @@ int main(int argc, char* argv[]) {
             auto r2 = post(client, base_url, "run_diagnostics");
             check(r1.ok && r2.ok, "run_diagnostics repeat calls ok");
             std::string ids1, ids2;
-            if (r1.root) {
-                yyjson_val* result = yyjson_obj_get(r1.root, "result");
-                yyjson_val* findings = result ? yyjson_obj_get(result, "findings") : nullptr;
-                if (findings && yyjson_is_arr(findings)) {
-                    size_t i, max; yyjson_val* f = nullptr;
-                    yyjson_arr_foreach(findings, i, max, f) {
+            if (!r1.j.is_null()) {
+                auto& result = r1.j["result"];
+                auto& findings = result["findings"];
+                if (findings.is_array()) {
+                    for (const auto& f : findings) {
                         if (!ids1.empty()) ids1 += ",";
-                        ids1 += json_str(yyjson_obj_get(f, "id"));
+                        ids1 += f.value("id", "");
                         ids1 += "@";
-                        ids1 += json_str(yyjson_obj_get(f, "node_id"));
+                        ids1 += f.value("node_id", "");
                     }
                 }
             }
-            if (r2.root) {
-                yyjson_val* result = yyjson_obj_get(r2.root, "result");
-                yyjson_val* findings = result ? yyjson_obj_get(result, "findings") : nullptr;
-                if (findings && yyjson_is_arr(findings)) {
-                    size_t i, max; yyjson_val* f = nullptr;
-                    yyjson_arr_foreach(findings, i, max, f) {
+            if (!r2.j.is_null()) {
+                auto& result = r2.j["result"];
+                auto& findings = result["findings"];
+                if (findings.is_array()) {
+                    for (const auto& f : findings) {
                         if (!ids2.empty()) ids2 += ",";
-                        ids2 += json_str(yyjson_obj_get(f, "id"));
+                        ids2 += f.value("id", "");
                         ids2 += "@";
-                        ids2 += json_str(yyjson_obj_get(f, "node_id"));
+                        ids2 += f.value("node_id", "");
                     }
                 }
             }
@@ -537,24 +502,19 @@ int main(int argc, char* argv[]) {
             auto r = post(client, base_url, "run_diagnostics");
             check(r.ok, "run_diagnostics on broken fixture ok");
             bool found_missing = false;
-            if (r.root) {
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* summary = result ? yyjson_obj_get(result, "summary") : nullptr;
-                yyjson_val* findings = result ? yyjson_obj_get(result, "findings") : nullptr;
-                if (summary) {
-                    yyjson_val* warning = yyjson_obj_get(summary, "warning");
-                    check(warning && yyjson_is_int(warning) && yyjson_get_int(warning) >= 1,
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                auto& summary = result["summary"];
+                auto& findings = result["findings"];
+                if (summary.is_object()) {
+                    check(summary.contains("warning") && summary["warning"].is_number_integer() &&
+                              summary["warning"].get<int>() >= 1,
                           "broken fixture emits warning diagnostics");
                 }
-                if (findings && yyjson_is_arr(findings)) {
-                    size_t i, max; yyjson_val* f = nullptr;
-                    yyjson_arr_foreach(findings, i, max, f) {
-                        yyjson_val* idv = yyjson_obj_get(f, "id");
-                        yyjson_val* nv = yyjson_obj_get(f, "node_id");
-                        if (idv && yyjson_is_str(idv) &&
-                            nv && yyjson_is_str(nv) &&
-                            std::string(yyjson_get_str(idv)) == "isolated_node" &&
-                            std::string(yyjson_get_str(nv)) == "missing_fixture") {
+                if (findings.is_array()) {
+                    for (const auto& f : findings) {
+                        if (f.value("id", "") == "isolated_node" &&
+                            f.value("node_id", "") == "missing_fixture") {
                             found_missing = true;
                             break;
                         }
@@ -571,10 +531,10 @@ int main(int argc, char* argv[]) {
 
             auto ig = post(client, base_url, "inspect_graph");
             check(ig.ok, "inspect_graph after broken fixture cleanup ok");
-            if (ig.root) {
-                yyjson_val* result = yyjson_obj_get(ig.root, "result");
-                yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
-                check(nodes && yyjson_is_arr(nodes) && yyjson_arr_size(nodes) == 2,
+            if (!ig.j.is_null()) {
+                auto& result = ig.j["result"];
+                auto& nodes = result["nodes"];
+                check(nodes.is_array() && nodes.size() == 2,
                       "broken fixture cleanup restored 2-node graph");
             }
         }
@@ -585,16 +545,15 @@ int main(int argc, char* argv[]) {
             auto r = post(client, base_url, "validate_checks",
                 R"({"checks":[{"id":"node_count_is_two","type":"state_check","path":"graph.node_count","op":"==","value":2},{"id":"no_missing_ops","type":"diagnostic_check","op":"finding_absent","finding_id":"missing_operator_type"}]})");
             check(r.ok, "validate_checks ok");
-            if (r.root) {
-                yyjson_val* sv = yyjson_obj_get(r.root, "schema_version");
-                check(sv && yyjson_is_int(sv) && yyjson_get_int(sv) == 1,
+            if (!r.j.is_null()) {
+                check(r.j.contains("schema_version") && r.j["schema_version"].is_number_integer() &&
+                          r.j["schema_version"].get<int>() == 1,
                       "validate_checks schema_version=1");
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* valid = result ? yyjson_obj_get(result, "valid") : nullptr;
-                yyjson_val* ec = result ? yyjson_obj_get(result, "error_count") : nullptr;
-                check(valid && yyjson_is_bool(valid) && yyjson_get_bool(valid),
+                auto& result = r.j["result"];
+                check(result.contains("valid") && result["valid"].is_boolean() && result["valid"].get<bool>(),
                       "validate_checks valid=true");
-                check(ec && yyjson_is_int(ec) && yyjson_get_int(ec) == 0,
+                check(result.contains("error_count") && result["error_count"].is_number_integer() &&
+                          result["error_count"].get<int>() == 0,
                       "validate_checks error_count=0");
             }
         }
@@ -602,13 +561,12 @@ int main(int argc, char* argv[]) {
             auto r = post(client, base_url, "validate_checks",
                 R"({"checks":[{"id":"dup","type":"state_check","path":"graph.node_count","op":"==","value":2},{"id":"dup","type":"state_check","path":"graph.node_count","op":"==","value":2}]})");
             check(r.ok, "validate_checks duplicate-id request ok");
-            if (r.root) {
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* valid = result ? yyjson_obj_get(result, "valid") : nullptr;
-                yyjson_val* ec = result ? yyjson_obj_get(result, "error_count") : nullptr;
-                check(valid && yyjson_is_bool(valid) && !yyjson_get_bool(valid),
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                check(result.contains("valid") && result["valid"].is_boolean() && !result["valid"].get<bool>(),
                       "validate_checks duplicate-id valid=false");
-                check(ec && yyjson_is_int(ec) && yyjson_get_int(ec) > 0,
+                check(result.contains("error_count") && result["error_count"].is_number_integer() &&
+                          result["error_count"].get<int>() > 0,
                       "validate_checks duplicate-id has error_count>0");
             }
             auto rbad = post(client, base_url, "validate_checks", R"({"foo":[]})");
@@ -618,21 +576,20 @@ int main(int argc, char* argv[]) {
             auto r = post(client, base_url, "run_checks",
                 R"({"checks":[{"id":"node_count_is_two","type":"state_check","path":"graph.node_count","op":"==","value":2,"severity":"critical"},{"id":"no_missing_ops","type":"diagnostic_check","op":"finding_absent","finding_id":"missing_operator_type","severity":"critical"}]})");
             check(r.ok, "run_checks ok");
-            if (r.root) {
-                yyjson_val* sv = yyjson_obj_get(r.root, "schema_version");
-                check(sv && yyjson_is_int(sv) && yyjson_get_int(sv) == 1,
+            if (!r.j.is_null()) {
+                check(r.j.contains("schema_version") && r.j["schema_version"].is_number_integer() &&
+                          r.j["schema_version"].get<int>() == 1,
                       "run_checks schema_version=1");
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* all_passed = result ? yyjson_obj_get(result, "all_passed") : nullptr;
-                yyjson_val* all_critical = result ? yyjson_obj_get(result, "all_critical_passed") : nullptr;
-                yyjson_val* summary = result ? yyjson_obj_get(result, "summary") : nullptr;
-                yyjson_val* results = result ? yyjson_obj_get(result, "results") : nullptr;
-                check(all_passed && yyjson_is_bool(all_passed) && yyjson_get_bool(all_passed),
+                auto& result = r.j["result"];
+                check(result.contains("all_passed") && result["all_passed"].is_boolean() &&
+                          result["all_passed"].get<bool>(),
                       "run_checks all_passed=true");
-                check(all_critical && yyjson_is_bool(all_critical) && yyjson_get_bool(all_critical),
+                check(result.contains("all_critical_passed") && result["all_critical_passed"].is_boolean() &&
+                          result["all_critical_passed"].get<bool>(),
                       "run_checks all_critical_passed=true");
-                check(summary && yyjson_is_obj(summary), "run_checks has summary");
-                check(results && yyjson_is_arr(results) && yyjson_arr_size(results) == 2,
+                check(result.contains("summary") && result["summary"].is_object(), "run_checks has summary");
+                check(result.contains("results") && result["results"].is_array() &&
+                          result["results"].size() == 2,
                       "run_checks returns 2 results");
             }
         }
@@ -641,17 +598,15 @@ int main(int argc, char* argv[]) {
             auto r = post(client, base_url, "run_checks",
                 R"({"checks":[{"id":"z_second","type":"state_check","path":"graph.node_count","op":"==","value":2},{"id":"a_first","type":"state_check","path":"graph.node_count","op":"==","value":2}]})");
             check(r.ok, "run_checks deterministic-order request ok");
-            if (r.root) {
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* rows = result ? yyjson_obj_get(result, "results") : nullptr;
-                check(rows && yyjson_is_arr(rows) && yyjson_arr_size(rows) == 2,
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                auto& rows = result["results"];
+                check(rows.is_array() && rows.size() == 2,
                       "run_checks deterministic-order returns 2 results");
-                if (rows && yyjson_arr_size(rows) == 2) {
-                    yyjson_val* r0 = yyjson_arr_get(rows, 0);
-                    yyjson_val* r1 = yyjson_arr_get(rows, 1);
-                    check(json_str(yyjson_obj_get(r0, "id")) == "a_first",
+                if (rows.is_array() && rows.size() == 2) {
+                    check(rows[0].value("id", "") == "a_first",
                           "run_checks results sorted id[0]=a_first");
-                    check(json_str(yyjson_obj_get(r1, "id")) == "z_second",
+                    check(rows[1].value("id", "") == "z_second",
                           "run_checks results sorted id[1]=z_second");
                 }
             }
@@ -663,9 +618,9 @@ int main(int argc, char* argv[]) {
                 R"({"node_id":"a","param":"scale"})");
             check(gp_before.ok, "pre-mutation baseline get_param ok");
             double before = 0.0;
-            if (gp_before.root) {
-                yyjson_val* v = yyjson_obj_get(gp_before.root, "value");
-                if (v && yyjson_is_num(v)) before = yyjson_get_num(v);
+            if (!gp_before.j.is_null()) {
+                if (gp_before.j.contains("value") && gp_before.j["value"].is_number())
+                    before = gp_before.j["value"].get<double>();
             }
 
             auto i = post(client, base_url, "introspect_nodes");
@@ -679,21 +634,21 @@ int main(int argc, char* argv[]) {
             auto gp_after = post(client, base_url, "get_param",
                 R"({"node_id":"a","param":"scale"})");
             check(gp_after.ok, "post-perception get_param ok");
-            if (gp_after.root) {
-                yyjson_val* v = yyjson_obj_get(gp_after.root, "value");
-                check(v && yyjson_is_num(v) && std::fabs(yyjson_get_num(v) - before) < 1e-6,
+            if (!gp_after.j.is_null()) {
+                check(gp_after.j.contains("value") && gp_after.j["value"].is_number() &&
+                          std::fabs(gp_after.j["value"].get<double>() - before) < 1e-6,
                       "perception endpoints do not mutate parameter state");
             }
 
             auto ig = post(client, base_url, "inspect_graph");
             check(ig.ok, "inspect_graph after perception endpoints ok");
-            if (ig.root) {
-                yyjson_val* result = yyjson_obj_get(ig.root, "result");
-                yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
-                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
-                check(nodes && yyjson_is_arr(nodes) && yyjson_arr_size(nodes) == 2,
+            if (!ig.j.is_null()) {
+                auto& result = ig.j["result"];
+                auto& nodes = result["nodes"];
+                auto& conns = result["connections"];
+                check(nodes.is_array() && nodes.size() == 2,
                       "node count unchanged after perception endpoints");
-                check(conns && yyjson_is_arr(conns) && yyjson_arr_size(conns) == 1,
+                check(conns.is_array() && conns.size() == 1,
                       "connection count unchanged after perception endpoints");
             }
         }
@@ -703,23 +658,20 @@ int main(int argc, char* argv[]) {
         {
             auto r = post(client, base_url, "list_types");
             check(r.ok, "list_types ok");
-            if (r.root) {
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* types = result ? yyjson_obj_get(result, "types") : nullptr;
-                check(types && yyjson_arr_size(types) > 0, "has types");
-                if (types) {
-                    yyjson_val* t0 = nullptr;
-                    yyjson_val* ms_type = nullptr;
-                    yyjson_val* sec_type = nullptr;
-                    yyjson_val* unknown_type = nullptr;
-                    yyjson_val* untagged_type = nullptr;
-                    yyjson_val* custom_type = nullptr;
-                    size_t i = 0, max = 0;
-                    yyjson_val* t = nullptr;
-                    yyjson_arr_foreach(types, i, max, t) {
-                        yyjson_val* n = yyjson_obj_get(t, "name");
-                        if (!n || !yyjson_is_str(n)) continue;
-                        std::string tn = yyjson_get_str(n);
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                auto& types = result["types"];
+                check(types.is_array() && types.size() > 0, "has types");
+                if (types.is_array()) {
+                    json t0;
+                    json ms_type;
+                    json sec_type;
+                    json unknown_type;
+                    json untagged_type;
+                    json custom_type;
+                    for (const auto& t : types) {
+                        if (!t.contains("name") || !t["name"].is_string()) continue;
+                        std::string tn = t["name"].get<std::string>();
                         if (tn == "TestOp") {
                             t0 = t;
                         } else if (tn == "MsSourceOp") {
@@ -734,41 +686,38 @@ int main(int argc, char* argv[]) {
                             custom_type = t;
                         }
                     }
-                    check(t0 != nullptr, "contains TestOp");
-                    yyjson_val* params = t0 ? yyjson_obj_get(t0, "params") : nullptr;
-                    check(params && yyjson_arr_size(params) > 0, "TestOp has params");
-                    if (params && yyjson_arr_size(params) > 0) {
-                        yyjson_val* p0 = yyjson_arr_get_first(params);
-                        yyjson_val* tag = p0 ? yyjson_obj_get(p0, "semantic_tag") : nullptr;
-                        yyjson_val* shape = p0 ? yyjson_obj_get(p0, "semantic_shape") : nullptr;
-                        yyjson_val* unit = p0 ? yyjson_obj_get(p0, "semantic_unit") : nullptr;
-                        yyjson_val* intent = p0 ? yyjson_obj_get(p0, "semantic_intent") : nullptr;
-                        check(tag && yyjson_is_str(tag) &&
-                                  std::string(yyjson_get_str(tag)) == "frequency_hz",
+                    check(!t0.is_null(), "contains TestOp");
+                    auto& params = t0["params"];
+                    check(params.is_array() && params.size() > 0, "TestOp has params");
+                    if (params.is_array() && params.size() > 0) {
+                        auto& p0 = params[0];
+                        check(p0.contains("semantic_tag") && p0["semantic_tag"].is_string() &&
+                                  p0["semantic_tag"].get<std::string>() == "frequency_hz",
                               "list_types param exposes semantic_tag");
-                        check(shape && yyjson_is_str(shape) &&
-                                  std::string(yyjson_get_str(shape)) == "scalar",
+                        check(p0.contains("semantic_shape") && p0["semantic_shape"].is_string() &&
+                                  p0["semantic_shape"].get<std::string>() == "scalar",
                               "list_types param exposes semantic_shape");
-                        check(unit && yyjson_is_str(unit) &&
-                                  std::string(yyjson_get_str(unit)) == "Hz",
+                        check(p0.contains("semantic_unit") && p0["semantic_unit"].is_string() &&
+                                  p0["semantic_unit"].get<std::string>() == "Hz",
                               "list_types param exposes semantic_unit");
-                        check(intent && yyjson_is_str(intent) &&
-                                  std::string(yyjson_get_str(intent)) == "test_scale",
+                        check(p0.contains("semantic_intent") && p0["semantic_intent"].is_string() &&
+                                  p0["semantic_intent"].get<std::string>() == "test_scale",
                               "list_types param exposes semantic_intent");
                     }
-                    yyjson_val* outputs = t0 ? yyjson_obj_get(t0, "outputs") : nullptr;
-                    check(outputs && yyjson_arr_size(outputs) > 0, "TestOp has ports");
+                    auto& outputs = t0["outputs"];
+                    check(outputs.is_array() && outputs.size() > 0, "TestOp has ports");
 
-                    auto check_first_param_tag = [&](yyjson_val* type_obj, const char* expected_tag,
+                    auto check_first_param_tag = [&](const json& type_obj, const char* expected_tag,
                                                      const char* label) {
-                        check(type_obj != nullptr, label);
-                        yyjson_val* params_obj = type_obj ? yyjson_obj_get(type_obj, "params") : nullptr;
-                        yyjson_val* p0 = (params_obj && yyjson_arr_size(params_obj) > 0)
-                                       ? yyjson_arr_get_first(params_obj) : nullptr;
-                        yyjson_val* tag = p0 ? yyjson_obj_get(p0, "semantic_tag") : nullptr;
+                        check(!type_obj.is_null(), label);
+                        const auto& params_obj = type_obj.contains("params") ? type_obj["params"] : json();
+                        json p0_val;
+                        if (params_obj.is_array() && params_obj.size() > 0)
+                            p0_val = params_obj[0];
                         std::string tag_label = std::string(label) + " tag";
-                        check(tag && yyjson_is_str(tag) &&
-                                  std::string(yyjson_get_str(tag)) == expected_tag,
+                        check(!p0_val.is_null() && p0_val.contains("semantic_tag") &&
+                                  p0_val["semantic_tag"].is_string() &&
+                                  p0_val["semantic_tag"].get<std::string>() == expected_tag,
                               tag_label.c_str());
                     };
                     check_first_param_tag(ms_type, "time_milliseconds",
@@ -777,48 +726,50 @@ int main(int argc, char* argv[]) {
                                           "SecDestOp semantic_tag is time_seconds");
                     check_first_param_tag(unknown_type, "x_test_unknown_scalar",
                                           "UnknownTagSourceOp semantic_tag preserves extension tag");
-                    check(untagged_type != nullptr, "contains UntaggedDestOp");
-                    if (untagged_type) {
-                        yyjson_val* params_obj = yyjson_obj_get(untagged_type, "params");
-                        yyjson_val* p0 = (params_obj && yyjson_arr_size(params_obj) > 0)
-                                       ? yyjson_arr_get_first(params_obj) : nullptr;
-                        yyjson_val* tag = p0 ? yyjson_obj_get(p0, "semantic_tag") : nullptr;
-                        check(tag == nullptr, "UntaggedDestOp param omits semantic_tag");
+                    check(!untagged_type.is_null(), "contains UntaggedDestOp");
+                    if (!untagged_type.is_null()) {
+                        const auto& params_obj = untagged_type["params"];
+                        json p0_val;
+                        if (params_obj.is_array() && params_obj.size() > 0)
+                            p0_val = params_obj[0];
+                        check(p0_val.is_null() || !p0_val.contains("semantic_tag"),
+                              "UntaggedDestOp param omits semantic_tag");
                     }
 
-                    check(custom_type != nullptr, "contains ExportCustomPortOp");
-                    if (custom_type) {
-                        yyjson_val* outputs_obj = yyjson_obj_get(custom_type, "outputs");
-                        yyjson_val* p0 = (outputs_obj && yyjson_arr_size(outputs_obj) > 0)
-                                       ? yyjson_arr_get_first(outputs_obj) : nullptr;
-                        yyjson_val* type = p0 ? yyjson_obj_get(p0, "type") : nullptr;
-                        yyjson_val* transport = p0 ? yyjson_obj_get(p0, "transport") : nullptr;
-                        yyjson_val* type_name = p0 ? yyjson_obj_get(p0, "type_name") : nullptr;
-                        yyjson_val* stable_type_id = p0 ? yyjson_obj_get(p0, "stable_type_id") : nullptr;
-                        yyjson_val* payload_size = p0 ? yyjson_obj_get(p0, "payload_size") : nullptr;
-                        yyjson_val* registered = p0 ? yyjson_obj_get(p0, "custom_type_registered") : nullptr;
-                        yyjson_val* audio_safe = p0 ? yyjson_obj_get(p0, "audio_safe") : nullptr;
-                        check(type && yyjson_is_str(type) &&
-                                  std::string(yyjson_get_str(type)) == "custom",
+                    check(!custom_type.is_null(), "contains ExportCustomPortOp");
+                    if (!custom_type.is_null()) {
+                        const auto& outputs_obj = custom_type["outputs"];
+                        json p0_val;
+                        if (outputs_obj.is_array() && outputs_obj.size() > 0)
+                            p0_val = outputs_obj[0];
+                        check(!p0_val.is_null() && p0_val.contains("type") &&
+                                  p0_val["type"].is_string() &&
+                                  p0_val["type"].get<std::string>() == "custom",
                               "list_types custom port exposes custom type kind");
-                        check(transport && yyjson_is_str(transport) &&
-                                  std::string(yyjson_get_str(transport)) == "custom_ref",
+                        check(!p0_val.is_null() && p0_val.contains("transport") &&
+                                  p0_val["transport"].is_string() &&
+                                  p0_val["transport"].get<std::string>() == "custom_ref",
                               "list_types custom port exposes transport");
-                        check(type_name && yyjson_is_str(type_name) &&
-                                  std::string(yyjson_get_str(type_name)) == "MediaStreamV1",
+                        check(!p0_val.is_null() && p0_val.contains("type_name") &&
+                                  p0_val["type_name"].is_string() &&
+                                  p0_val["type_name"].get<std::string>() == "MediaStreamV1",
                               "list_types custom port exposes type_name");
-                        check(stable_type_id && yyjson_is_str(stable_type_id) &&
-                                  std::string(yyjson_get_str(stable_type_id)) ==
+                        check(!p0_val.is_null() && p0_val.contains("stable_type_id") &&
+                                  p0_val["stable_type_id"].is_string() &&
+                                  p0_val["stable_type_id"].get<std::string>() ==
                                       "seethroughlab.vivid.media_stream_v1",
                               "list_types custom port exposes stable_type_id");
-                        check(payload_size && yyjson_is_uint(payload_size) &&
-                                  yyjson_get_uint(payload_size) > 0,
+                        check(!p0_val.is_null() && p0_val.contains("payload_size") &&
+                                  p0_val["payload_size"].is_number_unsigned() &&
+                                  p0_val["payload_size"].get<uint64_t>() > 0,
                               "list_types custom port exposes payload_size");
-                        check(registered && yyjson_is_bool(registered) &&
-                                  yyjson_get_bool(registered),
+                        check(!p0_val.is_null() && p0_val.contains("custom_type_registered") &&
+                                  p0_val["custom_type_registered"].is_boolean() &&
+                                  p0_val["custom_type_registered"].get<bool>(),
                               "list_types custom port reports registry presence");
-                        check(audio_safe && yyjson_is_bool(audio_safe) &&
-                                  yyjson_get_bool(audio_safe),
+                        check(!p0_val.is_null() && p0_val.contains("audio_safe") &&
+                                  p0_val["audio_safe"].is_boolean() &&
+                                  p0_val["audio_safe"].get<bool>(),
                               "list_types custom port exposes audio_safe");
                     }
                 }
@@ -830,68 +781,57 @@ int main(int argc, char* argv[]) {
         {
             auto r = post(client, base_url, "get_registry_diagnostics");
             check(r.ok, "get_registry_diagnostics ok");
-            if (r.root) {
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* schema = result ? yyjson_obj_get(result, "schema_version") : nullptr;
-                yyjson_val* custom_types = result ? yyjson_obj_get(result, "custom_port_types") : nullptr;
-                yyjson_val* abi_mismatches = result ? yyjson_obj_get(result, "abi_mismatch_diagnostics") : nullptr;
-                yyjson_val* loader_failures = result ? yyjson_obj_get(result, "loader_failure_diagnostics") : nullptr;
-                check(schema && yyjson_is_int(schema) && yyjson_get_int(schema) == 1,
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                check(result.contains("schema_version") && result["schema_version"].is_number_integer() &&
+                          result["schema_version"].get<int>() == 1,
                       "registry diagnostics schema_version=1");
-                check(custom_types && yyjson_is_arr(custom_types) && yyjson_arr_size(custom_types) > 0,
+                auto& custom_types = result["custom_port_types"];
+                auto& abi_mismatches = result["abi_mismatch_diagnostics"];
+                auto& loader_failures = result["loader_failure_diagnostics"];
+                check(custom_types.is_array() && custom_types.size() > 0,
                       "registry diagnostics exposes custom_port_types");
-                check(abi_mismatches && yyjson_is_arr(abi_mismatches) && yyjson_arr_size(abi_mismatches) > 0,
+                check(abi_mismatches.is_array() && abi_mismatches.size() > 0,
                       "registry diagnostics exposes ABI mismatch diagnostics");
-                check(loader_failures && yyjson_is_arr(loader_failures) && yyjson_arr_size(loader_failures) > 0,
+                check(loader_failures.is_array() && loader_failures.size() > 0,
                       "registry diagnostics exposes loader failure diagnostics");
-                if (custom_types && yyjson_is_arr(custom_types)) {
+                if (custom_types.is_array()) {
                     bool found_media_stream = false;
-                    size_t i = 0, max = 0;
-                    yyjson_val* item = nullptr;
-                    yyjson_arr_foreach(custom_types, i, max, item) {
-                        yyjson_val* stable_id = yyjson_obj_get(item, "stable_type_id");
-                        if (!stable_id || !yyjson_is_str(stable_id)) continue;
-                        if (std::string(yyjson_get_str(stable_id)) !=
+                    for (const auto& item : custom_types) {
+                        if (!item.contains("stable_type_id") || !item["stable_type_id"].is_string()) continue;
+                        if (item["stable_type_id"].get<std::string>() !=
                                 "seethroughlab.vivid.media_stream_v1") continue;
                         found_media_stream = true;
-                        yyjson_val* transport = yyjson_obj_get(item, "transport");
-                        yyjson_val* audio_safe = yyjson_obj_get(item, "audio_safe");
-                        check(transport && yyjson_is_str(transport) &&
-                                  std::string(yyjson_get_str(transport)) == "custom_ref",
+                        check(item.contains("transport") && item["transport"].is_string() &&
+                                  item["transport"].get<std::string>() == "custom_ref",
                               "registry diagnostics preserves custom port transport");
-                        check(audio_safe && yyjson_is_bool(audio_safe) &&
-                                  yyjson_get_bool(audio_safe),
+                        check(item.contains("audio_safe") && item["audio_safe"].is_boolean() &&
+                                  item["audio_safe"].get<bool>(),
                               "registry diagnostics preserves audio_safe");
                         break;
                     }
                     check(found_media_stream, "registry diagnostics includes MediaStreamV1");
                 }
-                if (abi_mismatches && yyjson_is_arr(abi_mismatches) && yyjson_arr_size(abi_mismatches) > 0) {
-                    yyjson_val* first = yyjson_arr_get_first(abi_mismatches);
-                    yyjson_val* plugin_abi = first ? yyjson_obj_get(first, "plugin_abi") : nullptr;
-                    yyjson_val* runtime_abi = first ? yyjson_obj_get(first, "runtime_abi") : nullptr;
-                    check(plugin_abi && yyjson_is_uint(plugin_abi), "ABI diagnostic includes plugin_abi");
-                    check(runtime_abi && yyjson_is_uint(runtime_abi) &&
-                              yyjson_get_uint(runtime_abi) == 999,
+                if (abi_mismatches.is_array() && abi_mismatches.size() > 0) {
+                    auto& first = abi_mismatches[0];
+                    check(first.contains("plugin_abi") && first["plugin_abi"].is_number_unsigned(),
+                          "ABI diagnostic includes plugin_abi");
+                    check(first.contains("runtime_abi") && first["runtime_abi"].is_number_unsigned() &&
+                              first["runtime_abi"].get<uint64_t>() == 999,
                           "ABI diagnostic includes mocked runtime ABI");
                 }
-                if (loader_failures && yyjson_is_arr(loader_failures) && yyjson_arr_size(loader_failures) > 0) {
+                if (loader_failures.is_array() && loader_failures.size() > 0) {
                     bool found_bad_custom = false;
-                    size_t i = 0, max = 0;
-                    yyjson_val* item = nullptr;
-                    yyjson_arr_foreach(loader_failures, i, max, item) {
-                        yyjson_val* plugin_name = yyjson_obj_get(item, "plugin_name");
-                        if (!plugin_name || !yyjson_is_str(plugin_name)) continue;
-                        if (std::string(yyjson_get_str(plugin_name)) != "test_op_bad_custom_type.dylib")
+                    for (const auto& item : loader_failures) {
+                        if (!item.contains("plugin_name") || !item["plugin_name"].is_string()) continue;
+                        if (item["plugin_name"].get<std::string>() != "test_op_bad_custom_type.dylib")
                             continue;
                         found_bad_custom = true;
-                        yyjson_val* code = yyjson_obj_get(item, "code");
-                        yyjson_val* message = yyjson_obj_get(item, "message");
-                        check(code && yyjson_is_str(code) &&
-                                  std::string(yyjson_get_str(code)) == "custom_type_registration_failed",
+                        check(item.contains("code") && item["code"].is_string() &&
+                                  item["code"].get<std::string>() == "custom_type_registration_failed",
                               "loader failure diagnostic exposes structured code");
-                        check(message && yyjson_is_str(message) &&
-                                  std::string(yyjson_get_str(message)).find("register") != std::string::npos,
+                        check(item.contains("message") && item["message"].is_string() &&
+                                  item["message"].get<std::string>().find("register") != std::string::npos,
                               "loader failure diagnostic exposes useful message");
                     }
                     check(found_bad_custom, "registry diagnostics include bad custom-type loader failure");
@@ -913,9 +853,9 @@ int main(int argc, char* argv[]) {
             auto r = post(client, base_url, "get_param",
                 R"({"node_id":"a","param":"scale"})");
             check(r.ok, "get_param a/scale ok");
-            if (r.root) {
-                yyjson_val* val = yyjson_obj_get(r.root, "value");
-                check(val && std::fabs(yyjson_get_num(val) - 9.0) < 1e-4,
+            if (!r.j.is_null()) {
+                check(r.j.contains("value") &&
+                          std::fabs(r.j["value"].get<double>() - 9.0) < 1e-4,
                       "value is 9.0");
             }
         }
@@ -928,9 +868,9 @@ int main(int argc, char* argv[]) {
             auto rg = post(client, base_url, "get_param",
                 R"({"node_id":"a","param":"scale"})");
             check(rg.ok, "get_param after undo ok");
-            if (rg.root) {
-                yyjson_val* val = yyjson_obj_get(rg.root, "value");
-                check(val && std::fabs(yyjson_get_num(val) - 3.0) < 1e-4,
+            if (!rg.j.is_null()) {
+                check(rg.j.contains("value") &&
+                          std::fabs(rg.j["value"].get<double>() - 3.0) < 1e-4,
                       "value restored to 3.0 after undo");
             }
 
@@ -939,9 +879,9 @@ int main(int argc, char* argv[]) {
             auto rg2 = post(client, base_url, "get_param",
                 R"({"node_id":"a","param":"scale"})");
             check(rg2.ok, "get_param after redo ok");
-            if (rg2.root) {
-                yyjson_val* val = yyjson_obj_get(rg2.root, "value");
-                check(val && std::fabs(yyjson_get_num(val) - 9.0) < 1e-4,
+            if (!rg2.j.is_null()) {
+                check(rg2.j.contains("value") &&
+                          std::fabs(rg2.j["value"].get<double>() - 9.0) < 1e-4,
                       "value restored to 9.0 after redo");
             }
         }
@@ -972,12 +912,12 @@ int main(int argc, char* argv[]) {
         {
             auto r = post(client, base_url, "inspect_graph");
             check(r.ok, "inspect_graph ok");
-            if (r.root) {
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
-                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
-                check(nodes && yyjson_arr_size(nodes) == 3, "3 nodes");
-                check(conns && yyjson_arr_size(conns) == 2, "2 connections");
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                auto& nodes = result["nodes"];
+                auto& conns = result["connections"];
+                check(nodes.is_array() && nodes.size() == 3, "3 nodes");
+                check(conns.is_array() && conns.size() == 2, "2 connections");
             }
         }
 
@@ -1006,10 +946,10 @@ int main(int argc, char* argv[]) {
         {
             auto r = post(client, base_url, "inspect_graph");
             check(r.ok, "inspect_graph ok");
-            if (r.root) {
-                yyjson_val* result = yyjson_obj_get(r.root, "result");
-                yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
-                check(nodes && yyjson_arr_size(nodes) == 2, "back to 2 nodes");
+            if (!r.j.is_null()) {
+                auto& result = r.j["result"];
+                auto& nodes = result["nodes"];
+                check(nodes.is_array() && nodes.size() == 2, "back to 2 nodes");
             }
         }
 
@@ -1027,16 +967,16 @@ int main(int argc, char* argv[]) {
             auto c = post(client, base_url, "connect",
                 R"({"from_addr":"ms1/ms","to_addr":"s1/sec","semantic_defaults":true})");
             check(c.ok, "connect ms1/ms -> s1/sec with semantic_defaults ok");
-            if (c.root) {
-                yyjson_val* msg = yyjson_obj_get(c.root, "message");
-                std::string m = json_str(msg);
+            if (!c.j.is_null()) {
+                std::string m = c.j.value("message", "");
                 check(m.find("semantic default remap applied") != std::string::npos,
                       "connect response reports semantic remap applied");
-                yyjson_val* inferred = yyjson_obj_get(c.root, "inferred_remap_applied");
-                check(inferred && yyjson_is_bool(inferred) && yyjson_get_bool(inferred),
+                check(c.j.contains("inferred_remap_applied") &&
+                          c.j["inferred_remap_applied"].is_boolean() &&
+                          c.j["inferred_remap_applied"].get<bool>(),
                       "connect response inferred_remap_applied=true");
-                yyjson_val* remap = yyjson_obj_get(c.root, "inferred_remap");
-                check(remap && yyjson_is_obj(remap), "connect response includes inferred_remap object");
+                check(c.j.contains("inferred_remap") && c.j["inferred_remap"].is_object(),
+                      "connect response includes inferred_remap object");
             }
         }
 
@@ -1046,29 +986,26 @@ int main(int argc, char* argv[]) {
         {
             auto ig = post(client, base_url, "inspect_graph");
             check(ig.ok, "inspect_graph after semantic connect ok");
-            if (ig.root) {
-                yyjson_val* result = yyjson_obj_get(ig.root, "result");
-                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
+            if (!ig.j.is_null()) {
+                auto& result = ig.j["result"];
+                auto& conns = result["connections"];
                 bool found = false;
-                if (conns && yyjson_is_arr(conns)) {
-                    yyjson_val* conn = nullptr;
-                    size_t idx = 0, max = 0;
-                    yyjson_arr_foreach(conns, idx, max, conn) {
-                        yyjson_val* from = yyjson_obj_get(conn, "from");
-                        yyjson_val* to   = yyjson_obj_get(conn, "to");
-                        if (json_str(from) != "ms1/ms" || json_str(to) != "s1/sec") continue;
+                if (conns.is_array()) {
+                    for (const auto& conn : conns) {
+                        if (conn.value("from", "") != "ms1/ms" ||
+                            conn.value("to", "") != "s1/sec") continue;
                         found = true;
-                        yyjson_val* fmin = yyjson_obj_get(conn, "from_min");
-                        yyjson_val* fmax = yyjson_obj_get(conn, "from_max");
-                        yyjson_val* tmin = yyjson_obj_get(conn, "to_min");
-                        yyjson_val* tmax = yyjson_obj_get(conn, "to_max");
-                        check(fmin && std::fabs(yyjson_get_num(fmin) - 0.0) < 1e-6,
+                        check(conn.contains("from_min") &&
+                                  std::fabs(conn["from_min"].get<double>() - 0.0) < 1e-6,
                               "semantic remap from_min=0");
-                        check(fmax && std::fabs(yyjson_get_num(fmax) - 2000.0) < 1e-6,
+                        check(conn.contains("from_max") &&
+                                  std::fabs(conn["from_max"].get<double>() - 2000.0) < 1e-6,
                               "semantic remap from_max=2000");
-                        check(tmin && std::fabs(yyjson_get_num(tmin) - 0.0) < 1e-6,
+                        check(conn.contains("to_min") &&
+                                  std::fabs(conn["to_min"].get<double>() - 0.0) < 1e-6,
                               "semantic remap to_min=0");
-                        check(tmax && std::fabs(yyjson_get_num(tmax) - 2.0) < 1e-6,
+                        check(conn.contains("to_max") &&
+                                  std::fabs(conn["to_max"].get<double>() - 2.0) < 1e-6,
                               "semantic remap to_max=2");
                         break;
                     }
@@ -1087,32 +1024,29 @@ int main(int argc, char* argv[]) {
         {
             auto ig = post(client, base_url, "inspect_graph");
             check(ig.ok, "inspect_graph after remap override ok");
-            if (ig.root) {
-                yyjson_val* result = yyjson_obj_get(ig.root, "result");
-                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
+            if (!ig.j.is_null()) {
+                auto& result = ig.j["result"];
+                auto& conns = result["connections"];
                 bool found = false;
-                if (conns && yyjson_is_arr(conns)) {
-                    yyjson_val* conn = nullptr;
-                    size_t idx = 0, max = 0;
-                    yyjson_arr_foreach(conns, idx, max, conn) {
-                        yyjson_val* from = yyjson_obj_get(conn, "from");
-                        yyjson_val* to   = yyjson_obj_get(conn, "to");
-                        if (json_str(from) != "ms1/ms" || json_str(to) != "s1/sec") continue;
+                if (conns.is_array()) {
+                    for (const auto& conn : conns) {
+                        if (conn.value("from", "") != "ms1/ms" ||
+                            conn.value("to", "") != "s1/sec") continue;
                         found = true;
-                        yyjson_val* fmin = yyjson_obj_get(conn, "from_min");
-                        yyjson_val* fmax = yyjson_obj_get(conn, "from_max");
-                        yyjson_val* tmin = yyjson_obj_get(conn, "to_min");
-                        yyjson_val* tmax = yyjson_obj_get(conn, "to_max");
-                        yyjson_val* clamp = yyjson_obj_get(conn, "clamp");
-                        check(fmin && std::fabs(yyjson_get_num(fmin) - 10.0) < 1e-6,
+                        check(conn.contains("from_min") &&
+                                  std::fabs(conn["from_min"].get<double>() - 10.0) < 1e-6,
                               "override remap from_min=10");
-                        check(fmax && std::fabs(yyjson_get_num(fmax) - 20.0) < 1e-6,
+                        check(conn.contains("from_max") &&
+                                  std::fabs(conn["from_max"].get<double>() - 20.0) < 1e-6,
                               "override remap from_max=20");
-                        check(tmin && std::fabs(yyjson_get_num(tmin) - 1.0) < 1e-6,
+                        check(conn.contains("to_min") &&
+                                  std::fabs(conn["to_min"].get<double>() - 1.0) < 1e-6,
                               "override remap to_min=1");
-                        check(tmax && std::fabs(yyjson_get_num(tmax) - 2.0) < 1e-6,
+                        check(conn.contains("to_max") &&
+                                  std::fabs(conn["to_max"].get<double>() - 2.0) < 1e-6,
                               "override remap to_max=2");
-                        check(clamp && yyjson_is_bool(clamp) && yyjson_get_bool(clamp),
+                        check(conn.contains("clamp") && conn["clamp"].is_boolean() &&
+                                  conn["clamp"].get<bool>(),
                               "override remap clamp=true");
                         break;
                     }
@@ -1149,15 +1083,15 @@ int main(int argc, char* argv[]) {
             auto c = post(client, base_url, "connect",
                 R"({"from_addr":"hz1/out","to_addr":"s2/sec","semantic_defaults":true})");
             check(c.ok, "connect hz1/out -> s2/sec with semantic_defaults ok");
-            if (c.root) {
-                yyjson_val* msg = yyjson_obj_get(c.root, "message");
-                std::string m = json_str(msg);
+            if (!c.j.is_null()) {
+                std::string m = c.j.value("message", "");
                 check(m.find("semantic default remap applied") == std::string::npos,
                       "non-contract coercion does not apply remap");
-                yyjson_val* inferred = yyjson_obj_get(c.root, "inferred_remap_applied");
-                check(inferred && yyjson_is_bool(inferred) && !yyjson_get_bool(inferred),
+                check(c.j.contains("inferred_remap_applied") &&
+                          c.j["inferred_remap_applied"].is_boolean() &&
+                          !c.j["inferred_remap_applied"].get<bool>(),
                       "connect response inferred_remap_applied=false for non-contract pair");
-                check(yyjson_obj_get(c.root, "inferred_remap") == nullptr,
+                check(!c.j.contains("inferred_remap"),
                       "connect response omits inferred_remap object for non-contract pair");
             }
         }
@@ -1168,25 +1102,22 @@ int main(int argc, char* argv[]) {
         {
             auto ig = post(client, base_url, "inspect_graph");
             check(ig.ok, "inspect_graph after non-contract semantic connect ok");
-            if (ig.root) {
-                yyjson_val* result = yyjson_obj_get(ig.root, "result");
-                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
+            if (!ig.j.is_null()) {
+                auto& result = ig.j["result"];
+                auto& conns = result["connections"];
                 bool found = false;
-                if (conns && yyjson_is_arr(conns)) {
-                    yyjson_val* conn = nullptr;
-                    size_t idx = 0, max = 0;
-                    yyjson_arr_foreach(conns, idx, max, conn) {
-                        yyjson_val* from = yyjson_obj_get(conn, "from");
-                        yyjson_val* to   = yyjson_obj_get(conn, "to");
-                        if (json_str(from) != "hz1/out" || json_str(to) != "s2/sec") continue;
+                if (conns.is_array()) {
+                    for (const auto& conn : conns) {
+                        if (conn.value("from", "") != "hz1/out" ||
+                            conn.value("to", "") != "s2/sec") continue;
                         found = true;
-                        check(yyjson_obj_get(conn, "from_min") == nullptr,
+                        check(!conn.contains("from_min"),
                               "non-contract coercion leaves from_min unset");
-                        check(yyjson_obj_get(conn, "from_max") == nullptr,
+                        check(!conn.contains("from_max"),
                               "non-contract coercion leaves from_max unset");
-                        check(yyjson_obj_get(conn, "to_min") == nullptr,
+                        check(!conn.contains("to_min"),
                               "non-contract coercion leaves to_min unset");
-                        check(yyjson_obj_get(conn, "to_max") == nullptr,
+                        check(!conn.contains("to_max"),
                               "non-contract coercion leaves to_max unset");
                         break;
                     }
@@ -1222,11 +1153,12 @@ int main(int argc, char* argv[]) {
             auto c = post(client, base_url, "connect",
                 R"({"from_addr":"ux1/out","to_addr":"ud1/value","semantic_defaults":true})");
             check(c.ok, "connect unknown-tag -> untagged with semantic_defaults ok");
-            if (c.root) {
-                yyjson_val* inferred = yyjson_obj_get(c.root, "inferred_remap_applied");
-                check(inferred && yyjson_is_bool(inferred) && !yyjson_get_bool(inferred),
+            if (!c.j.is_null()) {
+                check(c.j.contains("inferred_remap_applied") &&
+                          c.j["inferred_remap_applied"].is_boolean() &&
+                          !c.j["inferred_remap_applied"].get<bool>(),
                       "unknown/untagged connection has no inferred remap");
-                check(yyjson_obj_get(c.root, "inferred_remap") == nullptr,
+                check(!c.j.contains("inferred_remap"),
                       "unknown/untagged connection omits inferred_remap payload");
             }
         }
@@ -1237,25 +1169,22 @@ int main(int argc, char* argv[]) {
         {
             auto ig = post(client, base_url, "inspect_graph");
             check(ig.ok, "inspect_graph after unknown/untagged connect ok");
-            if (ig.root) {
-                yyjson_val* result = yyjson_obj_get(ig.root, "result");
-                yyjson_val* conns = result ? yyjson_obj_get(result, "connections") : nullptr;
+            if (!ig.j.is_null()) {
+                auto& result = ig.j["result"];
+                auto& conns = result["connections"];
                 bool found = false;
-                if (conns && yyjson_is_arr(conns)) {
-                    yyjson_val* conn = nullptr;
-                    size_t idx = 0, max = 0;
-                    yyjson_arr_foreach(conns, idx, max, conn) {
-                        yyjson_val* from = yyjson_obj_get(conn, "from");
-                        yyjson_val* to   = yyjson_obj_get(conn, "to");
-                        if (json_str(from) != "ux1/out" || json_str(to) != "ud1/value") continue;
+                if (conns.is_array()) {
+                    for (const auto& conn : conns) {
+                        if (conn.value("from", "") != "ux1/out" ||
+                            conn.value("to", "") != "ud1/value") continue;
                         found = true;
-                        check(yyjson_obj_get(conn, "from_min") == nullptr,
+                        check(!conn.contains("from_min"),
                               "unknown/untagged leaves from_min unset");
-                        check(yyjson_obj_get(conn, "from_max") == nullptr,
+                        check(!conn.contains("from_max"),
                               "unknown/untagged leaves from_max unset");
-                        check(yyjson_obj_get(conn, "to_min") == nullptr,
+                        check(!conn.contains("to_min"),
                               "unknown/untagged leaves to_min unset");
-                        check(yyjson_obj_get(conn, "to_max") == nullptr,
+                        check(!conn.contains("to_max"),
                               "unknown/untagged leaves to_max unset");
                         break;
                     }
@@ -1305,10 +1234,10 @@ int main(int argc, char* argv[]) {
 
             auto ig = post(client, base_url, "inspect_graph");
             check(ig.ok, "inspect_graph after load_graph ok");
-            if (ig.root) {
-                check(inspect_graph_node_by_id(ig.root, "loaded_only") != nullptr,
+            if (!ig.j.is_null()) {
+                check(!inspect_graph_node_by_id(ig.j, "loaded_only").is_null(),
                       "load_graph switched to requested file");
-                check(inspect_graph_node_by_id(ig.root, "a") == nullptr,
+                check(inspect_graph_node_by_id(ig.j, "a").is_null(),
                       "load_graph no longer shows previous graph nodes");
             }
 
@@ -1325,9 +1254,9 @@ int main(int argc, char* argv[]) {
             auto gp = post(client, base_url, "get_param",
                 R"({"node_id":"loaded_only","param":"scale"})");
             check(gp.ok, "get_param after post-load undo ok");
-            if (gp.root) {
-                yyjson_val* val = yyjson_obj_get(gp.root, "value");
-                check(val && std::fabs(yyjson_get_num(val) - 4.25) < 1e-4,
+            if (!gp.j.is_null()) {
+                check(gp.j.contains("value") &&
+                          std::fabs(gp.j["value"].get<double>() - 4.25) < 1e-4,
                       "post-load undo restored loaded baseline value");
             }
         }
@@ -1351,23 +1280,20 @@ int main(int argc, char* argv[]) {
         {
             auto rl = post(client, base_url, "list_packages");
             check(rl.ok, "list_packages ok");
-            if (rl.root) {
-                yyjson_val* result = yyjson_obj_get(rl.root, "result");
-                yyjson_val* pkgs = result ? yyjson_obj_get(result, "packages") : nullptr;
-                check(pkgs && yyjson_is_arr(pkgs), "list_packages returns array");
+            if (!rl.j.is_null()) {
+                auto& result = rl.j["result"];
+                auto& pkgs = result["packages"];
+                check(pkgs.is_array(), "list_packages returns array");
                 bool found = false;
-                if (pkgs) {
-                    size_t idx, max;
-                    yyjson_val* p = nullptr;
-                    yyjson_arr_foreach(pkgs, idx, max, p) {
-                        yyjson_val* name = yyjson_obj_get(p, "name");
-                        if (name && yyjson_is_str(name) &&
-                            std::string(yyjson_get_str(name)) == "catalog-test-pkg") {
+                if (pkgs.is_array()) {
+                    for (const auto& p : pkgs) {
+                        if (p.contains("name") && p["name"].is_string() &&
+                            p["name"].get<std::string>() == "catalog-test-pkg") {
                             found = true;
-                            yyjson_val* scope = yyjson_obj_get(p, "source_scope");
-                            check(scope && yyjson_is_str(scope), "list_packages exposes source_scope");
-                            if (scope && yyjson_is_str(scope))
-                                check(std::string(yyjson_get_str(scope)) == "user",
+                            check(p.contains("source_scope") && p["source_scope"].is_string(),
+                                  "list_packages exposes source_scope");
+                            if (p.contains("source_scope") && p["source_scope"].is_string())
+                                check(p["source_scope"].get<std::string>() == "user",
                                       "source_scope is user");
                             break;
                         }
@@ -1378,24 +1304,20 @@ int main(int argc, char* argv[]) {
 
             auto rc = post(client, base_url, "package_catalog");
             check(rc.ok, "package_catalog ok");
-            if (rc.root) {
-                yyjson_val* pkgs = yyjson_obj_get(rc.root, "packages");
-                check(pkgs && yyjson_is_arr(pkgs), "package_catalog returns packages array");
+            if (!rc.j.is_null()) {
+                auto& pkgs = rc.j["packages"];
+                check(pkgs.is_array(), "package_catalog returns packages array");
                 bool found = false;
-                if (pkgs) {
-                    size_t idx, max;
-                    yyjson_val* p = nullptr;
-                    yyjson_arr_foreach(pkgs, idx, max, p) {
-                        yyjson_val* name = yyjson_obj_get(p, "name");
-                        if (name && yyjson_is_str(name) &&
-                            std::string(yyjson_get_str(name)) == "catalog-test-pkg") {
+                if (pkgs.is_array()) {
+                    for (const auto& p : pkgs) {
+                        if (p.contains("name") && p["name"].is_string() &&
+                            p["name"].get<std::string>() == "catalog-test-pkg") {
                             found = true;
-                            yyjson_val* installed = yyjson_obj_get(p, "installed");
-                            yyjson_val* iv = yyjson_obj_get(p, "installed_version");
-                            check(installed && yyjson_is_bool(installed) && yyjson_get_bool(installed),
+                            check(p.contains("installed") && p["installed"].is_boolean() &&
+                                      p["installed"].get<bool>(),
                                   "package_catalog marks installed package");
-                            check(iv && yyjson_is_str(iv) &&
-                                      std::string(yyjson_get_str(iv)) == "1.0.0",
+                            check(p.contains("installed_version") && p["installed_version"].is_string() &&
+                                      p["installed_version"].get<std::string>() == "1.0.0",
                                   "package_catalog includes installed_version");
                             break;
                         }
@@ -1406,39 +1328,39 @@ int main(int argc, char* argv[]) {
 
             auto ru = post(client, base_url, "check_package_updates", R"({"core_version":"0.9.0"})");
             check(ru.ok, "check_package_updates ok");
-            if (ru.root) {
-                yyjson_val* updates = yyjson_obj_get(ru.root, "updates_available");
-                yyjson_val* pkgs = yyjson_obj_get(ru.root, "packages");
-                check(updates && yyjson_is_int(updates) && yyjson_get_int(updates) >= 1,
+            if (!ru.j.is_null()) {
+                check(ru.j.contains("updates_available") && ru.j["updates_available"].is_number_integer() &&
+                          ru.j["updates_available"].get<int>() >= 1,
                       "check_package_updates reports updates_available");
-                check(pkgs && yyjson_is_arr(pkgs), "check_package_updates returns packages array");
-                if (pkgs && yyjson_arr_size(pkgs) > 0) {
-                    yyjson_val* p0 = yyjson_arr_get_first(pkgs);
-                    yyjson_val* cls = p0 ? yyjson_obj_get(p0, "classification") : nullptr;
-                    yyjson_val* ua = p0 ? yyjson_obj_get(p0, "update_available") : nullptr;
-                    yyjson_val* comp = p0 ? yyjson_obj_get(p0, "compatible") : nullptr;
-                    check(cls && yyjson_is_str(cls), "update entry includes classification");
-                    check(ua && yyjson_is_bool(ua) && yyjson_get_bool(ua),
+                auto& pkgs = ru.j["packages"];
+                check(pkgs.is_array(), "check_package_updates returns packages array");
+                if (pkgs.is_array() && pkgs.size() > 0) {
+                    auto& p0 = pkgs[0];
+                    check(p0.contains("classification") && p0["classification"].is_string(),
+                          "update entry includes classification");
+                    check(p0.contains("update_available") && p0["update_available"].is_boolean() &&
+                              p0["update_available"].get<bool>(),
                           "update entry marks update_available=true");
-                    check(comp && yyjson_is_bool(comp), "update entry includes compatible flag");
+                    check(p0.contains("compatible") && p0["compatible"].is_boolean(),
+                          "update entry includes compatible flag");
                 }
             }
 
             auto ri = post(client, base_url, "check_package_updates", R"({"core_version":"9.0.0"})");
             check(ri.ok, "check_package_updates incompatible-core ok");
-            if (ri.root) {
-                yyjson_val* incompatible = yyjson_obj_get(ri.root, "incompatible_updates");
-                yyjson_val* pkgs = yyjson_obj_get(ri.root, "packages");
-                check(incompatible && yyjson_is_int(incompatible) && yyjson_get_int(incompatible) >= 1,
+            if (!ri.j.is_null()) {
+                check(ri.j.contains("incompatible_updates") &&
+                          ri.j["incompatible_updates"].is_number_integer() &&
+                          ri.j["incompatible_updates"].get<int>() >= 1,
                       "check_package_updates reports incompatible_updates");
-                if (pkgs && yyjson_is_arr(pkgs) && yyjson_arr_size(pkgs) > 0) {
-                    yyjson_val* p0 = yyjson_arr_get_first(pkgs);
-                    yyjson_val* cls = p0 ? yyjson_obj_get(p0, "classification") : nullptr;
-                    yyjson_val* comp = p0 ? yyjson_obj_get(p0, "compatible") : nullptr;
-                    check(cls && yyjson_is_str(cls) &&
-                              std::string(yyjson_get_str(cls)) == "incompatible_update",
+                auto& pkgs = ri.j["packages"];
+                if (pkgs.is_array() && pkgs.size() > 0) {
+                    auto& p0 = pkgs[0];
+                    check(p0.contains("classification") && p0["classification"].is_string() &&
+                              p0["classification"].get<std::string>() == "incompatible_update",
                           "incompatible update classification is exposed");
-                    check(comp && yyjson_is_bool(comp) && !yyjson_get_bool(comp),
+                    check(p0.contains("compatible") && p0["compatible"].is_boolean() &&
+                              !p0["compatible"].get<bool>(),
                           "incompatible update marks compatible=false");
                 }
             }
@@ -1450,24 +1372,24 @@ int main(int argc, char* argv[]) {
             auto rp = post(client, base_url, "scaffold_operator",
                 R"({"name":"mcp_pkg_e2e","domain":"control","destination":"package:vivid-scaffold-e2e"})");
             check(rp.ok, "scaffold_operator project destination ok");
-            if (!rp.ok && rp.root) {
-                yyjson_val* err_v = yyjson_obj_get(rp.root, "error");
-                if (err_v && yyjson_is_str(err_v)) {
+            if (!rp.ok && !rp.j.is_null()) {
+                if (rp.j.contains("error") && rp.j["error"].is_string()) {
                     std::fprintf(stderr, "  INFO: scaffold_operator project error: %s\n",
-                                 yyjson_get_str(err_v));
+                                 rp.j["error"].get<std::string>().c_str());
                 }
             }
-            if (rp.root) {
-                yyjson_val* result = yyjson_obj_get(rp.root, "result");
-                yyjson_val* is_pkg = result ? yyjson_obj_get(result, "destination_is_package") : nullptr;
-                yyjson_val* pkg_name = result ? yyjson_obj_get(result, "destination_package") : nullptr;
-                yyjson_val* root_path = result ? yyjson_obj_get(result, "destination_root") : nullptr;
-                check(is_pkg && yyjson_is_bool(is_pkg) && yyjson_get_bool(is_pkg),
+            if (!rp.j.is_null()) {
+                auto& result = rp.j["result"];
+                check(result.contains("destination_is_package") &&
+                          result["destination_is_package"].is_boolean() &&
+                          result["destination_is_package"].get<bool>(),
                       "scaffold_operator project resolved to package");
-                check(pkg_name && yyjson_is_str(pkg_name) &&
-                          std::string(yyjson_get_str(pkg_name)) == "vivid-scaffold-e2e",
+                check(result.contains("destination_package") &&
+                          result["destination_package"].is_string() &&
+                          result["destination_package"].get<std::string>() == "vivid-scaffold-e2e",
                       "scaffold_operator reports destination package");
-                check(root_path && yyjson_is_str(root_path), "scaffold_operator reports destination root");
+                check(result.contains("destination_root") && result["destination_root"].is_string(),
+                      "scaffold_operator reports destination root");
             }
             check(std::filesystem::exists(local_pkg_src + "/src/mcp_pkg_e2e.cpp"),
                   "MCP scaffold wrote operator source into linked package src/");
@@ -1486,24 +1408,25 @@ int main(int argc, char* argv[]) {
             auto rc = post(client, base_url, "scaffold_operator",
                 R"({"name":"mcp_core_fallback","domain":"control","destination":"auto"})");
             check(rc.ok, "scaffold_operator auto fallback ok");
-            if (!rc.ok && rc.root) {
-                yyjson_val* err_v = yyjson_obj_get(rc.root, "error");
-                if (err_v && yyjson_is_str(err_v)) {
+            if (!rc.ok && !rc.j.is_null()) {
+                if (rc.j.contains("error") && rc.j["error"].is_string()) {
                     std::fprintf(stderr, "  INFO: scaffold_operator auto fallback error: %s\n",
-                                 yyjson_get_str(err_v));
+                                 rc.j["error"].get<std::string>().c_str());
                 }
             }
-            if (rc.root) {
-                yyjson_val* result = yyjson_obj_get(rc.root, "result");
-                yyjson_val* is_pkg = result ? yyjson_obj_get(result, "destination_is_package") : nullptr;
-                yyjson_val* warn = result ? yyjson_obj_get(result, "destination_warning") : nullptr;
-                yyjson_val* root_path = result ? yyjson_obj_get(result, "destination_root") : nullptr;
-                check(is_pkg && yyjson_is_bool(is_pkg) && !yyjson_get_bool(is_pkg),
+            if (!rc.j.is_null()) {
+                auto& result = rc.j["result"];
+                check(result.contains("destination_is_package") &&
+                          result["destination_is_package"].is_boolean() &&
+                          !result["destination_is_package"].get<bool>(),
                       "auto fallback resolved to core destination");
-                check(warn && yyjson_is_str(warn) && std::string(yyjson_get_str(warn)).size() > 0,
+                check(result.contains("destination_warning") &&
+                          result["destination_warning"].is_string() &&
+                          result["destination_warning"].get<std::string>().size() > 0,
                       "auto fallback returns destination warning");
-                check(root_path && yyjson_is_str(root_path) &&
-                          std::string(yyjson_get_str(root_path)) == scaffold_core_src,
+                check(result.contains("destination_root") &&
+                          result["destination_root"].is_string() &&
+                          result["destination_root"].get<std::string>() == scaffold_core_src,
                       "auto fallback destination root is configured core src");
             }
             check(std::filesystem::exists(scaffold_core_src +
@@ -1522,9 +1445,9 @@ int main(int argc, char* argv[]) {
 
             auto r2 = post(client, base_url, "list_variations");
             check(r2.ok, "list_variations ok");
-            if (r2.root) {
-                yyjson_val* msg = yyjson_obj_get(r2.root, "message");
-                check(msg && std::string(yyjson_get_str(msg)).find("V1") != std::string::npos,
+            if (!r2.j.is_null()) {
+                std::string msg = r2.j.value("message", "");
+                check(msg.find("V1") != std::string::npos,
                       "list contains V1");
             }
 
@@ -1604,9 +1527,8 @@ int main(int argc, char* argv[]) {
             // be the traversal rejection (i.e. it should not fail with the traversal guard).
             // We verify the path guard passed by checking the response is not the
             // hard-coded "invalid recording path" error.
-            if (r2.root) {
-                yyjson_val* err = yyjson_obj_get(r2.root, "error");
-                std::string err_str = err ? (yyjson_get_str(err) ? yyjson_get_str(err) : "") : "";
+            if (!r2.j.is_null()) {
+                std::string err_str = r2.j.value("error", "");
                 check(err_str != "invalid recording path", "valid path passes traversal guard");
             }
         }
@@ -1632,10 +1554,10 @@ int main(int argc, char* argv[]) {
                 R"({"text":"Hello world","x":100,"y":200,"width":250,"height":150,"color":1})");
             check(r.ok, "add_sticky_note ok");
             std::string note_id;
-            if (r.root) {
-                yyjson_val* result_v = yyjson_obj_get(r.root, "result");
-                yyjson_val* id_v = result_v ? yyjson_obj_get(result_v, "id") : nullptr;
-                if (id_v && yyjson_is_str(id_v)) note_id = yyjson_get_str(id_v);
+            if (!r.j.is_null()) {
+                if (r.j.contains("result") && r.j["result"].contains("id") &&
+                    r.j["result"]["id"].is_string())
+                    note_id = r.j["result"]["id"].get<std::string>();
                 check(!note_id.empty(), "add_sticky_note returns id");
             }
 
@@ -1645,9 +1567,9 @@ int main(int argc, char* argv[]) {
 
             auto list = post(client, base_url, "list_sticky_notes");
             check(list.ok, "list_sticky_notes ok");
-            if (list.root) {
-                yyjson_val* result_v = yyjson_obj_get(list.root, "result");
-                check(result_v && yyjson_is_arr(result_v) && yyjson_arr_size(result_v) == 2,
+            if (!list.j.is_null()) {
+                auto& result_v = list.j["result"];
+                check(result_v.is_array() && result_v.size() == 2,
                       "list_sticky_notes returns 2 notes");
             }
 
@@ -1656,19 +1578,16 @@ int main(int argc, char* argv[]) {
             check(upd.ok, "update_sticky_note ok");
 
             auto list2 = post(client, base_url, "list_sticky_notes");
-            if (list2.root) {
-                yyjson_val* result_v = yyjson_obj_get(list2.root, "result");
-                if (result_v && yyjson_is_arr(result_v)) {
-                    size_t idx2, max2;
-                    yyjson_val* item;
-                    yyjson_arr_foreach(result_v, idx2, max2, item) {
-                        yyjson_val* id_v = yyjson_obj_get(item, "id");
-                        if (id_v && std::string(yyjson_get_str(id_v)) == "custom_note") {
-                            yyjson_val* text_v = yyjson_obj_get(item, "text");
-                            check(text_v && std::string(yyjson_get_str(text_v)) == "Updated text",
+            if (!list2.j.is_null()) {
+                auto& result_v = list2.j["result"];
+                if (result_v.is_array()) {
+                    for (const auto& item : result_v) {
+                        if (item.value("id", "") == "custom_note") {
+                            check(item.contains("text") &&
+                                      item["text"].get<std::string>() == "Updated text",
                                   "sticky note text updated");
-                            yyjson_val* color_v = yyjson_obj_get(item, "color");
-                            check(color_v && yyjson_get_int(color_v) == 3,
+                            check(item.contains("color") &&
+                                      item["color"].get<int>() == 3,
                                   "sticky note color updated");
                         }
                     }
@@ -1680,9 +1599,9 @@ int main(int argc, char* argv[]) {
             check(rem.ok, "remove_sticky_note ok");
 
             auto list3 = post(client, base_url, "list_sticky_notes");
-            if (list3.root) {
-                yyjson_val* result_v = yyjson_obj_get(list3.root, "result");
-                check(result_v && yyjson_is_arr(result_v) && yyjson_arr_size(result_v) == 1,
+            if (!list3.j.is_null()) {
+                auto& result_v = list3.j["result"];
+                check(result_v.is_array() && result_v.size() == 1,
                       "1 sticky note after remove");
             }
 
@@ -1702,14 +1621,13 @@ int main(int argc, char* argv[]) {
             auto link = post(client, base_url, "link_package",
                 std::string("{\"path\":\"") + live_pkg_src + "\"}");
             check(link.ok, "link_package vivid-live-pkg ok");
-            if (link.root) {
-                yyjson_val* result = yyjson_obj_get(link.root, "result");
-                yyjson_val* name = result ? yyjson_obj_get(result, "name") : nullptr;
-                yyjson_val* linked = result ? yyjson_obj_get(result, "linked") : nullptr;
-                check(name && yyjson_is_str(name) &&
-                          std::string(yyjson_get_str(name)) == "vivid-live-pkg",
+            if (!link.j.is_null()) {
+                auto& result = link.j["result"];
+                check(result.contains("name") && result["name"].is_string() &&
+                          result["name"].get<std::string>() == "vivid-live-pkg",
                       "link_package returns vivid-live-pkg");
-                check(linked && yyjson_is_bool(linked) && yyjson_get_bool(linked),
+                check(result.contains("linked") && result["linked"].is_boolean() &&
+                          result["linked"].get<bool>(),
                       "link_package marks package as linked");
             }
 
@@ -1721,19 +1639,20 @@ int main(int argc, char* argv[]) {
 
             auto intro_v1 = post(client, base_url, "introspect_nodes");
             check(intro_v1.ok, "introspect_nodes after add live package ok");
-            if (intro_v1.root) {
-                yyjson_val* node = introspect_node_by_id(intro_v1.root, "pkg_live");
-                check(node != nullptr, "pkg_live appears in introspect_nodes");
-                if (node) {
-                    yyjson_val* health = yyjson_obj_get(node, "health");
-                    yyjson_val* outputs = yyjson_obj_get(node, "outputs");
-                    yyjson_val* missing = health ? yyjson_obj_get(health, "missing_operator") : nullptr;
-                    check(missing && yyjson_is_bool(missing) && !yyjson_get_bool(missing),
+            if (!intro_v1.j.is_null()) {
+                auto node = introspect_node_by_id(intro_v1.j, "pkg_live");
+                check(!node.is_null(), "pkg_live appears in introspect_nodes");
+                if (!node.is_null()) {
+                    auto& health = node["health"];
+                    auto& node_outputs = node["outputs"];
+                    check(health.contains("missing_operator") &&
+                              health["missing_operator"].is_boolean() &&
+                              !health["missing_operator"].get<bool>(),
                           "pkg_live is resolved before rebuild");
-                    if (outputs && yyjson_is_arr(outputs) && yyjson_arr_size(outputs) > 0) {
-                        yyjson_val* out0 = yyjson_arr_get_first(outputs);
-                        yyjson_val* scalar = out0 ? yyjson_obj_get(out0, "scalar") : nullptr;
-                        check(scalar && std::fabs(yyjson_get_num(scalar) - 3.0) < 1e-4,
+                    if (node_outputs.is_array() && node_outputs.size() > 0) {
+                        auto& out0 = node_outputs[0];
+                        check(out0.contains("scalar") &&
+                                  std::fabs(out0["scalar"].get<double>() - 3.0) < 1e-4,
                               "pkg_live output starts at 3");
                     } else {
                         check(false, "pkg_live exposes output after initial link");
@@ -1750,19 +1669,20 @@ int main(int argc, char* argv[]) {
 
             auto intro_v2 = post(client, base_url, "introspect_nodes");
             check(intro_v2.ok, "introspect_nodes after rebuild ok");
-            if (intro_v2.root) {
-                yyjson_val* node = introspect_node_by_id(intro_v2.root, "pkg_live");
-                check(node != nullptr, "pkg_live remains after rebuild");
-                if (node) {
-                    yyjson_val* health = yyjson_obj_get(node, "health");
-                    yyjson_val* outputs = yyjson_obj_get(node, "outputs");
-                    yyjson_val* missing = health ? yyjson_obj_get(health, "missing_operator") : nullptr;
-                    check(missing && yyjson_is_bool(missing) && !yyjson_get_bool(missing),
+            if (!intro_v2.j.is_null()) {
+                auto node = introspect_node_by_id(intro_v2.j, "pkg_live");
+                check(!node.is_null(), "pkg_live remains after rebuild");
+                if (!node.is_null()) {
+                    auto& health = node["health"];
+                    auto& node_outputs = node["outputs"];
+                    check(health.contains("missing_operator") &&
+                              health["missing_operator"].is_boolean() &&
+                              !health["missing_operator"].get<bool>(),
                           "pkg_live stays resolved after rebuild");
-                    if (outputs && yyjson_is_arr(outputs) && yyjson_arr_size(outputs) > 0) {
-                        yyjson_val* out0 = yyjson_arr_get_first(outputs);
-                        yyjson_val* scalar = out0 ? yyjson_obj_get(out0, "scalar") : nullptr;
-                        check(scalar && std::fabs(yyjson_get_num(scalar) - 7.0) < 1e-4,
+                    if (node_outputs.is_array() && node_outputs.size() > 0) {
+                        auto& out0 = node_outputs[0];
+                        check(out0.contains("scalar") &&
+                                  std::fabs(out0["scalar"].get<double>() - 7.0) < 1e-4,
                               "pkg_live output refreshes to rebuilt value");
                     } else {
                         check(false, "pkg_live exposes output after rebuild");
@@ -1778,13 +1698,14 @@ int main(int argc, char* argv[]) {
 
             auto intro_missing = post(client, base_url, "introspect_nodes");
             check(intro_missing.ok, "introspect_nodes after unlink ok");
-            if (intro_missing.root) {
-                yyjson_val* node = introspect_node_by_id(intro_missing.root, "pkg_live");
-                check(node != nullptr, "pkg_live remains in graph after unlink");
-                if (node) {
-                    yyjson_val* health = yyjson_obj_get(node, "health");
-                    yyjson_val* missing = health ? yyjson_obj_get(health, "missing_operator") : nullptr;
-                    check(missing && yyjson_is_bool(missing) && yyjson_get_bool(missing),
+            if (!intro_missing.j.is_null()) {
+                auto node = introspect_node_by_id(intro_missing.j, "pkg_live");
+                check(!node.is_null(), "pkg_live remains in graph after unlink");
+                if (!node.is_null()) {
+                    auto& health = node["health"];
+                    check(health.contains("missing_operator") &&
+                              health["missing_operator"].is_boolean() &&
+                              health["missing_operator"].get<bool>(),
                           "pkg_live becomes missing operator after unlink");
                 }
             }
@@ -1794,24 +1715,21 @@ int main(int argc, char* argv[]) {
 
             auto inspect_missing = post(client, base_url, "inspect_graph");
             check(inspect_missing.ok, "inspect_graph after unlink ok");
-            if (inspect_missing.root) {
-                yyjson_val* node = inspect_graph_node_by_id(inspect_missing.root, "pkg_live");
-                check(node != nullptr, "pkg_live remains inspectable after unlink");
+            if (!inspect_missing.j.is_null()) {
+                auto node = inspect_graph_node_by_id(inspect_missing.j, "pkg_live");
+                check(!node.is_null(), "pkg_live remains inspectable after unlink");
             }
 
             auto rl2 = post(client, base_url, "list_packages");
             check(rl2.ok, "list_packages after unlink ok");
-            if (rl2.root) {
-                yyjson_val* result = yyjson_obj_get(rl2.root, "result");
-                yyjson_val* pkgs = result ? yyjson_obj_get(result, "packages") : nullptr;
+            if (!rl2.j.is_null()) {
+                auto& result = rl2.j["result"];
+                auto& pkgs = result["packages"];
                 bool found = false;
-                if (pkgs && yyjson_is_arr(pkgs)) {
-                    size_t idx, max;
-                    yyjson_val* p = nullptr;
-                    yyjson_arr_foreach(pkgs, idx, max, p) {
-                        yyjson_val* name = yyjson_obj_get(p, "name");
-                        if (name && yyjson_is_str(name) &&
-                            std::string(yyjson_get_str(name)) == "vivid-live-pkg") {
+                if (pkgs.is_array()) {
+                    for (const auto& p : pkgs) {
+                        if (p.contains("name") && p["name"].is_string() &&
+                            p["name"].get<std::string>() == "vivid-live-pkg") {
                             found = true;
                             break;
                         }

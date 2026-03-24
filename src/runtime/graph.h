@@ -4,8 +4,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cmath>
-
-struct yyjson_doc;
+#include <nlohmann/json.hpp>
 
 // Bumped when the graph JSON format changes in a backward-incompatible way.
 // Graphs saved with schema_version > GRAPH_SCHEMA_VERSION are hard-rejected.
@@ -220,7 +219,7 @@ public:
     bool save_to_string(std::string& out_json) const;
 
 private:
-    bool parse_doc(yyjson_doc* doc);
+    bool parse_doc(const nlohmann::json& root);
 
     std::vector<NodeDef> nodes_;
     std::vector<ConnectionDef> connections_;

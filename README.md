@@ -98,7 +98,7 @@ cmake --build build
 - Developer/source-build only: CMake 3.20+ and C++17 compiler (Clang or GCC)
 - Linux/Windows builds may work from source but are not currently first-class targets
 
-Dependencies are vendored or fetched automatically: WebGPU (Dawn), GLFW, miniaudio, RtMidi, yyjson, stb_image_write, stb_truetype, IXWebSocket, CLI11, oscpack, hap.
+Dependencies are vendored or fetched automatically: WebGPU (Dawn), GLFW, miniaudio, RtMidi, nlohmann/json, stb_image_write, stb_truetype, IXWebSocket, CLI11, oscpack, hap.
 
 ## Architecture
 

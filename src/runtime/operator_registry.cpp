@@ -5,7 +5,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/data_driven_filter.h"
 
-#include <yyjson.h>
+#include <nlohmann/json.hpp>
 #include <dlfcn.h>
 #include <dirent.h>
 #include <cstring>
@@ -1020,56 +1020,48 @@ bool OperatorRegistry::scan_factory_presets(const std::string& directory) {
         std::string contents = ss.str();
 
         // Parse JSON
-        yyjson_doc* doc = yyjson_read(contents.c_str(), contents.size(), 0);
-        if (!doc) {
+        nlohmann::json doc;
+        try {
+            doc = nlohmann::json::parse(contents);
+        } catch (const nlohmann::json::parse_error&) {
             std::fprintf(stderr, "[vivid] Factory presets: failed to parse %s\n", name);
             continue;
         }
 
-        yyjson_val* root = yyjson_doc_get_root(doc);
-        yyjson_val* presets_arr = yyjson_obj_get(root, "presets");
-        if (!presets_arr || !yyjson_is_arr(presets_arr)) {
-            yyjson_doc_free(doc);
+        auto presets_it = doc.find("presets");
+        if (presets_it == doc.end() || !presets_it->is_array()) {
             std::fprintf(stderr, "[vivid] Factory presets: missing 'presets' array in %s\n", name);
             continue;
         }
 
         std::vector<OperatorPreset> presets;
-        size_t idx, max;
-        yyjson_val* preset_val;
-        yyjson_arr_foreach(presets_arr, idx, max, preset_val) {
-            yyjson_val* pname = yyjson_obj_get(preset_val, "name");
-            if (!pname || !yyjson_is_str(pname)) continue;
+        for (const auto& preset_val : *presets_it) {
+            auto pname_it = preset_val.find("name");
+            if (pname_it == preset_val.end() || !pname_it->is_string()) continue;
 
             OperatorPreset op;
-            op.name = yyjson_get_str(pname);
+            op.name = pname_it->get<std::string>();
 
             // Float params
-            yyjson_val* params_obj = yyjson_obj_get(preset_val, "params");
-            if (params_obj && yyjson_is_obj(params_obj)) {
-                size_t pi, pmax;
-                yyjson_val *pk, *pv;
-                yyjson_obj_foreach(params_obj, pi, pmax, pk, pv) {
-                    if (yyjson_is_num(pv))
-                        op.params[yyjson_get_str(pk)] = static_cast<float>(yyjson_get_num(pv));
+            auto params_it = preset_val.find("params");
+            if (params_it != preset_val.end() && params_it->is_object()) {
+                for (const auto& [pk, pv] : params_it->items()) {
+                    if (pv.is_number())
+                        op.params[pk] = static_cast<float>(pv.get<double>());
                 }
             }
 
             // String params (optional)
-            yyjson_val* sparams_obj = yyjson_obj_get(preset_val, "string_params");
-            if (sparams_obj && yyjson_is_obj(sparams_obj)) {
-                size_t si, smax;
-                yyjson_val *sk, *sv;
-                yyjson_obj_foreach(sparams_obj, si, smax, sk, sv) {
-                    if (yyjson_is_str(sv))
-                        op.string_params[yyjson_get_str(sk)] = yyjson_get_str(sv);
+            auto sparams_it = preset_val.find("string_params");
+            if (sparams_it != preset_val.end() && sparams_it->is_object()) {
+                for (const auto& [sk, sv] : sparams_it->items()) {
+                    if (sv.is_string())
+                        op.string_params[sk] = sv.get<std::string>();
                 }
             }
 
             presets.push_back(std::move(op));
         }
-
-        yyjson_doc_free(doc);
 
         if (!presets.empty()) {
             factory_presets_[type_name] = std::move(presets);

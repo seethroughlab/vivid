@@ -103,6 +103,16 @@ set(SNAPPY_REQUIRE_AVX OFF CACHE BOOL "" FORCE)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 FetchContent_MakeAvailable(snappy)
 
+# --- nlohmann/json (header-only JSON library) ---
+set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 # --- GLFW (submodule) ---
 set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
@@ -112,10 +122,6 @@ add_subdirectory(deps/glfw)
 
 # --- glfw3webgpu bridge (submodule) ---
 add_subdirectory(deps/glfw3webgpu)
-
-# --- yyjson (vendored JSON parser) ---
-add_library(yyjson STATIC deps/yyjson/yyjson.c)
-target_include_directories(yyjson PUBLIC deps/yyjson)
 
 # --- miniaudio (vendored, header-only) ---
 add_library(miniaudio INTERFACE)
@@ -632,26 +638,23 @@ add_vivid_operator(drum_tom      operators/audio/drum_tom/drum_tom.cpp
                    FACTORY_PRESETS operators/audio/drum_tom/factory_presets.json)
 
 # --- Sampler operators (from vivid-sampler) ---
-# Static libraries for miniaudio/yyjson decoder support
+# Static libraries for miniaudio decoder support
 add_library(sampler_miniaudio STATIC operators/shared/sampler_common/miniaudio_impl.c)
 target_include_directories(sampler_miniaudio PRIVATE ${CMAKE_SOURCE_DIR}/deps/miniaudio)
-add_library(sampler_yyjson STATIC operators/shared/sampler_common/yyjson_impl.c)
-target_include_directories(sampler_yyjson PRIVATE ${CMAKE_SOURCE_DIR}/deps/yyjson)
 
 add_vivid_operator(sp404            operators/audio/sp404/sp404.cpp
-                   EXTRA_LIBS sampler_miniaudio sampler_yyjson)
+                   EXTRA_LIBS sampler_miniaudio nlohmann_json::nlohmann_json)
 add_vivid_operator(sampler          operators/audio/sampler/sampler.cpp
-                   EXTRA_LIBS sampler_miniaudio sampler_yyjson)
+                   EXTRA_LIBS sampler_miniaudio nlohmann_json::nlohmann_json)
 add_vivid_operator(slicer           operators/audio/slicer/slicer.cpp
-                   EXTRA_LIBS sampler_miniaudio sampler_yyjson)
+                   EXTRA_LIBS sampler_miniaudio nlohmann_json::nlohmann_json)
 add_vivid_operator(granular_synth   operators/audio/granular_synth/granular_synth.cpp)
 add_vivid_operator(vocoder          operators/audio/vocoder/vocoder.cpp)
 add_vivid_operator(spectral_freeze  operators/audio/spectral_freeze/spectral_freeze.cpp)
 foreach(_samp_op sp404 sampler slicer)
     target_include_directories(${_samp_op} PRIVATE
         ${CMAKE_SOURCE_DIR}/operators/shared/sampler_common
-        ${CMAKE_SOURCE_DIR}/deps/miniaudio
-        ${CMAKE_SOURCE_DIR}/deps/yyjson)
+        ${CMAKE_SOURCE_DIR}/deps/miniaudio)
 endforeach()
 
 add_library(midi_file_player MODULE
@@ -728,7 +731,7 @@ if(APPLE)
 endif()
 target_include_directories(vivid_ui PRIVATE src)
 target_link_libraries(vivid_ui PUBLIC vivid_operator_api webgpu)
-target_link_libraries(vivid_ui PRIVATE stb_truetype glfw yyjson)
+target_link_libraries(vivid_ui PRIVATE stb_truetype glfw nlohmann_json::nlohmann_json)
 target_compile_definitions(vivid_ui PRIVATE "VIVID_CORE_VERSION=\"${PROJECT_VERSION}\"")
 
 # --- Vivid executable ---
@@ -787,7 +790,7 @@ if(APPLE)
 endif()
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api yyjson miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11)
+target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api nlohmann_json::nlohmann_json miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11)
 if(APPLE)
     target_link_libraries(vivid PRIVATE syphon_runtime)
     # Ensure bundle-launched app resolves syphon runtime from Contents/Frameworks.
@@ -1054,7 +1057,7 @@ add_executable(test_hot_reload
     src/runtime/scheduler.cpp
 )
 target_include_directories(test_hot_reload PRIVATE src)
-target_link_libraries(test_hot_reload PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_hot_reload PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_hot_reload test_op_v1 test_op_v2 test_op_incompatible_port)
 add_test(NAME test_hot_reload COMMAND test_hot_reload WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_hot_reload PROPERTIES TIMEOUT 15)
@@ -1071,7 +1074,7 @@ add_executable(test_audio_hot_reload
     src/runtime/audio_engine.cpp
 )
 target_include_directories(test_audio_hot_reload PRIVATE src)
-target_link_libraries(test_audio_hot_reload PRIVATE vivid_operator_api yyjson miniaudio webgpu)
+target_link_libraries(test_audio_hot_reload PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_audio_hot_reload audio_reload_v1 audio_reload_v2 audio_reload_incompatible)
 add_test(NAME test_audio_hot_reload COMMAND test_audio_hot_reload WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_audio_hot_reload PROPERTIES TIMEOUT 15)
@@ -1087,7 +1090,7 @@ add_executable(test_export_pipeline
     src/runtime/tool_discovery.cpp
 )
 target_include_directories(test_export_pipeline PRIVATE src)
-target_link_libraries(test_export_pipeline PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_export_pipeline PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_export_pipeline export_custom_port_op)
 add_test(NAME test_export_pipeline COMMAND test_export_pipeline WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1105,7 +1108,7 @@ add_executable(test_runtime_api
     src/runtime/system_midi.cpp
 )
 target_include_directories(test_runtime_api PRIVATE src)
-target_link_libraries(test_runtime_api PRIVATE vivid_operator_api yyjson miniaudio webgpu rtmidi)
+target_link_libraries(test_runtime_api PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_runtime_api test_op_v1 test_state_carry_op)
 add_test(NAME test_runtime_api COMMAND test_runtime_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1124,7 +1127,7 @@ add_executable(test_latency_validation
     src/runtime/system_midi.cpp
 )
 target_include_directories(test_latency_validation PRIVATE src)
-target_link_libraries(test_latency_validation PRIVATE vivid_operator_api yyjson miniaudio webgpu rtmidi)
+target_link_libraries(test_latency_validation PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_latency_validation test_op_v1 audio_reload_v1 audio_reload_v2)
 add_test(NAME test_latency_validation COMMAND test_latency_validation ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1162,7 +1165,7 @@ add_executable(test_control_server
 )
 target_include_directories(test_control_server PRIVATE src)
 target_link_libraries(test_control_server PRIVATE
-    vivid_operator_api yyjson miniaudio ixwebsocket webgpu rtmidi stb_truetype
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio ixwebsocket webgpu rtmidi stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
 add_dependencies(test_control_server test_op_v1 semantic_ms_source_op semantic_s_dest_op
@@ -1202,7 +1205,7 @@ add_executable(test_perception_introspection
 )
 target_include_directories(test_perception_introspection PRIVATE src)
 target_link_libraries(test_perception_introspection PRIVATE
-    vivid_operator_api yyjson miniaudio ixwebsocket webgpu rtmidi stb_truetype
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio ixwebsocket webgpu rtmidi stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
 add_dependencies(test_perception_introspection test_op_v1)
@@ -1232,7 +1235,7 @@ add_executable(test_audio_engine
 )
 target_include_directories(test_audio_engine PRIVATE src)
 target_link_libraries(test_audio_engine PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu rtmidi)
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_audio_engine test_op_v1 audio_test_op)
 add_test(NAME test_audio_engine COMMAND test_audio_engine WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1248,7 +1251,7 @@ add_executable(test_audio_float_snapshot
 )
 target_include_directories(test_audio_float_snapshot PRIVATE src)
 target_link_libraries(test_audio_float_snapshot PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu)
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_audio_float_snapshot test_op_v1 audio_float_cv_op)
 add_test(NAME test_audio_float_snapshot COMMAND test_audio_float_snapshot
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1266,7 +1269,7 @@ add_executable(test_audio_robustness
 )
 target_include_directories(test_audio_robustness PRIVATE src)
 target_link_libraries(test_audio_robustness PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu)
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_audio_robustness audio_test_op audio_throwing_op)
 add_test(NAME test_audio_robustness COMMAND test_audio_robustness WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1280,7 +1283,7 @@ add_executable(test_scheduler
     src/runtime/scheduler.cpp
 )
 target_include_directories(test_scheduler PRIVATE src)
-target_link_libraries(test_scheduler PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_scheduler PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_scheduler test_op_v1 control_pass_op spread_source_op audio_test_op)
 add_test(NAME test_scheduler COMMAND test_scheduler WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1290,8 +1293,18 @@ add_executable(test_graph
     src/runtime/graph.cpp
 )
 target_include_directories(test_graph PRIVATE src)
-target_link_libraries(test_graph PRIVATE yyjson)
+target_link_libraries(test_graph PRIVATE nlohmann_json::nlohmann_json)
 add_test(NAME test_graph COMMAND test_graph WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# JSON migration round-trip regression test
+add_executable(test_json_migration
+    tests/test_json_migration.cpp
+    src/runtime/graph.cpp
+)
+target_include_directories(test_json_migration PRIVATE src)
+target_link_libraries(test_json_migration PRIVATE nlohmann_json::nlohmann_json)
+target_compile_definitions(test_json_migration PRIVATE SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+add_test(NAME test_json_migration COMMAND test_json_migration WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Topological sort unit test (header-only, no dependencies)
 add_executable(test_topo_sort tests/test_topo_sort.cpp)
@@ -1308,7 +1321,7 @@ add_executable(test_operator_creator
     src/runtime/graph.cpp
 )
 target_include_directories(test_operator_creator PRIVATE src tests)
-target_link_libraries(test_operator_creator PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_operator_creator PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_operator_creator COMMAND test_operator_creator WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Settings round-trip unit test
@@ -1318,7 +1331,7 @@ add_executable(test_settings
     src/runtime/platform.cpp
 )
 target_include_directories(test_settings PRIVATE src tests)
-target_link_libraries(test_settings PRIVATE yyjson)
+target_link_libraries(test_settings PRIVATE nlohmann_json::nlohmann_json)
 add_test(NAME test_settings COMMAND test_settings WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Operator destination policy precedence unit test
@@ -1338,7 +1351,7 @@ add_executable(test_theme_loader
     src/runtime/platform.cpp
 )
 target_include_directories(test_theme_loader PRIVATE src tests)
-target_link_libraries(test_theme_loader PRIVATE yyjson)
+target_link_libraries(test_theme_loader PRIVATE nlohmann_json::nlohmann_json)
 add_test(NAME test_theme_loader COMMAND test_theme_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Overlay layout/hit-test regressions
@@ -1368,7 +1381,7 @@ add_executable(test_ui_overlay_interactions
     src/runtime/platform.cpp
 )
 target_include_directories(test_ui_overlay_interactions PRIVATE src tests)
-target_link_libraries(test_ui_overlay_interactions PRIVATE vivid_ui webgpu glfw yyjson stb_truetype)
+target_link_libraries(test_ui_overlay_interactions PRIVATE vivid_ui webgpu glfw nlohmann_json::nlohmann_json stb_truetype)
 if(APPLE)
     target_link_libraries(test_ui_overlay_interactions PRIVATE
         "-framework Cocoa" "-framework Foundation")
@@ -1381,7 +1394,7 @@ add_executable(test_ui_editor_interactions
     src/runtime/platform.cpp
 )
 target_include_directories(test_ui_editor_interactions PRIVATE src tests)
-target_link_libraries(test_ui_editor_interactions PRIVATE vivid_ui webgpu glfw yyjson stb_truetype)
+target_link_libraries(test_ui_editor_interactions PRIVATE vivid_ui webgpu glfw nlohmann_json::nlohmann_json stb_truetype)
 if(APPLE)
     target_link_libraries(test_ui_editor_interactions PRIVATE
         "-framework Cocoa" "-framework Foundation")
@@ -1394,7 +1407,7 @@ add_executable(test_ui_widget_interactions
     src/runtime/platform.cpp
 )
 target_include_directories(test_ui_widget_interactions PRIVATE src tests)
-target_link_libraries(test_ui_widget_interactions PRIVATE vivid_ui webgpu glfw yyjson stb_truetype)
+target_link_libraries(test_ui_widget_interactions PRIVATE vivid_ui webgpu glfw nlohmann_json::nlohmann_json stb_truetype)
 if(APPLE)
     target_link_libraries(test_ui_widget_interactions PRIVATE
         "-framework Cocoa" "-framework Foundation")
@@ -1407,7 +1420,7 @@ add_executable(test_ui_screenshot_smoke
     tests/test_ui_screenshot_smoke.cpp
 )
 target_include_directories(test_ui_screenshot_smoke PRIVATE src tests deps/stb)
-target_link_libraries(test_ui_screenshot_smoke PRIVATE yyjson)
+target_link_libraries(test_ui_screenshot_smoke PRIVATE nlohmann_json::nlohmann_json)
 add_dependencies(test_ui_screenshot_smoke vivid file_drop_test_op file_drop_test_op_alt)
 if(APPLE)
     add_custom_command(TARGET test_ui_screenshot_smoke POST_BUILD
@@ -1458,7 +1471,7 @@ add_executable(test_wgsl_header
     src/runtime/wgsl_header_parser.cpp
 )
 target_include_directories(test_wgsl_header PRIVATE src)
-target_link_libraries(test_wgsl_header PRIVATE yyjson)
+target_link_libraries(test_wgsl_header PRIVATE nlohmann_json::nlohmann_json)
 add_test(NAME test_wgsl_header COMMAND test_wgsl_header WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # WGSL include preprocessor diagnostics (missing include/cycle/include chain)
@@ -1492,7 +1505,7 @@ add_executable(test_operator_loader
     src/runtime/wgsl_header_parser.cpp
 )
 target_include_directories(test_operator_loader PRIVATE src)
-target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu yyjson)
+target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
 add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op particles)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_loader PROPERTIES LABELS "LOADER")
@@ -1505,7 +1518,7 @@ add_executable(test_file_drop_registry
     src/runtime/wgsl_header_parser.cpp
 )
 target_include_directories(test_file_drop_registry PRIVATE src)
-target_link_libraries(test_file_drop_registry PRIVATE vivid_operator_api webgpu yyjson)
+target_link_libraries(test_file_drop_registry PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
 add_dependencies(test_file_drop_registry file_drop_test_op file_drop_test_op_alt file_drop_bad_param_op midi_file_player)
 add_test(NAME test_file_drop_registry COMMAND test_file_drop_registry WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1538,7 +1551,7 @@ add_executable(test_runtime_stress
     src/runtime/wgsl_header_parser.cpp
 )
 target_include_directories(test_runtime_stress PRIVATE src)
-target_link_libraries(test_runtime_stress PRIVATE vivid_operator_api yyjson miniaudio webgpu)
+target_link_libraries(test_runtime_stress PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_runtime_stress test_op_v1 test_state_carry_op)
 add_test(NAME test_runtime_stress COMMAND test_runtime_stress ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1556,7 +1569,7 @@ add_executable(test_hot_reload_stress
     src/runtime/wgsl_header_parser.cpp
 )
 target_include_directories(test_hot_reload_stress PRIVATE src)
-target_link_libraries(test_hot_reload_stress PRIVATE vivid_operator_api yyjson miniaudio webgpu)
+target_link_libraries(test_hot_reload_stress PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_hot_reload_stress audio_reload_v1 audio_reload_v2 audio_reload_v3 audio_reload_incompatible)
 add_test(NAME test_hot_reload_stress COMMAND test_hot_reload_stress ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1579,7 +1592,7 @@ add_executable(test_package_stress
     src/runtime/wgsl_header_parser.cpp
 )
 target_include_directories(test_package_stress PRIVATE src)
-target_link_libraries(test_package_stress PRIVATE vivid_operator_api yyjson miniaudio webgpu)
+target_link_libraries(test_package_stress PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_test(NAME test_package_stress COMMAND test_package_stress ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_package_stress PROPERTIES LABELS "STABILITY" TIMEOUT 30)
@@ -1596,7 +1609,7 @@ add_executable(test_mixed_runtime_stability
     src/runtime/wgsl_header_parser.cpp
 )
 target_include_directories(test_mixed_runtime_stability PRIVATE src)
-target_link_libraries(test_mixed_runtime_stability PRIVATE vivid_operator_api yyjson miniaudio webgpu)
+target_link_libraries(test_mixed_runtime_stability PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_mixed_runtime_stability gpu_fill_op lfo oscillator)
 add_test(NAME test_mixed_runtime_stability COMMAND test_mixed_runtime_stability ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1608,7 +1621,7 @@ add_executable(test_modulation_ops
     src/runtime/operator_loader.cpp
 )
 target_include_directories(test_modulation_ops PRIVATE src)
-target_link_libraries(test_modulation_ops PRIVATE vivid_operator_api webgpu yyjson)
+target_link_libraries(test_modulation_ops PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
 add_dependencies(test_modulation_ops flanger chorus phaser)
 add_test(NAME test_modulation_ops COMMAND test_modulation_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1618,7 +1631,7 @@ add_executable(test_spatial_ops
     src/runtime/operator_loader.cpp
 )
 target_include_directories(test_spatial_ops PRIVATE src)
-target_link_libraries(test_spatial_ops PRIVATE vivid_operator_api webgpu yyjson)
+target_link_libraries(test_spatial_ops PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
 add_dependencies(test_spatial_ops stereo_pan_width ping_pong_delay)
 add_test(NAME test_spatial_ops COMMAND test_spatial_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1628,7 +1641,7 @@ add_executable(test_synth_transform_ops
     src/runtime/operator_loader.cpp
 )
 target_include_directories(test_synth_transform_ops PRIVATE src)
-target_link_libraries(test_synth_transform_ops PRIVATE vivid_operator_api webgpu yyjson)
+target_link_libraries(test_synth_transform_ops PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
 add_dependencies(test_synth_transform_ops fm_synth ring_mod parametric_eq)
 add_test(NAME test_synth_transform_ops COMMAND test_synth_transform_ops WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1645,7 +1658,7 @@ add_executable(test_gpu_operators
     src/runtime/scheduler.cpp
 )
 target_include_directories(test_gpu_operators PRIVATE src)
-target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_gpu_operators gpu_fill_op shape control_thumb_op)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1655,7 +1668,7 @@ add_executable(test_operator_sweep
     src/runtime/operator_loader.cpp
 )
 target_include_directories(test_operator_sweep PRIVATE src)
-target_link_libraries(test_operator_sweep PRIVATE vivid_operator_api webgpu yyjson)
+target_link_libraries(test_operator_sweep PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
 add_test(NAME test_operator_sweep COMMAND test_operator_sweep WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_sweep PROPERTIES LABELS "HEADLESS_SMOKE" TIMEOUT 120)
 
@@ -1687,7 +1700,7 @@ add_executable(test_cross_domain_spread
 )
 target_include_directories(test_cross_domain_spread PRIVATE src)
 target_link_libraries(test_cross_domain_spread PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu)
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_cross_domain_spread spread_source_op audio_spread_op)
 add_test(NAME test_cross_domain_spread COMMAND test_cross_domain_spread
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1703,7 +1716,7 @@ add_executable(test_spread_broadcast
 )
 target_include_directories(test_spread_broadcast PRIVATE src)
 target_link_libraries(test_spread_broadcast PRIVATE
-    vivid_operator_api yyjson webgpu)
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_spread_broadcast spread_source_op spread_sink_op)
 add_test(NAME test_spread_broadcast COMMAND test_spread_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1720,7 +1733,7 @@ add_executable(test_audio_spread_wire
 )
 target_include_directories(test_audio_spread_wire PRIVATE src)
 target_link_libraries(test_audio_spread_wire PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu)
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
 add_dependencies(test_audio_spread_wire spread_source_op audio_spread_op spread_adsr)
 add_test(NAME test_audio_spread_wire COMMAND test_audio_spread_wire
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1750,7 +1763,7 @@ add_executable(test_signal_port
 )
 target_include_directories(test_signal_port PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(test_signal_port PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu rtmidi)
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_signal_port lfo audio_float_cv_op test_op_v1)
 add_test(NAME test_signal_port COMMAND test_signal_port WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -1794,7 +1807,7 @@ add_executable(test_demo_graphs
 )
 target_include_directories(test_demo_graphs PRIVATE src)
 target_link_libraries(test_demo_graphs PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu rtmidi)
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_demo_graphs
     # control
     lfo clock math envelope midi_input fft_analysis
@@ -1830,7 +1843,7 @@ add_executable(test_media_headless
 )
 target_include_directories(test_media_headless PRIVATE src)
 target_link_libraries(test_media_headless PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu rtmidi)
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_media_headless
     movie_loaded movie_audio_out
     lfo noise composite bloom feedback
@@ -1856,7 +1869,7 @@ add_executable(test_audio_domain_sequencer
 )
 target_include_directories(test_audio_domain_sequencer PRIVATE src)
 target_link_libraries(test_audio_domain_sequencer PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu rtmidi)
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
 add_dependencies(test_audio_domain_sequencer clock oscillator gain)
 add_test(NAME test_audio_domain_sequencer
     COMMAND test_audio_domain_sequencer ${CMAKE_BINARY_DIR}
@@ -1874,7 +1887,7 @@ add_executable(test_package_compiler
     src/runtime/platform.cpp
 )
 target_include_directories(test_package_compiler PRIVATE src)
-target_link_libraries(test_package_compiler PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_package_compiler PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_package_compiler
     COMMAND test_package_compiler ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1893,7 +1906,7 @@ add_executable(test_package_catalog
     src/runtime/platform.cpp
 )
 target_include_directories(test_package_catalog PRIVATE src)
-target_link_libraries(test_package_catalog PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_package_catalog PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_package_catalog
     COMMAND test_package_catalog
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1911,7 +1924,7 @@ add_executable(test_package_manager
     src/runtime/platform.cpp
 )
 target_include_directories(test_package_manager PRIVATE src)
-target_link_libraries(test_package_manager PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_package_manager PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_package_manager
     COMMAND test_package_manager ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1929,7 +1942,7 @@ add_executable(test_package_scope_resolver
     src/runtime/platform.cpp
 )
 target_include_directories(test_package_scope_resolver PRIVATE src)
-target_link_libraries(test_package_scope_resolver PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_package_scope_resolver PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_package_scope_resolver
     COMMAND test_package_scope_resolver ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1947,7 +1960,7 @@ add_executable(test_package_scope_registry
     src/runtime/platform.cpp
 )
 target_include_directories(test_package_scope_registry PRIVATE src)
-target_link_libraries(test_package_scope_registry PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_package_scope_registry PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_package_scope_registry
     COMMAND test_package_scope_registry ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -1976,7 +1989,7 @@ add_executable(test_package_update_logic
     src/runtime/platform.cpp
 )
 target_include_directories(test_package_update_logic PRIVATE src)
-target_link_libraries(test_package_update_logic PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_package_update_logic PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_package_update_logic
     COMMAND test_package_update_logic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -2012,7 +2025,7 @@ add_executable(test_package_test_runner
 )
 target_include_directories(test_package_test_runner PRIVATE src)
 target_link_libraries(test_package_test_runner PRIVATE
-    vivid_operator_api yyjson webgpu)
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_package_test_runner control_pass_op)
 add_test(NAME test_package_test_runner
     COMMAND test_package_test_runner ${CMAKE_BINARY_DIR}
@@ -2036,7 +2049,7 @@ add_executable(test_package_contract_ecosystem
 )
 target_include_directories(test_package_contract_ecosystem PRIVATE src)
 target_link_libraries(test_package_contract_ecosystem PRIVATE
-    vivid_operator_api yyjson webgpu)
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_package_contract_ecosystem control_pass_op)
 add_test(NAME test_package_contract_ecosystem
     COMMAND test_package_contract_ecosystem ${CMAKE_BINARY_DIR}
@@ -2062,7 +2075,7 @@ add_executable(test_capture_coordinator
 )
 target_include_directories(test_capture_coordinator PRIVATE src)
 target_link_libraries(test_capture_coordinator PRIVATE
-    vivid_operator_api yyjson webgpu miniaudio stb_truetype
+    vivid_operator_api nlohmann_json::nlohmann_json webgpu miniaudio stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
 add_test(NAME test_capture_coordinator COMMAND test_capture_coordinator
@@ -2141,7 +2154,7 @@ add_executable(test_string_ports
     src/runtime/scheduler.cpp
 )
 target_include_directories(test_string_ports PRIVATE src tests)
-target_link_libraries(test_string_ports PRIVATE vivid_operator_api yyjson webgpu)
+target_link_libraries(test_string_ports PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_string_ports test_op_v1 string_source_op string_sink_op)
 add_test(NAME test_string_ports COMMAND test_string_ports WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -2250,7 +2263,7 @@ add_executable(test_undo_mutation_types
 )
 target_include_directories(test_undo_mutation_types PRIVATE src tests)
 target_link_libraries(test_undo_mutation_types PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu rtmidi stb_truetype
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
 add_dependencies(test_undo_mutation_types test_op_v1)
@@ -2286,7 +2299,7 @@ add_executable(test_team_workflow_regression
 )
 target_include_directories(test_team_workflow_regression PRIVATE src tests)
 target_link_libraries(test_team_workflow_regression PRIVATE
-    vivid_operator_api yyjson miniaudio webgpu rtmidi stb_truetype
+    vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi stb_truetype
     "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
     "-framework VideoToolbox" "-framework Foundation" "-framework QuartzCore")
 add_dependencies(test_team_workflow_regression test_op_v1)
@@ -2304,7 +2317,7 @@ add_executable(test_builtin_operators
     src/runtime/wgsl_header_parser.cpp
 )
 target_include_directories(test_builtin_operators PRIVATE src tests)
-target_link_libraries(test_builtin_operators PRIVATE vivid_operator_api webgpu yyjson)
+target_link_libraries(test_builtin_operators PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
 add_test(NAME test_builtin_operators COMMAND test_builtin_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # OperatorInfoCache unit tests (uses builtin operators as fixtures, no dylib)
@@ -2317,7 +2330,7 @@ add_executable(test_operator_info_cache
     src/runtime/port_type_registry.cpp
 )
 target_include_directories(test_operator_info_cache PRIVATE src tests)
-target_link_libraries(test_operator_info_cache PRIVATE vivid_operator_api webgpu yyjson)
+target_link_libraries(test_operator_info_cache PRIVATE vivid_operator_api webgpu nlohmann_json::nlohmann_json)
 add_test(NAME test_operator_info_cache COMMAND test_operator_info_cache WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Path Animate unit tests (pure math, no runtime dependencies)
@@ -2331,7 +2344,7 @@ add_executable(test_i18n
     src/ui/i18n.cpp
 )
 target_include_directories(test_i18n PRIVATE src)
-target_link_libraries(test_i18n PRIVATE yyjson)
+target_link_libraries(test_i18n PRIVATE nlohmann_json::nlohmann_json)
 add_test(NAME test_i18n COMMAND test_i18n WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Semantic tag vocabulary validation (script-only, no binary)

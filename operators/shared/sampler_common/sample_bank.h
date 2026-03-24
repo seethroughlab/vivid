@@ -6,8 +6,9 @@
 #include <unordered_map>
 #include <cstdio>
 #include <cmath>
+#include <fstream>
 #include "miniaudio.h"
-#include "yyjson.h"
+#include <nlohmann/json.hpp>
 
 namespace vivid_sampler {
 
@@ -165,33 +166,20 @@ inline const SampleRegion* find_nearest_region(const SampleGroup& group, int not
 
 namespace detail {
 
-inline float json_float(yyjson_val* obj, const char* key, float fallback) {
-    yyjson_val* v = yyjson_obj_get(obj, key);
-    if (!v) return fallback;
-    if (yyjson_is_real(v)) return static_cast<float>(yyjson_get_real(v));
-    if (yyjson_is_int(v)) return static_cast<float>(yyjson_get_int(v));
-    return fallback;
+inline float json_float(const nlohmann::json& obj, const char* key, float fallback) {
+    return obj.value(key, fallback);
 }
 
-inline int json_int(yyjson_val* obj, const char* key, int fallback) {
-    yyjson_val* v = yyjson_obj_get(obj, key);
-    if (!v) return fallback;
-    if (yyjson_is_int(v)) return static_cast<int>(yyjson_get_int(v));
-    if (yyjson_is_real(v)) return static_cast<int>(yyjson_get_real(v));
-    return fallback;
+inline int json_int(const nlohmann::json& obj, const char* key, int fallback) {
+    return obj.value(key, fallback);
 }
 
-inline bool json_bool(yyjson_val* obj, const char* key, bool fallback) {
-    yyjson_val* v = yyjson_obj_get(obj, key);
-    if (!v) return fallback;
-    if (yyjson_is_bool(v)) return yyjson_get_bool(v);
-    return fallback;
+inline bool json_bool(const nlohmann::json& obj, const char* key, bool fallback) {
+    return obj.value(key, fallback);
 }
 
-inline const char* json_str(yyjson_val* obj, const char* key, const char* fallback) {
-    yyjson_val* v = yyjson_obj_get(obj, key);
-    if (!v || !yyjson_is_str(v)) return fallback;
-    return yyjson_get_str(v);
+inline std::string json_str(const nlohmann::json& obj, const char* key, const char* fallback) {
+    return obj.value(key, std::string(fallback ? fallback : ""));
 }
 
 inline std::string base_dir(const std::string& path) {
@@ -200,17 +188,18 @@ inline std::string base_dir(const std::string& path) {
     return path.substr(0, pos);
 }
 
-inline void parse_envelope(yyjson_val* obj, float& attack, float& decay,
+inline void parse_envelope(const nlohmann::json& obj, float& attack, float& decay,
                            float& sustain, float& release) {
-    yyjson_val* env = yyjson_obj_get(obj, "envelope");
-    if (!env) return;
+    auto it = obj.find("envelope");
+    if (it == obj.end()) return;
+    const auto& env = *it;
     attack  = json_float(env, "attack",  attack);
     decay   = json_float(env, "decay",   decay);
     sustain = json_float(env, "sustain", sustain);
     release = json_float(env, "release", release);
 }
 
-inline SampleRegion parse_region(yyjson_val* obj, const std::string& base,
+inline SampleRegion parse_region(const nlohmann::json& obj, const std::string& base,
                                  std::unordered_map<std::string, std::shared_ptr<SampleData>>& cache) {
     SampleRegion r;
     r.root_note      = json_int(obj, "root_note", 60);
@@ -226,8 +215,8 @@ inline SampleRegion parse_region(yyjson_val* obj, const std::string& base,
     r.loop_end       = static_cast<uint32_t>(json_int(obj, "loop_end", 0));
     r.loop_crossfade = static_cast<uint32_t>(json_int(obj, "loop_crossfade", 0));
 
-    const char* sample_path = json_str(obj, "path", nullptr);
-    if (sample_path) {
+    std::string sample_path = json_str(obj, "path", nullptr);
+    if (!sample_path.empty()) {
         std::string abs_path = base + "/" + sample_path;
         auto it = cache.find(abs_path);
         if (it != cache.end()) {
@@ -242,7 +231,7 @@ inline SampleRegion parse_region(yyjson_val* obj, const std::string& base,
     return r;
 }
 
-inline SampleGroup parse_group(yyjson_val* obj, const std::string& base,
+inline SampleGroup parse_group(const nlohmann::json& obj, const std::string& base,
                                float def_attack, float def_decay,
                                float def_sustain, float def_release,
                                std::unordered_map<std::string, std::shared_ptr<SampleData>>& cache) {
@@ -255,11 +244,9 @@ inline SampleGroup parse_group(yyjson_val* obj, const std::string& base,
     g.release  = def_release;
     parse_envelope(obj, g.attack, g.decay, g.sustain, g.release);
 
-    yyjson_val* samples = yyjson_obj_get(obj, "samples");
-    if (samples && yyjson_is_arr(samples)) {
-        size_t idx, max;
-        yyjson_val* val;
-        yyjson_arr_foreach(samples, idx, max, val) {
+    auto sit = obj.find("samples");
+    if (sit != obj.end() && sit->is_array()) {
+        for (const auto& val : *sit) {
             g.regions.push_back(parse_region(val, base, cache));
         }
     }
@@ -274,16 +261,21 @@ inline SampleGroup parse_group(yyjson_val* obj, const std::string& base,
 // ---------------------------------------------------------------------------
 
 inline SampleBank* load_sample_bank(const std::string& json_path) {
-    yyjson_doc* doc = yyjson_read_file(json_path.c_str(), 0, nullptr, nullptr);
-    if (!doc) {
+    nlohmann::json root;
+    try {
+        std::ifstream ifs(json_path);
+        if (!ifs.is_open()) {
+            fprintf(stderr, "[vivid-sampler] Failed to read JSON: %s\n", json_path.c_str());
+            return nullptr;
+        }
+        root = nlohmann::json::parse(ifs);
+    } catch (const nlohmann::json::parse_error& e) {
         fprintf(stderr, "[vivid-sampler] Failed to read JSON: %s\n", json_path.c_str());
         return nullptr;
     }
 
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    if (!root || !yyjson_is_obj(root)) {
+    if (!root.is_object()) {
         fprintf(stderr, "[vivid-sampler] Invalid JSON root: %s\n", json_path.c_str());
-        yyjson_doc_free(doc);
         return nullptr;
     }
 
@@ -298,18 +290,16 @@ inline SampleBank* load_sample_bank(const std::string& json_path) {
     // Deduplicate WAV loading across all groups/regions
     std::unordered_map<std::string, std::shared_ptr<SampleData>> cache;
 
-    yyjson_val* groups_arr = yyjson_obj_get(root, "groups");
-    yyjson_val* samples_arr = yyjson_obj_get(root, "samples");
+    auto groups_it = root.find("groups");
+    auto samples_it = root.find("samples");
 
-    if (groups_arr && yyjson_is_arr(groups_arr)) {
+    if (groups_it != root.end() && groups_it->is_array()) {
         // Multi-group format
-        size_t idx, max;
-        yyjson_val* val;
-        yyjson_arr_foreach(groups_arr, idx, max, val) {
+        for (const auto& val : *groups_it) {
             bank->groups.push_back(detail::parse_group(
                 val, base, bank->attack, bank->decay, bank->sustain, bank->release, cache));
         }
-    } else if (samples_arr && yyjson_is_arr(samples_arr)) {
+    } else if (samples_it != root.end() && samples_it->is_array()) {
         // Single-group format: wrap samples in a default group
         SampleGroup g;
         g.name = "default";
@@ -318,15 +308,11 @@ inline SampleBank* load_sample_bank(const std::string& json_path) {
         g.sustain = bank->sustain;
         g.release = bank->release;
 
-        size_t idx, max;
-        yyjson_val* val;
-        yyjson_arr_foreach(samples_arr, idx, max, val) {
+        for (const auto& val : *samples_it) {
             g.regions.push_back(detail::parse_region(val, base, cache));
         }
         bank->groups.push_back(std::move(g));
     }
-
-    yyjson_doc_free(doc);
 
     fprintf(stderr, "[vivid-sampler] Loaded bank: %s (%zu groups)\n",
             bank->name.c_str(), bank->groups.size());

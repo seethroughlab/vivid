@@ -4,7 +4,7 @@
 #include "runtime/graph.h"
 #include "operator_api/data_driven_filter.h"
 #include "operator_api/port_type_registry.h"
-#include "yyjson.h"
+#include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -93,77 +93,60 @@ bool ExportPipeline::run(const ExportOptions& opts, OperatorRegistry& registry) 
 bool ExportPipeline::load_manifest() {
     std::string path = build_dir_ + "/operator_manifest.json";
 
-    yyjson_read_err err;
-    yyjson_doc* doc = yyjson_read_file(path.c_str(), 0, nullptr, &err);
-    if (!doc) {
-        std::fprintf(stderr, "[export] Failed to read manifest: %s: %s\n", path.c_str(), err.msg);
+    nlohmann::json root;
+    try {
+        std::ifstream ifs(path);
+        if (!ifs) {
+            std::fprintf(stderr, "[export] Failed to read manifest: %s: cannot open file\n", path.c_str());
+            return false;
+        }
+        root = nlohmann::json::parse(ifs);
+    } catch (const nlohmann::json::parse_error& e) {
+        std::fprintf(stderr, "[export] Failed to read manifest: %s: %s\n", path.c_str(), e.what());
         return false;
     }
 
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    yyjson_obj_iter iter;
-    yyjson_obj_iter_init(root, &iter);
-    yyjson_val* key;
-    while ((key = yyjson_obj_iter_next(&iter)) != nullptr) {
-        yyjson_val* val = yyjson_obj_iter_get_val(key);
-        std::string target = yyjson_get_str(key);
-
+    for (auto& [target, val] : root.items()) {
         ManifestEntry entry;
 
-        yyjson_val* sources = yyjson_obj_get(val, "sources");
-        if (sources && yyjson_is_arr(sources)) {
-            size_t idx, max;
-            yyjson_val* s;
-            yyjson_arr_foreach(sources, idx, max, s) {
-                if (yyjson_is_str(s))
-                    entry.sources.push_back(yyjson_get_str(s));
+        if (val.contains("sources") && val["sources"].is_array()) {
+            for (auto& s : val["sources"]) {
+                if (s.is_string())
+                    entry.sources.push_back(s.get<std::string>());
             }
         }
 
-        yyjson_val* libs = yyjson_obj_get(val, "extra_libs");
-        if (libs && yyjson_is_arr(libs)) {
-            size_t idx, max;
-            yyjson_val* l;
-            yyjson_arr_foreach(libs, idx, max, l) {
-                if (yyjson_is_str(l))
-                    entry.extra_libs.push_back(yyjson_get_str(l));
+        if (val.contains("extra_libs") && val["extra_libs"].is_array()) {
+            for (auto& l : val["extra_libs"]) {
+                if (l.is_string())
+                    entry.extra_libs.push_back(l.get<std::string>());
             }
         }
 
-        yyjson_val* fws = yyjson_obj_get(val, "frameworks");
-        if (fws && yyjson_is_arr(fws)) {
-            size_t idx, max;
-            yyjson_val* f;
-            yyjson_arr_foreach(fws, idx, max, f) {
-                if (yyjson_is_str(f))
-                    entry.frameworks.push_back(yyjson_get_str(f));
+        if (val.contains("frameworks") && val["frameworks"].is_array()) {
+            for (auto& f : val["frameworks"]) {
+                if (f.is_string())
+                    entry.frameworks.push_back(f.get<std::string>());
             }
         }
 
-        yyjson_val* arcs = yyjson_obj_get(val, "objc_arc");
-        if (arcs && yyjson_is_arr(arcs)) {
-            size_t idx, max;
-            yyjson_val* a;
-            yyjson_arr_foreach(arcs, idx, max, a) {
-                if (yyjson_is_str(a))
-                    entry.objc_arc.push_back(yyjson_get_str(a));
+        if (val.contains("objc_arc") && val["objc_arc"].is_array()) {
+            for (auto& a : val["objc_arc"]) {
+                if (a.is_string())
+                    entry.objc_arc.push_back(a.get<std::string>());
             }
         }
 
-        yyjson_val* incs = yyjson_obj_get(val, "include_dirs");
-        if (incs && yyjson_is_arr(incs)) {
-            size_t idx, max;
-            yyjson_val* d;
-            yyjson_arr_foreach(incs, idx, max, d) {
-                if (yyjson_is_str(d))
-                    entry.include_dirs.push_back(yyjson_get_str(d));
+        if (val.contains("include_dirs") && val["include_dirs"].is_array()) {
+            for (auto& d : val["include_dirs"]) {
+                if (d.is_string())
+                    entry.include_dirs.push_back(d.get<std::string>());
             }
         }
 
         manifest_[target] = std::move(entry);
     }
 
-    yyjson_doc_free(doc);
     std::fprintf(stderr, "[export] Loaded manifest: %zu operators\n", manifest_.size());
     return true;
 }

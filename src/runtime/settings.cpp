@@ -1,7 +1,8 @@
 #include "runtime/settings.h"
 #include "runtime/platform.h"
-#include <yyjson.h>
+#include <nlohmann/json.hpp>
 #include <filesystem>
+#include <fstream>
 #include <cstdio>
 #include <cstring>
 #include <spawn.h>
@@ -15,62 +16,50 @@ static std::string settings_path() {
     return get_config_dir() + "/settings.json";
 }
 
+// Helper: read a typed value from a JSON object if it exists and has the right type.
+template<typename T>
+static void json_read(const nlohmann::json& j, const char* key, T& out) {
+    auto it = j.find(key);
+    if (it != j.end() && !it->is_null()) {
+        try { out = it->get<T>(); } catch (...) {}
+    }
+}
+
 Settings load_settings() {
     Settings s;
     std::string path = settings_path();
 
     if (!std::filesystem::exists(path)) return s;
 
-    yyjson_read_err err;
-    yyjson_doc* doc = yyjson_read_file(path.c_str(), 0, nullptr, &err);
-    if (!doc) {
-        std::fprintf(stderr, "[vivid] Failed to read settings: %s\n", err.msg);
+    nlohmann::json j;
+    try {
+        std::ifstream ifs(path);
+        j = nlohmann::json::parse(ifs);
+    } catch (const nlohmann::json::parse_error& e) {
+        std::fprintf(stderr, "[vivid] Failed to read settings: %s\n", e.what());
         return s;
     }
 
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    if (!root || !yyjson_is_obj(root)) {
-        yyjson_doc_free(doc);
-        return s;
-    }
+    if (!j.is_object()) return s;
 
-    yyjson_val* v;
-    if ((v = yyjson_obj_get(root, "window_x")) && yyjson_is_int(v))
-        s.window_x = (int)yyjson_get_int(v);
-    if ((v = yyjson_obj_get(root, "window_y")) && yyjson_is_int(v))
-        s.window_y = (int)yyjson_get_int(v);
-    if ((v = yyjson_obj_get(root, "window_width")) && yyjson_is_int(v))
-        s.window_width = (int)yyjson_get_int(v);
-    if ((v = yyjson_obj_get(root, "window_height")) && yyjson_is_int(v))
-        s.window_height = (int)yyjson_get_int(v);
-    if ((v = yyjson_obj_get(root, "bezier_wires")) && yyjson_is_bool(v))
-        s.bezier_wires = yyjson_get_bool(v);
-    if ((v = yyjson_obj_get(root, "show_param_wires")) && yyjson_is_bool(v))
-        s.show_param_wires = yyjson_get_bool(v);
-    if ((v = yyjson_obj_get(root, "editor")) && yyjson_is_str(v))
-        s.editor = yyjson_get_str(v);
-    if ((v = yyjson_obj_get(root, "editor_command")) && yyjson_is_str(v))
-        s.editor_command = yyjson_get_str(v);
-    if ((v = yyjson_obj_get(root, "style_id")) && yyjson_is_str(v))
-        s.style_id = yyjson_get_str(v);
-    if ((v = yyjson_obj_get(root, "core_update_auto_check")) && yyjson_is_bool(v))
-        s.core_update_auto_check = yyjson_get_bool(v);
-    if ((v = yyjson_obj_get(root, "core_update_last_checked_at")) && yyjson_is_str(v))
-        s.core_update_last_checked_at = yyjson_get_str(v);
-    if ((v = yyjson_obj_get(root, "core_update_skipped_version")) && yyjson_is_str(v))
-        s.core_update_skipped_version = yyjson_get_str(v);
-    if ((v = yyjson_obj_get(root, "workspace_root")) && yyjson_is_str(v))
-        s.workspace_root = yyjson_get_str(v);
-    if ((v = yyjson_obj_get(root, "workspace_seeded_version")) && yyjson_is_str(v))
-        s.workspace_seeded_version = yyjson_get_str(v);
-    if ((v = yyjson_obj_get(root, "operator_clone_destination_mode")) && yyjson_is_str(v))
-        s.operator_clone_destination_mode = yyjson_get_str(v);
-    if ((v = yyjson_obj_get(root, "project_operator_root")) && yyjson_is_str(v))
-        s.project_operator_root = yyjson_get_str(v);
-    if ((v = yyjson_obj_get(root, "project_package_name")) && yyjson_is_str(v))
-        s.project_package_name = yyjson_get_str(v);
-    if ((v = yyjson_obj_get(root, "pan_gesture")) && yyjson_is_str(v))
-        s.pan_gesture = yyjson_get_str(v);
+    json_read(j, "window_x", s.window_x);
+    json_read(j, "window_y", s.window_y);
+    json_read(j, "window_width", s.window_width);
+    json_read(j, "window_height", s.window_height);
+    json_read(j, "bezier_wires", s.bezier_wires);
+    json_read(j, "show_param_wires", s.show_param_wires);
+    json_read(j, "editor", s.editor);
+    json_read(j, "editor_command", s.editor_command);
+    json_read(j, "style_id", s.style_id);
+    json_read(j, "core_update_auto_check", s.core_update_auto_check);
+    json_read(j, "core_update_last_checked_at", s.core_update_last_checked_at);
+    json_read(j, "core_update_skipped_version", s.core_update_skipped_version);
+    json_read(j, "workspace_root", s.workspace_root);
+    json_read(j, "workspace_seeded_version", s.workspace_seeded_version);
+    json_read(j, "operator_clone_destination_mode", s.operator_clone_destination_mode);
+    json_read(j, "project_operator_root", s.project_operator_root);
+    json_read(j, "project_package_name", s.project_package_name);
+    json_read(j, "pan_gesture", s.pan_gesture);
 
     if (s.pan_gesture != "middle" && s.pan_gesture != "left" && s.pan_gesture != "right")
         s.pan_gesture = "left";
@@ -84,59 +73,43 @@ Settings load_settings() {
     if (s.window_width < 320) s.window_width = 320;
     if (s.window_height < 240) s.window_height = 240;
 
-    yyjson_doc_free(doc);
     return s;
 }
 
 void save_settings(const Settings& s) {
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
+    nlohmann::json j;
 
-    yyjson_mut_obj_add_int(doc, root, "window_x", s.window_x);
-    yyjson_mut_obj_add_int(doc, root, "window_y", s.window_y);
-    yyjson_mut_obj_add_int(doc, root, "window_width", s.window_width);
-    yyjson_mut_obj_add_int(doc, root, "window_height", s.window_height);
-    yyjson_mut_obj_add_bool(doc, root, "bezier_wires", s.bezier_wires);
-    yyjson_mut_obj_add_bool(doc, root, "show_param_wires", s.show_param_wires);
-    if (!s.editor.empty())
-        yyjson_mut_obj_add_str(doc, root, "editor", s.editor.c_str());
-    if (!s.editor_command.empty())
-        yyjson_mut_obj_add_str(doc, root, "editor_command", s.editor_command.c_str());
-    if (!s.style_id.empty())
-        yyjson_mut_obj_add_str(doc, root, "style_id", s.style_id.c_str());
-    yyjson_mut_obj_add_bool(doc, root, "core_update_auto_check", s.core_update_auto_check);
+    j["window_x"] = s.window_x;
+    j["window_y"] = s.window_y;
+    j["window_width"] = s.window_width;
+    j["window_height"] = s.window_height;
+    j["bezier_wires"] = s.bezier_wires;
+    j["show_param_wires"] = s.show_param_wires;
+    if (!s.editor.empty()) j["editor"] = s.editor;
+    if (!s.editor_command.empty()) j["editor_command"] = s.editor_command;
+    if (!s.style_id.empty()) j["style_id"] = s.style_id;
+    j["core_update_auto_check"] = s.core_update_auto_check;
     if (!s.core_update_last_checked_at.empty())
-        yyjson_mut_obj_add_str(doc, root, "core_update_last_checked_at",
-                               s.core_update_last_checked_at.c_str());
+        j["core_update_last_checked_at"] = s.core_update_last_checked_at;
     if (!s.core_update_skipped_version.empty())
-        yyjson_mut_obj_add_str(doc, root, "core_update_skipped_version",
-                               s.core_update_skipped_version.c_str());
-    if (!s.workspace_root.empty())
-        yyjson_mut_obj_add_str(doc, root, "workspace_root", s.workspace_root.c_str());
+        j["core_update_skipped_version"] = s.core_update_skipped_version;
+    if (!s.workspace_root.empty()) j["workspace_root"] = s.workspace_root;
     if (!s.workspace_seeded_version.empty())
-        yyjson_mut_obj_add_str(doc, root, "workspace_seeded_version",
-                               s.workspace_seeded_version.c_str());
-    yyjson_mut_obj_add_str(doc, root, "operator_clone_destination_mode",
-                           s.operator_clone_destination_mode.c_str());
+        j["workspace_seeded_version"] = s.workspace_seeded_version;
+    j["operator_clone_destination_mode"] = s.operator_clone_destination_mode;
     if (!s.project_operator_root.empty())
-        yyjson_mut_obj_add_str(doc, root, "project_operator_root",
-                               s.project_operator_root.c_str());
+        j["project_operator_root"] = s.project_operator_root;
     if (!s.project_package_name.empty())
-        yyjson_mut_obj_add_str(doc, root, "project_package_name",
-                               s.project_package_name.c_str());
-    yyjson_mut_obj_add_str(doc, root, "pan_gesture", s.pan_gesture.c_str());
+        j["project_package_name"] = s.project_package_name;
+    j["pan_gesture"] = s.pan_gesture;
 
     std::string path = settings_path();
-    yyjson_write_err werr;
-    bool ok = yyjson_mut_write_file(path.c_str(), doc,
-                                     YYJSON_WRITE_PRETTY | YYJSON_WRITE_NEWLINE_AT_END,
-                                     nullptr, &werr);
-    if (!ok) {
-        std::fprintf(stderr, "[vivid] Failed to write settings: %s\n", werr.msg);
+    std::ofstream ofs(path);
+    if (!ofs) {
+        std::fprintf(stderr, "[vivid] Failed to write settings: could not open %s\n", path.c_str());
+        return;
     }
-
-    yyjson_mut_doc_free(doc);
+    ofs << j.dump(4) << '\n';
 }
 
 // Fire-and-forget process launch via posix_spawn (no shell interpolation).

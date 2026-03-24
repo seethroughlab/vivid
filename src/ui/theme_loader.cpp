@@ -1,6 +1,6 @@
 #include "ui/theme_loader.h"
 #include "runtime/platform.h"
-#include <yyjson.h>
+#include <nlohmann/json.hpp>
 #include <filesystem>
 #include <cstdio>
 #include <cstdlib>
@@ -314,24 +314,21 @@ static bool parse_rgba_color(const char* str, float* out) {
 }
 
 // Parse a color from a JSON string value. Returns component count (3 or 4), or 0 on failure.
-static int parse_color_val(yyjson_val* val, float* out) {
-    if (!yyjson_is_str(val)) return 0;
-    const char* str = yyjson_get_str(val);
-
+static int parse_color_str(const std::string& str, float* out) {
     int components = 0;
-    if (str[0] == '#') {
-        if (parse_hex_color(str, out, &components)) return components;
-    } else if (std::strncmp(str, "rgba(", 5) == 0) {
-        if (parse_rgba_color(str, out)) return 4;
+    if (!str.empty() && str[0] == '#') {
+        if (parse_hex_color(str.c_str(), out, &components)) return components;
+    } else if (str.compare(0, 5, "rgba(") == 0) {
+        if (parse_rgba_color(str.c_str(), out)) return 4;
     }
     return 0;
 }
 
-static bool read_color3(yyjson_val* root, const char* key, std::array<float, 3>& arr) {
-    yyjson_val* v = yyjson_obj_get(root, key);
-    if (!v) return false;
+static bool read_color3(const nlohmann::json& root, const char* key, std::array<float, 3>& arr) {
+    auto it = root.find(key);
+    if (it == root.end() || !it->is_string()) return false;
     float buf[4];
-    int n = parse_color_val(v, buf);
+    int n = parse_color_str(it->get<std::string>(), buf);
     if (n >= 3) {
         arr = {buf[0], buf[1], buf[2]};
         return true;
@@ -339,11 +336,11 @@ static bool read_color3(yyjson_val* root, const char* key, std::array<float, 3>&
     return false;
 }
 
-static bool read_color4(yyjson_val* root, const char* key, std::array<float, 4>& arr) {
-    yyjson_val* v = yyjson_obj_get(root, key);
-    if (!v) return false;
+static bool read_color4(const nlohmann::json& root, const char* key, std::array<float, 4>& arr) {
+    auto it = root.find(key);
+    if (it == root.end() || !it->is_string()) return false;
     float buf[4];
-    int n = parse_color_val(v, buf);
+    int n = parse_color_str(it->get<std::string>(), buf);
     if (n == 4) {
         arr = {buf[0], buf[1], buf[2], buf[3]};
         return true;
@@ -409,15 +406,14 @@ static int major_version_of(const std::string& semver) {
     return static_cast<int>(v);
 }
 
-static std::optional<UIStyle> parse_theme_root(yyjson_val* root) {
-    if (!root || !yyjson_is_obj(root)) return std::nullopt;
+static std::optional<UIStyle> parse_theme_root(const nlohmann::json& root) {
+    if (!root.is_object()) return std::nullopt;
 
     // Start with defaults so missing fields get sensible values
     UIStyle s = default_style();
 
-    yyjson_val* v;
-    if ((v = yyjson_obj_get(root, "vivid_version")) && yyjson_is_str(v)) {
-        s.vivid_version = yyjson_get_str(v);
+    if (auto it = root.find("vivid_version"); it != root.end() && it->is_string()) {
+        s.vivid_version = it->get<std::string>();
         int theme_major = major_version_of(s.vivid_version);
         int core_major  = major_version_of(VIVID_CORE_VERSION);
         if (theme_major >= 0 && core_major >= 0 && theme_major != core_major) {
@@ -426,10 +422,10 @@ static std::optional<UIStyle> parse_theme_root(yyjson_val* root) {
                 s.vivid_version.c_str(), VIVID_CORE_VERSION);
         }
     }
-    if ((v = yyjson_obj_get(root, "name")) && yyjson_is_str(v))
-        s.name = yyjson_get_str(v);
-    if ((v = yyjson_obj_get(root, "corner_radius")) && yyjson_is_num(v))
-        s.corner_radius = static_cast<float>(yyjson_get_num(v));
+    if (auto it = root.find("name"); it != root.end() && it->is_string())
+        s.name = it->get<std::string>();
+    if (auto it = root.find("corner_radius"); it != root.end() && it->is_number())
+        s.corner_radius = it->get<float>();
 
     read_color3(root, "node_bg", s.node_bg);
     read_color3(root, "node_sel_bg", s.node_sel_bg);
@@ -450,12 +446,12 @@ static std::optional<UIStyle> parse_theme_root(yyjson_val* root) {
 
     read_color4(root, "wire_color", s.wire_color);
     read_color4(root, "wire_sel_color", s.wire_sel_color);
-    if ((v = yyjson_obj_get(root, "wire_thickness")) && yyjson_is_num(v))
-        s.wire_thickness = static_cast<float>(yyjson_get_num(v));
-    if ((v = yyjson_obj_get(root, "wire_hover_thickness")) && yyjson_is_num(v))
-        s.wire_hover_thickness = static_cast<float>(yyjson_get_num(v));
-    if ((v = yyjson_obj_get(root, "wire_param_thickness")) && yyjson_is_num(v))
-        s.wire_param_thickness = static_cast<float>(yyjson_get_num(v));
+    if (auto it = root.find("wire_thickness"); it != root.end() && it->is_number())
+        s.wire_thickness = it->get<float>();
+    if (auto it = root.find("wire_hover_thickness"); it != root.end() && it->is_number())
+        s.wire_hover_thickness = it->get<float>();
+    if (auto it = root.find("wire_param_thickness"); it != root.end() && it->is_number())
+        s.wire_param_thickness = it->get<float>();
 
     read_color3(root, "slider_track", s.slider_track);
     read_color3(root, "dark_bg", s.dark_bg);
@@ -465,28 +461,30 @@ static std::optional<UIStyle> parse_theme_root(yyjson_val* root) {
 }
 
 std::optional<UIStyle> parse_theme_json(const char* json, size_t len) {
-    yyjson_read_err err;
-    yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(json), len, 0, nullptr, &err);
-    if (!doc) {
-        std::fprintf(stderr, "[vivid] Theme JSON parse error: %s\n", err.msg);
+    try {
+        auto j = nlohmann::json::parse(json, json + len);
+        return parse_theme_root(j);
+    } catch (const nlohmann::json::parse_error& e) {
+        std::fprintf(stderr, "[vivid] Theme JSON parse error: %s\n", e.what());
         return std::nullopt;
     }
-    auto result = parse_theme_root(yyjson_doc_get_root(doc));
-    yyjson_doc_free(doc);
-    return result;
 }
 
 static std::optional<UIStyle> load_theme_file(const std::string& path) {
-    yyjson_read_err err;
-    yyjson_doc* doc = yyjson_read_file(path.c_str(), 0, nullptr, &err);
-    if (!doc) {
+    try {
+        std::ifstream ifs(path);
+        if (!ifs) {
+            std::fprintf(stderr, "[vivid] Failed to read theme %s: could not open file\n",
+                         path.c_str());
+            return std::nullopt;
+        }
+        auto j = nlohmann::json::parse(ifs);
+        return parse_theme_root(j);
+    } catch (const nlohmann::json::parse_error& e) {
         std::fprintf(stderr, "[vivid] Failed to read theme %s: %s\n",
-                     path.c_str(), err.msg);
+                     path.c_str(), e.what());
         return std::nullopt;
     }
-    auto result = parse_theme_root(yyjson_doc_get_root(doc));
-    yyjson_doc_free(doc);
-    return result;
 }
 
 // -----------------------------------------------------------------------
@@ -517,14 +515,15 @@ std::vector<ThemeInfo> discover_themes() {
             std::string name = id;
 
             // Peek at the "name" field
-            yyjson_read_err rerr;
-            yyjson_doc* doc = yyjson_read_file(entry.path().c_str(), 0, nullptr, &rerr);
-            if (doc) {
-                auto* root = yyjson_doc_get_root(doc);
-                auto* nv = root ? yyjson_obj_get(root, "name") : nullptr;
-                if (nv && yyjson_is_str(nv)) name = yyjson_get_str(nv);
-                yyjson_doc_free(doc);
-            }
+            try {
+                std::ifstream ifs(entry.path());
+                auto j = nlohmann::json::parse(ifs);
+                if (j.is_object()) {
+                    auto it = j.find("name");
+                    if (it != j.end() && it->is_string())
+                        name = it->get<std::string>();
+                }
+            } catch (...) {}
 
             found_ids.insert(id);
             result.push_back({name, id, entry.path().string(), is_builtin_id(id)});

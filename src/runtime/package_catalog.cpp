@@ -1,6 +1,6 @@
 #include "runtime/package_catalog.h"
 #include "runtime/platform.h"
-#include "yyjson.h"
+#include <nlohmann/json.hpp>
 #include <array>
 #include <chrono>
 #include <cstdio>
@@ -223,76 +223,56 @@ void PackageCatalog::fetch_thread_fn() {
 
 bool PackageCatalog::parse_index_json(const std::string& json_str,
                                       std::vector<CatalogEntry>& out) {
-    yyjson_doc* doc = yyjson_read(json_str.c_str(), json_str.size(), 0);
-    if (!doc) return false;
-
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    if (!root || !yyjson_is_obj(root)) {
-        yyjson_doc_free(doc);
+    nlohmann::json root;
+    try {
+        root = nlohmann::json::parse(json_str);
+    } catch (const nlohmann::json::parse_error&) {
         return false;
     }
 
-    yyjson_val* pkgs = yyjson_obj_get(root, "packages");
-    if (!pkgs || !yyjson_is_arr(pkgs)) {
-        yyjson_doc_free(doc);
-        return false;
-    }
+    if (!root.is_object()) return false;
 
-    size_t idx, max;
-    yyjson_val* val;
-    yyjson_arr_foreach(pkgs, idx, max, val) {
-        if (!yyjson_is_obj(val)) continue;
+    if (!root.contains("packages") || !root["packages"].is_array())
+        return false;
+
+    for (const auto& val : root["packages"]) {
+        if (!val.is_object()) continue;
 
         CatalogEntry e;
-        yyjson_val* v;
 
-        v = yyjson_obj_get(val, "name");
-        if (!v || !yyjson_is_str(v)) continue;
-        e.name = yyjson_get_str(v);
+        if (!val.contains("name") || !val["name"].is_string()) continue;
+        e.name = val["name"].get<std::string>();
 
-        v = yyjson_obj_get(val, "description");
-        if (v && yyjson_is_str(v)) e.description = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "version");
-        if (v && yyjson_is_str(v)) e.version = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "vivid_core");
-        if (v && yyjson_is_str(v)) e.vivid_core = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "author");
-        if (v && yyjson_is_str(v)) e.author = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "url");
-        if (v && yyjson_is_str(v)) e.url = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "category");
-        if (v && yyjson_is_str(v)) e.category = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "description_short");
-        if (v && yyjson_is_str(v)) e.description_short = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "status");
-        if (v && yyjson_is_str(v)) e.status = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "status_note");
-        if (v && yyjson_is_str(v)) e.status_note = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "preview_image_url");
-        if (v && yyjson_is_str(v)) e.preview_image_url = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "repo_url");
-        if (v && yyjson_is_str(v)) e.repo_url = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "homepage_url");
-        if (v && yyjson_is_str(v)) e.homepage_url = yyjson_get_str(v);
-
-        v = yyjson_obj_get(val, "install_url");
-        if (v && yyjson_is_str(v)) e.install_url = yyjson_get_str(v);
+        if (val.contains("description") && val["description"].is_string())
+            e.description = val["description"].get<std::string>();
+        if (val.contains("version") && val["version"].is_string())
+            e.version = val["version"].get<std::string>();
+        if (val.contains("vivid_core") && val["vivid_core"].is_string())
+            e.vivid_core = val["vivid_core"].get<std::string>();
+        if (val.contains("author") && val["author"].is_string())
+            e.author = val["author"].get<std::string>();
+        if (val.contains("url") && val["url"].is_string())
+            e.url = val["url"].get<std::string>();
+        if (val.contains("category") && val["category"].is_string())
+            e.category = val["category"].get<std::string>();
+        if (val.contains("description_short") && val["description_short"].is_string())
+            e.description_short = val["description_short"].get<std::string>();
+        if (val.contains("status") && val["status"].is_string())
+            e.status = val["status"].get<std::string>();
+        if (val.contains("status_note") && val["status_note"].is_string())
+            e.status_note = val["status_note"].get<std::string>();
+        if (val.contains("preview_image_url") && val["preview_image_url"].is_string())
+            e.preview_image_url = val["preview_image_url"].get<std::string>();
+        if (val.contains("repo_url") && val["repo_url"].is_string())
+            e.repo_url = val["repo_url"].get<std::string>();
+        if (val.contains("homepage_url") && val["homepage_url"].is_string())
+            e.homepage_url = val["homepage_url"].get<std::string>();
+        if (val.contains("install_url") && val["install_url"].is_string())
+            e.install_url = val["install_url"].get<std::string>();
 
         out.push_back(std::move(e));
     }
 
-    yyjson_doc_free(doc);
     return true;
 }
 
@@ -353,60 +333,41 @@ bool PackageCatalog::load_cache(std::vector<CatalogEntry>& out) {
 
 void PackageCatalog::save_cache(const std::vector<CatalogEntry>& entries) {
     // Write as the same format as the remote index
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
+    nlohmann::json root;
+    root["schema_version"] = 1;
 
-    yyjson_mut_obj_add_int(doc, root, "schema_version", 1);
-
-    yyjson_mut_val* arr = yyjson_mut_arr(doc);
+    nlohmann::json arr = nlohmann::json::array();
     for (const auto& e : entries) {
-        yyjson_mut_val* obj = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, obj, "name", e.name.c_str());
-        yyjson_mut_obj_add_strcpy(doc, obj, "description", e.description.c_str());
-        yyjson_mut_obj_add_strcpy(doc, obj, "version", e.version.c_str());
-        if (!e.vivid_core.empty())
-            yyjson_mut_obj_add_strcpy(doc, obj, "vivid_core", e.vivid_core.c_str());
-        yyjson_mut_obj_add_strcpy(doc, obj, "author", e.author.c_str());
-        yyjson_mut_obj_add_strcpy(doc, obj, "url", e.url.c_str());
-        if (!e.category.empty())
-            yyjson_mut_obj_add_strcpy(doc, obj, "category", e.category.c_str());
-        if (!e.description_short.empty())
-            yyjson_mut_obj_add_strcpy(doc, obj, "description_short", e.description_short.c_str());
-        if (!e.status.empty())
-            yyjson_mut_obj_add_strcpy(doc, obj, "status", e.status.c_str());
-        if (!e.status_note.empty())
-            yyjson_mut_obj_add_strcpy(doc, obj, "status_note", e.status_note.c_str());
-        if (!e.preview_image_url.empty())
-            yyjson_mut_obj_add_strcpy(doc, obj, "preview_image_url", e.preview_image_url.c_str());
-        if (!e.repo_url.empty())
-            yyjson_mut_obj_add_strcpy(doc, obj, "repo_url", e.repo_url.c_str());
-        if (!e.homepage_url.empty())
-            yyjson_mut_obj_add_strcpy(doc, obj, "homepage_url", e.homepage_url.c_str());
-        if (!e.install_url.empty())
-            yyjson_mut_obj_add_strcpy(doc, obj, "install_url", e.install_url.c_str());
-
-        yyjson_mut_arr_add_val(arr, obj);
+        nlohmann::json obj;
+        obj["name"] = e.name;
+        obj["description"] = e.description;
+        obj["version"] = e.version;
+        if (!e.vivid_core.empty()) obj["vivid_core"] = e.vivid_core;
+        obj["author"] = e.author;
+        obj["url"] = e.url;
+        if (!e.category.empty()) obj["category"] = e.category;
+        if (!e.description_short.empty()) obj["description_short"] = e.description_short;
+        if (!e.status.empty()) obj["status"] = e.status;
+        if (!e.status_note.empty()) obj["status_note"] = e.status_note;
+        if (!e.preview_image_url.empty()) obj["preview_image_url"] = e.preview_image_url;
+        if (!e.repo_url.empty()) obj["repo_url"] = e.repo_url;
+        if (!e.homepage_url.empty()) obj["homepage_url"] = e.homepage_url;
+        if (!e.install_url.empty()) obj["install_url"] = e.install_url;
+        arr.push_back(std::move(obj));
     }
-    yyjson_mut_obj_add_val(doc, root, "packages", arr);
+    root["packages"] = std::move(arr);
 
-    char* json_str = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY, nullptr);
-    if (json_str) {
-        std::string path = cache_path();
-        std::filesystem::create_directories(
-            std::filesystem::path(path).parent_path());
-        std::ofstream ofs(path);
-        if (!ofs) {
-            std::fprintf(stderr,
-                "[vivid] PackageCatalog: warning: failed to write cache to %s\n",
-                path.c_str());
-        } else {
-            ofs << json_str;
-        }
-        free(json_str);
+    std::string path = cache_path();
+    std::filesystem::create_directories(
+        std::filesystem::path(path).parent_path());
+    std::ofstream ofs(path);
+    if (!ofs) {
+        std::fprintf(stderr,
+            "[vivid] PackageCatalog: warning: failed to write cache to %s\n",
+            path.c_str());
+    } else {
+        ofs << root.dump(2);
     }
-
-    yyjson_mut_doc_free(doc);
 }
 
 } // namespace vivid

@@ -2,7 +2,7 @@
 #include "runtime/tool_discovery.h"
 #include "runtime/operator_registry.h"
 #include "runtime/platform.h"
-#include "yyjson.h"
+#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -448,42 +448,31 @@ std::pair<std::string, std::string> PackageManager::parse_manifest(const std::st
     ss << ifs.rdbuf();
     std::string json_str = ss.str();
 
-    yyjson_read_err read_err;
-    yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(json_str.c_str()),
-                                        json_str.size(), 0, nullptr, &read_err);
-    if (!doc) {
+    nlohmann::json root;
+    try {
+        root = nlohmann::json::parse(json_str);
+    } catch (const nlohmann::json::parse_error& e) {
         std::string msg = "vivid-package.json contains invalid JSON at byte ";
-        msg += std::to_string(read_err.pos);
+        msg += std::to_string(e.byte);
         msg += ": ";
-        msg += read_err.msg ? read_err.msg : "unknown error";
+        msg += e.what();
         return {"manifest_invalid_json", msg};
     }
 
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    if (!root || !yyjson_is_obj(root)) { yyjson_doc_free(doc); return {"manifest_no_root_object", "vivid-package.json has no root object"}; }
+    if (!root.is_object()) return {"manifest_no_root_object", "vivid-package.json has no root object"};
 
-    yyjson_val* name_v = yyjson_obj_get(root, "name");
-    yyjson_val* ver_v  = yyjson_obj_get(root, "version");
-    yyjson_val* desc_v = yyjson_obj_get(root, "description");
-    yyjson_val* core_v = yyjson_obj_get(root, "vivid_core");
-
-    if (!name_v) {
-        yyjson_doc_free(doc);
+    if (!root.contains("name"))
         return {"manifest_missing_field", "vivid-package.json is missing required field 'name'"};
-    }
-    if (!yyjson_is_str(name_v)) {
-        yyjson_doc_free(doc);
+    if (!root["name"].is_string())
         return {"manifest_field_type", "'name' field in vivid-package.json must be a string"};
-    }
 
-    info.name = yyjson_get_str(name_v);
-    info.version = (ver_v && yyjson_is_str(ver_v)) ? yyjson_get_str(ver_v) : "0.0.0";
-    info.vivid_core = (core_v && yyjson_is_str(core_v)) ? yyjson_get_str(core_v) : "";
-    info.description = (desc_v && yyjson_is_str(desc_v)) ? yyjson_get_str(desc_v) : "";
+    info.name = root["name"].get<std::string>();
+    info.version = root.value("version", "0.0.0");
+    info.vivid_core = root.value("vivid_core", "");
+    info.description = root.value("description", "");
     info.path = package_dir;
 
-    yyjson_val* build_v = yyjson_obj_get(root, "build");
-    info.build_type = (build_v && yyjson_is_str(build_v)) ? yyjson_get_str(build_v) : "";
+    info.build_type = root.value("build", "");
 
     // Validate that an operator name is a safe relative path with no traversal components.
     // Names like "audio/drum_kick" are fine; "../../etc/passwd" or "../bad" are not.
@@ -506,80 +495,62 @@ std::pair<std::string, std::string> PackageManager::parse_manifest(const std::st
         return true;
     };
 
-    yyjson_val* ops = yyjson_obj_get(root, "operators");
-    if (ops && yyjson_is_arr(ops)) {
-        size_t idx, max;
-        yyjson_val* val;
-        yyjson_arr_foreach(ops, idx, max, val) {
-            if (yyjson_is_str(val)) {
-                std::string op_name = yyjson_get_str(val);
-                if (!is_valid_op_name(op_name)) {
-                    yyjson_doc_free(doc);
+    auto parse_string_array = [](const nlohmann::json& obj, const char* key,
+                                 std::vector<std::string>& out) {
+        auto it = obj.find(key);
+        if (it != obj.end() && it->is_array()) {
+            for (const auto& val : *it) {
+                if (val.is_string())
+                    out.push_back(val.get<std::string>());
+            }
+        }
+    };
+
+    // operators
+    if (root.contains("operators") && root["operators"].is_array()) {
+        for (const auto& val : root["operators"]) {
+            if (val.is_string()) {
+                std::string op_name = val.get<std::string>();
+                if (!is_valid_op_name(op_name))
                     return {"manifest_invalid_operator_name", "Invalid operator name '" + op_name + "': contains invalid characters or path traversal"};
-                }
                 info.operators.push_back(std::move(op_name));
             }
         }
     }
 
-    yyjson_val* gpu_ops = yyjson_obj_get(root, "gpu_operators");
-    if (gpu_ops && yyjson_is_arr(gpu_ops)) {
-        size_t idx, max;
-        yyjson_val* val;
-        yyjson_arr_foreach(gpu_ops, idx, max, val) {
-            if (yyjson_is_str(val)) {
-                std::string op_name = yyjson_get_str(val);
-                if (!is_valid_op_name(op_name)) {
-                    yyjson_doc_free(doc);
+    // gpu_operators
+    if (root.contains("gpu_operators") && root["gpu_operators"].is_array()) {
+        for (const auto& val : root["gpu_operators"]) {
+            if (val.is_string()) {
+                std::string op_name = val.get<std::string>();
+                if (!is_valid_op_name(op_name))
                     return {"manifest_invalid_operator_name", "Invalid operator name '" + op_name + "': contains invalid characters or path traversal"};
-                }
                 info.gpu_operators.push_back(std::move(op_name));
             }
         }
     }
 
     // author (optional string)
-    yyjson_val* author_v = yyjson_obj_get(root, "author");
-    info.author = (author_v && yyjson_is_str(author_v)) ? yyjson_get_str(author_v) : "";
+    info.author = root.value("author", "");
 
     // category (optional string)
-    yyjson_val* cat_v = yyjson_obj_get(root, "category");
-    info.category = (cat_v && yyjson_is_str(cat_v)) ? yyjson_get_str(cat_v) : "";
+    info.category = root.value("category", "");
 
     // tags (optional string array)
-    yyjson_val* tags_v = yyjson_obj_get(root, "tags");
-    if (tags_v && yyjson_is_arr(tags_v)) {
-        size_t ti, tmax;
-        yyjson_val* tv;
-        yyjson_arr_foreach(tags_v, ti, tmax, tv) {
-            if (yyjson_is_str(tv))
-                info.tags.push_back(yyjson_get_str(tv));
-        }
-    }
+    parse_string_array(root, "tags", info.tags);
 
     // dependencies (optional object)
-    yyjson_val* deps_v = yyjson_obj_get(root, "dependencies");
-    if (deps_v && yyjson_is_obj(deps_v)) {
-        yyjson_val* dep_pkgs = yyjson_obj_get(deps_v, "packages");
-        if (dep_pkgs && yyjson_is_arr(dep_pkgs)) {
-            size_t idx, max;
-            yyjson_val* val;
-            yyjson_arr_foreach(dep_pkgs, idx, max, val) {
-                if (yyjson_is_str(val))
-                    info.dependencies.packages.push_back(yyjson_get_str(val));
-            }
-        }
-        yyjson_val* dep_vendor = yyjson_obj_get(deps_v, "vendor");
-        if (dep_vendor && yyjson_is_arr(dep_vendor)) {
-            size_t idx, max;
-            yyjson_val* val;
-            yyjson_arr_foreach(dep_vendor, idx, max, val) {
-                if (yyjson_is_obj(val)) {
+    if (root.contains("dependencies") && root["dependencies"].is_object()) {
+        const auto& deps = root["dependencies"];
+        parse_string_array(deps, "packages", info.dependencies.packages);
+
+        auto vendor_it = deps.find("vendor");
+        if (vendor_it != deps.end() && vendor_it->is_array()) {
+            for (const auto& val : *vendor_it) {
+                if (val.is_object()) {
                     VendorDependency vd;
-                    yyjson_val* vn = yyjson_obj_get(val, "name");
-                    yyjson_val* vi = yyjson_obj_get(val, "include");
-                    if (vn && yyjson_is_str(vn)) vd.name = yyjson_get_str(vn);
-                    if (vi && yyjson_is_str(vi)) vd.include = yyjson_get_str(vi);
+                    vd.name = val.value("name", "");
+                    vd.include = val.value("include", "");
                     if (!vd.name.empty())
                         info.dependencies.vendor.push_back(std::move(vd));
                 }
@@ -588,29 +559,12 @@ std::pair<std::string, std::string> PackageManager::parse_manifest(const std::st
     }
 
     // tests (optional object)
-    yyjson_val* tests_v = yyjson_obj_get(root, "tests");
-    if (tests_v && yyjson_is_obj(tests_v)) {
-        yyjson_val* test_graphs = yyjson_obj_get(tests_v, "graphs");
-        if (test_graphs && yyjson_is_arr(test_graphs)) {
-            size_t idx, max;
-            yyjson_val* val;
-            yyjson_arr_foreach(test_graphs, idx, max, val) {
-                if (yyjson_is_str(val))
-                    info.tests.graphs.push_back(yyjson_get_str(val));
-            }
-        }
-        yyjson_val* test_cpp = yyjson_obj_get(tests_v, "cpp");
-        if (test_cpp && yyjson_is_arr(test_cpp)) {
-            size_t idx, max;
-            yyjson_val* val;
-            yyjson_arr_foreach(test_cpp, idx, max, val) {
-                if (yyjson_is_str(val))
-                    info.tests.cpp.push_back(yyjson_get_str(val));
-            }
-        }
+    if (root.contains("tests") && root["tests"].is_object()) {
+        const auto& tests = root["tests"];
+        parse_string_array(tests, "graphs", info.tests.graphs);
+        parse_string_array(tests, "cpp", info.tests.cpp);
     }
 
-    yyjson_doc_free(doc);
     return {"", ""};  // success
 }
 

@@ -1,5 +1,6 @@
+#include <nlohmann/json.hpp>
 #include "ui/i18n.h"
-#include <yyjson.h>
+#include <fstream>
 #include <cstdio>
 
 namespace vivid::ui {
@@ -13,38 +14,35 @@ bool I18n::load(const char* json_path) {
     strings_.clear();
     locale_.clear();
 
-    yyjson_read_flag flags = YYJSON_READ_ALLOW_COMMENTS | YYJSON_READ_ALLOW_TRAILING_COMMAS;
-    yyjson_read_err err;
-    yyjson_doc* doc = yyjson_read_file(json_path, flags, nullptr, &err);
-    if (!doc) {
-        std::fprintf(stderr, "[i18n] failed to load %s: %s\n", json_path,
-                     err.msg ? err.msg : "unknown error");
+    nlohmann::json j;
+    try {
+        std::ifstream ifs(json_path);
+        if (!ifs) {
+            std::fprintf(stderr, "[i18n] failed to load %s: could not open file\n", json_path);
+            return false;
+        }
+        j = nlohmann::json::parse(ifs, nullptr, true, true);  // ignore_comments=true
+    } catch (const nlohmann::json::parse_error& e) {
+        std::fprintf(stderr, "[i18n] failed to load %s: %s\n", json_path, e.what());
         return false;
     }
 
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    if (!yyjson_is_obj(root)) {
+    if (!j.is_object()) {
         std::fprintf(stderr, "[i18n] %s: root is not an object\n", json_path);
-        yyjson_doc_free(doc);
         return false;
     }
 
-    yyjson_obj_iter iter;
-    yyjson_obj_iter_init(root, &iter);
-    yyjson_val* key;
-    while ((key = yyjson_obj_iter_next(&iter))) {
-        yyjson_val* val = yyjson_obj_iter_get_val(key);
-        if (yyjson_is_str(key) && yyjson_is_str(val)) {
-            strings_.emplace(yyjson_get_str(key), yyjson_get_str(val));
+    for (auto& [key, val] : j.items()) {
+        if (val.is_string()) {
+            strings_.emplace(key, val.get<std::string>());
         }
     }
 
     // Extract locale id if present (e.g. "locale": "fr")
-    yyjson_val* loc = yyjson_obj_get(root, "locale");
-    if (loc && yyjson_is_str(loc))
-        locale_ = yyjson_get_str(loc);
+    auto it = j.find("locale");
+    if (it != j.end() && it->is_string())
+        locale_ = it->get<std::string>();
 
-    yyjson_doc_free(doc);
     return true;
 }
 

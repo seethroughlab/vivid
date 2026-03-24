@@ -4,7 +4,7 @@
 #include "runtime/audio_engine.h"
 #include "runtime/runtime_api.h"
 #include "runtime/control_server.h"
-#include "yyjson.h"
+#include <nlohmann/json.hpp>
 #include <ixwebsocket/IXHttpClient.h>
 #include <atomic>
 #include <cstdio>
@@ -12,6 +12,8 @@
 #include <filesystem>
 #include <string>
 #include <thread>
+
+using json = nlohmann::json;
 
 static std::atomic<int> failures{0};
 
@@ -25,18 +27,9 @@ static void check(bool cond, const char* msg) {
 }
 
 struct Response {
-    yyjson_doc* doc = nullptr;
-    yyjson_val* root = nullptr;
+    json root;
     bool ok = false;
-
-    ~Response() { if (doc) yyjson_doc_free(doc); }
-    Response() = default;
-    Response(Response&& o) : doc(o.doc), root(o.root), ok(o.ok) {
-        o.doc = nullptr;
-        o.root = nullptr;
-    }
-    Response& operator=(Response&&) = delete;
-    Response(const Response&) = delete;
+    bool valid = false;
 };
 
 static Response post(ix::HttpClient& client, const std::string& base_url,
@@ -49,31 +42,29 @@ static Response post(ix::HttpClient& client, const std::string& base_url,
 
     Response r;
     if (!resp || resp->statusCode != 200) return r;
-    r.doc = yyjson_read(resp->body.c_str(), resp->body.size(), 0);
-    r.root = r.doc ? yyjson_doc_get_root(r.doc) : nullptr;
-    if (r.root) {
-        yyjson_val* okv = yyjson_obj_get(r.root, "ok");
-        r.ok = okv && yyjson_is_bool(okv) && yyjson_get_bool(okv);
-    }
+    try {
+        r.root = json::parse(resp->body);
+        r.valid = true;
+        if (r.root.contains("ok") && r.root["ok"].is_boolean()) {
+            r.ok = r.root["ok"].get<bool>();
+        }
+    } catch (...) {}
     return r;
 }
 
-static yyjson_val* find_node(yyjson_val* nodes, const char* node_id) {
-    if (!nodes || !yyjson_is_arr(nodes)) return nullptr;
-    size_t i, max;
-    yyjson_val* n = nullptr;
-    yyjson_arr_foreach(nodes, i, max, n) {
-        yyjson_val* idv = yyjson_obj_get(n, "node_id");
-        if (idv && yyjson_is_str(idv) && std::string(yyjson_get_str(idv)) == node_id)
+static json find_node(const json& nodes, const std::string& node_id) {
+    if (!nodes.is_array()) return nullptr;
+    for (auto& n : nodes) {
+        if (n.contains("node_id") && n["node_id"].is_string() &&
+            n["node_id"].get<std::string>() == node_id)
             return n;
     }
     return nullptr;
 }
 
-static std::string get_str(yyjson_val* v) {
-    if (!v || !yyjson_is_str(v)) return "";
-    const char* s = yyjson_get_str(v);
-    return s ? s : "";
+static std::string get_str(const json& v) {
+    if (v.is_null() || !v.is_string()) return "";
+    return v.get<std::string>();
 }
 
 int main(int argc, char* argv[]) {
@@ -128,75 +119,75 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- introspect_nodes (domain + health coverage) ---\n");
     auto r1 = post(client, base_url, "introspect_nodes");
     check(r1.ok, "introspect_nodes ok");
-    if (r1.root) {
-        yyjson_val* sv = yyjson_obj_get(r1.root, "schema_version");
-        check(sv && yyjson_is_int(sv) && yyjson_get_int(sv) == 1, "schema_version=1");
-        yyjson_val* result = yyjson_obj_get(r1.root, "result");
-        yyjson_val* nodes = result ? yyjson_obj_get(result, "nodes") : nullptr;
-        check(nodes && yyjson_is_arr(nodes), "nodes array present");
-        check(nodes && yyjson_arr_size(nodes) == 4, "nodes array size=4");
+    if (r1.valid) {
+        auto& root = r1.root;
+        check(root.contains("schema_version") && root["schema_version"].is_number_integer() &&
+              root["schema_version"].get<int>() == 1, "schema_version=1");
+        json nodes;
+        if (root.contains("result") && root["result"].contains("nodes"))
+            nodes = root["result"]["nodes"];
+        check(nodes.is_array(), "nodes array present");
+        check(nodes.is_array() && nodes.size() == 4, "nodes array size=4");
 
-        yyjson_val* ctrl = find_node(nodes, "ctrl1");
-        yyjson_val* aud = find_node(nodes, "aud1");
-        yyjson_val* gpu = find_node(nodes, "gpu1");
-        yyjson_val* miss = find_node(nodes, "missing1");
-        check(ctrl && aud && gpu && miss, "all fixture nodes introspected");
+        json ctrl = find_node(nodes, "ctrl1");
+        json aud = find_node(nodes, "aud1");
+        json gpu = find_node(nodes, "gpu1");
+        json miss = find_node(nodes, "missing1");
+        check(!ctrl.is_null() && !aud.is_null() && !gpu.is_null() && !miss.is_null(),
+              "all fixture nodes introspected");
 
-        if (ctrl) {
-            check(get_str(yyjson_obj_get(ctrl, "domain")) == "control", "control node domain");
-            yyjson_val* dm = yyjson_obj_get(ctrl, "domain_metrics");
-            yyjson_val* c = dm ? yyjson_obj_get(dm, "control") : nullptr;
-            check(c && yyjson_is_obj(c), "control node has control domain_metrics");
+        if (!ctrl.is_null()) {
+            check(get_str(ctrl["domain"]) == "control", "control node domain");
+            json dm = ctrl.value("domain_metrics", json{});
+            json c = dm.value("control", json{});
+            check(c.is_object(), "control node has control domain_metrics");
         }
-        if (aud) {
-            check(get_str(yyjson_obj_get(aud, "domain")) == "audio", "audio node domain");
-            yyjson_val* dm = yyjson_obj_get(aud, "domain_metrics");
-            yyjson_val* a = dm ? yyjson_obj_get(dm, "audio") : nullptr;
-            check(a && yyjson_is_obj(a), "audio node has audio domain_metrics");
-            yyjson_val* ipc = a ? yyjson_obj_get(a, "input_port_count") : nullptr;
-            yyjson_val* opc = a ? yyjson_obj_get(a, "output_port_count") : nullptr;
-            check(ipc && yyjson_is_int(ipc), "audio metrics has input_port_count");
-            check(opc && yyjson_is_int(opc), "audio metrics has output_port_count");
+        if (!aud.is_null()) {
+            check(get_str(aud["domain"]) == "audio", "audio node domain");
+            json dm = aud.value("domain_metrics", json{});
+            json a = dm.value("audio", json{});
+            check(a.is_object(), "audio node has audio domain_metrics");
+            bool has_ipc = a.contains("input_port_count") && a["input_port_count"].is_number_integer();
+            bool has_opc = a.contains("output_port_count") && a["output_port_count"].is_number_integer();
+            check(has_ipc, "audio metrics has input_port_count");
+            check(has_opc, "audio metrics has output_port_count");
         }
-        if (gpu) {
-            check(get_str(yyjson_obj_get(gpu, "domain")) == "gpu", "gpu node domain");
-            yyjson_val* dm = yyjson_obj_get(gpu, "domain_metrics");
-            yyjson_val* g = dm ? yyjson_obj_get(dm, "gpu") : nullptr;
-            check(g && yyjson_is_obj(g), "gpu node has gpu domain_metrics");
-            yyjson_val* ht = g ? yyjson_obj_get(g, "has_texture") : nullptr;
-            check(ht && yyjson_is_bool(ht), "gpu metrics has has_texture");
+        if (!gpu.is_null()) {
+            check(get_str(gpu["domain"]) == "gpu", "gpu node domain");
+            json dm = gpu.value("domain_metrics", json{});
+            json g = dm.value("gpu", json{});
+            check(g.is_object(), "gpu node has gpu domain_metrics");
+            check(g.contains("has_texture") && g["has_texture"].is_boolean(),
+                  "gpu metrics has has_texture");
         }
-        if (miss) {
-            yyjson_val* h = yyjson_obj_get(miss, "health");
-            yyjson_val* err = h ? yyjson_obj_get(h, "errored") : nullptr;
-            yyjson_val* mo = h ? yyjson_obj_get(h, "missing_operator") : nullptr;
-            yyjson_val* msg = h ? yyjson_obj_get(h, "message") : nullptr;
-            check(err && yyjson_is_bool(err) && yyjson_get_bool(err),
+        if (!miss.is_null()) {
+            json h = miss.value("health", json{});
+            check(h.contains("errored") && h["errored"].is_boolean() && h["errored"].get<bool>(),
                   "missing node health.errored=true");
-            check(mo && yyjson_is_bool(mo) && yyjson_get_bool(mo),
+            check(h.contains("missing_operator") && h["missing_operator"].is_boolean() &&
+                  h["missing_operator"].get<bool>(),
                   "missing node health.missing_operator=true");
-            check(msg && yyjson_is_str(msg), "missing node health.message is string");
+            check(h.contains("message") && h["message"].is_string(),
+                  "missing node health.message is string");
         }
     }
 
     // Deterministic health regression: missing node health fields should be stable across calls.
     auto r2 = post(client, base_url, "introspect_nodes");
     check(r2.ok, "second introspect_nodes ok");
-    if (r1.root && r2.root) {
-        yyjson_val* n1 = yyjson_obj_get(yyjson_obj_get(r1.root, "result"), "nodes");
-        yyjson_val* n2 = yyjson_obj_get(yyjson_obj_get(r2.root, "result"), "nodes");
-        yyjson_val* m1 = find_node(n1, "missing1");
-        yyjson_val* m2 = find_node(n2, "missing1");
-        if (m1 && m2) {
-            yyjson_val* h1 = yyjson_obj_get(m1, "health");
-            yyjson_val* h2 = yyjson_obj_get(m2, "health");
-            check(get_str(yyjson_obj_get(h1, "message")) == get_str(yyjson_obj_get(h2, "message")),
+    if (r1.valid && r2.valid) {
+        json n1 = r1.root.value("result", json{}).value("nodes", json{});
+        json n2 = r2.root.value("result", json{}).value("nodes", json{});
+        json m1 = find_node(n1, "missing1");
+        json m2 = find_node(n2, "missing1");
+        if (!m1.is_null() && !m2.is_null()) {
+            json h1 = m1.value("health", json{});
+            json h2 = m2.value("health", json{});
+            check(get_str(h1.value("message", json{})) == get_str(h2.value("message", json{})),
                   "missing node health.message deterministic");
-            check(yyjson_get_bool(yyjson_obj_get(h1, "errored")) ==
-                  yyjson_get_bool(yyjson_obj_get(h2, "errored")),
+            check(h1.value("errored", false) == h2.value("errored", false),
                   "missing node health.errored deterministic");
-            check(yyjson_get_bool(yyjson_obj_get(h1, "missing_operator")) ==
-                  yyjson_get_bool(yyjson_obj_get(h2, "missing_operator")),
+            check(h1.value("missing_operator", false) == h2.value("missing_operator", false),
                   "missing node health.missing_operator deterministic");
         }
     }

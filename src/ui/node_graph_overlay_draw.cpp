@@ -605,8 +605,8 @@ void NodeGraphUI::draw_about(Renderer2D& tr) {
           "copyright notice and this permission notice shall be included in all copies.\n"
           "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND."
         },
-        { "yyjson",
-          "Copyright (c) 2020 YaoYuan <ibireme@gmail.com>\n"
+        { "nlohmann/json",
+          "Copyright (c) 2013-2022 Niels Lohmann <https://nlohmann.me>\n"
           "License: MIT\n"
           "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
           "of this software to deal in it without restriction, subject to: the above\n"

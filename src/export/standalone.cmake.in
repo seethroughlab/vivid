@@ -41,9 +41,14 @@ add_subdirectory(${VIVID_SRC}/deps/glfw ${CMAKE_BINARY_DIR}/_deps/glfw)
 # --- glfw3webgpu bridge ---
 add_subdirectory(${VIVID_SRC}/deps/glfw3webgpu ${CMAKE_BINARY_DIR}/_deps/glfw3webgpu)
 
-# --- yyjson ---
-add_library(yyjson STATIC ${VIVID_SRC}/deps/yyjson/yyjson.c)
-target_include_directories(yyjson PUBLIC ${VIVID_SRC}/deps/yyjson)
+# --- nlohmann/json (header-only) ---
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
 
 # --- miniaudio ---
 add_library(miniaudio INTERFACE)
@@ -153,7 +158,7 @@ target_link_libraries(standalone PRIVATE
     webgpu
     glfw
     glfw3webgpu
-    yyjson
+    nlohmann_json::nlohmann_json
     miniaudio
     ${CONTROL_SERVER_LIBS}
 )

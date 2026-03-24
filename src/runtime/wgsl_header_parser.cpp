@@ -1,5 +1,5 @@
 #include "runtime/wgsl_header_parser.h"
-#include "yyjson.h"
+#include <nlohmann/json.hpp>
 #include <cstring>
 
 namespace vivid {
@@ -67,18 +67,16 @@ std::optional<WgslHeader> parse_wgsl_header(const std::string& file_contents,
 
     std::string json_str = file_contents.substr(json_start, json_end - json_start);
 
-    yyjson_read_err read_err;
-    yyjson_doc* doc = yyjson_read_opts(json_str.data(),
-                                        json_str.size(), 0, nullptr, &read_err);
-    if (!doc) {
+    nlohmann::json root;
+    try {
+        root = nlohmann::json::parse(json_str);
+    } catch (const nlohmann::json::parse_error& e) {
         error = "JSON parse error: ";
-        error += read_err.msg ? read_err.msg : "unknown";
+        error += e.what();
         return std::nullopt;
     }
 
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    if (!yyjson_is_obj(root)) {
-        yyjson_doc_free(doc);
+    if (!root.is_object()) {
         error = "JSON header must be an object";
         return std::nullopt;
     }
@@ -86,133 +84,118 @@ std::optional<WgslHeader> parse_wgsl_header(const std::string& file_contents,
     WgslHeader header;
 
     // Required: name
-    yyjson_val* name_val = yyjson_obj_get(root, "name");
-    if (!name_val || !yyjson_is_str(name_val)) {
-        yyjson_doc_free(doc);
+    auto name_it = root.find("name");
+    if (name_it == root.end() || !name_it->is_string()) {
         error = "Missing required field: \"name\"";
         return std::nullopt;
     }
-    header.name = yyjson_get_str(name_val);
+    header.name = name_it->get<std::string>();
 
     // Optional: description
-    yyjson_val* desc_val = yyjson_obj_get(root, "description");
-    if (desc_val && yyjson_is_str(desc_val))
-        header.description = yyjson_get_str(desc_val);
+    auto desc_it = root.find("description");
+    if (desc_it != root.end() && desc_it->is_string())
+        header.description = desc_it->get<std::string>();
 
     // Optional: time_dependent
-    yyjson_val* td_val = yyjson_obj_get(root, "time_dependent");
-    if (td_val && yyjson_is_bool(td_val))
-        header.time_dependent = yyjson_get_bool(td_val);
+    auto td_it = root.find("time_dependent");
+    if (td_it != root.end() && td_it->is_boolean())
+        header.time_dependent = td_it->get<bool>();
 
     // Optional: inputs
-    yyjson_val* inputs_val = yyjson_obj_get(root, "inputs");
-    if (inputs_val) {
-        if (!yyjson_is_arr(inputs_val)) {
-            yyjson_doc_free(doc);
+    auto inputs_it = root.find("inputs");
+    if (inputs_it != root.end()) {
+        if (!inputs_it->is_array()) {
             error = "\"inputs\" must be an array";
             return std::nullopt;
         }
         header.inputs_specified = true;
-        size_t idx, max;
-        yyjson_val* input_val;
-        yyjson_arr_foreach(inputs_val, idx, max, input_val) {
-            if (!yyjson_is_obj(input_val)) {
-                yyjson_doc_free(doc);
+        for (auto& input_val : *inputs_it) {
+            if (!input_val.is_object()) {
                 error = "Each input must be an object";
                 return std::nullopt;
             }
             WgslHeaderInput inp;
-            yyjson_val* iname = yyjson_obj_get(input_val, "name");
-            if (!iname || !yyjson_is_str(iname)) {
-                yyjson_doc_free(doc);
+            auto iname = input_val.find("name");
+            if (iname == input_val.end() || !iname->is_string()) {
                 error = "Each input must have a \"name\" string";
                 return std::nullopt;
             }
-            inp.name = yyjson_get_str(iname);
+            inp.name = iname->get<std::string>();
             header.inputs.push_back(std::move(inp));
         }
     }
 
     // Optional: params
-    yyjson_val* params_val = yyjson_obj_get(root, "params");
-    if (params_val) {
-        if (!yyjson_is_arr(params_val)) {
-            yyjson_doc_free(doc);
+    auto params_it = root.find("params");
+    if (params_it != root.end()) {
+        if (!params_it->is_array()) {
             error = "\"params\" must be an array";
             return std::nullopt;
         }
-        size_t idx, max;
-        yyjson_val* param_val;
-        yyjson_arr_foreach(params_val, idx, max, param_val) {
-            if (!yyjson_is_obj(param_val)) {
-                yyjson_doc_free(doc);
+        for (auto& param_val : *params_it) {
+            if (!param_val.is_object()) {
                 error = "Each param must be an object";
                 return std::nullopt;
             }
             WgslHeaderParam p;
 
-            yyjson_val* pname = yyjson_obj_get(param_val, "name");
-            if (!pname || !yyjson_is_str(pname)) {
-                yyjson_doc_free(doc);
+            auto pname = param_val.find("name");
+            if (pname == param_val.end() || !pname->is_string()) {
                 error = "Each param must have a \"name\" string";
                 return std::nullopt;
             }
-            p.name = yyjson_get_str(pname);
+            p.name = pname->get<std::string>();
 
-            yyjson_val* ptype = yyjson_obj_get(param_val, "type");
-            if (ptype && yyjson_is_str(ptype))
-                p.type = parse_param_type(yyjson_get_str(ptype));
+            auto ptype = param_val.find("type");
+            if (ptype != param_val.end() && ptype->is_string())
+                p.type = parse_param_type(ptype->get<std::string>().c_str());
 
-            yyjson_val* pdef = yyjson_obj_get(param_val, "default");
-            if (pdef && yyjson_is_num(pdef))
-                p.default_value = static_cast<float>(yyjson_get_num(pdef));
-            else if (pdef && yyjson_is_bool(pdef))
-                p.default_value = yyjson_get_bool(pdef) ? 1.0f : 0.0f;
+            auto pdef = param_val.find("default");
+            if (pdef != param_val.end() && pdef->is_number())
+                p.default_value = pdef->get<float>();
+            else if (pdef != param_val.end() && pdef->is_boolean())
+                p.default_value = pdef->get<bool>() ? 1.0f : 0.0f;
 
-            yyjson_val* pmin = yyjson_obj_get(param_val, "min");
-            if (pmin && yyjson_is_num(pmin))
-                p.min_value = static_cast<float>(yyjson_get_num(pmin));
+            auto pmin = param_val.find("min");
+            if (pmin != param_val.end() && pmin->is_number())
+                p.min_value = pmin->get<float>();
 
-            yyjson_val* pmax = yyjson_obj_get(param_val, "max");
-            if (pmax && yyjson_is_num(pmax))
-                p.max_value = static_cast<float>(yyjson_get_num(pmax));
+            auto pmax = param_val.find("max");
+            if (pmax != param_val.end() && pmax->is_number())
+                p.max_value = pmax->get<float>();
 
-            yyjson_val* plabel = yyjson_obj_get(param_val, "label");
-            if (plabel && yyjson_is_str(plabel))
-                p.label = yyjson_get_str(plabel);
+            auto plabel = param_val.find("label");
+            if (plabel != param_val.end() && plabel->is_string())
+                p.label = plabel->get<std::string>();
 
-            yyjson_val* pchoices = yyjson_obj_get(param_val, "choices");
-            if (pchoices && yyjson_is_arr(pchoices)) {
+            auto pchoices = param_val.find("choices");
+            if (pchoices != param_val.end() && pchoices->is_array()) {
                 p.type = VIVID_PARAM_INT;  // choices implies int type
-                size_t ci, cmax;
-                yyjson_val* cv;
-                yyjson_arr_foreach(pchoices, ci, cmax, cv) {
-                    if (yyjson_is_str(cv))
-                        p.choices.push_back(yyjson_get_str(cv));
+                for (auto& cv : *pchoices) {
+                    if (cv.is_string())
+                        p.choices.push_back(cv.get<std::string>());
                 }
             }
 
-            yyjson_val* pdisp = yyjson_obj_get(param_val, "display");
-            if (pdisp && yyjson_is_str(pdisp))
-                p.display_hint = parse_display_hint(yyjson_get_str(pdisp));
+            auto pdisp = param_val.find("display");
+            if (pdisp != param_val.end() && pdisp->is_string())
+                p.display_hint = parse_display_hint(pdisp->get<std::string>().c_str());
 
-            yyjson_val* pgroup = yyjson_obj_get(param_val, "group");
-            if (pgroup && yyjson_is_str(pgroup))
-                p.group = yyjson_get_str(pgroup);
+            auto pgroup = param_val.find("group");
+            if (pgroup != param_val.end() && pgroup->is_string())
+                p.group = pgroup->get<std::string>();
 
-            yyjson_val* pcols = yyjson_obj_get(param_val, "columns");
-            if (pcols && yyjson_is_int(pcols))
-                p.layout_columns = static_cast<uint8_t>(yyjson_get_int(pcols));
+            auto pcols = param_val.find("columns");
+            if (pcols != param_val.end() && pcols->is_number_integer())
+                p.layout_columns = static_cast<uint8_t>(pcols->get<int>());
 
-            yyjson_val* pcol = yyjson_obj_get(param_val, "column");
-            if (pcol && yyjson_is_int(pcol))
-                p.layout_column_index = static_cast<uint8_t>(yyjson_get_int(pcol));
+            auto pcol = param_val.find("column");
+            if (pcol != param_val.end() && pcol->is_number_integer())
+                p.layout_column_index = static_cast<uint8_t>(pcol->get<int>());
 
             header.params.push_back(std::move(p));
         }
     }
-
-    yyjson_doc_free(doc);
 
     // Strip the header block from the source, preserving the fragment shader
     // Skip any leading whitespace/newlines after the block

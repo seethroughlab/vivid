@@ -1,9 +1,9 @@
 #include "runtime/graph.h"
-#include "yyjson.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <fstream>
 
 #ifndef VIVID_CORE_VERSION
 #define VIVID_CORE_VERSION "0.1.0"
@@ -21,22 +21,23 @@ static bool split_address(const char* addr, std::string& node, std::string& port
 
 bool Graph::load(const char* path) {
     source_path_ = path;
-
-    yyjson_read_err err;
-    yyjson_doc* doc = yyjson_read_file(path, 0, nullptr, &err);
-    if (!doc) {
-        std::fprintf(stderr, "[vivid] Graph: failed to read %s: %s\n", path, err.msg);
+    try {
+        std::ifstream ifs(path);
+        if (!ifs) {
+            std::fprintf(stderr, "[vivid] Graph: failed to read %s: could not open file\n", path);
+            return false;
+        }
+        auto root = nlohmann::json::parse(ifs);
+        bool ok = parse_doc(root);
+        if (ok) {
+            std::fprintf(stderr, "[vivid] Loaded graph: %s (%zu nodes, %zu connections)\n",
+                path, nodes_.size(), connections_.size());
+        }
+        return ok;
+    } catch (const nlohmann::json::parse_error& e) {
+        std::fprintf(stderr, "[vivid] Graph: failed to read %s: %s\n", path, e.what());
         return false;
     }
-
-    bool ok = parse_doc(doc);
-    yyjson_doc_free(doc);
-
-    if (ok) {
-        std::fprintf(stderr, "[vivid] Loaded graph: %s (%zu nodes, %zu connections)\n",
-            path, nodes_.size(), connections_.size());
-    }
-    return ok;
 }
 
 bool Graph::load_from_string(const char* json, size_t len, bool preserve_source_path) {
@@ -45,75 +46,67 @@ bool Graph::load_from_string(const char* json, size_t len, bool preserve_source_
 
     if (len == 0) len = std::strlen(json);
 
-    yyjson_read_err err;
-    // yyjson_read_opts takes char* but does not mutate without YYJSON_READ_INSITU
-    yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(json), len, 0, nullptr, &err);
-    if (!doc) {
-        std::fprintf(stderr, "[vivid] Graph: failed to parse JSON string: %s\n", err.msg);
+    try {
+        auto root = nlohmann::json::parse(json, json + len);
+        bool ok = parse_doc(root);
+        if (ok) {
+            std::fprintf(stderr, "[vivid] Loaded graph from string (%zu nodes, %zu connections)\n",
+                nodes_.size(), connections_.size());
+        }
+        return ok;
+    } catch (const nlohmann::json::parse_error& e) {
+        std::fprintf(stderr, "[vivid] Graph: failed to parse JSON string: %s\n", e.what());
         return false;
     }
-
-    bool ok = parse_doc(doc);
-    yyjson_doc_free(doc);
-
-    if (ok) {
-        std::fprintf(stderr, "[vivid] Loaded graph from string (%zu nodes, %zu connections)\n",
-            nodes_.size(), connections_.size());
-    }
-    return ok;
 }
 
 // Parse common NodeDef fields from a JSON object. Does NOT set node.id (caller's job).
 // Recursively parses embedded_ops.
-static bool parse_node_fields(yyjson_val* val, NodeDef& node) {
+static bool parse_node_fields(const nlohmann::json& val, NodeDef& node) {
     // type
-    yyjson_val* type_val = yyjson_obj_get(val, "type");
-    if (type_val && yyjson_is_str(type_val))
-        node.type = yyjson_get_str(type_val);
+    auto type_it = val.find("type");
+    if (type_it != val.end() && type_it->is_string())
+        node.type = type_it->get<std::string>();
 
     // pkg
-    auto* pkg_obj = yyjson_obj_get(val, "pkg");
-    if (pkg_obj && yyjson_is_obj(pkg_obj)) {
-        auto* pn = yyjson_obj_get(pkg_obj, "name");
-        auto* pv = yyjson_obj_get(pkg_obj, "version");
-        node.pkg_name    = (pn && yyjson_is_str(pn)) ? yyjson_get_str(pn) : "";
-        node.pkg_version = (pv && yyjson_is_str(pv)) ? yyjson_get_str(pv) : "";
+    auto pkg_it = val.find("pkg");
+    if (pkg_it != val.end() && pkg_it->is_object()) {
+        auto pn = pkg_it->find("name");
+        auto pv = pkg_it->find("version");
+        node.pkg_name    = (pn != pkg_it->end() && pn->is_string()) ? pn->get<std::string>() : "";
+        node.pkg_version = (pv != pkg_it->end() && pv->is_string()) ? pv->get<std::string>() : "";
     }
 
     // params
-    yyjson_val* params_obj = yyjson_obj_get(val, "params");
-    if (params_obj && yyjson_is_obj(params_obj)) {
-        yyjson_obj_iter piter;
-        yyjson_obj_iter_init(params_obj, &piter);
-        yyjson_val* pkey;
-        while ((pkey = yyjson_obj_iter_next(&piter))) {
-            yyjson_val* pval = yyjson_obj_iter_get_val(pkey);
-            if (yyjson_is_num(pval))
-                node.params[yyjson_get_str(pkey)] = static_cast<float>(yyjson_get_num(pval));
-            else if (yyjson_is_str(pval))
-                node.string_params[yyjson_get_str(pkey)] = yyjson_get_str(pval);
+    auto params_it = val.find("params");
+    if (params_it != val.end() && params_it->is_object()) {
+        for (auto& [pkey, pval] : params_it->items()) {
+            if (pval.is_number())
+                node.params[pkey] = static_cast<float>(pval.get<double>());
+            else if (pval.is_string())
+                node.string_params[pkey] = pval.get<std::string>();
         }
     }
 
     // layout
-    yyjson_val* layout_obj = yyjson_obj_get(val, "layout");
-    if (layout_obj && yyjson_is_obj(layout_obj)) {
-        yyjson_val* lx = yyjson_obj_get(layout_obj, "x");
-        yyjson_val* ly = yyjson_obj_get(layout_obj, "y");
-        if (lx && yyjson_is_num(lx) && ly && yyjson_is_num(ly)) {
-            node.layout_x = static_cast<float>(yyjson_get_num(lx));
-            node.layout_y = static_cast<float>(yyjson_get_num(ly));
+    auto layout_it = val.find("layout");
+    if (layout_it != val.end() && layout_it->is_object()) {
+        auto lx = layout_it->find("x");
+        auto ly = layout_it->find("y");
+        if (lx != layout_it->end() && lx->is_number() && ly != layout_it->end() && ly->is_number()) {
+            node.layout_x = static_cast<float>(lx->get<double>());
+            node.layout_y = static_cast<float>(ly->get<double>());
         }
     }
 
     // resolution
-    yyjson_val* res_arr = yyjson_obj_get(val, "resolution");
-    if (res_arr && yyjson_is_arr(res_arr) && yyjson_arr_size(res_arr) == 2) {
-        yyjson_val* rw = yyjson_arr_get(res_arr, 0);
-        yyjson_val* rh = yyjson_arr_get(res_arr, 1);
-        if (rw && yyjson_is_int(rw) && rh && yyjson_is_int(rh)) {
-            node.tex_width  = static_cast<uint32_t>(yyjson_get_int(rw));
-            node.tex_height = static_cast<uint32_t>(yyjson_get_int(rh));
+    auto res_it = val.find("resolution");
+    if (res_it != val.end() && res_it->is_array() && res_it->size() == 2) {
+        const auto& rw = (*res_it)[0];
+        const auto& rh = (*res_it)[1];
+        if (rw.is_number_integer() && rh.is_number_integer()) {
+            node.tex_width  = static_cast<uint32_t>(rw.get<int64_t>());
+            node.tex_height = static_cast<uint32_t>(rh.get<int64_t>());
             if (node.tex_width > 8192 || node.tex_height > 8192) {
                 node.tex_width = 0;
                 node.tex_height = 0;
@@ -122,28 +115,19 @@ static bool parse_node_fields(yyjson_val* val, NodeDef& node) {
     }
 
     // locks
-    yyjson_val* locks_obj = yyjson_obj_get(val, "locks");
-    if (locks_obj && yyjson_is_obj(locks_obj)) {
-        yyjson_obj_iter liter;
-        yyjson_obj_iter_init(locks_obj, &liter);
-        yyjson_val* lkey;
-        while ((lkey = yyjson_obj_iter_next(&liter))) {
-            yyjson_val* lval = yyjson_obj_iter_get_val(lkey);
-            if (lval && yyjson_is_int(lval))
-                node.param_lock_flags[yyjson_get_str(lkey)] = static_cast<uint8_t>(yyjson_get_int(lval));
+    auto locks_it = val.find("locks");
+    if (locks_it != val.end() && locks_it->is_object()) {
+        for (auto& [lkey, lval] : locks_it->items()) {
+            if (lval.is_number_integer())
+                node.param_lock_flags[lkey] = static_cast<uint8_t>(lval.get<int64_t>());
         }
     }
 
     // embedded_ops (recursive)
-    yyjson_val* eo_obj = yyjson_obj_get(val, "embedded_ops");
-    if (eo_obj && yyjson_is_obj(eo_obj)) {
-        yyjson_obj_iter eo_iter;
-        yyjson_obj_iter_init(eo_obj, &eo_iter);
-        yyjson_val* eo_key;
-        while ((eo_key = yyjson_obj_iter_next(&eo_iter))) {
-            yyjson_val* eo_val = yyjson_obj_iter_get_val(eo_key);
-            if (!yyjson_is_obj(eo_val)) continue;
-            std::string role_id = yyjson_get_str(eo_key);
+    auto eo_it = val.find("embedded_ops");
+    if (eo_it != val.end() && eo_it->is_object()) {
+        for (auto& [role_id, eo_val] : eo_it->items()) {
+            if (!eo_val.is_object()) continue;
             NodeDef child;
             parse_node_fields(eo_val, child);
             node.embedded_ops[role_id] = std::move(child);
@@ -163,7 +147,7 @@ static bool parse_node_fields(yyjson_val* val, NodeDef& node) {
     return true;
 }
 
-bool Graph::parse_doc(yyjson_doc* doc) {
+bool Graph::parse_doc(const nlohmann::json& root) {
     nodes_.clear();
     connections_.clear();
     midi_mappings_.clear();
@@ -176,60 +160,52 @@ bool Graph::parse_doc(yyjson_doc* doc) {
     active_variation_ = -1;
     quantize_clock_node_.clear();
 
-    yyjson_val* root = yyjson_doc_get_root(doc);
-
     // Schema version — hard-reject if from the future
-    auto* sv_val = yyjson_obj_get(root, "schema_version");
-    schema_version = sv_val ? static_cast<int>(yyjson_get_int(sv_val)) : 1;
+    auto sv_it = root.find("schema_version");
+    schema_version = (sv_it != root.end() && sv_it->is_number_integer()) ? static_cast<int>(sv_it->get<int64_t>()) : 1;
     if (schema_version > GRAPH_SCHEMA_VERSION) {
         std::fprintf(stderr, "[vivid] Graph: schema_version %d > %d — refusing to load.\n",
                      schema_version, GRAPH_SCHEMA_VERSION);
         return false;
     }
 
-    auto* vv_val = yyjson_obj_get(root, "vivid_version");
-    if (vv_val && yyjson_is_str(vv_val))
-        vivid_version = yyjson_get_str(vv_val);
+    auto vv_it = root.find("vivid_version");
+    if (vv_it != root.end() && vv_it->is_string())
+        vivid_version = vv_it->get<std::string>();
     else
         vivid_version.clear();
 
     // Parse filters (before nodes, since nodes may reference user filter types)
-    yyjson_val* filters_obj = yyjson_obj_get(root, "filters");
-    if (filters_obj && yyjson_is_obj(filters_obj)) {
-        yyjson_obj_iter fiter;
-        yyjson_obj_iter_init(filters_obj, &fiter);
-        yyjson_val* fkey;
-        while ((fkey = yyjson_obj_iter_next(&fiter)) != nullptr) {
-            yyjson_val* fval = yyjson_obj_iter_get_val(fkey);
+    auto filters_it = root.find("filters");
+    if (filters_it != root.end() && filters_it->is_object()) {
+        for (auto& [fkey, fval] : filters_it->items()) {
             FilterDef fd;
-            fd.name = yyjson_get_str(fkey);
+            fd.name = fkey;
 
-            yyjson_val* src_val = yyjson_obj_get(fval, "source");
-            if (src_val && yyjson_is_str(src_val))
-                fd.source = yyjson_get_str(src_val);
+            auto src_it = fval.find("source");
+            if (src_it != fval.end() && src_it->is_string())
+                fd.source = src_it->get<std::string>();
 
-            yyjson_val* td_val = yyjson_obj_get(fval, "time_dependent");
-            if (td_val && yyjson_is_bool(td_val))
-                fd.time_dependent = yyjson_get_bool(td_val);
+            auto td_it = fval.find("time_dependent");
+            if (td_it != fval.end() && td_it->is_boolean())
+                fd.time_dependent = td_it->get<bool>();
 
-            yyjson_val* shader_val = yyjson_obj_get(fval, "shader");
-            if (shader_val && yyjson_is_str(shader_val))
-                fd.shader = yyjson_get_str(shader_val);
+            auto shader_it = fval.find("shader");
+            if (shader_it != fval.end() && shader_it->is_string())
+                fd.shader = shader_it->get<std::string>();
 
-            yyjson_val* params_arr = yyjson_obj_get(fval, "params");
-            if (params_arr && yyjson_is_arr(params_arr)) {
-                size_t pidx, pmax;
-                yyjson_val* pval;
-                yyjson_arr_foreach(params_arr, pidx, pmax, pval) {
+            auto params_it = fval.find("params");
+            if (params_it != fval.end() && params_it->is_array()) {
+                for (auto& pval : *params_it) {
                     FilterDef::ParamDef pd;
-                    yyjson_val* pn = yyjson_obj_get(pval, "name");
-                    if (pn && yyjson_is_str(pn)) pd.name = yyjson_get_str(pn);
-                    yyjson_val* pdef = yyjson_obj_get(pval, "default");
-                    if (pdef && yyjson_is_num(pdef)) pd.default_value = static_cast<float>(yyjson_get_num(pdef));
-                    yyjson_val* pmin = yyjson_obj_get(pval, "min");
-                    if (pmin && yyjson_is_num(pmin)) pd.min_value = static_cast<float>(yyjson_get_num(pmin));
-                    yyjson_val* pmax_v = yyjson_obj_get(pval, "max");
-                    if (pmax_v && yyjson_is_num(pmax_v)) pd.max_value = static_cast<float>(yyjson_get_num(pmax_v));
+                    auto pn = pval.find("name");
+                    if (pn != pval.end() && pn->is_string()) pd.name = pn->get<std::string>();
+                    auto pdef = pval.find("default");
+                    if (pdef != pval.end() && pdef->is_number()) pd.default_value = static_cast<float>(pdef->get<double>());
+                    auto pmin = pval.find("min");
+                    if (pmin != pval.end() && pmin->is_number()) pd.min_value = static_cast<float>(pmin->get<double>());
+                    auto pmax_v = pval.find("max");
+                    if (pmax_v != pval.end() && pmax_v->is_number()) pd.max_value = static_cast<float>(pmax_v->get<double>());
                     fd.params.push_back(std::move(pd));
                 }
             }
@@ -241,19 +217,14 @@ bool Graph::parse_doc(yyjson_doc* doc) {
     }
 
     // Parse nodes
-    yyjson_val* nodes_obj = yyjson_obj_get(root, "nodes");
-    if (nodes_obj && yyjson_is_obj(nodes_obj)) {
-        yyjson_obj_iter iter;
-        yyjson_obj_iter_init(nodes_obj, &iter);
-        yyjson_val* key;
-        while ((key = yyjson_obj_iter_next(&iter)) != nullptr) {
-            yyjson_val* val = yyjson_obj_iter_get_val(key);
-
+    auto nodes_it = root.find("nodes");
+    if (nodes_it != root.end() && nodes_it->is_object()) {
+        for (auto& [key, val] : nodes_it->items()) {
             NodeDef node;
-            node.id = yyjson_get_str(key);
+            node.id = key;
 
-            yyjson_val* type_val = yyjson_obj_get(val, "type");
-            if (!type_val || !yyjson_is_str(type_val)) {
+            auto type_it = val.find("type");
+            if (type_it == val.end() || !type_it->is_string()) {
                 std::fprintf(stderr, "[vivid] Graph: node '%s' missing type\n", node.id.c_str());
                 return false;
             }
@@ -269,46 +240,44 @@ bool Graph::parse_doc(yyjson_doc* doc) {
     }
 
     // Parse connections
-    yyjson_val* conns_arr = yyjson_obj_get(root, "connections");
-    if (conns_arr && yyjson_is_arr(conns_arr)) {
-        size_t idx, max;
-        yyjson_val* val;
-        yyjson_arr_foreach(conns_arr, idx, max, val) {
-            yyjson_val* from_val = yyjson_obj_get(val, "from");
-            yyjson_val* to_val   = yyjson_obj_get(val, "to");
-            if (!from_val || !yyjson_is_str(from_val) || !to_val || !yyjson_is_str(to_val)) {
+    auto conns_it = root.find("connections");
+    if (conns_it != root.end() && conns_it->is_array()) {
+        for (auto& val : *conns_it) {
+            auto from_it = val.find("from");
+            auto to_it   = val.find("to");
+            if (from_it == val.end() || !from_it->is_string() || to_it == val.end() || !to_it->is_string()) {
                 std::fprintf(stderr, "[vivid] Graph: connection 'from'/'to' must be strings, skipping\n");
                 continue;
             }
 
             ConnectionDef conn;
-            if (!split_address(yyjson_get_str(from_val), conn.from_node, conn.from_port) ||
-                !split_address(yyjson_get_str(to_val),   conn.to_node,   conn.to_port)) {
+            if (!split_address(from_it->get<std::string>().c_str(), conn.from_node, conn.from_port) ||
+                !split_address(to_it->get<std::string>().c_str(),   conn.to_node,   conn.to_port)) {
                 std::fprintf(stderr, "[vivid] Graph: invalid connection address\n");
                 continue;
             }
             // Remap fields (new format)
-            yyjson_val* fmin_val = yyjson_obj_get(val, "from_min");
-            yyjson_val* fmax_val = yyjson_obj_get(val, "from_max");
-            yyjson_val* tmin_val = yyjson_obj_get(val, "to_min");
-            yyjson_val* tmax_val = yyjson_obj_get(val, "to_max");
-            yyjson_val* clamp_val = yyjson_obj_get(val, "clamp");
-            if (fmin_val || fmax_val || tmin_val || tmax_val) {
-                if (fmin_val && yyjson_is_num(fmin_val))
-                    conn.from_min = static_cast<float>(yyjson_get_num(fmin_val));
-                if (fmax_val && yyjson_is_num(fmax_val))
-                    conn.from_max = static_cast<float>(yyjson_get_num(fmax_val));
-                if (tmin_val && yyjson_is_num(tmin_val))
-                    conn.to_min = static_cast<float>(yyjson_get_num(tmin_val));
-                if (tmax_val && yyjson_is_num(tmax_val))
-                    conn.to_max = static_cast<float>(yyjson_get_num(tmax_val));
-                if (clamp_val && yyjson_is_bool(clamp_val))
-                    conn.clamp = yyjson_get_bool(clamp_val);
+            auto fmin_it = val.find("from_min");
+            auto fmax_it = val.find("from_max");
+            auto tmin_it = val.find("to_min");
+            auto tmax_it = val.find("to_max");
+            auto clamp_it = val.find("clamp");
+            if (fmin_it != val.end() || fmax_it != val.end() || tmin_it != val.end() || tmax_it != val.end()) {
+                if (fmin_it != val.end() && fmin_it->is_number())
+                    conn.from_min = static_cast<float>(fmin_it->get<double>());
+                if (fmax_it != val.end() && fmax_it->is_number())
+                    conn.from_max = static_cast<float>(fmax_it->get<double>());
+                if (tmin_it != val.end() && tmin_it->is_number())
+                    conn.to_min = static_cast<float>(tmin_it->get<double>());
+                if (tmax_it != val.end() && tmax_it->is_number())
+                    conn.to_max = static_cast<float>(tmax_it->get<double>());
+                if (clamp_it != val.end() && clamp_it->is_boolean())
+                    conn.clamp = clamp_it->get<bool>();
             } else {
                 // Backward compat: legacy "scale" field -> remap {0, 1, 0, scale}
-                yyjson_val* scale_val = yyjson_obj_get(val, "scale");
-                if (scale_val && yyjson_is_num(scale_val))
-                    conn.to_max = static_cast<float>(yyjson_get_num(scale_val));
+                auto scale_it = val.find("scale");
+                if (scale_it != val.end() && scale_it->is_number())
+                    conn.to_max = static_cast<float>(scale_it->get<double>());
             }
             // Deduplicate: skip if an identical connection already exists
             bool dup = false;
@@ -408,22 +377,20 @@ bool Graph::parse_doc(yyjson_doc* doc) {
     }
 
     // Parse MIDI mappings
-    yyjson_val* midi_arr = yyjson_obj_get(root, "midi_mappings");
-    if (midi_arr && yyjson_is_arr(midi_arr)) {
-        size_t midx, mmax;
-        yyjson_val* mval;
-        yyjson_arr_foreach(midi_arr, midx, mmax, mval) {
+    auto midi_it = root.find("midi_mappings");
+    if (midi_it != root.end() && midi_it->is_array()) {
+        for (auto& mval : *midi_it) {
             MidiMappingDef mm;
-            yyjson_val* node_val = yyjson_obj_get(mval, "node");
-            yyjson_val* param_val = yyjson_obj_get(mval, "param");
-            yyjson_val* cc_val = yyjson_obj_get(mval, "cc");
-            if (!node_val || !param_val || !cc_val) continue;
-            mm.node_id = yyjson_get_str(node_val);
-            mm.param_name = yyjson_get_str(param_val);
-            mm.cc_number = static_cast<int>(yyjson_get_int(cc_val));
-            yyjson_val* chan_val = yyjson_obj_get(mval, "channel");
-            if (chan_val && yyjson_is_int(chan_val))
-                mm.channel = static_cast<int>(yyjson_get_int(chan_val));
+            auto node_it = mval.find("node");
+            auto param_it = mval.find("param");
+            auto cc_it = mval.find("cc");
+            if (node_it == mval.end() || param_it == mval.end() || cc_it == mval.end()) continue;
+            mm.node_id = node_it->get<std::string>();
+            mm.param_name = param_it->get<std::string>();
+            mm.cc_number = static_cast<int>(cc_it->get<int64_t>());
+            auto chan_it = mval.find("channel");
+            if (chan_it != mval.end() && chan_it->is_number_integer())
+                mm.channel = static_cast<int>(chan_it->get<int64_t>());
             if (mm.cc_number < 0 || mm.cc_number > 127) {
                 std::fprintf(stderr, "[vivid] Graph: MIDI cc %d out of range [0,127], skipping\n", mm.cc_number);
                 continue;
@@ -432,57 +399,46 @@ bool Graph::parse_doc(yyjson_doc* doc) {
                 std::fprintf(stderr, "[vivid] Graph: MIDI channel %d out of range [0,16], skipping\n", mm.channel);
                 continue;
             }
-            yyjson_val* rmin_val = yyjson_obj_get(mval, "range_min");
-            if (rmin_val && yyjson_is_num(rmin_val))
-                mm.range_min = static_cast<float>(yyjson_get_num(rmin_val));
-            yyjson_val* rmax_val = yyjson_obj_get(mval, "range_max");
-            if (rmax_val && yyjson_is_num(rmax_val))
-                mm.range_max = static_cast<float>(yyjson_get_num(rmax_val));
+            auto rmin_it = mval.find("range_min");
+            if (rmin_it != mval.end() && rmin_it->is_number())
+                mm.range_min = static_cast<float>(rmin_it->get<double>());
+            auto rmax_it = mval.find("range_max");
+            if (rmax_it != mval.end() && rmax_it->is_number())
+                mm.range_max = static_cast<float>(rmax_it->get<double>());
             midi_mappings_.push_back(std::move(mm));
         }
     }
 
     // Parse viewport
-    yyjson_val* vp_obj = yyjson_obj_get(root, "viewport");
-    if (vp_obj && yyjson_is_obj(vp_obj)) {
-        yyjson_val* vpx = yyjson_obj_get(vp_obj, "pan_x");
-        yyjson_val* vpy = yyjson_obj_get(vp_obj, "pan_y");
-        yyjson_val* vpz = yyjson_obj_get(vp_obj, "zoom");
-        if (vpx && yyjson_is_num(vpx) && vpy && yyjson_is_num(vpy) && vpz && yyjson_is_num(vpz)) {
-            viewport_pan_x = static_cast<float>(yyjson_get_num(vpx));
-            viewport_pan_y = static_cast<float>(yyjson_get_num(vpy));
-            viewport_zoom  = static_cast<float>(yyjson_get_num(vpz));
+    auto vp_it = root.find("viewport");
+    if (vp_it != root.end() && vp_it->is_object()) {
+        auto vpx = vp_it->find("pan_x");
+        auto vpy = vp_it->find("pan_y");
+        auto vpz = vp_it->find("zoom");
+        if (vpx != vp_it->end() && vpx->is_number() && vpy != vp_it->end() && vpy->is_number() && vpz != vp_it->end() && vpz->is_number()) {
+            viewport_pan_x = static_cast<float>(vpx->get<double>());
+            viewport_pan_y = static_cast<float>(vpy->get<double>());
+            viewport_zoom  = static_cast<float>(vpz->get<double>());
         }
     }
 
     // Parse variations
-    yyjson_val* var_arr = yyjson_obj_get(root, "variations");
-    if (var_arr && yyjson_is_arr(var_arr)) {
-        size_t vidx, vmax;
-        yyjson_val* vval;
-        yyjson_arr_foreach(var_arr, vidx, vmax, vval) {
+    auto var_it = root.find("variations");
+    if (var_it != root.end() && var_it->is_array()) {
+        for (auto& vval : *var_it) {
             VariationDef vd;
-            yyjson_val* vname = yyjson_obj_get(vval, "name");
-            if (vname && yyjson_is_str(vname))
-                vd.name = yyjson_get_str(vname);
-            yyjson_val* vparams = yyjson_obj_get(vval, "params");
-            if (vparams && yyjson_is_obj(vparams)) {
-                yyjson_obj_iter niter;
-                yyjson_obj_iter_init(vparams, &niter);
-                yyjson_val* nkey;
-                while ((nkey = yyjson_obj_iter_next(&niter)) != nullptr) {
-                    yyjson_val* nval = yyjson_obj_iter_get_val(nkey);
-                    std::string node_id = yyjson_get_str(nkey);
-                    if (nval && yyjson_is_obj(nval)) {
-                        yyjson_obj_iter piter;
-                        yyjson_obj_iter_init(nval, &piter);
-                        yyjson_val* pkey;
-                        while ((pkey = yyjson_obj_iter_next(&piter)) != nullptr) {
-                            yyjson_val* pv = yyjson_obj_iter_get_val(pkey);
-                            if (pv && yyjson_is_num(pv))
-                                vd.params[node_id][yyjson_get_str(pkey)] = static_cast<float>(yyjson_get_num(pv));
-                            else if (pv && yyjson_is_str(pv))
-                                vd.string_params[node_id][yyjson_get_str(pkey)] = yyjson_get_str(pv);
+            auto vname = vval.find("name");
+            if (vname != vval.end() && vname->is_string())
+                vd.name = vname->get<std::string>();
+            auto vparams = vval.find("params");
+            if (vparams != vval.end() && vparams->is_object()) {
+                for (auto& [node_id, nval] : vparams->items()) {
+                    if (nval.is_object()) {
+                        for (auto& [pkey, pv] : nval.items()) {
+                            if (pv.is_number())
+                                vd.params[node_id][pkey] = static_cast<float>(pv.get<double>());
+                            else if (pv.is_string())
+                                vd.string_params[node_id][pkey] = pv.get<std::string>();
                         }
                     }
                 }
@@ -492,9 +448,9 @@ bool Graph::parse_doc(yyjson_doc* doc) {
     }
 
     // Parse active_variation
-    yyjson_val* av_val = yyjson_obj_get(root, "active_variation");
-    if (av_val && yyjson_is_int(av_val)) {
-        active_variation_ = static_cast<int>(yyjson_get_int(av_val));
+    auto av_it = root.find("active_variation");
+    if (av_it != root.end() && av_it->is_number_integer()) {
+        active_variation_ = static_cast<int>(av_it->get<int64_t>());
         if (active_variation_ >= static_cast<int>(variations_.size())) {
             std::fprintf(stderr, "[vivid] Graph: active_variation %d out of bounds (%zu variations), resetting to -1\n",
                          active_variation_, variations_.size());
@@ -503,51 +459,35 @@ bool Graph::parse_doc(yyjson_doc* doc) {
     }
 
     // Parse quantize_clock
-    yyjson_val* qc_val = yyjson_obj_get(root, "quantize_clock");
-    if (qc_val && yyjson_is_str(qc_val))
-        quantize_clock_node_ = yyjson_get_str(qc_val);
+    auto qc_it = root.find("quantize_clock");
+    if (qc_it != root.end() && qc_it->is_string())
+        quantize_clock_node_ = qc_it->get<std::string>();
 
     // Parse per-operator presets
-    yyjson_val* presets_obj = yyjson_obj_get(root, "presets");
-    if (presets_obj && yyjson_is_obj(presets_obj)) {
-        yyjson_obj_iter priter;
-        yyjson_obj_iter_init(presets_obj, &priter);
-        yyjson_val* prkey;
-        while ((prkey = yyjson_obj_iter_next(&priter)) != nullptr) {
-            yyjson_val* prval = yyjson_obj_iter_get_val(prkey);
-            std::string node_id = yyjson_get_str(prkey);
-            if (prval && yyjson_is_arr(prval)) {
+    auto presets_it = root.find("presets");
+    if (presets_it != root.end() && presets_it->is_object()) {
+        for (auto& [node_id, prval] : presets_it->items()) {
+            if (prval.is_array()) {
                 auto& presets = node_presets_[node_id];
-                size_t pidx2, pmax2;
-                yyjson_val* pentry;
-                yyjson_arr_foreach(prval, pidx2, pmax2, pentry) {
+                for (auto& pentry : prval) {
                     OperatorPreset op;
-                    yyjson_val* pn = yyjson_obj_get(pentry, "name");
-                    if (pn && yyjson_is_str(pn))
-                        op.name = yyjson_get_str(pn);
-                    yyjson_val* pp = yyjson_obj_get(pentry, "params");
-                    if (pp && yyjson_is_obj(pp)) {
-                        yyjson_obj_iter ppiter;
-                        yyjson_obj_iter_init(pp, &ppiter);
-                        yyjson_val* ppkey;
-                        while ((ppkey = yyjson_obj_iter_next(&ppiter)) != nullptr) {
-                            yyjson_val* ppv = yyjson_obj_iter_get_val(ppkey);
-                            if (ppv && yyjson_is_num(ppv))
-                                op.params[yyjson_get_str(ppkey)] = static_cast<float>(yyjson_get_num(ppv));
-                            else if (ppv && yyjson_is_str(ppv))
-                                op.string_params[yyjson_get_str(ppkey)] = yyjson_get_str(ppv);
+                    auto pn = pentry.find("name");
+                    if (pn != pentry.end() && pn->is_string())
+                        op.name = pn->get<std::string>();
+                    auto pp = pentry.find("params");
+                    if (pp != pentry.end() && pp->is_object()) {
+                        for (auto& [ppkey, ppv] : pp->items()) {
+                            if (ppv.is_number())
+                                op.params[ppkey] = static_cast<float>(ppv.get<double>());
+                            else if (ppv.is_string())
+                                op.string_params[ppkey] = ppv.get<std::string>();
                         }
                     }
                     // Parse embedded_ops in preset
-                    yyjson_val* peo_obj = yyjson_obj_get(pentry, "embedded_ops");
-                    if (peo_obj && yyjson_is_obj(peo_obj)) {
-                        yyjson_obj_iter peo_iter;
-                        yyjson_obj_iter_init(peo_obj, &peo_iter);
-                        yyjson_val* peo_key;
-                        while ((peo_key = yyjson_obj_iter_next(&peo_iter))) {
-                            yyjson_val* peo_val = yyjson_obj_iter_get_val(peo_key);
-                            if (!yyjson_is_obj(peo_val)) continue;
-                            std::string role_id = yyjson_get_str(peo_key);
+                    auto peo_it = pentry.find("embedded_ops");
+                    if (peo_it != pentry.end() && peo_it->is_object()) {
+                        for (auto& [role_id, peo_val] : peo_it->items()) {
+                            if (!peo_val.is_object()) continue;
                             NodeDef child;
                             parse_node_fields(peo_val, child);
                             op.embedded_ops[role_id] = std::move(child);
@@ -560,29 +500,21 @@ bool Graph::parse_doc(yyjson_doc* doc) {
     }
 
     // Parse state_preset_mappings
-    yyjson_val* spm_arr = yyjson_obj_get(root, "state_preset_mappings");
-    if (spm_arr && yyjson_is_arr(spm_arr)) {
-        size_t sidx2, smax2;
-        yyjson_val* sentry;
-        yyjson_arr_foreach(spm_arr, sidx2, smax2, sentry) {
+    auto spm_it = root.find("state_preset_mappings");
+    if (spm_it != root.end() && spm_it->is_array()) {
+        for (auto& sentry : *spm_it) {
             StatePresetMapping spm;
-            yyjson_val* sn = yyjson_obj_get(sentry, "node");
-            if (sn && yyjson_is_str(sn))
-                spm.state_machine_node = yyjson_get_str(sn);
-            yyjson_val* states_arr = yyjson_obj_get(sentry, "states");
-            if (states_arr && yyjson_is_arr(states_arr)) {
-                size_t si, sm;
-                yyjson_val* state_obj;
-                yyjson_arr_foreach(states_arr, si, sm, state_obj) {
+            auto sn = sentry.find("node");
+            if (sn != sentry.end() && sn->is_string())
+                spm.state_machine_node = sn->get<std::string>();
+            auto states_it = sentry.find("states");
+            if (states_it != sentry.end() && states_it->is_array()) {
+                for (auto& state_obj : *states_it) {
                     std::unordered_map<std::string, std::string> bindings;
-                    if (state_obj && yyjson_is_obj(state_obj)) {
-                        yyjson_obj_iter biter;
-                        yyjson_obj_iter_init(state_obj, &biter);
-                        yyjson_val* bkey;
-                        while ((bkey = yyjson_obj_iter_next(&biter)) != nullptr) {
-                            yyjson_val* bval = yyjson_obj_iter_get_val(bkey);
-                            if (bval && yyjson_is_str(bval))
-                                bindings[yyjson_get_str(bkey)] = yyjson_get_str(bval);
+                    if (state_obj.is_object()) {
+                        for (auto& [bkey, bval] : state_obj.items()) {
+                            if (bval.is_string())
+                                bindings[bkey] = bval.get<std::string>();
                         }
                     }
                     spm.state_presets.push_back(std::move(bindings));
@@ -593,33 +525,31 @@ bool Graph::parse_doc(yyjson_doc* doc) {
     }
 
     // Parse sticky notes
-    yyjson_val* sticky_arr = yyjson_obj_get(root, "sticky_notes");
-    if (sticky_arr && yyjson_is_arr(sticky_arr)) {
-        size_t snidx, snmax;
-        yyjson_val* snval;
-        yyjson_arr_foreach(sticky_arr, snidx, snmax, snval) {
+    auto sticky_it = root.find("sticky_notes");
+    if (sticky_it != root.end() && sticky_it->is_array()) {
+        for (auto& snval : *sticky_it) {
             StickyNoteDef sn;
-            yyjson_val* sn_id = yyjson_obj_get(snval, "id");
-            if (sn_id && yyjson_is_str(sn_id))
-                sn.id = yyjson_get_str(sn_id);
-            yyjson_val* sn_text = yyjson_obj_get(snval, "text");
-            if (sn_text && yyjson_is_str(sn_text))
-                sn.text = yyjson_get_str(sn_text);
-            yyjson_val* sn_x = yyjson_obj_get(snval, "x");
-            if (sn_x && yyjson_is_num(sn_x))
-                sn.x = static_cast<float>(yyjson_get_num(sn_x));
-            yyjson_val* sn_y = yyjson_obj_get(snval, "y");
-            if (sn_y && yyjson_is_num(sn_y))
-                sn.y = static_cast<float>(yyjson_get_num(sn_y));
-            yyjson_val* sn_w = yyjson_obj_get(snval, "width");
-            if (sn_w && yyjson_is_num(sn_w))
-                sn.width = static_cast<float>(yyjson_get_num(sn_w));
-            yyjson_val* sn_h = yyjson_obj_get(snval, "height");
-            if (sn_h && yyjson_is_num(sn_h))
-                sn.height = static_cast<float>(yyjson_get_num(sn_h));
-            yyjson_val* sn_color = yyjson_obj_get(snval, "color");
-            if (sn_color && yyjson_is_int(sn_color))
-                sn.color = static_cast<int>(yyjson_get_int(sn_color));
+            auto sn_id = snval.find("id");
+            if (sn_id != snval.end() && sn_id->is_string())
+                sn.id = sn_id->get<std::string>();
+            auto sn_text = snval.find("text");
+            if (sn_text != snval.end() && sn_text->is_string())
+                sn.text = sn_text->get<std::string>();
+            auto sn_x = snval.find("x");
+            if (sn_x != snval.end() && sn_x->is_number())
+                sn.x = static_cast<float>(sn_x->get<double>());
+            auto sn_y = snval.find("y");
+            if (sn_y != snval.end() && sn_y->is_number())
+                sn.y = static_cast<float>(sn_y->get<double>());
+            auto sn_w = snval.find("width");
+            if (sn_w != snval.end() && sn_w->is_number())
+                sn.width = static_cast<float>(sn_w->get<double>());
+            auto sn_h = snval.find("height");
+            if (sn_h != snval.end() && sn_h->is_number())
+                sn.height = static_cast<float>(sn_h->get<double>());
+            auto sn_color = snval.find("color");
+            if (sn_color != snval.end() && sn_color->is_number_integer())
+                sn.color = static_cast<int>(sn_color->get<int64_t>());
             sticky_notes_.push_back(std::move(sn));
         }
     }
@@ -1061,14 +991,11 @@ StickyNoteDef* Graph::find_sticky_note(const std::string& id) {
 
 // --- Serialization ---
 
-static void serialize_node_fields(yyjson_mut_doc* doc, yyjson_mut_val* node_obj, const NodeDef& node) {
-    yyjson_mut_obj_add_str(doc, node_obj, "type", node.type.c_str());
+static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDef& node) {
+    node_obj["type"] = node.type;
 
     if (!node.pkg_name.empty()) {
-        auto* pkg_sub = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, pkg_sub, "name", node.pkg_name.c_str());
-        yyjson_mut_obj_add_strcpy(doc, pkg_sub, "version", node.pkg_version.c_str());
-        yyjson_mut_obj_add_val(doc, node_obj, "pkg", pkg_sub);
+        node_obj["pkg"] = nlohmann::ordered_json{{"name", node.pkg_name}, {"version", node.pkg_version}};
     }
 
     // Build set of embedded_ops prefixes to skip from flat params
@@ -1085,295 +1012,268 @@ static void serialize_node_fields(yyjson_mut_doc* doc, yyjson_mut_val* node_obj,
     };
 
     if (!node.params.empty() || !node.string_params.empty()) {
-        yyjson_mut_val* params_obj = yyjson_mut_obj(doc);
+        nlohmann::ordered_json params_obj = nlohmann::ordered_json::object();
         for (const auto& [pname, pval] : node.params) {
             if (is_embedded_param(pname)) continue;
-            yyjson_mut_obj_add_real(doc, params_obj, pname.c_str(), static_cast<double>(pval));
+            params_obj[pname] = static_cast<double>(pval);
         }
         for (const auto& [pname, pval] : node.string_params) {
             if (is_embedded_param(pname)) continue;
-            yyjson_mut_obj_add_strcpy(doc, params_obj, pname.c_str(), pval.c_str());
+            params_obj[pname] = pval;
         }
-        yyjson_mut_obj_add_val(doc, node_obj, "params", params_obj);
+        node_obj["params"] = std::move(params_obj);
     }
 
     if (node.has_layout()) {
-        yyjson_mut_val* layout_obj = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_real(doc, layout_obj, "x", static_cast<double>(node.layout_x));
-        yyjson_mut_obj_add_real(doc, layout_obj, "y", static_cast<double>(node.layout_y));
-        yyjson_mut_obj_add_val(doc, node_obj, "layout", layout_obj);
+        node_obj["layout"] = nlohmann::ordered_json{{"x", static_cast<double>(node.layout_x)}, {"y", static_cast<double>(node.layout_y)}};
     }
 
     if (node.tex_width > 0 && node.tex_height > 0) {
-        yyjson_mut_val* res_arr = yyjson_mut_arr(doc);
-        yyjson_mut_arr_add_int(doc, res_arr, static_cast<int64_t>(node.tex_width));
-        yyjson_mut_arr_add_int(doc, res_arr, static_cast<int64_t>(node.tex_height));
-        yyjson_mut_obj_add_val(doc, node_obj, "resolution", res_arr);
+        node_obj["resolution"] = nlohmann::ordered_json::array({static_cast<int64_t>(node.tex_width), static_cast<int64_t>(node.tex_height)});
     }
 
     if (!node.param_lock_flags.empty()) {
-        yyjson_mut_val* locks_obj = yyjson_mut_obj(doc);
+        nlohmann::ordered_json locks_obj = nlohmann::ordered_json::object();
         for (const auto& [pname, flags] : node.param_lock_flags)
-            yyjson_mut_obj_add_int(doc, locks_obj, pname.c_str(), static_cast<int64_t>(flags));
-        yyjson_mut_obj_add_val(doc, node_obj, "locks", locks_obj);
+            locks_obj[pname] = static_cast<int64_t>(flags);
+        node_obj["locks"] = std::move(locks_obj);
     }
 
     // Write embedded_ops — recursive, uses child NodeDef directly
     if (!node.embedded_ops.empty()) {
-        yyjson_mut_val* eo_obj = yyjson_mut_obj(doc);
+        nlohmann::ordered_json eo_obj = nlohmann::ordered_json::object();
         for (const auto& [role_id, child] : node.embedded_ops) {
-            yyjson_mut_val* child_obj = yyjson_mut_obj(doc);
-            serialize_node_fields(doc, child_obj, child);
-            yyjson_mut_obj_add_val(doc, eo_obj, role_id.c_str(), child_obj);
+            nlohmann::ordered_json child_obj = nlohmann::ordered_json::object();
+            serialize_node_fields(child_obj, child);
+            eo_obj[role_id] = std::move(child_obj);
         }
-        yyjson_mut_obj_add_val(doc, node_obj, "embedded_ops", eo_obj);
+        node_obj["embedded_ops"] = std::move(eo_obj);
     }
 }
 
-static yyjson_mut_doc* build_graph_json_doc(const Graph& graph) {
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
+static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
+    nlohmann::ordered_json root;
 
     // Schema metadata
-    yyjson_mut_obj_add_int(doc, root, "schema_version", GRAPH_SCHEMA_VERSION);
-    yyjson_mut_obj_add_str(doc, root, "vivid_version", VIVID_CORE_VERSION);
+    root["schema_version"] = GRAPH_SCHEMA_VERSION;
+    root["vivid_version"] = VIVID_CORE_VERSION;
 
     // Filters
     if (!graph.filters().empty()) {
-        yyjson_mut_val* filters_obj = yyjson_mut_obj(doc);
+        nlohmann::ordered_json filters_obj = nlohmann::ordered_json::object();
         for (const auto& fd : graph.filters()) {
-            yyjson_mut_val* f_obj = yyjson_mut_obj(doc);
+            nlohmann::ordered_json f_obj = nlohmann::ordered_json::object();
             if (!fd.source.empty())
-                yyjson_mut_obj_add_strcpy(doc, f_obj, "source", fd.source.c_str());
+                f_obj["source"] = fd.source;
             if (fd.time_dependent)
-                yyjson_mut_obj_add_bool(doc, f_obj, "time_dependent", true);
+                f_obj["time_dependent"] = true;
 
             if (!fd.params.empty()) {
-                yyjson_mut_val* p_arr = yyjson_mut_arr(doc);
+                nlohmann::ordered_json p_arr = nlohmann::ordered_json::array();
                 for (const auto& pd : fd.params) {
-                    yyjson_mut_val* p_obj = yyjson_mut_obj(doc);
-                    yyjson_mut_obj_add_strcpy(doc, p_obj, "name", pd.name.c_str());
-                    yyjson_mut_obj_add_real(doc, p_obj, "default", static_cast<double>(pd.default_value));
-                    yyjson_mut_obj_add_real(doc, p_obj, "min", static_cast<double>(pd.min_value));
-                    yyjson_mut_obj_add_real(doc, p_obj, "max", static_cast<double>(pd.max_value));
-                    yyjson_mut_arr_add_val(p_arr, p_obj);
+                    nlohmann::ordered_json p_obj = nlohmann::ordered_json::object();
+                    p_obj["name"] = pd.name;
+                    p_obj["default"] = static_cast<double>(pd.default_value);
+                    p_obj["min"] = static_cast<double>(pd.min_value);
+                    p_obj["max"] = static_cast<double>(pd.max_value);
+                    p_arr.push_back(std::move(p_obj));
                 }
-                yyjson_mut_obj_add_val(doc, f_obj, "params", p_arr);
+                f_obj["params"] = std::move(p_arr);
             }
 
             if (!fd.shader.empty())
-                yyjson_mut_obj_add_strcpy(doc, f_obj, "shader", fd.shader.c_str());
+                f_obj["shader"] = fd.shader;
 
-            yyjson_mut_obj_add_val(doc, filters_obj, fd.name.c_str(), f_obj);
+            filters_obj[fd.name] = std::move(f_obj);
         }
-        yyjson_mut_obj_add_val(doc, root, "filters", filters_obj);
+        root["filters"] = std::move(filters_obj);
     }
 
     // Nodes
-    yyjson_mut_val* nodes_obj = yyjson_mut_obj(doc);
+    nlohmann::ordered_json nodes_obj = nlohmann::ordered_json::object();
     for (const auto& node : graph.nodes()) {
-        yyjson_mut_val* node_obj = yyjson_mut_obj(doc);
-        serialize_node_fields(doc, node_obj, node);
-        yyjson_mut_obj_add_val(doc, nodes_obj, node.id.c_str(), node_obj);
+        nlohmann::ordered_json node_obj = nlohmann::ordered_json::object();
+        serialize_node_fields(node_obj, node);
+        nodes_obj[node.id] = std::move(node_obj);
     }
-    yyjson_mut_obj_add_val(doc, root, "nodes", nodes_obj);
+    root["nodes"] = std::move(nodes_obj);
 
     // Connections
-    yyjson_mut_val* conns_arr = yyjson_mut_arr(doc);
+    nlohmann::ordered_json conns_arr = nlohmann::ordered_json::array();
     for (const auto& conn : graph.connections()) {
-        yyjson_mut_val* conn_obj = yyjson_mut_obj(doc);
+        nlohmann::ordered_json conn_obj = nlohmann::ordered_json::object();
         std::string from_addr = conn.from_node + "/" + conn.from_port;
         std::string to_addr = conn.to_node + "/" + conn.to_port;
-        yyjson_mut_obj_add_strcpy(doc, conn_obj, "from", from_addr.c_str());
-        yyjson_mut_obj_add_strcpy(doc, conn_obj, "to", to_addr.c_str());
+        conn_obj["from"] = from_addr;
+        conn_obj["to"] = to_addr;
         if (conn.has_remap()) {
-            yyjson_mut_obj_add_real(doc, conn_obj, "from_min", static_cast<double>(conn.from_min));
-            yyjson_mut_obj_add_real(doc, conn_obj, "from_max", static_cast<double>(conn.from_max));
-            yyjson_mut_obj_add_real(doc, conn_obj, "to_min",   static_cast<double>(conn.to_min));
-            yyjson_mut_obj_add_real(doc, conn_obj, "to_max",   static_cast<double>(conn.to_max));
+            conn_obj["from_min"] = static_cast<double>(conn.from_min);
+            conn_obj["from_max"] = static_cast<double>(conn.from_max);
+            conn_obj["to_min"]   = static_cast<double>(conn.to_min);
+            conn_obj["to_max"]   = static_cast<double>(conn.to_max);
             if (conn.clamp)
-                yyjson_mut_obj_add_bool(doc, conn_obj, "clamp", true);
+                conn_obj["clamp"] = true;
         }
-        yyjson_mut_arr_add_val(conns_arr, conn_obj);
+        conns_arr.push_back(std::move(conn_obj));
     }
-    yyjson_mut_obj_add_val(doc, root, "connections", conns_arr);
+    root["connections"] = std::move(conns_arr);
 
     // MIDI mappings
     if (!graph.midi_mappings().empty()) {
-        yyjson_mut_val* midi_arr = yyjson_mut_arr(doc);
+        nlohmann::ordered_json midi_arr = nlohmann::ordered_json::array();
         for (const auto& mm : graph.midi_mappings()) {
-            yyjson_mut_val* mm_obj = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_strcpy(doc, mm_obj, "node", mm.node_id.c_str());
-            yyjson_mut_obj_add_strcpy(doc, mm_obj, "param", mm.param_name.c_str());
-            yyjson_mut_obj_add_int(doc, mm_obj, "cc", mm.cc_number);
+            nlohmann::ordered_json mm_obj = nlohmann::ordered_json::object();
+            mm_obj["node"] = mm.node_id;
+            mm_obj["param"] = mm.param_name;
+            mm_obj["cc"] = mm.cc_number;
             if (mm.channel != 0)
-                yyjson_mut_obj_add_int(doc, mm_obj, "channel", mm.channel);
-            yyjson_mut_obj_add_real(doc, mm_obj, "range_min", static_cast<double>(mm.range_min));
-            yyjson_mut_obj_add_real(doc, mm_obj, "range_max", static_cast<double>(mm.range_max));
-            yyjson_mut_arr_add_val(midi_arr, mm_obj);
+                mm_obj["channel"] = mm.channel;
+            mm_obj["range_min"] = static_cast<double>(mm.range_min);
+            mm_obj["range_max"] = static_cast<double>(mm.range_max);
+            midi_arr.push_back(std::move(mm_obj));
         }
-        yyjson_mut_obj_add_val(doc, root, "midi_mappings", midi_arr);
+        root["midi_mappings"] = std::move(midi_arr);
     }
 
     // Variations
     if (!graph.variations().empty()) {
-        yyjson_mut_val* var_arr = yyjson_mut_arr(doc);
+        nlohmann::ordered_json var_arr = nlohmann::ordered_json::array();
         for (const auto& vd : graph.variations()) {
-            yyjson_mut_val* v_obj = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_strcpy(doc, v_obj, "name", vd.name.c_str());
-            yyjson_mut_val* params_obj = yyjson_mut_obj(doc);
+            nlohmann::ordered_json v_obj = nlohmann::ordered_json::object();
+            v_obj["name"] = vd.name;
+            nlohmann::ordered_json params_obj = nlohmann::ordered_json::object();
             // Write float params (node_id refs stable in vd.params)
             for (const auto& [node_id, pm] : vd.params) {
-                yyjson_mut_val* node_obj = yyjson_mut_obj(doc);
+                nlohmann::ordered_json node_obj = nlohmann::ordered_json::object();
                 for (const auto& [pname, pval] : pm) {
-                    yyjson_mut_obj_add_real(doc, node_obj, pname.c_str(),
-                                            static_cast<double>(pval));
+                    node_obj[pname] = static_cast<double>(pval);
                 }
                 // Also add string params for this node if present
                 auto sit = vd.string_params.find(node_id);
                 if (sit != vd.string_params.end()) {
                     for (const auto& [pname, pval] : sit->second) {
-                        yyjson_mut_obj_add_strcpy(doc, node_obj, pname.c_str(), pval.c_str());
+                        node_obj[pname] = pval;
                     }
                 }
-                yyjson_mut_obj_add_val(doc, params_obj, node_id.c_str(), node_obj);
+                params_obj[node_id] = std::move(node_obj);
             }
             // Write nodes that only have string params (not in vd.params)
             for (const auto& [node_id, spm] : vd.string_params) {
                 if (vd.params.count(node_id)) continue;  // already handled above
-                yyjson_mut_val* node_obj = yyjson_mut_obj(doc);
+                nlohmann::ordered_json node_obj = nlohmann::ordered_json::object();
                 for (const auto& [pname, pval] : spm) {
-                    yyjson_mut_obj_add_strcpy(doc, node_obj, pname.c_str(), pval.c_str());
+                    node_obj[pname] = pval;
                 }
-                yyjson_mut_obj_add_val(doc, params_obj, node_id.c_str(), node_obj);
+                params_obj[node_id] = std::move(node_obj);
             }
-            yyjson_mut_obj_add_val(doc, v_obj, "params", params_obj);
-            yyjson_mut_arr_add_val(var_arr, v_obj);
+            v_obj["params"] = std::move(params_obj);
+            var_arr.push_back(std::move(v_obj));
         }
-        yyjson_mut_obj_add_val(doc, root, "variations", var_arr);
+        root["variations"] = std::move(var_arr);
     }
     if (graph.active_variation() >= 0)
-        yyjson_mut_obj_add_int(doc, root, "active_variation", graph.active_variation());
+        root["active_variation"] = graph.active_variation();
     if (!graph.quantize_clock_node().empty())
-        yyjson_mut_obj_add_strcpy(doc, root, "quantize_clock", graph.quantize_clock_node().c_str());
+        root["quantize_clock"] = graph.quantize_clock_node();
 
     // Per-operator presets
     if (!graph.node_presets().empty()) {
-        yyjson_mut_val* presets_obj = yyjson_mut_obj(doc);
+        nlohmann::ordered_json presets_obj = nlohmann::ordered_json::object();
         for (const auto& [node_id, presets] : graph.node_presets()) {
-            yyjson_mut_val* pr_arr = yyjson_mut_arr(doc);
+            nlohmann::ordered_json pr_arr = nlohmann::ordered_json::array();
             for (const auto& p : presets) {
-                yyjson_mut_val* pr_obj = yyjson_mut_obj(doc);
-                yyjson_mut_obj_add_strcpy(doc, pr_obj, "name", p.name.c_str());
-                yyjson_mut_val* pp_obj = yyjson_mut_obj(doc);
+                nlohmann::ordered_json pr_obj = nlohmann::ordered_json::object();
+                pr_obj["name"] = p.name;
+                nlohmann::ordered_json pp_obj = nlohmann::ordered_json::object();
                 for (const auto& [pname, pval] : p.params) {
-                    yyjson_mut_obj_add_real(doc, pp_obj, pname.c_str(),
-                                            static_cast<double>(pval));
+                    pp_obj[pname] = static_cast<double>(pval);
                 }
                 for (const auto& [pname, pval] : p.string_params) {
-                    yyjson_mut_obj_add_strcpy(doc, pp_obj, pname.c_str(), pval.c_str());
+                    pp_obj[pname] = pval;
                 }
-                yyjson_mut_obj_add_val(doc, pr_obj, "params", pp_obj);
+                pr_obj["params"] = std::move(pp_obj);
                 // Write embedded_ops in preset
                 if (!p.embedded_ops.empty()) {
-                    yyjson_mut_val* peo_obj = yyjson_mut_obj(doc);
+                    nlohmann::ordered_json peo_obj = nlohmann::ordered_json::object();
                     for (const auto& [role_id, child] : p.embedded_ops) {
-                        yyjson_mut_val* child_obj = yyjson_mut_obj(doc);
-                        serialize_node_fields(doc, child_obj, child);
-                        yyjson_mut_obj_add_val(doc, peo_obj, role_id.c_str(), child_obj);
+                        nlohmann::ordered_json child_obj = nlohmann::ordered_json::object();
+                        serialize_node_fields(child_obj, child);
+                        peo_obj[role_id] = std::move(child_obj);
                     }
-                    yyjson_mut_obj_add_val(doc, pr_obj, "embedded_ops", peo_obj);
+                    pr_obj["embedded_ops"] = std::move(peo_obj);
                 }
-                yyjson_mut_arr_add_val(pr_arr, pr_obj);
+                pr_arr.push_back(std::move(pr_obj));
             }
-            yyjson_mut_obj_add_val(doc, presets_obj, node_id.c_str(), pr_arr);
+            presets_obj[node_id] = std::move(pr_arr);
         }
-        yyjson_mut_obj_add_val(doc, root, "presets", presets_obj);
+        root["presets"] = std::move(presets_obj);
     }
 
     // State-preset mappings
     if (!graph.state_preset_mappings().empty()) {
-        yyjson_mut_val* spm_arr = yyjson_mut_arr(doc);
+        nlohmann::ordered_json spm_arr = nlohmann::ordered_json::array();
         for (const auto& spm : graph.state_preset_mappings()) {
-            yyjson_mut_val* spm_obj = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_strcpy(doc, spm_obj, "node", spm.state_machine_node.c_str());
-            yyjson_mut_val* states_arr = yyjson_mut_arr(doc);
+            nlohmann::ordered_json spm_obj = nlohmann::ordered_json::object();
+            spm_obj["node"] = spm.state_machine_node;
+            nlohmann::ordered_json states_arr = nlohmann::ordered_json::array();
             for (const auto& bindings : spm.state_presets) {
-                yyjson_mut_val* b_obj = yyjson_mut_obj(doc);
+                nlohmann::ordered_json b_obj = nlohmann::ordered_json::object();
                 for (const auto& [target_node, preset_name] : bindings) {
-                    yyjson_mut_obj_add_strcpy(doc, b_obj, target_node.c_str(),
-                                              preset_name.c_str());
+                    b_obj[target_node] = preset_name;
                 }
-                yyjson_mut_arr_add_val(states_arr, b_obj);
+                states_arr.push_back(std::move(b_obj));
             }
-            yyjson_mut_obj_add_val(doc, spm_obj, "states", states_arr);
-            yyjson_mut_arr_add_val(spm_arr, spm_obj);
+            spm_obj["states"] = std::move(states_arr);
+            spm_arr.push_back(std::move(spm_obj));
         }
-        yyjson_mut_obj_add_val(doc, root, "state_preset_mappings", spm_arr);
+        root["state_preset_mappings"] = std::move(spm_arr);
     }
 
     // Viewport
     if (graph.has_viewport()) {
-        yyjson_mut_val* vp_obj = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_real(doc, vp_obj, "pan_x", static_cast<double>(graph.viewport_pan_x));
-        yyjson_mut_obj_add_real(doc, vp_obj, "pan_y", static_cast<double>(graph.viewport_pan_y));
-        yyjson_mut_obj_add_real(doc, vp_obj, "zoom",  static_cast<double>(graph.viewport_zoom));
-        yyjson_mut_obj_add_val(doc, root, "viewport", vp_obj);
+        nlohmann::ordered_json vp_obj = nlohmann::ordered_json::object();
+        vp_obj["pan_x"] = static_cast<double>(graph.viewport_pan_x);
+        vp_obj["pan_y"] = static_cast<double>(graph.viewport_pan_y);
+        vp_obj["zoom"]  = static_cast<double>(graph.viewport_zoom);
+        root["viewport"] = std::move(vp_obj);
     }
 
     // Sticky notes
     if (!graph.sticky_notes().empty()) {
-        yyjson_mut_val* sn_arr = yyjson_mut_arr(doc);
+        nlohmann::ordered_json sn_arr = nlohmann::ordered_json::array();
         for (const auto& sn : graph.sticky_notes()) {
-            yyjson_mut_val* sn_obj = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_strcpy(doc, sn_obj, "id", sn.id.c_str());
-            yyjson_mut_obj_add_strcpy(doc, sn_obj, "text", sn.text.c_str());
-            yyjson_mut_obj_add_real(doc, sn_obj, "x", static_cast<double>(sn.x));
-            yyjson_mut_obj_add_real(doc, sn_obj, "y", static_cast<double>(sn.y));
-            yyjson_mut_obj_add_real(doc, sn_obj, "width", static_cast<double>(sn.width));
-            yyjson_mut_obj_add_real(doc, sn_obj, "height", static_cast<double>(sn.height));
-            yyjson_mut_obj_add_int(doc, sn_obj, "color", sn.color);
-            yyjson_mut_arr_add_val(sn_arr, sn_obj);
+            nlohmann::ordered_json sn_obj = nlohmann::ordered_json::object();
+            sn_obj["id"] = sn.id;
+            sn_obj["text"] = sn.text;
+            sn_obj["x"] = static_cast<double>(sn.x);
+            sn_obj["y"] = static_cast<double>(sn.y);
+            sn_obj["width"] = static_cast<double>(sn.width);
+            sn_obj["height"] = static_cast<double>(sn.height);
+            sn_obj["color"] = sn.color;
+            sn_arr.push_back(std::move(sn_obj));
         }
-        yyjson_mut_obj_add_val(doc, root, "sticky_notes", sn_arr);
+        root["sticky_notes"] = std::move(sn_arr);
     }
 
-    return doc;
+    return root;
 }
 
 bool Graph::save(const char* path) const {
-    yyjson_mut_doc* doc = build_graph_json_doc(*this);
-
-    // Write
-    yyjson_write_err werr;
-    bool ok = yyjson_mut_write_file(path, doc, YYJSON_WRITE_PRETTY | YYJSON_WRITE_NEWLINE_AT_END,
-                                     nullptr, &werr);
-    yyjson_mut_doc_free(doc);
-
-    if (!ok) {
-        std::fprintf(stderr, "[vivid] Graph: failed to write %s: %s\n", path, werr.msg);
+    auto doc = build_graph_json_doc(*this);
+    std::ofstream ofs(path);
+    if (!ofs) {
+        std::fprintf(stderr, "[vivid] Graph: failed to write %s: could not open file\n", path);
         return false;
     }
-
+    ofs << doc.dump(4) << '\n';
     std::fprintf(stderr, "[vivid] Graph saved: %s (%zu nodes, %zu connections)\n",
         path, nodes_.size(), connections_.size());
     return true;
 }
 
 bool Graph::save_to_string(std::string& out_json) const {
-    yyjson_mut_doc* doc = build_graph_json_doc(*this);
-    size_t len = 0;
-    char* json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY | YYJSON_WRITE_NEWLINE_AT_END, &len);
-    yyjson_mut_doc_free(doc);
-
-    if (!json) {
-        std::fprintf(stderr, "[vivid] Graph: failed to write JSON to string\n");
-        return false;
-    }
-
-    out_json.assign(json, len);
-    std::free(json);
+    auto doc = build_graph_json_doc(*this);
+    out_json = doc.dump(4) + "\n";
     return true;
 }
 

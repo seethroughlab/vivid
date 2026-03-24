@@ -83,7 +83,7 @@ Complements the glyph tiers above by handling the *content* side of localization
 A lightweight `T("key", "English fallback")` macro returns `const char*`, matching every existing `draw_text` callsite with zero signature changes. At startup, an optional JSON locale file is loaded; if absent (or if a key is missing), the English fallback is returned directly.
 
 - **`src/ui/i18n.h`** — `I18n` singleton class + `T()` / `T_PLURAL()` macros
-- **`src/ui/i18n.cpp`** — JSON loader (yyjson), map lookup, plural support
+- **`src/ui/i18n.cpp`** — JSON loader (nlohmann/json), map lookup, plural support
 - **`locales/en.json`** — canonical English string table (template for translators)
 
 ### What is translated

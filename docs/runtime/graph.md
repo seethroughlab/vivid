@@ -64,7 +64,7 @@ bool load_from_string(const char* json, size_t len);  // parse in-memory JSON
 bool save(const char* path) const;
 bool save_to_string(std::string& out_json) const;
 ```
-Uses yyjson for fast JSON parsing. Schema version checked against `GRAPH_SCHEMA_VERSION` (currently 1).
+Uses nlohmann/json for JSON parsing. Schema version checked against `GRAPH_SCHEMA_VERSION` (currently 1).
 `load_diagnostics` is populated with package version mismatches after load.
 
 ### Mutation

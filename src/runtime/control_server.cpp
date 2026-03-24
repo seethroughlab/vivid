@@ -18,7 +18,7 @@
 #include "operator_api/types.h"
 #include "operator_api/type_id.h"
 #include "operator_api/port_type_registry.h"
-#include "yyjson.h"
+#include <nlohmann/json.hpp>
 #include <ixwebsocket/IXHttpServer.h>
 #include <cassert>
 #include <deque>
@@ -103,21 +103,20 @@ static const char* transport_str(VividPortTransport t) {
     }
 }
 
-static void add_port_registry_metadata(yyjson_mut_doc* doc,
-                                       yyjson_mut_val* port_obj,
+static void add_port_registry_metadata(nlohmann::json& port_obj,
                                        const VividPortDescriptor& pd) {
     if (!vivid_is_custom_port_type(pd.type)) return;
 
     VividPortTypeInfo info{};
     const bool registered = vivid_lookup_port_type(pd.type, &info) == 1;
-    yyjson_mut_obj_add_bool(doc, port_obj, "custom_type_registered", registered);
+    port_obj["custom_type_registered"] = registered;
     if (!registered) return;
 
-    yyjson_mut_obj_add_bool(doc, port_obj, "audio_safe", info.audio_safe != 0);
+    port_obj["audio_safe"] = (info.audio_safe != 0);
     if (info.package_name && *info.package_name)
-        yyjson_mut_obj_add_strcpy(doc, port_obj, "registry_package_name", info.package_name);
+        port_obj["registry_package_name"] = info.package_name;
     if (info.description && *info.description)
-        yyjson_mut_obj_add_strcpy(doc, port_obj, "registry_description", info.description);
+        port_obj["registry_description"] = info.description;
 }
 
 static const char* update_class_str(PackageUpdateClass c) {
@@ -135,46 +134,16 @@ static const char* update_class_str(PackageUpdateClass c) {
 // JSON response helpers
 // ---------------------------------------------------------------------------
 
-static std::string json_serialize(yyjson_mut_doc* doc) {
-    size_t len = 0;
-    char* json = yyjson_mut_write(doc, 0, &len);
-    std::string result(json ? json : "{}", json ? len : 2);
-    std::free(json);
-    return result;
-}
-
-// Wrap a pre-built result value in {"ok": true, "result": ...}
-// Takes ownership of doc (frees it).
-static std::string json_ok(yyjson_mut_doc* doc, yyjson_mut_val* result_val) {
-    yyjson_mut_val* root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_bool(doc, root, "ok", true);
-    yyjson_mut_obj_add_val(doc, root, "result", result_val);
-    std::string s = json_serialize(doc);
-    yyjson_mut_doc_free(doc);
-    return s;
+static std::string json_ok(nlohmann::json result) {
+    return nlohmann::json{{"ok", true}, {"result", std::move(result)}}.dump();
 }
 
 static std::string json_ok_msg(const std::string& msg) {
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_bool(doc, root, "ok", true);
-    yyjson_mut_obj_add_strcpy(doc, root, "message", msg.c_str());
-    std::string s = json_serialize(doc);
-    yyjson_mut_doc_free(doc);
-    return s;
+    return nlohmann::json{{"ok", true}, {"message", msg}}.dump();
 }
 
 static std::string json_err(const std::string& msg) {
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_bool(doc, root, "ok", false);
-    yyjson_mut_obj_add_strcpy(doc, root, "error", msg.c_str());
-    std::string s = json_serialize(doc);
-    yyjson_mut_doc_free(doc);
-    return s;
+    return nlohmann::json{{"ok", false}, {"error", msg}}.dump();
 }
 
 static std::string command_result_to_json(const CommandResult& r) {
@@ -232,13 +201,10 @@ static bool is_safe_capture_image_path(const std::string& path) {
 }
 
 static bool response_is_ok(const std::string& response_json) {
-    yyjson_doc* doc = yyjson_read(response_json.c_str(), response_json.size(), 0);
-    if (!doc) return false;
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    yyjson_val* ok_val = root ? yyjson_obj_get(root, "ok") : nullptr;
-    bool ok = ok_val && yyjson_is_bool(ok_val) && yyjson_get_bool(ok_val);
-    yyjson_doc_free(doc);
-    return ok;
+    try {
+        auto doc = nlohmann::json::parse(response_json);
+        return doc.contains("ok") && doc["ok"].is_boolean() && doc["ok"].get<bool>();
+    } catch (...) { return false; }
 }
 
 static bool capture_live_graph_snapshot(Graph& graph, std::string& out_json,
@@ -296,15 +262,14 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
     for (const auto& ns : scheduler.nodes())
         state_map[ns.node_id] = &ns;
 
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* result = yyjson_mut_obj(doc);
+    nlohmann::json result = nlohmann::json::object();
 
     // -- Nodes --
-    yyjson_mut_val* nodes_arr = yyjson_mut_arr(doc);
+    nlohmann::json nodes_arr = nlohmann::json::array();
     for (const auto& ndef : graph.nodes()) {
-        yyjson_mut_val* node = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, node, "id", ndef.id.c_str());
-        yyjson_mut_obj_add_strcpy(doc, node, "type", ndef.type.c_str());
+        nlohmann::json node = nlohmann::json::object();
+        node["id"] = ndef.id;
+        node["type"] = ndef.type;
 
         auto sit = state_map.find(ndef.id);
         const NodeState* ns = (sit != state_map.end()) ? sit->second : nullptr;
@@ -312,94 +277,91 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
             (ns && ns->loader) ? ns->loader->descriptor() : nullptr;
 
         // Params (with live values from scheduler)
-        yyjson_mut_val* params_arr = yyjson_mut_arr(doc);
+        nlohmann::json params_arr = nlohmann::json::array();
         if (desc) {
             for (uint32_t i = 0; i < desc->param_count; ++i) {
                 const auto& pd = desc->params[i];
-                yyjson_mut_val* p = yyjson_mut_obj(doc);
-                yyjson_mut_obj_add_strcpy(doc, p, "name", pd.name);
-                yyjson_mut_obj_add_str(doc, p, "type", param_type_str(pd.type));
+                nlohmann::json p = nlohmann::json::object();
+                p["name"] = pd.name;
+                p["type"] = param_type_str(pd.type);
                 float value = pd.default_value;
                 if (ns) {
                     auto pi = ns->param_indices.find(pd.name);
                     if (pi != ns->param_indices.end())
                         value = ns->param_values[pi->second];
                 }
-                yyjson_mut_obj_add_real(doc, p, "value", static_cast<double>(value));
-                yyjson_mut_obj_add_real(doc, p, "min", static_cast<double>(pd.min_value));
-                yyjson_mut_obj_add_real(doc, p, "max", static_cast<double>(pd.max_value));
-                yyjson_mut_obj_add_real(doc, p, "default", static_cast<double>(pd.default_value));
+                p["value"] = static_cast<double>(value);
+                p["min"] = static_cast<double>(pd.min_value);
+                p["max"] = static_cast<double>(pd.max_value);
+                p["default"] = static_cast<double>(pd.default_value);
                 if (pd.semantic_tag)
-                    yyjson_mut_obj_add_strcpy(doc, p, "semantic_tag", pd.semantic_tag);
+                    p["semantic_tag"] = pd.semantic_tag;
                 if (pd.semantic_shape)
-                    yyjson_mut_obj_add_strcpy(doc, p, "semantic_shape", pd.semantic_shape);
+                    p["semantic_shape"] = pd.semantic_shape;
                 if (pd.semantic_unit)
-                    yyjson_mut_obj_add_strcpy(doc, p, "semantic_unit", pd.semantic_unit);
+                    p["semantic_unit"] = pd.semantic_unit;
                 if (pd.semantic_intent)
-                    yyjson_mut_obj_add_strcpy(doc, p, "semantic_intent", pd.semantic_intent);
+                    p["semantic_intent"] = pd.semantic_intent;
                 if (pd.choice_count > 0 && pd.choice_labels) {
-                    yyjson_mut_val* choices = yyjson_mut_arr(doc);
+                    nlohmann::json choices = nlohmann::json::array();
                     for (uint32_t c = 0; c < pd.choice_count; ++c)
-                        yyjson_mut_arr_add_strcpy(doc, choices, pd.choice_labels[c]);
-                    yyjson_mut_obj_add_val(doc, p, "choices", choices);
+                        choices.push_back(pd.choice_labels[c]);
+                    p["choices"] = std::move(choices);
                 }
                 if ((pd.type == VIVID_PARAM_FILE || pd.type == VIVID_PARAM_TEXT) && ns) {
                     auto fi = ns->file_param_indices.find(pd.name);
                     if (fi != ns->file_param_indices.end()) {
-                        yyjson_mut_obj_add_strcpy(doc, p, "string_value",
-                            ns->file_param_storage[fi->second].c_str());
+                        p["string_value"] = ns->file_param_storage[fi->second];
                     }
                 }
-                yyjson_mut_arr_add_val(params_arr, p);
+                params_arr.push_back(std::move(p));
             }
         }
-        yyjson_mut_obj_add_val(doc, node, "params", params_arr);
+        node["params"] = std::move(params_arr);
 
         // Ports split into inputs / outputs
-        yyjson_mut_val* inputs_arr = yyjson_mut_arr(doc);
-        yyjson_mut_val* outputs_arr = yyjson_mut_arr(doc);
+        nlohmann::json inputs_arr = nlohmann::json::array();
+        nlohmann::json outputs_arr = nlohmann::json::array();
         if (desc) {
             for (uint32_t i = 0; i < desc->port_count; ++i) {
                 const auto& pd = desc->ports[i];
-                yyjson_mut_val* p = yyjson_mut_obj(doc);
-                yyjson_mut_obj_add_strcpy(doc, p, "name", pd.name);
-                yyjson_mut_obj_add_str(doc, p, "type", port_type_str(pd.type));
-                yyjson_mut_obj_add_str(doc, p, "transport", transport_str(pd.transport));
+                nlohmann::json p = nlohmann::json::object();
+                p["name"] = pd.name;
+                p["type"] = port_type_str(pd.type);
+                p["transport"] = transport_str(pd.transport);
                 if (pd.type_name)
-                    yyjson_mut_obj_add_strcpy(doc, p, "type_name", pd.type_name);
+                    p["type_name"] = pd.type_name;
                 if (pd.stable_type_id)
-                    yyjson_mut_obj_add_strcpy(doc, p, "stable_type_id", pd.stable_type_id);
+                    p["stable_type_id"] = pd.stable_type_id;
                 if (pd.payload_size > 0)
-                    yyjson_mut_obj_add_uint(doc, p, "payload_size", pd.payload_size);
+                    p["payload_size"] = pd.payload_size;
 
                 if (pd.direction == VIVID_PORT_OUTPUT && ns) {
                     auto oi = ns->output_port_indices.find(pd.name);
                     if (oi != ns->output_port_indices.end() &&
                         oi->second < ns->output_values.size()) {
-                        yyjson_mut_obj_add_real(doc, p, "current_value",
-                            static_cast<double>(ns->output_values[oi->second]));
+                        p["current_value"] = static_cast<double>(ns->output_values[oi->second]);
                     }
                     if (oi != ns->output_port_indices.end() &&
                         oi->second < ns->output_string_values.size() &&
                         !ns->output_string_values[oi->second].empty()) {
-                        yyjson_mut_obj_add_strcpy(doc, p, "current_string",
-                            ns->output_string_values[oi->second].c_str());
+                        p["current_string"] = ns->output_string_values[oi->second];
                     }
                     if (oi != ns->output_port_indices.end() &&
                         oi->second < ns->output_spreads.size() &&
                         !ns->output_spreads[oi->second].empty()) {
-                        yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                        nlohmann::json spread_arr = nlohmann::json::array();
                         for (float sv : ns->output_spreads[oi->second])
-                            yyjson_mut_arr_add_real(doc, spread_arr, static_cast<double>(sv));
-                        yyjson_mut_obj_add_val(doc, p, "spread", spread_arr);
+                            spread_arr.push_back(static_cast<double>(sv));
+                        p["spread"] = std::move(spread_arr);
                     }
                     if (oi != ns->output_port_indices.end() &&
                         oi->second < ns->output_string_spreads.size() &&
                         !ns->output_string_spreads[oi->second].empty()) {
-                        yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                        nlohmann::json spread_arr = nlohmann::json::array();
                         for (const auto& sv : ns->output_string_spreads[oi->second])
-                            yyjson_mut_arr_add_strcpy(doc, spread_arr, sv.c_str());
-                        yyjson_mut_obj_add_val(doc, p, "string_spread", spread_arr);
+                            spread_arr.push_back(sv);
+                        p["string_spread"] = std::move(spread_arr);
                     }
                 }
 
@@ -407,67 +369,65 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
                     auto ii = ns->input_port_indices.find(pd.name);
                     if (ii != ns->input_port_indices.end() &&
                         ii->second < ns->input_values.size()) {
-                        yyjson_mut_obj_add_real(doc, p, "current_value",
-                            static_cast<double>(ns->input_values[ii->second]));
+                        p["current_value"] = static_cast<double>(ns->input_values[ii->second]);
                     }
                     if (ii != ns->input_port_indices.end() &&
                         ii->second < ns->input_string_values.size() &&
                         !ns->input_string_values[ii->second].empty()) {
-                        yyjson_mut_obj_add_strcpy(doc, p, "current_string",
-                            ns->input_string_values[ii->second].c_str());
+                        p["current_string"] = ns->input_string_values[ii->second];
                     }
                     if (ii != ns->input_port_indices.end() &&
                         ii->second < ns->input_spreads.size() &&
                         !ns->input_spreads[ii->second].empty()) {
-                        yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                        nlohmann::json spread_arr = nlohmann::json::array();
                         for (float sv : ns->input_spreads[ii->second])
-                            yyjson_mut_arr_add_real(doc, spread_arr, static_cast<double>(sv));
-                        yyjson_mut_obj_add_val(doc, p, "spread", spread_arr);
+                            spread_arr.push_back(static_cast<double>(sv));
+                        p["spread"] = std::move(spread_arr);
                     }
                     if (ii != ns->input_port_indices.end() &&
                         ii->second < ns->input_string_spreads.size() &&
                         !ns->input_string_spreads[ii->second].empty()) {
-                        yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                        nlohmann::json spread_arr = nlohmann::json::array();
                         for (const auto& sv : ns->input_string_spreads[ii->second])
-                            yyjson_mut_arr_add_strcpy(doc, spread_arr, sv.c_str());
-                        yyjson_mut_obj_add_val(doc, p, "string_spread", spread_arr);
+                            spread_arr.push_back(sv);
+                        p["string_spread"] = std::move(spread_arr);
                     }
                 }
 
                 if (pd.direction == VIVID_PORT_INPUT)
-                    yyjson_mut_arr_add_val(inputs_arr, p);
+                    inputs_arr.push_back(std::move(p));
                 else
-                    yyjson_mut_arr_add_val(outputs_arr, p);
+                    outputs_arr.push_back(std::move(p));
             }
         }
-        yyjson_mut_obj_add_val(doc, node, "inputs", inputs_arr);
-        yyjson_mut_obj_add_val(doc, node, "outputs", outputs_arr);
+        node["inputs"] = std::move(inputs_arr);
+        node["outputs"] = std::move(outputs_arr);
 
-        yyjson_mut_arr_add_val(nodes_arr, node);
+        nodes_arr.push_back(std::move(node));
     }
-    yyjson_mut_obj_add_val(doc, result, "nodes", nodes_arr);
+    result["nodes"] = std::move(nodes_arr);
 
     // -- Connections --
-    yyjson_mut_val* conns_arr = yyjson_mut_arr(doc);
+    nlohmann::json conns_arr = nlohmann::json::array();
     for (const auto& conn : graph.connections()) {
-        yyjson_mut_val* c = yyjson_mut_obj(doc);
+        nlohmann::json c = nlohmann::json::object();
         std::string from_addr = conn.from_node + "/" + conn.from_port;
         std::string to_addr = conn.to_node + "/" + conn.to_port;
-        yyjson_mut_obj_add_strcpy(doc, c, "from", from_addr.c_str());
-        yyjson_mut_obj_add_strcpy(doc, c, "to", to_addr.c_str());
+        c["from"] = from_addr;
+        c["to"] = to_addr;
         if (conn.has_remap()) {
-            yyjson_mut_obj_add_real(doc, c, "from_min", conn.from_min);
-            yyjson_mut_obj_add_real(doc, c, "from_max", conn.from_max);
-            yyjson_mut_obj_add_real(doc, c, "to_min",   conn.to_min);
-            yyjson_mut_obj_add_real(doc, c, "to_max",   conn.to_max);
+            c["from_min"] = conn.from_min;
+            c["from_max"] = conn.from_max;
+            c["to_min"] = conn.to_min;
+            c["to_max"] = conn.to_max;
             if (conn.clamp)
-                yyjson_mut_obj_add_bool(doc, c, "clamp", true);
+                c["clamp"] = true;
         }
-        yyjson_mut_arr_add_val(conns_arr, c);
+        conns_arr.push_back(std::move(c));
     }
-    yyjson_mut_obj_add_val(doc, result, "connections", conns_arr);
+    result["connections"] = std::move(conns_arr);
 
-    return json_ok(doc, result);
+    return json_ok(std::move(result));
 }
 
 static const NodeState* find_node_state(const Scheduler& scheduler,
@@ -478,10 +438,9 @@ static const NodeState* find_node_state(const Scheduler& scheduler,
     return nullptr;
 }
 
-static yyjson_mut_val* sample_node_outputs_snapshot(yyjson_mut_doc* doc,
-                                                    const NodeState& ns,
+static nlohmann::json sample_node_outputs_snapshot(const NodeState& ns,
                                                     bool include_spreads) {
-    yyjson_mut_val* outputs_obj = yyjson_mut_obj(doc);
+    nlohmann::json outputs_obj = nlohmann::json::object();
     const VividOperatorDescriptor* desc = ns.loader ? ns.loader->descriptor() : nullptr;
     if (!desc) return outputs_obj;
 
@@ -489,73 +448,63 @@ static yyjson_mut_val* sample_node_outputs_snapshot(yyjson_mut_doc* doc,
         const auto& pd = desc->ports[pi];
         if (pd.direction != VIVID_PORT_OUTPUT) continue;
 
-        yyjson_mut_val* out = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, out, "kind", port_type_str(pd.type));
-        yyjson_mut_obj_add_str(doc, out, "transport", transport_str(pd.transport));
+        nlohmann::json out = nlohmann::json::object();
+        out["kind"] = port_type_str(pd.type);
+        out["transport"] = transport_str(pd.transport);
         if (pd.type_name)
-            yyjson_mut_obj_add_strcpy(doc, out, "type_name", pd.type_name);
+            out["type_name"] = pd.type_name;
         if (pd.stable_type_id)
-            yyjson_mut_obj_add_strcpy(doc, out, "stable_type_id", pd.stable_type_id);
+            out["stable_type_id"] = pd.stable_type_id;
 
         auto oit = ns.output_port_indices.find(pd.name);
         if (oit != ns.output_port_indices.end()) {
             const uint32_t oi = oit->second;
             if (oi < ns.output_values.size()) {
-                yyjson_mut_obj_add_real(doc, out, "scalar",
-                                        static_cast<double>(ns.output_values[oi]));
+                out["scalar"] = static_cast<double>(ns.output_values[oi]);
             }
             if (oi < ns.output_string_values.size() &&
                 !ns.output_string_values[oi].empty()) {
-                yyjson_mut_obj_add_strcpy(doc, out, "string",
-                                          ns.output_string_values[oi].c_str());
+                out["string"] = ns.output_string_values[oi];
             }
             if (include_spreads && oi < ns.output_spreads.size() &&
                 !ns.output_spreads[oi].empty()) {
-                yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                nlohmann::json spread_arr = nlohmann::json::array();
                 for (float sv : ns.output_spreads[oi]) {
-                    yyjson_mut_arr_add_real(doc, spread_arr, static_cast<double>(sv));
+                    spread_arr.push_back(static_cast<double>(sv));
                 }
-                yyjson_mut_obj_add_val(doc, out, "spread", spread_arr);
+                out["spread"] = std::move(spread_arr);
             }
             if (include_spreads && oi < ns.output_string_spreads.size() &&
                 !ns.output_string_spreads[oi].empty()) {
-                yyjson_mut_val* spread_arr = yyjson_mut_arr(doc);
+                nlohmann::json spread_arr = nlohmann::json::array();
                 for (const auto& sv : ns.output_string_spreads[oi]) {
-                    yyjson_mut_arr_add_strcpy(doc, spread_arr, sv.c_str());
+                    spread_arr.push_back(sv);
                 }
-                yyjson_mut_obj_add_val(doc, out, "string_spread", spread_arr);
+                out["string_spread"] = std::move(spread_arr);
             }
         }
 
-        yyjson_mut_obj_add_val(doc, outputs_obj, pd.name, out);
+        outputs_obj[pd.name] = std::move(out);
     }
 
     return outputs_obj;
 }
 
 static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler,
-                                              yyjson_val* root) {
-    if (!root) return json_err("invalid JSON body");
-
-    yyjson_val* node_v = yyjson_obj_get(root, "node_id");
-    if (!node_v || !yyjson_is_str(node_v)) return json_err("missing 'node_id'");
-    std::string node_id = yyjson_get_str(node_v);
+                                              const nlohmann::json& root) {
+    if (!root.contains("node_id") || !root["node_id"].is_string()) return json_err("missing 'node_id'");
+    std::string node_id = root["node_id"].get<std::string>();
 
     double duration_seconds = 8.0;
     int interval_ms = 250;
     bool include_spreads = true;
 
-    if (yyjson_val* dur_v = yyjson_obj_get(root, "duration_seconds")) {
-        if (yyjson_is_real(dur_v)) duration_seconds = yyjson_get_real(dur_v);
-        else if (yyjson_is_int(dur_v)) duration_seconds = static_cast<double>(yyjson_get_int(dur_v));
-    }
-    if (yyjson_val* interval_v = yyjson_obj_get(root, "interval_ms")) {
-        if (yyjson_is_int(interval_v)) interval_ms = static_cast<int>(yyjson_get_int(interval_v));
-        else if (yyjson_is_real(interval_v)) interval_ms = static_cast<int>(yyjson_get_real(interval_v));
-    }
-    if (yyjson_val* spread_v = yyjson_obj_get(root, "include_spreads")) {
-        if (yyjson_is_bool(spread_v)) include_spreads = yyjson_get_bool(spread_v);
-    }
+    if (root.contains("duration_seconds") && root["duration_seconds"].is_number())
+        duration_seconds = root["duration_seconds"].get<double>();
+    if (root.contains("interval_ms") && root["interval_ms"].is_number())
+        interval_ms = root["interval_ms"].get<int>();
+    if (root.contains("include_spreads") && root["include_spreads"].is_boolean())
+        include_spreads = root["include_spreads"].get<bool>();
 
     duration_seconds = std::clamp(duration_seconds, 0.0, 60.0);
     interval_ms = std::clamp(interval_ms, 10, 5000);
@@ -566,17 +515,15 @@ static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler
         return json_err("node has no live descriptor");
     }
 
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* result = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_strcpy(doc, result, "node_id", node_id.c_str());
-    yyjson_mut_obj_add_strcpy(doc, result, "type", initial->type_name.c_str());
-    yyjson_mut_obj_add_str(doc, result, "domain",
-                           initial->is_gpu ? "gpu" : (initial->is_audio ? "audio" : "control"));
-    yyjson_mut_obj_add_real(doc, result, "duration_seconds", duration_seconds);
-    yyjson_mut_obj_add_int(doc, result, "interval_ms", interval_ms);
-    yyjson_mut_obj_add_bool(doc, result, "include_spreads", include_spreads);
+    nlohmann::json result = nlohmann::json::object();
+    result["node_id"] = node_id;
+    result["type"] = initial->type_name;
+    result["domain"] = initial->is_gpu ? "gpu" : (initial->is_audio ? "audio" : "control");
+    result["duration_seconds"] = duration_seconds;
+    result["interval_ms"] = interval_ms;
+    result["include_spreads"] = include_spreads;
 
-    yyjson_mut_val* samples_arr = yyjson_mut_arr(doc);
+    nlohmann::json samples_arr = nlohmann::json::array();
     const auto start = std::chrono::steady_clock::now();
     const auto end = start + std::chrono::duration<double>(duration_seconds);
     auto next_sample = start;
@@ -586,16 +533,14 @@ static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler
         const auto now = std::chrono::steady_clock::now();
         const NodeState* ns = find_node_state(scheduler, node_id);
         if (!ns) {
-            yyjson_mut_doc_free(doc);
             return json_err("node disappeared during sampling");
         }
 
-        yyjson_mut_val* sample = yyjson_mut_obj(doc);
+        nlohmann::json sample = nlohmann::json::object();
         const double t = std::chrono::duration<double>(now - start).count();
-        yyjson_mut_obj_add_real(doc, sample, "time_seconds", t);
-        yyjson_mut_obj_add_val(doc, sample, "outputs",
-                               sample_node_outputs_snapshot(doc, *ns, include_spreads));
-        yyjson_mut_arr_add_val(samples_arr, sample);
+        sample["time_seconds"] = t;
+        sample["outputs"] = sample_node_outputs_snapshot(*ns, include_spreads);
+        samples_arr.push_back(std::move(sample));
         ++sample_count;
 
         if (now >= end) break;
@@ -603,9 +548,9 @@ static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler
         std::this_thread::sleep_until(next_sample);
     }
 
-    yyjson_mut_obj_add_int(doc, result, "sample_count", sample_count);
-    yyjson_mut_obj_add_val(doc, result, "samples", samples_arr);
-    return json_ok(doc, result);
+    result["sample_count"] = sample_count;
+    result["samples"] = std::move(samples_arr);
+    return json_ok(std::move(result));
 }
 
 static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
@@ -623,21 +568,15 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
         outgoing_port_wires[conn.from_node][conn.from_port]++;
     }
 
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_bool(doc, root, "ok", true);
-    yyjson_mut_obj_add_int(doc, root, "schema_version", 1);
-
-    yyjson_mut_val* result = yyjson_mut_obj(doc);
-    yyjson_mut_val* nodes_arr = yyjson_mut_arr(doc);
+    nlohmann::json result_obj = nlohmann::json::object();
+    nlohmann::json nodes_arr = nlohmann::json::array();
 
     const auto& nodes = scheduler.nodes();
     for (size_t ni = 0; ni < nodes.size(); ++ni) {
         const auto& ns = nodes[ni];
-        yyjson_mut_val* node = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, node, "node_id", ns.node_id.c_str());
-        yyjson_mut_obj_add_int(doc, node, "node_index", static_cast<int64_t>(ni));
+        nlohmann::json node = nlohmann::json::object();
+        node["node_id"] = ns.node_id;
+        node["node_index"] = static_cast<int64_t>(ni);
 
         std::string type_name = ns.type_name;
         if (type_name.empty()) {
@@ -645,242 +584,210 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
             if (dit != def_map.end() && dit->second)
                 type_name = dit->second->type;
         }
-        yyjson_mut_obj_add_strcpy(doc, node, "type", type_name.c_str());
-        yyjson_mut_obj_add_str(doc, node, "domain",
-                               ns.is_gpu ? "gpu" : (ns.is_audio ? "audio" : "control"));
-        yyjson_mut_obj_add_int(doc, node, "incoming_wires",
-                               static_cast<int64_t>(incoming_wires[ns.node_id]));
-        yyjson_mut_obj_add_int(doc, node, "outgoing_wires",
-                               static_cast<int64_t>(outgoing_wires[ns.node_id]));
+        node["type"] = type_name;
+        node["domain"] = ns.is_gpu ? "gpu" : (ns.is_audio ? "audio" : "control");
+        node["incoming_wires"] = static_cast<int64_t>(incoming_wires[ns.node_id]);
+        node["outgoing_wires"] = static_cast<int64_t>(outgoing_wires[ns.node_id]);
 
         // Health
-        yyjson_mut_val* health = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_bool(doc, health, "errored", ns.errored || ns.missing_operator);
-        yyjson_mut_obj_add_strcpy(doc, health, "message", ns.error_message.c_str());
-        yyjson_mut_obj_add_bool(doc, health, "missing_operator", ns.missing_operator);
-        yyjson_mut_obj_add_val(doc, node, "health", health);
+        nlohmann::json health = nlohmann::json::object();
+        health["errored"] = (ns.errored || ns.missing_operator);
+        health["message"] = ns.error_message;
+        health["missing_operator"] = ns.missing_operator;
+        node["health"] = std::move(health);
 
         const VividOperatorDescriptor* desc = ns.loader ? ns.loader->descriptor() : nullptr;
 
         // Current params
-        yyjson_mut_val* params_obj = yyjson_mut_obj(doc);
+        nlohmann::json params_obj = nlohmann::json::object();
         if (desc) {
             for (uint32_t pi = 0; pi < desc->param_count; ++pi) {
                 const auto& pd = desc->params[pi];
                 if (pi < ns.param_values.size())
-                    yyjson_mut_obj_add_real(doc, params_obj, pd.name,
-                                            static_cast<double>(ns.param_values[pi]));
+                    params_obj[pd.name] = static_cast<double>(ns.param_values[pi]);
             }
             for (const auto& [name, idx] : ns.file_param_indices) {
                 if (idx < ns.file_param_storage.size())
-                    yyjson_mut_obj_add_strcpy(doc, params_obj, name.c_str(),
-                                              ns.file_param_storage[idx].c_str());
+                    params_obj[name] = ns.file_param_storage[idx];
             }
         } else {
             auto dit = def_map.find(ns.node_id);
             if (dit != def_map.end() && dit->second) {
                 for (const auto& [k, v] : dit->second->params)
-                    yyjson_mut_obj_add_real(doc, params_obj, k.c_str(), static_cast<double>(v));
+                    params_obj[k] = static_cast<double>(v);
                 for (const auto& [k, v] : dit->second->string_params)
-                    yyjson_mut_obj_add_strcpy(doc, params_obj, k.c_str(), v.c_str());
+                    params_obj[k] = v;
             }
         }
-        yyjson_mut_obj_add_val(doc, node, "params", params_obj);
+        node["params"] = std::move(params_obj);
 
         // Param metadata
-        yyjson_mut_val* param_meta_arr = yyjson_mut_arr(doc);
+        nlohmann::json param_meta_arr = nlohmann::json::array();
         if (desc) {
             for (uint32_t pi = 0; pi < desc->param_count; ++pi) {
                 const auto& pd = desc->params[pi];
-                yyjson_mut_val* pm = yyjson_mut_obj(doc);
-                yyjson_mut_obj_add_strcpy(doc, pm, "name", pd.name);
-                yyjson_mut_obj_add_str(doc, pm, "kind", param_type_str(pd.type));
-                yyjson_mut_obj_add_real(doc, pm, "default", static_cast<double>(pd.default_value));
-                yyjson_mut_obj_add_real(doc, pm, "min", static_cast<double>(pd.min_value));
-                yyjson_mut_obj_add_real(doc, pm, "max", static_cast<double>(pd.max_value));
+                nlohmann::json pm = nlohmann::json::object();
+                pm["name"] = pd.name;
+                pm["kind"] = param_type_str(pd.type);
+                pm["default"] = static_cast<double>(pd.default_value);
+                pm["min"] = static_cast<double>(pd.min_value);
+                pm["max"] = static_cast<double>(pd.max_value);
                 if (pd.semantic_tag)
-                    yyjson_mut_obj_add_strcpy(doc, pm, "semantic_tag", pd.semantic_tag);
+                    pm["semantic_tag"] = pd.semantic_tag;
                 if (pd.semantic_shape)
-                    yyjson_mut_obj_add_strcpy(doc, pm, "semantic_shape", pd.semantic_shape);
+                    pm["semantic_shape"] = pd.semantic_shape;
                 if (pd.semantic_unit)
-                    yyjson_mut_obj_add_strcpy(doc, pm, "semantic_unit", pd.semantic_unit);
+                    pm["semantic_unit"] = pd.semantic_unit;
                 if (pd.semantic_intent)
-                    yyjson_mut_obj_add_strcpy(doc, pm, "semantic_intent", pd.semantic_intent);
-                yyjson_mut_arr_add_val(param_meta_arr, pm);
+                    pm["semantic_intent"] = pd.semantic_intent;
+                param_meta_arr.push_back(std::move(pm));
             }
         }
-        yyjson_mut_obj_add_val(doc, node, "param_meta", param_meta_arr);
+        node["param_meta"] = std::move(param_meta_arr);
 
         // Input summary
-        yyjson_mut_val* inputs_arr = yyjson_mut_arr(doc);
+        nlohmann::json inputs_arr = nlohmann::json::array();
         if (desc) {
             for (uint32_t pi = 0; pi < desc->port_count; ++pi) {
                 const auto& pd = desc->ports[pi];
                 if (pd.direction != VIVID_PORT_INPUT) continue;
 
-                yyjson_mut_val* in = yyjson_mut_obj(doc);
-                yyjson_mut_obj_add_strcpy(doc, in, "name", pd.name);
-                yyjson_mut_obj_add_str(doc, in, "kind", port_type_str(pd.type));
-                yyjson_mut_obj_add_str(doc, in, "transport", transport_str(pd.transport));
+                nlohmann::json in = nlohmann::json::object();
+                in["name"] = pd.name;
+                in["kind"] = port_type_str(pd.type);
+                in["transport"] = transport_str(pd.transport);
                 if (pd.type_name)
-                    yyjson_mut_obj_add_strcpy(doc, in, "type_name", pd.type_name);
+                    in["type_name"] = pd.type_name;
                 if (pd.stable_type_id)
-                    yyjson_mut_obj_add_strcpy(doc, in, "stable_type_id", pd.stable_type_id);
+                    in["stable_type_id"] = pd.stable_type_id;
                 if (pd.payload_size > 0)
-                    yyjson_mut_obj_add_int(doc, in, "payload_size",
-                        static_cast<int64_t>(pd.payload_size));
-                yyjson_mut_obj_add_int(doc, in, "connected_wires",
-                    static_cast<int64_t>(incoming_port_wires[ns.node_id][pd.name]));
+                    in["payload_size"] = static_cast<int64_t>(pd.payload_size);
+                in["connected_wires"] = static_cast<int64_t>(incoming_port_wires[ns.node_id][pd.name]);
 
                 auto iit = ns.input_port_indices.find(pd.name);
                 if (iit != ns.input_port_indices.end()) {
                     uint32_t ii = iit->second;
                     if (ii < ns.input_values.size()) {
-                        yyjson_mut_obj_add_real(doc, in, "scalar",
-                                                static_cast<double>(ns.input_values[ii]));
+                        in["scalar"] = static_cast<double>(ns.input_values[ii]);
                     }
                     if (ii < ns.input_string_values.size() &&
                         !ns.input_string_values[ii].empty()) {
-                        yyjson_mut_obj_add_strcpy(doc, in, "string",
-                                                  ns.input_string_values[ii].c_str());
+                        in["string"] = ns.input_string_values[ii];
                     }
                     if (ii < ns.input_spreads.size()) {
-                        yyjson_mut_val* spread = yyjson_mut_obj(doc);
-                        yyjson_mut_obj_add_int(doc, spread, "length",
-                                               static_cast<int64_t>(ns.input_spreads[ii].size()));
-                        yyjson_mut_obj_add_val(doc, in, "spread", spread);
+                        in["spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_spreads[ii].size())}};
                     }
                     if (ii < ns.input_string_spreads.size()) {
-                        yyjson_mut_val* sspread = yyjson_mut_obj(doc);
-                        yyjson_mut_obj_add_int(doc, sspread, "length",
-                                               static_cast<int64_t>(ns.input_string_spreads[ii].size()));
-                        yyjson_mut_obj_add_val(doc, in, "string_spread", sspread);
+                        in["string_spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_string_spreads[ii].size())}};
                     }
                 }
-                yyjson_mut_arr_add_val(inputs_arr, in);
+                inputs_arr.push_back(std::move(in));
             }
         }
-        yyjson_mut_obj_add_val(doc, node, "inputs", inputs_arr);
+        node["inputs"] = std::move(inputs_arr);
 
         // Output summary
-        yyjson_mut_val* outputs_arr = yyjson_mut_arr(doc);
+        nlohmann::json outputs_arr = nlohmann::json::array();
         if (desc) {
             for (uint32_t pi = 0; pi < desc->port_count; ++pi) {
                 const auto& pd = desc->ports[pi];
                 if (pd.direction != VIVID_PORT_OUTPUT) continue;
 
-                yyjson_mut_val* out = yyjson_mut_obj(doc);
-                yyjson_mut_obj_add_strcpy(doc, out, "name", pd.name);
-                yyjson_mut_obj_add_str(doc, out, "kind", port_type_str(pd.type));
-                yyjson_mut_obj_add_str(doc, out, "transport", transport_str(pd.transport));
+                nlohmann::json out = nlohmann::json::object();
+                out["name"] = pd.name;
+                out["kind"] = port_type_str(pd.type);
+                out["transport"] = transport_str(pd.transport);
                 if (pd.type_name)
-                    yyjson_mut_obj_add_strcpy(doc, out, "type_name", pd.type_name);
+                    out["type_name"] = pd.type_name;
                 if (pd.stable_type_id)
-                    yyjson_mut_obj_add_strcpy(doc, out, "stable_type_id", pd.stable_type_id);
+                    out["stable_type_id"] = pd.stable_type_id;
                 if (pd.payload_size > 0)
-                    yyjson_mut_obj_add_int(doc, out, "payload_size",
-                        static_cast<int64_t>(pd.payload_size));
-                yyjson_mut_obj_add_int(doc, out, "connected_wires",
-                    static_cast<int64_t>(outgoing_port_wires[ns.node_id][pd.name]));
+                    out["payload_size"] = static_cast<int64_t>(pd.payload_size);
+                out["connected_wires"] = static_cast<int64_t>(outgoing_port_wires[ns.node_id][pd.name]);
 
                 auto oit = ns.output_port_indices.find(pd.name);
                 if (oit != ns.output_port_indices.end()) {
                     uint32_t oi = oit->second;
                     if (oi < ns.output_values.size())
-                        yyjson_mut_obj_add_real(doc, out, "scalar",
-                                                static_cast<double>(ns.output_values[oi]));
+                        out["scalar"] = static_cast<double>(ns.output_values[oi]);
                     if (oi < ns.output_string_values.size() &&
                         !ns.output_string_values[oi].empty()) {
-                        yyjson_mut_obj_add_strcpy(doc, out, "string",
-                                                  ns.output_string_values[oi].c_str());
+                        out["string"] = ns.output_string_values[oi];
                     }
                     if (oi < ns.output_spreads.size()) {
-                        yyjson_mut_val* spread = yyjson_mut_obj(doc);
-                        yyjson_mut_obj_add_int(doc, spread, "length",
-                                               static_cast<int64_t>(ns.output_spreads[oi].size()));
-                        yyjson_mut_obj_add_val(doc, out, "spread", spread);
+                        out["spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_spreads[oi].size())}};
                     }
                     if (oi < ns.output_string_spreads.size()) {
-                        yyjson_mut_val* sspread = yyjson_mut_obj(doc);
-                        yyjson_mut_obj_add_int(doc, sspread, "length",
-                                               static_cast<int64_t>(ns.output_string_spreads[oi].size()));
-                        yyjson_mut_obj_add_val(doc, out, "string_spread", sspread);
+                        out["string_spread"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_string_spreads[oi].size())}};
                     }
                 }
 
                 if (pd.type == VIVID_PORT_TEXTURE && ns.gpu_tex_width > 0 && ns.gpu_tex_height > 0) {
-                    yyjson_mut_obj_add_int(doc, out, "width", ns.gpu_tex_width);
-                    yyjson_mut_obj_add_int(doc, out, "height", ns.gpu_tex_height);
+                    out["width"] = ns.gpu_tex_width;
+                    out["height"] = ns.gpu_tex_height;
                 }
-                yyjson_mut_arr_add_val(outputs_arr, out);
+                outputs_arr.push_back(std::move(out));
             }
         }
-        yyjson_mut_obj_add_val(doc, node, "outputs", outputs_arr);
+        node["outputs"] = std::move(outputs_arr);
 
         // Domain metrics (lightweight first pass)
-        yyjson_mut_val* domain_metrics = yyjson_mut_obj(doc);
+        nlohmann::json domain_metrics = nlohmann::json::object();
         if (ns.is_gpu) {
-            yyjson_mut_val* gpu = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_int(doc, gpu, "width", ns.gpu_tex_width);
-            yyjson_mut_obj_add_int(doc, gpu, "height", ns.gpu_tex_height);
-            yyjson_mut_obj_add_bool(doc, gpu, "has_texture", ns.gpu_texture != nullptr);
-            yyjson_mut_obj_add_int(doc, gpu, "aux_texture_count",
-                static_cast<int64_t>(ns.aux_gpu_texture_views.size()));
-            yyjson_mut_obj_add_val(doc, domain_metrics, "gpu", gpu);
+            nlohmann::json gpu = nlohmann::json::object();
+            gpu["width"] = ns.gpu_tex_width;
+            gpu["height"] = ns.gpu_tex_height;
+            gpu["has_texture"] = (ns.gpu_texture != nullptr);
+            gpu["aux_texture_count"] = static_cast<int64_t>(ns.aux_gpu_texture_views.size());
+            domain_metrics["gpu"] = std::move(gpu);
         } else if (ns.is_audio) {
-            yyjson_mut_val* audio = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_int(doc, audio, "output_port_count", ns.output_port_count);
-            yyjson_mut_obj_add_int(doc, audio, "input_port_count", ns.input_port_count);
+            nlohmann::json audio = nlohmann::json::object();
+            audio["output_port_count"] = ns.output_port_count;
+            audio["input_port_count"] = ns.input_port_count;
             auto rms_it = ns.output_port_indices.find("rms");
             if (rms_it != ns.output_port_indices.end() &&
                 rms_it->second < ns.output_values.size()) {
-                yyjson_mut_obj_add_real(doc, audio, "rms",
-                    static_cast<double>(ns.output_values[rms_it->second]));
+                audio["rms"] = static_cast<double>(ns.output_values[rms_it->second]);
             }
             auto peak_it = ns.output_port_indices.find("peak");
             if (peak_it != ns.output_port_indices.end() &&
                 peak_it->second < ns.output_values.size()) {
-                yyjson_mut_obj_add_real(doc, audio, "peak",
-                    static_cast<double>(ns.output_values[peak_it->second]));
+                audio["peak"] = static_cast<double>(ns.output_values[peak_it->second]);
             }
             auto wave_it = ns.output_port_indices.find("waveform");
             if (wave_it != ns.output_port_indices.end() &&
                 wave_it->second < ns.output_spreads.size()) {
                 const auto& wave = ns.output_spreads[wave_it->second];
-                yyjson_mut_obj_add_int(doc, audio, "waveform_length",
-                    static_cast<int64_t>(wave.size()));
-                yyjson_mut_val* preview = yyjson_mut_arr(doc);
+                audio["waveform_length"] = static_cast<int64_t>(wave.size());
+                nlohmann::json preview = nlohmann::json::array();
                 size_t preview_count = wave.size();
                 if (preview_count > 32) preview_count = 32;
                 for (size_t wi = 0; wi < preview_count; ++wi) {
-                    yyjson_mut_arr_add_real(doc, preview, static_cast<double>(wave[wi]));
+                    preview.push_back(static_cast<double>(wave[wi]));
                 }
-                yyjson_mut_obj_add_val(doc, audio, "waveform_preview", preview);
+                audio["waveform_preview"] = std::move(preview);
             }
-            yyjson_mut_obj_add_val(doc, domain_metrics, "audio", audio);
+            domain_metrics["audio"] = std::move(audio);
         } else {
-            yyjson_mut_val* control = yyjson_mut_obj(doc);
+            nlohmann::json control = nlohmann::json::object();
             int64_t spread_out_nonempty = 0;
             int64_t scalar_out_nonzero = 0;
             for (const auto& sp : ns.output_spreads)
                 if (!sp.empty()) spread_out_nonempty++;
             for (float v : ns.output_values)
                 if (v != 0.0f) scalar_out_nonzero++;
-            yyjson_mut_obj_add_int(doc, control, "non_empty_spread_outputs", spread_out_nonempty);
-            yyjson_mut_obj_add_int(doc, control, "non_zero_scalar_outputs", scalar_out_nonzero);
-            yyjson_mut_obj_add_val(doc, domain_metrics, "control", control);
+            control["non_empty_spread_outputs"] = spread_out_nonempty;
+            control["non_zero_scalar_outputs"] = scalar_out_nonzero;
+            domain_metrics["control"] = std::move(control);
         }
-        yyjson_mut_obj_add_val(doc, node, "domain_metrics", domain_metrics);
+        node["domain_metrics"] = std::move(domain_metrics);
 
-        yyjson_mut_arr_add_val(nodes_arr, node);
+        nodes_arr.push_back(std::move(node));
     }
 
-    yyjson_mut_obj_add_val(doc, result, "nodes", nodes_arr);
-    yyjson_mut_obj_add_val(doc, root, "result", result);
+    result_obj["nodes"] = std::move(nodes_arr);
 
-    std::string s = json_serialize(doc);
-    yyjson_mut_doc_free(doc);
-    return s;
+    return nlohmann::json{{"ok", true}, {"schema_version", 1}, {"result", std::move(result_obj)}}.dump();
 }
 
 static int severity_rank(const std::string& severity) {
@@ -1017,15 +924,9 @@ static std::vector<DiagnosticFinding> collect_diagnostics(
 }
 
 static std::string handle_run_diagnostics(Graph& graph, Scheduler& scheduler, OperatorRegistry& registry) {
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_bool(doc, root, "ok", true);
-    yyjson_mut_obj_add_int(doc, root, "schema_version", 1);
-
     std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, scheduler, registry);
 
-    yyjson_mut_val* summary = yyjson_mut_obj(doc);
+    nlohmann::json summary = nlohmann::json::object();
     int64_t critical_count = 0;
     int64_t warning_count = 0;
     int64_t info_count = 0;
@@ -1034,69 +935,48 @@ static std::string handle_run_diagnostics(Graph& graph, Scheduler& scheduler, Op
         else if (f.severity == "warning") warning_count++;
         else info_count++;
     }
-    yyjson_mut_obj_add_int(doc, summary, "critical", critical_count);
-    yyjson_mut_obj_add_int(doc, summary, "warning", warning_count);
-    yyjson_mut_obj_add_int(doc, summary, "info", info_count);
+    summary["critical"] = critical_count;
+    summary["warning"] = warning_count;
+    summary["info"] = info_count;
 
-    yyjson_mut_val* findings_arr = yyjson_mut_arr(doc);
+    nlohmann::json findings_arr = nlohmann::json::array();
     for (const auto& f : findings) {
-        yyjson_mut_val* fv = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, fv, "id", f.id.c_str());
-        yyjson_mut_obj_add_strcpy(doc, fv, "severity", f.severity.c_str());
-        yyjson_mut_obj_add_strcpy(doc, fv, "node_id", f.node_id.c_str());
-        yyjson_mut_obj_add_strcpy(doc, fv, "message", f.message.c_str());
-        yyjson_mut_obj_add_strcpy(doc, fv, "suggestion", f.suggestion.c_str());
-        yyjson_mut_arr_add_val(findings_arr, fv);
+        findings_arr.push_back({
+            {"id", f.id}, {"severity", f.severity}, {"node_id", f.node_id},
+            {"message", f.message}, {"suggestion", f.suggestion}
+        });
     }
 
     // Hint list: dedupe by finding id, keep highest-priority instance.
-    yyjson_mut_val* hints_arr = yyjson_mut_arr(doc);
+    nlohmann::json hints_arr = nlohmann::json::array();
     std::unordered_set<std::string> seen_hint_ids;
     for (const auto& f : findings) {
         if (seen_hint_ids.find(f.id) != seen_hint_ids.end()) continue;
         seen_hint_ids.insert(f.id);
-        yyjson_mut_val* hint = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, hint, "id", f.id.c_str());
-        yyjson_mut_obj_add_strcpy(doc, hint, "severity", f.severity.c_str());
-        yyjson_mut_obj_add_strcpy(doc, hint, "suggestion", f.suggestion.c_str());
-        yyjson_mut_arr_add_val(hints_arr, hint);
+        hints_arr.push_back({{"id", f.id}, {"severity", f.severity}, {"suggestion", f.suggestion}});
     }
 
-    yyjson_mut_val* result = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_val(doc, result, "summary", summary);
-    yyjson_mut_obj_add_val(doc, result, "findings", findings_arr);
-    yyjson_mut_obj_add_val(doc, result, "hints", hints_arr);
-    yyjson_mut_obj_add_val(doc, root, "result", result);
+    nlohmann::json result_obj = nlohmann::json::object();
+    result_obj["summary"] = std::move(summary);
+    result_obj["findings"] = std::move(findings_arr);
+    result_obj["hints"] = std::move(hints_arr);
 
-    std::string s = json_serialize(doc);
-    yyjson_mut_doc_free(doc);
-    return s;
+    return nlohmann::json{{"ok", true}, {"schema_version", 1}, {"result", std::move(result_obj)}}.dump();
 }
 
 static std::string handle_get_graph_load_diagnostics(const Graph& graph) {
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_bool(doc, root, "ok", true);
-
-    yyjson_mut_val* diags_arr = yyjson_mut_arr(doc);
+    nlohmann::json diags_arr = nlohmann::json::array();
     for (const auto& d : graph.load_diagnostics) {
-        yyjson_mut_val* dv = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, dv, "node_id",           d.node_id.c_str());
-        yyjson_mut_obj_add_strcpy(doc, dv, "pkg_name",          d.pkg_name.c_str());
-        yyjson_mut_obj_add_strcpy(doc, dv, "saved_version",     d.saved_version.c_str());
-        yyjson_mut_obj_add_strcpy(doc, dv, "installed_version", d.installed_version.c_str());
-        yyjson_mut_obj_add_strcpy(doc, dv, "classification",    d.classification.c_str());
-        yyjson_mut_arr_add_val(diags_arr, dv);
+        diags_arr.push_back({
+            {"node_id", d.node_id}, {"pkg_name", d.pkg_name},
+            {"saved_version", d.saved_version}, {"installed_version", d.installed_version},
+            {"classification", d.classification}
+        });
     }
 
-    yyjson_mut_val* result = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_val(doc, result, "graph_load_diagnostics", diags_arr);
-    yyjson_mut_obj_add_val(doc, root, "result", result);
-
-    std::string s = json_serialize(doc);
-    yyjson_mut_doc_free(doc);
-    return s;
+    nlohmann::json result_obj = nlohmann::json::object();
+    result_obj["graph_load_diagnostics"] = std::move(diags_arr);
+    return nlohmann::json{{"ok", true}, {"result", std::move(result_obj)}}.dump();
 }
 
 struct CheckValue {
@@ -1111,31 +991,31 @@ static CheckValue cv_number(double n) { CheckValue v; v.kind = CheckValue::Kind:
 static CheckValue cv_bool(bool b) { CheckValue v; v.kind = CheckValue::Kind::Bool; v.boolean = b; return v; }
 static CheckValue cv_string(const std::string& s) { CheckValue v; v.kind = CheckValue::Kind::String; v.string = s; return v; }
 
-static bool parse_check_value(yyjson_val* v, CheckValue& out) {
-    if (!v) return false;
-    if (yyjson_is_num(v)) {
-        out = cv_number(yyjson_get_num(v));
+static bool parse_check_value(const nlohmann::json& v, CheckValue& out) {
+    if (v.is_null()) return false;
+    if (v.is_number()) {
+        out = cv_number(v.get<double>());
         return true;
     }
-    if (yyjson_is_bool(v)) {
-        out = cv_bool(yyjson_get_bool(v));
+    if (v.is_boolean()) {
+        out = cv_bool(v.get<bool>());
         return true;
     }
-    if (yyjson_is_str(v)) {
-        out = cv_string(yyjson_get_str(v));
+    if (v.is_string()) {
+        out = cv_string(v.get<std::string>());
         return true;
     }
     return false;
 }
 
-static void add_json_check_value(yyjson_mut_doc* doc, yyjson_mut_val* obj,
+static void add_json_check_value(nlohmann::json& obj,
                                  const char* key, const CheckValue& v) {
     if (v.kind == CheckValue::Kind::Number)
-        yyjson_mut_obj_add_real(doc, obj, key, v.number);
+        obj[key] = v.number;
     else if (v.kind == CheckValue::Kind::Bool)
-        yyjson_mut_obj_add_bool(doc, obj, key, v.boolean);
+        obj[key] = v.boolean;
     else if (v.kind == CheckValue::Kind::String)
-        yyjson_mut_obj_add_strcpy(doc, obj, key, v.string.c_str());
+        obj[key] = v.string;
 }
 
 static bool check_is_true(const CheckValue& v) {
@@ -1321,72 +1201,57 @@ struct ParsedCheck {
     std::string check_diag_severity;
 };
 
-static bool parse_check_def(yyjson_val* obj, ParsedCheck& out, std::string& err) {
-    if (!obj || !yyjson_is_obj(obj)) { err = "check must be an object"; return false; }
-    yyjson_val* idv = yyjson_obj_get(obj, "id");
-    yyjson_val* tv = yyjson_obj_get(obj, "type");
-    yyjson_val* opv = yyjson_obj_get(obj, "op");
-    if (!idv || !yyjson_is_str(idv)) { err = "check missing 'id'"; return false; }
-    if (!tv || !yyjson_is_str(tv)) { err = "check missing 'type'"; return false; }
-    if (!opv || !yyjson_is_str(opv)) { err = "check missing 'op'"; return false; }
-    out.id = yyjson_get_str(idv);
-    out.type = yyjson_get_str(tv);
-    out.op = yyjson_get_str(opv);
-    yyjson_val* sev = yyjson_obj_get(obj, "severity");
-    if (sev && yyjson_is_str(sev)) out.severity = yyjson_get_str(sev);
-    yyjson_val* msg = yyjson_obj_get(obj, "message");
-    if (msg && yyjson_is_str(msg)) out.message = yyjson_get_str(msg);
-    yyjson_val* tol = yyjson_obj_get(obj, "tolerance");
-    if (tol && yyjson_is_num(tol)) out.tolerance = yyjson_get_num(tol);
-    yyjson_val* ff = yyjson_obj_get(obj, "for_frames");
-    if (ff && yyjson_is_int(ff)) out.for_frames = yyjson_get_sint(ff);
-    yyjson_val* af = yyjson_obj_get(obj, "after_frame");
-    if (af && yyjson_is_int(af)) out.after_frame = yyjson_get_sint(af);
+static bool parse_check_def(const nlohmann::json& obj, ParsedCheck& out, std::string& err) {
+    if (!obj.is_object()) { err = "check must be an object"; return false; }
+    if (!obj.contains("id") || !obj["id"].is_string()) { err = "check missing 'id'"; return false; }
+    if (!obj.contains("type") || !obj["type"].is_string()) { err = "check missing 'type'"; return false; }
+    if (!obj.contains("op") || !obj["op"].is_string()) { err = "check missing 'op'"; return false; }
+    out.id = obj["id"].get<std::string>();
+    out.type = obj["type"].get<std::string>();
+    out.op = obj["op"].get<std::string>();
+    if (obj.contains("severity") && obj["severity"].is_string()) out.severity = obj["severity"].get<std::string>();
+    if (obj.contains("message") && obj["message"].is_string()) out.message = obj["message"].get<std::string>();
+    if (obj.contains("tolerance") && obj["tolerance"].is_number()) out.tolerance = obj["tolerance"].get<double>();
+    if (obj.contains("for_frames") && obj["for_frames"].is_number_integer()) out.for_frames = obj["for_frames"].get<int64_t>();
+    if (obj.contains("after_frame") && obj["after_frame"].is_number_integer()) out.after_frame = obj["after_frame"].get<int64_t>();
 
     if (out.type == "state_check") {
-        yyjson_val* path = yyjson_obj_get(obj, "path");
-        if (!path || !yyjson_is_str(path)) { err = "state_check missing 'path'"; return false; }
-        out.path = yyjson_get_str(path);
+        if (!obj.contains("path") || !obj["path"].is_string()) { err = "state_check missing 'path'"; return false; }
+        out.path = obj["path"].get<std::string>();
         if (out.op != "exists" && out.op != "not_exists") {
             if (out.op == "between") {
-                yyjson_val* vv = yyjson_obj_get(obj, "value");
-                if (vv && yyjson_is_arr(vv) && yyjson_arr_size(vv) == 2) {
-                    yyjson_val* v0 = yyjson_arr_get(vv, 0);
-                    yyjson_val* v1 = yyjson_arr_get(vv, 1);
-                    out.has_value = parse_check_value(v0, out.value);
-                    out.has_between_max = parse_check_value(v1, out.between_max);
+                if (obj.contains("value") && obj["value"].is_array() && obj["value"].size() == 2) {
+                    out.has_value = parse_check_value(obj["value"][0], out.value);
+                    out.has_between_max = parse_check_value(obj["value"][1], out.between_max);
                 } else {
-                    yyjson_val* vmin = yyjson_obj_get(obj, "min");
-                    yyjson_val* vmax = yyjson_obj_get(obj, "max");
-                    out.has_value = parse_check_value(vmin, out.value);
-                    out.has_between_max = parse_check_value(vmax, out.between_max);
+                    if (obj.contains("min")) out.has_value = parse_check_value(obj["min"], out.value);
+                    if (obj.contains("max")) out.has_between_max = parse_check_value(obj["max"], out.between_max);
                 }
                 if (!out.has_value || !out.has_between_max) {
                     err = "state_check 'between' requires numeric min/max (or value[2])";
                     return false;
                 }
             } else {
-                yyjson_val* vv = yyjson_obj_get(obj, "value");
-                out.has_value = parse_check_value(vv, out.value);
+                if (obj.contains("value")) out.has_value = parse_check_value(obj["value"], out.value);
                 if (!out.has_value) { err = "state_check missing scalar 'value'"; return false; }
             }
         }
     } else if (out.type == "diagnostic_check") {
-        yyjson_val* sev2 = yyjson_obj_get(obj, "check_severity");
-        if (!sev2) sev2 = yyjson_obj_get(obj, "severity");
-        if (sev2 && yyjson_is_str(sev2)) out.check_diag_severity = yyjson_get_str(sev2);
-        yyjson_val* fid = yyjson_obj_get(obj, "finding_id");
-        if (fid && yyjson_is_str(fid)) out.finding_id = yyjson_get_str(fid);
-        yyjson_val* fids = yyjson_obj_get(obj, "check_diagnostics_ids");
-        if (out.finding_id.empty() && fids && yyjson_is_arr(fids) && yyjson_arr_size(fids) > 0) {
-            yyjson_val* first = yyjson_arr_get_first(fids);
-            if (first && yyjson_is_str(first)) out.finding_id = yyjson_get_str(first);
+        if (obj.contains("check_severity") && obj["check_severity"].is_string())
+            out.check_diag_severity = obj["check_severity"].get<std::string>();
+        else if (obj.contains("severity") && obj["severity"].is_string())
+            out.check_diag_severity = obj["severity"].get<std::string>();
+        if (obj.contains("finding_id") && obj["finding_id"].is_string())
+            out.finding_id = obj["finding_id"].get<std::string>();
+        if (out.finding_id.empty() && obj.contains("check_diagnostics_ids") &&
+            obj["check_diagnostics_ids"].is_array() && !obj["check_diagnostics_ids"].empty()) {
+            const auto& first = obj["check_diagnostics_ids"][0];
+            if (first.is_string()) out.finding_id = first.get<std::string>();
         }
         if (out.op == "count_by_severity_eq" ||
             out.op == "count_by_severity_lte" ||
             out.op == "count_by_severity_gte") {
-            yyjson_val* vv = yyjson_obj_get(obj, "value");
-            out.has_value = parse_check_value(vv, out.value);
+            if (obj.contains("value")) out.has_value = parse_check_value(obj["value"], out.value);
             if (!out.has_value || out.value.kind != CheckValue::Kind::Number) {
                 err = "diagnostic_check count op requires numeric 'value'";
                 return false;
@@ -1409,20 +1274,18 @@ static bool parse_check_def(yyjson_val* obj, ParsedCheck& out, std::string& err)
         return false;
     }
 
-    yyjson_val* when = yyjson_obj_get(obj, "when");
-    if (when) {
-        if (!yyjson_is_obj(when)) { err = "'when' must be object"; return false; }
-        yyjson_val* wp = yyjson_obj_get(when, "path");
-        yyjson_val* wo = yyjson_obj_get(when, "op");
-        if (!wp || !wo || !yyjson_is_str(wp) || !yyjson_is_str(wo)) {
+    if (obj.contains("when")) {
+        const auto& when = obj["when"];
+        if (!when.is_object()) { err = "'when' must be object"; return false; }
+        if (!when.contains("path") || !when["path"].is_string() ||
+            !when.contains("op") || !when["op"].is_string()) {
             err = "'when' requires 'path' and 'op'";
             return false;
         }
         out.has_when = true;
-        out.when_path = yyjson_get_str(wp);
-        out.when_op = yyjson_get_str(wo);
-        yyjson_val* wv = yyjson_obj_get(when, "value");
-        out.has_when_value = parse_check_value(wv, out.when_value);
+        out.when_path = when["path"].get<std::string>();
+        out.when_op = when["op"].get<std::string>();
+        if (when.contains("value")) out.has_when_value = parse_check_value(when["value"], out.when_value);
     }
 
     if (out.for_frames < 1) {
@@ -1436,67 +1299,47 @@ static bool parse_check_def(yyjson_val* obj, ParsedCheck& out, std::string& err)
     return true;
 }
 
-static std::string handle_validate_checks(yyjson_val* root) {
-    if (!root) return json_err("invalid JSON body");
-    yyjson_val* checks = yyjson_obj_get(root, "checks");
-    if (!checks || !yyjson_is_arr(checks)) return json_err("missing 'checks' array");
+static std::string handle_validate_checks(const nlohmann::json& root) {
+    if (!root.contains("checks") || !root["checks"].is_array()) return json_err("missing 'checks' array");
+    const auto& checks = root["checks"];
 
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* r = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_bool(doc, r, "ok", true);
-    yyjson_mut_obj_add_int(doc, r, "schema_version", 1);
-    yyjson_mut_val* result = yyjson_mut_obj(doc);
-    yyjson_mut_val* errs = yyjson_mut_arr(doc);
+    nlohmann::json errs = nlohmann::json::array();
     int64_t error_count = 0;
 
     std::unordered_set<std::string> seen_ids;
-    size_t idx, max;
-    yyjson_val* cv;
-    yyjson_arr_foreach(checks, idx, max, cv) {
+    for (size_t idx = 0; idx < checks.size(); ++idx) {
         ParsedCheck pc;
         std::string err;
-        if (!parse_check_def(cv, pc, err)) {
-            yyjson_mut_val* e = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_int(doc, e, "index", static_cast<int64_t>(idx));
-            yyjson_mut_obj_add_strcpy(doc, e, "message", err.c_str());
-            yyjson_mut_arr_add_val(errs, e);
+        if (!parse_check_def(checks[idx], pc, err)) {
+            errs.push_back({{"index", static_cast<int64_t>(idx)}, {"message", err}});
             error_count++;
             continue;
         }
         if (!seen_ids.insert(pc.id).second) {
-            yyjson_mut_val* e = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_int(doc, e, "index", static_cast<int64_t>(idx));
-            yyjson_mut_obj_add_strcpy(doc, e, "id", pc.id.c_str());
-            yyjson_mut_obj_add_strcpy(doc, e, "message", "duplicate check id");
-            yyjson_mut_arr_add_val(errs, e);
+            errs.push_back({{"index", static_cast<int64_t>(idx)}, {"id", pc.id}, {"message", "duplicate check id"}});
             error_count++;
         }
     }
 
-    yyjson_mut_obj_add_bool(doc, result, "valid", error_count == 0);
-    yyjson_mut_obj_add_int(doc, result, "error_count", error_count);
-    yyjson_mut_obj_add_val(doc, result, "errors", errs);
-    yyjson_mut_obj_add_val(doc, r, "result", result);
-    yyjson_mut_doc_set_root(doc, r);
-    std::string s = json_serialize(doc);
-    yyjson_mut_doc_free(doc);
-    return s;
+    nlohmann::json result_obj = nlohmann::json::object();
+    result_obj["valid"] = (error_count == 0);
+    result_obj["error_count"] = error_count;
+    result_obj["errors"] = std::move(errs);
+
+    return nlohmann::json{{"ok", true}, {"schema_version", 1}, {"result", std::move(result_obj)}}.dump();
 }
 
-static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, OperatorRegistry& registry, yyjson_val* root) {
-    if (!root) return json_err("invalid JSON body");
-    yyjson_val* checks = yyjson_obj_get(root, "checks");
-    if (!checks || !yyjson_is_arr(checks)) return json_err("missing 'checks' array");
+static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, OperatorRegistry& registry, const nlohmann::json& root) {
+    if (!root.contains("checks") || !root["checks"].is_array()) return json_err("missing 'checks' array");
+    const auto& checks = root["checks"];
 
     std::vector<ParsedCheck> parsed;
-    parsed.reserve(yyjson_arr_size(checks));
+    parsed.reserve(checks.size());
     std::unordered_set<std::string> seen_ids;
-    size_t idx, max;
-    yyjson_val* cv;
-    yyjson_arr_foreach(checks, idx, max, cv) {
+    for (size_t idx = 0; idx < checks.size(); ++idx) {
         ParsedCheck pc;
         std::string err;
-        if (!parse_check_def(cv, pc, err))
+        if (!parse_check_def(checks[idx], pc, err))
             return json_err("invalid check at index " + std::to_string(idx) + ": " + err);
         if (!seen_ids.insert(pc.id).second)
             return json_err("duplicate check id: " + pc.id);
@@ -1514,14 +1357,7 @@ static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, Operato
     }
     std::vector<DiagnosticFinding> findings = collect_diagnostics(graph, scheduler, registry);
 
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* root_out = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root_out);
-    yyjson_mut_obj_add_bool(doc, root_out, "ok", true);
-    yyjson_mut_obj_add_int(doc, root_out, "schema_version", 1);
-
-    yyjson_mut_val* result = yyjson_mut_obj(doc);
-    yyjson_mut_val* results = yyjson_mut_arr(doc);
+    nlohmann::json results = nlohmann::json::array();
 
     int64_t passed = 0, failed = 0, skipped = 0;
     int64_t critical_failed = 0, warning_failed = 0, info_failed = 0;
@@ -1582,19 +1418,19 @@ static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, Operato
             }
         }
 
-        yyjson_mut_val* row = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, row, "id", c.id.c_str());
-        yyjson_mut_obj_add_strcpy(doc, row, "type", c.type.c_str());
-        yyjson_mut_obj_add_strcpy(doc, row, "severity", c.severity.c_str());
-        yyjson_mut_obj_add_bool(doc, row, "passed", r_skipped ? false : r_passed);
-        yyjson_mut_obj_add_bool(doc, row, "skipped", r_skipped);
-        yyjson_mut_obj_add_strcpy(doc, row, "op", c.op.c_str());
-        if (!c.path.empty()) yyjson_mut_obj_add_strcpy(doc, row, "path", c.path.c_str());
-        if (!message.empty()) yyjson_mut_obj_add_strcpy(doc, row, "message", message.c_str());
-        if (c.has_value) add_json_check_value(doc, row, "expected", expected);
-        if (c.op == "between" && c.has_between_max) add_json_check_value(doc, row, "expected_max", c.between_max);
-        add_json_check_value(doc, row, "actual", actual);
-        yyjson_mut_arr_add_val(results, row);
+        nlohmann::json row = nlohmann::json::object();
+        row["id"] = c.id;
+        row["type"] = c.type;
+        row["severity"] = c.severity;
+        row["passed"] = r_skipped ? false : r_passed;
+        row["skipped"] = r_skipped;
+        row["op"] = c.op;
+        if (!c.path.empty()) row["path"] = c.path;
+        if (!message.empty()) row["message"] = message;
+        if (c.has_value) add_json_check_value(row, "expected", expected);
+        if (c.op == "between" && c.has_between_max) add_json_check_value(row, "expected_max", c.between_max);
+        add_json_check_value(row, "actual", actual);
+        results.push_back(std::move(row));
 
         if (r_skipped) {
             skipped++;
@@ -1609,28 +1445,23 @@ static std::string handle_run_checks(Graph& graph, Scheduler& scheduler, Operato
         }
     }
 
-    yyjson_mut_val* summary = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_int(doc, summary, "passed", passed);
-    yyjson_mut_obj_add_int(doc, summary, "failed", failed);
-    yyjson_mut_obj_add_int(doc, summary, "skipped", skipped);
-    yyjson_mut_obj_add_int(doc, summary, "critical_failed", critical_failed);
-    yyjson_mut_obj_add_int(doc, summary, "warning_failed", warning_failed);
-    yyjson_mut_obj_add_int(doc, summary, "info_failed", info_failed);
-    yyjson_mut_obj_add_bool(doc, result, "all_passed", all_passed);
-    yyjson_mut_obj_add_bool(doc, result, "all_critical_passed", all_critical_passed);
-    yyjson_mut_obj_add_val(doc, result, "summary", summary);
-    yyjson_mut_obj_add_val(doc, result, "results", results);
-    yyjson_mut_obj_add_val(doc, root_out, "result", result);
+    nlohmann::json summary = {
+        {"passed", passed}, {"failed", failed}, {"skipped", skipped},
+        {"critical_failed", critical_failed}, {"warning_failed", warning_failed},
+        {"info_failed", info_failed}
+    };
+    nlohmann::json result_obj = nlohmann::json::object();
+    result_obj["all_passed"] = all_passed;
+    result_obj["all_critical_passed"] = all_critical_passed;
+    result_obj["summary"] = std::move(summary);
+    result_obj["results"] = std::move(results);
 
-    std::string s = json_serialize(doc);
-    yyjson_mut_doc_free(doc);
-    return s;
+    return nlohmann::json{{"ok", true}, {"schema_version", 1}, {"result", std::move(result_obj)}}.dump();
 }
 
 static std::string handle_list_types(OperatorRegistry& registry) {
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* result = yyjson_mut_obj(doc);
-    yyjson_mut_val* types_arr = yyjson_mut_arr(doc);
+    nlohmann::json result = nlohmann::json::object();
+    nlohmann::json types_arr = nlohmann::json::array();
 
     for (const auto& name : registry.type_names()) {
         auto* loader = registry.find(name);
@@ -1638,67 +1469,66 @@ static std::string handle_list_types(OperatorRegistry& registry) {
         const auto* desc = loader->descriptor();
         if (!desc) continue;
 
-        yyjson_mut_val* t = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, t, "name", desc->name);
-        yyjson_mut_obj_add_str(doc, t, "domain", domain_str(desc->domain));
+        nlohmann::json t = nlohmann::json::object();
+        t["name"] = desc->name;
+        t["domain"] = domain_str(desc->domain);
 
         // Params
-        yyjson_mut_val* params_arr = yyjson_mut_arr(doc);
+        nlohmann::json params_arr = nlohmann::json::array();
         for (uint32_t i = 0; i < desc->param_count; ++i) {
             const auto& pd = desc->params[i];
-            yyjson_mut_val* p = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_strcpy(doc, p, "name", pd.name);
-            yyjson_mut_obj_add_str(doc, p, "type", param_type_str(pd.type));
-            yyjson_mut_obj_add_real(doc, p, "default", static_cast<double>(pd.default_value));
-            yyjson_mut_obj_add_real(doc, p, "min", static_cast<double>(pd.min_value));
-            yyjson_mut_obj_add_real(doc, p, "max", static_cast<double>(pd.max_value));
+            nlohmann::json p = nlohmann::json::object();
+            p["name"] = pd.name;
+            p["type"] = param_type_str(pd.type);
+            p["default"] = static_cast<double>(pd.default_value);
+            p["min"] = static_cast<double>(pd.min_value);
+            p["max"] = static_cast<double>(pd.max_value);
             if (pd.semantic_tag)
-                yyjson_mut_obj_add_strcpy(doc, p, "semantic_tag", pd.semantic_tag);
+                p["semantic_tag"] = pd.semantic_tag;
             if (pd.semantic_shape)
-                yyjson_mut_obj_add_strcpy(doc, p, "semantic_shape", pd.semantic_shape);
+                p["semantic_shape"] = pd.semantic_shape;
             if (pd.semantic_unit)
-                yyjson_mut_obj_add_strcpy(doc, p, "semantic_unit", pd.semantic_unit);
+                p["semantic_unit"] = pd.semantic_unit;
             if (pd.semantic_intent)
-                yyjson_mut_obj_add_strcpy(doc, p, "semantic_intent", pd.semantic_intent);
-            yyjson_mut_arr_add_val(params_arr, p);
+                p["semantic_intent"] = pd.semantic_intent;
+            params_arr.push_back(std::move(p));
         }
-        yyjson_mut_obj_add_val(doc, t, "params", params_arr);
+        t["params"] = std::move(params_arr);
 
         // Ports split into inputs / outputs
-        yyjson_mut_val* inputs_arr = yyjson_mut_arr(doc);
-        yyjson_mut_val* outputs_arr = yyjson_mut_arr(doc);
+        nlohmann::json inputs_arr = nlohmann::json::array();
+        nlohmann::json outputs_arr = nlohmann::json::array();
         for (uint32_t i = 0; i < desc->port_count; ++i) {
             const auto& pd = desc->ports[i];
-            yyjson_mut_val* p = yyjson_mut_obj(doc);
-            yyjson_mut_obj_add_strcpy(doc, p, "name", pd.name);
-            yyjson_mut_obj_add_str(doc, p, "type", port_type_str(pd.type));
-            yyjson_mut_obj_add_str(doc, p, "transport", transport_str(pd.transport));
+            nlohmann::json p = nlohmann::json::object();
+            p["name"] = pd.name;
+            p["type"] = port_type_str(pd.type);
+            p["transport"] = transport_str(pd.transport);
             if (pd.type_name)
-                yyjson_mut_obj_add_strcpy(doc, p, "type_name", pd.type_name);
+                p["type_name"] = pd.type_name;
             if (pd.stable_type_id)
-                yyjson_mut_obj_add_strcpy(doc, p, "stable_type_id", pd.stable_type_id);
+                p["stable_type_id"] = pd.stable_type_id;
             if (pd.payload_size > 0)
-                yyjson_mut_obj_add_uint(doc, p, "payload_size", pd.payload_size);
-            add_port_registry_metadata(doc, p, pd);
+                p["payload_size"] = pd.payload_size;
+            add_port_registry_metadata(p, pd);
             if (pd.direction == VIVID_PORT_INPUT)
-                yyjson_mut_arr_add_val(inputs_arr, p);
+                inputs_arr.push_back(std::move(p));
             else
-                yyjson_mut_arr_add_val(outputs_arr, p);
+                outputs_arr.push_back(std::move(p));
         }
-        yyjson_mut_obj_add_val(doc, t, "inputs", inputs_arr);
-        yyjson_mut_obj_add_val(doc, t, "outputs", outputs_arr);
+        t["inputs"] = std::move(inputs_arr);
+        t["outputs"] = std::move(outputs_arr);
 
-        yyjson_mut_arr_add_val(types_arr, t);
+        types_arr.push_back(std::move(t));
     }
 
-    yyjson_mut_obj_add_val(doc, result, "types", types_arr);
-    return json_ok(doc, result);
+    result["types"] = std::move(types_arr);
+    return json_ok(std::move(result));
 }
 
 static std::string handle_get_registry_diagnostics(OperatorRegistry& registry) {
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    yyjson_mut_val* result = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_int(doc, result, "schema_version", 1);
+    nlohmann::json result = nlohmann::json::object();
+    result["schema_version"] = 1;
 
     uint32_t type_count = 0;
     vivid_list_port_types(nullptr, &type_count);
@@ -1715,22 +1545,22 @@ static std::string handle_get_registry_diagnostics(OperatorRegistry& registry) {
                   return a.type_id < b.type_id;
               });
 
-    yyjson_mut_val* types_arr = yyjson_mut_arr(doc);
+    nlohmann::json types_arr = nlohmann::json::array();
     for (const auto& info : port_types) {
-        yyjson_mut_val* item = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_uint(doc, item, "type_id", info.type_id);
-        yyjson_mut_obj_add_str(doc, item, "transport", transport_str(info.transport));
-        yyjson_mut_obj_add_uint(doc, item, "payload_size", info.payload_size);
-        yyjson_mut_obj_add_strcpy(doc, item, "type_name", info.type_name);
-        yyjson_mut_obj_add_strcpy(doc, item, "stable_type_id", info.stable_type_id);
-        yyjson_mut_obj_add_bool(doc, item, "audio_safe", info.audio_safe != 0);
+        nlohmann::json item = nlohmann::json::object();
+        item["type_id"] = info.type_id;
+        item["transport"] = transport_str(info.transport);
+        item["payload_size"] = info.payload_size;
+        item["type_name"] = info.type_name;
+        item["stable_type_id"] = info.stable_type_id;
+        item["audio_safe"] = (info.audio_safe != 0);
         if (info.package_name && *info.package_name)
-            yyjson_mut_obj_add_strcpy(doc, item, "package_name", info.package_name);
+            item["package_name"] = info.package_name;
         if (info.description && *info.description)
-            yyjson_mut_obj_add_strcpy(doc, item, "description", info.description);
-        yyjson_mut_arr_add_val(types_arr, item);
+            item["description"] = info.description;
+        types_arr.push_back(std::move(item));
     }
-    yyjson_mut_obj_add_val(doc, result, "custom_port_types", types_arr);
+    result["custom_port_types"] = std::move(types_arr);
 
     auto mismatches = registry.abi_mismatch_diagnostics();
     std::sort(mismatches.begin(), mismatches.end(),
@@ -1739,18 +1569,18 @@ static std::string handle_get_registry_diagnostics(OperatorRegistry& registry) {
                   if (a.plugin_name != b.plugin_name) return a.plugin_name < b.plugin_name;
                   return a.plugin_path < b.plugin_path;
               });
-    yyjson_mut_val* mismatches_arr = yyjson_mut_arr(doc);
+    nlohmann::json mismatches_arr = nlohmann::json::array();
     for (const auto& diag : mismatches) {
-        yyjson_mut_val* item = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, item, "plugin_path", diag.plugin_path.c_str());
-        yyjson_mut_obj_add_strcpy(doc, item, "plugin_name", diag.plugin_name.c_str());
+        nlohmann::json item = nlohmann::json::object();
+        item["plugin_path"] = diag.plugin_path;
+        item["plugin_name"] = diag.plugin_name;
         if (!diag.package_name.empty())
-            yyjson_mut_obj_add_strcpy(doc, item, "package_name", diag.package_name.c_str());
-        yyjson_mut_obj_add_uint(doc, item, "plugin_abi", diag.plugin_abi);
-        yyjson_mut_obj_add_uint(doc, item, "runtime_abi", diag.runtime_abi);
-        yyjson_mut_arr_add_val(mismatches_arr, item);
+            item["package_name"] = diag.package_name;
+        item["plugin_abi"] = diag.plugin_abi;
+        item["runtime_abi"] = diag.runtime_abi;
+        mismatches_arr.push_back(std::move(item));
     }
-    yyjson_mut_obj_add_val(doc, result, "abi_mismatch_diagnostics", mismatches_arr);
+    result["abi_mismatch_diagnostics"] = std::move(mismatches_arr);
 
     auto loader_failures = registry.loader_failure_diagnostics();
     std::sort(loader_failures.begin(), loader_failures.end(),
@@ -1758,20 +1588,20 @@ static std::string handle_get_registry_diagnostics(OperatorRegistry& registry) {
                   if (a.code != b.code) return a.code < b.code;
                   return a.plugin_path < b.plugin_path;
               });
-    yyjson_mut_val* failures_arr = yyjson_mut_arr(doc);
+    nlohmann::json failures_arr = nlohmann::json::array();
     for (const auto& diag : loader_failures) {
-        yyjson_mut_val* item = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_strcpy(doc, item, "plugin_path", diag.plugin_path.c_str());
-        yyjson_mut_obj_add_strcpy(doc, item, "plugin_name", diag.plugin_name.c_str());
+        nlohmann::json item = nlohmann::json::object();
+        item["plugin_path"] = diag.plugin_path;
+        item["plugin_name"] = diag.plugin_name;
         if (!diag.package_name.empty())
-            yyjson_mut_obj_add_strcpy(doc, item, "package_name", diag.package_name.c_str());
-        yyjson_mut_obj_add_strcpy(doc, item, "code", diag.code.c_str());
-        yyjson_mut_obj_add_strcpy(doc, item, "message", diag.message.c_str());
-        yyjson_mut_arr_add_val(failures_arr, item);
+            item["package_name"] = diag.package_name;
+        item["code"] = diag.code;
+        item["message"] = diag.message;
+        failures_arr.push_back(std::move(item));
     }
-    yyjson_mut_obj_add_val(doc, result, "loader_failure_diagnostics", failures_arr);
+    result["loader_failure_diagnostics"] = std::move(failures_arr);
 
-    return json_ok(doc, result);
+    return json_ok(std::move(result));
 }
 
 // ---------------------------------------------------------------------------
@@ -1795,162 +1625,139 @@ static std::string dispatch(const std::string& method, const std::string& body,
     if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
 
     // Parse body JSON (may be empty for some commands)
-    yyjson_doc* doc = yyjson_read(body.c_str(), body.size(), 0);
-    yyjson_val* root = doc ? yyjson_doc_get_root(doc) : nullptr;
+    nlohmann::json root;
+    bool root_valid = false;
+    try { root = nlohmann::json::parse(body); root_valid = true; }
+    catch (...) {}
 
     std::string result;
 
     if (method == "validate_checks") {
-        result = handle_validate_checks(root);
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_validate_checks(root);
     } else if (method == "sample_node_outputs") {
-        result = handle_sample_node_outputs(graph, scheduler, root);
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_sample_node_outputs(graph, scheduler, root);
     } else if (method == "run_checks") {
-        result = handle_run_checks(graph, scheduler, registry, root);
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_run_checks(graph, scheduler, registry, root);
     } else if (method == "add_node") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* type_v = yyjson_obj_get(root, "type");
-            yyjson_val* id_v   = yyjson_obj_get(root, "node_id");
-            if (!type_v || !id_v || !yyjson_is_str(type_v) || !yyjson_is_str(id_v))
+            if (!root.contains("type") || !root["type"].is_string() ||
+                !root.contains("node_id") || !root["node_id"].is_string())
                 result = json_err("missing 'type' or 'node_id'");
             else
                 result = command_result_to_json(
-                    api.add_node(yyjson_get_str(type_v), yyjson_get_str(id_v)));
+                    api.add_node(root["type"].get<std::string>(), root["node_id"].get<std::string>()));
         }
     } else if (method == "remove_node") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid = yyjson_obj_get(root, "node_id");
-            if (!nid || !yyjson_is_str(nid))
+            if (!root.contains("node_id") || !root["node_id"].is_string())
                 result = json_err("missing 'node_id'");
             else
-                result = command_result_to_json(api.remove_node(yyjson_get_str(nid)));
+                result = command_result_to_json(api.remove_node(root["node_id"].get<std::string>()));
         }
     } else if (method == "connect") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* from = yyjson_obj_get(root, "from_addr");
-            yyjson_val* to   = yyjson_obj_get(root, "to_addr");
-            yyjson_val* sem  = yyjson_obj_get(root, "semantic_defaults");
-            if (!from || !to || !yyjson_is_str(from) || !yyjson_is_str(to))
+            if (!root.contains("from_addr") || !root["from_addr"].is_string() ||
+                !root.contains("to_addr") || !root["to_addr"].is_string())
                 result = json_err("missing 'from_addr' or 'to_addr'");
             else {
-                const std::string from_addr = yyjson_get_str(from);
-                const std::string to_addr = yyjson_get_str(to);
-                const bool semantic_defaults = sem && yyjson_is_bool(sem) && yyjson_get_bool(sem);
+                const std::string from_addr = root["from_addr"].get<std::string>();
+                const std::string to_addr = root["to_addr"].get<std::string>();
+                const bool semantic_defaults = root.contains("semantic_defaults") &&
+                    root["semantic_defaults"].is_boolean() && root["semantic_defaults"].get<bool>();
                 CommandResult cr = api.connect(from_addr, to_addr, semantic_defaults);
                 if (!cr.ok) {
                     result = json_err(cr.message);
                 } else {
-                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                    yyjson_mut_val* rroot = yyjson_mut_obj(rdoc);
-                    yyjson_mut_doc_set_root(rdoc, rroot);
-                    yyjson_mut_obj_add_bool(rdoc, rroot, "ok", true);
-                    yyjson_mut_obj_add_strcpy(rdoc, rroot, "message", cr.message.c_str());
+                    nlohmann::json resp = nlohmann::json::object();
+                    resp["ok"] = true;
+                    resp["message"] = cr.message;
 
                     bool inferred_applied = false;
                     if (semantic_defaults) {
                         const ConnectionDef* conn = find_connection_by_addr(graph, from_addr, to_addr);
                         if (conn && conn->has_remap()) {
                             inferred_applied = true;
-                            yyjson_mut_val* remap = yyjson_mut_obj(rdoc);
-                            yyjson_mut_obj_add_real(rdoc, remap, "from_min", conn->from_min);
-                            yyjson_mut_obj_add_real(rdoc, remap, "from_max", conn->from_max);
-                            yyjson_mut_obj_add_real(rdoc, remap, "to_min", conn->to_min);
-                            yyjson_mut_obj_add_real(rdoc, remap, "to_max", conn->to_max);
-                            yyjson_mut_obj_add_bool(rdoc, remap, "clamp", conn->clamp);
-                            yyjson_mut_obj_add_val(rdoc, rroot, "inferred_remap", remap);
+                            resp["inferred_remap"] = {
+                                {"from_min", conn->from_min}, {"from_max", conn->from_max},
+                                {"to_min", conn->to_min}, {"to_max", conn->to_max},
+                                {"clamp", conn->clamp}
+                            };
                         }
                     }
-                    yyjson_mut_obj_add_bool(rdoc, rroot, "inferred_remap_applied", inferred_applied);
-                    result = json_serialize(rdoc);
-                    yyjson_mut_doc_free(rdoc);
+                    resp["inferred_remap_applied"] = inferred_applied;
+                    result = resp.dump();
                 }
             }
         }
     } else if (method == "disconnect") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* from = yyjson_obj_get(root, "from_addr");
-            yyjson_val* to   = yyjson_obj_get(root, "to_addr");
-            if (!from || !to || !yyjson_is_str(from) || !yyjson_is_str(to))
+            if (!root.contains("from_addr") || !root["from_addr"].is_string() ||
+                !root.contains("to_addr") || !root["to_addr"].is_string())
                 result = json_err("missing 'from_addr' or 'to_addr'");
             else
                 result = command_result_to_json(
-                    api.disconnect(yyjson_get_str(from), yyjson_get_str(to)));
+                    api.disconnect(root["from_addr"].get<std::string>(), root["to_addr"].get<std::string>()));
         }
     } else if (method == "set_connection_remap") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* from      = yyjson_obj_get(root, "from_addr");
-            yyjson_val* to        = yyjson_obj_get(root, "to_addr");
-            yyjson_val* fmin_val  = yyjson_obj_get(root, "from_min");
-            yyjson_val* fmax_val  = yyjson_obj_get(root, "from_max");
-            yyjson_val* tmin_val  = yyjson_obj_get(root, "to_min");
-            yyjson_val* tmax_val  = yyjson_obj_get(root, "to_max");
-            yyjson_val* clamp_val = yyjson_obj_get(root, "clamp");
-            if (!from || !to || !yyjson_is_str(from) || !yyjson_is_str(to))
+            if (!root.contains("from_addr") || !root["from_addr"].is_string() ||
+                !root.contains("to_addr") || !root["to_addr"].is_string())
                 result = json_err("missing 'from_addr' or 'to_addr'");
             else {
-                float fmin = fmin_val && yyjson_is_num(fmin_val) ? static_cast<float>(yyjson_get_num(fmin_val)) : 0.0f;
-                float fmax = fmax_val && yyjson_is_num(fmax_val) ? static_cast<float>(yyjson_get_num(fmax_val)) : 1.0f;
-                float tmin = tmin_val && yyjson_is_num(tmin_val) ? static_cast<float>(yyjson_get_num(tmin_val)) : 0.0f;
-                float tmax = tmax_val && yyjson_is_num(tmax_val) ? static_cast<float>(yyjson_get_num(tmax_val)) : 1.0f;
-                bool  cval = clamp_val && yyjson_is_bool(clamp_val) ? yyjson_get_bool(clamp_val) : false;
+                float fmin = root.contains("from_min") && root["from_min"].is_number() ? root["from_min"].get<float>() : 0.0f;
+                float fmax = root.contains("from_max") && root["from_max"].is_number() ? root["from_max"].get<float>() : 1.0f;
+                float tmin = root.contains("to_min") && root["to_min"].is_number() ? root["to_min"].get<float>() : 0.0f;
+                float tmax = root.contains("to_max") && root["to_max"].is_number() ? root["to_max"].get<float>() : 1.0f;
+                bool  cval = root.contains("clamp") && root["clamp"].is_boolean() ? root["clamp"].get<bool>() : false;
                 result = command_result_to_json(
-                    api.set_connection_remap(yyjson_get_str(from), yyjson_get_str(to),
+                    api.set_connection_remap(root["from_addr"].get<std::string>(), root["to_addr"].get<std::string>(),
                                               fmin, fmax, tmin, tmax, cval));
             }
         }
     } else if (method == "set_param") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
-            yyjson_val* param = yyjson_obj_get(root, "param");
-            yyjson_val* value = yyjson_obj_get(root, "value");
-            if (!nid || !param || !value ||
-                !yyjson_is_str(nid) || !yyjson_is_str(param) || !yyjson_is_num(value))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("param") || !root["param"].is_string() ||
+                !root.contains("value") || !root["value"].is_number())
                 result = json_err("missing 'node_id', 'param', or 'value'");
             else
                 result = command_result_to_json(
-                    api.set_param(yyjson_get_str(nid), yyjson_get_str(param),
-                                  static_cast<float>(yyjson_get_num(value))));
+                    api.set_param(root["node_id"].get<std::string>(), root["param"].get<std::string>(),
+                                  root["value"].get<float>()));
         }
     } else if (method == "set_string_param") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
-            yyjson_val* param = yyjson_obj_get(root, "param");
-            yyjson_val* value = yyjson_obj_get(root, "value");
-            if (!nid || !param || !value ||
-                !yyjson_is_str(nid) || !yyjson_is_str(param) || !yyjson_is_str(value))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("param") || !root["param"].is_string() ||
+                !root.contains("value") || !root["value"].is_string())
                 result = json_err("missing 'node_id', 'param', or 'value' (string)");
             else
                 result = command_result_to_json(
-                    api.set_string_param(yyjson_get_str(nid), yyjson_get_str(param),
-                                         yyjson_get_str(value)));
+                    api.set_string_param(root["node_id"].get<std::string>(), root["param"].get<std::string>(),
+                                         root["value"].get<std::string>()));
         }
     } else if (method == "get_param") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
-            yyjson_val* param = yyjson_obj_get(root, "param");
-            if (!nid || !param || !yyjson_is_str(nid) || !yyjson_is_str(param))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("param") || !root["param"].is_string())
                 result = json_err("missing 'node_id' or 'param'");
             else {
-                auto r = api.get_param(yyjson_get_str(nid), yyjson_get_str(param));
+                auto r = api.get_param(root["node_id"].get<std::string>(), root["param"].get<std::string>());
                 if (r.ok) {
-                    // Return the value as a number
                     float v = 0;
                     try { v = std::stof(r.message); } catch (...) {}
-                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                    yyjson_mut_val* rroot = yyjson_mut_obj(rdoc);
-                    yyjson_mut_doc_set_root(rdoc, rroot);
-                    yyjson_mut_obj_add_bool(rdoc, rroot, "ok", true);
-                    yyjson_mut_obj_add_real(rdoc, rroot, "value",
-                                            static_cast<double>(v));
-                    result = json_serialize(rdoc);
-                    yyjson_mut_doc_free(rdoc);
+                    result = nlohmann::json{{"ok", true}, {"value", static_cast<double>(v)}}.dump();
                 } else {
                     result = json_err(r.message);
                 }
@@ -1970,391 +1777,340 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 }
             }
         }
-        if (root) {
-            yyjson_val* path = yyjson_obj_get(root, "path");
-            if (path && yyjson_is_str(path))
-                result = command_result_to_json(api.save_as(yyjson_get_str(path)));
-            else
-                result = command_result_to_json(api.save());
+        if (root_valid && root.contains("path") && root["path"].is_string()) {
+            result = command_result_to_json(api.save_as(root["path"].get<std::string>()));
         } else {
             result = command_result_to_json(api.save());
         }
     } else if (method == "load_graph") {
-        if (!root) {
+        if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            yyjson_val* path = yyjson_obj_get(root, "path");
-            if (!path || !yyjson_is_str(path)) {
+            if (!root.contains("path") || !root["path"].is_string()) {
                 result = json_err("load_graph requires 'path' parameter");
             } else {
-                // load_graph updates has_gpu_ops/has_audio via out-params;
-                // main loop's needs_gpu_realloc() check handles GPU textures.
                 result = command_result_to_json(
-                    api.load_graph(yyjson_get_str(path), has_gpu_ops, has_audio));
+                    api.load_graph(root["path"].get<std::string>(), has_gpu_ops, has_audio));
             }
         }
     } else if (method == "set_resolution") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid = yyjson_obj_get(root, "node_id");
-            yyjson_val* w   = yyjson_obj_get(root, "width");
-            yyjson_val* h   = yyjson_obj_get(root, "height");
-            if (!nid || !w || !h || !yyjson_is_str(nid) || !yyjson_is_num(w) || !yyjson_is_num(h))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("width") || !root["width"].is_number() ||
+                !root.contains("height") || !root["height"].is_number())
                 result = json_err("missing 'node_id', 'width', or 'height'");
             else
                 result = command_result_to_json(
-                    api.set_resolution(yyjson_get_str(nid),
-                                       static_cast<uint32_t>(yyjson_get_num(w)),
-                                       static_cast<uint32_t>(yyjson_get_num(h))));
+                    api.set_resolution(root["node_id"].get<std::string>(),
+                                       root["width"].get<uint32_t>(),
+                                       root["height"].get<uint32_t>()));
         }
     } else if (method == "set_node_layout") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid = yyjson_obj_get(root, "node_id");
-            yyjson_val* x   = yyjson_obj_get(root, "x");
-            yyjson_val* y   = yyjson_obj_get(root, "y");
-            if (!nid || !x || !y || !yyjson_is_str(nid) || !yyjson_is_num(x) || !yyjson_is_num(y))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("x") || !root["x"].is_number() ||
+                !root.contains("y") || !root["y"].is_number())
                 result = json_err("missing 'node_id', 'x', or 'y'");
             else
                 result = command_result_to_json(
-                    api.set_node_layout(yyjson_get_str(nid),
-                                        static_cast<float>(yyjson_get_num(x)),
-                                        static_cast<float>(yyjson_get_num(y))));
+                    api.set_node_layout(root["node_id"].get<std::string>(),
+                                        root["x"].get<float>(),
+                                        root["y"].get<float>()));
         }
     } else if (method == "inspect") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid = yyjson_obj_get(root, "node_id");
-            if (!nid || !yyjson_is_str(nid))
+            if (!root.contains("node_id") || !root["node_id"].is_string())
                 result = json_err("missing 'node_id'");
             else
-                result = command_result_to_json(api.inspect(yyjson_get_str(nid)));
+                result = command_result_to_json(api.inspect(root["node_id"].get<std::string>()));
         }
     } else if (method == "list_nodes") {
         result = command_result_to_json(api.list_nodes());
     } else if (method == "add_midi_mapping") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
-            yyjson_val* param = yyjson_obj_get(root, "param");
-            yyjson_val* cc    = yyjson_obj_get(root, "cc");
-            yyjson_val* ch    = yyjson_obj_get(root, "channel");
-            yyjson_val* rmin  = yyjson_obj_get(root, "range_min");
-            yyjson_val* rmax  = yyjson_obj_get(root, "range_max");
-            if (!nid || !param || !cc || !ch || !rmin || !rmax ||
-                !yyjson_is_str(nid) || !yyjson_is_str(param) ||
-                !yyjson_is_num(cc) || !yyjson_is_num(ch) ||
-                !yyjson_is_num(rmin) || !yyjson_is_num(rmax))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("param") || !root["param"].is_string() ||
+                !root.contains("cc") || !root["cc"].is_number() ||
+                !root.contains("channel") || !root["channel"].is_number() ||
+                !root.contains("range_min") || !root["range_min"].is_number() ||
+                !root.contains("range_max") || !root["range_max"].is_number())
                 result = json_err("missing or invalid params for add_midi_mapping");
             else
                 result = command_result_to_json(
-                    api.add_midi_mapping(yyjson_get_str(nid), yyjson_get_str(param),
-                                         static_cast<int>(yyjson_get_int(cc)),
-                                         static_cast<int>(yyjson_get_int(ch)),
-                                         static_cast<float>(yyjson_get_num(rmin)),
-                                         static_cast<float>(yyjson_get_num(rmax))));
+                    api.add_midi_mapping(root["node_id"].get<std::string>(), root["param"].get<std::string>(),
+                                         root["cc"].get<int>(),
+                                         root["channel"].get<int>(),
+                                         root["range_min"].get<float>(),
+                                         root["range_max"].get<float>()));
         }
     } else if (method == "remove_midi_mapping") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
-            yyjson_val* param = yyjson_obj_get(root, "param");
-            if (!nid || !param || !yyjson_is_str(nid) || !yyjson_is_str(param))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("param") || !root["param"].is_string())
                 result = json_err("missing 'node_id' or 'param'");
             else
                 result = command_result_to_json(
-                    api.remove_midi_mapping(yyjson_get_str(nid), yyjson_get_str(param)));
+                    api.remove_midi_mapping(root["node_id"].get<std::string>(), root["param"].get<std::string>()));
         }
     } else if (method == "update_midi_mapping") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
-            yyjson_val* param = yyjson_obj_get(root, "param");
-            yyjson_val* rmin  = yyjson_obj_get(root, "range_min");
-            yyjson_val* rmax  = yyjson_obj_get(root, "range_max");
-            if (!nid || !param || !rmin || !rmax ||
-                !yyjson_is_str(nid) || !yyjson_is_str(param) ||
-                !yyjson_is_num(rmin) || !yyjson_is_num(rmax))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("param") || !root["param"].is_string() ||
+                !root.contains("range_min") || !root["range_min"].is_number() ||
+                !root.contains("range_max") || !root["range_max"].is_number())
                 result = json_err("missing or invalid params for update_midi_mapping");
             else
                 result = command_result_to_json(
-                    api.update_midi_mapping(yyjson_get_str(nid), yyjson_get_str(param),
-                                            static_cast<float>(yyjson_get_num(rmin)),
-                                            static_cast<float>(yyjson_get_num(rmax))));
+                    api.update_midi_mapping(root["node_id"].get<std::string>(), root["param"].get<std::string>(),
+                                            root["range_min"].get<float>(),
+                                            root["range_max"].get<float>()));
         }
     } else if (method == "get_graph_errors") {
-        yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-        yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-        yyjson_mut_val* errs = yyjson_mut_arr(rdoc);
+        nlohmann::json res = nlohmann::json::object();
+        nlohmann::json errs = nlohmann::json::array();
         for (const auto& ns : scheduler.nodes()) {
             if (!ns.errored) continue;
-            yyjson_mut_val* e = yyjson_mut_obj(rdoc);
-            yyjson_mut_obj_add_strcpy(rdoc, e, "node_id", ns.node_id.c_str());
-            yyjson_mut_obj_add_strcpy(rdoc, e, "error", ns.error_message.c_str());
-            yyjson_mut_arr_add_val(errs, e);
+            errs.push_back({{"node_id", ns.node_id}, {"error", ns.error_message}});
         }
-        yyjson_mut_obj_add_val(rdoc, res, "errors", errs);
-        result = json_ok(rdoc, res);
+        res["errors"] = std::move(errs);
+        result = json_ok(std::move(res));
     } else if (method == "save_variation") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* name = yyjson_obj_get(root, "name");
-            if (!name || !yyjson_is_str(name))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else
-                result = command_result_to_json(api.save_variation(yyjson_get_str(name)));
+                result = command_result_to_json(api.save_variation(root["name"].get<std::string>()));
         }
     } else if (method == "recall_variation") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* name = yyjson_obj_get(root, "name");
-            if (!name || !yyjson_is_str(name))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else
-                result = command_result_to_json(api.recall_variation(yyjson_get_str(name)));
+                result = command_result_to_json(api.recall_variation(root["name"].get<std::string>()));
         }
     } else if (method == "remove_variation") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* name = yyjson_obj_get(root, "name");
-            if (!name || !yyjson_is_str(name))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else
-                result = command_result_to_json(api.remove_variation(yyjson_get_str(name)));
+                result = command_result_to_json(api.remove_variation(root["name"].get<std::string>()));
         }
     } else if (method == "rename_variation") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* old_name = yyjson_obj_get(root, "old_name");
-            yyjson_val* new_name = yyjson_obj_get(root, "new_name");
-            if (!old_name || !new_name || !yyjson_is_str(old_name) || !yyjson_is_str(new_name))
+            if (!root.contains("old_name") || !root["old_name"].is_string() ||
+                !root.contains("new_name") || !root["new_name"].is_string())
                 result = json_err("missing 'old_name' or 'new_name'");
             else
                 result = command_result_to_json(
-                    api.rename_variation(yyjson_get_str(old_name), yyjson_get_str(new_name)));
+                    api.rename_variation(root["old_name"].get<std::string>(), root["new_name"].get<std::string>()));
         }
     } else if (method == "duplicate_variation") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* name = yyjson_obj_get(root, "name");
-            yyjson_val* new_name = yyjson_obj_get(root, "new_name");
-            if (!name || !new_name || !yyjson_is_str(name) || !yyjson_is_str(new_name))
+            if (!root.contains("name") || !root["name"].is_string() ||
+                !root.contains("new_name") || !root["new_name"].is_string())
                 result = json_err("missing 'name' or 'new_name'");
             else
                 result = command_result_to_json(
-                    api.duplicate_variation(yyjson_get_str(name), yyjson_get_str(new_name)));
+                    api.duplicate_variation(root["name"].get<std::string>(), root["new_name"].get<std::string>()));
         }
     } else if (method == "move_variation") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* name = yyjson_obj_get(root, "name");
-            yyjson_val* to_idx = yyjson_obj_get(root, "to_index");
-            if (!name || !to_idx || !yyjson_is_str(name) || !yyjson_is_int(to_idx))
+            if (!root.contains("name") || !root["name"].is_string() ||
+                !root.contains("to_index") || !root["to_index"].is_number_integer())
                 result = json_err("missing 'name' or 'to_index'");
             else
                 result = command_result_to_json(
-                    api.move_variation(yyjson_get_str(name), yyjson_get_int(to_idx)));
+                    api.move_variation(root["name"].get<std::string>(), root["to_index"].get<int64_t>()));
         }
     } else if (method == "update_variation") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* name = yyjson_obj_get(root, "name");
-            if (!name || !yyjson_is_str(name))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else
-                result = command_result_to_json(api.update_variation(yyjson_get_str(name)));
+                result = command_result_to_json(api.update_variation(root["name"].get<std::string>()));
         }
     } else if (method == "list_variations") {
         result = command_result_to_json(api.list_variations());
     } else if (method == "queue_variation") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* name = yyjson_obj_get(root, "name");
-            yyjson_val* quantize = yyjson_obj_get(root, "quantize");
-            if (!name || !yyjson_is_str(name))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else {
-                std::string q = (quantize && yyjson_is_str(quantize))
-                    ? yyjson_get_str(quantize) : "instant";
-                result = command_result_to_json(api.queue_variation(yyjson_get_str(name), q));
+                std::string q = (root.contains("quantize") && root["quantize"].is_string())
+                    ? root["quantize"].get<std::string>() : "instant";
+                result = command_result_to_json(api.queue_variation(root["name"].get<std::string>(), q));
             }
         }
     } else if (method == "set_quantize_clock") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid = yyjson_obj_get(root, "node_id");
-            if (!nid || !yyjson_is_str(nid))
+            if (!root.contains("node_id") || !root["node_id"].is_string())
                 result = json_err("missing 'node_id'");
             else
-                result = command_result_to_json(api.set_quantize_clock(yyjson_get_str(nid)));
+                result = command_result_to_json(api.set_quantize_clock(root["node_id"].get<std::string>()));
         }
     } else if (method == "save_preset") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid  = yyjson_obj_get(root, "node_id");
-            yyjson_val* name = yyjson_obj_get(root, "name");
-            if (!nid || !name || !yyjson_is_str(nid) || !yyjson_is_str(name))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'node_id' or 'name'");
             else
                 result = command_result_to_json(
-                    api.save_preset(yyjson_get_str(nid), yyjson_get_str(name)));
+                    api.save_preset(root["node_id"].get<std::string>(), root["name"].get<std::string>()));
         }
     } else if (method == "recall_preset") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid  = yyjson_obj_get(root, "node_id");
-            yyjson_val* name = yyjson_obj_get(root, "name");
-            if (!nid || !name || !yyjson_is_str(nid) || !yyjson_is_str(name))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'node_id' or 'name'");
             else
                 result = command_result_to_json(
-                    api.recall_preset(yyjson_get_str(nid), yyjson_get_str(name)));
+                    api.recall_preset(root["node_id"].get<std::string>(), root["name"].get<std::string>()));
         }
     } else if (method == "update_preset") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid  = yyjson_obj_get(root, "node_id");
-            yyjson_val* name = yyjson_obj_get(root, "name");
-            if (!nid || !name || !yyjson_is_str(nid) || !yyjson_is_str(name))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'node_id' or 'name'");
             else
                 result = command_result_to_json(
-                    api.update_preset(yyjson_get_str(nid), yyjson_get_str(name)));
+                    api.update_preset(root["node_id"].get<std::string>(), root["name"].get<std::string>()));
         }
     } else if (method == "remove_preset") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid  = yyjson_obj_get(root, "node_id");
-            yyjson_val* name = yyjson_obj_get(root, "name");
-            if (!nid || !name || !yyjson_is_str(nid) || !yyjson_is_str(name))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'node_id' or 'name'");
             else
                 result = command_result_to_json(
-                    api.remove_preset(yyjson_get_str(nid), yyjson_get_str(name)));
+                    api.remove_preset(root["node_id"].get<std::string>(), root["name"].get<std::string>()));
         }
     } else if (method == "rename_preset") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid      = yyjson_obj_get(root, "node_id");
-            yyjson_val* old_name = yyjson_obj_get(root, "old_name");
-            yyjson_val* new_name = yyjson_obj_get(root, "new_name");
-            if (!nid || !old_name || !new_name ||
-                !yyjson_is_str(nid) || !yyjson_is_str(old_name) || !yyjson_is_str(new_name))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("old_name") || !root["old_name"].is_string() ||
+                !root.contains("new_name") || !root["new_name"].is_string())
                 result = json_err("missing 'node_id', 'old_name', or 'new_name'");
             else
                 result = command_result_to_json(
-                    api.rename_preset(yyjson_get_str(nid), yyjson_get_str(old_name),
-                                      yyjson_get_str(new_name)));
+                    api.rename_preset(root["node_id"].get<std::string>(), root["old_name"].get<std::string>(),
+                                      root["new_name"].get<std::string>()));
         }
     } else if (method == "list_presets") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid = yyjson_obj_get(root, "node_id");
-            if (!nid || !yyjson_is_str(nid))
+            if (!root.contains("node_id") || !root["node_id"].is_string())
                 result = json_err("missing 'node_id'");
             else
-                result = command_result_to_json(api.list_presets(yyjson_get_str(nid)));
+                result = command_result_to_json(api.list_presets(root["node_id"].get<std::string>()));
         }
     } else if (method == "list_factory_presets") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid = yyjson_obj_get(root, "node_id");
-            if (!nid || !yyjson_is_str(nid))
+            if (!root.contains("node_id") || !root["node_id"].is_string())
                 result = json_err("missing 'node_id'");
             else
-                result = command_result_to_json(api.list_factory_presets(yyjson_get_str(nid)));
+                result = command_result_to_json(api.list_factory_presets(root["node_id"].get<std::string>()));
         }
     } else if (method == "set_param_lock") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
-            yyjson_val* param = yyjson_obj_get(root, "param");
-            yyjson_val* flags = yyjson_obj_get(root, "flags");
-            if (!nid || !param || !flags ||
-                !yyjson_is_str(nid) || !yyjson_is_str(param) || !yyjson_is_num(flags))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("param") || !root["param"].is_string() ||
+                !root.contains("flags") || !root["flags"].is_number())
                 result = json_err("missing 'node_id', 'param', or 'flags'");
             else
                 result = command_result_to_json(
-                    api.set_param_lock(yyjson_get_str(nid), yyjson_get_str(param),
-                                       static_cast<uint8_t>(yyjson_get_int(flags))));
+                    api.set_param_lock(root["node_id"].get<std::string>(), root["param"].get<std::string>(),
+                                       static_cast<uint8_t>(root["flags"].get<int64_t>())));
         }
     } else if (method == "get_param_lock") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid   = yyjson_obj_get(root, "node_id");
-            yyjson_val* param = yyjson_obj_get(root, "param");
-            if (!nid || !param || !yyjson_is_str(nid) || !yyjson_is_str(param))
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("param") || !root["param"].is_string())
                 result = json_err("missing 'node_id' or 'param'");
             else
                 result = command_result_to_json(
-                    api.get_param_lock(yyjson_get_str(nid), yyjson_get_str(param)));
+                    api.get_param_lock(root["node_id"].get<std::string>(), root["param"].get<std::string>()));
         }
     } else if (method == "set_state_preset") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* sm    = yyjson_obj_get(root, "sm_node");
-            yyjson_val* sidx  = yyjson_obj_get(root, "state_idx");
-            yyjson_val* tgt   = yyjson_obj_get(root, "target_node");
-            yyjson_val* pname = yyjson_obj_get(root, "name");
-            if (!sm || !sidx || !tgt || !pname ||
-                !yyjson_is_str(sm) || !yyjson_is_num(sidx) ||
-                !yyjson_is_str(tgt) || !yyjson_is_str(pname))
+            if (!root.contains("sm_node") || !root["sm_node"].is_string() ||
+                !root.contains("state_idx") || !root["state_idx"].is_number() ||
+                !root.contains("target_node") || !root["target_node"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'sm_node', 'state_idx', 'target_node', or 'name'");
             else
                 result = command_result_to_json(
-                    api.set_state_preset(yyjson_get_str(sm),
-                                         static_cast<int>(yyjson_get_int(sidx)),
-                                         yyjson_get_str(tgt), yyjson_get_str(pname)));
+                    api.set_state_preset(root["sm_node"].get<std::string>(),
+                                         root["state_idx"].get<int>(),
+                                         root["target_node"].get<std::string>(), root["name"].get<std::string>()));
         }
     } else if (method == "remove_state_preset") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* sm   = yyjson_obj_get(root, "sm_node");
-            yyjson_val* sidx = yyjson_obj_get(root, "state_idx");
-            yyjson_val* tgt  = yyjson_obj_get(root, "target_node");
-            if (!sm || !sidx || !tgt ||
-                !yyjson_is_str(sm) || !yyjson_is_num(sidx) || !yyjson_is_str(tgt))
+            if (!root.contains("sm_node") || !root["sm_node"].is_string() ||
+                !root.contains("state_idx") || !root["state_idx"].is_number() ||
+                !root.contains("target_node") || !root["target_node"].is_string())
                 result = json_err("missing 'sm_node', 'state_idx', or 'target_node'");
             else
                 result = command_result_to_json(
-                    api.remove_state_preset(yyjson_get_str(sm),
-                                            static_cast<int>(yyjson_get_int(sidx)),
-                                            yyjson_get_str(tgt)));
+                    api.remove_state_preset(root["sm_node"].get<std::string>(),
+                                            root["state_idx"].get<int>(),
+                                            root["target_node"].get<std::string>()));
         }
     } else if (method == "clear_state_presets") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* sm = yyjson_obj_get(root, "sm_node");
-            if (!sm || !yyjson_is_str(sm))
+            if (!root.contains("sm_node") || !root["sm_node"].is_string())
                 result = json_err("missing 'sm_node'");
             else
                 result = command_result_to_json(
-                    api.clear_state_presets(yyjson_get_str(sm)));
+                    api.clear_state_presets(root["sm_node"].get<std::string>()));
         }
     } else if (method == "inspect_state_presets") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* sm = yyjson_obj_get(root, "sm_node");
-            if (!sm || !yyjson_is_str(sm))
+            if (!root.contains("sm_node") || !root["sm_node"].is_string())
                 result = json_err("missing 'sm_node'");
             else
                 result = command_result_to_json(
-                    api.inspect_state_presets(yyjson_get_str(sm)));
+                    api.inspect_state_presets(root["sm_node"].get<std::string>()));
         }
     } else if (method == "scaffold_operator") {
         result = [&]() -> std::string {
             if (src_dir.empty())
                 return json_err("scaffold_operator requires --src-dir");
-            if (!root)
+            if (!root_valid)
                 return json_err("invalid JSON body");
 
-            yyjson_val* name_v   = yyjson_obj_get(root, "name");
-            yyjson_val* domain_v = yyjson_obj_get(root, "domain");
-            if (!name_v || !domain_v || !yyjson_is_str(name_v) || !yyjson_is_str(domain_v))
+            if (!root.contains("name") || !root["name"].is_string() ||
+                !root.contains("domain") || !root["domain"].is_string())
                 return json_err("missing 'name' or 'domain'");
 
-            std::string name = yyjson_get_str(name_v);
-            std::string domain_str_val = yyjson_get_str(domain_v);
+            std::string name = root["name"].get<std::string>();
+            std::string domain_str_val = root["domain"].get<std::string>();
 
             VividDomain domain;
             if (domain_str_val == "control")      domain = VIVID_DOMAIN_CONTROL;
@@ -2364,20 +2120,12 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
             // Optional variant (e.g. "composite")
             std::string variant;
-            yyjson_val* variant_v = yyjson_obj_get(root, "variant");
-            if (variant_v && yyjson_is_str(variant_v))
-                variant = yyjson_get_str(variant_v);
+            if (root.contains("variant") && root["variant"].is_string())
+                variant = root["variant"].get<std::string>();
 
-            // Optional destination:
-            //   "auto" (policy-driven default)
-            //   "project"
-            //   "core"
-            //   "package:<name>"
-            //   absolute path to a project/package root
             std::string destination = "auto";
-            yyjson_val* dest_v = yyjson_obj_get(root, "destination");
-            if (dest_v && yyjson_is_str(dest_v))
-                destination = yyjson_get_str(dest_v);
+            if (root.contains("destination") && root["destination"].is_string())
+                destination = root["destination"].get<std::string>();
 
             std::string err = OperatorCreator::validate_name(name, registry);
             if (!err.empty()) return json_err(err);
@@ -2394,14 +2142,12 @@ static std::string dispatch(const std::string& method, const std::string& body,
                 std::fprintf(stderr, "[vivid] %s\n", resolved.warning.c_str());
             }
 
-            // Build a full CreateOperatorRequest
             VividCreateOperatorRequest req;
             req.name = name;
             req.domain = domain;
             req.variant = variant;
             req.destination = destination;
 
-            // Parse optional "inputs" array: [{"name": "x", "type": "float"}, ...]
             auto parse_port_type = [&](const std::string& type_str, VividDomain d, VividPortType& out) -> std::string {
                 if (d == VIVID_DOMAIN_CONTROL) {
                     if      (type_str == "float")         out = VIVID_PORT_SIGNAL;
@@ -2422,22 +2168,19 @@ static std::string dispatch(const std::string& method, const std::string& body,
             };
 
             auto parse_ports = [&](const char* key, VividPortDirection dir) -> std::string {
-                yyjson_val* arr = yyjson_obj_get(root, key);
-                if (!arr) return {};
-                if (!yyjson_is_arr(arr)) return std::string(key) + " must be an array";
-                yyjson_val* elem;
-                size_t idx, max;
-                yyjson_arr_foreach(arr, idx, max, elem) {
-                    yyjson_val* pn = yyjson_obj_get(elem, "name");
-                    yyjson_val* pt = yyjson_obj_get(elem, "type");
-                    if (!pn || !yyjson_is_str(pn))
+                if (!root.contains(key)) return {};
+                const auto& arr = root[key];
+                if (!arr.is_array()) return std::string(key) + " must be an array";
+                for (size_t idx = 0; idx < arr.size(); ++idx) {
+                    const auto& elem = arr[idx];
+                    if (!elem.contains("name") || !elem["name"].is_string())
                         return std::string(key) + "[" + std::to_string(idx) + "] missing 'name'";
                     std::string ptype = "float";
-                    if (pt && yyjson_is_str(pt)) ptype = yyjson_get_str(pt);
+                    if (elem.contains("type") && elem["type"].is_string()) ptype = elem["type"].get<std::string>();
                     VividPortType vt;
                     std::string err = parse_port_type(ptype, domain, vt);
                     if (!err.empty()) return err;
-                    req.ports.push_back({yyjson_get_str(pn), vt, dir});
+                    req.ports.push_back({elem["name"].get<std::string>(), vt, dir});
                 }
                 return {};
             };
@@ -2447,23 +2190,18 @@ static std::string dispatch(const std::string& method, const std::string& body,
             port_err = parse_ports("outputs", VIVID_PORT_OUTPUT);
             if (!port_err.empty()) return json_err(port_err);
 
-            // Parse optional "params" array:
-            // [{"name": "speed", "type": "float", "default": 1.0, "min": 0.0, "max": 10.0}]
-            yyjson_val* params_arr = yyjson_obj_get(root, "params");
-            if (params_arr) {
-                if (!yyjson_is_arr(params_arr))
+            if (root.contains("params")) {
+                const auto& params_arr = root["params"];
+                if (!params_arr.is_array())
                     return json_err("params must be an array");
-                yyjson_val* pelem;
-                size_t pidx, pmax;
-                yyjson_arr_foreach(params_arr, pidx, pmax, pelem) {
-                    yyjson_val* pn = yyjson_obj_get(pelem, "name");
-                    if (!pn || !yyjson_is_str(pn))
+                for (size_t pidx = 0; pidx < params_arr.size(); ++pidx) {
+                    const auto& pelem = params_arr[pidx];
+                    if (!pelem.contains("name") || !pelem["name"].is_string())
                         return json_err("params[" + std::to_string(pidx) + "] missing 'name'");
                     VividParamSpec ps;
-                    ps.name = yyjson_get_str(pn);
-                    yyjson_val* pt = yyjson_obj_get(pelem, "type");
-                    if (pt && yyjson_is_str(pt)) {
-                        std::string ts = yyjson_get_str(pt);
+                    ps.name = pelem["name"].get<std::string>();
+                    if (pelem.contains("type") && pelem["type"].is_string()) {
+                        std::string ts = pelem["type"].get<std::string>();
                         if      (ts == "float") ps.type = VIVID_PARAM_FLOAT;
                         else if (ts == "int")   ps.type = VIVID_PARAM_INT;
                         else if (ts == "bool")  ps.type = VIVID_PARAM_BOOL;
@@ -2471,14 +2209,10 @@ static std::string dispatch(const std::string& method, const std::string& body,
                         else if (ts == "text")  ps.type = VIVID_PARAM_TEXT;
                         else return json_err("unknown param type '" + ts + "'");
                     }
-                    yyjson_val* dv = yyjson_obj_get(pelem, "default");
-                    if (dv && yyjson_is_num(dv)) ps.default_value = static_cast<float>(yyjson_get_real(dv));
-                    yyjson_val* mn = yyjson_obj_get(pelem, "min");
-                    if (mn && yyjson_is_num(mn)) ps.min_value = static_cast<float>(yyjson_get_real(mn));
-                    yyjson_val* mx = yyjson_obj_get(pelem, "max");
-                    if (mx && yyjson_is_num(mx)) ps.max_value = static_cast<float>(yyjson_get_real(mx));
-                    yyjson_val* ds = yyjson_obj_get(pelem, "default_string");
-                    if (ds && yyjson_is_str(ds)) ps.default_string = yyjson_get_str(ds);
+                    if (pelem.contains("default") && pelem["default"].is_number()) ps.default_value = pelem["default"].get<float>();
+                    if (pelem.contains("min") && pelem["min"].is_number()) ps.min_value = pelem["min"].get<float>();
+                    if (pelem.contains("max") && pelem["max"].is_number()) ps.max_value = pelem["max"].get<float>();
+                    if (pelem.contains("default_string") && pelem["default_string"].is_string()) ps.default_string = pelem["default_string"].get<std::string>();
                     req.params.push_back(ps);
                 }
             }
@@ -2495,39 +2229,35 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
             OperatorCreator::open_in_editor(cr.cpp_path);
 
-            yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-            yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-            yyjson_mut_obj_add_strcpy(rdoc, res, "cpp_path", cr.cpp_path.c_str());
-            yyjson_mut_obj_add_strcpy(rdoc, res, "target_name", cr.target_name.c_str());
-            yyjson_mut_obj_add_strcpy(rdoc, res, "destination_root", resolved.root.c_str());
-            yyjson_mut_obj_add_bool(rdoc, res, "destination_is_package", resolved.package_layout);
+            nlohmann::json res = nlohmann::json::object();
+            res["cpp_path"] = cr.cpp_path;
+            res["target_name"] = cr.target_name;
+            res["destination_root"] = resolved.root;
+            res["destination_is_package"] = resolved.package_layout;
             if (!resolved.package_name.empty())
-                yyjson_mut_obj_add_strcpy(rdoc, res, "destination_package", resolved.package_name.c_str());
+                res["destination_package"] = resolved.package_name;
             if (!resolved.warning.empty())
-                yyjson_mut_obj_add_strcpy(rdoc, res, "destination_warning", resolved.warning.c_str());
-            return json_ok(rdoc, res);
+                res["destination_warning"] = resolved.warning;
+            return json_ok(std::move(res));
         }();
     } else if (method == "install_package") {
         if (!package_manager) {
             result = json_err("package manager not available");
-        } else if (!root) {
+        } else if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            yyjson_val* url_v = yyjson_obj_get(root, "url");
-            if (!url_v || !yyjson_is_str(url_v))
+            if (!root.contains("url") || !root["url"].is_string())
                 result = json_err("missing 'url'");
             else {
-                auto ir = package_manager->install(yyjson_get_str(url_v));
+                auto ir = package_manager->install(root["url"].get<std::string>());
                 if (ir.success) {
-                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-                    yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());
-                    yyjson_mut_obj_add_strcpy(rdoc, res, "version", ir.info.version.c_str());
+                    nlohmann::json res = nlohmann::json::object();
+                    res["name"] = ir.info.name;
+                    res["version"] = ir.info.version;
                     if (!ir.info.vivid_core.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, res, "vivid_core", ir.info.vivid_core.c_str());
-                    yyjson_mut_obj_add_int(rdoc, res, "operator_count",
-                        static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
-                    result = json_ok(rdoc, res);
+                        res["vivid_core"] = ir.info.vivid_core;
+                    res["operator_count"] = static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size());
+                    result = json_ok(std::move(res));
                     // Auto-reload graph if it has missing operators
                     for (const auto& ns : scheduler.nodes()) {
                         if (ns.missing_operator) {
@@ -2546,18 +2276,17 @@ static std::string dispatch(const std::string& method, const std::string& body,
     } else if (method == "uninstall_package") {
         if (!package_manager) {
             result = json_err("package manager not available");
-        } else if (!root) {
+        } else if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            yyjson_val* name_v = yyjson_obj_get(root, "name");
-            if (!name_v || !yyjson_is_str(name_v))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else {
                 std::string snapshot_json;
                 std::string snapshot_error;
                 if (!capture_live_graph_snapshot(graph, snapshot_json, snapshot_error)) {
                     result = json_err(snapshot_error);
-                } else if (package_manager->uninstall(yyjson_get_str(name_v))) {
+                } else if (package_manager->uninstall(root["name"].get<std::string>())) {
                     auto rr = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
                     if (!rr.ok)
                         result = json_err("package uninstalled but runtime refresh failed: " + rr.message);
@@ -2571,25 +2300,22 @@ static std::string dispatch(const std::string& method, const std::string& body,
     } else if (method == "link_package") {
         if (!package_manager) {
             result = json_err("package manager not available");
-        } else if (!root) {
+        } else if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            yyjson_val* path_v = yyjson_obj_get(root, "path");
-            if (!path_v || !yyjson_is_str(path_v))
+            if (!root.contains("path") || !root["path"].is_string())
                 result = json_err("missing 'path'");
             else {
-                auto ir = package_manager->link(yyjson_get_str(path_v));
+                auto ir = package_manager->link(root["path"].get<std::string>());
                 if (ir.success) {
-                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-                    yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());
-                    yyjson_mut_obj_add_strcpy(rdoc, res, "version", ir.info.version.c_str());
+                    nlohmann::json res = nlohmann::json::object();
+                    res["name"] = ir.info.name;
+                    res["version"] = ir.info.version;
                     if (!ir.info.vivid_core.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, res, "vivid_core", ir.info.vivid_core.c_str());
-                    yyjson_mut_obj_add_int(rdoc, res, "operator_count",
-                        static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
-                    yyjson_mut_obj_add_bool(rdoc, res, "linked", true);
-                    result = json_ok(rdoc, res);
+                        res["vivid_core"] = ir.info.vivid_core;
+                    res["operator_count"] = static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size());
+                    res["linked"] = true;
+                    result = json_ok(std::move(res));
                     // Auto-reload graph if it has missing operators
                     for (const auto& ns : scheduler.nodes()) {
                         if (ns.missing_operator) {
@@ -2608,18 +2334,17 @@ static std::string dispatch(const std::string& method, const std::string& body,
     } else if (method == "unlink_package") {
         if (!package_manager) {
             result = json_err("package manager not available");
-        } else if (!root) {
+        } else if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            yyjson_val* name_v = yyjson_obj_get(root, "name");
-            if (!name_v || !yyjson_is_str(name_v))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else {
                 std::string snapshot_json;
                 std::string snapshot_error;
                 if (!capture_live_graph_snapshot(graph, snapshot_json, snapshot_error)) {
                     result = json_err(snapshot_error);
-                } else if (package_manager->unlink(yyjson_get_str(name_v))) {
+                } else if (package_manager->unlink(root["name"].get<std::string>())) {
                     auto rr = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
                     if (!rr.ok)
                         result = json_err("package unlinked but runtime refresh failed: " + rr.message);
@@ -2633,14 +2358,13 @@ static std::string dispatch(const std::string& method, const std::string& body,
     } else if (method == "rebuild_package") {
         if (!package_manager) {
             result = json_err("package manager not available");
-        } else if (!root) {
+        } else if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            yyjson_val* name_v = yyjson_obj_get(root, "name");
-            if (!name_v || !yyjson_is_str(name_v))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else {
-                const std::string pkg_name = yyjson_get_str(name_v);
+                const std::string pkg_name = root["name"].get<std::string>();
                 std::string snapshot_json;
                 std::string snapshot_error;
                 if (!capture_live_graph_snapshot(graph, snapshot_json, snapshot_error)) {
@@ -2661,13 +2385,12 @@ static std::string dispatch(const std::string& method, const std::string& body,
                             result = json_err("package rebuilt but runtime refresh failed: " + rr.message);
                         } else {
                             scheduler.tick(0.0, 0.016, 0);
-                            yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                            yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-                            yyjson_mut_obj_add_strcpy(rdoc, res, "name", ir.info.name.c_str());
-                            yyjson_mut_obj_add_int(rdoc, res, "operator_count",
-                                static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size()));
-                            yyjson_mut_obj_add_bool(rdoc, res, "linked", ir.info.linked);
-                            result = json_ok(rdoc, res);
+                            nlohmann::json res = {
+                                {"name", ir.info.name},
+                                {"operator_count", static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size())},
+                                {"linked", ir.info.linked}
+                            };
+                            result = json_ok(std::move(res));
                         }
                     } else {
                         result = json_err(ir.error);
@@ -2680,46 +2403,38 @@ static std::string dispatch(const std::string& method, const std::string& body,
             result = json_err("package manager not available");
         } else {
             auto packages = package_manager->list();
-            yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-            yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-            yyjson_mut_val* arr = yyjson_mut_arr(rdoc);
+            nlohmann::json res = nlohmann::json::object();
+            nlohmann::json arr = nlohmann::json::array();
             for (const auto& pkg : packages) {
-                yyjson_mut_val* p = yyjson_mut_obj(rdoc);
-                yyjson_mut_obj_add_strcpy(rdoc, p, "name", pkg.name.c_str());
-                yyjson_mut_obj_add_strcpy(rdoc, p, "version", pkg.version.c_str());
-                if (!pkg.vivid_core.empty())
-                    yyjson_mut_obj_add_strcpy(rdoc, p, "vivid_core", pkg.vivid_core.c_str());
-                if (!pkg.source_scope.empty())
-                    yyjson_mut_obj_add_strcpy(rdoc, p, "source_scope", pkg.source_scope.c_str());
-                if (!pkg.path.empty())
-                    yyjson_mut_obj_add_strcpy(rdoc, p, "path", pkg.path.c_str());
-                if (!pkg.build_type.empty())
-                    yyjson_mut_obj_add_strcpy(rdoc, p, "build_type", pkg.build_type.c_str());
-                yyjson_mut_obj_add_strcpy(rdoc, p, "description", pkg.description.c_str());
-                yyjson_mut_obj_add_strcpy(rdoc, p, "author", pkg.author.c_str());
-                yyjson_mut_val* ops = yyjson_mut_arr(rdoc);
-                for (const auto& op : pkg.operators)
-                    yyjson_mut_arr_add_strcpy(rdoc, ops, op.c_str());
-                for (const auto& op : pkg.gpu_operators)
-                    yyjson_mut_arr_add_strcpy(rdoc, ops, op.c_str());
-                yyjson_mut_obj_add_val(rdoc, p, "operators", ops);
-                yyjson_mut_obj_add_bool(rdoc, p, "linked", pkg.linked);
-                yyjson_mut_arr_add_val(arr, p);
+                nlohmann::json p = nlohmann::json::object();
+                p["name"] = pkg.name;
+                p["version"] = pkg.version;
+                if (!pkg.vivid_core.empty()) p["vivid_core"] = pkg.vivid_core;
+                if (!pkg.source_scope.empty()) p["source_scope"] = pkg.source_scope;
+                if (!pkg.path.empty()) p["path"] = pkg.path;
+                if (!pkg.build_type.empty()) p["build_type"] = pkg.build_type;
+                p["description"] = pkg.description;
+                p["author"] = pkg.author;
+                nlohmann::json ops = nlohmann::json::array();
+                for (const auto& op : pkg.operators) ops.push_back(op);
+                for (const auto& op : pkg.gpu_operators) ops.push_back(op);
+                p["operators"] = std::move(ops);
+                p["linked"] = pkg.linked;
+                arr.push_back(std::move(p));
             }
-            yyjson_mut_obj_add_val(rdoc, res, "packages", arr);
-            result = json_ok(rdoc, res);
+            res["packages"] = std::move(arr);
+            result = json_ok(std::move(res));
         }
     } else if (method == "read_package_docs") {
         if (!package_manager) {
             result = json_err("package manager not available");
-        } else if (!root) {
+        } else if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            yyjson_val* name_v = yyjson_obj_get(root, "name");
-            if (!name_v || !yyjson_is_str(name_v))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else {
-                std::string name = yyjson_get_str(name_v);
+                std::string name = root["name"].get<std::string>();
                 if (!is_safe_package_name(name)) {
                     result = json_err("invalid package name");
                 } else if (!package_manager->is_installed(name)) {
@@ -2732,11 +2447,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     } else {
                         std::ostringstream ss;
                         ss << f.rdbuf();
-                        yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                        yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-                        yyjson_mut_obj_add_strcpy(rdoc, res, "name", name.c_str());
-                        yyjson_mut_obj_add_strcpy(rdoc, res, "content", ss.str().c_str());
-                        result = json_ok(rdoc, res);
+                        result = json_ok(nlohmann::json{{"name", name}, {"content", ss.str()}});
                     }
                 }
             }
@@ -2744,70 +2455,62 @@ static std::string dispatch(const std::string& method, const std::string& body,
     } else if (method == "list_package_examples") {
         if (!package_manager) {
             result = json_err("package manager not available");
-        } else if (!root) {
+        } else if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            yyjson_val* name_v = yyjson_obj_get(root, "name");
-            if (!name_v || !yyjson_is_str(name_v))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else {
-                std::string name = yyjson_get_str(name_v);
+                std::string name = root["name"].get<std::string>();
                 if (!is_safe_package_name(name)) {
                     result = json_err("invalid package name");
                 } else if (!package_manager->is_installed(name)) {
                     result = json_err("package not installed: " + name);
                 } else {
                     auto graphs_dir = std::filesystem::path(PackageManager::packages_dir()) / name / "graphs";
-                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-                    yyjson_mut_obj_add_strcpy(rdoc, res, "name", name.c_str());
-                    yyjson_mut_val* arr = yyjson_mut_arr(rdoc);
+                    nlohmann::json res = nlohmann::json::object();
+                    res["name"] = name;
+                    nlohmann::json arr = nlohmann::json::array();
                     std::error_code ec;
                     if (std::filesystem::is_directory(graphs_dir, ec)) {
                         for (const auto& entry : std::filesystem::directory_iterator(graphs_dir, ec)) {
                             if (!entry.is_regular_file()) continue;
                             if (entry.path().extension() != ".json") continue;
-                            yyjson_mut_val* ex = yyjson_mut_obj(rdoc);
-                            yyjson_mut_obj_add_strcpy(rdoc, ex, "filename", entry.path().filename().c_str());
-                            // Try to extract a top-level "description" from the graph JSON
+                            nlohmann::json ex = nlohmann::json::object();
+                            ex["filename"] = entry.path().filename().string();
                             std::string desc_str;
                             std::ifstream f(entry.path());
                             if (f.is_open()) {
                                 std::ostringstream ss;
                                 ss << f.rdbuf();
                                 auto content = ss.str();
-                                yyjson_doc* gdoc = yyjson_read(content.c_str(), content.size(), 0);
-                                if (gdoc) {
-                                    yyjson_val* groot = yyjson_doc_get_root(gdoc);
-                                    yyjson_val* dval = groot ? yyjson_obj_get(groot, "description") : nullptr;
-                                    if (dval && yyjson_is_str(dval))
-                                        desc_str = yyjson_get_str(dval);
-                                    yyjson_doc_free(gdoc);
-                                }
+                                try {
+                                    auto gdoc = nlohmann::json::parse(content);
+                                    if (gdoc.contains("description") && gdoc["description"].is_string())
+                                        desc_str = gdoc["description"].get<std::string>();
+                                } catch (...) {}
                             }
-                            yyjson_mut_obj_add_strcpy(rdoc, ex, "description", desc_str.c_str());
-                            yyjson_mut_arr_add_val(arr, ex);
+                            ex["description"] = desc_str;
+                            arr.push_back(std::move(ex));
                         }
                     }
-                    yyjson_mut_obj_add_val(rdoc, res, "examples", arr);
-                    result = json_ok(rdoc, res);
+                    res["examples"] = std::move(arr);
+                    result = json_ok(std::move(res));
                 }
             }
         }
     } else if (method == "read_package_example") {
         if (!package_manager) {
             result = json_err("package manager not available");
-        } else if (!root) {
+        } else if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            yyjson_val* name_v = yyjson_obj_get(root, "name");
-            yyjson_val* file_v = yyjson_obj_get(root, "filename");
-            if (!name_v || !yyjson_is_str(name_v) || !file_v || !yyjson_is_str(file_v))
+            if (!root.contains("name") || !root["name"].is_string() ||
+                !root.contains("filename") || !root["filename"].is_string())
                 result = json_err("missing 'name' or 'filename'");
             else {
-                std::string name = yyjson_get_str(name_v);
-                std::string filename = yyjson_get_str(file_v);
-                // Path traversal prevention
+                std::string name = root["name"].get<std::string>();
+                std::string filename = root["filename"].get<std::string>();
                 if (!is_safe_package_name(name)) {
                     result = json_err("invalid package name");
                 } else if (filename.find('/') != std::string::npos ||
@@ -2824,12 +2527,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     } else {
                         std::ostringstream ss;
                         ss << f.rdbuf();
-                        yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                        yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-                        yyjson_mut_obj_add_strcpy(rdoc, res, "name", name.c_str());
-                        yyjson_mut_obj_add_strcpy(rdoc, res, "filename", filename.c_str());
-                        yyjson_mut_obj_add_strcpy(rdoc, res, "content", ss.str().c_str());
-                        result = json_ok(rdoc, res);
+                        result = json_ok(nlohmann::json{{"name", name}, {"filename", filename}, {"content", ss.str()}});
                     }
                 }
             }
@@ -2837,248 +2535,189 @@ static std::string dispatch(const std::string& method, const std::string& body,
     } else if (method == "package_operator_docs") {
         if (!package_manager) {
             result = json_err("package manager not available");
-        } else if (!root) {
+        } else if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            yyjson_val* name_v = yyjson_obj_get(root, "name");
-            if (!name_v || !yyjson_is_str(name_v))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else {
-                std::string name = yyjson_get_str(name_v);
+                std::string name = root["name"].get<std::string>();
                 if (!package_manager->is_installed(name)) {
                     result = json_err("package not installed: " + name);
                 } else {
-                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-                    yyjson_mut_obj_add_strcpy(rdoc, res, "package", name.c_str());
-                    yyjson_mut_val* ops_arr = yyjson_mut_arr(rdoc);
+                    nlohmann::json res = nlohmann::json::object();
+                    res["package"] = name;
+                    nlohmann::json ops_arr = nlohmann::json::array();
                     for (const auto& type_name : registry.type_names()) {
                         const auto* pkg = registry.package_for_type(type_name);
                         if (!pkg || *pkg != name) continue;
                         const auto* desc = registry.probe_descriptor(type_name);
                         if (!desc) continue;
 
-                        yyjson_mut_val* op = yyjson_mut_obj(rdoc);
-                        yyjson_mut_obj_add_strcpy(rdoc, op, "name", desc->name);
-                        yyjson_mut_obj_add_str(rdoc, op, "domain", domain_str(desc->domain));
-                        yyjson_mut_obj_add_bool(rdoc, op, "time_dependent", desc->time_dependent != 0);
+                        nlohmann::json op = nlohmann::json::object();
+                        op["name"] = desc->name;
+                        op["domain"] = domain_str(desc->domain);
+                        op["time_dependent"] = (desc->time_dependent != 0);
 
-                        // Params — richer than list_types
-                        yyjson_mut_val* params_arr = yyjson_mut_arr(rdoc);
+                        nlohmann::json params_arr = nlohmann::json::array();
                         for (uint32_t i = 0; i < desc->param_count; ++i) {
                             const auto& pd = desc->params[i];
-                            yyjson_mut_val* p = yyjson_mut_obj(rdoc);
-                            yyjson_mut_obj_add_strcpy(rdoc, p, "name", pd.name);
-                            yyjson_mut_obj_add_str(rdoc, p, "type", param_type_str(pd.type));
-                            yyjson_mut_obj_add_real(rdoc, p, "default", static_cast<double>(pd.default_value));
-                            yyjson_mut_obj_add_real(rdoc, p, "min", static_cast<double>(pd.min_value));
-                            yyjson_mut_obj_add_real(rdoc, p, "max", static_cast<double>(pd.max_value));
-                            if (pd.semantic_tag)
-                                yyjson_mut_obj_add_strcpy(rdoc, p, "semantic_tag", pd.semantic_tag);
-                            if (pd.semantic_shape)
-                                yyjson_mut_obj_add_strcpy(rdoc, p, "semantic_shape", pd.semantic_shape);
-                            if (pd.semantic_unit)
-                                yyjson_mut_obj_add_strcpy(rdoc, p, "semantic_unit", pd.semantic_unit);
-                            if (pd.semantic_intent)
-                                yyjson_mut_obj_add_strcpy(rdoc, p, "semantic_intent", pd.semantic_intent);
-                            if (pd.default_string)
-                                yyjson_mut_obj_add_strcpy(rdoc, p, "default_string", pd.default_string);
-                            if (pd.group)
-                                yyjson_mut_obj_add_strcpy(rdoc, p, "group", pd.group);
+                            nlohmann::json p = nlohmann::json::object();
+                            p["name"] = pd.name;
+                            p["type"] = param_type_str(pd.type);
+                            p["default"] = static_cast<double>(pd.default_value);
+                            p["min"] = static_cast<double>(pd.min_value);
+                            p["max"] = static_cast<double>(pd.max_value);
+                            if (pd.semantic_tag) p["semantic_tag"] = pd.semantic_tag;
+                            if (pd.semantic_shape) p["semantic_shape"] = pd.semantic_shape;
+                            if (pd.semantic_unit) p["semantic_unit"] = pd.semantic_unit;
+                            if (pd.semantic_intent) p["semantic_intent"] = pd.semantic_intent;
+                            if (pd.default_string) p["default_string"] = pd.default_string;
+                            if (pd.group) p["group"] = pd.group;
                             if (pd.choice_count > 0 && pd.choice_labels) {
-                                yyjson_mut_val* choices = yyjson_mut_arr(rdoc);
+                                nlohmann::json choices = nlohmann::json::array();
                                 for (uint32_t c = 0; c < pd.choice_count; ++c)
-                                    yyjson_mut_arr_add_strcpy(rdoc, choices, pd.choice_labels[c]);
-                                yyjson_mut_obj_add_val(rdoc, p, "choices", choices);
+                                    choices.push_back(pd.choice_labels[c]);
+                                p["choices"] = std::move(choices);
                             }
-                            yyjson_mut_arr_add_val(params_arr, p);
+                            params_arr.push_back(std::move(p));
                         }
-                        yyjson_mut_obj_add_val(rdoc, op, "params", params_arr);
+                        op["params"] = std::move(params_arr);
 
-                        // Ports — same split as list_types
-                        yyjson_mut_val* inputs_arr = yyjson_mut_arr(rdoc);
-                        yyjson_mut_val* outputs_arr = yyjson_mut_arr(rdoc);
+                        nlohmann::json inputs_arr = nlohmann::json::array();
+                        nlohmann::json outputs_arr = nlohmann::json::array();
                         for (uint32_t i = 0; i < desc->port_count; ++i) {
                             const auto& portd = desc->ports[i];
-                            yyjson_mut_val* p = yyjson_mut_obj(rdoc);
-                            yyjson_mut_obj_add_strcpy(rdoc, p, "name", portd.name);
-                            yyjson_mut_obj_add_str(rdoc, p, "type", port_type_str(portd.type));
-                            yyjson_mut_obj_add_str(rdoc, p, "transport", transport_str(portd.transport));
-                            if (portd.type_name)
-                                yyjson_mut_obj_add_strcpy(rdoc, p, "type_name", portd.type_name);
-                            if (portd.stable_type_id)
-                                yyjson_mut_obj_add_strcpy(rdoc, p, "stable_type_id", portd.stable_type_id);
-                            if (portd.payload_size > 0)
-                                yyjson_mut_obj_add_uint(rdoc, p, "payload_size", portd.payload_size);
+                            nlohmann::json p = nlohmann::json::object();
+                            p["name"] = portd.name;
+                            p["type"] = port_type_str(portd.type);
+                            p["transport"] = transport_str(portd.transport);
+                            if (portd.type_name) p["type_name"] = portd.type_name;
+                            if (portd.stable_type_id) p["stable_type_id"] = portd.stable_type_id;
+                            if (portd.payload_size > 0) p["payload_size"] = portd.payload_size;
                             if (portd.direction == VIVID_PORT_INPUT)
-                                yyjson_mut_arr_add_val(inputs_arr, p);
+                                inputs_arr.push_back(std::move(p));
                             else
-                                yyjson_mut_arr_add_val(outputs_arr, p);
+                                outputs_arr.push_back(std::move(p));
                         }
-                        yyjson_mut_obj_add_val(rdoc, op, "inputs", inputs_arr);
-                        yyjson_mut_obj_add_val(rdoc, op, "outputs", outputs_arr);
+                        op["inputs"] = std::move(inputs_arr);
+                        op["outputs"] = std::move(outputs_arr);
 
-                        yyjson_mut_arr_add_val(ops_arr, op);
+                        ops_arr.push_back(std::move(op));
                     }
-                    yyjson_mut_obj_add_val(rdoc, res, "operators", ops_arr);
-                    result = json_ok(rdoc, res);
+                    res["operators"] = std::move(ops_arr);
+                    result = json_ok(std::move(res));
                 }
             }
         }
     } else if (method == "test_package") {
         if (!package_manager || !package_compiler) {
             result = json_err("package manager/compiler not available");
-        } else if (!root) {
+        } else if (!root_valid) {
             result = json_err("invalid JSON body");
         } else {
-            yyjson_val* name_v = yyjson_obj_get(root, "name");
-            if (!name_v || !yyjson_is_str(name_v))
+            if (!root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'name'");
             else {
-                std::string name = yyjson_get_str(name_v);
+                std::string name = root["name"].get<std::string>();
                 auto tr = run_package_tests(name, *package_manager,
                                              *package_compiler, registry);
                 if (!tr.error.empty()) {
                     result = json_err(tr.error);
                 } else {
-                    yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                    yyjson_mut_val* res = yyjson_mut_obj(rdoc);
-                    yyjson_mut_obj_add_strcpy(rdoc, res, "package", tr.package_name.c_str());
-
-                    yyjson_mut_val* summary = yyjson_mut_obj(rdoc);
-                    yyjson_mut_obj_add_int(rdoc, summary, "total", tr.total);
-                    yyjson_mut_obj_add_int(rdoc, summary, "passed", tr.passed);
-                    yyjson_mut_obj_add_int(rdoc, summary, "failed", tr.failed);
-                    yyjson_mut_obj_add_int(rdoc, summary, "skipped", tr.skipped);
-                    yyjson_mut_obj_add_val(rdoc, res, "summary", summary);
-
-                    if (!tr.notes.empty()) {
-                        yyjson_mut_val* notes_arr = yyjson_mut_arr(rdoc);
-                        for (const auto& note : tr.notes)
-                            yyjson_mut_arr_add_strcpy(rdoc, notes_arr, note.c_str());
-                        yyjson_mut_obj_add_val(rdoc, res, "notes", notes_arr);
-                    }
-
-                    yyjson_mut_val* tests_arr = yyjson_mut_arr(rdoc);
+                    nlohmann::json res = nlohmann::json::object();
+                    res["package"] = tr.package_name;
+                    res["summary"] = {{"total", tr.total}, {"passed", tr.passed}, {"failed", tr.failed}, {"skipped", tr.skipped}};
+                    if (!tr.notes.empty()) res["notes"] = tr.notes;
+                    nlohmann::json tests_arr = nlohmann::json::array();
                     for (const auto& t : tr.tests) {
-                        yyjson_mut_val* obj = yyjson_mut_obj(rdoc);
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "name", t.name.c_str());
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "type", t.type.c_str());
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "status", t.status.c_str());
-                        if (!t.code.empty())
-                            yyjson_mut_obj_add_strcpy(rdoc, obj, "code", t.code.c_str());
-                        if (!t.reason.empty())
-                            yyjson_mut_obj_add_strcpy(rdoc, obj, "reason", t.reason.c_str());
-                        if (!t.output.empty())
-                            yyjson_mut_obj_add_strcpy(rdoc, obj, "output", t.output.c_str());
-                        yyjson_mut_arr_add_val(tests_arr, obj);
+                        nlohmann::json obj = nlohmann::json::object();
+                        obj["name"] = t.name;
+                        obj["type"] = t.type;
+                        obj["status"] = t.status;
+                        if (!t.code.empty()) obj["code"] = t.code;
+                        if (!t.reason.empty()) obj["reason"] = t.reason;
+                        if (!t.output.empty()) obj["output"] = t.output;
+                        tests_arr.push_back(std::move(obj));
                     }
-                    yyjson_mut_obj_add_val(rdoc, res, "tests", tests_arr);
-                    result = json_ok(rdoc, res);
+                    res["tests"] = std::move(tests_arr);
+                    result = json_ok(std::move(res));
                 }
             }
         }
     } else if (method == "set_solo") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* nid = yyjson_obj_get(root, "node_id");
             std::string node_id_str;
-            if (nid && yyjson_is_str(nid))
-                node_id_str = yyjson_get_str(nid);
+            if (root.contains("node_id") && root["node_id"].is_string())
+                node_id_str = root["node_id"].get<std::string>();
             result = command_result_to_json(api.set_solo(node_id_str));
         }
     } else if (method == "get_solo") {
         std::string solo_id = api.solo_node_id();
-        yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-        yyjson_mut_val* rroot = yyjson_mut_obj(rdoc);
-        yyjson_mut_doc_set_root(rdoc, rroot);
-        yyjson_mut_obj_add_bool(rdoc, rroot, "ok", true);
-        yyjson_mut_obj_add_strcpy(rdoc, rroot, "node_id", solo_id.c_str());
-        yyjson_mut_obj_add_bool(rdoc, rroot, "active", !solo_id.empty());
-        result = json_serialize(rdoc);
-        yyjson_mut_doc_free(rdoc);
+        result = nlohmann::json{{"ok", true}, {"node_id", solo_id}, {"active", !solo_id.empty()}}.dump();
     } else if (method == "add_sticky_note") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* text_v = yyjson_obj_get(root, "text");
-            yyjson_val* x_v = yyjson_obj_get(root, "x");
-            yyjson_val* y_v = yyjson_obj_get(root, "y");
-            if (!text_v || !yyjson_is_str(text_v) || !x_v || !yyjson_is_num(x_v) || !y_v || !yyjson_is_num(y_v))
+            if (!root.contains("text") || !root["text"].is_string() ||
+                !root.contains("x") || !root["x"].is_number() ||
+                !root.contains("y") || !root["y"].is_number())
                 result = json_err("missing 'text', 'x', or 'y'");
             else {
                 StickyNoteDef note;
-                yyjson_val* id_v = yyjson_obj_get(root, "id");
-                if (id_v && yyjson_is_str(id_v))
-                    note.id = yyjson_get_str(id_v);
+                if (root.contains("id") && root["id"].is_string())
+                    note.id = root["id"].get<std::string>();
                 else
                     note.id = "sticky_" + std::to_string(graph.sticky_notes().size() + 1);
-                note.text = yyjson_get_str(text_v);
-                note.x = static_cast<float>(yyjson_get_num(x_v));
-                note.y = static_cast<float>(yyjson_get_num(y_v));
-                yyjson_val* w_v = yyjson_obj_get(root, "width");
-                if (w_v && yyjson_is_num(w_v)) note.width = static_cast<float>(yyjson_get_num(w_v));
-                yyjson_val* h_v = yyjson_obj_get(root, "height");
-                if (h_v && yyjson_is_num(h_v)) note.height = static_cast<float>(yyjson_get_num(h_v));
-                yyjson_val* c_v = yyjson_obj_get(root, "color");
-                if (c_v && yyjson_is_int(c_v)) note.color = static_cast<int>(yyjson_get_int(c_v));
+                note.text = root["text"].get<std::string>();
+                note.x = root["x"].get<float>();
+                note.y = root["y"].get<float>();
+                if (root.contains("width") && root["width"].is_number()) note.width = root["width"].get<float>();
+                if (root.contains("height") && root["height"].is_number()) note.height = root["height"].get<float>();
+                if (root.contains("color") && root["color"].is_number_integer()) note.color = root["color"].get<int>();
                 std::string assigned_id = note.id;
                 graph.add_sticky_note(std::move(note));
-                yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                yyjson_mut_val* rval = yyjson_mut_obj(rdoc);
-                yyjson_mut_obj_add_strcpy(rdoc, rval, "id", assigned_id.c_str());
-                result = json_ok(rdoc, rval);
+                result = json_ok(nlohmann::json{{"id", assigned_id}});
             }
         }
     } else if (method == "list_sticky_notes") {
-        yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-        yyjson_mut_val* arr = yyjson_mut_arr(rdoc);
+        nlohmann::json arr = nlohmann::json::array();
         for (const auto& sn : graph.sticky_notes()) {
-            yyjson_mut_val* obj = yyjson_mut_obj(rdoc);
-            yyjson_mut_obj_add_strcpy(rdoc, obj, "id", sn.id.c_str());
-            yyjson_mut_obj_add_strcpy(rdoc, obj, "text", sn.text.c_str());
-            yyjson_mut_obj_add_real(rdoc, obj, "x", static_cast<double>(sn.x));
-            yyjson_mut_obj_add_real(rdoc, obj, "y", static_cast<double>(sn.y));
-            yyjson_mut_obj_add_real(rdoc, obj, "width", static_cast<double>(sn.width));
-            yyjson_mut_obj_add_real(rdoc, obj, "height", static_cast<double>(sn.height));
-            yyjson_mut_obj_add_int(rdoc, obj, "color", sn.color);
-            yyjson_mut_arr_add_val(arr, obj);
+            arr.push_back({
+                {"id", sn.id}, {"text", sn.text},
+                {"x", static_cast<double>(sn.x)}, {"y", static_cast<double>(sn.y)},
+                {"width", static_cast<double>(sn.width)}, {"height", static_cast<double>(sn.height)},
+                {"color", sn.color}
+            });
         }
-        result = json_ok(rdoc, arr);
+        result = json_ok(std::move(arr));
     } else if (method == "update_sticky_note") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* id_v = yyjson_obj_get(root, "id");
-            if (!id_v || !yyjson_is_str(id_v))
+            if (!root.contains("id") || !root["id"].is_string())
                 result = json_err("missing 'id'");
             else {
-                auto* sn = graph.find_sticky_note(yyjson_get_str(id_v));
+                auto* sn = graph.find_sticky_note(root["id"].get<std::string>());
                 if (!sn)
                     result = json_err("sticky note not found");
                 else {
-                    yyjson_val* text_v = yyjson_obj_get(root, "text");
-                    if (text_v && yyjson_is_str(text_v)) sn->text = yyjson_get_str(text_v);
-                    yyjson_val* x_v = yyjson_obj_get(root, "x");
-                    if (x_v && yyjson_is_num(x_v)) sn->x = static_cast<float>(yyjson_get_num(x_v));
-                    yyjson_val* y_v = yyjson_obj_get(root, "y");
-                    if (y_v && yyjson_is_num(y_v)) sn->y = static_cast<float>(yyjson_get_num(y_v));
-                    yyjson_val* w_v = yyjson_obj_get(root, "width");
-                    if (w_v && yyjson_is_num(w_v)) sn->width = static_cast<float>(yyjson_get_num(w_v));
-                    yyjson_val* h_v = yyjson_obj_get(root, "height");
-                    if (h_v && yyjson_is_num(h_v)) sn->height = static_cast<float>(yyjson_get_num(h_v));
-                    yyjson_val* c_v = yyjson_obj_get(root, "color");
-                    if (c_v && yyjson_is_int(c_v)) sn->color = static_cast<int>(yyjson_get_int(c_v));
+                    if (root.contains("text") && root["text"].is_string()) sn->text = root["text"].get<std::string>();
+                    if (root.contains("x") && root["x"].is_number()) sn->x = root["x"].get<float>();
+                    if (root.contains("y") && root["y"].is_number()) sn->y = root["y"].get<float>();
+                    if (root.contains("width") && root["width"].is_number()) sn->width = root["width"].get<float>();
+                    if (root.contains("height") && root["height"].is_number()) sn->height = root["height"].get<float>();
+                    if (root.contains("color") && root["color"].is_number_integer()) sn->color = root["color"].get<int>();
                     result = json_ok_msg("updated");
                 }
             }
         }
     } else if (method == "remove_sticky_note") {
-        if (!root) { result = json_err("invalid JSON body"); }
+        if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
-            yyjson_val* id_v = yyjson_obj_get(root, "id");
-            if (!id_v || !yyjson_is_str(id_v))
+            if (!root.contains("id") || !root["id"].is_string())
                 result = json_err("missing 'id'");
             else {
-                bool removed = graph.remove_sticky_note(yyjson_get_str(id_v));
+                bool removed = graph.remove_sticky_note(root["id"].get<std::string>());
                 if (removed) result = json_ok_msg("removed");
                 else result = json_err("sticky note not found");
             }
@@ -3087,7 +2726,6 @@ static std::string dispatch(const std::string& method, const std::string& body,
         result = json_err("unknown method '" + method + "'");
     }
 
-    if (doc) yyjson_doc_free(doc);
     return result;
 }
 
@@ -3164,13 +2802,11 @@ bool ControlServer::start(int port) {
             // MCP heartbeat ping — immediate, no main-thread dispatch needed
             if (method == "mcp_ping") {
                 std::string server_name;
-                yyjson_doc* pdoc = yyjson_read(request->body.c_str(), request->body.size(), 0);
-                if (pdoc) {
-                    yyjson_val* proot = yyjson_doc_get_root(pdoc);
-                    yyjson_val* sv = proot ? yyjson_obj_get(proot, "server") : nullptr;
-                    if (sv && yyjson_is_str(sv)) server_name = yyjson_get_str(sv);
-                    yyjson_doc_free(pdoc);
-                }
+                try {
+                    auto pdoc = nlohmann::json::parse(request->body);
+                    if (pdoc.contains("server") && pdoc["server"].is_string())
+                        server_name = pdoc["server"].get<std::string>();
+                } catch (...) {}
                 if (!server_name.empty()) {
                     auto now_ms = static_cast<uint64_t>(
                         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -3203,15 +2839,11 @@ bool ControlServer::start(int port) {
                 if (method == "start_recording") {
                     std::string path = "/tmp/vivid_recording.mov";
                     double fps = 60.0;
-                    yyjson_doc* doc = yyjson_read(request->body.c_str(), request->body.size(), 0);
-                    if (doc) {
-                        yyjson_val* root = yyjson_doc_get_root(doc);
-                        yyjson_val* path_v = root ? yyjson_obj_get(root, "path") : nullptr;
-                        yyjson_val* fps_v  = root ? yyjson_obj_get(root, "fps")  : nullptr;
-                        if (path_v && yyjson_is_str(path_v)) {
-                            std::string candidate = yyjson_get_str(path_v);
+                    try {
+                        auto doc = nlohmann::json::parse(request->body);
+                        if (doc.contains("path") && doc["path"].is_string()) {
+                            std::string candidate = doc["path"].get<std::string>();
                             if (!is_safe_recording_path(candidate)) {
-                                yyjson_doc_free(doc);
                                 return std::make_shared<ix::HttpResponse>(
                                     200, "OK", ix::HttpErrorCode::Ok,
                                     ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
@@ -3219,12 +2851,9 @@ bool ControlServer::start(int port) {
                             }
                             path = candidate;
                         }
-                        if (fps_v && yyjson_is_real(fps_v))
-                            fps = yyjson_get_real(fps_v);
-                        else if (fps_v && yyjson_is_int(fps_v))
-                            fps = static_cast<double>(yyjson_get_int(fps_v));
-                        yyjson_doc_free(doc);
-                    }
+                        if (doc.contains("fps") && doc["fps"].is_number())
+                            fps = doc["fps"].get<double>();
+                    } catch (...) {}
                     future = capture_coordinator_->request_start_recording(path, fps);
                 } else {
                     future = capture_coordinator_->request_stop_recording();
@@ -3257,23 +2886,16 @@ bool ControlServer::start(int port) {
 
                 // Parse optional duration from body
                 if (ctype == CaptureType::Audio || ctype == CaptureType::AV || method == "capture_interface") {
-                    yyjson_doc* doc = yyjson_read(request->body.c_str(), request->body.size(), 0);
-                    if (doc) {
-                        yyjson_val* root = yyjson_doc_get_root(doc);
-                        yyjson_val* dur_v = root ? yyjson_obj_get(root, "duration") : nullptr;
-                        if (dur_v && yyjson_is_real(dur_v))
-                            audio_dur = static_cast<float>(yyjson_get_real(dur_v));
-                        else if (dur_v && yyjson_is_int(dur_v))
-                            audio_dur = static_cast<float>(yyjson_get_int(dur_v));
+                    try {
+                        auto doc = nlohmann::json::parse(request->body);
+                        if (doc.contains("duration") && doc["duration"].is_number())
+                            audio_dur = doc["duration"].get<float>();
                         if (method == "capture_interface") {
-                            yyjson_val* node_v = root ? yyjson_obj_get(root, "node_id") : nullptr;
-                            if (node_v && yyjson_is_str(node_v))
-                                node_id = yyjson_get_str(node_v);
-                            yyjson_val* path_v = root ? yyjson_obj_get(root, "save_path") : nullptr;
-                            if (path_v && yyjson_is_str(path_v)) {
-                                std::string candidate = yyjson_get_str(path_v);
+                            if (doc.contains("node_id") && doc["node_id"].is_string())
+                                node_id = doc["node_id"].get<std::string>();
+                            if (doc.contains("save_path") && doc["save_path"].is_string()) {
+                                std::string candidate = doc["save_path"].get<std::string>();
                                 if (!candidate.empty() && !is_safe_capture_image_path(candidate)) {
-                                    yyjson_doc_free(doc);
                                     return std::make_shared<ix::HttpResponse>(
                                         200, "OK", ix::HttpErrorCode::Ok,
                                         ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
@@ -3281,12 +2903,10 @@ bool ControlServer::start(int port) {
                                 }
                                 save_path = candidate;
                             }
-                            yyjson_val* ensure_v = root ? yyjson_obj_get(root, "ensure_ui_visible") : nullptr;
-                            if (ensure_v && yyjson_is_bool(ensure_v))
-                                ensure_ui_visible = yyjson_get_bool(ensure_v);
+                            if (doc.contains("ensure_ui_visible") && doc["ensure_ui_visible"].is_boolean())
+                                ensure_ui_visible = doc["ensure_ui_visible"].get<bool>();
                         }
-                        yyjson_doc_free(doc);
-                    }
+                    } catch (...) {}
                 }
 
                 std::future<std::string> future;
@@ -3321,50 +2941,39 @@ bool ControlServer::start(int port) {
                 std::string node_id;
                 bool parse_ok = true;
 
-                yyjson_doc* doc = yyjson_read(request->body.c_str(), request->body.size(), 0);
-                if (doc) {
-                    yyjson_val* root = yyjson_doc_get_root(doc);
-                    yyjson_val* mode_v = root ? yyjson_obj_get(root, "mode") : nullptr;
-                    if (mode_v && yyjson_is_str(mode_v)) {
-                        std::string mode_str = yyjson_get_str(mode_v);
+                try {
+                    auto doc = nlohmann::json::parse(request->body);
+                    if (doc.contains("mode") && doc["mode"].is_string()) {
+                        std::string mode_str = doc["mode"].get<std::string>();
                         if (mode_str == "audio") amode = AnalysisMode::Audio;
                         else if (mode_str == "av") amode = AnalysisMode::AV;
                         else if (mode_str == "frame") amode = AnalysisMode::Frame;
                         else parse_ok = false;
                     }
 
-                    yyjson_val* ws_v = root ? yyjson_obj_get(root, "window_seconds") : nullptr;
-                    if (ws_v && yyjson_is_real(ws_v))
-                        window_seconds = static_cast<float>(yyjson_get_real(ws_v));
-                    else if (ws_v && yyjson_is_int(ws_v))
-                        window_seconds = static_cast<float>(yyjson_get_int(ws_v));
+                    if (doc.contains("window_seconds") && doc["window_seconds"].is_number())
+                        window_seconds = doc["window_seconds"].get<float>();
 
-                    yyjson_val* ip_v = root ? yyjson_obj_get(root, "include_payload") : nullptr;
-                    if (ip_v && yyjson_is_bool(ip_v))
-                        include_payload = yyjson_get_bool(ip_v);
+                    if (doc.contains("include_payload") && doc["include_payload"].is_boolean())
+                        include_payload = doc["include_payload"].get<bool>();
 
-                    yyjson_val* nid_v = root ? yyjson_obj_get(root, "node_id") : nullptr;
-                    if (nid_v && yyjson_is_str(nid_v))
-                        node_id = yyjson_get_str(nid_v);
+                    if (doc.contains("node_id") && doc["node_id"].is_string())
+                        node_id = doc["node_id"].get<std::string>();
 
                     // For compare_outputs, parse a/b sub-objects
                     if (method == "compare_outputs") {
-                        yyjson_val* a_v = root ? yyjson_obj_get(root, "a") : nullptr;
-                        yyjson_val* b_v = root ? yyjson_obj_get(root, "b") : nullptr;
-                        if (a_v && yyjson_is_obj(a_v)) {
-                            yyjson_val* aw = yyjson_obj_get(a_v, "window_seconds");
-                            if (aw && yyjson_is_real(aw)) window_a = static_cast<float>(yyjson_get_real(aw));
-                            else if (aw && yyjson_is_int(aw)) window_a = static_cast<float>(yyjson_get_int(aw));
+                        if (doc.contains("a") && doc["a"].is_object()) {
+                            const auto& a_v = doc["a"];
+                            if (a_v.contains("window_seconds") && a_v["window_seconds"].is_number())
+                                window_a = a_v["window_seconds"].get<float>();
                         }
-                        if (b_v && yyjson_is_obj(b_v)) {
-                            yyjson_val* bw = yyjson_obj_get(b_v, "window_seconds");
-                            if (bw && yyjson_is_real(bw)) window_b = static_cast<float>(yyjson_get_real(bw));
-                            else if (bw && yyjson_is_int(bw)) window_b = static_cast<float>(yyjson_get_int(bw));
+                        if (doc.contains("b") && doc["b"].is_object()) {
+                            const auto& b_v = doc["b"];
+                            if (b_v.contains("window_seconds") && b_v["window_seconds"].is_number())
+                                window_b = b_v["window_seconds"].get<float>();
                         }
                     }
-
-                    yyjson_doc_free(doc);
-                }
+                } catch (...) {}
 
                 if (!parse_ok) {
                     return std::make_shared<ix::HttpResponse>(
@@ -3395,50 +3004,34 @@ bool ControlServer::start(int port) {
             // Package catalog — thread-safe, no main-thread dispatch needed
             if (method == "package_catalog" && package_catalog_) {
                 auto entries = package_catalog_->entries();
-                yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                yyjson_mut_val* rroot = yyjson_mut_obj(rdoc);
-                yyjson_mut_doc_set_root(rdoc, rroot);
-                yyjson_mut_obj_add_true(rdoc, rroot, "ok");
-                yyjson_mut_val* arr = yyjson_mut_arr(rdoc);
+                nlohmann::json resp = nlohmann::json::object();
+                resp["ok"] = true;
+                nlohmann::json arr = nlohmann::json::array();
                 for (const auto& e : entries) {
-                    yyjson_mut_val* obj = yyjson_mut_obj(rdoc);
-                    yyjson_mut_obj_add_strcpy(rdoc, obj, "name", e.name.c_str());
-                    yyjson_mut_obj_add_strcpy(rdoc, obj, "description", e.description.c_str());
-                    yyjson_mut_obj_add_strcpy(rdoc, obj, "version", e.version.c_str());
-                    if (!e.vivid_core.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "vivid_core", e.vivid_core.c_str());
-                    yyjson_mut_obj_add_strcpy(rdoc, obj, "author", e.author.c_str());
-                    yyjson_mut_obj_add_strcpy(rdoc, obj, "url", e.url.c_str());
-                    if (!e.category.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "category", e.category.c_str());
-                    if (!e.description_short.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "description_short", e.description_short.c_str());
-                    if (!e.status.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "status", e.status.c_str());
-                    if (!e.status_note.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "status_note", e.status_note.c_str());
-                    if (!e.preview_image_url.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "preview_image_url", e.preview_image_url.c_str());
-                    if (!e.repo_url.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "repo_url", e.repo_url.c_str());
-                    if (!e.homepage_url.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "homepage_url", e.homepage_url.c_str());
-                    if (!e.install_url.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "install_url", e.install_url.c_str());
-                    yyjson_mut_obj_add_bool(rdoc, obj, "installed", e.installed);
-                    if (e.installed)
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "installed_version", e.installed_version.c_str());
-                    yyjson_mut_arr_add_val(arr, obj);
+                    nlohmann::json obj = nlohmann::json::object();
+                    obj["name"] = e.name;
+                    obj["description"] = e.description;
+                    obj["version"] = e.version;
+                    if (!e.vivid_core.empty()) obj["vivid_core"] = e.vivid_core;
+                    obj["author"] = e.author;
+                    obj["url"] = e.url;
+                    if (!e.category.empty()) obj["category"] = e.category;
+                    if (!e.description_short.empty()) obj["description_short"] = e.description_short;
+                    if (!e.status.empty()) obj["status"] = e.status;
+                    if (!e.status_note.empty()) obj["status_note"] = e.status_note;
+                    if (!e.preview_image_url.empty()) obj["preview_image_url"] = e.preview_image_url;
+                    if (!e.repo_url.empty()) obj["repo_url"] = e.repo_url;
+                    if (!e.homepage_url.empty()) obj["homepage_url"] = e.homepage_url;
+                    if (!e.install_url.empty()) obj["install_url"] = e.install_url;
+                    obj["installed"] = e.installed;
+                    if (e.installed) obj["installed_version"] = e.installed_version;
+                    arr.push_back(std::move(obj));
                 }
-                yyjson_mut_obj_add_val(rdoc, rroot, "packages", arr);
-                char* json_str = yyjson_mut_write(rdoc, 0, nullptr);
-                std::string response_body = json_str ? json_str : R"({"ok":false,"error":"json write failed"})";
-                if (json_str) free(json_str);
-                yyjson_mut_doc_free(rdoc);
+                resp["packages"] = std::move(arr);
                 return std::make_shared<ix::HttpResponse>(
                     200, "OK", ix::HttpErrorCode::Ok,
                     ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
-                    response_body);
+                    resp.dump());
             }
 
             // Check package updates using catalog metadata + installed package versions
@@ -3446,27 +3039,21 @@ bool ControlServer::start(int port) {
                 std::string core_version = "0.1.0";
                 bool include_all_installed = false;
                 if (!request->body.empty()) {
-                    yyjson_doc* doc = yyjson_read(request->body.c_str(), request->body.size(), 0);
-                    if (doc) {
-                        yyjson_val* root = yyjson_doc_get_root(doc);
-                        yyjson_val* cv = root ? yyjson_obj_get(root, "core_version") : nullptr;
-                        if (cv && yyjson_is_str(cv))
-                            core_version = yyjson_get_str(cv);
-                        yyjson_val* ia = root ? yyjson_obj_get(root, "include_all_installed") : nullptr;
-                        if (ia && yyjson_is_bool(ia))
-                            include_all_installed = yyjson_get_bool(ia);
-                        yyjson_doc_free(doc);
-                    }
+                    try {
+                        auto doc = nlohmann::json::parse(request->body);
+                        if (doc.contains("core_version") && doc["core_version"].is_string())
+                            core_version = doc["core_version"].get<std::string>();
+                        if (doc.contains("include_all_installed") && doc["include_all_installed"].is_boolean())
+                            include_all_installed = doc["include_all_installed"].get<bool>();
+                    } catch (...) {}
                 }
 
                 auto entries = package_catalog_->entries();
-                yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                yyjson_mut_val* rroot = yyjson_mut_obj(rdoc);
-                yyjson_mut_doc_set_root(rdoc, rroot);
-                yyjson_mut_obj_add_true(rdoc, rroot, "ok");
-                yyjson_mut_obj_add_strcpy(rdoc, rroot, "core_version", core_version.c_str());
+                nlohmann::json resp = nlohmann::json::object();
+                resp["ok"] = true;
+                resp["core_version"] = core_version;
 
-                yyjson_mut_val* updates = yyjson_mut_arr(rdoc);
+                nlohmann::json updates = nlohmann::json::array();
                 int64_t update_count = 0;
                 int64_t incompatible_count = 0;
                 for (const auto& e : entries) {
@@ -3480,36 +3067,32 @@ bool ControlServer::start(int port) {
 
                     if (!include_all_installed && !assessment.update_available) continue;
 
-                    yyjson_mut_val* obj = yyjson_mut_obj(rdoc);
-                    yyjson_mut_obj_add_strcpy(rdoc, obj, "name", assessment.package_name.c_str());
-                    yyjson_mut_obj_add_strcpy(rdoc, obj, "installed_version", assessment.installed_version.c_str());
-                    yyjson_mut_obj_add_strcpy(rdoc, obj, "remote_version", assessment.remote_version.c_str());
+                    nlohmann::json obj = nlohmann::json::object();
+                    obj["name"] = assessment.package_name;
+                    obj["installed_version"] = assessment.installed_version;
+                    obj["remote_version"] = assessment.remote_version;
                     if (!assessment.remote_vivid_core.empty())
-                        yyjson_mut_obj_add_strcpy(rdoc, obj, "vivid_core", assessment.remote_vivid_core.c_str());
-                    yyjson_mut_obj_add_bool(rdoc, obj, "update_available", assessment.update_available);
-                    yyjson_mut_obj_add_bool(rdoc, obj, "compatible", assessment.compatible);
-                    yyjson_mut_obj_add_bool(rdoc, obj, "constraint_valid", assessment.constraint_valid);
-                    yyjson_mut_obj_add_strcpy(rdoc, obj, "classification", update_class_str(assessment.classification));
-                    yyjson_mut_obj_add_strcpy(rdoc, obj, "message", assessment.message.c_str());
+                        obj["vivid_core"] = assessment.remote_vivid_core;
+                    obj["update_available"] = assessment.update_available;
+                    obj["compatible"] = assessment.compatible;
+                    obj["constraint_valid"] = assessment.constraint_valid;
+                    obj["classification"] = update_class_str(assessment.classification);
+                    obj["message"] = assessment.message;
 
                     if (assessment.update_available) update_count++;
                     if (assessment.classification == PackageUpdateClass::IncompatibleUpdate)
                         incompatible_count++;
 
-                    yyjson_mut_arr_add_val(updates, obj);
+                    updates.push_back(std::move(obj));
                 }
-                yyjson_mut_obj_add_int(rdoc, rroot, "updates_available", update_count);
-                yyjson_mut_obj_add_int(rdoc, rroot, "incompatible_updates", incompatible_count);
-                yyjson_mut_obj_add_val(rdoc, rroot, "packages", updates);
+                resp["updates_available"] = update_count;
+                resp["incompatible_updates"] = incompatible_count;
+                resp["packages"] = std::move(updates);
 
-                char* json_str = yyjson_mut_write(rdoc, 0, nullptr);
-                std::string response_body = json_str ? json_str : R"({"ok":false,"error":"json write failed"})";
-                if (json_str) free(json_str);
-                yyjson_mut_doc_free(rdoc);
                 return std::make_shared<ix::HttpResponse>(
                     200, "OK", ix::HttpErrorCode::Ok,
                     ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
-                    response_body);
+                    resp.dump());
             }
 
             // Check core app updates using appcast metadata.
@@ -3522,14 +3105,11 @@ bool ControlServer::start(int port) {
                 }
                 bool force_refresh = false;
                 if (!request->body.empty()) {
-                    yyjson_doc* doc = yyjson_read(request->body.c_str(), request->body.size(), 0);
-                    if (doc) {
-                        yyjson_val* root = yyjson_doc_get_root(doc);
-                        yyjson_val* fr = root ? yyjson_obj_get(root, "force_refresh") : nullptr;
-                        if (fr && yyjson_is_bool(fr))
-                            force_refresh = yyjson_get_bool(fr);
-                        yyjson_doc_free(doc);
-                    }
+                    try {
+                        auto doc = nlohmann::json::parse(request->body);
+                        if (doc.contains("force_refresh") && doc["force_refresh"].is_boolean())
+                            force_refresh = doc["force_refresh"].get<bool>();
+                    } catch (...) {}
                 }
                 if (force_refresh) app_update_manager_->refresh();
                 if (app_update_manager_->fetch_state() == AppUpdateFetchState::Idle)
@@ -3540,47 +3120,32 @@ bool ControlServer::start(int port) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 }
 
-                yyjson_mut_doc* rdoc = yyjson_mut_doc_new(nullptr);
-                yyjson_mut_val* rroot = yyjson_mut_obj(rdoc);
-                yyjson_mut_doc_set_root(rdoc, rroot);
-                yyjson_mut_obj_add_true(rdoc, rroot, "ok");
+                nlohmann::json resp = nlohmann::json::object();
+                resp["ok"] = true;
 
                 const auto st = app_update_manager_->fetch_state();
                 switch (st) {
-                    case AppUpdateFetchState::Idle:
-                        yyjson_mut_obj_add_strcpy(rdoc, rroot, "state", "idle");
-                        break;
-                    case AppUpdateFetchState::Fetching:
-                        yyjson_mut_obj_add_strcpy(rdoc, rroot, "state", "fetching");
-                        break;
-                    case AppUpdateFetchState::Ready:
-                        yyjson_mut_obj_add_strcpy(rdoc, rroot, "state", "ready");
-                        break;
-                    case AppUpdateFetchState::Error:
-                        yyjson_mut_obj_add_strcpy(rdoc, rroot, "state", "error");
-                        break;
+                    case AppUpdateFetchState::Idle:     resp["state"] = "idle"; break;
+                    case AppUpdateFetchState::Fetching: resp["state"] = "fetching"; break;
+                    case AppUpdateFetchState::Ready:    resp["state"] = "ready"; break;
+                    case AppUpdateFetchState::Error:    resp["state"] = "error"; break;
                 }
 
                 auto info = app_update_manager_->latest();
-                yyjson_mut_obj_add_bool(rdoc, rroot, "update_available", info.update_available);
-                yyjson_mut_obj_add_strcpy(rdoc, rroot, "current_version", info.current_version.c_str());
-                yyjson_mut_obj_add_strcpy(rdoc, rroot, "latest_version", info.latest_version.c_str());
-                yyjson_mut_obj_add_strcpy(rdoc, rroot, "download_url", info.download_url.c_str());
-                yyjson_mut_obj_add_strcpy(rdoc, rroot, "release_notes_url", info.release_notes_url.c_str());
-                yyjson_mut_obj_add_strcpy(rdoc, rroot, "title", info.title.c_str());
-                yyjson_mut_obj_add_strcpy(rdoc, rroot, "publication_date", info.publication_date.c_str());
-                yyjson_mut_obj_add_strcpy(rdoc, rroot, "minimum_system_version", info.minimum_system_version.c_str());
-                yyjson_mut_obj_add_strcpy(rdoc, rroot, "appcast_url",
-                                          AppUpdateManager::appcast_url().c_str());
+                resp["update_available"] = info.update_available;
+                resp["current_version"] = info.current_version;
+                resp["latest_version"] = info.latest_version;
+                resp["download_url"] = info.download_url;
+                resp["release_notes_url"] = info.release_notes_url;
+                resp["title"] = info.title;
+                resp["publication_date"] = info.publication_date;
+                resp["minimum_system_version"] = info.minimum_system_version;
+                resp["appcast_url"] = AppUpdateManager::appcast_url();
                 if (st == AppUpdateFetchState::Error) {
-                    yyjson_mut_obj_add_strcpy(rdoc, rroot, "error",
-                                              app_update_manager_->fetch_error().c_str());
+                    resp["error"] = app_update_manager_->fetch_error();
                 }
 
-                char* json_str = yyjson_mut_write(rdoc, 0, nullptr);
-                std::string response_body = json_str ? json_str : R"({"ok":false,"error":"json write failed"})";
-                if (json_str) free(json_str);
-                yyjson_mut_doc_free(rdoc);
+                std::string response_body = resp.dump();
                 return std::make_shared<ix::HttpResponse>(
                     200, "OK", ix::HttpErrorCode::Ok,
                     ix::WebSocketHttpHeaders{{"Content-Type", "application/json"}},
@@ -3715,16 +3280,14 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
             continue;
         }
         if (req.method == "new_project") {
-            yyjson_doc* doc = yyjson_read(req.body.c_str(), req.body.size(), 0);
-            yyjson_val* root = doc ? yyjson_doc_get_root(doc) : nullptr;
-            yyjson_val* path_v = root ? yyjson_obj_get(root, "path") : nullptr;
-            if (!path_v || !yyjson_is_str(path_v)) {
-                if (doc) yyjson_doc_free(doc);
+            nlohmann::json np_root;
+            bool np_valid = false;
+            try { np_root = nlohmann::json::parse(req.body); np_valid = true; } catch (...) {}
+            if (!np_valid || !np_root.contains("path") || !np_root["path"].is_string()) {
                 req.promise.set_value(json_err("new_project requires 'path' parameter"));
                 continue;
             }
-            std::string path = yyjson_get_str(path_v);
-            yyjson_doc_free(doc);
+            std::string path = np_root["path"].get<std::string>();
             auto r = api.new_project(path, has_gpu_ops, has_audio);
             impl_->undo_history.clear();
             req.promise.set_value(command_result_to_json(r));

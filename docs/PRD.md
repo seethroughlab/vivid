@@ -456,7 +456,7 @@ Key dependencies (managed via git submodules, vendored source, or CMake FetchCon
 - **GLFW** (3.4) + **glfw3webgpu**: window creation, input events, WebGPU surface bridge.
 - **miniaudio** (0.11.x): audio device I/O. Single-header C library.
 - **stb_truetype** + **stb_image**: font rasterization and image loading. Single-header C libraries.
-- **yyjson**: JSON parsing for graph files and project files. ~40KB source.
+- **nlohmann/json**: JSON parsing and serialization for graph files and project files. Header-only.
 - **RtMidi**: MIDI I/O (CoreMIDI backend on macOS).
 - **oscpack**: OSC message serialization and UDP transport.
 - **Syphon**: GPU texture sharing between applications (macOS-only).
@@ -477,7 +477,7 @@ Key dependencies (managed via git submodules, vendored source, or CMake FetchCon
 vivid/
 ├─ CMakeLists.txt                # Top-level build
 ├─ deps/                         # Third-party (submodules or FetchContent)
-│  ├─ dawn/  ├─ glfw/  ├─ miniaudio/  ├─ stb/  └─ yyjson/
+│  ├─ dawn/  ├─ glfw/  ├─ miniaudio/  └─ stb/
 ├─ src/
 │  ├─ runtime/                   # Core engine (C++)
 │  │  ├─ main.cpp                # Entry point, window, main loop

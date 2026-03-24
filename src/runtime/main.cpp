@@ -63,7 +63,7 @@
 #include <unordered_set>
 #include <vector>
 #include <CLI/CLI.hpp>
-#include <yyjson.h>
+#include <nlohmann/json.hpp>
 
 #ifdef __APPLE__
 #include "runtime/macos_frame_timer.h"
@@ -141,13 +141,11 @@ static std::string now_epoch_seconds_str() {
     return std::to_string(static_cast<long long>(sec));
 }
 
-static std::vector<std::string> json_str_array(yyjson_val* arr) {
+static std::vector<std::string> json_str_array(const nlohmann::json& arr) {
     std::vector<std::string> out;
-    if (!arr || !yyjson_is_arr(arr)) return out;
-    size_t idx = 0, max = 0;
-    yyjson_val* v = nullptr;
-    yyjson_arr_foreach(arr, idx, max, v) {
-        if (yyjson_is_str(v)) out.emplace_back(yyjson_get_str(v));
+    if (!arr.is_array()) return out;
+    for (const auto& v : arr) {
+        if (v.is_string()) out.emplace_back(v.get<std::string>());
     }
     return out;
 }
@@ -232,21 +230,19 @@ static std::string lower_copy(std::string s) {
     return s;
 }
 
-static bool parse_ui_test_modifiers(yyjson_val* arr, int& mods, std::string& error) {
+static bool parse_ui_test_modifiers(const nlohmann::json& arr, int& mods, std::string& error) {
     mods = 0;
-    if (!arr) return true;
-    if (!yyjson_is_arr(arr)) {
+    if (arr.is_null()) return true;
+    if (!arr.is_array()) {
         error = "mods must be an array";
         return false;
     }
-    size_t idx = 0, max = 0;
-    yyjson_val* value = nullptr;
-    yyjson_arr_foreach(arr, idx, max, value) {
-        if (!yyjson_is_str(value)) {
+    for (const auto& value : arr) {
+        if (!value.is_string()) {
             error = "mods entries must be strings";
             return false;
         }
-        std::string mod = lower_copy(yyjson_get_str(value));
+        std::string mod = lower_copy(value.get<std::string>());
         if (mod == "shift") mods |= GLFW_MOD_SHIFT;
         else if (mod == "control" || mod == "ctrl") mods |= GLFW_MOD_CONTROL;
         else if (mod == "super" || mod == "cmd" || mod == "meta") mods |= GLFW_MOD_SUPER;
@@ -330,123 +326,120 @@ static bool parse_ui_test_key_name(const std::string& key_name, int& key) {
 static bool load_ui_test_script(const std::string& script_path,
                                 UITestScript& script,
                                 std::string& error) {
-    yyjson_read_err err{};
-    yyjson_doc* doc = yyjson_read_file(script_path.c_str(), 0, nullptr, &err);
-    if (!doc) {
+    nlohmann::json root;
+    try {
+        std::ifstream ifs(script_path);
+        if (!ifs) {
+            error = "failed to read script JSON";
+            return false;
+        }
+        root = nlohmann::json::parse(ifs);
+    } catch (const std::exception&) {
         error = "failed to read script JSON";
         return false;
     }
 
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    yyjson_val* actions = root;
-    if (root && yyjson_is_obj(root))
-        actions = yyjson_obj_get(root, "actions");
-    if (!actions || !yyjson_is_arr(actions)) {
-        yyjson_doc_free(doc);
+    const nlohmann::json* actions_ptr = &root;
+    if (root.is_object() && root.contains("actions"))
+        actions_ptr = &root["actions"];
+    if (!actions_ptr->is_array()) {
         error = "script must be a JSON array or an object with an 'actions' array";
         return false;
     }
+    const auto& actions = *actions_ptr;
 
     script = {};
     script.source_dir = std::filesystem::path(script_path).parent_path();
-    size_t idx = 0, max = 0;
-    yyjson_val* item = nullptr;
-    yyjson_arr_foreach(actions, idx, max, item) {
-        if (!yyjson_is_obj(item)) {
-            yyjson_doc_free(doc);
+    for (const auto& item : actions) {
+        if (!item.is_object()) {
             error = "script actions must be objects";
             return false;
         }
-        yyjson_val* type_val = yyjson_obj_get(item, "type");
-        if (!type_val || !yyjson_is_str(type_val)) {
-            yyjson_doc_free(doc);
+        auto type_it = item.find("type");
+        if (type_it == item.end() || !type_it->is_string()) {
             error = "script action missing string 'type'";
             return false;
         }
 
         UITestAction action;
-        std::string type = lower_copy(yyjson_get_str(type_val));
+        std::string type = lower_copy(type_it->get<std::string>());
         if (type == "wait") {
-            yyjson_val* frames_val = yyjson_obj_get(item, "frames");
             action.type = UITestActionType::Wait;
-            action.frames = frames_val && yyjson_is_int(frames_val)
-                ? static_cast<int>(yyjson_get_int(frames_val))
+            auto frames_it = item.find("frames");
+            action.frames = (frames_it != item.end() && frames_it->is_number_integer())
+                ? frames_it->get<int>()
                 : 1;
         } else if (type == "mouse_move") {
-            yyjson_val* x_val = yyjson_obj_get(item, "x");
-            yyjson_val* y_val = yyjson_obj_get(item, "y");
-            if (!x_val || !y_val || !yyjson_is_num(x_val) || !yyjson_is_num(y_val)) {
-                yyjson_doc_free(doc);
+            auto x_it = item.find("x");
+            auto y_it = item.find("y");
+            if (x_it == item.end() || y_it == item.end() || !x_it->is_number() || !y_it->is_number()) {
                 error = "mouse_move requires numeric x and y";
                 return false;
             }
             action.type = UITestActionType::MouseMove;
-            action.x = static_cast<float>(yyjson_get_num(x_val));
-            action.y = static_cast<float>(yyjson_get_num(y_val));
+            action.x = x_it->get<float>();
+            action.y = y_it->get<float>();
         } else if (type == "mouse_button") {
-            yyjson_val* button_val = yyjson_obj_get(item, "button");
-            yyjson_val* action_val = yyjson_obj_get(item, "action");
-            if (!button_val || !action_val || !yyjson_is_str(button_val) || !yyjson_is_str(action_val) ||
-                !parse_ui_test_mouse_button(yyjson_get_str(button_val), action.button) ||
-                !parse_ui_test_action_name(yyjson_get_str(action_val), action.mouse_action) ||
-                !parse_ui_test_modifiers(yyjson_obj_get(item, "mods"), action.mods, error)) {
-                yyjson_doc_free(doc);
+            auto button_it = item.find("button");
+            auto action_it = item.find("action");
+            nlohmann::json mods_val = item.contains("mods") ? item["mods"] : nlohmann::json(nullptr);
+            if (button_it == item.end() || action_it == item.end() ||
+                !button_it->is_string() || !action_it->is_string() ||
+                !parse_ui_test_mouse_button(button_it->get<std::string>(), action.button) ||
+                !parse_ui_test_action_name(action_it->get<std::string>(), action.mouse_action) ||
+                !parse_ui_test_modifiers(mods_val, action.mods, error)) {
                 if (error.empty())
                     error = "mouse_button requires valid button/action/mods";
                 return false;
             }
             action.type = UITestActionType::MouseButton;
         } else if (type == "key") {
-            yyjson_val* key_val = yyjson_obj_get(item, "key");
-            yyjson_val* action_val = yyjson_obj_get(item, "action");
-            if (!key_val || !action_val || !yyjson_is_str(key_val) || !yyjson_is_str(action_val) ||
-                !parse_ui_test_key_name(yyjson_get_str(key_val), action.key) ||
-                !parse_ui_test_action_name(yyjson_get_str(action_val), action.key_action) ||
-                !parse_ui_test_modifiers(yyjson_obj_get(item, "mods"), action.mods, error)) {
-                yyjson_doc_free(doc);
+            auto key_it = item.find("key");
+            auto action_it = item.find("action");
+            nlohmann::json mods_val = item.contains("mods") ? item["mods"] : nlohmann::json(nullptr);
+            if (key_it == item.end() || action_it == item.end() ||
+                !key_it->is_string() || !action_it->is_string() ||
+                !parse_ui_test_key_name(key_it->get<std::string>(), action.key) ||
+                !parse_ui_test_action_name(action_it->get<std::string>(), action.key_action) ||
+                !parse_ui_test_modifiers(mods_val, action.mods, error)) {
                 if (error.empty())
                     error = "key requires valid key/action/mods";
                 return false;
             }
             action.type = UITestActionType::Key;
         } else if (type == "char") {
-            yyjson_val* value_val = yyjson_obj_get(item, "value");
-            if (!value_val || !yyjson_is_str(value_val)) {
-                yyjson_doc_free(doc);
+            auto value_it = item.find("value");
+            if (value_it == item.end() || !value_it->is_string()) {
                 error = "char requires string value";
                 return false;
             }
-            std::string value = yyjson_get_str(value_val);
+            std::string value = value_it->get<std::string>();
             if (value.empty()) {
-                yyjson_doc_free(doc);
                 error = "char value must not be empty";
                 return false;
             }
             action.type = UITestActionType::CharInput;
             action.codepoint = static_cast<unsigned int>(static_cast<unsigned char>(value[0]));
         } else if (type == "screenshot") {
-            yyjson_val* path_val = yyjson_obj_get(item, "path");
-            if (!path_val || !yyjson_is_str(path_val)) {
-                yyjson_doc_free(doc);
+            auto path_it = item.find("path");
+            if (path_it == item.end() || !path_it->is_string()) {
                 error = "screenshot requires string path";
                 return false;
             }
             action.type = UITestActionType::Screenshot;
-            action.screenshot_path = yyjson_get_str(path_val);
-            yyjson_val* delay_val = yyjson_obj_get(item, "delay_frames");
-            if (delay_val && yyjson_is_int(delay_val))
-                action.screenshot_delay = static_cast<int>(yyjson_get_int(delay_val));
+            action.screenshot_path = path_it->get<std::string>();
+            auto delay_it = item.find("delay_frames");
+            if (delay_it != item.end() && delay_it->is_number_integer())
+                action.screenshot_delay = delay_it->get<int>();
         } else if (type == "checkpoint") {
-            yyjson_val* label_val = yyjson_obj_get(item, "label");
-            if (!label_val || !yyjson_is_str(label_val)) {
-                yyjson_doc_free(doc);
+            auto label_it = item.find("label");
+            if (label_it == item.end() || !label_it->is_string()) {
                 error = "checkpoint requires string label";
                 return false;
             }
             action.type = UITestActionType::Checkpoint;
-            action.checkpoint_label = yyjson_get_str(label_val);
+            action.checkpoint_label = label_it->get<std::string>();
         } else {
-            yyjson_doc_free(doc);
             error = "unknown script action type: " + type;
             return false;
         }
@@ -454,7 +447,6 @@ static bool load_ui_test_script(const std::string& script_path,
         script.actions.push_back(std::move(action));
     }
 
-    yyjson_doc_free(doc);
     return true;
 }
 
@@ -521,52 +513,39 @@ static std::string sanitize_json_string(const std::string& input) {
     return out;
 }
 
-static yyjson_mut_val* encode_ui_test_state(yyjson_mut_doc* doc,
-                                            const UITestObservedState& state) {
-    yyjson_mut_val* root = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_int(doc, root, "node_count",
-                           static_cast<int64_t>(state.nodes.size()));
-    yyjson_mut_obj_add_int(doc, root, "connection_count",
-                           static_cast<int64_t>(state.connections.size()));
-    yyjson_mut_obj_add_bool(doc, root, "chooser_open", state.chooser_open);
-    yyjson_mut_obj_add_bool(doc, root, "file_drop_chooser_open",
-                            state.file_drop_chooser_open);
-    yyjson_mut_obj_add_bool(doc, root, "role_chooser_open", state.role_chooser_open);
-    yyjson_mut_obj_add_int(doc, root, "native_file_dialog_count",
-                           state.file_dialog_stats.invocation_count);
+static nlohmann::json encode_ui_test_state(const UITestObservedState& state) {
+    nlohmann::json root = nlohmann::json::object();
+    root["node_count"] = static_cast<int64_t>(state.nodes.size());
+    root["connection_count"] = static_cast<int64_t>(state.connections.size());
+    root["chooser_open"] = state.chooser_open;
+    root["file_drop_chooser_open"] = state.file_drop_chooser_open;
+    root["role_chooser_open"] = state.role_chooser_open;
+    root["native_file_dialog_count"] = state.file_dialog_stats.invocation_count;
 
-    yyjson_mut_val* dialog_stats = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_int(doc, dialog_stats, "invocation_count",
-                           state.file_dialog_stats.invocation_count);
-    yyjson_mut_obj_add_int(doc, dialog_stats, "open_file_count",
-                           state.file_dialog_stats.open_file_count);
-    yyjson_mut_obj_add_int(doc, dialog_stats, "open_directory_count",
-                           state.file_dialog_stats.open_directory_count);
-    yyjson_mut_obj_add_int(doc, dialog_stats, "save_file_count",
-                           state.file_dialog_stats.save_file_count);
-    yyjson_mut_obj_add_int(doc, dialog_stats, "save_directory_count",
-                           state.file_dialog_stats.save_directory_count);
-    yyjson_mut_obj_add_val(doc, root, "file_dialog_stats", dialog_stats);
+    nlohmann::json dialog_stats = nlohmann::json::object();
+    dialog_stats["invocation_count"] = state.file_dialog_stats.invocation_count;
+    dialog_stats["open_file_count"] = state.file_dialog_stats.open_file_count;
+    dialog_stats["open_directory_count"] = state.file_dialog_stats.open_directory_count;
+    dialog_stats["save_file_count"] = state.file_dialog_stats.save_file_count;
+    dialog_stats["save_directory_count"] = state.file_dialog_stats.save_directory_count;
+    root["file_dialog_stats"] = dialog_stats;
 
-    yyjson_mut_val* selected = yyjson_mut_arr(doc);
+    nlohmann::json selected = nlohmann::json::array();
     for (const auto& node_id : state.selected_node_ids) {
-        const std::string safe = sanitize_json_string(node_id);
-        yyjson_mut_arr_add_strcpy(doc, selected, safe.c_str());
+        selected.push_back(sanitize_json_string(node_id));
     }
-    yyjson_mut_obj_add_val(doc, root, "selected_node_ids", selected);
+    root["selected_node_ids"] = selected;
 
-    yyjson_mut_val* nodes = yyjson_mut_arr(doc);
+    nlohmann::json nodes = nlohmann::json::array();
     for (const auto& node : state.nodes) {
-        yyjson_mut_val* item = yyjson_mut_obj(doc);
-        const std::string safe_node_id = sanitize_json_string(node.node_id);
-        const std::string safe_type_name = sanitize_json_string(node.type_name);
-        yyjson_mut_obj_add_strcpy(doc, item, "node_id", safe_node_id.c_str());
-        yyjson_mut_obj_add_strcpy(doc, item, "type_name", safe_type_name.c_str());
-        yyjson_mut_obj_add_bool(doc, item, "missing_operator", node.missing_operator);
-        yyjson_mut_obj_add_bool(doc, item, "has_layout", node.has_layout);
-        yyjson_mut_obj_add_real(doc, item, "layout_x", node.layout_x);
-        yyjson_mut_obj_add_real(doc, item, "layout_y", node.layout_y);
-        yyjson_mut_val* file_params = yyjson_mut_obj(doc);
+        nlohmann::json item = nlohmann::json::object();
+        item["node_id"] = sanitize_json_string(node.node_id);
+        item["type_name"] = sanitize_json_string(node.type_name);
+        item["missing_operator"] = node.missing_operator;
+        item["has_layout"] = node.has_layout;
+        item["layout_x"] = node.layout_x;
+        item["layout_y"] = node.layout_y;
+        nlohmann::json file_params = nlohmann::json::object();
         std::vector<std::string> keys;
         keys.reserve(node.file_param_values.size());
         for (const auto& [key, _] : node.file_param_values)
@@ -574,68 +553,57 @@ static yyjson_mut_val* encode_ui_test_state(yyjson_mut_doc* doc,
         std::sort(keys.begin(), keys.end());
         for (const auto& key : keys) {
             auto it = node.file_param_values.find(key);
-            const std::string safe_key = sanitize_json_string(key);
-            const std::string safe_value = sanitize_json_string(it->second);
-            yyjson_mut_obj_add_strcpy(doc, file_params, safe_key.c_str(), safe_value.c_str());
+            file_params[sanitize_json_string(key)] = sanitize_json_string(it->second);
         }
-        yyjson_mut_obj_add_val(doc, item, "file_params", file_params);
-        yyjson_mut_arr_add_val(nodes, item);
+        item["file_params"] = file_params;
+        nodes.push_back(item);
     }
-    yyjson_mut_obj_add_val(doc, root, "nodes", nodes);
+    root["nodes"] = nodes;
 
-    yyjson_mut_val* connections = yyjson_mut_arr(doc);
+    nlohmann::json connections = nlohmann::json::array();
     for (const auto& conn : state.connections) {
-        yyjson_mut_val* item = yyjson_mut_obj(doc);
-        const std::string safe_from_node = sanitize_json_string(conn.from_node);
-        const std::string safe_from_port = sanitize_json_string(conn.from_port);
-        const std::string safe_to_node = sanitize_json_string(conn.to_node);
-        const std::string safe_to_port = sanitize_json_string(conn.to_port);
-        yyjson_mut_obj_add_strcpy(doc, item, "from_node", safe_from_node.c_str());
-        yyjson_mut_obj_add_strcpy(doc, item, "from_port", safe_from_port.c_str());
-        yyjson_mut_obj_add_strcpy(doc, item, "to_node", safe_to_node.c_str());
-        yyjson_mut_obj_add_strcpy(doc, item, "to_port", safe_to_port.c_str());
-        yyjson_mut_obj_add_bool(doc, item, "invalid", conn.invalid);
-        yyjson_mut_arr_add_val(connections, item);
+        nlohmann::json item = nlohmann::json::object();
+        item["from_node"] = sanitize_json_string(conn.from_node);
+        item["from_port"] = sanitize_json_string(conn.from_port);
+        item["to_node"] = sanitize_json_string(conn.to_node);
+        item["to_port"] = sanitize_json_string(conn.to_port);
+        item["invalid"] = conn.invalid;
+        connections.push_back(item);
     }
-    yyjson_mut_obj_add_val(doc, root, "connections", connections);
+    root["connections"] = connections;
     return root;
 }
 
 static bool write_ui_test_dump_file(const std::string& path,
                                     const UITestDumpState& dump,
                                     std::string& error) {
-    yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-    if (!doc) {
-        error = "failed to allocate JSON document";
-        return false;
-    }
-    yyjson_mut_val* root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_bool(doc, root, "has_final_state", dump.has_final_state);
+    nlohmann::json root = nlohmann::json::object();
+    root["has_final_state"] = dump.has_final_state;
     if (dump.has_final_state) {
-        yyjson_mut_obj_add_val(doc, root, "final_state",
-                               encode_ui_test_state(doc, dump.final_state));
+        root["final_state"] = encode_ui_test_state(dump.final_state);
     }
 
-    yyjson_mut_val* checkpoints = yyjson_mut_arr(doc);
+    nlohmann::json checkpoints = nlohmann::json::array();
     for (const auto& checkpoint : dump.checkpoints) {
-        yyjson_mut_val* item = yyjson_mut_obj(doc);
-        const std::string safe_label = sanitize_json_string(checkpoint.label);
-        yyjson_mut_obj_add_strcpy(doc, item, "label", safe_label.c_str());
-        yyjson_mut_obj_add_val(doc, item, "state",
-                               encode_ui_test_state(doc, checkpoint.state));
-        yyjson_mut_arr_add_val(checkpoints, item);
+        nlohmann::json item = nlohmann::json::object();
+        item["label"] = sanitize_json_string(checkpoint.label);
+        item["state"] = encode_ui_test_state(checkpoint.state);
+        checkpoints.push_back(item);
     }
-    yyjson_mut_obj_add_val(doc, root, "checkpoints", checkpoints);
+    root["checkpoints"] = checkpoints;
 
-    yyjson_write_err write_err{};
-    bool ok = yyjson_mut_write_file(path.c_str(), doc, 0, nullptr, &write_err);
-    yyjson_mut_doc_free(doc);
-    if (!ok) {
-        error = write_err.msg ? write_err.msg : "failed to write JSON";
+    try {
+        std::ofstream ofs(path);
+        if (!ofs) {
+            error = "failed to write JSON";
+            return false;
+        }
+        ofs << root.dump(4);
+        return true;
+    } catch (const std::exception& e) {
+        error = e.what();
         return false;
     }
-    return true;
 }
 
 static std::string trim_copy(const std::string& s) {
@@ -671,14 +639,15 @@ static std::string join_csv(const std::vector<std::string>& items) {
 static bool load_example_entry_from_graph(const std::filesystem::path& graph_path,
                                           const std::filesystem::path& graphs_root,
                                           vivid::ui::ExampleEntry& out) {
-    yyjson_read_err err{};
-    yyjson_doc* doc = yyjson_read_file(graph_path.string().c_str(), 0, nullptr, &err);
-    if (!doc) return false;
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    if (!root || !yyjson_is_obj(root)) {
-        yyjson_doc_free(doc);
+    nlohmann::json root;
+    try {
+        std::ifstream ifs(graph_path);
+        if (!ifs) return false;
+        root = nlohmann::json::parse(ifs);
+    } catch (const std::exception&) {
         return false;
     }
+    if (!root.is_object()) return false;
 
     std::string rel = std::filesystem::relative(graph_path, graphs_root).generic_string();
     std::string stem = graph_path.stem().string();
@@ -689,46 +658,47 @@ static bool load_example_entry_from_graph(const std::filesystem::path& graph_pat
     out.difficulty = "intermediate";
     out.featured_rank = 1000;
 
-    yyjson_val* meta = yyjson_obj_get(root, "meta");
-    if (meta && yyjson_is_obj(meta)) {
-        yyjson_val* v = nullptr;
-        if ((v = yyjson_obj_get(meta, "id")) && yyjson_is_str(v)) out.id = yyjson_get_str(v);
-        if ((v = yyjson_obj_get(meta, "title")) && yyjson_is_str(v)) out.title = yyjson_get_str(v);
-        if ((v = yyjson_obj_get(meta, "description")) && yyjson_is_str(v)) out.summary = yyjson_get_str(v);
-        if ((v = yyjson_obj_get(meta, "difficulty")) && yyjson_is_str(v)) out.difficulty = yyjson_get_str(v);
-        if ((v = yyjson_obj_get(meta, "featured_rank")) && yyjson_is_int(v)) {
-            out.featured_rank = static_cast<int>(yyjson_get_int(v));
+    if (root.contains("meta") && root["meta"].is_object()) {
+        const auto& meta = root["meta"];
+        if (meta.contains("id") && meta["id"].is_string()) out.id = meta["id"].get<std::string>();
+        if (meta.contains("title") && meta["title"].is_string()) out.title = meta["title"].get<std::string>();
+        if (meta.contains("description") && meta["description"].is_string()) out.summary = meta["description"].get<std::string>();
+        if (meta.contains("difficulty") && meta["difficulty"].is_string()) out.difficulty = meta["difficulty"].get<std::string>();
+        if (meta.contains("featured_rank") && meta["featured_rank"].is_number_integer()) {
+            out.featured_rank = meta["featured_rank"].get<int>();
         }
-        if ((v = yyjson_obj_get(meta, "estimated_minutes")) && yyjson_is_int(v)) {
-            out.estimated_minutes = static_cast<int>(yyjson_get_int(v));
+        if (meta.contains("estimated_minutes") && meta["estimated_minutes"].is_number_integer()) {
+            out.estimated_minutes = meta["estimated_minutes"].get<int>();
         }
-        out.tags = json_str_array(yyjson_obj_get(meta, "tags"));
-        out.domains = json_str_array(yyjson_obj_get(meta, "domains"));
-        out.requires_packages = json_str_array(yyjson_obj_get(meta, "requires_packages"));
+        out.tags = json_str_array(meta.value("tags", nlohmann::json()));
+        out.domains = json_str_array(meta.value("domains", nlohmann::json()));
+        out.requires_packages = json_str_array(meta.value("requires_packages", nlohmann::json()));
     }
 
     if (out.title.empty()) out.title = stem;
     if (out.id.empty()) out.id = stem;
-    yyjson_doc_free(doc);
     return true;
 }
 
 static bool load_graph_meta_edit_data(const std::string& graph_path,
                                       vivid::ui::GraphMetaEditData& out,
                                       std::string& error) {
-    yyjson_read_err err{};
-    yyjson_doc* doc = yyjson_read_file(graph_path.c_str(), 0, nullptr, &err);
-    if (!doc) {
+    nlohmann::json root;
+    try {
+        std::ifstream ifs(graph_path);
+        if (!ifs) {
+            error = "Failed to read graph JSON";
+            return false;
+        }
+        root = nlohmann::json::parse(ifs);
+    } catch (const std::exception&) {
         error = "Failed to read graph JSON";
         return false;
     }
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    if (!root || !yyjson_is_obj(root)) {
-        yyjson_doc_free(doc);
+    if (!root.is_object()) {
         error = "Graph JSON root must be an object";
         return false;
     }
-    yyjson_val* meta = yyjson_obj_get(root, "meta");
     out = {};
     out.path = graph_path;
     auto stem = std::filesystem::path(graph_path).stem().string();
@@ -736,93 +706,69 @@ static bool load_graph_meta_edit_data(const std::string& graph_path,
     out.title = stem;
     out.difficulty = "intermediate";
     out.featured_rank = "1000";
-    if (meta && yyjson_is_obj(meta)) {
-        yyjson_val* v = nullptr;
-        if ((v = yyjson_obj_get(meta, "id")) && yyjson_is_str(v)) out.id = yyjson_get_str(v);
-        if ((v = yyjson_obj_get(meta, "title")) && yyjson_is_str(v)) out.title = yyjson_get_str(v);
-        if ((v = yyjson_obj_get(meta, "description")) && yyjson_is_str(v)) out.description = yyjson_get_str(v);
-        if ((v = yyjson_obj_get(meta, "difficulty")) && yyjson_is_str(v)) out.difficulty = yyjson_get_str(v);
-        if ((v = yyjson_obj_get(meta, "featured_rank")) && yyjson_is_int(v))
-            out.featured_rank = std::to_string(static_cast<int>(yyjson_get_int(v)));
-        out.tags_csv = join_csv(json_str_array(yyjson_obj_get(meta, "tags")));
-        out.domains_csv = join_csv(json_str_array(yyjson_obj_get(meta, "domains")));
-        out.requires_packages_csv = join_csv(json_str_array(yyjson_obj_get(meta, "requires_packages")));
+    if (root.contains("meta") && root["meta"].is_object()) {
+        const auto& meta = root["meta"];
+        if (meta.contains("id") && meta["id"].is_string()) out.id = meta["id"].get<std::string>();
+        if (meta.contains("title") && meta["title"].is_string()) out.title = meta["title"].get<std::string>();
+        if (meta.contains("description") && meta["description"].is_string()) out.description = meta["description"].get<std::string>();
+        if (meta.contains("difficulty") && meta["difficulty"].is_string()) out.difficulty = meta["difficulty"].get<std::string>();
+        if (meta.contains("featured_rank") && meta["featured_rank"].is_number_integer())
+            out.featured_rank = std::to_string(meta["featured_rank"].get<int>());
+        out.tags_csv = join_csv(json_str_array(meta.value("tags", nlohmann::json())));
+        out.domains_csv = join_csv(json_str_array(meta.value("domains", nlohmann::json())));
+        out.requires_packages_csv = join_csv(json_str_array(meta.value("requires_packages", nlohmann::json())));
     }
-    yyjson_doc_free(doc);
     return true;
 }
 
 static bool save_graph_meta_edit_data(const vivid::ui::GraphMetaEditData& in, std::string& error) {
-    yyjson_read_err err{};
-    yyjson_doc* doc = yyjson_read_file(in.path.c_str(), 0, nullptr, &err);
-    if (!doc) {
+    nlohmann::json root;
+    try {
+        std::ifstream ifs(in.path);
+        if (!ifs) {
+            error = "Failed to read graph JSON for save";
+            return false;
+        }
+        root = nlohmann::json::parse(ifs);
+    } catch (const std::exception&) {
         error = "Failed to read graph JSON for save";
         return false;
     }
-    yyjson_val* root = yyjson_doc_get_root(doc);
-    if (!root || !yyjson_is_obj(root)) {
-        yyjson_doc_free(doc);
+    if (!root.is_object()) {
         error = "Graph JSON root must be an object";
         return false;
     }
 
-    yyjson_mut_doc* mdoc = yyjson_doc_mut_copy(doc, nullptr);
-    yyjson_doc_free(doc);
-    if (!mdoc) {
-        error = "Failed to copy JSON document";
-        return false;
+    if (!root.contains("meta") || !root["meta"].is_object()) {
+        root["meta"] = nlohmann::json::object();
     }
-    yyjson_mut_val* mroot = yyjson_mut_doc_get_root(mdoc);
-    if (!mroot || !yyjson_mut_is_obj(mroot)) {
-        yyjson_mut_doc_free(mdoc);
-        error = "Graph JSON root must be an object";
-        return false;
-    }
-    yyjson_mut_val* meta = yyjson_mut_obj_get(mroot, "meta");
-    if (!meta || !yyjson_mut_is_obj(meta)) {
-        meta = yyjson_mut_obj(mdoc);
-        yyjson_mut_obj_put(mroot, yyjson_mut_strcpy(mdoc, "meta"), meta);
-    }
+    auto& meta = root["meta"];
 
-    auto put_str = [&](const char* key, const std::string& value) {
-        yyjson_mut_obj_remove_str(meta, key);
-        yyjson_mut_obj_put(meta, yyjson_mut_strcpy(mdoc, key),
-                           yyjson_mut_strcpy(mdoc, value.c_str()));
-    };
-    auto put_arr_csv = [&](const char* key, const std::string& csv) {
-        yyjson_mut_obj_remove_str(meta, key);
-        auto items = split_csv(csv);
-        yyjson_mut_val* arr = yyjson_mut_arr(mdoc);
-        for (const auto& s : items)
-            yyjson_mut_arr_add_val(arr, yyjson_mut_strcpy(mdoc, s.c_str()));
-        yyjson_mut_obj_put(meta, yyjson_mut_strcpy(mdoc, key), arr);
-    };
-
-    put_str("id", trim_copy(in.id));
-    put_str("title", trim_copy(in.title));
-    put_str("description", trim_copy(in.description));
-    put_str("difficulty", trim_copy(in.difficulty));
-    put_arr_csv("tags", in.tags_csv);
-    put_arr_csv("domains", in.domains_csv);
-    put_arr_csv("requires_packages", in.requires_packages_csv);
+    meta["id"] = trim_copy(in.id);
+    meta["title"] = trim_copy(in.title);
+    meta["description"] = trim_copy(in.description);
+    meta["difficulty"] = trim_copy(in.difficulty);
+    meta["tags"] = split_csv(in.tags_csv);
+    meta["domains"] = split_csv(in.domains_csv);
+    meta["requires_packages"] = split_csv(in.requires_packages_csv);
     int rank = 1000;
     try {
         if (!trim_copy(in.featured_rank).empty()) rank = std::stoi(trim_copy(in.featured_rank));
     } catch (...) {}
-    yyjson_mut_obj_remove_str(meta, "featured_rank");
-    yyjson_mut_obj_put(meta, yyjson_mut_strcpy(mdoc, "featured_rank"),
-                       yyjson_mut_int(mdoc, rank));
+    meta["featured_rank"] = rank;
 
-    yyjson_write_err werr{};
-    bool ok = yyjson_mut_write_file(in.path.c_str(), mdoc,
-                                    YYJSON_WRITE_PRETTY | YYJSON_WRITE_NEWLINE_AT_END,
-                                    nullptr, &werr);
-    yyjson_mut_doc_free(mdoc);
-    if (!ok) {
+    try {
+        std::ofstream ofs(in.path);
+        if (!ofs) {
+            error = "Failed to write graph JSON";
+            return false;
+        }
+        ofs << root.dump(4) << '\n';
+        return true;
+    } catch (const std::exception&) {
         error = "Failed to write graph JSON";
         return false;
     }
-    return true;
 }
 
 static std::vector<vivid::ui::ExampleEntry>

@@ -320,7 +320,7 @@ GLFW does not provide file open/save dialogs or pen/tablet pressure. File dialog
 | **miniaudio** (0.11.x) | Audio device I/O (not DSP) | single header | vendored |
 | **stb_truetype** | Font rasterization for UI text | single header | vendored |
 | **stb_image** | Image loading (PNG, JPEG, BMP) | single header | vendored |
-| **yyjson** | JSON parsing (graph files, project files) | ~40KB source | vendored |
+| **nlohmann/json** | JSON parsing and serialization (graph files, project files) | header-only | FetchContent |
 | **RtMidi** | MIDI I/O (CoreMIDI on macOS) | ~50KB source | vendored |
 | **oscpack** | OSC message serialization and UDP transport | ~30KB source | vendored |
 | **Syphon** | GPU texture sharing between applications (macOS) | ~100KB source | vendored |
@@ -342,7 +342,7 @@ vivid/
 ├── CMakeLists.txt              # Top-level build
 ├── deps/                       # Third-party (submodules and vendored)
 │   ├── glfw/  ├── glfw3webgpu/  ├── miniaudio/  ├── stb/
-│   ├── yyjson/  ├── rtmidi/  ├── oscpack/  ├── syphon/  └── hap/
+│   ├── rtmidi/  ├── oscpack/  ├── syphon/  └── hap/
 ├── src/
 │   ├── runtime/                # Core engine
 │   │   ├── main.cpp            # Entry point, window, main loop
@@ -498,7 +498,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 **Runtime architecture:**
 
-1. **`WgslHeaderParser`** (`src/runtime/wgsl_header_parser.cpp`) extracts the `/*{...}*/` block, parses it with yyjson, and returns a `WgslHeader` struct plus the clean fragment source with the comment stripped.
+1. **`WgslHeaderParser`** (`src/runtime/wgsl_header_parser.cpp`) extracts the `/*{...}*/` block, parses it with nlohmann/json, and returns a `WgslHeader` struct plus the clean fragment source with the comment stripped.
 
 2. **`WgslFilterBase`** (`src/operator_api/wgsl_filter.h`) is the generic GPU operator base class. On first process, it reads the `.wgsl` file, generates a WGSL preamble containing a fullscreen-triangle vertex shader, a `Uniforms` struct built from the parsed params, bind group layouts, and a sampler — then compiles the preamble + fragment source into a single WebGPU shader module and pipeline. It hot-reloads on file change (checked every 30 frames by mtime).
 

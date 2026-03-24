@@ -1,6 +1,5 @@
 #include "test_helpers.h"
 #include "runtime/settings.h"
-#include <yyjson.h>
 #include <filesystem>
 #include <fstream>
 #include <cstdlib>
