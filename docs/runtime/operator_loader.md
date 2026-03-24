@@ -38,6 +38,12 @@ Representative `LastError::code` values:
 - `hot_reload_incompatible_descriptor`
 - `custom_type_registration_failed`
 
+Authoring note for embedded operators:
+
+- `ChildOp<T>` consumers instantiate the concrete C++ type directly inside another plugin.
+- If an operator is intended to be embeddable and still has out-of-line destructor / virtual / thumbnail definitions, those definitions must be supplied through the composable-support path (`*_composable.cpp` linked via `vivid_composable_ops`).
+- Otherwise loader failures may surface as ordinary `dlopen_failed` diagnostics on the consuming plugin, even though the root cause is missing embedded-use linkage rather than a bad descriptor.
+
 The `VIVID_REGISTER(ClassName)` macro at the end of every operator .cpp generates:
 ```cpp
 extern "C" uint32_t vivid_abi_version() { return VIVID_OPERATOR_ABI_VERSION; }

@@ -11,7 +11,7 @@ LLM control of a live Vivid session.
 
 The per-push `GUI_SMOKE` lane currently exercises:
 
-- inspector screenshots for stable built-in graphs such as `instanced_shapes` and `scale_lfo`
+- inspector screenshots for stable built-in graphs such as `instanced_shapes`
 - visible-output validation for the `env` inspector case
 - synthetic graph drop reload in a real windowed session
 - synthetic single-match file drop with explicit node/file-param assertions
@@ -190,7 +190,6 @@ Use raw control-server HTTP only when the bridge itself is the thing under suspi
 The current Phase 4 inspector signoff cases captured through that live workflow are:
 
 - `graphs/gpu/instanced_shapes_demo.json` → `shapes`
-- `graphs/gpu/instanced_shapes_demo.json` → `scale_lfo`
 - `graphs/gpu/particle_envelope_demo.json` → `env`
 
 If another Vivid runtime is already active for MCP on `127.0.0.1:9876`, launching additional

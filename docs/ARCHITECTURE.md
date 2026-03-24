@@ -120,7 +120,22 @@ The simpler this contract, the better everything downstream works: auto-generate
 
 Control operators can embed other operators as persistent member variables using `ChildOp<T>` (defined in `src/operator_api/child_op.h`). This enables internal modulation chains — e.g. an LFO driving a gain stage — without exposing child operators as separate graph nodes.
 
-**Embeddable operators** must have a header-only struct (the `.h` file next to their `.cpp`). Currently available: `LFO` (`control/lfo/lfo.h`), `Smooth` (`control/smooth/smooth.h`), `Clock` (`control/clock/clock.h`), `Envelope` (`control/envelope/envelope.h`).
+**Embeddable operators** must satisfy one of two supported shapes:
+- `header-only embeddable`: every concrete definition needed by `ChildOp<T>` is available from the header
+- `composable-support-backed embeddable`: the operator keeps plugin-facing code in `.cpp`, and registers a `name_composable.cpp` support unit through `vivid_composable_ops` for any out-of-line destructor, virtual method implementation, thumbnail hook, or other non-inline definition needed by `ChildOp<T>` consumers
+
+**Composable support files** are minimal embedded-use glue only. They must not contain:
+- `VIVID_REGISTER(...)`
+- plugin export macros such as `VIVID_THUMBNAIL(...)`
+- full plugin-only thumbnail, inspector, or runtime wrapper behavior
+
+**Current embeddables:**
+- header-only: `LFO` (`control/lfo/lfo.h`)
+- composable-support-backed: `Smooth` (`control/smooth/smooth.h` + `smooth_composable.cpp`), `Envelope` (`control/envelope/envelope.h` + `envelope_composable.cpp`)
+
+**When to choose which style:**
+- prefer header-only for lightweight, dependency-light modulation cores
+- use composable support when the operator should still be embeddable but its plugin-facing thumbnail or other virtual behavior is better kept out-of-line
 
 **Usage pattern:**
 
