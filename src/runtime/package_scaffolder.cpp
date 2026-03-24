@@ -136,6 +136,24 @@ PackageScaffoldResult PackageScaffolder::scaffold(const PackageScaffoldOptions& 
         return out;
     }
 
+    // Strip symlinks that point outside the package directory to prevent
+    // template-based path traversal attacks.
+    {
+        std::error_code sym_ec;
+        auto canonical_pkg = fs::weakly_canonical(package_dir, sym_ec);
+        if (!sym_ec) {
+            for (const auto& entry : fs::recursive_directory_iterator(package_dir, sym_ec)) {
+                if (sym_ec) break;
+                if (!entry.is_symlink()) continue;
+                auto resolved = fs::weakly_canonical(entry.path(), sym_ec);
+                if (sym_ec || resolved.string().find(canonical_pkg.string()) != 0) {
+                    fs::remove(entry.path(), sym_ec);
+                }
+                sym_ec.clear();
+            }
+        }
+    }
+
     const std::string project_name = package_name_to_project_name(opts.name);
 
     std::error_code walk_ec;

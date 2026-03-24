@@ -9,6 +9,26 @@ set(VIVID_SPARKLE_PUBLIC_KEY "" CACHE STRING
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# --- Sanitizer instrumentation (opt-in) ---
+option(VIVID_SANITIZE "Enable AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
+option(VIVID_SANITIZE_THREAD "Enable ThreadSanitizer (mutually exclusive with VIVID_SANITIZE)" OFF)
+
+if(VIVID_SANITIZE AND VIVID_SANITIZE_THREAD)
+    message(FATAL_ERROR "Cannot enable both VIVID_SANITIZE and VIVID_SANITIZE_THREAD")
+endif()
+
+if(VIVID_SANITIZE)
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-optimize-sibling-calls)
+    add_link_options(-fsanitize=address,undefined)
+    set(VIVID_USE_WGPU_NATIVE_UPSTREAM OFF CACHE BOOL "" FORCE)
+endif()
+
+if(VIVID_SANITIZE_THREAD)
+    add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=thread)
+    set(VIVID_USE_WGPU_NATIVE_UPSTREAM OFF CACHE BOOL "" FORCE)
+endif()
+
 # --- Dawn/WebGPU via eliemichel's distribution (pre-built binaries) ---
 include(FetchContent)
 FetchContent_Declare(
@@ -201,15 +221,19 @@ if(APPLE)
 endif()
 
 # --- Composable operator support (for ChildOp<T> consumers) ---
-# Most ChildOp examples are header-driven, but some reusable child operators
-# still have out-of-line virtuals or thumbnail helpers. This support library
-# carries those concrete definitions so composite plugins do not rely on
-# incomplete header-only linkage.
-add_library(vivid_composable_ops STATIC
-    operators/control/smooth/smooth_composable.cpp
-)
+# Embeddable operators must either be fully header-defined or register a
+# composable support file here when they have out-of-line virtuals, thumbnail
+# hooks, or other concrete definitions that ChildOp<T> consumers must link.
+add_library(vivid_composable_ops STATIC)
 target_include_directories(vivid_composable_ops PUBLIC ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(vivid_composable_ops PUBLIC vivid_operator_api)
+
+function(add_vivid_embeddable_composable_support name source)
+    target_sources(vivid_composable_ops PRIVATE ${source})
+endfunction()
+
+add_vivid_embeddable_composable_support(Smooth   operators/control/smooth/smooth_composable.cpp)
+add_vivid_embeddable_composable_support(Envelope operators/control/envelope/envelope_composable.cpp)
 
 # --- Operator plugin suffix (platform-aware) ---
 if(APPLE)
@@ -326,7 +350,7 @@ add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp           
 add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp                       EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/gpu/feedback/factory_presets.json)
 add_vivid_operator(metaball              operators/gpu/metaball/metaball.cpp                       EXTRA_LIBS webgpu)
-add_vivid_operator(particles             operators/gpu/particles/particles.cpp                     EXTRA_LIBS webgpu)
+add_vivid_operator(particles             operators/gpu/particles/particles.cpp                     EXTRA_LIBS webgpu vivid_composable_ops)
 add_vivid_operator(instanced_shapes      operators/gpu/instanced_shapes/instanced_shapes.cpp      EXTRA_LIBS webgpu)
 add_vivid_operator(flocking              operators/gpu/flocking/flocking.cpp                       EXTRA_LIBS webgpu)
 add_vivid_operator(trails                operators/gpu/trails/trails.cpp                           EXTRA_LIBS webgpu)
@@ -1413,7 +1437,7 @@ add_executable(test_operator_loader
 )
 target_include_directories(test_operator_loader PRIVATE src)
 target_link_libraries(test_operator_loader PRIVATE vivid_operator_api webgpu yyjson)
-add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op)
+add_dependencies(test_operator_loader test_op_v1 test_op_v2 test_op_incompatible_port test_op_null_desc test_op_bad_custom_type control_pass_op audio_test_op export_custom_port_op control_thumb_op file_drop_test_op particles)
 add_test(NAME test_operator_loader COMMAND test_operator_loader WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_loader PROPERTIES LABELS "LOADER")
 
@@ -1569,6 +1593,16 @@ target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api yyjson webgp
 add_dependencies(test_gpu_operators gpu_fill_op shape control_thumb_op)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Per-operator smoke sweep — discovers all dylibs and validates load/desc/process/boundary
+add_executable(test_operator_sweep
+    tests/test_operator_sweep.cpp
+    src/runtime/operator_loader.cpp
+)
+target_include_directories(test_operator_sweep PRIVATE src)
+target_link_libraries(test_operator_sweep PRIVATE vivid_operator_api webgpu yyjson)
+add_test(NAME test_operator_sweep COMMAND test_operator_sweep WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_operator_sweep PROPERTIES LABELS "HEADLESS_SMOKE" TIMEOUT 120)
+
 # 3D tests are in the vivid-3d package (see ../vivid-3d/)
 
 # Cross-domain spread integration test
@@ -1622,9 +1656,10 @@ add_dependencies(test_audio_spread_wire spread_source_op audio_spread_op spread_
 add_test(NAME test_audio_spread_wire COMMAND test_audio_spread_wire
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# ChildOp<T> composition unit test (no plugins, no scheduler, header-only)
-# Smooth has out-of-line virtuals (destructor, draw_thumbnail) in smooth.cpp
-# which pulls in WebGPU. Stub them so this test stays focused on ChildOp logic.
+# ChildOp<T> composition unit test (no plugins, no scheduler, logic only).
+# Non-header-only embeddables have separate loader regressions in
+# test_operator_loader; this test uses stubs so it stays focused on ChildOp
+# call semantics and persistent state behavior.
 add_executable(test_child_op tests/test_child_op.cpp tests/stubs/smooth_stubs.cpp)
 target_include_directories(test_child_op PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
 target_link_libraries(test_child_op PRIVATE vivid_operator_api)
@@ -2220,6 +2255,15 @@ add_test(NAME test_operator_info_cache COMMAND test_operator_info_cache WORKING_
 add_executable(test_path_animate tests/test_path_animate.cpp)
 target_include_directories(test_path_animate PRIVATE src)
 add_test(NAME test_path_animate COMMAND test_path_animate WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# i18n module tests (load, get, get_plural, fallbacks)
+add_executable(test_i18n
+    tests/test_i18n.cpp
+    src/ui/i18n.cpp
+)
+target_include_directories(test_i18n PRIVATE src)
+target_link_libraries(test_i18n PRIVATE yyjson)
+add_test(NAME test_i18n COMMAND test_i18n WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Semantic tag vocabulary validation (script-only, no binary)
 add_test(NAME test_semantic_tags
