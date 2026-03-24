@@ -798,7 +798,16 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         if (!ns.time_dependent && !ns.upstream_nodes.empty()) {
             bool should_process = false;
             for (size_t i = 0; i < ns.upstream_nodes.size(); ++i) {
-                if (nodes_[ns.upstream_nodes[i]].processed_this_tick) {
+                auto& upstream = nodes_[ns.upstream_nodes[i]];
+                if (upstream.processed_this_tick) {
+                    should_process = true;
+                    break;
+                }
+                // Audio nodes are skipped in tick() but their outputs are
+                // injected externally via inject_external_output(), which
+                // bumps their generation.  Detect that change here so
+                // downstream GPU/control nodes still reprocess.
+                if (upstream.is_audio && upstream.generation != upstream.last_processed_gen) {
                     should_process = true;
                     break;
                 }
@@ -1149,6 +1158,15 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
 
         ns.last_processed_gen = ns.generation;
         ns.processed_this_tick = true;
+    }
+
+    // Sync last_processed_gen for audio nodes so the cross-domain generation
+    // check above works correctly on the next frame.  Audio nodes are skipped
+    // in the main loop; their generation is bumped externally by
+    // inject_external_output() between frames.
+    for (auto& ns : nodes_) {
+        if (ns.is_audio)
+            ns.last_processed_gen = ns.generation;
     }
 
     // Propagate control→audio param wires for inspector display and push_params() staging.

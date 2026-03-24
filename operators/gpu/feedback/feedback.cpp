@@ -83,7 +83,7 @@ struct FeedbackUniforms {
 
 struct Feedback : vivid::GpuOperatorBase {
     static constexpr const char* kName   = "Feedback";
-    static constexpr bool kTimeDependent = false;
+    static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> decay    {"decay",    0.95f, 0.0f, 1.0f};
     vivid::Param<float> mix      {"mix",      0.5f,  0.0f, 1.0f};
