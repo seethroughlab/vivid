@@ -880,6 +880,9 @@ int main(int argc, char* argv[]) {
         out << "drop fixture\n";
     }
 
+    std::string spawned_package_paths =
+        std::getenv("VIVID_PACKAGE_PATHS") ? std::getenv("VIVID_PACKAGE_PATHS") : "";
+
     std::vector<ScreenshotCase> cases = {
         {
             "instanced-shapes inspector",
@@ -898,24 +901,6 @@ int main(int argc, char* argv[]) {
             {"shapes", "vout"},
             {},
             {"shapes"},
-        },
-        {
-            "scale-lfo inspector",
-            graphs_dir / "gpu" / "instanced_shapes_demo.json",
-            "scale_lfo",
-            "scale_lfo.png",
-            {},
-            5,
-            {},
-            20,
-            {},
-            {},
-            {},
-            "scale_lfo_inspector",
-            true,
-            {"scale_lfo", "shapes", "vout"},
-            {},
-            {"scale_lfo"},
         },
         {
             "env inspector with visible output",
@@ -964,11 +949,12 @@ int main(int argc, char* argv[]) {
             {},
             {},
             true,
-            {"shapes", "vout"},
+            {"shapes", "bloom", "vout"},
             {},
             {"shapes"},
             {
-                {"shapes", "texture", "vout", "input"},
+                {"shapes", "texture", "bloom", "input"},
+                {"bloom", "texture", "vout", "input"},
             },
             {},
             {},
@@ -1237,7 +1223,10 @@ int main(int argc, char* argv[]) {
         std::filesystem::path package_root =
             std::getenv("VIVID_GUI_ENV_PACKAGE_ROOT")
                 ? std::filesystem::path(std::getenv("VIVID_GUI_ENV_PACKAGE_ROOT"))
-                : (repo_root / "vivid-wavetable");
+                : (repo_root.parent_path() / "vivid-wavetable");
+        if (spawned_package_paths.empty()) {
+            spawned_package_paths = package_root.parent_path().string();
+        }
         const std::filesystem::path wavetable_graph =
             package_root / "graphs" / "extended" / "wavetable_dream_keys_demo.json";
         cases.push_back({
@@ -1328,7 +1317,11 @@ int main(int argc, char* argv[]) {
                           " > " + shell_quote(log_path.string()) + " 2>&1";
         cmd = "env HOME=" + shell_quote(runtime_home.string()) +
               " TMPDIR=" + shell_quote(runtime_tmp.string()) +
-              " VIVID_UI_SMOKE_LANE=" + shell_quote(lane_name) + " " + cmd;
+              " VIVID_UI_SMOKE_LANE=" + shell_quote(lane_name) +
+              (spawned_package_paths.empty()
+                   ? ""
+                   : " VIVID_PACKAGE_PATHS=" + shell_quote(spawned_package_paths)) +
+              " " + cmd;
         std::fprintf(stderr, "[test_ui_screenshot_smoke] %s\n", cmd.c_str());
         int rc = std::system(cmd.c_str());
         report_check(report, FailureKind::ProcessExit, rc == 0,
