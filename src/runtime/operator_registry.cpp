@@ -1060,6 +1060,34 @@ bool OperatorRegistry::scan_factory_presets(const std::string& directory) {
                 }
             }
 
+            // Embedded ops (optional)
+            auto eo_it = preset_val.find("embedded_ops");
+            if (eo_it != preset_val.end() && eo_it->is_object()) {
+                for (const auto& [role_id, eo_val] : eo_it->items()) {
+                    if (!eo_val.is_object()) continue;
+                    NodeDef child;
+                    auto type_it = eo_val.find("type");
+                    if (type_it != eo_val.end() && type_it->is_string())
+                        child.type = type_it->get<std::string>();
+                    auto cp_it = eo_val.find("params");
+                    if (cp_it != eo_val.end() && cp_it->is_object()) {
+                        for (const auto& [pn, pv] : cp_it->items()) {
+                            if (pv.is_number())
+                                child.params[pn] = static_cast<float>(pv.get<double>());
+                        }
+                    }
+                    op.embedded_ops[role_id] = std::move(child);
+                }
+                // Flatten embedded op params onto preset params
+                for (const auto& [role_id, child] : op.embedded_ops) {
+                    std::string prefix = role_id + "_";
+                    for (const auto& [pn, pv] : child.params)
+                        op.params[prefix + pn] = pv;
+                    for (const auto& [pn, pv] : child.string_params)
+                        op.string_params[prefix + pn] = pv;
+                }
+            }
+
             presets.push_back(std::move(op));
         }
 
