@@ -80,3 +80,4 @@ DawnCache
 GPUCache
 DawnCache
 .codex
+build-asan
