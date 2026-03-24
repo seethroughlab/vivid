@@ -925,6 +925,8 @@ static void refresh_window_title(GLFWwindow* window, const std::string& graph_pa
             title += " - ";
             title += file;
         }
+    } else {
+        title += " - Unsaved Document";
     }
     glfwSetWindowTitle(window, title.c_str());
 }
@@ -2881,6 +2883,10 @@ int main(int argc, char* argv[]) {
             initial_load_ok = graph.load(bundled_template.string().c_str());
         if (!initial_load_ok)
             std::fprintf(stderr, "[vivid] Error: could not load default graph template\n");
+        // Clear source_path so Cmd-S prompts for a save location instead of
+        // overwriting the default template.
+        if (initial_load_ok)
+            graph.set_source_path("");
     } else {
         initial_load_ok = graph.load(graph_file.c_str());
         if (!initial_load_ok)
@@ -3786,6 +3792,10 @@ int main(int argc, char* argv[]) {
                 do_save_as_dialog();
             else
                 do_save();
+        };
+
+        menu_cbs.on_save_as = [&]() {
+            do_save_as_dialog();
         };
 
         menu_cbs.on_open = [&]() {

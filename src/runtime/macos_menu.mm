@@ -11,6 +11,7 @@ enum MenuTag : NSInteger {
     kMenuTagOpenExample,
     kMenuTagOpenGraphFolder,
     kMenuTagSave,
+    kMenuTagSaveAs,
     kMenuTagPreferences,
     kMenuTagExport,
     kMenuTagBrowsePackages,
@@ -49,6 +50,7 @@ enum MenuTag : NSInteger {
         case kMenuTagOpenExample:       if (_callbacks.on_open_example) _callbacks.on_open_example(); break;
         case kMenuTagOpenGraphFolder:  if (_callbacks.on_open_graph_folder) _callbacks.on_open_graph_folder(); break;
         case kMenuTagSave:              if (_callbacks.on_save) _callbacks.on_save(); break;
+        case kMenuTagSaveAs:            if (_callbacks.on_save_as) _callbacks.on_save_as(); break;
         case kMenuTagPreferences:       if (_callbacks.on_preferences) _callbacks.on_preferences(); break;
         case kMenuTagExport:            if (_callbacks.on_export) _callbacks.on_export(); break;
         case kMenuTagBrowsePackages:    if (_callbacks.on_browse_packages) _callbacks.on_browse_packages(); break;
@@ -243,6 +245,15 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
         saveItem.target = sDelegate;
         saveItem.tag = kMenuTagSave;
         [fileMenu addItem:saveItem];
+
+        NSMenuItem* saveAsItem = [[NSMenuItem alloc]
+            initWithTitle:@"Save As..."
+                   action:@selector(menuAction:)
+            keyEquivalent:@"S"];
+        saveAsItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+        saveAsItem.target = sDelegate;
+        saveAsItem.tag = kMenuTagSaveAs;
+        [fileMenu addItem:saveAsItem];
 
         [fileMenu addItem:[NSMenuItem separatorItem]];
 
