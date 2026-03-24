@@ -379,8 +379,12 @@ struct CellularAutomata : vivid::GpuOperatorBase {
             su.fill_density  = fill_density.value;
             wgpuQueueWriteBuffer(ctx->queue, sim_uniform_buf_, 0, &su, sizeof(su));
 
-            vivid::gpu::run_pass(ctx->command_encoder, sim_pipeline_, sim_bg_[0],
+            WGPUBindGroup rand_bg = vivid::gpu::create_standard_bind_group(
+                ctx->device, bind_layout_, sim_uniform_buf_, sizeof(SimUniforms),
+                linear_sampler_, &state_view_[0], 1, "CA Randomize BG");
+            vivid::gpu::run_pass(ctx->command_encoder, sim_pipeline_, rand_bg,
                                  state_view_[0], "CA Randomize");
+            vivid::gpu::release(rand_bg);
             ping_ = 0;
             needs_randomize_ = false;
         }
@@ -409,8 +413,15 @@ struct CellularAutomata : vivid::GpuOperatorBase {
             for (int i = 0; i < steps; ++i) {
                 int read  = ping_;
                 int write = 1 - ping_;
-                vivid::gpu::run_pass(ctx->command_encoder, sim_pipeline_, sim_bg_[read],
+                // Create a fresh bind group each step to avoid texture usage
+                // conflicts within the same command encoder (read texture in
+                // one pass becomes write target in the next).
+                WGPUBindGroup step_bg = vivid::gpu::create_standard_bind_group(
+                    ctx->device, bind_layout_, sim_uniform_buf_, sizeof(SimUniforms),
+                    linear_sampler_, &state_view_[read], 1, "CA Sim Step BG");
+                vivid::gpu::run_pass(ctx->command_encoder, sim_pipeline_, step_bg,
                                      state_view_[write], "CA Sim Step");
+                vivid::gpu::release(step_bg);
                 ping_ = write;
             }
         }
@@ -427,8 +438,12 @@ struct CellularAutomata : vivid::GpuOperatorBase {
         vu.dead_b  = dead_b.value;
         wgpuQueueWriteBuffer(ctx->queue, vis_uniform_buf_, 0, &vu, sizeof(vu));
 
-        vivid::gpu::run_pass(ctx->command_encoder, vis_pipeline_, vis_bg_[ping_],
+        WGPUBindGroup vis_step_bg = vivid::gpu::create_standard_bind_group(
+            ctx->device, bind_layout_, vis_uniform_buf_, sizeof(SimUniforms),
+            nearest_sampler_, &state_view_[ping_], 1, "CA Vis Step BG");
+        vivid::gpu::run_pass(ctx->command_encoder, vis_pipeline_, vis_step_bg,
                              ctx->output_texture_view, "CA Vis");
+        vivid::gpu::release(vis_step_bg);
     }
 
     ~CellularAutomata() override {
