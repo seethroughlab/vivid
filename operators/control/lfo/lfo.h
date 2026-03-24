@@ -12,8 +12,8 @@ struct LFO : vivid::AudioOperatorBase {
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<float> frequency    {"frequency",     1.0f,  0.01f, 20.0f};
-    vivid::Param<float> amplitude    {"amplitude",     1.0f,  0.0f,  10000.0f};
-    vivid::Param<float> offset       {"offset",        0.0f, -20000.0f, 20000.0f};
+    vivid::Param<float> amplitude    {"amplitude",     1.0f,  0.0f,  10.0f};
+    vivid::Param<float> offset       {"offset",        0.0f, -10.0f, 10.0f};
     vivid::Param<int>   waveform     {"waveform",      0, {"sine", "saw", "square", "triangle", "sample_hold", "smooth_random", "noise"}};
     vivid::Param<int>   rate_mode    {"rate_mode",     0, {"free", "sync"}};
     vivid::Param<int>   polarity     {"polarity",      0, {"bipolar", "unipolar"}};

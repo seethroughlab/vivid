@@ -38,9 +38,14 @@ struct Oscillator : vivid::AudioOperatorBase {
         float* out = ctx->output_buffers[0];
         float freq_cv_val = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
         float amp_cv_val  = ctx->input_float_values ? ctx->input_float_values[1] : 1.0f;
+        // Clamp CV to ±120 semitones (~10 octaves) to prevent pow() overflow.
+        if (freq_cv_val < -120.0f) freq_cv_val = -120.0f;
+        if (freq_cv_val >  120.0f) freq_cv_val =  120.0f;
         float mod_freq = frequency.value * std::pow(2.0f, freq_cv_val / 12.0f);
         float mod_amp  = amplitude.value * amp_cv_val;
         double phase_inc = static_cast<double>(mod_freq) / ctx->sample_rate;
+        // Recover from NaN/Inf in phase accumulator (defensive).
+        if (!std::isfinite(phase_)) phase_ = 0.0;
         int wave = waveform.int_value();
 
         for (uint32_t i = 0; i < ctx->buffer_size; i++) {
