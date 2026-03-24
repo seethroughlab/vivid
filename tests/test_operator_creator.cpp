@@ -284,6 +284,10 @@ int main() {
         check(src.find("child_op.h") != std::string::npos, "includes child_op.h");
         check(src.find("ChildOp<LFO>") != std::string::npos, "has ChildOp<LFO>");
         check(src.find("ChildOp<Smooth>") != std::string::npos, "has ChildOp<Smooth>");
+        check(src.find("operators documented as embeddable") != std::string::npos,
+              "composite template documents embeddable ChildOp contract");
+        check(src.find("vivid_composable_ops through a *_composable.cpp support file") != std::string::npos,
+              "composite template documents composable support path");
         check(src.find("lfo_.process(ctx)") != std::string::npos, "calls lfo_.process(ctx)");
         check(src.find("smoother_.process(ctx)") != std::string::npos, "calls smoother_.process(ctx)");
         check(src.find("struct ModFilter") != std::string::npos, "struct name is ModFilter");

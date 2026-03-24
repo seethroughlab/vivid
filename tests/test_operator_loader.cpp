@@ -733,6 +733,20 @@ int main() {
         check(true, "registry teardown after scan_deferred is clean");
     }
 
+    // Test 35: composable-support-backed embeddable consumer loads cleanly
+    {
+        std::fprintf(stderr, "\n--- composable embeddable consumer loads cleanly ---\n");
+        vivid::OperatorLoader loader;
+        std::string path = build_dir + "/particles.dylib";
+        check(loader.load(path.c_str()), "particles dylib loads");
+        check(loader.is_loaded(), "particles loader reports loaded");
+        const auto* desc = loader.descriptor();
+        check(desc != nullptr, "particles descriptor not null");
+        if (desc) {
+            check(std::strcmp(desc->name, "Particles") == 0, "particles descriptor name = Particles");
+        }
+    }
+
     // Cleanup
     std::filesystem::remove_all(staging);
     std::filesystem::remove_all(staging_mixed);

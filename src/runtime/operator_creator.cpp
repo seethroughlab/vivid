@@ -480,6 +480,9 @@ static std::string composite_control_template(const std::string& name, const std
     s << "#include \"control/smooth/smooth.h\"\n\n";
     s << "// Starter template. For advanced features (custom ports, file drops,\n";
     s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
+    s << "// ChildOp<T> only works with operators documented as embeddable.\n";
+    s << "// Embeddables are either fully header-defined or backed by\n";
+    s << "// vivid_composable_ops through a *_composable.cpp support file.\n\n";
     s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
