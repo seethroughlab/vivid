@@ -369,6 +369,12 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.is_gpu = true;
             } else if (desc->execution_env == VIVID_ENV_AUDIO || desc->domain == VIVID_DOMAIN_AUDIO) {
                 cn.active_cadence = Cadence::Audio;
+            } else if (desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) {
+                // Audio-capable operators default to audio-cadence for backward
+                // compatibility. The cadence report's target model has them default
+                // to frame-rate, but switching that requires explicit cadence
+                // selection UI. For now, keep them in the audio world.
+                cn.active_cadence = Cadence::Audio;
             } else {
                 cn.active_cadence = Cadence::Frame;
             }
