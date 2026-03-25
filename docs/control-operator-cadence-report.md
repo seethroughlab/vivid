@@ -352,40 +352,45 @@ If this direction is right, then the design goal is not "flatten the runtime int
 - give control operators a cleaner way to participate in them
 - and expose that to users in timing language rather than thread language
 
-## Appendix: First-pass classification of current control operators
+## Appendix: Control operator cadence classification
 
-This is a rough first pass using the audio-capable checklist from section 2. It is intentionally conservative. The goal is to identify how these operators likely fit into the clean-break target model, not to define a migration queue.
+This appendix was originally a rough first pass. It has been updated to reflect implementation results from the cadence-aware runtime migration.
 
-### Likely `audio-capable`
+### Implemented `audio-capable`
 
-These look like the strongest candidates for optional audio-rate execution because they appear bounded, self-contained, and semantically meaningful at higher cadence:
+These operators now implement both `process_frame` and `process_audio`, making them dual-cadence. `VIVID_REGISTER` auto-sets `cadence_capability = VIVID_CADENCE_AUDIO_CAPABLE` via interface detection.
 
-- `alternate`
+Pre-existing dual-cadence implementations:
+
 - `envelope`
-- `gate`
 - `lfo`
+- `note_duration`
+
+Added during migration:
+
+- `gate`
 - `logic`
 - `macro`
 - `math`
-- `modulated_gain`
-- `note_duration`
 - `quantizer`
 - `sample_hold`
 - `smooth`
-- `spread_noise`
-- `stack`
 - `step_counter`
 
-Short rationale:
+Implementation pattern: each operator extracts a shared helper (e.g. `compute()`, `advance()`, `quantize()`) called by both `process_frame` and `process_audio`. Audio inputs come from `ctx->input_float_values[]` (scalar CV snapshotted once per buffer). Audio outputs write to `ctx->output_buffers[port][sample]`. State members are shared — only one cadence executes at a time.
 
-- mostly scalar/spread/value-transform behavior
-- limited dependence on external services
-- semantics still make sense when advanced faster than frame rate
-- likely cheap enough to consider promotion, subject to actual profiling
+### Already audio-native
 
-### Likely `frame-only`
+These operators inherit `AudioOperatorBase` and only have `process_audio`. They are inherently audio-rate:
 
-These appear tightly tied to external state, UI/input, filesystem, networking, or observational frame-side behavior and therefore do not look like good audio-rate candidates:
+- `clock`
+- `state_machine`
+
+`state_machine` is the reference model for cadence-agnostic design: it uses beat-phase wraps for all timing decisions, making its state transitions independent of sample rate or frame rate.
+
+### Confirmed `frame-only`
+
+These are tightly tied to external state, UI/input, filesystem, networking, or observational behavior:
 
 - `basename`
 - `fft_analysis`
@@ -397,41 +402,58 @@ These appear tightly tied to external state, UI/input, filesystem, networking, o
 - `osc_out`
 - `string_select`
 
-Short rationale:
+These should remain `VIVID_CADENCE_FRAME_ONLY` permanently.
 
-- depend on input devices, incoming messages, file/path state, or observational analysis behavior
-- would either violate the audio-capable contract directly or produce confusing semantics on the audio thread
+### Deferred: needs infrastructure
 
-### `Unclear / needs design work`
+These operators are conceptually audio-capable but blocked on runtime features that do not exist yet:
 
-These may be portable in principle, but need more semantic and runtime design work before they can be called audio-capable with confidence. In the clean-break framing, these are the operators whose new semantics need to be defined before they should survive in recognizable form:
+- `alternate` — spread input selection; needs spread-at-audio-rate bridge
+- `spread_noise` — spread output generation; needs spread-at-audio-rate bridge
+- `stack` — spread concatenation/interleaving; needs spread-at-audio-rate bridge
+- `modulated_gain` — composite operator using `ChildOp<LFO>` and `ChildOp<Smooth>`; needs ChildOp to support audio-context forwarding
+
+These are implementation problems, not design problems. Once the spread-at-audio-rate bridge exists, the first three can be converted mechanically. `modulated_gain` can be converted once ChildOp supports dual-cadence dispatch.
+
+### Deferred: needs individual timing design
+
+These operators cannot be made audio-capable by adding `process_audio` mechanically, because audio-rate changes the meaning of their output, not just the precision.
+
+#### Time-accumulating operators
+
+These accumulate internal time (`elapsed_time += dt`) which changes behavior at audio rate because dt changes from ~16ms to ~20µs:
+
+- `mseg` — breakpoint envelope player with loop and release stages. Envelope timing is baked into normalized position [0,1] with absolute durations. At audio rate, all timing compresses by ~800x unless the time model is redesigned. Needs: explicit time source (external phase or cadence-scaled duration).
+- `path_animate` — cubic Bezier curve player with speed parameter and phase accumulation. A `speed` of 1.0 means "traverse once per second" at frame rate but traverses 800x at audio rate. Needs: explicit phase input or cadence-aware speed scaling.
+- `random` — trigger-based random value generation. At audio rate, trigger edge detection becomes meaningless (no "trigger" in a 48 kHz stream). Needs: phase-driven redesign where RNG state advances based on external phase, not triggers.
+- `random_sh` — timed or triggered sample-and-hold with slew. Timed mode accumulates phase at control rate; triggered mode uses gate edges. Both break at audio rate for the same reasons as `random`. Needs: phase-driven redesign with explicit rate semantics.
+
+#### Beat/sequence operators
+
+These produce gates, steps, or MIDI-adjacent behavior where "audio-rate" changes what the output means:
 
 - `arpeggiator`
 - `chord_progression`
-- `clock`
 - `drum_sequencer`
 - `euclidean`
-- `mseg`
 - `note_pattern`
 - `pat_transform`
-- `path_animate`
 - `pattern_seq`
 - `phase_to_midi`
-- `random`
-- `random_sh`
 - `sequencer`
-- `state_machine`
 - `step_seq`
 - `tracker`
 
-Short rationale:
+These operators have timing semantics that matter more than implementation safety. Several produce gate/trigger signals where the transition timing is the entire point. At audio rate, gate transitions become sample-accurate rather than frame-accurate — which is a semantic improvement, but only if the operator's timing model is defined in beats/phase rather than frames/time.
 
-- timing semantics matter more than raw implementation safety
-- several produce gates, steps, or MIDI-adjacent behavior where "audio-rate" changes the meaning, not just the precision
-- some have UI/editor-oriented or pattern-editing behavior that likely belongs to the frame world even if a stripped-down runtime core could be made audio-safe
+The `state_machine` operator demonstrates the right pattern: it uses `beat_phase` wrap detection for all timing decisions, making it naturally cadence-agnostic. Operators in this bucket that can be refactored to the same phase-driven pattern are good candidates for dual-cadence. Others may need a split model where timing/core logic is audio-capable but event publication remains frame-oriented.
 
-### Notes on borderline cases
+### Design patterns for future audio-capable operators
 
-- `clock` is conceptually central to this whole topic, but it is exactly the kind of operator where cadence changes the meaning of the output, so it should stay in the "unclear" bucket until its audio-rate semantics are defined explicitly.
-- `random` and `random_sh` may be implementable in an audio-safe way, but they should not be treated as audio-capable until their determinism and state-advance rules are made explicit.
-- MIDI-producing sequencer operators may eventually want a split model where timing/core logic is audio-capable but MIDI/event publication remains frame/applied-to-audio oriented. That is a design question, not just a classification detail.
+Two proven patterns emerged from the implementation work:
+
+1. **Stateless transform** (e.g. `note_duration`, `math`, `quantizer`): The same computation applies identically at both cadences. No time, no phase, no state evolution. The simplest and most portable pattern.
+
+2. **Phase-driven state machine** (e.g. `state_machine`, `step_counter`): All timing decisions react to phase wraps or trigger edges, not to elapsed time or frame counts. The operator's behavior is cadence-agnostic because it tracks an external signal, not an internal clock.
+
+Operators that accumulate internal time (e.g. `mseg`, `path_animate`) or depend on trigger edges with implicit frame-rate assumptions (e.g. `random`) need redesign to fit one of these patterns before they can be made audio-capable.
