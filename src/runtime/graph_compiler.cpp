@@ -563,8 +563,10 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 } else if (from_port_type == VIVID_PORT_TEXTURE &&
                            to_port_type == VIVID_PORT_TEXTURE) {
                     e.data_type = VIVID_PORT_TEXTURE;
-                } else if (from_port_type == VIVID_PORT_SPREAD &&
+                } else if (from_port_type == VIVID_PORT_SPREAD ||
                            to_port_type == VIVID_PORT_SPREAD) {
+                    // SPREAD on either end → treat as spread edge
+                    // (SIGNAL↔SPREAD is compatible for control types)
                     e.data_type = VIVID_PORT_SPREAD;
                 } else if (vivid_is_custom_port_type(from_port_type) &&
                            vivid_is_custom_port_type(to_port_type) &&

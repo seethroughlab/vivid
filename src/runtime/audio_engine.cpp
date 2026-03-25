@@ -1124,6 +1124,18 @@ void AudioEngine::inject_analysis(Scheduler& scheduler) {
                                                      fm.scheduler_port_idx, val);
                 }
             }
+            // Spread outputs
+            for (const auto& sm : pm.spread_output_mappings) {
+                if (sm.audio_port_idx < cn->output_spreads.size() &&
+                    sm.scheduler_port_idx < ns.output_spreads.size()) {
+                    const auto& src = cn->output_spreads[sm.audio_port_idx];
+                    ns.output_spreads[sm.scheduler_port_idx] = src;
+                    scheduler.inject_external_spread(pm.scheduler_node_idx,
+                                                     sm.scheduler_port_idx,
+                                                     src.data(),
+                                                     static_cast<uint32_t>(src.size()));
+                }
+            }
         }
         // Analysis ports (rms/peak/waveform)
         for (const auto& am : analysis_mappings_) {
