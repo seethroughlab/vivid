@@ -2,10 +2,15 @@
 
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
+#include "runtime/compiled_graph.h"
+#include "runtime/graph_compiler.h"
+#include "runtime/frame_executor.h"
+#include "runtime/cadence_bridge.h"
 #include "operator_api/gpu_types.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -200,6 +205,12 @@ public:
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
 
+    // New cadence-aware runtime (Phase 5 adapter)
+    CompiledGraph* compiled_graph() { return compiled_graph_.get(); }
+    const CompiledGraph* compiled_graph() const { return compiled_graph_.get(); }
+    CadenceBridge& cadence_bridge() { return cadence_bridge_; }
+    const CadenceBridge& cadence_bridge() const { return cadence_bridge_; }
+
 private:
     void init_node_state(NodeState& ns, const VividOperatorDescriptor* desc,
                          const std::unordered_map<std::string, float>* param_overrides,
@@ -215,6 +226,11 @@ private:
     // Solo mode state (session-only)
     int solo_node_idx_ = -1;
     std::vector<bool> solo_active_set_;
+
+    // Cadence-aware runtime (Phase 5 adapter layer)
+    std::unique_ptr<CompiledGraph> compiled_graph_;
+    FrameExecutor frame_executor_;
+    CadenceBridge cadence_bridge_;
 };
 
 } // namespace vivid

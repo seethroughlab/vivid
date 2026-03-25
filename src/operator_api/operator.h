@@ -211,27 +211,55 @@ struct OperatorBase {
 };
 
 // ---------------------------------------------------------------------------
-// Per-domain typed base classes — operators inherit the one matching their ports
+// Capability interfaces — operators implement one or more to declare what
+// execution environments they support.  An operator that implements both
+// FrameProcessable and AudioProcessable is "audio-capable": it can be promoted
+// from frame-rate to audio-rate execution at graph-build time.
 // ---------------------------------------------------------------------------
 
-struct ControlOperatorBase : OperatorBase {
-    virtual void process(const VividProcessContext* ctx) = 0;
+struct FrameProcessable {
+    virtual ~FrameProcessable() = default;
+    virtual void process_frame(const VividFrameContext* ctx) = 0;
 };
 
-struct AudioOperatorBase : OperatorBase {
+struct AudioProcessable {
+    virtual ~AudioProcessable() = default;
     virtual void process_audio(const VividAudioContext* ctx) = 0;
 };
 
-// GpuOperatorBase: forward-declared VividGpuContext* (defined in gpu_operator.h).
+// GpuProcessable: forward-declared VividGpuContext* (defined in gpu_operator.h).
 // GPU operators must #include "operator_api/gpu_operator.h" for the full definition.
-struct GpuOperatorBase : OperatorBase {
+struct GpuProcessable {
+    virtual ~GpuProcessable() = default;
     virtual void process_gpu(const VividGpuContext* ctx) = 0;
+};
+
+// ---------------------------------------------------------------------------
+// Legacy base classes — thin aliases that inherit the new capability interfaces.
+// Existing operators compile unchanged; new operators should use OperatorBase
+// plus the capability interfaces directly.
+// ---------------------------------------------------------------------------
+
+struct ControlOperatorBase : OperatorBase, FrameProcessable {
+    // Bridge: legacy process() delegates to process_frame().
+    // Operators inheriting ControlOperatorBase override process() as before;
+    // process_frame() calls through to it.
+    virtual void process(const VividProcessContext* ctx) = 0;
+    void process_frame(const VividFrameContext* ctx) override { process(ctx); }
+};
+
+struct AudioOperatorBase : OperatorBase, AudioProcessable {
+    // process_audio is already the right name — no bridging needed.
+};
+
+struct GpuOperatorBase : OperatorBase, GpuProcessable {
+    // process_gpu is already the right name — no bridging needed.
 };
 
 } // namespace vivid
 
 // ---------------------------------------------------------------------------
-// Domain inference helper — used by VIVID_REGISTER
+// Domain / execution-env inference helpers — used by VIVID_REGISTER
 // ---------------------------------------------------------------------------
 
 namespace vivid::detail {
@@ -248,6 +276,20 @@ inline VividDomain infer_domain(const std::vector<VividPortDescriptor>& ports) {
         }
     }
     return VIVID_DOMAIN_CONTROL;
+}
+
+inline VividExecutionEnv infer_execution_env(const std::vector<VividPortDescriptor>& ports) {
+    for (const auto& p : ports) {
+        switch (p.type) {
+            case VIVID_PORT_TEXTURE:
+                return VIVID_ENV_GPU;
+            case VIVID_PORT_AUDIO:
+                return VIVID_ENV_AUDIO;
+            default:
+                break;
+        }
+    }
+    return VIVID_ENV_FRAME;
 }
 
 } // namespace vivid::detail
@@ -364,11 +406,26 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         tmp.collect_ports(s_ports);                                           \
         desc.name           = ClassName::kName;                               \
         desc.has_process_audio =                                              \
-            std::is_base_of_v<vivid::AudioOperatorBase, ClassName> ? 1 : 0;   \
+            std::is_base_of_v<vivid::AudioProcessable, ClassName> ? 1 : 0;    \
         desc.has_process_gpu =                                                \
-            std::is_base_of_v<vivid::GpuOperatorBase, ClassName> ? 1 : 0;     \
-        /* Base class takes priority over port inference for domain */         \
-        if (desc.has_process_audio)                                           \
+            std::is_base_of_v<vivid::GpuProcessable, ClassName> ? 1 : 0;      \
+        desc.has_process_frame =                                              \
+            std::is_base_of_v<vivid::FrameProcessable, ClassName> ? 1 : 0;    \
+        /* Infer execution_env from capabilities */                           \
+        if (desc.has_process_gpu)                                             \
+            desc.execution_env = VIVID_ENV_GPU;                               \
+        else if (desc.has_process_audio && !desc.has_process_frame)           \
+            desc.execution_env = VIVID_ENV_AUDIO;                             \
+        else                                                                  \
+            desc.execution_env = vivid::detail::infer_execution_env(s_ports); \
+        /* Cadence capability: frame-env operators that also implement        \
+           AudioProcessable are audio-capable (can be promoted). */           \
+        if (desc.execution_env == VIVID_ENV_FRAME && desc.has_process_audio)  \
+            desc.cadence_capability = VIVID_CADENCE_AUDIO_CAPABLE;            \
+        else                                                                  \
+            desc.cadence_capability = VIVID_CADENCE_FRAME_ONLY;               \
+        /* Keep deprecated domain field in sync */                            \
+        if (desc.has_process_audio && !desc.has_process_frame)                \
             desc.domain = VIVID_DOMAIN_AUDIO;                                 \
         else if (desc.has_process_gpu)                                        \
             desc.domain = VIVID_DOMAIN_GPU;                                   \
@@ -412,17 +469,18 @@ extern "C" void vivid_destroy(void* instance) {                               \
 template<typename _Op>                                                        \
 static void _vivid_dispatch_control(void* instance,                            \
                                      VividProcessContext* ctx) {                \
-    if constexpr (std::is_base_of_v<vivid::ControlOperatorBase, _Op>) {       \
+    /* Dispatch to process_frame (new interface) or process (legacy). */       \
+    if constexpr (std::is_base_of_v<vivid::FrameProcessable, _Op>) {          \
         auto* inst = static_cast<_VividInstance*>(instance);                   \
         _vivid_sync_params(inst, ctx->param_values,                           \
                            ctx->file_param_values, ctx->file_param_count);    \
-        static_cast<_Op&>(inst->op).process(ctx);                             \
+        static_cast<_Op&>(inst->op).process_frame(ctx);                       \
     }                                                                         \
 }                                                                             \
 template<typename _Op>                                                        \
 static void _vivid_dispatch_audio(void* instance,                              \
                                    VividAudioContext* ctx) {                    \
-    if constexpr (std::is_base_of_v<vivid::AudioOperatorBase, _Op>) {         \
+    if constexpr (std::is_base_of_v<vivid::AudioProcessable, _Op>) {          \
         auto* inst = static_cast<_VividInstance*>(instance);                   \
         _vivid_sync_params(inst, ctx->param_values,                           \
                            ctx->file_param_values, ctx->file_param_count);    \
@@ -431,7 +489,7 @@ static void _vivid_dispatch_audio(void* instance,                              \
 }                                                                             \
 template<typename _Op, typename _Ctx>                                         \
 static void _vivid_dispatch_gpu(void* instance, _Ctx* ctx) {                   \
-    if constexpr (std::is_base_of_v<vivid::GpuOperatorBase, _Op>) {           \
+    if constexpr (std::is_base_of_v<vivid::GpuProcessable, _Op>) {            \
         auto* inst = static_cast<_VividInstance*>(instance);                   \
         _vivid_sync_params(inst, ctx->param_values,                           \
                            ctx->file_param_values, ctx->file_param_count);    \
