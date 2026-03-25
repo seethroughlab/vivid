@@ -26,12 +26,6 @@ typedef uint32_t VividCadenceCapability;
 #define VIVID_CADENCE_FRAME_ONLY     0u  // can only run at frame rate
 #define VIVID_CADENCE_AUDIO_CAPABLE  1u  // satisfies audio-safe contract, can be promoted
 
-// Deprecated — use VividExecutionEnv instead.
-typedef uint32_t VividDomain;
-#define VIVID_DOMAIN_CONTROL  0u
-#define VIVID_DOMAIN_AUDIO    1u
-#define VIVID_DOMAIN_GPU      2u
-
 typedef uint32_t VividParamType;
 #define VIVID_PARAM_FLOAT  0u
 #define VIVID_PARAM_INT    1u
@@ -117,7 +111,7 @@ typedef struct VividPortDescriptor {
 
 typedef struct VividOperatorDescriptor {
     const char*               name;
-    VividDomain               domain;            // deprecated — use execution_env
+    uint32_t                  domain;            // deprecated — internal use only, do not read
     uint32_t                  param_count;
     const VividParamDescriptor* params;
     uint32_t                  port_count;

@@ -88,8 +88,8 @@ void Scheduler::init_node_state(NodeState& ns, const VividOperatorDescriptor* de
 
     // Domain flags
     ns.time_dependent = desc->time_dependent != 0;
-    ns.is_gpu = (desc->domain == VIVID_DOMAIN_GPU);
-    ns.is_audio = (desc->domain == VIVID_DOMAIN_AUDIO);
+    ns.is_gpu = (desc->has_process_gpu || desc->domain == 2u /*GPU*/);
+    ns.is_audio = (desc->has_process_audio || desc->domain == 1u /*AUDIO*/);
     ns.prev_output_values.assign(ns.output_port_count, 0.0f);
 
     // Implicit analysis ports for audio-domain nodes (kept separate from signal outputs)
@@ -809,7 +809,7 @@ bool Scheduler::has_gpu_operators() const {
         if (!ns.loader) continue;
         const VividOperatorDescriptor* desc = ns.loader->descriptor();
         if (!desc) continue;
-        if (desc->domain == VIVID_DOMAIN_GPU)
+        if (desc->has_process_gpu)
             return true;
     }
     return false;
@@ -820,7 +820,7 @@ bool Scheduler::has_audio_operators() const {
         if (!ns.loader) continue;
         const VividOperatorDescriptor* desc = ns.loader->descriptor();
         if (!desc) continue;
-        if (desc->domain == VIVID_DOMAIN_AUDIO)
+        if (desc->has_process_audio)
             return true;
     }
     return false;
@@ -860,7 +860,7 @@ bool Scheduler::is_audio_type(const std::string& type_name) const {
         const VividOperatorDescriptor* desc = ns.loader->descriptor();
         if (!desc) continue;
         if (std::string(desc->name) == type_name &&
-            desc->domain == VIVID_DOMAIN_AUDIO) {
+            desc->has_process_audio) {
             return true;
         }
     }

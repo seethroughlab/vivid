@@ -2,6 +2,7 @@
 // Verifies AudioFloatPortWire routing with core CMake-built operators.
 
 #include "runtime/operator_registry.h"
+#include "runtime/domain.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "runtime/audio_engine.h"

@@ -3,6 +3,7 @@
 // cross-feed, DC stability, and extreme params.
 
 #include "runtime/operator_loader.h"
+#include "runtime/domain.h"
 
 #include <cstdio>
 #include <cstring>

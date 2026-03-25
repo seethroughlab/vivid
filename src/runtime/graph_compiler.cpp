@@ -1,4 +1,5 @@
 #include "runtime/graph_compiler.h"
+#include "runtime/domain.h"
 #include "runtime/crash_guard.h"
 #include "runtime/shared_handle_registry.h"
 #include "common/topo_sort.h"
@@ -364,10 +365,13 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             // Determine cadence from descriptor.
             // Check execution_env first (new API), fall back to legacy domain field
             // for built-in operators that use static descriptors without the new fields.
-            if (desc->execution_env == VIVID_ENV_GPU || desc->domain == VIVID_DOMAIN_GPU) {
+            if (desc->execution_env == VIVID_ENV_GPU || desc->has_process_gpu ||
+                desc->domain == 2u /*GPU*/) {
                 cn.active_cadence = Cadence::Frame;
                 cn.is_gpu = true;
-            } else if (desc->execution_env == VIVID_ENV_AUDIO || desc->domain == VIVID_DOMAIN_AUDIO) {
+            } else if (desc->execution_env == VIVID_ENV_AUDIO ||
+                       (desc->has_process_audio && !desc->has_process_frame) ||
+                       desc->domain == 1u /*AUDIO*/) {
                 cn.active_cadence = Cadence::Audio;
             } else if (desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) {
                 // Audio-capable operators default to audio-cadence for backward

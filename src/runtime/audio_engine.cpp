@@ -185,7 +185,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         if (!loader) continue;
 
         const VividOperatorDescriptor* desc = loader->descriptor();
-        if (desc->domain != VIVID_DOMAIN_AUDIO) continue;
+        if (!desc->has_process_audio && desc->domain != 1u /*AUDIO*/) continue;
 
         AudioNodeState ns;
         ns.node_id = ndef.id;

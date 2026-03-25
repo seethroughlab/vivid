@@ -259,24 +259,10 @@ struct GpuOperatorBase : OperatorBase, GpuProcessable {
 } // namespace vivid
 
 // ---------------------------------------------------------------------------
-// Domain / execution-env inference helpers — used by VIVID_REGISTER
+// Execution-env inference helper — used by VIVID_REGISTER
 // ---------------------------------------------------------------------------
 
 namespace vivid::detail {
-
-inline VividDomain infer_domain(const std::vector<VividPortDescriptor>& ports) {
-    for (const auto& p : ports) {
-        switch (p.type) {
-            case VIVID_PORT_TEXTURE:
-                return VIVID_DOMAIN_GPU;
-            case VIVID_PORT_AUDIO:
-                return VIVID_DOMAIN_AUDIO;
-            default:
-                break;
-        }
-    }
-    return VIVID_DOMAIN_CONTROL;
-}
 
 inline VividExecutionEnv infer_execution_env(const std::vector<VividPortDescriptor>& ports) {
     for (const auto& p : ports) {
@@ -424,13 +410,13 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             desc.cadence_capability = VIVID_CADENCE_AUDIO_CAPABLE;            \
         else                                                                  \
             desc.cadence_capability = VIVID_CADENCE_FRAME_ONLY;               \
-        /* Keep deprecated domain field in sync */                            \
+        /* Set deprecated domain field (numeric — VividDomain moved to internal header) */ \
         if (desc.has_process_audio && !desc.has_process_frame)                \
-            desc.domain = VIVID_DOMAIN_AUDIO;                                 \
+            desc.domain = 1u;  /* AUDIO */                                    \
         else if (desc.has_process_gpu)                                        \
-            desc.domain = VIVID_DOMAIN_GPU;                                   \
+            desc.domain = 2u;  /* GPU */                                      \
         else                                                                  \
-            desc.domain = vivid::detail::infer_domain(s_ports);               \
+            desc.domain = 0u;  /* CONTROL */                                  \
         desc.param_count    = static_cast<uint32_t>(s_params.size());         \
         desc.params         = s_params.data();                                \
         desc.port_count     = static_cast<uint32_t>(s_ports.size());          \

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "operator_api/types.h"
+#include "runtime/domain.h"
 #include <string>
 #include <vector>
 

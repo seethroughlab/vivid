@@ -1,4 +1,5 @@
 #include "runtime/operator_loader.h"
+#include "runtime/domain.h"
 #include "runtime/operator_registry.h"
 #include "operator_api/data_driven_filter.h"
 #include "operator_api/type_id.h"

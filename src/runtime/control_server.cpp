@@ -1,6 +1,7 @@
 #include "runtime/control_server.h"
 #include "runtime/capture_coordinator.h"
 #include "runtime/compiled_graph.h"
+#include "runtime/domain.h"
 #include "runtime/runtime_api.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"

@@ -1,4 +1,5 @@
 #include "runtime/operator_loader.h"
+#include "runtime/domain.h"
 #include "operator_api/data_driven_filter.h"
 #include "operator_api/port_type_registry.h"
 #include <dlfcn.h>

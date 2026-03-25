@@ -7,6 +7,7 @@
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "runtime/audio_engine.h"
+#include "runtime/domain.h"
 #include "runtime/file_watcher.h"
 #include "runtime/hot_reload.h"
 #include "runtime/runtime_api.h"

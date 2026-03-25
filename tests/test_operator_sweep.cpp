@@ -6,6 +6,7 @@
 // otherwise they are gracefully skipped.
 
 #include "runtime/operator_loader.h"
+#include "runtime/domain.h"
 #include "operator_api/gpu_operator.h"
 #include "common/gpu_util.h"
 #include <webgpu/webgpu.h>
