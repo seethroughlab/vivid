@@ -180,9 +180,15 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
     auto cb_start = std::chrono::steady_clock::now();
 
     if (!bridge_ || !graph_) {
+        if (std::getenv("VIVID_DEBUG_AUDIO"))
+            std::fprintf(stderr, "[audio-debug] callback: bridge=%p graph=%p — skipping\n",
+                         (void*)bridge_, (void*)graph_);
         std::memset(output, 0, frame_count * 2 * sizeof(float));
         return;
     }
+    if (std::getenv("VIVID_DEBUG_AUDIO"))
+        std::fprintf(stderr, "[audio-debug] callback: audio_order=%zu nodes\n",
+                     graph_->audio_order.size());
 
     const auto& snap = bridge_->active_params();
     auto& cg = *graph_;
@@ -305,8 +311,24 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             for (auto& fv : cn.float_output_values)
                 fv = unset_signal_output_sentinel();
 
+            // Debug node state
+            if (std::getenv("VIVID_DEBUG_AUDIO") && frames_written == 0) {
+                std::fprintf(stderr, "[audio-debug] node '%s' loader=%p instance=%p errored=%d\n",
+                             cn.node_id.c_str(), (void*)cn.loader, cn.instance, cn.errored);
+            }
+            // Debug spread data
+            if (std::getenv("VIVID_DEBUG_AUDIO")) {
+                for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+                    if (p < cn.input_spreads.size() && !cn.input_spreads[p].empty()) {
+                        std::fprintf(stderr, "[audio-debug] node '%s' input_spread[%u] len=%zu val[0]=%.2f\n",
+                                     cn.node_id.c_str(), p, cn.input_spreads[p].size(),
+                                     cn.input_spreads[p][0]);
+                    }
+                }
+            }
+
             // Process
-            if (!cn.loader || cn.errored) continue;
+            if (!cn.loader || !cn.instance || cn.errored) continue;
 
             // Set up spread ports for context
             for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_spreads.size(); ++p) {
@@ -349,6 +371,24 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
 
             try {
                 cn.loader->process_audio(cn.instance, &ctx);
+                // Debug: check if any output was produced
+                if (std::getenv("VIVID_DEBUG_AUDIO")) {
+                    float max_out = 0.0f;
+                    for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+                        if (p < cn.audio_buffers_out.size()) {
+                            for (uint32_t s = 0; s < chunk && s < cn.audio_buffers_out[p].size(); ++s) {
+                                float av = std::fabs(cn.audio_buffers_out[p][s]);
+                                if (av > max_out) max_out = av;
+                            }
+                        }
+                    }
+                    for (uint32_t fo = 0; fo < cn.float_output_count; ++fo) {
+                        float av = std::fabs(cn.float_output_values[fo]);
+                        if (av > max_out) max_out = av;
+                    }
+                    std::fprintf(stderr, "[audio-debug] node '%s' max_output=%.4f\n",
+                                 cn.node_id.c_str(), max_out);
+                }
             } catch (const std::exception& ex) {
                 cn.errored = true;
                 std::strncpy(cn.audio_error_message, ex.what(), sizeof(cn.audio_error_message) - 1);
@@ -424,6 +464,17 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
         float* dst = output + frames_written * 2;
         if (sink_node_idx_ >= 0 && static_cast<uint32_t>(sink_node_idx_) < cg.nodes.size()) {
             auto& sink = cg.nodes[sink_node_idx_];
+            if (std::getenv("VIVID_DEBUG_AUDIO") && frames_written == 0) {
+                float max_in = 0;
+                for (const auto& buf : sink.audio_buffers_in) {
+                    for (uint32_t s = 0; s < chunk && s < buf.size(); ++s) {
+                        float av = std::fabs(buf[s]);
+                        if (av > max_in) max_in = av;
+                    }
+                }
+                std::fprintf(stderr, "[audio-debug] sink '%s' max_input=%.4f, buf_count=%zu\n",
+                             sink.node_id.c_str(), max_in, sink.audio_buffers_in.size());
+            }
             // audio_out reads from input buffers
             if (!sink.audio_buffers_in.empty() && sink.audio_buffers_in[0].size() >= chunk) {
                 float* L = sink.audio_buffers_in[0].data();
@@ -522,8 +573,12 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
 
         // Float outputs
         if (i < analysis.float_outputs.size()) {
-            for (size_t p = 0; p < cn.float_output_values.size() && p < analysis.float_outputs[i].size(); ++p)
+            for (size_t p = 0; p < cn.float_output_values.size() && p < analysis.float_outputs[i].size(); ++p) {
                 analysis.float_outputs[i][p] = cn.float_output_values[p];
+                if (std::getenv("VIVID_DEBUG_AUDIO") && cn.float_output_values[p] != 0.0f)
+                    std::fprintf(stderr, "[audio-debug] analysis float_outputs[%u][%zu] = %.4f\n",
+                                 i, p, cn.float_output_values[p]);
+            }
         }
 
         // Spread outputs

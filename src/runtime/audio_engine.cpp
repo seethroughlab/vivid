@@ -929,6 +929,7 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
             auto* cn = compiled_graph_->find_node(ns.node_id);
             if (!cn || cn->active_cadence == Cadence::Audio) continue;
             cn->output_values = ns.output_values;
+            cn->output_spreads = ns.output_spreads;
             cn->param_values = ns.param_values;
         }
         cadence_bridge_->push_to_audio(*compiled_graph_);
@@ -1205,6 +1206,14 @@ const AnalysisSnapshot& AudioEngine::analysis_read() const {
 }
 
 int AudioEngine::audio_node_index(const std::string& node_id) const {
+    if (use_new_audio_path_ && compiled_graph_) {
+        // Return the audio_order index (position in CadenceBridge snapshot arrays)
+        for (uint32_t i = 0; i < static_cast<uint32_t>(compiled_graph_->audio_order.size()); ++i) {
+            if (compiled_graph_->nodes[compiled_graph_->audio_order[i]].node_id == node_id)
+                return static_cast<int>(i);
+        }
+        return -1;
+    }
     auto it = node_id_to_index_.find(node_id);
     return (it != node_id_to_index_.end()) ? it->second : -1;
 }
