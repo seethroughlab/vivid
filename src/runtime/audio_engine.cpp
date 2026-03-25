@@ -204,11 +204,8 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     std::vector<std::vector<uint32_t>> adj(n);
     std::vector<uint32_t> in_degree(n, 0);
 
-    // Build a lookup for control scheduler nodes by id
-    std::unordered_map<std::string, size_t> control_node_map;
-    for (size_t i = 0; i < scheduler.nodes().size(); ++i) {
-        control_node_map[scheduler.nodes()[i].node_id] = i;
-    }
+    // CompiledGraph provides a pre-built node_id → index map
+    const auto* cg = scheduler.compiled_graph();
 
     for (const auto& conn : graph.connections()) {
         auto from_audio = audio_node_index.find(conn.from_node);
@@ -347,12 +344,12 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
             auto& to_ns = nodes_[ti];
 
             // Find the control node's output port index
-            auto ctrl_it = control_node_map.find(conn.from_node);
-            if (ctrl_it == control_node_map.end()) continue;
+            auto ctrl_it = cg->node_id_to_index.find(conn.from_node);
+            if (ctrl_it == cg->node_id_to_index.end()) continue;
 
-            const auto& ctrl_ns = scheduler.nodes()[ctrl_it->second];
-            auto cp_it = ctrl_ns.output_port_indices.find(conn.from_port);
-            if (cp_it == ctrl_ns.output_port_indices.end()) continue;
+            const auto& ctrl_cn = cg->nodes[ctrl_it->second];
+            auto cp_it = ctrl_cn.output_port_indices.find(conn.from_port);
+            if (cp_it == ctrl_cn.output_port_indices.end()) continue;
 
             // Try param mapping first (scalar control → audio param)
             auto pp_it = to_ns.param_indices.find(conn.to_port);
@@ -379,9 +376,9 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     cross_spread_wires_.push_back(sw);
                 } else if (ip_it != to_ns.input_port_indices.end() &&
                            ip_it->second < to_ns.input_port_types.size() &&
-                           cp_it->second < ctrl_ns.output_port_types.size() &&
+                           cp_it->second < ctrl_cn.output_port_types.size() &&
                            to_ns.input_port_types[ip_it->second] == VIVID_PORT_STRING &&
-                           ctrl_ns.output_port_types[cp_it->second] == VIVID_PORT_STRING) {
+                           ctrl_cn.output_port_types[cp_it->second] == VIVID_PORT_STRING) {
                     CrossDomainStringWire sw;
                     sw.control_node_id = conn.from_node;
                     sw.control_output_port_idx = cp_it->second;
@@ -390,11 +387,11 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
                     cross_string_wires_.push_back(sw);
                 } else if (ip_it != to_ns.input_port_indices.end() &&
                            ip_it->second < to_ns.input_port_types.size() &&
-                           cp_it->second < ctrl_ns.output_port_types.size() &&
-                           vivid_is_custom_port_type(ctrl_ns.output_port_types[cp_it->second]) &&
+                           cp_it->second < ctrl_cn.output_port_types.size() &&
+                           vivid_is_custom_port_type(ctrl_cn.output_port_types[cp_it->second]) &&
                            vivid_is_custom_port_type(to_ns.input_port_types[ip_it->second])) {
                     // Custom-type wire: require exact port type match
-                    VividPortType from_ptype = ctrl_ns.output_port_types[cp_it->second];
+                    VividPortType from_ptype = ctrl_cn.output_port_types[cp_it->second];
                     VividPortType to_ptype   = to_ns.input_port_types[ip_it->second];
                     if (from_ptype == to_ptype) {
                         VividPortTypeInfo info{};
@@ -744,69 +741,68 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     param_mappings_.clear();
     analysis_mappings_.clear();
     for (uint32_t ai = 0; ai < n; ++ai) {
-        for (uint32_t si = 0; si < static_cast<uint32_t>(scheduler.nodes().size()); ++si) {
-            if (scheduler.nodes()[si].node_id == nodes_[ai].node_id) {
-                // Every audio node needs param propagation from scheduler
-                ParamMapping pm;
-                pm.audio_engine_idx = ai;
-                pm.scheduler_node_idx = si;
+        auto cg_it = cg->node_id_to_index.find(nodes_[ai].node_id);
+        if (cg_it != cg->node_id_to_index.end()) {
+            uint32_t si = cg_it->second;
+            // Every audio node needs param propagation from scheduler
+            ParamMapping pm;
+            pm.audio_engine_idx = ai;
+            pm.scheduler_node_idx = si;
 
-                // Build spread output mappings for CONTROL_SPREAD output ports
-                for (uint32_t op = 0; op < nodes_[ai].output_port_count; ++op) {
-                    if (op < nodes_[ai].output_port_types.size() &&
-                        nodes_[ai].output_port_types[op] == VIVID_PORT_SPREAD) {
-                        const auto* desc = nodes_[ai].loader->descriptor();
-                        uint32_t out_idx = 0;
-                        for (uint32_t pi = 0; pi < desc->port_count; ++pi) {
-                            if (desc->ports[pi].direction == VIVID_PORT_OUTPUT) {
-                                if (out_idx == op) {
-                                    auto sched_it = scheduler.nodes()[si].output_port_indices.find(desc->ports[pi].name);
-                                    if (sched_it != scheduler.nodes()[si].output_port_indices.end()) {
-                                        pm.spread_output_mappings.push_back({op, sched_it->second});
-                                    }
-                                    break;
+            // Build spread output mappings for CONTROL_SPREAD output ports
+            for (uint32_t op = 0; op < nodes_[ai].output_port_count; ++op) {
+                if (op < nodes_[ai].output_port_types.size() &&
+                    nodes_[ai].output_port_types[op] == VIVID_PORT_SPREAD) {
+                    const auto* desc = nodes_[ai].loader->descriptor();
+                    uint32_t out_idx = 0;
+                    for (uint32_t pi = 0; pi < desc->port_count; ++pi) {
+                        if (desc->ports[pi].direction == VIVID_PORT_OUTPUT) {
+                            if (out_idx == op) {
+                                auto sched_it = cg->nodes[si].output_port_indices.find(desc->ports[pi].name);
+                                if (sched_it != cg->nodes[si].output_port_indices.end()) {
+                                    pm.spread_output_mappings.push_back({op, sched_it->second});
                                 }
-                                out_idx++;
+                                break;
                             }
+                            out_idx++;
                         }
                     }
                 }
+            }
 
-                // Build float output mappings: audio FLOAT outputs → scheduler outputs
-                {
-                    const auto* adesc = nodes_[ai].loader->descriptor();
-                    uint32_t float_ord = 0;
-                    for (uint32_t pi = 0; pi < adesc->port_count; ++pi) {
-                        if (adesc->ports[pi].direction == VIVID_PORT_OUTPUT &&
-                            adesc->ports[pi].type == VIVID_PORT_SIGNAL) {
-                            auto sched_it = scheduler.nodes()[si].output_port_indices.find(adesc->ports[pi].name);
-                            if (sched_it != scheduler.nodes()[si].output_port_indices.end()) {
-                                pm.float_output_mappings.push_back({float_ord, sched_it->second});
-                            }
-                            float_ord++;
+            // Build float output mappings: audio FLOAT outputs → scheduler outputs
+            {
+                const auto* adesc = nodes_[ai].loader->descriptor();
+                uint32_t float_ord = 0;
+                for (uint32_t pi = 0; pi < adesc->port_count; ++pi) {
+                    if (adesc->ports[pi].direction == VIVID_PORT_OUTPUT &&
+                        adesc->ports[pi].type == VIVID_PORT_SIGNAL) {
+                        auto sched_it = cg->nodes[si].output_port_indices.find(adesc->ports[pi].name);
+                        if (sched_it != cg->nodes[si].output_port_indices.end()) {
+                            pm.float_output_mappings.push_back({float_ord, sched_it->second});
                         }
+                        float_ord++;
                     }
                 }
+            }
 
-                param_mappings_.push_back(std::move(pm));
+            param_mappings_.push_back(std::move(pm));
 
-                // Analysis mappings only for nodes with rms/peak/waveform ports
-                auto rms_it = scheduler.nodes()[si].analysis_output_port_indices.find("rms");
-                auto peak_it = scheduler.nodes()[si].analysis_output_port_indices.find("peak");
-                auto wave_it = scheduler.nodes()[si].analysis_output_port_indices.find("waveform");
-                if (rms_it != scheduler.nodes()[si].analysis_output_port_indices.end() &&
-                    peak_it != scheduler.nodes()[si].analysis_output_port_indices.end() &&
-                    wave_it != scheduler.nodes()[si].analysis_output_port_indices.end()) {
-                    AudioToControlMapping m;
-                    m.audio_engine_idx = ai;
-                    m.scheduler_node_idx = si;
-                    m.rms_port_idx = rms_it->second;
-                    m.peak_port_idx = peak_it->second;
-                    m.waveform_port_idx = wave_it->second;
+            // Analysis mappings only for nodes with rms/peak/waveform ports
+            auto rms_it = cg->nodes[si].analysis_output_port_indices.find("rms");
+            auto peak_it = cg->nodes[si].analysis_output_port_indices.find("peak");
+            auto wave_it = cg->nodes[si].analysis_output_port_indices.find("waveform");
+            if (rms_it != cg->nodes[si].analysis_output_port_indices.end() &&
+                peak_it != cg->nodes[si].analysis_output_port_indices.end() &&
+                wave_it != cg->nodes[si].analysis_output_port_indices.end()) {
+                AudioToControlMapping m;
+                m.audio_engine_idx = ai;
+                m.scheduler_node_idx = si;
+                m.rms_port_idx = rms_it->second;
+                m.peak_port_idx = peak_it->second;
+                m.waveform_port_idx = wave_it->second;
 
-                    analysis_mappings_.push_back(m);
-                }
-                break;
+                analysis_mappings_.push_back(m);
             }
         }
     }

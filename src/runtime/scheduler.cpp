@@ -812,33 +812,29 @@ void Scheduler::sync_node_to_compiled(const std::string& node_id) {
 }
 
 bool Scheduler::has_gpu_operators() const {
-    for (const auto& ns : nodes_) {
-        if (!ns.loader) continue;
-        const VividOperatorDescriptor* desc = ns.loader->descriptor();
-        if (!desc) continue;
-        if (desc->has_process_gpu)
-            return true;
+    if (compiled_graph_) {
+        for (const auto& cn : compiled_graph_->nodes)
+            if (cn.is_gpu) return true;
+        return false;
     }
     return false;
 }
 
 bool Scheduler::has_audio_operators() const {
-    for (const auto& ns : nodes_) {
-        if (!ns.loader) continue;
-        const VividOperatorDescriptor* desc = ns.loader->descriptor();
-        if (!desc) continue;
-        if (desc->has_process_audio)
-            return true;
-    }
+    if (compiled_graph_)
+        return !compiled_graph_->audio_order.empty();
     return false;
 }
 
 bool Scheduler::gpu_sink_source_size(int sink_idx, uint32_t& w, uint32_t& h) const {
-    for (const auto& wire : wires_) {
-        if (wire.to_node_idx == static_cast<uint32_t>(sink_idx) &&
-            wire.is_texture_wire && !wire.targets_param) {
-            w = nodes_[wire.from_node_idx].gpu_tex_width;
-            h = nodes_[wire.from_node_idx].gpu_tex_height;
+    if (!compiled_graph_) return false;
+    // Find upstream texture source via CompiledGraph edges
+    for (const auto& e : compiled_graph_->edges) {
+        if (e.to_node == static_cast<uint32_t>(sink_idx) &&
+            e.data_type == VIVID_PORT_TEXTURE && !e.targets_param) {
+            const auto& up = compiled_graph_->nodes[e.from_node];
+            w = up.gpu_tex_width;
+            h = up.gpu_tex_height;
             return w > 0 && h > 0;
         }
     }
@@ -846,12 +842,13 @@ bool Scheduler::gpu_sink_source_size(int sink_idx, uint32_t& w, uint32_t& h) con
 }
 
 WGPUTexture Scheduler::gpu_sink_source_texture(int sink_idx) const {
-    for (const auto& wire : wires_) {
-        if (wire.to_node_idx == static_cast<uint32_t>(sink_idx) &&
-            wire.is_texture_wire && !wire.targets_param) {
-            const auto& up = nodes_[wire.from_node_idx];
+    if (!compiled_graph_) return nullptr;
+    for (const auto& e : compiled_graph_->edges) {
+        if (e.to_node == static_cast<uint32_t>(sink_idx) &&
+            e.data_type == VIVID_PORT_TEXTURE && !e.targets_param) {
+            const auto& up = compiled_graph_->nodes[e.from_node];
             for (size_t ai = 0; ai < up.aux_texture_output_port_indices.size(); ++ai) {
-                if (wire.from_port_idx ==
+                if (e.from_port ==
                         static_cast<uint32_t>(up.aux_texture_output_port_indices[ai]))
                     return up.aux_gpu_textures[ai];
             }
@@ -862,13 +859,10 @@ WGPUTexture Scheduler::gpu_sink_source_texture(int sink_idx) const {
 }
 
 bool Scheduler::is_audio_type(const std::string& type_name) const {
-    for (const auto& ns : nodes_) {
-        if (!ns.loader) continue;
-        const VividOperatorDescriptor* desc = ns.loader->descriptor();
-        if (!desc) continue;
-        if (std::string(desc->name) == type_name &&
-            desc->has_process_audio) {
-            return true;
+    if (compiled_graph_) {
+        for (const auto& cn : compiled_graph_->nodes) {
+            if (cn.type_name == type_name && cn.active_cadence == Cadence::Audio)
+                return true;
         }
     }
     return false;
@@ -890,6 +884,8 @@ NodeState* Scheduler::find_node_mut(const std::string& id) {
 }
 
 std::string Scheduler::type_name(uint32_t node_idx) const {
+    if (compiled_graph_ && node_idx < compiled_graph_->nodes.size())
+        return compiled_graph_->nodes[node_idx].type_name;
     if (node_idx >= nodes_.size()) return {};
     const auto& ns = nodes_[node_idx];
     if (!ns.type_name.empty()) return ns.type_name;
@@ -1161,16 +1157,18 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
 }
 
 int Scheduler::find_gpu_sink() const {
-    for (uint32_t i = 0; i < static_cast<uint32_t>(nodes_.size()); ++i) {
-        if (nodes_[i].is_gpu_sink) return static_cast<int>(i);
+    if (compiled_graph_) {
+        for (uint32_t i = 0; i < static_cast<uint32_t>(compiled_graph_->nodes.size()); ++i) {
+            if (compiled_graph_->nodes[i].is_gpu_sink) return static_cast<int>(i);
+        }
     }
     return -1;
 }
 
 int Scheduler::find_effective_gpu_sink() const {
-    if (solo_node_idx_ >= 0 &&
-        solo_node_idx_ < static_cast<int>(nodes_.size()) &&
-        nodes_[solo_node_idx_].has_texture_output) {
+    if (compiled_graph_ && solo_node_idx_ >= 0 &&
+        solo_node_idx_ < static_cast<int>(compiled_graph_->nodes.size()) &&
+        compiled_graph_->nodes[solo_node_idx_].has_texture_output) {
         return solo_node_idx_;
     }
     return find_gpu_sink();

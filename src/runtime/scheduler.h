@@ -166,10 +166,13 @@ public:
     // Use when modifying param_values on NodeState directly (e.g. in tests).
     void sync_node_to_compiled(const std::string& node_id);
     void shutdown();
+    // NodeState accessors — read-only mirror for UI/snapshot/test consumers.
+    // Production code should use compiled_graph() instead.
     const std::vector<NodeState>& nodes() const { return nodes_; }
-    std::vector<NodeState>& nodes_mut() { return nodes_; }
-    const std::vector<Wire>& wires() const { return wires_; }
     const NodeState* find_node(const std::string& id) const;
+
+    // Mutable NodeState access — for tests only (use sync_node_to_compiled after writes).
+    std::vector<NodeState>& nodes_mut() { return nodes_; }
     NodeState* find_node_mut(const std::string& id);
     bool has_gpu_operators() const;
     bool has_audio_operators() const;
@@ -189,13 +192,6 @@ public:
     bool reload_operator(const std::string& type_name, OperatorRegistry& registry,
                          const std::string& new_dylib_path);
     std::string type_name(uint32_t node_idx) const;
-
-    // Public wrapper for init_node_state — used by control_server for package rebuild
-    void reinit_node(NodeState& ns, const VividOperatorDescriptor* desc,
-                     const std::unordered_map<std::string, float>* param_overrides,
-                     const std::unordered_map<std::string, std::string>* string_overrides = nullptr) {
-        init_node_state(ns, desc, param_overrides, string_overrides);
-    }
 
     bool gpu_sink_source_size(int sink_idx, uint32_t& w, uint32_t& h) const;
     WGPUTexture gpu_sink_source_texture(int sink_idx) const;
