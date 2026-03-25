@@ -845,11 +845,36 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     compiled_graph_ = const_cast<CompiledGraph*>(scheduler.compiled_graph());
     cadence_bridge_ = &const_cast<Scheduler&>(scheduler).cadence_bridge();
 
-    // AudioExecutor integration prepared but not yet active.
-    // The audio callback, push_params, inject_analysis, and update_sources
-    // continue to use AudioEngine's own node instances and snapshots.
-    // Activation requires replacing the audio callback wholesale — tracked
-    // as the next step after this commit.
+    // Share AudioEngine's operator instances with CompiledGraph audio nodes.
+    // GraphCompiler created its own instances, but AudioEngine's are the ones
+    // that have been properly initialized (main_thread_update, file params, etc.).
+    if (compiled_graph_) {
+        for (size_t i = 0; i < nodes_.size(); ++i) {
+            auto* cn = compiled_graph_->find_node(nodes_[i].node_id);
+            if (!cn || cn->active_cadence != Cadence::Audio) continue;
+            // Destroy GraphCompiler's instance (it's redundant)
+            if (cn->instance && cn->loader)
+                cn->loader->destroy_instance(cn->instance);
+            // Share AudioEngine's instance
+            cn->instance = nodes_[i].instance;
+            cn->loader = nodes_[i].loader;
+            // Sync param values
+            cn->param_values = nodes_[i].param_values;
+        }
+    }
+
+    // Build AudioExecutor and activate the new audio path
+    if (compiled_graph_ && cadence_bridge_) {
+        audio_executor_ = std::make_unique<AudioExecutor>();
+        if (audio_executor_->build(*compiled_graph_)) {
+            // Start with null device — AudioEngine owns the real miniaudio device.
+            // This sets bridge_ and graph_ pointers so process_audio_for_test() works.
+            audio_executor_->start(*cadence_bridge_, *compiled_graph_, /*use_null_device=*/true);
+            use_new_audio_path_ = true;
+        } else {
+            audio_executor_.reset();
+        }
+    }
 
     return true;
 }
@@ -898,6 +923,14 @@ bool AudioEngine::start(bool use_null_device) {
 void AudioEngine::push_params(const Scheduler& scheduler) {
     // Delegate to CadenceBridge when AudioExecutor is driving the callback
     if (cadence_bridge_ && compiled_graph_ && use_new_audio_path_) {
+        // Sync frame-rate node outputs from NodeState → CompiledNode
+        // (external code may have modified output_values directly, e.g. tests)
+        for (const auto& ns : scheduler.nodes()) {
+            auto* cn = compiled_graph_->find_node(ns.node_id);
+            if (!cn || cn->active_cadence == Cadence::Audio) continue;
+            cn->output_values = ns.output_values;
+            cn->param_values = ns.param_values;
+        }
         cadence_bridge_->push_to_audio(*compiled_graph_);
         return;
     }
@@ -1164,6 +1197,10 @@ void AudioEngine::inject_analysis(Scheduler& scheduler) {
 }
 
 const AnalysisSnapshot& AudioEngine::analysis_read() const {
+    if (use_new_audio_path_ && cadence_bridge_) {
+        // Read from CadenceBridge's analysis snapshot (written by AudioExecutor)
+        return cadence_bridge_->active_analysis();
+    }
     return analysis_snapshots_[analysis_active_.load(std::memory_order_acquire)];
 }
 
@@ -1353,7 +1390,15 @@ void AudioEngine::shutdown() {
     cross_custom_wires_.clear();
     cross_float_wires_.clear();
 
-    // Shutdown AudioExecutor adapter
+    // Shutdown AudioExecutor adapter and clear shared instance pointers
+    // to prevent double-free (AudioEngine owns the instances, CompiledGraph borrowed them)
+    if (compiled_graph_) {
+        for (auto& ns : nodes_) {
+            auto* cn = compiled_graph_->find_node(ns.node_id);
+            if (cn && cn->active_cadence == Cadence::Audio)
+                cn->instance = nullptr;  // AudioEngine will destroy it below
+        }
+    }
     if (audio_executor_) {
         audio_executor_->shutdown();
         audio_executor_.reset();
@@ -1893,6 +1938,16 @@ uint64_t AudioEngine::pop_recorded_samples(float* dst, uint64_t max_samples) {
 }
 
 float AudioEngine::float_input_value_for_test(int node_idx, int port_idx) const {
+    // When new audio path is active, read from CompiledGraph audio nodes
+    if (use_new_audio_path_ && compiled_graph_ && node_idx >= 0 &&
+        node_idx < static_cast<int>(nodes_.size())) {
+        auto* cn = compiled_graph_->find_node(nodes_[node_idx].node_id);
+        if (cn) {
+            const auto& fv = cn->float_input_values;
+            if (port_idx >= 0 && port_idx < static_cast<int>(fv.size()))
+                return fv[port_idx];
+        }
+    }
     if (node_idx < 0 || node_idx >= static_cast<int>(nodes_.size())) return 0.0f;
     const auto& fv = nodes_[node_idx].float_input_values;
     if (port_idx < 0 || port_idx >= static_cast<int>(fv.size())) return 0.0f;

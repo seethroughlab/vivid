@@ -45,6 +45,11 @@ public:
         return snapshots_[param_active_.load(std::memory_order_acquire)];
     }
 
+    // Read the active analysis snapshot (main thread, acquire semantics).
+    const AnalysisSnapshot& active_analysis() const {
+        return analysis_snapshots_[analysis_active_.load(std::memory_order_acquire)];
+    }
+
     // Get the inactive analysis snapshot buffer for writing.
     AnalysisSnapshot& analysis_write_buffer() {
         return analysis_snapshots_[1 - analysis_active_.load(std::memory_order_acquire)];

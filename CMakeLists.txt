@@ -1085,6 +1085,7 @@ add_executable(test_audio_hot_reload
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
 )
 target_include_directories(test_audio_hot_reload PRIVATE src)
 target_link_libraries(test_audio_hot_reload PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
@@ -1120,6 +1121,7 @@ add_executable(test_runtime_api
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/system_midi.cpp
 )
@@ -1142,6 +1144,7 @@ add_executable(test_latency_validation
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/system_midi.cpp
 )
@@ -1165,6 +1168,7 @@ add_executable(test_control_server
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
     src/runtime/tool_discovery.cpp
@@ -1208,6 +1212,7 @@ add_executable(test_perception_introspection
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
     src/runtime/tool_discovery.cpp
@@ -1258,6 +1263,7 @@ add_executable(test_audio_engine
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/system_midi.cpp
 )
@@ -1279,6 +1285,7 @@ add_executable(test_audio_float_snapshot
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
 )
 target_include_directories(test_audio_float_snapshot PRIVATE src)
 target_link_libraries(test_audio_float_snapshot PRIVATE
@@ -1300,6 +1307,7 @@ add_executable(test_audio_robustness
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
 )
 target_include_directories(test_audio_robustness PRIVATE src)
 target_link_libraries(test_audio_robustness PRIVATE
@@ -1584,6 +1592,7 @@ add_executable(test_runtime_stress
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
@@ -1606,6 +1615,7 @@ add_executable(test_hot_reload_stress
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/port_type_registry.cpp
@@ -1627,6 +1637,7 @@ add_executable(test_package_stress
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
     src/runtime/package_manager.cpp
@@ -1652,6 +1663,7 @@ add_executable(test_mixed_runtime_stability
     src/runtime/cadence_bridge.cpp
     src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/port_type_registry.cpp
@@ -1752,6 +1764,7 @@ add_executable(test_cross_domain_spread
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
 )
 target_include_directories(test_cross_domain_spread PRIVATE src)
 target_link_libraries(test_cross_domain_spread PRIVATE
@@ -1791,6 +1804,7 @@ add_executable(test_audio_spread_wire
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
 )
 target_include_directories(test_audio_spread_wire PRIVATE src)
 target_link_libraries(test_audio_spread_wire PRIVATE
@@ -1822,6 +1836,7 @@ add_executable(test_signal_port
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/system_midi.cpp
 )
@@ -1870,6 +1885,7 @@ add_executable(test_demo_graphs
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/builtin_operators.cpp
 )
 target_include_directories(test_demo_graphs PRIVATE src)
@@ -1909,6 +1925,7 @@ add_executable(test_media_headless
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/builtin_operators.cpp
 )
 target_include_directories(test_media_headless PRIVATE src)
@@ -1938,6 +1955,7 @@ add_executable(test_audio_domain_sequencer
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/builtin_operators.cpp
 )
 target_include_directories(test_audio_domain_sequencer PRIVATE src)
@@ -2143,6 +2161,7 @@ add_executable(test_capture_coordinator
     src/runtime/av_exporter.mm
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -2334,6 +2353,7 @@ add_executable(test_undo_mutation_types
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
     src/runtime/tool_discovery.cpp
@@ -2373,6 +2393,7 @@ add_executable(test_team_workflow_regression
     src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
     src/runtime/tool_discovery.cpp
