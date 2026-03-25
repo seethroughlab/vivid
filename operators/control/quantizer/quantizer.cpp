@@ -2,7 +2,12 @@
 #include <cmath>
 #include <algorithm>
 
-struct Quantizer : vivid::ControlOperatorBase {
+// Quantizer — dual-cadence control operator.
+//
+// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
+// Stateless: quantizes input to pitch scale degrees, range steps, or uniform steps.
+//
+struct Quantizer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Quantizer";
     static constexpr bool kTimeDependent = false;
 
@@ -43,14 +48,29 @@ struct Quantizer : vivid::ControlOperatorBase {
         out.push_back({"step",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
-        float input = ctx->input_values[0];
+    // Shared quantization: returns {value, step}
+    struct Result { float value; float step; };
 
+    Result quantize(float input) const {
         switch (mode.int_value()) {
-        case 0: quantize_pitch(input, ctx); break;
-        case 1: quantize_range(input, ctx); break;
-        case 2: quantize_steps(input, ctx); break;
-        default: quantize_pitch(input, ctx); break;
+            case 0:  return quantize_pitch(input);
+            case 1:  return quantize_range(input);
+            case 2:  return quantize_steps(input);
+            default: return quantize_pitch(input);
+        }
+    }
+
+    void process_frame(const VividFrameContext* ctx) override {
+        auto r = quantize(ctx->input_values[0]);
+        ctx->output_values[0] = r.value;
+        ctx->output_values[1] = r.step;
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        auto r = quantize(ctx->input_float_values[0]);
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            ctx->output_buffers[0][i] = r.value;
+            ctx->output_buffers[1][i] = r.step;
         }
     }
 
@@ -75,18 +95,16 @@ private:
         {kWholeTone,   6}, {kBlues,     6}, {kDorian,     7}, {kMixolydian, 7},
     };
 
-    void quantize_pitch(float input, const VividProcessContext* ctx) {
+    Result quantize_pitch(float input) const {
         int scale_idx = std::clamp(scale.int_value(), 0, 7);
         const auto& sc = kScales[scale_idx];
         int root_note = std::clamp(root.int_value(), 0, 11);
 
         float note = std::clamp(input, 0.0f, 127.0f);
-        // Find nearest scale degree
         int best_note = static_cast<int>(std::round(note));
         int best_dist = 128;
         int best_step = 0;
 
-        // Search nearby octaves
         int center_oct = static_cast<int>(note) / 12;
         for (int oct = std::max(0, center_oct - 1); oct <= center_oct + 1; ++oct) {
             for (int i = 0; i < sc.count; ++i) {
@@ -100,39 +118,34 @@ private:
             }
         }
 
-        ctx->output_values[0] = static_cast<float>(std::clamp(best_note, 0, 127));
-        ctx->output_values[1] = static_cast<float>(best_step);
+        return {static_cast<float>(std::clamp(best_note, 0, 127)),
+                static_cast<float>(best_step)};
     }
 
-    void quantize_range(float input, const VividProcessContext* ctx) {
+    Result quantize_range(float input) const {
         float lo = min_val.value;
         float hi = max_val.value;
         int n = std::max(num_steps.int_value(), 2);
 
-        if (hi <= lo) {
-            ctx->output_values[0] = lo;
-            ctx->output_values[1] = 0.0f;
-            return;
-        }
+        if (hi <= lo)
+            return {lo, 0.0f};
 
         float clamped = std::clamp(input, lo, hi);
         float norm = (clamped - lo) / (hi - lo);
-        int step = static_cast<int>(std::round(norm * static_cast<float>(n - 1)));
-        step = std::clamp(step, 0, n - 1);
+        int step = std::clamp(static_cast<int>(std::round(norm * static_cast<float>(n - 1))), 0, n - 1);
 
-        ctx->output_values[0] = lo + static_cast<float>(step) * (hi - lo) / static_cast<float>(n - 1);
-        ctx->output_values[1] = static_cast<float>(step);
+        return {lo + static_cast<float>(step) * (hi - lo) / static_cast<float>(n - 1),
+                static_cast<float>(step)};
     }
 
-    void quantize_steps(float input, const VividProcessContext* ctx) {
+    Result quantize_steps(float input) const {
         int n = std::max(num_steps.int_value(), 2);
 
         float clamped = std::clamp(input, 0.0f, 1.0f);
-        int step = static_cast<int>(std::round(clamped * static_cast<float>(n - 1)));
-        step = std::clamp(step, 0, n - 1);
+        int step = std::clamp(static_cast<int>(std::round(clamped * static_cast<float>(n - 1))), 0, n - 1);
 
-        ctx->output_values[0] = static_cast<float>(step) / static_cast<float>(n - 1);
-        ctx->output_values[1] = static_cast<float>(step);
+        return {static_cast<float>(step) / static_cast<float>(n - 1),
+                static_cast<float>(step)};
     }
 };
 

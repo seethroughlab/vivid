@@ -1,6 +1,11 @@
 #include "operator_api/operator.h"
 
-struct Logic : vivid::ControlOperatorBase {
+// Logic — dual-cadence control operator.
+//
+// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
+// Stateless: applies boolean logic (AND/OR/XOR/NOT/NAND/NOR) to two inputs.
+//
+struct Logic : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Logic";
     static constexpr bool kTimeDependent = false;
 
@@ -16,12 +21,11 @@ struct Logic : vivid::ControlOperatorBase {
         out.push_back({"result", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
-        bool a = ctx->input_values[0] > 0.5f;
-        bool b = ctx->input_values[1] > 0.5f;
+    float compute(float a_val, float b_val, int op) const {
+        bool a = a_val > 0.5f;
+        bool b = b_val > 0.5f;
         bool result = false;
-
-        switch (operation.int_value()) {
+        switch (op) {
             case 0: result = a && b;     break;  // AND
             case 1: result = a || b;     break;  // OR
             case 2: result = a != b;     break;  // XOR
@@ -29,8 +33,19 @@ struct Logic : vivid::ControlOperatorBase {
             case 4: result = !(a && b);  break;  // NAND
             case 5: result = !(a || b);  break;  // NOR
         }
+        return result ? 1.0f : 0.0f;
+    }
 
-        ctx->output_values[0] = result ? 1.0f : 0.0f;
+    void process_frame(const VividFrameContext* ctx) override {
+        ctx->output_values[0] = compute(ctx->input_values[0], ctx->input_values[1],
+                                        operation.int_value());
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        float result = compute(ctx->input_float_values[0], ctx->input_float_values[1],
+                               operation.int_value());
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i)
+            ctx->output_buffers[0][i] = result;
     }
 };
 

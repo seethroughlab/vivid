@@ -1,7 +1,12 @@
 #include "operator_api/operator.h"
 #include <cmath>
 
-struct SampleHold : vivid::ControlOperatorBase {
+// SampleHold — dual-cadence control operator.
+//
+// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
+// State: held_value_ and prev_trigger_ for edge detection.
+//
+struct SampleHold : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "SampleHold";
     static constexpr bool kTimeDependent = false;
 
@@ -21,23 +26,28 @@ struct SampleHold : vivid::ControlOperatorBase {
         out.push_back({"value",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
-        float signal = ctx->input_values[0];
-        bool trig = ctx->input_values[1] > 0.5f;
+    void advance(float signal, bool trig, int m) {
         bool rising = trig && !prev_trigger_;
         prev_trigger_ = trig;
-
-        if (mode.int_value() == 0) {
-            // Sample mode: capture on rising edge only
-            if (rising)
-                held_value_ = signal;
+        if (m == 0) {
+            if (rising) held_value_ = signal;
         } else {
-            // Track-and-hold: pass through while high, hold when low
-            if (trig)
-                held_value_ = signal;
+            if (trig) held_value_ = signal;
         }
+    }
 
+    void process_frame(const VividFrameContext* ctx) override {
+        advance(ctx->input_values[0], ctx->input_values[1] > 0.5f, mode.int_value());
         ctx->output_values[0] = held_value_;
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        float signal = ctx->input_float_values[0];
+        bool trig = ctx->input_float_values[1] > 0.5f;
+        int m = mode.int_value();
+        advance(signal, trig, m);
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i)
+            ctx->output_buffers[0][i] = held_value_;
     }
 
 private:
