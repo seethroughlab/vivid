@@ -1,6 +1,7 @@
 #include "runtime/runtime_api.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
+#include "runtime/compiled_graph.h"
 #include "runtime/audio_engine.h"
 #include "runtime/operator_registry.h"
 #include "runtime/system_midi.h"
@@ -162,6 +163,12 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
 
     ns->param_values[pi->second] = value;
     ns->generation++;
+    if (auto* cg = scheduler_.compiled_graph()) {
+        if (auto* cn = cg->find_node(node_id)) {
+            cn->param_values[pi->second] = value;
+            cn->generation++;
+        }
+    }
 
     // Convenience sync for SyphonIn: selecting enum server writes server_name.
     if (param == "server") {
@@ -267,6 +274,11 @@ CommandResult RuntimeAPI::set_param_lock(const std::string& node_id, const std::
         return {false, "unknown param '" + param + "' on " + node_id};
 
     ns->param_lock_flags[pi->second] = flags;
+    if (auto* cg = scheduler_.compiled_graph()) {
+        if (auto* cn = cg->find_node(node_id)) {
+            cn->param_lock_flags[pi->second] = flags;
+        }
+    }
 
     // Persist in NodeDef
     NodeDef* ndef = graph_.find_node(node_id);
@@ -328,6 +340,13 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
         ns->gpu_tex_width  = width;
         ns->gpu_tex_height = height;
         ns->generation++;
+    }
+    if (auto* cg = scheduler_.compiled_graph()) {
+        if (auto* cn = cg->find_node(node_id)) {
+            cn->gpu_tex_width  = width;
+            cn->gpu_tex_height = height;
+            cn->generation++;
+        }
     }
 
     needs_gpu_realloc_ = true;
@@ -753,6 +772,16 @@ void RuntimeAPI::apply_variation(int idx) {
             }
         }
         ns.generation++;
+        if (auto* cg = scheduler_.compiled_graph()) {
+            if (auto* cn = cg->find_node(ns.node_id)) {
+                cn->param_values = ns.param_values;
+                cn->param_lock_flags = ns.param_lock_flags;
+                cn->file_param_storage = ns.file_param_storage;
+                for (size_t fi = 0; fi < cn->file_param_storage.size(); ++fi)
+                    cn->file_param_ptrs[fi] = cn->file_param_storage[fi].c_str();
+                cn->generation = ns.generation;
+            }
+        }
     }
 
     // Phase 2: Apply stored delta values
@@ -766,10 +795,18 @@ void RuntimeAPI::apply_variation(int idx) {
                     ns->param_values[pi->second] = pval;
                     NodeDef* ndef = graph_.find_node(node_id);
                     if (ndef) ndef->params[pname] = pval;
+                    if (auto* cg = scheduler_.compiled_graph()) {
+                        if (auto* cn = cg->find_node(node_id))
+                            cn->param_values[pi->second] = pval;
+                    }
                 }
             }
         }
         ns->generation++;
+        if (auto* cg = scheduler_.compiled_graph()) {
+            if (auto* cn = cg->find_node(node_id))
+                cn->generation = ns->generation;
+        }
     }
 
     // Apply stored string param deltas (resolve for runtime, keep relative for persistence)
@@ -787,8 +824,21 @@ void RuntimeAPI::apply_variation(int idx) {
             ns->file_param_ptrs[fi->second] = ns->file_param_storage[fi->second].c_str();
             NodeDef* ndef = graph_.find_node(node_id);
             if (ndef) ndef->string_params[pname] = pval;  // already relative
+            if (auto* cg = scheduler_.compiled_graph()) {
+                if (auto* cn = cg->find_node(node_id)) {
+                    auto cfi = cn->file_param_indices.find(pname);
+                    if (cfi != cn->file_param_indices.end()) {
+                        cn->file_param_storage[cfi->second] = ns->file_param_storage[fi->second];
+                        cn->file_param_ptrs[cfi->second] = cn->file_param_storage[cfi->second].c_str();
+                    }
+                }
+            }
         }
         ns->generation++;
+        if (auto* cg = scheduler_.compiled_graph()) {
+            if (auto* cn = cg->find_node(node_id))
+                cn->generation = ns->generation;
+        }
     }
 
     graph_.set_active_variation(idx);
@@ -1042,6 +1092,15 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
         }
     }
     ns->generation++;
+    if (auto* cg = scheduler_.compiled_graph()) {
+        if (auto* cn = cg->find_node(node_id)) {
+            cn->param_values = ns->param_values;
+            cn->file_param_storage = ns->file_param_storage;
+            for (size_t fi = 0; fi < cn->file_param_storage.size(); ++fi)
+                cn->file_param_ptrs[fi] = cn->file_param_storage[fi].c_str();
+            cn->generation = ns->generation;
+        }
+    }
     active_presets_[node_id] = name;
     mark_graph_dirty();
 
@@ -1295,6 +1354,9 @@ void RuntimeAPI::tick_state_presets() {
             NodeState* tns = scheduler_.find_node_mut(target_node);
             if (!tns) continue;
             NodeDef* ndef = graph_.find_node(target_node);
+            CompiledNode* tcn = nullptr;
+            if (auto* cg = scheduler_.compiled_graph())
+                tcn = cg->find_node(target_node);
             for (const auto& [pname, start_val] : cs.start_params) {
                 auto pi = tns->param_indices.find(pname);
                 if (pi == tns->param_indices.end()) continue;
@@ -1302,8 +1364,10 @@ void RuntimeAPI::tick_state_presets() {
                 float interp = start_val + (target_val - start_val) * xfade_t;
                 tns->param_values[pi->second] = interp;
                 if (ndef) ndef->params[pname] = interp;
+                if (tcn) tcn->param_values[pi->second] = interp;
             }
             tns->generation++;
+            if (tcn) tcn->generation = tns->generation;
         }
 
         // Finalize when crossfade completes: snap params to exact target values
@@ -1312,14 +1376,19 @@ void RuntimeAPI::tick_state_presets() {
                 NodeState* tns = scheduler_.find_node_mut(target_node);
                 if (tns) {
                     NodeDef* ndef = graph_.find_node(target_node);
+                    CompiledNode* tcn = nullptr;
+                    if (auto* cg = scheduler_.compiled_graph())
+                        tcn = cg->find_node(target_node);
                     for (const auto& [pname, target_val] : cs.target_params) {
                         auto pi = tns->param_indices.find(pname);
                         if (pi != tns->param_indices.end()) {
                             tns->param_values[pi->second] = target_val;
                             if (ndef) ndef->params[pname] = target_val;
+                            if (tcn) tcn->param_values[pi->second] = target_val;
                         }
                     }
                     tns->generation++;
+                    if (tcn) tcn->generation = tns->generation;
                 }
                 active_presets_[target_node] = cs.target_preset_name;
             }
@@ -1710,6 +1779,16 @@ void RuntimeAPI::set_file_param_internal(NodeState& ns, const std::string& param
     ns.file_param_storage[fi->second] = to_runtime_string_value(ns, param, value);
     ns.file_param_ptrs[fi->second] = ns.file_param_storage[fi->second].c_str();
     ns.generation++;
+    if (auto* cg = scheduler_.compiled_graph()) {
+        if (auto* cn = cg->find_node(ns.node_id)) {
+            auto cfi = cn->file_param_indices.find(param);
+            if (cfi != cn->file_param_indices.end()) {
+                cn->file_param_storage[cfi->second] = ns.file_param_storage[fi->second];
+                cn->file_param_ptrs[cfi->second] = cn->file_param_storage[cfi->second].c_str();
+            }
+            cn->generation++;
+        }
+    }
 
     NodeDef* ndef = graph_.find_node(ns.node_id);
     if (ndef) ndef->string_params[param] = to_persisted_string_value(ns, param, value);
