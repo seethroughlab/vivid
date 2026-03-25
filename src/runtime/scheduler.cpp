@@ -720,6 +720,7 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
         for (uint32_t i = 0; i < static_cast<uint32_t>(nodes_.size()); ++i) {
             auto* cn = compiled_graph_->find_node(nodes_[i].node_id);
             if (!cn) continue;
+            if (cn->active_cadence == Cadence::Audio) continue;  // audio state managed by AudioEngine
             // Instance/loader (may change on hot-reload)
             cn->loader = nodes_[i].loader;
             cn->instance = nodes_[i].instance;

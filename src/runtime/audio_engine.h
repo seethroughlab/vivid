@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -19,6 +20,9 @@ struct ma_device;
 namespace vivid {
 
 class Scheduler;
+struct CompiledGraph;
+class CadenceBridge;
+class AudioExecutor;
 
 struct SpreadSnapshot {
     static constexpr uint32_t kMaxLength = 64;
@@ -375,6 +379,12 @@ private:
     // Recording tap (stereo mix capture)
     RecordingTap recording_tap_;
     uint32_t recording_overrun_count_ = 0;  // audio thread only
+
+    // Cadence-aware runtime references (adapter layer — not owned)
+    CompiledGraph* compiled_graph_ = nullptr;
+    CadenceBridge* cadence_bridge_ = nullptr;
+    std::unique_ptr<AudioExecutor> audio_executor_;
+    bool use_new_audio_path_ = false;  // set to true when AudioExecutor is wired in
 };
 
 } // namespace vivid

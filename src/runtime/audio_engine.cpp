@@ -2,6 +2,9 @@
 #include <miniaudio.h>
 
 #include "runtime/audio_engine.h"
+#include "runtime/audio_executor.h"
+#include "runtime/cadence_bridge.h"
+#include "runtime/compiled_graph.h"
 #include "runtime/crash_guard.h"
 #include "operator_api/port_type_registry.h"
 #include "operator_api/type_id.h"
@@ -838,6 +841,16 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     std::fprintf(stderr, " (sink=%d, %zu param mappings, %zu analysis mappings)\n",
         sink_node_idx_, param_mappings_.size(), analysis_mappings_.size());
 
+    // Store references to the cadence-aware runtime (adapter layer)
+    compiled_graph_ = const_cast<CompiledGraph*>(scheduler.compiled_graph());
+    cadence_bridge_ = &const_cast<Scheduler&>(scheduler).cadence_bridge();
+
+    // AudioExecutor integration prepared but not yet active.
+    // The audio callback, push_params, inject_analysis, and update_sources
+    // continue to use AudioEngine's own node instances and snapshots.
+    // Activation requires replacing the audio callback wholesale — tracked
+    // as the next step after this commit.
+
     return true;
 }
 
@@ -883,6 +896,12 @@ bool AudioEngine::start(bool use_null_device) {
 }
 
 void AudioEngine::push_params(const Scheduler& scheduler) {
+    // Delegate to CadenceBridge when AudioExecutor is driving the callback
+    if (cadence_bridge_ && compiled_graph_ && use_new_audio_path_) {
+        cadence_bridge_->push_to_audio(*compiled_graph_);
+        return;
+    }
+
     int write_idx = 1 - active_.load(std::memory_order_acquire);
     auto& snap = snapshots_[write_idx];
 
@@ -1026,6 +1045,11 @@ void AudioEngine::push_params(const Scheduler& scheduler) {
 }
 
 void AudioEngine::update_sources(double time, const Scheduler& scheduler) {
+    if (cadence_bridge_ && compiled_graph_ && use_new_audio_path_) {
+        cadence_bridge_->update_sources(time, *compiled_graph_);
+        return;
+    }
+
     for (auto& ns : nodes_) {
         if (!ns.loader->has_main_thread_update()) continue;
 
@@ -1047,6 +1071,46 @@ void AudioEngine::update_sources(double time, const Scheduler& scheduler) {
 }
 
 void AudioEngine::inject_analysis(Scheduler& scheduler) {
+    // Delegate to CadenceBridge when AudioExecutor is driving the callback
+    if (cadence_bridge_ && compiled_graph_ && use_new_audio_path_) {
+        cadence_bridge_->pull_from_audio(*compiled_graph_);
+        // Also sync analysis results to NodeState for inspector/UI
+        for (const auto& pm : param_mappings_) {
+            auto* cn = compiled_graph_->find_node(nodes_[pm.audio_engine_idx].node_id);
+            if (!cn) continue;
+            auto& ns = scheduler.nodes_mut()[pm.scheduler_node_idx];
+            ns.errored = cn->errored;
+            ns.error_message = cn->error_message;
+            // Float outputs
+            for (const auto& fm : pm.float_output_mappings) {
+                if (fm.audio_float_ordinal < cn->float_output_values.size() &&
+                    fm.scheduler_port_idx < ns.output_values.size()) {
+                    float val = cn->float_output_values[fm.audio_float_ordinal];
+                    scheduler.inject_external_output(pm.scheduler_node_idx,
+                                                     fm.scheduler_port_idx, val);
+                }
+            }
+        }
+        // Analysis ports (rms/peak/waveform)
+        for (const auto& am : analysis_mappings_) {
+            auto* cn = compiled_graph_->find_node(nodes_[am.audio_engine_idx].node_id);
+            if (!cn) continue;
+            auto rms_it = cn->analysis_output_port_indices.find("rms");
+            auto peak_it = cn->analysis_output_port_indices.find("peak");
+            if (rms_it != cn->analysis_output_port_indices.end() &&
+                rms_it->second < cn->output_values.size())
+                scheduler.inject_external_output(am.scheduler_node_idx,
+                                                 am.rms_port_idx,
+                                                 cn->output_values[rms_it->second]);
+            if (peak_it != cn->analysis_output_port_indices.end() &&
+                peak_it->second < cn->output_values.size())
+                scheduler.inject_external_output(am.scheduler_node_idx,
+                                                 am.peak_port_idx,
+                                                 cn->output_values[peak_it->second]);
+        }
+        return;
+    }
+
     const auto& snap = analysis_snapshots_[analysis_active_.load(std::memory_order_acquire)];
 
     // Error state + spread outputs: all audio nodes
@@ -1289,6 +1353,15 @@ void AudioEngine::shutdown() {
     cross_custom_wires_.clear();
     cross_float_wires_.clear();
 
+    // Shutdown AudioExecutor adapter
+    if (audio_executor_) {
+        audio_executor_->shutdown();
+        audio_executor_.reset();
+    }
+    use_new_audio_path_ = false;
+    compiled_graph_ = nullptr;
+    cadence_bridge_ = nullptr;
+
     std::fprintf(stderr, "[vivid] AudioEngine: shutdown\n");
 }
 
@@ -1298,6 +1371,12 @@ void AudioEngine::ma_data_callback(ma_device* device_ptr, void* output, const vo
 }
 
 void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
+    // Delegate to AudioExecutor if the new path is active
+    if (use_new_audio_path_ && audio_executor_) {
+        audio_executor_->process_audio_for_test(output, frame_count);
+        return;
+    }
+
     auto cb_start = std::chrono::steady_clock::now();
 
     // Read params from the active snapshot (lock-free)
