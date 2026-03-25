@@ -202,10 +202,20 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             for (size_t p = 0; p < cn.float_input_values.size() && p < snap.float_input_values[i].size(); ++p)
                 cn.float_input_values[p] = snap.float_input_values[i][p];
         }
-        // Copy spread inputs
+        // Copy spread inputs from snapshot to CompiledNode
         if (cn.has_spread_ports && i < snap.spread_inputs.size()) {
             for (size_t p = 0; p < cn.input_port_count && p < snap.spread_inputs[i].size(); ++p) {
-                // TODO: Copy SpreadSnapshot to audio node spread state
+                const auto& ss = snap.spread_inputs[i][p];
+                if (p < cn.input_spreads.size()) {
+                    cn.input_spreads[p].assign(ss.data, ss.data + ss.length);
+                }
+            }
+        }
+        // Copy string inputs
+        if (cn.has_string_input_ports && i < snap.input_string_values.size()) {
+            for (size_t p = 0; p < cn.input_port_count && p < snap.input_string_values[i].size(); ++p) {
+                if (p < cn.input_string_values.size())
+                    cn.input_string_values[p] = snap.input_string_values[i][p];
             }
         }
     }
@@ -298,6 +308,24 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             // Process
             if (!cn.loader || cn.errored) continue;
 
+            // Set up spread ports for context
+            for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_spreads.size(); ++p) {
+                if (p < cn.input_spreads.size()) {
+                    cn.c_in_spreads[p].data = cn.input_spreads[p].empty() ? nullptr : cn.input_spreads[p].data();
+                    cn.c_in_spreads[p].length = static_cast<uint32_t>(cn.input_spreads[p].size());
+                    cn.c_in_spreads[p].capacity = static_cast<uint32_t>(cn.input_spreads[p].size());
+                } else {
+                    cn.c_in_spreads[p].data = nullptr;
+                    cn.c_in_spreads[p].length = 0;
+                    cn.c_in_spreads[p].capacity = 0;
+                }
+            }
+            for (uint32_t p = 0; p < cn.output_port_count && p < cn.c_out_spreads.size(); ++p) {
+                cn.c_out_spreads[p].data = cn.out_spread_buf[p].data();
+                cn.c_out_spreads[p].length = 0;
+                cn.c_out_spreads[p].capacity = static_cast<uint32_t>(cn.out_spread_buf[p].size());
+            }
+
             // Build VividAudioContext
             VividAudioContext ctx{};
             ctx.time = node_time;
@@ -312,6 +340,9 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             ctx.output_channel_counts = cn.output_channel_counts.data();
             ctx.input_float_values = cn.float_input_values.empty() ? cn.float_input_scratch : cn.float_input_values.data();
             ctx.output_float_values = cn.float_output_values.empty() ? cn.float_output_scratch : cn.float_output_values.data();
+            ctx.input_spreads = cn.c_in_spreads.empty() ? nullptr : cn.c_in_spreads.data();
+            ctx.output_spreads = cn.c_out_spreads.empty() ? nullptr : cn.c_out_spreads.data();
+            ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
             ctx.shared_handles = vivid::shared_handle_service();
             ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
             ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
@@ -329,6 +360,15 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 std::strncpy(cn.audio_error_message, "unknown exception", sizeof(cn.audio_error_message) - 1);
                 for (auto& buf : cn.audio_buffers_out)
                     std::memset(buf.data(), 0, buf.size() * sizeof(float));
+            }
+
+            // Read back spread outputs
+            for (uint32_t p = 0; p < cn.output_port_count && p < cn.c_out_spreads.size(); ++p) {
+                if (cn.c_out_spreads[p].length > 0 && p < cn.output_spreads.size()) {
+                    cn.output_spreads[p].assign(
+                        cn.out_spread_buf[p].begin(),
+                        cn.out_spread_buf[p].begin() + cn.c_out_spreads[p].length);
+                }
             }
 
             // SIGNAL output auto-extraction
@@ -368,6 +408,14 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     if (from_ord < cn.float_output_values.size() &&
                         to_ord < to_cn.float_input_values.size())
                         to_cn.float_input_values[to_ord] = cn.float_output_values[from_ord] * scale;
+                } else if (e.data_type == VIVID_PORT_SPREAD) {
+                    // Spread routing between audio nodes
+                    auto& to_cn = cg.nodes[e.to_node];
+                    if (e.from_port < cn.output_spreads.size() &&
+                        e.to_port < to_cn.input_spreads.size()) {
+                        const auto& src = cn.output_spreads[e.from_port];
+                        to_cn.input_spreads[e.to_port].assign(src.begin(), src.end());
+                    }
                 }
             }
         }
@@ -481,7 +529,14 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
         // Spread outputs
         if (i < analysis.spread_outputs.size()) {
             for (size_t p = 0; p < cn.output_port_count && p < analysis.spread_outputs[i].size(); ++p) {
-                // TODO: Copy spread outputs to analysis snapshot
+                if (p < cn.output_spreads.size()) {
+                    auto& dst = analysis.spread_outputs[i][p];
+                    const auto& src = cn.output_spreads[p];
+                    dst.length = std::min(static_cast<uint32_t>(src.size()),
+                                          SpreadSnapshot::kMaxLength);
+                    for (uint32_t j = 0; j < dst.length; ++j)
+                        dst.data[j] = src[j];
+                }
             }
         }
 

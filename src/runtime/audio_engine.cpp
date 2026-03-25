@@ -1256,6 +1256,11 @@ void AudioEngine::pre_reload_operator(const std::string& type_name) {
             }
         }
         if (ns.instance) {
+            // Also null out the shared CompiledNode instance to prevent dangling pointer
+            if (compiled_graph_) {
+                auto* cn = compiled_graph_->find_node(ns.node_id);
+                if (cn) cn->instance = nullptr;
+            }
             ns.loader->destroy_instance(ns.instance);
             ns.instance = nullptr;
         }
@@ -1316,6 +1321,16 @@ bool AudioEngine::post_reload_operator(const std::string& type_name, OperatorReg
 
         ns.errored = false;
         ns.error_message[0] = '\0';
+
+        // Share new instance with CompiledGraph
+        if (compiled_graph_) {
+            auto* cn = compiled_graph_->find_node(ns.node_id);
+            if (cn && cn->active_cadence == Cadence::Audio) {
+                cn->instance = ns.instance;
+                cn->loader = ns.loader;
+                cn->param_values = ns.param_values;
+            }
+        }
     }
 
     reload_saved_.clear();
