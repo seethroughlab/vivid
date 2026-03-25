@@ -124,29 +124,8 @@ struct NodeState {
     bool        gpu_shader_error     = false;
     std::string gpu_shader_error_msg;
 
-    // Per-instance loader for WGSLFilter nodes (owns the loader; ns.loader points here)
-    std::unique_ptr<OperatorLoader> owned_loader;
-
     // Placeholder state when a graph references an operator type that is not available.
     bool missing_operator = false;
-};
-
-struct Wire {
-    uint32_t from_node_idx, from_port_idx;
-    uint32_t to_node_idx, to_port_idx;
-    bool sources_param = false;   // true → from_port_idx indexes into param_values
-    bool targets_param = false;   // true → to_port_idx indexes into param_values
-    bool sources_file_param = false; // true → from_port_idx indexes file_param_storage
-    bool targets_file_param = false; // true → string wire into file_param_storage
-    uint32_t from_file_param_idx = 0; // index into file_param_storage (when sources_file_param)
-    uint32_t to_file_param_idx = 0;   // index into file_param_storage (when targets_file_param)
-    bool is_texture_wire = false; // true → carries VIVID_PORT_TEXTURE
-    bool is_custom_wire  = false; // true → carries a custom port type (high bit set)
-    bool is_string_wire = false;  // true → carries VIVID_PORT_STRING
-    bool is_string_spread_wire = false; // true → carries VIVID_PORT_STRING_SPREAD
-    float from_min = 0.0f, from_max = 1.0f;
-    float to_min   = 0.0f, to_max  = 1.0f;
-    bool  clamp    = false;
 };
 
 // Optional callback invoked after each GPU node's process()
@@ -212,12 +191,10 @@ public:
     const FrameExecutor& frame_executor() const { return frame_executor_; }
 
 private:
-    void init_node_state(NodeState& ns, const VividOperatorDescriptor* desc,
-                         const std::unordered_map<std::string, float>* param_overrides,
-                         const std::unordered_map<std::string, std::string>* string_overrides = nullptr);
+    // Build nodes_ as a read-only mirror of compiled_graph_->nodes.
+    void populate_nodestate_mirror();
 
     std::vector<NodeState> nodes_;
-    std::vector<Wire> wires_;
     std::string operators_src_dir_;
     std::filesystem::path graph_base_dir_;
     WGPUDevice gpu_device_ = nullptr;

@@ -26,12 +26,12 @@ static float remap_to_scale(const ConnectionDef& c) {
 
 // Initialize the frame-side state on a CompiledNode (ports, params, spreads,
 // strings, custom ports, file params, GPU resources).  This corresponds to
-// the logic in Scheduler::init_node_state().
-static void init_frame_state(CompiledNode& cn,
-                             const VividOperatorDescriptor* desc,
-                             const std::unordered_map<std::string, float>* param_overrides,
-                             const std::unordered_map<std::string, std::string>* string_overrides,
-                             const std::filesystem::path& graph_base_dir) {
+// the logic formerly in Scheduler::init_node_state().
+void GraphCompiler::init_frame_state(CompiledNode& cn,
+                                     const VividOperatorDescriptor* desc,
+                                     const std::unordered_map<std::string, float>* param_overrides,
+                                     const std::unordered_map<std::string, std::string>* string_overrides,
+                                     const std::filesystem::path& graph_base_dir) {
     // Count and index ports
     cn.input_port_count = 0;
     cn.output_port_count = 0;
@@ -588,8 +588,22 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     // SIGNAL/AUDIO interop
                     e.data_type = (from_port_type == VIVID_PORT_AUDIO || to_port_type == VIVID_PORT_AUDIO)
                         ? VIVID_PORT_AUDIO : VIVID_PORT_SIGNAL;
+                } else if (from_port_type == VIVID_PORT_STRING ||
+                           from_port_type == VIVID_PORT_STRING_SPREAD ||
+                           to_port_type == VIVID_PORT_STRING ||
+                           to_port_type == VIVID_PORT_STRING_SPREAD) {
+                    std::fprintf(stderr, "[vivid] GraphCompiler: string type mismatch %s/%s -> %s/%s "
+                        "(string port types must match exactly)\n",
+                        conn.from_node.c_str(), conn.from_port.c_str(),
+                        conn.to_node.c_str(), conn.to_port.c_str());
+                    return nullptr;
                 } else if (from_port_type == VIVID_PORT_TEXTURE || to_port_type == VIVID_PORT_TEXTURE) {
                     std::fprintf(stderr, "[vivid] GraphCompiler: texture type mismatch %s/%s -> %s/%s\n",
+                                 conn.from_node.c_str(), conn.from_port.c_str(),
+                                 conn.to_node.c_str(), conn.to_port.c_str());
+                    continue;
+                } else if (vivid_is_custom_port_type(from_port_type) != vivid_is_custom_port_type(to_port_type)) {
+                    std::fprintf(stderr, "[vivid] GraphCompiler: custom port type mismatch %s/%s -> %s/%s\n",
                                  conn.from_node.c_str(), conn.from_port.c_str(),
                                  conn.to_node.c_str(), conn.to_port.c_str());
                     continue;

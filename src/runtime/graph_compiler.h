@@ -41,6 +41,16 @@ public:
         const Graph& graph,
         OperatorRegistry& registry,
         const Options& options);
+
+    // Initialize the frame-side state on a CompiledNode (ports, params, spreads,
+    // strings, custom ports, file params, GPU resources).  Public so that
+    // Scheduler::reload_operator() can reinitialize a single node in-place.
+    static void init_frame_state(
+        CompiledNode& cn,
+        const VividOperatorDescriptor* desc,
+        const std::unordered_map<std::string, float>* param_overrides,
+        const std::unordered_map<std::string, std::string>* string_overrides,
+        const std::filesystem::path& graph_base_dir);
 };
 
 } // namespace vivid
