@@ -251,6 +251,37 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
         }
     }
 
+    // Sync all audio-node float outputs back to CompiledNode output_values.
+    // This covers scalar outputs (e.g. clock beat_phase) even when no frame-rate
+    // consumer is wired — they still need to be visible for inspection/display.
+    for (uint32_t i = 0; i < static_cast<uint32_t>(cg.audio_order.size()); ++i) {
+        uint32_t gi = cg.audio_order[i];
+        auto& cn = cg.nodes[gi];
+        auto snap_it = node_to_snapshot_idx_.find(gi);
+        if (snap_it == node_to_snapshot_idx_.end()) continue;
+        uint32_t si = snap_it->second;
+        if (si >= snap.float_outputs.size()) continue;
+        const auto& fo = snap.float_outputs[si];
+        // Map float output ordinals back to output port indices
+        uint32_t float_ord = 0;
+        for (uint32_t p = 0; p < cn.output_port_count && float_ord < fo.size(); ++p) {
+            if (p < cn.output_port_types.size() &&
+                cn.output_port_types[p] == VIVID_PORT_SIGNAL) {
+                if (p < cn.output_values.size())
+                    cn.output_values[p] = fo[float_ord];
+                float_ord++;
+            }
+        }
+        // Also sync spread outputs
+        if (si < snap.spread_outputs.size()) {
+            for (uint32_t p = 0; p < cn.output_port_count && p < snap.spread_outputs[si].size(); ++p) {
+                const auto& src = snap.spread_outputs[si][p];
+                if (p < cn.output_spreads.size() && src.length > 0)
+                    cn.output_spreads[p].assign(src.data, src.data + src.length);
+            }
+        }
+    }
+
     // Inject analysis data (rms, peak, waveform) into audio nodes' own output ports
     for (const auto& am : analysis_mappings_) {
         auto& cn = cg.nodes[am.graph_node_idx];

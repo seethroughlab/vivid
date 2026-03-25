@@ -474,6 +474,7 @@ int main() {
             if (pi_g != ns->param_indices.end()) ns->param_values[pi_g->second] = 1.0f;
             // Bump generation so the node re-processes
             ns->generation++;
+            sched.sync_node_to_compiled("fill");
         }
 
         // Second tick: should be green now

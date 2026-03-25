@@ -1,6 +1,7 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
+#include "runtime/compiled_graph.h"
 #include "runtime/audio_engine.h"
 #include "runtime/runtime_api.h"
 #include <cstdio>
@@ -237,11 +238,11 @@ int main(int argc, char* argv[]) {
             check(ndef->tex_width == 1920, "NodeDef tex_width = 1920");
             check(ndef->tex_height == 1080, "NodeDef tex_height = 1080");
         }
-        auto* ns = scheduler.find_node_mut("a");
-        check(ns != nullptr, "scheduler has node a");
-        if (ns) {
-            check(ns->gpu_tex_width == 1920, "NodeState gpu_tex_width = 1920");
-            check(ns->gpu_tex_height == 1080, "NodeState gpu_tex_height = 1080");
+        auto* cn = scheduler.compiled_graph()->find_node("a");
+        check(cn != nullptr, "CompiledNode a exists");
+        if (cn) {
+            check(cn->gpu_tex_width == 1920, "CompiledNode gpu_tex_width = 1920");
+            check(cn->gpu_tex_height == 1080, "CompiledNode gpu_tex_height = 1080");
         }
         check(api.needs_gpu_realloc(), "needs_gpu_realloc set");
     }

@@ -255,9 +255,6 @@ public:
 
     bool build(const Graph& graph, OperatorRegistry& registry, const Scheduler& scheduler);
     bool start(bool use_null_device = false);
-    void push_params(const Scheduler& scheduler);
-    void update_sources(double time, const Scheduler& scheduler);
-    void inject_analysis(Scheduler& scheduler);
     void shutdown();
 
     // Read active analysis snapshot (call from main thread)
@@ -380,11 +377,10 @@ private:
     RecordingTap recording_tap_;
     uint32_t recording_overrun_count_ = 0;  // audio thread only
 
-    // Cadence-aware runtime references (adapter layer — not owned)
+    // Cadence-aware runtime references (not owned)
     CompiledGraph* compiled_graph_ = nullptr;
     CadenceBridge* cadence_bridge_ = nullptr;
     std::unique_ptr<AudioExecutor> audio_executor_;
-    bool use_new_audio_path_ = false;  // set to true when AudioExecutor is wired in
 };
 
 } // namespace vivid

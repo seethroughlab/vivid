@@ -3,6 +3,8 @@
 #include "runtime/scheduler.h"
 #include "runtime/audio_engine.h"
 #include "runtime/builtin_operators.h"
+#include "runtime/cadence_bridge.h"
+#include "runtime/compiled_graph.h"
 #include "operator_api/gpu_operator.h"
 #include "common/gpu_util.h"
 #include <webgpu/webgpu.h>
@@ -341,7 +343,7 @@ int main(int argc, char* argv[]) {
                 sched.tick(time, 0.016, frame);
             }
             if (audio) {
-                audio->push_params(sched);
+                sched.cadence_bridge().push_to_audio(*sched.compiled_graph());
             }
 #ifdef __APPLE__
             CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.005, false);

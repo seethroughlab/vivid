@@ -5,6 +5,8 @@
 #include "control/lfo/lfo.h"
 #include "control/envelope/envelope.h"
 #include "runtime/audio_engine.h"
+#include "runtime/cadence_bridge.h"
+#include "runtime/compiled_graph.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "runtime/operator_registry.h"
@@ -337,7 +339,7 @@ static void test_signal_auto_extraction() {
 }
 
 // =====================================================================
-// Test 5–7: Audio engine integration (SIGNAL wire routing + inject_analysis)
+// Test 5–7: Audio engine integration (SIGNAL wire routing + pull_from_audio)
 // =====================================================================
 static void test_audio_engine_integration(const std::string& build_dir) {
     std::fprintf(stderr, "\n--- Audio engine SIGNAL wire routing ---\n");
@@ -387,7 +389,7 @@ static void test_audio_engine_integration(const std::string& build_dir) {
     // (via auto-extraction + AudioFloatPortWire or AudioWire) to AudioFloatCvOp's
     // input_float_values. AudioFloatCvOp then fills its AUDIO output with that CV value.
     scheduler.tick(0.0, 1.0 / 60.0, 0, nullptr);
-    audio_engine.push_params(scheduler);
+    scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
 
     float output[vivid::AudioEngine::kBufferSize * 2] = {};
     audio_engine.process_audio_for_test(output, vivid::AudioEngine::kBufferSize);
@@ -397,8 +399,9 @@ static void test_audio_engine_integration(const std::string& build_dir) {
     int cv_dest_idx = audio_engine.audio_node_index("cv_dest");
     check(cv_dest_idx >= 0, "cv_dest found in audio engine");
 
-    // --- Test 7: inject_analysis delivers LFO scalar back to scheduler ---
-    audio_engine.inject_analysis(scheduler);
+    // --- Test 7: pull_from_audio delivers LFO scalar back to scheduler ---
+    scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+    scheduler.sync_to_nodestate();
 
     int lfo_sched_idx = -1;
     for (size_t i = 0; i < scheduler.nodes().size(); ++i) {

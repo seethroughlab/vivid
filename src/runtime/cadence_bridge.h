@@ -12,8 +12,6 @@ namespace vivid {
 // CadenceBridge — double-buffered snapshot bridge between frame and audio
 // execution worlds.
 //
-// Replaces AudioEngine::push_params(), inject_analysis(), update_sources().
-//
 // Main thread calls push_to_audio() after FrameExecutor::tick() to snapshot
 // frame-rate outputs for audio consumption, and pull_from_audio() before tick
 // to inject audio analysis results into frame-rate nodes.

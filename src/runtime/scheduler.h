@@ -160,6 +160,11 @@ public:
     void tick(double time, double delta_time, uint64_t frame, void* gpu_state = nullptr,
               PostNodeFn on_gpu_node = nullptr,
               const VividInputState* input = nullptr);
+    // Sync CompiledNode results → NodeState for inspector/UI/snapshot consumers.
+    void sync_to_nodestate();
+    // Sync a single NodeState's params to its CompiledNode.
+    // Use when modifying param_values on NodeState directly (e.g. in tests).
+    void sync_node_to_compiled(const std::string& node_id);
     void shutdown();
     const std::vector<NodeState>& nodes() const { return nodes_; }
     std::vector<NodeState>& nodes_mut() { return nodes_; }
@@ -179,9 +184,6 @@ public:
     int solo_node_idx() const { return solo_node_idx_; }
     bool is_solo_active() const { return solo_node_idx_ >= 0; }
     const std::vector<bool>& solo_active_set() const { return solo_active_set_; }
-    void inject_external_output(uint32_t node_idx, uint32_t port_idx, float value);
-    void inject_external_spread(uint32_t node_idx, uint32_t port_idx,
-                                const float* data, uint32_t length);
 
     // Hot-reload: destroy old instances, swap dylib, recreate with param reconciliation
     bool reload_operator(const std::string& type_name, OperatorRegistry& registry,
@@ -205,11 +207,13 @@ public:
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
 
-    // New cadence-aware runtime (Phase 5 adapter)
+    // Cadence-aware runtime accessors
     CompiledGraph* compiled_graph() { return compiled_graph_.get(); }
     const CompiledGraph* compiled_graph() const { return compiled_graph_.get(); }
     CadenceBridge& cadence_bridge() { return cadence_bridge_; }
     const CadenceBridge& cadence_bridge() const { return cadence_bridge_; }
+    FrameExecutor& frame_executor() { return frame_executor_; }
+    const FrameExecutor& frame_executor() const { return frame_executor_; }
 
 private:
     void init_node_state(NodeState& ns, const VividOperatorDescriptor* desc,
@@ -227,7 +231,7 @@ private:
     int solo_node_idx_ = -1;
     std::vector<bool> solo_active_set_;
 
-    // Cadence-aware runtime (Phase 5 adapter layer)
+    // Cadence-aware runtime
     std::unique_ptr<CompiledGraph> compiled_graph_;
     FrameExecutor frame_executor_;
     CadenceBridge cadence_bridge_;

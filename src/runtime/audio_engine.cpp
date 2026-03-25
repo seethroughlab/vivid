@@ -740,7 +740,7 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
     waveform_ring_pos_.resize(n, 0);
     for (auto& ring : waveform_rings_) ring.fill(0.0f);
 
-    // Build param mappings: ALL audio nodes → scheduler nodes (for push_params)
+    // Build param mappings: ALL audio nodes → scheduler nodes
     param_mappings_.clear();
     analysis_mappings_.clear();
     for (uint32_t ai = 0; ai < n; ++ai) {
@@ -856,14 +856,13 @@ bool AudioEngine::build(const Graph& graph, OperatorRegistry& registry, const Sc
         }
     }
 
-    // Build AudioExecutor and activate the new audio path
+    // Build AudioExecutor
     if (compiled_graph_ && cadence_bridge_) {
         audio_executor_ = std::make_unique<AudioExecutor>();
         if (audio_executor_->build(*compiled_graph_)) {
             // Start with null device — AudioEngine owns the real miniaudio device.
             // This sets bridge_ and graph_ pointers so process_audio_for_test() works.
             audio_executor_->start(*cadence_bridge_, *compiled_graph_, /*use_null_device=*/true);
-            use_new_audio_path_ = true;
         } else {
             audio_executor_.reset();
         }
@@ -913,111 +912,19 @@ bool AudioEngine::start(bool use_null_device) {
     return true;
 }
 
-void AudioEngine::push_params(const Scheduler& scheduler) {
-    // Delegate to CadenceBridge (AudioExecutor drives the audio callback)
-    if (cadence_bridge_ && compiled_graph_ && use_new_audio_path_) {
-        // Sync frame-rate node outputs from NodeState → CompiledNode
-        // (external code may have modified output_values directly, e.g. tests)
-        for (const auto& ns : scheduler.nodes()) {
-            auto* cn = compiled_graph_->find_node(ns.node_id);
-            if (!cn || cn->active_cadence == Cadence::Audio) continue;
-            cn->output_values = ns.output_values;
-            cn->output_spreads = ns.output_spreads;
-            cn->param_values = ns.param_values;
-        }
-        cadence_bridge_->push_to_audio(*compiled_graph_);
-        return;
-    }
-
-    // AudioExecutor should always be active after build().
-    std::fprintf(stderr, "[vivid] AudioEngine::push_params() skipped: new audio path not active\n");
-}
-
-void AudioEngine::update_sources(double time, const Scheduler& scheduler) {
-    if (cadence_bridge_ && compiled_graph_ && use_new_audio_path_) {
-        cadence_bridge_->update_sources(time, *compiled_graph_);
-        return;
-    }
-
-    // AudioExecutor should always be active after build().
-    std::fprintf(stderr, "[vivid] AudioEngine::update_sources() skipped: new audio path not active\n");
-}
-
-void AudioEngine::inject_analysis(Scheduler& scheduler) {
-    // Delegate to CadenceBridge when AudioExecutor is driving the callback
-    if (cadence_bridge_ && compiled_graph_ && use_new_audio_path_) {
-        cadence_bridge_->pull_from_audio(*compiled_graph_);
-        // Also sync analysis results to NodeState for inspector/UI
-        for (const auto& pm : param_mappings_) {
-            auto* cn = compiled_graph_->find_node(nodes_[pm.audio_engine_idx].node_id);
-            if (!cn) continue;
-            auto& ns = scheduler.nodes_mut()[pm.scheduler_node_idx];
-            ns.errored = cn->errored;
-            ns.error_message = cn->error_message;
-            // Float outputs
-            for (const auto& fm : pm.float_output_mappings) {
-                if (fm.audio_float_ordinal < cn->float_output_values.size() &&
-                    fm.scheduler_port_idx < ns.output_values.size()) {
-                    float val = cn->float_output_values[fm.audio_float_ordinal];
-                    scheduler.inject_external_output(pm.scheduler_node_idx,
-                                                     fm.scheduler_port_idx, val);
-                }
-            }
-            // Spread outputs
-            for (const auto& sm : pm.spread_output_mappings) {
-                if (sm.audio_port_idx < cn->output_spreads.size() &&
-                    sm.scheduler_port_idx < ns.output_spreads.size()) {
-                    const auto& src = cn->output_spreads[sm.audio_port_idx];
-                    ns.output_spreads[sm.scheduler_port_idx] = src;
-                    scheduler.inject_external_spread(pm.scheduler_node_idx,
-                                                     sm.scheduler_port_idx,
-                                                     src.data(),
-                                                     static_cast<uint32_t>(src.size()));
-                }
-            }
-        }
-        // Analysis ports (rms/peak/waveform)
-        for (const auto& am : analysis_mappings_) {
-            auto* cn = compiled_graph_->find_node(nodes_[am.audio_engine_idx].node_id);
-            if (!cn) continue;
-            auto rms_it = cn->analysis_output_port_indices.find("rms");
-            auto peak_it = cn->analysis_output_port_indices.find("peak");
-            if (rms_it != cn->analysis_output_port_indices.end() &&
-                rms_it->second < cn->output_values.size())
-                scheduler.inject_external_output(am.scheduler_node_idx,
-                                                 am.rms_port_idx,
-                                                 cn->output_values[rms_it->second]);
-            if (peak_it != cn->analysis_output_port_indices.end() &&
-                peak_it->second < cn->output_values.size())
-                scheduler.inject_external_output(am.scheduler_node_idx,
-                                                 am.peak_port_idx,
-                                                 cn->output_values[peak_it->second]);
-        }
-        return;
-    }
-
-    // AudioExecutor should always be active after build().
-    std::fprintf(stderr, "[vivid] AudioEngine::inject_analysis() skipped: new audio path not active\n");
-}
-
 const AnalysisSnapshot& AudioEngine::analysis_read() const {
-    if (use_new_audio_path_ && cadence_bridge_) {
-        return cadence_bridge_->active_analysis();
-    }
-    // Fallback: return empty analysis (new audio path should always be active)
+    if (cadence_bridge_) return cadence_bridge_->active_analysis();
     return analysis_snapshots_[analysis_active_.load(std::memory_order_acquire)];
 }
 
 int AudioEngine::audio_node_index(const std::string& node_id) const {
-    if (use_new_audio_path_ && compiled_graph_) {
-        // Return the audio_order index (position in CadenceBridge snapshot arrays)
+    if (compiled_graph_) {
         for (uint32_t i = 0; i < static_cast<uint32_t>(compiled_graph_->audio_order.size()); ++i) {
             if (compiled_graph_->nodes[compiled_graph_->audio_order[i]].node_id == node_id)
                 return static_cast<int>(i);
         }
         return -1;
     }
-    // Fallback for legacy path (should not be reached after build())
     auto it = node_id_to_index_.find(node_id);
     return (it != node_id_to_index_.end()) ? it->second : -1;
 }
@@ -1231,7 +1138,6 @@ void AudioEngine::shutdown() {
         audio_executor_->shutdown();
         audio_executor_.reset();
     }
-    use_new_audio_path_ = false;
     compiled_graph_ = nullptr;
     cadence_bridge_ = nullptr;
 
@@ -1244,13 +1150,10 @@ void AudioEngine::ma_data_callback(ma_device* device_ptr, void* output, const vo
 }
 
 void AudioEngine::audio_callback(float* output, uint32_t frame_count) {
-    // Delegate to AudioExecutor (always active after build())
-    if (use_new_audio_path_ && audio_executor_) {
+    if (audio_executor_) {
         audio_executor_->process_audio_for_test(output, frame_count);
         return;
     }
-
-    // Fallback: silence (AudioExecutor should always be active)
     std::memset(output, 0, frame_count * 2 * sizeof(float));
 }
 
@@ -1287,8 +1190,8 @@ uint64_t AudioEngine::pop_recorded_samples(float* dst, uint64_t max_samples) {
 }
 
 float AudioEngine::float_input_value_for_test(int node_idx, int port_idx) const {
-    // When new audio path is active, read from CompiledGraph audio nodes
-    if (use_new_audio_path_ && compiled_graph_ && node_idx >= 0 &&
+    // Read from CompiledGraph audio nodes when available
+    if (compiled_graph_ && node_idx >= 0 &&
         node_idx < static_cast<int>(nodes_.size())) {
         auto* cn = compiled_graph_->find_node(nodes_[node_idx].node_id);
         if (cn) {

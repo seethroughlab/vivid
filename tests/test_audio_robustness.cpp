@@ -5,6 +5,8 @@
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "runtime/audio_engine.h"
+#include "runtime/cadence_bridge.h"
+#include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cmath>
 #include <chrono>
@@ -59,12 +61,13 @@ int main(int argc, char* argv[]) {
 
     // Let the audio thread run a few buffers to trigger the exception
     scheduler.tick(0.0, 1.0 / 60.0, 0);
-    audio_engine.push_params(scheduler);
+    scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // --- Test 2: Error state is propagated ---
     std::fprintf(stderr, "\n--- error state propagation ---\n");
-    audio_engine.inject_analysis(scheduler);
+    scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+    scheduler.sync_to_nodestate();
 
     int bad_idx = audio_engine.audio_node_index("bad");
     int good_idx = audio_engine.audio_node_index("good");

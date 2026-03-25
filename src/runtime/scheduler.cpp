@@ -680,16 +680,35 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
         std::fprintf(stderr, "\n");
     }
 
-    // ── Cadence-aware runtime: compile the graph in parallel ────────────
-    // The CompiledGraph is built alongside the legacy NodeState/Wire arrays.
-    // Both exist during the adapter phase; the CompiledGraph will eventually
-    // replace NodeState entirely.
+    // ── Compile the graph for the cadence-aware runtime ─────────────────
+    // CompiledGraph is the authoritative execution representation.
+    // NodeState/Wire arrays remain as read-only mirrors for UI/inspector.
     {
         GraphCompiler::Options opts;
         opts.graph_base_dir = graph_base_dir_;
         opts.operators_src_dir = operators_src_dir_;
         compiled_graph_ = GraphCompiler::compile(graph, registry, opts);
         if (compiled_graph_) {
+            // Share NodeState's operator instances with CompiledNode (frame-rate nodes).
+            // GraphCompiler created its own instances, but NodeState's are the ones
+            // initialized with correct params, file params, etc.
+            for (uint32_t i = 0; i < static_cast<uint32_t>(nodes_.size()); ++i) {
+                auto* cn = compiled_graph_->find_node(nodes_[i].node_id);
+                if (!cn) continue;
+                if (cn->active_cadence == Cadence::Audio) continue;  // AudioEngine handles these
+                // Destroy GraphCompiler's redundant instance
+                if (cn->instance && cn->loader && cn->instance != nodes_[i].instance)
+                    cn->loader->destroy_instance(cn->instance);
+                // Share NodeState's instance
+                cn->instance = nodes_[i].instance;
+                cn->loader = nodes_[i].loader;
+                cn->param_values = nodes_[i].param_values;
+                cn->param_lock_flags = nodes_[i].param_lock_flags;
+                cn->file_param_storage = nodes_[i].file_param_storage;
+                cn->file_param_ptrs.resize(cn->file_param_storage.size());
+                for (size_t j = 0; j < cn->file_param_storage.size(); ++j)
+                    cn->file_param_ptrs[j] = cn->file_param_storage[j].c_str();
+            }
             cadence_bridge_.build(*compiled_graph_);
             frame_executor_.set_operators_src_dir(operators_src_dir_);
             if (std::getenv("VIVID_VERBOSE")) {
@@ -712,96 +731,84 @@ bool Scheduler::build(const Graph& graph, OperatorRegistry& registry) {
 
 void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_state,
                      PostNodeFn on_gpu_node, const VividInputState* input) {
-    // ── Cadence-aware executor path ─────────────────────────────────────
-    if (compiled_graph_) {
-        // Sync NodeState → CompiledNode (external modifications since last tick)
-        for (uint32_t i = 0; i < static_cast<uint32_t>(nodes_.size()); ++i) {
-            auto* cn = compiled_graph_->find_node(nodes_[i].node_id);
-            if (!cn) continue;
-            if (cn->active_cadence == Cadence::Audio) continue;  // audio state managed by AudioEngine
-            // Instance/loader (may change on hot-reload)
-            cn->loader = nodes_[i].loader;
-            cn->instance = nodes_[i].instance;
-            cn->missing_operator = nodes_[i].missing_operator;
-            cn->param_values = nodes_[i].param_values;
-            cn->param_lock_flags = nodes_[i].param_lock_flags;
-            cn->file_param_storage = nodes_[i].file_param_storage;
-            cn->file_param_ptrs.resize(cn->file_param_storage.size());
-            for (size_t j = 0; j < cn->file_param_storage.size(); ++j)
-                cn->file_param_ptrs[j] = cn->file_param_storage[j].c_str();
-            cn->generation = nodes_[i].generation;
-            cn->errored = nodes_[i].errored;
-            cn->error_message = nodes_[i].error_message;
-            // GPU texture handles (allocated by allocate_gpu_textures on NodeState)
-            cn->gpu_texture = nodes_[i].gpu_texture;
-            cn->gpu_texture_view = nodes_[i].gpu_texture_view;
-            cn->gpu_tex_width = nodes_[i].gpu_tex_width;
-            cn->gpu_tex_height = nodes_[i].gpu_tex_height;
-            cn->gpu_tex_inherited = nodes_[i].gpu_tex_inherited;
-            cn->aux_gpu_textures = nodes_[i].aux_gpu_textures;
-            cn->aux_gpu_texture_views = nodes_[i].aux_gpu_texture_views;
-        }
-
-        // Run the new executor
-        frame_executor_.tick(*compiled_graph_, time, delta_time, frame,
-                             gpu_state, on_gpu_node, input);
-
-        // Sync CompiledNode → NodeState (results for inspector/MCP/UI)
-        for (uint32_t i = 0; i < static_cast<uint32_t>(nodes_.size()); ++i) {
-            auto* cn = compiled_graph_->find_node(nodes_[i].node_id);
-            if (!cn) continue;
-            nodes_[i].input_values = cn->input_values;
-            nodes_[i].output_values = cn->output_values;
-            nodes_[i].output_spreads = cn->output_spreads;
-            nodes_[i].output_string_values = cn->output_string_values;
-            nodes_[i].output_string_spreads = cn->output_string_spreads;
-            nodes_[i].param_values = cn->param_values;
-            nodes_[i].errored = cn->errored;
-            nodes_[i].error_message = cn->error_message;
-            nodes_[i].gpu_shader_error = cn->gpu_shader_error;
-            nodes_[i].gpu_shader_error_msg = cn->gpu_shader_error_msg;
-            nodes_[i].generation = cn->generation;
-            nodes_[i].last_processed_gen = cn->last_processed_gen;
-            nodes_[i].processed_this_tick = cn->processed_this_tick;
-            nodes_[i].gpu_texture = cn->gpu_texture;
-            nodes_[i].gpu_texture_view = cn->gpu_texture_view;
-            nodes_[i].gpu_tex_width = cn->gpu_tex_width;
-            nodes_[i].gpu_tex_height = cn->gpu_tex_height;
-        }
-
-        needs_gpu_realloc_ = frame_executor_.needs_gpu_realloc();
-        if (needs_gpu_realloc_) frame_executor_.clear_gpu_realloc();
-
-        // Propagate control→audio param wires for inspector display and push_params staging.
-        // Audio nodes are skipped by the frame executor but their scheduler-side param_values
-        // must reflect modulation so the inspector shows animated values and push_params()
-        // can read the current modulated value.
-        for (const auto& w : wires_) {
-            if (!w.targets_param) continue;
-            auto& to_ns = nodes_[w.to_node_idx];
-            if (!to_ns.is_audio) continue;
-            if (w.targets_file_param) {
-                const std::string& src = w.sources_file_param
-                    ? nodes_[w.from_node_idx].file_param_storage[w.from_file_param_idx]
-                    : nodes_[w.from_node_idx].output_string_values[w.from_port_idx];
-                to_ns.file_param_storage[w.to_file_param_idx] = src;
-                to_ns.file_param_ptrs[w.to_file_param_idx] =
-                    to_ns.file_param_storage[w.to_file_param_idx].c_str();
-                continue;
-            }
-            float raw = w.sources_param
-                ? nodes_[w.from_node_idx].param_values[w.from_port_idx]
-                : nodes_[w.from_node_idx].output_values[w.from_port_idx];
-            float val = has_remap(w) ? apply_remap(raw, w) : raw;
-            if (!(to_ns.param_lock_flags[w.to_port_idx] & PARAM_LOCK_WIRES))
-                to_ns.param_values[w.to_port_idx] = val;
-        }
+    if (!compiled_graph_) {
+        std::fprintf(stderr, "[vivid] Scheduler::tick() skipped: no CompiledGraph\n");
         return;
     }
+    frame_executor_.tick(*compiled_graph_, time, delta_time, frame,
+                         gpu_state, on_gpu_node, input);
+    sync_to_nodestate();
 
-    // CompiledGraph should always be available after build().
-    // If we reach here, it means GraphCompiler::compile() failed — log and bail.
-    std::fprintf(stderr, "[vivid] Scheduler::tick() skipped: CompiledGraph not available\n");
+    needs_gpu_realloc_ = frame_executor_.needs_gpu_realloc();
+    if (needs_gpu_realloc_) frame_executor_.clear_gpu_realloc();
+}
+
+void Scheduler::sync_to_nodestate() {
+    if (!compiled_graph_) return;
+
+    // Sync CompiledNode → NodeState (results for inspector/MCP/UI)
+    for (uint32_t i = 0; i < static_cast<uint32_t>(nodes_.size()); ++i) {
+        auto* cn = compiled_graph_->find_node(nodes_[i].node_id);
+        if (!cn) continue;
+        nodes_[i].input_values = cn->input_values;
+        nodes_[i].output_values = cn->output_values;
+        nodes_[i].output_spreads = cn->output_spreads;
+        nodes_[i].output_string_values = cn->output_string_values;
+        nodes_[i].output_string_spreads = cn->output_string_spreads;
+        nodes_[i].param_values = cn->param_values;
+        nodes_[i].errored = cn->errored;
+        nodes_[i].error_message = cn->error_message;
+        nodes_[i].gpu_shader_error = cn->gpu_shader_error;
+        nodes_[i].gpu_shader_error_msg = cn->gpu_shader_error_msg;
+        nodes_[i].generation = cn->generation;
+        nodes_[i].last_processed_gen = cn->last_processed_gen;
+        nodes_[i].processed_this_tick = cn->processed_this_tick;
+        nodes_[i].gpu_texture = cn->gpu_texture;
+        nodes_[i].gpu_texture_view = cn->gpu_texture_view;
+        nodes_[i].gpu_tex_width = cn->gpu_tex_width;
+        nodes_[i].gpu_tex_height = cn->gpu_tex_height;
+    }
+
+    // Propagate control→audio param wires for inspector display.
+    // Audio nodes are skipped by the frame executor but their scheduler-side param_values
+    // must reflect modulation so the inspector shows animated values.
+    for (const auto& w : wires_) {
+        if (!w.targets_param) continue;
+        auto& to_ns = nodes_[w.to_node_idx];
+        if (!to_ns.is_audio) continue;
+        if (w.targets_file_param) {
+            const std::string& src = w.sources_file_param
+                ? nodes_[w.from_node_idx].file_param_storage[w.from_file_param_idx]
+                : nodes_[w.from_node_idx].output_string_values[w.from_port_idx];
+            to_ns.file_param_storage[w.to_file_param_idx] = src;
+            to_ns.file_param_ptrs[w.to_file_param_idx] =
+                to_ns.file_param_storage[w.to_file_param_idx].c_str();
+            continue;
+        }
+        float raw = w.sources_param
+            ? nodes_[w.from_node_idx].param_values[w.from_port_idx]
+            : nodes_[w.from_node_idx].output_values[w.from_port_idx];
+        float val = has_remap(w) ? apply_remap(raw, w) : raw;
+        if (!(to_ns.param_lock_flags[w.to_port_idx] & PARAM_LOCK_WIRES))
+            to_ns.param_values[w.to_port_idx] = val;
+    }
+}
+
+void Scheduler::sync_node_to_compiled(const std::string& node_id) {
+    if (!compiled_graph_) return;
+    auto* ns = find_node_mut(node_id);
+    if (!ns) return;
+    auto* cn = compiled_graph_->find_node(node_id);
+    if (!cn) return;
+    cn->param_values = ns->param_values;
+    cn->param_lock_flags = ns->param_lock_flags;
+    cn->file_param_storage = ns->file_param_storage;
+    cn->file_param_ptrs.resize(cn->file_param_storage.size());
+    for (size_t j = 0; j < cn->file_param_storage.size(); ++j)
+        cn->file_param_ptrs[j] = cn->file_param_storage[j].c_str();
+    cn->output_values = ns->output_values;
+    cn->output_spreads = ns->output_spreads;
+    cn->generation = ns->generation;
 }
 
 bool Scheduler::has_gpu_operators() const {
@@ -867,44 +874,6 @@ bool Scheduler::is_audio_type(const std::string& type_name) const {
     return false;
 }
 
-void Scheduler::inject_external_output(uint32_t node_idx, uint32_t port_idx, float value) {
-    if (node_idx >= nodes_.size()) return;
-    auto& ns = nodes_[node_idx];
-    if (port_idx >= ns.output_values.size()) return;
-    if (ns.output_values[port_idx] != value) {
-        ns.output_values[port_idx] = value;
-        ns.prev_output_values[port_idx] = value;
-        ns.generation++;
-    }
-    // Also update CompiledNode if available
-    if (compiled_graph_ && node_idx < compiled_graph_->nodes.size()) {
-        auto& cn = compiled_graph_->nodes[node_idx];
-        if (port_idx < cn.output_values.size()) {
-            cn.output_values[port_idx] = value;
-            if (port_idx < cn.prev_output_values.size())
-                cn.prev_output_values[port_idx] = value;
-            cn.generation++;
-        }
-    }
-}
-
-void Scheduler::inject_external_spread(uint32_t node_idx, uint32_t port_idx,
-                                       const float* data, uint32_t length) {
-    if (node_idx >= nodes_.size()) return;
-    auto& ns = nodes_[node_idx];
-    if (port_idx >= ns.output_spreads.size()) return;
-    if (length > kMaxSpreadCapacity) length = kMaxSpreadCapacity;
-    ns.output_spreads[port_idx].assign(data, data + length);
-    ns.generation++;
-    // Also update CompiledNode if available
-    if (compiled_graph_ && node_idx < compiled_graph_->nodes.size()) {
-        auto& cn = compiled_graph_->nodes[node_idx];
-        if (port_idx < cn.output_spreads.size()) {
-            cn.output_spreads[port_idx].assign(data, data + length);
-            cn.generation++;
-        }
-    }
-}
 
 const NodeState* Scheduler::find_node(const std::string& id) const {
     for (const auto& ns : nodes_) {
@@ -966,6 +935,11 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
     for (const auto& sp : saved) {
         auto& ns = nodes_[sp.node_idx];
         if (ns.instance) {
+            // Null out CompiledNode's shared instance to prevent dangling pointer
+            if (compiled_graph_) {
+                auto* cn = compiled_graph_->find_node(ns.node_id);
+                if (cn) cn->instance = nullptr;
+            }
             ns.loader->destroy_instance(ns.instance);
             ns.instance = nullptr;
         }
@@ -990,6 +964,17 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
                             ns.param_lock_flags[pi->second] = flags;
                     }
                     ns.generation++;
+                    // Sync restored instance to CompiledNode
+                    if (compiled_graph_) {
+                        auto* cn = compiled_graph_->find_node(ns.node_id);
+                        if (cn) {
+                            cn->loader = ns.loader;
+                            cn->instance = ns.instance;
+                            cn->param_values = ns.param_values;
+                            cn->param_lock_flags = ns.param_lock_flags;
+                            cn->generation = ns.generation;
+                        }
+                    }
                 }
             }
         }
@@ -1156,6 +1141,23 @@ void Scheduler::allocate_gpu_textures(WGPUDevice device, uint32_t default_w, uin
         std::fprintf(stderr, "[vivid] Allocated %ux%u texture for node '%s'\n",
                      w, h, ns.node_id.c_str());
     }
+
+    // Sync GPU texture handles to CompiledNode so FrameExecutor can use them directly.
+    if (compiled_graph_) {
+        for (uint32_t ni = 0; ni < static_cast<uint32_t>(nodes_.size()); ++ni) {
+            auto& ns = nodes_[ni];
+            if (!ns.is_gpu) continue;
+            auto* cn = compiled_graph_->find_node(ns.node_id);
+            if (!cn) continue;
+            cn->gpu_texture = ns.gpu_texture;
+            cn->gpu_texture_view = ns.gpu_texture_view;
+            cn->gpu_tex_width = ns.gpu_tex_width;
+            cn->gpu_tex_height = ns.gpu_tex_height;
+            cn->gpu_tex_inherited = ns.gpu_tex_inherited;
+            cn->aux_gpu_textures = ns.aux_gpu_textures;
+            cn->aux_gpu_texture_views = ns.aux_gpu_texture_views;
+        }
+    }
 }
 
 int Scheduler::find_gpu_sink() const {
@@ -1201,6 +1203,14 @@ void Scheduler::set_solo(int node_idx) {
 }
 
 void Scheduler::shutdown() {
+    // Null out shared instance pointers in CompiledGraph before destroying them.
+    // reload_operator() shares instances between NodeState and CompiledNode;
+    // we must prevent CompiledGraph from holding dangling pointers.
+    if (compiled_graph_) {
+        for (auto& cn : compiled_graph_->nodes)
+            cn.instance = nullptr;
+    }
+
     for (auto& ns : nodes_) {
         // Release per-node primary GPU textures.  Aux views/textures are
         // operator-owned and released by destroy_instance below.
@@ -1217,6 +1227,7 @@ void Scheduler::shutdown() {
     }
     nodes_.clear();
     wires_.clear();
+    compiled_graph_.reset();
 
     // Flush deferred wgpu-core resource cleanup.  After destroying operator
     // instances and releasing per-node textures, storage slots for pipelines,
