@@ -598,7 +598,7 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
         node["cadence_capability"] = (ns.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) ? "audio_capable" : "frame_only";
         {
             const auto* ndef = graph.find_node(ns.node_id);
-            node["cadence_override"] = ndef ? static_cast<int>(ndef->cadence_override) : 0;
+            node["cadence_override"] = ndef ? static_cast<int>(static_cast<uint8_t>(ndef->cadence_override)) : 0;
         }
         node["incoming_wires"] = static_cast<int64_t>(incoming_wires[ns.node_id]);
         node["outgoing_wires"] = static_cast<int64_t>(outgoing_wires[ns.node_id]);

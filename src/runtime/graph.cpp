@@ -118,7 +118,7 @@ static bool parse_node_fields(const nlohmann::json& val, NodeDef& node) {
     auto cadence_it = val.find("cadence");
     if (cadence_it != val.end() && cadence_it->is_number_integer()) {
         int c = cadence_it->get<int>();
-        if (c >= 0 && c <= 2) node.cadence_override = static_cast<uint8_t>(c);
+        if (c >= 0 && c <= 2) node.cadence_override = static_cast<CadenceOverride>(c);
     }
 
     // locks
@@ -280,11 +280,6 @@ bool Graph::parse_doc(const nlohmann::json& root) {
                     conn.to_max = static_cast<float>(tmax_it->get<double>());
                 if (clamp_it != val.end() && clamp_it->is_boolean())
                     conn.clamp = clamp_it->get<bool>();
-            } else {
-                // Backward compat: legacy "scale" field -> remap {0, 1, 0, scale}
-                auto scale_it = val.find("scale");
-                if (scale_it != val.end() && scale_it->is_number())
-                    conn.to_max = static_cast<float>(scale_it->get<double>());
             }
             // Deduplicate: skip if an identical connection already exists
             bool dup = false;
@@ -1039,8 +1034,8 @@ static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDe
         node_obj["resolution"] = nlohmann::ordered_json::array({static_cast<int64_t>(node.tex_width), static_cast<int64_t>(node.tex_height)});
     }
 
-    if (node.cadence_override != 0) {
-        node_obj["cadence"] = static_cast<int64_t>(node.cadence_override);
+    if (node.cadence_override != CadenceOverride::Auto) {
+        node_obj["cadence"] = static_cast<int64_t>(static_cast<uint8_t>(node.cadence_override));
     }
 
     if (!node.param_lock_flags.empty()) {

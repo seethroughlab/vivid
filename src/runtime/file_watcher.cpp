@@ -32,8 +32,8 @@ bool FileWatcher::start(const std::string& operators_dir) {
     }
 
     // Recursively find .cpp files under operators_dir and register them.
-    // Directory structure: operators/<domain>/<name>/<name>.cpp → target = <name>
-    std::vector<std::string> domains;
+    // Directory structure: operators/<category>/<name>/<name>.cpp → target = <name>
+    std::vector<std::string> categories;
     DIR* top = opendir(operators_dir.c_str());
     if (!top) {
         std::fprintf(stderr, "[vivid] FileWatcher: cannot open %s\n", operators_dir.c_str());
@@ -45,21 +45,21 @@ bool FileWatcher::start(const std::string& operators_dir) {
     while ((entry = readdir(top)) != nullptr) {
         if (entry->d_name[0] == '.') continue;
         if (entry->d_type == DT_DIR)
-            domains.push_back(entry->d_name);
+            categories.push_back(entry->d_name);
     }
     closedir(top);
 
     int count = 0;
-    for (const auto& domain : domains) {
-        std::string domain_path = operators_dir + "/" + domain;
-        DIR* ddir = opendir(domain_path.c_str());
+    for (const auto& category : categories) {
+        std::string category_path = operators_dir + "/" + category;
+        DIR* ddir = opendir(category_path.c_str());
         if (!ddir) continue;
         while ((entry = readdir(ddir)) != nullptr) {
             if (entry->d_name[0] == '.') continue;
             if (entry->d_type != DT_DIR) continue;
 
             std::string target_name = entry->d_name;
-            std::string op_dir = domain_path + "/" + target_name;
+            std::string op_dir = category_path + "/" + target_name;
 
             // Watch all .cpp files in this operator directory
             DIR* odir = opendir(op_dir.c_str());
@@ -239,7 +239,7 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
     if (!fs::exists(packages_dir)) return 0;
 
     int count = 0;
-    // Walk <config_dir>/packages/*/operators/<domain>/<name>/*.cpp
+    // Walk <config_dir>/packages/*/operators/<category>/<name>/*.cpp
     std::error_code ec;
     for (auto& pkg_entry : fs::directory_iterator(packages_dir, ec)) {
         if (ec) { ec.clear(); continue; }
@@ -252,12 +252,12 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
         std::string pkg_name = pkg_entry.path().filename().string();
 
         std::error_code ec2;
-        for (auto& domain_entry : fs::directory_iterator(ops_dir, ec2)) {
+        for (auto& category_entry : fs::directory_iterator(ops_dir, ec2)) {
             if (ec2) { ec2.clear(); continue; }
-            if (!domain_entry.is_directory()) continue;
+            if (!category_entry.is_directory()) continue;
 
             std::error_code ec3;
-            for (auto& op_entry : fs::directory_iterator(domain_entry.path(), ec3)) {
+            for (auto& op_entry : fs::directory_iterator(category_entry.path(), ec3)) {
                 if (ec3) { ec3.clear(); continue; }
                 if (!op_entry.is_directory()) continue;
 

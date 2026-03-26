@@ -27,8 +27,8 @@ public:
               void* gpu_state = nullptr, PostNodeFn on_gpu_node = nullptr,
               const VividInputState* input = nullptr);
 
-    // Solo mode
-    void set_solo(int node_idx);
+    // Solo mode — active set is computed by RuntimeCore and synced here.
+    void set_solo(int node_idx, const std::vector<bool>& active_set);
     int solo_node_idx() const { return solo_node_idx_; }
     bool is_solo_active() const { return solo_node_idx_ >= 0; }
     const std::vector<bool>& solo_active_set() const { return solo_active_set_; }
@@ -40,13 +40,21 @@ public:
                                WGPUTextureUsage extra_usage = 0);
     int find_gpu_sink(const CompiledGraph& cg) const;
     int find_effective_gpu_sink(const CompiledGraph& cg) const;
+    bool has_gpu_operators(const CompiledGraph& cg) const;
+    bool gpu_sink_source_size(const CompiledGraph& cg, int sink_idx,
+                              uint32_t& w, uint32_t& h) const;
+    WGPUTexture gpu_sink_source_texture(const CompiledGraph& cg, int sink_idx) const;
     bool needs_gpu_realloc() const { return needs_gpu_realloc_; }
     void clear_gpu_realloc() { needs_gpu_realloc_ = false; }
+
+    // Lifecycle — release GPU textures and flush device.
+    void shutdown_gpu(CompiledGraph& cg);
 
 private:
     int solo_node_idx_ = -1;
     std::vector<bool> solo_active_set_;
     bool needs_gpu_realloc_ = false;
+    WGPUDevice gpu_device_ = nullptr;
     std::string operators_src_dir_;
 
 public:

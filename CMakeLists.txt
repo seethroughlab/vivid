@@ -1749,9 +1749,9 @@ add_test(NAME test_state_machine COMMAND test_state_machine)
 
 # 3D tests are in the vivid-3d package (see ../vivid-3d/)
 
-# Cross-domain spread integration test
-add_executable(test_cross_domain_spread
-    tests/test_cross_domain_spread.cpp
+# Cross-cadence spread integration test
+add_executable(test_cross_cadence_spread
+    tests/test_cross_cadence_spread.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1764,11 +1764,11 @@ add_executable(test_cross_domain_spread
     src/runtime/audio_engine.cpp
     src/runtime/audio_executor.cpp
 )
-target_include_directories(test_cross_domain_spread PRIVATE src)
-target_link_libraries(test_cross_domain_spread PRIVATE
+target_include_directories(test_cross_cadence_spread PRIVATE src)
+target_link_libraries(test_cross_cadence_spread PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
-add_dependencies(test_cross_domain_spread spread_source_op audio_spread_op)
-add_test(NAME test_cross_domain_spread COMMAND test_cross_domain_spread
+add_dependencies(test_cross_cadence_spread spread_source_op audio_spread_op)
+add_test(NAME test_cross_cadence_spread COMMAND test_cross_cadence_spread
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Spread broadcast/wrap test
@@ -1852,7 +1852,7 @@ configure_file(tests/graphs/test_runtime_api.json ${CMAKE_BINARY_DIR}/test_runti
 configure_file(tests/graphs/test_audio_engine.json ${CMAKE_BINARY_DIR}/test_audio_engine.json COPYONLY)
 configure_file(tests/graphs/test_audio_robustness.json ${CMAKE_BINARY_DIR}/test_audio_robustness.json COPYONLY)
 configure_file(tests/graphs/test_spread_broadcast.json ${CMAKE_BINARY_DIR}/test_spread_broadcast.json COPYONLY)
-configure_file(tests/graphs/test_cross_domain_spread.json ${CMAKE_BINARY_DIR}/test_cross_domain_spread.json COPYONLY)
+configure_file(tests/graphs/test_cross_cadence_spread.json ${CMAKE_BINARY_DIR}/test_cross_cadence_spread.json COPYONLY)
 configure_file(tests/graphs/test_audio_spread_wire.json ${CMAKE_BINARY_DIR}/test_audio_spread_wire.json COPYONLY)
 configure_file(tests/graphs/test_mixed_runtime_stability.json ${CMAKE_BINARY_DIR}/test_mixed_runtime_stability.json COPYONLY)
 configure_file(tests/graphs/test_package_stress.json ${CMAKE_BINARY_DIR}/test_package_stress.json COPYONLY)
@@ -1941,8 +1941,8 @@ set_tests_properties(test_media_headless PROPERTIES
     TIMEOUT 60)
 
 # Audio-domain sequencer integration test
-add_executable(test_audio_domain_sequencer
-    tests/test_audio_domain_sequencer.cpp
+add_executable(test_audio_cadence_sequencer
+    tests/test_audio_cadence_sequencer.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
@@ -1956,14 +1956,14 @@ add_executable(test_audio_domain_sequencer
     src/runtime/audio_executor.cpp
     src/runtime/builtin_operators.cpp
 )
-target_include_directories(test_audio_domain_sequencer PRIVATE src)
-target_link_libraries(test_audio_domain_sequencer PRIVATE
+target_include_directories(test_audio_cadence_sequencer PRIVATE src)
+target_link_libraries(test_audio_cadence_sequencer PRIVATE
     vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
-add_dependencies(test_audio_domain_sequencer clock oscillator gain)
-add_test(NAME test_audio_domain_sequencer
-    COMMAND test_audio_domain_sequencer ${CMAKE_BINARY_DIR}
+add_dependencies(test_audio_cadence_sequencer clock oscillator gain)
+add_test(NAME test_audio_cadence_sequencer
+    COMMAND test_audio_cadence_sequencer ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-set_tests_properties(test_audio_domain_sequencer PROPERTIES LABELS "STABILITY")
+set_tests_properties(test_audio_cadence_sequencer PROPERTIES LABELS "STABILITY")
 
 # PackageCompiler unit test (compiles a mock package operator)
 add_executable(test_package_compiler

@@ -2,6 +2,7 @@
 
 #include "operator_api/types.h"
 #include "runtime/operator_loader.h"
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -78,6 +79,11 @@ struct CompiledEdge {
     uint8_t from_channels = 1;
     uint8_t to_channels = 1;
 
+    // Precomputed SIGNAL ordinals — the index of from_port/to_port among
+    // VIVID_PORT_SIGNAL ports only.  Set by GraphCompiler for SIGNAL edges.
+    uint32_t from_signal_ordinal = 0;
+    uint32_t to_signal_ordinal = 0;
+
     // Remap transform.
     float from_min = 0.0f, from_max = 1.0f;
     float to_min   = 0.0f, to_max  = 1.0f;
@@ -87,6 +93,30 @@ struct CompiledEdge {
     uint32_t custom_type_id = 0;
     VividPortTransport port_transport = VIVID_PORT_TRANSPORT_SIGNAL;
     uint32_t custom_payload_size = 0;
+
+    // Remap helpers.
+    bool has_remap() const {
+        return from_min != 0.0f || from_max != 1.0f ||
+               to_min  != 0.0f || to_max  != 1.0f || clamp;
+    }
+
+    float apply_remap(float val) const {
+        float range = from_max - from_min;
+        float t = (range != 0.0f) ? (val - from_min) / range : 0.5f;
+        float out = to_min + t * (to_max - to_min);
+        if (clamp) {
+            float lo = std::min(to_min, to_max);
+            float hi = std::max(to_min, to_max);
+            out = std::max(lo, std::min(hi, out));
+        }
+        return out;
+    }
+
+    // Scale factor for snapshot edges (simplified remap for cross-cadence paths).
+    float remap_scale() const {
+        float range = from_max - from_min;
+        return (range != 0.0f) ? (to_max - to_min) / range : 1.0f;
+    }
 };
 
 // ---------------------------------------------------------------------------
@@ -278,6 +308,15 @@ struct CompiledGraph {
     CompiledNode* find_node(const std::string& id) {
         auto it = node_id_to_index.find(id);
         return it != node_id_to_index.end() ? &nodes[it->second] : nullptr;
+    }
+
+    // Check if any audio-cadence node instances of a given type exist.
+    // Scans only audio_order (typically 2-5 nodes), not all nodes.
+    bool has_audio_cadence_instances(const std::string& type_name) const {
+        for (uint32_t ni : audio_order) {
+            if (nodes[ni].type_name == type_name) return true;
+        }
+        return false;
     }
 };
 

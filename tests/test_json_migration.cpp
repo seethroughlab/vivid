@@ -219,7 +219,7 @@ int main() {
         "test_audio_engine.json",
         "test_audio_robustness.json",
         "test_audio_spread_wire.json",
-        "test_cross_domain_spread.json",
+        "test_cross_cadence_spread.json",
         "test_mixed_runtime_stability.json",
         "test_package_stress.json",
         "test_reload.json",

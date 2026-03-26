@@ -1,9 +1,11 @@
 #include "runtime/frame_executor.h"
 #include "runtime/crash_guard.h"
 #include "runtime/shared_handle_registry.h"
+#include "common/gpu_util.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/type_id.h"
 #include <webgpu/webgpu.h>
+#include <webgpu/wgpu.h>
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -11,30 +13,6 @@
 namespace vivid {
 
 static constexpr uint32_t kMaxSpreadCapacity = 1024;
-
-// Check if an edge has non-default remap
-inline bool has_remap(const CompiledEdge& e) {
-    return e.from_min != 0.0f || e.from_max != 1.0f ||
-           e.to_min  != 0.0f || e.to_max  != 1.0f || e.clamp;
-}
-
-// Apply remap: maps val from [from_min, from_max] to [to_min, to_max]
-inline float apply_remap(float val, const CompiledEdge& e) {
-    float range = e.from_max - e.from_min;
-    float t;
-    if (range != 0.0f) {
-        t = (val - e.from_min) / range;
-    } else {
-        t = 0.5f;
-    }
-    float out = e.to_min + t * (e.to_max - e.to_min);
-    if (e.clamp) {
-        float lo = std::min(e.to_min, e.to_max);
-        float hi = std::max(e.to_min, e.to_max);
-        out = std::max(lo, std::min(hi, out));
-    }
-    return out;
-}
 
 void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                          uint64_t frame, void* gpu_state,
@@ -106,7 +84,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             float raw = e.sources_param
                 ? from_cn.param_values[e.from_port]
                 : from_cn.output_values[e.from_port];
-            float val = has_remap(e) ? apply_remap(raw, e) : raw;
+            float val = e.has_remap() ? e.apply_remap(raw) : raw;
 
             if (e.targets_param) {
                 if (cn.param_lock_flags.size() > e.to_port &&
@@ -123,8 +101,8 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                         auto& dst_spread = cn.input_spreads[e.to_port];
                         if (dst_spread.empty()) {
                             dst_spread = src_spread;
-                            if (has_remap(e)) {
-                                for (auto& v : dst_spread) v = apply_remap(v, e);
+                            if (e.has_remap()) {
+                                for (auto& v : dst_spread) v = e.apply_remap(v);
                             }
                         } else {
                             size_t old_len = dst_spread.size();
@@ -138,7 +116,7 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
                             }
                             for (size_t j = 0; j < new_len; ++j) {
                                 float sv = src_spread[j % src_len];
-                                if (has_remap(e)) sv = apply_remap(sv, e);
+                                if (e.has_remap()) sv = e.apply_remap(sv);
                                 dst_spread[j] += sv;
                             }
                         }
@@ -437,9 +415,9 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
     }
 }
 
-void FrameExecutor::set_solo(int node_idx) {
+void FrameExecutor::set_solo(int node_idx, const std::vector<bool>& active_set) {
     solo_node_idx_ = node_idx;
-    // TODO: Rebuild solo_active_set_ from graph topology
+    solo_active_set_ = active_set;
 }
 
 int FrameExecutor::find_gpu_sink(const CompiledGraph& cg) const {
@@ -457,11 +435,149 @@ int FrameExecutor::find_effective_gpu_sink(const CompiledGraph& cg) const {
     return find_gpu_sink(cg);
 }
 
-void FrameExecutor::allocate_gpu_textures(CompiledGraph& /*cg*/, WGPUDevice /*device*/,
-                                          uint32_t /*default_w*/, uint32_t /*default_h*/,
-                                          WGPUTextureFormat /*format*/,
-                                          WGPUTextureUsage /*extra_usage*/) {
-    // TODO: Port from Scheduler::allocate_gpu_textures()
+void FrameExecutor::allocate_gpu_textures(CompiledGraph& cg, WGPUDevice device,
+                                          uint32_t default_w, uint32_t default_h,
+                                          WGPUTextureFormat format,
+                                          WGPUTextureUsage extra_usage) {
+    gpu_device_ = device;
+
+    // Iterate nodes in topological order (they're already sorted)
+    for (uint32_t ni = 0; ni < static_cast<uint32_t>(cg.nodes.size()); ++ni) {
+        auto& cn = cg.nodes[ni];
+        if (!cn.is_gpu) continue;
+
+        // Release existing primary textures.
+        if (cn.gpu_texture_view) { wgpuTextureViewRelease(cn.gpu_texture_view); cn.gpu_texture_view = nullptr; }
+        if (cn.gpu_texture) { wgpuTextureRelease(cn.gpu_texture); cn.gpu_texture = nullptr; }
+        for (auto& v : cn.aux_gpu_texture_views) v = nullptr;
+        for (auto& t : cn.aux_gpu_textures)      t = nullptr;
+
+        // GPU sinks and scene-only nodes don't produce their own textures
+        cn.gpu_tex_inherited = false;
+        if (cn.is_gpu_sink || !cn.has_texture_output) {
+            cn.gpu_tex_width  = 0;
+            cn.gpu_tex_height = 0;
+            continue;
+        }
+
+        // Resolve texture size
+        uint32_t w = cn.gpu_tex_width;
+        uint32_t h = cn.gpu_tex_height;
+
+        // Nodes with texture inputs always inherit from upstream (filters).
+        if (!cn.texture_input_port_indices.empty()) {
+            uint32_t first_tex_port = cn.texture_input_port_indices[0];
+            for (const auto& e : cg.edges) {
+                if (e.to_node == ni && !e.targets_param &&
+                    e.to_port == first_tex_port && e.data_type == VIVID_PORT_TEXTURE) {
+                    const auto& upstream = cg.nodes[e.from_node];
+                    if (upstream.gpu_tex_width > 0 && upstream.gpu_tex_height > 0) {
+                        w = upstream.gpu_tex_width;
+                        h = upstream.gpu_tex_height;
+                        cn.gpu_tex_inherited = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Fall back to default if still unresolved
+        if (w == 0 || h == 0) {
+            w = default_w;
+            h = default_h;
+        }
+
+        cn.gpu_tex_width  = w;
+        cn.gpu_tex_height = h;
+
+        // Create texture
+        WGPUTextureDescriptor tex_desc{};
+        std::string label = "Node Texture [" + cn.node_id + "]";
+        tex_desc.label = to_sv(label.c_str());
+        tex_desc.size = { w, h, 1 };
+        tex_desc.mipLevelCount = 1;
+        tex_desc.sampleCount = 1;
+        tex_desc.dimension = WGPUTextureDimension_2D;
+        tex_desc.format = format;
+        tex_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding
+                       | WGPUTextureUsage_CopySrc | WGPUTextureUsage_CopyDst | extra_usage;
+        cn.gpu_texture = wgpuDeviceCreateTexture(device, &tex_desc);
+        if (!cn.gpu_texture) {
+            std::fprintf(stderr, "[vivid] GPU texture alloc failed for node '%s'\n", cn.node_id.c_str());
+            continue;
+        }
+
+        WGPUTextureViewDescriptor view_desc{};
+        std::string view_label = "Node View [" + cn.node_id + "]";
+        view_desc.label = to_sv(view_label.c_str());
+        view_desc.format = format;
+        view_desc.dimension = WGPUTextureViewDimension_2D;
+        view_desc.baseMipLevel = 0;
+        view_desc.mipLevelCount = 1;
+        view_desc.baseArrayLayer = 0;
+        view_desc.arrayLayerCount = 1;
+        view_desc.aspect = WGPUTextureAspect_All;
+        cn.gpu_texture_view = wgpuTextureCreateView(cn.gpu_texture, &view_desc);
+        if (!cn.gpu_texture_view) {
+            std::fprintf(stderr, "[vivid] GPU texture view creation failed for node '%s'\n", cn.node_id.c_str());
+            wgpuTextureRelease(cn.gpu_texture);
+            cn.gpu_texture = nullptr;
+            continue;
+        }
+
+        std::fprintf(stderr, "[vivid] Allocated %ux%u texture for node '%s'\n",
+                     w, h, cn.node_id.c_str());
+    }
+}
+
+bool FrameExecutor::has_gpu_operators(const CompiledGraph& cg) const {
+    for (const auto& cn : cg.nodes)
+        if (cn.is_gpu) return true;
+    return false;
+}
+
+bool FrameExecutor::gpu_sink_source_size(const CompiledGraph& cg, int sink_idx,
+                                         uint32_t& w, uint32_t& h) const {
+    for (const auto& e : cg.edges) {
+        if (e.to_node == static_cast<uint32_t>(sink_idx) &&
+            e.data_type == VIVID_PORT_TEXTURE && !e.targets_param) {
+            const auto& up = cg.nodes[e.from_node];
+            w = up.gpu_tex_width;
+            h = up.gpu_tex_height;
+            return w > 0 && h > 0;
+        }
+    }
+    return false;
+}
+
+WGPUTexture FrameExecutor::gpu_sink_source_texture(const CompiledGraph& cg, int sink_idx) const {
+    for (const auto& e : cg.edges) {
+        if (e.to_node == static_cast<uint32_t>(sink_idx) &&
+            e.data_type == VIVID_PORT_TEXTURE && !e.targets_param) {
+            const auto& up = cg.nodes[e.from_node];
+            for (size_t ai = 0; ai < up.aux_texture_output_port_indices.size(); ++ai) {
+                if (e.from_port ==
+                        static_cast<uint32_t>(up.aux_texture_output_port_indices[ai]))
+                    return up.aux_gpu_textures[ai];
+            }
+            return up.gpu_texture;  // primary
+        }
+    }
+    return nullptr;
+}
+
+void FrameExecutor::shutdown_gpu(CompiledGraph& cg) {
+    for (auto& cn : cg.nodes) {
+        if (cn.gpu_texture_view) { wgpuTextureViewRelease(cn.gpu_texture_view); cn.gpu_texture_view = nullptr; }
+        if (cn.gpu_texture) { wgpuTextureRelease(cn.gpu_texture); cn.gpu_texture = nullptr; }
+        for (auto& v : cn.aux_gpu_texture_views) v = nullptr;
+        for (auto& t : cn.aux_gpu_textures)      t = nullptr;
+    }
+
+    if (gpu_device_) {
+        wgpuDevicePoll(gpu_device_, true, nullptr);
+        gpu_device_ = nullptr;
+    }
 }
 
 } // namespace vivid

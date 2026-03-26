@@ -59,7 +59,7 @@ int main(int argc, char* argv[]) {
     check(scheduler.build(graph, registry), "scheduler.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(graph, registry, scheduler), "audio_engine.build()");
+    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
 
     scheduler.tick(0.0, 0.016, 0);
     scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());

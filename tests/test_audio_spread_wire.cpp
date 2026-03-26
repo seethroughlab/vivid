@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
 
     // --- Test 1: Build succeeds (audio spread wire created) ---
     std::fprintf(stderr, "\n--- build ---\n");
-    check(audio_engine.build(graph, registry, scheduler), "audio_engine.build()");
+    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
 
     int recv_idx = audio_engine.audio_node_index("recv");
     check(recv_idx >= 0, "recv node found in engine");

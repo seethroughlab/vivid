@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
     check(scheduler.build(graph, registry), "scheduler.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(graph, registry, scheduler), "audio_engine.build()");
+    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
 
     std::fprintf(stderr, "\n--- initial v1 processing ---\n");
     check_float(first_sample_after_process(audio_engine), 4.0f, 1e-4f,

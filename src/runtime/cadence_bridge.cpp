@@ -85,30 +85,6 @@ void CadenceBridge::build(const CompiledGraph& cg) {
 // propagate_audio_display_params — update audio node param_values for display
 // ---------------------------------------------------------------------------
 
-// Check if a CompiledEdge has non-default remap (any field differs from identity mapping)
-static bool has_remap(const CompiledEdge& e) {
-    return e.from_min != 0.0f || e.from_max != 1.0f ||
-           e.to_min  != 0.0f || e.to_max  != 1.0f || e.clamp;
-}
-
-// Apply remap: maps val from [from_min, from_max] to [to_min, to_max]
-static float apply_remap(float val, const CompiledEdge& e) {
-    float range = e.from_max - e.from_min;
-    float t;
-    if (range != 0.0f) {
-        t = (val - e.from_min) / range;
-    } else {
-        t = 0.5f;
-    }
-    float out = e.to_min + t * (e.to_max - e.to_min);
-    if (e.clamp) {
-        float lo = std::min(e.to_min, e.to_max);
-        float hi = std::max(e.to_min, e.to_max);
-        out = std::max(lo, std::min(hi, out));
-    }
-    return out;
-}
-
 void CadenceBridge::propagate_audio_display_params(CompiledGraph& cg) {
     for (const auto& e : cg.edges) {
         if (!e.targets_param) continue;
@@ -127,7 +103,7 @@ void CadenceBridge::propagate_audio_display_params(CompiledGraph& cg) {
         float raw = e.sources_param
             ? from_cn.param_values[e.from_port]
             : from_cn.output_values[e.from_port];
-        float val = has_remap(e) ? apply_remap(raw, e) : raw;
+        float val = e.has_remap() ? e.apply_remap(raw) : raw;
         if (!(to_cn.param_lock_flags[e.to_port] & PARAM_LOCK_WIRES))
             to_cn.param_values[e.to_port] = val;
     }
@@ -137,10 +113,6 @@ void CadenceBridge::propagate_audio_display_params(CompiledGraph& cg) {
 // push_to_audio — snapshot frame-rate outputs for audio consumption
 // ---------------------------------------------------------------------------
 
-static float compute_scale(const CompiledEdge& e) {
-    float range = e.from_max - e.from_min;
-    return (range != 0.0f) ? (e.to_max - e.to_min) / range : 1.0f;
-}
 
 void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
     int write_idx = 1 - param_active_.load(std::memory_order_acquire);
@@ -171,7 +143,7 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
             float val = e.sources_param
                 ? from_cn.param_values[e.from_port]
                 : from_cn.output_values[e.from_port];
-            val *= compute_scale(e);
+            val *= e.remap_scale();
             if (e.to_port < snap.node_params[si].size())
                 snap.node_params[si][e.to_port] = val;
         } else if (e.data_type == VIVID_PORT_SPREAD && !e.targets_param) {
@@ -182,7 +154,7 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
                 auto& dst = snap.spread_inputs[si][e.to_port];
                 dst.length = std::min(static_cast<uint32_t>(src.size()),
                                       SpreadSnapshot::kMaxLength);
-                float scale = compute_scale(e);
+                float scale = e.remap_scale();
                 for (uint32_t j = 0; j < dst.length; ++j)
                     dst.data[j] = src[j] * scale;
             }
@@ -202,15 +174,9 @@ void CadenceBridge::push_to_audio(const CompiledGraph& cg) {
             float val = e.sources_param
                 ? from_cn.param_values[e.from_port]
                 : from_cn.output_values[e.from_port];
-            val *= compute_scale(e);
-            // Need to find the float input ordinal for this port
-            const auto& to_cn = cg.nodes[e.to_node];
-            uint32_t float_ord = 0;
-            for (uint32_t p = 0; p < e.to_port && p < to_cn.input_port_types.size(); ++p) {
-                if (to_cn.input_port_types[p] == VIVID_PORT_SIGNAL) float_ord++;
-            }
-            if (float_ord < snap.float_input_values[si].size())
-                snap.float_input_values[si][float_ord] = val;
+            val *= e.remap_scale();
+            if (e.to_signal_ordinal < snap.float_input_values[si].size())
+                snap.float_input_values[si][e.to_signal_ordinal] = val;
         } else if (vivid_is_custom_port_type(e.data_type) && !e.targets_param) {
             // Custom type snapshot
             if (e.from_port < from_cn.custom_output_port_indices.size()) {
@@ -271,16 +237,10 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
         auto& to_cn = cg.nodes[e.to_node];
 
         if (e.data_type == VIVID_PORT_SIGNAL && !e.sources_param) {
-            // Float output → frame-rate input
-            // Find the float output ordinal for the source port
-            const auto& from_cn = cg.nodes[e.from_node];
-            uint32_t float_ord = 0;
-            for (uint32_t p = 0; p < e.from_port && p < from_cn.output_port_types.size(); ++p) {
-                if (from_cn.output_port_types[p] == VIVID_PORT_SIGNAL) float_ord++;
-            }
+            // Float output → frame-rate input (use precomputed ordinal)
             if (si < snap.float_outputs.size() &&
-                float_ord < snap.float_outputs[si].size()) {
-                float val = snap.float_outputs[si][float_ord];
+                e.from_signal_ordinal < snap.float_outputs[si].size()) {
+                float val = snap.float_outputs[si][e.from_signal_ordinal];
                 if (e.targets_param) {
                     if (e.to_port < to_cn.param_values.size())
                         to_cn.param_values[e.to_port] = val;

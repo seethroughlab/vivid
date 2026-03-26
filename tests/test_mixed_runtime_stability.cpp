@@ -157,7 +157,7 @@ int main(int argc, char* argv[]) {
     scheduler.allocate_gpu_textures(gpu.device, 64, 64, WGPUTextureFormat_RGBA8Unorm);
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(graph, registry, scheduler), "audio_engine.build()");
+    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
 
     const int iterations = soak ? 1200 : 240;
     const uint32_t underruns_before = audio_engine.underrun_count();

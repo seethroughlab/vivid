@@ -342,7 +342,7 @@ CommandResult RuntimeAPI::set_cadence_override(const std::string& node_id, uint8
 
     NodeDef* ndef = graph_.find_node(node_id);
     if (!ndef) return {false, "unknown node '" + node_id + "'"};
-    ndef->cadence_override = cadence;
+    ndef->cadence_override = static_cast<CadenceOverride>(cadence);
 
     // Trigger a full rebuild to apply the cadence change
     pending_topology_change_ = true;
@@ -523,7 +523,7 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
 
     // 6. Rebuild audio if there are audio operators
     if (scheduler_.has_audio_operators()) {
-        if (audio_engine_.build(graph_, registry_, scheduler_)) {
+        if (audio_engine_.build(scheduler_.core())) {
             if (audio_engine_.start()) {
                 has_audio = true;
             }
@@ -1435,7 +1435,7 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
 
         has_audio = false;
         if (scheduler_.has_audio_operators()) {
-            if (audio_engine_.build(graph_, registry_, scheduler_)) {
+            if (audio_engine_.build(scheduler_.core())) {
                 if (audio_engine_.start()) {
                     has_audio = true;
                 }
@@ -1501,7 +1501,7 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
     if (has_gpu_ops) needs_gpu_realloc_ = true;
 
     if (scheduler_.has_audio_operators()) {
-        if (audio_engine_.build(graph_, registry_, scheduler_)) {
+        if (audio_engine_.build(scheduler_.core())) {
             if (audio_engine_.start()) {
                 has_audio = true;
             }
@@ -1568,7 +1568,7 @@ CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {
     if (has_gpu_ops) needs_gpu_realloc_ = true;
 
     if (scheduler_.has_audio_operators()) {
-        if (audio_engine_.build(graph_, registry_, scheduler_) && audio_engine_.start())
+        if (audio_engine_.build(scheduler_.core()) && audio_engine_.start())
             has_audio = true;
     }
 
@@ -1636,7 +1636,7 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
 
         has_audio = false;
         if (scheduler_.has_audio_operators()) {
-            if (audio_engine_.build(graph_, registry_, scheduler_)) {
+            if (audio_engine_.build(scheduler_.core())) {
                 if (audio_engine_.start()) {
                     has_audio = true;
                 }
@@ -1669,7 +1669,7 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
     if (has_gpu_ops) needs_gpu_realloc_ = true;
 
     if (scheduler_.has_audio_operators()) {
-        if (audio_engine_.build(graph_, registry_, scheduler_)) {
+        if (audio_engine_.build(scheduler_.core())) {
             if (audio_engine_.start()) {
                 has_audio = true;
             }

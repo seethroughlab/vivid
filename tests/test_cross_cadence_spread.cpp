@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
 
-    std::string graph_path = build_dir + "/test_cross_domain_spread.json";
+    std::string graph_path = build_dir + "/test_cross_cadence_spread.json";
 
     // Setup: staging dir with required operators
     std::string staging = build_dir + "/.test_spread_staging";
@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
 
     // --- Test 1: Build succeeds ---
     std::fprintf(stderr, "\n--- build ---\n");
-    check(audio_engine.build(graph, registry, scheduler), "audio_engine.build()");
+    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
 
     int audio_idx = audio_engine.audio_node_index("audio");
     check(audio_idx >= 0, "audio node found in engine");
@@ -94,7 +94,7 @@ int main(int argc, char* argv[]) {
         check_float(snap.rms[audio_idx], 6.0f, 0.5f, "RMS ≈ 6.0 (sum of [1,2,3])");
     }
 
-    // --- Test 3: Spread echoed back to control domain ---
+    // --- Test 3: Spread echoed back to frame cadence ---
     std::fprintf(stderr, "\n--- spread echoed back ---\n");
     {
         // Find the scheduler node for "audio" and check its "echo" output spread

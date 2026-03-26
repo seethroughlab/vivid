@@ -3,10 +3,8 @@
 
 #include "runtime/audio_engine.h"
 #include "runtime/audio_executor.h"
-#include "runtime/cadence_bridge.h"
-#include "runtime/compiled_graph.h"
+#include "runtime/runtime_core.h"
 #include "runtime/graph_compiler.h"
-#include "runtime/scheduler.h"
 #include <cstdio>
 
 namespace vivid {
@@ -17,10 +15,9 @@ AudioEngine::~AudioEngine() {
     shutdown();
 }
 
-bool AudioEngine::build(const Graph& /*graph*/, OperatorRegistry& /*registry*/,
-                         const Scheduler& scheduler) {
-    compiled_graph_ = const_cast<CompiledGraph*>(scheduler.compiled_graph());
-    cadence_bridge_ = &const_cast<Scheduler&>(scheduler).cadence_bridge();
+bool AudioEngine::build(RuntimeCore& core) {
+    compiled_graph_ = core.compiled_graph.get();
+    cadence_bridge_ = &core.cadence_bridge;
     if (!compiled_graph_ || compiled_graph_->audio_order.empty()) {
         std::fprintf(stderr, "[vivid] AudioEngine: no audio nodes\n");
         return false;

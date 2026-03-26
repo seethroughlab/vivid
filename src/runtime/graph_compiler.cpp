@@ -76,7 +76,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         }
     }
 
-    // Domain/cadence flags
+    // Execution flags
     cn.time_dependent = desc->time_dependent != 0;
     cn.is_gpu = (desc->execution_env == VIVID_ENV_GPU);
 
@@ -366,17 +366,14 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             } else if (desc->execution_env == VIVID_ENV_AUDIO ||
                        (desc->has_process_audio && !desc->has_process_frame)) {
                 cn.active_cadence = Cadence::Audio;
-            } else if (ndef.cadence_override == 2 &&
+            } else if (ndef.cadence_override == CadenceOverride::Audio &&
                        desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) {
-                // User explicitly selected audio cadence
                 cn.active_cadence = Cadence::Audio;
-            } else if (ndef.cadence_override == 1) {
-                // User explicitly selected frame cadence
+            } else if (ndef.cadence_override == CadenceOverride::Frame) {
                 cn.active_cadence = Cadence::Frame;
-            } else if (desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) {
-                // Audio-capable operators default to audio cadence
-                cn.active_cadence = Cadence::Audio;
             } else {
+                // Audio-capable operators default to frame cadence unless
+                // explicitly promoted via CadenceOverride::Audio.
                 cn.active_cadence = Cadence::Frame;
             }
             cn.cadence_capability = desc->cadence_capability;
@@ -628,6 +625,23 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             e.transport = EdgeTransport::Direct;
         } else {
             e.transport = EdgeTransport::Snapshot;
+        }
+
+        // Precompute SIGNAL ordinals for cross-cadence and audio-direct paths.
+        // The ordinal is the index of this port among VIVID_PORT_SIGNAL ports only.
+        if (e.data_type == VIVID_PORT_SIGNAL) {
+            if (!e.sources_param) {
+                uint32_t ord = 0;
+                for (uint32_t p = 0; p < e.from_port && p < from_cn.output_port_types.size(); ++p)
+                    if (from_cn.output_port_types[p] == VIVID_PORT_SIGNAL) ord++;
+                e.from_signal_ordinal = ord;
+            }
+            if (!e.targets_param) {
+                uint32_t ord = 0;
+                for (uint32_t p = 0; p < e.to_port && p < to_cn.input_port_types.size(); ++p)
+                    if (to_cn.input_port_types[p] == VIVID_PORT_SIGNAL) ord++;
+                e.to_signal_ordinal = ord;
+            }
         }
 
         cg->edges.push_back(e);
@@ -900,6 +914,112 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     }
 
     return cg;
+}
+
+// ---------------------------------------------------------------------------
+// reload_operator — hot-reload a single operator type in-place
+// ---------------------------------------------------------------------------
+
+bool GraphCompiler::reload_operator(CompiledGraph& cg,
+                                    const std::string& type_name,
+                                    OperatorRegistry& registry,
+                                    const std::string& new_dylib_path,
+                                    const std::filesystem::path& graph_base_dir) {
+    // 1. Find all CompiledNodes of this type and save their param values by name
+    struct SavedParams {
+        uint32_t node_idx;
+        std::unordered_map<std::string, float> values;
+        std::unordered_map<std::string, std::string> string_values;
+        std::unordered_map<std::string, uint8_t> lock_flags;
+    };
+    std::vector<SavedParams> saved;
+
+    for (uint32_t i = 0; i < static_cast<uint32_t>(cg.nodes.size()); ++i) {
+        auto& cn = cg.nodes[i];
+        if (!cn.loader) continue;
+        const auto* desc = cn.loader->descriptor();
+        if (!desc || std::string(desc->name) != type_name) continue;
+
+        SavedParams sp;
+        sp.node_idx = i;
+        for (const auto& [name, idx] : cn.param_indices) {
+            sp.values[name] = cn.param_values[idx];
+            if (cn.param_lock_flags[idx] != PARAM_LOCK_NONE)
+                sp.lock_flags[name] = cn.param_lock_flags[idx];
+        }
+        for (const auto& [name, idx] : cn.file_param_indices) {
+            sp.string_values[name] = cn.file_param_storage[idx];
+        }
+        saved.push_back(std::move(sp));
+    }
+
+    if (saved.empty()) return true;  // no instances to reload
+
+    // 2. Destroy old instances while the old dylib is still loaded
+    for (const auto& sp : saved) {
+        auto& cn = cg.nodes[sp.node_idx];
+        if (cn.instance) {
+            cn.loader->destroy_instance(cn.instance);
+            cn.instance = nullptr;
+        }
+    }
+
+    // 3. Reload the dylib
+    if (!registry.reload_operator(type_name, new_dylib_path)) {
+        std::fprintf(stderr, "[vivid] GraphCompiler: dylib reload failed for '%s'\n", type_name.c_str());
+        // Old dylib is still loaded. Recreate instances using old loader so nodes keep running.
+        OperatorLoader* old_loader = registry.find(type_name);
+        if (old_loader && old_loader->is_loaded()) {
+            const auto* old_desc = old_loader->descriptor();
+            if (old_desc) {
+                for (const auto& sp : saved) {
+                    auto& cn = cg.nodes[sp.node_idx];
+                    cn.instance = old_loader->create_instance();
+                    init_frame_state(cn, old_desc, &sp.values,
+                                     sp.string_values.empty() ? nullptr : &sp.string_values,
+                                     graph_base_dir);
+                    for (const auto& [pname, flags] : sp.lock_flags) {
+                        auto pi = cn.param_indices.find(pname);
+                        if (pi != cn.param_indices.end())
+                            cn.param_lock_flags[pi->second] = flags;
+                    }
+                    cn.dirty = true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // 4. Update loader pointer and recreate instances with param reconciliation
+    OperatorLoader* new_loader = registry.find(type_name);
+    if (!new_loader) return false;
+    const auto* new_desc = new_loader->descriptor();
+    if (!new_desc) return false;
+
+    for (const auto& sp : saved) {
+        auto& cn = cg.nodes[sp.node_idx];
+        cn.loader = new_loader;
+        cn.instance = new_loader->create_instance();
+        init_frame_state(cn, new_desc, &sp.values,
+                         sp.string_values.empty() ? nullptr : &sp.string_values,
+                         graph_base_dir);
+
+        // Restore lock flags
+        for (const auto& [pname, flags] : sp.lock_flags) {
+            auto pi = cn.param_indices.find(pname);
+            if (pi != cn.param_indices.end())
+                cn.param_lock_flags[pi->second] = flags;
+        }
+
+        // Clear error state on successful reload
+        cn.errored = false;
+        cn.error_message.clear();
+
+        // Force downstream recompute
+        cn.dirty = true;
+    }
+
+    return true;
 }
 
 } // namespace vivid

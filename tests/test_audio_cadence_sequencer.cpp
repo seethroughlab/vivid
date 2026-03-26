@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
     std::string build_dir = ".";
     if (argc > 1) build_dir = argv[1];
 
-    std::fprintf(stderr, "=== test_audio_domain_sequencer ===\n");
+    std::fprintf(stderr, "=== test_audio_cadence_sequencer ===\n");
 
     // --- Stage required dylibs into an isolated directory ---
     const std::string staging = build_dir + "/.test_audio_sequencer_staging";
@@ -53,13 +53,14 @@ int main(int argc, char* argv[]) {
     check(registry.find("Oscillator") != nullptr, "Oscillator operator loaded");
     check(registry.find("Gain") != nullptr, "Gain operator loaded");
 
-    // Verify Clock is now audio cadence
+    // Verify Clock is dual-cadence (audio-capable frame operator)
     {
         auto* clock_loader = registry.find("Clock");
         if (clock_loader) {
             const auto* desc = clock_loader->descriptor();
-            check(desc->execution_env == VIVID_ENV_AUDIO, "Clock is audio cadence");
             check(desc->has_process_audio == 1, "Clock has process_audio");
+            check(desc->has_process_frame == 1, "Clock has process_frame");
+            check(desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE, "Clock is audio-capable");
         }
     }
 
@@ -115,7 +116,7 @@ int main(int argc, char* argv[]) {
 
     // Build audio engine
     vivid::AudioEngine audio;
-    bool audio_ok = audio.build(graph, registry, sched);
+    bool audio_ok = audio.build(sched.core());
     check(audio_ok, "Audio engine built");
 
     // Start audio with null device (no real audio output)

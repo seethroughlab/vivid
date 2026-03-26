@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
 
     // --- Test 1: build() ---
     std::fprintf(stderr, "\n--- build ---\n");
-    check(audio_engine.build(graph, registry, scheduler), "audio_engine.build()");
+    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
 
     int src_idx = audio_engine.audio_node_index("src");
     int dst_idx = audio_engine.audio_node_index("dst");

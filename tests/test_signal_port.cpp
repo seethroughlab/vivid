@@ -378,7 +378,7 @@ static void test_audio_engine_integration(const std::string& build_dir) {
     check(scheduler.build(graph, registry), "scheduler.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(graph, registry, scheduler), "audio_engine.build()");
+    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
 
     // --- Test 5: LFO SIGNAL → AudioFloatCvOp SIGNAL input ---
     // LFO writes a per-sample buffer. The wire should deliver the last sample

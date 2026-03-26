@@ -266,11 +266,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 float* dst = cn.audio_buffers_in[e.to_port].data();
                 uint8_t fc = e.from_channels;
                 uint8_t tc = e.to_channels;
-                float scale = (e.from_min != 0.0f || e.from_max != 1.0f ||
-                               e.to_min != 0.0f || e.to_max != 1.0f)
-                    ? (e.from_max - e.from_min != 0.0f
-                        ? (e.to_max - e.to_min) / (e.from_max - e.from_min) : 1.0f)
-                    : 1.0f;
+                float scale = e.remap_scale();
 
                 // Channel data is laid out as [ch0_0..ch0_255][ch1_0..ch1_255]...
                 // Each channel block is kBufferSize samples, regardless of chunk size.
@@ -504,20 +500,12 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
 
                 // Float port routing (SIGNAL→SIGNAL between audio nodes)
                 if (e.data_type == VIVID_PORT_SIGNAL) {
-                    // Find float ordinals
-                    uint32_t from_ord = 0;
-                    for (uint32_t p = 0; p < e.from_port && p < cn.output_port_types.size(); ++p)
-                        if (cn.output_port_types[p] == VIVID_PORT_SIGNAL) from_ord++;
                     auto& to_cn = cg.nodes[e.to_node];
-                    uint32_t to_ord = 0;
-                    for (uint32_t p = 0; p < e.to_port && p < to_cn.input_port_types.size(); ++p)
-                        if (to_cn.input_port_types[p] == VIVID_PORT_SIGNAL) to_ord++;
-
-                    float scale = (e.from_max - e.from_min != 0.0f)
-                        ? (e.to_max - e.to_min) / (e.from_max - e.from_min) : 1.0f;
-                    if (from_ord < cn.float_output_values.size() &&
-                        to_ord < to_cn.float_input_values.size())
-                        to_cn.float_input_values[to_ord] = cn.float_output_values[from_ord] * scale;
+                    float scale = e.remap_scale();
+                    if (e.from_signal_ordinal < cn.float_output_values.size() &&
+                        e.to_signal_ordinal < to_cn.float_input_values.size())
+                        to_cn.float_input_values[e.to_signal_ordinal] =
+                            cn.float_output_values[e.from_signal_ordinal] * scale;
                 } else if (e.data_type == VIVID_PORT_SPREAD) {
                     // Spread routing between audio nodes
                     auto& to_cn = cg.nodes[e.to_node];

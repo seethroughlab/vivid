@@ -212,8 +212,6 @@ bool OperatorLoader::load(const char* path) {
 
     // Per-environment process entry points
     auto new_process_fn       = reinterpret_cast<VividProcessFrameFn>(dlsym(new_handle, "vivid_process_frame"));
-    if (!new_process_fn)  // fallback for pre-v17 plugins
-        new_process_fn    = reinterpret_cast<VividProcessFrameFn>(dlsym(new_handle, "vivid_process"));
     auto new_process_audio_fn = reinterpret_cast<VividProcessAudioFn>(dlsym(new_handle, "vivid_process_audio"));
     auto new_process_gpu_fn   = reinterpret_cast<VividProcessGpuFn>(dlsym(new_handle, "vivid_process_gpu"));
 

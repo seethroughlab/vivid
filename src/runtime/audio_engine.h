@@ -10,8 +10,7 @@
 
 namespace vivid {
 
-class Graph;
-class Scheduler;
+struct RuntimeCore;
 struct CompiledGraph;
 class CadenceBridge;
 class AudioExecutor;
@@ -28,7 +27,7 @@ public:
     AudioEngine();
     ~AudioEngine();
 
-    bool build(const Graph& graph, OperatorRegistry& registry, const Scheduler& scheduler);
+    bool build(RuntimeCore& core);
     bool start(bool use_null_device = false);
     void shutdown();
 

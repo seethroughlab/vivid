@@ -58,14 +58,6 @@ struct AnalysisSnapshot {
     std::vector<std::array<char, 256>> error_msgs;      // [audio_node_idx]
 };
 
-struct AudioToControlMapping {
-    uint32_t audio_engine_idx;    // index in audio_order
-    uint32_t scheduler_node_idx;  // index in CompiledGraph::nodes
-    uint32_t rms_port_idx;        // "rms" output port index
-    uint32_t peak_port_idx;       // "peak" output port index
-    uint32_t waveform_port_idx;   // "waveform" output port index
-};
-
 // Lock-free SPSC ring buffer for recording the final stereo mix.
 // Audio thread writes, main thread reads. Pre-allocated, zero overhead when inactive.
 struct RecordingTap {

@@ -192,7 +192,7 @@ int main(int argc, char* argv[]) {
     vivid::AudioEngine audio_engine;
     bool has_audio = false;
     if (scheduler.has_audio_operators()) {
-        if (audio_engine.build(graph, registry, scheduler)) {
+        if (audio_engine.build(scheduler.core())) {
             if (audio_engine.start()) {
                 has_audio = true;
                 std::fprintf(stderr, "[standalone] Audio engine started\n");
@@ -271,14 +271,8 @@ int main(int argc, char* argv[]) {
         gpu_state.output_format   = kOffscreenFormat;
 
         // Inject audio analysis
-        if (has_audio) {
-            auto& cb = scheduler.cadence_bridge();
-            auto* cg = scheduler.compiled_graph();
-            if (cg) {
-                cb.pull_from_audio(*cg);
-                cb.update_sources(now, *cg);
-            }
-        }
+        if (has_audio)
+            scheduler.pre_tick_audio_sync(now);
 
         // Tick scheduler
         scheduler.tick(now, dt, frame_count, &gpu_state, nullptr);
@@ -287,10 +281,8 @@ int main(int argc, char* argv[]) {
         runtime_api.tick_state_presets();
 
         // Push params to audio thread
-        if (has_audio) {
-            auto* cg = scheduler.compiled_graph();
-            if (cg) scheduler.cadence_bridge().push_to_audio(*cg);
-        }
+        if (has_audio)
+            scheduler.post_tick_audio_sync();
 
         // Present
         if (have_surface) {

@@ -178,7 +178,7 @@ static void scenario_hot_reload(const std::string& build_dir) {
     check(scheduler.build(graph, audio_registry), "s3: scheduler.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(graph, audio_registry, scheduler), "s3: audio_engine.build()");
+    check(audio_engine.build(scheduler.core()), "s3: audio_engine.build()");
 
     // Verify v1 output
     {

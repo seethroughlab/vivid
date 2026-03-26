@@ -1166,7 +1166,7 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.is_audio_capable = (cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE);
         {
             const auto* ndef = graph.find_node(cn.node_id);
-            sn.cadence_override = ndef ? ndef->cadence_override : 0;
+            sn.cadence_override = ndef ? ndef->cadence_override : vivid::CadenceOverride::Auto;
         }
         sn.is_gpu_sink = cn.is_gpu_sink;
         sn.is_generator = cn.texture_input_port_indices.empty() && !cn.is_gpu_sink;
@@ -2908,7 +2908,7 @@ int main(int argc, char* argv[]) {
     vivid::AudioEngine audio_engine;
     bool has_audio = false;
     if (graph_loaded && scheduler.has_audio_operators()) {
-        if (audio_engine.build(graph, registry, scheduler)) {
+        if (audio_engine.build(scheduler.core())) {
             if (audio_engine.start()) {
                 has_audio = true;
             }
@@ -2967,7 +2967,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (scheduler.has_audio_operators()) {
-            if (audio_engine.build(graph, registry, scheduler) && audio_engine.start()) {
+            if (audio_engine.build(scheduler.core()) && audio_engine.start()) {
                 has_audio = true;
             }
         }
@@ -3484,7 +3484,7 @@ int main(int argc, char* argv[]) {
                             return result;
                         }
 
-                        // Legacy operators/<domain>/<name>/ layout
+                        // Legacy operators/<category>/<name>/ layout
                         vivid::PackageCompiler compiler(pkg_src_dir, pkg_build_dir);
                         std::string op_rel;
                         for (const auto& domain : {"audio", "control", "gpu"}) {
@@ -4313,14 +4313,8 @@ int main(int argc, char* argv[]) {
                                 scheduler.operators_src_dir());
             }
 
-            if (has_audio) {
-                auto& cb = scheduler.cadence_bridge();
-                auto* cg = scheduler.compiled_graph();
-                if (cg) {
-                    cb.pull_from_audio(*cg);
-                    cb.update_sources(now, *cg);
-                }
-            }
+            if (has_audio)
+                scheduler.pre_tick_audio_sync(now);
 
             // --- Build input state for operators (when UI hidden) ---
             const VividInputState* input_ptr = nullptr;
@@ -4412,10 +4406,8 @@ int main(int argc, char* argv[]) {
             // --- Tick state-preset mappings (after scheduler tick, state outputs are fresh) ---
             runtime_api.tick_state_presets();
 
-            if (has_audio) {
-                auto* cg = scheduler.compiled_graph();
-                if (cg) scheduler.cadence_bridge().push_to_audio(*cg);
-            }
+            if (has_audio)
+                scheduler.post_tick_audio_sync();
 
             // Process capture/recording/analysis requests (after tick, textures are fresh)
             if (capture_coordinator.has_pending() || capture_coordinator.is_recording() ||

@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
     check(scheduler.build(graph, registry), "scheduler.build()");
 
     vivid::AudioEngine audio_engine;
-    check(audio_engine.build(graph, registry, scheduler), "audio_engine.build()");
+    check(audio_engine.build(scheduler.core()), "audio_engine.build()");
 
     // --- Test 1: Engine starts without crashing despite throwing operator ---
     std::fprintf(stderr, "\n--- start with throwing operator ---\n");
