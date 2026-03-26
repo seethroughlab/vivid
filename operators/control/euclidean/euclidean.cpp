@@ -2,7 +2,12 @@
 #include <algorithm>
 #include <cmath>
 
-struct Euclidean : vivid::ControlOperatorBase {
+// Euclidean — dual-cadence Bjorklund pattern sequencer.
+//
+// Beat-phase wrap detection + gate window evaluation. All timing logic is
+// cadence-agnostic — identical behavior at frame rate and audio rate.
+//
+struct Euclidean : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Euclidean";
     static constexpr bool kTimeDependent = true;
 
@@ -42,13 +47,24 @@ struct Euclidean : vivid::ControlOperatorBase {
         out.push_back({"pattern",    VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});   // spread[0]
     }
 
-    void process(const VividProcessContext* ctx) override {
-        float beat_phase = ctx->input_values[0];
-        int h   = std::clamp(static_cast<int>(ctx->param_values[0]), 0, 32);
-        int n   = std::clamp(static_cast<int>(ctx->param_values[1]), 1, 32);
-        int rot = std::clamp(static_cast<int>(ctx->param_values[2]), 0, 31);
-        float gl = ctx->param_values[3];
-        int r   = std::clamp(static_cast<int>(ctx->param_values[4]), 0, 8);
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values[0], ctx->param_values,
+                ctx->output_spreads, ctx->output_values);
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        compute(ctx->input_float_values[0], ctx->param_values,
+                ctx->output_spreads, ctx->output_float_values);
+    }
+
+private:
+    void compute(float beat_phase, const float* params,
+                 VividSpreadPort* out_spreads, float* output_values) {
+        int h   = std::clamp(static_cast<int>(params[0]), 0, 32);
+        int n   = std::clamp(static_cast<int>(params[1]), 1, 32);
+        int rot = std::clamp(static_cast<int>(params[2]), 0, 31);
+        float gl = params[3];
+        int r   = std::clamp(static_cast<int>(params[4]), 0, 8);
 
         // Recompute pattern if params changed
         if (h != prev_hits_ || n != prev_steps_ || rot != prev_rotation_) {
@@ -77,13 +93,13 @@ struct Euclidean : vivid::ControlOperatorBase {
         prev_step_ = current_step;
 
         bool is_hit = (pattern_[current_step] != 0);
-        ctx->output_values[0] = (new_step && is_hit) ? 1.0f : 0.0f;  // trigger
-        ctx->output_values[1] = (is_hit && step_phase < gl) ? 1.0f : 0.0f;  // gate
-        ctx->output_values[2] = static_cast<float>(current_step);  // step
+        output_values[0] = (new_step && is_hit) ? 1.0f : 0.0f;  // trigger
+        output_values[1] = (is_hit && step_phase < gl) ? 1.0f : 0.0f;  // gate
+        output_values[2] = static_cast<float>(current_step);  // step
 
         // Full pattern as spread (output port 3 = pattern)
-        if (ctx->output_spreads) {
-            auto& sp = ctx->output_spreads[3];
+        if (out_spreads) {
+            auto& sp = out_spreads[3];
             auto len = static_cast<uint32_t>(n);
             if (sp.capacity >= len) {
                 sp.length = len;

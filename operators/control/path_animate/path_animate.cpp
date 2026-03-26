@@ -12,7 +12,13 @@
 // Follows LFO phase-accumulation pattern with external phase override.
 // =============================================================================
 
-struct PathAnimate : vivid::ControlOperatorBase {
+// PathAnimate — dual-cadence cubic bezier path evaluator.
+//
+// Free-running phase accumulation (delta_time * speed) with optional external
+// phase override. Easing, loop/ping-pong modes. Cadence-agnostic because
+// delta_time is provided correctly at both frame and audio rate.
+//
+struct PathAnimate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Path Animate";
     static constexpr bool kTimeDependent = true;
 
@@ -128,9 +134,18 @@ struct PathAnimate : vivid::ControlOperatorBase {
              + 3.0 * t * t * (p3 - p2);
     }
 
-    void process(const VividProcessContext* ctx) override {
-        float phase_in = ctx->input_values[0];
-        float trigger  = ctx->input_values[1];
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values, ctx->delta_time, ctx->output_values);
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        compute(ctx->input_float_values, ctx->delta_time, ctx->output_float_values);
+    }
+
+private:
+    void compute(const float* input_values, double delta_time, float* output_values) {
+        float phase_in = input_values[0];
+        float trigger  = input_values[1];
 
         // Trigger resets phase
         if (trigger > 0.5f) {
@@ -144,7 +159,7 @@ struct PathAnimate : vivid::ControlOperatorBase {
             raw_phase = static_cast<double>(phase_in);
         } else {
             // Free-running accumulation
-            free_phase_ += ctx->delta_time * static_cast<double>(speed.value);
+            free_phase_ += delta_time * static_cast<double>(speed.value);
             raw_phase = free_phase_;
         }
 
@@ -187,10 +202,10 @@ struct PathAnimate : vivid::ControlOperatorBase {
         double dy = bezier_deriv(eased_t, p0_y.value, p1_y.value, p2_y.value, p3_y.value);
         double angle = std::atan2(dy, dx);
 
-        ctx->output_values[0] = static_cast<float>(bx);       // x
-        ctx->output_values[1] = static_cast<float>(by);       // y
-        ctx->output_values[2] = static_cast<float>(angle);    // angle (radians)
-        ctx->output_values[3] = static_cast<float>(t);        // progress (pre-easing)
+        output_values[0] = static_cast<float>(bx);       // x
+        output_values[1] = static_cast<float>(by);       // y
+        output_values[2] = static_cast<float>(angle);    // angle (radians)
+        output_values[3] = static_cast<float>(t);        // progress (pre-easing)
     }
 };
 

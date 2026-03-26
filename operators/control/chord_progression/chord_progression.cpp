@@ -7,7 +7,12 @@
 #include "operator_api/thumbnail.h"
 #include <cstring>
 
-struct ChordProgression : vivid::AudioOperatorBase {
+// ChordProgression — dual-cadence diatonic chord sequencer.
+//
+// Beat-phase wrap detection + diatonic chord building + gate window + MIDI output.
+// All timing logic is cadence-agnostic.
+//
+struct ChordProgression : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "ChordProgression";
     static constexpr bool kTimeDependent = true;
 
@@ -205,8 +210,18 @@ struct ChordProgression : vivid::AudioOperatorBase {
         }
     }
 
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values[0], ctx->param_values, ctx->output_spreads,
+                ctx->output_values, ctx->custom_outputs, ctx->custom_output_count);
+    }
+
     void process_audio(const VividAudioContext* ctx) override {
-        float beat_phase = ctx->input_float_values[0];
+        compute(ctx->input_float_values[0], ctx->param_values, ctx->output_spreads,
+                ctx->output_float_values, ctx->custom_outputs, ctx->custom_output_count);
+    }
+
+    void compute(float beat_phase, const float* params, VividSpreadPort* out_spreads,
+                 float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         int num_steps = steps.int_value();
         int kr = key_root.int_value();
         int m  = mode.int_value();
@@ -228,9 +243,9 @@ struct ChordProgression : vivid::AudioOperatorBase {
         int current_step = (beat_count_ / bps) % num_steps;
 
         // Per-step params via param_values indices
-        int degree  = static_cast<int>(ctx->param_values[7 + current_step]);
-        int voicing = static_cast<int>(ctx->param_values[15 + current_step]);
-        int ext     = static_cast<int>(ctx->param_values[23 + current_step]);
+        int degree  = static_cast<int>(params[7 + current_step]);
+        int voicing = static_cast<int>(params[15 + current_step]);
+        int ext     = static_cast<int>(params[23 + current_step]);
         if (degree < 0)  degree = 0;  if (degree > 6)  degree = 6;
         if (voicing < 0) voicing = 0; if (voicing > 3) voicing = 3;
         if (ext < 0)     ext = 0;     if (ext > 2)     ext = 2;
@@ -246,10 +261,10 @@ struct ChordProgression : vivid::AudioOperatorBase {
         float gate_val = (beat_phase < gl) ? 1.0f : 0.0f;
 
         // Write output spreads
-        if (ctx->output_spreads) {
-            auto& notes_sp = ctx->output_spreads[0];
-            auto& vel_sp   = ctx->output_spreads[1];
-            auto& gates_sp = ctx->output_spreads[2];
+        if (out_spreads) {
+            auto& notes_sp = out_spreads[0];
+            auto& vel_sp   = out_spreads[1];
+            auto& gates_sp = out_spreads[2];
 
             uint32_t len = static_cast<uint32_t>(chord_size);
             if (notes_sp.capacity >= len) {
@@ -296,15 +311,15 @@ struct ChordProgression : vivid::AudioOperatorBase {
             prev_note_count_ = 0;
         }
         prev_gate_ = gate_high;
-        if (ctx->custom_outputs && ctx->custom_output_count > 0) {
-            ctx->custom_outputs[0] = &midi_buf_;
+        if (custom_outputs && custom_output_count > 0) {
+            custom_outputs[0] = &midi_buf_;
         }
 
         // Scalar fallback: first note of chord
-        if (chord_size > 0 && ctx->output_float_values) {
-            ctx->output_float_values[0] = static_cast<float>(base_note + intervals[0]);
-            ctx->output_float_values[1] = vel;
-            ctx->output_float_values[2] = gate_val;
+        if (chord_size > 0 && output_values) {
+            output_values[0] = static_cast<float>(base_note + intervals[0]);
+            output_values[1] = vel;
+            output_values[2] = gate_val;
         }
     }
 

@@ -14,7 +14,7 @@
 // midi_in (e.g., drum operators after the unified triggering convention).
 // ---------------------------------------------------------------------------
 
-struct PhaseToMidi : vivid::ControlOperatorBase {
+struct PhaseToMidi : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "PhaseToMidi";
     static constexpr bool kTimeDependent = false;
 
@@ -42,8 +42,16 @@ struct PhaseToMidi : vivid::ControlOperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
-    void process(const VividProcessContext* ctx) override {
-        float phase = ctx->input_values[0];
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values[0], ctx->custom_outputs, ctx->custom_output_count);
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        compute(ctx->input_float_values[0], ctx->custom_outputs, ctx->custom_output_count);
+    }
+
+private:
+    void compute(float phase, void** custom_outputs, uint32_t custom_output_count) {
         float delta = phase - prev_phase_;
         prev_phase_ = phase;
 
@@ -62,8 +70,8 @@ struct PhaseToMidi : vivid::ControlOperatorBase {
             midi_buf_.count = 1;
         }
 
-        if (ctx->custom_outputs && ctx->custom_output_count > 0) {
-            ctx->custom_outputs[0] = &midi_buf_;
+        if (custom_outputs && custom_output_count > 0) {
+            custom_outputs[0] = &midi_buf_;
         }
     }
 };

@@ -18,7 +18,12 @@ static constexpr float kPreviewH = 60.0f;
 static constexpr float kLineH = 18.0f;
 } // namespace note_insp
 
-struct NotePattern : vivid::AudioOperatorBase {
+// NotePattern — dual-cadence polyphonic chord sequencer.
+//
+// Beat-phase wrap detection + chord voicing + gate window + MIDI output.
+// All timing logic is cadence-agnostic.
+//
+struct NotePattern : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "NotePattern";
     static constexpr bool kTimeDependent = true;
 
@@ -102,8 +107,19 @@ struct NotePattern : vivid::AudioOperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values[0], ctx->param_values, ctx->output_spreads,
+                ctx->output_values, ctx->custom_outputs, ctx->custom_output_count);
+    }
+
     void process_audio(const VividAudioContext* ctx) override {
-        float beat_phase = ctx->input_float_values[0];
+        compute(ctx->input_float_values[0], ctx->param_values, ctx->output_spreads,
+                ctx->output_float_values, ctx->custom_outputs, ctx->custom_output_count);
+    }
+
+private:
+    void compute(float beat_phase, const float* params, VividSpreadPort* out_spreads,
+                 float* output_values, void** custom_outputs, uint32_t custom_output_count) {
         int num_steps = steps.int_value();
         int oct = octave.int_value();
         int bps = beats_per_step.int_value();
@@ -123,8 +139,8 @@ struct NotePattern : vivid::AudioOperatorBase {
         // Look up root and chord type for current step
         // Params are ordered: steps, root_0..root_7, type_0..type_7, octave, beats_per_step, ...
         // root_0 is param index 1, type_0 is param index 9
-        int root = static_cast<int>(ctx->param_values[1 + current_step]);
-        int chord_type = static_cast<int>(ctx->param_values[9 + current_step]);
+        int root = static_cast<int>(params[1 + current_step]);
+        int chord_type = static_cast<int>(params[9 + current_step]);
         if (chord_type < 0) chord_type = 0;
         if (chord_type > 6) chord_type = 6;
 
@@ -139,10 +155,10 @@ struct NotePattern : vivid::AudioOperatorBase {
         float gate_val = (beat_phase < gl) ? 1.0f : 0.0f;
 
         // Write output spreads
-        if (ctx->output_spreads) {
-            auto& notes_sp = ctx->output_spreads[0];
-            auto& vel_sp   = ctx->output_spreads[1];
-            auto& gates_sp = ctx->output_spreads[2];
+        if (out_spreads) {
+            auto& notes_sp = out_spreads[0];
+            auto& vel_sp   = out_spreads[1];
+            auto& gates_sp = out_spreads[2];
 
             uint32_t len = static_cast<uint32_t>(chord_size);
             if (notes_sp.capacity >= len) {
@@ -189,17 +205,18 @@ struct NotePattern : vivid::AudioOperatorBase {
             prev_note_count_ = 0;
         }
         prev_gate_ = gate_high;
-        if (ctx->custom_outputs && ctx->custom_output_count > 0) {
-            ctx->custom_outputs[0] = &midi_buf_;
+        if (custom_outputs && custom_output_count > 0) {
+            custom_outputs[0] = &midi_buf_;
         }
 
-        // Scalar fallback: first note (only if FLOAT outputs exist)
-        if (chord_size > 0 && ctx->output_float_values) {
-            ctx->output_float_values[0] = static_cast<float>(root + oct * 12 + intervals[0]);
-            ctx->output_float_values[1] = vel;
-            ctx->output_float_values[2] = gate_val;
+        // Scalar fallback: first note
+        if (chord_size > 0 && output_values) {
+            output_values[0] = static_cast<float>(root + oct * 12 + intervals[0]);
+            output_values[1] = vel;
+            output_values[2] = gate_val;
         }
     }
+public:
 
     void draw_inspector(VividInspectorContext* ctx) override {
         namespace ni = note_insp;
