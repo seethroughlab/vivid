@@ -10,13 +10,7 @@ Tracks outstanding items from the cadence-aware runtime migration. The core arch
 - [x] AudioExecutor audit: auto-dup, custom ports, channel_index, channel offsets, string ptrs, recording overrun
 - [x] alternate, spread_noise, stack migrated to dual-cadence (no bridge infrastructure needed — CadenceBridge already handles cross-cadence spreads; AudioExecutor already routes audio-to-audio spreads)
 
-### ChildOp audio-context forwarding
-**Status:** Not started
-**Blocks:** `modulated_gain`
-
-`ChildOp<T>` currently only dispatches `process_frame`. When the parent operator runs at audio cadence, child operators need to receive `process_audio` calls instead. This requires `ChildOp` to detect the parent's cadence and forward the appropriate context.
-
-**Approach:** Add a `process_audio(const VividAudioContext*)` path to `ChildOp` that forwards when the parent is audio-cadence. The child operator must also be `AudioProcessable`.
+- [x] ChildOp audio-context forwarding: `process_audio()` method added to `ChildOp<T>`, `modulated_gain` migrated to dual-cadence
 
 ## Operator Timing Redesign (15 operators)
 
@@ -40,7 +34,6 @@ These operators cannot be made audio-capable mechanically. Their timing models a
 | `drum_sequencer` | Same | Same |
 | `euclidean` | Same | Same |
 | `note_pattern` | Same | Same |
-| `pat_transform` | Same | Same |
 | `pattern_seq` | Same | Same |
 | `phase_to_midi` | Same | Same |
 | `sequencer` | Same | Same |

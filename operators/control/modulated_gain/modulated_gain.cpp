@@ -2,14 +2,14 @@
 #include "control/lfo/lfo.h"
 #include "control/smooth/smooth.h"
 
-// ModulatedGain — example composite operator using ChildOp
+// ModulatedGain — dual-cadence composite operator using ChildOp
 //
 // Passes an input signal through a gain stage modulated by an internal LFO.
 // The LFO output is smoothed before applying, giving a "breathing" effect.
 //
 // output = input * (base_gain + lfo_depth * smoothed_lfo)
 
-struct ModulatedGain : vivid::ControlOperatorBase {
+struct ModulatedGain : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "ModulatedGain";
     static constexpr bool kTimeDependent = true;
 
@@ -51,25 +51,47 @@ struct ModulatedGain : vivid::ControlOperatorBase {
         out.push_back({"value", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
+        drive_children_frame(ctx);
         float input = ctx->input_values[0];
+        float mod = smoother_.output("value");
+        float gain = base_gain.value + lfo_depth.value * mod;
+        ctx->output_values[0] = input * gain;
+    }
 
-        // Drive the internal LFO
+    void process_audio(const VividAudioContext* ctx) override {
+        drive_children_audio(ctx);
+        float input = ctx->input_float_values[0];
+        float mod = smoother_.output("value");
+        float gain = base_gain.value + lfo_depth.value * mod;
+        ctx->output_float_values[0] = input * gain;
+    }
+
+private:
+    void drive_children_frame(const VividFrameContext* ctx) {
         lfo_.set_param("frequency", lfo_rate.value);
         lfo_.set_param("amplitude", 1.0f);
         lfo_.set_param("offset", 0.0f);
         lfo_.set_param("waveform", static_cast<float>(lfo_shape.int_value()));
         lfo_.process(ctx);
 
-        // Smooth the LFO output
         smoother_.set_param("rise_time", smooth_time.value);
         smoother_.set_param("fall_time", smooth_time.value);
         smoother_.set_input("input", lfo_.output("value"));
         smoother_.process(ctx);
+    }
 
-        float mod = smoother_.output("value");
-        float gain = base_gain.value + lfo_depth.value * mod;
-        ctx->output_values[0] = input * gain;
+    void drive_children_audio(const VividAudioContext* ctx) {
+        lfo_.set_param("frequency", lfo_rate.value);
+        lfo_.set_param("amplitude", 1.0f);
+        lfo_.set_param("offset", 0.0f);
+        lfo_.set_param("waveform", static_cast<float>(lfo_shape.int_value()));
+        lfo_.process_audio(ctx);
+
+        smoother_.set_param("rise_time", smooth_time.value);
+        smoother_.set_param("fall_time", smooth_time.value);
+        smoother_.set_input("input", lfo_.output("value"));
+        smoother_.process_audio(ctx);
     }
 };
 

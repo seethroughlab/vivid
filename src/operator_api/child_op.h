@@ -126,7 +126,7 @@ public:
         sync_params_();
         sync_spreads_();
 
-        if constexpr (std::is_base_of_v<AudioOperatorBase, T>) {
+        if constexpr (std::is_base_of_v<AudioOperatorBase, T> || std::is_base_of_v<AudioProcessable, T>) {
             // Audio child op: process a single sample per control frame
             // and extract the output into output_values_.
             ensure_audio_buffers_();
@@ -166,6 +166,75 @@ public:
             }
         } else {
             // Control child op: standard VividProcessContext dispatch
+            VividProcessContext child_ctx{};
+            child_ctx.time         = parent_ctx->time;
+            child_ctx.delta_time   = parent_ctx->delta_time;
+            child_ctx.frame        = parent_ctx->frame;
+            child_ctx.param_values = param_values_.data();
+            child_ctx.input_values = input_values_.empty() ? nullptr : input_values_.data();
+            child_ctx.output_values = output_values_.empty() ? nullptr : output_values_.data();
+            child_ctx.input_spreads  = c_input_spreads_.empty() ? nullptr : c_input_spreads_.data();
+            child_ctx.output_spreads = c_output_spreads_.empty() ? nullptr : c_output_spreads_.data();
+            child_ctx.file_param_values = nullptr;
+            child_ctx.file_param_count  = 0;
+            child_ctx.preferred_tex_width  = 0;
+            child_ctx.preferred_tex_height = 0;
+
+            op_.process_frame(&child_ctx);
+        }
+
+        readback_spreads_();
+    }
+
+    // -- Audio-cadence process -----------------------------------------------
+    // Call this instead of process() when the parent runs at audio cadence.
+    // Forwards the parent's VividAudioContext to the child with correct
+    // sample_rate, shared_handles, and channel_index.
+
+    void process_audio(const VividAudioContext* parent_ctx) {
+        sync_params_();
+        sync_spreads_();
+
+        if constexpr (std::is_base_of_v<AudioProcessable, T> || std::is_base_of_v<AudioOperatorBase, T>) {
+            // Child supports audio: forward audio context
+            ensure_audio_buffers_();
+
+            // Copy input values into single-sample input buffers
+            for (size_t i = 0; i < input_values_.size(); ++i)
+                audio_in_bufs_[i][0] = input_values_[i];
+
+            VividAudioContext child_ctx{};
+            child_ctx.time              = parent_ctx->time;
+            child_ctx.delta_time        = parent_ctx->delta_time;
+            child_ctx.frame             = parent_ctx->frame;
+            child_ctx.param_values      = param_values_.data();
+            child_ctx.input_buffers     = audio_in_ptrs_.data();
+            child_ctx.output_buffers    = audio_out_ptrs_.data();
+            child_ctx.buffer_size       = 1;  // single sample per parent callback
+            child_ctx.sample_rate       = parent_ctx->sample_rate;
+            child_ctx.input_channel_counts  = nullptr;
+            child_ctx.output_channel_counts = nullptr;
+            child_ctx.input_spreads     = c_input_spreads_.empty() ? nullptr : c_input_spreads_.data();
+            child_ctx.output_spreads    = c_output_spreads_.empty() ? nullptr : c_output_spreads_.data();
+            child_ctx.input_float_values  = input_values_.empty() ? nullptr : input_values_.data();
+            child_ctx.output_float_values = output_values_.empty() ? nullptr : output_values_.data();
+            child_ctx.custom_inputs       = nullptr;
+            child_ctx.custom_input_count  = 0;
+            child_ctx.custom_outputs      = nullptr;
+            child_ctx.custom_output_count = 0;
+            child_ctx.input_string_values = nullptr;
+            child_ctx.file_param_values   = nullptr;
+            child_ctx.file_param_count    = 0;
+            child_ctx.shared_handles      = parent_ctx->shared_handles;
+            child_ctx.channel_index       = parent_ctx->channel_index;
+
+            op_.process_audio(&child_ctx);
+
+            // Extract output from single-sample buffers
+            for (size_t i = 0; i < output_values_.size(); ++i)
+                output_values_[i] = audio_out_bufs_[i][0];
+        } else if constexpr (std::is_base_of_v<FrameProcessable, T>) {
+            // Child is frame-only: build a frame context from audio data
             VividProcessContext child_ctx{};
             child_ctx.time         = parent_ctx->time;
             child_ctx.delta_time   = parent_ctx->delta_time;
