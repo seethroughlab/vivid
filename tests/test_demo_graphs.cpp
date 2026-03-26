@@ -284,6 +284,7 @@ int main(int argc, char* argv[]) {
         // Syphon server, OSC socket).
         bool has_external_io = false;
         bool has_movie_loaded = false;
+        bool has_audio_out = false;
         for (const auto& n : graph.nodes()) {
             if (n.type == "SyphonIn"  || n.type == "SyphonOut" ||
                 n.type == "OscIn"     || n.type == "OscOut"    ||
@@ -292,6 +293,9 @@ int main(int argc, char* argv[]) {
             }
             if (n.type == "MovieLoaded" || n.type == "MovieAudioOut") {
                 has_movie_loaded = true;
+            }
+            if (n.type == "audio_out") {
+                has_audio_out = true;
             }
         }
         if (has_external_io) {
@@ -330,7 +334,7 @@ int main(int argc, char* argv[]) {
         if (use_audio) {
             audio = new vivid::AudioEngine();
             emit_checkpoint("audio-build");
-            audio->build(graph, registry, sched);
+            audio->build(sched.core());
             emit_checkpoint("audio-start");
             audio->start(true);  // null device
         }
@@ -348,10 +352,17 @@ int main(int argc, char* argv[]) {
         }
 
         // Tick — more frames for complex graphs to catch late-onset issues
-        int tick_count = (use_gpu && use_audio) ? 30 : 5;
+        int tick_count = (use_gpu || use_audio) ? 60 : 5;
         emit_checkpoint("tick-begin");
+        float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
         for (uint64_t frame = 0; frame < (uint64_t)tick_count; ++frame) {
             double time = frame * 0.016;
+            if (audio) {
+                auto& cb = sched.cadence_bridge();
+                auto* cg = sched.compiled_graph();
+                cb.pull_from_audio(*cg);
+                cb.update_sources(time, *cg);
+            }
             if (use_gpu) {
                 tick_gpu(sched, gpu, kFormat, time, frame);
             } else {
@@ -359,9 +370,46 @@ int main(int argc, char* argv[]) {
             }
             if (audio) {
                 sched.cadence_bridge().push_to_audio(*sched.compiled_graph());
+                audio->process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
             }
         }
         emit_checkpoint("tick-end");
+
+        // Audio output verification
+        bool audio_silent = false;
+        bool audio_errored = false;
+        std::string audio_error_detail;
+        if (audio) {
+            sched.cadence_bridge().pull_from_audio(*sched.compiled_graph());
+            const auto& analysis = audio->analysis_read();
+
+            // Check for audio node errors (hard fail)
+            for (size_t i = 0; i < analysis.errored.size(); ++i) {
+                if (analysis.errored[i]) {
+                    audio_errored = true;
+                    audio_error_detail += std::string(analysis.error_msgs[i].data()) + "; ";
+                }
+            }
+
+            // Log per-node diagnostics
+            for (size_t i = 0; i < analysis.rms.size(); ++i) {
+                diag_printf("[demo_graphs]   audio node %zu: RMS=%.6f peak=%.6f%s\n",
+                            i, analysis.rms[i], analysis.peak[i],
+                            analysis.errored[i] ? " ERRORED" : "");
+            }
+
+            // Check that at least one audio node produced non-zero peak
+            if (has_audio_out) {
+                bool any_nonzero = false;
+                for (size_t i = 0; i < analysis.peak.size(); ++i) {
+                    if (analysis.peak[i] > 0.001f) {
+                        any_nonzero = true;
+                        break;
+                    }
+                }
+                if (!any_nonzero) audio_silent = true;
+            }
+        }
 
         // Restore stderr and read captured output
         emit_checkpoint("stderr-restore");
@@ -389,6 +437,12 @@ int main(int argc, char* argv[]) {
         sched.shutdown();
         emit_checkpoint("post-cleanup");
 
+        // Check for audio node errors (hard fail, checked first)
+        if (audio_errored) {
+            fail(filename.c_str(), ("audio node error: " + audio_error_detail).c_str());
+            continue;
+        }
+
         // Check for GPU validation errors
         if (use_gpu && gpu.has_gpu_error) {
             fail(filename.c_str(), ("GPU error: " + gpu.gpu_error_msg).c_str());
@@ -400,6 +454,8 @@ int main(int argc, char* argv[]) {
         for (auto& c : lower) c = (char)tolower((unsigned char)c);
         if (lower.find("warn") != std::string::npos || lower.find("error") != std::string::npos) {
             fail(filename.c_str(), ("unexpected stderr: " + captured).c_str());
+        } else if (audio_silent) {
+            fail(filename.c_str(), "audio output is silent (all peaks < 0.001)");
         } else {
             emit_checkpoint("graph-pass");
             pass(filename.c_str());

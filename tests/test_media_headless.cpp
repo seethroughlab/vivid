@@ -320,7 +320,7 @@ int main(int argc, char* argv[]) {
         vivid::AudioEngine* audio = nullptr;
         if (use_audio) {
             audio = new vivid::AudioEngine();
-            audio->build(graph, registry, sched);
+            audio->build(sched.core());
             audio->start(true);  // null device
         }
 
@@ -334,9 +334,16 @@ int main(int argc, char* argv[]) {
 
         // Tick — 60 frames to give movie operators time to initialize
         int tick_count = 60;
+        float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
         for (uint64_t frame = 0; frame < (uint64_t)tick_count; ++frame) {
             if (graph_timed_out.load(std::memory_order_acquire)) break;
             double time = frame * 0.016;
+            if (audio) {
+                auto& cb = sched.cadence_bridge();
+                auto* cg = sched.compiled_graph();
+                cb.pull_from_audio(*cg);
+                cb.update_sources(time, *cg);
+            }
             if (use_gpu) {
                 tick_gpu(sched, gpu, kFormat, time, frame);
             } else {
@@ -344,6 +351,7 @@ int main(int argc, char* argv[]) {
             }
             if (audio) {
                 sched.cadence_bridge().push_to_audio(*sched.compiled_graph());
+                audio->process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
             }
 #ifdef __APPLE__
             CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.005, false);
@@ -363,6 +371,29 @@ int main(int argc, char* argv[]) {
             captured += buf;
         fclose(warn_capture);
 
+        // Audio output verification (diagnostic only — movie audio may not
+        // produce output fast enough in headless mode)
+        bool audio_errored = false;
+        std::string audio_error_detail;
+        if (audio) {
+            sched.cadence_bridge().pull_from_audio(*sched.compiled_graph());
+            const auto& analysis = audio->analysis_read();
+
+            for (size_t i = 0; i < analysis.errored.size(); ++i) {
+                if (analysis.errored[i]) {
+                    audio_errored = true;
+                    audio_error_detail += std::string(analysis.error_msgs[i].data()) + "; ";
+                }
+            }
+
+            // Log per-node diagnostics (stderr already restored)
+            for (size_t i = 0; i < analysis.rms.size(); ++i) {
+                std::fprintf(stderr, "[media_headless]   audio node %zu: RMS=%.6f peak=%.6f%s\n",
+                             i, analysis.rms[i], analysis.peak[i],
+                             analysis.errored[i] ? " ERRORED" : "");
+            }
+        }
+
         // Cleanup
         if (audio) {
             audio->shutdown();
@@ -375,6 +406,11 @@ int main(int argc, char* argv[]) {
 
         if (graph_timed_out.load(std::memory_order_acquire)) {
             skip(rel_path.c_str(), "watchdog timeout during ticks");
+            continue;
+        }
+
+        if (audio_errored) {
+            fail(rel_path.c_str(), ("audio node error: " + audio_error_detail).c_str());
             continue;
         }
 

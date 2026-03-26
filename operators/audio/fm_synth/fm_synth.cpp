@@ -83,6 +83,10 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"freq_cv",      VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"mod_index_cv", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"gate_cv",      VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+        // Spread inputs for sequencer/arpeggiator-driven usage
+        out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
     }
 
     void process_audio(const VividAudioContext* ctx) override {
@@ -92,6 +96,33 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
         float freq_cv      = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
         float mod_index_cv = ctx->input_float_values ? ctx->input_float_values[1] : 0.0f;
         float gate_cv      = ctx->input_float_values ? ctx->input_float_values[2] : 0.0f;
+
+        // Spread inputs override signal inputs when connected.
+        // Spread port indices follow the 3 signal inputs (freq_cv, mod_index_cv, gate_cv).
+        float vel_scale = 1.0f;
+        if (ctx->input_spreads) {
+            const auto& gates_sp = ctx->input_spreads[3];
+            const auto& notes_sp = ctx->input_spreads[4];
+            const auto& vels_sp  = ctx->input_spreads[5];
+            if (gates_sp.length > 0 && gates_sp.data) {
+                float spread_gate = 0.0f;
+                float spread_note = 60.0f;
+                for (uint32_t s = 0; s < gates_sp.length; ++s) {
+                    if (gates_sp.data[s] > 0.5f) {
+                        spread_gate = gates_sp.data[s];
+                        if (notes_sp.data && s < notes_sp.length)
+                            spread_note = notes_sp.data[s];
+                        if (vels_sp.data && s < vels_sp.length)
+                            vel_scale = vels_sp.data[s];
+                        break;
+                    }
+                }
+                gate_cv = spread_gate;
+                // Convert MIDI note to freq_cv offset from carrier_freq
+                float target_freq = 440.0f * std::pow(2.0f, (spread_note - 69.0f) / 12.0f);
+                freq_cv = 12.0f * std::log2f(target_freq / carrier_freq.value);
+            }
+        }
 
         float freq = carrier_freq.value * std::pow(2.0f, freq_cv / 12.0f);
         if (freq < 20.0f)    freq = 20.0f;
@@ -119,7 +150,7 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
 
             float mod_signal = mi * std::sin(2.0 * M_PI * mod_phase_);
             float sample = std::sin(2.0 * M_PI * carrier_phase_ + mod_signal);
-            out[i] = sample * env_state_.env_value * amp;
+            out[i] = sample * env_state_.env_value * amp * vel_scale;
 
             carrier_phase_ += static_cast<double>(freq) * inv_sr;
             if (carrier_phase_ >= 1.0) carrier_phase_ -= 1.0;
