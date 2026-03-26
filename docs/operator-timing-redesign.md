@@ -118,13 +118,13 @@ These produce gates, steps, or MIDI-adjacent behavior. They mostly use beat-phas
 **Notes:** No timing redesign needed — was misclassified.
 
 ### pattern_seq
-**Status:** Not started
+**Status:** Done
 **Current timing:** Beat tracking + rate multipliers + per-step probability.
 **State:** `beat_count_`, `prev_phase_`, `prev_step_`, `prev_gate_`, MIDI tracking, RNG
 **Ports:** `beat_phase` (required)
-**Problem:** Step/gate transitions at call boundary. Probability computed once per step.
-**Redesign approach:** Per-sample gate evaluation. Probability stays per-step (intentional — re-rolling per sample would be wrong).
-**Notes:**
+**Problem:** Was audio-only (`AudioOperatorBase`), not dual-cadence.
+**Redesign approach:** Added `FrameProcessable` and shared `compute()` helper. Phase-driven logic already cadence-agnostic.
+**Notes:** Same pattern as `note_pattern`/`chord_progression`.
 
 ### phase_to_midi
 **Status:** Done

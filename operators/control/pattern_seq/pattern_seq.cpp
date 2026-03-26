@@ -6,7 +6,12 @@
 #include <cmath>
 #include <cstdint>
 
-struct PatternSeq : vivid::AudioOperatorBase {
+// PatternSeq — dual-cadence step sequencer with probability and MIDI.
+//
+// Phase-driven beat tracking with rate multipliers, per-step probability,
+// gate output, and MIDI note-on/off. All timing is cadence-agnostic.
+//
+struct PatternSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "PatternSeq";
     static constexpr bool kTimeDependent = true;
 
@@ -61,12 +66,22 @@ struct PatternSeq : vivid::AudioOperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values[0], ctx->param_values, ctx->output_values,
+                ctx->output_spreads, ctx->custom_outputs, ctx->custom_output_count);
+    }
+
     void process_audio(const VividAudioContext* ctx) override {
-        float beat_phase = ctx->input_float_values[0];
-        int n   = std::clamp(static_cast<int>(ctx->param_values[0]), 1, 16);
-        int r   = std::clamp(static_cast<int>(ctx->param_values[1]), 0, 8);
-        float gl = ctx->param_values[2];
-        float prob = ctx->param_values[3];
+        compute(ctx->input_float_values[0], ctx->param_values, ctx->output_float_values,
+                ctx->output_spreads, ctx->custom_outputs, ctx->custom_output_count);
+    }
+
+    void compute(float beat_phase, const float* params, float* output_values,
+                 VividSpreadPort* out_spreads, void** custom_outputs, uint32_t custom_output_count) {
+        int n   = std::clamp(static_cast<int>(params[0]), 1, 16);
+        int r   = std::clamp(static_cast<int>(params[1]), 0, 8);
+        float gl = params[2];
+        float prob = params[3];
 
         // Beat tracking
         float delta = beat_phase - prev_phase_;
@@ -83,15 +98,13 @@ struct PatternSeq : vivid::AudioOperatorBase {
         float step_phase = scaled_phase - std::floor(scaled_phase);
 
         // Step value (val_0 is param index 4)
-        float value = ctx->param_values[4 + current_step];
+        float value = params[4 + current_step];
 
         // Trigger on step change
         bool new_step = (current_step != prev_step_);
         prev_step_ = current_step;
 
         // Probability: deterministic per (beat_count cycle, step)
-        // Hash of global_step ensures same step repeats consistently within a pattern,
-        // but varies across cycles
         bool fires = true;
         if (prob < 1.0f) {
             uint32_t seed = static_cast<uint32_t>(global_step);
@@ -104,17 +117,16 @@ struct PatternSeq : vivid::AudioOperatorBase {
         float trigger = (new_step && fires) ? 1.0f : 0.0f;
         float gate = (fires && step_phase < gl) ? 1.0f : 0.0f;
 
-        ctx->output_float_values[0] = out_value;
-        ctx->output_float_values[1] = trigger;
-        ctx->output_float_values[2] = gate;
-        ctx->output_float_values[3] = static_cast<float>(current_step);
+        output_values[0] = out_value;
+        output_values[1] = trigger;
+        output_values[2] = gate;
+        output_values[3] = static_cast<float>(current_step);
 
         // MIDI output: note-on on gate rising edge, note-off on falling edge
         uint8_t ch = static_cast<uint8_t>(midi_channel.int_value() - 1);
         midi_buf_.count = 0;
         bool gate_high = (gate > 0.5f);
         if (gate_high && !prev_gate_) {
-            // Gate rising edge: send note-off for previous, note-on for new
             if (prev_midi_note_ >= 0) {
                 vivid_sequencers::midi_note_off(midi_buf_,
                     static_cast<uint8_t>(prev_midi_note_), ch);
@@ -123,7 +135,6 @@ struct PatternSeq : vivid::AudioOperatorBase {
             vivid_sequencers::midi_note_on(midi_buf_, note, 100, ch);
             prev_midi_note_ = note;
         } else if (!gate_high && prev_gate_) {
-            // Gate falling edge: note-off
             if (prev_midi_note_ >= 0) {
                 vivid_sequencers::midi_note_off(midi_buf_,
                     static_cast<uint8_t>(prev_midi_note_), ch);
@@ -131,18 +142,18 @@ struct PatternSeq : vivid::AudioOperatorBase {
             }
         }
         prev_gate_ = gate_high;
-        if (ctx->custom_outputs && ctx->custom_output_count > 0) {
-            ctx->custom_outputs[0] = &midi_buf_;
+        if (custom_outputs && custom_output_count > 0) {
+            custom_outputs[0] = &midi_buf_;
         }
 
         // Full pattern as spread (output port 4 = pattern)
-        if (ctx->output_spreads) {
-            auto& sp = ctx->output_spreads[4];
+        if (out_spreads) {
+            auto& sp = out_spreads[4];
             auto len = static_cast<uint32_t>(n);
             if (sp.capacity >= len) {
                 sp.length = len;
                 for (uint32_t i = 0; i < len; ++i)
-                    sp.data[i] = ctx->param_values[4 + i];
+                    sp.data[i] = params[4 + i];
             }
         }
     }
