@@ -293,7 +293,7 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
 
     // Process a few ticks to let initialization settle.
     for (int t = 0; t < 3; t++) {
-        loader.process(inst, &ctx);
+        loader.process_frame(inst, &ctx);
         ctx.time += ctx.delta_time;
         ctx.frame++;
     }
@@ -499,7 +499,7 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             ctx.output_values  = outs.empty()   ? nullptr : outs.data();
             ctx.input_spreads  = si.empty()     ? nullptr : si.data();
             ctx.output_spreads = so.empty()     ? nullptr : so.data();
-            loader.process(inst, &ctx);
+            loader.process_frame(inst, &ctx);
             for (uint32_t i = 0; i < no; i++)
                 if (!std::isfinite(outs[i])) return false;
             return true;

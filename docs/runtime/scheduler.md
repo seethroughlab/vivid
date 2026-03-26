@@ -61,7 +61,7 @@ void tick(double time, double delta_time, uint64_t frame,
           const VividInputState* input = nullptr);
 ```
 - Increments global generation counter
-- For each node in topo order: propagates wire values, calls `loader->process()` or `loader->process_gpu()`
+- For each node in topo order: propagates wire values, calls `loader->process_frame()` or `loader->process_gpu()`
 - Generation-based memoization: non-time-dependent nodes skip re-evaluation if all inputs unchanged
 - `on_gpu_node` callback fires after each GPU node's `process_gpu()` — used for thumbnail capture
 

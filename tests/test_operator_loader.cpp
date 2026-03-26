@@ -152,7 +152,7 @@ int main() {
         VividFrameContext ctx{};
         ctx.param_values = params;
         ctx.output_values = outputs;
-        loader.process(instance, &ctx);
+        loader.process_frame(instance, &ctx);
         check(std::fabs(outputs[0] - 10.0f) < 1e-4f, "process output = 10.0");
 
         loader.destroy_instance(instance);
@@ -696,7 +696,7 @@ int main() {
 
         VividFrameContext ctx{};
         // Must not crash or dereference nullptr
-        loader.process(nullptr, &ctx);
+        loader.process_frame(nullptr, &ctx);
         check(true, "data-driven: process(nullptr, ctx) does not crash");
     }
 

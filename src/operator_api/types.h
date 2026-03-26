@@ -7,7 +7,8 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 16u
+#define VIVID_OPERATOR_ABI_VERSION 17u
+// v17: Renamed vivid_process entry point to vivid_process_frame.
 // v16: Removed deprecated `domain` field from VividOperatorDescriptor.
 // v15: Cadence-aware execution model — replaced VividDomain with VividExecutionEnv + VividCadenceCapability.
 // The ABI version catches stale dylibs during hot-reload — it is not a cross-version compatibility promise.

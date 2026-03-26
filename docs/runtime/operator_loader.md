@@ -50,16 +50,16 @@ extern "C" uint32_t vivid_abi_version() { return VIVID_OPERATOR_ABI_VERSION; }
 extern "C" VividDescriptorFn vivid_describe;
 extern "C" VividCreateFn     vivid_create;
 extern "C" VividDestroyFn    vivid_destroy;
-extern "C" VividProcessFrameFn    vivid_process;       // control domain
+extern "C" VividProcessFrameFn    vivid_process_frame;  // frame-rate
 // + optional: vivid_process_audio, vivid_process_gpu, vivid_draw_thumbnail,
 //             vivid_main_thread_update, vivid_draw_inspector, vivid_inspector_mode,
 //             vivid_file_drop_descriptor
 ```
 
-### Per-Domain Dispatch
+### Per-Environment Dispatch
 
 ```cpp
-void process(void* instance, VividFrameContext* ctx) const;      // control
+void process_frame(void* instance, VividFrameContext* ctx) const; // frame-rate
 void process_audio(void* instance, VividAudioContext* ctx) const;  // audio
 void process_gpu(void* instance, VividGpuContext* ctx) const;      // GPU
 ```

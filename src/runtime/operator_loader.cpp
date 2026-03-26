@@ -89,7 +89,7 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     , desc_fn_(other.desc_fn_)
     , create_fn_(other.create_fn_)
     , destroy_fn_(other.destroy_fn_)
-    , process_fn_(other.process_fn_)
+    , process_frame_fn_(other.process_frame_fn_)
     , process_audio_fn_(other.process_audio_fn_)
     , process_gpu_fn_(other.process_gpu_fn_)
     , draw_thumb_fn_(other.draw_thumb_fn_)
@@ -112,7 +112,7 @@ OperatorLoader::OperatorLoader(OperatorLoader&& other) noexcept
     other.desc_fn_          = nullptr;
     other.create_fn_        = nullptr;
     other.destroy_fn_       = nullptr;
-    other.process_fn_       = nullptr;
+    other.process_frame_fn_       = nullptr;
     other.process_audio_fn_ = nullptr;
     other.process_gpu_fn_   = nullptr;
     other.draw_thumb_fn_ = nullptr;
@@ -134,7 +134,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         desc_fn_          = other.desc_fn_;
         create_fn_        = other.create_fn_;
         destroy_fn_       = other.destroy_fn_;
-        process_fn_       = other.process_fn_;
+        process_frame_fn_       = other.process_frame_fn_;
         process_audio_fn_ = other.process_audio_fn_;
         process_gpu_fn_   = other.process_gpu_fn_;
         draw_thumb_fn_ = other.draw_thumb_fn_;
@@ -156,7 +156,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
         other.desc_fn_          = nullptr;
         other.create_fn_        = nullptr;
         other.destroy_fn_       = nullptr;
-        other.process_fn_       = nullptr;
+        other.process_frame_fn_       = nullptr;
         other.process_audio_fn_ = nullptr;
         other.process_gpu_fn_   = nullptr;
         other.draw_thumb_fn_ = nullptr;
@@ -211,7 +211,9 @@ bool OperatorLoader::load(const char* path) {
     auto new_destroy_fn = reinterpret_cast<VividDestroyFn>(dlsym(new_handle, "vivid_destroy"));
 
     // Per-environment process entry points
-    auto new_process_fn       = reinterpret_cast<VividProcessFrameFn>(dlsym(new_handle, "vivid_process"));
+    auto new_process_fn       = reinterpret_cast<VividProcessFrameFn>(dlsym(new_handle, "vivid_process_frame"));
+    if (!new_process_fn)  // fallback for pre-v17 plugins
+        new_process_fn    = reinterpret_cast<VividProcessFrameFn>(dlsym(new_handle, "vivid_process"));
     auto new_process_audio_fn = reinterpret_cast<VividProcessAudioFn>(dlsym(new_handle, "vivid_process_audio"));
     auto new_process_gpu_fn   = reinterpret_cast<VividProcessGpuFn>(dlsym(new_handle, "vivid_process_gpu"));
 
@@ -302,7 +304,7 @@ bool OperatorLoader::load(const char* path) {
     desc_fn_          = new_desc_fn;
     create_fn_        = new_create_fn;
     destroy_fn_       = new_destroy_fn;
-    process_fn_       = new_process_fn;
+    process_frame_fn_       = new_process_fn;
     process_audio_fn_ = new_process_audio_fn;
     process_gpu_fn_   = new_process_gpu_fn;
 
@@ -325,7 +327,7 @@ void OperatorLoader::init_builtin(VividDescriptorFn desc, VividCreateFn create,
     desc_fn_    = desc;
     create_fn_  = create;
     destroy_fn_ = destroy;
-    process_fn_ = process;
+    process_frame_fn_ = process;
 }
 
 void OperatorLoader::init_data_driven(std::shared_ptr<DataDrivenFilterConfig> config) {
@@ -442,7 +444,7 @@ void OperatorLoader::unload() {
         desc_fn_          = nullptr;
         create_fn_        = nullptr;
         destroy_fn_       = nullptr;
-        process_fn_       = nullptr;
+        process_frame_fn_       = nullptr;
         process_audio_fn_ = nullptr;
         process_gpu_fn_   = nullptr;
         draw_thumb_fn_ = nullptr;
@@ -485,9 +487,9 @@ void OperatorLoader::destroy_instance(void* instance) const {
     }
 }
 
-void OperatorLoader::process(void* instance, VividFrameContext* ctx) const {
-    if (process_fn_ && instance) {
-        process_fn_(instance, ctx);
+void OperatorLoader::process_frame(void* instance, VividFrameContext* ctx) const {
+    if (process_frame_fn_ && instance) {
+        process_frame_fn_(instance, ctx);
     }
 }
 

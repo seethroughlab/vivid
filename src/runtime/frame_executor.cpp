@@ -380,14 +380,14 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             ctx.preferred_tex_height = 0;
 
             try {
-                cn.loader->process(cn.instance, &ctx);
+                cn.loader->process_frame(cn.instance, &ctx);
             } catch (const std::exception& ex) {
                 cn.errored = true;
                 cn.error_message = ex.what();
                 std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
             } catch (...) {
                 cn.errored = true;
-                cn.error_message = "unknown exception in process()";
+                cn.error_message = "unknown exception in process_frame()";
                 std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
             }
 

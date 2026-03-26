@@ -272,7 +272,7 @@ bool ExportPipeline::generate_static_registry() {
         out << "extern \"C\" const VividOperatorDescriptor* vivid_descriptor_" << op.target << "();\n";
         out << "extern \"C\" void* vivid_create_" << op.target << "();\n";
         out << "extern \"C\" void vivid_destroy_" << op.target << "(void*);\n";
-        out << "extern \"C\" void vivid_process_" << op.target << "(void*, const VividFrameContext*);\n";
+        out << "extern \"C\" void vivid_process_frame_" << op.target << "(void*, const VividFrameContext*);\n";
     }
 
     out << "\nvoid register_static_operators(vivid::OperatorRegistry& registry) {\n";
@@ -311,7 +311,7 @@ bool ExportPipeline::generate_static_registry() {
             << "        vivid_descriptor_" << op.target << ",\n"
             << "        vivid_create_" << op.target << ",\n"
             << "        vivid_destroy_" << op.target << ",\n"
-            << "        vivid_process_" << op.target << ");\n";
+            << "        vivid_process_frame_" << op.target << ");\n";
     }
     out << "}\n";
 
@@ -503,7 +503,7 @@ bool ExportPipeline::generate_cmakelists() {
                   << "    vivid_descriptor=vivid_descriptor_" << op.target << "\n"
                   << "    vivid_create=vivid_create_" << op.target << "\n"
                   << "    vivid_destroy=vivid_destroy_" << op.target << "\n"
-                  << "    vivid_process=vivid_process_" << op.target << "\n"
+                  << "    vivid_process_frame=vivid_process_frame_" << op.target << "\n"
                   << "    vivid_draw_thumbnail=vivid_draw_thumbnail_" << op.target << "\n"
                   << "    vivid_main_thread_update=vivid_main_thread_update_" << op.target << "\n"
                   << ")\n";
