@@ -81,7 +81,6 @@ struct CompiledEdge {
 // ---------------------------------------------------------------------------
 // CompiledNode — unified node state.
 //
-// Replaces both NodeState (scheduler) and AudioNodeState (audio engine).
 // A single CompiledNode exists per graph node. The active_cadence determines
 // which executor processes it.
 // ---------------------------------------------------------------------------

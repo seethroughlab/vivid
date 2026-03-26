@@ -88,7 +88,6 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-            scheduler.sync_to_nodestate();
             const auto& snap = audio_engine.analysis_read();
             if (src_idx >= 0 && snap.rms[src_idx] > 0.01f) {
                 got_signal = true;
@@ -113,13 +112,12 @@ int main(int argc, char* argv[]) {
     {
         // Change ctrl/scale to 2.0 → output = 2.0 * 2.0 = 4.0
         // dst output = src(0.5) + ctrl(4.0) = 4.5
-        auto* ctrl_ns = scheduler.find_node_mut("ctrl");
+        auto* ctrl_ns = scheduler.compiled_graph()->find_node("ctrl");
         check(ctrl_ns != nullptr, "find ctrl node");
         if (ctrl_ns) {
             auto pi = ctrl_ns->param_indices.find("scale");
             if (pi != ctrl_ns->param_indices.end()) {
                 ctrl_ns->param_values[pi->second] = 2.0f;
-                scheduler.sync_node_to_compiled("ctrl");
             }
         }
         scheduler.tick(0.0, 0.016, 1);
@@ -130,7 +128,6 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-            scheduler.sync_to_nodestate();
             const auto& snap = audio_engine.analysis_read();
             if (dst_idx >= 0 && snap.rms[dst_idx] > 4.0f) {
                 updated = true;
@@ -158,7 +155,6 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-            scheduler.sync_to_nodestate();
             const auto& snap = audio_engine.analysis_read();
             if (src_idx >= 0 && snap.rms[src_idx] > 0.01f) {
                 resumed = true;

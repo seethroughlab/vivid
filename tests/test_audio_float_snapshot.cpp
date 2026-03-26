@@ -79,11 +79,10 @@ int main(int argc, char* argv[]) {
         check_float(audio_engine.analysis_read().rms[audio_idx], 2.0f, 0.1f,
                     "audio analysis reflects snapshotted cv");
 
-        auto* ctrl_ns = scheduler.find_node_mut("ctrl");
+        auto* ctrl_ns = scheduler.compiled_graph()->find_node("ctrl");
         check(ctrl_ns != nullptr, "find ctrl node");
         if (ctrl_ns) {
             ctrl_ns->output_values[0] = 9.0f;
-            scheduler.sync_node_to_compiled("ctrl");
         }
 
         std::fill(std::begin(output), std::end(output), 0.0f);

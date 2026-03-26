@@ -1163,7 +1163,6 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         else if (cn.active_cadence == vivid::Cadence::Audio) sn.env = VIVID_ENV_AUDIO;
         else sn.env = VIVID_ENV_FRAME;
         sn.is_gpu = cn.is_gpu;
-        sn.is_audio = (cn.active_cadence == vivid::Cadence::Audio);
         sn.is_audio_capable = (cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE);
         {
             const auto* ndef = graph.find_node(cn.node_id);

@@ -134,7 +134,7 @@ static SingleTestResult run_graph_test(const std::string& graph_path,
     }
 
     // Check for errored nodes
-    for (const auto& node : sched.nodes()) {
+    for (const auto& node : sched.compiled_graph()->nodes) {
         if (node.errored) {
             r.status = "failed";
             r.code = "graph_node_error";

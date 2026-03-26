@@ -1,4 +1,5 @@
 #include "runtime/builtin_operators.h"
+#include "runtime/compiled_graph.h"
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
 #include "runtime/package_compiler.h"
@@ -65,7 +66,7 @@ static void write_live_pkg_manifest(const std::string& root, const std::string& 
 }
 
 static float node_scalar_output(const vivid::Scheduler& scheduler, const std::string& node_id) {
-    const auto* node = scheduler.find_node(node_id);
+    const auto* node = scheduler.compiled_graph()->find_node(node_id);
     if (!node || node->output_values.empty()) return std::nanf("");
     return node->output_values[0];
 }
@@ -149,7 +150,7 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "  INFO: ticking after rebuild\n");
         scheduler.tick(0.0, 0.016, static_cast<uint64_t>(cycle + 10));
         {
-            const auto* rebuilt_node = scheduler.find_node("pkg_live");
+            const auto* rebuilt_node = scheduler.compiled_graph()->find_node("pkg_live");
             check(rebuilt_node != nullptr, "pkg_live remains after rebuild");
             if (rebuilt_node)
                 check(!rebuilt_node->missing_operator, "pkg_live stays resolved after rebuild");
@@ -163,7 +164,7 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "  INFO: applying snapshot after unlink\n");
         auto apply_unlink = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
         check(apply_unlink.ok, "apply_snapshot_json after unlink succeeds");
-        const auto* missing_node = scheduler.find_node("pkg_live");
+        const auto* missing_node = scheduler.compiled_graph()->find_node("pkg_live");
         check(missing_node != nullptr, "pkg_live remains in graph after unlink");
         if (missing_node)
             check(missing_node->missing_operator, "pkg_live becomes missing operator after unlink");
@@ -180,7 +181,7 @@ int main(int argc, char* argv[]) {
         check(apply_relink.ok, "apply_snapshot_json after relink succeeds");
         std::fprintf(stderr, "  INFO: ticking after relink\n");
         scheduler.tick(0.0, 0.016, static_cast<uint64_t>(cycle + 20));
-        const auto* recovered_node = scheduler.find_node("pkg_live");
+        const auto* recovered_node = scheduler.compiled_graph()->find_node("pkg_live");
         check(recovered_node != nullptr, "pkg_live restored after relink");
         if (recovered_node) {
             check(!recovered_node->missing_operator, "pkg_live resolves again after relink");

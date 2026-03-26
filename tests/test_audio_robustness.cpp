@@ -67,7 +67,6 @@ int main(int argc, char* argv[]) {
     // --- Test 2: Error state is propagated ---
     std::fprintf(stderr, "\n--- error state propagation ---\n");
     scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-    scheduler.sync_to_nodestate();
 
     int bad_idx = audio_engine.audio_node_index("bad");
     int good_idx = audio_engine.audio_node_index("good");
@@ -108,7 +107,7 @@ int main(int argc, char* argv[]) {
     // --- Test 5: Error state reaches scheduler nodes ---
     std::fprintf(stderr, "\n--- error propagated to scheduler ---\n");
     bool found_bad_sched = false;
-    for (const auto& ns : scheduler.nodes()) {
+    for (const auto& ns : scheduler.compiled_graph()->nodes) {
         if (ns.node_id == "bad") {
             check(ns.errored, "scheduler 'bad' node errored");
             check(!ns.error_message.empty(), "scheduler 'bad' node has error message");

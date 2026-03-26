@@ -1,6 +1,7 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
+#include "runtime/compiled_graph.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/thumbnail.h"
 #include "common/gpu_util.h"
@@ -431,7 +432,7 @@ int main() {
         tick_and_submit(sched, gpu, kFormat);
 
         // Readback
-        auto& ns = sched.nodes_mut()[0];
+        auto& ns = sched.compiled_graph()->nodes[0];
         auto pixels = readback_texture(gpu.device, gpu.queue, ns.gpu_texture, W, H);
         check(!pixels.empty(), "readback returned pixels");
 
@@ -465,7 +466,7 @@ int main() {
         tick_and_submit(sched, gpu, kFormat);
 
         // Change params to green
-        auto* ns = sched.find_node_mut("fill");
+        auto* ns = sched.compiled_graph()->find_node("fill");
         check(ns != nullptr, "found fill node");
         if (ns) {
             auto pi_r = ns->param_indices.find("r");
@@ -474,14 +475,13 @@ int main() {
             if (pi_g != ns->param_indices.end()) ns->param_values[pi_g->second] = 1.0f;
             // Bump generation so the node re-processes
             ns->generation++;
-            sched.sync_node_to_compiled("fill");
         }
 
         // Second tick: should be green now
         tick_and_submit(sched, gpu, kFormat);
 
         auto pixels = readback_texture(gpu.device, gpu.queue,
-                                        sched.nodes_mut()[0].gpu_texture, W, H);
+                                        sched.compiled_graph()->nodes[0].gpu_texture, W, H);
         check(!pixels.empty(), "readback returned pixels");
 
         if (!pixels.empty()) {
@@ -512,7 +512,7 @@ int main() {
         tick_and_submit(sched, gpu, kFormat);
 
         auto pixels = readback_texture(gpu.device, gpu.queue,
-                                        sched.nodes_mut()[0].gpu_texture, W, H);
+                                        sched.compiled_graph()->nodes[0].gpu_texture, W, H);
         check(!pixels.empty(), "readback returned pixels");
 
         if (!pixels.empty()) {
@@ -603,7 +603,7 @@ int main() {
         sched.allocate_gpu_textures(gpu.device, 64, 64, kFormat, WGPUTextureUsage_CopySrc);
 
         // Verify the node got 128×128, not the 64×64 default
-        auto& ns = sched.nodes_mut()[0];
+        auto& ns = sched.compiled_graph()->nodes[0];
         check(ns.gpu_tex_width == W, "texture width is 128");
         check(ns.gpu_tex_height == H, "texture height is 128");
 

@@ -65,7 +65,6 @@ struct NodeSnapshot {
     VividExecutionEnv env = VIVID_ENV_FRAME;
 
     bool is_gpu = false;
-    bool is_audio = false;
     bool is_audio_capable = false;  // true if operator supports both frame and audio cadence
     uint8_t cadence_override = 0;   // 0=auto, 1=frame, 2=audio (from NodeDef)
     bool is_gpu_sink = false;

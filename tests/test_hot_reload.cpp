@@ -1,6 +1,7 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
+#include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -70,10 +71,10 @@ int main(int argc, char* argv[]) {
 
     vivid::Scheduler scheduler;
     check(scheduler.build(graph, registry), "scheduler.build() succeeds");
-    check(scheduler.nodes().size() == 1, "scheduler has 1 node");
+    check(scheduler.compiled_graph()->nodes.size() == 1, "scheduler has 1 node");
 
     // Verify initial param: scale=5.0 (from JSON)
-    const auto& nodes = scheduler.nodes();
+    const auto& nodes = scheduler.compiled_graph()->nodes;
     check_float(nodes[0].param_values[0], 5.0f, "scale param initialized to 5.0");
 
     // --- Step 4: Tick v1 and verify output ---

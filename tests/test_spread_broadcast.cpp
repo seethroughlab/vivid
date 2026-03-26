@@ -4,6 +4,7 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
+#include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cmath>
 #include <filesystem>
@@ -61,8 +62,8 @@ int main(int argc, char* argv[]) {
     scheduler.tick(0.0, 1.0 / 60.0, 0);
 
     // Find single_sink node
-    const vivid::NodeState* single_sink = nullptr;
-    for (const auto& ns : scheduler.nodes()) {
+    const vivid::CompiledNode* single_sink = nullptr;
+    for (const auto& ns : scheduler.compiled_graph()->nodes) {
         if (ns.node_id == "single_sink") { single_sink = &ns; break; }
     }
     check(single_sink != nullptr, "found single_sink node");
@@ -81,8 +82,8 @@ int main(int argc, char* argv[]) {
 
     // --- Test 2: Broadcast (two different-length spreads) ---
     std::fprintf(stderr, "\n--- broadcast two spreads ---\n");
-    const vivid::NodeState* sink = nullptr;
-    for (const auto& ns : scheduler.nodes()) {
+    const vivid::CompiledNode* sink = nullptr;
+    for (const auto& ns : scheduler.compiled_graph()->nodes) {
         if (ns.node_id == "sink") { sink = &ns; break; }
     }
     check(sink != nullptr, "found sink node");

@@ -1,5 +1,6 @@
 #include "runtime/audio_engine.h"
 #include "runtime/builtin_operators.h"
+#include "runtime/compiled_graph.h"
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
 #include "runtime/scheduler.h"
@@ -118,7 +119,7 @@ int main(int argc, char* argv[]) {
         check_float(first_sample_after_process(audio_engine), expected_sample, 1e-4f,
                     "compatible reload updates active audio behavior");
 
-        const auto* audio_node = scheduler.find_node("audio");
+        const auto* audio_node = scheduler.compiled_graph()->find_node("audio");
         check(audio_node != nullptr, "scheduler retains audio node after reload");
         if (audio_node) {
             auto pi = audio_node->param_indices.find("level");

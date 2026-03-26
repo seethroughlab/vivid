@@ -2234,7 +2234,7 @@ void NodeGraphUI::draw_inspector_cadence(Renderer2D& tr, const NodeSnapshot& nod
     const char* label;
     if (node.cadence_override == 1) label = "Frame";
     else if (node.cadence_override == 2) label = "Audio";
-    else label = node.is_audio ? "Audio (auto)" : "Frame (auto)";
+    else label = (node.env == VIVID_ENV_AUDIO) ? "Audio (auto)" : "Frame (auto)";
 
     float val_x = px + 4;
     tr.draw_text(val_x + 80, py, label, 0.8f, 0.82f, 0.85f);

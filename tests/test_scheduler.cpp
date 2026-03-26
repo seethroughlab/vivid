@@ -1,6 +1,7 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
+#include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -29,7 +30,7 @@ static void check_float(float actual, float expected, const char* msg) {
 
 // Helper: find node index by id in a scheduler
 static int find_idx(const vivid::Scheduler& sched, const std::string& id) {
-    const auto& nodes = sched.nodes();
+    const auto& nodes = sched.compiled_graph()->nodes;
     for (size_t i = 0; i < nodes.size(); ++i) {
         if (nodes[i].node_id == id) return static_cast<int>(i);
     }
@@ -75,9 +76,9 @@ int main() {
         check(sched.build(g, registry), "build succeeds");
         sched.tick(0.0, 0.016, 0);
 
-        auto* na = sched.find_node_mut("a");
-        auto* nb = sched.find_node_mut("b");
-        auto* nc = sched.find_node_mut("c");
+        auto* na = sched.compiled_graph()->find_node("a");
+        auto* nb = sched.compiled_graph()->find_node("b");
+        auto* nc = sched.compiled_graph()->find_node("c");
         check(na && nb && nc, "all nodes found");
         check_float(na->output_values[0], 2.0f, "a output = 2.0");
         check_float(nb->output_values[0], 4.0f, "b output = 4.0");
@@ -119,10 +120,10 @@ int main() {
 
         sched.tick(0.0, 0.016, 0);
 
-        auto* na = sched.find_node_mut("a");
-        auto* nb = sched.find_node_mut("b");
-        auto* nc = sched.find_node_mut("c");
-        auto* nd = sched.find_node_mut("d");
+        auto* na = sched.compiled_graph()->find_node("a");
+        auto* nb = sched.compiled_graph()->find_node("b");
+        auto* nc = sched.compiled_graph()->find_node("c");
+        auto* nd = sched.compiled_graph()->find_node("d");
         check_float(na->output_values[0], 6.0f, "a output = 6.0");
         check_float(nb->output_values[0], 12.0f, "b output = 12.0");
         check_float(nc->output_values[0], 30.0f, "c output = 30.0");
@@ -167,9 +168,9 @@ int main() {
 
         // Tick 1: first evaluation, all outputs change from 0
         sched.tick(0.0, 0.016, 0);
-        auto* na = sched.find_node_mut("a");
-        auto* nb = sched.find_node_mut("b");
-        auto* nc = sched.find_node_mut("c");
+        auto* na = sched.compiled_graph()->find_node("a");
+        auto* nb = sched.compiled_graph()->find_node("b");
+        auto* nc = sched.compiled_graph()->find_node("c");
 
         uint64_t ga1 = na->generation;
         uint64_t gb1 = nb->generation;
@@ -186,7 +187,6 @@ int main() {
 
         // Tick 3: change a's scale param → all downstream should bump
         na->param_values[0] = 5.0f;  // scale = 5
-        sched.sync_node_to_compiled("a");
         sched.tick(0.0, 0.016, 2);
         check(na->generation > ga1, "tick 3: a gen bumped after param change");
         check(nb->generation > gb1, "tick 3: b gen bumped (downstream)");
@@ -219,9 +219,9 @@ int main() {
         check(sched.build(g, registry), "build succeeds");
         sched.tick(0.0, 0.016, 0);
 
-        auto* nsrc = sched.find_node_mut("src");
-        auto* nmod = sched.find_node_mut("mod");
-        auto* ndst = sched.find_node_mut("dst");
+        auto* nsrc = sched.compiled_graph()->find_node("src");
+        auto* nmod = sched.compiled_graph()->find_node("mod");
+        auto* ndst = sched.compiled_graph()->find_node("dst");
         check_float(nsrc->output_values[0], 4.0f, "src output = 4.0");
         check_float(nmod->output_values[0], 6.0f, "mod output = 6.0");
         check_float(ndst->input_values[0], 4.0f, "dst input = 4.0");
@@ -247,8 +247,8 @@ int main() {
         check(sched.build(g, registry), "build succeeds");
         sched.tick(0.0, 0.016, 0);
 
-        auto* nsrc = sched.find_node_mut("src");
-        auto* npass = sched.find_node_mut("pass");
+        auto* nsrc = sched.compiled_graph()->find_node("src");
+        auto* npass = sched.compiled_graph()->find_node("pass");
 
         check_float(nsrc->output_values[0], 1.0f, "src scalar = 1.0");
         check(nsrc->output_spreads[0].size() == 4, "src spread has 4 elements");
@@ -282,10 +282,10 @@ int main() {
         check(sched.build(g, registry), "build succeeds");
 
         // AudioTestOp gets 3 implicit analysis ports: rms, peak, waveform
-        auto* naudio = sched.find_node_mut("audio");
+        auto* naudio = sched.compiled_graph()->find_node("audio");
         check(naudio != nullptr, "audio node found");
         check(naudio->output_port_count == 4, "audio has 4 output ports (1 declared + 3 implicit)");
-        check(naudio->is_audio, "audio node flagged as audio");
+        check(naudio->active_cadence == vivid::Cadence::Audio, "audio node flagged as audio");
 
         sched.tick(0.0, 0.016, 0);
 
@@ -321,8 +321,8 @@ int main() {
         check(sched.type_name(static_cast<uint32_t>(audio_idx)) == "AudioTestOp", "type_name(audio) = AudioTestOp");
 
         // find_node_mut
-        check(sched.find_node_mut("ctrl") != nullptr, "find_node_mut(ctrl) works");
-        check(sched.find_node_mut("nonexistent") == nullptr, "find_node_mut(nonexistent) = nullptr");
+        check(sched.compiled_graph()->find_node("ctrl") != nullptr, "find_node_mut(ctrl) works");
+        check(sched.compiled_graph()->find_node("nonexistent") == nullptr, "find_node_mut(nonexistent) = nullptr");
 
         // is_audio_type
         check(sched.is_audio_type("AudioTestOp"), "is_audio_type(AudioTestOp) = true");

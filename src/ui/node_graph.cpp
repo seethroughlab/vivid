@@ -1956,7 +1956,7 @@ void NodeGraphUI::update_wire_hover() {
 
 void NodeGraphUI::update_sparklines() {
     for (const auto& ns : snap_.nodes) {
-        if (ns.is_gpu || ns.is_audio) continue;
+        if (ns.is_gpu || ns.env == VIVID_ENV_AUDIO) continue;
 
         auto sorted_outs = sorted_ports(ns.output_port_indices);
         if (sorted_outs.empty()) continue;

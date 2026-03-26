@@ -397,18 +397,17 @@ static void test_audio_engine_integration(const std::string& build_dir) {
 
     // --- Test 7: pull_from_audio delivers LFO scalar back to scheduler ---
     scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-    scheduler.sync_to_nodestate();
 
     int lfo_sched_idx = -1;
-    for (size_t i = 0; i < scheduler.nodes().size(); ++i) {
-        if (scheduler.nodes()[i].node_id == "lfo") {
+    for (size_t i = 0; i < scheduler.compiled_graph()->nodes.size(); ++i) {
+        if (scheduler.compiled_graph()->nodes[i].node_id == "lfo") {
             lfo_sched_idx = static_cast<int>(i);
             break;
         }
     }
     check(lfo_sched_idx >= 0, "LFO found in scheduler");
     if (lfo_sched_idx >= 0) {
-        const auto& lfo_ns = scheduler.nodes()[lfo_sched_idx];
+        const auto& lfo_ns = scheduler.compiled_graph()->nodes[lfo_sched_idx];
         auto val_it = lfo_ns.output_port_indices.find("value");
         if (val_it != lfo_ns.output_port_indices.end()) {
             float injected = lfo_ns.output_values[val_it->second];

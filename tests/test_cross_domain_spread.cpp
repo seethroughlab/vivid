@@ -82,9 +82,8 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < 200; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-        scheduler.sync_to_nodestate();
-        const auto& snap = audio_engine.analysis_read();
-        if (audio_idx >= 0 && snap.rms[audio_idx] > 5.0f) {
+            const auto& snap = audio_engine.analysis_read();
+            if (audio_idx >= 0 && snap.rms[audio_idx] > 5.0f) {
             got_signal = true;
             break;
         }
@@ -99,10 +98,7 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- spread echoed back ---\n");
     {
         // Find the scheduler node for "audio" and check its "echo" output spread
-        const vivid::NodeState* audio_ns = nullptr;
-        for (const auto& ns : scheduler.nodes()) {
-            if (ns.node_id == "audio") { audio_ns = &ns; break; }
-        }
+        const vivid::CompiledNode* audio_ns = scheduler.compiled_graph()->find_node("audio");
         check(audio_ns != nullptr, "audio node found in scheduler");
 
         if (audio_ns) {
@@ -126,13 +122,12 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- spread update propagates ---\n");
     {
         // Change base to 2.0 → spread should become [2,4,6], sum=12
-        auto* src_ns = scheduler.find_node_mut("src");
+        auto* src_ns = scheduler.compiled_graph()->find_node("src");
         check(src_ns != nullptr, "find src node");
         if (src_ns) {
             auto pi = src_ns->param_indices.find("base");
             if (pi != src_ns->param_indices.end()) {
                 src_ns->param_values[pi->second] = 2.0f;
-                scheduler.sync_node_to_compiled("src");
             }
         }
         scheduler.tick(0.0, 0.016, 1);
@@ -143,7 +138,6 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-            scheduler.sync_to_nodestate();
             const auto& snap = audio_engine.analysis_read();
             if (audio_idx >= 0 && snap.rms[audio_idx] > 11.0f) {
                 updated = true;
@@ -156,10 +150,7 @@ int main(int argc, char* argv[]) {
         check_float(snap.rms[audio_idx], 12.0f, 1.0f, "RMS ≈ 12.0 (sum of [2,4,6])");
 
         // Check echo spread updated
-        const vivid::NodeState* audio_ns = nullptr;
-        for (const auto& ns : scheduler.nodes()) {
-            if (ns.node_id == "audio") { audio_ns = &ns; break; }
-        }
+        const vivid::CompiledNode* audio_ns = scheduler.compiled_graph()->find_node("audio");
         if (audio_ns) {
             auto echo_it = audio_ns->output_port_indices.find("echo");
             if (echo_it != audio_ns->output_port_indices.end()) {
@@ -178,12 +169,11 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- empty spread ---\n");
     {
         // Set count to 0 → empty spread, sum=0
-        auto* src_ns = scheduler.find_node_mut("src");
+        auto* src_ns = scheduler.compiled_graph()->find_node("src");
         if (src_ns) {
             auto pi = src_ns->param_indices.find("count");
             if (pi != src_ns->param_indices.end()) {
                 src_ns->param_values[pi->second] = 0.0f;
-                scheduler.sync_node_to_compiled("src");
             }
         }
         scheduler.tick(0.0, 0.016, 2);
@@ -194,7 +184,6 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-            scheduler.sync_to_nodestate();
             const auto& snap = audio_engine.analysis_read();
             if (audio_idx >= 0 && snap.rms[audio_idx] < 0.5f) {
                 zeroed = true;

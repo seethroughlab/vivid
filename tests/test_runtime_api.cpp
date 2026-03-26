@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
         check(r.ok, "set a/scale = 7.0");
         scheduler.tick(0.0, 0.016, 0);
         // a: output = scale * 2.0 = 7.0 * 2.0 = 14.0
-        check_float(scheduler.nodes()[0].output_values[0], 14.0f, "a output = 14.0");
+        check_float(scheduler.compiled_graph()->nodes[0].output_values[0], 14.0f, "a output = 14.0");
     }
 
     // --- Test get_param ---
@@ -137,8 +137,8 @@ int main(int argc, char* argv[]) {
         scheduler.tick(0.0, 0.016, 1);
 
         // Find node c in rebuilt scheduler
-        const vivid::NodeState* c_node = nullptr;
-        for (const auto& ns : scheduler.nodes()) {
+        const vivid::CompiledNode* c_node = nullptr;
+        for (const auto& ns : scheduler.compiled_graph()->nodes) {
             if (ns.node_id == "c") { c_node = &ns; break; }
         }
         check(c_node != nullptr, "node c exists after rebuild");
@@ -147,7 +147,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Verify a's param was preserved across rebuild
-        for (const auto& ns : scheduler.nodes()) {
+        for (const auto& ns : scheduler.compiled_graph()->nodes) {
             if (ns.node_id == "a") {
                 auto pi = ns.param_indices.find("scale");
                 check(pi != ns.param_indices.end(), "a still has scale param");
@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
         auto r = api.remove_node("c");
         check(r.ok, "remove c");
         api.apply_pending(has_gpu_ops, has_audio);
-        check(scheduler.nodes().size() == 2, "back to 2 nodes");
+        check(scheduler.compiled_graph()->nodes.size() == 2, "back to 2 nodes");
     }
 
     // --- Test disconnect ---
@@ -365,12 +365,12 @@ int main(int argc, char* argv[]) {
         api2.add_node("TestOp", "extra");
         bool hgpu = false, haudio = false;
         api2.apply_pending(hgpu, haudio);
-        check(s2.nodes().size() == 3, "reload test: 3 nodes after add");
+        check(s2.compiled_graph()->nodes.size() == 3, "reload test: 3 nodes after add");
 
         // Reload from disk → back to 2
         auto r = api2.reload(hgpu, haudio);
         check(r.ok, "reload() succeeds");
-        check(s2.nodes().size() == 2, "reload test: back to 2 nodes");
+        check(s2.compiled_graph()->nodes.size() == 2, "reload test: back to 2 nodes");
 
         s2.shutdown();
         std::filesystem::remove(tmp_path);
@@ -410,11 +410,11 @@ int main(int argc, char* argv[]) {
               "reload failure regression: graph source_path preserved after failure");
         check(graph.nodes().size() == 2,
               "reload failure regression: graph restored after failed reload");
-        check(scheduler.nodes().size() == 2,
+        check(scheduler.compiled_graph()->nodes.size() == 2,
               "reload failure regression: scheduler restored after failed reload");
 
-        const vivid::NodeState* a_node = nullptr;
-        for (const auto& ns : scheduler.nodes()) {
+        const vivid::CompiledNode* a_node = nullptr;
+        for (const auto& ns : scheduler.compiled_graph()->nodes) {
             if (ns.node_id == "a") {
                 a_node = &ns;
                 break;
@@ -479,8 +479,8 @@ int main(int argc, char* argv[]) {
         auto rr = api_switch.reload(hgpu, haudio);
         check(rr.ok, "switch regression: reload after graph switch");
 
-        const vivid::NodeState* a_node = nullptr;
-        for (const auto& ns : s_switch.nodes()) {
+        const vivid::CompiledNode* a_node = nullptr;
+        for (const auto& ns : s_switch.compiled_graph()->nodes) {
             if (ns.node_id == "a") {
                 a_node = &ns;
                 break;
@@ -529,13 +529,13 @@ int main(int argc, char* argv[]) {
               "snapshot malformed regression: source_path preserved");
         check(graph.nodes().size() == 2,
               "snapshot malformed regression: graph restored after failed apply");
-        check(scheduler.nodes().size() == 2,
+        check(scheduler.compiled_graph()->nodes.size() == 2,
               "snapshot malformed regression: scheduler restored after failed apply");
         check(api.graph_dirty(),
               "snapshot malformed regression: dirty state preserved after failed apply");
 
-        const vivid::NodeState* a_node = nullptr;
-        for (const auto& ns : scheduler.nodes()) {
+        const vivid::CompiledNode* a_node = nullptr;
+        for (const auto& ns : scheduler.compiled_graph()->nodes) {
             if (ns.node_id == "a") {
                 a_node = &ns;
                 break;

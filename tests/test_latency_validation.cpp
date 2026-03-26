@@ -1,6 +1,7 @@
 #include "runtime/operator_registry.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
+#include "runtime/compiled_graph.h"
 #include "runtime/audio_engine.h"
 #include "runtime/runtime_api.h"
 #include "runtime/builtin_operators.h"
@@ -87,14 +88,13 @@ static void scenario_param_responsiveness(vivid::OperatorRegistry& registry) {
 
     auto t0 = std::chrono::high_resolution_clock::now();
 
-    auto* a_node = scheduler.find_node_mut("a");
+    auto* a_node = scheduler.compiled_graph()->find_node("a");
     check(a_node != nullptr, "s1: find node a");
     if (a_node) {
         auto pi = a_node->param_indices.find("scale");
         check(pi != a_node->param_indices.end(), "s1: scale param exists");
         if (pi != a_node->param_indices.end()) {
             a_node->param_values[pi->second] = 42.0f;
-            scheduler.sync_node_to_compiled("a");
         }
     }
     scheduler.tick(0.0, 0.016, 1);
@@ -140,10 +140,7 @@ static void scenario_routing_responsiveness(vivid::OperatorRegistry& registry) {
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
     // b receives a's output (10.0) as scale, outputs 10*2=20
-    const vivid::NodeState* b_node = nullptr;
-    for (const auto& ns : scheduler.nodes()) {
-        if (ns.node_id == "b") { b_node = &ns; break; }
-    }
+    const vivid::CompiledNode* b_node = scheduler.compiled_graph()->find_node("b");
     check(b_node != nullptr, "s2: node b exists after rebuild");
     if (b_node) {
         check_float(b_node->output_values[0], 20.0f, "s2: b output = 10 * 2 = 20");

@@ -171,9 +171,8 @@ int main(int argc, char* argv[]) {
         float output[vivid::AudioEngine::kBufferSize * 2] = {};
         audio_engine.process_audio_for_test(output, vivid::AudioEngine::kBufferSize);
         scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-        scheduler.sync_to_nodestate();
 
-        for (const auto& node : scheduler.nodes()) {
+        for (const auto& node : scheduler.compiled_graph()->nodes) {
             if (node.errored) {
                 std::string msg = "scheduler node errored during mixed-runtime loop: " + node.node_id;
                 check(false, msg.c_str());
@@ -182,7 +181,7 @@ int main(int argc, char* argv[]) {
         }
 
         if ((i % 40) == 0) {
-            const auto* fill = scheduler.find_node("fill");
+            const auto* fill = scheduler.compiled_graph()->find_node("fill");
             check(fill != nullptr, "fill node present during mixed-runtime loop");
             if (fill) check(fill->gpu_texture != nullptr, "fill node keeps an allocated gpu texture");
         }

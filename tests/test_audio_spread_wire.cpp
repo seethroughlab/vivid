@@ -88,9 +88,8 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < 400; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
         scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-        scheduler.sync_to_nodestate();
-        const auto& snap = audio_engine.analysis_read();
-        if (recv_idx >= 0 && snap.rms[recv_idx] > 2.0f) {
+            const auto& snap = audio_engine.analysis_read();
+            if (recv_idx >= 0 && snap.rms[recv_idx] > 2.0f) {
             got_signal = true;
             break;
         }
@@ -106,13 +105,12 @@ int main(int argc, char* argv[]) {
     // --- Test 3: Set count=0 → gates disappear, envelopes release ---
     std::fprintf(stderr, "\n--- gates disappear → release ---\n");
     {
-        auto* src_ns = scheduler.find_node_mut("src");
+        auto* src_ns = scheduler.compiled_graph()->find_node("src");
         check(src_ns != nullptr, "find src node");
         if (src_ns) {
             auto pi = src_ns->param_indices.find("count");
             if (pi != src_ns->param_indices.end()) {
                 src_ns->param_values[pi->second] = 0.0f;
-                scheduler.sync_node_to_compiled("src");
             }
         }
         scheduler.tick(0.1, 0.016, 1);
@@ -123,7 +121,6 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < 400; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
             scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-            scheduler.sync_to_nodestate();
             const auto& snap = audio_engine.analysis_read();
             if (recv_idx >= 0 && snap.rms[recv_idx] < 0.3f) {
                 zeroed = true;
@@ -136,12 +133,11 @@ int main(int argc, char* argv[]) {
     // --- Test 4: Set count=3 again → envelopes re-attack ---
     std::fprintf(stderr, "\n--- re-attack ---\n");
     {
-        auto* src_ns = scheduler.find_node_mut("src");
+        auto* src_ns = scheduler.compiled_graph()->find_node("src");
         if (src_ns) {
             auto pi = src_ns->param_indices.find("count");
             if (pi != src_ns->param_indices.end()) {
                 src_ns->param_values[pi->second] = 3.0f;
-                scheduler.sync_node_to_compiled("src");
             }
         }
         scheduler.tick(0.5, 0.016, 2);
@@ -152,7 +148,6 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < 400; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
             scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
-            scheduler.sync_to_nodestate();
             const auto& snap = audio_engine.analysis_read();
             if (recv_idx >= 0 && snap.rms[recv_idx] > 2.0f) {
                 recovered = true;

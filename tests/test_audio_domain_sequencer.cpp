@@ -135,9 +135,8 @@ int main(int argc, char* argv[]) {
         audio.process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
     }
 
-    // Pull final audio results into CompiledNode/NodeState for assertions below
+    // Pull final audio results into CompiledNode for assertions below
     sched.cadence_bridge().pull_from_audio(*sched.compiled_graph());
-    sched.sync_to_nodestate();
 
     // Check that audio output has non-zero RMS (the gain node should pass through sound)
     const auto& analysis = audio.analysis_read();

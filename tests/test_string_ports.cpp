@@ -1,3 +1,4 @@
+#include "runtime/compiled_graph.h"
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
 #include "runtime/scheduler.h"
@@ -44,7 +45,7 @@ int main() {
         check(sched.build(g, registry), "build string graph succeeds");
         sched.tick(0.0, 0.016, 0);
 
-        auto* sink = sched.find_node_mut("sink");
+        auto* sink = sched.compiled_graph()->find_node("sink");
         check(sink != nullptr, "sink found");
         if (sink) {
             auto out_it = sink->output_port_indices.find("out");
