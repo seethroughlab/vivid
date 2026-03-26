@@ -1,26 +1,22 @@
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
+#include "operator_api/filter_dsp.h"
 #include "operator_api/thumbnail.h"
 
 #include <cmath>
 #include <cstring>
-#include <vector>
 
 // ---------------------------------------------------------------------------
-// State Variable Filter (SVF) — Hal Chamberlin / Andy Simper formulation
+// Filter — Multi-mode filter with 14 types, drive, keytracking, and
+// per-voice modulation via channel_index (for auto-dup poly chains).
 //
-// Per-sample update (run twice for numerical stability and tighter response):
-//   low  += f * band
-//   high  = input - low - q * band
-//   band += f * high
-//   notch = high + low
+// Modes 0-3 (LP12, LP24, HP12, HP24) are biquad-based.
+// Modes 4-8 (BP, BP24, Notch, Peak, Allpass) are also biquad variants.
+// Modes 9-13 (Comb, Ladder, Formant, Diode, MS-20) are character filters.
 //
-// f = 2 * sin(pi * cutoff / sample_rate)  — MUST be clamped to <= 0.95
-// q = 1 / resonance
-//
-// Float CV input ordinals:
-//   cutoff_cv    -> input_float_values[0]  semitone offset (±72 st), default 0.0
-//   resonance_cv -> input_float_values[1]  additive offset (±2.0),   default 0.0
+// In a polyphonic (N-channel) chain, the engine auto-dups this operator to
+// N instances. Each reads ctx->channel_index to get per-voice modulation
+// from spread inputs (cutoff_mod, frequencies for keytracking).
 // ---------------------------------------------------------------------------
 
 struct Filter : vivid::AudioOperatorBase {
@@ -28,11 +24,14 @@ struct Filter : vivid::AudioOperatorBase {
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<float> cutoff    {"cutoff",    2000.0f, 20.0f, 20000.0f};
-    vivid::Param<float> resonance {"resonance",  0.7f,   0.1f,   4.0f};
-    vivid::Param<int>   mode      {"mode",       0, {"Low-pass", "High-pass", "Band-pass", "Notch"}};
+    vivid::Param<float> resonance {"resonance",  0.5f,   0.0f,   1.0f};
+    vivid::Param<int>   mode      {"mode",       0,
+        {"LP12", "LP24", "HP12", "BP", "Notch", "Comb", "Ladder", "Formant",
+         "HP24", "Peak", "Allpass", "BP24", "Diode", "MS-20"}};
+    vivid::Param<float> drive     {"drive",      0.0f,   0.0f,   1.0f};
+    vivid::Param<float> keytrack  {"keytrack",   0.0f,   0.0f,   1.0f};
 
-    float low_  = 0.0f;
-    float band_ = 0.0f;
+    audio_dsp::FilterState filter_state_;
 
     WGPURenderPipeline thumb_pipeline_ = nullptr;
     WGPUBindGroup thumb_bind_group_ = nullptr;
@@ -48,82 +47,94 @@ struct Filter : vivid::AudioOperatorBase {
         vivid::semantic_unit(cutoff, "Hz");
         vivid::display_hint(cutoff, VIVID_DISPLAY_KNOB);
 
-        vivid::semantic_tag(resonance, "amplitude_linear");
+        vivid::semantic_tag(resonance, "resonance");
         vivid::semantic_shape(resonance, "scalar");
-        vivid::semantic_intent(resonance, "resonance");
         vivid::display_hint(resonance, VIVID_DISPLAY_KNOB);
 
-        vivid::semantic_shape(mode, "scalar");
-        vivid::semantic_intent(mode, "filter_mode");
+        vivid::display_hint(drive, VIVID_DISPLAY_KNOB);
+        vivid::display_hint(keytrack, VIVID_DISPLAY_KNOB);
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        param_group(cutoff,    "Filter");
+        param_group(resonance, "Filter");
+        param_group(mode,      "Filter");
+        param_group(drive,     "Filter");
+        param_group(keytrack,  "Filter");
+
+        layout_row(cutoff,    4, 0);
+        layout_row(resonance, 4, 1);
+        layout_row(drive,     4, 2);
+        layout_row(keytrack,  4, 3);
+
         out.push_back(&cutoff);
         out.push_back(&resonance);
         out.push_back(&mode);
+        out.push_back(&drive);
+        out.push_back(&keytrack);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",        VIVID_PORT_AUDIO, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"output",       VIVID_PORT_AUDIO, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        out.push_back({"input",        VIVID_PORT_AUDIO,  VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        out.push_back({"output",       VIVID_PORT_AUDIO,  VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
         out.push_back({"cutoff_cv",    VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"resonance_cv", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+        // Spread inputs for per-voice modulation (used via channel_index in auto-dup)
+        out.push_back({"cutoff_mod",   VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
+        out.push_back({"frequencies",  VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
     }
 
     void process_audio(const VividAudioContext* ctx) override {
         const float* in  = ctx->input_buffers[0];
         float*       out = ctx->output_buffers[0];
         uint32_t frames  = ctx->buffer_size;
+        float sr = static_cast<float>(ctx->sample_rate);
 
+        // Signal CV inputs
         float cutoff_cv_val    = ctx->input_float_values ? ctx->input_float_values[0] : 0.0f;
         float resonance_cv_val = ctx->input_float_values ? ctx->input_float_values[1] : 0.0f;
 
-        // cutoff CV: semitone offset via 2^(cv/12), clamped to [20, 20000]
-        float mod_cutoff = cutoff.value * std::pow(2.0f, cutoff_cv_val / 12.0f);
-        if (mod_cutoff < 20.0f)    mod_cutoff = 20.0f;
-        if (mod_cutoff > 20000.0f) mod_cutoff = 20000.0f;
-
-        // resonance CV: additive, clamped to [0.1, 4.0]
-        float mod_resonance = resonance.value + resonance_cv_val;
-        if (mod_resonance < 0.1f) mod_resonance = 0.1f;
-        if (mod_resonance > 4.0f) mod_resonance = 4.0f;
-
-        float sr = static_cast<float>(ctx->sample_rate);
-        float f  = 2.0f * std::sin(3.14159265f * mod_cutoff / sr);
-        // Clamp f: values above ~0.95 cause unstable feedback (f can reach ~1.93 at 20kHz/48kHz)
-        if (f > 0.95f) f = 0.95f;
-        float q = 1.0f / mod_resonance;
-
-        int filter_mode = mode.int_value();
-
-        float low  = low_;
-        float band = band_;
-
-        for (uint32_t i = 0; i < frames; i++) {
-            float input = in[i];
-
-            // First SVF pass
-            low  += f * band;
-            float high  = input - low - q * band;
-            band += f * high;
-            // Second SVF pass — reduces aliasing, tightens slope (Andy Simper recommendation)
-            low  += f * band;
-            high  = input - low - q * band;
-            band += f * high;
-
-            float notch = high + low;
-
-            switch (filter_mode) {
-                case 0:  out[i] = low;   break;  // Low-pass
-                case 1:  out[i] = high;  break;  // High-pass
-                case 2:  out[i] = band;  break;  // Band-pass
-                case 3:  out[i] = notch; break;  // Notch
-                default: out[i] = low;   break;
-            }
+        // Spread inputs via channel_index (for auto-dup poly chains)
+        float cutoff_mod_val = 0.0f;
+        float voice_freq = 0.0f;
+        if (ctx->input_spreads) {
+            uint8_t ci = ctx->channel_index;
+            auto& cutoff_mod_sp = ctx->input_spreads[0];  // cutoff_mod spread
+            if (cutoff_mod_sp.data && ci < cutoff_mod_sp.length)
+                cutoff_mod_val = cutoff_mod_sp.data[ci];
+            auto& freq_sp = ctx->input_spreads[1];  // frequencies spread
+            if (freq_sp.data && ci < freq_sp.length)
+                voice_freq = freq_sp.data[ci];
         }
 
-        low_  = low;
-        band_ = band;
+        // Base cutoff with CV modulation
+        float mod_cutoff = cutoff.value;
+        if (cutoff_cv_val != 0.0f)
+            mod_cutoff *= std::pow(2.0f, cutoff_cv_val / 12.0f);
+
+        // Per-voice cutoff modulation from spread (±4 octaves)
+        if (cutoff_mod_val != 0.0f)
+            mod_cutoff *= std::pow(2.0f, cutoff_mod_val * 4.0f);
+
+        // Keytracking: shift cutoff based on voice frequency relative to C4
+        float kt = keytrack.value;
+        if (kt > 0.0f && voice_freq > 0.0f) {
+            float oct_from_c4 = std::log2(voice_freq / 261.63f);
+            mod_cutoff *= std::pow(2.0f, oct_from_c4 * kt);
+        }
+
+        mod_cutoff = std::clamp(mod_cutoff, 20.0f, 20000.0f);
+
+        // Resonance with CV
+        float mod_reso = resonance.value + resonance_cv_val;
+        mod_reso = std::clamp(mod_reso, 0.0f, 1.0f);
+
+        float drv = drive.value;
+        int ftype = mode.int_value();
+
+        for (uint32_t i = 0; i < frames; i++) {
+            out[i] = filter_state_.process(in[i], mod_cutoff, mod_reso, drv, ftype, sr);
+        }
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
@@ -206,14 +217,16 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
     // Magnitude based on filter mode
     var mag = 0.0;
-    if (mode == 0) {        // Low-pass
+    if (mode == 0 || mode == 1) {        // Low-pass
         mag = 1.0 / sqrt(denom);
-    } else if (mode == 1) { // High-pass
+    } else if (mode == 2 || mode == 3) { // High-pass
         mag = r2 / sqrt(denom);
-    } else if (mode == 2) { // Band-pass
+    } else if (mode == 4 || mode == 5) { // Band-pass
         mag = rQ / sqrt(denom);
-    } else {                // Notch
+    } else if (mode == 6) {              // Notch
         mag = sqrt(one_minus_r2 * one_minus_r2 / denom);
+    } else {                             // Other modes: show LP approximation
+        mag = 1.0 / sqrt(denom);
     }
 
     // Convert to dB, map to Y: range -48 dB to +12 dB

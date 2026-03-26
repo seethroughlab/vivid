@@ -600,6 +600,7 @@ add_vivid_operator(bitcrush       operators/audio/bitcrush/bitcrush.cpp
 add_vivid_operator(distortion     operators/audio/distortion/distortion.cpp
                    FACTORY_PRESETS operators/audio/distortion/factory_presets.json)
 add_vivid_operator(filter         operators/audio/filter/filter.cpp         EXTRA_LIBS webgpu)
+target_sources(filter PRIVATE src/operator_api/filter_dsp.cpp)
 add_vivid_operator(audio_noise    operators/audio/noise/noise.cpp    EXTRA_LIBS webgpu)
 add_vivid_operator(mixer          operators/audio/mixer/mixer.cpp          EXTRA_LIBS webgpu)
 add_vivid_operator(compressor     operators/audio/compressor/compressor.cpp)
