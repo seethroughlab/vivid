@@ -1,7 +1,12 @@
 #include "operator_api/operator.h"
 #include <algorithm>
 
-struct Stack : vivid::ControlOperatorBase {
+// Stack — dual-cadence spread combiner.
+//
+// Concatenates or interleaves up to 4 input spreads into one output spread.
+// Stateless — identical behavior at both cadences.
+//
+struct Stack : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Stack";
     static constexpr bool kTimeDependent = false;
 
@@ -19,18 +24,28 @@ struct Stack : vivid::ControlOperatorBase {
         out.push_back({"output", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // out spread[0]
     }
 
-    void process(const VividProcessContext* ctx) override {
-        if (!ctx->input_spreads || !ctx->output_spreads) return;
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->param_values, ctx->input_spreads, ctx->output_spreads, ctx->output_values);
+    }
 
-        auto& out = ctx->output_spreads[0];
-        int m = std::clamp(static_cast<int>(ctx->param_values[0]), 0, 1);
+    void process_audio(const VividAudioContext* ctx) override {
+        compute(ctx->param_values, ctx->input_spreads, ctx->output_spreads, ctx->output_float_values);
+    }
+
+private:
+    void compute(const float* params, VividSpreadPort* in_spreads,
+                 VividSpreadPort* out_spreads, float* output_values) {
+        if (!in_spreads || !out_spreads) return;
+
+        auto& out = out_spreads[0];
+        int m = std::clamp(static_cast<int>(params[0]), 0, 1);
 
         // Collect non-empty input spreads
         const VividSpreadPort* inputs[4];
         int input_count = 0;
         for (int i = 0; i < 4; ++i) {
-            if (ctx->input_spreads[i].length > 0)
-                inputs[input_count++] = &ctx->input_spreads[i];
+            if (in_spreads[i].length > 0)
+                inputs[input_count++] = &in_spreads[i];
         }
 
         if (input_count == 0) {
@@ -74,7 +89,8 @@ struct Stack : vivid::ControlOperatorBase {
         }
 
         // Scalar output = first element of output spread
-        ctx->output_values[0] = (out.length > 0) ? out.data[0] : 0.0f;
+        if (output_values)
+            output_values[0] = (out.length > 0) ? out.data[0] : 0.0f;
     }
 };
 

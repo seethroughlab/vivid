@@ -2,11 +2,11 @@
 #include <cmath>
 #include <cstdint>
 
-// =============================================================================
-// SpreadNoise — animated hash-based 1D value noise spread
-// =============================================================================
-
-struct SpreadNoise : vivid::ControlOperatorBase {
+// SpreadNoise — dual-cadence animated hash-based 1D value noise spread generator.
+//
+// Inherits both FrameProcessable and AudioProcessable for audio-capable cadence.
+//
+struct SpreadNoise : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "SpreadNoise";
     static constexpr bool kTimeDependent = true;
 
@@ -39,21 +39,30 @@ struct SpreadNoise : vivid::ControlOperatorBase {
         out.push_back({"values", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // 0
     }
 
-    void process(const VividProcessContext* ctx) override {
-        float dt = static_cast<float>(ctx->delta_time);
-        float spd = ctx->param_values[1];     // speed
-        float amp = ctx->param_values[2];     // amplitude
-        float off = ctx->param_values[3];     // offset
-        uint32_t s = static_cast<uint32_t>(ctx->param_values[4]); // seed
+    void process_frame(const VividFrameContext* ctx) override {
+        generate(ctx->delta_time, ctx->param_values, ctx->output_spreads);
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        generate(ctx->delta_time, ctx->param_values, ctx->output_spreads);
+    }
+
+private:
+    void generate(double delta_time, const float* params, VividSpreadPort* out_spreads) {
+        float dt = static_cast<float>(delta_time);
+        float spd = params[1];     // speed
+        float amp = params[2];     // amplitude
+        float off = params[3];     // offset
+        uint32_t s = static_cast<uint32_t>(params[4]); // seed
 
         time_ += dt * spd;
 
-        uint32_t n = static_cast<uint32_t>(ctx->param_values[0]);
+        uint32_t n = static_cast<uint32_t>(params[0]);
         if (n < 1) n = 1;
         if (n > 1024) n = 1024;
 
-        if (ctx->output_spreads) {
-            auto& sp = ctx->output_spreads[0];
+        if (out_spreads) {
+            auto& sp = out_spreads[0];
             if (sp.capacity >= n) {
                 sp.length = n;
                 for (uint32_t i = 0; i < n; ++i) {
@@ -79,7 +88,6 @@ struct SpreadNoise : vivid::ControlOperatorBase {
         }
     }
 
-private:
     float time_ = 0.0f;
 
     // PCG-based hash → float in [0, 1]

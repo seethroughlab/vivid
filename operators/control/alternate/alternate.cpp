@@ -2,7 +2,12 @@
 #include <algorithm>
 #include <cmath>
 
-struct Alternate : vivid::ControlOperatorBase {
+// Alternate — dual-cadence spread selector.
+//
+// Selects one of 4 input spreads based on beat phase and cycle length.
+// Inherits both FrameProcessable and AudioProcessable for audio-capable cadence.
+//
+struct Alternate : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Alternate";
     static constexpr bool kTimeDependent = true;
 
@@ -22,9 +27,18 @@ struct Alternate : vivid::ControlOperatorBase {
         out.push_back({"index",      VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out float[0]
     }
 
-    void process(const VividProcessContext* ctx) override {
-        float beat_phase = ctx->input_values[0];
-        int c = std::clamp(static_cast<int>(ctx->param_values[0]), 0, 4);
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values[0], ctx->param_values, ctx->input_spreads, ctx->output_spreads, ctx->output_values);
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        compute(ctx->input_float_values[0], ctx->param_values, ctx->input_spreads, ctx->output_spreads, ctx->output_float_values);
+    }
+
+private:
+    void compute(float beat_phase, const float* params, VividSpreadPort* in_spreads,
+                 VividSpreadPort* out_spreads, float* output_values) {
+        int c = std::clamp(static_cast<int>(params[0]), 0, 4);
 
         // Cycle lengths in beats: Beat=1, 2 Beats=2, Bar=4, 2 Bars=8, 4 Bars=16
         static constexpr int kCycleBeats[] = {1, 2, 4, 8, 16};
@@ -35,7 +49,7 @@ struct Alternate : vivid::ControlOperatorBase {
         if (delta < -0.5f) beat_count_++;
         prev_phase_ = beat_phase;
 
-        if (!ctx->input_spreads || !ctx->output_spreads) return;
+        if (!in_spreads || !out_spreads) return;
 
         // Collect connected (non-empty) spread inputs
         // Spread inputs are at port indices 1..4 (a,b,c,d); port 0 is beat_phase (float)
@@ -43,18 +57,18 @@ struct Alternate : vivid::ControlOperatorBase {
         int input_indices[4];
         int input_count = 0;
         for (int i = 0; i < 4; ++i) {
-            if (ctx->input_spreads[1 + i].length > 0) {
-                inputs[input_count] = &ctx->input_spreads[1 + i];
+            if (in_spreads[1 + i].length > 0) {
+                inputs[input_count] = &in_spreads[1 + i];
                 input_indices[input_count] = i;
                 input_count++;
             }
         }
 
-        auto& out = ctx->output_spreads[0];
+        auto& out = out_spreads[0];
 
         if (input_count == 0) {
             out.length = 0;
-            ctx->output_values[0] = 0.0f;
+            output_values[0] = 0.0f;
             return;
         }
 
@@ -70,10 +84,9 @@ struct Alternate : vivid::ControlOperatorBase {
             out.data[i] = sel.data[i];
 
         // Output the logical index (which of a,b,c,d is active)
-        ctx->output_values[0] = static_cast<float>(input_indices[active]);
+        output_values[0] = static_cast<float>(input_indices[active]);
     }
 
-private:
     float prev_phase_ = 0.0f;
     int beat_count_ = 0;
 };
