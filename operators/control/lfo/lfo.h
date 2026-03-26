@@ -246,101 +246,20 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         float phase_in = ctx->input_float_values[1];
         const double sample_dt = 1.0 / static_cast<double>(ctx->sample_rate);
 
-        // Seed handling
-        int s = seed.int_value();
-        if (s != prev_seed_) {
-            if (s > 0) noise_seed_ = static_cast<uint32_t>(s);
-            prev_seed_ = s;
-        }
-
-        // Gate tracking once per buffer (from cross-cadence scalar)
-        bool gate_on = gate_in > 0.5f;
-        bool gate_rising = gate_on && !prev_gate_on_;
-        prev_gate_on_ = gate_on;
-
-        if (gate_on && !gate_seen_) {
-            elapsed_time_ = 0.0f;
-            gate_seen_ = true;
-        } else if (!gate_on) {
-            gate_seen_ = false;
-        }
-
         int wf  = waveform.int_value();
         int rm  = rate_mode.int_value();
         int pol = polarity.int_value();
+        float freq     = frequency.value;
         float amp      = amplitude.value;
         float off      = offset.value;
         float ph_off   = static_cast<float>(phase_offset.value);
         float fade     = fade_in.value;
-        float freq     = frequency.value;
         float slew_amt = slew.value;
 
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
-            elapsed_time_ += static_cast<float>(sample_dt);
-
-            // Phase computation (same as compute_one_sample but inlined for perf)
-            double phase;
-            if (rm == 1 && phase_in != 0.0f) {
-                phase = std::fmod(static_cast<double>(phase_in) * static_cast<double>(freq), 1.0);
-            } else if (phase_in != 0.0f && rm == 0) {
-                phase = std::fmod(static_cast<double>(phase_in), 1.0);
-            } else {
-                free_phase_ += sample_dt * static_cast<double>(freq);
-                free_phase_ -= std::floor(free_phase_);
-                phase = free_phase_;
-            }
-
-            phase = std::fmod(phase + static_cast<double>(ph_off), 1.0);
-
-            bool phase_wrapped = (phase < prev_phase_ - 0.5);
-            prev_phase_ = phase;
-
-            // Gate rising edge triggers new S&H value (in addition to phase wraps)
-            // Only check on first sample of buffer since gate is per-buffer
-            bool new_sample = phase_wrapped || (gate_rising && i == 0);
-
-            double raw = 0.0;
-            switch (wf) {
-                case 0: raw = std::sin(phase * 2.0 * M_PI); break;
-                case 1: raw = 2.0 * phase - 1.0; break;
-                case 2: raw = phase < 0.5 ? 1.0 : -1.0; break;
-                case 3: raw = 4.0 * (phase < 0.5 ? phase : (1.0 - phase)) - 1.0; break;
-                case 4:
-                    if (new_sample) sh_value_ = lcg_random();
-                    raw = static_cast<double>(sh_value_);
-                    break;
-                case 5: {
-                    if (new_sample) {
-                        sh_prev2_ = sh_prev_;
-                        sh_prev_ = sh_next_;
-                        sh_next_ = lcg_random();
-                        sh_value_ = lcg_random();
-                    }
-                    float t = static_cast<float>(phase);
-                    raw = static_cast<double>(catmull_rom(sh_prev2_, sh_prev_, sh_next_, sh_value_, t));
-                    break;
-                }
-                case 6: raw = static_cast<double>(lcg_random()); break;
-            }
-
-            if (pol == 1) raw = raw * 0.5 + 0.5;
-
-            float output = static_cast<float>(raw) * amp + off;
-
-            // Slew smoothing
-            if (slew_amt > 0.001f) {
-                float slew_factor = 1.0f - slew_amt * slew_amt * slew_amt;
-                slew_value_ += (output - slew_value_) * slew_factor;
-                output = slew_value_;
-            } else {
-                slew_value_ = output;
-            }
-
-            if (fade > 0.0f && elapsed_time_ < fade) {
-                output *= elapsed_time_ / fade;
-            }
-
-            ctx->output_buffers[0][i] = output;
+            ctx->output_buffers[0][i] = compute_one_sample(
+                freq, amp, off, wf, rm, pol, ph_off, fade, gate_in, phase_in,
+                sample_dt, slew_amt);
         }
     }
 };

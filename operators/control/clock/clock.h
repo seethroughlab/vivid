@@ -12,10 +12,8 @@ struct Clock : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
 
     vivid::Param<float> bpm{"bpm", 120.0f, 1.0f, 300.0f};
     vivid::Param<int>   beats_per_bar{"beats_per_bar", 4, 1, 16};
-    double phase_ = 0.0;        // frame-rate accumulator
-    double bar_phase_ = 0.0;    // frame-rate accumulator
-    double a_phase_ = 0.0;      // audio-rate accumulator
-    double a_bar_phase_ = 0.0;  // audio-rate accumulator
+    double phase_ = 0.0;
+    double bar_phase_ = 0.0;
 
     Clock() {
         vivid::semantic_tag(bpm, "bpm");
@@ -52,13 +50,13 @@ struct Clock : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcess
         double delta_time = static_cast<double>(ctx->buffer_size) / ctx->sample_rate;
         double beats_per_sec = static_cast<double>(bpm.value) / 60.0;
         double bars_per_sec = beats_per_sec / static_cast<double>(beats_per_bar.value);
-        a_phase_ += delta_time * beats_per_sec;
-        a_phase_ -= std::floor(a_phase_);
-        a_bar_phase_ += delta_time * bars_per_sec;
-        a_bar_phase_ -= std::floor(a_bar_phase_);
-        ctx->output_float_values[0] = static_cast<float>(a_phase_);
+        phase_ += delta_time * beats_per_sec;
+        phase_ -= std::floor(phase_);
+        bar_phase_ += delta_time * bars_per_sec;
+        bar_phase_ -= std::floor(bar_phase_);
+        ctx->output_float_values[0] = static_cast<float>(phase_);
         ctx->output_float_values[1] = 60000.0f / bpm.value;
-        ctx->output_float_values[2] = static_cast<float>(a_bar_phase_);
+        ctx->output_float_values[2] = static_cast<float>(bar_phase_);
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override;
