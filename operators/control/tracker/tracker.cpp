@@ -115,7 +115,12 @@ inline bool hit_test(float mx, float my, float rx, float ry, float rw, float rh)
 
 } // namespace tracker_insp
 
-struct Tracker : vivid::AudioOperatorBase {
+// Tracker — dual-cadence MOD-style pattern sequencer.
+//
+// Phase-driven tick/row/pattern sequencing with 8 channels, effects column,
+// arrangement navigation, and MIDI. All timing is cadence-agnostic.
+//
+struct Tracker : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Tracker";
     static constexpr bool kTimeDependent = true;
 
@@ -165,15 +170,27 @@ struct Tracker : vivid::AudioOperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
-        float beat_phase = ctx->input_float_values[0];
-        bool reset_signal = ctx->input_float_values[1] > 0.5f;
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values, ctx->param_values, ctx->output_spreads,
+                ctx->output_values, ctx->custom_outputs, ctx->custom_output_count);
+    }
 
-        int r = std::clamp(static_cast<int>(ctx->param_values[0]), 0, 8);
-        int spd = std::clamp(static_cast<int>(ctx->param_values[1]), 1, 16);
-        int base_ch = std::clamp(static_cast<int>(ctx->param_values[2]), 1, 16) - 1;
-        int ch_mode = std::clamp(static_cast<int>(ctx->param_values[3]), 0, 1);
-        int mute = std::clamp(static_cast<int>(ctx->param_values[6]), 0, 255);
+    void process_audio(const VividAudioContext* ctx) override {
+        compute(ctx->input_float_values, ctx->param_values, ctx->output_spreads,
+                ctx->output_float_values, ctx->custom_outputs, ctx->custom_output_count);
+    }
+
+    void compute(const float* input_values, const float* params,
+                 VividSpreadPort* out_spreads, float* output_values,
+                 void** custom_outputs, uint32_t custom_output_count) {
+        float beat_phase = input_values[0];
+        bool reset_signal = input_values[1] > 0.5f;
+
+        int r = std::clamp(static_cast<int>(params[0]), 0, 8);
+        int spd = std::clamp(static_cast<int>(params[1]), 1, 16);
+        int base_ch = std::clamp(static_cast<int>(params[2]), 1, 16) - 1;
+        int ch_mode = std::clamp(static_cast<int>(params[3]), 0, 1);
+        int mute = std::clamp(static_cast<int>(params[6]), 0, 255);
 
         // Parse pattern data if changed
         sync_pattern_data();
@@ -219,11 +236,10 @@ struct Tracker : vivid::AudioOperatorBase {
         prev_global_tick_ = global_tick;
 
         // Write spread outputs
-        if (ctx->output_spreads) {
-            // Output port indices are per-direction: notes=0, velocities=1, gates=2
-            auto& notes_sp = ctx->output_spreads[0];
-            auto& vels_sp  = ctx->output_spreads[1];
-            auto& gates_sp = ctx->output_spreads[2];
+        if (out_spreads) {
+            auto& notes_sp = out_spreads[0];
+            auto& vels_sp  = out_spreads[1];
+            auto& gates_sp = out_spreads[2];
 
             if (notes_sp.capacity >= tracker::MAX_CHANNELS) {
                 notes_sp.length = tracker::MAX_CHANNELS;
@@ -242,13 +258,13 @@ struct Tracker : vivid::AudioOperatorBase {
         int pat_idx = 0;
         if (current_order_ < song_.arrangement_length)
             pat_idx = song_.arrangement[current_order_];
-        ctx->output_float_values[0] = static_cast<float>(current_row_);
-        ctx->output_float_values[1] = static_cast<float>(pat_idx);
-        ctx->output_float_values[2] = static_cast<float>(current_order_);
+        output_values[0] = static_cast<float>(current_row_);
+        output_values[1] = static_cast<float>(pat_idx);
+        output_values[2] = static_cast<float>(current_order_);
 
         // MIDI output
-        if (ctx->custom_outputs && ctx->custom_output_count > 0) {
-            ctx->custom_outputs[0] = &midi_buf_;
+        if (custom_outputs && custom_output_count > 0) {
+            custom_outputs[0] = &midi_buf_;
         }
     }
 

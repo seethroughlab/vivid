@@ -8,7 +8,12 @@
 #include <cstring>
 #include "operator_api/thumbnail.h"
 
-struct Arpeggiator : vivid::AudioOperatorBase {
+// Arpeggiator — dual-cadence arpeggiator with 10 modes, latch, swing, and MIDI.
+//
+// Phase-driven beat tracking with rate multipliers. Builds note pool from
+// input spreads, selects notes via mode pattern. All logic is cadence-agnostic.
+//
+struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Arpeggiator";
     static constexpr bool kTimeDependent = true;
 
@@ -98,8 +103,21 @@ struct Arpeggiator : vivid::AudioOperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values[0], ctx->param_values, ctx->input_spreads,
+                ctx->output_values, ctx->output_spreads,
+                ctx->custom_outputs, ctx->custom_output_count);
+    }
+
     void process_audio(const VividAudioContext* ctx) override {
-        float beat_phase = ctx->input_float_values[0];
+        compute(ctx->input_float_values[0], ctx->param_values, ctx->input_spreads,
+                ctx->output_float_values, ctx->output_spreads,
+                ctx->custom_outputs, ctx->custom_output_count);
+    }
+
+    void compute(float beat_phase, const float* params, VividSpreadPort* in_spreads,
+                 float* output_values, VividSpreadPort* out_spreads,
+                 void** custom_outputs, uint32_t custom_output_count) {
         int m = mode.int_value();
         int oct = octaves.int_value();
         int r = rate.int_value();
@@ -119,10 +137,10 @@ struct Arpeggiator : vivid::AudioOperatorBase {
         float input_vels[16];
         bool any_gate_high = false;
 
-        if (ctx->input_spreads) {
-            auto& notes_sp = ctx->input_spreads[1];  // input port 1
-            auto& vel_sp   = ctx->input_spreads[2];  // input port 2
-            auto& gates_sp = ctx->input_spreads[3];  // input port 3
+        if (in_spreads) {
+            auto& notes_sp = in_spreads[1];  // input port 1
+            auto& vel_sp   = in_spreads[2];  // input port 2
+            auto& gates_sp = in_spreads[3];  // input port 3
 
             for (uint32_t i = 0; i < notes_sp.length && input_count < 16; ++i) {
                 if (i < gates_sp.length && gates_sp.data[i] > 0.5f) {
@@ -219,7 +237,8 @@ struct Arpeggiator : vivid::AudioOperatorBase {
 
         // No notes — output silence
         if (!has_notes) {
-            write_output(ctx, 0.0f, 0.0f, 0.0f, 0);
+            write_output(output_values, out_spreads, custom_outputs, custom_output_count,
+                         0.0f, 0.0f, 0.0f, 0);
             return;
         }
 
@@ -268,14 +287,15 @@ struct Arpeggiator : vivid::AudioOperatorBase {
 
         // Per-step modifier (polymetric: cycles independently through mod_steps)
         int mod_idx = raw_step % msteps;
-        float vel_mod = ctx->param_values[7 + mod_idx];   // vel_0..vel_7
-        int tr_mod = static_cast<int>(ctx->param_values[15 + mod_idx]);  // tr_0..tr_7
+        float vel_mod = params[7 + mod_idx];   // vel_0..vel_7
+        int tr_mod = static_cast<int>(params[15 + mod_idx]);  // tr_0..tr_7
 
         float out_note = pool_notes[note_idx] + static_cast<float>(tr_mod);
         float out_vel = pool_vels[note_idx] * vel_mod;
         float out_gate = (step_phase < gl) ? 1.0f : 0.0f;
 
-        write_output(ctx, out_note, out_vel, out_gate, raw_step);
+        write_output(output_values, out_spreads, custom_outputs, custom_output_count,
+                     out_note, out_vel, out_gate, raw_step);
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
@@ -535,11 +555,13 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
         thumb_pipeline_format_ = ctx->thumbnail_format;
     }
 
-    void write_output(const VividAudioContext* ctx, float note, float vel, float gate, int step) {
-        if (ctx->output_spreads) {
-            auto& notes_sp = ctx->output_spreads[0];
-            auto& vel_sp   = ctx->output_spreads[1];
-            auto& gates_sp = ctx->output_spreads[2];
+    void write_output(float* output_values, VividSpreadPort* out_spreads,
+                      void** custom_outputs, uint32_t custom_output_count,
+                      float note, float vel, float gate, int step) {
+        if (out_spreads) {
+            auto& notes_sp = out_spreads[0];
+            auto& vel_sp   = out_spreads[1];
+            auto& gates_sp = out_spreads[2];
 
             if (notes_sp.capacity >= 1) {
                 notes_sp.length = 1;
@@ -551,11 +573,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
             }
         }
 
-        if (ctx->output_float_values) {
-            ctx->output_float_values[0] = note;
-            ctx->output_float_values[1] = vel;
-            ctx->output_float_values[2] = gate;
-            ctx->output_float_values[3] = static_cast<float>(step);
+        if (output_values) {
+            output_values[0] = note;
+            output_values[1] = vel;
+            output_values[2] = gate;
+            output_values[3] = static_cast<float>(step);
         }
 
         // MIDI output: note-on on gate rising edge, note-off on falling edge
@@ -579,8 +601,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
             }
         }
         prev_midi_gate_ = gate_high;
-        if (ctx->custom_outputs && ctx->custom_output_count > 0) {
-            ctx->custom_outputs[0] = &midi_buf_;
+        if (custom_outputs && custom_output_count > 0) {
+            custom_outputs[0] = &midi_buf_;
         }
     }
 };

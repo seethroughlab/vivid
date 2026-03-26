@@ -64,13 +64,13 @@ These accumulate internal time (`elapsed += dt`) which changes behavior at audio
 These produce gates, steps, or MIDI-adjacent behavior. They mostly use beat-phase wrap detection already but apply it at call boundaries. The fix pattern is the same: ensure step transitions, gate windows, and output updates happen correctly when called at audio rate.
 
 ### arpeggiator
-**Status:** Not started
+**Status:** Done
 **Current timing:** Beat tracking via `delta < -0.5f` → `beat_count_++`. Rate multipliers scale beats to arp steps. Swing per step-pair.
-**State:** `beat_count_`, `prev_phase_`, `step_offset_`, `arp_direction_`, latch buffer, RNG
+**State:** `beat_count_`, `prev_phase_`, `step_offset_`, latch buffer, RNG
 **Ports:** `beat_phase` (required), notes/velocities/gates spreads
-**Problem:** Step selection once per call. Gate window (`step_phase < gate_length`) checked once.
-**Redesign approach:** Already phase-driven — needs per-sample phase evaluation for gate window output. Extract `compute(beat_phase, ...)` that returns gate/note/velocity for a given phase.
-**Notes:** Most complex sequencer. May benefit from being done last after simpler ones prove the pattern.
+**Problem:** Was audio-only (`AudioOperatorBase`), not dual-cadence.
+**Redesign approach:** Added `FrameProcessable` and shared `compute()` helper. Phase-driven logic already cadence-agnostic.
+**Notes:** Despite being the most complex sequencer, the migration was mechanical.
 
 ### chord_progression
 **Status:** Done
@@ -82,13 +82,13 @@ These produce gates, steps, or MIDI-adjacent behavior. They mostly use beat-phas
 **Notes:** Migrated from audio-only → dual-cadence.
 
 ### drum_sequencer
-**Status:** Not started
-**Current timing:** No beat_phase input (`kTimeDependent = false`). Pattern is purely parameter-driven.
-**State:** Pattern parameters only
-**Ports:** None
-**Problem:** No timing mechanism at all — can't respond to dynamic tempo.
-**Redesign approach:** Add `beat_phase` input. Use beat-phase wrap detection for step advancement. This is a more fundamental redesign than the others.
-**Notes:** May need the most design work since it currently has no timing model.
+**Status:** Done
+**Current timing:** Phase-driven with beat_phase + reset inputs, swing, per-step triggers.
+**State:** `prev_step_`, `phase_offset_`, `prev_reset_`, MIDI buffer
+**Ports:** `beat_phase`, `reset` (inputs), 6 drum gates + step + mod outputs + spreads + MIDI
+**Problem:** Was audio-only (`AudioOperatorBase`), not dual-cadence. Doc incorrectly stated "no timing mechanism."
+**Redesign approach:** Added `FrameProcessable` and shared `compute()` helper. Already phase-driven.
+**Notes:** Doc was outdated — operator already had beat_phase input and phase-driven step logic.
 
 ### euclidean
 **Status:** Done
@@ -154,13 +154,13 @@ These produce gates, steps, or MIDI-adjacent behavior. They mostly use beat-phas
 **Notes:** Same pattern as `path_animate`/`mseg` — delta_time naturally scales.
 
 ### tracker
-**Status:** Not started
+**Status:** Done
 **Current timing:** Beat tracking → tick/row/pattern sequencing. Speed parameter multiplies rate. Order list advances on song progression.
 **State:** `beat_count_`, `prev_phase_`, `current_row_`, `current_order_`, `current_tick_`, per-channel note-off tracking, mute mask
 **Ports:** `beat_phase`, `reset` (required)
-**Problem:** Tick/row/pattern transitions at call boundary.
-**Redesign approach:** Per-sample tick evaluation. Most complex sequencer — tracker format with effects column, multi-channel notes.
-**Notes:** Most complex of all 15. Do last.
+**Problem:** Was audio-only (no `FrameProcessable`), not dual-cadence.
+**Redesign approach:** Added `FrameProcessable` and shared `compute()` helper. Phase-driven tick calculation already cadence-agnostic.
+**Notes:** Despite being the most complex operator, the migration was mechanical.
 
 ---
 

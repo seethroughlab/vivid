@@ -21,7 +21,12 @@ static constexpr float kTabW = 80.0f;
 static constexpr float kTabH = 18.0f;
 } // namespace drum_insp
 
-struct DrumSequencer : vivid::AudioOperatorBase {
+// DrumSequencer — dual-cadence 6-track drum pattern sequencer.
+//
+// Phase-driven step advancement with swing, per-step triggers, mod A/B,
+// spread outputs, and MIDI. All logic is cadence-agnostic.
+//
+struct DrumSequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumSequencer";
     static constexpr bool kTimeDependent = false;
 
@@ -598,10 +603,23 @@ struct DrumSequencer : vivid::AudioOperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values[0], ctx->input_values[1], ctx->param_values,
+                ctx->output_values, ctx->output_spreads,
+                ctx->custom_outputs, ctx->custom_output_count);
+    }
+
     void process_audio(const VividAudioContext* ctx) override {
+        compute(ctx->input_float_values[0], ctx->input_float_values[1], ctx->param_values,
+                ctx->output_float_values, ctx->output_spreads,
+                ctx->custom_outputs, ctx->custom_output_count);
+    }
+
+    void compute(float phase, float reset_in, const float* params,
+                 float* output_values, VividSpreadPort* out_spreads,
+                 void** custom_outputs, uint32_t custom_output_count) {
         namespace layout = vivid_sequencers::drum_layout;
-        float phase = ctx->input_float_values[0];
-        bool reset = ctx->input_float_values[1] > 0.5f;
+        bool reset = reset_in > 0.5f;
 
         // Rising-edge reset: capture current phase as offset
         if (reset && !prev_reset_)
@@ -632,31 +650,31 @@ struct DrumSequencer : vivid::AudioOperatorBase {
 
         for (std::size_t d = 0; d < layout::kDrumCount; ++d) {
             bool active = (step_changed &&
-                ctx->param_values[layout::trigger_param_index(d, step)] > 0.5f);
-            ctx->output_float_values[d] = active ? 1.0f : 0.0f;
+                params[layout::trigger_param_index(d, step)] > 0.5f);
+            output_values[d] = active ? 1.0f : 0.0f;
         }
-        ctx->output_float_values[layout::kStepOutputIndex] = static_cast<float>(step);
+        output_values[layout::kStepOutputIndex] = static_cast<float>(step);
 
         for (std::size_t d = 0; d < layout::kDrumCount; ++d) {
-            ctx->output_float_values[layout::mod_a_output_index(d)] =
-                ctx->param_values[layout::mod_a_param_index(d, step)];
-            ctx->output_float_values[layout::mod_b_output_index(d)] =
-                ctx->param_values[layout::mod_b_param_index(d, step)];
+            output_values[layout::mod_a_output_index(d)] =
+                params[layout::mod_a_param_index(d, step)];
+            output_values[layout::mod_b_output_index(d)] =
+                params[layout::mod_b_param_index(d, step)];
         }
 
-        if (ctx->output_spreads) {
-            auto& gates_sp = ctx->output_spreads[layout::kGatesSpreadOutputIndex];
-            auto& notes_sp = ctx->output_spreads[layout::kNotesSpreadOutputIndex];
-            auto& vels_sp  = ctx->output_spreads[layout::kVelocitiesSpreadOutputIndex];
+        if (out_spreads) {
+            auto& gates_sp = out_spreads[layout::kGatesSpreadOutputIndex];
+            auto& notes_sp = out_spreads[layout::kNotesSpreadOutputIndex];
+            auto& vels_sp  = out_spreads[layout::kVelocitiesSpreadOutputIndex];
 
             if (gates_sp.capacity >= layout::kDrumCount) {
                 gates_sp.length = static_cast<uint32_t>(layout::kDrumCount);
                 notes_sp.length = static_cast<uint32_t>(layout::kDrumCount);
                 vels_sp.length  = static_cast<uint32_t>(layout::kDrumCount);
                 for (std::size_t d = 0; d < layout::kDrumCount; ++d) {
-                    gates_sp.data[d] = ctx->output_float_values[d];
-                    notes_sp.data[d] = static_cast<float>(ctx->param_values[layout::note_param_index(d)]);
-                    vels_sp.data[d]  = ctx->param_values[layout::mod_a_param_index(d, step)];
+                    gates_sp.data[d] = output_values[d];
+                    notes_sp.data[d] = static_cast<float>(params[layout::note_param_index(d)]);
+                    vels_sp.data[d]  = params[layout::mod_a_param_index(d, step)];
                 }
             }
         }
@@ -666,14 +684,14 @@ struct DrumSequencer : vivid::AudioOperatorBase {
         midi_buf_.count = 0;
         for (std::size_t d = 0; d < layout::kDrumCount; ++d) {
             bool active = (step_changed &&
-                ctx->param_values[layout::trigger_param_index(d, step)] > 0.5f);
+                params[layout::trigger_param_index(d, step)] > 0.5f);
             if (active) {
                 vivid_sequencers::midi_note_on(midi_buf_,
-                    static_cast<uint8_t>(ctx->param_values[layout::note_param_index(d)]), 127, ch);
+                    static_cast<uint8_t>(params[layout::note_param_index(d)]), 127, ch);
             }
         }
-        if (ctx->custom_outputs && ctx->custom_output_count > 0) {
-            ctx->custom_outputs[0] = &midi_buf_;
+        if (custom_outputs && custom_output_count > 0) {
+            custom_outputs[0] = &midi_buf_;
         }
     }
 
