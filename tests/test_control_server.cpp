@@ -304,14 +304,14 @@ int main(int argc, char* argv[]) {
     auto write_live_pkg_source = [&](float output_value) {
         std::ofstream ofs(live_pkg_src + "/operators/control/pkg_live_op/pkg_live_op.cpp");
         ofs << "#include \"operator_api/operator.h\"\n\n"
-               "struct PkgLiveOp : vivid::ControlOperatorBase {\n"
+               "struct PkgLiveOp : vivid::OperatorBase, vivid::FrameProcessable {\n"
                "    static constexpr const char* kName = \"PkgLiveOp\";\n"
                "    static constexpr bool kTimeDependent = false;\n"
                "    void collect_params(std::vector<vivid::ParamBase*>&) override {}\n"
                "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n"
                "        out.push_back({\"out\", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});\n"
                "    }\n"
-               "    void process(const VividProcessContext* ctx) override {\n"
+               "    void process_frame(const VividFrameContext* ctx) override {\n"
             << "        ctx->output_values[0] = " << std::to_string(output_value) << "f;\n"
                "    }\n"
                "};\n\n"

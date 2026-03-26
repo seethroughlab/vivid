@@ -78,7 +78,7 @@ static float grain_window(float phase, int type) {
     }
 }
 
-struct GranularSynth : vivid::AudioOperatorBase {
+struct GranularSynth : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "GranularSynth";
     static constexpr bool kTimeDependent = false;
 

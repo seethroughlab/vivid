@@ -22,7 +22,7 @@ namespace vivid {
 // shader, texture bindings, hot-reload) is handled here.
 // =============================================================================
 
-struct WgslFilterBase : GpuOperatorBase {
+struct WgslFilterBase : OperatorBase, GpuProcessable {
 
     explicit WgslFilterBase(const char* shader_filename)
         : shader_filename_(shader_filename) {}

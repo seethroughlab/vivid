@@ -1,6 +1,6 @@
 #include "operator_api/operator.h"
 
-struct UnknownTagSourceOp : vivid::ControlOperatorBase {
+struct UnknownTagSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "UnknownTagSourceOp";
     static constexpr bool kTimeDependent = false;
 
@@ -19,7 +19,7 @@ struct UnknownTagSourceOp : vivid::ControlOperatorBase {
         out.push_back({"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0];
     }
 };

@@ -173,7 +173,7 @@ struct ControlPointGpu {
 // Mesh Warp Operator
 // =============================================================================
 
-struct MeshWarp : vivid::GpuOperatorBase {
+struct MeshWarp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "MeshWarp";
     static constexpr bool kTimeDependent = false;
 

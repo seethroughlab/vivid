@@ -108,7 +108,7 @@ struct TimeMachineUniforms {
 // TimeMachine Operator
 // =============================================================================
 
-struct TimeMachine : vivid::GpuOperatorBase {
+struct TimeMachine : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "TimeMachine";
     static constexpr bool kTimeDependent = false;
 

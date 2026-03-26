@@ -11,7 +11,7 @@
 // Short decay = closed hat, long decay = open hat.
 // ---------------------------------------------------------------------------
 
-struct DrumHiHat : vivid::AudioOperatorBase {
+struct DrumHiHat : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumHiHat";
     static constexpr bool kTimeDependent = true;
 

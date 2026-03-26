@@ -267,7 +267,7 @@ static bool parse_3dl(const std::string& path, LutData& lut) {
 // LUT Apply Operator
 // =============================================================================
 
-struct LutApply : vivid::GpuOperatorBase {
+struct LutApply : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "LUT Apply";
     static constexpr bool kTimeDependent = false;
 

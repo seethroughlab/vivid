@@ -2,7 +2,7 @@
 
 #include <string>
 
-struct Basename : vivid::ControlOperatorBase {
+struct Basename : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "Basename";
     static constexpr bool kTimeDependent = false;
 
@@ -15,7 +15,7 @@ struct Basename : vivid::ControlOperatorBase {
         out.push_back({"name", VIVID_PORT_STRING, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         result_.clear();
 
         if (ctx->input_string_values) {

@@ -50,7 +50,7 @@ static float half_to_float(uint16_t h) {
 
 static constexpr uint32_t kCropSize = 16;  // 16×16 center crop
 
-struct TextureAnalysis : vivid::GpuOperatorBase {
+struct TextureAnalysis : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "TextureAnalysis";
     static constexpr bool kTimeDependent = true;
 

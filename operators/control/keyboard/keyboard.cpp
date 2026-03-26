@@ -37,7 +37,7 @@ static int resolve_key(const std::string& key) {
     return -1;
 }
 
-struct Keyboard : vivid::ControlOperatorBase {
+struct Keyboard : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Keyboard";
     static constexpr bool kTimeDependent = true;
 
@@ -58,7 +58,7 @@ struct Keyboard : vivid::ControlOperatorBase {
         out.push_back({"alt",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         const VividInputState* input = vivid_input(ctx);
         if (!input) {
             for (int i = 0; i < 6; ++i) ctx->output_values[i] = 0.0f;

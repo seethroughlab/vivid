@@ -297,7 +297,7 @@ int main(int argc, char* argv[]) {
         {
             std::ofstream ofs(core_ops / "control" / "testop" / "testop.cpp");
             ofs << "#include \"operator_api/operator.h\"\n"
-                   "struct TestOp : vivid::ControlOperatorBase {\n"
+                   "struct TestOp : vivid::OperatorBase, vivid::FrameProcessable {\n"
                    "  static constexpr const char* kName = \"TestOp\";\n"
                    "  static constexpr bool kTimeDependent = false;\n"
                    "  vivid::Param<float> scale{\"scale\", 1.0f, 0.0f, 10.0f};\n"
@@ -306,7 +306,7 @@ int main(int argc, char* argv[]) {
                    "    out.push_back({\"scale\", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});\n"
                    "    out.push_back({\"out\", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});\n"
                    "  }\n"
-                   "  void process(VividProcessContext* ctx) override { ctx->output_values[0] = ctx->input_values[0] * scale.value; }\n"
+                   "  void process_frame(VividFrameContext* ctx) override { ctx->output_values[0] = ctx->input_values[0] * scale.value; }\n"
                    "};\n"
                    "VIVID_REGISTER(TestOp)\n";
         }

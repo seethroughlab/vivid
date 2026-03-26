@@ -129,7 +129,7 @@ static void log_load_event(const char* event,
                  details.c_str());
 }
 
-struct MovieLoaded : vivid::GpuOperatorBase {
+struct MovieLoaded : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "MovieLoaded";
     static constexpr bool kTimeDependent = true;
 

@@ -1,6 +1,6 @@
 #include "operator_api/operator.h"
 
-struct FileDropBadParamOp : vivid::ControlOperatorBase {
+struct FileDropBadParamOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "FileDropBadParamOp";
     static constexpr bool kTimeDependent = false;
 
@@ -14,7 +14,7 @@ struct FileDropBadParamOp : vivid::ControlOperatorBase {
         out.push_back({"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         if (ctx && ctx->output_values) ctx->output_values[0] = gain.value;
     }
 };

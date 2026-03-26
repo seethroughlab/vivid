@@ -140,7 +140,7 @@ public:
             audio_ctx.file_param_count    = 0;
             audio_ctx.shared_handles      = nullptr;
 
-            static_cast<AudioOperatorBase*>(op_.get())->process_audio(&audio_ctx);
+            static_cast<AudioProcessable*>(op_.get())->process_audio(&audio_ctx);
 
             for (size_t i = 0; i < output_values_.size(); ++i)
                 output_values_[i] = audio_out_bufs_[i][0];
@@ -159,7 +159,7 @@ public:
             child_ctx.preferred_tex_width  = 0;
             child_ctx.preferred_tex_height = 0;
 
-            static_cast<ControlOperatorBase*>(op_.get())->process(&child_ctx);
+            static_cast<FrameProcessable*>(op_.get())->process_frame(&child_ctx);
         }
 
         for (size_t i = 0; i < output_spreads_.size(); ++i) {
@@ -182,7 +182,7 @@ private:
                                     std::function<void(OperatorBase*)>>;
 
     void init() {
-        is_audio_op_ = dynamic_cast<AudioOperatorBase*>(op_.get()) != nullptr;
+        is_audio_op_ = dynamic_cast<AudioProcessable*>(op_.get()) != nullptr;
 
         op_->collect_params(param_ptrs_);
         param_values_.resize(param_ptrs_.size());

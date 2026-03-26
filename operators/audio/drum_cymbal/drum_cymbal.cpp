@@ -12,7 +12,7 @@
 // Long decay times: 1-2s = ride, 3+ = crash.
 // ---------------------------------------------------------------------------
 
-struct DrumCymbal : vivid::AudioOperatorBase {
+struct DrumCymbal : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumCymbal";
     static constexpr bool kTimeDependent = true;
 

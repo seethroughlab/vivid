@@ -13,7 +13,7 @@ struct SlicerData {
     std::shared_ptr<SampleData> sample;
 };
 
-struct Slicer : vivid::AudioOperatorBase {
+struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "Slicer";
     static constexpr bool kTimeDependent = false;
     static constexpr int kMaxVoices = 16;

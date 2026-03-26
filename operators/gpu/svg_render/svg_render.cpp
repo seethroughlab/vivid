@@ -83,7 +83,7 @@ struct SvgUniforms {
 // SVG Render Operator
 // =============================================================================
 
-struct SvgRender : vivid::GpuOperatorBase {
+struct SvgRender : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "SVG Render";
     static constexpr bool kTimeDependent = false;
 

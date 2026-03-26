@@ -163,7 +163,7 @@ static int host_waveform_to_lfo(int host) {
 
 // ── Operator ────────────────────────────────────────────────────────────
 
-struct InstancedShapes : vivid::GpuOperatorBase {
+struct InstancedShapes : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Instanced Shapes";
     static constexpr bool kTimeDependent = true;
 

@@ -11,7 +11,7 @@
 // SVF bandpass on noise controlled by snappy param.
 // ---------------------------------------------------------------------------
 
-struct DrumSnare : vivid::AudioOperatorBase {
+struct DrumSnare : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumSnare";
     static constexpr bool kTimeDependent = true;
 

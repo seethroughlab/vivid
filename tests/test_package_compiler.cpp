@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
         ofs << R"cpp(
 #include "operator_api/operator.h"
 
-struct TestPkgOp : vivid::ControlOperatorBase {
+struct TestPkgOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "TestPkgOp";
     static constexpr bool kTimeDependent = false;
 
@@ -66,7 +66,7 @@ struct TestPkgOp : vivid::ControlOperatorBase {
         out.push_back({"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0];
     }
 };
@@ -158,7 +158,7 @@ VIVID_REGISTER(TestPkgOp)
 #include "operator_api/operator.h"
 #include "testlib.h"
 
-struct TestVendorOp : vivid::ControlOperatorBase {
+struct TestVendorOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "TestVendorOp";
     static constexpr bool kTimeDependent = false;
 
@@ -172,7 +172,7 @@ struct TestVendorOp : vivid::ControlOperatorBase {
         out.push_back({"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0];
     }
 };
@@ -215,7 +215,7 @@ VIVID_REGISTER(TestVendorOp)
             ofs << R"cpp(
 #include "operator_api/operator.h"
 
-struct TestAposOp : vivid::ControlOperatorBase {
+struct TestAposOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "TestAposOp";
     static constexpr bool kTimeDependent = false;
 
@@ -225,7 +225,7 @@ struct TestAposOp : vivid::ControlOperatorBase {
         out.push_back({"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = 1.0f;
     }
 };
@@ -257,12 +257,12 @@ VIVID_REGISTER(TestAposOp)
             std::ofstream ofs(safe_pkg_dir + "/operators/control/test_safeswap_op/test_safeswap_op.cpp");
             ofs << R"cpp(
 #include "operator_api/operator.h"
-struct TestSafeSwapOp : vivid::ControlOperatorBase {
+struct TestSafeSwapOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "TestSafeSwapOp";
     static constexpr bool kTimeDependent = false;
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
     void collect_ports(std::vector<VividPortDescriptor>&) override {}
-    void process(const VividProcessContext*) override {}
+    void process_frame(const VividFrameContext*) override {}
 };
 VIVID_REGISTER(TestSafeSwapOp)
 )cpp";

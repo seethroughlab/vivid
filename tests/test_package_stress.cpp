@@ -41,14 +41,14 @@ static void write_live_pkg_source(const std::string& root,
     std::filesystem::create_directories(root + "/operators/control/pkg_live_op");
     std::ofstream ofs(root + "/operators/control/pkg_live_op/pkg_live_op.cpp", std::ios::trunc);
     ofs << "#include \"operator_api/operator.h\"\n\n"
-           "struct " << type_name << " : vivid::ControlOperatorBase {\n"
+           "struct " << type_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n"
            "    static constexpr const char* kName = \"" << type_name << "\";\n"
            "    static constexpr bool kTimeDependent = false;\n"
            "    void collect_params(std::vector<vivid::ParamBase*>&) override {}\n"
            "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n"
            "        out.push_back({\"out\", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});\n"
            "    }\n"
-           "    void process(const VividProcessContext* ctx) override {\n"
+           "    void process_frame(const VividFrameContext* ctx) override {\n"
         << "        ctx->output_values[0] = " << std::to_string(output_value) << "f;\n"
            "    }\n"
            "};\n\n"

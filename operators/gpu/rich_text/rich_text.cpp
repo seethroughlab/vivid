@@ -128,7 +128,7 @@ struct RichTextUniforms {
 // Rich Text Operator
 // =============================================================================
 
-struct RichText : vivid::GpuOperatorBase {
+struct RichText : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Rich Text";
     static constexpr bool kTimeDependent = true;
 

@@ -117,7 +117,7 @@ struct Particle {
 
 // ── Operator ────────────────────────────────────────────────────────────
 
-struct Particles : vivid::GpuOperatorBase {
+struct Particles : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Particles";
     static constexpr bool kTimeDependent = true;
 

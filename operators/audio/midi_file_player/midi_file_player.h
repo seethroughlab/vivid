@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-struct MidiFilePlayer : vivid::AudioOperatorBase {
+struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "MidiFilePlayer";
     static constexpr bool kTimeDependent = true;
 

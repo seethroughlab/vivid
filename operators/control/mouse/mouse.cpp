@@ -1,7 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/input_state.h"
 
-struct Mouse : vivid::ControlOperatorBase {
+struct Mouse : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Mouse";
     static constexpr bool kTimeDependent = true;
 
@@ -15,7 +15,7 @@ struct Mouse : vivid::ControlOperatorBase {
         out.push_back({"middle", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         const VividInputState* input = vivid_input(ctx);
         if (!input) {
             ctx->output_values[0] = 0.0f;

@@ -198,7 +198,7 @@ struct BloomUniforms {
 // Bloom Operator
 // =============================================================================
 
-struct Bloom : vivid::GpuOperatorBase {
+struct Bloom : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Bloom";
     static constexpr bool kTimeDependent = false;
 

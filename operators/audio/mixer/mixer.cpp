@@ -2,7 +2,7 @@
 #include "operator_api/audio_operator.h"
 #include "operator_api/thumbnail.h"
 
-struct Mixer : vivid::AudioOperatorBase {
+struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Mixer";
     static constexpr bool kTimeDependent = false;
 

@@ -7,7 +7,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-struct FFTAnalysis : vivid::ControlOperatorBase {
+struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "FFTAnalysis";
     static constexpr bool kTimeDependent = false;
 
@@ -29,7 +29,7 @@ struct FFTAnalysis : vivid::ControlOperatorBase {
         out.push_back({"spectrum", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         // Read input spread
         if (!ctx->input_spreads || ctx->input_spreads[0].length == 0) {
             ctx->output_values[0] = 0.0f;

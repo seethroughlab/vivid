@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 
-struct OscIn : vivid::ControlOperatorBase {
+struct OscIn : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "OscIn";
     static constexpr bool kTimeDependent = true;
 
@@ -49,7 +49,7 @@ struct OscIn : vivid::ControlOperatorBase {
         stop_listener();
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ensure_listener();
 
         float out_value = last_value_;

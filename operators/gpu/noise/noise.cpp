@@ -325,7 +325,7 @@ struct NoiseUniforms {
 // Noise Operator
 // =============================================================================
 
-struct Noise : vivid::GpuOperatorBase {
+struct Noise : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "NoiseTexture";
     static constexpr bool kTimeDependent = true;
 

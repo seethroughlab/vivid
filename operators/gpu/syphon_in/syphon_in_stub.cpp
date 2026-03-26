@@ -1,7 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 
-struct SyphonIn : vivid::GpuOperatorBase {
+struct SyphonIn : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "SyphonIn";
     static constexpr bool kTimeDependent = true;
 

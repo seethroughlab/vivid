@@ -5,7 +5,7 @@
 #include <cstring>
 #include <algorithm>
 
-struct SpreadLFO : vivid::AudioOperatorBase {
+struct SpreadLFO : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "SpreadLFO";
     static constexpr bool kTimeDependent = true;
 

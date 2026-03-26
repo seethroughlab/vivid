@@ -3,7 +3,7 @@
 #include "operator_api/operator.h"
 #include <stdexcept>
 
-struct AudioThrowingOp : vivid::AudioOperatorBase {
+struct AudioThrowingOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "AudioThrowingOp";
     static constexpr bool kTimeDependent = false;
 

@@ -172,7 +172,7 @@ struct LfoPool {
 
 // ── Operator ────────────────────────────────────────────────────────────
 
-struct Flocking : vivid::GpuOperatorBase {
+struct Flocking : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Flocking";
     static constexpr bool kTimeDependent = true;
 

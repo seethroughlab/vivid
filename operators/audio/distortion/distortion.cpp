@@ -24,7 +24,7 @@ struct OnePole {
     }
 };
 
-struct Distortion : vivid::AudioOperatorBase {
+struct Distortion : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Distortion";
     static constexpr bool kTimeDependent = false;
 

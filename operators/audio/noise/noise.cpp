@@ -3,7 +3,7 @@
 #include "operator_api/audio_dsp.h"
 #include "operator_api/thumbnail.h"
 
-struct Noise : vivid::AudioOperatorBase {
+struct Noise : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Noise";
     static constexpr bool kTimeDependent = false;  // uses PRNG state, not ctx->time
 

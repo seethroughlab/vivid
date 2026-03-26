@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cmath>
 
-struct StateMachine : vivid::AudioOperatorBase {
+struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "StateMachine";
     static constexpr bool kTimeDependent = false;
 

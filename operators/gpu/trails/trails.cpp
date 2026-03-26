@@ -169,7 +169,7 @@ struct LfoPool {
 
 // ── Operator ────────────────────────────────────────────────────────────
 
-struct Trails : vivid::GpuOperatorBase {
+struct Trails : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Trails";
     static constexpr bool kTimeDependent = true;
 

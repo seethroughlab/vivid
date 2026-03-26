@@ -52,7 +52,7 @@ static void write_control_operator(const std::filesystem::path& package_dir,
     std::filesystem::create_directories(op_dir);
     std::ofstream ofs(op_dir / (op_name + ".cpp"));
     ofs << "#include \"operator_api/operator.h\"\n\n"
-        << "struct " << type_name << " : vivid::ControlOperatorBase {\n"
+        << "struct " << type_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n"
         << "    static constexpr const char* kName   = \"" << type_name << "\";\n"
         << "    static constexpr bool kTimeDependent = false;\n\n"
         << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {\n"
@@ -61,7 +61,7 @@ static void write_control_operator(const std::filesystem::path& package_dir,
         << "    void collect_ports(std::vector<VividPortDescriptor>& out) override {\n"
         << "        out.push_back({\"out\", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});\n"
         << "    }\n\n"
-        << "    void process(const VividProcessContext* ctx) override {\n"
+        << "    void process_frame(const VividFrameContext* ctx) override {\n"
         << "        (void)ctx;\n"
         << "    }\n"
         << "};\n\n"

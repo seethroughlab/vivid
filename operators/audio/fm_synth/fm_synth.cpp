@@ -12,7 +12,7 @@
 // FM Synth — 2-operator FM synthesizer with ADSR envelope (mono, generator)
 // ---------------------------------------------------------------------------
 
-struct FmSynth : vivid::AudioOperatorBase {
+struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "FmSynth";
     static constexpr bool kTimeDependent = true;
 

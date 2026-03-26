@@ -302,7 +302,7 @@ struct ScopesUniforms {
 // Scopes Operator
 // =============================================================================
 
-struct Scopes : vivid::GpuOperatorBase {
+struct Scopes : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Scopes";
     static constexpr bool kTimeDependent = false;
 

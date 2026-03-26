@@ -12,7 +12,7 @@
 // Ring Modulator — multiplies input by internal carrier oscillator (mono)
 // ---------------------------------------------------------------------------
 
-struct RingMod : vivid::AudioOperatorBase {
+struct RingMod : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "RingMod";
     static constexpr bool kTimeDependent = false;
 

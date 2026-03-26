@@ -16,7 +16,7 @@
 
 static constexpr int kMaxFFTSize = 1024;
 
-struct SpectralFreeze : vivid::AudioOperatorBase {
+struct SpectralFreeze : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "SpectralFreeze";
     static constexpr bool kTimeDependent = false;
 

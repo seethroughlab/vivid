@@ -12,7 +12,7 @@ VIVID_DECLARE_CUSTOM_REF_TYPE(BadMediaStreamToken,
                               "BadMediaStreamToken",
                               false);
 
-struct BadCustomTypeOp : vivid::ControlOperatorBase {
+struct BadCustomTypeOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "BadCustomTypeOp";
     static constexpr bool kTimeDependent = false;
 
@@ -24,7 +24,7 @@ struct BadCustomTypeOp : vivid::ControlOperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("stream", VIVID_PORT_OUTPUT, BadMediaStreamToken));
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         (void)ctx;
     }
 };

@@ -234,28 +234,6 @@ struct GpuProcessable {
     virtual void process_gpu(const VividGpuContext* ctx) = 0;
 };
 
-// ---------------------------------------------------------------------------
-// Legacy base classes — thin aliases that inherit the new capability interfaces.
-// Existing operators compile unchanged; new operators should use OperatorBase
-// plus the capability interfaces directly.
-// ---------------------------------------------------------------------------
-
-struct ControlOperatorBase : OperatorBase, FrameProcessable {
-    // Bridge: legacy process() delegates to process_frame().
-    // Operators inheriting ControlOperatorBase override process() as before;
-    // process_frame() calls through to it.
-    virtual void process(const VividProcessContext* ctx) = 0;
-    void process_frame(const VividFrameContext* ctx) override { process(ctx); }
-};
-
-struct AudioOperatorBase : OperatorBase, AudioProcessable {
-    // process_audio is already the right name — no bridging needed.
-};
-
-struct GpuOperatorBase : OperatorBase, GpuProcessable {
-    // process_gpu is already the right name — no bridging needed.
-};
-
 } // namespace vivid
 
 // ---------------------------------------------------------------------------

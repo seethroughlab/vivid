@@ -161,7 +161,7 @@ struct SimUniforms {
 
 // ── Operator ────────────────────────────────────────────────────────────
 
-struct ReactionDiffusion : vivid::GpuOperatorBase {
+struct ReactionDiffusion : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Reaction Diffusion";
     static constexpr bool kTimeDependent = true;
 

@@ -3,7 +3,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/port_type_registry.h"
 
-struct ExportCustomPortOp : vivid::ControlOperatorBase {
+struct ExportCustomPortOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "ExportCustomPortOp";
     static constexpr bool kTimeDependent = false;
 
@@ -15,7 +15,7 @@ struct ExportCustomPortOp : vivid::ControlOperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("stream", VIVID_PORT_OUTPUT, vivid::MediaStreamV1));
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         (void)ctx;
     }
 };

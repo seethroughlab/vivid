@@ -12,7 +12,7 @@ extern "C" void* wgpuDeviceGetNativeMetalDevice(WGPUDevice device);
 extern "C" void* wgpuQueueGetNativeMetalCommandQueue(WGPUQueue queue);
 extern "C" void* wgpuTextureGetNativeMetalTexture(WGPUTexture texture);
 
-struct SyphonOut : vivid::GpuOperatorBase {
+struct SyphonOut : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "SyphonOut";
     static constexpr bool kTimeDependent = true;
 

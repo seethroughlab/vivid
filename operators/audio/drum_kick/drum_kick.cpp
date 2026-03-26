@@ -12,7 +12,7 @@
 // Soft clipping via tanh for warmth/drive.
 // ---------------------------------------------------------------------------
 
-struct DrumKick : vivid::AudioOperatorBase {
+struct DrumKick : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumKick";
     static constexpr bool kTimeDependent = true;
 

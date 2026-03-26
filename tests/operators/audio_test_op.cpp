@@ -2,7 +2,7 @@
 // With no input connected, input is zeroed, so output = level (constant DC).
 #include "operator_api/operator.h"
 
-struct AudioTestOp : vivid::AudioOperatorBase {
+struct AudioTestOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "AudioTestOp";
     static constexpr bool kTimeDependent = false;
 

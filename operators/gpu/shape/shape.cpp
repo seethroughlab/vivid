@@ -111,7 +111,7 @@ struct ShapeUniforms {
 // Shape Operator
 // =============================================================================
 
-struct Shape : vivid::GpuOperatorBase {
+struct Shape : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Shape";
     static constexpr bool kTimeDependent = false;
 

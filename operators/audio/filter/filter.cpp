@@ -19,7 +19,7 @@
 // from spread inputs (cutoff_mod, frequencies for keytracking).
 // ---------------------------------------------------------------------------
 
-struct Filter : vivid::AudioOperatorBase {
+struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Filter";
     static constexpr bool kTimeDependent = false;
 

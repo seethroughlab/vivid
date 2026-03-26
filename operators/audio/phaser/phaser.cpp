@@ -27,7 +27,7 @@ static constexpr int   kMaxStages = 12;
 static constexpr float kMinFreq   = 100.0f;
 static constexpr float kMaxFreq   = 4000.0f;
 
-struct Phaser : vivid::AudioOperatorBase {
+struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Phaser";
     static constexpr bool kTimeDependent = false;
 

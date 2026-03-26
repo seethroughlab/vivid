@@ -11,7 +11,7 @@
 // Filtered tail provides the reverberant decay.
 // ---------------------------------------------------------------------------
 
-struct DrumClap : vivid::AudioOperatorBase {
+struct DrumClap : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumClap";
     static constexpr bool kTimeDependent = true;
 

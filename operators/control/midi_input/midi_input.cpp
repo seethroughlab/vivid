@@ -8,7 +8,7 @@
 #include <cstring>
 #include <cstdio>
 
-struct MidiInput : vivid::ControlOperatorBase {
+struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "MidiInput";
     static constexpr bool kTimeDependent = true;
 
@@ -53,7 +53,7 @@ struct MidiInput : vivid::ControlOperatorBase {
         vivid::semantic_shape(learn, "bool");
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ensure_midi_initialized();
         int desired_device = device.int_value();
 

@@ -8,7 +8,7 @@
 // Brickwall lookahead limiter for peak protection
 // ---------------------------------------------------------------------------
 
-struct Limiter : vivid::AudioOperatorBase {
+struct Limiter : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Limiter";
     static constexpr bool kTimeDependent = false;
 

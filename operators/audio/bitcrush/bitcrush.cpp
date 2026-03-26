@@ -7,7 +7,7 @@
 // Bitcrusher: bit-depth reduction + sample-rate reduction (mono)
 // ---------------------------------------------------------------------------
 
-struct Bitcrush : vivid::AudioOperatorBase {
+struct Bitcrush : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Bitcrush";
     static constexpr bool kTimeDependent = false;
 

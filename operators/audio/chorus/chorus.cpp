@@ -48,7 +48,7 @@ static constexpr float kCenterDelay = 0.007f;  // 7ms
 static constexpr float kMaxDepth    = 0.005f;  // 5ms
 static constexpr float kMaxDelay    = 0.015f;  // 15ms
 
-struct Chorus : vivid::AudioOperatorBase {
+struct Chorus : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Chorus";
     static constexpr bool kTimeDependent = false;
 

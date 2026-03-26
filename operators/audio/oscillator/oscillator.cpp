@@ -3,7 +3,7 @@
 #include "operator_api/audio_dsp.h"
 #include <cmath>
 
-struct Oscillator : vivid::AudioOperatorBase {
+struct Oscillator : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Oscillator";
     static constexpr bool kTimeDependent = true;
 

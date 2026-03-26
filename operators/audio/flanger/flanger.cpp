@@ -47,7 +47,7 @@ static constexpr float kCenterDelay = 0.002f;  // 2ms
 static constexpr float kMaxDepth    = 0.003f;  // 3ms
 static constexpr float kMaxDelay    = 0.006f;  // 6ms
 
-struct Flanger : vivid::AudioOperatorBase {
+struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Flanger";
     static constexpr bool kTimeDependent = false;
 

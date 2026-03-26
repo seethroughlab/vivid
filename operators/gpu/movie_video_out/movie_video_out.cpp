@@ -73,7 +73,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
-struct MovieVideoOut : vivid::GpuOperatorBase {
+struct MovieVideoOut : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "MovieVideoOut";
     static constexpr bool kTimeDependent = true;
 

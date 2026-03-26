@@ -64,7 +64,7 @@ struct CaptureRing {
 // ---------------------------------------------------------------------------
 // MicInput operator
 // ---------------------------------------------------------------------------
-struct MicInput : vivid::AudioOperatorBase {
+struct MicInput : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "MicInput";
     static constexpr bool kTimeDependent = true;
 

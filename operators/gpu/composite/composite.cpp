@@ -90,7 +90,7 @@ struct CompositeUniforms {
 // Composite Operator
 // =============================================================================
 
-struct Composite : vivid::GpuOperatorBase {
+struct Composite : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Composite";
     static constexpr bool kTimeDependent = false;
 

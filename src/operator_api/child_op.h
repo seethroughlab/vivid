@@ -15,9 +15,9 @@ namespace vivid {
 //   #include "operator_api/child_op.h"
 //   #include "control/lfo/lfo.h"
 //
-//   struct MyOp : vivid::OperatorBase {
+//   struct MyOp : vivid::OperatorBase, vivid::FrameProcessable {
 //       vivid::ChildOp<LFO> lfo;
-//       void process(const VividProcessContext* ctx) override {
+//       void process_frame(const VividFrameContext* ctx) override {
 //           lfo.set_param("frequency", 2.0f);
 //           lfo.process(ctx);
 //           float mod = lfo.output("value");
@@ -126,7 +126,7 @@ public:
         sync_params_();
         sync_spreads_();
 
-        if constexpr (std::is_base_of_v<AudioOperatorBase, T> || std::is_base_of_v<AudioProcessable, T>) {
+        if constexpr (std::is_base_of_v<AudioProcessable, T>) {
             // Audio child op: process a single sample per control frame
             // and extract the output into output_values_.
             ensure_audio_buffers_();
@@ -195,7 +195,7 @@ public:
         sync_params_();
         sync_spreads_();
 
-        if constexpr (std::is_base_of_v<AudioProcessable, T> || std::is_base_of_v<AudioOperatorBase, T>) {
+        if constexpr (std::is_base_of_v<AudioProcessable, T>) {
             // Child supports audio: forward audio context
             ensure_audio_buffers_();
 
@@ -318,7 +318,7 @@ private:
     std::vector<VividSpreadPort> c_input_spreads_;
     std::vector<VividSpreadPort> c_output_spreads_;
 
-    // Audio buffer storage (only used for AudioOperatorBase children)
+    // Audio buffer storage (only used for AudioProcessable children)
     std::vector<std::vector<float>> audio_in_bufs_;
     std::vector<std::vector<float>> audio_out_bufs_;
     std::vector<float*> audio_in_ptrs_;

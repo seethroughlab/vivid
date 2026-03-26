@@ -183,7 +183,7 @@ struct MetaballUniforms {
 // Metaball Operator
 // =============================================================================
 
-struct Metaball : vivid::GpuOperatorBase {
+struct Metaball : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Metaball";
     static constexpr bool kTimeDependent = true;
 

@@ -10,7 +10,7 @@
 
 using namespace vivid_sampler;
 
-struct Sampler : vivid::AudioOperatorBase {
+struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "Sampler";
     static constexpr bool kTimeDependent = false;
     static constexpr int kMaxVoices = 16;

@@ -1,7 +1,7 @@
 // Test operator with an incompatible hot-reload port layout change.
 #include "operator_api/operator.h"
 
-struct TestOp : vivid::ControlOperatorBase {
+struct TestOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "TestOp";
     static constexpr bool kTimeDependent = false;
 
@@ -15,7 +15,7 @@ struct TestOp : vivid::ControlOperatorBase {
         out.push_back({"broken_out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0] * 5.0f;
     }
 };

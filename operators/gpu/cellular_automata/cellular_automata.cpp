@@ -179,7 +179,7 @@ static constexpr int kWaveformMap[] = { 0, 3, 1, 2 }; // Sine, Tri, Saw, Square
 
 // ── Operator ────────────────────────────────────────────────────────────
 
-struct CellularAutomata : vivid::GpuOperatorBase {
+struct CellularAutomata : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Cellular Automata";
     static constexpr bool kTimeDependent = true;
 

@@ -8,7 +8,7 @@
 
 using namespace vivid_sampler;
 
-struct SP404 : vivid::AudioOperatorBase {
+struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "SP404";
     static constexpr bool kTimeDependent = false;
     static constexpr int kMaxPads = 16;

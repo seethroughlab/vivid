@@ -66,7 +66,7 @@ struct AllPassDelay {
 static constexpr int kCombLengths[8]    = {1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617};
 static constexpr int kAllPassLengths[4] = {556, 441, 341, 225};
 
-struct Reverb : vivid::AudioOperatorBase {
+struct Reverb : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Reverb";
     static constexpr bool kTimeDependent = false;
 

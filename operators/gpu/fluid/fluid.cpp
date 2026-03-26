@@ -196,7 +196,7 @@ struct FluidUniforms {
 
 // ── Operator ────────────────────────────────────────────────────────────
 
-struct Fluid : vivid::GpuOperatorBase {
+struct Fluid : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Fluid";
     static constexpr bool kTimeDependent = true;
 

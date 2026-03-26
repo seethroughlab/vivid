@@ -1,6 +1,6 @@
 #include "operator_api/operator.h"
 
-struct SecDestOp : vivid::ControlOperatorBase {
+struct SecDestOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "SecDestOp";
     static constexpr bool kTimeDependent = false;
 
@@ -20,7 +20,7 @@ struct SecDestOp : vivid::ControlOperatorBase {
         out.push_back({"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0];
     }
 };

@@ -72,7 +72,7 @@ struct TextUniforms {
 // Text Operator
 // =============================================================================
 
-struct Text : vivid::GpuOperatorBase {
+struct Text : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Text";
     static constexpr bool kTimeDependent = false;
 

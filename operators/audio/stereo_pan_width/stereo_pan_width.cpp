@@ -7,7 +7,7 @@
 // Stereo Pan/Width — pan, width, and mid/side balance (stereo in/out)
 // ---------------------------------------------------------------------------
 
-struct StereoPanWidth : vivid::AudioOperatorBase {
+struct StereoPanWidth : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "StereoPanWidth";
     static constexpr bool kTimeDependent = false;
 

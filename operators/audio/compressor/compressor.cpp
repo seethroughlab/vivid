@@ -9,7 +9,7 @@
 
 static constexpr float kFloorDB = -96.0f;
 
-struct Compressor : vivid::AudioOperatorBase {
+struct Compressor : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Compressor";
     static constexpr bool kTimeDependent = false;
 

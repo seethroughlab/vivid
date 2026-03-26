@@ -72,7 +72,7 @@ static float fps_for_preset(int preset) {
 // WebcamIn Operator
 // =============================================================================
 
-struct WebcamIn : vivid::GpuOperatorBase {
+struct WebcamIn : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "WebcamIn";
     static constexpr bool kTimeDependent = true;
 

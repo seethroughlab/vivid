@@ -20,7 +20,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-struct AudioAnalysis : vivid::AudioOperatorBase {
+struct AudioAnalysis : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "AudioAnalysis";
     static constexpr bool kTimeDependent = true;
 

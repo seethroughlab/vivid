@@ -236,10 +236,9 @@ typedef struct VividAudioContext {
 
 // ---------------------------------------------------------------------------
 // Frame process context — passed to frame-rate operators on the main thread
-// (formerly VividProcessContext)
 // ---------------------------------------------------------------------------
 
-typedef struct VividProcessContext {
+typedef struct VividFrameContext {
     // ---- Runtime-provided: read-only inputs --------------------------------
     double    time;
     double    delta_time;
@@ -262,17 +261,17 @@ typedef struct VividProcessContext {
     void*     input;          // VividInputState* for interactive operators, NULL otherwise
     const VividSharedHandleService* shared_handles; // runtime-owned process-wide handle service
 
-    // ---- Operator write-back: operator sets these during process() ---------
-    // The runtime reads them after process() returns and acts accordingly.
+    // ---- Operator write-back: operator sets these during process_frame() ----
+    // The runtime reads them after process_frame() returns and acts accordingly.
     // preferred_tex_*: set to request a texture reallocation next frame.
     // Leave as 0 to keep the current size (no action taken).
     uint32_t  preferred_tex_width;
     uint32_t  preferred_tex_height;
 
-} VividProcessContext;
+} VividFrameContext;
 
-// New canonical name — VividFrameContext — with backward-compat alias.
-typedef VividProcessContext VividFrameContext;
+// Deprecated alias — use VividFrameContext in new code.
+typedef VividFrameContext VividProcessContext;
 
 // Forward declaration — full definition in gpu_operator.h (requires WebGPU types)
 struct VividGpuContext;

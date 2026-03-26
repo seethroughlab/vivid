@@ -19,7 +19,7 @@ struct BandState {
     float envelope = 0.0f;                     // Envelope follower
 };
 
-struct Vocoder : vivid::AudioOperatorBase {
+struct Vocoder : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Vocoder";
     static constexpr bool kTimeDependent = false;
 

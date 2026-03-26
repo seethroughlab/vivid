@@ -81,7 +81,7 @@ struct FeedbackUniforms {
 // Feedback Operator
 // =============================================================================
 
-struct Feedback : vivid::GpuOperatorBase {
+struct Feedback : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Feedback";
     static constexpr bool kTimeDependent = true;
 

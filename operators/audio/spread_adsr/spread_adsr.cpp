@@ -7,7 +7,7 @@
 
 namespace adsr = vivid::adsr;
 
-struct SpreadADSR : vivid::AudioOperatorBase {
+struct SpreadADSR : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "SpreadADSR";
     static constexpr bool kTimeDependent = false;
 

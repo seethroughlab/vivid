@@ -4,7 +4,7 @@
 
 // Minimal operator for testing ChildOp: scales input by a param.
 // output = input * gain
-struct ChildTestOp : vivid::ControlOperatorBase {
+struct ChildTestOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "ChildTestOp";
     static constexpr bool kTimeDependent = false;
 
@@ -19,7 +19,7 @@ struct ChildTestOp : vivid::ControlOperatorBase {
         out.push_back({"value", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->input_values[0] * gain.value;
     }
 };

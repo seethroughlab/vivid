@@ -286,7 +286,7 @@ static std::string control_template(const std::string& name, const std::string& 
     s << "// Starter template. For advanced features (custom ports, file drops,\n";
     s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     emit_custom_type_support(s, effective_ports);
-    s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
+    s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = false;\n\n";
 
@@ -309,8 +309,8 @@ static std::string control_template(const std::string& name, const std::string& 
     emit_collect_ports(s, effective_ports);
     s << "\n";
 
-    // process()
-    s << "    void process(const VividProcessContext* ctx) override {\n";
+    // process_frame()
+    s << "    void process_frame(const VividFrameContext* ctx) override {\n";
     if (num_inputs > 0 && num_outputs > 0) {
         if (custom_params) {
             s << "        ctx->output_values[0] = ctx->input_values[0];\n";
@@ -364,7 +364,7 @@ static std::string audio_template(const std::string& name, const std::string& st
     s << "// Starter template. For advanced features (custom ports, file drops,\n";
     s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
     emit_custom_type_support(s, effective_ports);
-    s << "struct " << struct_name << " : vivid::AudioOperatorBase {\n";
+    s << "struct " << struct_name << " : vivid::OperatorBase, vivid::AudioProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
 
@@ -483,7 +483,7 @@ static std::string composite_control_template(const std::string& name, const std
     s << "// ChildOp<T> only works with operators documented as embeddable.\n";
     s << "// Embeddables are either fully header-defined or backed by\n";
     s << "// vivid_composable_ops through a *_composable.cpp support file.\n\n";
-    s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
+    s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
     s << "    vivid::Param<float> amount   {\"amount\",    1.0f, 0.0f, 10.0f};\n";
@@ -515,7 +515,7 @@ static std::string composite_control_template(const std::string& name, const std
     s << "        out.push_back({\"input\",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});\n";
     s << "        out.push_back({\"output\", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
-    s << "    void process(const VividProcessContext* ctx) override {\n";
+    s << "    void process_frame(const VividFrameContext* ctx) override {\n";
     s << "        float input = ctx->input_values[0];\n\n";
     s << "        // Drive internal LFO\n";
     s << "        lfo_.set_param(\"frequency\", lfo_rate.value);\n";
@@ -543,7 +543,7 @@ static std::string empty_control_template(const std::string& struct_name) {
     s << "#include \"operator_api/operator.h\"\n\n";
     s << "// Starter template. For advanced features (custom ports, file drops,\n";
     s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
-    s << "struct " << struct_name << " : vivid::ControlOperatorBase {\n";
+    s << "struct " << struct_name << " : vivid::OperatorBase, vivid::FrameProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = false;\n\n";
     s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";
@@ -551,7 +551,7 @@ static std::string empty_control_template(const std::string& struct_name) {
     s << "        out.push_back({\"input\",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});\n";
     s << "        out.push_back({\"output\", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});\n";
     s << "    }\n\n";
-    s << "    void process(const VividProcessContext* ctx) override {\n";
+    s << "    void process_frame(const VividFrameContext* ctx) override {\n";
     s << "        ctx->output_values[0] = ctx->input_values[0];\n";
     s << "    }\n";
     s << "};\n\n";
@@ -564,7 +564,7 @@ static std::string empty_audio_template(const std::string& struct_name) {
     s << "#include \"operator_api/operator.h\"\n\n";
     s << "// Starter template. For advanced features (custom ports, file drops,\n";
     s << "// inspectors, thumbnails), see examples in operators/ or use MCP opdev tools.\n\n";
-    s << "struct " << struct_name << " : vivid::AudioOperatorBase {\n";
+    s << "struct " << struct_name << " : vivid::OperatorBase, vivid::AudioProcessable {\n";
     s << "    static constexpr const char* kName   = \"" << struct_name << "\";\n";
     s << "    static constexpr bool kTimeDependent = true;\n\n";
     s << "    void collect_params(std::vector<vivid::ParamBase*>& out) override {}\n\n";

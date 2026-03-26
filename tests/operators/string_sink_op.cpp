@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-struct StringSinkOp : vivid::ControlOperatorBase {
+struct StringSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "StringSinkOp";
     static constexpr bool kTimeDependent = false;
 
@@ -23,7 +23,7 @@ struct StringSinkOp : vivid::ControlOperatorBase {
         out.push_back({"count", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         last_.clear();
         if (ctx->input_string_values && ctx->input_string_values[0]) last_ = ctx->input_string_values[0];
 

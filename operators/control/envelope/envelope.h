@@ -252,7 +252,7 @@ struct Envelope : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProc
         float off = offset.value;
         int   c   = curve.int_value();
 
-        // Gate and phase trigger detection (once per buffer, from cross-domain scalar)
+        // Gate and phase trigger detection (once per buffer, from cross-cadence scalar)
         advance_triggers(gate_in, phase_in);
 
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {

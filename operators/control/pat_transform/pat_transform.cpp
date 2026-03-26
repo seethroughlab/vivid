@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cstdint>
 
-struct PatTransform : vivid::ControlOperatorBase {
+struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "PatTransform";
     static constexpr bool kTimeDependent = false;
 
@@ -36,7 +36,7 @@ struct PatTransform : vivid::ControlOperatorBase {
         out.push_back({"pattern", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // out spread[0]
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         if (!ctx->input_spreads || !ctx->output_spreads) return;
 
         auto& in  = ctx->input_spreads[0];

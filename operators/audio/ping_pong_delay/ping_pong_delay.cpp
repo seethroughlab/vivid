@@ -53,7 +53,7 @@ struct OnePoleFilter {
 
 static constexpr float kMaxDelaySeconds = 2.0f;
 
-struct PingPongDelay : vivid::AudioOperatorBase {
+struct PingPongDelay : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "PingPongDelay";
     static constexpr bool kTimeDependent = false;
 

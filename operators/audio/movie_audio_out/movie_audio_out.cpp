@@ -139,7 +139,7 @@ private:
 // MovieAudioOut operator
 // =============================================================================
 
-struct MovieAudioOut : vivid::AudioOperatorBase {
+struct MovieAudioOut : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "MovieAudioOut";
     static constexpr bool kTimeDependent = true;
 

@@ -6,7 +6,7 @@
 
 struct ClockThumbState;
 
-struct Clock : vivid::AudioOperatorBase {
+struct Clock : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Clock";
     static constexpr bool kTimeDependent = true;
 

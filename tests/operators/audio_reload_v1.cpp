@@ -1,7 +1,7 @@
 // Audio hot-reload test operator v1: output = level * 2.0
 #include "operator_api/operator.h"
 
-struct AudioReloadOp : vivid::AudioOperatorBase {
+struct AudioReloadOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "AudioReloadOp";
     static constexpr bool kTimeDependent = false;
 

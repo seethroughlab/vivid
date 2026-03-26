@@ -39,7 +39,7 @@ struct FillUniforms {
     float color[4];
 };
 
-struct GpuFillOp : vivid::GpuOperatorBase {
+struct GpuFillOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "GpuFillOp";
     static constexpr bool kTimeDependent = false;
 

@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-struct OscOut : vivid::ControlOperatorBase {
+struct OscOut : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "OscOut";
     static constexpr bool kTimeDependent = true;
 
@@ -53,7 +53,7 @@ struct OscOut : vivid::ControlOperatorBase {
         out.push_back({"connected", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         const std::string h = host.str_value.empty() ? "127.0.0.1" : host.str_value;
         const int p = target_port.int_value();
         const std::string a = normalized_address(address.str_value);

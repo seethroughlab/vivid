@@ -1,7 +1,7 @@
 // Audio test operator: outputs a constant DC signal equal to the FLOAT cv input.
 #include "operator_api/operator.h"
 
-struct AudioFloatCvOp : vivid::AudioOperatorBase {
+struct AudioFloatCvOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "AudioFloatCvOp";
     static constexpr bool kTimeDependent = false;
 

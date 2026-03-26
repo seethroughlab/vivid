@@ -16,7 +16,7 @@ struct BiquadState {
     float y1 = 0.0f, y2 = 0.0f;
 };
 
-struct ParametricEQ : vivid::AudioOperatorBase {
+struct ParametricEQ : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "ParametricEQ";
     static constexpr bool kTimeDependent = false;
 

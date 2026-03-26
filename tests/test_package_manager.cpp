@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
 #include "operator_api/operator.h"
 #include "mock_vendor.h"
 
-struct TestMgrOp : vivid::ControlOperatorBase {
+struct TestMgrOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "TestMgrOp";
     static constexpr bool kTimeDependent = false;
 
@@ -76,7 +76,7 @@ struct TestMgrOp : vivid::ControlOperatorBase {
         out.push_back({"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0] * MOCK_VENDOR_SCALE;
     }
 };
@@ -208,8 +208,8 @@ VIVID_REGISTER(TestMgrOp)
         ofs << R"cpp(
 #include "operator_api/operator.h"
 using namespace vivid;
-struct BadCompile : ControlOperatorBase {
-    void process(const VividProcessContext* ctx) override {
+struct BadCompile : OperatorBase, FrameProcessable {
+    void process_frame(const VividFrameContext* ctx) override {
         int x = ; // intentional syntax error
         (void)x;
     }
@@ -322,7 +322,7 @@ VIVID_REGISTER(BadCompile, "BadCompile", "Bad compile fixture", "control")
         ofs << R"cpp(
 #include "operator_api/operator.h"
 
-struct TestCmakeOp : vivid::ControlOperatorBase {
+struct TestCmakeOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "TestCmakeOp";
     static constexpr bool kTimeDependent = false;
 
@@ -336,7 +336,7 @@ struct TestCmakeOp : vivid::ControlOperatorBase {
         out.push_back({"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->param_values[0] * 2.0f;
     }
 };

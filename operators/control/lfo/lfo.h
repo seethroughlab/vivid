@@ -253,7 +253,7 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
             prev_seed_ = s;
         }
 
-        // Gate tracking once per buffer (from cross-domain scalar)
+        // Gate tracking once per buffer (from cross-cadence scalar)
         bool gate_on = gate_in > 0.5f;
         bool gate_rising = gate_on && !prev_gate_on_;
         prev_gate_on_ = gate_on;

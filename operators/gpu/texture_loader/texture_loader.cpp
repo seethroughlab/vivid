@@ -71,7 +71,7 @@ static void convert_rgba_f32_to_f16(const float* src, uint16_t* dst, int pixel_c
 // TextureLoader operator
 // ---------------------------------------------------------------------------
 
-struct TextureLoader : vivid::GpuOperatorBase {
+struct TextureLoader : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "TextureLoader";
     static constexpr bool kTimeDependent = false;
 

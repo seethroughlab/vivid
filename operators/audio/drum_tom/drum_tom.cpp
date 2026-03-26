@@ -11,7 +11,7 @@
 // down to base pitch over bend_time.
 // ---------------------------------------------------------------------------
 
-struct DrumTom : vivid::AudioOperatorBase {
+struct DrumTom : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DrumTom";
     static constexpr bool kTimeDependent = true;
 
