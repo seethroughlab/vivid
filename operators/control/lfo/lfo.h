@@ -28,6 +28,9 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
     vivid::Param<int>   polarity     {"polarity",      0, {"bipolar", "unipolar"}};
     vivid::Param<float> phase_offset {"phase_offset",  0.0f, 0.0f, 1.0f};
     vivid::Param<float> fade_in      {"fade_in",       0.0f, 0.0f, 5.0f};
+    vivid::Param<float> slew         {"slew",          0.0f, 0.0f, 1.0f};
+    vivid::Param<int>   distribution {"distribution",  0, {"uniform", "gaussian"}};
+    vivid::Param<int>   seed         {"seed",          0, 0, 99999};
 
     // ── Persistent state ────────────────────────────────────────────────
     double free_phase_ = 0.0;
@@ -39,6 +42,9 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
     uint32_t noise_seed_ = 12345;  // simple LCG seed
     float elapsed_time_ = 0.0f;   // for fade-in
     bool  gate_seen_    = false;   // track if gate was ever on
+    bool  prev_gate_on_ = false;   // for gate-edge S&H triggering
+    float slew_value_   = 0.0f;   // slew smoothing state
+    int   prev_seed_    = 0;      // detect seed param changes
 
     LFO() {
         vivid::semantic_tag(frequency, "frequency_hz");
@@ -51,6 +57,12 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         vivid::semantic_tag(offset, "amplitude_linear");
         vivid::semantic_shape(offset, "scalar");
         vivid::semantic_intent(offset, "dc_offset");
+
+        vivid::semantic_tag(slew, "probability_01");
+        vivid::semantic_shape(slew, "scalar");
+
+        vivid::semantic_tag(seed, "seed");
+        vivid::semantic_shape(seed, "int");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
@@ -58,18 +70,22 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         display_hint(polarity,      VIVID_DISPLAY_DEFAULT);
         display_hint(phase_offset,  VIVID_DISPLAY_KNOB);
         display_hint(fade_in,       VIVID_DISPLAY_KNOB);
+        display_hint(slew,          VIVID_DISPLAY_KNOB);
 
         layout_row(phase_offset, 2, 0);
         layout_row(fade_in,      2, 1);
 
-        out.push_back(&frequency);
-        out.push_back(&phase_offset);
-        out.push_back(&fade_in);
-        out.push_back(&amplitude);
-        out.push_back(&offset);
-        out.push_back(&waveform);
-        out.push_back(&rate_mode);
-        out.push_back(&polarity);
+        out.push_back(&frequency);     // 0
+        out.push_back(&phase_offset);  // 1
+        out.push_back(&fade_in);       // 2
+        out.push_back(&amplitude);     // 3
+        out.push_back(&offset);        // 4
+        out.push_back(&waveform);      // 5
+        out.push_back(&rate_mode);     // 6
+        out.push_back(&polarity);      // 7
+        out.push_back(&slew);          // 8
+        out.push_back(&distribution);  // 9
+        out.push_back(&seed);          // 10
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -80,9 +96,29 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
 
     // ── Shared helpers ──────────────────────────────────────────────────
 
-    float lcg_random() {
+    float lcg_random_uniform() {
         noise_seed_ = noise_seed_ * 1664525u + 1013904223u;
         return static_cast<float>(static_cast<int32_t>(noise_seed_)) / 2147483648.0f;
+    }
+
+    float lcg_random_gaussian() {
+        // Box-Muller transform, clamped to [-1, 1] (3 sigma = 1)
+        float u1 = (static_cast<float>(lcg_raw()) + 1.0f) / 4294967296.0f;
+        float u2 = static_cast<float>(lcg_raw()) / 4294967295.0f;
+        float z = std::sqrt(-2.0f * std::log(u1)) * std::cos(6.2831853f * u2);
+        z /= 3.0f;
+        return std::max(-1.0f, std::min(1.0f, z));
+    }
+
+    uint32_t lcg_raw() {
+        noise_seed_ = noise_seed_ * 1664525u + 1013904223u;
+        return noise_seed_;
+    }
+
+    float lcg_random() {
+        if (distribution.int_value() == 1)
+            return lcg_random_gaussian();
+        return lcg_random_uniform();
     }
 
     static float catmull_rom(float p0, float p1, float p2, float p3, float t) {
@@ -96,9 +132,19 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
     // Returns the computed output value for one time step.
     float compute_one_sample(float freq, float amp, float off, int wf, int rm, int pol,
                              float ph_off, float fade, float gate_in, float phase_in,
-                             double dt) {
+                             double dt, float slew_amt) {
+        // Seed handling: reinit RNG when seed param changes (0 = free-running)
+        int s = seed.int_value();
+        if (s != prev_seed_) {
+            if (s > 0) noise_seed_ = static_cast<uint32_t>(s);
+            prev_seed_ = s;
+        }
+
         // Gate tracking
         bool gate_on = gate_in > 0.5f;
+        bool gate_rising = gate_on && !prev_gate_on_;
+        prev_gate_on_ = gate_on;
+
         if (gate_on && !gate_seen_) {
             elapsed_time_ = 0.0f;
             gate_seen_ = true;
@@ -125,6 +171,9 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         bool phase_wrapped = (phase < prev_phase_ - 0.5);
         prev_phase_ = phase;
 
+        // Gate rising edge triggers new S&H value (in addition to phase wraps)
+        bool new_sample = phase_wrapped || gate_rising;
+
         double raw = 0.0;
         switch (wf) {
             case 0: raw = std::sin(phase * 2.0 * M_PI); break;
@@ -132,11 +181,11 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
             case 2: raw = phase < 0.5 ? 1.0 : -1.0; break;
             case 3: raw = 4.0 * (phase < 0.5 ? phase : (1.0 - phase)) - 1.0; break;
             case 4:
-                if (phase_wrapped) sh_value_ = lcg_random();
+                if (new_sample) sh_value_ = lcg_random();
                 raw = static_cast<double>(sh_value_);
                 break;
             case 5: {
-                if (phase_wrapped) {
+                if (new_sample) {
                     sh_prev2_ = sh_prev_;
                     sh_prev_ = sh_next_;
                     sh_next_ = lcg_random();
@@ -152,6 +201,15 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         if (pol == 1) raw = raw * 0.5 + 0.5;
 
         float output = static_cast<float>(raw) * amp + off;
+
+        // Slew smoothing
+        if (slew_amt > 0.001f) {
+            float slew_factor = 1.0f - slew_amt * slew_amt * slew_amt;
+            slew_value_ += (output - slew_value_) * slew_factor;
+            output = slew_value_;
+        } else {
+            slew_value_ = output;
+        }
 
         if (fade > 0.0f && elapsed_time_ < fade) {
             output *= elapsed_time_ / fade;
@@ -170,14 +228,15 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         int wf  = static_cast<int>(ctx->param_values[5]);  // waveform
         int rm  = static_cast<int>(ctx->param_values[6]);  // rate_mode
         int pol = static_cast<int>(ctx->param_values[7]);   // polarity
-        float freq   = ctx->param_values[0];  // frequency
-        float ph_off = ctx->param_values[1];  // phase_offset
-        float fade   = ctx->param_values[2];  // fade_in
-        float amp    = ctx->param_values[3];  // amplitude
-        float off    = ctx->param_values[4];  // offset
+        float freq     = ctx->param_values[0];  // frequency
+        float ph_off   = ctx->param_values[1];  // phase_offset
+        float fade     = ctx->param_values[2];  // fade_in
+        float amp      = ctx->param_values[3];  // amplitude
+        float off      = ctx->param_values[4];  // offset
+        float slew_amt = ctx->param_values[8];  // slew
 
         ctx->output_values[0] = compute_one_sample(
-            freq, amp, off, wf, rm, pol, ph_off, fade, gate_in, phase_in, dt);
+            freq, amp, off, wf, rm, pol, ph_off, fade, gate_in, phase_in, dt, slew_amt);
     }
 
     // ── Audio-rate processing (~48 kHz) ─────────────────────────────────
@@ -187,8 +246,18 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         float phase_in = ctx->input_float_values[1];
         const double sample_dt = 1.0 / static_cast<double>(ctx->sample_rate);
 
+        // Seed handling
+        int s = seed.int_value();
+        if (s != prev_seed_) {
+            if (s > 0) noise_seed_ = static_cast<uint32_t>(s);
+            prev_seed_ = s;
+        }
+
         // Gate tracking once per buffer (from cross-domain scalar)
         bool gate_on = gate_in > 0.5f;
+        bool gate_rising = gate_on && !prev_gate_on_;
+        prev_gate_on_ = gate_on;
+
         if (gate_on && !gate_seen_) {
             elapsed_time_ = 0.0f;
             gate_seen_ = true;
@@ -199,11 +268,12 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
         int wf  = waveform.int_value();
         int rm  = rate_mode.int_value();
         int pol = polarity.int_value();
-        float amp    = amplitude.value;
-        float off    = offset.value;
-        float ph_off = static_cast<float>(phase_offset.value);
-        float fade   = fade_in.value;
-        float freq   = frequency.value;
+        float amp      = amplitude.value;
+        float off      = offset.value;
+        float ph_off   = static_cast<float>(phase_offset.value);
+        float fade     = fade_in.value;
+        float freq     = frequency.value;
+        float slew_amt = slew.value;
 
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             elapsed_time_ += static_cast<float>(sample_dt);
@@ -225,6 +295,10 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
             bool phase_wrapped = (phase < prev_phase_ - 0.5);
             prev_phase_ = phase;
 
+            // Gate rising edge triggers new S&H value (in addition to phase wraps)
+            // Only check on first sample of buffer since gate is per-buffer
+            bool new_sample = phase_wrapped || (gate_rising && i == 0);
+
             double raw = 0.0;
             switch (wf) {
                 case 0: raw = std::sin(phase * 2.0 * M_PI); break;
@@ -232,11 +306,11 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
                 case 2: raw = phase < 0.5 ? 1.0 : -1.0; break;
                 case 3: raw = 4.0 * (phase < 0.5 ? phase : (1.0 - phase)) - 1.0; break;
                 case 4:
-                    if (phase_wrapped) sh_value_ = lcg_random();
+                    if (new_sample) sh_value_ = lcg_random();
                     raw = static_cast<double>(sh_value_);
                     break;
                 case 5: {
-                    if (phase_wrapped) {
+                    if (new_sample) {
                         sh_prev2_ = sh_prev_;
                         sh_prev_ = sh_next_;
                         sh_next_ = lcg_random();
@@ -252,6 +326,15 @@ struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessab
             if (pol == 1) raw = raw * 0.5 + 0.5;
 
             float output = static_cast<float>(raw) * amp + off;
+
+            // Slew smoothing
+            if (slew_amt > 0.001f) {
+                float slew_factor = 1.0f - slew_amt * slew_amt * slew_amt;
+                slew_value_ += (output - slew_value_) * slew_factor;
+                output = slew_value_;
+            } else {
+                slew_value_ = output;
+            }
 
             if (fade > 0.0f && elapsed_time_ < fade) {
                 output *= elapsed_time_ / fade;

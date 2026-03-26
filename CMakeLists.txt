@@ -318,7 +318,6 @@ add_vivid_operator(midi_input     operators/control/midi_input/midi_input.cpp   
 add_vivid_operator(fft_analysis   operators/control/fft_analysis/fft_analysis.cpp)
 add_vivid_operator(logic             operators/control/logic/logic.cpp)
 add_vivid_operator(gate              operators/control/gate/gate.cpp)
-add_vivid_operator(random            operators/control/random/random.cpp)
 add_vivid_operator(smooth            operators/control/smooth/smooth.cpp            EXTRA_LIBS webgpu)
 add_vivid_operator(stack             operators/control/stack/stack.cpp)
 add_vivid_operator(alternate         operators/control/alternate/alternate.cpp)
@@ -337,8 +336,6 @@ add_vivid_operator(path_animate      operators/control/path_animate/path_animate
 add_vivid_operator(sample_hold       operators/control/sample_hold/sample_hold.cpp)
 add_vivid_operator(quantizer         operators/control/quantizer/quantizer.cpp)
 add_vivid_operator(macro             operators/control/macro/macro.cpp)
-add_vivid_operator(random_sh         operators/control/random_sh/random_sh.cpp
-                   FACTORY_PRESETS operators/control/random_sh/factory_presets.json)
 add_vivid_operator(mseg              operators/control/mseg/mseg.cpp
                    FACTORY_PRESETS operators/control/mseg/factory_presets.json)
 add_vivid_operator(step_seq          operators/control/step_seq/step_seq.cpp
@@ -1895,7 +1892,7 @@ target_link_libraries(test_demo_graphs PRIVATE
 add_dependencies(test_demo_graphs
     # control
     lfo clock math envelope midi_input fft_analysis
-    logic gate random smooth
+    logic gate smooth
     stack alternate
     modulated_gain spread_noise
     # gpu (compiled plugins — WGSL filter presets are loaded from filters/)

@@ -52,22 +52,10 @@ These accumulate internal time (`elapsed += dt`) which changes behavior at audio
 **Notes:** Same pattern as `spread_noise` — `delta_time` naturally scales.
 
 ### random
-**Status:** Not started
-**Current timing:** Trigger-edge detection (`prev_trigger_`) or free-run mode. Generates one random value per call.
-**State:** `rng_state_`, `current_value_`, `prev_trigger_`, `seeded_`
-**Ports:** `trigger` input (optional)
-**Problem:** At audio rate, trigger edges fire every sample (no meaningful "edge"). Free-run generates a new value every sample — white noise, not random modulation.
-**Redesign approach:** Phase-driven: advance RNG state on phase wraps (like beat_phase wrap detection). Between wraps, hold current value. This gives musically meaningful random modulation at any cadence.
-**Notes:**
+**Status:** Removed — dead code, superseded by LFO sample_hold/smooth_random modes and RandomSH.
 
 ### random_sh
-**Status:** Not started
-**Current timing:** Timed mode: `phase_ += dt * rate`. Triggered mode: gate-edge detection. Slew interpolation between held values.
-**State:** `phase_`, `rng_state_`, `target_value_`, `current_value_`, `prev_gate_`, `seeded_`
-**Ports:** `beat_phase`, `gate` inputs
-**Problem:** Phase accumulation uses single `dt` per call. Slew filtering uses call-rate `dt`, not per-sample smoothing.
-**Redesign approach:** Timed mode: use beat_phase wraps instead of internal phase accumulation. Triggered mode: keep gate-edge detection (works at audio rate if gate signal is audio-rate). Slew: per-sample exponential smoothing with `1 - exp(-dt * rate)`.
-**Notes:**
+**Status:** Removed — features consolidated into LFO (slew, gaussian distribution, gate-triggered S&H, seed).
 
 ---
 
@@ -186,7 +174,7 @@ Based on complexity and likelihood of being trivially portable:
 4. **note_pattern** — beat tracking + gate window
 5. **chord_progression** — similar to note_pattern
 6. **path_animate** — already has phase_in override
-7. **random** — phase-driven RNG redesign
+7. ~~**random** — removed (dead code, superseded by LFO/RandomSH)~~
 8. **random_sh** — phase-driven + slew redesign
 9. **mseg** — envelope phase redesign
 10. **step_seq** — dual-mode + glide
