@@ -1,5 +1,7 @@
 #include "runtime/audio_engine.h"
 #include "runtime/builtin_operators.h"
+#include "runtime/cadence_bridge.h"
+#include "runtime/compiled_graph.h"
 #include "runtime/graph.h"
 #include "runtime/operator_registry.h"
 #include "runtime/scheduler.h"
@@ -162,13 +164,14 @@ int main(int argc, char* argv[]) {
     double time = 0.0;
 
     for (int i = 0; i < iterations; ++i) {
-        audio_engine.push_params(scheduler);
-        audio_engine.update_sources(time, scheduler);
+        scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
+        scheduler.cadence_bridge().update_sources(time, *scheduler.compiled_graph());
         tick_with_gpu(scheduler, gpu, static_cast<uint64_t>(i), time, 1.0 / 60.0,
                       WGPUTextureFormat_RGBA8Unorm);
         float output[vivid::AudioEngine::kBufferSize * 2] = {};
         audio_engine.process_audio_for_test(output, vivid::AudioEngine::kBufferSize);
-        audio_engine.inject_analysis(scheduler);
+        scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+        scheduler.sync_to_nodestate();
 
         for (const auto& node : scheduler.nodes()) {
             if (node.errored) {

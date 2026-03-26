@@ -1,5 +1,7 @@
 #include "runtime/control_server.h"
 #include "runtime/capture_coordinator.h"
+#include "runtime/compiled_graph.h"
+#include "runtime/domain.h"
 #include "runtime/runtime_api.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
@@ -258,9 +260,12 @@ static bool is_undo_tracked_method(const std::string& method) {
 // ---------------------------------------------------------------------------
 
 static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
-    std::unordered_map<std::string, const NodeState*> state_map;
-    for (const auto& ns : scheduler.nodes())
-        state_map[ns.node_id] = &ns;
+    const auto* cg = scheduler.compiled_graph();
+    std::unordered_map<std::string, const CompiledNode*> state_map;
+    if (cg) {
+        for (const auto& cn : cg->nodes)
+            state_map[cn.node_id] = &cn;
+    }
 
     nlohmann::json result = nlohmann::json::object();
 
@@ -272,7 +277,7 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
         node["type"] = ndef.type;
 
         auto sit = state_map.find(ndef.id);
-        const NodeState* ns = (sit != state_map.end()) ? sit->second : nullptr;
+        const CompiledNode* ns = (sit != state_map.end()) ? sit->second : nullptr;
         const VividOperatorDescriptor* desc =
             (ns && ns->loader) ? ns->loader->descriptor() : nullptr;
 
@@ -430,15 +435,14 @@ static std::string handle_inspect_graph(Graph& graph, Scheduler& scheduler) {
     return json_ok(std::move(result));
 }
 
-static const NodeState* find_node_state(const Scheduler& scheduler,
-                                        const std::string& node_id) {
-    for (const auto& ns : scheduler.nodes()) {
-        if (ns.node_id == node_id) return &ns;
-    }
-    return nullptr;
+static const CompiledNode* find_node_state(const Scheduler& scheduler,
+                                            const std::string& node_id) {
+    const auto* cg = scheduler.compiled_graph();
+    if (!cg) return nullptr;
+    return cg->find_node(node_id);
 }
 
-static nlohmann::json sample_node_outputs_snapshot(const NodeState& ns,
+static nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
                                                     bool include_spreads) {
     nlohmann::json outputs_obj = nlohmann::json::object();
     const VividOperatorDescriptor* desc = ns.loader ? ns.loader->descriptor() : nullptr;
@@ -509,7 +513,7 @@ static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler
     duration_seconds = std::clamp(duration_seconds, 0.0, 60.0);
     interval_ms = std::clamp(interval_ms, 10, 5000);
 
-    const NodeState* initial = find_node_state(scheduler, node_id);
+    const CompiledNode* initial = find_node_state(scheduler, node_id);
     if (!initial) return json_err("node not found");
     if (!initial->loader || !initial->loader->descriptor()) {
         return json_err("node has no live descriptor");
@@ -518,7 +522,7 @@ static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler
     nlohmann::json result = nlohmann::json::object();
     result["node_id"] = node_id;
     result["type"] = initial->type_name;
-    result["domain"] = initial->is_gpu ? "gpu" : (initial->is_audio ? "audio" : "control");
+    result["domain"] = initial->is_gpu ? "gpu" : (initial->active_cadence == vivid::Cadence::Audio ? "audio" : "control");
     result["duration_seconds"] = duration_seconds;
     result["interval_ms"] = interval_ms;
     result["include_spreads"] = include_spreads;
@@ -531,7 +535,7 @@ static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler
 
     while (true) {
         const auto now = std::chrono::steady_clock::now();
-        const NodeState* ns = find_node_state(scheduler, node_id);
+        const CompiledNode* ns = find_node_state(scheduler, node_id);
         if (!ns) {
             return json_err("node disappeared during sampling");
         }
@@ -571,7 +575,12 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
     nlohmann::json result_obj = nlohmann::json::object();
     nlohmann::json nodes_arr = nlohmann::json::array();
 
-    const auto& nodes = scheduler.nodes();
+    const auto* cg = scheduler.compiled_graph();
+    if (!cg) {
+        result_obj["nodes"] = std::move(nodes_arr);
+        return nlohmann::json{{"ok", true}, {"schema_version", 1}, {"result", std::move(result_obj)}}.dump();
+    }
+    const auto& nodes = cg->nodes;
     for (size_t ni = 0; ni < nodes.size(); ++ni) {
         const auto& ns = nodes[ni];
         nlohmann::json node = nlohmann::json::object();
@@ -585,7 +594,7 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                 type_name = dit->second->type;
         }
         node["type"] = type_name;
-        node["domain"] = ns.is_gpu ? "gpu" : (ns.is_audio ? "audio" : "control");
+        node["domain"] = ns.is_gpu ? "gpu" : (ns.active_cadence == vivid::Cadence::Audio ? "audio" : "control");
         node["incoming_wires"] = static_cast<int64_t>(incoming_wires[ns.node_id]);
         node["outgoing_wires"] = static_cast<int64_t>(outgoing_wires[ns.node_id]);
 
@@ -740,7 +749,7 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
             gpu["has_texture"] = (ns.gpu_texture != nullptr);
             gpu["aux_texture_count"] = static_cast<int64_t>(ns.aux_gpu_texture_views.size());
             domain_metrics["gpu"] = std::move(gpu);
-        } else if (ns.is_audio) {
+        } else if (ns.active_cadence == vivid::Cadence::Audio) {
             nlohmann::json audio = nlohmann::json::object();
             audio["output_port_count"] = ns.output_port_count;
             audio["input_port_count"] = ns.input_port_count;
@@ -816,7 +825,9 @@ static std::vector<DiagnosticFinding> collect_diagnostics(
     std::vector<DiagnosticFinding> findings;
     findings.reserve(32);
 
-    const auto& nodes = scheduler.nodes();
+    const auto* cg = scheduler.compiled_graph();
+    if (!cg) return findings;
+    const auto& nodes = cg->nodes;
     for (const auto& ns : nodes) {
         const VividOperatorDescriptor* desc = ns.loader ? ns.loader->descriptor() : nullptr;
         std::string type_name = ns.type_name;
@@ -847,7 +858,7 @@ static std::vector<DiagnosticFinding> collect_diagnostics(
             });
         }
 
-        if (ns.is_audio && type_name == "audio_out" && incoming_wires[ns.node_id] == 0) {
+        if (ns.active_cadence == vivid::Cadence::Audio && type_name == "audio_out" && incoming_wires[ns.node_id] == 0) {
             findings.push_back({
                 "audio_sink_disconnected",
                 "critical",
@@ -894,7 +905,7 @@ static std::vector<DiagnosticFinding> collect_diagnostics(
             });
         }
 
-        if (ns.is_audio) {
+        if (ns.active_cadence == vivid::Cadence::Audio) {
             auto peak_it = ns.output_port_indices.find("peak");
             if (peak_it != ns.output_port_indices.end() && peak_it->second < ns.output_values.size()) {
                 float peak = ns.output_values[peak_it->second];
@@ -1083,14 +1094,13 @@ static bool resolve_state_path(Graph& graph, Scheduler& scheduler,
     std::string node_id = path.substr(prefix.size(), node_end - prefix.size());
     std::string rest = path.substr(node_end + 1);
 
-    const NodeState* node = nullptr;
-    for (const auto& ns : scheduler.nodes()) {
-        if (ns.node_id == node_id) { node = &ns; break; }
-    }
+    const auto* cg = scheduler.compiled_graph();
+    if (!cg) return false;
+    const CompiledNode* node = cg->find_node(node_id);
     if (!node) return false;
 
     if (rest == "domain") {
-        out = cv_string(node->is_gpu ? "gpu" : (node->is_audio ? "audio" : "control"));
+        out = cv_string(node->is_gpu ? "gpu" : (node->active_cadence == vivid::Cadence::Audio ? "audio" : "control"));
         return true;
     }
     if (rest == "incoming_wires") {
@@ -1117,21 +1127,21 @@ static bool resolve_state_path(Graph& graph, Scheduler& scheduler,
     }
     if (rest == "domain_metrics.audio.rms") {
         auto it = node->output_port_indices.find("rms");
-        if (!node->is_audio || it == node->output_port_indices.end() || it->second >= node->output_values.size())
+        if (node->active_cadence != vivid::Cadence::Audio || it == node->output_port_indices.end() || it->second >= node->output_values.size())
             return false;
         out = cv_number(node->output_values[it->second]);
         return true;
     }
     if (rest == "domain_metrics.audio.peak") {
         auto it = node->output_port_indices.find("peak");
-        if (!node->is_audio || it == node->output_port_indices.end() || it->second >= node->output_values.size())
+        if (node->active_cadence != vivid::Cadence::Audio || it == node->output_port_indices.end() || it->second >= node->output_values.size())
             return false;
         out = cv_number(node->output_values[it->second]);
         return true;
     }
     if (rest == "domain_metrics.audio.waveform_length") {
         auto it = node->output_port_indices.find("waveform");
-        if (!node->is_audio || it == node->output_port_indices.end() || it->second >= node->output_spreads.size())
+        if (node->active_cadence != vivid::Cadence::Audio || it == node->output_port_indices.end() || it->second >= node->output_spreads.size())
             return false;
         out = cv_number(static_cast<double>(node->output_spreads[it->second].size()));
         return true;
@@ -1874,9 +1884,11 @@ static std::string dispatch(const std::string& method, const std::string& body,
     } else if (method == "get_graph_errors") {
         nlohmann::json res = nlohmann::json::object();
         nlohmann::json errs = nlohmann::json::array();
-        for (const auto& ns : scheduler.nodes()) {
-            if (!ns.errored) continue;
-            errs.push_back({{"node_id", ns.node_id}, {"error", ns.error_message}});
+        if (const auto* cg = scheduler.compiled_graph()) {
+            for (const auto& cn : cg->nodes) {
+                if (!cn.errored) continue;
+                errs.push_back({{"node_id", cn.node_id}, {"error", cn.error_message}});
+            }
         }
         res["errors"] = std::move(errs);
         result = json_ok(std::move(res));
@@ -2259,13 +2271,15 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     res["operator_count"] = static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size());
                     result = json_ok(std::move(res));
                     // Auto-reload graph if it has missing operators
-                    for (const auto& ns : scheduler.nodes()) {
-                        if (ns.missing_operator) {
-                            auto rr = api.reload(has_gpu_ops, has_audio);
-                            if (!rr.ok) {
-                                result = json_err("package installed but runtime refresh failed: " + rr.message);
+                    if (const auto* cg = scheduler.compiled_graph()) {
+                        for (const auto& cn : cg->nodes) {
+                            if (cn.missing_operator) {
+                                auto rr = api.reload(has_gpu_ops, has_audio);
+                                if (!rr.ok) {
+                                    result = json_err("package installed but runtime refresh failed: " + rr.message);
+                                }
+                                break;
                             }
-                            break;
                         }
                     }
                 } else {
@@ -2317,13 +2331,15 @@ static std::string dispatch(const std::string& method, const std::string& body,
                     res["linked"] = true;
                     result = json_ok(std::move(res));
                     // Auto-reload graph if it has missing operators
-                    for (const auto& ns : scheduler.nodes()) {
-                        if (ns.missing_operator) {
-                            auto rr = api.reload(has_gpu_ops, has_audio);
-                            if (!rr.ok) {
-                                result = json_err("package linked but runtime refresh failed: " + rr.message);
+                    if (const auto* cg = scheduler.compiled_graph()) {
+                        for (const auto& cn : cg->nodes) {
+                            if (cn.missing_operator) {
+                                auto rr = api.reload(has_gpu_ops, has_audio);
+                                if (!rr.ok) {
+                                    result = json_err("package linked but runtime refresh failed: " + rr.message);
+                                }
+                                break;
                             }
-                            break;
                         }
                     }
                 } else {

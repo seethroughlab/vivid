@@ -7,6 +7,8 @@
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "runtime/audio_engine.h"
+#include "runtime/cadence_bridge.h"
+#include "runtime/compiled_graph.h"
 #include "runtime/runtime_api.h"
 #include "runtime/builtin_operators.h"
 #include "runtime/system_midi.h"
@@ -270,8 +272,12 @@ int main(int argc, char* argv[]) {
 
         // Inject audio analysis
         if (has_audio) {
-            audio_engine.inject_analysis(scheduler);
-            audio_engine.update_sources(now, scheduler);
+            auto& cb = scheduler.cadence_bridge();
+            auto* cg = scheduler.compiled_graph();
+            if (cg) {
+                cb.pull_from_audio(*cg);
+                cb.update_sources(now, *cg);
+            }
         }
 
         // Tick scheduler
@@ -282,27 +288,28 @@ int main(int argc, char* argv[]) {
 
         // Push params to audio thread
         if (has_audio) {
-            audio_engine.push_params(scheduler);
+            auto* cg = scheduler.compiled_graph();
+            if (cg) scheduler.cadence_bridge().push_to_audio(*cg);
         }
 
         // Present
         if (have_surface) {
-            if (has_gpu_ops && video_out_idx >= 0) {
-                const auto& vo_ns = scheduler.nodes()[video_out_idx];
+            if (has_gpu_ops && video_out_idx >= 0 && scheduler.compiled_graph()) {
+                const auto& vo_cn = scheduler.compiled_graph()->nodes[video_out_idx];
                 WGPUTextureView display_tex = nullptr;
                 uint32_t src_w = 0, src_h = 0;
 
-                if (!vo_ns.resolved_tex_inputs.empty()) {
-                    display_tex = vo_ns.resolved_tex_inputs[0];
+                if (!vo_cn.resolved_tex_inputs.empty()) {
+                    display_tex = vo_cn.resolved_tex_inputs[0];
                     scheduler.gpu_sink_source_size(video_out_idx, src_w, src_h);
                 }
 
                 if (display_tex && src_w > 0 && src_h > 0) {
                     auto fit_mode = vivid::FitMode::Fit;
-                    auto fm_it = vo_ns.param_indices.find("fit_mode");
-                    if (fm_it != vo_ns.param_indices.end())
+                    auto fm_it = vo_cn.param_indices.find("fit_mode");
+                    if (fm_it != vo_cn.param_indices.end())
                         fit_mode = static_cast<vivid::FitMode>(
-                            static_cast<int>(vo_ns.param_values[fm_it->second]));
+                            static_cast<int>(vo_cn.param_values[fm_it->second]));
 
                     blit.blit_fit(frame.encoder, display_tex, frame.view,
                                   src_w, src_h,

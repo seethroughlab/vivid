@@ -7,7 +7,16 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-struct LFO : vivid::AudioOperatorBase {
+// LFO — dual-cadence control operator.
+//
+// Inherits both FrameProcessable and AudioProcessable, making it audio-capable:
+//   - At frame-rate (~60 Hz): computes one output value per tick via process_frame()
+//   - At audio-rate (~48 kHz): computes one value per sample via process_audio()
+//
+// VIVID_REGISTER detects both interfaces and sets:
+//   execution_env = VIVID_ENV_FRAME, cadence_capability = VIVID_CADENCE_AUDIO_CAPABLE
+//
+struct LFO : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "LFO";
     static constexpr bool kTimeDependent = true;
 
@@ -20,6 +29,7 @@ struct LFO : vivid::AudioOperatorBase {
     vivid::Param<float> phase_offset {"phase_offset",  0.0f, 0.0f, 1.0f};
     vivid::Param<float> fade_in      {"fade_in",       0.0f, 0.0f, 5.0f};
 
+    // ── Persistent state ────────────────────────────────────────────────
     double free_phase_ = 0.0;
     double prev_phase_ = 0.0;      // for detecting phase wrap
     float sh_value_    = 0.0f;     // current S&H value
@@ -68,13 +78,13 @@ struct LFO : vivid::AudioOperatorBase {
         out.push_back({"value",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    // Simple LCG random: returns value in [-1, 1]
+    // ── Shared helpers ──────────────────────────────────────────────────
+
     float lcg_random() {
         noise_seed_ = noise_seed_ * 1664525u + 1013904223u;
         return static_cast<float>(static_cast<int32_t>(noise_seed_)) / 2147483648.0f;
     }
 
-    // Catmull-Rom cubic interpolation between 4 points
     static float catmull_rom(float p0, float p1, float p2, float p3, float t) {
         return 0.5f * ((2.0f * p1) +
                (-p0 + p2) * t +
@@ -82,12 +92,12 @@ struct LFO : vivid::AudioOperatorBase {
                (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t * t * t);
     }
 
-    void process_audio(const VividAudioContext* ctx) override {
-        float gate_in  = ctx->input_float_values[0];
-        float phase_in = ctx->input_float_values[1];
-        const double sample_dt = 1.0 / static_cast<double>(ctx->sample_rate);
-
-        // Gate tracking for fade-in reset (once per buffer, from cross-domain scalar)
+    // Advance phase by dt seconds, apply gate/fade tracking.
+    // Returns the computed output value for one time step.
+    float compute_one_sample(float freq, float amp, float off, int wf, int rm, int pol,
+                             float ph_off, float fade, float gate_in, float phase_in,
+                             double dt) {
+        // Gate tracking
         bool gate_on = gate_in > 0.5f;
         if (gate_on && !gate_seen_) {
             elapsed_time_ = 0.0f;
@@ -96,19 +106,109 @@ struct LFO : vivid::AudioOperatorBase {
             gate_seen_ = false;
         }
 
-        int wf = waveform.int_value();
-        int rm = rate_mode.int_value();
+        elapsed_time_ += static_cast<float>(dt);
+
+        // Phase computation
+        double phase;
+        if (rm == 1 && phase_in != 0.0f) {
+            phase = std::fmod(static_cast<double>(phase_in) * static_cast<double>(freq), 1.0);
+        } else if (phase_in != 0.0f && rm == 0) {
+            phase = std::fmod(static_cast<double>(phase_in), 1.0);
+        } else {
+            free_phase_ += dt * static_cast<double>(freq);
+            free_phase_ -= std::floor(free_phase_);
+            phase = free_phase_;
+        }
+
+        phase = std::fmod(phase + static_cast<double>(ph_off), 1.0);
+
+        bool phase_wrapped = (phase < prev_phase_ - 0.5);
+        prev_phase_ = phase;
+
+        double raw = 0.0;
+        switch (wf) {
+            case 0: raw = std::sin(phase * 2.0 * M_PI); break;
+            case 1: raw = 2.0 * phase - 1.0; break;
+            case 2: raw = phase < 0.5 ? 1.0 : -1.0; break;
+            case 3: raw = 4.0 * (phase < 0.5 ? phase : (1.0 - phase)) - 1.0; break;
+            case 4:
+                if (phase_wrapped) sh_value_ = lcg_random();
+                raw = static_cast<double>(sh_value_);
+                break;
+            case 5: {
+                if (phase_wrapped) {
+                    sh_prev2_ = sh_prev_;
+                    sh_prev_ = sh_next_;
+                    sh_next_ = lcg_random();
+                    sh_value_ = lcg_random();
+                }
+                float t = static_cast<float>(phase);
+                raw = static_cast<double>(catmull_rom(sh_prev2_, sh_prev_, sh_next_, sh_value_, t));
+                break;
+            }
+            case 6: raw = static_cast<double>(lcg_random()); break;
+        }
+
+        if (pol == 1) raw = raw * 0.5 + 0.5;
+
+        float output = static_cast<float>(raw) * amp + off;
+
+        if (fade > 0.0f && elapsed_time_ < fade) {
+            output *= elapsed_time_ / fade;
+        }
+
+        return output;
+    }
+
+    // ── Frame-rate processing (~60 Hz) ──────────────────────────────────
+
+    void process_frame(const VividFrameContext* ctx) override {
+        float gate_in  = ctx->input_values[0];
+        float phase_in = ctx->input_values[1];
+        double dt = ctx->delta_time;
+
+        int wf  = static_cast<int>(ctx->param_values[5]);  // waveform
+        int rm  = static_cast<int>(ctx->param_values[6]);  // rate_mode
+        int pol = static_cast<int>(ctx->param_values[7]);   // polarity
+        float freq   = ctx->param_values[0];  // frequency
+        float ph_off = ctx->param_values[1];  // phase_offset
+        float fade   = ctx->param_values[2];  // fade_in
+        float amp    = ctx->param_values[3];  // amplitude
+        float off    = ctx->param_values[4];  // offset
+
+        ctx->output_values[0] = compute_one_sample(
+            freq, amp, off, wf, rm, pol, ph_off, fade, gate_in, phase_in, dt);
+    }
+
+    // ── Audio-rate processing (~48 kHz) ─────────────────────────────────
+
+    void process_audio(const VividAudioContext* ctx) override {
+        float gate_in  = ctx->input_float_values[0];
+        float phase_in = ctx->input_float_values[1];
+        const double sample_dt = 1.0 / static_cast<double>(ctx->sample_rate);
+
+        // Gate tracking once per buffer (from cross-domain scalar)
+        bool gate_on = gate_in > 0.5f;
+        if (gate_on && !gate_seen_) {
+            elapsed_time_ = 0.0f;
+            gate_seen_ = true;
+        } else if (!gate_on) {
+            gate_seen_ = false;
+        }
+
+        int wf  = waveform.int_value();
+        int rm  = rate_mode.int_value();
         int pol = polarity.int_value();
-        float amp = amplitude.value;
-        float off = offset.value;
+        float amp    = amplitude.value;
+        float off    = offset.value;
         float ph_off = static_cast<float>(phase_offset.value);
-        float fade = fade_in.value;
-        float freq = frequency.value;
+        float fade   = fade_in.value;
+        float freq   = frequency.value;
 
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             elapsed_time_ += static_cast<float>(sample_dt);
 
-            // Phase computation
+            // Phase computation (same as compute_one_sample but inlined for perf)
             double phase;
             if (rm == 1 && phase_in != 0.0f) {
                 phase = std::fmod(static_cast<double>(phase_in) * static_cast<double>(freq), 1.0);
@@ -120,10 +220,8 @@ struct LFO : vivid::AudioOperatorBase {
                 phase = free_phase_;
             }
 
-            // Apply phase offset
             phase = std::fmod(phase + static_cast<double>(ph_off), 1.0);
 
-            // Detect phase wrap for S&H and smooth random
             bool phase_wrapped = (phase < prev_phase_ - 0.5);
             prev_phase_ = phase;
 

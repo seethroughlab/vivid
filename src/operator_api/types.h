@@ -7,18 +7,24 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 14u
-// v14: Removed role bindings — replaced with owned internal modulators + ordinary ports.
+#define VIVID_OPERATOR_ABI_VERSION 15u
+// v15: Cadence-aware execution model — replaced VividDomain with VividExecutionEnv + VividCadenceCapability.
 // The ABI version catches stale dylibs during hot-reload — it is not a cross-version compatibility promise.
 
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
 
-typedef uint32_t VividDomain;
-#define VIVID_DOMAIN_CONTROL  0u
-#define VIVID_DOMAIN_AUDIO    1u
-#define VIVID_DOMAIN_GPU      2u
+// Execution environment — which executor owns the node.
+typedef uint32_t VividExecutionEnv;
+#define VIVID_ENV_FRAME  0u   // main thread, frame-rate (~60 Hz)
+#define VIVID_ENV_AUDIO  1u   // audio thread, audio-rate (~48 kHz)
+#define VIVID_ENV_GPU    2u   // main thread, GPU command submission
+
+// Cadence capability — whether a frame-env operator can be promoted to audio-rate.
+typedef uint32_t VividCadenceCapability;
+#define VIVID_CADENCE_FRAME_ONLY     0u  // can only run at frame rate
+#define VIVID_CADENCE_AUDIO_CAPABLE  1u  // satisfies audio-safe contract, can be promoted
 
 typedef uint32_t VividParamType;
 #define VIVID_PARAM_FLOAT  0u
@@ -105,16 +111,21 @@ typedef struct VividPortDescriptor {
 
 typedef struct VividOperatorDescriptor {
     const char*               name;
-    VividDomain               domain;
+    uint32_t                  domain;            // deprecated — internal use only, do not read
     uint32_t                  param_count;
     const VividParamDescriptor* params;
     uint32_t                  port_count;
     const VividPortDescriptor*  ports;
-    int                       time_dependent;  // 1 if operator reads ctx->time, 0 otherwise
-    int                       has_process_audio; // 1 if operator inherits AudioOperatorBase
-    int                       has_process_gpu;   // 1 if operator inherits GpuOperatorBase
+    int                       time_dependent;    // 1 if operator reads ctx->time, 0 otherwise
+    int                       has_process_audio; // 1 if operator implements AudioProcessable
+    int                       has_process_gpu;   // 1 if operator implements GpuProcessable
     uint32_t                  embedded_op_slot_count;
     const struct VividEmbeddedOpSlot* embedded_op_slots;
+
+    // Cadence-aware execution model (v15+)
+    VividExecutionEnv         execution_env;        // which executor owns this operator
+    VividCadenceCapability    cadence_capability;    // FRAME_ONLY or AUDIO_CAPABLE
+    int                       has_process_frame;     // 1 if operator implements FrameProcessable
 } VividOperatorDescriptor;
 
 // Embedded operator slot metadata — declares which owned modulation slots
@@ -220,7 +231,8 @@ typedef struct VividAudioContext {
 } VividAudioContext;
 
 // ---------------------------------------------------------------------------
-// Control process context — passed to control operators on the main thread
+// Frame process context — passed to frame-rate operators on the main thread
+// (formerly VividProcessContext)
 // ---------------------------------------------------------------------------
 
 typedef struct VividProcessContext {
@@ -255,6 +267,9 @@ typedef struct VividProcessContext {
 
 } VividProcessContext;
 
+// New canonical name — VividFrameContext — with backward-compat alias.
+typedef VividProcessContext VividFrameContext;
+
 // Forward declaration — full definition in gpu_operator.h (requires WebGPU types)
 struct VividGpuContext;
 
@@ -267,6 +282,7 @@ typedef uint32_t (*VividAbiVersionFn)(void);
 typedef void*  (*VividCreateFn)(void);
 typedef void   (*VividDestroyFn)(void* instance);
 typedef void   (*VividProcessFn)(void* instance, VividProcessContext* ctx);
+typedef void   (*VividProcessFrameFn)(void* instance, VividFrameContext* ctx);  // canonical name
 typedef void   (*VividProcessAudioFn)(void* instance, VividAudioContext* ctx);
 typedef void   (*VividProcessGpuFn)(void* instance, struct VividGpuContext* ctx);
 

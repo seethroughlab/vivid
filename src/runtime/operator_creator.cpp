@@ -1,4 +1,5 @@
 #include "runtime/operator_creator.h"
+#include "runtime/domain.h"
 #include "runtime/operator_registry.h"
 #include <algorithm>
 #include <cctype>

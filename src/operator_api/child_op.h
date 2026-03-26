@@ -180,7 +180,7 @@ public:
             child_ctx.preferred_tex_width  = 0;
             child_ctx.preferred_tex_height = 0;
 
-            op_.process(&child_ctx);
+            op_.process_frame(&child_ctx);
         }
 
         readback_spreads_();

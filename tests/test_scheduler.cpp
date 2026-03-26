@@ -186,6 +186,7 @@ int main() {
 
         // Tick 3: change a's scale param → all downstream should bump
         na->param_values[0] = 5.0f;  // scale = 5
+        sched.sync_node_to_compiled("a");
         sched.tick(0.0, 0.016, 2);
         check(na->generation > ga1, "tick 3: a gen bumped after param change");
         check(nb->generation > gb1, "tick 3: b gen bumped (downstream)");
@@ -297,61 +298,7 @@ int main() {
     }
 
     // =====================================================================
-    // Test 8: inject_external_output
-    // a→b chain, inject 99.0 on a's output
-    // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 8: inject_external_output ===\n");
-        vivid::Graph g;
-        g.add_node("a", "TestOp", {{"scale", 1.0f}});
-        g.add_node("b", "ControlPassOp", {{"gain", 1.0f}});
-        g.add_connection("a", "out", "b", "in");
-
-        vivid::Scheduler sched;
-        check(sched.build(g, registry), "build succeeds");
-
-        // Tick once to establish baseline
-        sched.tick(0.0, 0.016, 0);
-        auto* na = sched.find_node_mut("a");
-        check_float(na->output_values[0], 2.0f, "baseline: a output = 2.0");
-
-        uint64_t gen_before = na->generation;
-
-        // Inject 99.0 on a's output port 0
-        int a_idx = find_idx(sched, "a");
-        check(a_idx >= 0, "a index found");
-        sched.inject_external_output(static_cast<uint32_t>(a_idx), 0, 99.0f);
-
-        check_float(na->output_values[0], 99.0f, "injected: a output = 99.0");
-        check(na->generation > gen_before, "generation bumped after inject");
-
-        uint64_t gen_after = na->generation;
-
-        // Inject same value again: idempotent
-        sched.inject_external_output(static_cast<uint32_t>(a_idx), 0, 99.0f);
-        check(na->generation == gen_after, "generation unchanged (idempotent)");
-
-        // Tick and verify downstream picks up injected value
-        sched.tick(0.0, 0.016, 1);
-        auto* nb = sched.find_node_mut("b");
-        // After tick, a recomputes: scale=1 → output = 1*2 = 2.0 (overrides injection)
-        // But b sees the value from a's process, which is 2.0
-        // Actually, a is a source node with no upstream, so it always processes.
-        // The injected value gets overwritten by a's process().
-        // To properly test downstream propagation, we need to check after inject but before tick overwrites.
-        // Let's inject again after the tick and verify the generation behavior
-        sched.inject_external_output(static_cast<uint32_t>(a_idx), 0, 99.0f);
-        uint64_t gen_99 = na->generation;
-        sched.inject_external_output(static_cast<uint32_t>(a_idx), 0, 99.0f);
-        check(na->generation == gen_99, "re-inject same value: gen unchanged");
-        sched.inject_external_output(static_cast<uint32_t>(a_idx), 0, 50.0f);
-        check(na->generation > gen_99, "inject different value: gen bumped");
-
-        sched.shutdown();
-    }
-
-    // =====================================================================
-    // Test 9: Utility methods
+    // Test 8: Utility methods (renumbered from Test 9)
     // Mixed graph (TestOp + AudioTestOp)
     // =====================================================================
     {

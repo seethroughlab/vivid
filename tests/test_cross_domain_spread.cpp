@@ -2,6 +2,8 @@
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "runtime/audio_engine.h"
+#include "runtime/cadence_bridge.h"
+#include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -73,13 +75,14 @@ int main(int argc, char* argv[]) {
 
     // Tick scheduler so SpreadSourceOp produces spread [1,2,3]
     scheduler.tick(0.0, 0.016, 0);
-    audio_engine.push_params(scheduler);
+    scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
 
     // Poll for audio signal: RMS should be ~6.0 (sum of [1,2,3])
     bool got_signal = false;
     for (int i = 0; i < 200; ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        audio_engine.inject_analysis(scheduler);
+        scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+        scheduler.sync_to_nodestate();
         const auto& snap = audio_engine.analysis_read();
         if (audio_idx >= 0 && snap.rms[audio_idx] > 5.0f) {
             got_signal = true;
@@ -129,16 +132,18 @@ int main(int argc, char* argv[]) {
             auto pi = src_ns->param_indices.find("base");
             if (pi != src_ns->param_indices.end()) {
                 src_ns->param_values[pi->second] = 2.0f;
+                scheduler.sync_node_to_compiled("src");
             }
         }
         scheduler.tick(0.0, 0.016, 1);
-        audio_engine.push_params(scheduler);
+        scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
 
         // Poll for updated RMS
         bool updated = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            audio_engine.inject_analysis(scheduler);
+            scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+            scheduler.sync_to_nodestate();
             const auto& snap = audio_engine.analysis_read();
             if (audio_idx >= 0 && snap.rms[audio_idx] > 11.0f) {
                 updated = true;
@@ -178,16 +183,18 @@ int main(int argc, char* argv[]) {
             auto pi = src_ns->param_indices.find("count");
             if (pi != src_ns->param_indices.end()) {
                 src_ns->param_values[pi->second] = 0.0f;
+                scheduler.sync_node_to_compiled("src");
             }
         }
         scheduler.tick(0.0, 0.016, 2);
-        audio_engine.push_params(scheduler);
+        scheduler.cadence_bridge().push_to_audio(*scheduler.compiled_graph());
 
         // Poll for RMS to drop to ~0
         bool zeroed = false;
         for (int i = 0; i < 200; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            audio_engine.inject_analysis(scheduler);
+            scheduler.cadence_bridge().pull_from_audio(*scheduler.compiled_graph());
+            scheduler.sync_to_nodestate();
             const auto& snap = audio_engine.analysis_read();
             if (audio_idx >= 0 && snap.rms[audio_idx] < 0.5f) {
                 zeroed = true;

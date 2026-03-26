@@ -6,7 +6,12 @@
 
 struct SmoothThumbState;
 
-struct Smooth : vivid::ControlOperatorBase {
+// Smooth — dual-cadence control operator.
+//
+// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
+// State: first-order exponential smoothing with separate rise/fall time constants.
+//
+struct Smooth : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Smooth";
     static constexpr bool kTimeDependent = true;
 
@@ -41,14 +46,11 @@ struct Smooth : vivid::ControlOperatorBase {
         out.push_back({"value", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
-        float target = ctx->input_values[0];
-
+    void advance(float target, float dt) {
         if (first_frame_) {
             current_ = target;
             first_frame_ = false;
         } else {
-            float dt = static_cast<float>(ctx->delta_time);
             float tau = (target > current_) ? rise_time.value : fall_time.value;
             if (tau > 0.0001f) {
                 float coeff = 1.0f - std::exp(-dt / tau);
@@ -57,8 +59,20 @@ struct Smooth : vivid::ControlOperatorBase {
                 current_ = target;
             }
         }
+    }
 
+    void process_frame(const VividFrameContext* ctx) override {
+        advance(ctx->input_values[0], static_cast<float>(ctx->delta_time));
         ctx->output_values[0] = current_;
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        float target = ctx->input_float_values[0];
+        float sample_dt = 1.0f / static_cast<float>(ctx->sample_rate);
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            advance(target, sample_dt);
+            ctx->output_buffers[0][i] = current_;
+        }
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override;

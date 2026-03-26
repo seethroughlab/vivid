@@ -2,7 +2,12 @@
 #include <cmath>
 #include <algorithm>
 
-struct Math : vivid::ControlOperatorBase {
+// Math — dual-cadence control operator.
+//
+// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
+// Stateless: applies a binary operation (add/mul/min/max) to two scalar inputs.
+//
+struct Math : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Math";
     static constexpr bool kTimeDependent = false;
 
@@ -18,19 +23,27 @@ struct Math : vivid::ControlOperatorBase {
         out.push_back({"result", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
-        float a = ctx->input_values[0];
-        float b = ctx->input_values[1];
-        float result = 0.0f;
-
-        switch (operation.int_value()) {
-            case 0: result = a + b; break;
-            case 1: result = a * b; break;
-            case 2: result = std::min(a, b); break;
-            case 3: result = std::max(a, b); break;
+    float compute(float a, float b, int op) const {
+        switch (op) {
+            case 0: return a + b;
+            case 1: return a * b;
+            case 2: return std::min(a, b);
+            case 3: return std::max(a, b);
         }
+        return 0.0f;
+    }
 
-        ctx->output_values[0] = result;
+    void process_frame(const VividFrameContext* ctx) override {
+        ctx->output_values[0] = compute(ctx->input_values[0], ctx->input_values[1],
+                                        operation.int_value());
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        float a = ctx->input_float_values[0];
+        float b = ctx->input_float_values[1];
+        float result = compute(a, b, operation.int_value());
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i)
+            ctx->output_buffers[0][i] = result;
     }
 };
 

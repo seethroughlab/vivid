@@ -94,6 +94,7 @@ static void scenario_param_responsiveness(vivid::OperatorRegistry& registry) {
         check(pi != a_node->param_indices.end(), "s1: scale param exists");
         if (pi != a_node->param_indices.end()) {
             a_node->param_values[pi->second] = 42.0f;
+            scheduler.sync_node_to_compiled("a");
         }
     }
     scheduler.tick(0.0, 0.016, 1);

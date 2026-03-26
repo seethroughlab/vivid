@@ -2,10 +2,13 @@
 // Verifies AudioFloatPortWire routing with core CMake-built operators.
 
 #include "runtime/operator_registry.h"
+#include "runtime/domain.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "runtime/audio_engine.h"
 #include "runtime/builtin_operators.h"
+#include "runtime/cadence_bridge.h"
+#include "runtime/compiled_graph.h"
 #include <cstdio>
 #include <cmath>
 #include <cstring>
@@ -121,12 +124,21 @@ int main(int argc, char* argv[]) {
     check(started, "Audio engine started (null device)");
 
     // Tick for ~0.5 seconds (30 frames at ~60Hz)
+    float audio_buf[vivid::AudioEngine::kBufferSize * 2] = {};
     for (uint64_t frame = 0; frame < 30; ++frame) {
         double time = frame * 0.016;
+        auto& cb = sched.cadence_bridge();
+        auto* cg = sched.compiled_graph();
+        cb.pull_from_audio(*cg);
+        cb.update_sources(time, *cg);
         sched.tick(time, 0.016, frame);
-        audio.push_params(sched);
-        audio.inject_analysis(sched);
+        cb.push_to_audio(*cg);
+        audio.process_audio_for_test(audio_buf, vivid::AudioEngine::kBufferSize);
     }
+
+    // Pull final audio results into CompiledNode/NodeState for assertions below
+    sched.cadence_bridge().pull_from_audio(*sched.compiled_graph());
+    sched.sync_to_nodestate();
 
     // Check that audio output has non-zero RMS (the gain node should pass through sound)
     const auto& analysis = audio.analysis_read();
@@ -150,28 +162,21 @@ int main(int argc, char* argv[]) {
         check(osc_peak > 0.001f, "Oscillator produced non-zero audio output");
     }
 
-    int clock_sched_idx = -1;
-    for (size_t i = 0; i < sched.nodes().size(); ++i) {
-        if (sched.nodes()[i].node_id == "clock1") {
-            clock_sched_idx = static_cast<int>(i);
-            break;
-        }
-    }
-    check(clock_sched_idx >= 0, "Clock node found in scheduler");
-    if (clock_sched_idx >= 0) {
-        const auto& clock_ns = sched.nodes()[clock_sched_idx];
-        auto beat_phase_it = clock_ns.output_port_indices.find("beat_phase");
-        auto beat_ms_it = clock_ns.output_port_indices.find("beat_ms");
-        auto bar_phase_it = clock_ns.output_port_indices.find("bar_phase");
-        check(beat_phase_it != clock_ns.output_port_indices.end(), "Clock beat_phase output exists");
-        check(beat_ms_it != clock_ns.output_port_indices.end(), "Clock beat_ms output exists");
-        check(bar_phase_it != clock_ns.output_port_indices.end(), "Clock bar_phase output exists");
-        if (beat_phase_it != clock_ns.output_port_indices.end() &&
-            beat_ms_it != clock_ns.output_port_indices.end() &&
-            bar_phase_it != clock_ns.output_port_indices.end()) {
-            float beat_phase = clock_ns.output_values[beat_phase_it->second];
-            float beat_ms = clock_ns.output_values[beat_ms_it->second];
-            float bar_phase = clock_ns.output_values[bar_phase_it->second];
+    auto* clock_cn = sched.compiled_graph()->find_node("clock1");
+    check(clock_cn != nullptr, "Clock node found in scheduler");
+    if (clock_cn) {
+        auto beat_phase_it = clock_cn->output_port_indices.find("beat_phase");
+        auto beat_ms_it = clock_cn->output_port_indices.find("beat_ms");
+        auto bar_phase_it = clock_cn->output_port_indices.find("bar_phase");
+        check(beat_phase_it != clock_cn->output_port_indices.end(), "Clock beat_phase output exists");
+        check(beat_ms_it != clock_cn->output_port_indices.end(), "Clock beat_ms output exists");
+        check(bar_phase_it != clock_cn->output_port_indices.end(), "Clock bar_phase output exists");
+        if (beat_phase_it != clock_cn->output_port_indices.end() &&
+            beat_ms_it != clock_cn->output_port_indices.end() &&
+            bar_phase_it != clock_cn->output_port_indices.end()) {
+            float beat_phase = clock_cn->output_values[beat_phase_it->second];
+            float beat_ms = clock_cn->output_values[beat_ms_it->second];
+            float bar_phase = clock_cn->output_values[bar_phase_it->second];
             std::fprintf(stderr, "    clock1 beat_phase=%.6f beat_ms=%.6f bar_phase=%.6f\n",
                          beat_phase, beat_ms, bar_phase);
             check(beat_phase > 0.001f, "Clock beat_phase advances");

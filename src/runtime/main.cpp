@@ -7,6 +7,9 @@
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
 #include "runtime/audio_engine.h"
+#include "runtime/cadence_bridge.h"
+#include "runtime/compiled_graph.h"
+#include "runtime/domain.h"
 #include "runtime/file_watcher.h"
 #include "runtime/hot_reload.h"
 #include "runtime/runtime_api.h"
@@ -1145,44 +1148,46 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         const vivid::ControlServer* control_server = nullptr) {
     vivid::ui::GraphSnapshot snap;
 
-    const auto& sched_nodes = scheduler.nodes();
+    const auto* cg = scheduler.compiled_graph();
+    if (!cg) return snap;
+    const auto& sched_nodes = cg->nodes;
     const auto& conns = graph.connections();
 
     // Nodes
     snap.nodes.resize(sched_nodes.size());
     for (size_t i = 0; i < sched_nodes.size(); ++i) {
-        const auto& ns = sched_nodes[i];
+        const auto& cn = sched_nodes[i];
         auto& sn = snap.nodes[i];
-        sn.node_id = ns.node_id;
+        sn.node_id = cn.node_id;
         sn.type_name = scheduler.type_name(static_cast<uint32_t>(i));
-        if (ns.is_gpu) sn.domain = VIVID_DOMAIN_GPU;
-        else if (ns.is_audio) sn.domain = VIVID_DOMAIN_AUDIO;
+        if (cn.is_gpu) sn.domain = VIVID_DOMAIN_GPU;
+        else if (cn.active_cadence == vivid::Cadence::Audio) sn.domain = VIVID_DOMAIN_AUDIO;
         else sn.domain = VIVID_DOMAIN_CONTROL;
-        sn.is_gpu = ns.is_gpu;
-        sn.is_audio = ns.is_audio;
-        sn.is_gpu_sink = ns.is_gpu_sink;
-        sn.is_generator = ns.texture_input_port_indices.empty() && !ns.is_gpu_sink;
-        sn.input_port_indices = ns.input_port_indices;
-        sn.output_port_indices = ns.output_port_indices;
-        sn.analysis_output_port_indices = ns.analysis_output_port_indices;
-        sn.param_indices = ns.param_indices;
-        sn.param_values = ns.param_values;
-        sn.param_lock_flags = ns.param_lock_flags;
-        sn.output_values = ns.output_values;
-        sn.output_spreads = ns.output_spreads;
-        sn.output_string_values = ns.output_string_values;
-        sn.output_string_spreads = ns.output_string_spreads;
-        for (const auto& [name, idx] : ns.file_param_indices)
-            sn.file_param_values[name] = ns.file_param_storage[idx];
-        sn.gpu_tex_width = ns.gpu_tex_width;
-        sn.gpu_tex_height = ns.gpu_tex_height;
-        sn.gpu_tex_inherited = ns.gpu_tex_inherited;
-        sn.errored       = ns.errored || ns.gpu_shader_error;
-        sn.error_message = ns.errored          ? ns.error_message
-                         : ns.gpu_shader_error ? ns.gpu_shader_error_msg
-                         : ns.error_message;   // compile/build error (node still running)
-        sn.missing_operator = ns.missing_operator;
-        if (ns.missing_operator) {
+        sn.is_gpu = cn.is_gpu;
+        sn.is_audio = (cn.active_cadence == vivid::Cadence::Audio);
+        sn.is_gpu_sink = cn.is_gpu_sink;
+        sn.is_generator = cn.texture_input_port_indices.empty() && !cn.is_gpu_sink;
+        sn.input_port_indices = cn.input_port_indices;
+        sn.output_port_indices = cn.output_port_indices;
+        sn.analysis_output_port_indices = cn.analysis_output_port_indices;
+        sn.param_indices = cn.param_indices;
+        sn.param_values = cn.param_values;
+        sn.param_lock_flags = cn.param_lock_flags;
+        sn.output_values = cn.output_values;
+        sn.output_spreads = cn.output_spreads;
+        sn.output_string_values = cn.output_string_values;
+        sn.output_string_spreads = cn.output_string_spreads;
+        for (const auto& [name, idx] : cn.file_param_indices)
+            sn.file_param_values[name] = cn.file_param_storage[idx];
+        sn.gpu_tex_width = cn.gpu_tex_width;
+        sn.gpu_tex_height = cn.gpu_tex_height;
+        sn.gpu_tex_inherited = cn.gpu_tex_inherited;
+        sn.errored       = cn.errored || cn.gpu_shader_error;
+        sn.error_message = cn.errored          ? cn.error_message
+                         : cn.gpu_shader_error ? cn.gpu_shader_error_msg
+                         : cn.error_message;   // compile/build error (node still running)
+        sn.missing_operator = cn.missing_operator;
+        if (cn.missing_operator) {
             // Try to find the specific package with an ABI mismatch for this operator
             std::string pkg_name;
             for (const auto& d : registry.abi_mismatch_diagnostics()) {
@@ -1209,12 +1214,12 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
             std::string solo_id = (scheduler.solo_node_idx() >= 0 &&
                                    scheduler.solo_node_idx() < static_cast<int>(sched_nodes.size()))
                                   ? sched_nodes[scheduler.solo_node_idx()].node_id : "";
-            sn.soloed = (ns.node_id == solo_id);
+            sn.soloed = (cn.node_id == solo_id);
             sn.solo_dimmed = (i < solo_set.size() && !solo_set[i]);
         }
 
         // Layout from graph
-        const auto* ndef = graph.find_node(ns.node_id);
+        const auto* ndef = graph.find_node(cn.node_id);
         if (ndef && ndef->has_layout()) {
             sn.layout_x = ndef->layout_x;
             sn.layout_y = ndef->layout_y;
@@ -1222,21 +1227,21 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         }
 
         // Operator info (cached; pass per-instance loader as fallback for WGSLFilter nodes)
-        sn.op_info = op_cache.get(sn.type_name, registry, ns.loader);
+        sn.op_info = op_cache.get(sn.type_name, registry, cn.loader);
 
         // Per-operator presets
-        sn.preset_names = graph.list_presets(ns.node_id);
+        sn.preset_names = graph.list_presets(cn.node_id);
         sn.factory_preset_names = registry.factory_preset_names(sn.type_name);
         if (runtime_api)
-            sn.active_preset = runtime_api->active_preset(ns.node_id);
+            sn.active_preset = runtime_api->active_preset(cn.node_id);
 
         // State-preset mappings (for StateMachine nodes)
-        const auto* spm = graph.find_state_mapping(ns.node_id);
+        const auto* spm = graph.find_state_mapping(cn.node_id);
         if (spm)
             sn.state_preset_map = spm->state_presets;
 
         // Index
-        snap.node_index[ns.node_id] = i;
+        snap.node_index[cn.node_id] = i;
     }
 
     // Connections — preserve graph truth even when an endpoint no longer resolves.
@@ -1479,9 +1484,10 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
             if (type_name_ptr) {
                 const std::string& err = result.error_output.empty()
                     ? "Build failed (no output captured)" : result.error_output;
-                for (auto& ns : scheduler.nodes_mut()) {
-                    if (ns.type_name == *type_name_ptr) {
-                        ns.error_message = err;
+                if (auto* cg = scheduler.compiled_graph()) {
+                    for (auto& cn : cg->nodes) {
+                        if (cn.type_name == *type_name_ptr)
+                            cn.error_message = err;
                     }
                 }
             }
@@ -1532,9 +1538,10 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
             if (!audio_reload_ok) {
                 std::fprintf(stderr, "[vivid] Hot-reload: %s audio reload FAILED\n", tn.c_str());
             } else {
-                for (auto& ns : scheduler.nodes_mut()) {
-                    if (ns.type_name == tn) {
-                        ns.error_message.clear();
+                if (auto* cg = scheduler.compiled_graph()) {
+                    for (auto& cn : cg->nodes) {
+                        if (cn.type_name == tn)
+                            cn.error_message.clear();
                     }
                 }
                 if (op_cache) op_cache->invalidate(tn);
@@ -1607,8 +1614,10 @@ static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
                                    uint32_t thumb_w,
                                    uint32_t thumb_h,
                                    WGPUTextureFormat thumb_format) {
-    for (const auto& ns : scheduler.nodes()) {
-        if (ns.missing_operator) {
+    const auto* cg_thumb = scheduler.compiled_graph();
+    if (!cg_thumb) return;
+    for (const auto& cn : cg_thumb->nodes) {
+        if (cn.missing_operator) {
             // Missing-operator placeholders are intentionally degraded UI state.
             // Do not issue custom thumbnail GPU work in that state; fall back to
             // default node bodies instead of risking stale/invalid thumbnail submit.
@@ -1618,25 +1627,25 @@ static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
     }
 
     std::unordered_set<std::string> custom_thumb_ids;
-    for (const auto& ns : scheduler.nodes()) {
-        if (!ns.loader || !ns.instance || ns.missing_operator) continue;
-        if (!ns.loader->has_draw_thumbnail()) continue;
-        WGPUTextureView thumb_view = cache.get_or_create(ns.node_id);
+    for (const auto& cn : cg_thumb->nodes) {
+        if (!cn.loader || !cn.instance || cn.missing_operator) continue;
+        if (!cn.loader->has_draw_thumbnail()) continue;
+        WGPUTextureView thumb_view = cache.get_or_create(cn.node_id);
         if (!thumb_view) continue;
-        WGPUTexture thumb_tex = cache.get_texture(ns.node_id);
+        WGPUTexture thumb_tex = cache.get_texture(cn.node_id);
 
         VividThumbnailContext tctx{};
         tctx.time = time;
         tctx.delta_time = delta_time;
         tctx.frame = frame;
-        tctx.param_values = ns.param_values.data();
-        tctx.param_count = static_cast<uint32_t>(ns.param_values.size());
-        tctx.output_values = ns.output_values.data();
-        tctx.output_count = ns.output_port_count;
-        tctx.string_param_values = ns.file_param_ptrs.empty() ? nullptr : ns.file_param_ptrs.data();
-        tctx.string_param_count = static_cast<uint32_t>(ns.file_param_ptrs.size());
-        tctx.file_param_values = ns.file_param_ptrs.empty() ? nullptr : ns.file_param_ptrs.data();
-        tctx.file_param_count = static_cast<uint32_t>(ns.file_param_ptrs.size());
+        tctx.param_values = cn.param_values.data();
+        tctx.param_count = static_cast<uint32_t>(cn.param_values.size());
+        tctx.output_values = cn.output_values.data();
+        tctx.output_count = cn.output_port_count;
+        tctx.string_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
+        tctx.string_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
+        tctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
+        tctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
         tctx.device = device;
         tctx.queue = queue;
         tctx.command_encoder = encoder;
@@ -1645,26 +1654,26 @@ static void draw_custom_thumbnails(const vivid::Scheduler& scheduler,
         tctx.thumbnail_width = thumb_w;
         tctx.thumbnail_height = thumb_h;
         tctx.thumbnail_format = thumb_format;
-        tctx.source_output_texture = ns.gpu_texture;
-        tctx.source_output_texture_view = ns.gpu_texture_view;
-        tctx.source_output_width = ns.gpu_tex_width;
-        tctx.source_output_height = ns.gpu_tex_height;
+        tctx.source_output_texture = cn.gpu_texture;
+        tctx.source_output_texture_view = cn.gpu_texture_view;
+        tctx.source_output_width = cn.gpu_tex_width;
+        tctx.source_output_height = cn.gpu_tex_height;
         tctx.source_output_format = thumb_format;
         tctx.input_texture_views =
-            ns.resolved_tex_inputs.empty() ? nullptr
-                                           : const_cast<WGPUTextureView*>(ns.resolved_tex_inputs.data());
-        tctx.input_texture_count = static_cast<uint32_t>(ns.resolved_tex_inputs.size());
+            cn.resolved_tex_inputs.empty() ? nullptr
+                                           : const_cast<WGPUTextureView*>(cn.resolved_tex_inputs.data());
+        tctx.input_texture_count = static_cast<uint32_t>(cn.resolved_tex_inputs.size());
         tctx.operator_errored = 0;
         tctx.operator_error_msg = nullptr;
 
-        ns.loader->draw_thumbnail(ns.instance, &tctx);
+        cn.loader->draw_thumbnail(cn.instance, &tctx);
         if (tctx.operator_errored) {
             std::fprintf(stderr, "[vivid] thumbnail render error for '%s': %s\n",
-                         ns.node_id.c_str(),
+                         cn.node_id.c_str(),
                          tctx.operator_error_msg ? tctx.operator_error_msg : "unknown error");
             continue;  // fall back to default thumbnail
         }
-        custom_thumb_ids.insert(ns.node_id);
+        custom_thumb_ids.insert(cn.node_id);
     }
     graph_ui.set_custom_thumbnail_nodes(std::move(custom_thumb_ids));
 }
@@ -2945,7 +2954,7 @@ int main(int argc, char* argv[]) {
             return false;
         }
 
-        graph_loaded = !scheduler.nodes().empty();
+        graph_loaded = scheduler.compiled_graph() && !scheduler.compiled_graph()->nodes.empty();
         has_gpu_ops = scheduler.has_gpu_operators();
         if (has_gpu_ops) {
             scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
@@ -3317,9 +3326,9 @@ int main(int argc, char* argv[]) {
     // Wire up custom inspector callback
     graph_ui.set_custom_inspector_callback(
         [&scheduler](const std::string& node_id, VividInspectorContext* ctx) {
-            const auto* ns = scheduler.find_node(node_id);
-            if (!ns || !ns->loader || !ns->instance) return;
-            ns->loader->draw_inspector(ns->instance, ctx);
+            const auto* cn = scheduler.compiled_graph() ? scheduler.compiled_graph()->find_node(node_id) : nullptr;
+            if (!cn || !cn->loader || !cn->instance) return;
+            cn->loader->draw_inspector(cn->instance, ctx);
         });
 
     // Set up GLFW input callbacks
@@ -4126,10 +4135,10 @@ int main(int argc, char* argv[]) {
             video_out_idx = has_gpu_ops ? scheduler.find_effective_gpu_sink() : -1;
             capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
             // Evict thumbnail cache entries for removed nodes
-            {
+            if (auto* cg_evict = scheduler.compiled_graph()) {
                 std::unordered_set<std::string> active_ids;
-                for (const auto& ns : scheduler.nodes())
-                    active_ids.insert(ns.node_id);
+                for (const auto& cn : cg_evict->nodes)
+                    active_ids.insert(cn.node_id);
                 thumb_cache.retain_only(active_ids);
             }
         }
@@ -4140,7 +4149,7 @@ int main(int argc, char* argv[]) {
             scheduler.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
             video_out_idx = has_gpu_ops ? scheduler.find_effective_gpu_sink() : -1;
         }
-        if (!graph_loaded && !scheduler.nodes().empty()) {
+        if (!graph_loaded && scheduler.compiled_graph() && !scheduler.compiled_graph()->nodes.empty()) {
             graph_loaded = true;
         }
 
@@ -4153,18 +4162,18 @@ int main(int argc, char* argv[]) {
 #endif
 
         // Drive output window from video_out "launch" param.
-        if (has_gpu_ops && video_out_idx >= 0 &&
-            static_cast<size_t>(video_out_idx) < scheduler.nodes().size()) {
-            const auto& vo_ns = scheduler.nodes()[video_out_idx];
-            auto launch_it = vo_ns.param_indices.find("launch");
-            if (launch_it != vo_ns.param_indices.end() &&
-                launch_it->second < vo_ns.param_values.size()) {
-                const bool want_launch = vo_ns.param_values[launch_it->second] >= 0.5f;
+        if (has_gpu_ops && video_out_idx >= 0 && scheduler.compiled_graph() &&
+            static_cast<size_t>(video_out_idx) < scheduler.compiled_graph()->nodes.size()) {
+            const auto& vo_cn = scheduler.compiled_graph()->nodes[video_out_idx];
+            auto launch_it = vo_cn.param_indices.find("launch");
+            if (launch_it != vo_cn.param_indices.end() &&
+                launch_it->second < vo_cn.param_values.size()) {
+                const bool want_launch = vo_cn.param_values[launch_it->second] >= 0.5f;
                 int target = 0; // Current monitor
-                auto dt_it = vo_ns.param_indices.find("display_target");
-                if (dt_it != vo_ns.param_indices.end() &&
-                    dt_it->second < vo_ns.param_values.size()) {
-                    target = static_cast<int>(vo_ns.param_values[dt_it->second]);
+                auto dt_it = vo_cn.param_indices.find("display_target");
+                if (dt_it != vo_cn.param_indices.end() &&
+                    dt_it->second < vo_cn.param_values.size()) {
+                    target = static_cast<int>(vo_cn.param_values[dt_it->second]);
                     if (target < 0) target = 0;
                     if (target > 2) target = 2;
                 }
@@ -4184,7 +4193,11 @@ int main(int argc, char* argv[]) {
                 // Handle ESC / window close on output window
                 if (output_window.should_close()) {
                     output_window.close();
-                    scheduler.nodes_mut()[video_out_idx].param_values[launch_it->second] = 0.0f;
+                    if (auto* cg = scheduler.compiled_graph()) {
+                        auto& cn = cg->nodes[video_out_idx];
+                        cn.param_values[launch_it->second] = 0.0f;
+                        cn.generation++;
+                    }
                 }
 
                 display_state.sink_target = target;
@@ -4298,8 +4311,12 @@ int main(int argc, char* argv[]) {
             }
 
             if (has_audio) {
-                audio_engine.inject_analysis(scheduler);
-                audio_engine.update_sources(now, scheduler);
+                auto& cb = scheduler.cadence_bridge();
+                auto* cg = scheduler.compiled_graph();
+                if (cg) {
+                    cb.pull_from_audio(*cg);
+                    cb.update_sources(now, *cg);
+                }
             }
 
             // --- Build input state for operators (when UI hidden) ---
@@ -4314,12 +4331,12 @@ int main(int argc, char* argv[]) {
                     uint32_t src_w = 0, src_h = 0;
                     scheduler.gpu_sink_source_size(video_out_idx, src_w, src_h);
                     if (src_w > 0 && src_h > 0) {
-                        const auto& vo_ns = scheduler.nodes()[video_out_idx];
+                        const auto& vo_cn = scheduler.compiled_graph()->nodes[video_out_idx];
                         auto fit_mode = vivid::FitMode::Fit;
-                        auto fm_it = vo_ns.param_indices.find("fit_mode");
-                        if (fm_it != vo_ns.param_indices.end() && fm_it->second < vo_ns.param_values.size())
+                        auto fm_it = vo_cn.param_indices.find("fit_mode");
+                        if (fm_it != vo_cn.param_indices.end() && fm_it->second < vo_cn.param_values.size())
                             fit_mode = static_cast<vivid::FitMode>(
-                                static_cast<int>(vo_ns.param_values[fm_it->second]));
+                                static_cast<int>(vo_cn.param_values[fm_it->second]));
 
                         float src_aspect = static_cast<float>(src_w) / static_cast<float>(src_h);
                         float dst_aspect = static_cast<float>(fb_width) / static_cast<float>(fb_height);
@@ -4393,7 +4410,8 @@ int main(int argc, char* argv[]) {
             runtime_api.tick_state_presets();
 
             if (has_audio) {
-                audio_engine.push_params(scheduler);
+                auto* cg = scheduler.compiled_graph();
+                if (cg) scheduler.cadence_bridge().push_to_audio(*cg);
             }
 
             // Process capture/recording/analysis requests (after tick, textures are fresh)
@@ -4419,12 +4437,14 @@ int main(int argc, char* argv[]) {
             if (frame_count % 60 == 0) {
                 std::fprintf(stderr, "[vivid] frame=%llu",
                     static_cast<unsigned long long>(frame_count));
-                for (const auto& ns : scheduler.nodes()) {
-                    for (const auto& [port_name, port_idx] : ns.output_port_indices) {
+                if (auto* cg_dbg = scheduler.compiled_graph()) {
+                for (const auto& cn : cg_dbg->nodes) {
+                    for (const auto& [port_name, port_idx] : cn.output_port_indices) {
                         std::fprintf(stderr, " | %s/%s=%.4f",
-                            ns.node_id.c_str(), port_name.c_str(),
-                            ns.output_values[port_idx]);
+                            cn.node_id.c_str(), port_name.c_str(),
+                            cn.output_values[port_idx]);
                     }
+                }
                 }
                 std::fprintf(stderr, "\n");
             }
@@ -4452,11 +4472,13 @@ int main(int argc, char* argv[]) {
                         refresh_discovered_examples();
                         registry.load_for_graph(graph);
                         if (rebuild_live_runtime_from_graph()) {
-                            std::unordered_set<std::string> active_ids;
-                            for (const auto& ns : scheduler.nodes()) {
-                                active_ids.insert(ns.node_id);
+                            if (auto* cg_pkg = scheduler.compiled_graph()) {
+                                std::unordered_set<std::string> active_ids;
+                                for (const auto& cn : cg_pkg->nodes) {
+                                    active_ids.insert(cn.node_id);
+                                }
+                                thumb_cache.retain_only(active_ids);
                             }
-                            thumb_cache.retain_only(active_ids);
                         }
                     }
                     refresh_package_browser_entries_cache();
@@ -4467,19 +4489,19 @@ int main(int argc, char* argv[]) {
             // --- Surface presentation path ---
             if (has_gpu_ops && video_out_idx >= 0) {
                 // Find video_out's input texture from its resolved_tex_inputs
-                const auto& vo_ns = scheduler.nodes()[video_out_idx];
+                const auto& vo_cn = scheduler.compiled_graph()->nodes[video_out_idx];
                 WGPUTextureView display_tex = nullptr;
                 uint32_t src_w = 0, src_h = 0;
-                if (!vo_ns.resolved_tex_inputs.empty()) {
-                    display_tex = vo_ns.resolved_tex_inputs[0];
+                if (!vo_cn.resolved_tex_inputs.empty()) {
+                    display_tex = vo_cn.resolved_tex_inputs[0];
                     scheduler.gpu_sink_source_size(video_out_idx, src_w, src_h);
                 }
 
                 if (display_tex && src_w > 0 && src_h > 0) {
                     auto fit_mode = vivid::FitMode::Fit;
-                    auto fm_it = vo_ns.param_indices.find("fit_mode");
-                    if (fm_it != vo_ns.param_indices.end() && fm_it->second < vo_ns.param_values.size())
-                        fit_mode = static_cast<vivid::FitMode>(static_cast<int>(vo_ns.param_values[fm_it->second]));
+                    auto fm_it = vo_cn.param_indices.find("fit_mode");
+                    if (fm_it != vo_cn.param_indices.end() && fm_it->second < vo_cn.param_values.size())
+                        fit_mode = static_cast<vivid::FitMode>(static_cast<int>(vo_cn.param_values[fm_it->second]));
                     bool ui_vis = graph_ui.visible();
                     blit.blit_fit(frame.encoder, display_tex, frame.view,
                                   src_w, src_h,

@@ -1,6 +1,7 @@
 #include "runtime/runtime_api.h"
 #include "runtime/graph.h"
 #include "runtime/scheduler.h"
+#include "runtime/compiled_graph.h"
 #include "runtime/audio_engine.h"
 #include "runtime/operator_registry.h"
 #include "runtime/system_midi.h"
@@ -137,14 +138,14 @@ bool semantic_default_remap(const ParamSemanticMeta& src,
     return converted_range_for_pair(src, dst, to_min, to_max);
 }
 
-const VividOperatorDescriptor* node_descriptor(const NodeState& ns) {
-    return ns.loader ? ns.loader->descriptor() : nullptr;
+const VividOperatorDescriptor* node_descriptor(const CompiledNode& cn) {
+    return cn.loader ? cn.loader->descriptor() : nullptr;
 }
 
-std::string node_display_name(const NodeState& ns,
+std::string node_display_name(const CompiledNode& cn,
                               const VividOperatorDescriptor* desc) {
     if (desc && desc->name && desc->name[0] != '\0') return desc->name;
-    if (!ns.type_name.empty()) return ns.type_name;
+    if (!cn.type_name.empty()) return cn.type_name;
     return "missing_operator";
 }
 } // namespace
@@ -152,24 +153,25 @@ std::string node_display_name(const NodeState& ns,
 // --- Immediate param changes ---
 
 CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::string& param, float value) {
-    NodeState* ns = scheduler_.find_node_mut(node_id);
-    if (!ns) return {false, "unknown node '" + node_id + "'"};
+    auto* cg = scheduler_.compiled_graph();
+    auto* cn = cg->find_node(node_id);
+    if (!cn) return {false, "unknown node '" + node_id + "'"};
 
-    auto pi = ns->param_indices.find(param);
-    if (pi == ns->param_indices.end()) {
+    auto pi = cn->param_indices.find(param);
+    if (pi == cn->param_indices.end()) {
         return {false, "unknown param '" + param + "' on " + node_id};
     }
 
-    ns->param_values[pi->second] = value;
-    ns->generation++;
+    cn->param_values[pi->second] = value;
+    cn->generation++;
 
     // Convenience sync for SyphonIn: selecting enum server writes server_name.
     if (param == "server") {
-        const auto* desc = ns->loader ? ns->loader->descriptor() : nullptr;
+        const auto* desc = cn->loader ? cn->loader->descriptor() : nullptr;
         if (desc) {
-            auto si = ns->param_indices.find("server");
-            auto ni = ns->file_param_indices.find("server_name");
-            if (si != ns->param_indices.end() && ni != ns->file_param_indices.end()) {
+            auto si = cn->param_indices.find("server");
+            auto ni = cn->file_param_indices.find("server_name");
+            if (si != cn->param_indices.end() && ni != cn->file_param_indices.end()) {
                 uint32_t pidx = si->second;
                 if (pidx < desc->param_count) {
                     const auto& pd = desc->params[pidx];
@@ -178,7 +180,7 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
                     if (idx > 0 && pd.choice_labels && idx < static_cast<int>(pd.choice_count)) {
                         selected = pd.choice_labels[idx] ? pd.choice_labels[idx] : "";
                     }
-                    set_file_param_internal(*ns, "server_name", selected);
+                    set_file_param_internal(*cn, "server_name", selected);
                 }
             }
         }
@@ -222,15 +224,16 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
         }
     }
 
-    NodeState* ns = scheduler_.find_node_mut(node_id);
-    if (!ns) return {false, "unknown node '" + node_id + "'"};
+    auto* cg = scheduler_.compiled_graph();
+    auto* cn = cg->find_node(node_id);
+    if (!cn) return {false, "unknown node '" + node_id + "'"};
 
-    auto fi = ns->file_param_indices.find(param);
-    if (fi == ns->file_param_indices.end()) {
+    auto fi = cn->file_param_indices.find(param);
+    if (fi == cn->file_param_indices.end()) {
         return {false, "unknown string param '" + param + "' on " + node_id};
     }
 
-    set_file_param_internal(*ns, param, value);
+    set_file_param_internal(*cn, param, value);
     NodeDef* ndef = graph_.find_node(node_id);
     if (ndef) ndef->string_params[param] = value;
 
@@ -242,31 +245,29 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
 }
 
 CommandResult RuntimeAPI::get_param(const std::string& node_id, const std::string& param) {
-    const auto& nodes = scheduler_.nodes();
-    for (const auto& ns : nodes) {
-        if (ns.node_id != node_id) continue;
-        auto pi = ns.param_indices.find(param);
-        if (pi == ns.param_indices.end()) {
-            return {false, "unknown param '" + param + "' on " + node_id};
-        }
-        std::ostringstream oss;
-        oss << ns.param_values[pi->second];
-        return {true, oss.str()};
+    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    if (!cn) return {false, "unknown node '" + node_id + "'"};
+    auto pi = cn->param_indices.find(param);
+    if (pi == cn->param_indices.end()) {
+        return {false, "unknown param '" + param + "' on " + node_id};
     }
-    return {false, "unknown node '" + node_id + "'"};
+    std::ostringstream oss;
+    oss << cn->param_values[pi->second];
+    return {true, oss.str()};
 }
 
 // --- Per-parameter lock flags ---
 
 CommandResult RuntimeAPI::set_param_lock(const std::string& node_id, const std::string& param, uint8_t flags) {
-    NodeState* ns = scheduler_.find_node_mut(node_id);
-    if (!ns) return {false, "unknown node '" + node_id + "'"};
+    auto* cg = scheduler_.compiled_graph();
+    auto* cn = cg->find_node(node_id);
+    if (!cn) return {false, "unknown node '" + node_id + "'"};
 
-    auto pi = ns->param_indices.find(param);
-    if (pi == ns->param_indices.end())
+    auto pi = cn->param_indices.find(param);
+    if (pi == cn->param_indices.end())
         return {false, "unknown param '" + param + "' on " + node_id};
 
-    ns->param_lock_flags[pi->second] = flags;
+    cn->param_lock_flags[pi->second] = flags;
 
     // Persist in NodeDef
     NodeDef* ndef = graph_.find_node(node_id);
@@ -284,17 +285,14 @@ CommandResult RuntimeAPI::set_param_lock(const std::string& node_id, const std::
 }
 
 CommandResult RuntimeAPI::get_param_lock(const std::string& node_id, const std::string& param) {
-    const auto& nodes = scheduler_.nodes();
-    for (const auto& ns : nodes) {
-        if (ns.node_id != node_id) continue;
-        auto pi = ns.param_indices.find(param);
-        if (pi == ns.param_indices.end())
-            return {false, "unknown param '" + param + "' on " + node_id};
-        std::ostringstream oss;
-        oss << static_cast<int>(ns.param_lock_flags[pi->second]);
-        return {true, oss.str()};
-    }
-    return {false, "unknown node '" + node_id + "'"};
+    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    if (!cn) return {false, "unknown node '" + node_id + "'"};
+    auto pi = cn->param_indices.find(param);
+    if (pi == cn->param_indices.end())
+        return {false, "unknown param '" + param + "' on " + node_id};
+    std::ostringstream oss;
+    oss << static_cast<int>(cn->param_lock_flags[pi->second]);
+    return {true, oss.str()};
 }
 
 // --- Layout ---
@@ -322,12 +320,12 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
     ndef->tex_width  = width;
     ndef->tex_height = height;
 
-    // Update live scheduler NodeState
-    NodeState* ns = scheduler_.find_node_mut(node_id);
-    if (ns) {
-        ns->gpu_tex_width  = width;
-        ns->gpu_tex_height = height;
-        ns->generation++;
+    // Update live state
+    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    if (cn) {
+        cn->gpu_tex_width  = width;
+        cn->gpu_tex_height = height;
+        cn->generation++;
     }
 
     needs_gpu_realloc_ = true;
@@ -441,16 +439,16 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     std::unordered_map<std::string, std::unordered_map<std::string, float>> saved_params;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> saved_string_params;
     std::unordered_map<std::string, std::unordered_map<std::string, uint8_t>> saved_locks;
-    for (const auto& ns : scheduler_.nodes()) {
-        auto& sp = saved_params[ns.node_id];
-        for (const auto& [name, idx] : ns.param_indices) {
-            sp[name] = ns.param_values[idx];
-            if (ns.param_lock_flags[idx] != PARAM_LOCK_NONE)
-                saved_locks[ns.node_id][name] = ns.param_lock_flags[idx];
+    for (const auto& cn : scheduler_.compiled_graph()->nodes) {
+        auto& sp = saved_params[cn.node_id];
+        for (const auto& [name, idx] : cn.param_indices) {
+            sp[name] = cn.param_values[idx];
+            if (cn.param_lock_flags[idx] != PARAM_LOCK_NONE)
+                saved_locks[cn.node_id][name] = cn.param_lock_flags[idx];
         }
-        auto& ssp = saved_string_params[ns.node_id];
-        for (const auto& [name, idx] : ns.file_param_indices) {
-            ssp[name] = ns.file_param_storage[idx];
+        auto& ssp = saved_string_params[cn.node_id];
+        for (const auto& [name, idx] : cn.file_param_indices) {
+            ssp[name] = cn.file_param_storage[idx];
         }
     }
 
@@ -473,33 +471,34 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     }
 
     // 5. Restore saved params
-    for (auto& ns : scheduler_.nodes_mut()) {
-        auto sit = saved_params.find(ns.node_id);
+    auto* cg = scheduler_.compiled_graph();
+    for (auto& cn : cg->nodes) {
+        auto sit = saved_params.find(cn.node_id);
         if (sit != saved_params.end()) {
             for (const auto& [pname, pval] : sit->second) {
-                auto pi = ns.param_indices.find(pname);
-                if (pi != ns.param_indices.end()) {
-                    ns.param_values[pi->second] = pval;
+                auto pi = cn.param_indices.find(pname);
+                if (pi != cn.param_indices.end()) {
+                    cn.param_values[pi->second] = pval;
                 }
             }
         }
-        auto ssit = saved_string_params.find(ns.node_id);
+        auto ssit = saved_string_params.find(cn.node_id);
         if (ssit != saved_string_params.end()) {
             for (const auto& [pname, pval] : ssit->second) {
-                auto fi = ns.file_param_indices.find(pname);
-                if (fi != ns.file_param_indices.end()) {
-                    ns.file_param_storage[fi->second] = pval;
-                    ns.file_param_ptrs[fi->second] = ns.file_param_storage[fi->second].c_str();
+                auto fi = cn.file_param_indices.find(pname);
+                if (fi != cn.file_param_indices.end()) {
+                    cn.file_param_storage[fi->second] = pval;
+                    cn.file_param_ptrs[fi->second] = cn.file_param_storage[fi->second].c_str();
                 }
             }
         }
         // Restore lock flags
-        auto lit = saved_locks.find(ns.node_id);
+        auto lit = saved_locks.find(cn.node_id);
         if (lit != saved_locks.end()) {
             for (const auto& [pname, flags] : lit->second) {
-                auto pi = ns.param_indices.find(pname);
-                if (pi != ns.param_indices.end())
-                    ns.param_lock_flags[pi->second] = flags;
+                auto pi = cn.param_indices.find(pname);
+                if (pi != cn.param_indices.end())
+                    cn.param_lock_flags[pi->second] = flags;
             }
         }
     }
@@ -521,81 +520,78 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
 // --- Inspection ---
 
 CommandResult RuntimeAPI::inspect(const std::string& node_id) {
-    const auto& nodes = scheduler_.nodes();
-    for (const auto& ns : nodes) {
-        if (ns.node_id != node_id) continue;
-        const auto* desc = node_descriptor(ns);
-        std::ostringstream oss;
-        oss << node_id << " (" << node_display_name(ns, desc) << ")\n";
-        if (ns.missing_operator) {
-            oss << "  status: missing operator placeholder for type "
-                << ns.type_name << "\n";
-        }
-        oss << "  params:";
-        for (const auto& [name, idx] : ns.param_indices) {
-            oss << " " << name << "=" << ns.param_values[idx];
-            uint8_t lock = ns.param_lock_flags[idx];
-            if (lock & PARAM_LOCK_WIRES) oss << "[W]";
-            if (lock & PARAM_LOCK_PRESETS) oss << "[P]";
-        }
-        oss << "\n  outputs:";
-        for (const auto& [name, idx] : ns.output_port_indices) {
-            oss << " " << name << "=" << ns.output_values[idx];
-            if (idx < ns.output_string_values.size() && !ns.output_string_values[idx].empty())
-                oss << " \"" << ns.output_string_values[idx] << "\"";
-            if (idx < ns.output_spreads.size() && !ns.output_spreads[idx].empty()) {
-                oss << " [";
-                for (size_t si = 0; si < ns.output_spreads[idx].size(); ++si) {
-                    if (si > 0) oss << ",";
-                    oss << ns.output_spreads[idx][si];
-                }
-                oss << "]";
-            }
-            if (idx < ns.output_string_spreads.size() && !ns.output_string_spreads[idx].empty()) {
-                oss << " [";
-                for (size_t si = 0; si < ns.output_string_spreads[idx].size(); ++si) {
-                    if (si > 0) oss << ",";
-                    oss << "\"" << ns.output_string_spreads[idx][si] << "\"";
-                }
-                oss << "]";
-            }
-        }
-        if (!ns.input_port_indices.empty()) {
-            oss << "\n  inputs:";
-            for (const auto& [name, idx] : ns.input_port_indices) {
-                oss << " " << name << "=" << ns.input_values[idx];
-                if (idx < ns.input_string_values.size() && !ns.input_string_values[idx].empty())
-                    oss << " \"" << ns.input_string_values[idx] << "\"";
-                if (idx < ns.input_spreads.size() && !ns.input_spreads[idx].empty()) {
-                    oss << " [";
-                    for (size_t si = 0; si < ns.input_spreads[idx].size(); ++si) {
-                        if (si > 0) oss << ",";
-                        oss << ns.input_spreads[idx][si];
-                    }
-                    oss << "]";
-                }
-                if (idx < ns.input_string_spreads.size() && !ns.input_string_spreads[idx].empty()) {
-                    oss << " [";
-                    for (size_t si = 0; si < ns.input_string_spreads[idx].size(); ++si) {
-                        if (si > 0) oss << ",";
-                        oss << "\"" << ns.input_string_spreads[idx][si] << "\"";
-                    }
-                    oss << "]";
-                }
-            }
-        }
-        return {true, oss.str()};
+    const auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    if (!cn) return {false, "unknown node '" + node_id + "'"};
+    const auto* desc = node_descriptor(*cn);
+    std::ostringstream oss;
+    oss << node_id << " (" << node_display_name(*cn, desc) << ")\n";
+    if (cn->missing_operator) {
+        oss << "  status: missing operator placeholder for type "
+            << cn->type_name << "\n";
     }
-    return {false, "unknown node '" + node_id + "'"};
+    oss << "  params:";
+    for (const auto& [name, idx] : cn->param_indices) {
+        oss << " " << name << "=" << cn->param_values[idx];
+        uint8_t lock = cn->param_lock_flags[idx];
+        if (lock & PARAM_LOCK_WIRES) oss << "[W]";
+        if (lock & PARAM_LOCK_PRESETS) oss << "[P]";
+    }
+    oss << "\n  outputs:";
+    for (const auto& [name, idx] : cn->output_port_indices) {
+        oss << " " << name << "=" << cn->output_values[idx];
+        if (idx < cn->output_string_values.size() && !cn->output_string_values[idx].empty())
+            oss << " \"" << cn->output_string_values[idx] << "\"";
+        if (idx < cn->output_spreads.size() && !cn->output_spreads[idx].empty()) {
+            oss << " [";
+            for (size_t si = 0; si < cn->output_spreads[idx].size(); ++si) {
+                if (si > 0) oss << ",";
+                oss << cn->output_spreads[idx][si];
+            }
+            oss << "]";
+        }
+        if (idx < cn->output_string_spreads.size() && !cn->output_string_spreads[idx].empty()) {
+            oss << " [";
+            for (size_t si = 0; si < cn->output_string_spreads[idx].size(); ++si) {
+                if (si > 0) oss << ",";
+                oss << "\"" << cn->output_string_spreads[idx][si] << "\"";
+            }
+            oss << "]";
+        }
+    }
+    if (!cn->input_port_indices.empty()) {
+        oss << "\n  inputs:";
+        for (const auto& [name, idx] : cn->input_port_indices) {
+            oss << " " << name << "=" << cn->input_values[idx];
+            if (idx < cn->input_string_values.size() && !cn->input_string_values[idx].empty())
+                oss << " \"" << cn->input_string_values[idx] << "\"";
+            if (idx < cn->input_spreads.size() && !cn->input_spreads[idx].empty()) {
+                oss << " [";
+                for (size_t si = 0; si < cn->input_spreads[idx].size(); ++si) {
+                    if (si > 0) oss << ",";
+                    oss << cn->input_spreads[idx][si];
+                }
+                oss << "]";
+            }
+            if (idx < cn->input_string_spreads.size() && !cn->input_string_spreads[idx].empty()) {
+                oss << " [";
+                for (size_t si = 0; si < cn->input_string_spreads[idx].size(); ++si) {
+                    if (si > 0) oss << ",";
+                    oss << "\"" << cn->input_string_spreads[idx][si] << "\"";
+                }
+                oss << "]";
+            }
+        }
+    }
+    return {true, oss.str()};
 }
 
 CommandResult RuntimeAPI::list_nodes() {
-    const auto& nodes = scheduler_.nodes();
+    const auto& nodes = scheduler_.compiled_graph()->nodes;
     if (nodes.empty()) return {true, "(no nodes)"};
     std::ostringstream oss;
-    for (const auto& ns : nodes) {
-        const auto* desc = node_descriptor(ns);
-        oss << ns.node_id << " (" << node_display_name(ns, desc) << ")\n";
+    for (const auto& cn : nodes) {
+        const auto* desc = node_descriptor(cn);
+        oss << cn.node_id << " (" << node_display_name(cn, desc) << ")\n";
     }
     std::string result = oss.str();
     if (!result.empty() && result.back() == '\n') result.pop_back();
@@ -666,31 +662,31 @@ void RuntimeAPI::apply_midi_mappings() {
 CommandResult RuntimeAPI::save_variation(const std::string& name) {
     VariationDef vd;
     vd.name = name;
-    for (const auto& ns : scheduler_.nodes()) {
-        const auto* desc = node_descriptor(ns);
+    for (const auto& cn : scheduler_.compiled_graph()->nodes) {
+        const auto* desc = node_descriptor(cn);
         if (!desc) continue;
-        auto& pm = vd.params[ns.node_id];
-        for (const auto& [pname, idx] : ns.param_indices) {
+        auto& pm = vd.params[cn.node_id];
+        for (const auto& [pname, idx] : cn.param_indices) {
             // Delta encoding: only store non-default values
             if (idx < desc->param_count &&
                 desc->params[idx].type != VIVID_PARAM_FILE &&
                 desc->params[idx].type != VIVID_PARAM_TEXT &&
-                ns.param_values[idx] != desc->params[idx].default_value) {
-                pm[pname] = ns.param_values[idx];
+                cn.param_values[idx] != desc->params[idx].default_value) {
+                pm[pname] = cn.param_values[idx];
             }
         }
         // Remove empty node entries
-        if (pm.empty()) vd.params.erase(ns.node_id);
+        if (pm.empty()) vd.params.erase(cn.node_id);
 
         // String params: only store non-default, relativized for persistence
-        for (const auto& [pname, fidx] : ns.file_param_indices) {
+        for (const auto& [pname, fidx] : cn.file_param_indices) {
             const char* def_str = nullptr;
-            auto pi = ns.param_indices.find(pname);
-            if (pi != ns.param_indices.end() && pi->second < desc->param_count)
+            auto pi = cn.param_indices.find(pname);
+            if (pi != cn.param_indices.end() && pi->second < desc->param_count)
                 def_str = desc->params[pi->second].default_string;
-            const auto& val = ns.file_param_storage[fidx];
+            const auto& val = cn.file_param_storage[fidx];
             if (!val.empty() && (def_str == nullptr || val != def_str)) {
-                vd.string_params[ns.node_id][pname] = to_persisted_string_value(ns, pname, val);
+                vd.string_params[cn.node_id][pname] = to_persisted_string_value(cn, pname, val);
             }
         }
     }
@@ -720,30 +716,31 @@ void RuntimeAPI::apply_variation(int idx) {
     const auto& vd = graph_.variations()[idx];
 
     // Phase 1: Reset all unlocked params to defaults
-    for (auto& ns : scheduler_.nodes_mut()) {
-        const auto* desc = node_descriptor(ns);
+    auto* cg = scheduler_.compiled_graph();
+    for (auto& cn : cg->nodes) {
+        const auto* desc = node_descriptor(cn);
         if (!desc) continue;
-        NodeDef* ndef = graph_.find_node(ns.node_id);
-        for (const auto& [pname, pidx] : ns.param_indices) {
-            if (ns.param_lock_flags[pidx] & PARAM_LOCK_PRESETS) continue;
+        NodeDef* ndef = graph_.find_node(cn.node_id);
+        for (const auto& [pname, pidx] : cn.param_indices) {
+            if (cn.param_lock_flags[pidx] & PARAM_LOCK_PRESETS) continue;
             if (pidx < desc->param_count &&
                 desc->params[pidx].type != VIVID_PARAM_FILE &&
                 desc->params[pidx].type != VIVID_PARAM_TEXT) {
-                ns.param_values[pidx] = desc->params[pidx].default_value;
+                cn.param_values[pidx] = desc->params[pidx].default_value;
                 if (ndef) ndef->params[pname] = desc->params[pidx].default_value;
             }
         }
         // Reset string params to defaults
-        for (const auto& [pname, fidx] : ns.file_param_indices) {
-            auto pi = ns.param_indices.find(pname);
-            if (pi != ns.param_indices.end() &&
-                (ns.param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
+        for (const auto& [pname, fidx] : cn.file_param_indices) {
+            auto pi = cn.param_indices.find(pname);
+            if (pi != cn.param_indices.end() &&
+                (cn.param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
                 continue;
-            if (pi != ns.param_indices.end() && pi->second < desc->param_count) {
+            if (pi != cn.param_indices.end() && pi->second < desc->param_count) {
                 const char* def_str = desc->params[pi->second].default_string;
                 std::string def_val = def_str ? def_str : "";
-                ns.file_param_storage[fidx] = def_val;
-                ns.file_param_ptrs[fidx] = ns.file_param_storage[fidx].c_str();
+                cn.file_param_storage[fidx] = def_val;
+                cn.file_param_ptrs[fidx] = cn.file_param_storage[fidx].c_str();
                 if (ndef) {
                     if (def_val.empty())
                         ndef->string_params.erase(pname);
@@ -752,43 +749,43 @@ void RuntimeAPI::apply_variation(int idx) {
                 }
             }
         }
-        ns.generation++;
+        cn.generation++;
     }
 
     // Phase 2: Apply stored delta values
     for (const auto& [node_id, pm] : vd.params) {
-        NodeState* ns = scheduler_.find_node_mut(node_id);
-        if (!ns) continue;
+        auto* cn = cg->find_node(node_id);
+        if (!cn) continue;
         for (const auto& [pname, pval] : pm) {
-            auto pi = ns->param_indices.find(pname);
-            if (pi != ns->param_indices.end()) {
-                if (!(ns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS)) {
-                    ns->param_values[pi->second] = pval;
+            auto pi = cn->param_indices.find(pname);
+            if (pi != cn->param_indices.end()) {
+                if (!(cn->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS)) {
+                    cn->param_values[pi->second] = pval;
                     NodeDef* ndef = graph_.find_node(node_id);
                     if (ndef) ndef->params[pname] = pval;
                 }
             }
         }
-        ns->generation++;
+        cn->generation++;
     }
 
     // Apply stored string param deltas (resolve for runtime, keep relative for persistence)
     for (const auto& [node_id, spm] : vd.string_params) {
-        NodeState* ns = scheduler_.find_node_mut(node_id);
-        if (!ns) continue;
+        auto* cn = cg->find_node(node_id);
+        if (!cn) continue;
         for (const auto& [pname, pval] : spm) {
-            auto fi = ns->file_param_indices.find(pname);
-            if (fi == ns->file_param_indices.end()) continue;
-            auto pi = ns->param_indices.find(pname);
-            if (pi != ns->param_indices.end() &&
-                (ns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
+            auto fi = cn->file_param_indices.find(pname);
+            if (fi == cn->file_param_indices.end()) continue;
+            auto pi = cn->param_indices.find(pname);
+            if (pi != cn->param_indices.end() &&
+                (cn->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
                 continue;
-            ns->file_param_storage[fi->second] = to_runtime_string_value(*ns, pname, pval);
-            ns->file_param_ptrs[fi->second] = ns->file_param_storage[fi->second].c_str();
+            cn->file_param_storage[fi->second] = to_runtime_string_value(*cn, pname, pval);
+            cn->file_param_ptrs[fi->second] = cn->file_param_storage[fi->second].c_str();
             NodeDef* ndef = graph_.find_node(node_id);
             if (ndef) ndef->string_params[pname] = pval;  // already relative
         }
-        ns->generation++;
+        cn->generation++;
     }
 
     graph_.set_active_variation(idx);
@@ -847,28 +844,28 @@ CommandResult RuntimeAPI::update_variation(const std::string& name) {
     if (!vd) return {false, "unknown variation '" + name + "'"};
     vd->params.clear();
     vd->string_params.clear();
-    for (const auto& ns : scheduler_.nodes()) {
-        const auto* desc = node_descriptor(ns);
+    for (const auto& cn : scheduler_.compiled_graph()->nodes) {
+        const auto* desc = node_descriptor(cn);
         if (!desc) continue;
-        auto& pm = vd->params[ns.node_id];
-        for (const auto& [pname, idx] : ns.param_indices) {
+        auto& pm = vd->params[cn.node_id];
+        for (const auto& [pname, idx] : cn.param_indices) {
             if (idx < desc->param_count &&
                 desc->params[idx].type != VIVID_PARAM_FILE &&
                 desc->params[idx].type != VIVID_PARAM_TEXT &&
-                ns.param_values[idx] != desc->params[idx].default_value) {
-                pm[pname] = ns.param_values[idx];
+                cn.param_values[idx] != desc->params[idx].default_value) {
+                pm[pname] = cn.param_values[idx];
             }
         }
-        if (pm.empty()) vd->params.erase(ns.node_id);
+        if (pm.empty()) vd->params.erase(cn.node_id);
 
-        for (const auto& [pname, fidx] : ns.file_param_indices) {
+        for (const auto& [pname, fidx] : cn.file_param_indices) {
             const char* def_str = nullptr;
-            auto pi = ns.param_indices.find(pname);
-            if (pi != ns.param_indices.end() && pi->second < desc->param_count)
+            auto pi = cn.param_indices.find(pname);
+            if (pi != cn.param_indices.end() && pi->second < desc->param_count)
                 def_str = desc->params[pi->second].default_string;
-            const auto& val = ns.file_param_storage[fidx];
+            const auto& val = cn.file_param_storage[fidx];
             if (!val.empty() && (def_str == nullptr || val != def_str)) {
-                vd->string_params[ns.node_id][pname] = to_persisted_string_value(ns, pname, val);
+                vd->string_params[cn.node_id][pname] = to_persisted_string_value(cn, pname, val);
             }
         }
     }
@@ -929,26 +926,23 @@ void RuntimeAPI::tick_quantized_switch() {
         return;
     }
 
-    const NodeState* clock_ns = nullptr;
-    for (const auto& ns : scheduler_.nodes()) {
-        if (ns.node_id == clock_id) { clock_ns = &ns; break; }
-    }
-    if (!clock_ns) {
+    const auto* clock_cn = scheduler_.compiled_graph()->find_node(clock_id);
+    if (!clock_cn) {
         // Clock node missing — instant fallback
         apply_variation(pending_variation_.variation_idx);
         return;
     }
 
     // Read beat_phase output
-    auto bp_it = clock_ns->output_port_indices.find("beat_phase");
-    if (bp_it == clock_ns->output_port_indices.end() ||
-        bp_it->second >= clock_ns->output_values.size()) {
+    auto bp_it = clock_cn->output_port_indices.find("beat_phase");
+    if (bp_it == clock_cn->output_port_indices.end() ||
+        bp_it->second >= clock_cn->output_values.size()) {
         // No beat_phase output — instant fallback
         apply_variation(pending_variation_.variation_idx);
         return;
     }
 
-    float beat_phase = clock_ns->output_values[bp_it->second];
+    float beat_phase = clock_cn->output_values[bp_it->second];
     bool zero_crossing = (beat_phase < prev_beat_phase_) && (prev_beat_phase_ > 0.5f);
     prev_beat_phase_ = beat_phase;
 
@@ -969,16 +963,16 @@ const std::string& RuntimeAPI::active_preset(const std::string& node_id) const {
 }
 
 CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::string& name) {
-    NodeState* ns = scheduler_.find_node_mut(node_id);
-    if (!ns) return {false, "unknown node '" + node_id + "'"};
+    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    if (!cn) return {false, "unknown node '" + node_id + "'"};
 
     OperatorPreset preset;
     preset.name = name;
-    for (const auto& [pname, idx] : ns->param_indices) {
-        preset.params[pname] = ns->param_values[idx];
+    for (const auto& [pname, idx] : cn->param_indices) {
+        preset.params[pname] = cn->param_values[idx];
     }
-    for (const auto& [pname, idx] : ns->file_param_indices) {
-        preset.string_params[pname] = to_persisted_string_value(*ns, pname, ns->file_param_storage[idx]);
+    for (const auto& [pname, idx] : cn->file_param_indices) {
+        preset.string_params[pname] = to_persisted_string_value(*cn, pname, cn->file_param_storage[idx]);
     }
     // Copy embedded_ops metadata from NodeDef (type info); values come from flat params above
     const NodeDef* ndef = graph_.find_node(node_id);
@@ -1012,14 +1006,14 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
 
     if (!preset) return {false, "preset '" + name + "' not found on " + node_id};
 
-    NodeState* ns = scheduler_.find_node_mut(node_id);
-    if (!ns) return {false, "unknown node '" + node_id + "'"};
+    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    if (!cn) return {false, "unknown node '" + node_id + "'"};
 
     for (const auto& [pname, pval] : preset->params) {
-        auto pi = ns->param_indices.find(pname);
-        if (pi != ns->param_indices.end()) {
-            if (!(ns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS)) {
-                ns->param_values[pi->second] = pval;
+        auto pi = cn->param_indices.find(pname);
+        if (pi != cn->param_indices.end()) {
+            if (!(cn->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS)) {
+                cn->param_values[pi->second] = pval;
                 NodeDef* ndef = graph_.find_node(node_id);
                 if (ndef) ndef->params[pname] = pval;
             }
@@ -1027,21 +1021,21 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
     }
     {
         for (const auto& [pname, pval] : preset->string_params) {
-            auto fi = ns->file_param_indices.find(pname);
-            if (fi != ns->file_param_indices.end()) {
+            auto fi = cn->file_param_indices.find(pname);
+            if (fi != cn->file_param_indices.end()) {
                 // Check lock via param_indices (file params share the lock namespace)
-                auto pi = ns->param_indices.find(pname);
-                if (pi != ns->param_indices.end() &&
-                    (ns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
+                auto pi = cn->param_indices.find(pname);
+                if (pi != cn->param_indices.end() &&
+                    (cn->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
                     continue;
-                ns->file_param_storage[fi->second] = to_runtime_string_value(*ns, pname, pval);
-                ns->file_param_ptrs[fi->second] = ns->file_param_storage[fi->second].c_str();
+                cn->file_param_storage[fi->second] = to_runtime_string_value(*cn, pname, pval);
+                cn->file_param_ptrs[fi->second] = cn->file_param_storage[fi->second].c_str();
                 NodeDef* ndef = graph_.find_node(node_id);
                 if (ndef) ndef->string_params[pname] = pval;  // already relative
             }
         }
     }
-    ns->generation++;
+    cn->generation++;
     active_presets_[node_id] = name;
     mark_graph_dirty();
 
@@ -1065,17 +1059,17 @@ CommandResult RuntimeAPI::update_preset(const std::string& node_id, const std::s
         return {false, "preset '" + name + "' not found on " + node_id};
     }
 
-    NodeState* ns = scheduler_.find_node_mut(node_id);
-    if (!ns) return {false, "unknown node '" + node_id + "'"};
+    auto* cn = scheduler_.compiled_graph()->find_node(node_id);
+    if (!cn) return {false, "unknown node '" + node_id + "'"};
 
     preset->params.clear();
-    for (const auto& [pname, idx] : ns->param_indices) {
-        preset->params[pname] = ns->param_values[idx];
+    for (const auto& [pname, idx] : cn->param_indices) {
+        preset->params[pname] = cn->param_values[idx];
     }
     preset->string_params.clear();
     {
-        for (const auto& [pname, idx] : ns->file_param_indices) {
-            preset->string_params[pname] = to_persisted_string_value(*ns, pname, ns->file_param_storage[idx]);
+        for (const auto& [pname, idx] : cn->file_param_indices) {
+            preset->string_params[pname] = to_persisted_string_value(*cn, pname, cn->file_param_storage[idx]);
         }
     }
     mark_graph_dirty();
@@ -1207,16 +1201,13 @@ void RuntimeAPI::tick_state_presets() {
     }
 
     for (const auto& spm : graph_.state_preset_mappings()) {
-        const NodeState* sm_ns = nullptr;
-        for (const auto& ns : scheduler_.nodes()) {
-            if (ns.node_id == spm.state_machine_node) { sm_ns = &ns; break; }
-        }
-        if (!sm_ns) continue;
+        const auto* sm_cn = scheduler_.compiled_graph()->find_node(spm.state_machine_node);
+        if (!sm_cn) continue;
 
         // Read the "state" output
-        auto oi = sm_ns->output_port_indices.find("state");
-        if (oi == sm_ns->output_port_indices.end()) continue;
-        float current_state = sm_ns->output_values[oi->second];
+        auto oi = sm_cn->output_port_indices.find("state");
+        if (oi == sm_cn->output_port_indices.end()) continue;
+        float current_state = sm_cn->output_values[oi->second];
 
         // Phase 1: detect state change (use -1 sentinel so initial state 0 is detected)
         auto [prev_it, first_seen] = prev_sm_state_.emplace(spm.state_machine_node, -1.0f);
@@ -1230,12 +1221,12 @@ void RuntimeAPI::tick_state_presets() {
             // Read xfade_mode and xfade_bars from the SM's params
             int xf_mode = 0;
             float xf_bars = 0.0f;
-            auto xm_it = sm_ns->param_indices.find("xfade_mode");
-            if (xm_it != sm_ns->param_indices.end())
-                xf_mode = static_cast<int>(sm_ns->param_values[xm_it->second]);
-            auto xb_it = sm_ns->param_indices.find("xfade_bars");
-            if (xb_it != sm_ns->param_indices.end())
-                xf_bars = sm_ns->param_values[xb_it->second];
+            auto xm_it = sm_cn->param_indices.find("xfade_mode");
+            if (xm_it != sm_cn->param_indices.end())
+                xf_mode = static_cast<int>(sm_cn->param_values[xm_it->second]);
+            auto xb_it = sm_cn->param_indices.find("xfade_bars");
+            if (xb_it != sm_cn->param_indices.end())
+                xf_bars = sm_cn->param_values[xb_it->second];
 
             if (xf_mode == 0 || xf_bars <= 0.0f) {
                 // Hard cut — existing behavior
@@ -1250,29 +1241,29 @@ void RuntimeAPI::tick_state_presets() {
                 for (const auto& [target_node, preset_name] : spm.state_presets[state_idx]) {
                     const auto* preset = graph_.find_preset(target_node, preset_name);
                     if (!preset) continue;
-                    NodeState* tns = scheduler_.find_node_mut(target_node);
-                    if (!tns) continue;
+                    auto* tcn = scheduler_.compiled_graph()->find_node(target_node);
+                    if (!tcn) continue;
 
                     CrossfadeState cs;
                     cs.target_preset_name = preset_name;
                     for (const auto& [pname, pval] : preset->params) {
-                        auto pi = tns->param_indices.find(pname);
-                        if (pi == tns->param_indices.end()) continue;
-                        if (tns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS) continue;
+                        auto pi = tcn->param_indices.find(pname);
+                        if (pi == tcn->param_indices.end()) continue;
+                        if (tcn->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS) continue;
                         // Snapshot current value (may be mid-lerp if interrupted)
-                        cs.start_params[pname] = tns->param_values[pi->second];
+                        cs.start_params[pname] = tcn->param_values[pi->second];
                         cs.target_params[pname] = pval;
                     }
                     // String params: switch immediately (not interpolatable)
                     for (const auto& [pname, pval] : preset->string_params) {
-                        auto fi = tns->file_param_indices.find(pname);
-                        if (fi == tns->file_param_indices.end()) continue;
-                        auto pi = tns->param_indices.find(pname);
-                        if (pi != tns->param_indices.end() &&
-                            (tns->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
+                        auto fi = tcn->file_param_indices.find(pname);
+                        if (fi == tcn->file_param_indices.end()) continue;
+                        auto pi = tcn->param_indices.find(pname);
+                        if (pi != tcn->param_indices.end() &&
+                            (tcn->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
                             continue;
-                        tns->file_param_storage[fi->second] = to_runtime_string_value(*tns, pname, pval);
-                        tns->file_param_ptrs[fi->second] = tns->file_param_storage[fi->second].c_str();
+                        tcn->file_param_storage[fi->second] = to_runtime_string_value(*tcn, pname, pval);
+                        tcn->file_param_ptrs[fi->second] = tcn->file_param_storage[fi->second].c_str();
                         NodeDef* ndef = graph_.find_node(target_node);
                         if (ndef) ndef->string_params[pname] = pval;  // already relative
                     }
@@ -1287,39 +1278,39 @@ void RuntimeAPI::tick_state_presets() {
         if (acit == active_crossfades_.end()) continue;
 
         // Read SM's xfade output (0->1 progress)
-        auto xf_oi = sm_ns->output_port_indices.find("xfade");
-        if (xf_oi == sm_ns->output_port_indices.end()) continue;
-        float xfade_t = sm_ns->output_values[xf_oi->second];
+        auto xf_oi = sm_cn->output_port_indices.find("xfade");
+        if (xf_oi == sm_cn->output_port_indices.end()) continue;
+        float xfade_t = sm_cn->output_values[xf_oi->second];
 
         for (auto& [target_node, cs] : acit->second.targets) {
-            NodeState* tns = scheduler_.find_node_mut(target_node);
-            if (!tns) continue;
+            auto* tcn = scheduler_.compiled_graph()->find_node(target_node);
+            if (!tcn) continue;
             NodeDef* ndef = graph_.find_node(target_node);
             for (const auto& [pname, start_val] : cs.start_params) {
-                auto pi = tns->param_indices.find(pname);
-                if (pi == tns->param_indices.end()) continue;
+                auto pi = tcn->param_indices.find(pname);
+                if (pi == tcn->param_indices.end()) continue;
                 float target_val = cs.target_params[pname];
                 float interp = start_val + (target_val - start_val) * xfade_t;
-                tns->param_values[pi->second] = interp;
+                tcn->param_values[pi->second] = interp;
                 if (ndef) ndef->params[pname] = interp;
             }
-            tns->generation++;
+            tcn->generation++;
         }
 
         // Finalize when crossfade completes: snap params to exact target values
         if (xfade_t >= 1.0f) {
             for (auto& [target_node, cs] : acit->second.targets) {
-                NodeState* tns = scheduler_.find_node_mut(target_node);
-                if (tns) {
+                auto* tcn = scheduler_.compiled_graph()->find_node(target_node);
+                if (tcn) {
                     NodeDef* ndef = graph_.find_node(target_node);
                     for (const auto& [pname, target_val] : cs.target_params) {
-                        auto pi = tns->param_indices.find(pname);
-                        if (pi != tns->param_indices.end()) {
-                            tns->param_values[pi->second] = target_val;
+                        auto pi = tcn->param_indices.find(pname);
+                        if (pi != tcn->param_indices.end()) {
+                            tcn->param_values[pi->second] = target_val;
                             if (ndef) ndef->params[pname] = target_val;
                         }
                     }
-                    tns->generation++;
+                    tcn->generation++;
                 }
                 active_presets_[target_node] = cs.target_preset_name;
             }
@@ -1335,20 +1326,20 @@ CommandResult RuntimeAPI::set_solo(const std::string& node_id) {
         scheduler_.set_solo(-1);
         return {true, "solo cleared"};
     }
-    const auto& nodes = scheduler_.nodes();
-    for (uint32_t i = 0; i < static_cast<uint32_t>(nodes.size()); ++i) {
-        if (nodes[i].node_id == node_id) {
-            scheduler_.set_solo(static_cast<int>(i));
-            return {true, "soloed " + node_id};
-        }
+    auto* cg = scheduler_.compiled_graph();
+    auto it = cg->node_id_to_index.find(node_id);
+    if (it != cg->node_id_to_index.end()) {
+        scheduler_.set_solo(static_cast<int>(it->second));
+        return {true, "soloed " + node_id};
     }
     return {false, "node not found: " + node_id};
 }
 
 std::string RuntimeAPI::solo_node_id() const {
     int idx = scheduler_.solo_node_idx();
-    if (idx < 0 || idx >= static_cast<int>(scheduler_.nodes().size())) return {};
-    return scheduler_.nodes()[idx].node_id;
+    const auto& nodes = scheduler_.compiled_graph()->nodes;
+    if (idx < 0 || idx >= static_cast<int>(nodes.size())) return {};
+    return nodes[idx].node_id;
 }
 
 // --- Persistence ---
@@ -1395,16 +1386,16 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> saved_string_params;
     std::unordered_map<std::string, std::unordered_map<std::string, uint8_t>> saved_locks;
     if (preserve_runtime_state) {
-        for (const auto& ns : scheduler_.nodes()) {
-            auto& sp = saved_params[ns.node_id];
-            for (const auto& [name, idx] : ns.param_indices) {
-                sp[name] = ns.param_values[idx];
-                if (ns.param_lock_flags[idx] != PARAM_LOCK_NONE)
-                    saved_locks[ns.node_id][name] = ns.param_lock_flags[idx];
+        for (const auto& cn : scheduler_.compiled_graph()->nodes) {
+            auto& sp = saved_params[cn.node_id];
+            for (const auto& [name, idx] : cn.param_indices) {
+                sp[name] = cn.param_values[idx];
+                if (cn.param_lock_flags[idx] != PARAM_LOCK_NONE)
+                    saved_locks[cn.node_id][name] = cn.param_lock_flags[idx];
             }
-            auto& ssp = saved_string_params[ns.node_id];
-            for (const auto& [name, idx] : ns.file_param_indices) {
-                ssp[name] = ns.file_param_storage[idx];
+            auto& ssp = saved_string_params[cn.node_id];
+            for (const auto& [name, idx] : cn.file_param_indices) {
+                ssp[name] = cn.file_param_storage[idx];
             }
         }
     }
@@ -1459,31 +1450,32 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
 
     if (preserve_runtime_state) {
         // Restore saved params to rebuilt nodes.
-        for (auto& ns : scheduler_.nodes_mut()) {
-            auto sit = saved_params.find(ns.node_id);
+        auto* cg = scheduler_.compiled_graph();
+        for (auto& cn : cg->nodes) {
+            auto sit = saved_params.find(cn.node_id);
             if (sit != saved_params.end()) {
                 for (const auto& [pname, pval] : sit->second) {
-                    auto pi = ns.param_indices.find(pname);
-                    if (pi != ns.param_indices.end())
-                        ns.param_values[pi->second] = pval;
+                    auto pi = cn.param_indices.find(pname);
+                    if (pi != cn.param_indices.end())
+                        cn.param_values[pi->second] = pval;
                 }
             }
-            auto ssit = saved_string_params.find(ns.node_id);
+            auto ssit = saved_string_params.find(cn.node_id);
             if (ssit != saved_string_params.end()) {
                 for (const auto& [pname, pval] : ssit->second) {
-                    auto fi = ns.file_param_indices.find(pname);
-                    if (fi != ns.file_param_indices.end()) {
-                        ns.file_param_storage[fi->second] = pval;
-                        ns.file_param_ptrs[fi->second] = ns.file_param_storage[fi->second].c_str();
+                    auto fi = cn.file_param_indices.find(pname);
+                    if (fi != cn.file_param_indices.end()) {
+                        cn.file_param_storage[fi->second] = pval;
+                        cn.file_param_ptrs[fi->second] = cn.file_param_storage[fi->second].c_str();
                     }
                 }
             }
-            auto lit = saved_locks.find(ns.node_id);
+            auto lit = saved_locks.find(cn.node_id);
             if (lit != saved_locks.end()) {
                 for (const auto& [pname, flags] : lit->second) {
-                    auto pi = ns.param_indices.find(pname);
-                    if (pi != ns.param_indices.end())
-                        ns.param_lock_flags[pi->second] = flags;
+                    auto pi = cn.param_indices.find(pname);
+                    if (pi != cn.param_indices.end())
+                        cn.param_lock_flags[pi->second] = flags;
                 }
             }
         }
@@ -1682,37 +1674,37 @@ std::filesystem::path RuntimeAPI::graph_base_dir() const {
     return std::filesystem::path(sp).parent_path();
 }
 
-bool RuntimeAPI::is_path_string_param(const NodeState& ns, const std::string& param) const {
-    auto fi = ns.file_param_indices.find(param);
-    if (fi == ns.file_param_indices.end()) return false;
-    return fi->second < ns.file_param_is_path.size() && ns.file_param_is_path[fi->second] != 0;
+bool RuntimeAPI::is_path_string_param(const CompiledNode& cn, const std::string& param) const {
+    auto fi = cn.file_param_indices.find(param);
+    if (fi == cn.file_param_indices.end()) return false;
+    return fi->second < cn.file_param_is_path.size() && cn.file_param_is_path[fi->second] != 0;
 }
 
-std::string RuntimeAPI::to_runtime_string_value(const NodeState& ns, const std::string& param,
+std::string RuntimeAPI::to_runtime_string_value(const CompiledNode& cn, const std::string& param,
                                                 const std::string& value) const {
-    if (!is_path_string_param(ns, param)) return value;
+    if (!is_path_string_param(cn, param)) return value;
     return resolve_file_path(value, graph_base_dir());
 }
 
-std::string RuntimeAPI::to_persisted_string_value(const NodeState& ns, const std::string& param,
+std::string RuntimeAPI::to_persisted_string_value(const CompiledNode& cn, const std::string& param,
                                                   const std::string& value) const {
-    if (!is_path_string_param(ns, param)) return value;
+    if (!is_path_string_param(cn, param)) return value;
     return make_relative_path(value, graph_base_dir());
 }
 
-void RuntimeAPI::set_file_param_internal(NodeState& ns, const std::string& param,
+void RuntimeAPI::set_file_param_internal(CompiledNode& cn, const std::string& param,
                                           const std::string& value) {
-    auto fi = ns.file_param_indices.find(param);
-    if (fi == ns.file_param_indices.end()) return;
+    auto fi = cn.file_param_indices.find(param);
+    if (fi == cn.file_param_indices.end()) return;
 
     // Path params are resolved for runtime and relativized for persistence.
     // Text params keep literal string values.
-    ns.file_param_storage[fi->second] = to_runtime_string_value(ns, param, value);
-    ns.file_param_ptrs[fi->second] = ns.file_param_storage[fi->second].c_str();
-    ns.generation++;
+    cn.file_param_storage[fi->second] = to_runtime_string_value(cn, param, value);
+    cn.file_param_ptrs[fi->second] = cn.file_param_storage[fi->second].c_str();
+    cn.generation++;
 
-    NodeDef* ndef = graph_.find_node(ns.node_id);
-    if (ndef) ndef->string_params[param] = to_persisted_string_value(ns, param, value);
+    NodeDef* ndef = graph_.find_node(cn.node_id);
+    if (ndef) ndef->string_params[param] = to_persisted_string_value(cn, param, value);
 }
 
 void RuntimeAPI::mark_graph_dirty() {

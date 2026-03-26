@@ -2,6 +2,7 @@
 
 #include "runtime/operator_registry.h"
 #include "runtime/operator_loader.h"
+#include "runtime/domain.h"
 #include "ui/graph_snapshot.h"
 #include <filesystem>
 #include <string>
@@ -48,7 +49,7 @@ public:
 
         auto info = std::make_shared<vivid::ui::OperatorInfo>();
         info->name = desc->name;
-        info->domain = desc->domain;
+        info->domain = static_cast<VividDomain>(desc->domain);
         info->params.resize(desc->param_count);
         for (uint32_t i = 0; i < desc->param_count; ++i) {
             auto& pi = info->params[i];

@@ -746,7 +746,14 @@ add_executable(vivid
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/file_watcher.cpp
     src/runtime/hot_reload.cpp
     src/runtime/tool_discovery.cpp
@@ -1055,6 +1062,9 @@ add_executable(test_hot_reload
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
 )
 target_include_directories(test_hot_reload PRIVATE src)
 target_link_libraries(test_hot_reload PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -1070,8 +1080,12 @@ add_executable(test_audio_hot_reload
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
 )
 target_include_directories(test_audio_hot_reload PRIVATE src)
 target_link_libraries(test_audio_hot_reload PRIVATE vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
@@ -1102,8 +1116,12 @@ add_executable(test_runtime_api
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/system_midi.cpp
 )
@@ -1121,8 +1139,12 @@ add_executable(test_latency_validation
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/system_midi.cpp
 )
@@ -1141,8 +1163,12 @@ add_executable(test_control_server
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
     src/runtime/tool_discovery.cpp
@@ -1181,8 +1207,12 @@ add_executable(test_perception_introspection
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
     src/runtime/tool_discovery.cpp
@@ -1228,8 +1258,12 @@ add_executable(test_audio_engine
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/system_midi.cpp
 )
@@ -1246,8 +1280,12 @@ add_executable(test_audio_float_snapshot
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
 )
 target_include_directories(test_audio_float_snapshot PRIVATE src)
 target_link_libraries(test_audio_float_snapshot PRIVATE
@@ -1264,8 +1302,12 @@ add_executable(test_audio_robustness
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
 )
 target_include_directories(test_audio_robustness PRIVATE src)
 target_link_libraries(test_audio_robustness PRIVATE
@@ -1281,6 +1323,9 @@ add_executable(test_scheduler
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
 )
 target_include_directories(test_scheduler PRIVATE src)
 target_link_libraries(test_scheduler PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -1543,7 +1588,11 @@ add_executable(test_runtime_stress
     src/runtime/builtin_operators.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
@@ -1562,7 +1611,11 @@ add_executable(test_hot_reload_stress
     src/runtime/builtin_operators.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/port_type_registry.cpp
@@ -1580,7 +1633,11 @@ add_executable(test_package_stress
     src/runtime/builtin_operators.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
     src/runtime/package_manager.cpp
@@ -1602,7 +1659,11 @@ add_executable(test_mixed_runtime_stability
     src/runtime/builtin_operators.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/port_type_registry.cpp
@@ -1656,6 +1717,9 @@ add_executable(test_gpu_operators
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
 )
 target_include_directories(test_gpu_operators PRIVATE src)
 target_link_libraries(test_gpu_operators PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -1695,8 +1759,12 @@ add_executable(test_cross_domain_spread
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
 )
 target_include_directories(test_cross_domain_spread PRIVATE src)
 target_link_libraries(test_cross_domain_spread PRIVATE
@@ -1713,6 +1781,9 @@ add_executable(test_spread_broadcast
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
 )
 target_include_directories(test_spread_broadcast PRIVATE src)
 target_link_libraries(test_spread_broadcast PRIVATE
@@ -1728,8 +1799,12 @@ add_executable(test_audio_spread_wire
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
 )
 target_include_directories(test_audio_spread_wire PRIVATE src)
 target_link_libraries(test_audio_spread_wire PRIVATE
@@ -1756,8 +1831,12 @@ add_executable(test_signal_port
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/system_midi.cpp
 )
@@ -1801,8 +1880,12 @@ add_executable(test_demo_graphs
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/builtin_operators.cpp
 )
 target_include_directories(test_demo_graphs PRIVATE src)
@@ -1837,8 +1920,12 @@ add_executable(test_media_headless
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/builtin_operators.cpp
 )
 target_include_directories(test_media_headless PRIVATE src)
@@ -1863,8 +1950,12 @@ add_executable(test_audio_domain_sequencer
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/builtin_operators.cpp
 )
 target_include_directories(test_audio_domain_sequencer PRIVATE src)
@@ -2019,6 +2110,9 @@ add_executable(test_package_test_runner
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/builtin_operators.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/platform.cpp
@@ -2043,6 +2137,9 @@ add_executable(test_package_contract_ecosystem
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/builtin_operators.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/platform.cpp
@@ -2064,11 +2161,15 @@ add_executable(test_capture_coordinator
     src/runtime/av_exporter.mm
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/operator_loader.cpp
     src/runtime/operator_registry.cpp
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/screenshot.cpp
     src/runtime/runtime_api.cpp
     src/runtime/undo_manager.cpp
@@ -2152,6 +2253,9 @@ add_executable(test_string_ports
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
 )
 target_include_directories(test_string_ports PRIVATE src tests)
 target_link_libraries(test_string_ports PRIVATE vivid_operator_api nlohmann_json::nlohmann_json webgpu)
@@ -2244,8 +2348,12 @@ add_executable(test_undo_mutation_types
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
     src/runtime/tool_discovery.cpp
@@ -2280,8 +2388,12 @@ add_executable(test_team_workflow_regression
     src/runtime/wgsl_header_parser.cpp
     src/runtime/graph.cpp
     src/runtime/scheduler.cpp
+    src/runtime/graph_compiler.cpp
+    src/runtime/cadence_bridge.cpp
+    src/runtime/frame_executor.cpp
     src/runtime/port_type_registry.cpp
     src/runtime/audio_engine.cpp
+    src/runtime/audio_executor.cpp
     src/runtime/runtime_api.cpp
     src/runtime/package_compiler.cpp
     src/runtime/tool_discovery.cpp

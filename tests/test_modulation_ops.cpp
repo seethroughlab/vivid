@@ -3,6 +3,7 @@
 // and DC stability (flanger).
 
 #include "runtime/operator_loader.h"
+#include "runtime/domain.h"
 
 #include <cstdio>
 #include <cstring>

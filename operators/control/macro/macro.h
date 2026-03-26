@@ -2,7 +2,12 @@
 
 #include "operator_api/operator.h"
 
-struct Macro : vivid::ControlOperatorBase {
+// Macro — dual-cadence control operator.
+//
+// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
+// Stateless: output = value * amplitude + offset.
+//
+struct Macro : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Macro";
     static constexpr bool kTimeDependent = false;
 
@@ -38,7 +43,13 @@ struct Macro : vivid::ControlOperatorBase {
         out.push_back({"value",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = value.value * amplitude.value + offset.value;
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        float result = value.value * amplitude.value + offset.value;
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i)
+            ctx->output_buffers[0][i] = result;
     }
 };

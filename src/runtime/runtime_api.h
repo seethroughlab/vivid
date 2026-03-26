@@ -13,7 +13,7 @@ class Scheduler;
 class AudioEngine;
 class OperatorRegistry;
 class SystemMidiListener;
-struct NodeState;
+struct CompiledNode;
 
 struct CommandResult {
     bool ok;
@@ -194,12 +194,12 @@ private:
     // Graph base directory for resolving/relativizing file paths
     std::filesystem::path graph_base_dir() const;
 
-    // Resolve+persist helper: stores absolute in NodeState, relative in NodeDef
-    void set_file_param_internal(NodeState& ns, const std::string& param, const std::string& value);
-    bool is_path_string_param(const NodeState& ns, const std::string& param) const;
-    std::string to_runtime_string_value(const NodeState& ns, const std::string& param,
+    // Resolve+persist helper: stores absolute in CompiledNode, relative in NodeDef
+    void set_file_param_internal(CompiledNode& cn, const std::string& param, const std::string& value);
+    bool is_path_string_param(const CompiledNode& cn, const std::string& param) const;
+    std::string to_runtime_string_value(const CompiledNode& cn, const std::string& param,
                                         const std::string& value) const;
-    std::string to_persisted_string_value(const NodeState& ns, const std::string& param,
+    std::string to_persisted_string_value(const CompiledNode& cn, const std::string& param,
                                           const std::string& value) const;
     void mark_graph_dirty();
     void capture_saved_snapshot();

@@ -2,6 +2,7 @@
 
 #include "ui/ui_command_sink.h"
 #include "runtime/runtime_api.h"
+#include "runtime/domain.h"
 #include "runtime/operator_registry.h"
 #include "runtime/operator_creator.h"
 #include "runtime/hot_reload.h"

@@ -3,7 +3,12 @@
 #include <algorithm>
 #include <cmath>
 
-struct StepCounter : vivid::ControlOperatorBase {
+// StepCounter — dual-cadence control operator.
+//
+// Inherits both FrameProcessable and AudioProcessable, making it audio-capable.
+// State: step counter with edge-detected trigger and modular wrap.
+//
+struct StepCounter : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName = "StepCounter";
     static constexpr bool kTimeDependent = true;
 
@@ -13,10 +18,6 @@ struct StepCounter : vivid::ControlOperatorBase {
         vivid::semantic_tag(initial, "index");
         vivid::semantic_shape(initial, "int");
     }
-
-    float prev_trigger_ = 0.0f;
-    bool initialized_ = false;
-    int step_ = 0;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&initial);
@@ -30,14 +31,12 @@ struct StepCounter : vivid::ControlOperatorBase {
         out.push_back({"wrapped", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    // Shared advance logic: returns wrapped flag
+    bool advance(float trigger, int modulus, bool reset) {
         if (!initialized_) {
             step_ = initial.int_value();
             initialized_ = true;
         }
-        const float trigger = ctx->input_values[0];
-        const int modulus = std::max(1, static_cast<int>(std::floor(ctx->input_values[1])));
-        const bool reset = ctx->input_values[2] > 0.5f;
 
         bool wrapped = false;
         if (reset) {
@@ -55,9 +54,33 @@ struct StepCounter : vivid::ControlOperatorBase {
         }
 
         prev_trigger_ = trigger;
+        return wrapped;
+    }
+
+    void process_frame(const VividFrameContext* ctx) override {
+        int modulus = std::max(1, static_cast<int>(std::floor(ctx->input_values[1])));
+        bool wrapped = advance(ctx->input_values[0], modulus, ctx->input_values[2] > 0.5f);
         ctx->output_values[0] = static_cast<float>(step_);
         ctx->output_values[1] = wrapped ? 1.0f : 0.0f;
     }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        float trigger = ctx->input_float_values[0];
+        int modulus = std::max(1, static_cast<int>(std::floor(ctx->input_float_values[1])));
+        bool reset = ctx->input_float_values[2] > 0.5f;
+        bool wrapped = advance(trigger, modulus, reset);
+        float idx = static_cast<float>(step_);
+        float wrap_val = wrapped ? 1.0f : 0.0f;
+        for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
+            ctx->output_buffers[0][i] = idx;
+            ctx->output_buffers[1][i] = wrap_val;
+        }
+    }
+
+private:
+    float prev_trigger_ = 0.0f;
+    bool initialized_ = false;
+    int step_ = 0;
 };
 
 VIVID_REGISTER(StepCounter)
