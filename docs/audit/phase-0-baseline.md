@@ -14,8 +14,7 @@ This pass answers:
 
 Primary current-architecture references:
 
-- `docs/EMBEDDED-OPERATOR-SLOTS.md`
-- `docs/SIMPLIFICATION-AND-CONSOLIDATION.md`
+- `docs/ARCHITECTURE.md` (§5.7.1 covers embedded operator slots)
 - `docs/ARCHITECTURE-GUARDRAILS.md`
 - `docs/runtime/*.md`
 - `docs/release/*.md`
@@ -99,8 +98,7 @@ These references establish that the current baseline should treat:
 
 ### Historical boundary
 
-- the previous audit of the earlier role-binding-era architecture now lives in:
-  - `docs/audit-history/role-binding-era/`
+- the previous role-binding-era audit was removed during docs cleanup (preserved in git history)
 - that older audit can inform what to inspect, but it is not release evidence for this audit
 
 ## Known Issues At Audit Start

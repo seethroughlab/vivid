@@ -10,8 +10,6 @@ This audit applies to the current post-switch architecture:
 
 It is intentionally separate from:
 
-- `docs/audit-history/role-binding-era/`
-  - the previous audit of the earlier role-binding-era architecture
 - `docs/internal/`
   - internal exploration, scorecards, and design notes
 - `docs/release/`

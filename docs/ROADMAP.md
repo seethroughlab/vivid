@@ -28,7 +28,7 @@ Major capabilities delivered for 1.0:
 - **First-class GPU port types** — buffer, mesh, compute dispatch, texture readback
 - **Spreads** — implicit vectorization with broadcasting semantics
 - **Movie playback** — MovieLoaded operator trio
-- **North Star validation** — end-to-end AV workflow validated (see `docs/internal/NORTH-STAR-VALIDATION.md`)
+- **North Star validation** — end-to-end AV workflow validated
 
 ---
 
@@ -36,7 +36,7 @@ Major capabilities delivered for 1.0:
 
 - [ ] YouTube video
 - [ ] Finalize and proof all documentation
-- [x] North Star validation — documented in `docs/internal/NORTH-STAR-VALIDATION.md`
+- [x] North Star validation
 
 Project-local operator ownership (clone/scaffold destination policy, package CMake patching, team workflow regression tests) shipped as part of launch prep.
 

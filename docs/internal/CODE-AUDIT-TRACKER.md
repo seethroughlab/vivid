@@ -3,10 +3,7 @@
 ## Purpose
 
 This document tracks the live whole-project audit after the exploration phases.
-It is separate from the code-review preparation notes:
-
-- `docs/internal/archive/CODE-REVIEW-PHASE*.md` capture the orientation passes.
-- This file tracks the actual audit sequence, findings status, and what is next.
+This file tracks the actual audit sequence, findings status, and what is next.
 
 The goal is to keep one current view of:
 

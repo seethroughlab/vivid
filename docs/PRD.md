@@ -677,7 +677,7 @@ The main workspace interaction pattern is centered on the node graph for structu
 
 The original 25-phase roadmap has been superseded by milestone-based planning in `docs/ROADMAP.md`. See the roadmap's "Shipped" section for the full list of delivered capabilities.
 
-**Completed highlights:** Three-domain data flow, Spreads, hot-reload, 71 operators across 3 domains, Python MCP bridge (57 tools), MIDI/OSC input, data-driven WGSL filter framework, package ecosystem (install/link/scaffold/publish/test), movie playback (MovieLoaded trio), standalone export, operator versioning, first-class GPU port types (buffer/mesh/compute), multiple output ports, output analyzer (audio/visual/AV metrics + comparison), capture/recording, variations/presets, undo/redo, introspection/diagnostics/checks. North Star validation completed (see `docs/internal/NORTH-STAR-VALIDATION.md`).
+**Completed highlights:** Three-domain data flow, Spreads, hot-reload, 71 operators across 3 domains, Python MCP bridge (57 tools), MIDI/OSC input, data-driven WGSL filter framework, package ecosystem (install/link/scaffold/publish/test), movie playback (MovieLoaded trio), standalone export, operator versioning, first-class GPU port types (buffer/mesh/compute), multiple output ports, output analyzer (audio/visual/AV metrics + comparison), capture/recording, variations/presets, undo/redo, introspection/diagnostics/checks. North Star validation completed.
 
 **In progress:** Core stability verification (M1 exit gate), operator creation modal (M11), solo mode (M12), semantic tag rollout (M13), launch prep (M14).
 

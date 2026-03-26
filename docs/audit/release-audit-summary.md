@@ -46,12 +46,6 @@
   - theme switching
   - audio / MIDI / device-dependent validation
 
-## Historical Note
-
-- The previous audit of the role-binding-era architecture now lives in:
-  - `docs/audit-history/role-binding-era/`
-- That material remains useful engineering history, but it is not the active release audit for the current codebase.
-
 ## Completed Phases
 
 ### Phase 0

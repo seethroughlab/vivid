@@ -19,7 +19,7 @@ The project is meeting the PRD best where the PRD makes concrete architectural c
 - retained native UI with live node previews
 - LLM-facing Runtime API / control-server / MCP bridge
 - output analysis with real metrics (9 audio/visual/AV metrics + comparison)
-- North Star demo validated end-to-end (see `docs/internal/NORTH-STAR-VALIDATION.md`)
+- North Star demo validated end-to-end (North Star validation completed)
 
 Remaining gaps are narrower and better scoped than the previous pass:
 
@@ -62,7 +62,6 @@ Primary evidence for this pass:
 - `docs/LLM-INTEGRATION.md`
 - `docs/ROADMAP.md`
 - `docs/internal/CODE-AUDIT-TRACKER.md`
-- `docs/internal/archive/POST-AUDIT-CLOSEOUT.md`
 - targeted test evidence from:
   - `test_runtime_api`
   - `test_hot_reload`
@@ -82,7 +81,7 @@ Primary evidence for this pass:
 
 | PRD area | Evaluation question | Status | Confidence | Evidence | Notes |
 |---|---|---|---|---|---|
-| 1.1, 2.1 Audio-visual parity | Can creators author audio and visuals as peers in one graph with easy cross-domain interaction? | Partially Met | High | docs, code, tests, [parity validation](PARITY-VALIDATION-REPORT.md) | Validated via 3 canonical fixture workflows scored across 5 rubric categories (see `PARITY-VALIDATION-REPORT.md`). Architecture is genuinely symmetric — control-as-hub wiring is domain-agnostic and MCP tooling is fully symmetric. Two specific gaps prevent upgrade to Met: (1) audio→visual analysis is thinner than visual→audio (Gain/rms is one scalar vs TextureAnalysis's 6 floats — an AudioAnalysis operator would close this), (2) example/onboarding graphs lean visual. Overall parity judgment: Adequate, approaching Strong. |
+| 1.1, 2.1 Audio-visual parity | Can creators author audio and visuals as peers in one graph with easy cross-domain interaction? | Partially Met | High | docs, code, tests, parity validation | Validated via 3 canonical fixture workflows scored across 5 rubric categories (see git history for full report). Architecture is genuinely symmetric — control-as-hub wiring is domain-agnostic and MCP tooling is fully symmetric. Two specific gaps prevent upgrade to Met: (1) audio→visual analysis is thinner than visual→audio (Gain/rms is one scalar vs TextureAnalysis's 6 floats — an AudioAnalysis operator would close this), (2) example/onboarding graphs lean visual. Overall parity judgment: Adequate, approaching Strong. |
 | 2.2 Temporal plurality | Does Vivid avoid a master timeline and support clock-based reactive structure? | Partially Met | Medium | docs, code, tests | Clock/control infrastructure is present; variation and quantized recall exist; the broader pattern/state-machine/session-grid story is incomplete. |
 | 2.3 General-purpose positioning | Does the current product shape support more than a performance-only tool? | Partially Met | Medium | docs, code, packages | Package ecosystem, export, install/rebuild flows, and demo graph spread support this, but product validation still leans heavily toward engineering/runtime evidence. |
 | 2.4 Experimentation first | Is the product optimized for try-hear-see-iterate? | Partially Met | Medium | docs, code, tests | Graph editing, hot reload, live previews, variations, and package workflows support this; missing experimentation interfaces limit the full PRD claim. |
@@ -103,7 +102,7 @@ Primary evidence for this pass:
 | 3.1 branching | Can users cheaply save and continue from good states? | Partially Met | High | code, tests | Variation CRUD, recall, queue, and UI strip exist; this is narrower than the PRD’s broader branching/session-grid vision. |
 | 3.1 visible options / spatial exploration | Are alternatives made visible in the interface? | Not Met | Medium | repo inspection, docs | There is no implemented parameter-space explorer or visible multi-option exploration surface comparable to the PRD vision. |
 | 3.2 node graph | Is the node graph a first-class experimentation interface? | Met | High | code, tests | This is the strongest shipped experimentation interface. |
-| 3.2 session / variation grid | Is there a meaningful session/variation exploration interface? | Partially Met | High | code, tests, [North Star validation](NORTH-STAR-VALIDATION.md) | Variation CRUD, recall, queue, quantized switching, drag reorder, branching, and five distinct card states are all shipped and validated end-to-end in the North Star workflow. This is the strongest non-graph exploration surface. Gap vs. PRD: the surface is a linear strip, not the 2D session grid the PRD envisions. |
+| 3.2 session / variation grid | Is there a meaningful session/variation exploration interface? | Partially Met | High | code, tests, North Star validation | Variation CRUD, recall, queue, quantized switching, drag reorder, branching, and five distinct card states are all shipped and validated end-to-end in the North Star workflow. This is the strongest non-graph exploration surface. Gap vs. PRD: the surface is a linear strip, not the 2D session grid the PRD envisions. |
 | 3.2 live REPL | Is an integrated live REPL present? | Out of 1.0 scope | High | PRD, roadmap | Explicitly deferred past 1.0. PRD §3.2 annotated; `docs/ROADMAP.md` updated. |
 | 3.2 parameter space explorer | Is there a parameter space explorer? | Out of 1.0 scope | High | PRD, roadmap | Explicitly deferred past 1.0. PRD §3.2 annotated; `docs/ROADMAP.md` updated. |
 | 3.2 pattern algebra | Is a dedicated pattern algebra interface present? | Out of 1.0 scope | High | PRD, roadmap | Explicitly deferred past 1.0. Pattern operators exist at the operator level but the named experimentation interface is deferred. |
@@ -117,7 +116,7 @@ Primary evidence for this pass:
 | 4.1-4.3 JSON routing layer | Is JSON the complete orchestration representation and a real LLM-facing control surface? | Met | High | docs, code, tests | This is one of the clearest PRD matches. |
 | 4.3 visible control-operator orchestration | Are timing/automation/logic modeled as visible graph structure rather than hidden scripting? | Met | Medium | docs, code | Control/operator model supports this; WebSocket path remains deferred. |
 | 4.4 operator author role | Can the LLM scaffold and extend operators through supported tooling? | Met | High | docs, code, tests | Operator creation, destination policy, package-aware scaffolding, hot reload, and custom-port hardening support this well. |
-| 4.4 routing / variation / reflective roles | Are the four LLM roles all materially supported? | Partially Met | High | docs, code, tests, [North Star validation](NORTH-STAR-VALIDATION.md) | Author + architect roles are strong; variation generation validated end-to-end in North Star Steps 5–6; critic/analyst role is partially supported — analysis exists (output analyzer) but `analyze_output` is not in MCP bridge. 3 of 4 roles validated; critic role blocked by MCP gap. |
+| 4.4 routing / variation / reflective roles | Are the four LLM roles all materially supported? | Partially Met | High | docs, code, tests, North Star validation | Author + architect roles are strong; variation generation validated end-to-end in North Star Steps 5–6; critic/analyst role is partially supported — analysis exists (output analyzer) but `analyze_output` is not in MCP bridge. 3 of 4 roles validated; critic role blocked by MCP gap. |
 | 4.5 Runtime API as single source of truth | Is there one internal action surface behind tooling? | Met | High | docs, code, tests | Runtime API / control-server / MCP alignment is one of the strongest conformance areas. |
 | 4.5 MCP path | Is the external LLM path real and broad enough to matter? | Met | High | docs, code, tests | MCP-facing tools and perception/check tooling are present. |
 | 4.5 built-in chat | Is an in-app LLM chat path present? | Out of 1.0 scope | High | docs, roadmap | Explicitly deferred. |
@@ -151,13 +150,13 @@ Primary evidence for this pass:
 
 | PRD area | Evaluation question | Status | Confidence | Evidence | Notes |
 |---|---|---|---|---|---|
-| North Star demo | Can the current product plausibly support the end-to-end demo scenario? | Met | High | docs, code, tests, [North Star validation](NORTH-STAR-VALIDATION.md) | Validated via 8-step end-to-end workflow: graph load, introspection, parameter iteration, AV analysis, variation save/recall, comparison, and checks. All steps pass. See `docs/internal/NORTH-STAR-VALIDATION.md` for full report. |
+| North Star demo | Can the current product plausibly support the end-to-end demo scenario? | Met | High | docs, code, tests, North Star validation | Validated via 8-step end-to-end workflow: graph load, introspection, parameter iteration, AV analysis, variation save/recall, comparison, and checks. All steps pass. Full report removed during docs cleanup (see git history). |
 | 9.1-9.2 introspection layer | Can the LLM inspect graph/node/runtime state in a structured way? | Met | High | docs, code, tests | `introspect_nodes`, diagnostics, checks, and registry diagnostics are real. |
-| 9.2 analysis layer | Can the system perform higher-level perceptual analysis across audio, visual, and AV relationships? | Partially Met | High | docs, code, tests, [North Star validation](NORTH-STAR-VALIDATION.md) | Output analyzer ships 9 metrics (audio: RMS, peak, spectral centroid, brightness, flatness; visual: brightness, contrast, motion; AV: energy-brightness correlation) plus structured comparison with semantic labels. Validated in North Star Steps 4 and 7. Gap: richer aesthetic analysis (color harmony, symmetry, spatial balance, pitch detection, stereo imaging) remains aspirational and is deferred past 1.0. MCP bridge gap: `analyze_output`/`compare_outputs` are HTTP-only. |
+| 9.2 analysis layer | Can the system perform higher-level perceptual analysis across audio, visual, and AV relationships? | Partially Met | High | docs, code, tests, North Star validation | Output analyzer ships 9 metrics (audio: RMS, peak, spectral centroid, brightness, flatness; visual: brightness, contrast, motion; AV: energy-brightness correlation) plus structured comparison with semantic labels. Validated in North Star Steps 4 and 7. Gap: richer aesthetic analysis (color harmony, symmetry, spatial balance, pitch detection, stereo imaging) remains aspirational and is deferred past 1.0. MCP bridge gap: `analyze_output`/`compare_outputs` are HTTP-only. |
 | 9.2 solo mode | Can nodes be isolated for inspection? | Partially Met | Medium | code, docs | Solo infrastructure exists in runtime/UI, but this pass did not validate the product workflow deeply enough to score it higher. |
 | 9.2 performance metrics | Are node/performance metrics available for LLM/runtime inspection? | Partially Met | Low | docs, code | Some diagnostics exist; the richer PRD performance/per-node metric story is still partial. |
-| 9.2 comparison tools / sweeps | Are A/B and sweep analysis tools present? | Partially Met | Medium | code, [North Star validation](NORTH-STAR-VALIDATION.md) | `compare_outputs` endpoint delivers structured A/B comparison with direction-aware semantic labels (louder/quieter, brighter/darker, more_motion/less_motion, more_reactive/less_reactive). Validated in North Star Step 7. Gap: parameter sweeps (automated capture across a parameter range) are not implemented. |
-| 9.3 temporal and cross-domain metrics | Are time-window and AV-reactivity metrics present? | Partially Met | Medium | code, tests, [North Star validation](NORTH-STAR-VALIDATION.md) | Output analyzer computes AV energy-brightness correlation over configurable time windows (validated in North Star Step 4). Gap: onset response rate, reactivity latency, and per-band correlation are not implemented. |
+| 9.2 comparison tools / sweeps | Are A/B and sweep analysis tools present? | Partially Met | Medium | code, North Star validation | `compare_outputs` endpoint delivers structured A/B comparison with direction-aware semantic labels (louder/quieter, brighter/darker, more_motion/less_motion, more_reactive/less_reactive). Validated in North Star Step 7. Gap: parameter sweeps (automated capture across a parameter range) are not implemented. |
+| 9.3 temporal and cross-domain metrics | Are time-window and AV-reactivity metrics present? | Partially Met | Medium | code, tests, North Star validation | Output analyzer computes AV energy-brightness correlation over configurable time windows (validated in North Star Step 4). Gap: onset response rate, reactivity latency, and per-band correlation are not implemented. |
 | 9.4 checks as durable intent | Are checks/assertion-like quality gates explicit and machine-readable? | Met | High | docs, code, tests | Strong match, though naming has evolved from “assertions” to “checks”. |
 
 ## Open / TBD And Out-of-Scope Items
@@ -200,7 +199,7 @@ Ordered by product importance rather than code ownership. Updated after Q5 recon
 2. **Perception depth gap** (post-1.0)
    - The output analyzer ships 9 real metrics and structured comparison. What remains from the PRD's analysis vision — color harmony, symmetry, spatial balance, pitch detection, stereo imaging, onset response rate, reactivity latency, per-band correlation, parameter sweeps — is explicitly deferred past 1.0.
 
-3. **Parity gap** (see [`PARITY-VALIDATION-REPORT.md`](PARITY-VALIDATION-REPORT.md))
+3. **Parity gap** (see parity validation report (removed, see git history))
    - Architecture is genuinely symmetric (control-as-hub, domain-agnostic MCP). Primary gap: audio→visual analysis surface is thinner than visual→audio (1 scalar vs 6 floats). Secondary: example/onboarding bias leans visual. Highest-impact fix: an AudioAnalysis control operator mirroring TextureAnalysis.
 
 4. **Latency evidence gap**
@@ -220,7 +219,6 @@ Ordered by product importance rather than code ownership. Updated after Q5 recon
 ### Strongest Evidence Of Alignment
 
 - Runtime architecture and transactional hardening recorded in `docs/internal/CODE-AUDIT-TRACKER.md`
-- Post-audit summary in `docs/internal/archive/POST-AUDIT-CLOSEOUT.md`
 - JSON graph / reload / variation behavior in `test_runtime_api` and `test_graph`
 - Hot-reload safety and compatibility enforcement in `test_hot_reload`
 - Package/test/library model in `test_package_contract_ecosystem`, `test_package_test_runner`, and sibling-package audit results
@@ -239,7 +237,7 @@ Those regressions are now closed and passing again. They are no longer counted a
 
 ### Product Workflow Validation
 
-The North Star validation (`docs/internal/NORTH-STAR-VALIDATION.md`) exercises the core product workflow end-to-end: graph loading, introspection, parameter iteration, AV analysis, variation management, comparison, and assertion checks. This addresses the previous caveat that product-shape judgments relied only on architecture/runtime evidence.
+The North Star validation exercised the core product workflow end-to-end: graph loading, introspection, parameter iteration, AV analysis, variation management, comparison, and assertion checks. This addressed the previous caveat that product-shape judgments relied only on architecture/runtime evidence.
 
 Remaining items not covered by the North Star validation (tested elsewhere or lower priority):
 

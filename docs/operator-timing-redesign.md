@@ -43,13 +43,13 @@ These accumulate internal time (`elapsed += dt`) which changes behavior at audio
 **Notes:**
 
 ### path_animate
-**Status:** Not started
+**Status:** Done
 **Current timing:** Free-running `free_phase_ += delta_time * speed`, with optional `phase_in` override. Loop/ping-pong modes.
 **State:** `free_phase_`, `finished_`
 **Ports:** `phase_in` (optional override), `speed` param
-**Problem:** Speed parameter assumes frame-rate traversal — speed=1.0 means "traverse once per second" at frame rate but runs 800x at audio rate per-sample.
-**Redesign approach:** Already has `phase_in` override port — when audio-capable, require external phase input instead of free-running accumulation. OR: make `speed` cadence-aware (divide by callbacks-per-second).
-**Notes:** Simplest of the four — `phase_in` override is already the right model.
+**Problem:** Speed parameter assumes frame-rate traversal.
+**Redesign approach:** `delta_time` is provided correctly by the runtime at both cadences, so free-running accumulation works as-is. Added `process_audio()` with shared `compute()` helper.
+**Notes:** Same pattern as `spread_noise` — `delta_time` naturally scales.
 
 ### random
 **Status:** Not started
@@ -85,13 +85,13 @@ These produce gates, steps, or MIDI-adjacent behavior. They mostly use beat-phas
 **Notes:** Most complex sequencer. May benefit from being done last after simpler ones prove the pattern.
 
 ### chord_progression
-**Status:** Not started
+**Status:** Done
 **Current timing:** Beat tracking + step selection via `(beat_count_ / beats_per_step) % num_steps`. Gate from `beat_phase < gate_length`.
 **State:** `beat_count_`, `prev_phase_`, MIDI note buffers
 **Ports:** `beat_phase` (required)
-**Problem:** Gate timing at call boundary.
-**Redesign approach:** Same as arpeggiator — per-sample gate window evaluation.
-**Notes:**
+**Problem:** Was audio-only (`AudioOperatorBase`), not dual-cadence.
+**Redesign approach:** Added `FrameProcessable` and shared `compute()` helper. Same pattern as `note_pattern`.
+**Notes:** Migrated from audio-only → dual-cadence.
 
 ### drum_sequencer
 **Status:** Not started
@@ -103,22 +103,22 @@ These produce gates, steps, or MIDI-adjacent behavior. They mostly use beat-phas
 **Notes:** May need the most design work since it currently has no timing model.
 
 ### euclidean
-**Status:** Not started
+**Status:** Done
 **Current timing:** Beat tracking + Bjorklund pattern. Rate multipliers. Gate from `step_phase < gate_length`.
 **State:** `beat_count_`, `prev_phase_`, `prev_step_`, `pattern_[]`
 **Ports:** `beat_phase` (required)
 **Problem:** Gate output at call boundary.
-**Redesign approach:** Per-sample gate window evaluation. Pattern itself is stateless (Bjorklund algorithm) — only gate output needs audio-rate precision.
-**Notes:** Good candidate for early migration — relatively simple.
+**Redesign approach:** Added `process_audio()` with shared `compute()` helper. Beat tracking and gate window logic already cadence-agnostic.
+**Notes:** Same pattern as `alternate`.
 
 ### note_pattern
-**Status:** Not started
+**Status:** Done
 **Current timing:** Beat tracking + step selection. Gate from `beat_phase < gate_length`.
 **State:** `beat_count_`, `prev_phase_`, MIDI buffers
 **Ports:** `beat_phase` (required)
-**Problem:** Gate timing at call boundary.
-**Redesign approach:** Per-sample gate evaluation.
-**Notes:**
+**Problem:** Was audio-only (`AudioOperatorBase`), not dual-cadence.
+**Redesign approach:** Added `FrameProcessable` and shared `compute()` helper. Beat tracking, chord voicing, gate window, and MIDI edge detection already cadence-agnostic.
+**Notes:** Migrated from audio-only → dual-cadence (opposite direction from most).
 
 ### pat_transform
 **Status:** Done
@@ -139,13 +139,13 @@ These produce gates, steps, or MIDI-adjacent behavior. They mostly use beat-phas
 **Notes:**
 
 ### phase_to_midi
-**Status:** Not started
+**Status:** Done
 **Current timing:** Phase-wrap detection → MIDI note-on.
 **State:** `prev_phase_`, `midi_buf_`
 **Ports:** `beat_phase` (required), `midi_out`
 **Problem:** One MIDI event per wrap, at call boundary.
-**Redesign approach:** At audio rate, wrap detection is already sample-accurate. May just need `process_audio()` added directly.
-**Notes:** Likely simple — similar to `pat_transform`, may not need redesign.
+**Redesign approach:** Wrap detection is already cadence-agnostic. Added `process_audio()` with shared `compute()` helper.
+**Notes:** No timing redesign needed — phase-wrap logic works at any cadence.
 
 ### sequencer
 **Status:** Not started
