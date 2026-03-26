@@ -473,8 +473,8 @@ int main() {
             auto pi_g = ns->param_indices.find("g");
             if (pi_r != ns->param_indices.end()) ns->param_values[pi_r->second] = 0.0f;
             if (pi_g != ns->param_indices.end()) ns->param_values[pi_g->second] = 1.0f;
-            // Bump generation so the node re-processes
-            ns->generation++;
+            // Mark dirty so the node re-processes
+            ns->dirty = true;
         }
 
         // Second tick: should be green now

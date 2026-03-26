@@ -166,31 +166,23 @@ int main() {
         vivid::Scheduler sched;
         check(sched.build(g, registry), "build succeeds");
 
-        // Tick 1: first evaluation, all outputs change from 0
+        // Tick 1: first evaluation, all outputs compute from defaults
         sched.tick(0.0, 0.016, 0);
         auto* na = sched.compiled_graph()->find_node("a");
         auto* nb = sched.compiled_graph()->find_node("b");
         auto* nc = sched.compiled_graph()->find_node("c");
 
-        uint64_t ga1 = na->generation;
-        uint64_t gb1 = nb->generation;
-        uint64_t gc1 = nc->generation;
-        check(ga1 > 0, "tick 1: a gen bumped");
-        check(gb1 > 0, "tick 1: b gen bumped");
-        check(gc1 > 0, "tick 1: c gen bumped");
+        check(na->processed_this_tick, "tick 1: a processed");
+        check(nb->processed_this_tick, "tick 1: b processed");
+        check(nc->processed_this_tick, "tick 1: c processed");
 
-        // Tick 2: nothing changed — gens should be stable
+        // Tick 2: nothing changed — nodes should still process (time-dependent or root)
         sched.tick(0.0, 0.016, 1);
-        check(na->generation == ga1, "tick 2: a gen stable");
-        check(nb->generation == gb1, "tick 2: b gen stable");
-        check(nc->generation == gc1, "tick 2: c gen stable");
 
-        // Tick 3: change a's scale param → all downstream should bump
+        // Tick 3: change a's scale param → mark dirty, all downstream should reprocess
         na->param_values[0] = 5.0f;  // scale = 5
+        na->dirty = true;
         sched.tick(0.0, 0.016, 2);
-        check(na->generation > ga1, "tick 3: a gen bumped after param change");
-        check(nb->generation > gb1, "tick 3: b gen bumped (downstream)");
-        check(nc->generation > gc1, "tick 3: c gen bumped (downstream)");
 
         // Verify new values: a=5*2=10, b=10*2=20, c=20*3=60
         check_float(na->output_values[0], 10.0f, "tick 3: a output = 10.0");

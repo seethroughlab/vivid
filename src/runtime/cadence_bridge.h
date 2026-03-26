@@ -27,6 +27,11 @@ public:
 
     // ── Main thread operations ──────────────────────────────────────────────
 
+    // Update audio nodes' param_values for inspector display (main thread).
+    // Propagates control→audio and audio→audio param wires onto CompiledNode
+    // so that the inspector shows modulated values. Called before push_to_audio().
+    void propagate_audio_display_params(CompiledGraph& cg);
+
     // Snapshot frame-rate outputs into ParamSnapshot for audio consumption.
     void push_to_audio(const CompiledGraph& cg);
 

@@ -6,32 +6,6 @@
 
 namespace vivid {
 
-// Check if a CompiledEdge has non-default remap (any field differs from identity mapping)
-inline bool has_remap(const CompiledEdge& e) {
-    return e.from_min != 0.0f || e.from_max != 1.0f ||
-           e.to_min  != 0.0f || e.to_max  != 1.0f || e.clamp;
-}
-
-// Apply remap: maps val from [from_min, from_max] to [to_min, to_max]
-inline float apply_remap(float val, const CompiledEdge& e) {
-    float range = e.from_max - e.from_min;
-    float t;
-    if (range != 0.0f) {
-        t = (val - e.from_min) / range;
-    } else {
-        t = 0.5f;
-        std::fprintf(stderr, "[vivid] Scheduler: edge remap has zero input range "
-                     "(from_min == from_max == %g) — using midpoint\n", e.from_min);
-    }
-    float out = e.to_min + t * (e.to_max - e.to_min);
-    if (e.clamp) {
-        float lo = std::min(e.to_min, e.to_max);
-        float hi = std::max(e.to_min, e.to_max);
-        out = std::max(lo, std::min(hi, out));
-    }
-    return out;
-}
-
 // ---------------------------------------------------------------------------
 // build
 // ---------------------------------------------------------------------------
@@ -85,30 +59,8 @@ void Scheduler::tick(double time, double delta_time, uint64_t frame, void* gpu_s
     frame_executor_.tick(*compiled_graph_, time, delta_time, frame,
                          gpu_state, on_gpu_node, input);
 
-    // Propagate control→audio param wires on CompiledNode.
-    // Audio nodes are skipped by the frame executor but their param_values
-    // must reflect modulation so the snapshot/inspector shows animated values.
-    for (const auto& e : compiled_graph_->edges) {
-        if (!e.targets_param) continue;
-        auto& to_cn = compiled_graph_->nodes[e.to_node];
-        if (to_cn.active_cadence != Cadence::Audio) continue;
-        const auto& from_cn = compiled_graph_->nodes[e.from_node];
-        if (e.targets_file_param) {
-            const std::string& src = e.sources_file_param
-                ? from_cn.file_param_storage[e.from_file_param_idx]
-                : from_cn.output_string_values[e.from_port];
-            to_cn.file_param_storage[e.to_file_param_idx] = src;
-            to_cn.file_param_ptrs[e.to_file_param_idx] =
-                to_cn.file_param_storage[e.to_file_param_idx].c_str();
-            continue;
-        }
-        float raw = e.sources_param
-            ? from_cn.param_values[e.from_port]
-            : from_cn.output_values[e.from_port];
-        float val = has_remap(e) ? apply_remap(raw, e) : raw;
-        if (!(to_cn.param_lock_flags[e.to_port] & PARAM_LOCK_WIRES))
-            to_cn.param_values[e.to_port] = val;
-    }
+    // Update audio nodes' param_values for inspector display.
+    cadence_bridge_.propagate_audio_display_params(*compiled_graph_);
 
     needs_gpu_realloc_ = frame_executor_.needs_gpu_realloc();
     if (needs_gpu_realloc_) frame_executor_.clear_gpu_realloc();
@@ -238,7 +190,7 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
                         if (pi != cn.param_indices.end())
                             cn.param_lock_flags[pi->second] = flags;
                     }
-                    cn.generation++;
+                    cn.dirty = true;
                 }
             }
         }
@@ -270,8 +222,8 @@ bool Scheduler::reload_operator(const std::string& type_name, OperatorRegistry& 
         cn.errored = false;
         cn.error_message.clear();
 
-        // Bump generation to force downstream recompute
-        cn.generation++;
+        // Force downstream recompute
+        cn.dirty = true;
     }
 
     return true;

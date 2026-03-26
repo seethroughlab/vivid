@@ -18,13 +18,6 @@
 
 namespace vivid {
 
-enum ParamLockFlags : uint8_t {
-    PARAM_LOCK_NONE    = 0,
-    PARAM_LOCK_WIRES   = 1,
-    PARAM_LOCK_PRESETS = 2,
-    PARAM_LOCK_ALL     = 3,
-};
-
 // Optional callback invoked after each GPU node's process()
 // texture_view is the node's per-node output texture (for thumbnail capture)
 using PostNodeFn = std::function<void(uint32_t node_idx, const std::string& node_id,

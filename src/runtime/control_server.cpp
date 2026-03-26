@@ -2135,13 +2135,11 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
             if (!root.contains("name") || !root["name"].is_string())
                 return json_err("missing 'name'");
-            // Accept both "env" (preferred) and "domain" (legacy) keys
-            std::string env_key = root.contains("env") ? "env" : "domain";
-            if (!root.contains(env_key) || !root[env_key].is_string())
-                return json_err("missing 'env' (or 'domain')");
+            if (!root.contains("env") || !root["env"].is_string())
+                return json_err("missing 'env'");
 
             std::string name = root["name"].get<std::string>();
-            std::string env_str_val = root[env_key].get<std::string>();
+            std::string env_str_val = root["env"].get<std::string>();
 
             VividExecutionEnv env;
             if (env_str_val == "control")      env = VIVID_ENV_FRAME;

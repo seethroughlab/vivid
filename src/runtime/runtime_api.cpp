@@ -163,7 +163,7 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
     }
 
     cn->param_values[pi->second] = value;
-    cn->generation++;
+    cn->dirty = true;
 
     // Convenience sync for SyphonIn: selecting enum server writes server_name.
     if (param == "server") {
@@ -325,7 +325,7 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
     if (cn) {
         cn->gpu_tex_width  = width;
         cn->gpu_tex_height = height;
-        cn->generation++;
+        cn->dirty = true;
     }
 
     needs_gpu_realloc_ = true;
@@ -765,7 +765,7 @@ void RuntimeAPI::apply_variation(int idx) {
                 }
             }
         }
-        cn.generation++;
+        cn.dirty = true;
     }
 
     // Phase 2: Apply stored delta values
@@ -782,7 +782,7 @@ void RuntimeAPI::apply_variation(int idx) {
                 }
             }
         }
-        cn->generation++;
+        cn->dirty = true;
     }
 
     // Apply stored string param deltas (resolve for runtime, keep relative for persistence)
@@ -801,7 +801,7 @@ void RuntimeAPI::apply_variation(int idx) {
             NodeDef* ndef = graph_.find_node(node_id);
             if (ndef) ndef->string_params[pname] = pval;  // already relative
         }
-        cn->generation++;
+        cn->dirty = true;
     }
 
     graph_.set_active_variation(idx);
@@ -1051,7 +1051,7 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
             }
         }
     }
-    cn->generation++;
+    cn->dirty = true;
     active_presets_[node_id] = name;
     mark_graph_dirty();
 
@@ -1310,7 +1310,7 @@ void RuntimeAPI::tick_state_presets() {
                 tcn->param_values[pi->second] = interp;
                 if (ndef) ndef->params[pname] = interp;
             }
-            tcn->generation++;
+            tcn->dirty = true;
         }
 
         // Finalize when crossfade completes: snap params to exact target values
@@ -1326,7 +1326,7 @@ void RuntimeAPI::tick_state_presets() {
                             if (ndef) ndef->params[pname] = target_val;
                         }
                     }
-                    tcn->generation++;
+                    tcn->dirty = true;
                 }
                 active_presets_[target_node] = cs.target_preset_name;
             }
@@ -1717,7 +1717,7 @@ void RuntimeAPI::set_file_param_internal(CompiledNode& cn, const std::string& pa
     // Text params keep literal string values.
     cn.file_param_storage[fi->second] = to_runtime_string_value(cn, param, value);
     cn.file_param_ptrs[fi->second] = cn.file_param_storage[fi->second].c_str();
-    cn.generation++;
+    cn.dirty = true;
 
     NodeDef* ndef = graph_.find_node(cn.node_id);
     if (ndef) ndef->string_params[param] = to_persisted_string_value(cn, param, value);

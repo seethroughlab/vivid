@@ -79,7 +79,6 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     // Domain/cadence flags
     cn.time_dependent = desc->time_dependent != 0;
     cn.is_gpu = (desc->execution_env == VIVID_ENV_GPU);
-    cn.prev_output_values.assign(cn.output_port_count, 0.0f);
 
     // Implicit analysis ports for audio-cadence nodes
     if (cn.active_cadence == Cadence::Audio) {
@@ -87,7 +86,6 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.analysis_output_port_indices["peak"]     = cn.output_port_count++;
         cn.analysis_output_port_indices["waveform"] = cn.output_port_count++;
         cn.output_values.resize(cn.output_port_count, 0.0f);
-        cn.prev_output_values.resize(cn.output_port_count, 0.0f);
         cn.output_spreads.resize(cn.output_port_count);
     }
 
@@ -356,7 +354,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         cn.type_name = ndef.type;
         cn.loader = loader;
         cn.owned_loader = std::move(owned);
-        cn.generation = 0;
 
         if (loader && desc) {
             cn.instance = loader->create_instance();
@@ -432,7 +429,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.output_string_values.assign(cn.output_port_count, "");
             cn.c_input_string_values.assign(cn.input_port_count, nullptr);
             cn.c_output_string_values.assign(cn.output_port_count, nullptr);
-            cn.prev_output_values.assign(cn.output_port_count, 0.0f);
             cn.input_spreads.resize(cn.input_port_count);
             cn.output_spreads.resize(cn.output_port_count);
             cn.input_string_spreads.resize(cn.input_port_count);
@@ -687,7 +683,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         if (cn.owned_loader) cn.loader = cn.owned_loader.get();
     }
 
-    // Build upstream_nodes for generation tracking
+    // Build upstream_nodes for skip-logic dirty propagation
     for (auto& cn : cg->nodes)
         cn.upstream_nodes.clear();
     for (const auto& e : cg->edges) {

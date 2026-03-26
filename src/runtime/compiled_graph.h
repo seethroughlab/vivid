@@ -17,6 +17,17 @@ typedef WGPUTextureViewImpl* WGPUTextureView;
 namespace vivid {
 
 // ---------------------------------------------------------------------------
+// ParamLockFlags — per-param lock bits (session-only, not serialized).
+// ---------------------------------------------------------------------------
+
+enum ParamLockFlags : uint8_t {
+    PARAM_LOCK_NONE    = 0,
+    PARAM_LOCK_WIRES   = 1,
+    PARAM_LOCK_PRESETS = 2,
+    PARAM_LOCK_ALL     = 3,
+};
+
+// ---------------------------------------------------------------------------
 // Cadence — the runtime execution rate of a node.
 // ---------------------------------------------------------------------------
 
@@ -113,7 +124,6 @@ struct CompiledNode {
     std::vector<uint8_t> param_lock_flags;
     std::vector<float> input_values;
     std::vector<float> output_values;
-    std::vector<float> prev_output_values;
 
     // ── String state ────────────────────────────────────────────────────────
     std::vector<std::string> input_string_values;
@@ -154,11 +164,10 @@ struct CompiledNode {
     std::unordered_map<std::string, uint32_t> file_param_indices;
     std::vector<uint8_t> file_param_is_path;
 
-    // ── Generation-based cooking ────────────────────────────────────────────
+    // ── Frame-rate skip logic ────────────────────────────────────────────────
     bool time_dependent = false;
     bool is_gpu = false;
-    uint64_t generation = 0;
-    uint64_t last_processed_gen = 0;
+    bool dirty = false;              // set by out-of-band changes (bridge, API, reload)
     bool processed_this_tick = false;
     std::vector<uint32_t> upstream_nodes;  // indices of nodes feeding into this one
 

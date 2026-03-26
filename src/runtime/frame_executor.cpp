@@ -149,25 +149,19 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
             }
         }
 
-        // ── Generation-based memoization ────────────────────────────────
-        // Only apply skip logic for non-time-dependent nodes that have upstreams.
-        // Root nodes (no upstream) always process.
-        bool should_process = cn.time_dependent || cn.upstream_nodes.empty();
+        // ── Skip logic ──────────────────────────────────────────────────
+        // Process if: time-dependent, root node, any upstream processed this
+        // tick, any audio upstream has new data (dirty), or self was externally
+        // modified (dirty from bridge/API/reload).
+        bool should_process = cn.time_dependent || cn.upstream_nodes.empty() || cn.dirty;
         if (!should_process) {
             for (uint32_t up : cn.upstream_nodes) {
-                if (cg.nodes[up].processed_this_tick) { should_process = true; break; }
-            }
-        }
-        if (!should_process) {
-            for (uint32_t up : cn.upstream_nodes) {
-                if (cg.nodes[up].active_cadence == Cadence::Audio &&
-                    cg.nodes[up].generation != cn.last_processed_gen) {
+                const auto& up_cn = cg.nodes[up];
+                if (up_cn.processed_this_tick || up_cn.dirty) {
                     should_process = true; break;
                 }
             }
         }
-        if (!should_process && cn.generation != cn.last_processed_gen)
-            should_process = true;
         if (!should_process) continue;
 
         // ── Build spread port staging ───────────────────────────────────
@@ -432,27 +426,14 @@ void FrameExecutor::tick(CompiledGraph& cg, double time, double delta_time,
         if (cn.is_gpu && on_gpu_node && cn.gpu_texture_view)
             on_gpu_node(ni, cn.node_id, cn.gpu_texture_view);
 
-        // ── Generation update ───────────────────────────────────────────
-        bool changed = cn.is_gpu;  // GPU nodes always bump
-        if (!changed) {
-            if (cn.output_values != cn.prev_output_values) changed = true;
-        }
-        if (!changed) {
-            for (uint32_t p = 0; p < cn.output_port_count && !changed; ++p) {
-                if (!cn.output_spreads[p].empty()) changed = true;
-            }
-        }
-        if (changed) {
-            cn.generation++;
-            cn.prev_output_values = cn.output_values;
-        }
-        cn.last_processed_gen = cn.generation;
+        // ── Mark processed ──────────────────────────────────────────────
+        cn.dirty = false;
         cn.processed_this_tick = true;
     }
 
-    // Sync audio-cadence nodes' last_processed_gen
+    // Clear dirty on audio nodes — their updates have been consumed this tick.
     for (uint32_t ni : cg.audio_order) {
-        cg.nodes[ni].last_processed_gen = cg.nodes[ni].generation;
+        cg.nodes[ni].dirty = false;
     }
 }
 

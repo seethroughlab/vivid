@@ -82,6 +82,58 @@ void CadenceBridge::build(const CompiledGraph& cg) {
 }
 
 // ---------------------------------------------------------------------------
+// propagate_audio_display_params — update audio node param_values for display
+// ---------------------------------------------------------------------------
+
+// Check if a CompiledEdge has non-default remap (any field differs from identity mapping)
+static bool has_remap(const CompiledEdge& e) {
+    return e.from_min != 0.0f || e.from_max != 1.0f ||
+           e.to_min  != 0.0f || e.to_max  != 1.0f || e.clamp;
+}
+
+// Apply remap: maps val from [from_min, from_max] to [to_min, to_max]
+static float apply_remap(float val, const CompiledEdge& e) {
+    float range = e.from_max - e.from_min;
+    float t;
+    if (range != 0.0f) {
+        t = (val - e.from_min) / range;
+    } else {
+        t = 0.5f;
+    }
+    float out = e.to_min + t * (e.to_max - e.to_min);
+    if (e.clamp) {
+        float lo = std::min(e.to_min, e.to_max);
+        float hi = std::max(e.to_min, e.to_max);
+        out = std::max(lo, std::min(hi, out));
+    }
+    return out;
+}
+
+void CadenceBridge::propagate_audio_display_params(CompiledGraph& cg) {
+    for (const auto& e : cg.edges) {
+        if (!e.targets_param) continue;
+        auto& to_cn = cg.nodes[e.to_node];
+        if (to_cn.active_cadence != Cadence::Audio) continue;
+        const auto& from_cn = cg.nodes[e.from_node];
+        if (e.targets_file_param) {
+            const std::string& src = e.sources_file_param
+                ? from_cn.file_param_storage[e.from_file_param_idx]
+                : from_cn.output_string_values[e.from_port];
+            to_cn.file_param_storage[e.to_file_param_idx] = src;
+            to_cn.file_param_ptrs[e.to_file_param_idx] =
+                to_cn.file_param_storage[e.to_file_param_idx].c_str();
+            continue;
+        }
+        float raw = e.sources_param
+            ? from_cn.param_values[e.from_port]
+            : from_cn.output_values[e.from_port];
+        float val = has_remap(e) ? apply_remap(raw, e) : raw;
+        if (!(to_cn.param_lock_flags[e.to_port] & PARAM_LOCK_WIRES))
+            to_cn.param_values[e.to_port] = val;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // push_to_audio — snapshot frame-rate outputs for audio consumption
 // ---------------------------------------------------------------------------
 
@@ -236,7 +288,7 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
                     if (e.to_port < to_cn.input_values.size())
                         to_cn.input_values[e.to_port] = val;
                 }
-                to_cn.generation++;
+                to_cn.dirty = true;
             }
         } else if (e.data_type == VIVID_PORT_SPREAD) {
             // Spread output → frame-rate input
@@ -246,7 +298,7 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
                 if (e.to_port < to_cn.input_spreads.size()) {
                     to_cn.input_spreads[e.to_port].assign(src.data,
                         src.data + src.length);
-                    to_cn.generation++;
+                    to_cn.dirty = true;
                 }
             }
         }
@@ -296,7 +348,7 @@ void CadenceBridge::pull_from_audio(CompiledGraph& cg) {
             auto& dst = cn.output_spreads[am.waveform_port_idx];
             dst.assign(snap.waveform[si].begin(), snap.waveform[si].end());
         }
-        cn.generation++;
+        cn.dirty = true;
     }
 }
 

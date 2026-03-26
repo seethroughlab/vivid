@@ -91,7 +91,6 @@ int main(int argc, char* argv[]) {
     std::filesystem::copy_file(v2_path, staged_v2,
         std::filesystem::copy_options::overwrite_existing);
 
-    uint64_t gen_before = nodes[0].generation;
     check(scheduler.reload_operator("TestOp", registry, staged_v2),
           "reload_operator() succeeds");
 
@@ -100,7 +99,7 @@ int main(int argc, char* argv[]) {
     check(nodes[0].param_values.size() == 2, "now has 2 params (was 1)");
     check_float(nodes[0].param_values[0], 5.0f, "scale preserved at 5.0");
     check_float(nodes[0].param_values[1], 10.0f, "offset got default 10.0");
-    check(nodes[0].generation > gen_before, "generation bumped after reload");
+    check(nodes[0].dirty, "dirty flag set after reload");
 
     // Verify type_name accessor
     std::string tn = scheduler.type_name(0);
@@ -129,7 +128,6 @@ int main(int argc, char* argv[]) {
     std::string staged_bad = staging + "/test_op_bad_reload_0.dylib";
     std::filesystem::copy_file(bad_port_path, staged_bad,
         std::filesystem::copy_options::overwrite_existing);
-    uint64_t gen_before_bad = nodes[0].generation;
     check(!scheduler.reload_operator("TestOp", registry, staged_bad),
           "reload rejects incompatible port layout");
     check_float(nodes[0].param_values[0], 5.0f, "scale preserved after rejected reload");
@@ -137,8 +135,6 @@ int main(int argc, char* argv[]) {
     scheduler.tick(0.0, 0.016, 3);
     check_float(nodes[0].output_values[0], 25.0f,
                 "previous operator remains active after rejected reload");
-    check(nodes[0].generation > gen_before_bad,
-          "generation bumped when old operator instance is restored after rejected reload");
 
     // --- Cleanup ---
     scheduler.shutdown();

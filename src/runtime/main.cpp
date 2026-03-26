@@ -673,7 +673,7 @@ static bool load_example_entry_from_graph(const std::filesystem::path& graph_pat
             out.estimated_minutes = meta["estimated_minutes"].get<int>();
         }
         out.tags = json_str_array(meta.value("tags", nlohmann::json()));
-        out.envs = json_str_array(meta.contains("envs") ? meta["envs"] : meta.value("domains", nlohmann::json()));
+        out.envs = json_str_array(meta.value("envs", nlohmann::json()));
         out.requires_packages = json_str_array(meta.value("requires_packages", nlohmann::json()));
     }
 
@@ -717,7 +717,7 @@ static bool load_graph_meta_edit_data(const std::string& graph_path,
         if (meta.contains("featured_rank") && meta["featured_rank"].is_number_integer())
             out.featured_rank = std::to_string(meta["featured_rank"].get<int>());
         out.tags_csv = join_csv(json_str_array(meta.value("tags", nlohmann::json())));
-        out.envs_csv = join_csv(json_str_array(meta.contains("envs") ? meta["envs"] : meta.value("domains", nlohmann::json())));
+        out.envs_csv = join_csv(json_str_array(meta.value("envs", nlohmann::json())));
         out.requires_packages_csv = join_csv(json_str_array(meta.value("requires_packages", nlohmann::json())));
     }
     return true;
@@ -2214,7 +2214,7 @@ int main(int argc, char* argv[]) {
     auto* scaffold_op_cmd = app.add_subcommand("scaffold-operator",
         "Scaffold a starter operator source file");
     scaffold_op_cmd->add_option("name", scaffold_op_name, "Operator name (snake_case)")->required();
-    scaffold_op_cmd->add_option("--env,--domain", scaffold_op_env,
+    scaffold_op_cmd->add_option("--env", scaffold_op_env,
                                 "Execution environment: control|audio|gpu")
         ->check(CLI::IsMember({"control", "audio", "gpu"}))
         ->default_val("control");
@@ -4199,7 +4199,7 @@ int main(int argc, char* argv[]) {
                     if (auto* cg = scheduler.compiled_graph()) {
                         auto& cn = cg->nodes[video_out_idx];
                         cn.param_values[launch_it->second] = 0.0f;
-                        cn.generation++;
+                        cn.dirty = true;
                     }
                 }
 
