@@ -152,7 +152,7 @@ static void test_lfo_per_sample() {
     lfo.fade_in.value      = 0.0f;
 
     // LFO has 2 SIGNAL inputs (gate, beat_phase) and 1 SIGNAL output (value)
-    // As AudioOperatorBase: inputs are float_inputs, output is output_buffers[0]
+    // As AudioProcessable: inputs are float_inputs, output is output_buffers[0]
     AudioTestContext atc(0, 1, 8, 2, 1);
     atc.param_values = {1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     atc.ctx.param_values = atc.param_values.data();

@@ -92,7 +92,7 @@ int main() {
         // Verify template content
         std::string src = read_file(cpp_path);
         check(src.find("struct MyOp") != std::string::npos, "struct name is MyOp (PascalCase)");
-        check(src.find("ControlOperatorBase") != std::string::npos, "inherits ControlOperatorBase");
+        check(src.find("vivid::OperatorBase, vivid::FrameProcessable") != std::string::npos, "inherits OperatorBase + FrameProcessable");
         check(src.find("VIVID_REGISTER(MyOp)") != std::string::npos, "VIVID_REGISTER present");
         check(src.find("semantic_tag(amount, \"probability_01\")") != std::string::npos,
               "control template includes semantic_tag example");
@@ -135,7 +135,7 @@ int main() {
 
         std::string src = read_file(cpp_path);
         check(src.find("struct MySynth") != std::string::npos, "struct name is MySynth");
-        check(src.find("AudioOperatorBase") != std::string::npos, "inherits AudioOperatorBase");
+        check(src.find("vivid::OperatorBase, vivid::AudioProcessable") != std::string::npos, "inherits OperatorBase + AudioProcessable");
         check(src.find("process_audio") != std::string::npos, "has process_audio method");
         check(src.find("semantic_tag(gain, \"amplitude_linear\")") != std::string::npos,
               "audio template includes semantic_tag example");
@@ -378,7 +378,7 @@ int main() {
 
         std::string src = read_file(result.cpp_path);
         check(src.find("struct BareCtrl") != std::string::npos, "struct BareCtrl");
-        check(src.find("ControlOperatorBase") != std::string::npos, "inherits ControlOperatorBase");
+        check(src.find("vivid::OperatorBase, vivid::FrameProcessable") != std::string::npos, "inherits OperatorBase + FrameProcessable");
         check(src.find("collect_ports") != std::string::npos, "has collect_ports");
         check(src.find("process") != std::string::npos, "has process");
         // Empty variant should NOT have Param declarations, but must have empty collect_params
@@ -403,7 +403,7 @@ int main() {
 
         std::string src = read_file(result.cpp_path);
         check(src.find("struct BareAudio") != std::string::npos, "struct BareAudio");
-        check(src.find("AudioOperatorBase") != std::string::npos, "inherits AudioOperatorBase");
+        check(src.find("vivid::OperatorBase, vivid::AudioProcessable") != std::string::npos, "inherits OperatorBase + AudioProcessable");
         check(src.find("process_audio") != std::string::npos, "has process_audio");
         check(src.find("Param<") == std::string::npos, "no Param declarations");
         check(src.find("collect_params") != std::string::npos, "has empty collect_params override");

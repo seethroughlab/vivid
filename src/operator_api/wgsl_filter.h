@@ -35,7 +35,7 @@ protected:
     }
 
 public:
-    // --- GpuOperatorBase overrides ------------------------------------------
+    // --- GpuProcessable overrides -------------------------------------------
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"input", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
