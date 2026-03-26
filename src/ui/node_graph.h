@@ -111,7 +111,7 @@ struct MouseState {
 struct NodeRect {
     std::string node_id;
     std::string type_name;
-    VividDomain domain = VIVID_DOMAIN_CONTROL;
+    VividExecutionEnv env = VIVID_ENV_FRAME;
     float x = 0, y = 0, w = 0, h = 0;
     float target_h = 0;  // animated height target (h lerps toward this)
     struct PortPos { std::string name; float x, y; bool is_param = false; };
@@ -417,7 +417,7 @@ private:
     void update_create_popup();
     void draw_create_popup(Renderer2D& tr);
     void submit_create_operator(bool empty_variant);
-    void reset_create_domain_defaults();
+    void reset_create_env_defaults();
 
     // --- Preset name popup ---
     void draw_preset_name_popup(Renderer2D& tr);
@@ -658,6 +658,10 @@ private:
     std::string edit_res_node_id_;
     bool edit_res_is_width_ = true;
 
+    // Cadence selector state
+    struct CadenceRect { float x, y, w, h; std::string node_id; };
+    std::vector<CadenceRect> cadence_rects_;
+
     // MIDI map mode state
     bool midi_map_mode_ = false;
     bool midi_map_waiting_ = false;          // clicked param, waiting for CC
@@ -853,7 +857,7 @@ private:
 
     // Create operator modal state
     bool create_popup_open_ = false;
-    int create_domain_sel_ = 0;           // 0=control, 1=audio, 2=gpu
+    int create_env_sel_ = 0;           // 0=control, 1=audio, 2=gpu
     std::string create_name_buf_;
     std::string create_error_;
     bool create_composite_ = false;        // variant checkbox, control-only
@@ -892,12 +896,12 @@ private:
     std::string example_browser_filter_;
     int example_browser_sel_ = 0;
     int example_browser_scroll_ = 0;
-    int example_browser_domain_ = 0;      // 0=All 1=GPU 2=Audio 3=Control 4=IO
+    int example_browser_env_ = 0;      // 0=All 1=GPU 2=Audio 3=Control 4=IO
     int example_browser_difficulty_ = 0;  // 0=All 1=Beginner 2=Intermediate 3=Advanced
     int example_browser_sort_ = 0;        // 0=Featured 1=Alphabetical
     bool example_browser_core_only_ = true;
     bool example_browser_package_only_ = false;
-    std::array<float, 5> example_domain_tab_widths_{};
+    std::array<float, 5> example_env_tab_widths_{};
     std::array<float, 4> example_diff_tab_widths_{};
     std::array<float, 2> example_sort_tab_widths_{};
     std::vector<ExampleEntry> example_entries_all_;

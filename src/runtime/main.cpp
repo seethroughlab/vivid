@@ -1165,6 +1165,11 @@ static vivid::ui::GraphSnapshot build_graph_snapshot(
         else sn.domain = VIVID_DOMAIN_CONTROL;
         sn.is_gpu = cn.is_gpu;
         sn.is_audio = (cn.active_cadence == vivid::Cadence::Audio);
+        sn.is_audio_capable = (cn.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE);
+        {
+            const auto* ndef = graph.find_node(cn.node_id);
+            sn.cadence_override = ndef ? ndef->cadence_override : 0;
+        }
         sn.is_gpu_sink = cn.is_gpu_sink;
         sn.is_generator = cn.texture_input_port_indices.empty() && !cn.is_gpu_sink;
         sn.input_port_indices = cn.input_port_indices;

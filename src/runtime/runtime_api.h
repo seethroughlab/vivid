@@ -46,6 +46,9 @@ public:
 
     // Set GPU texture resolution for a node (0 = inherit/default)
     CommandResult set_resolution(const std::string& node_id, uint32_t width, uint32_t height);
+
+    // Set per-node cadence override (0=auto, 1=frame, 2=audio)
+    CommandResult set_cadence_override(const std::string& node_id, uint8_t cadence);
     CommandResult get_param(const std::string& node_id, const std::string& param);
 
     // Per-parameter lock flags

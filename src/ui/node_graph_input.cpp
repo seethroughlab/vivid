@@ -872,15 +872,15 @@ void NodeGraphUI::on_key(int key, int action, int mods) {
                 create_popup_open_ = false;
                 break;
             case GLFW_KEY_LEFT:
-                if (create_domain_sel_ > 0) {
-                    create_domain_sel_--;
-                    reset_create_domain_defaults();
+                if (create_env_sel_ > 0) {
+                    create_env_sel_--;
+                    reset_create_env_defaults();
                 }
                 break;
             case GLFW_KEY_RIGHT:
-                if (create_domain_sel_ < 2) {
-                    create_domain_sel_++;
-                    reset_create_domain_defaults();
+                if (create_env_sel_ < 2) {
+                    create_env_sel_++;
+                    reset_create_env_defaults();
                 }
                 break;
             case GLFW_KEY_TAB:
@@ -1390,7 +1390,7 @@ void NodeGraphUI::update_save_confirm() {
 void NodeGraphUI::submit_create_operator(bool empty_variant) {
     VividCreateOperatorRequest req;
     req.name = create_name_buf_;
-    req.domain = static_cast<VividDomain>(create_domain_sel_);
+    req.env = static_cast<VividExecutionEnv>(create_env_sel_);
 
     if (empty_variant) {
         req.variant = "empty";
@@ -1408,15 +1408,15 @@ void NodeGraphUI::submit_create_operator(bool empty_variant) {
     // error is already populated by the sink
 }
 
-// Helper: reset defaults when domain changes
-void NodeGraphUI::reset_create_domain_defaults() {
+// Helper: reset defaults when env changes
+void NodeGraphUI::reset_create_env_defaults() {
     create_composite_ = false;
 }
 
 void NodeGraphUI::update_create_popup() {
     if (!create_popup_open_ || !mouse_.left_clicked) return;
 
-    bool show_composite = (create_domain_sel_ == 0);
+    bool show_composite = (create_env_sel_ == 0);
 
     auto layout = compute_create_operator_layout(win_w_, win_h_, show_composite);
 
@@ -1437,22 +1437,22 @@ void NodeGraphUI::update_create_popup() {
 
     // Domain buttons
     float btn_gap = 8.0f;
-    float total_btn_w = 3 * kCreateDomainBtnW + 2 * btn_gap;
+    float total_btn_w = 3 * kCreateEnvBtnW + 2 * btn_gap;
     float bx = layout.px + (layout.pw - total_btn_w) * 0.5f;
     for (int i = 0; i < 3; ++i) {
-        float btn_x = bx + i * (kCreateDomainBtnW + btn_gap);
-        if (mouse_.x >= btn_x && mouse_.x <= btn_x + kCreateDomainBtnW &&
-            mouse_.y >= cy && mouse_.y <= cy + kCreateDomainBtnH) {
-            if (create_domain_sel_ != i) {
-                create_domain_sel_ = i;
-                reset_create_domain_defaults();
+        float btn_x = bx + i * (kCreateEnvBtnW + btn_gap);
+        if (mouse_.x >= btn_x && mouse_.x <= btn_x + kCreateEnvBtnW &&
+            mouse_.y >= cy && mouse_.y <= cy + kCreateEnvBtnH) {
+            if (create_env_sel_ != i) {
+                create_env_sel_ = i;
+                reset_create_env_defaults();
             }
             mouse_.left_clicked = false;
             mouse_.left_released = false;
             return;
         }
     }
-    cy += kCreateDomainBtnH + 10.0f;
+    cy += kCreateEnvBtnH + 10.0f;
 
     // Composite checkbox
     if (show_composite) {
@@ -2479,6 +2479,19 @@ bool NodeGraphUI::handle_inspector_click() {
         return true;
     }
 
+    // Check cadence selector click — cycle through auto/frame/audio
+    int ci = hit_test_rect(cadence_rects_, mouse_.x, mouse_.y);
+    if (ci >= 0 && command_sink_) {
+        const auto& cr = cadence_rects_[ci];
+        const auto* ns = snap_.find_node(cr.node_id);
+        if (ns) {
+            // Cycle: auto(0) → frame(1) → audio(2) → auto(0)
+            uint8_t next = (ns->cadence_override + 1) % 3;
+            command_sink_->set_cadence_override(cr.node_id, next);
+        }
+        return true;
+    }
+
     // Check value text click-to-edit
     int vt = hit_test_rect(value_text_rects_, mouse_.x, mouse_.y);
     if (vt >= 0) {
@@ -2686,7 +2699,7 @@ void NodeGraphUI::handle_graph_click() {
                 const auto* ns = snap_.find_node(ar.node_id);
                 if (!ns) break;
                 bool has_ct = custom_thumb_nodes_.count(ar.node_id) > 0;
-                float body_h = domain_body_height(rect.domain, has_ct);
+                float body_h = env_body_height(rect.env, has_ct);
                 uint32_t n_inputs  = count_visible_input_ports(*ns);
                 uint32_t n_outputs = count_visible_output_ports(*ns);
                 uint32_t port_rows = std::max(n_inputs, n_outputs);

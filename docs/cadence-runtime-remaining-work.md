@@ -35,21 +35,10 @@ These operators cannot be made audio-capable mechanically. Their timing models a
 | `euclidean` | Same | Same |
 | `note_pattern` | Same | Same |
 | `pattern_seq` | Same | Same |
-| `phase_to_midi` | Same | Same |
 | `sequencer` | Same | Same |
 | `step_seq` | Same | Same |
 | `tracker` | Same | Same |
 
 **Reference implementation:** `state_machine` uses beat-phase wraps for all timing decisions, making it naturally cadence-agnostic. This is the target pattern.
 
-## UX
-
-### Cadence selection UI
-**Status:** Not started
-
-Audio-capable control operators currently default to audio cadence automatically (set by `GraphCompiler` based on descriptor). There is no user-facing control to choose frame vs audio cadence per node.
-
-The cadence report (section 3) recommends a hybrid model: explicit user selection with runtime validation/suggestion. Design needed for:
-- Per-node cadence selector in the node inspector
-- Visual indication of which cadence a node runs at
-- Mismatch warnings when a frame-rate source feeds an audio consumer expecting precision
+- [x] Cadence selection UI: per-node override in NodeDef, GraphCompiler reads it, inspector selector (auto/frame/audio cycle), MCP set_cadence_override command, cadence_capability exposed in inspect_graph

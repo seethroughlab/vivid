@@ -95,6 +95,10 @@ public:
         auto r = api_.set_resolution(node_id, w, h);
         if (r.ok) capture_undo_snapshot();
     }
+    void set_cadence_override(const std::string& node_id, uint8_t cadence) override {
+        auto r = api_.set_cadence_override(node_id, cadence);
+        if (r.ok) capture_undo_snapshot();
+    }
     void add_midi_mapping(const std::string& node_id, const std::string& param,
                           int cc, int channel, float range_min, float range_max) override {
         auto r = api_.add_midi_mapping(node_id, param, cc, channel, range_min, range_max);

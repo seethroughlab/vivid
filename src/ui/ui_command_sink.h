@@ -37,6 +37,7 @@ public:
                                       float to_min, float to_max, bool clamp) = 0;
     virtual void set_node_layout(const std::string& node_id, float x, float y) = 0;
     virtual void set_resolution(const std::string& node_id, uint32_t w, uint32_t h) = 0;
+    virtual void set_cadence_override(const std::string& node_id, uint8_t cadence) {}
     virtual void add_midi_mapping(const std::string& node_id, const std::string& param,
                                   int cc, int channel, float range_min, float range_max) = 0;
     virtual void remove_midi_mapping(const std::string& node_id, const std::string& param) = 0;

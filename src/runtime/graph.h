@@ -26,6 +26,9 @@ struct NodeDef {
     uint32_t tex_width  = 0;
     uint32_t tex_height = 0;
 
+    // Per-node cadence override: 0=auto (runtime decides), 1=frame, 2=audio
+    uint8_t cadence_override = 0;
+
     // Per-parameter lock flags (sparse — only non-zero entries stored)
     std::unordered_map<std::string, uint8_t> param_lock_flags;
 

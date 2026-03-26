@@ -336,6 +336,22 @@ CommandResult RuntimeAPI::set_resolution(const std::string& node_id, uint32_t wi
     return {true, oss.str()};
 }
 
+CommandResult RuntimeAPI::set_cadence_override(const std::string& node_id, uint8_t cadence) {
+    if (cadence > 2)
+        return {false, "cadence must be 0 (auto), 1 (frame), or 2 (audio)"};
+
+    NodeDef* ndef = graph_.find_node(node_id);
+    if (!ndef) return {false, "unknown node '" + node_id + "'"};
+    ndef->cadence_override = cadence;
+
+    // Trigger a full rebuild to apply the cadence change
+    pending_topology_change_ = true;
+    mark_graph_dirty();
+
+    static constexpr const char* kLabels[] = {"auto", "frame", "audio"};
+    return {true, node_id + " cadence = " + kLabels[cadence]};
+}
+
 // --- Buffered topology changes ---
 
 CommandResult RuntimeAPI::add_node(const std::string& type, const std::string& id) {

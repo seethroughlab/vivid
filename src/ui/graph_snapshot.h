@@ -67,6 +67,8 @@ struct NodeSnapshot {
 
     bool is_gpu = false;
     bool is_audio = false;
+    bool is_audio_capable = false;  // true if operator supports both frame and audio cadence
+    uint8_t cadence_override = 0;   // 0=auto, 1=frame, 2=audio (from NodeDef)
     bool is_gpu_sink = false;
     bool is_generator = false;  // GPU node with no texture inputs and not a sink
 

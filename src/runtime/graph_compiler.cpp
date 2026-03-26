@@ -362,9 +362,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         if (loader && desc) {
             cn.instance = loader->create_instance();
 
-            // Determine cadence from descriptor.
-            // Check execution_env first (new API), fall back to legacy domain field
-            // for built-in operators that use static descriptors without the new fields.
+            // Determine cadence from descriptor + per-node override.
+            // Fixed-domain operators (GPU, audio-native) ignore overrides.
             if (desc->execution_env == VIVID_ENV_GPU || desc->has_process_gpu ||
                 desc->domain == 2u /*GPU*/) {
                 cn.active_cadence = Cadence::Frame;
@@ -373,11 +372,15 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                        (desc->has_process_audio && !desc->has_process_frame) ||
                        desc->domain == 1u /*AUDIO*/) {
                 cn.active_cadence = Cadence::Audio;
+            } else if (ndef.cadence_override == 2 &&
+                       desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) {
+                // User explicitly selected audio cadence
+                cn.active_cadence = Cadence::Audio;
+            } else if (ndef.cadence_override == 1) {
+                // User explicitly selected frame cadence
+                cn.active_cadence = Cadence::Frame;
             } else if (desc->cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) {
-                // Audio-capable operators default to audio-cadence for backward
-                // compatibility. The cadence report's target model has them default
-                // to frame-rate, but switching that requires explicit cadence
-                // selection UI. For now, keep them in the audio world.
+                // Audio-capable operators default to audio cadence
                 cn.active_cadence = Cadence::Audio;
             } else {
                 cn.active_cadence = Cadence::Frame;

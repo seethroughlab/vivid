@@ -114,6 +114,13 @@ static bool parse_node_fields(const nlohmann::json& val, NodeDef& node) {
         }
     }
 
+    // cadence override
+    auto cadence_it = val.find("cadence");
+    if (cadence_it != val.end() && cadence_it->is_number_integer()) {
+        int c = cadence_it->get<int>();
+        if (c >= 0 && c <= 2) node.cadence_override = static_cast<uint8_t>(c);
+    }
+
     // locks
     auto locks_it = val.find("locks");
     if (locks_it != val.end() && locks_it->is_object()) {
@@ -1030,6 +1037,10 @@ static void serialize_node_fields(nlohmann::ordered_json& node_obj, const NodeDe
 
     if (node.tex_width > 0 && node.tex_height > 0) {
         node_obj["resolution"] = nlohmann::ordered_json::array({static_cast<int64_t>(node.tex_width), static_cast<int64_t>(node.tex_height)});
+    }
+
+    if (node.cadence_override != 0) {
+        node_obj["cadence"] = static_cast<int64_t>(node.cadence_override);
     }
 
     if (!node.param_lock_flags.empty()) {

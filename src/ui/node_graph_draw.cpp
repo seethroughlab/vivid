@@ -110,7 +110,7 @@ static InspectorCardBox draw_inspector_card(Renderer2D& tr, const UIStyle& style
     return InspectorCardBox{ x, y, w, h, x + inner_pad, w - inner_pad * 2.0f };
 }
 
-static float draw_inspector_domain_chip(Renderer2D& tr, float x, float y,
+static float draw_inspector_env_chip(Renderer2D& tr, float x, float y,
                                         const std::string& label,
                                         const float* color,
                                         float scale = 0.85f, float pad_x = 6.0f,
@@ -175,7 +175,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         bool node_errored = sn && sn->errored;
         bool node_missing = sn && sn->missing_operator;
         bool node_bad     = node_errored || node_missing || (sn && !sn->error_message.empty());
-        const float* dcol = node_bad ? kErrorAccent.data() : domain_color(r.domain);
+        const float* dcol = node_bad ? kErrorAccent.data() : env_color(r.env);
 
         // Transform graph-space rect to screen space
         float sx = gx_to_sx(r.x), sy = gy_to_sy(r.y);
@@ -234,7 +234,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         // --- Domain body region ---
         float s_body_y = sy + s_accent_h;
         bool has_ct = custom_thumb_nodes_.count(r.node_id) > 0;
-        float body_h = domain_body_height(r.domain, has_ct);
+        float body_h = env_body_height(r.env, has_ct);
         float s_body_h = g_to_s(body_h);
 
         if (node_missing) {
@@ -259,7 +259,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                 float sub_y = ly + tr.line_height() * zoom_ + g_to_s(2);
                 tr.draw_text(sub_x, sub_y, sub, kErrorAccent[0], kErrorAccent[1], kErrorAccent[2], 0.5f, sub_scale);
             }
-        } else if (r.domain == VIVID_DOMAIN_CONTROL && !has_ct) {
+        } else if (r.env == VIVID_ENV_FRAME && !has_ct) {
             // Sparkline
             tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
                          sw - g_to_s(4), s_body_h - g_to_s(4),
@@ -316,7 +316,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                     }
                 }
             }
-        } else if (r.domain == VIVID_DOMAIN_AUDIO && !has_ct) {
+        } else if (r.env == VIVID_ENV_AUDIO && !has_ct) {
             // Waveform
             tr.draw_rect(sx + g_to_s(2), s_body_y + g_to_s(2),
                          sw - g_to_s(4), s_body_h - g_to_s(4),
@@ -491,7 +491,7 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
         float sex = gx_to_sx(gex), sey = gy_to_sy(gey);
 
         // Domain-colored wires (source node's accent color)
-        const float* dcol = domain_color(from_rect.domain);
+        const float* dcol = env_color(from_rect.env);
         bool sel = selected_node_ids_.count(c.from_node) > 0 || selected_node_ids_.count(c.to_node) > 0;
         bool wire_sel = (ci == selected_wire_idx_);
         bool hov = (ci == hovered_wire_idx_) || wire_sel;
@@ -636,7 +636,7 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
     // Find domain color for accent from source node rect
     const float* dcol = nullptr;
     for (const auto& r : node_rects_) {
-        if (r.node_id == c.from_node) { dcol = domain_color(r.domain); break; }
+        if (r.node_id == c.from_node) { dcol = env_color(r.env); break; }
     }
 
     // Shadow + Background
@@ -726,6 +726,7 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     dropdown_rects_.clear();
     file_button_rects_.clear();
     resolution_rects_.clear();
+    cadence_rects_.clear();
     preset_dropdown_rects_.clear();
     preset_save_rects_.clear();
     midi_remove_rects_.clear();
@@ -867,8 +868,8 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
             float py = viewport_top + 8 - insp_scroll_y_;
 
             // Header: both node names with domain colors
-            const float* clr_a = domain_color(node_a->domain);
-            const float* clr_b = domain_color(node_b->domain);
+            const float* clr_a = env_color(node_a->env);
+            const float* clr_b = env_color(node_b->env);
             tr.draw_text(px, py, node_a->op_info->name.c_str(), clr_a[0], clr_a[1], clr_a[2]);
             float name_w = tr.text_width(node_a->op_info->name.c_str());
             tr.draw_text(px + name_w + 4, py, " + ", style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
@@ -968,11 +969,13 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     // --- Technical section ---
     {
         bool has_resolution = sel_node->is_gpu && sel_node->gpu_tex_width > 0;
+        bool has_cadence = sel_node->is_audio_capable;
         bool has_state_presets = sel_node->param_indices.count("states") > 0;
         bool has_outputs = !sel_node->output_port_indices.empty();
-        if (has_resolution || has_state_presets || has_outputs)
+        if (has_resolution || has_cadence || has_state_presets || has_outputs)
             draw_section_separator(tr, px, py, kInspContentW, "Technical");
         draw_inspector_resolution(tr, *sel_node, px, py);
+        draw_inspector_cadence(tr, *sel_node, px, py);
         draw_inspector_state_presets(tr, *sel_node, px, py);
         draw_inspector_outputs(tr, *sel_node, px, py);
     }
@@ -1541,7 +1544,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
 
     if (is_connected) {
         const auto* src_ns = snap_.find_node(conn.from_node);
-        const float* dot_clr = src_ns ? domain_color(src_ns->domain) : style_.accent.data();
+        const float* dot_clr = src_ns ? env_color(src_ns->env) : style_.accent.data();
         float dot_sz = 5.0f;
         float dot_x = px - dot_sz - 2.0f;
         float dot_y = py + (kLineH - dot_sz) * 0.5f;
@@ -1698,7 +1701,7 @@ void NodeGraphUI::draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& n
         float range = pd.max_value - pd.min_value;
         float t = (range > 0) ? (val - pd.min_value) / range : 0.5f;
         t = std::max(0.0f, std::min(1.0f, t));
-        const float* sc = domain_color(node.domain);
+        const float* sc = env_color(node.env);
         if (is_connected) {
             tr.draw_rect(px, py, panel_w * t, sh, sc[0], sc[1], sc[2], 0.3f);
             if (!conn.from_node.empty()) {
@@ -2221,6 +2224,27 @@ void NodeGraphUI::draw_inspector_resolution(Renderer2D& tr, const NodeSnapshot& 
     py += kLineH;
 }
 
+void NodeGraphUI::draw_inspector_cadence(Renderer2D& tr, const NodeSnapshot& node,
+                                         float px, float& py) {
+    if (!node.is_audio_capable) return;
+
+    tr.draw_text(px, py, T("cadence", "Cadence"), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+
+    // Determine current cadence display
+    const char* label;
+    if (node.cadence_override == 1) label = "Frame";
+    else if (node.cadence_override == 2) label = "Audio";
+    else label = node.is_audio ? "Audio (auto)" : "Frame (auto)";
+
+    float val_x = px + 4;
+    tr.draw_text(val_x + 80, py, label, 0.8f, 0.82f, 0.85f);
+
+    // Clickable area for cycling
+    cadence_rects_.push_back({val_x + 80, py, 100.0f, kLineH, node.node_id});
+
+    py += kLineH;
+}
+
 void NodeGraphUI::draw_inspector_state_presets(Renderer2D& tr, const NodeSnapshot& node,
                                                float px, float& py) {
     // Only show for StateMachine nodes (have a "states" param and state_preset_map data or are SM type)
@@ -2429,8 +2453,8 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
     auto right_ports = flatten(right_pl);
 
     // --- Column headers ---
-    const float* clr_a = domain_color(node_a.domain);
-    const float* clr_b = domain_color(node_b.domain);
+    const float* clr_a = env_color(node_a.env);
+    const float* clr_b = env_color(node_b.env);
 
     // Left header: node A name, left-aligned
     tr.draw_text(px, py, node_a.op_info->name.c_str(), clr_a[0], clr_a[1], clr_a[2]);
@@ -2847,7 +2871,7 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             const float* dcol = kControlAccent.data(); // default
             auto cat_it = snap_.operator_catalog.find(name);
             if (cat_it != snap_.operator_catalog.end()) {
-                dcol = domain_color(cat_it->second->domain);
+                dcol = env_color(cat_it->second->env);
             }
             float dot_x = px + 10;
             float dot_y = item_y + (kChooserItemH - 6) * 0.5f;
@@ -2856,9 +2880,9 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             // Domain tag
             const char* tag = "[C]";
             if (cat_it != snap_.operator_catalog.end()) {
-                switch (cat_it->second->domain) {
-                    case VIVID_DOMAIN_AUDIO:   tag = "[A]"; break;
-                    case VIVID_DOMAIN_GPU:     tag = "[G]"; break;
+                switch (cat_it->second->env) {
+                    case VIVID_ENV_AUDIO:   tag = "[A]"; break;
+                    case VIVID_ENV_GPU:     tag = "[G]"; break;
                     default:                   tag = "[C]"; break;
                 }
             }
@@ -3544,7 +3568,7 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     float wf = static_cast<float>(win_w_);
     float hf = static_cast<float>(win_h_);
     bool blink_on = (static_cast<int>(perf_frame_counter_ / 30) % 2 == 0);
-    bool show_composite = (create_domain_sel_ == 0);
+    bool show_composite = (create_env_sel_ == 0);
 
     auto layout = compute_create_operator_layout(win_w_, win_h_, show_composite);
 
@@ -3569,26 +3593,26 @@ void NodeGraphUI::draw_create_popup(Renderer2D& tr) {
     cy += 24.0f;
 
     // 2. Domain selector buttons
-    const char* domain_labels[] = { "control", "audio", "gpu" };
-    const std::array<float, 3>* domain_colors[] = { &kControlAccent, &kAudioAccent, &kGpuAccent };
+    const char* env_labels[] = { "control", "audio", "gpu" };
+    const std::array<float, 3>* env_colors[] = { &kControlAccent, &kAudioAccent, &kGpuAccent };
     float btn_gap = 8.0f;
-    float total_btn_w = 3 * kCreateDomainBtnW + 2 * btn_gap;
+    float total_btn_w = 3 * kCreateEnvBtnW + 2 * btn_gap;
     float bx = layout.px + (layout.pw - total_btn_w) * 0.5f;
 
     for (int i = 0; i < 3; ++i) {
-        float btn_x = bx + i * (kCreateDomainBtnW + btn_gap);
-        const auto& dc = *domain_colors[i];
-        if (i == create_domain_sel_) {
-            tr.draw_rect(btn_x, cy, kCreateDomainBtnW, kCreateDomainBtnH,
+        float btn_x = bx + i * (kCreateEnvBtnW + btn_gap);
+        const auto& dc = *env_colors[i];
+        if (i == create_env_sel_) {
+            tr.draw_rect(btn_x, cy, kCreateEnvBtnW, kCreateEnvBtnH,
                          dc[0], dc[1], dc[2], 0.9f);
-            tr.draw_text(btn_x + 8, cy + 3, domain_labels[i], 0.0f, 0.0f, 0.0f);
+            tr.draw_text(btn_x + 8, cy + 3, env_labels[i], 0.0f, 0.0f, 0.0f);
         } else {
-            tr.draw_rect(btn_x, cy, kCreateDomainBtnW, kCreateDomainBtnH,
+            tr.draw_rect(btn_x, cy, kCreateEnvBtnW, kCreateEnvBtnH,
                          style_.button_bg[0], style_.button_bg[1], style_.button_bg[2], 0.9f);
-            tr.draw_text(btn_x + 8, cy + 3, domain_labels[i], dc[0], dc[1], dc[2]);
+            tr.draw_text(btn_x + 8, cy + 3, env_labels[i], dc[0], dc[1], dc[2]);
         }
     }
-    cy += kCreateDomainBtnH + 10.0f;
+    cy += kCreateEnvBtnH + 10.0f;
 
     // 3. Composite checkbox (control domain only)
     if (show_composite) {
@@ -4798,7 +4822,7 @@ void NodeGraphUI::draw_thumbnails(ThumbnailRenderer& renderer, const ThumbnailCa
                                   uint32_t w, uint32_t h) {
     renderer.begin(encoder, surface, w, h);
     for (const auto& r : node_rects_) {
-        bool should_draw_thumb = (r.domain == VIVID_DOMAIN_GPU) ||
+        bool should_draw_thumb = (r.env == VIVID_ENV_GPU) ||
                                  (custom_thumb_nodes_.count(r.node_id) > 0);
         if (!should_draw_thumb) continue;
         WGPUTextureView thumb_view = cache.get_view(r.node_id);
