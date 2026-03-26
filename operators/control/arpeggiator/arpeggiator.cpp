@@ -88,7 +88,7 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         // Inputs
-        out.push_back({"beat_phase", VIVID_PORT_FLOAT,  VIVID_PORT_INPUT});   // [0]
+        out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});   // [0]
         out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // [1]
         out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // [2]
         out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_INPUT});   // [3]
@@ -96,10 +96,10 @@ struct Arpeggiator : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioP
         out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [0]
         out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [1]
         out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // [2]
-        out.push_back({"note",       VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // [0]
-        out.push_back({"vel",        VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // [1]
-        out.push_back({"gate",       VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // [2]
-        out.push_back({"step",       VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // [3]
+        out.push_back({"note",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [0]
+        out.push_back({"vel",        VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [1]
+        out.push_back({"gate",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [2]
+        out.push_back({"step",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // [3]
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 

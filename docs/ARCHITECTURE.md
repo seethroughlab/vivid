@@ -52,7 +52,7 @@ The type system serves three consumers: the graph runtime (bridge selection), th
 
 Six built-in port types reflect the runtime's routing mechanisms:
 
-- `VIVID_PORT_FLOAT` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
+- `VIVID_PORT_SIGNAL` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
 - `VIVID_PORT_AUDIO` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
 - `VIVID_PORT_SPREAD` — variable-length float array with broadcast semantics.
 - `VIVID_PORT_STRING` — UTF-8 string.
@@ -88,7 +88,7 @@ Each operator is a self-contained compilation unit — a shared library (`.dylib
 ```cpp
 #include "operator_api/operator.h"
 
-struct MyEffect : vivid::ControlOperatorBase {
+struct MyEffect : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "MyEffect";
     static constexpr bool kTimeDependent = false;
 
@@ -99,10 +99,10 @@ struct MyEffect : vivid::ControlOperatorBase {
         out = {&intensity, &mode};
     }
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out = {{"input",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
-               {"output", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT}};
+        out = {{"input",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
+               {"output", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT}};
     }
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         float in = ctx->input_values[0];
         ctx->output_values[0] = in * intensity.value;
     }
@@ -110,7 +110,7 @@ struct MyEffect : vivid::ControlOperatorBase {
 VIVID_REGISTER(MyEffect)
 ```
 
-Three domain-specific base classes exist: `vivid::ControlOperatorBase` (implements `process(const VividProcessContext*)`), `vivid::AudioOperatorBase` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuOperatorBase` (implements `process_gpu(const VividGpuContext*)`). The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It infers the operator's domain from its base class (falling back to port-type inference for `OperatorBase` subclasses), and emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION` (currently 9). The runtime checks this on `dlopen` to reject stale dylibs left over from a previous build — it is not a cross-version compatibility contract. Operators always compile against the current headers.
+Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (implements `process_frame(const VividFrameContext*)`), `vivid::AudioProcessable` (implements `process_audio(const VividAudioContext*)`), and `vivid::GpuProcessable` (implements `process_gpu(const VividGpuContext*)`). All operators inherit `vivid::OperatorBase` and one or more of these interfaces; dual-cadence operators inherit both `FrameProcessable` and `AudioProcessable`. The `VIVID_REGISTER` macro generates `extern "C"` entry points (`vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions). It infers the operator's domain from its mix-ins, and emits a `vivid_abi_version()` function returning `VIVID_OPERATOR_ABI_VERSION` (currently 9). The runtime checks this on `dlopen` to reject stale dylibs left over from a previous build — it is not a cross-version compatibility contract. Operators always compile against the current headers.
 
 For statically linked export builds (§5.16), the `extern "C"` boundary is unnecessary — everything links together as one C++ binary. The macro handles both cases.
 
@@ -144,16 +144,16 @@ Control operators can embed other operators as persistent member variables using
 #include "control/lfo/lfo.h"
 #include "control/smooth/smooth.h"
 
-struct MyOp : vivid::ControlOperatorBase {
+struct MyOp : vivid::OperatorBase, vivid::FrameProcessable {
     vivid::ChildOp<LFO>    lfo_;
     vivid::ChildOp<Smooth> smoother_;
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         lfo_.set_param("frequency", 2.0f);
-        lfo_.process(ctx);                       // inherits time/frame from parent
+        lfo_.process_frame(ctx);                 // inherits time/frame from parent
 
         smoother_.set_input("input", lfo_.output("value"));
-        smoother_.process(ctx);
+        smoother_.process_frame(ctx);
 
         float mod = smoother_.output("value");   // use in parent logic
     }
@@ -162,7 +162,7 @@ struct MyOp : vivid::ControlOperatorBase {
 
 **Key properties:**
 - Each `ChildOp<T>` owns its own param, input, and output arrays — fully isolated from the parent.
-- `process()` builds a child `VividProcessContext` inheriting `time`, `delta_time`, and `frame` from the parent context.
+- `process()` builds a child `VividFrameContext` inheriting `time`, `delta_time`, and `frame` from the parent context.
 - Children maintain persistent state across frames (e.g. LFO phase), just like top-level operators.
 - The parent's `collect_params` / `collect_ports` only expose the parent's params — child params are internal.
 
@@ -400,10 +400,10 @@ vivid/
 │   ├── operator_api/           # Public headers for operator contract
 │   │   ├── operator.h          # Base classes, Param<T>, VIVID_REGISTER macro
 │   │   ├── types.h             # C ABI: enums, descriptors, contexts
-│   │   ├── audio_operator.h    # AudioOperatorBase, VividAudioContext
-│   │   ├── gpu_operator.h      # GpuOperatorBase, VividGpuContext, VividGpuState
+│   │   ├── audio_operator.h    # AudioProcessable, VividAudioContext
+│   │   ├── gpu_operator.h      # GpuProcessable, VividGpuContext, VividGpuState
 │   │   ├── gpu_types.h         # VividGpuBuffer, VividMesh, VividComputeBuffer
-│   │   ├── child_op.h          # ChildOp<T> for control-domain composition
+│   │   ├── child_op.h          # ChildOp<T> for operator composition
 │   │   ├── wgsl_filter.h       # WgslFilterBase for data-driven GPU filters
 │   │   ├── data_driven_filter.h # DataDrivenFilter with dynamic param/port collection
 │   │   ├── audio_dsp.h         # WhiteNoise, PinkNoise, waveform(), detect_trigger()

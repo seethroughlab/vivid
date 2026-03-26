@@ -2,7 +2,7 @@
 
 ## Operator Directory Structure
 
-Each operator lives in its own directory under the appropriate domain:
+Each operator lives in its own directory under the appropriate execution environment:
 
 ```
 operators/
@@ -29,7 +29,7 @@ operators/
 
 ## CMakeLists.txt Pattern
 
-Each operator directory needs to be registered in its parent domain's `CMakeLists.txt`. The build system compiles each operator as a shared library (`.dylib`/`.so`/`.dll`).
+Each operator directory needs to be registered in its parent environment's `CMakeLists.txt`. The build system compiles each operator as a shared library (`.dylib`/`.so`/`.dll`).
 
 For seed operators (built into the core):
 ```cmake
@@ -50,7 +50,7 @@ For package operators, the package's `CMakeLists.txt` handles registration.
     {
       "name": "MyOperator",
       "source": "my_operator.cpp",
-      "domain": "control"
+      "env": "control"
     }
   ]
 }
@@ -77,7 +77,7 @@ Common intents: `input_gain`, `dc_offset`, `animation_rate`, `modulation_depth`
 
 ## When to Scaffold vs Start from an Example
 
-- **Scaffold** (`scaffold_operator`) when building something new that doesn't closely resemble any existing operator. The template gives you correct boilerplate (CMake registration, domain base class, VIVID_REGISTER) and a working starting point.
+- **Scaffold** (`scaffold_operator`) when building something new that doesn't closely resemble any existing operator. The template gives you correct boilerplate (CMake registration, capability interface, VIVID_REGISTER) and a working starting point.
 - **Clone an example** (`clone_and_edit` in the UI, or copy an operator's source manually) when an existing operator is close to what you need. This preserves working patterns (port declarations, DSP logic, shader structure) and lets you modify rather than build from scratch.
 - **Tip:** Use `search_example_operators(query)` in the opdev MCP server to find operators that match your goal before deciding.
 

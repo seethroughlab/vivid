@@ -2,15 +2,15 @@
 
 Control operators run on the main thread at frame rate (~60 Hz). They process scalar values, spreads, strings, and handles.
 
-## Base Class
+## Capability Interface
 
 ```cpp
-struct MyControlOp : vivid::ControlOperatorBase {
-    void process(const VividProcessContext* ctx) override;
+struct MyControlOp : vivid::OperatorBase, vivid::FrameProcessable {
+    void process_frame(const VividFrameContext* ctx) override;
 };
 ```
 
-## VividProcessContext Fields
+## VividFrameContext Fields
 
 ### Read-only Inputs
 | Field | Type | Description |
@@ -70,7 +70,7 @@ for (uint32_t i = 0; i < count; i++) {
 ```cpp
 #include "operator_api/operator.h"
 
-struct Multiply : vivid::ControlOperatorBase {
+struct Multiply : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "Multiply";
     static constexpr bool kTimeDependent = false;
 
@@ -81,11 +81,11 @@ struct Multiply : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"output", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"input",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"output", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->input_values[0] * factor.value;
     }
 };

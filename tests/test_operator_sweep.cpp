@@ -74,8 +74,7 @@ static uint32_t count_signal_ports(const VividOperatorDescriptor* desc,
     uint32_t n = 0;
     for (uint32_t i = 0; i < desc->port_count; i++) {
         if (desc->ports[i].direction == dir &&
-            (desc->ports[i].type == VIVID_PORT_SIGNAL ||
-             desc->ports[i].type == VIVID_PORT_FLOAT))
+            desc->ports[i].type == VIVID_PORT_SIGNAL)
             n++;
     }
     return n;
@@ -282,7 +281,7 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     std::vector<VividSpreadPort> in_spreads(n_spread_in, {nullptr, 0, 0});
     std::vector<VividSpreadPort> out_spreads(n_spread_out, {nullptr, 0, 0});
 
-    VividProcessContext ctx{};
+    VividFrameContext ctx{};
     ctx.time       = 0.0;
     ctx.delta_time = 0.016;
     ctx.frame      = 0;
@@ -493,7 +492,7 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             }
             std::vector<float> ins(ni, 0.0f), outs(no, 0.0f);
             std::vector<VividSpreadPort> si(nsi, {nullptr, 0, 0}), so(nso, {nullptr, 0, 0});
-            VividProcessContext ctx{};
+            VividFrameContext ctx{};
             ctx.time = 0.0; ctx.delta_time = 0.016; ctx.frame = 0;
             ctx.param_values   = params.empty() ? nullptr : params.data();
             ctx.input_values   = ins.empty()    ? nullptr : ins.data();

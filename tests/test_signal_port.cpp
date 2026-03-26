@@ -48,11 +48,6 @@ static void check_float(float actual, float expected, float tol, const char* msg
 static void test_port_type_compat() {
     std::fprintf(stderr, "\n--- Port type compatibility ---\n");
 
-    // Deprecated alias
-    check(VIVID_PORT_FLOAT == VIVID_PORT_SIGNAL, "VIVID_PORT_FLOAT == VIVID_PORT_SIGNAL");
-    check(VIVID_PORT_TRANSPORT_SCALAR == VIVID_PORT_TRANSPORT_SIGNAL,
-          "VIVID_PORT_TRANSPORT_SCALAR == VIVID_PORT_TRANSPORT_SIGNAL");
-
     // SIGNAL is a control type
     check(vivid_is_control_type(VIVID_PORT_SIGNAL), "SIGNAL is control type");
 

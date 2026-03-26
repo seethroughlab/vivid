@@ -572,29 +572,29 @@ struct DrumSequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::Audi
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase",   VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"reset",   VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"kick",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"snare",   VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"hat",     VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"oh",      VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"clap",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"tom",     VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"step",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"beat_phase",   VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"reset",   VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"kick",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"snare",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"hat",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"oh",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"clap",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"tom",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"step",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
         // Mod A outputs (ports 7..12 after 2 inputs)
-        out.push_back({"kick_mod_a",  VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"snare_mod_a", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"hat_mod_a",   VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"oh_mod_a",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"clap_mod_a",  VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"tom_mod_a",   VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"kick_mod_a",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"snare_mod_a", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"hat_mod_a",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"oh_mod_a",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"clap_mod_a",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"tom_mod_a",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
         // Mod B outputs (ports 13..18)
-        out.push_back({"kick_mod_b",  VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"snare_mod_b", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"hat_mod_b",   VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"oh_mod_b",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"clap_mod_b",  VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"tom_mod_b",   VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"kick_mod_b",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"snare_mod_b", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"hat_mod_b",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"oh_mod_b",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"clap_mod_b",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"tom_mod_b",   VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
         // Spread outputs for SP404 integration
         out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});
         out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});

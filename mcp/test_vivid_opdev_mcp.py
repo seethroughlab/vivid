@@ -75,7 +75,7 @@ class TestGetApiHeader:
     async def test_types_header(self):
         result = json.loads(await opdev.get_api_header("types.h"))
         assert result["ok"]
-        assert "VividProcessContext" in result["content"]
+        assert "VividFrameContext" in result["content"]
 
     @pytest.mark.anyio
     async def test_invalid_header(self):

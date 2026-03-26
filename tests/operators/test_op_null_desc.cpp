@@ -15,5 +15,5 @@ extern "C" void* vivid_create() {
 extern "C" void vivid_destroy(void*) {
 }
 
-extern "C" void vivid_process(void*, VividProcessContext*) {
+extern "C" void vivid_process(void*, VividFrameContext*) {
 }

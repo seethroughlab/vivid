@@ -99,7 +99,7 @@ thumbnail-specific rendering easy without creating a second rendering framework.
 Minimal pattern:
 
 ```cpp
-struct MyOp : vivid::ControlOperatorBase {
+struct MyOp : vivid::OperatorBase, vivid::FrameProcessable {
     WGPURenderPipeline pipeline_ = nullptr;
     WGPUBindGroup bind_group_ = nullptr;
     WGPUBindGroupLayout bind_layout_ = nullptr;

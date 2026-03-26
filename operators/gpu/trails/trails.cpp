@@ -294,7 +294,7 @@ struct Trails : vivid::OperatorBase, vivid::GpuProcessable {
         if (dt > 0.05f) dt = 0.05f;
 
         // ── Process owned LFO pools ─────────────────────────────────
-        VividProcessContext ctrl_ctx{};
+        VividFrameContext ctrl_ctx{};
         ctrl_ctx.time       = ctx->time;
         ctrl_ctx.delta_time = ctx->delta_time;
         ctrl_ctx.frame      = ctx->frame;

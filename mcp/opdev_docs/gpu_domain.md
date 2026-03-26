@@ -4,7 +4,7 @@ GPU operators run on the main thread at frame rate (~60 Hz), rendering via WebGP
 
 ## Two Approaches
 
-### 1. Full GPU Operator (GpuOperatorBase)
+### 1. Full GPU Operator (OperatorBase + GpuProcessable)
 
 Complete control over pipeline, shaders, and bind groups. Use `gpu_common.h` helpers.
 
@@ -13,7 +13,7 @@ Complete control over pipeline, shaders, and bind groups. Use `gpu_common.h` hel
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
 
-struct MyGpuOp : vivid::GpuOperatorBase {
+struct MyGpuOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "MyGpuOp";
     static constexpr bool kTimeDependent = true;
 

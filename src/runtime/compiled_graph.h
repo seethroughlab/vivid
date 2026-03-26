@@ -128,7 +128,7 @@ struct CompiledNode {
     std::vector<std::vector<std::string>> input_string_spreads;
     std::vector<std::vector<std::string>> output_string_spreads;
 
-    // Pre-allocated staging buffers for VividProcessContext / VividFrameContext.
+    // Pre-allocated staging buffers for VividFrameContext.
     std::vector<VividSpreadPort> c_in_spreads;
     std::vector<VividSpreadPort> c_out_spreads;
     std::vector<std::vector<float>> out_spread_buf;

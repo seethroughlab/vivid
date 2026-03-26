@@ -304,7 +304,7 @@ struct InstancedShapes : vivid::OperatorBase, vivid::GpuProcessable {
         u.softness      = softness.value;
 
         // Shared process context for all child LFO instances
-        VividProcessContext ctrl_ctx{};
+        VividFrameContext ctrl_ctx{};
         ctrl_ctx.time       = ctx->time;
         ctrl_ctx.delta_time = ctx->delta_time;
         ctrl_ctx.frame      = ctx->frame;
@@ -543,7 +543,7 @@ private:
         }
     }
 
-    void process_lfo_pool(LfoPool& pool, const VividProcessContext* ctx,
+    void process_lfo_pool(LfoPool& pool, const VividFrameContext* ctx,
                           int n, float amount, float* out_values) {
         if (pool.instances.empty()) {
             for (int i = 0; i < n; ++i) out_values[i] = 0.0f;

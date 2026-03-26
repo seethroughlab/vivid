@@ -159,14 +159,14 @@ struct Tracker : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProce
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_FLOAT,  VIVID_PORT_INPUT});   // in[0]
-        out.push_back({"reset",     VIVID_PORT_FLOAT,  VIVID_PORT_INPUT});    // in[1]
+        out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});   // in[0]
+        out.push_back({"reset",     VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});    // in[1]
         out.push_back({"notes",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // spread[0], port idx 0
         out.push_back({"velocities", VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // spread[1], port idx 1
         out.push_back({"gates",      VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});  // spread[2], port idx 2
-        out.push_back({"row",        VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // out[0]
-        out.push_back({"pattern",    VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // out[1]
-        out.push_back({"order",      VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});  // out[2]
+        out.push_back({"row",        VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out[0]
+        out.push_back({"pattern",    VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out[1]
+        out.push_back({"order",      VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});  // out[2]
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 

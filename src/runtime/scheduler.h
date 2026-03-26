@@ -66,7 +66,7 @@ struct NodeState {
     std::vector<std::vector<std::string>> output_string_spreads; // [port_idx] → string spread
     std::vector<std::vector<std::string>> input_string_spreads;  // [port_idx] → string spread
 
-    // Pre-allocated staging buffers for the VividProcessContext passed to operators each tick.
+    // Pre-allocated staging buffers for the VividFrameContext passed to operators each tick.
     // Sized to kMaxSpreadCapacity at build() time; operators write into these in-place.
     std::vector<VividSpreadPort> c_in_spreads;
     std::vector<VividSpreadPort> c_out_spreads;

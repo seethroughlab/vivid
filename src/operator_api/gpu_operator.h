@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 // VividGpuContext — typed context for GPU operators (main thread, ~60 Hz)
 //
-// Replaces the old VividGpuState + VividProcessContext pair.
+// Replaces the old VividGpuState + VividFrameContext pair.
 // Contains both common per-tick fields and GPU-specific resources.
 // ---------------------------------------------------------------------------
 
@@ -16,7 +16,7 @@ extern "C" {
 #endif
 
 struct VividGpuContext {
-    // ---- Common per-tick fields (same as VividProcessContext) ----------------
+    // ---- Common per-tick fields (same as VividFrameContext) ----------------
     double    time;
     double    delta_time;
     uint64_t  frame;

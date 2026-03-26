@@ -633,7 +633,7 @@ const std::vector<VividEmbeddedOpSlot>* OperatorRegistry::embedded_op_slots(
 
 void OperatorRegistry::register_builtin(const std::string& type_name,
                                         VividDescriptorFn desc_fn, VividCreateFn create_fn,
-                                        VividDestroyFn destroy_fn, VividProcessFn process_fn) {
+                                        VividDestroyFn destroy_fn, VividProcessFrameFn process_fn) {
     if (loaders_.count(type_name)) {
         std::fprintf(stderr, "[vivid] warning: re-registering operator type '%s'\n", type_name.c_str());
     }

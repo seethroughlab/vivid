@@ -9,7 +9,7 @@ It is move-only (non-copyable).
 
 ```cpp
 bool load(const char* path);                     // dlopen a .dylib/.so/.dll
-void init_builtin(VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFn);
+void init_builtin(VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFrameFn);
 void init_data_driven(shared_ptr<DataDrivenFilterConfig> config); // WGSL filter
 void unload();                                   // dlclose
 bool is_loaded() const;
@@ -50,7 +50,7 @@ extern "C" uint32_t vivid_abi_version() { return VIVID_OPERATOR_ABI_VERSION; }
 extern "C" VividDescriptorFn vivid_describe;
 extern "C" VividCreateFn     vivid_create;
 extern "C" VividDestroyFn    vivid_destroy;
-extern "C" VividProcessFn    vivid_process;       // control domain
+extern "C" VividProcessFrameFn    vivid_process;       // control domain
 // + optional: vivid_process_audio, vivid_process_gpu, vivid_draw_thumbnail,
 //             vivid_main_thread_update, vivid_draw_inspector, vivid_inspector_mode,
 //             vivid_file_drop_descriptor
@@ -59,7 +59,7 @@ extern "C" VividProcessFn    vivid_process;       // control domain
 ### Per-Domain Dispatch
 
 ```cpp
-void process(void* instance, VividProcessContext* ctx) const;      // control
+void process(void* instance, VividFrameContext* ctx) const;      // control
 void process_audio(void* instance, VividAudioContext* ctx) const;  // audio
 void process_gpu(void* instance, VividGpuContext* ctx) const;      // GPU
 ```

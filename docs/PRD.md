@@ -314,7 +314,7 @@ The type system serves three consumers: the graph runtime (bridge selection), th
 
 Seven canonical port types reflect the runtime's routing mechanisms:
 
-- `VIVID_PORT_FLOAT` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
+- `VIVID_PORT_SIGNAL` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
 - `VIVID_PORT_AUDIO` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
 - `VIVID_PORT_SPREAD` — variable-length float array with broadcast semantics.
 - `VIVID_PORT_STRING` — UTF-8 string.
@@ -333,7 +333,7 @@ Each operator is a self-contained compilation unit — a shared library with a k
 ```cpp
 #include "operator_api/operator.h"
 
-struct MyEffect : vivid::ControlOperatorBase {
+struct MyEffect : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "MyEffect";
     static constexpr bool kTimeDependent = false;
 
@@ -343,17 +343,17 @@ struct MyEffect : vivid::ControlOperatorBase {
         out = {&intensity};
     }
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out = {{"input",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT},
-               {"output", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT}};
+        out = {{"input",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT},
+               {"output", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT}};
     }
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->input_values[0] * intensity.value;
     }
 };
 VIVID_REGISTER(MyEffect)
 ```
 
-This contract is the most important API surface in the system. Three domain-specific base classes exist: `vivid::ControlOperatorBase` (`process()`), `vivid::AudioOperatorBase` (`process_audio()`), and `vivid::GpuOperatorBase` (`process_gpu()`). The `VIVID_REGISTER` macro generates `extern "C"` entry points and infers domain from the base class. Because the LLM generates most operators on demand rather than wiring together pre-built ones, every friction point in writing an operator — unclear types, boilerplate, implicit conventions — is a direct tax on the core workflow. The simpler this contract, the better everything downstream works: auto-generated UI knobs, confident LLM generation, fast compilation of small self-contained units, and reliable hot-reload.
+This contract is the most important API surface in the system. Three domain-specific mix-in interfaces exist: `vivid::FrameProcessable` (`process_frame()`), `vivid::AudioProcessable` (`process_audio()`), and `vivid::GpuProcessable` (`process_gpu()`). All operators inherit `vivid::OperatorBase` and one or more of these interfaces. The `VIVID_REGISTER` macro generates `extern "C"` entry points and infers domain from the mix-ins. Because the LLM generates most operators on demand rather than wiring together pre-built ones, every friction point in writing an operator — unclear types, boilerplate, implicit conventions — is a direct tax on the core workflow. The simpler this contract, the better everything downstream works: auto-generated UI knobs, confident LLM generation, fast compilation of small self-contained units, and reliable hot-reload.
 
 ### 5.8 Hot-Reload Behavior
 
@@ -372,7 +372,7 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **Broadcasting:** when two Spreads of different lengths connect to the same operator, the shorter one repeats (wraps) to match the longer. A Spread of 3 colors applied to a Spread of 512 particles cycles through the 3 colors.
 - **Cross-domain:** a Spread of Control values (e.g., 512 FFT bins) can connect directly to a GPU operator's parameter, producing 512 visual elements driven by audio. No explicit bridging required — the existing Control→GPU bridge handles the data; Spreads handle the cardinality.
 - **LLM-friendly:** describing Spread-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on Spreads.
-- **Port types:** `Spread<VIVID_PORT_FLOAT>`, `Spread<VIVID_PORT_TEXTURE>`, `Spread<VIVID_PORT_AUDIO>` are all valid. The Spread is orthogonal to the domain type system.
+- **Port types:** `Spread<VIVID_PORT_SIGNAL>`, `Spread<VIVID_PORT_TEXTURE>`, `Spread<VIVID_PORT_AUDIO>` are all valid. The Spread is orthogonal to the domain type system.
 
 ### 5.10 Simulation Zones: Frame-to-Frame State
 
@@ -707,7 +707,7 @@ How many semantic tags to define initially, and whether to formalize a standard 
 
 Whether GPU operators are primarily C++ host code dispatching compute shaders / WGSL, or C++ all the way down. Affects the operator API and what the build system compiles.
 
-> **Resolved:** GPU operators are C++ host code (`GpuOperatorBase::process_gpu()`) dispatching WGSL shaders via WebGPU. Additionally, a data-driven WGSL filter framework allows pure-WGSL filters with no C++ code (see ARCHITECTURE.md §5.18).
+> **Resolved:** GPU operators are C++ host code (`GpuProcessable::process_gpu()`) dispatching WGSL shaders via WebGPU. Additionally, a data-driven WGSL filter framework allows pure-WGSL filters with no C++ code (see ARCHITECTURE.md §5.18).
 
 **Graph Serialization Format**
 

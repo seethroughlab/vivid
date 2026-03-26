@@ -32,7 +32,7 @@ static VividOperatorDescriptor s_builtin_desc =
 static const VividOperatorDescriptor* builtin_descriptor() { return &s_builtin_desc; }
 static void* builtin_create() { return new int(42); }
 static void  builtin_destroy(void* p) { delete static_cast<int*>(p); }
-static void  builtin_process(void*, VividProcessContext*) {}
+static void  builtin_process(void*, VividFrameContext*) {}
 
 int main() {
     std::string build_dir = ".";
@@ -149,7 +149,7 @@ int main() {
         // Process: scale=5.0 → output = 5.0 * 2.0 = 10.0
         float params[] = {5.0f};
         float outputs[] = {0.0f};
-        VividProcessContext ctx{};
+        VividFrameContext ctx{};
         ctx.param_values = params;
         ctx.output_values = outputs;
         loader.process(instance, &ctx);
@@ -694,7 +694,7 @@ int main() {
         vivid::OperatorLoader loader;
         loader.init_data_driven(std::move(config));
 
-        VividProcessContext ctx{};
+        VividFrameContext ctx{};
         // Must not crash or dereference nullptr
         loader.process(nullptr, &ctx);
         check(true, "data-driven: process(nullptr, ctx) does not crash");

@@ -2,13 +2,13 @@
 
 Audio operators run on the audio thread, processing sample buffers at audio rate (default 256 samples at 48 kHz).
 
-## Base Class
+## Capability Interface
 
 ```cpp
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
 
-struct MyAudioOp : vivid::AudioOperatorBase {
+struct MyAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
     void process_audio(const VividAudioContext* ctx) override;
 };
 ```
@@ -27,7 +27,7 @@ struct MyAudioOp : vivid::AudioOperatorBase {
 | `sample_rate` | `uint32_t` | Sample rate (typically 48000) |
 | `input_channel_counts` | `const uint8_t*` | Per-port channel count (NULL = all mono) |
 | `output_channel_counts` | `const uint8_t*` | Per-port channel count (NULL = all mono) |
-| `input_spreads` | `VividSpreadPort*` | Cross-domain spread inputs from control |
+| `input_spreads` | `VividSpreadPort*` | Cross-cadence spread inputs from control |
 | `output_spreads` | `VividSpreadPort*` | Spread outputs |
 | `input_handles` | `void**` | Handle inputs |
 | `input_string_values` | `const char**` | String inputs |
@@ -68,7 +68,7 @@ void collect_ports(std::vector<VividPortDescriptor>& out) override {
 #include "operator_api/operator.h"
 #include "operator_api/audio_operator.h"
 
-struct Gain : vivid::AudioOperatorBase {
+struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "Gain";
     static constexpr bool kTimeDependent = true;
 

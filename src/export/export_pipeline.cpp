@@ -272,7 +272,7 @@ bool ExportPipeline::generate_static_registry() {
         out << "extern \"C\" const VividOperatorDescriptor* vivid_descriptor_" << op.target << "();\n";
         out << "extern \"C\" void* vivid_create_" << op.target << "();\n";
         out << "extern \"C\" void vivid_destroy_" << op.target << "(void*);\n";
-        out << "extern \"C\" void vivid_process_" << op.target << "(void*, const VividProcessContext*);\n";
+        out << "extern \"C\" void vivid_process_" << op.target << "(void*, const VividFrameContext*);\n";
     }
 
     out << "\nvoid register_static_operators(vivid::OperatorRegistry& registry) {\n";

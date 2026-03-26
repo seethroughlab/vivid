@@ -18,7 +18,7 @@ static constexpr float kTopMargin = 30.0f;
 static constexpr float kLineH = 18.0f;
 static constexpr float kNodePadY = 8.0f;
 
-// Domain body heights
+// Execution-environment body heights
 static constexpr float kAccentBarH = 3.0f;
 static constexpr float kGpuThumbH = 88.0f;     // 140 * 10/16 ~ 87.5
 static constexpr float kAudioWaveH = 56.0f;
@@ -36,7 +36,7 @@ static constexpr std::array<float, 3> kSliderTrack  = { 0.18f, 0.19f, 0.22f };
 static constexpr std::array<float, 3> kSliderFill   = { 0.25f, 0.42f, 0.68f };
 static constexpr std::array<float, 3> kDarkBg       = { 0.07f, 0.08f, 0.09f };
 
-// Domain accent colors
+// Execution-environment accent colors
 static constexpr std::array<float, 3> kGpuAccent     = { 0.306f, 0.804f, 0.769f };     // #4ECDC4 cyan
 static constexpr std::array<float, 3> kAudioAccent   = { 0.941f, 0.627f, 0.188f };     // #F0A030 amber
 static constexpr std::array<float, 3> kControlAccent = { 0.753f, 0.784f, 0.816f };     // #C0C8D0 gray

@@ -57,14 +57,14 @@ struct Sequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_FLOAT,  VIVID_PORT_INPUT});
-        out.push_back({"reset",     VIVID_PORT_FLOAT,  VIVID_PORT_INPUT});
+        out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});
+        out.push_back({"reset",     VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});
         out.push_back({"values",    VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
         out.push_back({"probs",     VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
         out.push_back({"ratchets",  VIVID_PORT_SPREAD, VIVID_PORT_INPUT});
-        out.push_back({"value",     VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});
-        out.push_back({"step",      VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});
-        out.push_back({"trigger",   VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});
+        out.push_back({"value",     VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
+        out.push_back({"step",      VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
+        out.push_back({"trigger",   VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 

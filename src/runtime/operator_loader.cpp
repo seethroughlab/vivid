@@ -211,7 +211,7 @@ bool OperatorLoader::load(const char* path) {
     auto new_destroy_fn = reinterpret_cast<VividDestroyFn>(dlsym(new_handle, "vivid_destroy"));
 
     // Per-environment process entry points
-    auto new_process_fn       = reinterpret_cast<VividProcessFn>(dlsym(new_handle, "vivid_process"));
+    auto new_process_fn       = reinterpret_cast<VividProcessFrameFn>(dlsym(new_handle, "vivid_process"));
     auto new_process_audio_fn = reinterpret_cast<VividProcessAudioFn>(dlsym(new_handle, "vivid_process_audio"));
     auto new_process_gpu_fn   = reinterpret_cast<VividProcessGpuFn>(dlsym(new_handle, "vivid_process_gpu"));
 
@@ -320,7 +320,7 @@ bool OperatorLoader::load(const char* path) {
 }
 
 void OperatorLoader::init_builtin(VividDescriptorFn desc, VividCreateFn create,
-                                   VividDestroyFn destroy, VividProcessFn process) {
+                                   VividDestroyFn destroy, VividProcessFrameFn process) {
     unload();
     desc_fn_    = desc;
     create_fn_  = create;
@@ -485,7 +485,7 @@ void OperatorLoader::destroy_instance(void* instance) const {
     }
 }
 
-void OperatorLoader::process(void* instance, VividProcessContext* ctx) const {
+void OperatorLoader::process(void* instance, VividFrameContext* ctx) const {
     if (process_fn_ && instance) {
         process_fn_(instance, ctx);
     }

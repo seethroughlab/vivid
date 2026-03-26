@@ -306,7 +306,7 @@ struct CellularAutomata : vivid::OperatorBase, vivid::GpuProcessable {
         }
 
         // ── Process owned LFOs ──────────────────────────────────────
-        VividProcessContext ctrl_ctx{};
+        VividFrameContext ctrl_ctx{};
         ctrl_ctx.time       = ctx->time;
         ctrl_ctx.delta_time = ctx->delta_time;
         ctrl_ctx.frame      = ctx->frame;

@@ -80,7 +80,7 @@ public:
     bool scan_wgsl_presets(const std::string& directory);  // self-describing .wgsl filters
     bool load_for_graph(const Graph& graph);         // load only operators the graph uses
     void register_builtin(const std::string& type_name,
-                          VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFn);
+                          VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFrameFn);
     void register_alias(const std::string& alias_name, const std::string& canonical_type_name);
     // Find operator by type name. May lazy-load from deferred plugins.
     // Use find_loaded() for a lookup that never triggers loading.

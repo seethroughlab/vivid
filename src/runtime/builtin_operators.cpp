@@ -38,7 +38,7 @@ static const VividOperatorDescriptor audio_out_desc = {
 static const VividOperatorDescriptor* audio_out_descriptor() { return &audio_out_desc; }
 static void* audio_out_create()  { return new char; }    // trivial instance (non-null)
 static void  audio_out_destroy(void* p) { delete static_cast<char*>(p); }
-static void  audio_out_process(void*, VividProcessContext*) { /* no-op */ }
+static void  audio_out_process(void*, VividFrameContext*) { /* no-op */ }
 
 // ============================================================================
 // video_out — explicit video sink node (texture input + fit mode)
@@ -78,7 +78,7 @@ static const VividOperatorDescriptor video_out_desc = {
 static const VividOperatorDescriptor* video_out_descriptor() { return &video_out_desc; }
 static void* video_out_create()  { return new char; }
 static void  video_out_destroy(void* p) { delete static_cast<char*>(p); }
-static void  video_out_process(void*, VividProcessContext*) { /* no-op */ }
+static void  video_out_process(void*, VividFrameContext*) { /* no-op */ }
 
 // ============================================================================
 // Registration

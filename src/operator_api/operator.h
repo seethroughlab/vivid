@@ -425,7 +425,7 @@ extern "C" void vivid_destroy(void* instance) {                               \
                                                                               \
 template<typename _Op>                                                        \
 static void _vivid_dispatch_control(void* instance,                            \
-                                     VividProcessContext* ctx) {                \
+                                     VividFrameContext* ctx) {                \
     /* Dispatch to process_frame (new interface) or process (legacy). */       \
     if constexpr (std::is_base_of_v<vivid::FrameProcessable, _Op>) {          \
         auto* inst = static_cast<_VividInstance*>(instance);                   \
@@ -455,7 +455,7 @@ static void _vivid_dispatch_gpu(void* instance, _Ctx* ctx) {                   \
 }                                                                             \
                                                                               \
 extern "C" void vivid_process(void* instance,                                 \
-                              VividProcessContext* ctx) {                      \
+                              VividFrameContext* ctx) {                      \
     _vivid_dispatch_control<ClassName>(instance, ctx);                         \
 }                                                                             \
                                                                               \

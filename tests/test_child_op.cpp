@@ -26,8 +26,8 @@ static void check_float(float actual, float expected, float tol, const char* msg
 }
 
 // Helper to build a minimal parent context
-static VividProcessContext make_ctx(double time, double dt, uint64_t frame) {
-    VividProcessContext ctx{};
+static VividFrameContext make_ctx(double time, double dt, uint64_t frame) {
+    VividFrameContext ctx{};
     ctx.time       = time;
     ctx.delta_time = dt;
     ctx.frame      = frame;

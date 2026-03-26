@@ -40,10 +40,10 @@ struct Euclidean : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioPro
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_FLOAT,  VIVID_PORT_INPUT});   // in[0]
-        out.push_back({"trigger",    VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});   // out[0]
-        out.push_back({"gate",       VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});   // out[1]
-        out.push_back({"step",       VIVID_PORT_FLOAT,  VIVID_PORT_OUTPUT});   // out[2]
+        out.push_back({"beat_phase", VIVID_PORT_SIGNAL,  VIVID_PORT_INPUT});   // in[0]
+        out.push_back({"trigger",    VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[0]
+        out.push_back({"gate",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[1]
+        out.push_back({"step",       VIVID_PORT_SIGNAL,  VIVID_PORT_OUTPUT});   // out[2]
         out.push_back({"pattern",    VIVID_PORT_SPREAD, VIVID_PORT_OUTPUT});   // spread[0]
     }
 

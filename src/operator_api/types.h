@@ -45,7 +45,6 @@ typedef uint32_t VividDisplayHint;
 typedef uint32_t VividPortType;
 
 #define VIVID_PORT_SIGNAL         0u  // continuous numeric value (scalar or buffer depending on execution environment)
-#define VIVID_PORT_FLOAT          VIVID_PORT_SIGNAL  // deprecated alias
 #define VIVID_PORT_AUDIO          1u  // audio sample buffer
 #define VIVID_PORT_SPREAD         2u  // variable-length float array
 #define VIVID_PORT_STRING         3u  // UTF-8 string
@@ -58,7 +57,6 @@ typedef uint32_t VividPortDirection;
 
 typedef uint32_t VividPortTransport;
 #define VIVID_PORT_TRANSPORT_SIGNAL         0u  // numeric value (scalar or buffer depending on execution environment)
-#define VIVID_PORT_TRANSPORT_SCALAR         VIVID_PORT_TRANSPORT_SIGNAL  // deprecated alias
 #define VIVID_PORT_TRANSPORT_AUDIO_BUFFER   1u  // audio sample buffers
 #define VIVID_PORT_TRANSPORT_SPREAD         2u  // float spread copy
 #define VIVID_PORT_TRANSPORT_STRING         3u  // string copy
@@ -270,9 +268,6 @@ typedef struct VividFrameContext {
 
 } VividFrameContext;
 
-// Deprecated alias — use VividFrameContext in new code.
-typedef VividFrameContext VividProcessContext;
-
 // Forward declaration — full definition in gpu_operator.h (requires WebGPU types)
 struct VividGpuContext;
 
@@ -284,8 +279,7 @@ typedef const VividOperatorDescriptor* (*VividDescriptorFn)(void);
 typedef uint32_t (*VividAbiVersionFn)(void);
 typedef void*  (*VividCreateFn)(void);
 typedef void   (*VividDestroyFn)(void* instance);
-typedef void   (*VividProcessFn)(void* instance, VividProcessContext* ctx);
-typedef void   (*VividProcessFrameFn)(void* instance, VividFrameContext* ctx);  // canonical name
+typedef void   (*VividProcessFrameFn)(void* instance, VividFrameContext* ctx);
 typedef void   (*VividProcessAudioFn)(void* instance, VividAudioContext* ctx);
 typedef void   (*VividProcessGpuFn)(void* instance, struct VividGpuContext* ctx);
 

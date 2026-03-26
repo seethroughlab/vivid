@@ -5,15 +5,15 @@
 Every operator must:
 1. Define `static constexpr const char* kName` — the type name shown in the graph
 2. Define `static constexpr bool kTimeDependent` — set `true` if the operator reads `ctx->time`
-3. Inherit from one domain base class: `ControlOperatorBase`, `AudioOperatorBase`, or `GpuOperatorBase`
+3. Inherit from `vivid::OperatorBase` and implement one or more capability interfaces: `vivid::FrameProcessable`, `vivid::AudioProcessable`, or `vivid::GpuProcessable`
 4. Override `collect_params()` and `collect_ports()` to declare params and ports
-5. Override the domain-specific process method
+5. Override the capability-specific process method
 6. End the `.cpp` file with `VIVID_REGISTER(ClassName)`
 
 ```cpp
 #include "operator_api/operator.h"
 
-struct MyOp : vivid::ControlOperatorBase {
+struct MyOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "MyOp";
     static constexpr bool kTimeDependent = false;
 
@@ -24,11 +24,11 @@ struct MyOp : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"output", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"input",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"output", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->input_values[0] * amount.value;
     }
 };
@@ -55,7 +55,7 @@ Params are declared as member variables. The runtime syncs `ctx->param_values` i
 
 | Constant | Wire Type | Usage |
 |----------|-----------|-------|
-| `VIVID_PORT_FLOAT` | `control_float` | Scalar control signals |
+| `VIVID_PORT_SIGNAL` | `control_float` | Scalar control signals |
 | `VIVID_PORT_AUDIO` | `audio_float` | Audio sample buffers |
 | `VIVID_PORT_TEXTURE` | `gpu_texture` | GPU textures |
 | `VIVID_PORT_SPREAD` | spread | Variable-length float arrays |
@@ -128,13 +128,17 @@ vivid::param_group(param, "Envelope");                 // collapsible group
 vivid::layout_row(param, 2, 0);                        // 2 columns, this is column 0
 ```
 
-## Base Classes
+## Capability Interfaces
 
-| Base Class | Process Method | Domain |
-|-----------|---------------|--------|
-| `ControlOperatorBase` | `process(const VividProcessContext* ctx)` | Control (main thread, ~60 Hz) |
-| `AudioOperatorBase` | `process_audio(const VividAudioContext* ctx)` | Audio (audio thread, per-buffer) |
-| `GpuOperatorBase` | `process_gpu(const VividGpuContext* ctx)` | GPU (main thread, ~60 Hz) |
+All operators inherit from `vivid::OperatorBase` and implement one or more capability interfaces. `VIVID_REGISTER` auto-detects capabilities via `std::is_base_of`.
+
+| Capability Interface | Process Method | Execution Environment |
+|---------------------|---------------|----------------------|
+| `vivid::FrameProcessable` | `process_frame(const VividFrameContext* ctx)` | Control (main thread, ~60 Hz) |
+| `vivid::AudioProcessable` | `process_audio(const VividAudioContext* ctx)` | Audio (audio thread, per-buffer) |
+| `vivid::GpuProcessable` | `process_gpu(const VividGpuContext* ctx)` | GPU (main thread, ~60 Hz) |
+
+An operator implementing both `FrameProcessable` and `AudioProcessable` is "dual-cadence" (audio-capable) and receives callbacks at both frame rate and audio rate.
 
 ## ABI Version
 

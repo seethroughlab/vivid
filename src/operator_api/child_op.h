@@ -122,7 +122,7 @@ public:
 
     // -- Process ------------------------------------------------------------
 
-    void process(const VividProcessContext* parent_ctx) {
+    void process(const VividFrameContext* parent_ctx) {
         sync_params_();
         sync_spreads_();
 
@@ -165,8 +165,8 @@ public:
                 output_values_[i] = audio_out_bufs_[i][0];
             }
         } else {
-            // Control child op: standard VividProcessContext dispatch
-            VividProcessContext child_ctx{};
+            // Control child op: standard VividFrameContext dispatch
+            VividFrameContext child_ctx{};
             child_ctx.time         = parent_ctx->time;
             child_ctx.delta_time   = parent_ctx->delta_time;
             child_ctx.frame        = parent_ctx->frame;
@@ -235,7 +235,7 @@ public:
                 output_values_[i] = audio_out_bufs_[i][0];
         } else if constexpr (std::is_base_of_v<FrameProcessable, T>) {
             // Child is frame-only: build a frame context from audio data
-            VividProcessContext child_ctx{};
+            VividFrameContext child_ctx{};
             child_ctx.time         = parent_ctx->time;
             child_ctx.delta_time   = parent_ctx->delta_time;
             child_ctx.frame        = parent_ctx->frame;

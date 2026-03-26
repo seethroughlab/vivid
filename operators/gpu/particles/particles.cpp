@@ -196,8 +196,8 @@ struct Particles : vivid::OperatorBase, vivid::GpuProcessable {
         }
 
         // ── Update particles + process envelopes ────────────────────────
-        // Build a synthetic VividProcessContext for envelope processing
-        VividProcessContext env_ctx{};
+        // Build a synthetic VividFrameContext for envelope processing
+        VividFrameContext env_ctx{};
         env_ctx.time       = ctx->time;
         env_ctx.delta_time = ctx->delta_time;
         env_ctx.frame      = ctx->frame;

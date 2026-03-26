@@ -26,7 +26,7 @@ public:
     OperatorLoader& operator=(OperatorLoader&& other) noexcept;
 
     bool load(const char* path);
-    void init_builtin(VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFn);
+    void init_builtin(VividDescriptorFn, VividCreateFn, VividDestroyFn, VividProcessFrameFn);
     void init_data_driven(std::shared_ptr<DataDrivenFilterConfig> config);
     void unload();
 
@@ -35,7 +35,7 @@ public:
     void  destroy_instance(void* instance) const;
 
     // Per-environment dispatch
-    void  process(void* instance, VividProcessContext* ctx) const;
+    void  process(void* instance, VividFrameContext* ctx) const;
     void  process_audio(void* instance, VividAudioContext* ctx) const;
     void  process_gpu(void* instance, VividGpuContext* ctx) const;
 
@@ -65,7 +65,7 @@ private:
     VividDescriptorFn      desc_fn_            = nullptr;
     VividCreateFn          create_fn_          = nullptr;
     VividDestroyFn         destroy_fn_         = nullptr;
-    VividProcessFn         process_fn_         = nullptr;
+    VividProcessFrameFn         process_fn_         = nullptr;
     VividProcessAudioFn    process_audio_fn_   = nullptr;
     VividProcessGpuFn      process_gpu_fn_     = nullptr;
     VividDrawThumbnailFn    draw_thumb_fn_     = nullptr;

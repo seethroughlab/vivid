@@ -88,7 +88,7 @@ public:
 
     // -- Process ------------------------------------------------------------
 
-    void process(const VividProcessContext* parent_ctx) {
+    void process(const VividFrameContext* parent_ctx) {
         // Sync param_values_ into operator's Param<T>.value fields
         for (size_t i = 0; i < param_ptrs_.size(); ++i) {
             if (param_ptrs_[i]->type != VIVID_PARAM_FILE &&
@@ -145,7 +145,7 @@ public:
             for (size_t i = 0; i < output_values_.size(); ++i)
                 output_values_[i] = audio_out_bufs_[i][0];
         } else {
-            VividProcessContext child_ctx{};
+            VividFrameContext child_ctx{};
             child_ctx.time         = parent_ctx->time;
             child_ctx.delta_time   = parent_ctx->delta_time;
             child_ctx.frame        = parent_ctx->frame;

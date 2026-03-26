@@ -265,7 +265,7 @@ struct ReactionDiffusion : vivid::OperatorBase, vivid::GpuProcessable {
         // map to LFO waveform indices       {0,    3,        1,   2}.
         static constexpr int kWaveformMap[] = {0, 3, 1, 2};
 
-        VividProcessContext ctrl_ctx{};
+        VividFrameContext ctrl_ctx{};
         ctrl_ctx.time       = ctx->time;
         ctrl_ctx.delta_time = ctx->delta_time;
         ctrl_ctx.frame      = ctx->frame;

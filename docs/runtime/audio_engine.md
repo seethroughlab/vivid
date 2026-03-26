@@ -22,7 +22,7 @@ static constexpr uint32_t kSampleRate = 48000;
 Per-operator audio state. Notable fields:
 - `input_buffers` / `output_buffers`: `[port][sample]` float arrays, pre-allocated
 - `in_ptrs` / `out_ptrs`: `float*` arrays passed to `VividAudioContext`
-- `float_input_values` / `float_input_count`: VIVID_PORT_FLOAT input ports (cross-domain CV)
+- `float_input_values` / `float_input_count`: VIVID_PORT_SIGNAL input ports (cross-domain CV)
 - `float_output_values` / `float_output_count`: audio-domain `VIVID_PORT_SIGNAL` scalar outputs (audio → control)
 - `spread_inputs` / `spread_outputs`: `SpreadSnapshot[input_port_idx]`
 - `custom_input_values` / `custom_output_ptrs`: custom-type port values

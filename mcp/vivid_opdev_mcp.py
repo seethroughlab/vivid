@@ -56,7 +56,7 @@ Start with the discovery tools before scaffolding:
 ## API Documentation Topics
 
 - `"core"` — Param<T>, OperatorBase, VIVID_REGISTER, collect_params/ports, semantic metadata
-- `"control"` — VividProcessContext, float/spread/string/handle ports, frame-rate processing
+- `"control"` — VividFrameContext, float/spread/string/handle ports, frame-rate processing
 - `"audio"` — VividAudioContext, planar buffers, sample rate, channel counts, thread safety
 - `"gpu"` — VividGpuContext, WgslFilterBase, gpu_common helpers, WGSL patterns, hot-reload
 - `"dsp"` — Oscillators, waveforms, noise generators, SVF filter, decay envelope, ADSR
@@ -69,13 +69,13 @@ Start with the discovery tools before scaffolding:
 - **collect_params/collect_ports**: Override to declare your operator's interface.
 - **VIVID_REGISTER(ClassName)**: Macro at end of .cpp generates all extern "C" entry points.
 - **WgslFilterBase**: For GPU filters, write only the fragment shader in a .wgsl file — the base class handles everything else (vertex shader, uniforms, pipeline, hot-reload).
-- **ChildOp<T>**: Embed operators as members for internal modulation (control env only).
+- **ChildOp<T>**: Embed operators as members for internal modulation (frame-cadence only).
 
 ## Three Envs
 
-- **Control** (ControlOperatorBase) — main thread, ~60 Hz, scalar/spread/string/handle ports
-- **Audio** (AudioOperatorBase) — audio thread, per-buffer, planar float buffers
-- **GPU** (GpuOperatorBase) — main thread, ~60 Hz, WebGPU textures
+- **Control** (OperatorBase + FrameProcessable) — main thread, ~60 Hz, scalar/spread/string/handle ports
+- **Audio** (OperatorBase + AudioProcessable) — audio thread, per-buffer, planar float buffers
+- **GPU** (OperatorBase + GpuProcessable) — main thread, ~60 Hz, WebGPU textures
 """)
 
 
@@ -160,7 +160,7 @@ CAPABILITY_GUIDANCE = {
         ),
     },
     "child_op": {
-        "explanation": "ChildOp<T> lets you embed another operator as a member variable for internal modulation. Control env only. The child inherits time/frame from the parent.",
+        "explanation": "ChildOp<T> lets you embed another operator as a member variable for internal modulation. Frame-cadence only. The child inherits time/frame from the parent.",
         "doc_topic": "advanced",
         "example_operators": [
             {"env": "control", "name": "modulated_gain"},
@@ -169,7 +169,7 @@ CAPABILITY_GUIDANCE = {
             '#include "operator_api/child_op.h"\n'
             '#include "control/lfo/lfo.h"\n\n'
             'vivid::ChildOp<LFO> lfo;\n\n'
-            'void process(const VividProcessContext* ctx) override {\n'
+            'void process_frame(const VividFrameContext* ctx) override {\n'
             '    lfo.set_param("frequency", 2.0f);\n'
             '    lfo.process(ctx);\n'
             '    float mod = lfo.output("value");\n'
@@ -199,7 +199,7 @@ CAPABILITY_GUIDANCE = {
         ],
         "code_snippet": (
             '#include "operator_api/input_state.h"\n\n'
-            'void process(const VividProcessContext* ctx) override {\n'
+            'void process_frame(const VividFrameContext* ctx) override {\n'
             '    const VividInputState* input = vivid_input(ctx);\n'
             '    if (!input) return;\n'
             '    float mx = input->mouse_x;\n'
@@ -208,7 +208,7 @@ CAPABILITY_GUIDANCE = {
         ),
     },
     "media_stream": {
-        "explanation": "MediaStreamV1 carries playback state (time, duration, speed, loop) across envs. Used by movie operators to synchronize audio and video.",
+        "explanation": "MediaStreamV1 carries playback state (time, duration, speed, loop) across cadences. Used by movie operators to synchronize audio and video.",
         "doc_topic": "advanced",
         "example_operators": [
             {"env": "shared", "name": "media_session"},

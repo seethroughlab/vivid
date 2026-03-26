@@ -2,13 +2,13 @@
 
 ## ChildOp\<T\> — Composite Operators
 
-Embed an operator as a persistent member variable inside another operator. Control domain only.
+Embed an operator as a persistent member variable inside another operator. Frame-cadence only.
 
 ```cpp
 #include "operator_api/child_op.h"
 #include "control/lfo/lfo.h"
 
-struct ModulatedGain : vivid::ControlOperatorBase {
+struct ModulatedGain : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "ModulatedGain";
     static constexpr bool kTimeDependent = true;
 
@@ -20,11 +20,11 @@ struct ModulatedGain : vivid::ControlOperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"output", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"input",  VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"output", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
-    void process(const VividProcessContext* ctx) override {
+    void process_frame(const VividFrameContext* ctx) override {
         lfo.set_param("frequency", 2.0f);
         lfo.process(ctx);  // inherits time/frame from parent
         float mod = lfo.output("value");
@@ -62,7 +62,7 @@ void collect_ports(std::vector<VividPortDescriptor>& out) override {
     out.push_back(VIVID_CUSTOM_PORT("media_stream", VIVID_PORT_OUTPUT, vivid::MediaStreamV1, VIVID_PORT_TRANSPORT_CUSTOM_REF));
 }
 
-void process(const VividProcessContext* ctx) override {
+void process_frame(const VividFrameContext* ctx) override {
     auto* stream = static_cast<vivid::MediaStreamV1*>(ctx->custom_outputs[0]);
     // write stream data...
 }
@@ -72,7 +72,7 @@ void collect_ports(std::vector<VividPortDescriptor>& out) override {
     out.push_back(VIVID_CUSTOM_PORT("media_stream", VIVID_PORT_INPUT, vivid::MediaStreamV1, VIVID_PORT_TRANSPORT_CUSTOM_REF));
 }
 
-void process(const VividProcessContext* ctx) override {
+void process_frame(const VividFrameContext* ctx) override {
     auto* stream = static_cast<const vivid::MediaStreamV1*>(ctx->custom_inputs[0]);
     if (stream) { /* read stream */ }
 }
@@ -107,7 +107,7 @@ struct VividMidiBuffer {
 ```cpp
 #include "operator_api/input_state.h"
 
-void process(const VividProcessContext* ctx) override {
+void process_frame(const VividFrameContext* ctx) override {
     const VividInputState* input = vivid_input(ctx);
     if (!input) return;
 
@@ -140,7 +140,7 @@ struct vivid::MediaStreamV1 {
 };
 ```
 
-Used by movie operators to share playback state across domains (audio ↔ GPU).
+Used by movie operators to share playback state across cadences (audio ↔ GPU).
 
 ## Shared Handle Service
 

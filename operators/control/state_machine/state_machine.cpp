@@ -60,17 +60,17 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         // Inputs (indexed 0-3)
-        out.push_back({"beat_phase", VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"trigger",    VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"reset",      VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
-        out.push_back({"signal",     VIVID_PORT_FLOAT, VIVID_PORT_INPUT});
+        out.push_back({"beat_phase", VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"trigger",    VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"reset",      VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
+        out.push_back({"signal",     VIVID_PORT_SIGNAL, VIVID_PORT_INPUT});
         // Outputs (indexed 0-5)
-        out.push_back({"state",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"progress", VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"trigger",  VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"bar",      VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"beat",     VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
-        out.push_back({"xfade",    VIVID_PORT_FLOAT, VIVID_PORT_OUTPUT});
+        out.push_back({"state",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"progress", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"trigger",  VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"bar",      VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"beat",     VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
+        out.push_back({"xfade",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});
     }
 
     void process_audio(const VividAudioContext* ctx) override {

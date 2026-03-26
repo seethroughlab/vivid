@@ -24,7 +24,7 @@ Packages are distributed as source code (git repos with `vivid-package.json`). `
 Package authors who want to support a range of Vivid versions use compile-time `#if` guards:
 
 ```cpp
-void process(const VividProcessContext* ctx) override {
+void process(const VividFrameContext* ctx) override {
     double t = ctx->time;
 
 #if VIVID_OPERATOR_ABI_VERSION >= 12
