@@ -52,7 +52,7 @@ Connections must match types: `gpu_texture` → `gpu_texture`, `data` → `data`
 
 Control operators can embed other operators internally using ChildOp<T>. Use `scaffold_operator`
 with `variant="composite"` to generate a template. Useful for internal modulation (e.g. LFO driving
-a gain stage) without exposing child operators as graph nodes. Control domain only.
+a gain stage) without exposing child operators as graph nodes. Control env only.
 
 ## Custom Operators
 If you need to create a custom operator, use `scaffold_operator` to generate the template.
@@ -223,14 +223,14 @@ def _perception_response(raw: str, kind: str, include_payload: bool = False) -> 
         nodes = result.get("nodes", []) if isinstance(result, dict) else []
         if not isinstance(nodes, list):
             nodes = []
-        domains = {"audio": 0, "gpu": 0, "control": 0}
+        envs = {"audio": 0, "gpu": 0, "control": 0}
         errored = 0
         for n in nodes:
             if not isinstance(n, dict):
                 continue
-            d = n.get("domain")
-            if d in domains:
-                domains[d] += 1
+            d = n.get("env")
+            if d in envs:
+                envs[d] += 1
             health = n.get("health")
             if isinstance(health, dict) and health.get("errored", False):
                 errored += 1
@@ -238,7 +238,7 @@ def _perception_response(raw: str, kind: str, include_payload: bool = False) -> 
             "kind": kind,
             "node_count": len(nodes),
             "errored_nodes": errored,
-            "domains": domains,
+            "envs": envs,
         }
     elif kind == "run_diagnostics":
         diag_summary = result.get("summary", {}) if isinstance(result, dict) else {}
@@ -865,11 +865,11 @@ async def get_graph_errors() -> str:
 
 
 @mcp.tool()
-async def scaffold_operator(name: str, domain: str, variant: str = "") -> str:
+async def scaffold_operator(name: str, env: str, variant: str = "") -> str:
     """Scaffold a starter operator template. Only use after confirming via list_types that no
     existing operator (seed or installed package) achieves the goal, alone or in combination.
 
-    Creates a minimal working operator with domain-appropriate defaults. For advanced features
+    Creates a minimal working operator with env-appropriate defaults. For advanced features
     (custom ports, typed parameters, inspectors), use the opdev MCP server tools.
 
     Design the operator for reuse: generic name, broadly useful params, clear single responsibility.
@@ -878,10 +878,10 @@ async def scaffold_operator(name: str, domain: str, variant: str = "") -> str:
 
     Args:
         name: Operator name in lowercase_with_underscores (e.g. "tone_gen")
-        domain: One of "control", "audio", "gpu"
+        env: One of "control", "audio", "gpu"
         variant: Template variant. Use "composite" for a ChildOp-based control operator with internal LFO + Smooth.
     """
-    body: dict = {"name": name, "domain": domain}
+    body: dict = {"name": name, "env": env}
     if variant:
         body["variant"] = variant
     return await _post("scaffold_operator", body)
@@ -1191,7 +1191,7 @@ async def read_package_example(name: str, filename: str) -> str:
 
 @mcp.tool()
 async def package_operator_docs(name: str) -> str:
-    """Get detailed operator documentation for an installed package: params with types/ranges/defaults/choices and semantic_tag/shape/unit/intent, plus input/output ports and domain."""
+    """Get detailed operator documentation for an installed package: params with types/ranges/defaults/choices and semantic_tag/shape/unit/intent, plus input/output ports and env."""
     return await _post("package_operator_docs", {"name": name})
 
 

@@ -34,7 +34,7 @@ public:
     void* create_instance() const;
     void  destroy_instance(void* instance) const;
 
-    // Per-domain dispatch
+    // Per-environment dispatch
     void  process(void* instance, VividProcessContext* ctx) const;
     void  process_audio(void* instance, VividAudioContext* ctx) const;
     void  process_gpu(void* instance, VividGpuContext* ctx) const;

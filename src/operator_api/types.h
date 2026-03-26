@@ -7,7 +7,8 @@ extern "C" {
 #endif
 
 /* Bump when operator-facing C ABI changes in incompatible ways. */
-#define VIVID_OPERATOR_ABI_VERSION 15u
+#define VIVID_OPERATOR_ABI_VERSION 16u
+// v16: Removed deprecated `domain` field from VividOperatorDescriptor.
 // v15: Cadence-aware execution model — replaced VividDomain with VividExecutionEnv + VividCadenceCapability.
 // The ABI version catches stale dylibs during hot-reload — it is not a cross-version compatibility promise.
 
@@ -43,7 +44,7 @@ typedef uint32_t VividDisplayHint;
 // Channel kinds — reflect the logical data type on a port.
 typedef uint32_t VividPortType;
 
-#define VIVID_PORT_SIGNAL         0u  // continuous numeric value (scalar or buffer depending on domain)
+#define VIVID_PORT_SIGNAL         0u  // continuous numeric value (scalar or buffer depending on execution environment)
 #define VIVID_PORT_FLOAT          VIVID_PORT_SIGNAL  // deprecated alias
 #define VIVID_PORT_AUDIO          1u  // audio sample buffer
 #define VIVID_PORT_SPREAD         2u  // variable-length float array
@@ -56,7 +57,7 @@ typedef uint32_t VividPortDirection;
 #define VIVID_PORT_OUTPUT  1u
 
 typedef uint32_t VividPortTransport;
-#define VIVID_PORT_TRANSPORT_SIGNAL         0u  // numeric value (scalar or buffer depending on domain)
+#define VIVID_PORT_TRANSPORT_SIGNAL         0u  // numeric value (scalar or buffer depending on execution environment)
 #define VIVID_PORT_TRANSPORT_SCALAR         VIVID_PORT_TRANSPORT_SIGNAL  // deprecated alias
 #define VIVID_PORT_TRANSPORT_AUDIO_BUFFER   1u  // audio sample buffers
 #define VIVID_PORT_TRANSPORT_SPREAD         2u  // float spread copy
@@ -111,7 +112,6 @@ typedef struct VividPortDescriptor {
 
 typedef struct VividOperatorDescriptor {
     const char*               name;
-    uint32_t                  domain;            // deprecated — internal use only, do not read
     uint32_t                  param_count;
     const VividParamDescriptor* params;
     uint32_t                  port_count;
@@ -215,13 +215,13 @@ typedef struct VividAudioContext {
     // Per-port channel counts (resolved by runtime)
     const uint8_t* input_channel_counts;   // [port_idx] — NULL when all mono
     const uint8_t* output_channel_counts;  // [port_idx] — NULL when all mono
-    // Cross-domain inputs from control
+    // Cross-cadence inputs from frame executor
     VividSpreadPort*  input_spreads;
     VividSpreadPort*  output_spreads;
     void**            custom_inputs;       // [custom_input_ordinal] — opaque custom-type inputs
     uint32_t          custom_input_count;  // number of custom-transport input ports
     const char**      input_string_values;
-    float*            input_float_values;   // [float_input_ordinal] — CV inputs from control domain
+    float*            input_float_values;   // [float_input_ordinal] — CV inputs from frame executor
     float*            output_float_values;  // [float_output_ordinal] — scalar float outputs
     void**            custom_outputs;       // [custom_output_ordinal] — opaque custom-type outputs
     uint32_t          custom_output_count;  // number of custom-transport output ports
@@ -398,7 +398,7 @@ static inline int vivid_is_control_type(VividPortType t) {
 
 static inline int vivid_port_type_compatible(VividPortType a, VividPortType b) {
     if (a == b) return 1;
-    /* SIGNAL ↔ AUDIO: audio-domain SIGNAL ports use 1-channel buffers */
+    /* SIGNAL ↔ AUDIO: audio-cadence SIGNAL ports use 1-channel buffers */
     if ((a == VIVID_PORT_SIGNAL && b == VIVID_PORT_AUDIO) ||
         (a == VIVID_PORT_AUDIO  && b == VIVID_PORT_SIGNAL)) return 1;
     return vivid_is_control_type(a) && vivid_is_control_type(b);

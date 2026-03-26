@@ -1,4 +1,4 @@
-// Integration test: Clock → Oscillator → Gain → audio_out, all audio domain.
+// Integration test: Clock → Oscillator → Gain → audio_out, all audio cadence.
 // Verifies AudioFloatPortWire routing with core CMake-built operators.
 
 #include "runtime/operator_registry.h"
@@ -53,22 +53,22 @@ int main(int argc, char* argv[]) {
     check(registry.find("Oscillator") != nullptr, "Oscillator operator loaded");
     check(registry.find("Gain") != nullptr, "Gain operator loaded");
 
-    // Verify Clock is now audio domain
+    // Verify Clock is now audio cadence
     {
         auto* clock_loader = registry.find("Clock");
         if (clock_loader) {
             const auto* desc = clock_loader->descriptor();
-            check(desc->execution_env == VIVID_ENV_AUDIO, "Clock is audio domain");
+            check(desc->execution_env == VIVID_ENV_AUDIO, "Clock is audio cadence");
             check(desc->has_process_audio == 1, "Clock has process_audio");
         }
     }
 
-    // Verify Oscillator is audio domain with freq_cv input
+    // Verify Oscillator is audio cadence with freq_cv input
     {
         auto* osc_loader = registry.find("Oscillator");
         if (osc_loader) {
             const auto* desc = osc_loader->descriptor();
-            check(desc->execution_env == VIVID_ENV_AUDIO, "Oscillator is audio domain");
+            check(desc->execution_env == VIVID_ENV_AUDIO, "Oscillator is audio cadence");
             check(desc->has_process_audio == 1, "Oscillator has process_audio");
             bool has_freq_cv = false;
             for (uint32_t i = 0; i < desc->port_count; ++i) {

@@ -57,7 +57,7 @@ struct VividGpuContext {
     void**    custom_inputs;
     uint32_t  custom_input_count;
 
-    // ---- Cross-domain inputs from control -----------------------------------
+    // ---- Cross-cadence inputs from frame executor ---------------------------
     VividSpreadPort*   input_spreads;
     VividSpreadPort*   output_spreads;
     const char**       input_string_values;

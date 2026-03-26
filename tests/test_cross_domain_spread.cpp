@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
         staging + "/audio_spread_op.dylib",
         std::filesystem::copy_options::overwrite_existing);
 
-    std::fprintf(stderr, "\n=== Test: Cross-Domain Spread ===\n\n");
+    std::fprintf(stderr, "\n=== Test: Cross-Cadence Spread ===\n\n");
 
     // --- Setup ---
     vivid::OperatorRegistry registry;
@@ -69,8 +69,8 @@ int main(int argc, char* argv[]) {
     int audio_idx = audio_engine.audio_node_index("audio");
     check(audio_idx >= 0, "audio node found in engine");
 
-    // --- Test 2: Start and verify spread arrives in audio domain ---
-    std::fprintf(stderr, "\n--- spread arrives in audio domain ---\n");
+    // --- Test 2: Start and verify spread arrives at audio cadence ---
+    std::fprintf(stderr, "\n--- spread arrives at audio cadence ---\n");
     check(audio_engine.start(true), "audio_engine.start(null)");
 
     // Tick scheduler so SpreadSourceOp produces spread [1,2,3]

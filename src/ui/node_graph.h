@@ -27,7 +27,7 @@ struct ExampleEntry {
     std::string summary;
     std::vector<std::string> tags;
     std::string difficulty;
-    std::vector<std::string> domains;
+    std::vector<std::string> envs;
     std::vector<std::string> requires_packages;
     int featured_rank = 1000;
     int estimated_minutes = 0;
@@ -40,7 +40,7 @@ struct GraphMetaEditData {
     std::string description;
     std::string tags_csv;
     std::string difficulty;
-    std::string domains_csv;
+    std::string envs_csv;
     std::string requires_packages_csv;
     std::string featured_rank;
 };

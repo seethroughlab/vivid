@@ -22,7 +22,6 @@ static VividParamDescriptor audio_out_params[] = {
 
 static const VividOperatorDescriptor audio_out_desc = {
     "audio_out",
-    1,                      // domain (deprecated, kept for ABI)
     1,                      // param_count
     audio_out_params,
     1,                      // port_count
@@ -63,7 +62,6 @@ static VividParamDescriptor video_out_params[] = {
 
 static const VividOperatorDescriptor video_out_desc = {
     "video_out",
-    2,                      // domain (deprecated, kept for ABI)
     3,                      // param_count
     video_out_params,
     1,                      // port_count

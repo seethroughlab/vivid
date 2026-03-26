@@ -102,7 +102,7 @@ int main(int argc, char* argv[]) {
         check_float(snap.rms[src_idx], 0.5f, 0.05f, "src RMS ≈ 0.5");
         check_float(snap.peak[src_idx], 0.5f, 0.05f, "src peak ≈ 0.5");
 
-        // dst: input=0.5 from src, level overridden by cross-domain wire = 1.6
+        // dst: input=0.5 from src, level overridden by cross-cadence wire = 1.6
         //      output = 0.5 + 1.6 = 2.1 DC → RMS ≈ 2.1
         check_float(snap.rms[dst_idx], 2.1f, 0.15f, "dst RMS ≈ 2.1");
         check_float(snap.peak[dst_idx], 2.1f, 0.15f, "dst peak ≈ 2.1");

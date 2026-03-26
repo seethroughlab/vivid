@@ -210,7 +210,7 @@ bool OperatorLoader::load(const char* path) {
     auto new_create_fn  = reinterpret_cast<VividCreateFn>(dlsym(new_handle, "vivid_create"));
     auto new_destroy_fn = reinterpret_cast<VividDestroyFn>(dlsym(new_handle, "vivid_destroy"));
 
-    // Per-domain process entry points
+    // Per-environment process entry points
     auto new_process_fn       = reinterpret_cast<VividProcessFn>(dlsym(new_handle, "vivid_process"));
     auto new_process_audio_fn = reinterpret_cast<VividProcessAudioFn>(dlsym(new_handle, "vivid_process_audio"));
     auto new_process_gpu_fn   = reinterpret_cast<VividProcessGpuFn>(dlsym(new_handle, "vivid_process_gpu"));

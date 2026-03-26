@@ -49,7 +49,7 @@ int main() {
     auto unknown = cache.get("does_not_exist", registry);
     check(unknown == nullptr, "get() for unknown type returns null");
 
-    // 6. Returned OperatorInfo has correct domain, port count, param count
+    // 6. Returned OperatorInfo has correct env, port count, param count
     if (a_info_new) {
         check(a_info_new->env == VIVID_ENV_AUDIO,
               "audio_out info has env VIVID_ENV_AUDIO");

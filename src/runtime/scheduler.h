@@ -87,7 +87,7 @@ struct NodeState {
     std::vector<WGPUTexture>     resolved_tex_raw;       // raw texture handles (parallel)
     std::vector<uint32_t>        resolved_tex_widths;    // input texture widths
     std::vector<uint32_t>        resolved_tex_heights;   // input texture heights
-    // Invariant: is_gpu_sink ↔ GPU domain node with ≥1 GPU_TEXTURE input and 0 GPU_TEXTURE outputs.
+    // Invariant: is_gpu_sink ↔ GPU node with ≥1 GPU_TEXTURE input and 0 GPU_TEXTURE outputs.
     // The GPU sink is the terminal node of the GPU subgraph; its primary texture feeds the display.
     bool is_gpu_sink = false;
 

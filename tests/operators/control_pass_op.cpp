@@ -1,4 +1,4 @@
-// Control-domain passthrough with spread support: output = input * gain
+// Control passthrough with spread support: output = input * gain
 #include "operator_api/operator.h"
 
 struct ControlPassOp : vivid::ControlOperatorBase {

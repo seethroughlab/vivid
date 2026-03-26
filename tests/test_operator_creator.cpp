@@ -12,7 +12,7 @@ static std::string read_file(const std::string& path) {
     return {std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>()};
 }
 
-// Helper to create tmp dir with cmake markers for all domains
+// Helper to create tmp dir with cmake markers for all envs
 static void write_full_cmake(const std::string& dir) {
     std::ofstream ofs(dir + "/CMakeLists.txt");
     ofs << "# --- Control operators ---\n"
@@ -71,10 +71,10 @@ int main() {
     }
 
     // =================================================================
-    // Test 3: create() control domain — verify files
+    // Test 3: create() control env — verify files
     // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 3: create() control domain ===\n");
+        std::fprintf(stderr, "\n=== Test 3: create() control env ===\n");
         std::string tmp = "/tmp/vivid_test_creator_control";
         fs::remove_all(tmp);
         fs::create_directories(tmp);
@@ -112,10 +112,10 @@ int main() {
     }
 
     // =================================================================
-    // Test 4: create() audio domain
+    // Test 4: create() audio env
     // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 4: create() audio domain ===\n");
+        std::fprintf(stderr, "\n=== Test 4: create() audio env ===\n");
         std::string tmp = "/tmp/vivid_test_creator_audio";
         fs::remove_all(tmp);
         fs::create_directories(tmp);
@@ -146,10 +146,10 @@ int main() {
     }
 
     // =================================================================
-    // Test 5: create() GPU domain — verify shader file too
+    // Test 5: create() GPU env — verify shader file too
     // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 5: create() GPU domain ===\n");
+        std::fprintf(stderr, "\n=== Test 5: create() GPU env ===\n");
         std::string tmp = "/tmp/vivid_test_creator_gpu";
         fs::remove_all(tmp);
         fs::create_directories(tmp);
@@ -307,10 +307,10 @@ int main() {
     }
 
     // =================================================================
-    // Test 10: composite variant rejected for GPU domain
+    // Test 10: composite variant rejected for GPU env
     // =================================================================
     {
-        std::fprintf(stderr, "\n=== Test 10: Reject composite for GPU domain ===\n");
+        std::fprintf(stderr, "\n=== Test 10: Reject composite for GPU env ===\n");
         std::string tmp = "/tmp/vivid_test_creator_composite_gpu";
         fs::remove_all(tmp);
         fs::create_directories(tmp);
@@ -364,7 +364,7 @@ int main() {
     }
 
     // =================================================================
-    // Test 12: "empty" variant — control domain
+    // Test 12: "empty" variant — control env
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 12: empty variant control ===\n");
@@ -389,7 +389,7 @@ int main() {
     }
 
     // =================================================================
-    // Test 13: "empty" variant — audio domain
+    // Test 13: "empty" variant — audio env
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 13: empty variant audio ===\n");
@@ -412,7 +412,7 @@ int main() {
     }
 
     // =================================================================
-    // Test 14: "empty" variant — gpu domain
+    // Test 14: "empty" variant — gpu env
     // =================================================================
     {
         std::fprintf(stderr, "\n=== Test 14: empty variant gpu ===\n");

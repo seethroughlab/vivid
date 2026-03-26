@@ -394,7 +394,7 @@ int main(int argc, char* argv[]) {
                 auto& first_node = nodes[0];
                 check(first_node.contains("node_id") && first_node["node_id"].is_string(), "introspection node has node_id");
                 check(first_node.contains("type") && first_node["type"].is_string(), "introspection node has type");
-                check(first_node.contains("domain") && first_node["domain"].is_string(), "introspection node has domain");
+                check(first_node.contains("env") && first_node["env"].is_string(), "introspection node has env");
                 check(first_node.contains("health") && first_node["health"].is_object(), "introspection node has health object");
                 check(first_node.contains("params") && first_node["params"].is_object(), "introspection node has params object");
                 check(first_node.contains("param_meta") && first_node["param_meta"].is_array(), "introspection node has param_meta array");
@@ -416,8 +416,8 @@ int main(int argc, char* argv[]) {
                 }
                 check(first_node.contains("inputs") && first_node["inputs"].is_array(), "introspection node has inputs array");
                 check(first_node.contains("outputs") && first_node["outputs"].is_array(), "introspection node has outputs array");
-                check(first_node.contains("domain_metrics") && first_node["domain_metrics"].is_object(),
-                      "introspection node has domain_metrics object");
+                check(first_node.contains("env_metrics") && first_node["env_metrics"].is_object(),
+                      "introspection node has env_metrics object");
                 check(first_node.contains("incoming_wires") && first_node["incoming_wires"].is_number_integer(),
                       "introspection node has incoming_wires");
                 check(first_node.contains("outgoing_wires") && first_node["outgoing_wires"].is_number_integer(),
@@ -1370,7 +1370,7 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "\n--- scaffold_operator destination ---\n");
         {
             auto rp = post(client, base_url, "scaffold_operator",
-                R"({"name":"mcp_pkg_e2e","domain":"control","destination":"package:vivid-scaffold-e2e"})");
+                R"({"name":"mcp_pkg_e2e","env":"control","destination":"package:vivid-scaffold-e2e"})");
             check(rp.ok, "scaffold_operator project destination ok");
             if (!rp.ok && !rp.j.is_null()) {
                 if (rp.j.contains("error") && rp.j["error"].is_string()) {
@@ -1406,7 +1406,7 @@ int main(int argc, char* argv[]) {
             check(!ec, "removed linked project package for fallback test");
 
             auto rc = post(client, base_url, "scaffold_operator",
-                R"({"name":"mcp_core_fallback","domain":"control","destination":"auto"})");
+                R"({"name":"mcp_core_fallback","env":"control","destination":"auto"})");
             check(rc.ok, "scaffold_operator auto fallback ok");
             if (!rc.ok && !rc.j.is_null()) {
                 if (rc.j.contains("error") && rc.j["error"].is_string()) {

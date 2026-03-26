@@ -7,7 +7,7 @@
 
 namespace vivid {
 
-// Opaque media stream contract shared across domains.
+// Opaque media stream contract shared across execution environments.
 // The handle identifies a shared session object owned outside the operator graph.
 // The embedded clock snapshot is authoritative for consumers that need timing.
 struct MediaStreamV1 {

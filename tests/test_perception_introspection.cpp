@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
     });
 
     ix::HttpClient client;
-    std::fprintf(stderr, "\n--- introspect_nodes (domain + health coverage) ---\n");
+    std::fprintf(stderr, "\n--- introspect_nodes (env + health coverage) ---\n");
     auto r1 = post(client, base_url, "introspect_nodes");
     check(r1.ok, "introspect_nodes ok");
     if (r1.valid) {
@@ -137,26 +137,26 @@ int main(int argc, char* argv[]) {
               "all fixture nodes introspected");
 
         if (!ctrl.is_null()) {
-            check(get_str(ctrl["domain"]) == "control", "control node domain");
-            json dm = ctrl.value("domain_metrics", json{});
+            check(get_str(ctrl["env"]) == "control", "control node env");
+            json dm = ctrl.value("env_metrics", json{});
             json c = dm.value("control", json{});
-            check(c.is_object(), "control node has control domain_metrics");
+            check(c.is_object(), "control node has control env_metrics");
         }
         if (!aud.is_null()) {
-            check(get_str(aud["domain"]) == "audio", "audio node domain");
-            json dm = aud.value("domain_metrics", json{});
+            check(get_str(aud["env"]) == "audio", "audio node env");
+            json dm = aud.value("env_metrics", json{});
             json a = dm.value("audio", json{});
-            check(a.is_object(), "audio node has audio domain_metrics");
+            check(a.is_object(), "audio node has audio env_metrics");
             bool has_ipc = a.contains("input_port_count") && a["input_port_count"].is_number_integer();
             bool has_opc = a.contains("output_port_count") && a["output_port_count"].is_number_integer();
             check(has_ipc, "audio metrics has input_port_count");
             check(has_opc, "audio metrics has output_port_count");
         }
         if (!gpu.is_null()) {
-            check(get_str(gpu["domain"]) == "gpu", "gpu node domain");
-            json dm = gpu.value("domain_metrics", json{});
+            check(get_str(gpu["env"]) == "gpu", "gpu node env");
+            json dm = gpu.value("env_metrics", json{});
             json g = dm.value("gpu", json{});
-            check(g.is_object(), "gpu node has gpu domain_metrics");
+            check(g.is_object(), "gpu node has gpu env_metrics");
             check(g.contains("has_texture") && g["has_texture"].is_boolean(),
                   "gpu metrics has has_texture");
         }

@@ -117,7 +117,7 @@ void NodeGraphUI::open_graph_meta_editor(const GraphMetaEditData& data) {
         &graph_meta_data_.description,
         &graph_meta_data_.tags_csv,
         &graph_meta_data_.difficulty,
-        &graph_meta_data_.domains_csv,
+        &graph_meta_data_.envs_csv,
         &graph_meta_data_.requires_packages_csv,
         &graph_meta_data_.featured_rank
     };
@@ -203,7 +203,7 @@ void NodeGraphUI::rebuild_example_items() {
             static const char* kEnvNames[] = {"", "gpu", "audio", "control", "io"};
             const std::string target = kEnvNames[example_browser_env_];
             bool found = false;
-            for (const auto& d : e.domains) {
+            for (const auto& d : e.envs) {
                 if (icontains(d, target)) { found = true; break; }
             }
             if (!found) continue;

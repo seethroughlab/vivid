@@ -283,7 +283,7 @@ inline VividExecutionEnv infer_execution_env(const std::vector<VividPortDescript
 // ---------------------------------------------------------------------------
 // VIVID_REGISTER(ClassName) — generates extern "C" entry points
 //
-// Infers domain from port types; detects base class via std::is_base_of;
+// Infers execution environment from port types; detects base class via std::is_base_of;
 // emits typed entry points (vivid_process, vivid_process_audio, vivid_process_gpu).
 // ---------------------------------------------------------------------------
 

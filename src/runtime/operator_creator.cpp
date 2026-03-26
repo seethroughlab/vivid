@@ -535,7 +535,7 @@ static std::string composite_control_template(const std::string& name, const std
 }
 
 // ---------------------------------------------------------------------------
-// Empty templates — minimal skeleton with domain-default ports, no params
+// Empty templates — minimal skeleton with env-default ports, no params
 // ---------------------------------------------------------------------------
 
 static std::string empty_control_template(const std::string& struct_name) {
@@ -615,7 +615,7 @@ static std::string gpu_shader_template() {
 // CMakeLists.txt patching
 // ---------------------------------------------------------------------------
 
-// Insertion markers: each domain's operators are added before the next section's comment.
+// Insertion markers: each env's operators are added before the next section's comment.
 // Control → before "# --- GPU operator plugins"
 // GPU     → before "# --- SyphonOut operator"
 // Audio   → before "# --- Operators meta-target"

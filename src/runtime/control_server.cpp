@@ -522,7 +522,7 @@ static std::string handle_sample_node_outputs(Graph& graph, Scheduler& scheduler
     nlohmann::json result = nlohmann::json::object();
     result["node_id"] = node_id;
     result["type"] = initial->type_name;
-    result["domain"] = initial->is_gpu ? "gpu" : (initial->active_cadence == vivid::Cadence::Audio ? "audio" : "control");
+    result["env"] = initial->is_gpu ? "gpu" : (initial->active_cadence == vivid::Cadence::Audio ? "audio" : "control");
     result["duration_seconds"] = duration_seconds;
     result["interval_ms"] = interval_ms;
     result["include_spreads"] = include_spreads;
@@ -594,7 +594,7 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                 type_name = dit->second->type;
         }
         node["type"] = type_name;
-        node["domain"] = ns.is_gpu ? "gpu" : (ns.active_cadence == vivid::Cadence::Audio ? "audio" : "control");
+        node["env"] = ns.is_gpu ? "gpu" : (ns.active_cadence == vivid::Cadence::Audio ? "audio" : "control");
         node["cadence_capability"] = (ns.cadence_capability == VIVID_CADENCE_AUDIO_CAPABLE) ? "audio_capable" : "frame_only";
         {
             const auto* ndef = graph.find_node(ns.node_id);
@@ -745,15 +745,15 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
         }
         node["outputs"] = std::move(outputs_arr);
 
-        // Domain metrics (lightweight first pass)
-        nlohmann::json domain_metrics = nlohmann::json::object();
+        // Environment metrics (lightweight first pass)
+        nlohmann::json env_metrics = nlohmann::json::object();
         if (ns.is_gpu) {
             nlohmann::json gpu = nlohmann::json::object();
             gpu["width"] = ns.gpu_tex_width;
             gpu["height"] = ns.gpu_tex_height;
             gpu["has_texture"] = (ns.gpu_texture != nullptr);
             gpu["aux_texture_count"] = static_cast<int64_t>(ns.aux_gpu_texture_views.size());
-            domain_metrics["gpu"] = std::move(gpu);
+            env_metrics["gpu"] = std::move(gpu);
         } else if (ns.active_cadence == vivid::Cadence::Audio) {
             nlohmann::json audio = nlohmann::json::object();
             audio["output_port_count"] = ns.output_port_count;
@@ -781,7 +781,7 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                 }
                 audio["waveform_preview"] = std::move(preview);
             }
-            domain_metrics["audio"] = std::move(audio);
+            env_metrics["audio"] = std::move(audio);
         } else {
             nlohmann::json control = nlohmann::json::object();
             int64_t spread_out_nonempty = 0;
@@ -792,9 +792,9 @@ static std::string handle_introspect_nodes(Graph& graph, Scheduler& scheduler) {
                 if (v != 0.0f) scalar_out_nonzero++;
             control["non_empty_spread_outputs"] = spread_out_nonempty;
             control["non_zero_scalar_outputs"] = scalar_out_nonzero;
-            domain_metrics["control"] = std::move(control);
+            env_metrics["control"] = std::move(control);
         }
-        node["domain_metrics"] = std::move(domain_metrics);
+        node["env_metrics"] = std::move(env_metrics);
 
         nodes_arr.push_back(std::move(node));
     }
@@ -1104,7 +1104,7 @@ static bool resolve_state_path(Graph& graph, Scheduler& scheduler,
     const CompiledNode* node = cg->find_node(node_id);
     if (!node) return false;
 
-    if (rest == "domain") {
+    if (rest == "env") {
         out = cv_string(node->is_gpu ? "gpu" : (node->active_cadence == vivid::Cadence::Audio ? "audio" : "control"));
         return true;
     }
@@ -1130,21 +1130,21 @@ static bool resolve_state_path(Graph& graph, Scheduler& scheduler,
         out = cv_string(node->error_message);
         return true;
     }
-    if (rest == "domain_metrics.audio.rms") {
+    if (rest == "env_metrics.audio.rms") {
         auto it = node->output_port_indices.find("rms");
         if (node->active_cadence != vivid::Cadence::Audio || it == node->output_port_indices.end() || it->second >= node->output_values.size())
             return false;
         out = cv_number(node->output_values[it->second]);
         return true;
     }
-    if (rest == "domain_metrics.audio.peak") {
+    if (rest == "env_metrics.audio.peak") {
         auto it = node->output_port_indices.find("peak");
         if (node->active_cadence != vivid::Cadence::Audio || it == node->output_port_indices.end() || it->second >= node->output_values.size())
             return false;
         out = cv_number(node->output_values[it->second]);
         return true;
     }
-    if (rest == "domain_metrics.audio.waveform_length") {
+    if (rest == "env_metrics.audio.waveform_length") {
         auto it = node->output_port_indices.find("waveform");
         if (node->active_cadence != vivid::Cadence::Audio || it == node->output_port_indices.end() || it->second >= node->output_spreads.size())
             return false;
@@ -1486,7 +1486,7 @@ static std::string handle_list_types(OperatorRegistry& registry) {
 
         nlohmann::json t = nlohmann::json::object();
         t["name"] = desc->name;
-        t["domain"] = env_str(desc->execution_env);
+        t["env"] = env_str(desc->execution_env);
 
         // Params
         nlohmann::json params_arr = nlohmann::json::array();
@@ -2591,7 +2591,7 @@ static std::string dispatch(const std::string& method, const std::string& body,
 
                         nlohmann::json op = nlohmann::json::object();
                         op["name"] = desc->name;
-                        op["domain"] = env_str(desc->execution_env);
+                        op["env"] = env_str(desc->execution_env);
                         op["time_dependent"] = (desc->time_dependent != 0);
 
                         nlohmann::json params_arr = nlohmann::json::array();

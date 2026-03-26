@@ -32,8 +32,8 @@ DOC_TOPICS = {
     "conventions": "conventions.md",
 }
 
-# Valid operator domains
-OPERATOR_DOMAINS = {"control", "audio", "gpu", "shared"}
+# Valid operator envs
+OPERATOR_ENVS = {"control", "audio", "gpu", "shared"}
 
 mcp = FastMCP("vivid-opdev", instructions="""Vivid Operator Development Server — tools for building custom operators against the Vivid operator API.
 
@@ -48,7 +48,7 @@ Start with the discovery tools before scaffolding:
 
 1. **Research** — use `get_operator_api_docs(topic)` to learn the relevant API surface
 2. **Study examples** — use `list_example_operators()` and `get_example_operator()` to see real implementations
-3. **Scaffold** — use `scaffold_operator(name, domain)` to generate a starter template. Then edit the source to add custom ports, params, and behavior.
+3. **Scaffold** — use `scaffold_operator(name, env)` to generate a starter template. Then edit the source to add custom ports, params, and behavior.
 4. **Implement** — edit the generated source, using API docs and examples as reference
 5. **Build & Test** — use `rebuild_package()` and `test_package()` to iterate
 6. **Wire up** — use graph tools (`add_node`, `connect`, `set_param`) to test in context
@@ -69,9 +69,9 @@ Start with the discovery tools before scaffolding:
 - **collect_params/collect_ports**: Override to declare your operator's interface.
 - **VIVID_REGISTER(ClassName)**: Macro at end of .cpp generates all extern "C" entry points.
 - **WgslFilterBase**: For GPU filters, write only the fragment shader in a .wgsl file — the base class handles everything else (vertex shader, uniforms, pipeline, hot-reload).
-- **ChildOp<T>**: Embed operators as members for internal modulation (control domain only).
+- **ChildOp<T>**: Embed operators as members for internal modulation (control env only).
 
-## Three Domains
+## Three Envs
 
 - **Control** (ControlOperatorBase) — main thread, ~60 Hz, scalar/spread/string/handle ports
 - **Audio** (AudioOperatorBase) — audio thread, per-buffer, planar float buffers
@@ -88,9 +88,9 @@ CAPABILITY_GUIDANCE = {
         "explanation": "Typed opaque data ports for passing complex payloads between operators. Two transports: CUSTOM_VALUE (small structs copied by value) and CUSTOM_REF (shared handle registry for any size).",
         "doc_topic": "advanced",
         "example_operators": [
-            {"domain": "gpu", "name": "movie_loaded"},
-            {"domain": "gpu", "name": "movie_video_out"},
-            {"domain": "audio", "name": "movie_audio_out"},
+            {"env": "gpu", "name": "movie_loaded"},
+            {"env": "gpu", "name": "movie_video_out"},
+            {"env": "audio", "name": "movie_audio_out"},
         ],
         "code_snippet": (
             '#include "operator_api/type_id.h"\n'
@@ -104,8 +104,8 @@ CAPABILITY_GUIDANCE = {
         "explanation": "Small struct ports (≤256 bytes) copied by value each frame. Use VIVID_CUSTOM_VALUE_PORT macro and VIVID_DECLARE_CUSTOM_VALUE_TYPE at file scope.",
         "doc_topic": "advanced",
         "example_operators": [
-            {"domain": "control", "name": "sequencer"},
-            {"domain": "control", "name": "phase_to_midi"},
+            {"env": "control", "name": "sequencer"},
+            {"env": "control", "name": "phase_to_midi"},
         ],
         "code_snippet": (
             'VIVID_DECLARE_CUSTOM_VALUE_TYPE(MyStruct, "com.example.my_struct", "MyStruct", false);\n\n'
@@ -118,8 +118,8 @@ CAPABILITY_GUIDANCE = {
         "explanation": "Shared-handle ports for large or opaque data (media streams, GPU resources). Use VIVID_CUSTOM_REF_PORT macro and VIVID_DECLARE_CUSTOM_REF_TYPE at file scope.",
         "doc_topic": "advanced",
         "example_operators": [
-            {"domain": "gpu", "name": "movie_loaded"},
-            {"domain": "audio", "name": "movie_audio_out"},
+            {"env": "gpu", "name": "movie_loaded"},
+            {"env": "audio", "name": "movie_audio_out"},
         ],
         "code_snippet": (
             'VIVID_DECLARE_CUSTOM_REF_TYPE(MyHandle, "com.example.my_handle", "MyHandle", false);\n\n'
@@ -132,9 +132,9 @@ CAPABILITY_GUIDANCE = {
         "explanation": "File drop parameters let users drag files onto an operator. Declare a Param<vivid::FilePath> and the runtime handles the file picker / drag-drop UI.",
         "doc_topic": "core",
         "example_operators": [
-            {"domain": "gpu", "name": "texture_loader"},
-            {"domain": "gpu", "name": "lut_apply"},
-            {"domain": "gpu", "name": "svg_render"},
+            {"env": "gpu", "name": "texture_loader"},
+            {"env": "gpu", "name": "lut_apply"},
+            {"env": "gpu", "name": "svg_render"},
         ],
         "code_snippet": (
             'vivid::Param<vivid::FilePath> file{"file"};\n\n'
@@ -149,9 +149,9 @@ CAPABILITY_GUIDANCE = {
         "explanation": "Custom thumbnails let operators render a visual preview in the node graph. Override render_thumbnail() to draw into the provided context.",
         "doc_topic": "advanced",
         "example_operators": [
-            {"domain": "control", "name": "envelope"},
-            {"domain": "control", "name": "clock"},
-            {"domain": "control", "name": "smooth"},
+            {"env": "control", "name": "envelope"},
+            {"env": "control", "name": "clock"},
+            {"env": "control", "name": "smooth"},
         ],
         "code_snippet": (
             'void render_thumbnail(VividThumbnailContext* ctx) override {\n'
@@ -160,10 +160,10 @@ CAPABILITY_GUIDANCE = {
         ),
     },
     "child_op": {
-        "explanation": "ChildOp<T> lets you embed another operator as a member variable for internal modulation. Control domain only. The child inherits time/frame from the parent.",
+        "explanation": "ChildOp<T> lets you embed another operator as a member variable for internal modulation. Control env only. The child inherits time/frame from the parent.",
         "doc_topic": "advanced",
         "example_operators": [
-            {"domain": "control", "name": "modulated_gain"},
+            {"env": "control", "name": "modulated_gain"},
         ],
         "code_snippet": (
             '#include "operator_api/child_op.h"\n'
@@ -180,9 +180,9 @@ CAPABILITY_GUIDANCE = {
         "explanation": "MIDI input via VividMidiBuffer. Operators receive a buffer of timestamped MIDI messages each audio frame.",
         "doc_topic": "advanced",
         "example_operators": [
-            {"domain": "control", "name": "midi_input"},
-            {"domain": "audio", "name": "midi_file_player"},
-            {"domain": "control", "name": "phase_to_midi"},
+            {"env": "control", "name": "midi_input"},
+            {"env": "audio", "name": "midi_file_player"},
+            {"env": "control", "name": "phase_to_midi"},
         ],
         "code_snippet": (
             '#include "operator_api/midi_types.h"\n\n'
@@ -194,8 +194,8 @@ CAPABILITY_GUIDANCE = {
         "explanation": "Mouse and keyboard input via VividInputState. Access current mouse position and process input events (clicks, key presses) each frame.",
         "doc_topic": "advanced",
         "example_operators": [
-            {"domain": "control", "name": "mouse"},
-            {"domain": "control", "name": "keyboard"},
+            {"env": "control", "name": "mouse"},
+            {"env": "control", "name": "keyboard"},
         ],
         "code_snippet": (
             '#include "operator_api/input_state.h"\n\n'
@@ -208,12 +208,12 @@ CAPABILITY_GUIDANCE = {
         ),
     },
     "media_stream": {
-        "explanation": "MediaStreamV1 carries playback state (time, duration, speed, loop) across domains. Used by movie operators to synchronize audio and video.",
+        "explanation": "MediaStreamV1 carries playback state (time, duration, speed, loop) across envs. Used by movie operators to synchronize audio and video.",
         "doc_topic": "advanced",
         "example_operators": [
-            {"domain": "shared", "name": "media_session"},
-            {"domain": "gpu", "name": "movie_loaded"},
-            {"domain": "audio", "name": "movie_audio_out"},
+            {"env": "shared", "name": "media_session"},
+            {"env": "gpu", "name": "movie_loaded"},
+            {"env": "audio", "name": "movie_audio_out"},
         ],
         "code_snippet": (
             '#include "operator_api/media_stream.h"\n\n'
@@ -225,7 +225,7 @@ CAPABILITY_GUIDANCE = {
         "explanation": "GPU compute buffers allow read/write structured data on the GPU. Use VividComputeBuffer with appropriate usage flags.",
         "doc_topic": "gpu",
         "example_operators": [
-            {"domain": "gpu", "name": "texture_analysis"},
+            {"env": "gpu", "name": "texture_analysis"},
         ],
         "code_snippet": (
             '// GPU compute is an advanced pattern. Study gpu/texture_analysis for\n'
@@ -300,58 +300,58 @@ async def get_api_header(header: str) -> str:
 
 
 @mcp.tool()
-async def list_example_operators(domain: str | None = None) -> str:
+async def list_example_operators(env: str | None = None) -> str:
     """List all example operators in the codebase.
 
     Args:
-        domain: Optional filter — "control", "audio", "gpu", or "shared". Omit to list all.
+        env: Optional filter — "control", "audio", "gpu", or "shared". Omit to list all.
     """
     operators = []
-    domains_to_scan = OPERATOR_DOMAINS
-    if domain:
-        domain = domain.lower().strip()
-        if domain not in OPERATOR_DOMAINS:
+    envs_to_scan = OPERATOR_ENVS
+    if env:
+        env_name = env.lower().strip()
+        if env_name not in OPERATOR_ENVS:
             return json.dumps({
                 "ok": False,
-                "error": f"Unknown domain '{domain}'. Available: {', '.join(sorted(OPERATOR_DOMAINS))}"
+                "error": f"Unknown env '{env_name}'. Available: {', '.join(sorted(OPERATOR_ENVS))}"
             })
-        domains_to_scan = {domain}
+        envs_to_scan = {env_name}
 
-    for d in sorted(domains_to_scan):
+    for d in sorted(envs_to_scan):
         domain_dir = OPERATORS_DIR / d
         if not domain_dir.is_dir():
             continue
         for op_dir in sorted(domain_dir.iterdir()):
             if op_dir.is_dir() and not op_dir.name.startswith("."):
-                operators.append({"domain": d, "name": op_dir.name})
+                operators.append({"env": d, "name": op_dir.name})
 
     return json.dumps({"ok": True, "count": len(operators), "operators": operators})
 
 
 @mcp.tool()
-async def get_example_operator(domain: str, name: str) -> str:
+async def get_example_operator(env: str, name: str) -> str:
     """Get the full source code of an example operator.
 
     Args:
-        domain: Operator domain ("control", "audio", "gpu", "shared")
+        env: Operator env ("control", "audio", "gpu", "shared")
         name: Operator directory name (e.g. "lfo", "gain", "noise")
     """
-    domain = domain.lower().strip()
+    env_name = env.lower().strip()
     name = name.strip()
 
-    if domain not in OPERATOR_DOMAINS:
+    if env_name not in OPERATOR_ENVS:
         return json.dumps({
             "ok": False,
-            "error": f"Unknown domain '{domain}'. Available: {', '.join(sorted(OPERATOR_DOMAINS))}"
+            "error": f"Unknown env '{env_name}'. Available: {', '.join(sorted(OPERATOR_ENVS))}"
         })
 
     # Security: prevent path traversal
     if "/" in name or "\\" in name or ".." in name:
         return json.dumps({"ok": False, "error": "Invalid operator name"})
 
-    op_dir = OPERATORS_DIR / domain / name
+    op_dir = OPERATORS_DIR / env_name / name
     if not op_dir.is_dir():
-        return json.dumps({"ok": False, "error": f"Operator not found: {domain}/{name}"})
+        return json.dumps({"ok": False, "error": f"Operator not found: {env_name}/{name}"})
 
     files = {}
     for f in sorted(op_dir.iterdir()):
@@ -362,11 +362,11 @@ async def get_example_operator(domain: str, name: str) -> str:
                 files[f.name] = f"<error reading file: {e}>"
 
     if not files:
-        return json.dumps({"ok": False, "error": f"No source files found in {domain}/{name}"})
+        return json.dumps({"ok": False, "error": f"No source files found in {env_name}/{name}"})
 
     return json.dumps({
         "ok": True,
-        "domain": domain,
+        "env": env_name,
         "name": name,
         "files": files,
     })
@@ -381,12 +381,12 @@ SEARCH_EXTENSIONS = {".cpp", ".h", ".wgsl"}
 
 
 @mcp.tool()
-async def search_example_operators(query: str, domain: str | None = None) -> str:
+async def search_example_operators(query: str, env: str | None = None) -> str:
     """Keyword search across operator names and source files.
 
     Args:
         query: Search keyword (case-insensitive)
-        domain: Optional domain filter — "control", "audio", "gpu", or "shared"
+        env: Optional env filter — "control", "audio", "gpu", or "shared"
     """
     query = query.strip()
     if not query:
@@ -394,18 +394,18 @@ async def search_example_operators(query: str, domain: str | None = None) -> str
 
     query_lower = query.lower()
 
-    domains_to_scan = OPERATOR_DOMAINS
-    if domain:
-        domain = domain.lower().strip()
-        if domain not in OPERATOR_DOMAINS:
+    envs_to_scan = OPERATOR_ENVS
+    if env:
+        env_name = env.lower().strip()
+        if env_name not in OPERATOR_ENVS:
             return json.dumps({
                 "ok": False,
-                "error": f"Unknown domain '{domain}'. Available: {', '.join(sorted(OPERATOR_DOMAINS))}"
+                "error": f"Unknown env '{env_name}'. Available: {', '.join(sorted(OPERATOR_ENVS))}"
             })
-        domains_to_scan = {domain}
+        envs_to_scan = {env_name}
 
     matches = []
-    for d in sorted(domains_to_scan):
+    for d in sorted(envs_to_scan):
         domain_dir = OPERATORS_DIR / d
         if not domain_dir.is_dir():
             continue
@@ -418,7 +418,7 @@ async def search_example_operators(query: str, domain: str | None = None) -> str
             # Check operator name
             if query_lower in op_dir.name.lower():
                 matches.append({
-                    "domain": d,
+                    "env": d,
                     "name": op_dir.name,
                     "matched_in": "name",
                     "snippet": op_dir.name,
@@ -439,7 +439,7 @@ async def search_example_operators(query: str, domain: str | None = None) -> str
                             if len(snippet) > 120:
                                 snippet = snippet[:120] + "..."
                             matches.append({
-                                "domain": d,
+                                "env": d,
                                 "name": op_dir.name,
                                 "matched_in": "source",
                                 "snippet": snippet,
@@ -485,24 +485,24 @@ async def recommend_starting_point(goal: str) -> str:
 
     # Check if the goal mentions a known operator name
     all_operators = []
-    for d in sorted(OPERATOR_DOMAINS):
+    for d in sorted(OPERATOR_ENVS):
         domain_dir = OPERATORS_DIR / d
         if not domain_dir.is_dir():
             continue
         for op_dir in sorted(domain_dir.iterdir()):
             if op_dir.is_dir() and not op_dir.name.startswith("."):
-                all_operators.append({"domain": d, "name": op_dir.name})
+                all_operators.append({"env": d, "name": op_dir.name})
 
     for op in all_operators:
         if op["name"] in goal_lower:
             return json.dumps({
                 "ok": True,
                 "approach": "clone_example",
-                "reasoning": f"Your goal mentions the existing operator '{op['name']}' in {op['domain']}. Cloning it gives you a working starting point with the right structure.",
+                "reasoning": f"Your goal mentions the existing operator '{op['name']}' in {op['env']}. Cloning it gives you a working starting point with the right structure.",
                 "next_steps": [
-                    f"get_example_operator(domain=\"{op['domain']}\", name=\"{op['name']}\")",
+                    f"get_example_operator(env=\"{op['env']}\", name=\"{op['name']}\")",
                     f"Study the source to understand its structure",
-                    f"scaffold_operator(name=\"my_{op['name']}\", domain=\"{op['domain']}\")",
+                    f"scaffold_operator(name=\"my_{op['name']}\", env=\"{op['env']}\")",
                     "Copy relevant patterns from the example into your scaffold",
                 ],
             })
@@ -532,16 +532,16 @@ async def recommend_starting_point(goal: str) -> str:
 
     if matched_capability:
         guidance = CAPABILITY_GUIDANCE[matched_capability]
-        domain_hint = "control"
+        env_hint = "control"
         if matched_capability in ("gpu_compute",):
-            domain_hint = "gpu"
+            env_hint = "gpu"
         elif matched_capability in ("media_stream",):
-            domain_hint = "control"
-        # Infer domain from goal keywords
+            env_hint = "control"
+        # Infer env from goal keywords
         if "audio" in goal_lower:
-            domain_hint = "audio"
+            env_hint = "audio"
         elif "gpu" in goal_lower or "shader" in goal_lower or "texture" in goal_lower:
-            domain_hint = "gpu"
+            env_hint = "gpu"
 
         return json.dumps({
             "ok": True,
@@ -549,26 +549,26 @@ async def recommend_starting_point(goal: str) -> str:
             "reasoning": f"Your goal involves the '{matched_capability}' capability. Start with a scaffold and add the capability using the guidance and examples.",
             "next_steps": [
                 f"get_capability_guidance(capability=\"{matched_capability}\")",
-                f"get_example_operator(domain=\"{guidance['example_operators'][0]['domain']}\", name=\"{guidance['example_operators'][0]['name']}\")",
-                f"scaffold_operator(name=\"my_operator\", domain=\"{domain_hint}\")",
+                f"get_example_operator(env=\"{guidance['example_operators'][0]['env']}\", name=\"{guidance['example_operators'][0]['name']}\")",
+                f"scaffold_operator(name=\"my_operator\", env=\"{env_hint}\")",
                 "Apply the capability pattern to your scaffolded operator",
             ],
         })
 
-    # Generic recommendation — infer domain from goal
-    domain_hint = "control"
+    # Generic recommendation — infer env from goal
+    env_hint = "control"
     if "audio" in goal_lower or "sound" in goal_lower or "synth" in goal_lower or "filter" in goal_lower:
-        domain_hint = "audio"
+        env_hint = "audio"
     elif "gpu" in goal_lower or "shader" in goal_lower or "texture" in goal_lower or "visual" in goal_lower:
-        domain_hint = "gpu"
+        env_hint = "gpu"
 
     return json.dumps({
         "ok": True,
         "approach": "scaffold",
-        "reasoning": f"Starting with a {domain_hint} scaffold gives you the right base structure. Study related examples for patterns.",
+        "reasoning": f"Starting with a {env_hint} scaffold gives you the right base structure. Study related examples for patterns.",
         "next_steps": [
-            f"list_example_operators(domain=\"{domain_hint}\")",
-            f"scaffold_operator(name=\"my_operator\", domain=\"{domain_hint}\")",
+            f"list_example_operators(env=\"{env_hint}\")",
+            f"scaffold_operator(name=\"my_operator\", env=\"{env_hint}\")",
             "Implement your logic in the generated process function",
         ],
     })
@@ -579,9 +579,9 @@ async def recommend_starting_point(goal: str) -> str:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def scaffold_operator(name: str, domain: str, variant: str = "") -> str:
+async def scaffold_operator(name: str, env: str, variant: str = "") -> str:
     """Scaffold a starter operator template. Creates a minimal working operator with
-    domain-appropriate defaults.
+    env-appropriate defaults.
 
     This is typically step 3 in the workflow — after researching docs and studying examples.
     After scaffolding, edit the generated source to add custom ports, params, and behavior.
@@ -590,10 +590,10 @@ async def scaffold_operator(name: str, domain: str, variant: str = "") -> str:
 
     Args:
         name: Operator name in lowercase_with_underscores (e.g. "tone_gen")
-        domain: One of "control", "audio", "gpu"
+        env: One of "control", "audio", "gpu"
         variant: Template variant. Use "composite" for a ChildOp-based control operator.
     """
-    body: dict = {"name": name, "domain": domain}
+    body: dict = {"name": name, "env": env}
     if variant:
         body["variant"] = variant
     return await _post("scaffold_operator", body)

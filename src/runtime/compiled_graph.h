@@ -38,7 +38,7 @@ enum class EdgeTransport : uint8_t {
 // CompiledEdge — unified wire representation.
 //
 // Replaces Wire (scheduler), AudioWire, AudioFloatPortWire, AudioCustomWire,
-// AudioSpreadWire, and all five CrossDomain*Wire types.
+// AudioSpreadWire, and all five CrossCadence*Wire types.
 // ---------------------------------------------------------------------------
 
 struct CompiledEdge {
@@ -144,7 +144,7 @@ struct CompiledNode {
     std::vector<void*> custom_outputs;
     std::vector<void*> custom_output_buf;
 
-    // Audio-domain custom ports.
+    // Audio-cadence custom ports.
     std::vector<void*> custom_output_ptrs;
     uint32_t custom_output_count_audio = 0;
     bool has_custom_output_ports_audio = false;

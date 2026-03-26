@@ -530,7 +530,7 @@ int main() {
     }
 
     // =====================================================================
-    // Test 5: custom GPU thumbnail for control-domain operator
+    // Test 5: custom GPU thumbnail for control operator
     // =====================================================================
     {
         std::fprintf(stderr, "\n=== Test 5: Control custom GPU thumbnail ===\n");
@@ -555,7 +555,7 @@ int main() {
     }
 
     // =====================================================================
-    // Test 6: custom GPU thumbnail for GPU-domain operator
+    // Test 6: custom GPU thumbnail for GPU operator
     // =====================================================================
     {
         std::fprintf(stderr, "\n=== Test 6: GPU custom thumbnail override ===\n");

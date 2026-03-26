@@ -106,29 +106,29 @@ class TestListExampleOperators:
         result = json.loads(await opdev.list_example_operators())
         assert result["ok"]
         assert result["count"] >= 40  # we know there are ~49+
-        domains_found = {op["domain"] for op in result["operators"]}
-        assert "control" in domains_found
-        assert "audio" in domains_found
-        assert "gpu" in domains_found
+        envs_found = {op["env"] for op in result["operators"]}
+        assert "control" in envs_found
+        assert "audio" in envs_found
+        assert "gpu" in envs_found
 
     @pytest.mark.anyio
-    async def test_filter_by_domain(self):
+    async def test_filter_by_env(self):
         result = json.loads(await opdev.list_example_operators("audio"))
         assert result["ok"]
         assert result["count"] >= 5
         for op in result["operators"]:
-            assert op["domain"] == "audio"
+            assert op["env"] == "audio"
 
     @pytest.mark.anyio
     async def test_known_operators_present(self):
         result = json.loads(await opdev.list_example_operators())
-        names = {(op["domain"], op["name"]) for op in result["operators"]}
+        names = {(op["env"], op["name"]) for op in result["operators"]}
         assert ("control", "lfo") in names
         assert ("audio", "gain") in names
         assert ("gpu", "noise") in names
 
     @pytest.mark.anyio
-    async def test_invalid_domain(self):
+    async def test_invalid_env(self):
         result = json.loads(await opdev.list_example_operators("invalid"))
         assert not result["ok"]
 
@@ -142,7 +142,7 @@ class TestGetExampleOperator:
     async def test_control_lfo(self):
         result = json.loads(await opdev.get_example_operator("control", "lfo"))
         assert result["ok"]
-        assert result["domain"] == "control"
+        assert result["env"] == "control"
         assert result["name"] == "lfo"
         assert "lfo.h" in result["files"]
         assert "kName" in result["files"]["lfo.h"]
@@ -170,7 +170,7 @@ class TestGetExampleOperator:
         assert not result["ok"]
 
     @pytest.mark.anyio
-    async def test_invalid_domain(self):
+    async def test_invalid_env(self):
         result = json.loads(await opdev.get_example_operator("invalid", "lfo"))
         assert not result["ok"]
 
@@ -220,11 +220,11 @@ class TestSearchExampleOperators:
         assert len(source_matches) >= 1
 
     @pytest.mark.anyio
-    async def test_search_with_domain_filter(self):
-        result = json.loads(await opdev.search_example_operators("gain", domain="control"))
+    async def test_search_with_env_filter(self):
+        result = json.loads(await opdev.search_example_operators("gain", env="control"))
         assert result["ok"]
         for m in result["matches"]:
-            assert m["domain"] == "control"
+            assert m["env"] == "control"
 
     @pytest.mark.anyio
     async def test_search_no_matches(self):
@@ -234,10 +234,10 @@ class TestSearchExampleOperators:
         assert result["matches"] == []
 
     @pytest.mark.anyio
-    async def test_search_invalid_domain(self):
-        result = json.loads(await opdev.search_example_operators("lfo", domain="invalid"))
+    async def test_search_invalid_env(self):
+        result = json.loads(await opdev.search_example_operators("lfo", env="invalid"))
         assert not result["ok"]
-        assert "Unknown domain" in result["error"]
+        assert "Unknown env" in result["error"]
 
     @pytest.mark.anyio
     async def test_search_empty_query(self):
@@ -323,13 +323,13 @@ class TestRecommendStartingPoint:
         assert len(result["next_steps"]) >= 2
 
     @pytest.mark.anyio
-    async def test_audio_domain_inference(self):
+    async def test_audio_env_inference(self):
         result = json.loads(await opdev.recommend_starting_point("an audio synthesizer"))
         assert result["ok"]
         assert "audio" in json.dumps(result["next_steps"])
 
     @pytest.mark.anyio
-    async def test_gpu_domain_inference(self):
+    async def test_gpu_env_inference(self):
         result = json.loads(await opdev.recommend_starting_point("a gpu shader effect"))
         assert result["ok"]
         assert "gpu" in json.dumps(result["next_steps"])

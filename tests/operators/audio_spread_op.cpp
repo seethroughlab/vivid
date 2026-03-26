@@ -1,4 +1,4 @@
-// Audio-domain test operator for cross-domain spread testing.
+// Audio test operator for cross-cadence spread testing.
 // Reads CONTROL_SPREAD input, copies to CONTROL_SPREAD output,
 // generates DC audio output = sum of spread values.
 #include "operator_api/operator.h"

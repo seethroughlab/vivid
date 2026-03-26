@@ -29,7 +29,7 @@ int main() {
     auto* video_loader = registry.find_loaded("video_out");
     check(video_loader != nullptr, "video_out is registered in the registry");
 
-    // 3. audio_out descriptor: domain = AUDIO, 1 input port (multi-channel), 1 param
+    // 3. audio_out descriptor: env = AUDIO, 1 input port (multi-channel), 1 param
     if (audio_loader) {
         const auto* desc = audio_loader->descriptor();
         check(desc != nullptr, "audio_out descriptor is non-null");
@@ -51,7 +51,7 @@ int main() {
         }
     }
 
-    // 4. video_out descriptor: domain = GPU, 1 input port, 1 param
+    // 4. video_out descriptor: env = GPU, 1 input port, 1 param
     if (video_loader) {
         const auto* desc = video_loader->descriptor();
         check(desc != nullptr, "video_out descriptor is non-null");

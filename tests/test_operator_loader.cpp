@@ -27,7 +27,7 @@ static VividParamDescriptor s_builtin_param =
 static VividPortDescriptor s_builtin_port =
     {"out", VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT};
 static VividOperatorDescriptor s_builtin_desc =
-    {"BuiltinTestOp", VIVID_ENV_FRAME, 1, &s_builtin_param, 1, &s_builtin_port, 0};
+    {"BuiltinTestOp", 1, &s_builtin_param, 1, &s_builtin_port, 0};
 
 static const VividOperatorDescriptor* builtin_descriptor() { return &s_builtin_desc; }
 static void* builtin_create() { return new int(42); }

@@ -673,7 +673,7 @@ static bool load_example_entry_from_graph(const std::filesystem::path& graph_pat
             out.estimated_minutes = meta["estimated_minutes"].get<int>();
         }
         out.tags = json_str_array(meta.value("tags", nlohmann::json()));
-        out.domains = json_str_array(meta.value("domains", nlohmann::json()));
+        out.envs = json_str_array(meta.contains("envs") ? meta["envs"] : meta.value("domains", nlohmann::json()));
         out.requires_packages = json_str_array(meta.value("requires_packages", nlohmann::json()));
     }
 
@@ -717,7 +717,7 @@ static bool load_graph_meta_edit_data(const std::string& graph_path,
         if (meta.contains("featured_rank") && meta["featured_rank"].is_number_integer())
             out.featured_rank = std::to_string(meta["featured_rank"].get<int>());
         out.tags_csv = join_csv(json_str_array(meta.value("tags", nlohmann::json())));
-        out.domains_csv = join_csv(json_str_array(meta.value("domains", nlohmann::json())));
+        out.envs_csv = join_csv(json_str_array(meta.contains("envs") ? meta["envs"] : meta.value("domains", nlohmann::json())));
         out.requires_packages_csv = join_csv(json_str_array(meta.value("requires_packages", nlohmann::json())));
     }
     return true;
@@ -751,7 +751,7 @@ static bool save_graph_meta_edit_data(const vivid::ui::GraphMetaEditData& in, st
     meta["description"] = trim_copy(in.description);
     meta["difficulty"] = trim_copy(in.difficulty);
     meta["tags"] = split_csv(in.tags_csv);
-    meta["domains"] = split_csv(in.domains_csv);
+    meta["envs"] = split_csv(in.envs_csv);
     meta["requires_packages"] = split_csv(in.requires_packages_csv);
     int rank = 1000;
     try {
@@ -1504,7 +1504,7 @@ static void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
             if (registry.register_loaded_operator(result.staged_dylib_path)) {
                 // Register file watch for the new operator's source files
                 if (!operators_dir.empty()) {
-                    // Scan all domain subdirs for the target directory
+                    // Scan all env subdirs for the target directory
                     for (const char* domain : {"control", "audio", "gpu"}) {
                         std::string cpp_path = operators_dir + "/" + domain + "/" +
                                                result.target_name + "/" + result.target_name + ".cpp";

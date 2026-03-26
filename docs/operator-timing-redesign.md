@@ -34,13 +34,13 @@ Operators below need to move from pattern **"internal time accumulation"** to pa
 These accumulate internal time (`elapsed += dt`) which changes behavior at audio rate because dt shrinks.
 
 ### mseg
-**Status:** Not started
+**Status:** Done
 **Current timing:** Gate-triggered envelope with `elapsed_ += dt`. Stage machine (IDLE → PLAYING → LOOPING → RELEASING). Loop and release durations are absolute (seconds).
 **State:** `elapsed_`, `stage_`, `release_start_value_`, `current_value_`, `prev_gate_`
 **Ports:** `gate` input (trigger), `beat_phase` input (unused for core timing)
-**Problem:** At audio rate, `dt` is ~5µs per sample — envelope plays through 800x faster.
-**Redesign approach:** Replace internal `elapsed_` with phase-driven position. Option A: normalize segment durations to [0,1] and use external phase input for playback position. Option B: scale durations by cadence (multiply by sample_rate/frame_rate ratio). Option A is cleaner.
-**Notes:**
+**Problem:** Originally thought to need phase-driven redesign.
+**Redesign approach:** `delta_time` is provided correctly by the runtime at both cadences, so `elapsed_ += dt` works as-is. Added `process_audio()` with shared `compute()` helper.
+**Notes:** Same pattern as `path_animate` — delta_time naturally scales. No timing redesign needed.
 
 ### path_animate
 **Status:** Done
@@ -145,13 +145,13 @@ These produce gates, steps, or MIDI-adjacent behavior. They mostly use beat-phas
 **Notes:**
 
 ### step_seq
-**Status:** Not started
+**Status:** Done
 **Current timing:** Dual-mode: free-running `free_phase_ += dt * frequency` or sync `phase = fmod(beat_phase * frequency, 1.0)`. Glide interpolation.
-**State:** `free_phase_`, `prev_step_`, `glide_target_`, `glide_current_`
+**State:** `free_phase_`, `prev_step_`, `current_value_`
 **Ports:** `gate`, `beat_phase` (for sync mode)
 **Problem:** Phase accumulation per call. Glide filter uses call-rate dt.
-**Redesign approach:** Sync mode is already phase-driven. Free-run mode needs cadence-aware frequency scaling. Glide needs per-sample exponential smoothing.
-**Notes:**
+**Redesign approach:** `delta_time` is provided correctly at both cadences. Glide runs once per call — slightly smoother at audio rate but functionally correct. Added `process_audio()` with shared `compute()` helper.
+**Notes:** Same pattern as `path_animate`/`mseg` — delta_time naturally scales.
 
 ### tracker
 **Status:** Not started

@@ -484,7 +484,7 @@ void NodeGraphUI::draw_graph_meta_editor(Renderer2D& tr) {
 
     static const char* labels[] = {
         "id", "title", "description", "tags (csv)", "difficulty",
-        "domains (csv)", "requires_packages (csv)", "featured_rank"
+        "envs (csv)", "requires_packages (csv)", "featured_rank"
     };
     const std::string values[] = {
         graph_meta_data_.id,
@@ -492,7 +492,7 @@ void NodeGraphUI::draw_graph_meta_editor(Renderer2D& tr) {
         graph_meta_data_.description,
         graph_meta_data_.tags_csv,
         graph_meta_data_.difficulty,
-        graph_meta_data_.domains_csv,
+        graph_meta_data_.envs_csv,
         graph_meta_data_.requires_packages_csv,
         graph_meta_data_.featured_rank
     };

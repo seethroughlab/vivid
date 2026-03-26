@@ -5,7 +5,13 @@
 #include <cmath>
 #include <cstring>
 
-struct MSEG : vivid::ControlOperatorBase {
+// MSEG — dual-cadence multi-segment envelope generator.
+//
+// Gate-triggered envelope with breakpoint evaluation. State machine
+// (IDLE → PLAYING → LOOPING → RELEASING) advances via delta_time
+// accumulation, which is cadence-agnostic.
+//
+struct MSEG : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "MSEG";
     static constexpr bool kTimeDependent = true;
 
@@ -123,10 +129,17 @@ struct MSEG : vivid::ControlOperatorBase {
         return pt_value[np - 1].value;
     }
 
-    void process(const VividProcessContext* ctx) override {
-        float gate_in = ctx->input_values[0];
-        float dt = static_cast<float>(ctx->delta_time);
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values[0], static_cast<float>(ctx->delta_time));
+        ctx->output_values[0] = current_value_ * amplitude.value;
+    }
 
+    void process_audio(const VividAudioContext* ctx) override {
+        compute(ctx->input_float_values[0], static_cast<float>(ctx->delta_time));
+        ctx->output_float_values[0] = current_value_ * amplitude.value;
+    }
+
+    void compute(float gate_in, float dt) {
         bool gate_on = gate_in > 0.5f;
         int np = num_points.int_value();
         np = std::max(2, std::min(kMaxPoints, np));
@@ -201,8 +214,6 @@ struct MSEG : vivid::ControlOperatorBase {
             current_value_ = 0.0f;
             break;
         }
-
-        ctx->output_values[0] = current_value_ * amplitude.value;
     }
 
     void draw_inspector(VividInspectorContext* ctx) override;

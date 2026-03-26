@@ -1,6 +1,6 @@
 // Per-operator smoke sweep — discovers all *.dylib operators in the build
 // directory and validates: load, descriptor sanity, instance lifecycle,
-// domain-specific process smoke, and param boundary (min/max).
+// env-specific process smoke, and param boundary (min/max).
 //
 // GPU operators are tested only when a headless WebGPU device is available;
 // otherwise they are gracefully skipped.
@@ -35,7 +35,7 @@ static int g_skipped = 0;
 
 struct OpResult {
     std::string name;
-    std::string domain_str;
+    std::string env_str;
     bool load_ok    = false;
     bool desc_ok    = false;
     bool life_ok    = false;
@@ -81,19 +81,19 @@ static uint32_t count_signal_ports(const VividOperatorDescriptor* desc,
     return n;
 }
 
-// For audio-domain operators, the runtime provides audio buffers for ports
+// For audio-cadence operators, the runtime provides audio buffers for ports
 // that carry audio data (AUDIO type or AUDIO_BUFFER transport), and float
-// values for signal ports that carry cross-domain scalars. However, some
+// values for signal ports that carry cross-cadence scalars. However, some
 // audio operators declare output ports as VIVID_PORT_SIGNAL but write to
-// output_buffers (the runtime allocates buffers for all ports in the audio
-// domain). To be safe, we count:
+// output_buffers (the runtime allocates buffers for all ports at audio
+// cadence). To be safe, we count:
 //   - audio_buffer ports: any port with AUDIO type or AUDIO_BUFFER transport,
 //     PLUS any SIGNAL port that doesn't explicitly use SIGNAL transport
-//     (i.e. it gets a buffer in the audio domain).
-//   - float ports: SIGNAL type ports (these get float values from/to control).
+//     (i.e. it gets a buffer at audio cadence).
+//   - float ports: SIGNAL type ports (these get float values from/to frame).
 //
 // For audio operators, the runtime gives EVERY port a buffer slot. Signal
-// ports also get a float_value slot for cross-domain bridging. We mirror this.
+// ports also get a float_value slot for cross-cadence bridging. We mirror this.
 
 // Count ports that need audio buffer allocation.
 static uint32_t count_buffer_ports(const VividOperatorDescriptor* desc,
@@ -109,7 +109,7 @@ static uint32_t count_buffer_ports(const VividOperatorDescriptor* desc,
     return n;
 }
 
-// Count signal/float ports (cross-domain scalar values).
+// Count signal/float ports (cross-cadence scalar values).
 static uint32_t count_float_ports(const VividOperatorDescriptor* desc,
                                    VividPortDirection dir) {
     uint32_t n = 0;
@@ -307,14 +307,14 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
 }
 
 // ============================================================================
-// Domain-specific smoke: Audio
+// Environment-specific smoke: Audio
 // ============================================================================
 
-// For audio-domain operators, the runtime allocates:
+// For audio-cadence operators, the runtime allocates:
 //   - input_buffers: one per AUDIO-type or AUDIO_BUFFER-transport input port
 //   - output_buffers: one per output port (audio ops can write per-sample to any output)
-//   - input_float_values: one per SIGNAL-type input port (cross-domain scalars)
-//   - output_float_values: one per SIGNAL-type output port (cross-domain scalars)
+//   - input_float_values: one per SIGNAL-type input port (cross-cadence scalars)
+//   - output_float_values: one per SIGNAL-type output port (cross-cadence scalars)
 // We mirror this generously to avoid null-pointer crashes.
 
 static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
@@ -620,7 +620,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         return;
     }
     result.desc_ok = true;
-    result.domain_str = env_label(desc->execution_env);
+    result.env_str = env_label(desc->execution_env);
 
     // --- Instance lifecycle ---
     void* inst = loader.create_instance();
@@ -655,7 +655,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         g_failed++;
         g_results.push_back(result);
         std::fprintf(stderr, "  [FAIL] %-30s %-8s smoke threw: %s\n",
-                     stem.c_str(), result.domain_str.c_str(), e.what());
+                     stem.c_str(), result.env_str.c_str(), e.what());
         return;
     } catch (...) {
         result.fail_reason = "smoke threw unknown exception";
@@ -663,7 +663,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         g_failed++;
         g_results.push_back(result);
         std::fprintf(stderr, "  [FAIL] %-30s %-8s smoke threw unknown exception\n",
-                     stem.c_str(), result.domain_str.c_str());
+                     stem.c_str(), result.env_str.c_str());
         return;
     }
     result.smoke_ok = smoke;
@@ -674,7 +674,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         g_failed++;
         g_results.push_back(result);
         std::fprintf(stderr, "  [FAIL] %-30s %-8s smoke failed\n",
-                     stem.c_str(), result.domain_str.c_str());
+                     stem.c_str(), result.env_str.c_str());
         return;
     }
 
@@ -694,7 +694,7 @@ static void sweep_operator(const fs::path& path, HeadlessGpu* gpu) {
         g_failed++;
         g_results.push_back(result);
         std::fprintf(stderr, "  [FAIL] %-30s %-8s bounds failed\n",
-                     stem.c_str(), result.domain_str.c_str());
+                     stem.c_str(), result.env_str.c_str());
         return;
     }
 
@@ -746,10 +746,10 @@ int main() {
     for (const auto& r : g_results) {
         if (r.skipped) {
             std::fprintf(stderr, "[SKIP]  %-30s %-8s reason=%s\n",
-                         r.name.c_str(), r.domain_str.c_str(), r.skip_reason.c_str());
+                         r.name.c_str(), r.env_str.c_str(), r.skip_reason.c_str());
         } else if (!r.fail_reason.empty()) {
             std::fprintf(stderr, "[FAIL]  %-30s %-8s load=%s desc=%s life=%s smoke=%s bounds=%s  %s\n",
-                         r.name.c_str(), r.domain_str.c_str(),
+                         r.name.c_str(), r.env_str.c_str(),
                          r.load_ok  ? "ok" : "FAIL",
                          r.desc_ok  ? "ok" : "FAIL",
                          r.life_ok  ? "ok" : "FAIL",
@@ -758,7 +758,7 @@ int main() {
                          r.fail_reason.c_str());
         } else {
             std::fprintf(stderr, "[PASS]  %-30s %-8s load=ok desc=ok life=ok smoke=ok bounds=ok\n",
-                         r.name.c_str(), r.domain_str.c_str());
+                         r.name.c_str(), r.env_str.c_str());
         }
     }
 

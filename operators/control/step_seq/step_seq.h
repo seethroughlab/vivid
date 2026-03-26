@@ -5,7 +5,12 @@
 #include <cmath>
 #include <cstdio>
 
-struct StepSeq : vivid::ControlOperatorBase {
+// StepSeq — dual-cadence step sequencer.
+//
+// Free-running or sync phase + step values with glide + per-step gate lengths.
+// Phase accumulation via delta_time is cadence-agnostic.
+//
+struct StepSeq : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "StepSeq";
     static constexpr bool kTimeDependent = true;
 
@@ -113,9 +118,18 @@ struct StepSeq : vivid::ControlOperatorBase {
         out.push_back({"trigger",    VIVID_PORT_SIGNAL, VIVID_PORT_OUTPUT});  // 1
     }
 
-    void process(const VividProcessContext* ctx) override {
-        float dt = static_cast<float>(ctx->delta_time);
-        float beat_phase_in = ctx->input_values[1];
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values, ctx->delta_time, ctx->output_values);
+    }
+
+    void process_audio(const VividAudioContext* ctx) override {
+        compute(ctx->input_float_values, ctx->delta_time, ctx->output_float_values);
+    }
+
+private:
+    void compute(const float* input_values, double delta_time, float* output_values) {
+        float dt = static_cast<float>(delta_time);
+        float beat_phase_in = input_values[1];
 
         int ns = std::clamp(num_steps.int_value(), 1, kMaxSteps);
         float freq = frequency.value;
@@ -157,7 +171,7 @@ struct StepSeq : vivid::ControlOperatorBase {
         float gate_len = step_gate[step].value;
         bool gate_open = frac_in_step <= gate_len;
 
-        // Glide: cubic-mapped slew (same as RandomSH)
+        // Glide: cubic-mapped slew
         if (glide_val < 0.001f) {
             current_value_ = target;
         } else {
@@ -174,9 +188,10 @@ struct StepSeq : vivid::ControlOperatorBase {
         }
 
         // Output with amplitude and offset
-        ctx->output_values[0] = out_val * amp + off;
-        ctx->output_values[1] = trigger_out;
+        output_values[0] = out_val * amp + off;
+        output_values[1] = trigger_out;
     }
+public:
 
     void draw_inspector(VividInspectorContext* ctx) override;
 
