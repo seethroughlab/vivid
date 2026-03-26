@@ -45,12 +45,23 @@ public:
     // Initialize the frame-side state on a CompiledNode (ports, params, spreads,
     // strings, custom ports, file params, GPU resources).  Public so that
     // Scheduler::reload_operator() can reinitialize a single node in-place.
+    // Initialize the frame-side state on a CompiledNode (ports, params, spreads,
+    // strings, custom ports, file params, GPU resources).  Public so that
+    // Scheduler::reload_operator() can reinitialize a single node in-place.
     static void init_frame_state(
         CompiledNode& cn,
         const VividOperatorDescriptor* desc,
         const std::unordered_map<std::string, float>* param_overrides,
         const std::unordered_map<std::string, std::string>* string_overrides,
         const std::filesystem::path& graph_base_dir);
+
+    // Initialize audio-specific state on a CompiledNode (channel counts, audio
+    // buffers, float CV inputs, signal output extraction).  Public so that
+    // AudioEngine::post_reload_operator() can reinitialize after hot-reload.
+    static void init_audio_state(
+        CompiledNode& cn,
+        const VividOperatorDescriptor* desc,
+        uint32_t buffer_size);
 };
 
 } // namespace vivid

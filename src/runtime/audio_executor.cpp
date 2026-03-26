@@ -24,7 +24,9 @@ AudioExecutor::~AudioExecutor() {
     shutdown();
 }
 
-bool AudioExecutor::build(CompiledGraph& cg) {
+bool AudioExecutor::build(CadenceBridge& bridge, CompiledGraph& cg) {
+    bridge_ = &bridge;
+    graph_ = &cg;
     sink_node_idx_ = -1;
     auto_dup_groups_.clear();
     node_to_dup_group_.clear();
@@ -98,14 +100,8 @@ bool AudioExecutor::build(CompiledGraph& cg) {
     return true;
 }
 
-bool AudioExecutor::start(CadenceBridge& bridge, CompiledGraph& cg, bool use_null_device) {
-    bridge_ = &bridge;
-    graph_ = &cg;
-
-    if (use_null_device) {
-        running_ = true;
-        return true;
-    }
+bool AudioExecutor::start(bool use_null_device) {
+    if (!bridge_ || !graph_) return false;
 
     // Configure miniaudio
     device_ = new ma_device;
@@ -117,7 +113,14 @@ bool AudioExecutor::start(CadenceBridge& bridge, CompiledGraph& cg, bool use_nul
     config.dataCallback = ma_data_callback;
     config.pUserData = this;
 
-    if (ma_device_init(nullptr, &config, device_) != MA_SUCCESS) {
+    ma_result init_result;
+    if (use_null_device) {
+        ma_backend backends[] = { ma_backend_null };
+        init_result = ma_device_init_ex(backends, 1, nullptr, &config, device_);
+    } else {
+        init_result = ma_device_init(nullptr, &config, device_);
+    }
+    if (init_result != MA_SUCCESS) {
         delete device_;
         device_ = nullptr;
         return false;

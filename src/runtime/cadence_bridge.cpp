@@ -1,4 +1,5 @@
 #include "runtime/cadence_bridge.h"
+#include "operator_api/type_id.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>

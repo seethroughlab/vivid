@@ -28,10 +28,11 @@ public:
     ~AudioExecutor();
 
     // Build audio-specific state: detect sink, set up auto-dup groups, waveform rings.
-    bool build(CompiledGraph& cg);
+    // Also stores bridge/graph references so process_audio_for_test() works before start().
+    bool build(CadenceBridge& bridge, CompiledGraph& cg);
 
     // Start/stop audio device.
-    bool start(CadenceBridge& bridge, CompiledGraph& cg, bool use_null_device = false);
+    bool start(bool use_null_device = false);
     void shutdown();
     void pause();
     void resume();

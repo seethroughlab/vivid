@@ -5,6 +5,7 @@
 #include "control/lfo/lfo.h"
 #include "control/envelope/envelope.h"
 #include "runtime/audio_engine.h"
+#include "runtime/compiled_graph.h"
 #include "runtime/cadence_bridge.h"
 #include "runtime/compiled_graph.h"
 #include "runtime/graph.h"
@@ -300,41 +301,41 @@ static void test_signal_auto_extraction() {
     // Simulate what AudioEngine does: after process_audio(), copy last sample
     // from output_buffers to float_output_values for SIGNAL output ports.
 
-    vivid::AudioNodeState ns;
-    ns.output_port_count = 1;
-    ns.output_port_types.push_back(VIVID_PORT_SIGNAL);
-    ns.output_buffers.resize(1, std::vector<float>(256, 0.0f));
-    ns.float_output_count = 1;
-    ns.float_output_values.resize(1, 0.0f);
-    ns.signal_output_extractions.push_back({0, 0}); // port_idx=0, float_ordinal=0
+    vivid::CompiledNode cn;
+    cn.output_port_count = 1;
+    cn.output_port_types.push_back(VIVID_PORT_SIGNAL);
+    cn.audio_buffers_out.resize(1, std::vector<float>(256, 0.0f));
+    cn.float_output_count = 1;
+    cn.float_output_values.resize(1, 0.0f);
+    cn.signal_output_extractions.push_back({0, 0}); // port_idx=0, float_ordinal=0
 
     // Fill output buffer with known pattern
     for (uint32_t i = 0; i < 256; ++i)
-        ns.output_buffers[0][i] = static_cast<float>(i) / 255.0f;
+        cn.audio_buffers_out[0][i] = static_cast<float>(i) / 255.0f;
 
     // Simulate auto-extraction (same code as audio_callback)
     uint32_t chunk = 256;
-    for (const auto& se : ns.signal_output_extractions) {
-        if (se.port_idx < ns.output_buffers.size() && chunk > 0) {
-            ns.float_output_values[se.float_ordinal] =
-                ns.output_buffers[se.port_idx][chunk - 1];
+    for (const auto& se : cn.signal_output_extractions) {
+        if (se.port_idx < cn.audio_buffers_out.size() && chunk > 0) {
+            cn.float_output_values[se.float_ordinal] =
+                cn.audio_buffers_out[se.port_idx][chunk - 1];
         }
     }
 
     // Last sample should be 255/255 = 1.0
-    check_float(ns.float_output_values[0], 1.0f, 0.001f,
+    check_float(cn.float_output_values[0], 1.0f, 0.001f,
                 "auto-extracted last sample = 1.0");
 
     // Scalar-written outputs must survive the same extraction pass unchanged.
-    ns.float_output_values[0] = 0.37f;
-    for (const auto& se : ns.signal_output_extractions) {
-        if (se.port_idx < ns.output_buffers.size() && chunk > 0 &&
-            std::isnan(ns.float_output_values[se.float_ordinal])) {
-            ns.float_output_values[se.float_ordinal] =
-                ns.output_buffers[se.port_idx][chunk - 1];
+    cn.float_output_values[0] = 0.37f;
+    for (const auto& se : cn.signal_output_extractions) {
+        if (se.port_idx < cn.audio_buffers_out.size() && chunk > 0 &&
+            std::isnan(cn.float_output_values[se.float_ordinal])) {
+            cn.float_output_values[se.float_ordinal] =
+                cn.audio_buffers_out[se.port_idx][chunk - 1];
         }
     }
-    check_float(ns.float_output_values[0], 0.37f, 0.001f,
+    check_float(cn.float_output_values[0], 0.37f, 0.001f,
                 "scalar-written signal output preserved");
 }
 

@@ -212,10 +212,10 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
 }
 
 // Initialize audio-specific state on a CompiledNode that has Cadence::Audio.
-// Corresponds to AudioEngine::init_audio_node_state().
-static void init_audio_state(CompiledNode& cn,
-                             const VividOperatorDescriptor* desc,
-                             uint32_t buffer_size) {
+// Formerly in AudioEngine::init_audio_node_state().
+void GraphCompiler::init_audio_state(CompiledNode& cn,
+                                     const VividOperatorDescriptor* desc,
+                                     uint32_t buffer_size) {
     // Channel descriptors
     cn.descriptor_input_channels.clear();
     cn.descriptor_output_channels.clear();
