@@ -220,12 +220,14 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 }
             }
         }
-        // Copy string inputs
+        // Copy string inputs and rebuild c_str() pointers
         if (cn.has_string_input_ports && i < snap.input_string_values.size()) {
             for (size_t p = 0; p < cn.input_port_count && p < snap.input_string_values[i].size(); ++p) {
                 if (p < cn.input_string_values.size())
                     cn.input_string_values[p] = snap.input_string_values[i][p];
             }
+            for (size_t p = 0; p < cn.input_string_values.size() && p < cn.c_input_string_values.size(); ++p)
+                cn.c_input_string_values[p] = cn.input_string_values[p].c_str();
         }
     }
 
@@ -270,16 +272,18 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         ? (e.to_max - e.to_min) / (e.from_max - e.from_min) : 1.0f)
                     : 1.0f;
 
+                // Channel data is laid out as [ch0_0..ch0_255][ch1_0..ch1_255]...
+                // Each channel block is kBufferSize samples, regardless of chunk size.
                 if (fc == tc) {
                     for (uint8_t c = 0; c < fc; ++c) {
-                        float* sc = src + c * chunk;
-                        float* dc = dst + c * chunk;
+                        float* sc = src + c * kBufferSize;
+                        float* dc = dst + c * kBufferSize;
                         for (uint32_t s = 0; s < chunk; ++s)
                             dc[s] += sc[s] * scale;
                     }
                 } else if (fc == 1 && tc > 1) {
                     for (uint8_t c = 0; c < tc; ++c) {
-                        float* dc = dst + c * chunk;
+                        float* dc = dst + c * kBufferSize;
                         for (uint32_t s = 0; s < chunk; ++s)
                             dc[s] += src[s] * scale;
                     }
@@ -288,14 +292,14 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                     for (uint32_t s = 0; s < chunk; ++s) {
                         float sum = 0.0f;
                         for (uint8_t c = 0; c < fc; ++c)
-                            sum += src[c * chunk + s];
+                            sum += src[c * kBufferSize + s];
                         dst[s] += sum * inv_n * scale;
                     }
                 } else {
                     uint8_t min_ch = std::min(fc, tc);
                     for (uint8_t c = 0; c < min_ch; ++c) {
-                        float* sc = src + c * chunk;
-                        float* dc = dst + c * chunk;
+                        float* sc = src + c * kBufferSize;
+                        float* dc = dst + c * kBufferSize;
                         for (uint32_t s = 0; s < chunk; ++s)
                             dc[s] += sc[s] * scale;
                     }
@@ -351,58 +355,121 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 cn.c_out_spreads[p].capacity = static_cast<uint32_t>(cn.out_spread_buf[p].size());
             }
 
-            // Build VividAudioContext
-            VividAudioContext ctx{};
-            ctx.time = node_time;
-            ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
-            ctx.frame = audio_frame_ + frames_written;
-            ctx.param_values = cn.param_values.data();
-            ctx.input_buffers = cn.audio_in_ptrs.data();
-            ctx.output_buffers = cn.audio_out_ptrs.data();
-            ctx.buffer_size = chunk;
-            ctx.sample_rate = kSampleRate;
-            ctx.input_channel_counts = cn.input_channel_counts.data();
-            ctx.output_channel_counts = cn.output_channel_counts.data();
-            ctx.input_float_values = cn.float_input_values.empty() ? cn.float_input_scratch : cn.float_input_values.data();
-            ctx.output_float_values = cn.float_output_values.empty() ? cn.float_output_scratch : cn.float_output_values.data();
-            ctx.input_spreads = cn.c_in_spreads.empty() ? nullptr : cn.c_in_spreads.data();
-            ctx.output_spreads = cn.c_out_spreads.empty() ? nullptr : cn.c_out_spreads.data();
-            ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
-            ctx.shared_handles = vivid::shared_handle_service();
-            ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
-            ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
+            // Check for auto-dup processing
+            auto dup_it = node_to_dup_group_.find(ni);
+            if (dup_it != node_to_dup_group_.end()) {
+                // ── Auto-dup: deinterleave → per-channel process → interleave ──
+                auto& group = auto_dup_groups_[dup_it->second];
+                uint8_t ch = group.channel_count;
 
-            try {
-                cn.loader->process_audio(cn.instance, &ctx);
-                // Debug: check if any output was produced
-                if (std::getenv("VIVID_DEBUG_AUDIO")) {
-                    float max_out = 0.0f;
-                    for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                        if (p < cn.audio_buffers_out.size()) {
-                            for (uint32_t s = 0; s < chunk && s < cn.audio_buffers_out[p].size(); ++s) {
-                                float av = std::fabs(cn.audio_buffers_out[p][s]);
-                                if (av > max_out) max_out = av;
+                // Deinterleave: extract channel c from multi-channel buffers into per-channel mono buffers
+                for (uint8_t c = 0; c < ch; ++c) {
+                    for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+                        if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO) {
+                            const float* mc = cn.audio_buffers_in[p].data() + c * kBufferSize;
+                            std::memcpy(group.per_ch_inputs[c][p].data(), mc, chunk * sizeof(float));
+                        } else {
+                            // Non-audio ports: copy same data to all channels
+                            std::memcpy(group.per_ch_inputs[c][p].data(),
+                                        cn.audio_buffers_in[p].data(), chunk * sizeof(float));
+                        }
+                    }
+                }
+
+                // Process each channel instance
+                for (uint8_t c = 0; c < ch; ++c) {
+                    VividAudioContext ctx{};
+                    ctx.time = node_time;
+                    ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
+                    ctx.frame = audio_frame_ + frames_written;
+                    ctx.param_values = cn.param_values.data();
+                    ctx.input_buffers = group.per_ch_in_ptrs[c].data();
+                    ctx.output_buffers = group.per_ch_out_ptrs[c].data();
+                    ctx.buffer_size = chunk;
+                    ctx.sample_rate = kSampleRate;
+                    ctx.input_channel_counts = nullptr;  // mono view
+                    ctx.output_channel_counts = nullptr;
+                    ctx.input_float_values = cn.float_input_values.empty() ? cn.float_input_scratch : cn.float_input_values.data();
+                    ctx.output_float_values = cn.float_output_values.empty() ? cn.float_output_scratch : cn.float_output_values.data();
+                    ctx.input_spreads = cn.c_in_spreads.empty() ? nullptr : cn.c_in_spreads.data();
+                    ctx.output_spreads = cn.c_out_spreads.empty() ? nullptr : cn.c_out_spreads.data();
+                    ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
+                    ctx.custom_inputs = cn.has_custom_input_ports ? cn.resolved_custom_inputs.data() : nullptr;
+                    ctx.custom_input_count = static_cast<uint32_t>(cn.custom_input_port_indices.size());
+                    ctx.custom_outputs = cn.custom_output_ptrs.empty() ? nullptr : cn.custom_output_ptrs.data();
+                    ctx.custom_output_count = cn.custom_output_count_audio;
+                    ctx.shared_handles = vivid::shared_handle_service();
+                    ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
+                    ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
+                    ctx.channel_index = c;
+
+                    try {
+                        cn.loader->process_audio(group.instances[c], &ctx);
+                    } catch (const std::exception& ex) {
+                        cn.errored = true;
+                        std::strncpy(cn.audio_error_message, ex.what(), sizeof(cn.audio_error_message) - 1);
+                        cn.audio_error_message[sizeof(cn.audio_error_message) - 1] = '\0';
+                    } catch (...) {
+                        cn.errored = true;
+                        std::strncpy(cn.audio_error_message, "unknown exception", sizeof(cn.audio_error_message) - 1);
+                    }
+                }
+
+                if (cn.errored) {
+                    for (auto& buf : cn.audio_buffers_out)
+                        std::memset(buf.data(), 0, buf.size() * sizeof(float));
+                } else {
+                    // Interleave: copy per-channel mono output back into multi-channel output buffers
+                    for (uint8_t c = 0; c < ch; ++c) {
+                        for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+                            if (p < cn.output_port_types.size() && cn.output_port_types[p] == VIVID_PORT_AUDIO) {
+                                float* mc = cn.audio_buffers_out[p].data() + c * kBufferSize;
+                                std::memcpy(mc, group.per_ch_outputs[c][p].data(), chunk * sizeof(float));
                             }
                         }
                     }
-                    for (uint32_t fo = 0; fo < cn.float_output_count; ++fo) {
-                        float av = std::fabs(cn.float_output_values[fo]);
-                        if (av > max_out) max_out = av;
-                    }
-                    std::fprintf(stderr, "[audio-debug] node '%s' max_output=%.4f\n",
-                                 cn.node_id.c_str(), max_out);
                 }
-            } catch (const std::exception& ex) {
-                cn.errored = true;
-                std::strncpy(cn.audio_error_message, ex.what(), sizeof(cn.audio_error_message) - 1);
-                cn.audio_error_message[sizeof(cn.audio_error_message) - 1] = '\0';
-                for (auto& buf : cn.audio_buffers_out)
-                    std::memset(buf.data(), 0, buf.size() * sizeof(float));
-            } catch (...) {
-                cn.errored = true;
-                std::strncpy(cn.audio_error_message, "unknown exception", sizeof(cn.audio_error_message) - 1);
-                for (auto& buf : cn.audio_buffers_out)
-                    std::memset(buf.data(), 0, buf.size() * sizeof(float));
+            } else {
+                // ── Normal (non-dup) processing ──
+                VividAudioContext ctx{};
+                ctx.time = node_time;
+                ctx.delta_time = static_cast<double>(chunk) / kSampleRate;
+                ctx.frame = audio_frame_ + frames_written;
+                ctx.param_values = cn.param_values.data();
+                ctx.input_buffers = cn.audio_in_ptrs.data();
+                ctx.output_buffers = cn.audio_out_ptrs.data();
+                ctx.buffer_size = chunk;
+                ctx.sample_rate = kSampleRate;
+                ctx.input_channel_counts = cn.input_channel_counts.data();
+                ctx.output_channel_counts = cn.output_channel_counts.data();
+                ctx.input_float_values = cn.float_input_values.empty() ? cn.float_input_scratch : cn.float_input_values.data();
+                ctx.output_float_values = cn.float_output_values.empty() ? cn.float_output_scratch : cn.float_output_values.data();
+                ctx.input_spreads = cn.c_in_spreads.empty() ? nullptr : cn.c_in_spreads.data();
+                ctx.output_spreads = cn.c_out_spreads.empty() ? nullptr : cn.c_out_spreads.data();
+                ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
+                ctx.custom_inputs = cn.has_custom_input_ports ? cn.resolved_custom_inputs.data() : nullptr;
+                ctx.custom_input_count = static_cast<uint32_t>(cn.custom_input_port_indices.size());
+                ctx.custom_outputs = cn.custom_output_ptrs.empty() ? nullptr : cn.custom_output_ptrs.data();
+                ctx.custom_output_count = cn.custom_output_count_audio;
+                ctx.shared_handles = vivid::shared_handle_service();
+                ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
+                ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
+                ctx.channel_index = 0;
+
+                try {
+                    cn.loader->process_audio(cn.instance, &ctx);
+                } catch (const std::exception& ex) {
+                    cn.errored = true;
+                    std::strncpy(cn.audio_error_message, ex.what(), sizeof(cn.audio_error_message) - 1);
+                    cn.audio_error_message[sizeof(cn.audio_error_message) - 1] = '\0';
+                    for (auto& buf : cn.audio_buffers_out)
+                        std::memset(buf.data(), 0, buf.size() * sizeof(float));
+                } catch (...) {
+                    cn.errored = true;
+                    std::strncpy(cn.audio_error_message, "unknown exception", sizeof(cn.audio_error_message) - 1);
+                    for (auto& buf : cn.audio_buffers_out)
+                        std::memset(buf.data(), 0, buf.size() * sizeof(float));
+                }
             }
 
             // Read back spread outputs
@@ -459,6 +526,22 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                         const auto& src = cn.output_spreads[e.from_port];
                         to_cn.input_spreads[e.to_port].assign(src.begin(), src.end());
                     }
+                } else if (vivid_is_custom_port_type(e.data_type)) {
+                    // Custom port routing between audio nodes
+                    auto& to_cn = cg.nodes[e.to_node];
+                    // Find custom output ordinal on source
+                    uint32_t from_ord = 0;
+                    for (uint32_t ci = 0; ci < cn.custom_output_port_indices.size(); ++ci) {
+                        if (cn.custom_output_port_indices[ci] == e.from_port) { from_ord = ci; break; }
+                    }
+                    // Find custom input ordinal on destination
+                    uint32_t to_ord = 0;
+                    for (uint32_t ci = 0; ci < to_cn.custom_input_port_indices.size(); ++ci) {
+                        if (to_cn.custom_input_port_indices[ci] == e.to_port) { to_ord = ci; break; }
+                    }
+                    if (from_ord < cn.custom_output_ptrs.size() &&
+                        to_ord < to_cn.resolved_custom_inputs.size())
+                        to_cn.resolved_custom_inputs[to_ord] = cn.custom_output_ptrs[from_ord];
                 }
             }
         }
@@ -483,7 +566,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 float* L = sink.audio_buffers_in[0].data();
                 uint8_t ch = sink.input_channel_counts.empty() ? 1 : sink.input_channel_counts[0];
                 if (ch >= 2) {
-                    float* R = L + chunk;
+                    float* R = L + kBufferSize;
                     for (uint32_t s = 0; s < chunk; ++s) {
                         dst[s * 2]     = L[s];
                         dst[s * 2 + 1] = R[s];
@@ -511,6 +594,9 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 for (uint32_t i = 0; i < to_write; ++i)
                     recording_tap_.ring[(wp + i) % RecordingTap::kRingSize] = dst[i];
                 recording_tap_.write_pos.store(wp + to_write, std::memory_order_release);
+            } else {
+                if (recording_overrun_count_++ == 0)
+                    std::fprintf(stderr, "[vivid] Recording tap overrun — samples dropped\n");
             }
         }
 

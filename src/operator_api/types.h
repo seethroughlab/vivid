@@ -228,6 +228,10 @@ typedef struct VividAudioContext {
     const char**      file_param_values;
     uint32_t          file_param_count;
     const VividSharedHandleService* shared_handles;
+    // Auto-dup channel index: 0 for normal operators; for auto-dup mono operators
+    // in multi-channel chains, identifies which channel this instance processes.
+    // Operators can use this to index into spread data for per-voice modulation.
+    uint8_t           channel_index;
 } VividAudioContext;
 
 // ---------------------------------------------------------------------------
