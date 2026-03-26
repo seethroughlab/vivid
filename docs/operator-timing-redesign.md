@@ -136,13 +136,13 @@ These produce gates, steps, or MIDI-adjacent behavior. They mostly use beat-phas
 **Notes:** No timing redesign needed — phase-wrap logic works at any cadence.
 
 ### sequencer
-**Status:** Not started
+**Status:** Done
 **Current timing:** Phase modulo with reset handling. Step detection via scaled phase. Ratchet subdivision.
 **State:** `prev_step_`, `phase_offset_`, `prev_reset_`, `step_active_`, `current_ratchet_`, RNG, MIDI tracking
 **Ports:** `beat_phase`, `reset` (required)
-**Problem:** Step boundaries and ratchet division at call boundary.
-**Redesign approach:** Per-sample step/ratchet evaluation. Core logic already phase-driven — just needs to run at audio rate.
-**Notes:**
+**Problem:** Was audio-only (`AudioOperatorBase`), not dual-cadence.
+**Redesign approach:** Added `FrameProcessable` and shared `compute()` helper. Purely phase-driven logic already cadence-agnostic.
+**Notes:** Same pattern as `pattern_seq`.
 
 ### step_seq
 **Status:** Done

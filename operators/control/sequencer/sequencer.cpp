@@ -33,7 +33,12 @@ inline bool midi_note_off(VividMidiBuffer& buf, uint8_t note,
 
 } // anonymous namespace
 
-struct Sequencer : vivid::AudioOperatorBase {
+// Sequencer — dual-cadence step sequencer with ratchets, probability, and MIDI.
+//
+// Purely phase-driven (kTimeDependent = false). Spread inputs for values,
+// probabilities, and ratchet counts. All logic is cadence-agnostic.
+//
+struct Sequencer : vivid::OperatorBase, vivid::FrameProcessable, vivid::AudioProcessable {
     static constexpr const char* kName   = "Sequencer";
     static constexpr bool kTimeDependent = false;
 
@@ -63,9 +68,21 @@ struct Sequencer : vivid::AudioOperatorBase {
         out.push_back(VIVID_CUSTOM_REF_PORT("midi_out", VIVID_PORT_OUTPUT, VividMidiBuffer));
     }
 
+    void process_frame(const VividFrameContext* ctx) override {
+        compute(ctx->input_values[0], ctx->input_values[1],
+                ctx->input_spreads, ctx->output_values,
+                ctx->custom_outputs, ctx->custom_output_count);
+    }
+
     void process_audio(const VividAudioContext* ctx) override {
-        float phase = ctx->input_float_values[0];
-        bool reset = ctx->input_float_values[1] > 0.5f;
+        compute(ctx->input_float_values[0], ctx->input_float_values[1],
+                ctx->input_spreads, ctx->output_float_values,
+                ctx->custom_outputs, ctx->custom_output_count);
+    }
+
+    void compute(float phase, float reset_in, VividSpreadPort* in_spreads,
+                 float* output_values, void** custom_outputs, uint32_t custom_output_count) {
+        bool reset = reset_in > 0.5f;
 
         // Read spread inputs
         const float* val_data = nullptr;
@@ -74,14 +91,14 @@ struct Sequencer : vivid::AudioOperatorBase {
         uint32_t prob_len = 0;
         const float* ratch_data = nullptr;
         uint32_t ratch_len = 0;
-        if (ctx->input_spreads) {
-            const auto& val_sp = ctx->input_spreads[0];   // values
+        if (in_spreads) {
+            const auto& val_sp = in_spreads[0];   // values
             val_len = val_sp.length;
             val_data = val_sp.data;
-            const auto& prob_sp = ctx->input_spreads[1];  // probs
+            const auto& prob_sp = in_spreads[1];  // probs
             prob_len = prob_sp.length;
             prob_data = prob_sp.data;
-            const auto& ratch_sp = ctx->input_spreads[2]; // ratchets
+            const auto& ratch_sp = in_spreads[2]; // ratchets
             ratch_len = ratch_sp.length;
             ratch_data = ratch_sp.data;
         }
@@ -128,9 +145,9 @@ struct Sequencer : vivid::AudioOperatorBase {
         if (ratchet_trigger) prev_ratchet_index_ = ratchet_index;
 
         bool trigger = step_active_ && ratchet_trigger;
-        ctx->output_float_values[0] = value;
-        ctx->output_float_values[1] = static_cast<float>(step);
-        ctx->output_float_values[2] = trigger ? 1.0f : 0.0f;
+        output_values[0] = value;
+        output_values[1] = static_cast<float>(step);
+        output_values[2] = trigger ? 1.0f : 0.0f;
 
         // MIDI output: note-on on trigger, legato note-off before new note
         uint8_t ch = static_cast<uint8_t>(midi_channel.int_value() - 1);
@@ -144,8 +161,8 @@ struct Sequencer : vivid::AudioOperatorBase {
             midi_note_on(midi_buf_, note, 100, ch);
             prev_midi_note_ = note;
         }
-        if (ctx->custom_outputs && ctx->custom_output_count > 0) {
-            ctx->custom_outputs[0] = &midi_buf_;
+        if (custom_outputs && custom_output_count > 0) {
+            custom_outputs[0] = &midi_buf_;
         }
     }
 
